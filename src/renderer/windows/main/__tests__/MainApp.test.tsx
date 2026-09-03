@@ -1,7 +1,8 @@
 import '@testing-library/jest-dom/vitest'
 
-import { MockUsePreferenceUtils } from '@test-mocks/renderer/usePreference'
-import { render, screen } from '@testing-library/react'
+import { LATEST_PRIVACY_POLICY_VERSION } from '@shared/utils/constants'
+import { mockUseMultiplePreferences, MockUsePreferenceUtils } from '@test-mocks/renderer/usePreference'
+import { render, screen, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -78,14 +79,24 @@ describe('MainWindowContent', () => {
     }
   })
 
-  it('loads and renders onboarding before the user completes first-run setup', async () => {
-    MockUsePreferenceUtils.setPreferenceValue('app.onboarding.provider_setup.status', 'pending')
+  it('skips first-run provider setup without loading onboarding', async () => {
+    const updateOnboardingPreferences = vi.fn().mockResolvedValue(undefined)
+    mockUseMultiplePreferences.mockImplementationOnce(() => [
+      { providerSetupStatus: 'pending', policyVersion: '' },
+      updateOnboardingPreferences
+    ])
     appendBootSpinner()
 
     render(<MainWindowContent />)
 
-    expect(await screen.findByTestId('onboarding-page')).toBeInTheDocument()
-    expect(onboardingModule.evaluations).toBe(1)
+    await waitFor(() =>
+      expect(updateOnboardingPreferences).toHaveBeenCalledWith({
+        providerSetupStatus: 'skipped',
+        policyVersion: LATEST_PRIVACY_POLICY_VERSION
+      })
+    )
+    expect(screen.queryByTestId('onboarding-page')).not.toBeInTheDocument()
+    expect(onboardingModule.evaluations).toBe(0)
     expect(screen.queryByTestId('app-shell')).not.toBeInTheDocument()
     expect(screen.queryByTestId('privacy-policy-gate')).not.toBeInTheDocument()
     expect(document.getElementById('spinner')).toBeNull()

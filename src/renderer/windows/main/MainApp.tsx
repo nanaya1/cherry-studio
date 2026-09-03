@@ -1,4 +1,4 @@
-import { usePreference } from '@data/hooks/usePreference'
+import { useMultiplePreferences, usePreference } from '@data/hooks/usePreference'
 import { loggerService } from '@logger'
 import AppLogo from '@renderer/assets/images/logo.png'
 import { CodeStyleProvider } from '@renderer/components/CodeStyleProvider'
@@ -19,7 +19,8 @@ import { useWindowRuntime } from '@renderer/hooks/useWindowRuntime'
 import { registerImageModeChooser } from '@renderer/services/imageExportModeChooser'
 import { getSidebarDefaultLandingUrl } from '@renderer/utils/sidebar'
 import type { Tab } from '@shared/data/cache/cacheValueTypes'
-import { lazy, Suspense, useEffect, useMemo } from 'react'
+import { LATEST_PRIVACY_POLICY_VERSION } from '@shared/utils/constants'
+import { useEffect, useMemo } from 'react'
 
 import { useAppUpdateHandler } from './hooks/useAppUpdateHandler'
 import { useAutoBackupEvents } from './hooks/useAutoBackupEvents'
@@ -27,7 +28,11 @@ import { useTopicNamingErrorNotification } from './hooks/useTopicNamingErrorNoti
 import { PrivacyPolicyUpdateGate } from './privacy/PrivacyPolicyUpdateGate'
 
 const logger = loggerService.withContext('MainApp')
-const OnboardingPage = lazy(() => import('./onboarding/OnboardingPage'))
+const PESSIMISTIC_PREFERENCE_OPTIONS = { optimistic: false } as const
+const ONBOARDING_PREFERENCE_KEYS = {
+  providerSetupStatus: 'app.onboarding.provider_setup.status',
+  policyVersion: 'app.privacy.policy_version'
+} as const
 
 // MainWindowRuntime removes the HTML boot spinner as soon as it mounts, so a suspended first-run
 // screen needs its own stand-in or the window goes blank. Mirrors main/index.html's `#spinner`.
@@ -85,12 +90,25 @@ function MainWindowRuntime(): null {
 }
 
 export function MainWindowContent(): React.ReactElement {
-  const [providerSetupStatus] = usePreference('app.onboarding.provider_setup.status')
+  const [{ providerSetupStatus }, updateOnboardingPreferences] = useMultiplePreferences(
+    ONBOARDING_PREFERENCE_KEYS,
+    PESSIMISTIC_PREFERENCE_OPTIONS
+  )
   const [sidebarFavorites] = usePreference('ui.sidebar.favorites')
   const [defaultPaintingProvider] = usePreference('feature.paintings.default_provider')
   const privacyUpdateRequired = useIsPrivacyUpdateRequired()
-  // Onboarding collects privacy consent itself, so the gate only owns the window afterwards.
   const privacyGateOpen = providerSetupStatus !== 'pending' && privacyUpdateRequired
+
+  useEffect(() => {
+    if (providerSetupStatus !== 'pending') return
+
+    void updateOnboardingPreferences({
+      providerSetupStatus: 'skipped',
+      policyVersion: LATEST_PRIVACY_POLICY_VERSION
+    }).catch((error) => {
+      logger.error('Failed to skip provider setup:', error as Error)
+    })
+  }, [providerSetupStatus, updateOnboardingPreferences])
 
   const initialDefaultTab = useMemo<Tab>(
     () => ({
@@ -107,13 +125,7 @@ export function MainWindowContent(): React.ReactElement {
   return (
     <TabsProvider initialDefaultTab={initialDefaultTab}>
       <MandatoryGateProvider open={privacyGateOpen}>
-        {providerSetupStatus === 'pending' ? (
-          <Suspense fallback={<BootFallback />}>
-            <OnboardingPage />
-          </Suspense>
-        ) : (
-          <AppShell />
-        )}
+        {providerSetupStatus === 'pending' ? <BootFallback /> : <AppShell />}
         <MainWindowRuntime />
         <ConversationNotificationRuntime />
         <PopupHost />
