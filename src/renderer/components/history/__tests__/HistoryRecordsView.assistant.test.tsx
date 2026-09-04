@@ -529,7 +529,7 @@ describe('HistoryRecordsView assistant mode', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Alpha topic' }))
 
-    expect(hookMocks.openConversationTab).toHaveBeenCalledWith('topic-alpha', 'Alpha topic', { forceNew: true })
+    expect(hookMocks.openConversationTab).toHaveBeenCalledWith('topic-alpha', 'Alpha topic')
     expect(onRecordSelect).not.toHaveBeenCalled()
     expect(onClose).not.toHaveBeenCalled()
     expect(hookMocks.useSessions).not.toHaveBeenCalled()
@@ -560,7 +560,7 @@ describe('HistoryRecordsView assistant mode', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Alpha topic' }))
 
-    expect(hookMocks.openConversationTab).toHaveBeenCalledWith('topic-alpha', 'Alpha topic', { forceNew: true })
+    expect(hookMocks.openConversationTab).toHaveBeenCalledWith('topic-alpha', 'Alpha topic')
     expect(onRecordSelect).toHaveBeenCalledWith(expect.objectContaining({ id: 'topic-alpha' }))
     expect(onClose).toHaveBeenCalledTimes(1)
   })

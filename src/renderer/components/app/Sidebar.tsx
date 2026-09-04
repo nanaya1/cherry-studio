@@ -2,6 +2,7 @@ import { usePersistCache } from '@data/hooks/useCache'
 import { usePreference } from '@data/hooks/usePreference'
 import { arrayMove } from '@dnd-kit/sortable'
 import AppLogo from '@renderer/assets/images/logo.png'
+import { Topics } from '@renderer/components/chat/resourceList/Topics'
 import { useAgents } from '@renderer/hooks/agent/useAgent'
 import { useAgentSessionsSource, useAssistantTopicsSource } from '@renderer/hooks/resourceViewSources'
 import { useTabs } from '@renderer/hooks/tab'
@@ -23,7 +24,7 @@ import {
   tabBelongsToApp
 } from '@renderer/utils/sidebar'
 import { APP_NAME } from '@shared/utils/constants'
-import { Bot, CalendarClock, MessageSquare, Plus, Puzzle, Shapes } from 'lucide-react'
+import { Bot, CalendarClock, Plus, Puzzle, Shapes } from 'lucide-react'
 import type { Ref } from 'react'
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -58,7 +59,8 @@ export default function Sidebar({ ref }: { ref?: Ref<HTMLDivElement | null> }) {
     reorderFavorites
   } = useSidebarFavorites()
   const { activeTab, tabs, updateTab, openTab, setActiveTab } = useTabs()
-  const { topics } = useAssistantTopicsSource()
+  const assistantTopicsSource = useAssistantTopicsSource()
+  const { rendererTopics } = assistantTopicsSource
   const { sessions } = useAgentSessionsSource()
   const { openConversationTab: openAssistantConversationTab } = useConversationNavigation('assistants')
   const { openConversationTab: openAgentConversationTab } = useConversationNavigation('agents')
@@ -127,6 +129,8 @@ export default function Sidebar({ ref }: { ref?: Ref<HTMLDivElement | null> }) {
 
   // Menu items
   const pathname = activeTab?.url || '/'
+  const activeTopicId = getSidebarApp('assistants')?.conversationRoute?.keyFromUrl(pathname)
+  const activeTopic = rendererTopics.find((topic) => topic.id === activeTopicId)
   const activeMiniAppId = miniAppIdFromTabUrl(activeTab?.url) ?? undefined
   const openableMiniAppById = useMemo(() => {
     const appById = new Map<string, (typeof miniApps)[number]>()
@@ -352,15 +356,20 @@ export default function Sidebar({ ref }: { ref?: Ref<HTMLDivElement | null> }) {
         id: 'conversations',
         label: t('workspace.history.conversations'),
         collapsible: true,
-        entries: topics.map((topic) => ({
-          key: `topic:${topic.id}`,
-          label: topic.name || t('chat.conversation.new'),
-          presentation: 'history' as const,
-          renderIcon: (size: number) => <MessageSquare size={size} />,
-          isActive: () => getSidebarApp('assistants')?.conversationRoute?.keyFromUrl(pathname) === topic.id,
-          onOpen: () =>
-            openAssistantConversationTab(topic.id, topic.name || t('chat.conversation.new'), { forceNew: true })
-        }))
+        content: (
+          <div className="flex h-80 min-h-0 flex-col overflow-hidden [-webkit-app-region:no-drag]">
+            <Topics
+              activeTopic={activeTopic}
+              assistantTopicsSource={assistantTopicsSource}
+              className="bg-transparent"
+              clearActiveTopic={() => handleNavigate('assistants')}
+              setActiveTopic={(topic) =>
+                openAssistantConversationTab(topic.id, topic.name || t('chat.conversation.new'))
+              }
+              showHeader={false}
+            />
+          </div>
+        )
       },
       {
         id: 'agent-tasks',
@@ -372,11 +381,20 @@ export default function Sidebar({ ref }: { ref?: Ref<HTMLDivElement | null> }) {
           presentation: 'history' as const,
           renderIcon: (size: number) => <Bot size={size} />,
           isActive: () => getSidebarApp('agents')?.conversationRoute?.keyFromUrl(pathname) === session.id,
-          onOpen: () => openAgentConversationTab(session.id, session.name || t('agent.session.new'), { forceNew: true })
+          onOpen: () => openAgentConversationTab(session.id, session.name || t('agent.session.new'))
         }))
       }
     ],
-    [openAgentConversationTab, openAssistantConversationTab, pathname, sessions, t, topics]
+    [
+      activeTopic,
+      assistantTopicsSource,
+      handleNavigate,
+      openAgentConversationTab,
+      openAssistantConversationTab,
+      pathname,
+      sessions,
+      t
+    ]
   )
 
   const entries = useMemo(

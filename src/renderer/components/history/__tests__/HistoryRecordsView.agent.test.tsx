@@ -519,7 +519,7 @@ describe('HistoryRecordsView agent mode', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Alpha session' }))
 
-    expect(hookMocks.openConversationTab).toHaveBeenCalledWith('session-alpha', 'Alpha session', { forceNew: true })
+    expect(hookMocks.openConversationTab).toHaveBeenCalledWith('session-alpha', 'Alpha session')
     expect(onRecordSelect).not.toHaveBeenCalled()
     expect(onClose).not.toHaveBeenCalled()
   })
@@ -694,7 +694,7 @@ describe('HistoryRecordsView agent mode', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Beta session' }))
 
-    expect(hookMocks.openConversationTab).toHaveBeenCalledWith('session-beta', 'Beta session', { forceNew: true })
+    expect(hookMocks.openConversationTab).toHaveBeenCalledWith('session-beta', 'Beta session')
     expect(onRecordSelect).not.toHaveBeenCalled()
     expect(onClose).not.toHaveBeenCalled()
   })
@@ -705,7 +705,7 @@ describe('HistoryRecordsView agent mode', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Alpha session' }))
 
-    expect(hookMocks.openConversationTab).toHaveBeenCalledWith('session-alpha', 'Alpha session', { forceNew: true })
+    expect(hookMocks.openConversationTab).toHaveBeenCalledWith('session-alpha', 'Alpha session')
     expect(onRecordSelect).toHaveBeenCalledWith('session-alpha')
     expect(onClose).toHaveBeenCalledTimes(1)
   })

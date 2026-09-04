@@ -174,7 +174,7 @@ const AssistantHistoryRecords = ({
   const handleTopicSelect = useCallback(
     (topic: ApiTopic) => {
       const title = topic.name || t('chat.default.topic.name')
-      if (conversationNav.openConversationTab(topic.id, title, { forceNew: true })) return
+      if (conversationNav.openConversationTab(topic.id, title)) return
 
       onRecordSelect?.(getRendererTopic(topic))
       onClose()

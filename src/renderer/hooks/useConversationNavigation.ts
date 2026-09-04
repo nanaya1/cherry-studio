@@ -2,14 +2,16 @@ import { type TabsContextValue, useOptionalTabsContext } from '@renderer/hooks/t
 import { useWindowFrame } from '@renderer/hooks/useWindowFrame'
 import { ipcApi } from '@renderer/ipc'
 import type { ConversationAppId } from '@renderer/types/conversation'
-import { getSidebarApp } from '@renderer/utils/sidebar'
+import { getSidebarApp, type SidebarApp, tabBelongsToApp } from '@renderer/utils/sidebar'
 import { useMemo } from 'react'
 import { v4 as uuid } from 'uuid'
 
 export interface ConversationNavigation {
   /**
-   * Open a new tab on the conversation's own URL. Detached windows return
-   * `undefined` instead of creating a hidden internal tab.
+   * Focus the tab already showing conversation `key` and return its id; open a new
+   * tab when none exists. `forceNew` skips the focus step and always opens a fresh
+   * duplicate tab. Detached windows return `undefined` instead of creating a hidden
+   * internal tab.
    */
   openConversationTab: (key: string, title?: string, options?: { forceNew?: boolean }) => string | undefined
   /**
@@ -24,14 +26,32 @@ export interface ConversationNavigation {
   openConversationWindow: (key: string, title?: string) => void
 }
 
+/** Find the tab currently showing conversation `key` of `app` (by URL-bound identity). */
+function findConversationTabId(tabs: TabsContextValue | null, app: SidebarApp, key: string): string | undefined {
+  if (!tabs) return undefined
+  return tabs.tabs.find(
+    (tab) => tab.type === 'route' && tabBelongsToApp(app, tab.url) && app.conversationRoute?.keyFromUrl(tab.url) === key
+  )?.id
+}
+
 function openConversationTabImpl(
   tabs: TabsContextValue | null,
   appId: ConversationAppId,
   key: string,
-  title?: string
+  title?: string,
+  forceNew?: boolean
 ): string | undefined {
   const app = getSidebarApp(appId)
   if (!tabs || !app?.conversationRoute) return
+
+  if (!forceNew) {
+    const existingTabId = findConversationTabId(tabs, app, key)
+    if (existingTabId) {
+      tabs.setActiveTab(existingTabId)
+      return existingTabId
+    }
+  }
+
   return tabs.openTab(app.conversationRoute.urlForKey(key), { forceNew: true, title })
 }
 
@@ -63,8 +83,8 @@ export function useConversationNavigation(appId: ConversationAppId): Conversatio
 
   return useMemo<ConversationNavigation>(
     () => ({
-      openConversationTab: (key, title) =>
-        isDetachedWindowFrame ? undefined : openConversationTabImpl(tabs, appId, key, title),
+      openConversationTab: (key, title, options) =>
+        isDetachedWindowFrame ? undefined : openConversationTabImpl(tabs, appId, key, title, options?.forceNew),
       openConversation: (key, title) => {
         if (tabs && !isDetachedWindowFrame) return openConversationTabImpl(tabs, appId, key, title)
         openConversationWindowImpl(appId, key, title)

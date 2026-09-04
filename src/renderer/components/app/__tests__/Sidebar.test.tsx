@@ -124,8 +124,33 @@ vi.mock('@renderer/hooks/useAvatar', () => ({
 }))
 
 vi.mock('@renderer/hooks/resourceViewSources', () => ({
-  useAssistantTopicsSource: () => ({ topics: mocks.topics }),
+  useAssistantTopicsSource: () => ({
+    topics: mocks.topics,
+    rendererTopics: mocks.topics
+  }),
   useAgentSessionsSource: () => ({ sessions: mocks.sessions })
+}))
+
+vi.mock('@renderer/components/chat/resourceList/Topics', () => ({
+  Topics: ({
+    assistantTopicsSource,
+    className,
+    setActiveTopic,
+    showHeader
+  }: {
+    assistantTopicsSource: { rendererTopics: FakeConversation[] }
+    className?: string
+    setActiveTopic: (topic: FakeConversation) => void
+    showHeader?: boolean
+  }) => (
+    <div className={className} data-testid="conversation-topic-list" data-show-header={showHeader}>
+      {assistantTopicsSource.rendererTopics.map((topic) => (
+        <button key={topic.id} type="button" onClick={() => setActiveTopic(topic)}>
+          {topic.name}
+        </button>
+      ))}
+    </div>
+  )
 }))
 
 vi.mock('@renderer/hooks/useMiniApps', () => ({
@@ -303,7 +328,7 @@ function getNavigationEntry(key: string) {
 function getSectionEntry(sectionId: string, key: string) {
   const entry = getSidebarProps()
     .sections?.find((section) => section.id === sectionId)
-    ?.entries.find((item) => item.key === key)
+    ?.entries?.find((item) => item.key === key)
   expect(entry).toBeDefined()
   return entry as ResolvedSidebarEntry
 }
@@ -319,7 +344,7 @@ function findMenuItem(entry: ResolvedSidebarEntry, id: string) {
 function selectMenuItem(entry: ResolvedSidebarEntry, id: string) {
   const item = findMenuItem(entry, id)
   expect(item).toBeDefined()
-  void act(() => item?.onSelect())
+  act(() => item?.onSelect())
 }
 
 afterEach(() => {
@@ -369,12 +394,9 @@ describe('app Sidebar', () => {
       'Skills & Connectors',
       'Scheduled Tasks'
     ])
-    expect(
-      getSidebarProps().sections?.map((section) => [section.label, section.entries.map((entry) => entry.label)])
-    ).toEqual([
-      ['Conversations', ['Release planning']],
-      ['Tasks', ['Audit dependencies']]
-    ])
+    expect(getSidebarProps().sections?.map((section) => section.label)).toEqual(['Conversations', 'Tasks'])
+    expect(getSidebarProps().sections?.[0]?.content).toBeDefined()
+    expect(getSidebarProps().sections?.[1]?.entries?.map((entry) => entry.label)).toEqual(['Audit dependencies'])
     expect(mocks.setSidebarFavorites).not.toHaveBeenCalled()
   })
 
@@ -392,21 +414,24 @@ describe('app Sidebar', () => {
     expect(mocks.openSettingsTab).not.toHaveBeenCalled()
   })
 
-  it('opens conversation and task history entries at their exact routes', () => {
+  it('opens conversation and task history entries at their exact routes', async () => {
+    const user = userEvent.setup()
     mocks.topics = [{ id: 'topic-1', name: 'Release planning' }]
     mocks.sessions = [{ id: 'session-1', name: 'Audit dependencies' }]
 
     render(<Sidebar />)
 
-    act(() => getSectionEntry('conversations', 'topic:topic-1').onOpen())
-    expect(mocks.openAssistantConversationTab).toHaveBeenLastCalledWith('topic-1', 'Release planning', {
-      forceNew: true
-    })
+    const conversationContent = getSidebarProps().sections?.find((section) => section.id === 'conversations')?.content
+    render(conversationContent)
+    const conversationList = screen.getByTestId('conversation-topic-list')
+    expect(conversationList).toHaveAttribute('data-show-header', 'false')
+    expect(conversationList).toHaveClass('bg-transparent')
+    expect(conversationList.parentElement).toHaveClass('[-webkit-app-region:no-drag]')
+    await user.click(screen.getByRole('button', { name: 'Release planning' }))
+    expect(mocks.openAssistantConversationTab).toHaveBeenLastCalledWith('topic-1', 'Release planning')
 
     act(() => getSectionEntry('agent-tasks', 'session:session-1').onOpen())
-    expect(mocks.openAgentConversationTab).toHaveBeenLastCalledWith('session-1', 'Audit dependencies', {
-      forceNew: true
-    })
+    expect(mocks.openAgentConversationTab).toHaveBeenLastCalledWith('session-1', 'Audit dependencies')
     expect(mocks.updateTab).not.toHaveBeenCalled()
   })
 

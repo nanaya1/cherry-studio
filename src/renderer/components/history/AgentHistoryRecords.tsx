@@ -96,7 +96,7 @@ const AgentHistoryRecords = ({ activeRecordId, onClose, onRecordSelect, toolbarL
   const handleSessionSelect = useCallback(
     (session: SessionListItem) => {
       const title = session.name || t('common.unnamed')
-      if (conversationNav.openConversationTab(session.id, title, { forceNew: true })) return
+      if (conversationNav.openConversationTab(session.id, title)) return
 
       onRecordSelect?.(session.id)
       onClose()
