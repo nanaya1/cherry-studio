@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest'
 
+import type { CommandContextMenuExtraItem } from '@renderer/components/command'
 import type { SidebarAppId } from '@renderer/utils/sidebar'
 import type { SidebarFavoriteItem } from '@shared/data/preference/preferenceTypes'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
@@ -307,10 +308,18 @@ function getSectionEntry(sectionId: string, key: string) {
   return entry as ResolvedSidebarEntry
 }
 
+type SidebarMenuItem = Extract<CommandContextMenuExtraItem, { type: 'item' }>
+
+function findMenuItem(entry: ResolvedSidebarEntry, id: string) {
+  return entry.contextMenuItems?.find(
+    (candidate): candidate is SidebarMenuItem => candidate.type === 'item' && candidate.id === id
+  )
+}
+
 function selectMenuItem(entry: ResolvedSidebarEntry, id: string) {
-  const item = entry.contextMenuItems?.find((candidate) => candidate.id === id)
+  const item = findMenuItem(entry, id)
   expect(item).toBeDefined()
-  void act(() => item?.onSelect?.())
+  void act(() => item?.onSelect())
 }
 
 afterEach(() => {
@@ -468,9 +477,7 @@ describe('app Sidebar', () => {
     render(<Sidebar />)
 
     const entry = getEntry('app:knowledge')
-    expect(entry.contextMenuItems?.find((item) => item.id === 'sidebar.remove-app.knowledge')?.label).toBe(
-      'launchpad.unpin_from_sidebar'
-    )
+    expect(findMenuItem(entry, 'sidebar.remove-app.knowledge')?.label).toBe('launchpad.unpin_from_sidebar')
     selectMenuItem(entry, 'sidebar.remove-app.knowledge')
 
     expect(mocks.setSidebarFavorites).toHaveBeenCalledWith([appFavorite('assistants'), appFavorite('files')])
@@ -481,7 +488,7 @@ describe('app Sidebar', () => {
     render(<Sidebar />)
 
     const entry = getEntry('app:assistants')
-    expect(entry.contextMenuItems?.find((item) => item.id === 'sidebar.remove-app.assistants')?.enabled).not.toBe(false)
+    expect(findMenuItem(entry, 'sidebar.remove-app.assistants')?.enabled).not.toBe(false)
     selectMenuItem(entry, 'sidebar.remove-app.assistants')
 
     expect(mocks.setSidebarFavorites).toHaveBeenCalledWith([appFavorite('knowledge')])
@@ -490,9 +497,7 @@ describe('app Sidebar', () => {
   it('disables removing the last sidebar app', () => {
     render(<Sidebar />)
 
-    const item = getEntry('app:assistants').contextMenuItems?.find(
-      (candidate) => candidate.id === 'sidebar.remove-app.assistants'
-    )
+    const item = findMenuItem(getEntry('app:assistants'), 'sidebar.remove-app.assistants')
     expect(item?.enabled).toBe(false)
     expect(mocks.setSidebarFavorites).not.toHaveBeenCalled()
   })
