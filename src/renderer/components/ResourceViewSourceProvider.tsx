@@ -9,13 +9,8 @@ import {
   useRawAssistantTopicsSource
 } from '@renderer/hooks/resourceViewSources'
 import { useTabs } from '@renderer/hooks/tab'
-import {
-  getSidebarApp,
-  isMessageOnlyConversationUrl,
-  type SidebarAppId,
-  tabBelongsToApp
-} from '@renderer/utils/sidebar'
 import type { Tab } from '@shared/data/cache/cacheValueTypes'
+import { isSettingsPath } from '@shared/data/types/settingsPath'
 import type { ReactNode } from 'react'
 import { useEffect, useMemo, useState } from 'react'
 
@@ -26,21 +21,9 @@ const EMPTY_ASSISTANT_TOPICS_VIEW: AssistantTopicsView = { rendererTopics: [], o
 type AssistantTopicsSnapshot = Pick<ReturnType<typeof useRawAssistantTopicsSource>, 'pages' | 'topics'>
 type AgentSessionsSnapshot = Pick<ReturnType<typeof useRawAgentSessionsSource>, 'pinIdBySessionId' | 'sessions'>
 
-export function shouldLoadResourceViewSource(
-  tabs: readonly Tab[],
-  activeTabId: string | null | undefined,
-  appId: SidebarAppId
-): boolean {
-  const app = getSidebarApp(appId)
-  if (!app) return false
-
+export function shouldLoadResourceViewSource(tabs: readonly Tab[], activeTabId: string | null | undefined): boolean {
   const activeTab = tabs.find((tab) => tab.id === activeTabId)
-  return Boolean(
-    activeTab?.type === 'route' &&
-      !activeTab.isDormant &&
-      tabBelongsToApp(app, activeTab.url) &&
-      !isMessageOnlyConversationUrl(activeTab.url)
-  )
+  return Boolean(activeTab && !isSettingsPath(activeTab.url))
 }
 
 function useCommittedAssistantTopicsSource(enabled: boolean, retainDerivedView: boolean): AssistantTopicsSource {
@@ -200,27 +183,9 @@ function useCommittedAgentSessionsSource(enabled: boolean): AgentSessionsSource 
 
 export function ResourceViewSourceProvider({ children }: { children: ReactNode }) {
   const { activeTabId, tabs } = useTabs()
-  const assistantTopicsEnabled = useMemo(
-    () => shouldLoadResourceViewSource(tabs, activeTabId, 'assistants'),
-    [activeTabId, tabs]
-  )
-  const retainAssistantTopicsView = useMemo(() => {
-    const app = getSidebarApp('assistants')
-    if (!app) return false
-    return tabs.some(
-      (tab) =>
-        tab.type === 'route' &&
-        !tab.isDormant &&
-        tabBelongsToApp(app, tab.url) &&
-        !isMessageOnlyConversationUrl(tab.url)
-    )
-  }, [tabs])
-  const agentSessionsEnabled = useMemo(
-    () => shouldLoadResourceViewSource(tabs, activeTabId, 'agents'),
-    [activeTabId, tabs]
-  )
-  const assistantTopicsSource = useCommittedAssistantTopicsSource(assistantTopicsEnabled, retainAssistantTopicsView)
-  const agentSessionsSource = useCommittedAgentSessionsSource(agentSessionsEnabled)
+  const enabled = useMemo(() => shouldLoadResourceViewSource(tabs, activeTabId), [activeTabId, tabs])
+  const assistantTopicsSource = useCommittedAssistantTopicsSource(enabled, enabled)
+  const agentSessionsSource = useCommittedAgentSessionsSource(enabled)
 
   return (
     <AssistantTopicsSourceContext value={assistantTopicsSource}>

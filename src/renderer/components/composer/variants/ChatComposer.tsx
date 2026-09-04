@@ -175,6 +175,7 @@ export interface ChatComposerProps {
   onDraftAssistantChange?: (assistantId: string | null) => void | Promise<void>
   onNewTopic?: (payload?: AddNewTopicPayload) => void | Promise<void>
   onCreateEmptyTopic?: (payload?: AddNewTopicPayload) => void | Promise<void>
+  onDraftCleared?: () => void
 }
 
 interface SavedComposerDraft {
@@ -419,6 +420,7 @@ const ChatComposerRoot = ({
   onDraftAssistantChange,
   onNewTopic,
   onCreateEmptyTopic,
+  onDraftCleared,
   renderControls,
   forceNarrowLayout = false,
   deferQuickPanel = false
@@ -478,6 +480,7 @@ const ChatComposerRoot = ({
             onDraftAssistantChange={onDraftAssistantChange}
             onNewTopic={onNewTopic}
             onCreateEmptyTopic={onCreateEmptyTopic}
+            onDraftCleared={onDraftCleared}
             renderControls={renderControls}
             forceNarrowLayout={forceNarrowLayout}
             deferQuickPanel={deferQuickPanel}
@@ -518,6 +521,7 @@ const ChatComposerInner = ({
   onDraftAssistantChange,
   onNewTopic,
   onCreateEmptyTopic,
+  onDraftCleared,
   renderControls,
   forceNarrowLayout = false,
   deferQuickPanel = false
@@ -1500,7 +1504,8 @@ const ChatComposerInner = ({
     // from a stale index.
     resetHistoryIndex()
     inputHistoryToolsRef.current = null
-  }, [resetHistoryIndex, setFiles, setText])
+    onDraftCleared?.()
+  }, [onDraftCleared, resetHistoryIndex, setFiles, setText])
 
   // Queue mode: while a turn streams, follow-ups go here instead of sending; the head auto-drains
   // (normal send) when the topic goes idle, and the dock steers/edits/removes individual items.

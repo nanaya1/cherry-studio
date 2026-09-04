@@ -16,6 +16,7 @@ export type {
   SidebarLayout,
   SidebarMiniApp,
   SidebarMiniAppTab,
+  SidebarSection,
   SidebarUser,
   SidebarVisibleLayout
 } from './types'

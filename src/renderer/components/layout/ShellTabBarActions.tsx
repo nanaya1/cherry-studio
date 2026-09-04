@@ -121,18 +121,5 @@ export function SidebarShellActions({
     )
   }
 
-  return (
-    <>
-      <HelpMenu layout={layout} onFeedbackClick={onFeedbackClick} onOverlayOpenChange={onOverlayOpenChange} />
-      <Button
-        type="button"
-        variant="ghost"
-        aria-label={t('settings.title')}
-        onClick={onSettingsClick}
-        className="flex w-full items-center justify-start gap-2.5 rounded-lg px-2.5 py-1.75 text-[13px] text-foreground transition-colors hover:bg-accent/60">
-        <Settings size={16} strokeWidth={1.6} />
-        <span>{t('settings.title')}</span>
-      </Button>
-    </>
-  )
+  return <HelpMenu layout={layout} onFeedbackClick={onFeedbackClick} onOverlayOpenChange={onOverlayOpenChange} />
 }

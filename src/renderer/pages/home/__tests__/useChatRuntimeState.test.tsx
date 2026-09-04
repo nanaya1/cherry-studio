@@ -117,7 +117,7 @@ vi.mock('../hooks/useChatWriteActions', () => ({
   useChatWriteActions: () => ({ actions: {} })
 }))
 
-vi.mock('../hooks/useTopicMessagesCache', () => ({
+vi.mock('@renderer/hooks/useTopicMessagesCache', () => ({
   useTopicMessagesCache: () => ({
     seedReservedMessages: mocks.seedMessagesCache,
     rollbackBranch: mocks.rollbackBranch

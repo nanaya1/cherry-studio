@@ -7,6 +7,8 @@ import { MockUsePreferenceUtils } from '@test-mocks/renderer/usePreference'
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { SIDEBAR_ICON_WIDTH } from '../../Sidebar'
+
 const { languageState, getT } = vi.hoisted(() => {
   const labels: Record<string, Record<string, string>> = {
     'en-US': {
@@ -62,6 +64,11 @@ vi.mock('@renderer/hooks/useModel', () => ({
   modelGenerating: vi.fn().mockResolvedValue(undefined)
 }))
 
+vi.mock('@renderer/hooks/resourceViewSources', () => ({
+  useAssistantTopicsSource: () => ({ topics: [] }),
+  useAgentSessionsSource: () => ({ sessions: [] })
+}))
+
 vi.mock('@renderer/hooks/tab', () => ({
   useTabs: () => ({
     activeTab: {
@@ -96,7 +103,7 @@ describe('Sidebar language refresh', () => {
     MockUseDataApiUtils.mockQueryData('/mini-apps', [])
     MockUsePreferenceUtils.setPreferenceValue('ui.sidebar.favorites', [{ type: 'app', id: 'assistants' }])
     MockUsePreferenceUtils.setPreferenceValue('feature.paintings.default_provider', 'zhipu')
-    MockUseCacheUtils.setPersistCacheValue('ui.sidebar.width', 170)
+    MockUseCacheUtils.setPersistCacheValue('ui.sidebar.width', SIDEBAR_ICON_WIDTH)
   })
 
   afterEach(() => {

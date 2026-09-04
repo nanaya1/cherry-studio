@@ -1,0 +1,58 @@
+<h2>右侧工作区 · 新建任务欢迎页</h2>
+<p class="subtitle">点击左侧“新建任务”后先进入轻量欢迎态，不立即创建空 Topic 或 Session；用户开始输入或选择入口后，再复用现有创建逻辑。</p>
+
+<div class="mockup">
+  <div class="mockup-header">默认状态 · 尚未选择会话类型</div>
+  <div class="mockup-body" style="padding:0">
+    <div style="height:580px;background:#fff;color:#242424;display:flex;flex-direction:column">
+      <header style="height:48px;border-bottom:1px solid #e5e5df;display:flex;align-items:center;padding:0 18px;font-size:12px"><b>新建任务</b><span style="margin-left:auto;color:#777">⌕　▢　···</span></header>
+      <main style="flex:1;display:flex;justify-content:center;padding:54px 40px 24px;overflow:auto">
+        <div style="width:min(760px,92%)">
+          <div style="text-align:center">
+            <div style="width:45px;height:45px;border-radius:14px;background:#c83242;color:white;display:grid;place-items:center;margin:0 auto 17px;font-size:20px;font-weight:800">C</div>
+            <div style="font-size:29px;font-weight:790;letter-spacing:-.6px">今天想完成什么？</div>
+            <p style="color:#777;margin:8px 0 22px">直接和模型交流，或让智能体结合技能、连接器和工作区推进任务</p>
+            <div style="display:inline-flex;background:#efefec;border-radius:19px;padding:3px;font-size:12px"><span style="padding:7px 15px;border-radius:16px;background:#292929;color:white">普通对话</span><span style="padding:7px 15px;border-radius:16px">智能体任务</span></div>
+          </div>
+
+          <section style="margin-top:24px;border:1px solid #dcdcd6;border-radius:18px;box-shadow:0 12px 28px rgba(0,0,0,.055);overflow:hidden;background:#fff">
+            <div style="height:82px;padding:15px;color:#999;font-size:13px">输入消息，@ 引用助手，/ 调用技能或工具…</div>
+            <div style="height:44px;border-top:1px solid #efefeb;display:flex;align-items:center;padding:0 12px;gap:10px;font-size:11px;color:#60605b">
+              <span style="font-size:18px">＋</span><span style="padding:5px 8px;background:#f1f1ee;border-radius:7px">模型：Auto⌄</span><span style="padding:5px 8px;background:#f1f1ee;border-radius:7px">助手：默认⌄</span><span style="margin-left:auto;color:#999">⌘ ↵ 发送</span><span style="width:28px;height:28px;border-radius:50%;background:#d5d5d1;display:grid;place-items:center;color:white">↑</span>
+            </div>
+          </section>
+
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:11px;margin-top:22px">
+            <div style="border:1px solid #e1e1dc;border-radius:12px;padding:13px;text-align:left"><div style="font-weight:700;font-size:12px">总结文档</div><div style="color:#888;font-size:10px;margin-top:4px">上传 PDF、Office 或文本并提炼重点</div></div>
+            <div style="border:1px solid #e1e1dc;border-radius:12px;padding:13px;text-align:left"><div style="font-weight:700;font-size:12px">研究一个主题</div><div style="color:#888;font-size:10px;margin-top:4px">使用联网搜索与工具完成深度调研</div></div>
+            <div style="border:1px solid #e1e1dc;border-radius:12px;padding:13px;text-align:left"><div style="font-weight:700;font-size:12px">处理代码任务</div><div style="color:#888;font-size:10px;margin-top:4px">选择智能体与工作区，分析并修改项目</div></div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top:24px">
+  <h3>两种模式的差异</h3>
+  <div class="split">
+    <div class="mockup"><div class="mockup-header">普通对话</div><div class="mockup-body"><ul><li>选择 Assistant 与模型</li><li>支持文件、图片、知识库、联网搜索</li><li>首次发送时调用现有 <strong>reuseOrCreateTopic</strong></li><li>创建后进入现有 HomePage 消息视图</li></ul></div></div>
+    <div class="mockup"><div class="mockup-header">智能体任务</div><div class="mockup-body"><ul><li>选择 Agent 与 Workspace</li><li>可使用 Agent 已绑定的技能、MCP 和 Channels</li><li>首次发送时调用现有 <strong>reuseOrCreateSession</strong></li><li>创建后进入现有 AgentPage 工作区</li></ul></div></div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>关键交互约束</h3>
+  <ul>
+    <li>切换“普通对话 / 智能体任务”只改变输入区配置，不提前生成历史记录。</li>
+    <li>推荐卡只填入任务意图或切换合适模式，不自动发送，避免误创建会话。</li>
+    <li>普通对话保持 Assistant 语义；智能体任务保持 Agent + Workspace 语义，不合并底层数据模型。</li>
+    <li>发送成功后，顶部标题、左侧选中项和 URL 同步为实际 Topic 或 Session。</li>
+    <li>创建失败时保留输入内容，在输入区就地展示错误并允许重试。</li>
+  </ul>
+</div>
+
+<div class="options">
+  <div class="option" data-choice="approved-welcome" onclick="toggleSelect(this)"><div class="letter">✓</div><div class="content"><h3>认可欢迎页设计</h3><p>继续细化“智能体 · 技能 · 连接器”资源中心与定时任务页面。</p></div></div>
+  <div class="option" data-choice="revise-welcome" onclick="toggleSelect(this)"><div class="letter">↺</div><div class="content"><h3>需要调整欢迎页</h3><p>选择后请在聊天中说明模式切换、输入区或快捷入口需要如何调整。</p></div></div>
+</div>

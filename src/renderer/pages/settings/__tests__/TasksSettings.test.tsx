@@ -857,6 +857,21 @@ describe('TasksSettings routing and creation', () => {
     })
   })
 
+  it('keeps task navigation inside the app route tree when rendered from the app shell', async () => {
+    navigationMocks.taskId = undefined
+
+    render(<TasksSettings routeBase="/app/scheduled-tasks" />)
+
+    const taskLink = await screen.findByRole('link', { name: /Daily task/ })
+    expect(taskLink).toHaveAttribute('href', '/app/scheduled-tasks/task-1')
+
+    fireEvent.click(taskLink)
+    expect(navigationMocks.navigate).toHaveBeenCalledWith({
+      to: '/app/scheduled-tasks/$taskId',
+      params: { taskId: 'task-1' }
+    })
+  })
+
   it('keeps schedule status visible and shows the projected run summary', async () => {
     navigationMocks.taskId = undefined
     taskDataMock.task = {

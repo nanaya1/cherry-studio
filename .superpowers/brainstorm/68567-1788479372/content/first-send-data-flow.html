@@ -1,0 +1,52 @@
+<h2>方案 A · 首次发送数据流</h2>
+<p class="subtitle">严格复用现有 Topic / Agent Session 创建入口与 ai.stream.open；新增代码只负责把“草稿态”衔接到现有会话态。</p>
+
+<div class="split">
+  <div class="mockup">
+    <div class="mockup-header">普通会话</div>
+    <div class="mockup-body" style="display:grid;gap:8px;padding:16px">
+      <div style="padding:10px;border:1px solid var(--border);border-radius:8px"><strong>1. 初始选择</strong><br><small>最近使用 Assistant → 助手列表第一个</small></div>
+      <div style="text-align:center">↓</div>
+      <div style="padding:10px;border:1px solid var(--border);border-radius:8px"><strong>2. 编辑完整草稿</strong><br><small>文本、附件、模型、知识库、联网、MCP 等</small></div>
+      <div style="text-align:center">↓ 点击发送</div>
+      <div style="padding:10px;border:2px solid var(--accent);border-radius:8px"><strong>3. reuseOrCreateTopic</strong><br><small>按所选 Assistant 精确复用空 Topic 或创建新 Topic</small></div>
+      <div style="text-align:center">↓ 获得 topicId</div>
+      <div style="padding:10px;border:1px solid var(--border);border-radius:8px"><strong>4. 现有 Chat 发送控制器</strong><br><small>构造同一 ai.stream.open 请求</small></div>
+      <div style="text-align:center">↓ 接收 open ack</div>
+      <div style="padding:10px;border:1px solid var(--border);border-radius:8px"><strong>5. 当前 Tab 切换</strong><br><small>/app/chat?topicId=…，正式页面接管流订阅</small></div>
+    </div>
+  </div>
+
+  <div class="mockup">
+    <div class="mockup-header">智能体任务</div>
+    <div class="mockup-body" style="display:grid;gap:8px;padding:16px">
+      <div style="padding:10px;border:1px solid var(--border);border-radius:8px"><strong>1. 初始不选择 Agent</strong><br><small>选择 Agent 后解析其默认模型和 Workspace</small></div>
+      <div style="text-align:center">↓</div>
+      <div style="padding:10px;border:1px solid var(--border);border-radius:8px"><strong>2. 编辑完整草稿</strong><br><small>文本、附件、Workspace 文件、知识库、Skills 等</small></div>
+      <div style="text-align:center">↓ 点击发送</div>
+      <div style="padding:10px;border:2px solid var(--accent);border-radius:8px"><strong>3. reuseOrCreateSession</strong><br><small>按 Agent + Workspace 精确复用，并沿用重复 Session 清理和 delivery gate</small></div>
+      <div style="text-align:center">↓ 获得 sessionId / topicId</div>
+      <div style="padding:10px;border:1px solid var(--border);border-radius:8px"><strong>4. 现有 Agent 发送控制器</strong><br><small>构造同一 ai.stream.open 请求</small></div>
+      <div style="text-align:center">↓ 接收 open ack</div>
+      <div style="padding:10px;border:1px solid var(--border);border-radius:8px"><strong>5. 当前 Tab 切换</strong><br><small>/app/agents?sessionId=…，正式页面接管 runtime</small></div>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top:22px;padding:16px;border:1px solid var(--border);border-radius:10px">
+  <div class="label">关键时序</div>
+  <h3>先确认流已被接受，再切换页面</h3>
+  <p>创建成功后不会立即清空草稿或先跳转。只有现有发送控制器收到 ai.stream.open 的成功确认，才清空草稿并将当前 Tab 切换为正式会话；这样可以避免路由切换导致首条消息丢失。</p>
+</div>
+
+<div class="section">
+  <h3>失败与并发规则</h3>
+  <ul>
+    <li><strong>空文本但有有效附件：</strong>沿用现有 Composer 规则，允许发送。</li>
+    <li><strong>未选择 Agent：</strong>发送按钮禁用，并使用现有选择控件提示选择。</li>
+    <li><strong>创建失败：</strong>停留在新建任务页，完整保留草稿、附件和选择状态。</li>
+    <li><strong>流打开失败：</strong>保留草稿；已创建的空会话继续由现有 placeholder 复用机制处理，不新增删除补偿。</li>
+    <li><strong>重复点击：</strong>从创建开始到 open ack 结束采用单次 in-flight 锁，避免重复 Topic / Session 和重复消息。</li>
+    <li><strong>选择变更：</strong>发送开始后冻结 Assistant / Agent / Workspace 快照，结束前禁止变更。</li>
+  </ul>
+</div>

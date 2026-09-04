@@ -22,7 +22,7 @@ const mocks = vi.hoisted(() => ({
     'settings.about.diagnostics.errors.busy': 'Another diagnostic bundle operation is already in progress',
     'settings.about.diagnostics.inspecting': 'Inspecting diagnostic data…',
     'settings.about.diagnostics.report.acknowledgement':
-      'I understand that the problem description and selected diagnostic data may contain sensitive information, and agree to send this content to Cherry Studio for troubleshooting.',
+      'I understand that the problem description and selected diagnostic data may contain sensitive information, and agree to send this content to MEA Cowork for troubleshooting.',
     'settings.about.diagnostics.report.copy_id': 'Copy feedback ID',
     'settings.about.diagnostics.report.description_label': 'Problem description',
     'settings.about.diagnostics.report.description_required': 'A problem description is required',
@@ -50,7 +50,7 @@ const mocks = vi.hoisted(() => ({
     'settings.about.diagnostics.upload.errors.save_failed': 'Could not save the diagnostic report',
     'settings.about.diagnostics.upload.manual.title': 'Diagnostic report was not submitted',
     'settings.about.diagnostics.upload.unknown.description':
-      'Could not confirm whether this submission succeeded. Save the diagnostic file locally, then contact the Cherry Studio support team or upload it through the Feishu form via Manual feedback. Retrying may submit the same diagnostic report again.',
+      'Could not confirm whether this submission succeeded. Save the diagnostic file locally, then contact the MEA Cowork support team or upload it through the Feishu form via Manual feedback. Retrying may submit the same diagnostic report again.',
     'settings.about.diagnostics.upload.unknown.title': 'Submission result is unknown'
   } as Record<string, string>
 }))
@@ -122,7 +122,7 @@ async function completeReview(user: ReturnType<typeof userEvent.setup>, descript
   await user.type(screen.getByRole('textbox', { name: 'Problem description' }), description)
   await user.click(
     screen.getByRole('checkbox', {
-      name: 'I understand that the problem description and selected diagnostic data may contain sensitive information, and agree to send this content to Cherry Studio for troubleshooting.'
+      name: 'I understand that the problem description and selected diagnostic data may contain sensitive information, and agree to send this content to MEA Cowork for troubleshooting.'
     })
   )
   await waitFor(() => expect(screen.getByRole('button', { name: 'Submit diagnostic report' })).toBeEnabled())
@@ -193,7 +193,7 @@ describe('DiagnosticUploadDialog', () => {
 
     await user.click(
       screen.getByRole('checkbox', {
-        name: 'I understand that the problem description and selected diagnostic data may contain sensitive information, and agree to send this content to Cherry Studio for troubleshooting.'
+        name: 'I understand that the problem description and selected diagnostic data may contain sensitive information, and agree to send this content to MEA Cowork for troubleshooting.'
       })
     )
     await waitFor(() => expect(submit).toBeEnabled())
@@ -230,7 +230,7 @@ describe('DiagnosticUploadDialog', () => {
     const submit = screen.getByRole('button', { name: 'Submit diagnostic report' })
     const description = screen.getByRole('textbox', { name: 'Problem description' })
     const acknowledgement = screen.getByRole('checkbox', {
-      name: 'I understand that the problem description and selected diagnostic data may contain sensitive information, and agree to send this content to Cherry Studio for troubleshooting.'
+      name: 'I understand that the problem description and selected diagnostic data may contain sensitive information, and agree to send this content to MEA Cowork for troubleshooting.'
     })
 
     await user.click(acknowledgement)
@@ -270,7 +270,7 @@ describe('DiagnosticUploadDialog', () => {
     await user.paste('x'.repeat(4097))
     await user.click(
       screen.getByRole('checkbox', {
-        name: 'I understand that the problem description and selected diagnostic data may contain sensitive information, and agree to send this content to Cherry Studio for troubleshooting.'
+        name: 'I understand that the problem description and selected diagnostic data may contain sensitive information, and agree to send this content to MEA Cowork for troubleshooting.'
       })
     )
 
@@ -289,7 +289,7 @@ describe('DiagnosticUploadDialog', () => {
     await completeReview(user)
     const description = screen.getByRole('textbox', { name: 'Problem description' })
     const acknowledgement = screen.getByRole('checkbox', {
-      name: 'I understand that the problem description and selected diagnostic data may contain sensitive information, and agree to send this content to Cherry Studio for troubleshooting.'
+      name: 'I understand that the problem description and selected diagnostic data may contain sensitive information, and agree to send this content to MEA Cowork for troubleshooting.'
     })
 
     await user.type(description, ' Please investigate. ')
@@ -313,7 +313,7 @@ describe('DiagnosticUploadDialog', () => {
     await completeReview(user)
 
     const acknowledgement = screen.getByRole('checkbox', {
-      name: 'I understand that the problem description and selected diagnostic data may contain sensitive information, and agree to send this content to Cherry Studio for troubleshooting.'
+      name: 'I understand that the problem description and selected diagnostic data may contain sensitive information, and agree to send this content to MEA Cowork for troubleshooting.'
     })
     await user.click(screen.getByRole('radio', { name: 'Last 3 days' }))
     expect(acknowledgement).not.toBeChecked()
@@ -630,7 +630,7 @@ describe('DiagnosticUploadDialog', () => {
     expect(await screen.findByText('Submission result is unknown')).toBeInTheDocument()
     expect(
       screen.getByText(
-        'Could not confirm whether this submission succeeded. Save the diagnostic file locally, then contact the Cherry Studio support team or upload it through the Feishu form via Manual feedback. Retrying may submit the same diagnostic report again.'
+        'Could not confirm whether this submission succeeded. Save the diagnostic file locally, then contact the MEA Cowork support team or upload it through the Feishu form via Manual feedback. Retrying may submit the same diagnostic report again.'
       )
     ).toBeInTheDocument()
     const manualFeedback = screen.getByRole('button', { name: 'Manual feedback' })

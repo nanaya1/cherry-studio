@@ -33,4 +33,4 @@ export const languageNativeNameMap: Record<LanguageVarious, string> = {
   'tr-TR': 'Türkçe'
 }
 
-export const defaultLanguage = 'en-US'
+export const defaultLanguage = 'zh-CN'

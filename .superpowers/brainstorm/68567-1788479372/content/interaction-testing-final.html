@@ -1,0 +1,95 @@
+<h2>方案 A · 页面交互与验收</h2>
+<p class="subtitle">最终页面不设计第二套会话框。视觉、快捷键、附件、模型与工具行为均来自现有 Composer。</p>
+
+<div class="split">
+  <div class="mockup">
+    <div class="mockup-header">普通会话模式</div>
+    <div class="mockup-body" style="padding:18px;display:grid;gap:12px">
+      <div style="display:flex;gap:8px;justify-content:center">
+        <button class="mock-button">普通会话</button>
+        <button class="mock-button" style="opacity:.55">智能体任务</button>
+      </div>
+      <div style="padding:16px;border:1px solid var(--border);border-radius:12px;min-height:120px">
+        输入消息，或拖入附件…
+      </div>
+      <div style="display:flex;justify-content:space-between;gap:8px;align-items:center">
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="mock-button">＋ 附件</button>
+          <button class="mock-button">默认助手⌄</button>
+          <button class="mock-button">模型⌄</button>
+          <button class="mock-button">工具…</button>
+        </div>
+        <button class="mock-button">发送 ↑</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="mockup">
+    <div class="mockup-header">智能体任务模式</div>
+    <div class="mockup-body" style="padding:18px;display:grid;gap:12px">
+      <div style="display:flex;gap:8px;justify-content:center">
+        <button class="mock-button" style="opacity:.55">普通会话</button>
+        <button class="mock-button">智能体任务</button>
+      </div>
+      <div style="padding:16px;border:1px solid var(--border);border-radius:12px;min-height:120px">
+        描述要交给智能体完成的任务…
+      </div>
+      <div style="display:flex;justify-content:space-between;gap:8px;align-items:center">
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="mock-button">＋ 附件</button>
+          <button class="mock-button">选择智能体⌄</button>
+          <button class="mock-button">Workspace⌄</button>
+          <button class="mock-button">工具…</button>
+        </div>
+        <button class="mock-button" style="opacity:.55">发送 ↑</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top:22px">
+  <h3>交互约束</h3>
+  <ul>
+    <li>切换“普通会话 / 智能体任务”时，各自草稿独立保留，不互相覆盖。</li>
+    <li>普通会话默认选择沿用现有规则；用户可在发送前更换 Assistant。</li>
+    <li>智能体任务默认不选择 Agent；选择后才启用依赖 Agent 的模型、Workspace 和工具。</li>
+    <li>创建与发送期间 Composer 进入现有忙碌态，禁用资源切换和重复发送。</li>
+    <li>错误通过现有全局错误反馈机制展示，不新增页面专属错误系统。</li>
+    <li>Tab 就地切换后，页面标题与侧栏历史由现有会话元数据刷新机制更新。</li>
+  </ul>
+</div>
+
+<div class="section" style="padding:16px;border:1px solid var(--border);border-radius:10px">
+  <div class="label">预计改动范围</div>
+  <h3>最小、可追溯的前端改动</h3>
+  <ul>
+    <li><strong>NewTaskPage：</strong>由视觉占位替换为两种真实 Composer 宿主。</li>
+    <li><strong>共享 Composer 变体：</strong>抽取当前页面内可复用的装配参数，不改核心 UI。</li>
+    <li><strong>Draft Orchestrator Hook：</strong>新增首发创建、in-flight 锁、Tab 就地切换。</li>
+    <li><strong>HomePage / AgentPage：</strong>只改为消费抽取后的共享接口，行为保持原样。</li>
+    <li><strong>i18n：</strong>仅补充确实缺少的提示文案；优先复用现有键。</li>
+    <li><strong>Main / DB：</strong>预计零改动；若实施调查发现现有公开接口无法承载，会先停止并说明，不做下游绕过。</li>
+  </ul>
+</div>
+
+<div class="section">
+  <h3>验收测试</h3>
+  <ol>
+    <li>普通模式按既有优先级显示默认 Assistant，并可切换。</li>
+    <li>Agent 模式初始未选择，选择后完整 Composer 能力可用。</li>
+    <li>仅输入文字、仅添加有效附件、文字加附件均可按现有规则发送。</li>
+    <li>第一次发送只创建一个 Topic / Session，只提交一条用户消息。</li>
+    <li>成功后当前 Tab URL 精确切换，新页面能显示首条消息并继续接收流。</li>
+    <li>创建失败或流打开失败时不跳转、不清空草稿。</li>
+    <li>快速双击发送不会重复创建或重复提交。</li>
+    <li>模式切换后两边草稿和选择状态独立保留。</li>
+    <li>现有 Home Chat 与 Agent Chat Composer 回归行为不变。</li>
+    <li>运行聚焦测试、pnpm lint，并检查格式、类型和 i18n。</li>
+  </ol>
+</div>
+
+<div style="margin-top:24px;padding:18px;border:2px solid var(--accent);border-radius:12px;text-align:center">
+  <div class="label">最终设计</div>
+  <h3>只新增草稿到会话的桥接层</h3>
+  <p>页面、Composer、数据源和 Main 流处理均优先复用；不存在的仅为“首发延迟创建 + 当前 Tab 接管”能力。</p>
+</div>

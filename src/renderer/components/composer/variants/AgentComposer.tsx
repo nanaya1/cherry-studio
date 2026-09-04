@@ -304,6 +304,7 @@ export interface AgentComposerLaunchOptions {
 type Props = {
   agentId: string
   sessionId: string
+  draftScopeKey?: string
   sessionOverride: AgentComposerSessionSnapshot
   resolvedAgent: AgentEntity | undefined
   resolvedModel: Model | undefined
@@ -323,6 +324,7 @@ type Props = {
   sendDisabled?: boolean
   compactWhenSingleLine?: boolean
   launchOptions?: AgentComposerLaunchOptions
+  onDraftCleared?: () => void
 }
 
 type AgentComposerRootProps = Props & {
@@ -334,6 +336,7 @@ type AgentComposerRootProps = Props & {
 const AgentComposerRoot = ({
   agentId,
   sessionId,
+  draftScopeKey,
   sessionOverride,
   resolvedAgent,
   resolvedModel,
@@ -352,6 +355,7 @@ const AgentComposerRoot = ({
   sendDisabled = false,
   compactWhenSingleLine = false,
   launchOptions,
+  onDraftCleared,
   renderControls,
   forceNarrowLayout = false,
   deferQuickPanel = false
@@ -374,10 +378,11 @@ const AgentComposerRoot = ({
   // Persistence follows the live launch options, not the sticky seed: once the launch message is
   // sent the session owns its draft again, so follow-ups are cached like any other session's.
   const draftPersistenceEnabled = launchOptions === undefined
-  const composerInstanceKey = `${sessionId}:${launchInitialDraft === undefined ? 'default' : 'launch'}`
+  const composerScopeKey = draftScopeKey ?? sessionId
+  const composerInstanceKey = `${composerScopeKey}:${launchInitialDraft === undefined ? 'default' : 'launch'}`
   const resolvedWorkspaceId = workspaceId ?? session?.workspaceId ?? null
   const workspaceKey = buildAgentFileWorkspaceKey(resolvedWorkspaceId, session?.workspace?.path)
-  const draftCacheKey = getAgentDraftCacheKey(sessionId)
+  const draftCacheKey = getAgentDraftCacheKey(composerScopeKey)
   const initialDraftRef = useRef<{
     instanceKey: string
     draft: RestoredAgentComposerDraftCache
@@ -386,7 +391,7 @@ const AgentComposerRoot = ({
   if (initialDraftRef.current?.instanceKey !== scopedComposerInstanceKey) {
     let draft: RestoredAgentComposerDraftCache
     if (launchInitialDraft === undefined) {
-      draft = readAgentDraftCache(draftCacheKey, { workspaceKey, agentId })
+      draft = readAgentDraftCache(draftCacheKey, { workspaceKey, agentId, allowAgentChange: !!draftScopeKey })
     } else {
       // A launch draft is never cached, so a scope change (switching the session workspace)
       // has to carry the live edits over itself — re-seeding the template would silently
@@ -481,6 +486,7 @@ const AgentComposerRoot = ({
         sendDisabled={sendDisabled}
         compactWhenSingleLine={compactWhenSingleLine}
         launchOptions={launchOptions}
+        onDraftCleared={onDraftCleared}
         renderControls={renderControls}
         forceNarrowLayout={forceNarrowLayout}
         deferQuickPanel={deferQuickPanel}
@@ -523,6 +529,7 @@ interface InnerProps {
   sendDisabled: boolean
   compactWhenSingleLine: boolean
   launchOptions?: AgentComposerLaunchOptions
+  onDraftCleared?: Props['onDraftCleared']
   renderControls: AgentComposerControlsRenderer
   forceNarrowLayout?: boolean
   deferQuickPanel?: boolean
@@ -742,6 +749,7 @@ const AgentComposerInner = ({
   sendDisabled,
   compactWhenSingleLine,
   launchOptions,
+  onDraftCleared,
   renderControls,
   forceNarrowLayout = false,
   deferQuickPanel = false,
@@ -1486,10 +1494,12 @@ const AgentComposerInner = ({
     // from a stale index.
     resetHistoryIndex()
     inputHistoryToolsRef.current = null
+    onDraftCleared?.()
   }, [
     agentId,
     draftCacheKey,
     draftPersistenceEnabled,
+    onDraftCleared,
     resetHistoryIndex,
     setFiles,
     setText,
@@ -1815,6 +1825,7 @@ const AgentComposerInner = ({
 }
 
 type MissingAgentHomeComposerProps = {
+  draftScopeKey?: string
   onAgentChange?: (agentId: string | null) => void | Promise<void>
   agentChanging?: boolean
 }
@@ -1824,6 +1835,7 @@ type MissingAgentHomeComposerInnerProps = MissingAgentHomeComposerProps & {
 }
 
 const MissingAgentHomeComposerInner = ({
+  draftScopeKey,
   onAgentChange,
   agentChanging,
   actionsRef
@@ -1842,7 +1854,18 @@ const MissingAgentHomeComposerInner = ({
   const { railGutterPx } = useChatLayoutMode()
   const { available: topBarPortalAvailable, iconOnly: topBarPortalIconOnly } = useConversationTopBarPortalLayout()
   const { t } = useTranslation()
-  const [text, setText] = useState('')
+  const draftCacheKey = draftScopeKey ? getAgentDraftCacheKey(draftScopeKey) : null
+  const initialDraftRef = useRef(
+    draftCacheKey
+      ? readAgentDraftCache(draftCacheKey, {
+          workspaceKey: buildAgentFileWorkspaceKey(null),
+          agentId: '',
+          allowAgentChange: true
+        })
+      : null
+  )
+  const [text, setText] = useState(initialDraftRef.current?.text ?? '')
+  const [draftTokens, setDraftTokens] = useState<ComposerSerializedToken[]>(initialDraftRef.current?.tokens ?? [])
   const selectAgentMessage = t('chat.alerts.select_agent')
   const handleSurfaceActionsChange = useCallback(
     (actions: ComposerSurfaceActions) => {
@@ -1850,12 +1873,59 @@ const MissingAgentHomeComposerInner = ({
     },
     [actionsRef]
   )
+  const persistDraft = useCallback(
+    (agentId: string) => {
+      if (!draftCacheKey) return
+      const draft = actionsRef.current.getDraft()
+      writeAgentDraftCache(draftCacheKey, {
+        text: draft.text,
+        tokens: draft.tokens,
+        files,
+        knowledgeBaseIds: initialDraftRef.current?.knowledgeBaseIds ?? [],
+        workspaceKey: buildAgentFileWorkspaceKey(null),
+        agentId
+      })
+    },
+    [actionsRef, draftCacheKey, files]
+  )
+  const handleTextChange = useCallback(
+    (nextText: string) => {
+      setText(nextText)
+      if (!draftCacheKey) return
+      writeAgentDraftCache(draftCacheKey, {
+        text: nextText,
+        tokens: actionsRef.current.getDraft().tokens,
+        files,
+        knowledgeBaseIds: initialDraftRef.current?.knowledgeBaseIds ?? [],
+        workspaceKey: buildAgentFileWorkspaceKey(null),
+        agentId: ''
+      })
+    },
+    [actionsRef, draftCacheKey, files]
+  )
+  const handleTokensChange = useCallback(
+    (tokens: readonly ComposerSerializedToken[]) => {
+      const nextTokens = getAgentDraftTokens(tokens)
+      setDraftTokens(nextTokens)
+      if (!draftCacheKey) return
+      writeAgentDraftCache(draftCacheKey, {
+        text,
+        tokens: nextTokens,
+        files,
+        knowledgeBaseIds: initialDraftRef.current?.knowledgeBaseIds ?? [],
+        workspaceKey: buildAgentFileWorkspaceKey(null),
+        agentId: ''
+      })
+    },
+    [draftCacheKey, files, text]
+  )
   const handleAgentChange = useCallback(
     async (nextAgentId: string | null) => {
       if (!nextAgentId) return
+      persistDraft(nextAgentId)
       await onAgentChange?.(nextAgentId)
     },
-    [onAgentChange]
+    [onAgentChange, persistDraft]
   )
   const handleBlockedSend = useCallback(() => {
     toast.error(selectAgentMessage)
@@ -1888,11 +1958,11 @@ const MissingAgentHomeComposerInner = ({
       <ComposerSurface
         showAiDisclaimer
         text={text}
-        onTextChange={setText}
-        tokens={[]}
-        draftTokens={[]}
+        onTextChange={handleTextChange}
+        tokens={draftTokens}
+        draftTokens={draftTokens}
         managedTokenKinds={AGENT_MANAGED_TOKEN_KINDS}
-        onTokensChange={() => undefined}
+        onTokensChange={handleTokensChange}
         placeholder={placeholderText}
         sendMessageShortcut={sendMessageShortcut}
         sendDisabled
@@ -1923,17 +1993,24 @@ const MissingAgentHomeComposerInner = ({
 }
 
 export const MissingAgentHomeComposer = (props: MissingAgentHomeComposerProps) => {
-  const initialState = useMemo(
-    () => ({
+  const initialState = useMemo(() => {
+    const draft = props.draftScopeKey
+      ? readAgentDraftCache(getAgentDraftCacheKey(props.draftScopeKey), {
+          workspaceKey: buildAgentFileWorkspaceKey(null),
+          agentId: '',
+          allowAgentChange: true
+        })
+      : null
+
+    return {
       mentionedModels: [],
       selectedKnowledgeBases: [],
-      files: [] as ComposerAttachment[],
+      files: draft?.files ?? ([] as ComposerAttachment[]),
       isExpanded: false,
       couldAddImageFile: false,
       extensions: [] as string[]
-    }),
-    []
-  )
+    }
+  }, [props.draftScopeKey])
   const actionsRef = useRef<ProviderActionHandlers>({ ...emptyActions })
 
   return (
@@ -1952,7 +2029,7 @@ export const MissingAgentHomeComposer = (props: MissingAgentHomeComposerProps) =
 const AgentComposer = (props: Props) => {
   return (
     <AgentComposerRoot
-      key={props.agentId}
+      key={props.draftScopeKey ?? props.agentId}
       {...props}
       deferQuickPanel
       renderControls={props.externalContextControls ? renderAgentInputControls : renderAgentToolbarControls}
@@ -1963,7 +2040,7 @@ const AgentComposer = (props: Props) => {
 export const AgentHomeComposer = (props: Props) => {
   return (
     <AgentComposerRoot
-      key={props.agentId}
+      key={props.draftScopeKey ?? props.agentId}
       {...props}
       canChangeAgent={props.canChangeAgent ?? true}
       forceNarrowLayout

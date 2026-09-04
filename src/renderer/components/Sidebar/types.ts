@@ -37,6 +37,14 @@ export interface ResolvedSidebarEntry {
   onOpen: () => void
   onOpenNewTab?: () => void
   contextMenuItems?: readonly CommandContextMenuExtraItem[]
+  presentation?: 'default' | 'primary' | 'history'
+}
+
+export interface SidebarSection {
+  id: string
+  label: string
+  entries: ResolvedSidebarEntry[]
+  collapsible?: boolean
 }
 
 export type SidebarLayout = 'hidden' | 'icon' | 'full'
@@ -45,6 +53,9 @@ export type SidebarVisibleLayout = Exclude<SidebarLayout, 'hidden'>
 
 export interface SidebarUser {
   name: string
+  description?: string
   avatar?: string
   onClick?: () => void
+  settingsLabel?: string
+  onSettingsClick?: () => void
 }

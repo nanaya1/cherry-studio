@@ -17,7 +17,10 @@ vi.mock('@renderer/i18n/resolver', () => ({
         'title.code': 'Code',
         'title.notes': '笔记',
         'settings.about.releases.title': '更新日志',
-        'title.settings': '设置'
+        'title.settings': '设置',
+        'workspace.newTask.title': '新建任务',
+        'workspace.resources.title': '资源中心',
+        'workspace.skillsConnectors.title': '技能·连接器'
       }
       return translations[key] || key
     })
@@ -42,6 +45,9 @@ describe('routeTitle', () => {
       it.each([
         ['/app/chat', '对话'],
         ['/app/agents', '工作'],
+        ['/app/new-task', '新建任务'],
+        ['/app/resources', '资源中心'],
+        ['/app/skills-connectors', '技能·连接器'],
         ['/app/paintings', '绘画'],
         ['/app/translate', '翻译'],
         ['/app/mini-app', '小程序'],

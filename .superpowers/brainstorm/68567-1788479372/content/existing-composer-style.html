@@ -1,0 +1,63 @@
+<h2>视觉修订 · 完全沿用现有 Composer</h2>
+<p class="subtitle">新建任务页不重新设计工具栏，不使用带文字的功能按钮。会话框内部结构、图标、间距、状态和弹层均直接沿用当前普通会话 / 智能体任务 Composer。</p>
+
+<div class="split">
+  <div class="mockup">
+    <div class="mockup-header">普通会话 · 现有样式</div>
+    <div class="mockup-body" style="padding:18px">
+      <div style="border:1px solid var(--border);border-radius:14px;overflow:hidden;background:var(--surface)">
+        <div style="min-height:118px;padding:16px;color:var(--muted)">输入消息，或拖入附件…</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-top:1px solid var(--border)">
+          <div style="display:flex;align-items:center;gap:6px">
+            <button class="mock-button" title="添加附件" style="width:34px;padding:7px">＋</button>
+            <button class="mock-button" title="工具" style="width:34px;padding:7px">⌘</button>
+            <button class="mock-button" title="知识库" style="width:34px;padding:7px">◇</button>
+            <button class="mock-button" title="联网搜索" style="width:34px;padding:7px">◎</button>
+            <button class="mock-button" style="padding:7px 10px">默认助手⌄</button>
+            <button class="mock-button" style="padding:7px 10px">模型⌄</button>
+          </div>
+          <button class="mock-button" title="发送" style="width:34px;padding:7px">↑</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mockup">
+    <div class="mockup-header">智能体任务 · 现有样式</div>
+    <div class="mockup-body" style="padding:18px">
+      <div style="border:1px solid var(--border);border-radius:14px;overflow:hidden;background:var(--surface)">
+        <div style="min-height:118px;padding:16px;color:var(--muted)">描述要交给智能体完成的任务…</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-top:1px solid var(--border)">
+          <div style="display:flex;align-items:center;gap:6px">
+            <button class="mock-button" title="添加附件" style="width:34px;padding:7px">＋</button>
+            <button class="mock-button" title="工具" style="width:34px;padding:7px">⌘</button>
+            <button class="mock-button" title="技能" style="width:34px;padding:7px">✦</button>
+            <button class="mock-button" title="知识库" style="width:34px;padding:7px">◇</button>
+            <button class="mock-button" style="padding:7px 10px">选择智能体⌄</button>
+            <button class="mock-button" style="padding:7px 10px">Workspace⌄</button>
+          </div>
+          <button class="mock-button" title="发送" style="width:34px;padding:7px;opacity:.55">↑</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top:22px;padding:16px;border:1px solid var(--border);border-radius:10px">
+  <div class="label">实现约束</div>
+  <h3>现有 Composer 就是唯一视觉来源</h3>
+  <ul>
+    <li>工具继续在会话框内部以现有 Icon 形式显示。</li>
+    <li>Icon 顺序、尺寸、Tooltip、选中态、禁用态和弹出面板沿用现有实现。</li>
+    <li>Assistant、Agent、Model、Workspace 等选择器使用现有控件，不创建外置表单。</li>
+    <li>附件预览、Composer Token、拖放高亮、快捷面板和发送按钮状态保持一致。</li>
+    <li>新建任务页只提供外层欢迎区域和模式 Tabs，不覆盖 Composer 内部样式。</li>
+    <li>响应式折叠行为由现有 Composer 控制，不在页面层重复编写。</li>
+  </ul>
+</div>
+
+<div style="margin-top:24px;padding:18px;border:2px solid var(--accent);border-radius:12px;text-align:center">
+  <div class="label">修订结论</div>
+  <h3>不做“类似现有样式”，而是直接复用现有组件</h3>
+  <p>示意图只表达位置关系；最终 Icon 与视觉细节以代码库当前 Chat Composer 和 Agent Composer 的真实渲染结果为准。</p>
+</div>

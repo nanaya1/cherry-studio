@@ -1,0 +1,58 @@
+<h2>方案 A · 组件边界</h2>
+<p class="subtitle">本次只重构 Composer 的装配边界；不修改 Main Process 的消息协议、数据库结构和流式运行机制。</p>
+
+<div class="mockup">
+  <div class="mockup-header">新建任务页与现有会话页共享同一业务层</div>
+  <div class="mockup-body" style="display:grid;gap:14px;padding:20px">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+      <div style="padding:14px;border:2px solid var(--accent);border-radius:10px;text-align:center">
+        <strong>NewTaskPage</strong><br>
+        <small>草稿模式 · 尚无会话 ID</small>
+      </div>
+      <div style="display:grid;gap:8px">
+        <div style="padding:10px;border:1px solid var(--border);border-radius:8px;text-align:center">HomePage · 已有 Topic</div>
+        <div style="padding:10px;border:1px solid var(--border);border-radius:8px;text-align:center">AgentPage · 已有 Session</div>
+      </div>
+    </div>
+
+    <div style="text-align:center;font-size:20px">↓ 统一装配接口</div>
+
+    <div style="padding:16px;border:2px solid var(--accent);border-radius:10px">
+      <div class="label">新增共享边界</div>
+      <h3 style="margin:6px 0">Draft Conversation Orchestrator</h3>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px">
+        <div style="padding:10px;background:var(--surface);border-radius:8px;text-align:center">解析默认 Assistant<br><small>最近使用 → 第一个</small></div>
+        <div style="padding:10px;background:var(--surface);border-radius:8px;text-align:center">首次发送确保会话<br><small>Topic / Session</small></div>
+        <div style="padding:10px;background:var(--surface);border-radius:8px;text-align:center">切换当前 Tab<br><small>同步会话 URL</small></div>
+      </div>
+    </div>
+
+    <div style="text-align:center;font-size:20px">↓ 复用现有完整能力</div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+      <div style="padding:14px;border:1px solid var(--border);border-radius:10px">
+        <strong>Chat Composer</strong>
+        <ul><li>附件、模型、多模型</li><li>知识库、联网、MCP</li><li>Assistant 配置</li></ul>
+      </div>
+      <div style="padding:14px;border:1px solid var(--border);border-radius:10px">
+        <strong>Agent Composer</strong>
+        <ul><li>附件、模型、Workspace</li><li>知识库、Skills</li><li>Agent 配置</li></ul>
+      </div>
+    </div>
+
+    <div style="text-align:center;font-size:20px">↓ 保持不变</div>
+    <div style="padding:14px;border:1px dashed var(--border);border-radius:10px;text-align:center">
+      <strong>ai.stream.open → 现有 Context Provider → SQLite 原子持久化 → 流式生成</strong>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top:20px">
+  <h3>边界原则</h3>
+  <ul>
+    <li>新建任务页不跨目录导入 HomePage 或 AgentPage 的页面组件。</li>
+    <li>不复制 ComposerSurface、附件、工具、模型或发送逻辑。</li>
+    <li>只抽取现有页面已具备的装配能力，并注入“已有会话”或“首次发送创建会话”两种策略。</li>
+    <li>不新增数据库表、不新增 Main IPC、不改变 Topic / Session 的数据语义。</li>
+  </ul>
+</div>

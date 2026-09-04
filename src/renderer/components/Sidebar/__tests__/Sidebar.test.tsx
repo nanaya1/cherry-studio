@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { LucideIcon } from 'lucide-react'
 import { Search } from 'lucide-react'
@@ -157,6 +157,49 @@ const items: AppItem[] = [
   }
 ]
 const entries: ResolvedSidebarEntry[] = items.map(appEntry)
+
+const navigationEntries: ResolvedSidebarEntry[] = [
+  {
+    ...appEntry({ id: 'new-task', label: 'New task', icon: Search }),
+    key: 'workspace:new-task',
+    presentation: 'primary'
+  },
+  {
+    ...appEntry({ id: 'resources', label: 'Resource Center', icon: Search }),
+    key: 'workspace:resources'
+  },
+  {
+    ...appEntry({ id: 'scheduled-tasks', label: 'Scheduled Tasks', icon: Search }),
+    key: 'workspace:scheduled-tasks'
+  }
+]
+
+const historySections = [
+  {
+    id: 'conversations',
+    label: 'Conversations',
+    collapsible: true,
+    entries: [
+      {
+        ...appEntry({ id: 'project-notes', label: 'Project notes', icon: Search }),
+        key: 'topic:project-notes',
+        presentation: 'history' as const
+      }
+    ]
+  },
+  {
+    id: 'agent-tasks',
+    label: 'Tasks',
+    collapsible: true,
+    entries: [
+      {
+        ...appEntry({ id: 'audit-dependencies', label: 'Audit dependencies', icon: Search }),
+        key: 'session:audit-dependencies',
+        presentation: 'history' as const
+      }
+    ]
+  }
+]
 
 const INTERMEDIATE_WIDTH = SIDEBAR_ICON_WIDTH + 30
 
@@ -317,13 +360,136 @@ describe('Sidebar resize handle', () => {
     expect(setWidth).toHaveBeenLastCalledWith(SIDEBAR_FULL_THRESHOLD)
   })
 
-  it('renders the full layout at the full threshold', () => {
-    const { container, getByText } = render(
-      <Sidebar width={SIDEBAR_FULL_THRESHOLD} setWidth={vi.fn()} active={{ activeItem: 'chat' }} entries={entries} />
+  it('renders navigation and both history groups without favorites in the full layout', () => {
+    render(
+      <Sidebar
+        width={SIDEBAR_FULL_THRESHOLD}
+        setWidth={vi.fn()}
+        active={{ activeItem: 'resources' }}
+        entries={entries}
+        entriesLabel="Favorites"
+        navigationEntries={navigationEntries}
+        sections={historySections}
+        sectionsLabel="History"
+        title="Cherry Studio"
+        actions={<button type="button">Settings</button>}
+      />
     )
 
-    expect(container.firstElementChild).toHaveStyle({ width: `${SIDEBAR_FULL_THRESHOLD}px` })
-    expect(getByText('Chat')).toBeInTheDocument()
+    const navigation = screen.getByRole('navigation', { name: 'Cherry Studio' })
+    const history = screen.getByRole('region', { name: 'History' })
+    const footerAction = screen.getByRole('button', { name: 'Settings' })
+    const navigationButtons = within(navigation).getAllByRole('button')
+    expect(navigationButtons).toEqual([
+      within(navigation).getByRole('button', { name: 'New task' }),
+      within(navigation).getByRole('button', { name: 'Resource Center' }),
+      within(navigation).getByRole('button', { name: 'Scheduled Tasks' })
+    ])
+    expect(within(history).getByRole('button', { name: 'Conversations' })).toHaveAttribute('aria-expanded', 'true')
+    expect(within(history).getByRole('button', { name: 'Project notes' })).toBeInTheDocument()
+    expect(within(history).getByRole('button', { name: 'Tasks' })).toHaveAttribute('aria-expanded', 'true')
+    expect(within(history).getByRole('button', { name: 'Audit dependencies' })).toBeInTheDocument()
+    expect(history).not.toContainElement(navigation)
+    expect(history).not.toContainElement(footerAction)
+    expect(screen.queryByRole('button', { name: 'Chat' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('group', { name: 'Favorites' })).not.toBeInTheDocument()
+  })
+
+  it('keeps favorites in the icon layout without rendering history text', () => {
+    render(
+      <Sidebar
+        width={SIDEBAR_ICON_WIDTH}
+        setWidth={vi.fn()}
+        active={{ activeItem: 'resources' }}
+        entries={entries}
+        entriesLabel="Favorites"
+        navigationEntries={navigationEntries}
+        sections={historySections}
+        title="Cherry Studio"
+      />
+    )
+
+    expect(screen.getByRole('button', { name: 'Chat' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'New task' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Conversations' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Project notes' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Tasks' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Audit dependencies' })).not.toBeInTheDocument()
+  })
+
+  it('renders the unified full content without favorites in the floating sidebar', () => {
+    render(
+      <Sidebar
+        width={SIDEBAR_FULL_THRESHOLD}
+        setWidth={vi.fn()}
+        active={{ activeItem: 'resources' }}
+        entries={entries}
+        entriesLabel="Favorites"
+        navigationEntries={navigationEntries}
+        sections={historySections}
+        title="Cherry Studio"
+        isFloating
+      />
+    )
+
+    const navigation = screen.getByRole('navigation', { name: 'Cherry Studio' })
+    expect(within(navigation).getByRole('button', { name: 'New task' })).toBeInTheDocument()
+    expect(within(navigation).getByRole('button', { name: 'Resource Center' })).toBeInTheDocument()
+    expect(within(navigation).getByRole('button', { name: 'Scheduled Tasks' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Project notes' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Audit dependencies' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Chat' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('group', { name: 'Favorites' })).not.toBeInTheDocument()
+  })
+
+  it('collapses history groups independently', async () => {
+    const user = userEvent.setup()
+
+    render(
+      <Sidebar
+        width={SIDEBAR_FULL_THRESHOLD}
+        setWidth={vi.fn()}
+        active={{ activeItem: 'resources' }}
+        entries={[]}
+        sections={historySections}
+      />
+    )
+
+    const conversations = screen.getByRole('button', { name: 'Conversations' })
+    const tasks = screen.getByRole('button', { name: 'Tasks' })
+
+    await user.click(conversations)
+
+    expect(conversations).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByRole('button', { name: 'Project notes' })).not.toBeInTheDocument()
+    expect(tasks).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByRole('button', { name: 'Audit dependencies' })).toBeInTheDocument()
+
+    await user.click(tasks)
+
+    expect(conversations).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByRole('button', { name: 'Project notes' })).not.toBeInTheDocument()
+    expect(tasks).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByRole('button', { name: 'Audit dependencies' })).not.toBeInTheDocument()
+  })
+
+  it('exposes the icon footer user action as a named button', async () => {
+    const user = userEvent.setup()
+    const onUserClick = vi.fn()
+
+    render(
+      <Sidebar
+        width={SIDEBAR_ICON_WIDTH}
+        setWidth={vi.fn()}
+        active={{ activeItem: 'chat' }}
+        entries={entries}
+        user={{ name: 'Local user', onClick: onUserClick }}
+      />
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Local user' }))
+
+    expect(onUserClick).toHaveBeenCalledTimes(1)
   })
 
   it('runs the header action when the visible title is clicked', async () => {
@@ -359,7 +525,7 @@ describe('Sidebar resize handle', () => {
 
     const { container } = render(
       <Sidebar
-        width={SIDEBAR_FULL_THRESHOLD}
+        width={SIDEBAR_ICON_WIDTH}
         setWidth={vi.fn()}
         active={{ activeItem: 'chat' }}
         entries={[
@@ -401,7 +567,8 @@ describe('Sidebar resize handle', () => {
           width={SIDEBAR_FULL_THRESHOLD}
           setWidth={vi.fn()}
           active={{ activeItem: 'chat' }}
-          entries={[
+          entries={[]}
+          navigationEntries={[
             appEntry({
               ...items[0],
               contextMenuItems: [{ type: 'item', id: 'remove-chat', label: 'Remove from Sidebar', onSelect: vi.fn() }]
@@ -472,27 +639,6 @@ describe('Sidebar resize handle', () => {
     }
   })
 
-  it('renders apps and direct mini app icons together in one full docked list', () => {
-    render(
-      <Sidebar
-        width={SIDEBAR_FULL_THRESHOLD}
-        setWidth={vi.fn()}
-        active={{ activeItem: 'chat' }}
-        entries={[
-          ...entries,
-          miniEntry({
-            title: 'Qwen',
-            miniApp: { id: 'qwen', logo: 'qwen' }
-          })
-        ]}
-      />
-    )
-
-    expect(screen.getByText('Chat')).toBeInTheDocument()
-    expect(screen.getByText('Qwen')).toBeInTheDocument()
-    expect(screen.getByLabelText('Qwen')).toBeInTheDocument()
-  })
-
   it('names icon-only docked mini app buttons from the full title when the logo is missing', () => {
     render(
       <Sidebar
@@ -560,7 +706,7 @@ describe('Sidebar resize handle', () => {
 
     render(
       <Sidebar
-        width={SIDEBAR_FULL_THRESHOLD}
+        width={SIDEBAR_ICON_WIDTH}
         setWidth={vi.fn()}
         active={{ activeItem: 'chat' }}
         entries={sortableEntries}
@@ -603,7 +749,7 @@ describe('Sidebar resize handle', () => {
 
     render(
       <Sidebar
-        width={SIDEBAR_FULL_THRESHOLD}
+        width={SIDEBAR_ICON_WIDTH}
         setWidth={vi.fn()}
         active={{ activeItem: 'chat' }}
         entries={sortableEntries}
@@ -704,7 +850,8 @@ describe('Sidebar resize handle', () => {
         width={SIDEBAR_FULL_THRESHOLD}
         setWidth={vi.fn()}
         active={{ activeItem: 'chat' }}
-        entries={testEntries}
+        entries={[]}
+        navigationEntries={testEntries}
       />
     )
 

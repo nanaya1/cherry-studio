@@ -4,7 +4,7 @@ import '@testing-library/jest-dom/vitest'
 import { MIN_WINDOW_HEIGHT, SECOND_MIN_WINDOW_WIDTH } from '@shared/utils/window'
 import { MockUseCacheUtils } from '@test-mocks/renderer/useCache'
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
-import type { ReactNode } from 'react'
+import { type ReactNode, useEffect } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
@@ -28,7 +28,9 @@ const mocks = vi.hoisted(() => ({
   ],
   tabBarProps: undefined as Record<string, unknown> | undefined,
   showSearchPopup: vi.fn(),
-  hideSearchPopup: vi.fn()
+  hideSearchPopup: vi.fn(),
+  providerMounts: 0,
+  providerUnmounts: 0
 }))
 
 vi.mock('@renderer/hooks/useMacTransparentWindow', () => ({
@@ -94,9 +96,15 @@ vi.mock('../../MiniApp/MiniAppTabsPool', () => ({
 }))
 
 vi.mock('../../ResourceViewSourceProvider', () => ({
-  ResourceViewSourceProvider: ({ children }: { children: ReactNode }) => (
-    <div data-testid="resource-view-source-provider">{children}</div>
-  )
+  ResourceViewSourceProvider: ({ children }: { children: ReactNode }) => {
+    useEffect(() => {
+      mocks.providerMounts += 1
+      return () => {
+        mocks.providerUnmounts += 1
+      }
+    }, [])
+    return <div data-testid="resource-view-source-provider">{children}</div>
+  }
 }))
 
 vi.mock('../AppShellTabBar', () => ({
@@ -131,18 +139,40 @@ afterEach(() => {
     }
   ]
   mocks.tabBarProps = undefined
+  mocks.providerMounts = 0
+  mocks.providerUnmounts = 0
 })
 
 describe('AppShell', () => {
-  it('owns the resource source provider at the route host boundary', () => {
+  it('shares the resource source provider between the sidebar and route content', () => {
     render(<AppShell />)
 
     const provider = screen.getByTestId('resource-view-source-provider')
 
+    expect(provider).toContainElement(screen.getByTestId('sidebar'))
     expect(provider).toContainElement(screen.getByTestId('tab-router'))
-    expect(provider).not.toContainElement(screen.getByTestId('mini-app-pool'))
-    expect(provider).not.toContainElement(screen.getByTestId('sidebar'))
-    expect(provider).not.toContainElement(screen.getByTestId('tab-bar'))
+  })
+
+  it('keeps the resource source provider mounted while switching between workspace and Settings', () => {
+    const { rerender } = render(<AppShell />)
+
+    mocks.tabs = [
+      ...mocks.tabs,
+      {
+        id: 'settings',
+        isDormant: false,
+        title: 'Settings',
+        type: 'route',
+        url: '/settings/provider'
+      }
+    ]
+    mocks.activeTabId = 'settings'
+    rerender(<AppShell />)
+    mocks.activeTabId = 'home'
+    rerender(<AppShell />)
+
+    expect(mocks.providerMounts).toBe(1)
+    expect(mocks.providerUnmounts).toBe(0)
   })
 
   it('applies the compact minimum window size for the active chat tab and resets it on leaving', async () => {
@@ -335,9 +365,9 @@ describe('AppShell', () => {
   })
 
   it('keeps the Windows and Linux tab bar inside the content column beside the sidebar', () => {
-    const { container } = render(<AppShell />)
+    render(<AppShell />)
 
-    const root = container.firstElementChild
+    const root = screen.getByTestId('resource-view-source-provider').firstElementChild
     const sidebar = screen.getByTestId('sidebar')
     const tabBar = screen.getByTestId('tab-bar')
     const tabRouter = screen.getByTestId('tab-router')
@@ -359,9 +389,9 @@ describe('AppShell', () => {
   it('keeps the macOS traffic lights in the left column beside the tab/content column', () => {
     mocks.platformState.isMac = true
 
-    const { container } = render(<AppShell />)
+    render(<AppShell />)
 
-    const root = container.firstElementChild
+    const root = screen.getByTestId('resource-view-source-provider').firstElementChild
     const sidebar = screen.getByTestId('sidebar')
     const tabBar = screen.getByTestId('tab-bar')
     const tabRouter = screen.getByTestId('tab-router')
@@ -396,13 +426,13 @@ describe('AppShell', () => {
     mocks.platformState.isMac = true
     mocks.ipcRequest.mockResolvedValue(true)
 
-    const { container } = render(<AppShell />)
+    render(<AppShell />)
 
     await waitFor(() => {
       expect(screen.queryByTestId('macos-traffic-light-spacer')).toBeNull()
     })
 
-    const root = container.firstElementChild
+    const root = screen.getByTestId('resource-view-source-provider').firstElementChild
     const sidebar = screen.getByTestId('sidebar')
     const tabBar = screen.getByTestId('tab-bar')
     const contentColumn = tabBar.parentElement

@@ -265,14 +265,11 @@ describe('ShellTabBarActions', () => {
     expect(onFeedbackClick).toHaveBeenCalledOnce()
   })
 
-  it('renders sidebar full footer actions with visible labels', () => {
+  it('keeps only help actions in the full sidebar footer actions', () => {
     render(<SidebarShellActions layout="full" onFeedbackClick={vi.fn()} onSettingsClick={mocks.openSettingsTab} />)
 
     expect(screen.queryByRole('button', { name: 'Light' })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /settings/i })).toHaveAttribute('data-slot', 'button')
-    expect(screen.getByRole('button', { name: /settings/i })).toHaveClass('justify-start', 'text-foreground')
-    expect(screen.getByRole('button', { name: /settings/i })).not.toHaveClass('text-muted-foreground')
-    expect(screen.getByRole('button', { name: /settings/i })).toHaveTextContent('Settings')
+    expect(screen.queryByRole('button', { name: /settings/i })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Help & Feedback' })).toHaveTextContent('help-full')
   })
 })

@@ -36,6 +36,7 @@ import { EVENT_NAMES, EventEmitter } from '@renderer/services/EventService'
 import type { ResourceListRevealPayload } from '@renderer/services/resourceListRevealEvents'
 import { toast } from '@renderer/services/toast'
 import type { Topic } from '@renderer/types/topic'
+import { LAST_USED_ASSISTANT_CACHE_KEY, resolveDefaultAssistant } from '@renderer/utils/assistant'
 import { getTopicAssistantDisplayGroupId } from '@renderer/utils/chat/topicsHelpers'
 import { formatErrorMessageWithPrefix } from '@renderer/utils/error'
 import { getDefaultRouteTitle } from '@renderer/utils/routeTitle'
@@ -59,14 +60,10 @@ import HomeTabs from './Tabs/HomeTabs'
 import type { AddNewTopicPayload } from './types'
 
 const logger = loggerService.withContext('HomePage')
-const LAST_USED_ASSISTANT_CACHE_KEY = 'ui.chat.last_used_assistant_id'
 type AssistantConversationResourceKind = 'assistant'
 const ASSISTANT_CONVERSATION_RESOURCE_KINDS = [
   'assistant'
 ] as const satisfies readonly AssistantConversationResourceKind[]
-
-type NewTopicAssistantSelectionSource = 'explicit' | 'route' | 'last-used' | 'first-assistant' | 'runtime-fallback'
-type ResolvedNewTopicAssistantSelection = { assistantId?: string; source: NewTopicAssistantSelectionSource }
 
 type NewTopicAssistantTargetOptions = {
   excludedAssistantIds?: readonly string[]
@@ -138,39 +135,16 @@ const HomePage: FC = () => {
     addAssistant
   } = useAssistants()
   const assistantIdSet = useMemo(() => new Set(assistants.map((assistant) => assistant.id)), [assistants])
-  const validLastUsedAssistantId =
-    lastUsedAssistantId && assistantIdSet.has(lastUsedAssistantId) ? lastUsedAssistantId : undefined
   const isAssistantListResolved = hasAssistantsLoaded && !isAssistantsLoading && !isAssistantsRefreshing
   const resolveNewTopicAssistantTarget = useCallback(
-    (
-      explicitAssistantId?: string | null,
-      options: NewTopicAssistantTargetOptions = {}
-    ): ResolvedNewTopicAssistantSelection => {
-      const excludedAssistantIds = new Set(options.excludedAssistantIds ?? [])
-      const isAvailableAssistantId = (assistantId: string | null | undefined): assistantId is string =>
-        !!assistantId && assistantIdSet.has(assistantId) && !excludedAssistantIds.has(assistantId)
-
-      if (explicitAssistantId === null) {
-        return { source: 'explicit' }
-      }
-      if (isAvailableAssistantId(explicitAssistantId)) {
-        return { assistantId: explicitAssistantId, source: 'explicit' }
-      }
-      // A sidebar `?assistantId=` entry whose assistant has no topics yet creates for that exact
-      // assistant, not whatever was last focused (mirrors AgentPage's `preferredAgentId`).
-      if (isAvailableAssistantId(routeAssistantId)) {
-        return { assistantId: routeAssistantId, source: 'route' }
-      }
-      if (isAvailableAssistantId(validLastUsedAssistantId)) {
-        return { assistantId: validLastUsedAssistantId, source: 'last-used' }
-      }
-      const fallbackAssistantId = assistants.find((assistant) => !excludedAssistantIds.has(assistant.id))?.id
-      if (fallbackAssistantId) {
-        return { assistantId: fallbackAssistantId, source: 'first-assistant' }
-      }
-      return { source: 'runtime-fallback' }
-    },
-    [assistantIdSet, assistants, routeAssistantId, validLastUsedAssistantId]
+    (explicitAssistantId?: string | null, options: NewTopicAssistantTargetOptions = {}) =>
+      resolveDefaultAssistant(assistants, {
+        explicitAssistantId,
+        preferredAssistantId: routeAssistantId,
+        lastUsedAssistantId,
+        excludedAssistantIds: options.excludedAssistantIds
+      }),
+    [assistants, lastUsedAssistantId, routeAssistantId]
   )
 
   const routeActiveTopicId = isMessageOnlyView ? null : (routeTopicId ?? null)

@@ -4,21 +4,31 @@ import { MenuItem } from '@cherrystudio/ui'
 import useMacTransparentWindow from '@renderer/hooks/useMacTransparentWindow'
 import { isMac } from '@renderer/utils/platform'
 import { cn } from '@renderer/utils/style'
-import { Search } from 'lucide-react'
+import { ChevronDown, Search } from 'lucide-react'
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 
 import { getSidebarDisplayWidth, getSidebarLayout } from './constants'
 import { DefaultLogo } from './primitives'
 import { SidebarFooter, type SidebarFooterActions } from './SidebarFooter'
-import { SidebarList } from './SidebarList'
+import { SidebarEntryList, SidebarList } from './SidebarList'
 import { SidebarTooltip } from './Tooltip'
-import type { ResolvedSidebarEntry, SidebarActiveState, SidebarUser } from './types'
+import type {
+  ResolvedSidebarEntry,
+  SidebarActiveState,
+  SidebarSection,
+  SidebarUser,
+  SidebarVisibleLayout
+} from './types'
 import { useSidebarResize } from './useSidebarResize'
 
 export interface SidebarProps {
   width: number
   setWidth: (width: number) => void
   entries: ResolvedSidebarEntry[]
+  navigationEntries?: ResolvedSidebarEntry[]
+  sections?: SidebarSection[]
+  entriesLabel?: string
+  sectionsLabel?: string
   active: SidebarActiveState
   title?: string
   logo?: React.ReactNode
@@ -40,6 +50,10 @@ export function Sidebar({
   width,
   setWidth,
   entries,
+  navigationEntries = [],
+  sections = [],
+  entriesLabel,
+  sectionsLabel,
   active,
   title = '',
   logo,
@@ -60,6 +74,7 @@ export function Sidebar({
   const { sidebarRef, startResizing } = useSidebarResize(width, setWidth, onResizePreview)
   const hoverTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [contextMenuOpen, setContextMenuOpen] = useState(false)
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({})
   const contextMenuOpenRef = useRef(false)
   const footerOverlayOpenRef = useRef(false)
   const floatingPointerInsideRef = useRef(false)
@@ -72,7 +87,7 @@ export function Sidebar({
     <div
       className={cn(
         'flex shrink-0 items-center justify-center overflow-hidden *:h-full *:w-full',
-        size === 'sm' ? 'size-7.5 rounded-lg' : 'size-6 rounded-lg'
+        size === 'sm' ? 'size-7.5 rounded-lg' : 'mr-2 size-6 rounded-lg'
       )}>
       {logoNode}
     </div>
@@ -176,6 +191,62 @@ export function Sidebar({
     onExtensionsClick,
     onOverlayOpenChange: handleFooterOverlayOpenChange
   }
+  const renderContent = (contentLayout: SidebarVisibleLayout) => (
+    <div className={cn('space-y-4', contentLayout === 'full' && 'flex h-full min-h-0 flex-col')}>
+      {navigationEntries.length > 0 && (
+        <nav aria-label={title}>
+          <SidebarEntryList
+            entries={navigationEntries}
+            active={active}
+            layout={contentLayout}
+            onContextMenuOpenChange={handleContextMenuOpenChange}
+          />
+        </nav>
+      )}
+      {contentLayout === 'icon' && entries.length > 0 && (
+        <div role={entriesLabel ? 'group' : undefined} aria-label={entriesLabel}>
+          <SidebarList layout={contentLayout} {...listProps} />
+        </div>
+      )}
+      {contentLayout === 'full' && sections.length > 0 && (
+        <div role="region" aria-label={sectionsLabel} className="flex min-h-0 flex-1 flex-col gap-2">
+          {sectionsLabel && (
+            <h2 className="shrink-0 px-3 font-medium text-[11px] text-muted-foreground">{sectionsLabel}</h2>
+          )}
+          <div className="min-h-0 flex-1 overflow-y-auto [&::-webkit-scrollbar]:hidden">
+            <div className="flex flex-col gap-2">
+              {sections.map((section) => {
+                const collapsed = collapsedSections[section.id] ?? false
+                return (
+                  <section key={section.id} aria-label={section.label}>
+                    <button
+                      type="button"
+                      aria-expanded={!collapsed}
+                      onClick={() =>
+                        section.collapsible &&
+                        setCollapsedSections((current) => ({ ...current, [section.id]: !collapsed }))
+                      }
+                      className="flex h-7 w-full items-center gap-1 px-3 font-medium text-[11px] text-sidebar-foreground [-webkit-app-region:no-drag]">
+                      <ChevronDown size={12} className={cn('transition-transform', collapsed && '-rotate-90')} />
+                      <span>{section.label}</span>
+                    </button>
+                    {!collapsed && (
+                      <SidebarEntryList
+                        entries={section.entries}
+                        active={active}
+                        layout="full"
+                        onContextMenuOpenChange={handleContextMenuOpenChange}
+                      />
+                    )}
+                  </section>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
   const windowDragClassName = contextMenuOpen ? '[-webkit-app-region:no-drag]' : '[-webkit-app-region:drag]'
 
   // --- Floating sidebar ---
@@ -217,9 +288,7 @@ export function Sidebar({
             </div>
           )}
 
-          <div className="flex-1 overflow-y-auto py-1 [&::-webkit-scrollbar]:hidden">
-            <SidebarList layout="full" {...listProps} />
-          </div>
+          <div className="min-h-0 flex-1 py-1">{renderContent('full')}</div>
 
           {showFooter && (
             <div className="shrink-0">
@@ -304,8 +373,8 @@ export function Sidebar({
         ))}
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto py-1 [&::-webkit-scrollbar]:hidden">
-        <SidebarList layout={layout} {...listProps} />
+      <div className={cn('min-h-0 flex-1 py-1', layout === 'icon' && 'overflow-y-auto [&::-webkit-scrollbar]:hidden')}>
+        {renderContent(layout)}
       </div>
 
       {/* Footer */}

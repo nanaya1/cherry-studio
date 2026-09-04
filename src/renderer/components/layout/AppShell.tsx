@@ -203,18 +203,16 @@ export const AppShell = () => {
         data-ui="app.content"
         className="relative min-h-0 flex-1 overflow-hidden rounded-[12px] border-[0.5px] border-border bg-background">
         {/* Route Tabs: Only render non-dormant tabs */}
-        <ResourceViewSourceProvider>
-          {tabs
-            .filter((t) => t.type === 'route' && !t.isDormant)
-            .map((tab) => (
-              <TabRouter
-                key={tab.id}
-                tab={tab}
-                isActive={tab.id === activeTabId}
-                onUrlChange={(url) => handleUrlChange(tab.id, url)}
-              />
-            ))}
-        </ResourceViewSourceProvider>
+        {tabs
+          .filter((t) => t.type === 'route' && !t.isDormant)
+          .map((tab) => (
+            <TabRouter
+              key={tab.id}
+              tab={tab}
+              isActive={tab.id === activeTabId}
+              onUrlChange={(url) => handleUrlChange(tab.id, url)}
+            />
+          ))}
 
         {/* MiniApp keep-alive WebView pool — global, shared across modes */}
         <MiniAppTabsPool />
@@ -231,43 +229,47 @@ export const AppShell = () => {
 
   if (!isMac) {
     return (
-      <div
-        className={cn(
-          'flex h-screen w-screen flex-row overflow-hidden text-foreground',
-          isMacTransparentWindow ? 'bg-transparent' : 'bg-sidebar'
-        )}>
-        {!isSettingsTabActive && <Sidebar />}
-        {contentColumn}
-      </div>
+      <ResourceViewSourceProvider>
+        <div
+          className={cn(
+            'flex h-screen w-screen flex-row overflow-hidden text-foreground',
+            isMacTransparentWindow ? 'bg-transparent' : 'bg-sidebar'
+          )}>
+          {!isSettingsTabActive && <Sidebar />}
+          {contentColumn}
+        </div>
+      </ResourceViewSourceProvider>
     )
   }
 
   return (
-    <div
-      className={cn(
-        'relative flex h-screen w-screen flex-row overflow-hidden text-foreground',
-        isMacTransparentWindow ? 'bg-transparent' : 'bg-sidebar'
-      )}>
-      {!isFullscreen && (
-        <div
-          aria-hidden="true"
-          data-testid="macos-traffic-light-drag-region"
-          className="pointer-events-none absolute top-0 left-0 h-11 w-[env(titlebar-area-x)] [-webkit-app-region:drag]"
-        />
-      )}
-      {!isSettingsTabActive && (
-        <div className="flex h-full min-h-0 shrink-0 flex-col [&>#app-sidebar]:min-h-0 [&>#app-sidebar]:flex-1">
-          {!isFullscreen && (
-            <div
-              aria-hidden="true"
-              data-testid="macos-traffic-light-spacer"
-              className="h-11 shrink-0 [-webkit-app-region:drag]"
-            />
-          )}
-          <Sidebar />
-        </div>
-      )}
-      {contentColumn}
-    </div>
+    <ResourceViewSourceProvider>
+      <div
+        className={cn(
+          'relative flex h-screen w-screen flex-row overflow-hidden text-foreground',
+          isMacTransparentWindow ? 'bg-transparent' : 'bg-sidebar'
+        )}>
+        {!isFullscreen && (
+          <div
+            aria-hidden="true"
+            data-testid="macos-traffic-light-drag-region"
+            className="pointer-events-none absolute top-0 left-0 h-11 w-[env(titlebar-area-x)] [-webkit-app-region:drag]"
+          />
+        )}
+        {!isSettingsTabActive && (
+          <div className="flex h-full min-h-0 shrink-0 flex-col [&>#app-sidebar]:min-h-0 [&>#app-sidebar]:flex-1">
+            {!isFullscreen && (
+              <div
+                aria-hidden="true"
+                data-testid="macos-traffic-light-spacer"
+                className="h-11 shrink-0 [-webkit-app-region:drag]"
+              />
+            )}
+            <Sidebar />
+          </div>
+        )}
+        {contentColumn}
+      </div>
+    </ResourceViewSourceProvider>
   )
 }

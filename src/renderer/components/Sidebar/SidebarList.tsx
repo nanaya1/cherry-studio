@@ -1,5 +1,6 @@
 import { MenuItem } from '@cherrystudio/ui'
 import { CommandContextMenu } from '@renderer/components/command'
+import { cn } from '@renderer/utils/style'
 import type { ReactNode } from 'react'
 
 import { ActiveIndicator } from './primitives'
@@ -32,6 +33,19 @@ export function SidebarList({ layout, ...props }: SidebarListProps) {
 }
 
 type ListProps = Omit<SidebarListProps, 'layout'>
+
+export function SidebarEntryList({
+  entries,
+  active,
+  layout,
+  onContextMenuOpenChange
+}: Pick<SidebarListProps, 'entries' | 'active' | 'layout' | 'onContextMenuOpenChange'>) {
+  if (layout === 'icon') {
+    return <IconList entries={entries} active={active} onContextMenuOpenChange={onContextMenuOpenChange} />
+  }
+
+  return <FullList entries={entries} active={active} onContextMenuOpenChange={onContextMenuOpenChange} />
+}
 
 function EntryContextMenu({
   children,
@@ -115,16 +129,24 @@ function FullList({ entries, active, onReorder, onContextMenuOpenChange }: ListP
             <EntryContextMenu items={entry.contextMenuItems} onOpenChange={onContextMenuOpenChange}>
               <MenuItem
                 variant="ghost"
-                icon={entry.renderIcon(16, 'md')}
+                icon={entry.presentation === 'history' ? undefined : entry.renderIcon(16, 'md')}
                 label={entry.label}
                 active={isActive}
                 onClick={guardClick(entry.key, entry.onOpen)}
                 onMouseDown={preventMiddleClickAutoscroll}
                 onAuxClick={createAuxClickHandler(entry, guardClick)}
-                className="rounded-xl data-[active=true]:bg-[var(--sidebar-active-bg)]"
+                className={cn(
+                  'rounded-lg',
+                  entry.presentation === 'primary' &&
+                    'bg-foreground font-medium text-background hover:bg-foreground/90 hover:text-background data-[active=true]:bg-foreground data-[active=true]:text-background',
+                  entry.presentation === 'history' &&
+                    'min-h-7.5 pl-6 text-[12px] text-muted-foreground hover:text-foreground data-[active=true]:bg-[var(--sidebar-active-bg)] data-[active=true]:text-foreground',
+                  (!entry.presentation || entry.presentation === 'default') &&
+                    'data-[active=true]:bg-[var(--sidebar-active-bg)]'
+                )}
               />
             </EntryContextMenu>
-            {isActive && <ActiveIndicator className="rounded-xl" />}
+            {isActive && entry.presentation !== 'primary' && <ActiveIndicator className="rounded-lg" />}
           </div>
         )
       }}

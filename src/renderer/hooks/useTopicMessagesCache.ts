@@ -167,7 +167,6 @@ export function useTopicMessagesCache({ topicId, mutate }: UseTopicMessagesCache
           nextPages[0] = {
             ...firstPage,
             items: [...firstPage.items, ...newItems],
-            // In-place retry and live-group append reservations must never move the active branch.
             activeNodeId:
               newItems.length > 0 && !options.preserveActiveNode
                 ? (newItems.at(-1)?.message.id ?? firstPage.activeNodeId)
@@ -181,9 +180,6 @@ export function useTopicMessagesCache({ topicId, mutate }: UseTopicMessagesCache
     [mutate, topicId]
   )
 
-  // `useInvalidateCache`'s `invalidatePathPatterns` walks both scalar and
-  // `$inf$`-prefixed cache keys (see `findMatchingInfiniteKeys`), so a
-  // path-based refresh option covers the infinite cache entry too.
   const { trigger: deleteMessageTrigger } = useMutation('DELETE', '/messages/:id', {
     refresh: branchCachePaths
   })

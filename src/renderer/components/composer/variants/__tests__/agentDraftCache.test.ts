@@ -134,6 +134,33 @@ describe('agentDraftCache', () => {
     })
   })
 
+  it('carries a new-task draft into the selected agent and revalidates its skills', () => {
+    vi.mocked(cacheService.get).mockReturnValue({
+      text: 'draft before selecting an agent',
+      tokens: [skillToken, fileToken],
+      files: [file],
+      knowledgeBaseIds: ['kb-1'],
+      workspaceKey: scope.workspaceKey,
+      agentId: ''
+    })
+
+    expect(
+      readAgentDraftCache(getAgentDraftCacheKey('new-task'), {
+        ...scope,
+        agentId: 'agent-2',
+        allowAgentChange: true
+      })
+    ).toEqual({
+      text: 'draft before selecting an agent',
+      tokens: [skillToken, fileToken],
+      files: [file],
+      knowledgeBaseIds: ['kb-1'],
+      workspaceKey: scope.workspaceKey,
+      agentId: 'agent-2',
+      shouldValidateSkills: true
+    })
+  })
+
   it('preserves absolute-path files and resource tokens while deferring skill validation after a workspace change', () => {
     const skillPrompt = skillToken.promptText!
     const folderPrompt = folderToken.promptText!

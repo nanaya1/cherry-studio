@@ -1,10 +1,13 @@
 import { usePersistCache } from '@data/hooks/useCache'
 import { usePreference } from '@data/hooks/usePreference'
 import { arrayMove } from '@dnd-kit/sortable'
+import AppLogo from '@renderer/assets/images/logo.png'
 import { useAgents } from '@renderer/hooks/agent/useAgent'
+import { useAgentSessionsSource, useAssistantTopicsSource } from '@renderer/hooks/resourceViewSources'
 import { useTabs } from '@renderer/hooks/tab'
 import { useAssistantsApi } from '@renderer/hooks/useAssistant'
 import useAvatar from '@renderer/hooks/useAvatar'
+import { useConversationNavigation } from '@renderer/hooks/useConversationNavigation'
 import { useMiniApps } from '@renderer/hooks/useMiniApps'
 import { useSidebarFavorites } from '@renderer/hooks/useSidebarFavorites'
 import { openSettingsTab } from '@renderer/services/mainWindowNavigation'
@@ -19,6 +22,8 @@ import {
   resolveSidebarActiveItem,
   tabBelongsToApp
 } from '@renderer/utils/sidebar'
+import { APP_NAME } from '@shared/utils/constants'
+import { Bot, CalendarClock, MessageSquare, Plus, Puzzle, Shapes } from 'lucide-react'
 import type { Ref } from 'react'
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -30,8 +35,7 @@ import {
   normalizeSidebarWidth,
   Sidebar as UISidebar,
   type SidebarUser,
-  type SidebarVisibleLayout,
-  UserAvatar
+  type SidebarVisibleLayout
 } from '../Sidebar'
 import UserPopup from '../UserPopup'
 import { resolveSidebarEntry, type SidebarVariantContext } from './sidebarVariants'
@@ -54,6 +58,10 @@ export default function Sidebar({ ref }: { ref?: Ref<HTMLDivElement | null> }) {
     reorderFavorites
   } = useSidebarFavorites()
   const { activeTab, tabs, updateTab, openTab, setActiveTab } = useTabs()
+  const { topics } = useAssistantTopicsSource()
+  const { sessions } = useAgentSessionsSource()
+  const { openConversationTab: openAssistantConversationTab } = useConversationNavigation('assistants')
+  const { openConversationTab: openAgentConversationTab } = useConversationNavigation('agents')
   const { miniApps, pinned } = useMiniApps({ enabled: miniAppFavoriteIds.length > 0 })
   const { agents } = useAgents({ enabled: agentFavoriteIds.length > 0 })
   const { assistants } = useAssistantsApi({ enabled: assistantFavoriteIds.length > 0 })
@@ -103,15 +111,15 @@ export default function Sidebar({ ref }: { ref?: Ref<HTMLDivElement | null> }) {
   const sidebarUser = useMemo<SidebarUser>(
     () => ({
       name: userName || t('chat.user', { defaultValue: t('export.user', { defaultValue: 'User' }) }),
+      description: t('workspace.localUser'),
       avatar: avatar || undefined,
-      onClick: () => UserPopup.show()
+      onClick: () => UserPopup.show(),
+      settingsLabel: t('settings.title'),
+      onSettingsClick: () => openSettingsTab()
     }),
     [avatar, t, userName]
   )
-  const sidebarLogo = useMemo(
-    () => <UserAvatar user={sidebarUser} className="h-full w-full" ring={false} />,
-    [sidebarUser]
-  )
+  const sidebarLogo = useMemo(() => <img src={AppLogo} alt="" className="h-full w-full object-cover" />, [])
 
   // Floating sidebar (hover reveal when hidden)
   const [hoverVisible, setHoverVisible] = useState(false)
@@ -303,6 +311,74 @@ export default function Sidebar({ ref }: { ref?: Ref<HTMLDivElement | null> }) {
   // One continuous list: built-in apps and mini apps interleaved in their stored
   // favorites order. Unrenderable rows (no route/icon, or an uninstalled mini app)
   // are dropped here but stay in the preference.
+  const navigationEntries = useMemo(
+    () => [
+      {
+        key: 'workspace:new-task',
+        label: t('workspace.newTask.title'),
+        renderIcon: (size: number) => <Plus size={size} />,
+        presentation: 'primary' as const,
+        isActive: () => pathname.startsWith('/app/new-task'),
+        onOpen: () => navigateRouteTab('/app/new-task', t('workspace.newTask.title'))
+      },
+      {
+        key: 'workspace:resources',
+        label: t('workspace.resources.title'),
+        renderIcon: (size: number) => <Shapes size={size} />,
+        isActive: () => pathname.startsWith('/app/resources'),
+        onOpen: () => navigateRouteTab('/app/resources', t('workspace.resources.title'))
+      },
+      {
+        key: 'workspace:skills-connectors',
+        label: t('workspace.skillsConnectors.title'),
+        renderIcon: (size: number) => <Puzzle size={size} />,
+        isActive: () => pathname.startsWith('/app/skills-connectors'),
+        onOpen: () => navigateRouteTab('/app/skills-connectors', t('workspace.skillsConnectors.title'))
+      },
+      {
+        key: 'workspace:scheduled-tasks',
+        label: t('settings.scheduledTasks.title'),
+        renderIcon: (size: number) => <CalendarClock size={size} />,
+        isActive: () => pathname.startsWith('/app/scheduled-tasks'),
+        onOpen: () => navigateRouteTab('/app/scheduled-tasks', t('settings.scheduledTasks.title'))
+      }
+    ],
+    [navigateRouteTab, pathname, t]
+  )
+
+  const historySections = useMemo(
+    () => [
+      {
+        id: 'conversations',
+        label: t('workspace.history.conversations'),
+        collapsible: true,
+        entries: topics.map((topic) => ({
+          key: `topic:${topic.id}`,
+          label: topic.name || t('chat.conversation.new'),
+          presentation: 'history' as const,
+          renderIcon: (size: number) => <MessageSquare size={size} />,
+          isActive: () => getSidebarApp('assistants')?.conversationRoute?.keyFromUrl(pathname) === topic.id,
+          onOpen: () =>
+            openAssistantConversationTab(topic.id, topic.name || t('chat.conversation.new'), { forceNew: true })
+        }))
+      },
+      {
+        id: 'agent-tasks',
+        label: t('workspace.history.agentTasks'),
+        collapsible: true,
+        entries: sessions.map((session) => ({
+          key: `session:${session.id}`,
+          label: session.name || t('agent.session.new'),
+          presentation: 'history' as const,
+          renderIcon: (size: number) => <Bot size={size} />,
+          isActive: () => getSidebarApp('agents')?.conversationRoute?.keyFromUrl(pathname) === session.id,
+          onOpen: () => openAgentConversationTab(session.id, session.name || t('agent.session.new'), { forceNew: true })
+        }))
+      }
+    ],
+    [openAgentConversationTab, openAssistantConversationTab, pathname, sessions, t, topics]
+  )
+
   const entries = useMemo(
     () =>
       favorites.flatMap((favorite) => {
@@ -357,10 +433,14 @@ export default function Sidebar({ ref }: { ref?: Ref<HTMLDivElement | null> }) {
   // Common props shared between normal and floating sidebar
   const sidebarProps = {
     entries,
+    navigationEntries,
+    sections: historySections,
+    entriesLabel: t('workspace.favorites'),
+    sectionsLabel: t('history.records.shortTitle'),
     active: { activeItem, activeTabId: activeMiniAppId },
-    title: sidebarUser.name,
+    title: APP_NAME,
     logo: sidebarLogo,
-    onHeaderClick: sidebarUser.onClick,
+    user: sidebarUser,
     actions: (footerLayout: SidebarVisibleLayout, onOverlayOpenChange?: (open: boolean) => void) => (
       <SidebarShellActions
         layout={footerLayout}

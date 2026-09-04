@@ -38,8 +38,12 @@ import { Route as SettingsAppearanceRouteImport } from './routes/settings/appear
 import { Route as SettingsApiGatewayRouteImport } from './routes/settings/api-gateway'
 import { Route as SettingsAboutRouteImport } from './routes/settings/about'
 import { Route as AppTranslateRouteImport } from './routes/app/translate'
+import { Route as AppSkillsConnectorsRouteImport } from './routes/app/skills-connectors'
+import { Route as AppScheduledTasksRouteImport } from './routes/app/scheduled-tasks'
+import { Route as AppResourcesRouteImport } from './routes/app/resources'
 import { Route as AppReleaseNotesRouteImport } from './routes/app/release-notes'
 import { Route as AppNotesRouteImport } from './routes/app/notes'
+import { Route as AppNewTaskRouteImport } from './routes/app/new-task'
 import { Route as AppLaunchpadRouteImport } from './routes/app/launchpad'
 import { Route as AppKnowledgeRouteImport } from './routes/app/knowledge'
 import { Route as AppFilesRouteImport } from './routes/app/files'
@@ -49,6 +53,7 @@ import { Route as AppChatRouteImport } from './routes/app/chat'
 import { Route as AppAgentsRouteImport } from './routes/app/agents'
 import { Route as SettingsScheduledTasksIndexRouteImport } from './routes/settings/scheduled-tasks.index'
 import { Route as SettingsMcpIndexRouteImport } from './routes/settings/mcp.index'
+import { Route as AppScheduledTasksIndexRouteImport } from './routes/app/scheduled-tasks.index'
 import { Route as AppPaintingsIndexRouteImport } from './routes/app/paintings.index'
 import { Route as AppMiniAppIndexRouteImport } from './routes/app/mini-app.index'
 import { Route as SettingsScheduledTasksTaskIdRouteImport } from './routes/settings/scheduled-tasks.$taskId'
@@ -58,6 +63,7 @@ import { Route as SettingsMcpMcpInstallRouteImport } from './routes/settings/mcp
 import { Route as SettingsMcpMarketplacesRouteImport } from './routes/settings/mcp/marketplaces'
 import { Route as SettingsMcpBuiltinRouteImport } from './routes/settings/mcp/builtin'
 import { Route as SettingsMcpSplatRouteImport } from './routes/settings/mcp/$'
+import { Route as AppScheduledTasksTaskIdRouteImport } from './routes/app/scheduled-tasks.$taskId'
 import { Route as AppPaintingsSplatRouteImport } from './routes/app/paintings/$'
 import { Route as AppMiniAppAppIdRouteImport } from './routes/app/mini-app/$appId'
 import { Route as SettingsMcpSettingsServerIdRouteImport } from './routes/settings/mcp/settings.$serverId'
@@ -208,6 +214,21 @@ const AppTranslateRoute = AppTranslateRouteImport.update({
   path: '/translate',
   getParentRoute: () => AppRoute,
 } as any)
+const AppSkillsConnectorsRoute = AppSkillsConnectorsRouteImport.update({
+  id: '/skills-connectors',
+  path: '/skills-connectors',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppScheduledTasksRoute = AppScheduledTasksRouteImport.update({
+  id: '/scheduled-tasks',
+  path: '/scheduled-tasks',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppResourcesRoute = AppResourcesRouteImport.update({
+  id: '/resources',
+  path: '/resources',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppReleaseNotesRoute = AppReleaseNotesRouteImport.update({
   id: '/release-notes',
   path: '/release-notes',
@@ -216,6 +237,11 @@ const AppReleaseNotesRoute = AppReleaseNotesRouteImport.update({
 const AppNotesRoute = AppNotesRouteImport.update({
   id: '/notes',
   path: '/notes',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppNewTaskRoute = AppNewTaskRouteImport.update({
+  id: '/new-task',
+  path: '/new-task',
   getParentRoute: () => AppRoute,
 } as any)
 const AppLaunchpadRoute = AppLaunchpadRouteImport.update({
@@ -264,6 +290,11 @@ const SettingsMcpIndexRoute = SettingsMcpIndexRouteImport.update({
   path: '/',
   getParentRoute: () => SettingsMcpRoute,
 } as any)
+const AppScheduledTasksIndexRoute = AppScheduledTasksIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AppScheduledTasksRoute,
+} as any)
 const AppPaintingsIndexRoute = AppPaintingsIndexRouteImport.update({
   id: '/paintings/',
   path: '/paintings/',
@@ -310,6 +341,11 @@ const SettingsMcpSplatRoute = SettingsMcpSplatRouteImport.update({
   path: '/$',
   getParentRoute: () => SettingsMcpRoute,
 } as any)
+const AppScheduledTasksTaskIdRoute = AppScheduledTasksTaskIdRouteImport.update({
+  id: '/$taskId',
+  path: '/$taskId',
+  getParentRoute: () => AppScheduledTasksRoute,
+} as any)
 const AppPaintingsSplatRoute = AppPaintingsSplatRouteImport.update({
   id: '/paintings/$',
   path: '/paintings/$',
@@ -337,8 +373,12 @@ export interface FileRoutesByFullPath {
   '/app/files': typeof AppFilesRoute
   '/app/knowledge': typeof AppKnowledgeRoute
   '/app/launchpad': typeof AppLaunchpadRoute
+  '/app/new-task': typeof AppNewTaskRoute
   '/app/notes': typeof AppNotesRoute
   '/app/release-notes': typeof AppReleaseNotesRoute
+  '/app/resources': typeof AppResourcesRoute
+  '/app/scheduled-tasks': typeof AppScheduledTasksRouteWithChildren
+  '/app/skills-connectors': typeof AppSkillsConnectorsRoute
   '/app/translate': typeof AppTranslateRoute
   '/settings/about': typeof SettingsAboutRoute
   '/settings/api-gateway': typeof SettingsApiGatewayRoute
@@ -368,6 +408,7 @@ export interface FileRoutesByFullPath {
   '/settings/': typeof SettingsIndexRoute
   '/app/mini-app/$appId': typeof AppMiniAppAppIdRoute
   '/app/paintings/$': typeof AppPaintingsSplatRoute
+  '/app/scheduled-tasks/$taskId': typeof AppScheduledTasksTaskIdRoute
   '/settings/mcp/$': typeof SettingsMcpSplatRoute
   '/settings/mcp/builtin': typeof SettingsMcpBuiltinRoute
   '/settings/mcp/marketplaces': typeof SettingsMcpMarketplacesRoute
@@ -377,6 +418,7 @@ export interface FileRoutesByFullPath {
   '/settings/scheduled-tasks/$taskId': typeof SettingsScheduledTasksTaskIdRoute
   '/app/mini-app/': typeof AppMiniAppIndexRoute
   '/app/paintings/': typeof AppPaintingsIndexRoute
+  '/app/scheduled-tasks/': typeof AppScheduledTasksIndexRoute
   '/settings/mcp/': typeof SettingsMcpIndexRoute
   '/settings/scheduled-tasks/': typeof SettingsScheduledTasksIndexRoute
   '/settings/mcp/settings/$serverId': typeof SettingsMcpSettingsServerIdRoute
@@ -390,8 +432,11 @@ export interface FileRoutesByTo {
   '/app/files': typeof AppFilesRoute
   '/app/knowledge': typeof AppKnowledgeRoute
   '/app/launchpad': typeof AppLaunchpadRoute
+  '/app/new-task': typeof AppNewTaskRoute
   '/app/notes': typeof AppNotesRoute
   '/app/release-notes': typeof AppReleaseNotesRoute
+  '/app/resources': typeof AppResourcesRoute
+  '/app/skills-connectors': typeof AppSkillsConnectorsRoute
   '/app/translate': typeof AppTranslateRoute
   '/settings/about': typeof SettingsAboutRoute
   '/settings/api-gateway': typeof SettingsApiGatewayRoute
@@ -419,6 +464,7 @@ export interface FileRoutesByTo {
   '/settings': typeof SettingsIndexRoute
   '/app/mini-app/$appId': typeof AppMiniAppAppIdRoute
   '/app/paintings/$': typeof AppPaintingsSplatRoute
+  '/app/scheduled-tasks/$taskId': typeof AppScheduledTasksTaskIdRoute
   '/settings/mcp/$': typeof SettingsMcpSplatRoute
   '/settings/mcp/builtin': typeof SettingsMcpBuiltinRoute
   '/settings/mcp/marketplaces': typeof SettingsMcpMarketplacesRoute
@@ -428,6 +474,7 @@ export interface FileRoutesByTo {
   '/settings/scheduled-tasks/$taskId': typeof SettingsScheduledTasksTaskIdRoute
   '/app/mini-app': typeof AppMiniAppIndexRoute
   '/app/paintings': typeof AppPaintingsIndexRoute
+  '/app/scheduled-tasks': typeof AppScheduledTasksIndexRoute
   '/settings/mcp': typeof SettingsMcpIndexRoute
   '/settings/scheduled-tasks': typeof SettingsScheduledTasksIndexRoute
   '/settings/mcp/settings/$serverId': typeof SettingsMcpSettingsServerIdRoute
@@ -443,8 +490,12 @@ export interface FileRoutesById {
   '/app/files': typeof AppFilesRoute
   '/app/knowledge': typeof AppKnowledgeRoute
   '/app/launchpad': typeof AppLaunchpadRoute
+  '/app/new-task': typeof AppNewTaskRoute
   '/app/notes': typeof AppNotesRoute
   '/app/release-notes': typeof AppReleaseNotesRoute
+  '/app/resources': typeof AppResourcesRoute
+  '/app/scheduled-tasks': typeof AppScheduledTasksRouteWithChildren
+  '/app/skills-connectors': typeof AppSkillsConnectorsRoute
   '/app/translate': typeof AppTranslateRoute
   '/settings/about': typeof SettingsAboutRoute
   '/settings/api-gateway': typeof SettingsApiGatewayRoute
@@ -474,6 +525,7 @@ export interface FileRoutesById {
   '/settings/': typeof SettingsIndexRoute
   '/app/mini-app/$appId': typeof AppMiniAppAppIdRoute
   '/app/paintings/$': typeof AppPaintingsSplatRoute
+  '/app/scheduled-tasks/$taskId': typeof AppScheduledTasksTaskIdRoute
   '/settings/mcp/$': typeof SettingsMcpSplatRoute
   '/settings/mcp/builtin': typeof SettingsMcpBuiltinRoute
   '/settings/mcp/marketplaces': typeof SettingsMcpMarketplacesRoute
@@ -483,6 +535,7 @@ export interface FileRoutesById {
   '/settings/scheduled-tasks/$taskId': typeof SettingsScheduledTasksTaskIdRoute
   '/app/mini-app/': typeof AppMiniAppIndexRoute
   '/app/paintings/': typeof AppPaintingsIndexRoute
+  '/app/scheduled-tasks/': typeof AppScheduledTasksIndexRoute
   '/settings/mcp/': typeof SettingsMcpIndexRoute
   '/settings/scheduled-tasks/': typeof SettingsScheduledTasksIndexRoute
   '/settings/mcp/settings/$serverId': typeof SettingsMcpSettingsServerIdRoute
@@ -499,8 +552,12 @@ export interface FileRouteTypes {
     | '/app/files'
     | '/app/knowledge'
     | '/app/launchpad'
+    | '/app/new-task'
     | '/app/notes'
     | '/app/release-notes'
+    | '/app/resources'
+    | '/app/scheduled-tasks'
+    | '/app/skills-connectors'
     | '/app/translate'
     | '/settings/about'
     | '/settings/api-gateway'
@@ -530,6 +587,7 @@ export interface FileRouteTypes {
     | '/settings/'
     | '/app/mini-app/$appId'
     | '/app/paintings/$'
+    | '/app/scheduled-tasks/$taskId'
     | '/settings/mcp/$'
     | '/settings/mcp/builtin'
     | '/settings/mcp/marketplaces'
@@ -539,6 +597,7 @@ export interface FileRouteTypes {
     | '/settings/scheduled-tasks/$taskId'
     | '/app/mini-app/'
     | '/app/paintings/'
+    | '/app/scheduled-tasks/'
     | '/settings/mcp/'
     | '/settings/scheduled-tasks/'
     | '/settings/mcp/settings/$serverId'
@@ -552,8 +611,11 @@ export interface FileRouteTypes {
     | '/app/files'
     | '/app/knowledge'
     | '/app/launchpad'
+    | '/app/new-task'
     | '/app/notes'
     | '/app/release-notes'
+    | '/app/resources'
+    | '/app/skills-connectors'
     | '/app/translate'
     | '/settings/about'
     | '/settings/api-gateway'
@@ -581,6 +643,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/app/mini-app/$appId'
     | '/app/paintings/$'
+    | '/app/scheduled-tasks/$taskId'
     | '/settings/mcp/$'
     | '/settings/mcp/builtin'
     | '/settings/mcp/marketplaces'
@@ -590,6 +653,7 @@ export interface FileRouteTypes {
     | '/settings/scheduled-tasks/$taskId'
     | '/app/mini-app'
     | '/app/paintings'
+    | '/app/scheduled-tasks'
     | '/settings/mcp'
     | '/settings/scheduled-tasks'
     | '/settings/mcp/settings/$serverId'
@@ -604,8 +668,12 @@ export interface FileRouteTypes {
     | '/app/files'
     | '/app/knowledge'
     | '/app/launchpad'
+    | '/app/new-task'
     | '/app/notes'
     | '/app/release-notes'
+    | '/app/resources'
+    | '/app/scheduled-tasks'
+    | '/app/skills-connectors'
     | '/app/translate'
     | '/settings/about'
     | '/settings/api-gateway'
@@ -635,6 +703,7 @@ export interface FileRouteTypes {
     | '/settings/'
     | '/app/mini-app/$appId'
     | '/app/paintings/$'
+    | '/app/scheduled-tasks/$taskId'
     | '/settings/mcp/$'
     | '/settings/mcp/builtin'
     | '/settings/mcp/marketplaces'
@@ -644,6 +713,7 @@ export interface FileRouteTypes {
     | '/settings/scheduled-tasks/$taskId'
     | '/app/mini-app/'
     | '/app/paintings/'
+    | '/app/scheduled-tasks/'
     | '/settings/mcp/'
     | '/settings/scheduled-tasks/'
     | '/settings/mcp/settings/$serverId'
@@ -859,6 +929,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppTranslateRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/skills-connectors': {
+      id: '/app/skills-connectors'
+      path: '/skills-connectors'
+      fullPath: '/app/skills-connectors'
+      preLoaderRoute: typeof AppSkillsConnectorsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/scheduled-tasks': {
+      id: '/app/scheduled-tasks'
+      path: '/scheduled-tasks'
+      fullPath: '/app/scheduled-tasks'
+      preLoaderRoute: typeof AppScheduledTasksRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/resources': {
+      id: '/app/resources'
+      path: '/resources'
+      fullPath: '/app/resources'
+      preLoaderRoute: typeof AppResourcesRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/app/release-notes': {
       id: '/app/release-notes'
       path: '/release-notes'
@@ -871,6 +962,13 @@ declare module '@tanstack/react-router' {
       path: '/notes'
       fullPath: '/app/notes'
       preLoaderRoute: typeof AppNotesRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/new-task': {
+      id: '/app/new-task'
+      path: '/new-task'
+      fullPath: '/app/new-task'
+      preLoaderRoute: typeof AppNewTaskRouteImport
       parentRoute: typeof AppRoute
     }
     '/app/launchpad': {
@@ -936,6 +1034,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsMcpIndexRouteImport
       parentRoute: typeof SettingsMcpRoute
     }
+    '/app/scheduled-tasks/': {
+      id: '/app/scheduled-tasks/'
+      path: '/'
+      fullPath: '/app/scheduled-tasks/'
+      preLoaderRoute: typeof AppScheduledTasksIndexRouteImport
+      parentRoute: typeof AppScheduledTasksRoute
+    }
     '/app/paintings/': {
       id: '/app/paintings/'
       path: '/paintings'
@@ -999,6 +1104,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsMcpSplatRouteImport
       parentRoute: typeof SettingsMcpRoute
     }
+    '/app/scheduled-tasks/$taskId': {
+      id: '/app/scheduled-tasks/$taskId'
+      path: '/$taskId'
+      fullPath: '/app/scheduled-tasks/$taskId'
+      preLoaderRoute: typeof AppScheduledTasksTaskIdRouteImport
+      parentRoute: typeof AppScheduledTasksRoute
+    }
     '/app/paintings/$': {
       id: '/app/paintings/$'
       path: '/paintings/$'
@@ -1023,6 +1135,19 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface AppScheduledTasksRouteChildren {
+  AppScheduledTasksTaskIdRoute: typeof AppScheduledTasksTaskIdRoute
+  AppScheduledTasksIndexRoute: typeof AppScheduledTasksIndexRoute
+}
+
+const AppScheduledTasksRouteChildren: AppScheduledTasksRouteChildren = {
+  AppScheduledTasksTaskIdRoute: AppScheduledTasksTaskIdRoute,
+  AppScheduledTasksIndexRoute: AppScheduledTasksIndexRoute,
+}
+
+const AppScheduledTasksRouteWithChildren =
+  AppScheduledTasksRoute._addFileChildren(AppScheduledTasksRouteChildren)
+
 interface AppRouteChildren {
   AppAgentsRoute: typeof AppAgentsRoute
   AppChatRoute: typeof AppChatRoute
@@ -1031,8 +1156,12 @@ interface AppRouteChildren {
   AppFilesRoute: typeof AppFilesRoute
   AppKnowledgeRoute: typeof AppKnowledgeRoute
   AppLaunchpadRoute: typeof AppLaunchpadRoute
+  AppNewTaskRoute: typeof AppNewTaskRoute
   AppNotesRoute: typeof AppNotesRoute
   AppReleaseNotesRoute: typeof AppReleaseNotesRoute
+  AppResourcesRoute: typeof AppResourcesRoute
+  AppScheduledTasksRoute: typeof AppScheduledTasksRouteWithChildren
+  AppSkillsConnectorsRoute: typeof AppSkillsConnectorsRoute
   AppTranslateRoute: typeof AppTranslateRoute
   AppMiniAppAppIdRoute: typeof AppMiniAppAppIdRoute
   AppPaintingsSplatRoute: typeof AppPaintingsSplatRoute
@@ -1048,8 +1177,12 @@ const AppRouteChildren: AppRouteChildren = {
   AppFilesRoute: AppFilesRoute,
   AppKnowledgeRoute: AppKnowledgeRoute,
   AppLaunchpadRoute: AppLaunchpadRoute,
+  AppNewTaskRoute: AppNewTaskRoute,
   AppNotesRoute: AppNotesRoute,
   AppReleaseNotesRoute: AppReleaseNotesRoute,
+  AppResourcesRoute: AppResourcesRoute,
+  AppScheduledTasksRoute: AppScheduledTasksRouteWithChildren,
+  AppSkillsConnectorsRoute: AppSkillsConnectorsRoute,
   AppTranslateRoute: AppTranslateRoute,
   AppMiniAppAppIdRoute: AppMiniAppAppIdRoute,
   AppPaintingsSplatRoute: AppPaintingsSplatRoute,

@@ -1,0 +1,86 @@
+<h2>新建任务会话框：实现方案对比</h2>
+<p class="subtitle">目标：完整保留现有普通会话 / 智能体 Composer 能力，仅在第一次发送时创建会话，并将当前 Tab 切换到该会话。</p>
+
+<div class="cards">
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding:18px">
+      <div class="mockup">
+        <div class="mockup-header">A · 页面级延迟创建编排</div>
+        <div class="mockup-body" style="display:grid;gap:10px">
+          <div style="padding:10px;border:1px solid var(--border);border-radius:8px;text-align:center">新建任务页<br><small>选择模式与资源</small></div>
+          <div style="text-align:center">↓ 注入草稿会话上下文</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <div style="padding:10px;border:1px solid var(--border);border-radius:8px;text-align:center">现有 Chat Composer</div>
+            <div style="padding:10px;border:1px solid var(--border);border-radius:8px;text-align:center">现有 Agent Composer</div>
+          </div>
+          <div style="text-align:center">↓ 首次发送时</div>
+          <div style="padding:10px;border:2px solid var(--accent);border-radius:8px;text-align:center">创建 / 复用会话 → 打开流 → 当前 Tab 切换</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A · 延迟创建适配器（推荐）</h3>
+      <p>抽取共享 Composer 装配层，并给发送控制器注入“确保会话存在”的回调。输入阶段不产生空会话，首次发送才创建。</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>优点</h4><ul><li>完全符合发送时创建</li><li>复用现有完整能力</li><li>不会污染历史列表</li><li>失败可保留草稿</li></ul></div>
+        <div class="cons"><h4>代价</h4><ul><li>需小幅重构 Composer 边界</li><li>需严谨处理创建与发送状态</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding:18px">
+      <div class="mockup">
+        <div class="mockup-header">B · 进入页面即创建占位会话</div>
+        <div class="mockup-body" style="display:grid;gap:10px">
+          <div style="padding:10px;border:1px solid var(--border);border-radius:8px;text-align:center">进入 / 切换资源</div>
+          <div style="text-align:center">↓ 立即创建</div>
+          <div style="padding:10px;border:2px solid var(--accent);border-radius:8px;text-align:center">空 Topic / 空 Session</div>
+          <div style="text-align:center">↓</div>
+          <div style="padding:10px;border:1px solid var(--border);border-radius:8px;text-align:center">直接挂载现有页面 Composer</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B · 预创建占位会话</h3>
+      <p>复用现有页面前置创建流程，先获得 Topic / Session，再渲染原 Composer。</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>优点</h4><ul><li>代码改动相对少</li><li>现有 Composer 几乎不变</li></ul></div>
+        <div class="cons"><h4>问题</h4><ul><li>不是“发送时创建”</li><li>切换模式可能产生空会话</li><li>需额外清理占位记录</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding:18px">
+      <div class="mockup">
+        <div class="mockup-header">C · 新建独立草稿 Composer</div>
+        <div class="mockup-body" style="display:grid;gap:10px">
+          <div style="padding:10px;border:1px solid var(--border);border-radius:8px;text-align:center">新建任务专用 Composer</div>
+          <div style="text-align:center">↓ 重做能力</div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px">
+            <div style="padding:8px;border:1px solid var(--border);border-radius:8px;text-align:center">附件</div>
+            <div style="padding:8px;border:1px solid var(--border);border-radius:8px;text-align:center">模型</div>
+            <div style="padding:8px;border:1px solid var(--border);border-radius:8px;text-align:center">工具</div>
+          </div>
+          <div style="text-align:center">↓ 发送后转交正式页面</div>
+          <div style="padding:10px;border:2px solid var(--accent);border-radius:8px;text-align:center">创建会话并迁移草稿</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>C · 独立草稿 Composer</h3>
+      <p>为新建任务页单独实现一套输入、附件、模型、工具和发送逻辑，再转交正式会话。</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>优点</h4><ul><li>页面逻辑独立</li><li>短期可自由定制 UI</li></ul></div>
+        <div class="cons"><h4>问题</h4><ul><li>重复大量业务逻辑</li><li>长期容易与现有 Composer 漂移</li><li>维护和测试成本最高</li></ul></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top:24px;padding:16px;border:1px solid var(--border);border-radius:10px">
+  <div class="label">推荐结论</div>
+  <h3>采用 A：页面级延迟创建适配器</h3>
+  <p>它是唯一同时满足“功能保持一致”“发送时才创建”“当前 Tab 切换”且不复制业务逻辑的方案。重构只服务于这次需求：把现有页面内的 Composer 装配能力下沉为共享边界，不改 Main Process 的消息持久化与流式发送协议。</p>
+</div>

@@ -1,0 +1,84 @@
+<h2>资源中心 · 仅调整入口</h2>
+<p class="subtitle">方案已收敛：不新增资源管理能力、不扩展卡片字段、不复制页面，只在统一侧栏中提供更直接的现有功能入口。</p>
+
+<div class="mockup">
+  <div class="mockup-header">智能体 · 技能 · 连接器</div>
+  <div class="mockup-body">
+    <div style="display:grid;grid-template-columns:180px 1fr;min-height:470px;background:#fafaf8;color:#242424">
+      <aside style="padding:18px 14px;border-right:1px solid #deded8;background:#f4f4f0">
+        <b style="font-size:14px">Cherry Studio</b>
+        <div style="margin-top:24px;padding:9px 10px;border-radius:8px;background:#262626;color:#fff;font-size:12px">＋ 新建任务</div>
+        <div style="margin-top:12px;padding:9px 10px;border-radius:8px;background:#e5e5df;font-size:12px;font-weight:700">✦ 资源中心</div>
+        <div style="padding:9px 10px;font-size:12px;color:#666">◷ 定时任务</div>
+        <div style="margin-top:18px;font-size:10px;color:#999;padding:0 10px">历史会话</div>
+      </aside>
+      <section style="display:flex;flex-direction:column;background:white">
+        <header style="height:54px;border-bottom:1px solid #e5e5df;display:flex;align-items:center;padding:0 22px">
+          <b style="font-size:15px">资源中心</b>
+          <nav style="display:flex;align-self:stretch;margin-left:34px;gap:25px;font-size:12px">
+            <span style="display:flex;align-items:center;border-bottom:2px solid #252525;font-weight:700">智能体</span>
+            <span style="display:flex;align-items:center;color:#777">技能</span>
+            <span style="display:flex;align-items:center;color:#777">连接器</span>
+          </nav>
+        </header>
+        <main style="flex:1;display:grid;place-items:center;background:#fafaf8;padding:30px">
+          <div style="width:100%;max-width:600px;border:1px solid #d9d9d3;background:white;border-radius:12px;padding:26px;text-align:center">
+            <div style="font-size:24px;margin-bottom:8px">↗</div>
+            <b>原样承载现有页面</b>
+            <p style="font-size:12px;color:#777;line-height:1.7;margin:10px 0 0">这里展示现有 Agent 资源视图。搜索、创建、编辑、删除、进入会话等行为全部保持不变。</p>
+          </div>
+        </main>
+      </section>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top:24px">
+  <h3>“智能体”与“智能体任务”的关系</h3>
+  <div class="cards" style="grid-template-columns:repeat(2,minmax(0,1fr))">
+    <div class="card"><div class="card-body"><h3>资源中心 · 智能体</h3><p><strong>管理入口</strong>，回答“我有哪些 Agent、如何配置”。</p><ul><li>浏览、搜索、创建和编辑 Agent</li><li>配置模型、Workspace、Skills 与 MCP</li><li>选择 Agent 后可进入现有会话流程</li></ul></div></div>
+    <div class="card"><div class="card-body"><h3>欢迎页 · 智能体任务</h3><p><strong>使用入口</strong>，回答“我现在要让哪个 Agent 做什么”。</p><ul><li>从已有 Agent 中选择一个</li><li>输入任务并发送</li><li>首次发送后创建现有 Agent Session</li></ul></div></div>
+  </div>
+  <p>两者使用同一套 Agent 数据：资源中心负责管理，欢迎页负责快速开始，不新增第二套智能体功能。</p>
+</div>
+
+<div class="section">
+  <h3>左侧历史会话</h3>
+  <p>普通对话和智能体任务都展示在左侧边栏，但建议保留现有类型边界，分为两个可折叠分组：</p>
+  <ul>
+    <li><strong>对话</strong>：现有 Assistant Topic，点击后进入普通聊天。</li>
+    <li><strong>智能体任务</strong>：现有 Agent Session，点击后进入 Agent 会话。</li>
+    <li>分组可分别折叠；各自沿用现有标题、排序、置顶与删除能力。</li>
+    <li>不把 Topic 和 Session 合并为新的统一数据模型。</li>
+  </ul>
+</div>
+
+<div class="section">
+  <h3>入口映射</h3>
+  <div class="cards" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+    <div class="card"><div class="card-body"><h3>智能体</h3><p>直接承载现有 Agent 资源视图。</p><ul><li>不重做列表和卡片</li><li>点击后仍进入现有 Agent Session</li><li>创建与编辑沿用现有对话框</li></ul></div></div>
+    <div class="card"><div class="card-body"><h3>技能</h3><p>直接承载现有 Skills 页面。</p><ul><li>保留当前已安装与市场内容</li><li>保留导入、详情和卸载流程</li><li>不改变 Skill 数据与服务</li></ul></div></div>
+    <div class="card"><div class="card-body"><h3>连接器</h3><p>提供现有 MCP 与消息渠道的导航入口。</p><ul><li>点击后打开对应现有页面</li><li>详情与编辑流程保持不变</li><li>不合并两套配置模型</li></ul></div></div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>本次明确不做</h3>
+  <ul>
+    <li>不新增智能体、技能或连接器能力。</li>
+    <li>不改变现有数据模型、服务层和会话创建流程。</li>
+    <li>不新增线框稿中的技能数量、MCP 数量、工作区摘要等卡片字段。</li>
+    <li>不把普通 Assistant 与 Agent 合并。</li>
+    <li>不复制页面；优先复用现有组件，不能安全嵌入时只做路由跳转。</li>
+  </ul>
+</div>
+
+<div class="section">
+  <h3>最小改动建议</h3>
+  <p><strong>修改现有应用壳，而不是新增一套布局页面。</strong> 新侧栏作为统一导航；右侧继续渲染现有路由内容。这样历史会话、Agent、Skills、MCP、消息渠道和定时任务都沿用原页面，仅改变用户到达它们的方式。</p>
+</div>
+
+<div class="options">
+  <div class="option" data-choice="approved-entry-only" onclick="toggleSelect(this)"><div class="letter">✓</div><div class="content"><h3>采用仅改入口方案</h3><p>继续细化定时任务和历史会话的入口映射。</p></div></div>
+  <div class="option" data-choice="revise-entry-only" onclick="toggleSelect(this)"><div class="letter">↺</div><div class="content"><h3>调整入口映射</h3><p>说明哪些现有页面不应放入资源中心。</p></div></div>
+</div>

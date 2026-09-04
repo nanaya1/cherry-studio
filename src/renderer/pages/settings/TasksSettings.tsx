@@ -143,6 +143,12 @@ const TASK_PROMPT_POLISH_SYSTEM_PROMPT = [
   'Return only the polished task prompt with no explanation, wrapper, or code fence.'
 ].join('\n')
 
+export type TasksSettingsRouteBase = '/app/scheduled-tasks' | '/settings/scheduled-tasks'
+
+type TasksSettingsProps = {
+  routeBase?: TasksSettingsRouteBase
+}
+
 type AgentInfo = { id: string; name: string }
 type ChannelInfo = { id: string; agentId?: string | null; name: string; isActive?: boolean; hasActiveChatIds?: boolean }
 
@@ -1370,12 +1376,13 @@ const TaskFormDialog: FC<TaskFormDialogProps> = (props) => {
   )
 }
 
-const TasksSettings: FC = () => {
+const TasksSettings: FC<TasksSettingsProps> = ({ routeBase = '/settings/scheduled-tasks' }) => {
   const { t } = useTranslation()
   const { theme } = useTheme()
   const navigate = useNavigate()
   const params = useParams({ strict: false })
   const taskId = params.taskId
+  const taskDetailRoute = `${routeBase}/$taskId` as const
   const { createTask } = useCreateTask()
   const { updateTask } = useUpdateTask()
   const { deleteTask } = useDeleteTask()
@@ -1471,10 +1478,10 @@ const TasksSettings: FC = () => {
     async (agentId: string, request: AgentTaskForm) => {
       const created = await createTask(agentId, request)
       if (!created) return undefined
-      await navigate({ to: '/settings/scheduled-tasks/$taskId', params: { taskId: created.id } })
+      await navigate({ to: taskDetailRoute, params: { taskId: created.id } })
       return created
     },
-    [createTask, navigate]
+    [createTask, navigate, taskDetailRoute]
   )
 
   const persistTaskUpdate = useCallback(
@@ -1513,10 +1520,10 @@ const TasksSettings: FC = () => {
       const task = getTaskForAction(selectedTaskId)
       if (!task) return
       await deleteTask(task.agentId, selectedTaskId, {
-        onDeleted: () => navigate({ to: '/settings/scheduled-tasks' })
+        onDeleted: () => navigate({ to: routeBase })
       })
     },
-    [deleteTask, getTaskForAction, navigate]
+    [deleteTask, getTaskForAction, navigate, routeBase]
   )
 
   const handleRun = useCallback(
@@ -1567,7 +1574,7 @@ const TasksSettings: FC = () => {
             title={t('settings.scheduledTasks.notFoundTitle')}
             description={t('settings.scheduledTasks.notFoundDescription')}
             actionLabel={t('common.back')}
-            onAction={() => void navigate({ to: '/settings/scheduled-tasks' })}
+            onAction={() => void navigate({ to: routeBase })}
           />
         </SettingsContentColumn>
       )
@@ -1578,7 +1585,7 @@ const TasksSettings: FC = () => {
         key={selectedTask.id}
         task={selectedTask}
         agents={agents}
-        onBack={() => void navigate({ to: '/settings/scheduled-tasks' })}
+        onBack={() => void navigate({ to: routeBase })}
         onUpdate={handleUpdate}
         onDelete={handleDelete}
         onRun={handleRun}
@@ -1706,7 +1713,7 @@ const TasksSettings: FC = () => {
                       variant="outline"
                       className="rounded-xl border-border bg-card transition-[border-color,box-shadow] hover:border-border-strong hover:bg-card hover:shadow-sm">
                       <Link
-                        to="/settings/scheduled-tasks/$taskId"
+                        to={taskDetailRoute}
                         params={{ taskId: task.id }}
                         style={{ backgroundColor: 'var(--settings-group-background, var(--card))' }}>
                         <TaskScheduleStatusIcon status={task.status} />

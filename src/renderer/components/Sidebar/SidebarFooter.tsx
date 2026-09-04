@@ -1,4 +1,4 @@
-import { ChevronRight, Columns2 } from 'lucide-react'
+import { Columns2, Settings } from 'lucide-react'
 import React from 'react'
 
 import { UserAvatar } from './primitives'
@@ -44,9 +44,11 @@ function IconFooter({ user, actions, extensionsLabel, onExtensionsClick }: Foote
       )}
       {actions}
       {user && (
-        <div className="cursor-pointer" onClick={user.onClick}>
-          <UserAvatar user={user} className="h-7 w-7" />
-        </div>
+        <SidebarTooltip content={user.name}>
+          <button type="button" aria-label={user.name} onClick={user.onClick} className="cursor-pointer rounded-full">
+            <UserAvatar user={user} className="h-7 w-7" />
+          </button>
+        </SidebarTooltip>
       )}
     </div>
   )
@@ -54,7 +56,7 @@ function IconFooter({ user, actions, extensionsLabel, onExtensionsClick }: Foote
 
 function FullFooter({ user, actions, extensionsLabel, onExtensionsClick }: FooterProps) {
   return (
-    <div className="space-y-1 px-2 py-2 [-webkit-app-region:no-drag]">
+    <div className="space-y-1 border-sidebar-border border-t px-2 py-2 [-webkit-app-region:no-drag]">
       {extensionsLabel && (
         <button
           type="button"
@@ -68,14 +70,25 @@ function FullFooter({ user, actions, extensionsLabel, onExtensionsClick }: Foote
       {actions}
 
       {user && (
-        <div
-          className="flex cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-1.5 transition-colors hover:bg-accent/60"
-          onClick={user.onClick}>
-          <UserAvatar user={user} className="h-7 w-7 shrink-0" />
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-[13px] text-sidebar-foreground">{user.name}</div>
-          </div>
-          <ChevronRight size={14} className="shrink-0 text-muted-foreground" />
+        <div className="flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-accent/60">
+          <button type="button" onClick={user.onClick} className="flex min-w-0 flex-1 items-center gap-2 text-left">
+            <UserAvatar user={user} className="h-7 w-7 shrink-0" />
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[12px] text-sidebar-foreground">{user.name}</span>
+              {user.description && (
+                <span className="block truncate text-[10px] text-muted-foreground">{user.description}</span>
+              )}
+            </span>
+          </button>
+          {user.onSettingsClick && (
+            <button
+              type="button"
+              aria-label={user.settingsLabel}
+              onClick={user.onSettingsClick}
+              className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
+              <Settings size={15} strokeWidth={1.6} />
+            </button>
+          )}
         </div>
       )}
     </div>

@@ -1,0 +1,61 @@
+<h2>最终视觉约束 · 工具按钮无 Border</h2>
+<p class="subtitle">已按当前 Composer 真实代码校正：对话框外层有细边框，内部工具栏本身没有顶部分隔线，工具 Icon 使用 ghost 样式且没有独立边框。</p>
+
+<div class="split">
+  <div class="mockup">
+    <div class="mockup-header">普通会话 · 校正后</div>
+    <div class="mockup-body" style="padding:20px">
+      <div style="border:.5px solid var(--border);border-radius:20px;overflow:hidden;background:var(--surface);box-shadow:0 1px 3px rgba(0,0,0,.08)">
+        <div style="min-height:118px;padding:18px;color:var(--muted)">输入消息，或拖入附件…</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;height:40px;padding:5px 8px">
+          <div style="display:flex;align-items:center;gap:2px">
+            <button title="添加附件" style="border:0;background:transparent;width:32px;height:32px;border-radius:8px;font-size:18px">＋</button>
+            <button title="工具" style="border:0;background:transparent;width:32px;height:32px;border-radius:8px">⌘</button>
+            <button title="知识库" style="border:0;background:transparent;width:32px;height:32px;border-radius:8px">◇</button>
+            <button title="联网搜索" style="border:0;background:transparent;width:32px;height:32px;border-radius:8px">◎</button>
+            <button style="border:0;background:transparent;height:32px;padding:0 8px;border-radius:8px">默认助手⌄</button>
+            <button style="border:0;background:transparent;height:32px;padding:0 8px;border-radius:8px">模型⌄</button>
+          </div>
+          <button title="发送" style="border:0;background:var(--accent);width:30px;height:30px;border-radius:50%">↑</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mockup">
+    <div class="mockup-header">智能体任务 · 校正后</div>
+    <div class="mockup-body" style="padding:20px">
+      <div style="border:.5px solid var(--border);border-radius:20px;overflow:hidden;background:var(--surface);box-shadow:0 1px 3px rgba(0,0,0,.08)">
+        <div style="min-height:118px;padding:18px;color:var(--muted)">描述要交给智能体完成的任务…</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;height:40px;padding:5px 8px">
+          <div style="display:flex;align-items:center;gap:2px">
+            <button title="添加附件" style="border:0;background:transparent;width:32px;height:32px;border-radius:8px;font-size:18px">＋</button>
+            <button title="工具" style="border:0;background:transparent;width:32px;height:32px;border-radius:8px">⌘</button>
+            <button title="技能" style="border:0;background:transparent;width:32px;height:32px;border-radius:8px">✦</button>
+            <button title="知识库" style="border:0;background:transparent;width:32px;height:32px;border-radius:8px">◇</button>
+            <button style="border:0;background:transparent;height:32px;padding:0 8px;border-radius:8px">选择智能体⌄</button>
+            <button style="border:0;background:transparent;height:32px;padding:0 8px;border-radius:8px">Workspace⌄</button>
+          </div>
+          <button title="发送" style="border:0;background:var(--accent);width:30px;height:30px;border-radius:50%;opacity:.45">↑</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top:22px;padding:16px;border:1px solid var(--border);border-radius:10px">
+  <div class="label">以真实组件为准</div>
+  <ul>
+    <li>Composer 外框：20px 圆角、0.5px 边框、轻阴影。</li>
+    <li>工具栏容器：40px 高度，无 border-top。</li>
+    <li>工具 Icon：ghost 按钮，无独立 border，仅在 hover / active 时出现背景反馈。</li>
+    <li>选择器：同样使用 ghost 样式，不绘制常驻边框。</li>
+    <li>发送按钮：沿用现有圆形按钮状态。</li>
+  </ul>
+</div>
+
+<div style="margin-top:24px;padding:18px;border:2px solid var(--accent);border-radius:12px;text-align:center">
+  <div class="label">最终实施原则</div>
+  <h3>直接挂载真实 Composer，不仿写这张示意图</h3>
+  <p>因此最终页面会自动获得当前代码里的无边框工具按钮、交互状态和后续样式更新。</p>
+</div>

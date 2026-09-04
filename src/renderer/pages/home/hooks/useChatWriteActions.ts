@@ -16,6 +16,7 @@ import { dataApiService } from '@data/DataApiService'
 import { loggerService } from '@logger'
 import type { ChatWriteActions } from '@renderer/hooks/chat/ChatWriteContext'
 import type { ReservedMessageSeedOptions } from '@renderer/hooks/useConversationTurnController'
+import type { useTopicMessagesCache } from '@renderer/hooks/useTopicMessagesCache'
 import { ipcApi } from '@renderer/ipc'
 import { getStreamBlockedMessage } from '@renderer/services/aiTransport'
 import { invalidateCachedMessageUiStates } from '@renderer/services/messageUiStateCache'
@@ -35,8 +36,6 @@ import { type UniqueModelId } from '@shared/data/types/model'
 import { createClearContextPart, hasClearContextPart } from '@shared/data/types/uiParts'
 import type { ChatRequestOptions } from 'ai'
 import { useCallback, useMemo, useRef, useState } from 'react'
-
-import type { useTopicMessagesCache } from './useTopicMessagesCache'
 
 const logger = loggerService.withContext('useChatWriteActions')
 
