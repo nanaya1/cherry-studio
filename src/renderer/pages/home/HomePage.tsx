@@ -5,6 +5,7 @@ import type { ResourcePaneConfig, ResourcePaneCountButtonProps } from '@renderer
 import { EmptyState, LoadingState } from '@renderer/components/chat/primitives'
 import { AssistantResourceList } from '@renderer/components/chat/resourceList/AssistantResourceList'
 import type { ResourceListRevealRequest } from '@renderer/components/chat/resourceList/base'
+import { Topics } from '@renderer/components/chat/resourceList/Topics'
 import { ChatAppShell } from '@renderer/components/chat/shell/ChatAppShell'
 import { ConversationSidebarToggleButton } from '@renderer/components/chat/shell/ConversationSidebarToggleButton'
 import type { ChatPanePosition } from '@renderer/components/chat/shell/paneLayout'
@@ -55,7 +56,6 @@ import {
 import { HomeTabRuntime } from './components/HomeTabRuntime'
 import { TopicRightPane } from './components/TopicRightPane'
 import { parseChatRouteSearch } from './routeSearch'
-import { Topics } from './Tabs/components/Topics'
 import HomeTabs from './Tabs/HomeTabs'
 import type { AddNewTopicPayload } from './types'
 

@@ -169,12 +169,12 @@ vi.mock('react-i18next', () => ({
   })
 }))
 
-const { useAgentMessageListProviderValue } = await import('../agentMessageListAdapter')
+const { useAgentMessageListProviderValue } = await import('@renderer/components/chat/messages/agentMessageListAdapter')
 const {
   clearPendingAgentSessionImageActionsForTest,
   consumePendingAgentSessionImageActions,
   requestAgentSessionImageAction
-} = await import('../agentSessionImageActionBus')
+} = await import('@renderer/components/chat/messages/agentSessionImageActionBus')
 
 describe('useAgentMessageListProviderValue', () => {
   beforeEach(() => {

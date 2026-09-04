@@ -230,7 +230,8 @@ export function Sidebar({
                       <ChevronDown size={12} className={cn('transition-transform', collapsed && '-rotate-90')} />
                       <span>{section.label}</span>
                     </button>
-                    {!collapsed && (
+                    {!collapsed && section.content}
+                    {!collapsed && !section.content && section.entries && (
                       <SidebarEntryList
                         entries={section.entries}
                         active={active}

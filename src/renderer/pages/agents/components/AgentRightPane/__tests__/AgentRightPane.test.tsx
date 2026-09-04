@@ -403,7 +403,7 @@ vi.mock('@renderer/hooks/useIsTextFile', () => ({
   useIsTextFile: () => 'text'
 }))
 
-vi.mock('@renderer/pages/agents/messages/agentMessageListAdapter', () => ({
+vi.mock('@renderer/components/chat/messages/agentMessageListAdapter', () => ({
   useAgentMessageListProviderValue: () => ({
     state: {
       renderConfig: {}

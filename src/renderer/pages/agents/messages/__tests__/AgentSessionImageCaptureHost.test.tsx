@@ -40,11 +40,13 @@ vi.mock('@renderer/components/chat/messages/MessageImageCaptureHost', () => ({
 
 vi.mock('@renderer/services/agentSessionExport', () => exportServiceMocks)
 
-vi.mock('../agentMessageListAdapter', () => ({
+vi.mock('@renderer/components/chat/messages/agentMessageListAdapter', () => ({
   useAgentMessageListProviderValue: messageListProviderMock
 }))
 
-const { default: AgentSessionImageCaptureHost } = await import('../AgentSessionImageCaptureHost')
+const { default: AgentSessionImageCaptureHost } = await import(
+  '@renderer/components/chat/messages/AgentSessionImageCaptureHost'
+)
 
 describe('AgentSessionImageCaptureHost', () => {
   beforeEach(() => {

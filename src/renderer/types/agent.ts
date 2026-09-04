@@ -14,6 +14,7 @@ import {
   type AgentPermissionMode,
   type UpdateAgentDto
 } from '@shared/data/api/schemas/agents'
+import type { AgentSessionWorkspaceSource } from '@shared/data/api/schemas/agentWorkspaces'
 import type { AgentBase, AgentEntity, AgentType } from '@shared/data/types/agent'
 import type { UniqueModelId } from '@shared/data/types/model'
 import * as z from 'zod'
@@ -95,6 +96,13 @@ export type UpdateAgentFunction = (
 
 // ------------------ Renderer-side DTO aliases ----------------------------
 export type GetAgentResponse = AgentEntity & { tools?: Tool[] }
+
+export type CreateAgentSessionDefaults = {
+  agentId?: string | null
+  workspace?: AgentSessionWorkspaceSource
+  workspaceId?: string
+  workspaceMode?: 'system'
+}
 
 // ------------------ Server error envelope (parsed in utils/error.ts) -----
 export const AgentServerErrorSchema = z.object({

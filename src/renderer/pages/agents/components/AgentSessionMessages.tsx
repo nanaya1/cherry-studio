@@ -1,4 +1,5 @@
 import { loggerService } from '@logger'
+import { useAgentMessageListProviderValue } from '@renderer/components/chat/messages/agentMessageListAdapter'
 import MessageList from '@renderer/components/chat/messages/MessageList'
 import { MessageListProvider } from '@renderer/components/chat/messages/MessageListProvider'
 import { AskUserQuestionOptimisticInputProvider } from '@renderer/components/chat/messages/tools/agent'
@@ -14,7 +15,6 @@ import type { CherryMessagePart, CherryUIMessage } from '@shared/data/types/mess
 import { memo, useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { useAgentMessageListProviderValue } from '../messages/agentMessageListAdapter'
 import AgentSessionBackgroundTasks from '../messages/AgentSessionBackgroundTasks'
 
 const logger = loggerService.withContext('AgentSessionMessages')

@@ -215,7 +215,7 @@ vi.mock('@renderer/components/chat/messages/MessageListProvider', () => ({
   }
 }))
 
-vi.mock('../messages/homeMessageListAdapter', () => ({
+vi.mock('@renderer/components/chat/messages/homeMessageListAdapter', () => ({
   useHomeMessageListProviderValue: (params: {
     messages: CherryUIMessage[]
     partsByMessageId: Record<string, CherryMessagePart[]>

@@ -1,14 +1,13 @@
-import { EVENT_NAMES, EventEmitter } from '@renderer/services/EventService'
-import type { Topic } from '@renderer/types/topic'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-
 import {
   clearPendingTopicImageActionsForTest,
   consumePendingTopicImageActions,
   rejectPendingTopicImageActions,
   requestTopicImageAction,
   settleTopicImageActionRequest
-} from '../topicImageActionBus'
+} from '@renderer/components/chat/messages/topicImageActionBus'
+import { EVENT_NAMES, EventEmitter } from '@renderer/services/EventService'
+import type { Topic } from '@renderer/types/topic'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('@renderer/services/EventService', () => ({
   EVENT_NAMES: {

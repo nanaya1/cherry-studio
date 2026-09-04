@@ -43,7 +43,8 @@ export interface ResolvedSidebarEntry {
 export interface SidebarSection {
   id: string
   label: string
-  entries: ResolvedSidebarEntry[]
+  content?: ReactNode
+  entries?: ResolvedSidebarEntry[]
   collapsible?: boolean
 }
 

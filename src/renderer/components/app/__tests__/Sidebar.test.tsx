@@ -153,6 +153,28 @@ vi.mock('@renderer/components/chat/resourceList/Topics', () => ({
   )
 }))
 
+vi.mock('@renderer/components/chat/resourceList/Sessions', () => ({
+  default: ({
+    agentSessionsSource,
+    className,
+    setActiveSessionId,
+    showHeader
+  }: {
+    agentSessionsSource: { sessions: FakeConversation[] }
+    className?: string
+    setActiveSessionId: (id: string, session: FakeConversation) => void
+    showHeader?: boolean
+  }) => (
+    <div className={className} data-testid="agent-session-list" data-show-header={showHeader}>
+      {agentSessionsSource.sessions.map((session) => (
+        <button key={session.id} type="button" onClick={() => setActiveSessionId(session.id, session)}>
+          {session.name}
+        </button>
+      ))}
+    </div>
+  )
+}))
+
 vi.mock('@renderer/hooks/useMiniApps', () => ({
   useMiniApps: (options?: { enabled?: boolean }) => {
     mocks.useMiniApps(options)
@@ -325,14 +347,6 @@ function getNavigationEntry(key: string) {
   return entry as ResolvedSidebarEntry
 }
 
-function getSectionEntry(sectionId: string, key: string) {
-  const entry = getSidebarProps()
-    .sections?.find((section) => section.id === sectionId)
-    ?.entries?.find((item) => item.key === key)
-  expect(entry).toBeDefined()
-  return entry as ResolvedSidebarEntry
-}
-
 type SidebarMenuItem = Extract<CommandContextMenuExtraItem, { type: 'item' }>
 
 function findMenuItem(entry: ResolvedSidebarEntry, id: string) {
@@ -396,7 +410,7 @@ describe('app Sidebar', () => {
     ])
     expect(getSidebarProps().sections?.map((section) => section.label)).toEqual(['Conversations', 'Tasks'])
     expect(getSidebarProps().sections?.[0]?.content).toBeDefined()
-    expect(getSidebarProps().sections?.[1]?.entries?.map((entry) => entry.label)).toEqual(['Audit dependencies'])
+    expect(getSidebarProps().sections?.[1]?.content).toBeDefined()
     expect(mocks.setSidebarFavorites).not.toHaveBeenCalled()
   })
 
@@ -430,7 +444,13 @@ describe('app Sidebar', () => {
     await user.click(screen.getByRole('button', { name: 'Release planning' }))
     expect(mocks.openAssistantConversationTab).toHaveBeenLastCalledWith('topic-1', 'Release planning')
 
-    act(() => getSectionEntry('agent-tasks', 'session:session-1').onOpen())
+    const taskContent = getSidebarProps().sections?.find((section) => section.id === 'agent-tasks')?.content
+    render(taskContent)
+    const taskList = screen.getByTestId('agent-session-list')
+    expect(taskList).toHaveAttribute('data-show-header', 'false')
+    expect(taskList).toHaveClass('bg-transparent')
+    expect(taskList.parentElement).toHaveClass('[-webkit-app-region:no-drag]')
+    await user.click(screen.getByRole('button', { name: 'Audit dependencies' }))
     expect(mocks.openAgentConversationTab).toHaveBeenLastCalledWith('session-1', 'Audit dependencies')
     expect(mocks.updateTab).not.toHaveBeenCalled()
   })

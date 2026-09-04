@@ -37,6 +37,7 @@ import {
   readChatDraftPresence,
   subscribeChatDraftCache
 } from '@renderer/components/composer/variants/chat/chatDraftCache'
+import type { AddNewTopicPayload } from '@renderer/components/composer/variants/shared/composerProviderActions'
 import EditNameDialog from '@renderer/components/EditNameDialog'
 import NewConversationIcon from '@renderer/components/icons/NewConversationIcon'
 import type { ResourceEditDialogTarget } from '@renderer/components/resourceCatalog/dialogs/edit'
@@ -98,9 +99,8 @@ import {
   requestTopicImageAction,
   type TopicImageActionRequest,
   type TopicImageActionType
-} from '../../messages/topicImageActionBus'
-import TopicImageCaptureHost from '../../messages/TopicImageCaptureHost'
-import type { AddNewTopicPayload } from '../../types'
+} from '../messages/topicImageActionBus'
+import TopicImageCaptureHost from '../messages/TopicImageCaptureHost'
 import {
   type AssistantGroupActionContext,
   executeAssistantGroupAction,
@@ -139,6 +139,7 @@ interface Props {
   activeTopic?: Topic
   assistantTopicsSource: AssistantTopicsSource
   assistantIdFilter?: string | null
+  className?: string
   dataEnabled?: boolean
   historyRecordsActive?: boolean
   manageAssistantsActive?: boolean
@@ -153,6 +154,7 @@ interface Props {
   presentation?: ResourceListPresentation
   revealRequest?: ResourceListRevealRequest
   setActiveTopic: (topic: Topic) => void
+  showHeader?: boolean
 }
 
 function matchesAssistantFilter(topic: Topic, assistantIdFilter: string | null | undefined) {
@@ -253,6 +255,7 @@ export function Topics({
   activeTopic,
   assistantTopicsSource,
   assistantIdFilter,
+  className,
   dataEnabled = true,
   historyRecordsActive,
   manageAssistantsActive = false,
@@ -266,7 +269,8 @@ export function Topics({
   panePosition,
   presentation = 'left-panel',
   revealRequest,
-  setActiveTopic
+  setActiveTopic,
+  showHeader = true
 }: Props) {
   const { t } = useTranslation()
   const clearTopicMessages = useClearTopicMessages()
@@ -1445,6 +1449,7 @@ export function Topics({
     <>
       <TopicResourceList<Topic>
         key={isRightPanel ? `topic-resource-panel:${assistantIdFilter ?? 'blank'}` : 'topic-resource-left-panel'}
+        className={className}
         presentation={presentation}
         items={visibleFilteredTopics}
         status={listStatus}
@@ -1480,64 +1485,66 @@ export function Topics({
         onGroupHeaderSelectItem={handleGroupHeaderSelectTopic}
         onReorder={handleTopicReorder}
         onCollapsedStateChange={handleTopicCollapsedStateChange}>
-        <ResourceList.Header>
-          {isRightPanel ? (
-            <ResourceList.Search
-              aria-label={t('chat.topics.search.title')}
-              placeholder={t('chat.topics.search.placeholder')}
-            />
-          ) : showHeaderCreateItem && isAssistantDisplayMode ? (
-            <ResourceList.HeaderItem
-              type="button"
-              aria-label={headerCreateLabel}
-              disabled={!onAddAssistant}
-              icon={<Plus />}
-              label={headerCreateLabel}
-              onClick={handleHeaderCreate}
-              actions={
-                <TopicListOptionsMenu
-                  historyRecordsActive={historyRecordsActive}
-                  manageAssistantsActive={manageAssistantsActive}
-                  mode={displayMode}
-                  onChange={handleTopicDisplayModeChange}
-                  onManageAssistants={onManageAssistants}
-                  onOpenHistoryRecords={onOpenHistoryRecords}
-                  sectionIds={topicAssistantSectionIds}
-                />
-              }
-            />
-          ) : showHeaderCreateItem ? (
-            <ResourceList.HeaderItem
-              data-ui="chat.topic-list.action.create"
-              type="button"
-              command="topic.create"
-              aria-label={headerCreateLabel}
-              icon={<NewConversationIcon />}
-              label={headerCreateLabel}
-              onClick={handleHeaderCreate}
-              actions={
-                <TopicListOptionsMenu
-                  historyRecordsActive={historyRecordsActive}
-                  manageAssistantsActive={manageAssistantsActive}
-                  mode={displayMode}
-                  onChange={handleTopicDisplayModeChange}
-                  onManageAssistants={onManageAssistants}
-                  onOpenHistoryRecords={onOpenHistoryRecords}
-                />
-              }
-            />
-          ) : (
-            <TopicListOptionsMenu
-              historyRecordsActive={historyRecordsActive}
-              manageAssistantsActive={manageAssistantsActive}
-              mode={displayMode}
-              onChange={handleTopicDisplayModeChange}
-              onManageAssistants={onManageAssistants}
-              onOpenHistoryRecords={onOpenHistoryRecords}
-              sectionIds={isAssistantDisplayMode ? topicAssistantSectionIds : undefined}
-            />
-          )}
-        </ResourceList.Header>
+        {showHeader && (
+          <ResourceList.Header>
+            {isRightPanel ? (
+              <ResourceList.Search
+                aria-label={t('chat.topics.search.title')}
+                placeholder={t('chat.topics.search.placeholder')}
+              />
+            ) : showHeaderCreateItem && isAssistantDisplayMode ? (
+              <ResourceList.HeaderItem
+                type="button"
+                aria-label={headerCreateLabel}
+                disabled={!onAddAssistant}
+                icon={<Plus />}
+                label={headerCreateLabel}
+                onClick={handleHeaderCreate}
+                actions={
+                  <TopicListOptionsMenu
+                    historyRecordsActive={historyRecordsActive}
+                    manageAssistantsActive={manageAssistantsActive}
+                    mode={displayMode}
+                    onChange={handleTopicDisplayModeChange}
+                    onManageAssistants={onManageAssistants}
+                    onOpenHistoryRecords={onOpenHistoryRecords}
+                    sectionIds={topicAssistantSectionIds}
+                  />
+                }
+              />
+            ) : showHeaderCreateItem ? (
+              <ResourceList.HeaderItem
+                data-ui="chat.topic-list.action.create"
+                type="button"
+                command="topic.create"
+                aria-label={headerCreateLabel}
+                icon={<NewConversationIcon />}
+                label={headerCreateLabel}
+                onClick={handleHeaderCreate}
+                actions={
+                  <TopicListOptionsMenu
+                    historyRecordsActive={historyRecordsActive}
+                    manageAssistantsActive={manageAssistantsActive}
+                    mode={displayMode}
+                    onChange={handleTopicDisplayModeChange}
+                    onManageAssistants={onManageAssistants}
+                    onOpenHistoryRecords={onOpenHistoryRecords}
+                  />
+                }
+              />
+            ) : (
+              <TopicListOptionsMenu
+                historyRecordsActive={historyRecordsActive}
+                manageAssistantsActive={manageAssistantsActive}
+                mode={displayMode}
+                onChange={handleTopicDisplayModeChange}
+                onManageAssistants={onManageAssistants}
+                onOpenHistoryRecords={onOpenHistoryRecords}
+                sectionIds={isAssistantDisplayMode ? topicAssistantSectionIds : undefined}
+              />
+            )}
+          </ResourceList.Header>
+        )}
 
         {refreshError && <ResourceRefreshErrorBanner onRetry={refetchTopics} retrying={isRefreshing} />}
 

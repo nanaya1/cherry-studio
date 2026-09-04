@@ -1,7 +1,7 @@
-export type { AgentFileNavigationRequest, AgentToolFlowOpenInput } from './AgentRightPane'
+export type { AgentToolFlowOpenInput } from './AgentRightPane'
 export {
   AgentRightPane,
   AgentTaskProgressCapsule,
-  useAgentRightPaneActions,
-  useOptionalAgentFileNavigation
+  useAgentRightPaneActions
 } from './AgentRightPane'
+export type { AgentFileNavigationRequest } from '@renderer/components/chat/panes/AgentFileNavigationContext'

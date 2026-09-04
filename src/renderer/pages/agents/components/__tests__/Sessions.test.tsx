@@ -269,7 +269,7 @@ const fileNavigationMocks = vi.hoisted(() => ({
   request: null as null | ((transition: () => void) => void)
 }))
 
-vi.mock('../AgentRightPane', () => ({
+vi.mock('@renderer/components/chat/panes/AgentFileNavigationContext', () => ({
   useOptionalAgentFileNavigation: () => fileNavigationMocks.request
 }))
 
@@ -403,7 +403,7 @@ vi.mock('@renderer/data/hooks/usePreference', () => ({
   ]
 }))
 
-vi.mock('@renderer/pages/agents/messages/AgentSessionImageCaptureHost', () => {
+vi.mock('@renderer/components/chat/messages/AgentSessionImageCaptureHost', () => {
   const React = require('react')
   return {
     default: (props: { modelFallback?: unknown; session: AgentSessionEntity }) => {
@@ -650,13 +650,12 @@ vi.mock('react-i18next', () => ({
   })
 }))
 
+import Sessions from '@renderer/components/chat/resourceList/Sessions'
 import {
   SESSION_AGENT_SECTION_ID,
   SESSION_PINNED_SECTION_ID,
   SESSION_WORKDIR_SECTION_ID
 } from '@renderer/utils/chat/sessionListHelpers'
-
-import Sessions from '../Sessions'
 
 const CURRENT_SESSION_ISO = new Date().toISOString()
 // Time groups only label themselves when the list spans more than one bucket, so fixtures that
@@ -840,6 +839,14 @@ function groupChevron(groupHeaderButton: HTMLElement): HTMLElement {
 }
 
 describe('Sessions', () => {
+  it('can reuse the task list without its page toolbar', () => {
+    render(<SessionsForTest className="bg-transparent" showHeader={false} />)
+
+    expect(screen.getByText('Alpha session')).toBeInTheDocument()
+    expect(screen.getByTestId('resource-list-session')).toHaveClass('bg-transparent')
+    expect(screen.queryByRole('button', { name: 'New task' })).not.toBeInTheDocument()
+  })
+
   beforeEach(() => {
     preferenceMocks.values.clear()
     cacheMocks.values.clear()

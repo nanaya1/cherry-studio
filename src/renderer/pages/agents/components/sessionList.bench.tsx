@@ -1,7 +1,6 @@
+import { reconcileSessionListItems } from '@renderer/components/chat/resourceList/sessionListItemSharing'
 import type { AgentSessionEntity } from '@shared/data/api/schemas/agentSessions'
 import { bench, describe } from 'vitest'
-
-import { reconcileSessionListItems } from './sessionListItemSharing'
 
 function createSessions(count: number, renamedId?: string): AgentSessionEntity[] {
   return Array.from({ length: count }, (_, index) => {

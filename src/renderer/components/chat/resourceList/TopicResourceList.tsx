@@ -7,11 +7,13 @@ type TopicResourceListProps<T extends ResourceListItemBase> = Omit<
   'variant'
 > & {
   children: ReactNode
+  className?: string
   presentation: ResourceListPresentation
 }
 
 export function TopicResourceList<T extends ResourceListItemBase>({
   children,
+  className,
   presentation,
   ...props
 }: TopicResourceListProps<T>) {
@@ -20,7 +22,11 @@ export function TopicResourceList<T extends ResourceListItemBase>({
 
   return (
     <Provider {...props} variant="topic">
-      <Frame data-ui="chat.topic-list" data-testid="resource-list-topic" presentation={presentation}>
+      <Frame
+        className={className}
+        data-ui="chat.topic-list"
+        data-testid="resource-list-topic"
+        presentation={presentation}>
         {children}
       </Frame>
     </Provider>

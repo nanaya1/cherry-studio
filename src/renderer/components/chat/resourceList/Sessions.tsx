@@ -1,6 +1,7 @@
 import { Button, Tooltip } from '@cherrystudio/ui'
 import { loggerService } from '@logger'
 import { actionsToCommandMenuExtraItems } from '@renderer/components/chat/actions/actionMenuItems'
+import { useOptionalAgentFileNavigation } from '@renderer/components/chat/panes/AgentFileNavigationContext'
 import {
   remapResourceListCollapsedGroupIds,
   renderAgentEntityIcon,
@@ -45,6 +46,7 @@ import { ipcApi } from '@renderer/ipc'
 import type { AgentSessionExportOptions } from '@renderer/services/agentSessionExport'
 import { popup } from '@renderer/services/popup'
 import { toast } from '@renderer/services/toast'
+import type { CreateAgentSessionDefaults } from '@renderer/types/agent'
 import { getAgentModelFallbackSnapshot } from '@renderer/utils/agent'
 import { buildAgentFileWorkspaceKey, buildAgentSessionTopicId } from '@renderer/utils/agentSession'
 import { fetchMessagesSummary } from '@renderer/utils/aiGeneration'
@@ -98,9 +100,7 @@ import {
   requestAgentSessionImageAction
 } from '../messages/agentSessionImageActionBus'
 const AgentSessionImageCaptureHost = lazy(() => import('../messages/AgentSessionImageCaptureHost'))
-import type { CreateAgentSessionDefaults } from '../types'
 import { type AgentGroupActionContext, executeAgentGroupAction, resolveAgentGroupActions } from './agentGroupActions'
-import { useOptionalAgentFileNavigation } from './AgentRightPane'
 import SessionItem, { type SessionItemMenuActions } from './SessionItem'
 import { EMPTY_SESSION_LIST_ITEM_RECONCILIATION, reconcileSessionListItems } from './sessionListItemSharing'
 import {
@@ -112,6 +112,7 @@ import {
 type SessionsBaseProps = {
   agentSessionsSource: AgentSessionsSource
   agentIdFilter?: string | null
+  className?: string
   dataEnabled?: boolean
   historyRecordsActive?: boolean
   manageAgentsActive?: boolean
@@ -127,6 +128,7 @@ type SessionsBaseProps = {
   panePosition?: TopicTabPosition
   presentation?: ResourceListPresentation
   revealRequest?: ResourceListRevealRequest
+  showHeader?: boolean
 }
 
 type ControlledSessionsProps = SessionsBaseProps & {
@@ -334,6 +336,7 @@ const Sessions = ({
   agentSessionsSource,
   activeSessionId,
   agentIdFilter,
+  className,
   dataEnabled = true,
   historyRecordsActive,
   manageAgentsActive = false,
@@ -347,6 +350,7 @@ const Sessions = ({
   panePosition,
   presentation = 'left-panel',
   revealRequest,
+  showHeader = true,
   setActiveSessionId: setControlledActiveSessionId
 }: SessionsProps) => {
   const { t } = useTranslation()
@@ -1970,6 +1974,7 @@ const Sessions = ({
   return (
     <SessionResourceList<SessionListItem>
       key={isRightPanel ? `session-resource-panel:${agentIdFilter ?? 'blank'}` : 'session-resource-left-panel'}
+      className={className}
       presentation={presentation}
       items={visibleGroupedSessions}
       status={listStatus}
@@ -2006,43 +2011,45 @@ const Sessions = ({
       onGroupHeaderSelectItem={handleSelectSession}
       onReorder={handleSessionReorder}
       onCollapsedStateChange={handleSessionCollapsedStateChange}>
-      <ResourceList.Header>
-        {isRightPanel ? (
-          <ResourceList.Search
-            aria-label={t('agent.session.search.title')}
-            placeholder={t('agent.session.search.placeholder')}
-          />
-        ) : (
-          <>
-            <ResourceList.HeaderItem
-              type="button"
-              command={displayMode === 'agent' ? undefined : 'topic.create'}
-              aria-label={headerCreateLabel}
-              disabled={headerCreateDisabled}
-              icon={displayMode === 'agent' ? <Plus /> : <NewConversationIcon />}
-              label={headerCreateLabel}
-              onClick={handleHeaderCreate}
-              actions={
-                <SessionListOptionsMenu
-                  historyRecordsActive={historyRecordsActive}
-                  manageAgentsActive={manageAgentsActive}
-                  mode={displayMode}
-                  onChange={(nextMode) => void setSessionDisplayMode(nextMode)}
-                  onManageAgents={onManageAgents}
-                  onOpenHistoryRecords={onOpenHistoryRecords}
-                  sectionIds={
-                    displayMode === 'agent'
-                      ? [SESSION_AGENT_SECTION_ID]
-                      : displayMode === 'workdir'
-                        ? [SESSION_WORKDIR_SECTION_ID]
-                        : undefined
-                  }
-                />
-              }
+      {showHeader && (
+        <ResourceList.Header>
+          {isRightPanel ? (
+            <ResourceList.Search
+              aria-label={t('agent.session.search.title')}
+              placeholder={t('agent.session.search.placeholder')}
             />
-          </>
-        )}
-      </ResourceList.Header>
+          ) : (
+            <>
+              <ResourceList.HeaderItem
+                type="button"
+                command={displayMode === 'agent' ? undefined : 'topic.create'}
+                aria-label={headerCreateLabel}
+                disabled={headerCreateDisabled}
+                icon={displayMode === 'agent' ? <Plus /> : <NewConversationIcon />}
+                label={headerCreateLabel}
+                onClick={handleHeaderCreate}
+                actions={
+                  <SessionListOptionsMenu
+                    historyRecordsActive={historyRecordsActive}
+                    manageAgentsActive={manageAgentsActive}
+                    mode={displayMode}
+                    onChange={(nextMode) => void setSessionDisplayMode(nextMode)}
+                    onManageAgents={onManageAgents}
+                    onOpenHistoryRecords={onOpenHistoryRecords}
+                    sectionIds={
+                      displayMode === 'agent'
+                        ? [SESSION_AGENT_SECTION_ID]
+                        : displayMode === 'workdir'
+                          ? [SESSION_WORKDIR_SECTION_ID]
+                          : undefined
+                    }
+                  />
+                }
+              />
+            </>
+          )}
+        </ResourceList.Header>
+      )}
       {refreshError && <ResourceRefreshErrorBanner onRetry={handleRetry} retrying={listValidating} />}
       <SessionListBody
         activeSessionId={activeSessionId}

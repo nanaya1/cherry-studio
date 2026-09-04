@@ -293,7 +293,7 @@ vi.mock('@renderer/utils/agentSession', () => ({
   buildAgentSessionTopicId: (sessionId: string) => `agent-session:${sessionId}`
 }))
 
-vi.mock('../messages/agentMessageListAdapter', () => ({
+vi.mock('@renderer/components/chat/messages/agentMessageListAdapter', () => ({
   locateAgentMessageInList: (...args: unknown[]) => agentSessionPartsMocks.locateAgentMessageInList(...args)
 }))
 

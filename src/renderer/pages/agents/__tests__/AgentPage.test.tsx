@@ -651,7 +651,7 @@ vi.mock('../components/AgentCreateDialog', () => ({
     ) : null
 }))
 
-vi.mock('../components/Sessions', () => ({
+vi.mock('@renderer/components/chat/resourceList/Sessions', () => ({
   default: ({
     agentSessionsSource,
     agentIdFilter,

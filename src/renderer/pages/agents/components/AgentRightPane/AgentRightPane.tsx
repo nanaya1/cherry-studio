@@ -9,8 +9,13 @@ import {
 } from '@cherrystudio/ui'
 import { loggerService } from '@logger'
 import { AgentContextUsageSummary } from '@renderer/components/chat/agent/AgentContextUsageSummary'
+import { useAgentMessageListProviderValue } from '@renderer/components/chat/messages/agentMessageListAdapter'
 import MessageList from '@renderer/components/chat/messages/MessageList'
 import { MessageListProvider } from '@renderer/components/chat/messages/MessageListProvider'
+import {
+  AgentFileNavigationProvider,
+  type AgentFileNavigationRequest
+} from '@renderer/components/chat/panes/AgentFileNavigationContext'
 import {
   type ArtifactPaneFileSelection,
   ArtifactPaneView,
@@ -95,7 +100,6 @@ import {
 } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { useAgentMessageListProviderValue } from '../../messages/agentMessageListAdapter'
 import {
   type AgentArtifactFile,
   type AgentRightPaneStatus,
@@ -197,7 +201,6 @@ interface AgentRightPaneFileState {
 }
 
 type AgentFileEditorMode = 'preview' | 'edit'
-export type AgentFileNavigationRequest = (transition: () => void) => void
 
 interface AgentRightPaneActions {
   canOpenAgentToolFlow: boolean
@@ -243,7 +246,6 @@ const AgentRightPaneMetaContext = createContext<AgentRightPaneMeta | null>(null)
 const AgentRightPaneRuntimeContext = createContext<AgentRightPaneRuntime | null>(null)
 const AgentRightPaneFileStateContext = createContext<AgentRightPaneFileState | null>(null)
 const AgentRightPaneActionsContext = createContext<AgentRightPaneActions | null>(null)
-const AgentFileNavigationContext = createContext<AgentFileNavigationRequest | null>(null)
 
 function useAgentRightPaneMeta(): AgentRightPaneMeta {
   const value = use(AgentRightPaneMetaContext)
@@ -267,10 +269,6 @@ export function useAgentRightPaneActions(): AgentRightPaneActions {
   const value = use(AgentRightPaneActionsContext)
   if (!value) throw new Error('useAgentRightPaneActions must be used within <AgentRightPane.Scope>')
   return value
-}
-
-export function useOptionalAgentFileNavigation(): AgentFileNavigationRequest | null {
-  return use(AgentFileNavigationContext)
 }
 
 interface AgentRightPaneActionsProviderProps {
@@ -602,7 +600,7 @@ function AgentRightPaneStateProvider({
   )
 
   return (
-    <AgentFileNavigationContext value={requestFileTransition}>
+    <AgentFileNavigationProvider value={requestFileTransition}>
       <AgentRightPaneMetaContext value={meta}>
         <AgentRightPaneFileStateContext value={fileState}>
           <AgentRightPaneRuntimeContext value={runtime}>
@@ -644,7 +642,7 @@ function AgentRightPaneStateProvider({
           </AgentRightPaneRuntimeContext>
         </AgentRightPaneFileStateContext>
       </AgentRightPaneMetaContext>
-    </AgentFileNavigationContext>
+    </AgentFileNavigationProvider>
   )
 }
 

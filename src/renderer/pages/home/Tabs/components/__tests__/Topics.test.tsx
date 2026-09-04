@@ -160,7 +160,7 @@ vi.mock('@renderer/components/resourceCatalog/dialogs/edit', () => ({
   }
 }))
 
-vi.mock('@renderer/pages/home/messages/TopicImageCaptureHost', () => ({
+vi.mock('@renderer/components/chat/messages/TopicImageCaptureHost', () => ({
   __esModule: true,
   default: ({ topic }: { topic: { id: string } }) => (
     <div data-testid="topic-image-capture-host" data-topic-id={topic.id} />
@@ -449,7 +449,14 @@ vi.mock('react-i18next', () => ({
 
 import { cacheService } from '@data/CacheService'
 import { dataApiService } from '@data/DataApiService'
+import {
+  clearPendingTopicImageActionsForTest,
+  consumePendingTopicImageActions,
+  requestTopicImageAction,
+  settleTopicImageActionRequest
+} from '@renderer/components/chat/messages/topicImageActionBus'
 import type { ResourceListRevealRequest } from '@renderer/components/chat/resourceList/base'
+import { Topics } from '@renderer/components/chat/resourceList/Topics'
 import { getChatDraftCacheKey, writeChatDraftCache } from '@renderer/components/composer/variants/chat/chatDraftCache'
 import type * as TopicDataApiModule from '@renderer/hooks/useTopic'
 import type { Topic } from '@renderer/types/topic'
@@ -463,14 +470,6 @@ import type { Pin } from '@shared/data/types/pin'
 import type { Topic as ApiTopic } from '@shared/data/types/topic'
 import { mockUseInfiniteQuery, mockUseMutation, mockUseQuery } from '@test-mocks/renderer/useDataApi'
 import { MockUsePreference, MockUsePreferenceUtils } from '@test-mocks/renderer/usePreference'
-
-import {
-  clearPendingTopicImageActionsForTest,
-  consumePendingTopicImageActions,
-  requestTopicImageAction,
-  settleTopicImageActionRequest
-} from '../../../messages/topicImageActionBus'
-import { Topics } from '../Topics'
 
 const TOPIC_EXPANSION_TIME_KEY = 'ui.topic.expansion.time'
 const TOPIC_EXPANSION_ASSISTANT_KEY = 'ui.topic.expansion.assistant'
@@ -660,7 +659,8 @@ function renderTopicList({
   onSetPanePosition,
   panePosition,
   presentation,
-  revealRequest
+  revealRequest,
+  showHeader
 }: {
   activeTopic?: Topic
   assistantTopicsSource?: AssistantTopicsSource
@@ -678,6 +678,7 @@ function renderTopicList({
   panePosition?: ComponentProps<typeof Topics>['panePosition']
   presentation?: ComponentProps<typeof Topics>['presentation']
   revealRequest?: ResourceListRevealRequest
+  showHeader?: ComponentProps<typeof Topics>['showHeader']
 } = {}) {
   const setActiveTopic = vi.fn()
   const renderNode = (
@@ -702,6 +703,7 @@ function renderTopicList({
       panePosition={panePosition}
       presentation={presentation}
       revealRequest={nextRevealRequest}
+      showHeader={showHeader}
     />
   )
   const view = render(renderNode(revealRequest, activeTopic, initiallyCollapsed))
@@ -794,6 +796,13 @@ function groupChevron(groupHeaderButton: HTMLElement): HTMLElement {
 }
 
 describe('Topics', () => {
+  it('can reuse the conversation list without its page toolbar', () => {
+    renderTopicList({ showHeader: false })
+
+    expect(screen.getByText('Alpha topic')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'New Conversation' })).not.toBeInTheDocument()
+  })
+
   beforeEach(() => {
     vi.clearAllMocks()
     clearPendingTopicImageActionsForTest()

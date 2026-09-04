@@ -519,7 +519,7 @@ vi.mock('../Tabs/HomeTabs', () => ({
   }
 }))
 
-vi.mock('../Tabs/components/Topics', () => ({
+vi.mock('@renderer/components/chat/resourceList/Topics', () => ({
   Topics: ({
     assistantIdFilter,
     assistantTopicsSource,

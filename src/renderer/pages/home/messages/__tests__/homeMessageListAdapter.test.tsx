@@ -249,18 +249,17 @@ vi.mock('react-i18next', () => ({
 
 import { dataApiService } from '@data/DataApiService'
 import { resolvePartFromParts } from '@renderer/components/chat/messages/blocks/MessagePartsContext'
+import { useHomeMessageListProviderValue } from '@renderer/components/chat/messages/homeMessageListAdapter'
+import {
+  clearPendingTopicImageActionsForTest,
+  consumePendingTopicImageActions,
+  requestTopicImageAction
+} from '@renderer/components/chat/messages/topicImageActionBus'
 import { toMessageListItem } from '@renderer/components/chat/messages/utils/messageListItem'
 import { toast } from '@renderer/services/toast'
 import type { Topic } from '@renderer/types/topic'
 import { updateCodeBlock } from '@renderer/utils/markdown'
 import { translateText } from '@renderer/utils/translate'
-
-import { useHomeMessageListProviderValue } from '../homeMessageListAdapter'
-import {
-  clearPendingTopicImageActionsForTest,
-  consumePendingTopicImageActions,
-  requestTopicImageAction
-} from '../topicImageActionBus'
 
 const createTopic = (id: string): Topic =>
   ({

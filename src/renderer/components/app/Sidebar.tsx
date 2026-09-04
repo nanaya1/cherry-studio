@@ -2,6 +2,7 @@ import { usePersistCache } from '@data/hooks/useCache'
 import { usePreference } from '@data/hooks/usePreference'
 import { arrayMove } from '@dnd-kit/sortable'
 import AppLogo from '@renderer/assets/images/logo.png'
+import Sessions from '@renderer/components/chat/resourceList/Sessions'
 import { Topics } from '@renderer/components/chat/resourceList/Topics'
 import { useAgents } from '@renderer/hooks/agent/useAgent'
 import { useAgentSessionsSource, useAssistantTopicsSource } from '@renderer/hooks/resourceViewSources'
@@ -24,7 +25,7 @@ import {
   tabBelongsToApp
 } from '@renderer/utils/sidebar'
 import { APP_NAME } from '@shared/utils/constants'
-import { Bot, CalendarClock, Plus, Puzzle, Shapes } from 'lucide-react'
+import { CalendarClock, Plus, Puzzle, Shapes } from 'lucide-react'
 import type { Ref } from 'react'
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -61,7 +62,7 @@ export default function Sidebar({ ref }: { ref?: Ref<HTMLDivElement | null> }) {
   const { activeTab, tabs, updateTab, openTab, setActiveTab } = useTabs()
   const assistantTopicsSource = useAssistantTopicsSource()
   const { rendererTopics } = assistantTopicsSource
-  const { sessions } = useAgentSessionsSource()
+  const agentSessionsSource = useAgentSessionsSource()
   const { openConversationTab: openAssistantConversationTab } = useConversationNavigation('assistants')
   const { openConversationTab: openAgentConversationTab } = useConversationNavigation('agents')
   const { miniApps, pinned } = useMiniApps({ enabled: miniAppFavoriteIds.length > 0 })
@@ -131,6 +132,7 @@ export default function Sidebar({ ref }: { ref?: Ref<HTMLDivElement | null> }) {
   const pathname = activeTab?.url || '/'
   const activeTopicId = getSidebarApp('assistants')?.conversationRoute?.keyFromUrl(pathname)
   const activeTopic = rendererTopics.find((topic) => topic.id === activeTopicId)
+  const activeSessionId = getSidebarApp('agents')?.conversationRoute?.keyFromUrl(pathname) ?? null
   const activeMiniAppId = miniAppIdFromTabUrl(activeTab?.url) ?? undefined
   const openableMiniAppById = useMemo(() => {
     const appById = new Map<string, (typeof miniApps)[number]>()
@@ -354,7 +356,7 @@ export default function Sidebar({ ref }: { ref?: Ref<HTMLDivElement | null> }) {
         label: t('workspace.history.conversations'),
         collapsible: true,
         content: (
-          <div className="flex h-80 min-h-0 flex-col overflow-hidden [-webkit-app-region:no-drag]">
+          <div className="flex min-h-0 flex-col overflow-hidden [-webkit-app-region:no-drag]">
             <Topics
               activeTopic={activeTopic}
               assistantTopicsSource={assistantTopicsSource}
@@ -372,24 +374,33 @@ export default function Sidebar({ ref }: { ref?: Ref<HTMLDivElement | null> }) {
         id: 'agent-tasks',
         label: t('workspace.history.agentTasks'),
         collapsible: true,
-        entries: sessions.map((session) => ({
-          key: `session:${session.id}`,
-          label: session.name || t('agent.session.new'),
-          presentation: 'history' as const,
-          renderIcon: (size: number) => <Bot size={size} />,
-          isActive: () => getSidebarApp('agents')?.conversationRoute?.keyFromUrl(pathname) === session.id,
-          onOpen: () => openAgentConversationTab(session.id, session.name || t('agent.session.new'))
-        }))
+        content: (
+          <div className="flex min-h-0 flex-col overflow-hidden [-webkit-app-region:no-drag]">
+            <Sessions
+              activeSessionId={activeSessionId}
+              agentSessionsSource={agentSessionsSource}
+              className="bg-transparent"
+              setActiveSessionId={(sessionId, session) => {
+                if (sessionId) {
+                  openAgentConversationTab(sessionId, session?.name || t('agent.session.new'))
+                } else {
+                  handleNavigate('agents')
+                }
+              }}
+              showHeader={false}
+            />
+          </div>
+        )
       }
     ],
     [
       activeTopic,
       assistantTopicsSource,
       handleNavigate,
+      activeSessionId,
+      agentSessionsSource,
       openAgentConversationTab,
       openAssistantConversationTab,
-      pathname,
-      sessions,
       t
     ]
   )

@@ -1,12 +1,11 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-
 import {
   clearPendingAgentSessionImageActionsForTest,
   consumePendingAgentSessionImageActions,
   rejectPendingAgentSessionImageActions,
   requestAgentSessionImageAction,
   settleAgentSessionImageActionRequest
-} from '../agentSessionImageActionBus'
+} from '@renderer/components/chat/messages/agentSessionImageActionBus'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const session = { id: 'session-a', name: 'Session A' }
 
