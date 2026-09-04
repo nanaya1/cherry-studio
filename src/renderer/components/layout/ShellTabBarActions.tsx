@@ -10,7 +10,6 @@ import { CircleArrowUp, Search, Settings } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { WindowControls } from '../WindowControls'
-import { HelpMenu } from './HelpMenu'
 
 const logger = loggerService.withContext('ShellTabBarActions')
 
@@ -91,9 +90,7 @@ export function ShellTabBarActions() {
 
 export function SidebarShellActions({
   layout,
-  onFeedbackClick,
-  onSettingsClick,
-  onOverlayOpenChange
+  onSettingsClick
 }: {
   layout: SidebarVisibleLayout
   onFeedbackClick: () => void
@@ -104,22 +101,18 @@ export function SidebarShellActions({
 
   if (layout === 'icon') {
     return (
-      <>
-        <HelpMenu layout={layout} onFeedbackClick={onFeedbackClick} onOverlayOpenChange={onOverlayOpenChange} />
-        <CommandTooltip command="app.settings.open" label={t('settings.title')} placement="right" delay={800}>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            aria-label={t('settings.title')}
-            onClick={onSettingsClick}
-            className="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground dark:text-muted-foreground">
-            <Settings size={18} strokeWidth={1.6} />
-          </Button>
-        </CommandTooltip>
-      </>
+      <CommandTooltip command="app.settings.open" label={t('settings.title')} placement="right" delay={800}>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          aria-label={t('settings.title')}
+          onClick={onSettingsClick}
+          className="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground dark:text-muted-foreground">
+          <Settings size={18} strokeWidth={1.6} />
+        </Button>
+      </CommandTooltip>
     )
   }
-
-  return <HelpMenu layout={layout} onFeedbackClick={onFeedbackClick} onOverlayOpenChange={onOverlayOpenChange} />
+  return null
 }

@@ -1,5 +1,4 @@
 import { useCache } from '@data/hooks/useCache'
-import { QuickPanelProvider } from '@renderer/components/QuickPanel'
 import { type FC, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -165,26 +164,24 @@ const PaintingPage: FC = () => {
                 )}
                 <div className={paintingClasses.promptDock}>
                   <div className="mx-auto w-full max-w-5xl">
-                    <QuickPanelProvider>
-                      <PaintingComposer
-                        painting={composerPainting}
-                        generating={generating}
-                        submitting={submitting}
-                        onPromptChange={(prompt) => patchPainting({ prompt } as Partial<PaintingData>)}
-                        onGenerate={submit}
-                        onCancel={onCancel}
-                        onModelSelect={switchModel}
-                        onConfigChange={patchPainting}
-                        onGenerateRandomSeed={(key) =>
-                          patchPainting({
-                            params: {
-                              ...currentPainting.params,
-                              [key]: String(Math.floor(Math.random() * 1_000_000))
-                            }
-                          })
-                        }
-                      />
-                    </QuickPanelProvider>
+                    <PaintingComposer
+                      painting={composerPainting}
+                      generating={generating}
+                      submitting={submitting}
+                      onPromptChange={(prompt) => patchPainting({ prompt } as Partial<PaintingData>)}
+                      onGenerate={submit}
+                      onCancel={onCancel}
+                      onModelSelect={switchModel}
+                      onConfigChange={patchPainting}
+                      onGenerateRandomSeed={(key) =>
+                        patchPainting({
+                          params: {
+                            ...currentPainting.params,
+                            [key]: String(Math.floor(Math.random() * 1_000_000))
+                          }
+                        })
+                      }
+                    />
                   </div>
                 </div>
               </div>

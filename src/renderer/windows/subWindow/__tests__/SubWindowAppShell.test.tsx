@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest'
 
+import type { useQuickPanel as UseQuickPanel } from '@renderer/components/QuickPanel'
 import type { SubWindowInitData } from '@shared/types/subWindow'
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
@@ -81,9 +82,17 @@ async function renderSubWindowAppShell({
       <header data-testid="sub-window-title-bar" data-fullscreen={String(isFullscreen)} />
     )
   }))
-  vi.doMock('@renderer/components/layout/TabRouter', () => ({
-    TabRouter: () => <section data-testid="tab-router" />
-  }))
+  vi.doMock('@renderer/components/layout/TabRouter', async () => {
+    const { useQuickPanel } = await vi.importActual<{ useQuickPanel: typeof UseQuickPanel }>(
+      '@renderer/components/QuickPanel'
+    )
+    return {
+      TabRouter: function TabRouter() {
+        useQuickPanel()
+        return <section data-testid="tab-router" />
+      }
+    }
+  })
   vi.doMock('@renderer/components/MiniApp/MiniAppTabsPool', () => ({
     default: () => <div data-testid="mini-app-pool" />
   }))

@@ -1,4 +1,5 @@
 import { useCache } from '@data/hooks/useCache'
+import { QuickPanelProvider } from '@renderer/components/QuickPanel'
 import { useCommandHandler } from '@renderer/hooks/command'
 import { useTabs } from '@renderer/hooks/tab'
 import useMacTransparentWindow from '@renderer/hooks/useMacTransparentWindow'
@@ -230,46 +231,50 @@ export const AppShell = () => {
   if (!isMac) {
     return (
       <ResourceViewSourceProvider>
-        <div
-          className={cn(
-            'flex h-screen w-screen flex-row overflow-hidden text-foreground',
-            isMacTransparentWindow ? 'bg-transparent' : 'bg-sidebar'
-          )}>
-          {!isSettingsTabActive && <Sidebar />}
-          {contentColumn}
-        </div>
+        <QuickPanelProvider>
+          <div
+            className={cn(
+              'flex h-screen w-screen flex-row overflow-hidden text-foreground',
+              isMacTransparentWindow ? 'bg-transparent' : 'bg-sidebar'
+            )}>
+            {!isSettingsTabActive && <Sidebar />}
+            {contentColumn}
+          </div>
+        </QuickPanelProvider>
       </ResourceViewSourceProvider>
     )
   }
 
   return (
     <ResourceViewSourceProvider>
-      <div
-        className={cn(
-          'relative flex h-screen w-screen flex-row overflow-hidden text-foreground',
-          isMacTransparentWindow ? 'bg-transparent' : 'bg-sidebar'
-        )}>
-        {!isFullscreen && (
-          <div
-            aria-hidden="true"
-            data-testid="macos-traffic-light-drag-region"
-            className="pointer-events-none absolute top-0 left-0 h-11 w-[env(titlebar-area-x)] [-webkit-app-region:drag]"
-          />
-        )}
-        {!isSettingsTabActive && (
-          <div className="flex h-full min-h-0 shrink-0 flex-col [&>#app-sidebar]:min-h-0 [&>#app-sidebar]:flex-1">
-            {!isFullscreen && (
-              <div
-                aria-hidden="true"
-                data-testid="macos-traffic-light-spacer"
-                className="h-11 shrink-0 [-webkit-app-region:drag]"
-              />
-            )}
-            <Sidebar />
-          </div>
-        )}
-        {contentColumn}
-      </div>
+      <QuickPanelProvider>
+        <div
+          className={cn(
+            'relative flex h-screen w-screen flex-row overflow-hidden text-foreground',
+            isMacTransparentWindow ? 'bg-transparent' : 'bg-sidebar'
+          )}>
+          {!isFullscreen && (
+            <div
+              aria-hidden="true"
+              data-testid="macos-traffic-light-drag-region"
+              className="pointer-events-none absolute top-0 left-0 h-11 w-[env(titlebar-area-x)] [-webkit-app-region:drag]"
+            />
+          )}
+          {!isSettingsTabActive && (
+            <div className="flex h-full min-h-0 shrink-0 flex-col [&>#app-sidebar]:min-h-0 [&>#app-sidebar]:flex-1">
+              {!isFullscreen && (
+                <div
+                  aria-hidden="true"
+                  data-testid="macos-traffic-light-spacer"
+                  className="h-11 shrink-0 [-webkit-app-region:drag]"
+                />
+              )}
+              <Sidebar />
+            </div>
+          )}
+          {contentColumn}
+        </div>
+      </QuickPanelProvider>
     </ResourceViewSourceProvider>
   )
 }

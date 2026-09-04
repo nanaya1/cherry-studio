@@ -27,10 +27,6 @@ vi.mock('@data/hooks/useCache', () => ({
   useCache: () => [undefined]
 }))
 
-vi.mock('@renderer/components/QuickPanel', () => ({
-  QuickPanelProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>
-}))
-
 vi.mock('../hooks/usePaintingTemplateCatalog', () => ({
   usePaintingTemplateCatalog: () => ({
     templates: mocks.templates

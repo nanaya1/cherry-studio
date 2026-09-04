@@ -22,10 +22,6 @@ const shellProps = vi.hoisted(() => ({
   } | null
 }))
 
-vi.mock('@renderer/components/QuickPanel', () => ({
-  QuickPanelProvider: ({ children }: { children: ReactNode }) => <div data-testid="quick-panel">{children}</div>
-}))
-
 vi.mock('@cherrystudio/ui', async (importOriginal) => ({
   ...(await importOriginal()),
   Button: ({ children, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { children: ReactNode }) => (
@@ -84,7 +80,6 @@ describe('ConversationShell', () => {
       />
     )
 
-    expect(screen.getByTestId('quick-panel')).toContainElement(screen.getByTestId('chat-app-shell'))
     expect(screen.getByTestId('chat-app-shell')).toContainElement(screen.getByTestId('center'))
     expect(screen.getByTestId('chat-app-shell')).toContainElement(screen.getByTestId('center-overlay'))
     expect(screen.getByTestId('right-pane')).toBeInTheDocument()

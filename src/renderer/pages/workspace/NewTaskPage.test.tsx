@@ -20,8 +20,7 @@ const mocks = vi.hoisted(() => ({
   lastUsedAssistantId: 'assistant-2' as string | null,
   setLastUsedAssistantId: vi.fn(),
   chatProps: undefined as Record<string, unknown> | undefined,
-  agentProps: undefined as Record<string, unknown> | undefined,
-  missingAgentProps: undefined as Record<string, unknown> | undefined
+  agentProps: undefined as Record<string, unknown> | undefined
 }))
 
 vi.mock('@cherrystudio/ui', async () => {
@@ -57,14 +56,14 @@ vi.mock('@renderer/components/composer/variants/AgentComposer', async () => {
   return {
     AgentHomeComposer: (props: Record<string, unknown>) => {
       mocks.agentProps = props
-      return React.createElement('div', { 'aria-label': 'agent-composer' })
-    },
-    MissingAgentHomeComposer: (props: Record<string, unknown>) => {
-      mocks.missingAgentProps = props
       return React.createElement(
-        'button',
-        { onClick: () => (props.onAgentChange as (id: string) => void)('agent-1') },
-        'Select agent'
+        'div',
+        { 'aria-label': 'agent-composer' },
+        React.createElement(
+          'button',
+          { onClick: () => (props.onAgentChange as (id: string) => void)('agent-1') },
+          'Select agent'
+        )
       )
     }
   }
@@ -163,7 +162,7 @@ const getAgentOnWorkspaceChange = () => mocks.agentProps?.onWorkspaceChange as (
 
 async function selectAgent() {
   await userEvent.click(screen.getByRole('button', { name: 'Select agent' }))
-  expect(screen.getByLabelText('agent-composer')).toBeInTheDocument()
+  expect(mocks.agentProps?.agentId).toBe('agent-1')
 }
 
 beforeEach(() => {
@@ -185,7 +184,6 @@ afterEach(() => {
   vi.clearAllMocks()
   mocks.chatProps = undefined
   mocks.agentProps = undefined
-  mocks.missingAgentProps = undefined
 })
 
 describe('NewTaskPage', () => {
@@ -195,15 +193,20 @@ describe('NewTaskPage', () => {
     expect(mocks.chatProps?.assistantId).toBe('assistant-2')
   })
 
-  it('keeps chat and agent drafts in separate tab-scoped composers', async () => {
+  it('keeps the same agent composer visible before and after selecting an agent', async () => {
     render(<NewTaskPage />)
 
+    const composer = screen.getByLabelText('agent-composer')
     expect(mocks.chatProps?.scopeKey).toBe('new-task:tab-1:chat')
-    expect(mocks.missingAgentProps?.draftScopeKey).toBe('new-task:tab-1:agent')
+    expect(mocks.agentProps?.draftScopeKey).toBe('new-task:tab-1:agent')
+    expect(mocks.agentProps?.agentId).toBe('')
+    expect(mocks.agentProps?.sendDisabled).toBe(true)
 
     await selectAgent()
 
+    expect(screen.getByLabelText('agent-composer')).toBe(composer)
     expect(mocks.agentProps?.draftScopeKey).toBe('new-task:tab-1:agent')
+    expect(mocks.agentProps?.sendDisabled).toBe(false)
     expect(screen.getByLabelText('chat-composer')).toBeInTheDocument()
   })
 
@@ -345,24 +348,30 @@ describe('NewTaskPage', () => {
     expect(mocks.streamOpen).toHaveBeenCalledTimes(1)
   })
 
-  it('abandons a pending chat send when the assistant changes', async () => {
-    let resolveCreation: ((value: { topic: { id: string } }) => void) | undefined
-    mocks.reuseOrCreateTopic.mockReturnValueOnce(
-      new Promise((resolve) => {
-        resolveCreation = resolve
+  it('ignores assistant changes after chat acknowledgement while seed synchronization is pending', async () => {
+    let resolveSeed: (() => void) | undefined
+    mocks.seedChatMessages.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        resolveSeed = resolve
       })
     )
     render(<NewTaskPage />)
 
     const send = getChatOnSend()('hello')
+    await waitFor(() => expect(mocks.seedChatMessages).toHaveBeenCalled())
     act(() => getChatOnAssistantChange()('assistant-1'))
-    await act(async () => resolveCreation?.({ topic: { id: 'stale-topic' } }))
 
-    await expect(send).resolves.toBe(false)
-    expect(mocks.streamOpen).not.toHaveBeenCalled()
-    expect(mocks.seedChatMessages).not.toHaveBeenCalled()
+    expect(mocks.chatProps?.assistantId).toBe('assistant-2')
+    expect(mocks.setLastUsedAssistantId).not.toHaveBeenCalled()
+
+    await act(async () => resolveSeed?.())
+    await expect(send).resolves.toBe(true)
     getChatOnDraftCleared()()
-    expect(mocks.navigate).not.toHaveBeenCalled()
+    expect(mocks.navigate).toHaveBeenCalledWith({
+      to: '/app/chat',
+      search: { topicId: 'topic-1' },
+      replace: true
+    })
   })
 
   it('abandons a pending chat send when the page unmounts', async () => {
@@ -423,30 +432,37 @@ describe('NewTaskPage', () => {
   it.each([
     ['agent', () => getAgentOnChange()('agent-2')],
     ['workspace', () => getAgentOnWorkspaceChange()('workspace-1')]
-  ])('abandons a pending agent send when the %s changes', async (_target, changeTarget) => {
-    let resolveCreation:
-      | ((value: { session: { id: string }; deletedDuplicateSessionIds: string[] }) => void)
-      | undefined
-    mocks.reuseOrCreateSession.mockReturnValueOnce(
-      new Promise((resolve) => {
-        resolveCreation = resolve
+  ])(
+    'ignores %s changes after agent acknowledgement while seed synchronization is pending',
+    async (_target, changeTarget) => {
+      let resolveSeed: (() => void) | undefined
+      mocks.seedAgentMessages.mockReturnValueOnce(
+        new Promise<void>((resolve) => {
+          resolveSeed = resolve
+        })
+      )
+      render(<NewTaskPage />)
+      await selectAgent()
+
+      const send = getAgentOnSend()(undefined, {
+        body: { userMessageParts: [{ type: 'text', text: 'hello' }] }
       })
-    )
-    render(<NewTaskPage />)
-    await selectAgent()
+      await waitFor(() => expect(mocks.seedAgentMessages).toHaveBeenCalled())
+      act(changeTarget)
 
-    const send = getAgentOnSend()(undefined, {
-      body: { userMessageParts: [{ type: 'text', text: 'hello' }] }
-    })
-    act(changeTarget)
-    await act(async () => resolveCreation?.({ session: { id: 'stale-session' }, deletedDuplicateSessionIds: [] }))
+      expect(mocks.agentProps?.agentId).toBe('agent-1')
+      expect(mocks.agentProps?.workspaceId).toBeNull()
 
-    await expect(send).resolves.toBe(false)
-    expect(mocks.streamOpen).not.toHaveBeenCalled()
-    expect(mocks.seedAgentMessages).not.toHaveBeenCalled()
-    getAgentOnDraftCleared()()
-    expect(mocks.navigate).not.toHaveBeenCalled()
-  })
+      await act(async () => resolveSeed?.())
+      await expect(send).resolves.toBe(true)
+      getAgentOnDraftCleared()()
+      expect(mocks.navigate).toHaveBeenCalledWith({
+        to: '/app/agents',
+        search: { sessionId: 'session-1' },
+        replace: true
+      })
+    }
+  )
 
   it('reuses the created agent session after an open failure', async () => {
     render(<NewTaskPage />)

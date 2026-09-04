@@ -1,11 +1,7 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@cherrystudio/ui'
 import { loggerService } from '@logger'
 import AppLogo from '@renderer/assets/images/logo.png'
-import {
-  type AgentComposerSendOptions,
-  AgentHomeComposer,
-  MissingAgentHomeComposer
-} from '@renderer/components/composer/variants/AgentComposer'
+import { type AgentComposerSendOptions, AgentHomeComposer } from '@renderer/components/composer/variants/AgentComposer'
 import { ChatPlacementComposer } from '@renderer/components/composer/variants/ChatComposer'
 import { usePersistCache } from '@renderer/data/hooks/useCache'
 import { useInvalidateCache, useQuery } from '@renderer/data/hooks/useDataApi'
@@ -185,15 +181,11 @@ export default function NewTaskPage() {
         pendingNavigationRef.current = { type: 'chat', id: topicId }
         try {
           const seed = await waitForChatSeed(topicId)
-          if (!isCurrent()) return false
           await seed(ack.reservedMessages ?? [], { preserveActiveNode: ack.preserveActiveNode })
-          if (!isCurrent()) return false
           await invalidateCache(['/topics', `/topics/${topicId}`])
         } catch (error) {
-          if (!isCurrent()) return false
           logger.error('Failed to synchronize started chat task', error as Error)
         }
-        if (!isCurrent()) return false
         return true
       } catch (error) {
         if (!isCurrent()) return false
@@ -247,15 +239,11 @@ export default function NewTaskPage() {
         pendingNavigationRef.current = { type: 'agent', id: session.id }
         try {
           const seed = await waitForAgentSeed(session.id)
-          if (!isCurrent()) return false
           await seed(ack.reservedMessages ?? [])
-          if (!isCurrent()) return false
           await invalidateCache(['/agent-sessions', `/agent-sessions/${session.id}`, '/agent-workspaces'])
         } catch (error) {
-          if (!isCurrent()) return false
           logger.error('Failed to synchronize started agent task', error as Error)
         }
-        if (!isCurrent()) return false
         return true
       } catch (error) {
         if (!isCurrent()) return false
@@ -279,8 +267,8 @@ export default function NewTaskPage() {
 
   const handleChatAssistantChange = useCallback(
     (nextAssistantId: string | null) => {
+      if (chatInFlightRef.current) return
       chatEpochRef.current += 1
-      chatInFlightRef.current = false
       chatPlaceholderRef.current = null
       pendingNavigationRef.current = null
       setChatAssistantId(nextAssistantId)
@@ -289,15 +277,15 @@ export default function NewTaskPage() {
     [setLastUsedAssistantId]
   )
   const handleAgentChange = useCallback((nextAgentId: string | null) => {
+    if (agentInFlightRef.current) return
     agentEpochRef.current += 1
-    agentInFlightRef.current = false
     agentPlaceholderRef.current = null
     pendingNavigationRef.current = null
     setAgentId(nextAgentId)
   }, [])
   const handleWorkspaceChange = useCallback((workspaceId: string | null) => {
+    if (agentInFlightRef.current) return
     agentEpochRef.current += 1
-    agentInFlightRef.current = false
     agentPlaceholderRef.current = null
     pendingNavigationRef.current = null
     setAgentWorkspaceId(workspaceId)
@@ -344,32 +332,24 @@ export default function NewTaskPage() {
               />
             </TabsContent>
             <TabsContent value="agent" forceMount className="data-[state=inactive]:hidden">
-              {agentId && agent ? (
-                <AgentHomeComposer
-                  agentId={agentId}
-                  sessionId={temporaryAgentSessionId}
-                  draftScopeKey={agentDraftScopeKey}
-                  sessionOverride={{ workspace: agentWorkspace, workspaceId: agentWorkspaceId }}
-                  resolvedAgent={agent}
-                  resolvedModel={agentModel}
-                  resolvedWorkspaceWarning={null}
-                  sendMessage={handleAgentSend}
-                  stop={async () => undefined}
-                  onAgentChange={handleAgentChange}
-                  agentChanging={agentLoading}
-                  workspaceId={agentWorkspaceId}
-                  onWorkspaceChange={handleWorkspaceChange}
-                  isStreaming={false}
-                  sendDisabled={agentModelLoading || !agentModel}
-                  onDraftCleared={handleDraftCleared}
-                />
-              ) : (
-                <MissingAgentHomeComposer
-                  draftScopeKey={agentDraftScopeKey}
-                  onAgentChange={handleAgentChange}
-                  agentChanging={agentLoading}
-                />
-              )}
+              <AgentHomeComposer
+                agentId={agentId ?? ''}
+                sessionId={temporaryAgentSessionId}
+                draftScopeKey={agentDraftScopeKey}
+                sessionOverride={{ workspace: agentWorkspace, workspaceId: agentWorkspaceId }}
+                resolvedAgent={agent}
+                resolvedModel={agentModel}
+                resolvedWorkspaceWarning={null}
+                sendMessage={handleAgentSend}
+                stop={async () => undefined}
+                onAgentChange={handleAgentChange}
+                agentChanging={agentLoading}
+                workspaceId={agentWorkspaceId}
+                onWorkspaceChange={handleWorkspaceChange}
+                isStreaming={false}
+                sendDisabled={!agentId || agentModelLoading || !agentModel}
+                onDraftCleared={handleDraftCleared}
+              />
             </TabsContent>
           </Tabs>
         </div>

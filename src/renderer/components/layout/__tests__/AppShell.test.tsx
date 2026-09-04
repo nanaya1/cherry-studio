@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest'
 
+import { useQuickPanel } from '@renderer/components/QuickPanel'
 import { MIN_WINDOW_HEIGHT, SECOND_MIN_WINDOW_WIDTH } from '@shared/utils/window'
 import { MockUseCacheUtils } from '@test-mocks/renderer/useCache'
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
@@ -83,7 +84,10 @@ vi.mock('../../../hooks/tab', () => ({
 }))
 
 vi.mock('../../app/Sidebar', () => ({
-  default: () => <aside data-testid="sidebar" />
+  default: function Sidebar() {
+    useQuickPanel()
+    return <aside data-testid="sidebar" />
+  }
 }))
 
 vi.mock('../../GlobalSearch/globalSearchGroups', () => ({
@@ -115,7 +119,10 @@ vi.mock('../AppShellTabBar', () => ({
 }))
 
 vi.mock('../TabRouter', () => ({
-  TabRouter: ({ tab }: { tab: { id: string } }) => <section data-testid="tab-router" data-tab-id={tab.id} />
+  TabRouter: ({ tab }: { tab: { id: string } }) => {
+    useQuickPanel()
+    return <section data-testid="tab-router" data-tab-id={tab.id} />
+  }
 }))
 
 import { AppShell } from '../AppShell'

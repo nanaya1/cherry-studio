@@ -2,6 +2,7 @@ import { WindowFrameProvider } from '@renderer/components/chat/shell/WindowFrame
 import { TabRouter } from '@renderer/components/layout/TabRouter'
 import { TITLE_BAR_HEIGHT_CLASS } from '@renderer/components/layout/titleBar'
 import MiniAppTabsPool from '@renderer/components/MiniApp/MiniAppTabsPool'
+import { QuickPanelProvider } from '@renderer/components/QuickPanel'
 import { ResourceViewSourceProvider } from '@renderer/components/ResourceViewSourceProvider'
 import { useHasWindowControls, WindowControls } from '@renderer/components/WindowControls'
 import { useTabs } from '@renderer/hooks/tab'
@@ -78,51 +79,56 @@ export const SubWindowAppShell = () => {
     // The window frame keeps detached-page behavior scoped to this window. The standalone
     // title bar stays outside every route so hosted pages can keep their normal page chrome.
     <WindowFrameProvider value={WINDOW_FRAME}>
-      <div
-        data-ui="app.detached-window"
-        className="relative flex h-screen w-screen flex-col overflow-hidden bg-background text-foreground"
-        style={{ '--window-controls-width': hasWindowControls ? '138px' : '0px' } as CSSProperties}>
-        <SubWindowTitleBar isFullscreen={isFullscreen} />
-        {/* Content Area - Multi MemoryRouter Architecture */}
-        <main className="relative flex-1 overflow-hidden bg-background">
-          {/* Route Tabs: Only render non-dormant tabs */}
-          <ResourceViewSourceProvider>
+      <QuickPanelProvider>
+        <div
+          data-ui="app.detached-window"
+          className="relative flex h-screen w-screen flex-col overflow-hidden bg-background text-foreground"
+          style={{ '--window-controls-width': hasWindowControls ? '138px' : '0px' } as CSSProperties}>
+          <SubWindowTitleBar isFullscreen={isFullscreen} />
+          {/* Content Area - Multi MemoryRouter Architecture */}
+          <main className="relative flex-1 overflow-hidden bg-background">
+            {/* Route Tabs: Only render non-dormant tabs */}
+            <ResourceViewSourceProvider>
+              {tabs
+                .filter((t) => t.type === 'route' && !t.isDormant)
+                .map((tab) => (
+                  <TabRouter
+                    key={tab.id}
+                    tab={tab}
+                    isActive={tab.id === activeTabId}
+                    onUrlChange={(url) => handleUrlChange(tab.id, url)}
+                  />
+                ))}
+            </ResourceViewSourceProvider>
+
+            {/* Webview Tabs: Only render non-dormant tabs */}
             {tabs
-              .filter((t) => t.type === 'route' && !t.isDormant)
+              .filter((t) => t.type === 'webview' && !t.isDormant)
               .map((tab) => (
-                <TabRouter
-                  key={tab.id}
-                  tab={tab}
-                  isActive={tab.id === activeTabId}
-                  onUrlChange={(url) => handleUrlChange(tab.id, url)}
-                />
+                <WebviewContainer key={tab.id} url={tab.url} isActive={tab.id === activeTabId} />
               ))}
-          </ResourceViewSourceProvider>
 
-          {/* Webview Tabs: Only render non-dormant tabs */}
-          {tabs
-            .filter((t) => t.type === 'webview' && !t.isDormant)
-            .map((tab) => (
-              <WebviewContainer key={tab.id} url={tab.url} isActive={tab.id === activeTabId} />
-            ))}
+            {/* Mini-app keep-alive WebView pool — needed for /app/mini-app/<id>
+                route tabs, same as the main AppShell. The cache backing the pool
+                is per-window (Memory tier) so this sub-window manages its own
+                list independently of the main window. */}
+            <MiniAppTabsPool />
+          </main>
 
-          {/* Mini-app keep-alive WebView pool — needed for /app/mini-app/<id>
-              route tabs, same as the main AppShell. The cache backing the pool
-              is per-window (Memory tier) so this sub-window manages its own
-              list independently of the main window. */}
-          <MiniAppTabsPool />
-        </main>
-
-        {/* OS window controls overlay — flush in the corner, above the title bar (z-[9999]),
-            sitting in the space it reserves via --window-controls-width. Self-gated to
-            Win/Linux, so this branch never renders on macOS. */}
-        {hasWindowControls && (
-          <div
-            className={cn('absolute top-0 right-0 z-[9999] flex [-webkit-app-region:no-drag]', TITLE_BAR_HEIGHT_CLASS)}>
-            <WindowControls />
-          </div>
-        )}
-      </div>
+          {/* OS window controls overlay — flush in the corner, above the title bar (z-[9999]),
+              sitting in the space it reserves via --window-controls-width. Self-gated to
+              Win/Linux, so this branch never renders on macOS. */}
+          {hasWindowControls && (
+            <div
+              className={cn(
+                'absolute top-0 right-0 z-[9999] flex [-webkit-app-region:no-drag]',
+                TITLE_BAR_HEIGHT_CLASS
+              )}>
+              <WindowControls />
+            </div>
+          )}
+        </div>
+      </QuickPanelProvider>
     </WindowFrameProvider>
   )
 }

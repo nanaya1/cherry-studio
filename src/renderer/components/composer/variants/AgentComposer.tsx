@@ -864,11 +864,13 @@ const AgentComposerInner = ({
   const knowledgeBasePanelVisible = Boolean(
     quickPanel?.isVisible && quickPanel.symbol === ComposerPanelSymbol.KnowledgeBase
   )
+  const hasSelectedAgent = Boolean(agentId)
   const skillsDataEnabled =
-    selectedSkills.length > 0 ||
-    getAgentComposerTokenIds(draftTokens, 'skill').size > 0 ||
-    rootPanelVisible ||
-    skillsPanelVisible
+    hasSelectedAgent &&
+    (selectedSkills.length > 0 ||
+      getAgentComposerTokenIds(draftTokens, 'skill').size > 0 ||
+      rootPanelVisible ||
+      skillsPanelVisible)
   const knowledgeBasesDataEnabled =
     selectedKnowledgeBases.length > 0 ||
     getAgentComposerTokenIds(draftTokens, 'knowledge').size > 0 ||
@@ -1158,7 +1160,10 @@ const AgentComposerInner = ({
       }),
     [availableSkills, insertSkillToken, skillLabel]
   )
-  const skillPanelItems = useMemo(() => [...skillItems, skillManageFooterItem], [skillItems, skillManageFooterItem])
+  const skillPanelItems = useMemo(
+    () => (hasSelectedAgent ? [...skillItems, skillManageFooterItem] : []),
+    [hasSelectedAgent, skillItems, skillManageFooterItem]
+  )
 
   const skillsLauncher = useMemo<ComposerToolLauncher>(() => {
     return {
@@ -1168,10 +1173,12 @@ const AgentComposerInner = ({
       order: 40,
       label: skillLabel,
       icon: <ToolCase />,
+      disabled: !hasSelectedAgent,
       searchAliases: [skillLabel],
       panelSymbol: AGENT_SKILLS_LAUNCHER_ID,
       rootSearchItems: skillItems.map((item) => ({ ...item, suffix: skillLabel })),
       action: ({ parentPanel, queryAnchor, quickPanel }) => {
+        if (!hasSelectedAgent) return
         void refreshAvailableSkills().catch((error) => {
           logger.warn('Failed to refresh available skills when opening the skills panel', { error })
         })
@@ -1186,7 +1193,7 @@ const AgentComposerInner = ({
         })
       }
     }
-  }, [refreshAvailableSkills, skillItems, skillLabel, skillPanelItems])
+  }, [hasSelectedAgent, refreshAvailableSkills, skillItems, skillLabel, skillPanelItems])
 
   useEffect(
     () => toolsRegistry.registerLaunchers(AGENT_SKILLS_LAUNCHER_ID, [skillsLauncher]),
@@ -1205,10 +1212,11 @@ const AgentComposerInner = ({
   const rootPanelTrailingItems = useMemo(() => [customizePanelItem], [customizePanelItem])
 
   const handleRootPanelOpen = useCallback(() => {
+    if (!hasSelectedAgent) return
     void refreshAvailableSkills().catch((error) => {
       logger.warn('Failed to refresh available skills when opening root panel', { error })
     })
-  }, [refreshAvailableSkills])
+  }, [hasSelectedAgent, refreshAvailableSkills])
 
   useComposerQuoteInsertion(actionsRef)
 
@@ -1632,6 +1640,7 @@ const AgentComposerInner = ({
         id: 'skills',
         label: skillLabel,
         icon: <ToolCase size={18} aria-hidden />,
+        disabled: !hasSelectedAgent,
         onSelect: ({ unifiedPanelControl }) =>
           unifiedPanelControl?.open({ launcherId: AGENT_SKILLS_LAUNCHER_ID, searchText: skillLabel })
       },
@@ -1649,7 +1658,7 @@ const AgentComposerInner = ({
           unifiedPanelControl?.open({ launcherId: ComposerPanelSymbol.McpStatus, searchText: 'MCP' })
       }
     ]
-  }, [handleCreateEmptySession, hasNewSessionAction, t])
+  }, [handleCreateEmptySession, hasNewSessionAction, hasSelectedAgent, t])
 
   const renderQuickPanelShortcuts = useCallback(
     ({
