@@ -12,6 +12,7 @@ import {
 import { ipcApi, useIpcOn } from '@renderer/ipc'
 import { TabLruManager } from '@renderer/services/TabLruManager'
 import { getDefaultRouteTitle, isPageTitledRoute, isTopLevelRoute } from '@renderer/utils/routeTitle'
+import { SINGLE_TAB_MODE } from '@renderer/utils/tabMode'
 import type { Tab, TabSavedState } from '@shared/data/cache/cacheValueTypes'
 import type { ReactNode } from 'react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
@@ -161,6 +162,22 @@ function computeInitialSession(params: {
 
   // Detached windows never persist/restore a session.
   if (!includePinnedTabs) return freshSession
+
+  // Single-tab mode: collapse the persisted session to just the last-active tab
+  // (falling back to the default). Pinned tabs are dropped entirely — the model
+  // has no pinned zone, and keeping extras would resurrect them on next launch.
+  if (SINGLE_TAB_MODE) {
+    const activeNormal = restorableNormalTabs.find((t) => t.id === persistedActiveTabId)
+    const survivor = activeNormal ?? restorableNormalTabs[0] ?? initialDefaultTab
+    if (!survivor) return freshSession
+    // isPinned must go: the survivor lives in the normal list now, and a stale
+    // flag would route updateTab at the (empty) pinned store.
+    return {
+      normalTabs: [{ ...survivor, isPinned: false, isDormant: false }],
+      pinnedTabs: [],
+      activeTabId: survivor.id
+    }
+  }
 
   const pinnedHasActive = !!persistedActiveTabId && pinnedTabs.some((t) => t.id === persistedActiveTabId)
 
@@ -394,6 +411,26 @@ export function TabsProvider({
         return
       }
 
+      // Single-tab mode: never stack a second tab. The "open in new tab" intent
+      // degrades to "open in the current tab" — rewrite its URL in place and stay
+      // on it. The URL write routes through updateTab so pinned/normal store
+      // selection keeps working unchanged.
+      if (SINGLE_TAB_MODE) {
+        const target = projectedTabsRef.current.find((t) => t.id === activeTabId) ?? projectedTabsRef.current[0]
+        if (target) {
+          updateTab(target.id, {
+            url: tab.url,
+            title: tab.title,
+            icon: tab.icon,
+            metadata: tab.metadata,
+            lastAccessTime: Date.now(),
+            isDormant: false
+          })
+          setActiveTabIdState(target.id)
+          return
+        }
+      }
+
       const newTab: Tab = {
         ...tab,
         lastAccessTime: Date.now(),
@@ -420,7 +457,7 @@ export function TabsProvider({
 
       setActiveTabIdState(tab.id)
     },
-    [prepareTabsForCommit, setActiveTab, setPinnedTabs, storesPinned]
+    [activeTabId, prepareTabsForCommit, setActiveTab, setPinnedTabs, storesPinned, updateTab]
   )
 
   const closeTabs = useCallback(

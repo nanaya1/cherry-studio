@@ -9,6 +9,7 @@ import { miniAppIdFromTabUrl } from '@renderer/utils/miniAppKeepAlive'
 import { isMac } from '@renderer/utils/platform'
 import { getDefaultRouteTitle, isPageTitledRoute } from '@renderer/utils/routeTitle'
 import { cn } from '@renderer/utils/style'
+import { SINGLE_TAB_MODE } from '@renderer/utils/tabMode'
 import { isSettingsPath } from '@shared/data/types/settingsPath'
 import { MIN_WINDOW_HEIGHT, SECOND_MIN_WINDOW_WIDTH } from '@shared/utils/window'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
@@ -32,6 +33,16 @@ export const AppShell = () => {
   const activeTab = useMemo(() => tabs.find((tab) => tab.id === activeTabId), [activeTabId, tabs])
   const canCycleTabs = tabs.length > 1 && !!activeTab
   const isSettingsTabActive = isSettingsPath(activeTab?.url)
+  // Single-tab mode: entering settings rewrites the (only) tab's URL, so the
+  // pre-settings workspace URL must be remembered to restore it on "back".
+  const previousWorkspaceUrlRef = useRef<string | undefined>(undefined)
+  if (SINGLE_TAB_MODE) {
+    if (activeTab && !isSettingsTabActive) {
+      previousWorkspaceUrlRef.current = activeTab.url
+    } else if (isSettingsTabActive && !previousWorkspaceUrlRef.current) {
+      previousWorkspaceUrlRef.current = '/app/new-task'
+    }
+  }
   const previousWorkspaceTabIdRef = useRef<string | undefined>(undefined)
   if (activeTab && !isSettingsTabActive) {
     previousWorkspaceTabIdRef.current = activeTab.id
@@ -41,6 +52,18 @@ export const AppShell = () => {
       return !latest || (tab.lastAccessTime ?? 0) > (latest.lastAccessTime ?? 0) ? tab : latest
     }, undefined)?.id
   }
+  // Restore the remembered workspace URL over the settings page. Empty title lets
+  // the page-titled/new-task routes relabel the tab naturally.
+  const handleSettingsBack = useCallback(() => {
+    if (!SINGLE_TAB_MODE || !activeTab) return
+    updateTab(activeTab.id, {
+      url: previousWorkspaceUrlRef.current ?? '/app/new-task',
+      title: '',
+      icon: undefined,
+      metadata: undefined,
+      lastAccessTime: Date.now()
+    })
+  }, [activeTab, updateTab])
   const tabBarTabs = useMemo(
     () => (isSettingsTabActive && activeTab ? [activeTab] : tabs),
     [activeTab, isSettingsTabActive, tabs]
@@ -176,6 +199,7 @@ export const AppShell = () => {
       activeTabId={activeTabId}
       isFullscreen={isFullscreen}
       isFocusedTab={isSettingsTabActive}
+      onFocusedTabBack={SINGLE_TAB_MODE ? handleSettingsBack : undefined}
       setActiveTab={setActiveTab}
       closeTab={handleCloseTab}
       closeTabs={closeTabs}

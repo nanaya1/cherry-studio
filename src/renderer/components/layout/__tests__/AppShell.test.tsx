@@ -83,6 +83,8 @@ vi.mock('../../../hooks/tab', () => ({
   })
 }))
 
+vi.mock('@renderer/utils/tabMode', () => ({ SINGLE_TAB_MODE: false }))
+
 vi.mock('../../app/Sidebar', () => ({
   default: function Sidebar() {
     useQuickPanel()

@@ -31,6 +31,8 @@ type AppShellTabBarProps = {
   activeTabId: string
   isFullscreen?: boolean
   isFocusedTab?: boolean
+  /** Focused-tab back action; when absent the back button closes the focused tab. */
+  onFocusedTabBack?: () => void
   setActiveTab: (id: string) => void
   closeTab: (id: string) => void
   closeTabs: (ids: readonly string[], activateId?: string) => void
@@ -591,6 +593,7 @@ export const AppShellTabBar = ({
   activeTabId,
   isFullscreen = false,
   isFocusedTab = false,
+  onFocusedTabBack,
   setActiveTab,
   closeTab,
   closeTabs,
@@ -1010,6 +1013,10 @@ export const AppShellTabBar = ({
                   <FocusedTabButton
                     tab={tab}
                     onBack={() => {
+                      if (onFocusedTabBack) {
+                        onFocusedTabBack()
+                        return
+                      }
                       if (handleTabClick(tab.id)) closeTab(tab.id)
                     }}
                     drag={{

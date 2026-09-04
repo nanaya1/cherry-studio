@@ -9,6 +9,9 @@ import { useEffect, useRef } from 'react'
 import type * as ReactI18next from 'react-i18next'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+// Multi-tab semantics suite: pin the mode off regardless of the production value.
+vi.mock('@renderer/utils/tabMode', () => ({ SINGLE_TAB_MODE: false }))
+
 let currentLanguage = 'en'
 
 const PINNED_FILES_TAB: Tab = {
