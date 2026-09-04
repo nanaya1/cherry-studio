@@ -1,7 +1,5 @@
 import { agentService } from '@data/services/AgentService'
-import { agentSessionService } from '@data/services/AgentSessionService'
 import type { AgentConfiguration } from '@shared/data/api/schemas/agents'
-import { AGENT_WORKSPACE_TYPE } from '@shared/data/api/schemas/agentWorkspaces'
 import { app } from 'electron'
 import { v4 as uuidv4 } from 'uuid'
 
@@ -54,15 +52,6 @@ export class CherryAssistantSeeder implements ISeeder {
       if (!row) {
         throw new Error('insert succeeded but select returned no builtin Cherry Assistant row')
       }
-
-      // One seeded session makes the agent visible in the Agents sidebar. This does
-      // not self-heal after user deletion: draft-session creation in the renderer is
-      // the intentional path back from an agent-picker-only state.
-      agentSessionService.createTx(tx, uuidv4(), {
-        agentId,
-        name: '',
-        workspace: { type: AGENT_WORKSPACE_TYPE.SYSTEM }
-      })
     })
   }
 

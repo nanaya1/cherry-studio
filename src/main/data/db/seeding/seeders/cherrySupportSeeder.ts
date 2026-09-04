@@ -1,10 +1,7 @@
 import { agentService } from '@data/services/AgentService'
-import { agentSessionService } from '@data/services/AgentSessionService'
 import { BUILTIN_AGENT_ROLE, CHERRY_SUPPORT_AGENT_ID } from '@shared/ai/builtinAgent'
 import type { AgentConfiguration } from '@shared/data/api/schemas/agents'
-import { AGENT_WORKSPACE_TYPE } from '@shared/data/api/schemas/agentWorkspaces'
 import { app } from 'electron'
-import { v4 as uuidv4 } from 'uuid'
 
 import type { DbType, ISeeder } from '../../types'
 
@@ -57,12 +54,6 @@ export class CherrySupportSeeder implements ISeeder {
       if (!row) {
         throw new Error('insert succeeded but select returned no builtin Cherry Support row')
       }
-
-      agentSessionService.createTx(tx, uuidv4(), {
-        agentId,
-        name: '',
-        workspace: { type: AGENT_WORKSPACE_TYPE.SYSTEM }
-      })
     })
   }
 

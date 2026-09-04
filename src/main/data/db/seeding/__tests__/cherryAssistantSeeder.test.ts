@@ -8,7 +8,6 @@ import { CherryAssistantSeeder } from '@data/db/seeding/seeders/cherryAssistantS
 import { SeedRunner } from '@data/db/seeding/SeedRunner'
 import type { ISeeder } from '@data/db/types'
 import { agentService } from '@data/services/AgentService'
-import { agentSessionService } from '@data/services/AgentSessionService'
 import { generateOrderKeyBetween } from '@data/services/utils/orderKey'
 import { AGENT_WORKSPACE_TYPE } from '@shared/data/api/schemas/agentWorkspaces'
 import { CHERRYAI_DEFAULT_UNIQUE_MODEL_ID } from '@shared/data/presets/cherryai'
@@ -52,7 +51,7 @@ describe('CherryAssistantSeeder', () => {
     return id
   }
 
-  it('creates the builtin agent with a default system session and workspace in a fresh library', () => {
+  it('creates the builtin agent without any seeded session in a fresh library', () => {
     new CherryAssistantSeeder().run(dbh.db)
 
     const [agent] = builtinAgents(dbh.db)
@@ -70,14 +69,7 @@ describe('CherryAssistantSeeder', () => {
       env_vars: {},
       builtin_role: 'assistant'
     })
-    const [session] = dbh.db.select().from(agentSessionTable).where(eq(agentSessionTable.agentId, agent.id)).all()
-    expect(session).toMatchObject({ agentId: agent.id, name: '' })
-    const [workspace] = dbh.db
-      .select()
-      .from(agentWorkspaceTable)
-      .where(eq(agentWorkspaceTable.id, session.workspaceId))
-      .all()
-    expect(workspace).toMatchObject({ type: AGENT_WORKSPACE_TYPE.SYSTEM })
+    expect(dbh.db.select().from(agentSessionTable).all()).toHaveLength(0)
   })
 
   it('creates the builtin agent with a Chinese name for Chinese systems', () => {
@@ -165,11 +157,26 @@ describe('CherryAssistantSeeder', () => {
         model: null,
         configuration: {}
       })
-      agentSessionService.createTx(tx, sessionId, {
-        agentId,
-        name: '',
-        workspace: { type: AGENT_WORKSPACE_TYPE.SYSTEM }
-      })
+      const [workspace] = tx
+        .insert(agentWorkspaceTable)
+        .values({
+          id: `${sessionId}-workspace`,
+          name: 'system',
+          path: '/system',
+          type: AGENT_WORKSPACE_TYPE.SYSTEM,
+          orderKey: generateOrderKeyBetween(null, null)
+        })
+        .returning()
+        .all()
+      tx.insert(agentSessionTable)
+        .values({
+          id: sessionId,
+          agentId,
+          name: '',
+          workspaceId: workspace.id,
+          orderKey: generateOrderKeyBetween(null, null)
+        })
+        .run()
       agentService.deleteAgentTx(tx, agentId)
     })
 
