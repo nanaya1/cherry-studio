@@ -27,19 +27,8 @@ const isCompactMinWidthRoute = (url?: string): boolean =>
 
 export const AppShell = () => {
   const isMacTransparentWindow = useMacTransparentWindow()
-  const {
-    tabs,
-    activeTabId,
-    setActiveTab,
-    closeTab,
-    closeTabs,
-    updateTab,
-    reorderTabs,
-    pinTab,
-    unpinTab,
-    detachTab,
-    openTab
-  } = useTabs()
+  const { tabs, activeTabId, setActiveTab, closeTab, closeTabs, updateTab, reorderTabs, pinTab, unpinTab, detachTab } =
+    useTabs()
   const activeTab = useMemo(() => tabs.find((tab) => tab.id === activeTabId), [activeTabId, tabs])
   const canCycleTabs = tabs.length > 1 && !!activeTab
   const isSettingsTabActive = isSettingsPath(activeTab?.url)
@@ -194,7 +183,6 @@ export const AppShell = () => {
       pinTab={pinTab}
       unpinTab={unpinTab}
       detachTab={handleDetachTab}
-      openTab={openTab}
     />
   )
 

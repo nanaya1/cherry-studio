@@ -115,14 +115,14 @@ describe('MainWindowContent', () => {
     expect(tabsProviderMock.lastInitialDefaultTab).toMatchObject({ url: '/app/agents' })
   })
 
-  it('falls back to launchpad when no sidebar app is visible', () => {
+  it('falls back to the new-task page when no sidebar app is visible', () => {
     MockUsePreferenceUtils.setPreferenceValue('app.onboarding.provider_setup.status', 'completed')
     MockUsePreferenceUtils.setPreferenceValue('ui.sidebar.favorites', [])
     MockUsePreferenceUtils.setPreferenceValue('feature.paintings.default_provider', 'zhipu')
 
     render(<MainWindowContent />)
 
-    expect(tabsProviderMock.lastInitialDefaultTab).toMatchObject({ url: '/app/launchpad' })
+    expect(tabsProviderMock.lastInitialDefaultTab).toMatchObject({ url: '/app/new-task' })
   })
 })
 

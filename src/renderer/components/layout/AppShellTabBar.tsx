@@ -1,12 +1,12 @@
 import { Button, Tooltip } from '@cherrystudio/ui'
 import { CommandContextMenu, type CommandContextMenuExtraItem } from '@renderer/components/command'
 import { OpenInNewWindowIcon } from '@renderer/components/icons/WindowIcons'
-import type { OpenTabOptions, Tab } from '@renderer/hooks/tab'
+import type { Tab } from '@renderer/hooks/tab'
 import useMacTransparentWindow from '@renderer/hooks/useMacTransparentWindow'
 import { MINI_APP_ROUTE_PREFIX } from '@renderer/utils/miniAppKeepAlive'
 import { isMac } from '@renderer/utils/platform'
 import { cn } from '@renderer/utils/style'
-import { ArrowLeft, Plus, X } from 'lucide-react'
+import { ArrowLeft, X } from 'lucide-react'
 import {
   cloneElement,
   isValidElement,
@@ -39,7 +39,6 @@ type AppShellTabBarProps = {
   pinTab: (id: string) => void
   unpinTab: (id: string) => void
   detachTab?: (id: string) => void
-  openTab: (url: string, options?: OpenTabOptions) => string
 }
 
 // ─── Drag item props (grouped to reduce sub-component prop count) ─────────────
@@ -433,7 +432,7 @@ interface TabCapabilities {
  * tab counts. Normal tabs can always be closed/detached; restorable tabs can also
  * be pinned. Transient mini-app tabs cannot be restored from the persistent pinned
  * store, so pinning is deliberately unavailable for them. If the last tab closes,
- * TabsProvider opens Launchpad as the empty-state fallback. Pinned tabs can be
+ * TabsProvider opens New Task as the empty-state fallback. Pinned tabs can be
  * closed via the context menu (no inline X), and the batch close actions only ever
  * clear the normal zone — pinned tabs are exempt as close *targets*, matching
  * browser convention. Reordering is per-zone. `normalIndex` is the tab's position
@@ -598,8 +597,7 @@ export const AppShellTabBar = ({
   reorderTabs,
   pinTab,
   unpinTab,
-  detachTab,
-  openTab
+  detachTab
 }: AppShellTabBarProps) => {
   const { t } = useTranslation()
   const isMacTransparentWindow = useMacTransparentWindow()
@@ -766,7 +764,6 @@ export const AppShellTabBar = ({
   const {
     tabBarRef,
     tabListRef: stripRef,
-    rightInsetRef,
     tabRefs,
     noTransition,
     getTranslateX,
@@ -809,9 +806,9 @@ export const AppShellTabBar = ({
 
   // ─── Action handlers ────────────────────────────────────────────────────────
 
-  const handleOpenLaunchpad = () => {
-    openTab('/app/launchpad', { title: t('title.launchpad'), forceNew: true })
-  }
+  // Launchpad entry temporarily hidden (the "+" button). Restoring it means
+  // re-adding `handleOpenLaunchpad` plus the sticky button block at the end of
+  // the strip that attached `rightInsetRef`.
 
   // ─── Close-in-place freeze/thaw ─────────────────────────────────────────────
 
@@ -1150,23 +1147,8 @@ export const AppShellTabBar = ({
             )
           })}
 
-          {/* Launchpad button — sticky so it hugs the last tab but never scrolls away */}
-          {!isFocusedTab && (
-            <Tooltip placement="bottom" content={t('title.launchpad')} delay={800}>
-              <button
-                ref={rightInsetRef}
-                type="button"
-                data-launchpad-button
-                aria-label={t('title.launchpad')}
-                onClick={handleOpenLaunchpad}
-                className={cn(
-                  'sticky right-0 ml-0.5 flex h-7 w-7 shrink-0 appearance-none items-center justify-center rounded-[10px] border-0 bg-transparent p-0 text-muted-foreground shadow-none transition-colors [-webkit-app-region:no-drag] hover:text-sidebar-foreground',
-                  isMacTransparentWindow ? 'hover:bg-white/50 dark:hover:bg-white/8' : 'hover:bg-sidebar-accent'
-                )}>
-                <Plus size={14} />
-              </button>
-            </Tooltip>
-          )}
+          {/* Launchpad entry temporarily hidden (the sticky "+" button that
+              attached `rightInsetRef` — drag clamping falls back to 0 width). */}
         </div>
 
         {isFocusedTab ? (

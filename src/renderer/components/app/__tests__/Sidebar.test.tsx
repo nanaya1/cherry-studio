@@ -527,16 +527,13 @@ describe('app Sidebar', () => {
     expect(mocks.setSidebarFavorites).not.toHaveBeenCalled()
   })
 
-  it('opens the launchpad in a new tab from the manage sidebar action', () => {
+  it('hides the manage sidebar action from the context menu', () => {
     mocks.sidebarFavorites = [appFavorite('knowledge')]
     render(<Sidebar />)
 
-    selectMenuItem(getEntry('app:knowledge'), 'sidebar.manage.app:knowledge')
-
-    expect(mocks.openTab).toHaveBeenCalledWith('/app/launchpad', {
-      forceNew: true,
-      title: 'Launchpad'
-    })
+    const entry = getEntry('app:knowledge')
+    expect(findMenuItem(entry, 'sidebar.manage.app:knowledge')).toBeUndefined()
+    expect(mocks.openTab).not.toHaveBeenCalled()
   })
 
   it('supplies favorite mini apps and their active state', () => {
@@ -572,17 +569,15 @@ describe('app Sidebar', () => {
     ])
   })
 
-  it('offers the manage sidebar action for mini app favorites', () => {
+  it('does not offer the manage sidebar action for mini app favorites', () => {
     mocks.sidebarFavorites = []
     mocks.sidebarMiniAppFavorites = [miniAppFavorite('calculator')]
     mocks.allApps = [calculatorMiniApp]
 
     render(<Sidebar />)
 
-    expect(getEntry('mini_app:calculator').contextMenuItems).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ id: 'sidebar.manage.mini_app:calculator', label: 'Manage Sidebar' })
-      ])
+    expect(getEntry('mini_app:calculator').contextMenuItems).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: 'sidebar.manage.mini_app:calculator' })])
     )
   })
 

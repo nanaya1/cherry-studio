@@ -212,9 +212,6 @@ export default function Sidebar({ ref }: { ref?: Ref<HTMLDivElement | null> }) {
     },
     [activeTab, defaultPaintingProvider, navigateRouteTab]
   )
-  const handleOpenLaunchpad = useCallback(() => {
-    openTab('/app/launchpad', { title: getDefaultRouteTitle('/app/launchpad'), forceNew: true })
-  }, [openTab])
   const handleOpenSettingsTab = useCallback(() => {
     openSettingsTab()
   }, [])
@@ -417,20 +414,12 @@ export default function Sidebar({ ref }: { ref?: Ref<HTMLDivElement | null> }) {
         return [
           {
             ...entry,
-            contextMenuItems: [
-              ...newTabItem,
-              ...(entry.contextMenuItems ?? []),
-              {
-                type: 'item' as const,
-                id: `sidebar.manage.${entry.key}`,
-                label: t('launchpad.manage_sidebar'),
-                onSelect: handleOpenLaunchpad
-              }
-            ]
+            // "Manage Sidebar" (launchpad entry) temporarily hidden.
+            contextMenuItems: [...newTabItem, ...(entry.contextMenuItems ?? [])]
           }
         ]
       }),
-    [favorites, handleOpenLaunchpad, t, variantContext]
+    [favorites, t, variantContext]
   )
 
   // A single drag reorders the whole mixed list. arrayMove yields the new entry

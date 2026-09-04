@@ -204,7 +204,6 @@ describe('AppShellTabBar', () => {
           reorderTabs={vi.fn()}
           pinTab={vi.fn()}
           unpinTab={vi.fn()}
-          openTab={vi.fn()}
           closeTabs={vi.fn()}
           {...props}
           closeTab={closeTab}
@@ -214,16 +213,12 @@ describe('AppShellTabBar', () => {
 
     return closeTab
   }
-  it('opens launchpad from the plus button', async () => {
-    const user = userEvent.setup()
-    const openTab = vi.fn()
+  it('hides the launchpad plus button', () => {
     const tabs = [createTab('home')]
 
-    renderTabBar({ tabs, activeTabId: 'home', openTab })
+    renderTabBar({ tabs, activeTabId: 'home' })
 
-    await user.click(screen.getByRole('button', { name: 'Launchpad' }))
-
-    expect(openTab).toHaveBeenCalledWith('/app/launchpad', { title: 'Launchpad', forceNew: true })
+    expect(screen.queryByRole('button', { name: 'Launchpad' })).not.toBeInTheDocument()
   })
 
   it('renders preset and installed mini app icons at the same circular size', () => {
@@ -765,8 +760,7 @@ describe('AppShellTabBar', () => {
         closeTabs: vi.fn(),
         reorderTabs: vi.fn(),
         pinTab: vi.fn(),
-        unpinTab: vi.fn(),
-        openTab: vi.fn()
+        unpinTab: vi.fn()
       }
 
       const { rerender } = render(<AppShellTabBar {...baseProps} closeTab={staleCloseTab} />)
@@ -809,7 +803,6 @@ describe('AppShellTabBar', () => {
           reorderTabs={vi.fn()}
           pinTab={vi.fn()}
           unpinTab={vi.fn()}
-          openTab={vi.fn()}
         />
       )
 
@@ -1030,9 +1023,9 @@ describe('AppShellTabBar', () => {
         styleSpy.mockRestore()
       }
 
-      // Strip right limit: 300 - pr-1 4 - launchpad footprint 6 = 290.
-      // (290 - post-close left 0 - alive gap 4) / 2 = 143.
-      expect(remainingTab).toHaveStyle({ flex: '0 0 143px' })
+      // Strip right limit: 300 - pr-1 4 = 296 (launchpad button hidden, no inset).
+      // (296 - post-close left 0 - alive gap 4) / 2 = 146.
+      expect(remainingTab).toHaveStyle({ flex: '0 0 146px' })
     } finally {
       vi.useRealTimers()
       vi.unstubAllGlobals()
@@ -1099,7 +1092,7 @@ describe('AppShellTabBar', () => {
     }
   })
 
-  it('reclamps a dragged tab with the current strip, tab, and launchpad geometry after resize', () => {
+  it('reclamps a dragged tab with the current strip geometry after resize', () => {
     const originalSetPointerCapture = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'setPointerCapture')
     const originalRequestAnimationFrame = Object.getOwnPropertyDescriptor(globalThis, 'requestAnimationFrame')
     const originalCancelAnimationFrame = Object.getOwnPropertyDescriptor(globalThis, 'cancelAnimationFrame')
@@ -1113,13 +1106,11 @@ describe('AppShellTabBar', () => {
       const geometry =
         element.dataset.ui === 'app.tab-bar' || element.dataset.testid === 'app-shell-tab-strip'
           ? { left: 0, width: stripWidth, height: element.dataset.ui === 'app.tab-bar' ? 44 : 30 }
-          : element.dataset.launchpadButton !== undefined
-            ? { left: stripWidth - 56, width: 28, height: 28 }
-            : element.dataset.tabId === 'a'
-              ? { left: tabLeft + translateX, width: tabWidth, height: 30 }
-              : element.dataset.tabId === 'home'
-                ? { left: 0, width: 100, height: 30 }
-                : { left: 0, width: 0, height: 0 }
+          : element.dataset.tabId === 'a'
+            ? { left: tabLeft + translateX, width: tabWidth, height: 30 }
+            : element.dataset.tabId === 'home'
+              ? { left: 0, width: 100, height: 30 }
+              : { left: 0, width: 0, height: 0 }
 
       return {
         x: geometry.left,
@@ -1155,7 +1146,7 @@ describe('AppShellTabBar', () => {
       const startDrag = new MouseEvent('pointermove', { bubbles: true, clientX: 400, clientY: 20 })
       Object.defineProperty(startDrag, 'pointerId', { value: 1 })
       fireEvent(document, startDrag)
-      expect(tab).toHaveStyle({ transform: 'translateX(34px)' })
+      expect(tab).toHaveStyle({ transform: 'translateX(96px)' })
 
       stripWidth = 240
       tabWidth = 160
@@ -1167,7 +1158,7 @@ describe('AppShellTabBar', () => {
         vi.runOnlyPendingTimers()
       })
 
-      expect(tab).toHaveStyle({ transform: 'translateX(18px)' })
+      expect(tab).toHaveStyle({ transform: 'translateX(76px)' })
     } finally {
       vi.useRealTimers()
       for (const [key, descriptor] of [

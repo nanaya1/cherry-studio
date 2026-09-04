@@ -114,7 +114,7 @@ export function MainWindowContent(): React.ReactElement {
     () => ({
       id: 'home',
       type: 'route',
-      url: getSidebarDefaultLandingUrl(sidebarFavorites, defaultPaintingProvider) || '/app/launchpad',
+      url: getSidebarDefaultLandingUrl(sidebarFavorites, defaultPaintingProvider) || '/app/new-task',
       title: '',
       lastAccessTime: Date.now(),
       isDormant: false

@@ -106,7 +106,8 @@ vi.mock('@renderer/utils/routeTitle', async () => {
     '/app/agents': { en: 'Agent', zh: '代理' },
     '/app/chat': { en: 'Chat', zh: '聊天' },
     '/app/files': { en: 'Files', zh: '文件' },
-    '/app/launchpad': { en: 'Launchpad', zh: '启动台' }
+    '/app/launchpad': { en: 'Launchpad', zh: '启动台' },
+    '/app/new-task': { en: 'New Task', zh: '新建任务' }
   }
   return {
     ...actual,
@@ -721,19 +722,19 @@ describe('TabsProvider', () => {
     expect(next.find((tab) => tab.id === 'files')?.isDormant).toBe(false)
   })
 
-  it('opens launchpad when closing the only tab', async () => {
+  it('opens the new-task page when closing the only tab', async () => {
     render(
       <TabsProvider initialDefaultTab={HOME_TAB} includePinnedTabs={false}>
         <CloseTabOnMount tabId="home" />
       </TabsProvider>
     )
 
-    await waitFor(() => expect(screen.getByTestId('tab-urls')).toHaveTextContent('/app/launchpad'))
-    expect(screen.getByTestId('tab-titles')).toHaveTextContent('Launchpad')
+    await waitFor(() => expect(screen.getByTestId('tab-urls')).toHaveTextContent('/app/new-task'))
+    expect(screen.getByTestId('tab-titles')).toHaveTextContent('New Task')
     expect(screen.getByTestId('active-tab-id')).not.toHaveTextContent('home')
   })
 
-  it('does not open launchpad when closing one tab while another remains', async () => {
+  it('does not open the new-task fallback when closing one tab while another remains', async () => {
     render(
       <TabsProvider initialDefaultTab={HOME_TAB} includePinnedTabs={false}>
         <CloseHomeAfterSecondTabOpens />
@@ -742,7 +743,7 @@ describe('TabsProvider', () => {
 
     await waitFor(() => expect(screen.getByTestId('tab-ids')).toHaveTextContent('agents'))
     expect(screen.getByTestId('tab-urls')).toHaveTextContent('/app/agents')
-    expect(screen.getByTestId('tab-urls')).not.toHaveTextContent('/app/launchpad')
+    expect(screen.getByTestId('tab-urls')).not.toHaveTextContent('/app/new-task')
     expect(screen.getByTestId('active-tab-id')).toHaveTextContent('agents')
   })
 

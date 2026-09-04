@@ -29,12 +29,12 @@ const DEFAULT_TAB: Tab = {
   isDormant: false
 }
 
-function createLaunchpadFallbackTab(): Tab {
+function createEmptyStateFallbackTab(): Tab {
   return {
     id: uuid(),
     type: 'route',
-    url: '/app/launchpad',
-    title: getDefaultRouteTitle('/app/launchpad'),
+    url: EMPTY_STATE_TAB_URL,
+    title: getDefaultRouteTitle(EMPTY_STATE_TAB_URL),
     lastAccessTime: Date.now(),
     isDormant: false
   }
@@ -53,6 +53,8 @@ const LEGACY_LIBRARY_ROUTE_PATH = '/app/library'
 // so an already-persisted OpenClaw pin is redirected here rather than restoring to a dead route.
 const LEGACY_OPENCLAW_ROUTE_PATH = '/app/openclaw'
 const CODE_ROUTE_PATH = '/app/code'
+// Tab opened when the last one closes — the empty state lands on New Task.
+const EMPTY_STATE_TAB_URL = '/app/new-task'
 
 function routePathOfTab(tab: Tab): string | null {
   if (tab.type !== 'route') return null
@@ -430,7 +432,7 @@ export function TabsProvider({
       if (closingTabs.length === 0) return
 
       const remainingTabs = tabs.filter((tab) => !closingIdSet.has(tab.id))
-      const fallbackTab = remainingTabs.length === 0 ? createLaunchpadFallbackTab() : null
+      const fallbackTab = remainingTabs.length === 0 ? createEmptyStateFallbackTab() : null
 
       let newActiveId = activeTabId
       if (fallbackTab) {
