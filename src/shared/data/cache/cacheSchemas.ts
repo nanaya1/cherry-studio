@@ -442,7 +442,7 @@ export const DefaultRendererPersistCache: RendererPersistCacheSchema = {
   'ui.tab.active_tab_id': '',
   'ui.global_search.recent_items': [],
   'ui.sidebar.docked_tabs': [],
-  'ui.sidebar.width': 280, // default = SIDEBAR_MAX_WIDTH (renderer Sidebar/constants.ts): first launch opens fully expanded
+  'ui.sidebar.width': 210, // first launch default: fully expanded (>= SIDEBAR_FULL_THRESHOLD, renderer Sidebar/constants.ts)
   'ui.chat.sidebar.width': 275,
   'ui.chat.artifact_pane.width': 460,
   'ui.chat.resource_pane.width': 275, // keep in sync with 'ui.chat.sidebar.width'

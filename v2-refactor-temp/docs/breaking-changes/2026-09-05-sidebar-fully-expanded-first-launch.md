@@ -8,7 +8,7 @@ date: 2026-09-05
 
 ## What changed
 
-The default left-sidebar width for genuinely unconfigured users is now 280px (fully expanded, full layout) instead of 50px (icon-only strip). Users who have already dragged or resized the sidebar keep their persisted width after updating.
+The default left-sidebar width for genuinely unconfigured users is now 210px (fully expanded, full layout) instead of 50px (icon-only strip). Users who have already dragged or resized the sidebar keep their persisted width after updating.
 
 ## Why this matters to the user
 
