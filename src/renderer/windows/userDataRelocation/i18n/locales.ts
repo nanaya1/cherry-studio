@@ -8,13 +8,13 @@ export const relocationLocales = {
         committing: 'Saving new data directory...',
         completed: {
           title: 'Migration complete',
-          description: 'Restart Cherry Studio to use the new data directory.'
+          description: 'Restart MEA Cowork to use the new data directory.'
         },
         failed: {
           title: 'Migration failed',
-          description: 'Cherry Studio will keep using the previous data directory.'
+          description: 'MEA Cowork will keep using the previous data directory.'
         },
-        restart_success: 'Restart Cherry Studio',
+        restart_success: 'Restart MEA Cowork',
         restart_failure: 'Continue with Previous Directory',
         from: 'Current directory',
         to: 'New directory'
@@ -30,13 +30,13 @@ export const relocationLocales = {
         committing: '正在保存新的数据目录...',
         completed: {
           title: '迁移完成',
-          description: '请重启 Cherry Studio 以使用新的数据目录。'
+          description: '请重启 MEA Cowork 以使用新的数据目录。'
         },
         failed: {
           title: '迁移失败',
-          description: 'Cherry Studio 将继续使用原数据目录。'
+          description: 'MEA Cowork 将继续使用原数据目录。'
         },
-        restart_success: '重启 Cherry Studio',
+        restart_success: '重启 MEA Cowork',
         restart_failure: '继续使用原数据目录',
         from: '当前目录',
         to: '新目录'
@@ -52,13 +52,13 @@ export const relocationLocales = {
         committing: '正在儲存新的資料目錄...',
         completed: {
           title: '遷移完成',
-          description: '請重新啟動 Cherry Studio 以使用新的資料目錄。'
+          description: '請重新啟動 MEA Cowork 以使用新的資料目錄。'
         },
         failed: {
           title: '遷移失敗',
-          description: 'Cherry Studio 將繼續使用原資料目錄。'
+          description: 'MEA Cowork 將繼續使用原資料目錄。'
         },
-        restart_success: '重新啟動 Cherry Studio',
+        restart_success: '重新啟動 MEA Cowork',
         restart_failure: '繼續使用原資料目錄',
         from: '目前目錄',
         to: '新目錄'

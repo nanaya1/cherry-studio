@@ -48,6 +48,9 @@ describe('CherryCliTools', () => {
     expect(tools.find((tool) => tool.name === CLI_LIST_TOOL_NAME)?.description).toContain('command -v <name>')
     expect(tools.find((tool) => tool.name === CLI_SEARCH_TOOL_NAME)?.inputSchema.required).toEqual(['query'])
     expect(tools.find((tool) => tool.name === CLI_INSTALL_TOOL_NAME)?.inputSchema.required).toEqual(['name', 'tool'])
+    expect(tools.find((tool) => tool.name === CLI_INSTALL_TOOL_NAME)?.description).toContain(
+      'MEA Cowork’s isolated mise environment'
+    )
   })
 
   it('returns the live BinaryManager inventory on every call', async () => {

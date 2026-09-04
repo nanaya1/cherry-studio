@@ -119,7 +119,6 @@ vi.mock('electron-updater', () => {
 import { application } from '@application'
 import { regionService } from '@main/services/RegionService'
 import { UpgradeChannel } from '@shared/data/preference/preferenceTypes'
-import { APP_NAME } from '@shared/utils/constants'
 import { MockMainPreferenceServiceUtils } from '@test-mocks/main/PreferenceService'
 import { app, net } from 'electron'
 import { autoUpdater } from 'electron-updater'
@@ -157,7 +156,7 @@ describe('AppUpdaterService', () => {
         'User-Agent': 'test-user-agent',
         'Cache-Control': 'no-cache',
         'Client-Id': 'test-client-id',
-        'App-Name': APP_NAME,
+        'App-Name': 'Cherry Studio',
         'App-Version': 'v1.0.0',
         OS: process.platform,
         'X-Edition': 'global',

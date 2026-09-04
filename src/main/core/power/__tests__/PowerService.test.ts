@@ -277,7 +277,7 @@ describe('PowerService', () => {
       expect(shutdownHandlerOn).toHaveBeenCalledWith('shutdown', expect.any(Function))
       // The block must actually be requested — otherwise the addon only observes the
       // event and does not hold the OS (the v1 gap this path now closes).
-      expect(blockShutdown).toHaveBeenCalledTimes(1)
+      expect(blockShutdown).toHaveBeenCalledWith('MEA Cowork is finishing background work')
 
       const winCallback = shutdownHandlerOn.mock.calls[0][1] as () => Promise<void>
       await winCallback()

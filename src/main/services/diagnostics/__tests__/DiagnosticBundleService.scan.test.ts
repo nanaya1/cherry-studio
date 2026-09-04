@@ -19,7 +19,7 @@ const scanMocks = vi.hoisted(() => ({ collectFails: false }))
 vi.mock('electron', () => ({
   app: {
     getLocale: electronMocks.getLocale,
-    getName: () => 'Cherry Studio',
+    getName: () => 'MEA Cowork',
     getVersion: electronMocks.getVersion,
     isPackaged: true
   },

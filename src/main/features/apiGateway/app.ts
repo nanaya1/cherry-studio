@@ -156,7 +156,7 @@ export function buildApp({
     .get(
       '/',
       () => ({
-        name: 'Cherry Studio API',
+        name: 'MEA Cowork API',
         version: '1.0.0',
         endpoints: {
           health: 'GET /health',

@@ -4,7 +4,7 @@ import { loggerService } from '@logger'
 import { createLatestReconciler, type LatestReconciler } from '@main/core/concurrency/latestReconciler'
 import { type Activatable, BaseService, Injectable, Phase, ServicePhase } from '@main/core/lifecycle'
 import { generateUserAgent, getClientId } from '@main/utils/systemInfo'
-import { APP_NAME, LATEST_PRIVACY_POLICY_VERSION } from '@shared/utils/constants'
+import { LATEST_PRIVACY_POLICY_VERSION } from '@shared/utils/constants'
 import { app } from 'electron'
 
 const logger = loggerService.withContext('AnalyticsService')
@@ -74,7 +74,7 @@ export class AnalyticsService extends BaseService implements Activatable {
       headers: {
         'User-Agent': generateUserAgent(),
         'Client-Id': clientId,
-        'App-Name': APP_NAME,
+        'App-Name': 'Cherry Studio',
         'App-Version': `v${app.getVersion()}`,
         OS: process.platform
       }

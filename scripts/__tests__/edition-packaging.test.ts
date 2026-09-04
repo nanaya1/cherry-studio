@@ -106,7 +106,7 @@ describe('edition packaging', () => {
       appId: 'com.kangfenmao.CherryStudio',
       edition: GLOBAL_EDITION,
       nsisGuid: '41a4ccd8-bcc0-5710-9eee-0e164da68057',
-      productName: 'Cherry Studio',
+      productName: 'MEA Cowork',
       protocol: 'cherrystudio',
       publish: { provider: 'generic', url: 'https://releases.cherry-ai.com' },
       windowsArtifactName: '${productName}-${version}-${arch}-setup.${ext}'

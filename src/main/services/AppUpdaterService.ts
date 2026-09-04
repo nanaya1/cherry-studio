@@ -10,7 +10,6 @@ import { generateUserAgent, getClientId } from '@main/utils/systemInfo'
 import type { RetryPolicy } from '@shared/data/api/schemas/jobs'
 import { UpgradeChannel } from '@shared/data/preference/preferenceTypes'
 import type { AppEdition } from '@shared/types/appEdition'
-import { APP_NAME } from '@shared/utils/constants'
 import {
   hasMultiLanguageReleaseNotes,
   localizeReleaseNotes,
@@ -41,7 +40,7 @@ function getUpdateHeaders({ region, edition }: { region: ReleaseRegion; edition:
     'User-Agent': generateUserAgent(),
     'Cache-Control': 'no-cache',
     'Client-Id': getClientId(),
-    'App-Name': APP_NAME,
+    'App-Name': 'Cherry Studio',
     'App-Version': `v${app.getVersion()}`,
     OS: process.platform,
     'X-Edition': edition,

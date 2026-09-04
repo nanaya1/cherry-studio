@@ -87,7 +87,7 @@ export function openUserDataRelocationWindow(options: OpenRelocationWindowOption
     minimizable: true,
     show: false,
     autoHideMenuBar: true,
-    title: 'Cherry Studio',
+    title: 'MEA Cowork',
     webPreferences: {
       preload: join(__dirname, '../preload/simplest.js'),
       partition: 'user-data-relocation-window',

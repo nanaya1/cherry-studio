@@ -1,5 +1,5 @@
 appId: com.kangfenmao.CherryStudio
-productName: Cherry Studio
+productName: MEA Cowork
 extraMetadata:
   cherryEdition: global
 electronLanguages:
@@ -16,7 +16,7 @@ directories:
   buildResources: build
 
 protocols:
-  - name: Cherry Studio
+  - name: MEA Cowork
     schemes:
       - cherrystudio
 files:
@@ -158,7 +158,7 @@ linux:
   category: Utility
   desktop:
     entry:
-      Name: Cherry Studio
+      Name: MEA Cowork
       StartupWMClass: CherryStudio
   mimeTypes:
     - x-scheme-handler/cherrystudio
@@ -178,7 +178,7 @@ artifactBuildCompleted: scripts/artifact-build-completed.js
 releaseInfo:
   releaseNotes: |
     <!--LANG:en-->
-    Cherry Studio 2.0.11 - Features, Fixes, and Improvements
+    MEA Cowork 2.0.11 - Features, Fixes, and Improvements
 
     ✨ New Features
     - [Cherry Cloud] Sign in to Cherry Cloud for entitlement-aware Agent models, automatic local Gateway startup, quota-aware model selection, and durable Product Session handling.
@@ -191,7 +191,7 @@ releaseInfo:
     - [Agent] Added a global search action to the Agent conversation toolbar.
     - [Models] Add Hy4 Preview, Ling 3.0 Flash, and Qwen3.8 Flash support.
     - [Anthropic Cache] Anthropic-compatible providers can now keep prompt caches for 1 hour from API Settings.
-    - [i18n] Added initial Turkish localization support across Cherry Studio.
+    - [i18n] Added initial Turkish localization support across MEA Cowork.
     - [Screenshot] Confirm the capture on double-click inside the selection rectangle.
 
     🐛 Bug Fixes
@@ -242,7 +242,7 @@ releaseInfo:
     - [File Preview] Improved file preview startup time by loading supported preview modules while file metadata is checked.
 
     <!--LANG:zh-CN-->
-    Cherry Studio 2.0.11 - 新功能、修复与改进
+    MEA Cowork 2.0.11 - 新功能、修复与改进
 
     ✨ 新功能
     - [樱桃云] 登录樱桃云获取权益感知的智能体模型、自动本地网关启动、配额感知的模型选择和持久的产品会话处理。
@@ -255,7 +255,7 @@ releaseInfo:
     - [智能体] 在智能体会话工具栏添加全局搜索操作。
     - [模型] 新增 Hy4 Preview、Ling 3.0 Flash 和 Qwen3.8 Flash 支持。
     - [Anthropic 缓存] Anthropic 兼容服务商现在可以从 API 设置中将提示缓存保持 1 小时。
-    - [国际化] 在 Cherry Studio 中添加初始土耳其语本地化支持。
+    - [国际化] 在 MEA Cowork 中添加初始土耳其语本地化支持。
     - [截图] 在选择区域内双击确认截图。
 
     🐛 问题修复

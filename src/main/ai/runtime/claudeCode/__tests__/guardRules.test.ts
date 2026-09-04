@@ -338,8 +338,12 @@ describe('CLAUDE_TOOL_GUARD_RULES', () => {
           interaction: HEADLESS
         })
       )
-      expect(decision?.ruleId).toBe('assistant-feedback')
-      expect(decision?.effect).toBe('deny')
+      expect(decision).toEqual({
+        effect: 'deny',
+        reason:
+          'Headless channel or scheduled turns cannot submit MEA Cowork feedback. Keep only a sanitized local feedback draft for an interactive user to review and submit.',
+        ruleId: 'assistant-feedback'
+      })
     })
 
     it('does not apply to other roles', async () => {
@@ -388,7 +392,12 @@ describe('CLAUDE_TOOL_GUARD_RULES', () => {
               interaction: HEADLESS
             })
           )
-        ).resolves.toMatchObject({ effect: 'deny', ruleId: 'support-diagnostic-draft' })
+        ).resolves.toEqual({
+          effect: 'deny',
+          reason:
+            'Headless channel or scheduled turns cannot present a diagnostic report for user review. Ask the user to open the feedback entry in MEA Cowork instead.',
+          ruleId: 'support-diagnostic-draft'
+        })
       }
     })
 

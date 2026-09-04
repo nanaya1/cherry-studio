@@ -60,7 +60,7 @@ describe('toElectronMenuTemplate', () => {
     ]
     const nativeItems = [
       ...items,
-      { type: 'role', role: 'quit', label: 'Quit Cherry Studio' },
+      { type: 'role', role: 'quit', label: 'Quit MEA Cowork' },
       { type: 'custom', label: 'Website', click: customClick }
     ] as const
 
@@ -84,7 +84,7 @@ describe('toElectronMenuTemplate', () => {
     expect((template[1] as { submenu: Array<{ registerAccelerator?: boolean }> }).submenu[0].registerAccelerator).toBe(
       undefined
     )
-    expect(template[2]).toEqual(expect.objectContaining({ role: 'quit', label: 'Quit Cherry Studio' }))
+    expect(template[2]).toEqual(expect.objectContaining({ role: 'quit', label: 'Quit MEA Cowork' }))
 
     template[3].click?.({} as never, {} as never, {} as never)
     expect(customClick).toHaveBeenCalledTimes(1)

@@ -1596,7 +1596,7 @@ describe('AgentService', () => {
         expect.objectContaining({
           id: 'agent_builtin_global_search',
           subtitle:
-            'Built-in Cherry Studio advisor. Diagnose issues, guide operations, collect FAQs, submit bugs/feature requests, and search/create Skills'
+            'Built-in MEA Cowork advisor. Diagnose issues, guide operations, collect FAQs, submit bugs/feature requests, and search/create Skills'
         })
       ])
     })
@@ -1613,7 +1613,7 @@ describe('AgentService', () => {
       expect(agentService.search({ q: 'troubleshooting', limit: 5 })).toEqual([
         expect.objectContaining({
           id: CHERRY_SUPPORT_AGENT_ID,
-          subtitle: 'Official Cherry Studio support Agent for setup guidance, troubleshooting, FAQs, and feedback'
+          subtitle: 'Official MEA Cowork support Agent for setup guidance, troubleshooting, FAQs, and feedback'
         })
       ])
     })

@@ -9,7 +9,7 @@ import { languageEnglishNameMap } from '@shared/utils/languages'
 
 const logger = loggerService.withContext('AgentPrompt')
 const MINIMAL_CHERRY_ASSISTANT_INSTRUCTIONS =
-  'Within Cherry Studio, serve as Cherry Assistant, its built-in general-purpose Agent and onboarding guide. Help the user complete any request using the available tools.'
+  'Within MEA Cowork, serve as Cherry Assistant, its built-in general-purpose Agent and onboarding guide. Help the user complete any request using the available tools.'
 
 const AGENT_INSTRUCTION_PRECEDENCE_PROMPT = `## Instruction Precedence
 

@@ -3,7 +3,12 @@ import fs from 'node:fs'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { VersionCheckInput, VersionCheckResult } from '../versionPolicy'
-import { checkUpgradePathCompatibility, evaluateCandidateVersion, readPreviousVersion } from '../versionPolicy'
+import {
+  checkUpgradePathCompatibility,
+  evaluateCandidateVersion,
+  getBlockMessage,
+  readPreviousVersion
+} from '../versionPolicy'
 
 vi.mock('node:fs', async () => {
   const { createNodeFsMock } = await import('@test-helpers/mocks/nodeFsMock')
@@ -212,5 +217,11 @@ describe('evaluateCandidateVersion', () => {
     })
     expect(result.previousVersion).toBe('1.8.0')
     expect(result.versionLogExists).toBe(true)
+  })
+
+  it('names MEA Cowork when the previous version cannot be determined', () => {
+    expect(getBlockMessage('no_version_log', { requiredVersion: '1.9.12' })).toContain(
+      'Cannot determine your previous MEA Cowork version.'
+    )
   })
 })
