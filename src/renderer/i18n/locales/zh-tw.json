@@ -5219,7 +5219,6 @@
   "workspace.newTask.agent.title": "智慧體任務",
   "workspace.newTask.chat.description": "選擇現有助理並開始對話。",
   "workspace.newTask.chat.title": "一般對話",
-  "workspace.newTask.description": "選擇一種開始方式。",
   "workspace.newTask.heading": "你想做什麼？",
   "workspace.newTask.title": "新增任務",
   "workspace.resources.channelsDescription": "將智慧體連接到支援的訊息頻道。",

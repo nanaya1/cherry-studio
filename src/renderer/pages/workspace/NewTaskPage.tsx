@@ -1,6 +1,5 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@cherrystudio/ui'
 import { loggerService } from '@logger'
-import AppLogo from '@renderer/assets/images/logo.png'
 import { type AgentComposerSendOptions, AgentHomeComposer } from '@renderer/components/composer/variants/AgentComposer'
 import { ChatPlacementComposer } from '@renderer/components/composer/variants/ChatComposer'
 import { usePersistCache } from '@renderer/data/hooks/useCache'
@@ -299,16 +298,12 @@ export default function NewTaskPage() {
       <header className="flex h-(--navbar-height) shrink-0 items-center border-border-subtle border-b px-5">
         <h1 className="font-medium text-sm">{t('workspace.newTask.title')}</h1>
       </header>
-      <main className="flex min-h-[520px] flex-1 items-center justify-center px-6 py-12">
+      <main className="flex min-h-[520px] flex-1 items-start justify-center px-6 pt-24 pb-12">
         <div className="w-full max-w-2xl">
           <div className="text-center">
-            <img src={AppLogo} alt="" className="mx-auto size-12 rounded-xl object-cover" />
-            <h2 className="mt-5 font-semibold text-2xl tracking-tight">{t('workspace.newTask.heading')}</h2>
-            <p className="mx-auto mt-2 max-w-xl text-muted-foreground text-sm leading-6">
-              {t('workspace.newTask.description')}
-            </p>
+            <h2 className="font-semibold text-2xl tracking-tight">{t('workspace.newTask.heading')}</h2>
           </div>
-          <Tabs defaultValue="chat" className="mt-7">
+          <Tabs defaultValue="chat" className="mt-10 gap-4 [&_[data-ui~='part:composer-input']]:min-h-20!">
             <TabsList className="mx-auto flex w-fit rounded-lg bg-muted p-1">
               <TabsTrigger value="chat" className="flex h-8 items-center gap-2 rounded-md px-3 text-sm">
                 <MessageSquare size={15} />

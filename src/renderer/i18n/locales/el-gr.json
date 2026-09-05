@@ -5219,7 +5219,6 @@
   "workspace.newTask.agent.title": "Εργασία Agent",
   "workspace.newTask.chat.description": "Επιλέξτε έναν υπάρχοντα Βοηθό και ξεκινήστε μια συνομιλία.",
   "workspace.newTask.chat.title": "Συνομιλία",
-  "workspace.newTask.description": "Επιλέξτε πώς θέλετε να ξεκινήσετε.",
   "workspace.newTask.heading": "Τι θα θέλατε να κάνετε;",
   "workspace.newTask.title": "Νέα εργασία",
   "workspace.resources.channelsDescription": "Συνδέστε Agents σε υποστηριζόμενα κανάλια μηνυμάτων.",

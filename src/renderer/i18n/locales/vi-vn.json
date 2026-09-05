@@ -5219,7 +5219,6 @@
   "workspace.newTask.agent.title": "Tác vụ Agent",
   "workspace.newTask.chat.description": "Chọn một Trợ lý hiện có và bắt đầu cuộc trò chuyện.",
   "workspace.newTask.chat.title": "Trò chuyện",
-  "workspace.newTask.description": "Chọn cách bạn muốn bắt đầu.",
   "workspace.newTask.heading": "Bạn muốn làm gì?",
   "workspace.newTask.title": "Tác vụ mới",
   "workspace.resources.channelsDescription": "Kết nối Agent với các kênh nhắn tin được hỗ trợ.",

@@ -5219,7 +5219,6 @@
   "workspace.newTask.agent.title": "Tarefa de agente",
   "workspace.newTask.chat.description": "Escolha um assistente existente e inicie uma conversa.",
   "workspace.newTask.chat.title": "Conversa",
-  "workspace.newTask.description": "Escolha como pretende começar.",
   "workspace.newTask.heading": "O que pretende fazer?",
   "workspace.newTask.title": "Nova tarefa",
   "workspace.resources.channelsDescription": "Ligue agentes a canais de mensagens suportados.",

@@ -5219,7 +5219,6 @@
   "workspace.newTask.agent.title": "エージェントタスク",
   "workspace.newTask.chat.description": "既存のアシスタントを選択して会話を開始します。",
   "workspace.newTask.chat.title": "チャット",
-  "workspace.newTask.description": "開始方法を選択してください。",
   "workspace.newTask.heading": "何をしますか？",
   "workspace.newTask.title": "新しいタスク",
   "workspace.resources.channelsDescription": "エージェントを対応するメッセージチャンネルに接続します。",

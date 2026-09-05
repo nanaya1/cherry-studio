@@ -5219,7 +5219,6 @@
   "workspace.newTask.agent.title": "Ajan görevi",
   "workspace.newTask.chat.description": "Mevcut bir Asistan seçin ve konuşma başlatın.",
   "workspace.newTask.chat.title": "Sohbet",
-  "workspace.newTask.description": "Nasıl başlamak istediğinizi seçin.",
   "workspace.newTask.heading": "Ne yapmak istersiniz?",
   "workspace.newTask.title": "Yeni görev",
   "workspace.resources.channelsDescription": "Ajanları desteklenen mesajlaşma kanallarına bağlayın.",
