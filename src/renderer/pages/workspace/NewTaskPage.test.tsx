@@ -17,6 +17,10 @@ const mocks = vi.hoisted(() => ({
   closeConversationTabs: vi.fn(),
   toastError: vi.fn(),
   assistants: [{ id: 'assistant-1' }, { id: 'assistant-2' }],
+  agents: [
+    { id: 'agent-1', name: 'Custom agent', configuration: {} },
+    { id: 'craftsman-agent', name: 'User-renamed builtin', configuration: { builtin_role: 'assistant' } }
+  ],
   lastUsedAssistantId: 'assistant-2' as string | null,
   setLastUsedAssistantId: vi.fn(),
   chatProps: undefined as Record<string, unknown> | undefined,
@@ -75,7 +79,11 @@ vi.mock('@renderer/data/hooks/useCache', () => ({
 
 vi.mock('@renderer/data/hooks/useDataApi', () => ({
   useInvalidateCache: () => mocks.invalidateCache,
-  useQuery: () => ({ data: [] })
+  useQuery: (path: string) => ({
+    data: path === '/agents' ? { items: mocks.agents } : [],
+    isLoading: false,
+    isRefreshing: false
+  })
 }))
 
 vi.mock('@renderer/hooks/agent/useAgent', () => ({
@@ -167,6 +175,10 @@ async function selectAgent() {
 
 beforeEach(() => {
   mocks.assistants = [{ id: 'assistant-1' }, { id: 'assistant-2' }]
+  mocks.agents = [
+    { id: 'agent-1', name: 'Custom agent', configuration: {} },
+    { id: 'craftsman-agent', name: 'User-renamed builtin', configuration: { builtin_role: 'assistant' } }
+  ]
   mocks.lastUsedAssistantId = 'assistant-2'
   mocks.reuseOrCreateTopic.mockResolvedValue({ topic: { id: 'topic-1' } })
   mocks.reuseOrCreateSession.mockResolvedValue({
@@ -193,14 +205,20 @@ describe('NewTaskPage', () => {
     expect(mocks.chatProps?.assistantId).toBe('assistant-2')
   })
 
+  it('selects the builtin craftsman agent by role for new agent tasks', async () => {
+    render(<NewTaskPage />)
+
+    await waitFor(() => expect(mocks.agentProps?.agentId).toBe('craftsman-agent'))
+    expect(mocks.agentProps?.sendDisabled).toBe(false)
+  })
+
   it('keeps the same agent composer visible before and after selecting an agent', async () => {
     render(<NewTaskPage />)
 
     const composer = screen.getByLabelText('agent-composer')
     expect(mocks.chatProps?.scopeKey).toBe('new-task:tab-1:chat')
     expect(mocks.agentProps?.draftScopeKey).toBe('new-task:tab-1:agent')
-    expect(mocks.agentProps?.agentId).toBe('')
-    expect(mocks.agentProps?.sendDisabled).toBe(true)
+    await waitFor(() => expect(mocks.agentProps?.agentId).toBe('craftsman-agent'))
 
     await selectAgent()
 

@@ -19,7 +19,9 @@ import { toast } from '@renderer/services/toast'
 import { buildAgentSessionTopicId } from '@renderer/utils/agentSession'
 import { LAST_USED_ASSISTANT_CACHE_KEY, resolveDefaultAssistant } from '@renderer/utils/assistant'
 import { formatErrorMessageWithPrefix } from '@renderer/utils/error'
+import { BUILTIN_AGENT_ROLE } from '@shared/ai/builtinAgent'
 import type { AiStreamOpenResponse } from '@shared/ai/transport'
+import { AGENTS_MAX_LIMIT } from '@shared/data/api/schemas/agents'
 import type { AgentSessionEntity } from '@shared/data/api/schemas/agentSessions'
 import {
   AGENT_WORKSPACE_TYPE,
@@ -59,6 +61,17 @@ export default function NewTaskPage() {
   const [chatAssistantId, setChatAssistantId] = useState<string | null>(() => defaultChatAssistantId)
   const chatContext = useAssistant(chatAssistantId, { loadDefaultModel: true })
   const { providers } = useProviders()
+  const {
+    data: agentsData,
+    isLoading: agentsLoading,
+    isRefreshing: agentsRefreshing
+  } = useQuery('/agents', { query: { limit: AGENTS_MAX_LIMIT } })
+  const defaultAgentId = useMemo(
+    () =>
+      agentsData?.items.find((candidate) => candidate.configuration?.builtin_role === BUILTIN_AGENT_ROLE.ASSISTANT)
+        ?.id ?? null,
+    [agentsData]
+  )
   const [agentId, setAgentId] = useState<string | null>(null)
   const { agent, isLoading: agentLoading } = useAgent(agentId)
   const { model: agentModel, isLoading: agentModelLoading } = useModelById(agent?.model)
@@ -116,6 +129,7 @@ export default function NewTaskPage() {
   const chatEpochRef = useRef(0)
   const agentEpochRef = useRef(0)
   const chatSelectionInitializedRef = useRef(false)
+  const agentSelectionInitializedRef = useRef(false)
   const chatPlaceholderRef = useRef<{ target: string; topicId: string } | null>(null)
   const agentPlaceholderRef = useRef<{ target: string; session: AgentSessionEntity } | null>(null)
   const pendingNavigationRef = useRef<{ type: 'chat'; id: string } | { type: 'agent'; id: string } | null>(null)
@@ -126,6 +140,12 @@ export default function NewTaskPage() {
     chatEpochRef.current += 1
     setChatAssistantId(defaultChatAssistantId)
   }, [defaultChatAssistantId, isAssistantListResolved])
+
+  useEffect(() => {
+    if (!agentsData || agentsLoading || agentsRefreshing || agentSelectionInitializedRef.current) return
+    agentSelectionInitializedRef.current = true
+    setAgentId(defaultAgentId)
+  }, [agentsData, agentsLoading, agentsRefreshing, defaultAgentId])
 
   useEffect(
     () => () => {
@@ -277,6 +297,7 @@ export default function NewTaskPage() {
   )
   const handleAgentChange = useCallback((nextAgentId: string | null) => {
     if (agentInFlightRef.current) return
+    agentSelectionInitializedRef.current = true
     agentEpochRef.current += 1
     agentPlaceholderRef.current = null
     pendingNavigationRef.current = null
