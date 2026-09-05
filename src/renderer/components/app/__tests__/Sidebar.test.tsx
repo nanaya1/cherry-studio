@@ -50,6 +50,9 @@ const mocks = vi.hoisted(() => ({
   openTab: vi.fn(),
   openSettingsTab: vi.fn(),
   setActiveTab: vi.fn(),
+  useAssistantTopicsSource: {
+    reuseOrCreateTopic: vi.fn()
+  },
   useMiniApps: vi.fn(),
   updateTab: vi.fn(),
   activeTab: {
@@ -126,7 +129,8 @@ vi.mock('@renderer/hooks/useAvatar', () => ({
 vi.mock('@renderer/hooks/resourceViewSources', () => ({
   useAssistantTopicsSource: () => ({
     topics: mocks.topics,
-    rendererTopics: mocks.topics
+    rendererTopics: mocks.topics,
+    ...mocks.useAssistantTopicsSource
   }),
   useAgentSessionsSource: () => ({ sessions: mocks.sessions })
 }))
@@ -136,19 +140,28 @@ vi.mock('@renderer/components/chat/resourceList/Topics', () => ({
     assistantTopicsSource,
     className,
     setActiveTopic,
+    onNewTopic,
     showHeader
   }: {
     assistantTopicsSource: { rendererTopics: FakeConversation[] }
     className?: string
     setActiveTopic: (topic: FakeConversation) => void
+    onNewTopic?: (payload?: { assistantId?: string | null }) => void | Promise<void>
     showHeader?: boolean
   }) => (
-    <div className={className} data-testid="conversation-topic-list" data-show-header={showHeader}>
+    <div
+      className={className}
+      data-testid="conversation-topic-list"
+      data-show-header={showHeader}
+      data-on-new-topic={onNewTopic ? 'true' : 'false'}>
       {assistantTopicsSource.rendererTopics.map((topic) => (
         <button key={topic.id} type="button" onClick={() => setActiveTopic(topic)}>
           {topic.name}
         </button>
       ))}
+      <button type="button" onClick={() => void onNewTopic?.()}>
+        new-conversation
+      </button>
     </div>
   )
 }))
@@ -426,6 +439,27 @@ describe('app Sidebar', () => {
       metadata: undefined
     })
     expect(mocks.openSettingsTab).not.toHaveBeenCalled()
+  })
+
+  it('opens the New Task page from the conversations + action without creating a topic', async () => {
+    const user = userEvent.setup()
+
+    render(<Sidebar />)
+
+    const conversationContent = getSidebarProps().sections?.find((section) => section.id === 'conversations')?.content
+    render(conversationContent)
+    expect(screen.getByTestId('conversation-topic-list')).toHaveAttribute('data-on-new-topic', 'true')
+
+    await user.click(screen.getByRole('button', { name: 'new-conversation' }))
+
+    expect(mocks.updateTab).toHaveBeenCalledWith('chat', {
+      url: '/app/new-task',
+      title: 'New task',
+      icon: undefined,
+      metadata: undefined
+    })
+    expect(mocks.useAssistantTopicsSource.reuseOrCreateTopic).not.toHaveBeenCalled()
+    expect(mocks.openAssistantConversationTab).not.toHaveBeenCalled()
   })
 
   it('opens conversation and task history entries at their exact routes', async () => {
