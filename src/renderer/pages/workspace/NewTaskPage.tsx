@@ -295,26 +295,26 @@ export default function NewTaskPage() {
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-y-auto bg-background">
-      <header className="flex h-(--navbar-height) shrink-0 items-center border-border-subtle border-b px-5">
+      {/* <header className="flex h-(--navbar-height) shrink-0 items-center border-border-subtle border-b px-5">
         <h1 className="font-medium text-sm">{t('workspace.newTask.title')}</h1>
-      </header>
-      <main className="flex min-h-[520px] flex-1 items-start justify-center px-6 pt-24 pb-12">
+      </header> */}
+      <main className="flex min-h-[520px] flex-1 items-start justify-center px-6 pt-35 pb-12">
         <div className="w-full max-w-2xl">
           <div className="text-center">
             <h2 className="font-semibold text-2xl tracking-tight">{t('workspace.newTask.heading')}</h2>
           </div>
-          <Tabs defaultValue="chat" className="mt-10 gap-4 [&_[data-ui~='part:composer-input']]:min-h-20!">
+          <Tabs defaultValue="chat" className="mt-5 gap-8 [&_[data-ui~='part:composer-input']]:min-h-20!">
             <TabsList className="mx-auto flex w-fit rounded-lg bg-muted p-1">
-              <TabsTrigger value="chat" className="flex h-8 items-center gap-2 rounded-md px-3 text-sm">
+              <TabsTrigger value="chat" className="flex h-8 items-center gap-2 rounded-md px-4 text-sm">
                 <MessageSquare size={15} />
                 {t('workspace.newTask.chat.title')}
               </TabsTrigger>
-              <TabsTrigger value="agent" className="flex h-8 items-center gap-2 rounded-md px-3 text-sm">
+              <TabsTrigger value="agent" className="flex h-8 items-center gap-2 rounded-md px-4 text-sm">
                 <Bot size={15} />
                 {t('workspace.newTask.agent.title')}
               </TabsTrigger>
             </TabsList>
-            <TabsContent value="chat" forceMount className="data-[state=inactive]:hidden">
+            <TabsContent value="chat" forceMount className="data-[state=inactive]:hidden mt-4">
               <ChatPlacementComposer
                 placement="home"
                 scopeKey={chatDraftScopeKey}
