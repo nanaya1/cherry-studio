@@ -58,11 +58,13 @@ import type { Provider } from './types'
 import p_vertexai from './vertexai'
 import p_voyageai from './voyageai'
 import p_xirang from './xirang'
+import p_xuelang from './xuelang'
 import p_zai from './zai'
 import p_zhipu from './zhipu'
 
 /** Every provider, in registry order. Source of truth for data/providers.json + data/provider-models.json. */
 export const PROVIDERS: Provider[] = [
+  p_xuelang,
   p_cherryin,
   p_radeon_cloud,
   p_silicon,

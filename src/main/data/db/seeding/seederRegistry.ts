@@ -11,17 +11,19 @@ import { PreferenceSeeder } from './seeders/preferenceSeeder'
 import { PresetProviderSeeder } from './seeders/presetProviderSeeder'
 import { TranslateLanguageSeeder } from './seeders/translateLanguageSeeder'
 import { WebSearchPreferenceUpgradeSeeder } from './seeders/WebSearchPreferenceUpgradeSeeder'
+import { XuelangDefaultModelSeeder } from './seeders/xuelangDefaultModelSeeder'
 
 /**
  * All seeders in execution order.
  *
- * Keep CherryAiDefaultModelSeeder before DefaultAssistantSeeder because the
- * seeded assistant references the CherryAI default model (FK to user_model).
+ * Keep XuelangDefaultModelSeeder before DefaultAssistantSeeder because the
+ * seeded assistant references the Xuelang default model (FK to user_model).
  *
  * To add a new seeder: create an ISeeder class, add it to this array.
  * No changes to DbService needed.
  */
 export const seeders: ISeeder[] = [
+  new XuelangDefaultModelSeeder(),
   new CherryAiDefaultModelSeeder(),
   new CherryAssistantSeeder(),
   new CherrySupportSeeder(),

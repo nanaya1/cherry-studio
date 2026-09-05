@@ -38457,6 +38457,18 @@
       "providerId": "voyageai"
     },
     {
+      "apiModelId": "Qwen3.6-35B-A3B",
+      "modelId": "qwen3-6-35b-a3b",
+      "name": "Qwen3.6 35B A3B",
+      "providerId": "xuelang"
+    },
+    {
+      "apiModelId": "Qwen3.8-27B",
+      "modelId": "qwen3-8-27b",
+      "name": "Qwen3.8 27B",
+      "providerId": "xuelang"
+    },
+    {
       "imageGeneration": {
         "modes": {
           "generate": {
@@ -38693,5 +38705,5 @@
       "providerId": "zhipu"
     }
   ],
-  "version": "ea68f0c96ce12011"
+  "version": "2f963095e16351b6"
 }
