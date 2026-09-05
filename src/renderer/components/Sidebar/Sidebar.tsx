@@ -11,6 +11,7 @@ import { getSidebarDisplayWidth, getSidebarLayout } from './constants'
 import { DefaultLogo } from './primitives'
 import { SidebarFooter, type SidebarFooterActions } from './SidebarFooter'
 import { SidebarEntryList, SidebarList } from './SidebarList'
+import { SidebarMoreMenu, type SidebarMoreMenuProps } from './SidebarMoreMenu'
 import { SidebarTooltip } from './Tooltip'
 import type {
   ResolvedSidebarEntry,
@@ -26,6 +27,7 @@ export interface SidebarProps {
   setWidth: (width: number) => void
   entries: ResolvedSidebarEntry[]
   navigationEntries?: ResolvedSidebarEntry[]
+  moreMenu?: Omit<SidebarMoreMenuProps, 'active' | 'layout' | 'onOpenChange'>
   sections?: SidebarSection[]
   entriesLabel?: string
   sectionsLabel?: string
@@ -51,6 +53,7 @@ export function Sidebar({
   setWidth,
   entries,
   navigationEntries = [],
+  moreMenu,
   sections = [],
   entriesLabel,
   sectionsLabel,
@@ -77,6 +80,7 @@ export function Sidebar({
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({})
   const contextMenuOpenRef = useRef(false)
   const footerOverlayOpenRef = useRef(false)
+  const moreMenuOpenRef = useRef(false)
   const floatingPointerInsideRef = useRef(false)
   const layout = getSidebarLayout(width)
   const showFooter = Boolean(extensionsLabel || user || onExtensionsClick || actions)
@@ -162,6 +166,27 @@ export function Sidebar({
     [clearHoverDismiss, isFloating, scheduleHoverDismiss]
   )
 
+  const handleMoreMenuOpenChange = useCallback(
+    (open: boolean) => {
+      moreMenuOpenRef.current = open
+
+      if (open) {
+        clearHoverDismiss()
+        return
+      }
+
+      if (
+        isFloating &&
+        !floatingPointerInsideRef.current &&
+        !contextMenuOpenRef.current &&
+        !footerOverlayOpenRef.current
+      ) {
+        scheduleHoverDismiss()
+      }
+    },
+    [clearHoverDismiss, isFloating, scheduleHoverDismiss]
+  )
+
   const handleFooterOverlayOpenChange = useCallback(
     (open: boolean) => {
       footerOverlayOpenRef.current = open
@@ -201,6 +226,21 @@ export function Sidebar({
             layout={contentLayout}
             onContextMenuOpenChange={handleContextMenuOpenChange}
           />
+          {moreMenu && (
+            <div
+              className={
+                contentLayout === 'icon'
+                  ? 'flex justify-center [-webkit-app-region:no-drag]'
+                  : 'px-2 pt-0.5 [-webkit-app-region:no-drag]'
+              }>
+              <SidebarMoreMenu
+                {...moreMenu}
+                active={active}
+                layout={contentLayout}
+                onOpenChange={handleMoreMenuOpenChange}
+              />
+            </div>
+          )}
         </nav>
       )}
       {contentLayout === 'icon' && entries.length > 0 && (
@@ -263,7 +303,7 @@ export function Sidebar({
           onClick={(event) => event.stopPropagation()}
           onMouseLeave={() => {
             floatingPointerInsideRef.current = false
-            if (!contextMenuOpenRef.current && !footerOverlayOpenRef.current) {
+            if (!contextMenuOpenRef.current && !footerOverlayOpenRef.current && !moreMenuOpenRef.current) {
               scheduleHoverDismiss()
             }
           }}

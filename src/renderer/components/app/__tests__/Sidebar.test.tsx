@@ -307,6 +307,7 @@ vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string, options?: { defaultValue?: string }) => {
       if (key === 'common.search') return 'Search'
+      if (key === 'common.more') return 'More'
       if (key === 'launchpad.manage_sidebar') return 'Manage Sidebar'
       if (key === 'launchpad.favorites') return 'Favorites'
       if (key === 'title.launchpad') return 'Launchpad'
@@ -423,13 +424,40 @@ describe('app Sidebar', () => {
     expect(getSidebarProps().navigationEntries?.map((entry) => entry.label)).toEqual([
       'New task',
       'Skills & Connectors',
-      'Scheduled Tasks',
-      'Resource Center'
+      'Scheduled Tasks'
     ])
     expect(getSidebarProps().sections?.map((section) => section.label)).toEqual(['Conversations', 'Tasks'])
     expect(getSidebarProps().sections?.[0]?.content).toBeDefined()
     expect(getSidebarProps().sections?.[1]?.content).toBeDefined()
     expect(mocks.setSidebarFavorites).not.toHaveBeenCalled()
+  })
+
+  it('aggregates Resource Center and translate/paintings/knowledge entries in the More menu', () => {
+    mocks.sidebarFavorites = [
+      appFavorite('agents'),
+      appFavorite('translate'),
+      appFavorite('knowledge'),
+      appFavorite('assistants'),
+      appFavorite('paintings')
+    ]
+
+    render(<Sidebar />)
+
+    const moreMenu = getSidebarProps().moreMenu
+    expect(moreMenu?.label).toBe('More')
+    expect(moreMenu?.entries.map((entry) => entry.key)).toEqual([
+      'workspace:resources',
+      'app:translate',
+      'app:paintings',
+      'app:knowledge'
+    ])
+    act(() => moreMenu?.entries[0].onOpen())
+    expect(mocks.updateTab).toHaveBeenCalledWith('chat', {
+      url: '/app/resources',
+      title: 'Resource Center',
+      icon: undefined,
+      metadata: undefined
+    })
   })
 
   it('opens scheduled tasks in the active workspace tab', () => {

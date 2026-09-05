@@ -31,6 +31,7 @@ import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useSt
 import { useTranslation } from 'react-i18next'
 
 import { GlobalSearchButton, SidebarCollapseButton, SidebarShellActions } from '../layout/ShellTabBarActions'
+import type { ResolvedSidebarEntry } from '../Sidebar'
 import {
   getSidebarDisplayWidth,
   getSidebarLayout,
@@ -350,13 +351,6 @@ export default function Sidebar({
         renderIcon: (size: number) => <CalendarClock size={size} />,
         isActive: () => pathname.startsWith('/app/scheduled-tasks'),
         onOpen: () => navigateRouteTab('/app/scheduled-tasks', t('settings.scheduledTasks.title'))
-      },
-      {
-        key: 'workspace:resources',
-        label: t('workspace.resources.title'),
-        renderIcon: (size: number) => <Shapes size={size} />,
-        isActive: () => pathname.startsWith('/app/resources'),
-        onOpen: () => navigateRouteTab('/app/resources', t('workspace.resources.title'))
       }
     ],
     [navigateRouteTab, pathname, t]
@@ -448,6 +442,25 @@ export default function Sidebar({
     [favorites, t, variantContext]
   )
 
+  // "More" panel entries: Resource Center plus the pinned built-in apps that route
+  // to their own pages (translate / paintings / knowledge). Entity favorites
+  // (agents / assistants) and mini apps stay in the icon-rail favorites list.
+  const moreMenuEntries = useMemo(() => {
+    const resourcesEntry: ResolvedSidebarEntry = {
+      key: 'workspace:resources',
+      label: t('workspace.resources.title'),
+      renderIcon: (size: number) => <Shapes size={size} />,
+      isActive: () => pathname.startsWith('/app/resources'),
+      onOpen: () => navigateRouteTab('/app/resources', t('workspace.resources.title'))
+    }
+    const byKey = new Map(entries.map((entry) => [entry.key, entry]))
+    const pickApp = (id: SidebarAppId) => byKey.get(`app:${id}`) ?? null
+
+    return [resourcesEntry, pickApp('translate'), pickApp('paintings'), pickApp('knowledge')].filter(
+      (entry): entry is ResolvedSidebarEntry => entry !== null
+    )
+  }, [entries, navigateRouteTab, pathname, t])
+
   // A single drag reorders the whole mixed list. arrayMove yields the new entry
   // order; map each entry back to its favorite by key and persist. The sidebar owns
   // its order entirely through `ui.sidebar.favorites` and never touches order keys.
@@ -467,6 +480,7 @@ export default function Sidebar({
   const sidebarProps = {
     entries,
     navigationEntries,
+    moreMenu: { label: t('common.more'), entries: moreMenuEntries },
     sections: historySections,
     entriesLabel: t('workspace.favorites'),
     sectionsLabel: t('history.records.shortTitle'),
