@@ -5219,7 +5219,7 @@
   "workspace.newTask.agent.title": "任务",
   "workspace.newTask.chat.description": "选择已有助手并开始对话。",
   "workspace.newTask.chat.title": "对话",
-  "workspace.newTask.heading": "你想做什么？",
+  "workspace.newTask.heading": "今天想做点什么？",
   "workspace.newTask.title": "新建任务",
   "workspace.resources.channelsDescription": "将智能体连接到支持的消息渠道。",
   "workspace.resources.connectors": "连接器",
