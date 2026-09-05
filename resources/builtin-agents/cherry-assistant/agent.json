@@ -1,7 +1,7 @@
 {
   "name": {
     "en-US": "Cherry Assistant",
-    "zh-CN": "Cherry 小助手"
+    "zh-CN": "默认小助手"
   },
   "type": "claude-code",
   "instructions": {

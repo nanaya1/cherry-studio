@@ -11,7 +11,7 @@ import type { DbType, ISeeder } from '../../types'
 const CHERRY_ASSISTANT_SEED = {
   name: {
     default: 'Cherry Assistant',
-    zh: 'Cherry 小助手'
+    zh: '默认小助手'
   },
   configuration: {
     avatar: '🍒',
