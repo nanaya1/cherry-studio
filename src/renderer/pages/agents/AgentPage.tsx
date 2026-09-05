@@ -295,7 +295,7 @@ const AgentPage = () => {
   }, [missingAgentSelection, visibleSession?.id])
   const conversationResourcesEnabled = !isMessageOnlyView && !isWindowFrame
   const location = useLocation()
-  // Detail pages hide the workspace sidebar entirely, so the expand/collapse toggle goes with it.
+  // Detail pages hide the in-shell conversation list, so the expand/collapse toggle goes with it.
   // Message-only (detached) views never had the toggle either.
   const showSidebarControls = !isMessageOnlyView && !isDetailPageUrl(`${location.pathname}${location.searchStr}`)
   const {

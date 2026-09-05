@@ -256,45 +256,6 @@ describe('AppShell', () => {
     expect(screen.getAllByTestId('tab-router').map((router) => router.dataset.tabId)).toEqual(['home', 'settings'])
   })
 
-  it('hides the sidebar on conversation and task detail pages and keeps it on list routes', () => {
-    const renderWithActiveUrl = (id: string, url: string) => {
-      mocks.tabs = [
-        {
-          id,
-          isDormant: false,
-          title: 'Tab',
-          type: 'route' as const,
-          url
-        }
-      ]
-      mocks.activeTabId = id
-      const view = render(<AppShell />)
-      return view
-    }
-
-    // Detail pages (specific conversation / scheduled task) hide the workspace sidebar.
-    for (const [id, url] of [
-      ['chat-detail', '/app/chat?topicId=topic-1'],
-      ['agent-detail', '/app/agents?sessionId=session-1'],
-      ['task-detail', '/app/scheduled-tasks/task-1']
-    ] as const) {
-      const view = renderWithActiveUrl(id, url)
-      expect(screen.queryByTestId('sidebar')).not.toBeInTheDocument()
-      view.unmount()
-    }
-
-    // Bare list routes keep the workspace sidebar.
-    for (const [id, url] of [
-      ['chat-list', '/app/chat'],
-      ['agent-list', '/app/agents'],
-      ['task-list', '/app/scheduled-tasks']
-    ] as const) {
-      const view = renderWithActiveUrl(id, url)
-      expect(screen.getByTestId('sidebar')).toBeInTheDocument()
-      view.unmount()
-    }
-  })
-
   it('keeps a background Settings tab in the positional tab-bar list', () => {
     mocks.tabs = [
       ...mocks.tabs,

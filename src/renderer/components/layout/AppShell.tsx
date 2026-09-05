@@ -5,7 +5,6 @@ import { useTabs } from '@renderer/hooks/tab'
 import useMacTransparentWindow from '@renderer/hooks/useMacTransparentWindow'
 import { useNativeFullscreen } from '@renderer/hooks/useNativeFullscreen'
 import { ipcApi } from '@renderer/ipc'
-import { isDetailPageUrl } from '@renderer/utils/detailPage'
 import { miniAppIdFromTabUrl } from '@renderer/utils/miniAppKeepAlive'
 import { isMac } from '@renderer/utils/platform'
 import { getDefaultRouteTitle, isPageTitledRoute } from '@renderer/utils/routeTitle'
@@ -34,9 +33,7 @@ export const AppShell = () => {
   const activeTab = useMemo(() => tabs.find((tab) => tab.id === activeTabId), [activeTabId, tabs])
   const canCycleTabs = tabs.length > 1 && !!activeTab
   const isSettingsTabActive = isSettingsPath(activeTab?.url)
-  // Detail pages (conversation / scheduled-task) hide the workspace sidebar like settings do.
-  const isDetailPageActive = isDetailPageUrl(activeTab?.url)
-  const hideSidebar = isSettingsTabActive || isDetailPageActive
+  const hideSidebar = isSettingsTabActive
   // Single-tab mode: entering settings rewrites the (only) tab's URL, so the
   // pre-settings workspace URL must be remembered to restore it on "back".
   const previousWorkspaceUrlRef = useRef<string | undefined>(undefined)
