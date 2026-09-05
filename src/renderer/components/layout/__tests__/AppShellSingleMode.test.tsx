@@ -174,7 +174,7 @@ describe('AppShell (single-tab mode tab bar)', () => {
     expect(mocks.tabBarProps).toHaveProperty('onFocusedTabBack', expect.any(Function))
   })
 
-  it('keeps the focused tab (with back handler) while settings is active', async () => {
+  it('keeps the focused settings state (with back handler) while still passing no chips', async () => {
     // Enter settings from the workspace so the shell remembers the workspace URL.
     const { rerender } = render(<AppShell />)
     expect(mocks.tabBarProps?.tabs).toEqual([])
@@ -183,7 +183,9 @@ describe('AppShell (single-tab mode tab bar)', () => {
     mocks.activeTabId = 'settings'
     rerender(<AppShell />)
 
-    expect(mocks.tabBarProps?.tabs).toEqual([settingsTab])
+    // Focused or not, the strip stays empty — the back affordance lives on the
+    // right side of the header, not in any tab-shaped element.
+    expect(mocks.tabBarProps?.tabs).toEqual([])
     expect(mocks.tabBarProps).toHaveProperty('isFocusedTab', true)
     const onBack = mocks.tabBarProps?.onFocusedTabBack as (() => void) | undefined
     expect(onBack).toEqual(expect.any(Function))

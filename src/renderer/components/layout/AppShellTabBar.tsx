@@ -576,7 +576,6 @@ export const AppShellTabBar = ({
   unpinTab,
   detachTab
 }: AppShellTabBarProps) => {
-  const { t } = useTranslation()
   const isMacTransparentWindow = useMacTransparentWindow()
   const tabTone = useMemo<TabToneProps>(
     () =>

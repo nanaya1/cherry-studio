@@ -251,7 +251,7 @@ describe('AppShell', () => {
     expect(mocks.tabBarProps).toMatchObject({
       activeTabId: settingsTab.id,
       isFocusedTab: true,
-      tabs: [settingsTab]
+      tabs: mocks.tabs
     })
     expect(screen.getAllByTestId('tab-router').map((router) => router.dataset.tabId)).toEqual(['home', 'settings'])
   })
