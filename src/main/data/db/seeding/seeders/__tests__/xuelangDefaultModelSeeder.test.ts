@@ -129,7 +129,7 @@ describe('XuelangDefaultModelSeeder', () => {
       value: legacyModelId
     })
     await dbh.db.insert(assistantTable).values({
-      name: '默认助手',
+      name: '工匠助手',
       emoji: '😀',
       modelId: legacyModelId,
       settings: DEFAULT_ASSISTANT_SETTINGS,

@@ -4,29 +4,32 @@ import { topicTable } from '@data/db/schemas/topic'
 import { messageService } from '@data/services/MessageService'
 import { insertWithOrderKey } from '@data/services/utils/orderKey'
 import { DEFAULT_ASSISTANT_SEED, getDefaultAssistantNameForLocale } from '@shared/data/presets/defaultAssistant'
-import { and, eq, isNull } from 'drizzle-orm'
+import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { app } from 'electron'
 
-import type { DbType, ISeeder } from '../../types'
+import type { DbOrTx, DbType, ISeeder } from '../../types'
 import { hashObject } from '../hashObject'
 
 export class DefaultAssistantSeeder implements ISeeder {
   readonly name = 'defaultAssistant'
-  readonly description = 'Insert the default assistant and an empty topic for new users'
-  readonly executionPolicy = 'bootstrap-only' as const
+  readonly description = 'Insert the default assistant and roll stock renames forward'
+  readonly executionPolicy = 'run-on-change' as const
   readonly version: string
 
   constructor() {
     this.version = hashObject({
       assistant: DEFAULT_ASSISTANT_SEED,
       topic: { name: '', empty: true },
-      freshGuard: 'bootstrap-only; no active assistant/topic/message',
-      localizedName: 'preferredSystemLanguages[0]; zh=>默认助手; other=>Cherry Assistant'
+      freshGuard: 'no active assistant/topic/message',
+      localizedName: 'preferredSystemLanguages[0]; zh=>工匠助手; other=>Cherry Assistant',
+      stockRename: "zh['默认助手','Cherry 助手']=>工匠助手"
     })
   }
 
   run(db: DbType): void {
     db.transaction((tx) => {
+      this.renameStockNames(tx)
+
       if (!this.isFreshUserDatabase(tx)) {
         return
       }
@@ -51,6 +54,17 @@ export class DefaultAssistantSeeder implements ISeeder {
 
       messageService.createRootMessageTx(tx, topic.id as string)
     })
+  }
+
+  /**
+   * Roll prior stock Chinese names forward to the current one. Exact-match only:
+   * any other name (including the English default and user renames) is preserved.
+   */
+  private renameStockNames(tx: DbOrTx): void {
+    tx.update(assistantTable)
+      .set({ name: '工匠助手' })
+      .where(and(inArray(assistantTable.name, ['默认助手', 'Cherry 助手']), isNull(assistantTable.deletedAt)))
+      .run()
   }
 
   private getPreferredSystemLanguage(): string | undefined {

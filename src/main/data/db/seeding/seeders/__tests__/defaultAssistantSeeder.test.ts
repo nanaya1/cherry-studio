@@ -89,7 +89,45 @@ describe('DefaultAssistantSeeder', () => {
     new DefaultAssistantSeeder().run(dbh.db)
 
     const [assistant] = await dbh.db.select().from(assistantTable).limit(1)
-    expect(assistant?.name).toBe('默认助手')
+    expect(assistant?.name).toBe('工匠助手')
+  })
+
+  it.each(['默认助手', 'Cherry 助手'])('renames an existing assistant named %s to 工匠助手', async (stockName) => {
+    await dbh.db.insert(assistantTable).values({
+      id: '55555555-5555-4555-8555-555555555555',
+      name: stockName,
+      emoji: DEFAULT_ASSISTANT_EMOJI,
+      settings: DEFAULT_ASSISTANT_SETTINGS,
+      orderKey: generateOrderKeyBetween(null, null)
+    })
+
+    new DefaultAssistantSeeder().run(dbh.db)
+
+    const [assistant] = await dbh.db
+      .select()
+      .from(assistantTable)
+      .where(eq(assistantTable.id, '55555555-5555-4555-8555-555555555555'))
+      .limit(1)
+    expect(assistant?.name).toBe('工匠助手')
+  })
+
+  it('preserves a user-renamed default assistant', async () => {
+    await dbh.db.insert(assistantTable).values({
+      id: '66666666-6666-4666-8666-666666666666',
+      name: '我的助手',
+      emoji: DEFAULT_ASSISTANT_EMOJI,
+      settings: DEFAULT_ASSISTANT_SETTINGS,
+      orderKey: generateOrderKeyBetween(null, null)
+    })
+
+    new DefaultAssistantSeeder().run(dbh.db)
+
+    const [assistant] = await dbh.db
+      .select()
+      .from(assistantTable)
+      .where(eq(assistantTable.id, '66666666-6666-4666-8666-666666666666'))
+      .limit(1)
+    expect(assistant?.name).toBe('我的助手')
   })
 
   it('uses preferred system languages without calling app.getLocale before Electron is ready', async () => {
@@ -102,7 +140,7 @@ describe('DefaultAssistantSeeder', () => {
     expect(() => new DefaultAssistantSeeder().run(dbh.db)).not.toThrow()
 
     const [assistant] = await dbh.db.select().from(assistantTable).limit(1)
-    expect(assistant?.name).toBe('默认助手')
+    expect(assistant?.name).toBe('工匠助手')
   })
 
   it('falls back to the English default assistant name when preferred system languages are unavailable', async () => {

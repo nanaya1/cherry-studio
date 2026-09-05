@@ -31,8 +31,8 @@ describe('CherryAssistantSeeder', () => {
     vi.mocked(app.getPreferredSystemLanguages).mockReturnValue(['en-US'])
   })
 
-  it('uses a new rollout version after the version 1 eligibility decision', () => {
-    expect(new CherryAssistantSeeder().version).toBe('2')
+  it('uses a new rollout version after the version 2 library-wide rollout', () => {
+    expect(new CherryAssistantSeeder().version).toBe('3')
   })
 
   function insertOrdinaryAgent(): string {
@@ -78,6 +78,59 @@ describe('CherryAssistantSeeder', () => {
     new CherryAssistantSeeder().run(dbh.db)
 
     const [agent] = builtinAgents(dbh.db)
+    expect(agent.name).toBe('工匠智能体')
+  })
+
+  it.each(['默认小助手', 'Cherry 小助手'])('renames the stock builtin agent named %s to 工匠智能体', (stockName) => {
+    dbh.db
+      .insert(agentTable)
+      .values({
+        id: 'builtin-old-name',
+        type: 'claude-code',
+        name: stockName,
+        description: '',
+        instructions: '',
+        model: null,
+        configuration: { builtin_role: 'assistant' },
+        orderKey: generateOrderKeyBetween(null, null)
+      })
+      .run()
+
+    new CherryAssistantSeeder().run(dbh.db)
+
+    const [agent] = dbh.db.select().from(agentTable).where(eq(agentTable.id, 'builtin-old-name')).all()
+    expect(agent.name).toBe('工匠智能体')
+    expect(builtinAgents(dbh.db)).toHaveLength(1)
+  })
+
+  it('preserves a user-renamed builtin agent', () => {
+    dbh.db
+      .insert(agentTable)
+      .values({
+        id: 'builtin-renamed',
+        type: 'claude-code',
+        name: '我的智能体',
+        description: '',
+        instructions: '',
+        model: null,
+        configuration: { builtin_role: 'assistant' },
+        orderKey: generateOrderKeyBetween(null, null)
+      })
+      .run()
+
+    new CherryAssistantSeeder().run(dbh.db)
+
+    const [agent] = dbh.db.select().from(agentTable).where(eq(agentTable.id, 'builtin-renamed')).all()
+    expect(agent.name).toBe('我的智能体')
+  })
+
+  it('does not rename ordinary agents that happen to carry a stock name', () => {
+    insertOrdinaryAgent()
+    dbh.db.update(agentTable).set({ name: '默认小助手' }).where(eq(agentTable.id, 'ordinary-agent')).run()
+
+    new CherryAssistantSeeder().run(dbh.db)
+
+    const [agent] = dbh.db.select().from(agentTable).where(eq(agentTable.id, 'ordinary-agent')).all()
     expect(agent.name).toBe('默认小助手')
   })
 
@@ -111,7 +164,7 @@ describe('CherryAssistantSeeder', () => {
     const [updated] = builtinAgents(dbh.db)
     expect(updated.configuration).toMatchObject({ permission_mode: 'default' })
     const [journal] = dbh.db.select().from(appStateTable).where(eq(appStateTable.key, 'seed:cherryAssistant')).all()
-    expect(journal?.value).toMatchObject({ version: '2' })
+    expect(journal?.value).toMatchObject({ version: '3' })
   })
 
   it('adds Cherry Assistant after a version 1 skip in an existing library and journals the rollout', () => {
@@ -227,7 +280,7 @@ describe('CherryAssistantSeeder', () => {
     expect(dbh.db.select().from(agentTable).where(isNull(agentTable.deletedAt)).all()).toHaveLength(0)
     expect(builtinAgents(dbh.db)).toHaveLength(1)
     const [journal] = dbh.db.select().from(appStateTable).where(eq(appStateTable.key, 'seed:cherryAssistant')).all()
-    expect(journal?.value).toMatchObject({ version: '2' })
+    expect(journal?.value).toMatchObject({ version: '3' })
   })
 
   it('falls back to a null model when the CherryAI default model is absent', () => {

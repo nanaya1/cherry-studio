@@ -2,7 +2,7 @@
   "_generated_note": "This file is the source of truth for agent.json. Generate agent.json and the current-package manifest with `pnpm build:builtin-knowledge`; do not edit generated files directly.",
   "name": {
     "en-US": "Cherry Assistant",
-    "zh-CN": "默认小助手"
+    "zh-CN": "工匠智能体"
   },
   "type": "claude-code",
   "instructions": {

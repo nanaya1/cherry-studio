@@ -1,5 +1,7 @@
+import { agentTable } from '@data/db/schemas/agent'
 import { agentService } from '@data/services/AgentService'
 import type { AgentConfiguration } from '@shared/data/api/schemas/agents'
+import { eq } from 'drizzle-orm'
 import { app } from 'electron'
 import { v4 as uuidv4 } from 'uuid'
 
@@ -11,7 +13,7 @@ import type { DbType, ISeeder } from '../../types'
 const CHERRY_ASSISTANT_SEED = {
   name: {
     default: 'Cherry Assistant',
-    zh: '默认小助手'
+    zh: '工匠智能体'
   },
   configuration: {
     avatar: '🍒',
@@ -22,6 +24,9 @@ const CHERRY_ASSISTANT_SEED = {
   } satisfies AgentConfiguration
 } as const
 
+// Prior stock Chinese display names rolled forward to CHERRY_ASSISTANT_SEED.name.zh on re-run.
+const LEGACY_ZH_NAMES: readonly string[] = ['默认小助手', 'Cherry 小助手']
+
 export class CherryAssistantSeeder implements ISeeder {
   readonly name = 'cherryAssistant'
   readonly description = 'Insert the builtin Cherry Assistant in every agent library'
@@ -29,10 +34,13 @@ export class CherryAssistantSeeder implements ISeeder {
   // Version 1 journaled the old "empty library only" eligibility decision. Version 2
   // rolls the assistant out to existing libraries; the persisted builtin identity still
   // prevents recreating a user-deleted assistant or overwriting user choices.
-  readonly version = '2'
+  // Version 3 renames stock Chinese names to 工匠智能体.
+  readonly version = '3'
 
   run(db: DbType): void {
     db.transaction((tx) => {
+      this.renameStockNames(tx)
+
       const existing = agentService.findBuiltinAgentByRoleTx(tx, 'assistant', { includeDeleted: true })
       if (existing) return
 
@@ -53,6 +61,17 @@ export class CherryAssistantSeeder implements ISeeder {
         throw new Error('insert succeeded but select returned no builtin Cherry Assistant row')
       }
     })
+  }
+
+  /**
+   * Roll prior stock Chinese names forward on the builtin-role agent. Exact-match
+   * only: a user-renamed builtin or any ordinary agent keeps its name.
+   */
+  private renameStockNames(tx: DbType): void {
+    const builtin = agentService.findBuiltinAgentByRoleTx(tx, 'assistant', { includeDeleted: true })
+    if (!builtin || !LEGACY_ZH_NAMES.includes(builtin.name)) return
+
+    tx.update(agentTable).set({ name: CHERRY_ASSISTANT_SEED.name.zh }).where(eq(agentTable.id, builtin.id)).run()
   }
 
   private getNameForPreferredSystemLanguage(): string {
