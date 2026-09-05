@@ -4,7 +4,7 @@ import '@testing-library/jest-dom/vitest'
 import { useQuickPanel } from '@renderer/components/QuickPanel'
 import { MIN_WINDOW_HEIGHT, SECOND_MIN_WINDOW_WIDTH } from '@shared/utils/window'
 import { MockUseCacheUtils } from '@test-mocks/renderer/useCache'
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { type ReactNode, useEffect } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -86,9 +86,9 @@ vi.mock('../../../hooks/tab', () => ({
 vi.mock('@renderer/utils/tabMode', () => ({ SINGLE_TAB_MODE: false }))
 
 vi.mock('../../app/Sidebar', () => ({
-  default: function Sidebar() {
+  default: function Sidebar({ showTitleBar }: { showTitleBar?: boolean }) {
     useQuickPanel()
-    return <aside data-testid="sidebar" />
+    return <aside data-testid="sidebar" data-show-title-bar={showTitleBar || undefined} />
   }
 }))
 
@@ -118,6 +118,13 @@ vi.mock('../AppShellTabBar', () => ({
     mocks.tabBarProps = props
     return <header data-testid="tab-bar" />
   }
+}))
+
+vi.mock('../ShellTabBarActions', () => ({
+  GlobalSearchButton: () => <button type="button" aria-label="Open global search" onClick={mocks.showSearchPopup} />,
+  SidebarExpandButton: ({ onClick }: { onClick: () => void }) => (
+    <button type="button" aria-label="Show Sidebar" onClick={onClick} />
+  )
 }))
 
 vi.mock('../TabRouter', () => ({
@@ -395,19 +402,17 @@ describe('AppShell', () => {
     expect(mocks.tabBarProps).not.toHaveProperty('leftInset')
   })
 
-  it('keeps the macOS traffic lights in the left column beside the tab/content column', () => {
+  it('moves macOS title-bar actions into the sidebar and removes the workspace header', () => {
     mocks.platformState.isMac = true
 
     render(<AppShell />)
 
     const root = screen.getByTestId('resource-view-source-provider').firstElementChild
     const sidebar = screen.getByTestId('sidebar')
-    const tabBar = screen.getByTestId('tab-bar')
     const tabRouter = screen.getByTestId('tab-router')
-    const trafficLightSpacer = screen.getByTestId('macos-traffic-light-spacer')
     const trafficLightDragRegion = screen.getByTestId('macos-traffic-light-drag-region')
     const leftColumn = sidebar.parentElement
-    const contentColumn = tabBar.parentElement
+    const contentColumn = tabRouter.parentElement?.parentElement?.parentElement
 
     if (
       !(root instanceof HTMLElement) ||
@@ -423,12 +428,32 @@ describe('AppShell', () => {
     expect(leftColumn.parentElement).toBe(root)
     expect(leftColumn).not.toHaveClass('min-w-[88px]')
     expect(contentColumn.parentElement).toBe(root)
-    expect(Array.from(leftColumn.children)).toEqual([trafficLightSpacer, sidebar])
-    expect(contentColumn).toContainElement(tabBar)
+    expect(Array.from(leftColumn.children)).toEqual([sidebar])
+    expect(sidebar).toHaveAttribute('data-show-title-bar', 'true')
+    expect(screen.queryByTestId('tab-bar')).toBeNull()
     expect(contentColumn).toContainElement(tabRouter)
     expect(Array.from(root.children)).toEqual([trafficLightDragRegion, leftColumn, contentColumn])
-    expect(mocks.tabBarProps).not.toHaveProperty('leftInset')
-    expect(mocks.tabBarProps).toHaveProperty('isFullscreen', false)
+  })
+
+  it('removes the collapsed macOS sidebar and keeps expand and search actions in the title bar', () => {
+    mocks.platformState.isMac = true
+    MockUseCacheUtils.setPersistCacheValue('ui.sidebar.width', 0)
+
+    const view = render(<AppShell />)
+
+    const actions = screen.getByTestId('collapsed-sidebar-title-bar-actions')
+    expect(screen.queryByTestId('sidebar')).toBeNull()
+    expect(actions).toHaveClass('left-[env(titlebar-area-x)]')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open global search' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Show Sidebar' }))
+
+    expect(mocks.showSearchPopup).toHaveBeenCalledOnce()
+    expect(MockUseCacheUtils.getPersistCacheValue('ui.sidebar.width')).toBe(210)
+
+    view.rerender(<AppShell />)
+    expect(screen.getByTestId('sidebar')).toBeInTheDocument()
+    expect(screen.queryByTestId('collapsed-sidebar-title-bar-actions')).toBeNull()
   })
 
   it('removes macOS traffic light placeholders when the window is fullscreen', async () => {
@@ -438,13 +463,13 @@ describe('AppShell', () => {
     render(<AppShell />)
 
     await waitFor(() => {
-      expect(screen.queryByTestId('macos-traffic-light-spacer')).toBeNull()
+      expect(screen.queryByTestId('macos-traffic-light-drag-region')).toBeNull()
     })
 
     const root = screen.getByTestId('resource-view-source-provider').firstElementChild
     const sidebar = screen.getByTestId('sidebar')
-    const tabBar = screen.getByTestId('tab-bar')
-    const contentColumn = tabBar.parentElement
+    const tabRouter = screen.getByTestId('tab-router')
+    const contentColumn = tabRouter.parentElement?.parentElement?.parentElement
 
     if (!(root instanceof HTMLElement) || !(contentColumn instanceof HTMLElement)) {
       throw new Error('Expected AppShell to render a root and content column')
@@ -454,7 +479,7 @@ describe('AppShell', () => {
     expect(screen.queryByTestId('macos-traffic-light-drag-region')).toBeNull()
     expect(sidebar.parentElement?.children).toHaveLength(1)
     expect(contentColumn.parentElement).toBe(root)
-    expect(mocks.tabBarProps).toHaveProperty('isFullscreen', true)
+    expect(screen.queryByTestId('tab-bar')).toBeNull()
   })
 
   it('updates macOS traffic light placeholders from fullscreen events', async () => {
@@ -462,26 +487,24 @@ describe('AppShell', () => {
 
     render(<AppShell />)
 
-    expect(await screen.findByTestId('macos-traffic-light-spacer')).toBeInTheDocument()
+    expect(await screen.findByTestId('macos-traffic-light-drag-region')).toBeInTheDocument()
 
     act(() => {
       mocks.ipcHandlers.get('window.fullscreen_changed')?.(true)
     })
 
     await waitFor(() => {
-      expect(screen.queryByTestId('macos-traffic-light-spacer')).toBeNull()
+      expect(screen.queryByTestId('macos-traffic-light-drag-region')).toBeNull()
     })
 
-    expect(screen.queryByTestId('macos-traffic-light-drag-region')).toBeNull()
-    expect(mocks.tabBarProps).toHaveProperty('isFullscreen', true)
+    expect(screen.queryByTestId('tab-bar')).toBeNull()
 
     act(() => {
       mocks.ipcHandlers.get('window.fullscreen_changed')?.(false)
     })
 
-    expect(await screen.findByTestId('macos-traffic-light-spacer')).toBeInTheDocument()
-    expect(screen.getByTestId('macos-traffic-light-drag-region')).toBeInTheDocument()
-    expect(mocks.tabBarProps).toHaveProperty('isFullscreen', false)
+    expect(await screen.findByTestId('macos-traffic-light-drag-region')).toBeInTheDocument()
+    expect(screen.queryByTestId('tab-bar')).toBeNull()
   })
 
   it('clears the split state when the last mini-app tab closes', () => {

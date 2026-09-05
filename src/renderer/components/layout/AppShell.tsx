@@ -1,4 +1,4 @@
-import { useCache } from '@data/hooks/useCache'
+import { useCache, usePersistCache } from '@data/hooks/useCache'
 import { QuickPanelProvider } from '@renderer/components/QuickPanel'
 import { useCommandHandler } from '@renderer/hooks/command'
 import { useTabs } from '@renderer/hooks/tab'
@@ -10,6 +10,7 @@ import { isMac } from '@renderer/utils/platform'
 import { getDefaultRouteTitle, isPageTitledRoute } from '@renderer/utils/routeTitle'
 import { cn } from '@renderer/utils/style'
 import { SINGLE_TAB_MODE } from '@renderer/utils/tabMode'
+import { DefaultRendererPersistCache } from '@shared/data/cache/cacheSchemas'
 import { isSettingsPath } from '@shared/data/types/settingsPath'
 import { MIN_WINDOW_HEIGHT, SECOND_MIN_WINDOW_WIDTH } from '@shared/utils/window'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
@@ -19,7 +20,9 @@ import { createRecentRouteEntryFromTab, recordGlobalSearchRecentEntry } from '..
 import GlobalSearchPopup from '../GlobalSearch/GlobalSearchPopup'
 import MiniAppTabsPool from '../MiniApp/MiniAppTabsPool'
 import { ResourceViewSourceProvider } from '../ResourceViewSourceProvider'
+import { getSidebarLayout } from '../Sidebar'
 import { AppShellTabBar } from './AppShellTabBar'
+import { GlobalSearchButton, SidebarExpandButton } from './ShellTabBarActions'
 import { TabRouter } from './TabRouter'
 
 // Routes whose pages stay usable below the global minimum window width.
@@ -71,6 +74,8 @@ export const AppShell = () => {
   const isFullscreen = useNativeFullscreen()
   const [splitOpen, setSplitOpen] = useCache('mini_app.split_open')
   const [, setSplitMiniAppId] = useCache('mini_app.split_id')
+  const [sidebarWidth, setSidebarWidth] = usePersistCache('ui.sidebar.width')
+  const isSidebarHidden = getSidebarLayout(sidebarWidth) === 'hidden'
 
   // Split state is window-wide and does not follow the last mini-app tab out, so
   // the next mini app would open into a stale split with its app still pooled.
@@ -233,9 +238,10 @@ export const AppShell = () => {
     </div>
   )
 
+  const showTabBar = !isMac || isSettingsTabActive
   const contentColumn = (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-      {tabBar}
+      {showTabBar ? tabBar : null}
       {contentArea}
     </div>
   )
@@ -272,16 +278,20 @@ export const AppShell = () => {
               className="pointer-events-none absolute top-0 left-0 h-11 w-[env(titlebar-area-x)] [-webkit-app-region:drag]"
             />
           )}
-          {!hideSidebar && (
+          {!hideSidebar && !isSidebarHidden && (
             <div className="flex h-full min-h-0 shrink-0 flex-col [&>#app-sidebar]:min-h-0 [&>#app-sidebar]:flex-1">
-              {!isFullscreen && (
-                <div
-                  aria-hidden="true"
-                  data-testid="macos-traffic-light-spacer"
-                  className="h-11 shrink-0 [-webkit-app-region:drag]"
-                />
-              )}
-              <Sidebar />
+              <Sidebar showTitleBar />
+            </div>
+          )}
+          {!hideSidebar && isSidebarHidden && (
+            <div
+              data-testid="collapsed-sidebar-title-bar-actions"
+              className={cn(
+                'absolute top-0 z-30 flex h-11 items-center gap-1 [-webkit-app-region:no-drag]',
+                isFullscreen ? 'left-2' : 'left-[env(titlebar-area-x)]'
+              )}>
+              <SidebarExpandButton onClick={() => setSidebarWidth(DefaultRendererPersistCache['ui.sidebar.width'])} />
+              <GlobalSearchButton />
             </div>
           )}
           {contentColumn}

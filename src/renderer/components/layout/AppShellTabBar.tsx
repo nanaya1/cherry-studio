@@ -905,6 +905,12 @@ export const AppShellTabBar = ({
           }}
           onMouseLeave={handleStripMouseLeave}
           className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto pr-1 [&::-webkit-scrollbar]:hidden">
+          {isFocusedTab && onFocusedTabBack && (
+            <div className="flex items-center [-webkit-app-region:no-drag]">
+              <BackButton onBack={onFocusedTabBack} />
+            </div>
+          )}
+
           {/* Pinned tabs */}
           {pinnedTabs.length > 0 && (
             <div className="flex shrink-0 items-center gap-0 rounded-full bg-sidebar-accent/50 p-0 [-webkit-app-region:no-drag]">
@@ -959,7 +965,7 @@ export const AppShellTabBar = ({
           )}
 
           {/* Normal tabs — affordances come entirely from getTabCapabilities. Focused mode
-              (settings etc.) renders NO tab chips: just the back button on the right. */}
+              (settings etc.) renders no tab chips. */}
           {normalTabs.map((tab, index) => {
             const caps = getTabCapabilities(tab, { ...tabContext, normalIndex: index })
             const prevTab = normalTabs[index - 1]
@@ -1082,18 +1088,7 @@ export const AppShellTabBar = ({
               attached `rightInsetRef` — drag clamping falls back to 0 width). */}
         </div>
 
-        {isFocusedTab ? (
-          <div className="flex h-full shrink-0 items-stretch">
-            {onFocusedTabBack && (
-              <div className="flex items-center pr-1 [-webkit-app-region:no-drag]">
-                <BackButton onBack={onFocusedTabBack} />
-              </div>
-            )}
-            <WindowControls />
-          </div>
-        ) : (
-          <ShellTabBarActions />
-        )}
+        {isFocusedTab ? <WindowControls /> : <ShellTabBarActions />}
       </header>
     </>
   )

@@ -80,6 +80,8 @@ vi.mock('react-i18next', () => ({
     t: (key: string) =>
       ({
         'globalSearch.open': 'Open global search',
+        'navbar.hide_sidebar': 'Hide Sidebar',
+        'navbar.show_sidebar': 'Show Sidebar',
         'settings.about.updateAvailable': 'Found new version',
         'settings.title': 'Settings'
       })[key] ?? key
@@ -109,7 +111,12 @@ vi.mock('../HelpMenu', () => ({
   )
 }))
 
-import { ShellTabBarActions, SidebarShellActions } from '../ShellTabBarActions'
+import {
+  ShellTabBarActions,
+  SidebarCollapseButton,
+  SidebarExpandButton,
+  SidebarShellActions
+} from '../ShellTabBarActions'
 
 afterEach(() => {
   cleanup()
@@ -141,6 +148,19 @@ describe('ShellTabBarActions', () => {
       'dark:text-muted-foreground'
     )
     expect(mocks.showSearchPopup).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([
+    ['Hide Sidebar', SidebarCollapseButton],
+    ['Show Sidebar', SidebarExpandButton]
+  ])('exposes the %s action with the existing shortcut hint', async (label, ToggleButton) => {
+    const user = userEvent.setup()
+    const onClick = vi.fn()
+
+    render(<ToggleButton onClick={onClick} />)
+    await user.click(screen.getByRole('button', { name: label }))
+
+    expect(onClick).toHaveBeenCalledOnce()
   })
 
   it('shows a ready update and opens its dialog directly', async () => {

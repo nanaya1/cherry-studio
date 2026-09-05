@@ -259,7 +259,10 @@ describe('AppShellTabBar', () => {
     })
 
     const backButton = screen.getByRole('button', { name: 'common.back' })
+    const tabStrip = screen.getByTestId('app-shell-tab-strip')
     expect(backButton).toHaveAttribute('data-ui', 'app.focused-tab-button')
+    expect(tabStrip).toContainElement(backButton)
+    expect(tabStrip.nextElementSibling).toBe(screen.getByTestId('window-controls'))
     expect(screen.queryByTestId('shell-tab-actions')).not.toBeInTheDocument()
     expect(screen.getByTestId('window-controls')).toBeInTheDocument()
 

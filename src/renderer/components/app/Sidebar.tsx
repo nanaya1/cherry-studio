@@ -30,7 +30,7 @@ import type { Ref } from 'react'
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { SidebarShellActions } from '../layout/ShellTabBarActions'
+import { GlobalSearchButton, SidebarCollapseButton, SidebarShellActions } from '../layout/ShellTabBarActions'
 import {
   getSidebarDisplayWidth,
   getSidebarLayout,
@@ -44,7 +44,13 @@ import { resolveSidebarEntry, type SidebarVariantContext } from './sidebarVarian
 
 const FeedbackDialog = lazy(() => import('../feedback/FeedbackDialog'))
 
-export default function Sidebar({ ref }: { ref?: Ref<HTMLDivElement | null> }) {
+export default function Sidebar({
+  ref,
+  showTitleBar = false
+}: {
+  ref?: Ref<HTMLDivElement | null>
+  showTitleBar?: boolean
+}) {
   const { t } = useTranslation()
   const [userName] = usePreference('app.user.name')
   const {
@@ -127,6 +133,7 @@ export default function Sidebar({ ref }: { ref?: Ref<HTMLDivElement | null> }) {
   // Floating sidebar (hover reveal when hidden)
   const [hoverVisible, setHoverVisible] = useState(false)
   const layout = getSidebarLayout(activeSidebarWidth)
+  const showTitleBarActions = showTitleBar && layout === 'full'
 
   // Menu items
   const pathname = activeTab?.url || '/'
@@ -479,14 +486,33 @@ export default function Sidebar({ ref }: { ref?: Ref<HTMLDivElement | null> }) {
   }
 
   return (
-    <div ref={ref} id="app-sidebar" data-ui="app.sidebar" className="relative h-full [-webkit-app-region:no-drag]">
-      <UISidebar
-        width={activeSidebarWidth}
-        setWidth={setSidebarWidth}
-        onHoverChange={setHoverVisible}
-        onResizePreview={setPreviewSidebarWidth}
-        {...sidebarProps}
-      />
+    <div
+      ref={ref}
+      id="app-sidebar"
+      data-ui="app.sidebar"
+      className="relative flex h-full min-h-0 flex-col [-webkit-app-region:no-drag]">
+      {showTitleBar && layout !== 'hidden' ? (
+        <div
+          data-testid="sidebar-title-bar-actions"
+          style={{ width: getSidebarDisplayWidth(activeSidebarWidth) }}
+          className="flex h-11 shrink-0 items-center justify-end gap-1 pr-2 [-webkit-app-region:drag]">
+          {showTitleBarActions ? (
+            <div className="flex items-center gap-1 [-webkit-app-region:no-drag]">
+              <SidebarCollapseButton onClick={() => setSidebarWidth(0)} />
+              <GlobalSearchButton />
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+      <div className="min-h-0 flex-1">
+        <UISidebar
+          width={activeSidebarWidth}
+          setWidth={setSidebarWidth}
+          onHoverChange={setHoverVisible}
+          onResizePreview={setPreviewSidebarWidth}
+          {...sidebarProps}
+        />
+      </div>
       {hoverVisible && layout === 'hidden' && (
         <UISidebar
           width={activeSidebarWidth}

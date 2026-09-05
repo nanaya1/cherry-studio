@@ -65,6 +65,7 @@ const mocks = vi.hoisted(() => ({
   setSidebarFavorites: vi.fn(() => Promise.resolve()),
   reorderMiniAppsByStatus: vi.fn(() => Promise.resolve()),
   showUserPopup: vi.fn(),
+  showSearchPopup: vi.fn(),
   sidebarWidth: 50,
   tabs: [] as FakeTab[],
   sidebarFavorites: [{ type: 'app', id: 'assistants' }] as SidebarFavoriteItem[],
@@ -270,6 +271,10 @@ vi.mock('../../feedback/FeedbackDialog', () => ({
 }))
 
 vi.mock('../../layout/ShellTabBarActions', () => ({
+  GlobalSearchButton: () => <button type="button" aria-label="Open global search" onClick={mocks.showSearchPopup} />,
+  SidebarCollapseButton: ({ onClick }: { onClick: () => void }) => (
+    <button type="button" aria-label="Collapse" onClick={onClick} />
+  ),
   SidebarShellActions: ({
     layout,
     onFeedbackClick,
@@ -509,6 +514,19 @@ describe('app Sidebar', () => {
     expect(props.user).toMatchObject({ name: 'JD', description: 'Local user' })
     expect(props.actions).toEqual(expect.any(Function))
     expect(mocks.showUserPopup).not.toHaveBeenCalled()
+  })
+
+  it('moves search and sidebar collapse actions into the macOS sidebar title bar', () => {
+    mocks.sidebarWidth = 210
+    render(<Sidebar showTitleBar />)
+
+    expect(screen.getByTestId('sidebar-title-bar-actions')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open global search' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse' }))
+
+    expect(mocks.showSearchPopup).toHaveBeenCalledOnce()
+    expect(mocks.setSidebarWidth).toHaveBeenCalledWith(0)
   })
 
   it('opens settings in a main-window tab from the sidebar footer action', () => {
