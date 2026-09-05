@@ -23,19 +23,10 @@ describe('HomeTabRuntime', () => {
   })
 
   it('syncs visuals and remembers a persisted topic for the active tab', () => {
-    render(
-      <HomeTabRuntime
-        title="Topic A"
-        emoji="🍒"
-        preserveVisuals={false}
-        activeTopicId="topic-a"
-        activeTopicSource="query"
-      />
-    )
+    render(<HomeTabRuntime title="Topic A" preserveVisuals={false} activeTopicId="topic-a" activeTopicSource="query" />)
 
     expect(tabMocks.useTabSelfVisuals).toHaveBeenCalledWith({
       title: 'Topic A',
-      emoji: '🍒',
       appId: 'assistants',
       preserveVisuals: false
     })

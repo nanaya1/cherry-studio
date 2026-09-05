@@ -49,7 +49,6 @@ import { useForm, type UseFormReturn } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 
 import {
-  AvatarField,
   CompactModelField,
   EDIT_DIALOG_PROMPT_MAX_HEIGHT,
   EDIT_DIALOG_PROMPT_MIN_HEIGHT,
@@ -219,7 +218,6 @@ function AssistantEditDialogContent({
 }: EditDialogBaseProps & { resource: AssistantEditDialogResource }) {
   const { t } = useTranslation()
   const [activeTab, setActiveTab] = useState(initialTab ?? 'basic')
-  const [emojiPickerOpen, setEmojiPickerOpen] = useState(false)
   const [createGroupDialogOpen, setCreateGroupDialogOpen] = useState(false)
   const [dialogContentElement, setDialogContentElement] = useState<HTMLDivElement | null>(null)
   const [modelLabels, setModelLabels] = useState<ModelLabels>(() => modelLabelsForAssistant(resource))
@@ -268,7 +266,6 @@ function AssistantEditDialogContent({
     form.reset(defaultValues)
     form.clearErrors()
     setActiveTab(initialTab ?? 'basic')
-    setEmojiPickerOpen(false)
     setCreateGroupDialogOpen(false)
     setModelLabels(modelLabelsForAssistant(resource))
     // A fresh open is a fresh editing session — a stale failure from a prior
@@ -378,8 +375,6 @@ function AssistantEditDialogContent({
             groups={groups}
             groupsLoading={isGroupsLoading}
             groupsError={groupsError}
-            emojiPickerOpen={emojiPickerOpen}
-            setEmojiPickerOpen={setEmojiPickerOpen}
             onCreateGroup={() => setCreateGroupDialogOpen(true)}
             onSettingsNavigate={closeBeforeAction}
           />
@@ -444,8 +439,6 @@ function AssistantBasicFields({
   groups,
   groupsLoading,
   groupsError,
-  emojiPickerOpen,
-  setEmojiPickerOpen,
   onCreateGroup,
   onSettingsNavigate
 }: {
@@ -458,8 +451,6 @@ function AssistantBasicFields({
   groups: ReturnType<typeof useGroups>['groups']
   groupsLoading: ReturnType<typeof useGroups>['isLoading']
   groupsError: ReturnType<typeof useGroups>['error']
-  emojiPickerOpen: boolean
-  setEmojiPickerOpen: (open: boolean) => void
   onCreateGroup: () => void
   onSettingsNavigate?: (navigate: () => void) => void
 }) {
@@ -477,15 +468,6 @@ function AssistantBasicFields({
 
   return (
     <div className="divide-y divide-border-subtle border-border-subtle border-b [&>*:first-child]:pt-0">
-      <AvatarField
-        form={form}
-        emojiPickerOpen={emojiPickerOpen}
-        setEmojiPickerOpen={setEmojiPickerOpen}
-        fallback="💬"
-        portalContainer={portalContainer}
-        size="sm"
-        layout="row"
-      />
       <TextInputField
         form={form}
         name="name"

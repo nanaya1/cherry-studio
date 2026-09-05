@@ -1,6 +1,4 @@
-import EmojiIcon from '@renderer/components/EmojiIcon'
 import type { AgentSessionStreamState } from '@renderer/hooks/agent/useAgentSessionStreamStatuses'
-import { getAgentAvatarFromConfiguration } from '@renderer/utils/agent'
 import type { AgentSessionEntity } from '@shared/data/api/schemas/agentSessions'
 import type { AgentEntity } from '@shared/data/types/agent'
 import type { Assistant } from '@shared/data/types/assistant'
@@ -109,7 +107,7 @@ export function buildAssistantSources(
       .map((assistant) => ({
         id: assistant.id,
         label: assistant.name,
-        icon: assistant.emoji ? <span className="text-sm leading-none">{assistant.emoji}</span> : <Bot size={15} />
+        icon: <Bot size={15} />
       })),
     ...(hasUnlinkedAssistant
       ? [
@@ -141,20 +139,7 @@ export function buildAgentSources(
     },
     ...Array.from(agentById.values())
       .sort((left, right) => getAgentSourceRank(left.id, agentRankById) - getAgentSourceRank(right.id, agentRankById))
-      .map((agent) => {
-        return {
-          id: agent.id,
-          label: agent.name,
-          icon: (
-            <EmojiIcon
-              emoji={getAgentAvatarFromConfiguration(agent.configuration)}
-              size={18}
-              fontSize={11}
-              className="mr-0 text-foreground"
-            />
-          )
-        }
-      }),
+      .map((agent) => ({ id: agent.id, label: agent.name, icon: <Bot size={15} /> })),
     ...(hasUnknownAgent
       ? [
           {

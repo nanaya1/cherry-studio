@@ -500,7 +500,8 @@ describe('HistoryRecordsView agent mode', () => {
     expect(screen.getAllByText('Alpha agent').length).toBeGreaterThanOrEqual(1)
     const alphaRow = screen.getByText('Alpha session').closest('[role="row"]') as HTMLElement
     const alphaCells = within(alphaRow).getAllByRole('cell')
-    expect(within(alphaCells[1]).getAllByText('A').length).toBeGreaterThan(0)
+    expect(within(alphaCells[1]).queryByText('A')).not.toBeInTheDocument()
+    expect(alphaCells[1].querySelector('svg')).not.toBeNull()
     expect(within(alphaCells[1]).getByText('Alpha agent')).toBeInTheDocument()
     expect(within(alphaCells[2]).queryByText('A')).not.toBeInTheDocument()
     const headerCells = screen.getAllByRole('columnheader')

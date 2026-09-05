@@ -166,7 +166,7 @@ const AssistantHistoryRecords = ({
       assistants.map((assistant) => ({
         id: assistant.id,
         label: assistant.name || t('common.unnamed'),
-        icon: assistant.emoji ? <span className="text-sm leading-none">{assistant.emoji}</span> : <Bot size={14} />
+        icon: <Bot size={14} />
       })),
     [assistants, t]
   )
@@ -459,17 +459,7 @@ const AssistantHistoryRecords = ({
           hasValue={!!selectedId}
           clearLabel={t('common.clear')}
           onClear={() => onSelect(null)}
-          icon={
-            selectedId ? (
-              source?.icon ? (
-                source.icon
-              ) : assistant?.emoji ? (
-                <span aria-hidden>{assistant.emoji}</span>
-              ) : (
-                <Bot size={14} />
-              )
-            ) : undefined
-          }
+          icon={selectedId ? (source?.icon ?? <Bot size={14} />) : undefined}
           selector={(trigger) => (
             <AssistantSelector
               multi={false}

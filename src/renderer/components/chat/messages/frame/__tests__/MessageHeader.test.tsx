@@ -135,6 +135,7 @@ describe('MessageHeader', () => {
     )
     expect(getByText('My Assistant')).toBeTruthy()
     expect(queryByText('GPT-4')).toBeNull()
+    expect(queryByText('🤖')).toBeNull()
   })
 
   it('shows the model avatar and name beside the assistant when model identity is requested', () => {

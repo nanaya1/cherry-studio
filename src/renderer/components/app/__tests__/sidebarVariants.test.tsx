@@ -42,15 +42,16 @@ const assistantFavorite: SidebarFavoriteItem = { type: 'assistant', id: 'assista
 const agentFavorite: SidebarFavoriteItem = { type: 'agent', id: 'agent-1' }
 
 describe('sidebarVariants icons', () => {
-  it('renders the assistant own emoji', () => {
+  it('renders a generic assistant icon without the stored emoji', () => {
     const ctx = createContext({
       installedAssistants: new Map([['assistant-1', createAssistant()]])
     })
 
     const entry = resolveSidebarEntry(assistantFavorite, ctx)
-    render(<div data-testid="icon">{entry?.renderIcon(18, 'lg')}</div>)
+    const { container } = render(<div data-testid="icon">{entry?.renderIcon(18, 'lg')}</div>)
 
-    expect(screen.getByTestId('icon')).toHaveTextContent('🍒')
+    expect(screen.getByTestId('icon')).not.toHaveTextContent('🍒')
+    expect(container.querySelector('svg')).not.toBeNull()
   })
 
   it.each([
@@ -64,9 +65,7 @@ describe('sidebarVariants icons', () => {
     const entry = resolveSidebarEntry(assistantFavorite, ctx)
     const { container } = render(<div>{entry?.renderIcon(18, iconSize)}</div>)
 
-    // Filled discs read a size smaller than line glyphs at the same box, so entity
-    // rows follow the mini app scale rather than the lucide `size` the apps use.
-    const icon = container.querySelector('svg, div[style]')
+    const icon = container.querySelector('span[style]')
     expect(icon?.getAttribute('width') ?? (icon as HTMLElement)?.style.width).toMatch(new RegExp(`^${expected}(px)?$`))
   })
 
@@ -95,7 +94,8 @@ describe('sidebarVariants icons', () => {
 
     // The rail can drop the icon entirely; a sidebar row cannot — it is the only thing
     // identifying the row.
-    expect(screen.getByTestId('icon')).toHaveTextContent('🍒')
+    expect(screen.getByTestId('icon')).not.toHaveTextContent('🍒')
+    expect(screen.getByTestId('icon').querySelector('svg')).not.toBeNull()
   })
 
   it('renders the rail placeholder icon when the assistant has no emoji', () => {

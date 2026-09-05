@@ -1,8 +1,7 @@
 import type * as CherryStudioUi from '@cherrystudio/ui'
 import { Form } from '@cherrystudio/ui'
-import type * as EditDialogSharedModule from '@renderer/components/resourceCatalog/dialogs/components/EditDialogShared'
 import type { Model, UniqueModelId } from '@shared/data/types/model'
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useForm } from 'react-hook-form'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -32,17 +31,6 @@ vi.mock('@renderer/hooks/useProvider', () => ({
   useProviderDisplayName: () => ''
 }))
 
-vi.mock('@renderer/components/resourceCatalog/dialogs/components/EditDialogShared', async () => {
-  const actual = await vi.importActual<typeof EditDialogSharedModule>(
-    '@renderer/components/resourceCatalog/dialogs/components/EditDialogShared'
-  )
-
-  return {
-    ...actual,
-    AvatarField: () => <div data-testid="avatar-field" />
-  }
-})
-
 function Harness({
   modelId = null,
   runtimeSelectable = false
@@ -66,7 +54,7 @@ function Harness({
 
   return (
     <Form {...form}>
-      <BasicInfoStep form={form} portalContainer={null} fallbackAvatar="💬" runtimeSelectable={runtimeSelectable} />
+      <BasicInfoStep form={form} portalContainer={null} runtimeSelectable={runtimeSelectable} />
       <output data-testid="permission-mode">{form.watch('permissionMode')}</output>
     </Form>
   )
@@ -94,17 +82,12 @@ describe('BasicInfoStep', () => {
     )
   })
 
-  it('integrates the avatar picker into the name field', () => {
+  it('hides the avatar picker from the name field', () => {
     render(<Harness />)
 
-    expect(screen.getByText('library.config.dialogs.create.avatar_name_label')).toBeVisible()
-    const avatarButton = screen.getByRole('button', { name: 'library.config.dialogs.create.avatar_aria' })
-    const inputGroup = avatarButton.closest('[data-slot="input-group"]')
-
-    expect(inputGroup).not.toBeNull()
-    expect(
-      within(inputGroup as HTMLElement).getByPlaceholderText('library.config.dialogs.create.name_placeholder')
-    ).toBeVisible()
+    expect(screen.getByText('common.name')).toBeVisible()
+    expect(screen.getByPlaceholderText('library.config.dialogs.create.name_placeholder')).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'library.config.dialogs.create.avatar_aria' })).not.toBeInTheDocument()
   })
 
   it('exposes every supported runtime as a selectable card with immutable guidance', () => {

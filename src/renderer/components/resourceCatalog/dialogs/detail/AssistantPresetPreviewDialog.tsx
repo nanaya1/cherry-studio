@@ -8,6 +8,7 @@ import {
   DialogHeader,
   DialogTitle
 } from '@cherrystudio/ui'
+import { Bot } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 export interface AssistantPresetPreviewDialogPreset {
@@ -58,7 +59,7 @@ export function AssistantPresetPreviewDialog({
         <DialogHeader className="shrink-0 border-border-subtle border-b px-5 pt-5 pr-12 pb-4 text-left">
           <div className="flex min-w-0 items-start gap-3">
             <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-secondary text-base">
-              {preset.emoji || '🤖'}
+              <Bot size={18} />
             </div>
             <div className="min-w-0 pt-0.5">
               <DialogTitle className="truncate">{preset.name}</DialogTitle>

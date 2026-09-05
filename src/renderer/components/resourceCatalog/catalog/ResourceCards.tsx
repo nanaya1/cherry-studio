@@ -72,7 +72,7 @@ export function ResourceCard({
   const { t } = useTranslation()
   const cfg = RESOURCE_TYPE_META[r.type]
   const isSettings = variant === 'settings'
-  const showTypeIcon = r.type === 'skill'
+  const showTypeIcon = r.type === 'assistant' || r.type === 'agent' || r.type === 'skill'
   const TypeIcon = cfg.icon
   const showOverflowMenu = hasOverflowActions(r)
   const visibleGroup = r.type === 'assistant' ? r.groupName : undefined

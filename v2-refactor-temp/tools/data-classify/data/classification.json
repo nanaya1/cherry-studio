@@ -1061,7 +1061,7 @@
         {
           "originalKey": "assistantIconType",
           "type": "PreferenceTypes.AssistantIconType",
-          "defaultValue": "emoji",
+          "defaultValue": "none",
           "status": "classified",
           "category": "preferences",
           "targetKey": "assistant.icon_type"

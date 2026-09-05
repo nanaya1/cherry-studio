@@ -514,7 +514,8 @@ describe('HistoryRecordsView assistant mode', () => {
 
     const alphaRow = screen.getByText('Alpha topic').closest('[role="row"]') as HTMLElement
     const alphaCells = within(alphaRow).getAllByRole('cell')
-    expect(within(alphaCells[1]).getAllByText('A').length).toBeGreaterThan(0)
+    expect(within(alphaCells[1]).queryByText('A')).not.toBeInTheDocument()
+    expect(alphaCells[1].querySelector('svg')).not.toBeNull()
     expect(within(alphaCells[1]).getByText('Alpha assistant')).toBeInTheDocument()
     expect(within(alphaCells[2]).queryByText('A')).not.toBeInTheDocument()
     const headerCells = screen.getAllByRole('columnheader')

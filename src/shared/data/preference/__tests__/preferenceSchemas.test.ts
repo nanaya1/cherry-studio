@@ -40,6 +40,11 @@ describe('DefaultPreferences', () => {
     expect(DefaultPreferences.default['agent.session.display_mode']).toBe(agentSessionDisplayDefault)
   })
 
+  it('hides assistant and agent entity icons by default for new users', () => {
+    expect(DefaultPreferences.default['assistant.icon_type']).toBe('none')
+    expect(DefaultPreferences.default['agent.icon_type']).toBe('none')
+  })
+
   it('defaults sidebar favorites to Agent before Chat for new users', () => {
     const sidebarFavoritesDefault: PreferenceSchemas['default']['ui.sidebar.favorites'] = [
       { id: 'agents', type: 'app' },

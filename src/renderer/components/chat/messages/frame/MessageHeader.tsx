@@ -105,7 +105,6 @@ const MessageHeader: FC<Props> = memo(
     // so editing/deleting the live entity never changes a past message's name or avatar.
     const authorSnapshot = message.messageSnapshot
     const authorName = authorSnapshot ? authorSnapshot.name : assistantProfile?.name
-    const authorAvatar = authorSnapshot ? authorSnapshot.emoji : assistantProfile?.avatar
     const getUserName = useCallback(() => {
       if (message.role === 'assistant') {
         return authorName || displayModel?.name || displayModel?.id || ''
@@ -137,9 +136,7 @@ const MessageHeader: FC<Props> = memo(
       <div
         className={`message-header group/header relative flex gap-2.5 ${hasBodySlot ? 'mb-0 items-start' : 'mb-2 items-center'}`}>
         {isAssistantMessage ? (
-          authorAvatar ? (
-            <MessageAvatar avatar={authorAvatar} fallback={avatarName} />
-          ) : ModelIcon ? (
+          ModelIcon ? (
             <MessageAvatarFrame className="bg-background">
               <ModelIcon className={MESSAGE_MODEL_AVATAR_ICON_CLASS} aria-hidden="true" />
             </MessageAvatarFrame>

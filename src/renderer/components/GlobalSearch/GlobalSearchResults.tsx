@@ -173,8 +173,7 @@ export function GlobalSearchRow({
   const title = isRecent ? item.recent.title : item.result.title
   const subtitle = isRecent ? undefined : getResultSubtitle(item.result, t)
   const Icon = isRecent ? RECENT_ICONS[item.recent.kind] : RESULT_ICONS[item.result.type]
-  const emoji =
-    !isRecent && ['assistant', 'agent', 'knowledge-base'].includes(item.result.type) ? item.result.emoji : undefined
+  const emoji = !isRecent && item.result.type === 'knowledge-base' ? item.result.emoji : undefined
   const displayTimestamp = isRecent ? undefined : (item.result.lastActivityAt ?? item.result.updatedAt)
   const timestampLabel = displayTimestamp ? formatRelativeTime(displayTimestamp, language) : undefined
 

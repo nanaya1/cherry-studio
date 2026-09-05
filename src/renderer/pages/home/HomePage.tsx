@@ -637,7 +637,6 @@ const HomePage: FC = () => {
       <>
         <HomeTabRuntime
           title={tabTitle}
-          emoji={visibleAssistant?.emoji}
           preserveVisuals={preserveTabVisuals}
           activeTopicId={activeTopic?.id}
           activeTopicSource={activeTopicSource}
@@ -752,7 +751,6 @@ const HomePage: FC = () => {
       revealRequest={topicRevealRequest}>
       <HomeTabRuntime
         title={tabTitle}
-        emoji={visibleAssistant?.emoji}
         preserveVisuals={preserveTabVisuals}
         activeTopicId={activeTopic?.id}
         activeTopicSource={activeTopicSource}

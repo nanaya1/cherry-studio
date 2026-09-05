@@ -448,7 +448,6 @@ vi.mock('react-i18next', async (importOriginal) => {
           'library.config.prompt.vars.time': 'Time',
           'library.config.prompt.vars.username': 'Username',
           'library.config.dialogs.create.avatar_aria': 'Pick avatar',
-          'library.config.dialogs.create.avatar_name_label': 'Avatar and name',
           'library.config.dialogs.edit.agent_description': 'Edit the essentials for this agent.',
           'library.config.dialogs.edit.agent_title': 'Edit Agent',
           'library.config.dialogs.edit.assistant_description': 'Edit the essentials for this assistant.',
@@ -1107,7 +1106,7 @@ describe('edit dialogs', () => {
         }}
       />
     )
-    fireEvent.change(screen.getByLabelText('Avatar and name'), { target: { value: 'Locally renamed' } })
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Locally renamed' } })
 
     await waitFor(() =>
       expect(updateAgentMock).toHaveBeenCalledWith({
@@ -1127,7 +1126,7 @@ describe('edit dialogs', () => {
     const onOpenChange = vi.fn()
     render(<AgentEditDialog open resource={AGENT} onOpenChange={onOpenChange} />)
 
-    fireEvent.change(screen.getByLabelText('Avatar and name'), { target: { value: 'First edit' } })
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'First edit' } })
     await waitFor(() => expect(updateAgentMock).toHaveBeenCalledTimes(1))
 
     fireEvent.change(screen.getByLabelText('Description'), { target: { value: 'Second edit' } })
@@ -1155,7 +1154,7 @@ describe('edit dialogs', () => {
     const props = { open: true, resource: AGENT, onOpenChange: vi.fn() }
     const { rerender } = render(<AgentEditDialog {...props} />)
 
-    fireEvent.change(screen.getByLabelText('Avatar and name'), { target: { value: 'First edit' } })
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'First edit' } })
     await waitFor(() => expect(updateAgentMock).toHaveBeenCalledTimes(1))
 
     installedSkillsState.current = {
@@ -1885,23 +1884,23 @@ describe('edit dialogs', () => {
     frames.restore()
   })
 
-  it('keeps popover content inside the dialog container', async () => {
-    render(<AssistantEditDialog open resource={ASSISTANT} onOpenChange={vi.fn()} />)
+  it('hides avatar controls in assistant and agent edit dialogs', () => {
+    const view = render(<AssistantEditDialog open resource={ASSISTANT} onOpenChange={vi.fn()} />)
 
-    const dialog = screen.getByRole('dialog')
-    fireEvent.click(screen.getByLabelText('Pick avatar'))
+    expect(screen.queryByLabelText('Pick avatar')).not.toBeInTheDocument()
 
-    expect(dialog).toContainElement(screen.getByRole('button', { name: 'Choose emoji' }))
+    view.rerender(<AgentEditDialog open resource={AGENT} onOpenChange={vi.fn()} />)
+    expect(screen.queryByLabelText('Pick avatar')).not.toBeInTheDocument()
   })
 
   it('keeps edited values while switching tabs before save', async () => {
     render(<AgentEditDialog open resource={AGENT} onOpenChange={vi.fn()} />)
 
-    fireEvent.change(screen.getByLabelText('Avatar and name'), { target: { value: 'Draft Agent' } })
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Draft Agent' } })
     selectTab('System Prompt')
     selectTab('Basic')
 
-    expect(screen.getByLabelText('Avatar and name')).toHaveValue('Draft Agent')
+    expect(screen.getByLabelText('Name')).toHaveValue('Draft Agent')
   })
 
   it('shows the immutable runtime guidance without requiring hover or focus', () => {
@@ -2098,7 +2097,7 @@ describe('edit dialogs', () => {
     const onOpenChange = vi.fn()
     render(<AgentEditDialog open resource={AGENT} onOpenChange={onOpenChange} />)
 
-    const nameInput = screen.getByLabelText('Avatar and name')
+    const nameInput = screen.getByLabelText('Name')
     fireEvent.change(nameInput, { target: { value: 'Closing Agent' } })
     fireEvent.click(screen.getByRole('button', { name: 'Close' }))
 
@@ -2121,7 +2120,7 @@ describe('edit dialogs', () => {
     const onOpenChange = vi.fn()
     render(<AgentEditDialog open resource={AGENT} onOpenChange={onOpenChange} />)
 
-    const nameInput = screen.getByLabelText('Avatar and name')
+    const nameInput = screen.getByLabelText('Name')
     fireEvent.change(nameInput, { target: { value: 'Closing Agent' } })
     fireEvent.click(screen.getByRole('button', { name: 'Close' }))
 

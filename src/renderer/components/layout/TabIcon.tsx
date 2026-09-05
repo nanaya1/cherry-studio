@@ -1,4 +1,3 @@
-import EmojiIcon from '@renderer/components/EmojiIcon'
 import { getMiniAppsLogoRef, useMiniAppLogo } from '@renderer/components/icons/miniAppsLogo'
 import { MINI_APP_ROUTE_PREFIX } from '@renderer/utils/miniAppKeepAlive'
 import { cn } from '@renderer/utils/style'
@@ -9,8 +8,7 @@ import type { Tab } from '../../hooks/tab'
 import { getTabIcon } from './tabIcons'
 
 /**
- * Renders a tab's icon: a per-entity emoji (`emoji:<glyph>`), a mini-app logo,
- * an image url, or — when no icon is set — the route's default lucide glyph.
+ * Renders a tab's icon: a mini-app logo, an image url, or the route's default lucide glyph.
  * Shared by the main tab strip (AppShellTabBar) and the sub-window title bar.
  */
 export const TabIcon: FC<{ tab: Tab; size: number; className?: string }> = ({ tab, size, className }) => {
@@ -19,16 +17,9 @@ export const TabIcon: FC<{ tab: Tab; size: number; className?: string }> = ({ ta
   const Logo = useMiniAppLogo(tab.icon)
   const isMiniApp = tab.url.startsWith(MINI_APP_ROUTE_PREFIX)
   if (tab.icon) {
-    // Per-entity emoji (chat assistant / agent avatar), stored as `emoji:<glyph>`.
     if (tab.icon.startsWith(TAB_ICON_EMOJI_PREFIX)) {
-      return (
-        <EmojiIcon
-          emoji={tab.icon.slice(TAB_ICON_EMOJI_PREFIX.length)}
-          size={size}
-          fontSize={Math.round(size * 0.62)}
-          className={cn('mr-0', className)}
-        />
-      )
+      const Icon = getTabIcon(tab)
+      return <Icon size={size} strokeWidth={1.6} className={className} />
     }
     if (getMiniAppsLogoRef(tab.icon)) {
       return Logo ? (

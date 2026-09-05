@@ -1012,7 +1012,6 @@ const AgentPage = () => {
     <>
       <AgentTabRuntime
         title={visibleSession?.name?.trim() || visibleAgent?.name?.trim() || getDefaultRouteTitle('/app/agents')}
-        emoji={visibleAgent?.configuration?.avatar}
         preserveVisuals={preserveTabVisuals}
         activeSessionId={activeSession?.id}
         activeSessionSource={activeSessionSource}

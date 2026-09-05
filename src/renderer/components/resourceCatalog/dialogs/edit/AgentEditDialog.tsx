@@ -6,9 +6,6 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-  InputGroup,
-  InputGroupAddon,
-  InputGroupInput,
   Switch,
   TabsContent,
   Textarea
@@ -53,7 +50,6 @@ import { useForm, type UseFormReturn, useWatch } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 
 import { type CatalogItem, CatalogToggleGrid } from '../components/CatalogPicker'
-import { EmojiAvatarPicker } from '../components/DialogFormFields'
 import {
   CompactModelField,
   EDIT_DIALOG_PROMPT_MAX_HEIGHT,
@@ -264,7 +260,6 @@ function AgentEditDialogContent({
   const { t } = useTranslation()
   const caps = AGENT_RUNTIME_CAPABILITIES[resource.type]
   const [activeTab, setActiveTab] = useState(initialTab ?? 'basic')
-  const [emojiPickerOpen, setEmojiPickerOpen] = useState(false)
   const [dialogContentElement, setDialogContentElement] = useState<HTMLDivElement | null>(null)
   const [modelLabels, setModelLabels] = useState<ModelLabels>(() => modelLabelsForAgent(resource))
   const [formBaseline, setFormBaseline] = useState<AgentFormState>(() => buildInitialAgentFormState(resource))
@@ -349,7 +344,6 @@ function AgentEditDialogContent({
     form.reset(defaultValues)
     form.clearErrors()
     setActiveTab(initialTab ?? 'basic')
-    setEmojiPickerOpen(false)
     setModelLabels(modelLabelsForAgent(resource))
     replaceFormBaseline(buildInitialAgentFormState(resource))
     setBaselineSkillAgentId(null)
@@ -523,8 +517,6 @@ function AgentEditDialogContent({
             modelLabels={modelLabels}
             setModelLabels={setModelLabels}
             patchAgentForm={patchAgentForm}
-            emojiPickerOpen={emojiPickerOpen}
-            setEmojiPickerOpen={setEmojiPickerOpen}
             onSettingsNavigate={closeBeforeAction}
             caps={caps}
             agentType={resource.type}
@@ -574,8 +566,6 @@ function AgentBasicFields({
   modelLabels,
   setModelLabels,
   patchAgentForm,
-  emojiPickerOpen,
-  setEmojiPickerOpen,
   onSettingsNavigate,
   caps,
   agentType
@@ -587,8 +577,6 @@ function AgentBasicFields({
   modelLabels: ModelLabels
   setModelLabels: (labels: ModelLabels) => void
   patchAgentForm: (patch: Partial<AgentFormState>) => void
-  emojiPickerOpen: boolean
-  setEmojiPickerOpen: (open: boolean) => void
   onSettingsNavigate?: (navigate: () => void) => void
   caps: AgentRuntimeCapabilities
   agentType: AgentType
@@ -598,11 +586,13 @@ function AgentBasicFields({
 
   return (
     <div className="divide-y divide-border-subtle border-border-subtle border-b [&>*:first-child]:pt-0">
-      <AgentAvatarNameField
+      <TextInputField
         form={form}
-        emojiPickerOpen={emojiPickerOpen}
-        setEmojiPickerOpen={setEmojiPickerOpen}
-        portalContainer={portalContainer}
+        name="name"
+        label={t('common.name')}
+        placeholder={t('library.config.agent.field.name.placeholder')}
+        required
+        layout="row"
       />
       <TextInputField
         form={form}
@@ -677,64 +667,6 @@ function AgentBasicFields({
         />
       ) : null}
     </div>
-  )
-}
-
-function AgentAvatarNameField({
-  form,
-  emojiPickerOpen,
-  setEmojiPickerOpen,
-  portalContainer
-}: {
-  form: UseFormReturn<AgentEditFormValues>
-  emojiPickerOpen: boolean
-  setEmojiPickerOpen: (open: boolean) => void
-  portalContainer: HTMLElement | null
-}) {
-  const { t } = useTranslation()
-
-  return (
-    <FormField
-      control={form.control}
-      name="name"
-      rules={{ validate: (value) => value.trim().length > 0 || t('common.required_field') }}
-      render={({ field }) => (
-        <FormItem className={editDialogFormRowClassName}>
-          <FormLabel className={editDialogFormRowLabelClassName}>
-            {t('library.config.dialogs.create.avatar_name_label')}
-          </FormLabel>
-          <InputGroup>
-            <FormField
-              control={form.control}
-              name="avatar"
-              render={({ field: avatarField }) => (
-                <InputGroupAddon className="py-0">
-                  <EmojiAvatarPicker
-                    value={avatarField.value}
-                    fallback="🤖"
-                    open={emojiPickerOpen}
-                    onOpenChange={setEmojiPickerOpen}
-                    onChange={avatarField.onChange}
-                    ariaLabel={t('library.config.dialogs.create.avatar_aria')}
-                    portalContainer={portalContainer}
-                    avatarClassName="border-0"
-                    avatarFontSize={18}
-                  />
-                </InputGroupAddon>
-              )}
-            />
-            <FormControl>
-              <InputGroupInput
-                {...field}
-                className="pl-1!"
-                placeholder={t('library.config.agent.field.name.placeholder')}
-              />
-            </FormControl>
-          </InputGroup>
-          <FormMessage className="col-start-2" />
-        </FormItem>
-      )}
-    />
   )
 }
 

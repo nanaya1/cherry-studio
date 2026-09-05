@@ -1,6 +1,5 @@
 import type { ResolvedAction } from '@renderer/components/chat/actions/actionTypes'
 import type { SessionActionContext } from '@renderer/components/chat/actions/sessionItemActions'
-import EmojiIcon from '@renderer/components/EmojiIcon'
 import { AgentSelector } from '@renderer/components/resourceCatalog/selectors'
 import { useAgents } from '@renderer/hooks/agent/useAgent'
 import { useAgentSessionStreamStatuses } from '@renderer/hooks/agent/useAgentSessionStreamStatuses'
@@ -10,9 +9,9 @@ import { useAgentSessionsSource } from '@renderer/hooks/resourceViewSources'
 import { useConversationNavigation } from '@renderer/hooks/useConversationNavigation'
 import { useOptimisticResourceName } from '@renderer/hooks/useOptimisticResourceName'
 import { toast } from '@renderer/services/toast'
-import { getAgentAvatarFromConfiguration } from '@renderer/utils/agent'
 import { type SessionListItem, sortSessionsForDisplayGroups } from '@renderer/utils/chat/sessionListHelpers'
 import type { AgentSessionEntity } from '@shared/data/api/schemas/agentSessions'
+import { Bot } from 'lucide-react'
 import { type ReactElement, type ReactNode, useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -193,17 +192,7 @@ const AgentHistoryRecords = ({ activeRecordId, onClose, onRecordSelect, toolbarL
       getUpdatedAt: (session: SessionListItem) => session.lastActivityAt,
       getSourceLabel: (session: SessionListItem) =>
         (session.agentId ? agentById.get(session.agentId)?.name : undefined) ?? unknownAgentLabel,
-      renderAvatar: (session: SessionListItem) => {
-        const agent = session.agentId ? agentById.get(session.agentId) : undefined
-        return (
-          <EmojiIcon
-            emoji={getAgentAvatarFromConfiguration(agent?.configuration)}
-            size={20}
-            fontSize={12}
-            className="mr-0 text-foreground"
-          />
-        )
-      },
+      renderAvatar: () => <Bot size={14} />,
       rowHeight: 32,
       getSelectLabel: (session: SessionListItem) => `${t('common.select')} ${session.name || t('common.unnamed')}`,
       getRowActions: (session: SessionListItem, openRename: (id: string, name: string) => void) => {
@@ -250,20 +239,7 @@ const AgentHistoryRecords = ({ activeRecordId, onClose, onRecordSelect, toolbarL
           hasValue={!!selectedId}
           clearLabel={t('common.clear')}
           onClear={() => onSelect(null)}
-          icon={
-            selectedId ? (
-              source?.icon ? (
-                source.icon
-              ) : (
-                <EmojiIcon
-                  emoji={getAgentAvatarFromConfiguration(agent?.configuration)}
-                  size={16}
-                  fontSize={10}
-                  className="mr-0 text-foreground"
-                />
-              )
-            ) : undefined
-          }
+          icon={selectedId ? (source?.icon ?? <Bot size={14} />) : undefined}
           selector={(trigger) => (
             <AgentSelector
               value={selectedId}

@@ -5,18 +5,16 @@ import { useEffect } from 'react'
 
 type Props = {
   title: string
-  emoji?: string | null
   preserveVisuals: boolean
   activeTopicId?: string | null
   activeTopicSource: ActiveTopicSource
 }
 
-export function HomeTabRuntime({ title, emoji, preserveVisuals, activeTopicId, activeTopicSource }: Props) {
+export function HomeTabRuntime({ title, preserveVisuals, activeTopicId, activeTopicSource }: Props) {
   const isActiveTab = useIsActiveTab()
 
   useTabSelfVisuals({
     title,
-    emoji,
     appId: 'assistants',
     preserveVisuals
   })

@@ -748,7 +748,7 @@ describe('GlobalSearchPanel', () => {
       expect(screen.queryByRole('heading', { name: 'Apps' })).not.toBeInTheDocument()
       expect(resultOption).toBeInTheDocument()
       expect(screen.getByText('2 minutes ago')).toBeInTheDocument()
-      expect(screen.getAllByText('🧪')).not.toHaveLength(0)
+      expect(resultOption).not.toHaveTextContent('🧪')
       expect(searchInput).toHaveAttribute('aria-expanded', 'true')
       expect(searchInput).toHaveAttribute('aria-controls', listbox.id)
       expect(searchInput).toHaveAttribute('aria-activedescendant', resultOption.id)

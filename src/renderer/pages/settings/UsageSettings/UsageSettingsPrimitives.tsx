@@ -86,7 +86,7 @@ export function UsageSourceLabel({
 
   return (
     <span className={cn('inline-flex min-w-0 items-center gap-2', className)}>
-      {sourceIcon ? (
+      {sourceType === 'mini-app' && sourceIcon ? (
         <EmojiIcon emoji={sourceIcon} size={size} fontSize={Math.max(10, Math.round(size * 0.58))} />
       ) : (
         <Avatar className="shrink-0" style={{ width: size, height: size }}>

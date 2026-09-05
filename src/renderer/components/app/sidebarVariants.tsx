@@ -15,7 +15,7 @@ function assertNever(value: never): never {
   throw new Error(`Unhandled sidebar favorite variant: ${JSON.stringify(value)}`)
 }
 
-/** A sidebar row is only identifiable by its icon, so 'none' degrades to the emoji. */
+/** A sidebar row is only identifiable by its icon, so 'none' degrades to the generic entity icon. */
 function sidebarIconType(iconType: AssistantIconType): AssistantIconType {
   return iconType === 'none' ? 'emoji' : iconType
 }
@@ -135,8 +135,7 @@ const agentVariant: SidebarVariantDescriptor<Extract<SidebarFavoriteItem, { type
     return {
       key: getSidebarFavoriteKey(item),
       label: agent.name,
-      // Same renderer the agent rail uses, so a pinned row matches the list it came from.
-      // 'none' would leave the row with no glyph at all, so the sidebar keeps the emoji there.
+      // 'none' would leave this icon-only row with no glyph, so keep the generic entity icon.
       renderIcon: (_size, iconSize) =>
         renderAgentEntityIcon(
           sidebarIconType(ctx.agentIconType),
@@ -170,8 +169,7 @@ const assistantVariant: SidebarVariantDescriptor<Extract<SidebarFavoriteItem, { 
     return {
       key: getSidebarFavoriteKey(item),
       label: assistant.name,
-      // Same renderer the assistant rail uses, so a pinned row matches the list it came from.
-      // 'none' would leave the row with no glyph at all, so the sidebar keeps the emoji there.
+      // 'none' would leave this icon-only row with no glyph, so keep the generic entity icon.
       renderIcon: (_size, iconSize) =>
         renderAssistantEntityIcon(
           sidebarIconType(ctx.assistantIconType),

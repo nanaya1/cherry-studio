@@ -280,7 +280,7 @@
     {
       "targetKey": "agent.icon_type",
       "type": "PreferenceTypes.AssistantIconType",
-      "defaultValue": "emoji",
+      "defaultValue": "none",
       "status": "classified",
       "description": "Agent rail entity icon style (emoji/model/none), independent of the assistant icon type"
     },

@@ -566,7 +566,7 @@ export interface PreferenceSchemas {
 /* eslint sort-keys: ["error", "asc", {"caseSensitive": true, "natural": false}] */
 export const DefaultPreferences: PreferenceSchemas = {
   default: {
-    'agent.icon_type': 'emoji',
+    'agent.icon_type': 'none',
     'agent.input.toolbar.pinned_tools': ['composer:new-session', 'skills', 'permission-mode'],
     'agent.session.display_mode': 'agent',
     'agent.session.position': 'left',
@@ -599,7 +599,7 @@ export const DefaultPreferences: PreferenceSchemas = {
     'app.user.id': '',
     'app.user.name': '',
     'app.zoom_factor': 1,
-    'assistant.icon_type': 'emoji',
+    'assistant.icon_type': 'none',
     'assistant.tab.sort_type': 'list',
     'chat.code.collapsible': false,
     'chat.code.editor.autocompletion': true,

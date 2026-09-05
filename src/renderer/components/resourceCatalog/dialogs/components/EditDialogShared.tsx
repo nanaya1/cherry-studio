@@ -36,7 +36,7 @@ import { type FieldValues, type Path, type UseFormReturn, useWatch } from 'react
 import { useTranslation } from 'react-i18next'
 
 import { AddCatalogPopover, type CatalogItem } from './CatalogPicker'
-import { DialogModelFrame, DialogModelTrigger, EmojiAvatarPicker } from './DialogFormFields'
+import { DialogModelFrame, DialogModelTrigger } from './DialogFormFields'
 
 // Vertical submenu / nav item preset — kept in sync with the settings sidebar's
 // settingsSubmenuItemClassName so the edit-dialog rail and settings nav read identically.
@@ -568,52 +568,6 @@ export function EditDialogShell<TValues extends FieldValues>({
         </Form>
       </DialogContent>
     </Dialog>
-  )
-}
-
-export function AvatarField({
-  form,
-  emojiPickerOpen,
-  setEmojiPickerOpen,
-  fallback,
-  portalContainer,
-  size,
-  layout = 'stacked'
-}: {
-  form: UseFormReturn<any>
-  emojiPickerOpen: boolean
-  setEmojiPickerOpen: (open: boolean) => void
-  fallback: string
-  portalContainer: HTMLElement | null
-  size?: 'sm' | 'md'
-  layout?: 'stacked' | 'row'
-}) {
-  const { t } = useTranslation()
-  const avatar = form.watch('avatar')
-
-  return (
-    <FormField
-      control={form.control}
-      name="avatar"
-      render={({ field }) => (
-        <FormItem className={layout === 'row' ? editDialogFormRowClassName : undefined}>
-          <FormLabel className={layout === 'row' ? editDialogFormRowLabelClassName : 'font-normal'}>
-            {t('common.avatar')}
-          </FormLabel>
-          <EmojiAvatarPicker
-            value={avatar}
-            fallback={fallback}
-            open={emojiPickerOpen}
-            onOpenChange={setEmojiPickerOpen}
-            onChange={field.onChange}
-            ariaLabel={t('library.config.dialogs.create.avatar_aria')}
-            portalContainer={portalContainer}
-            size={size}
-          />
-          <FormMessage className={layout === 'row' ? 'col-start-2' : undefined} />
-        </FormItem>
-      )}
-    />
   )
 }
 

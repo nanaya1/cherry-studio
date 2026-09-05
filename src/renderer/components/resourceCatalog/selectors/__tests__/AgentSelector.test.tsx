@@ -397,32 +397,13 @@ describe('AgentSelector', () => {
     expect(screen.getByRole('button', { name: 'Create agent' })).toBeInTheDocument()
   })
 
-  it('falls back to the default agent avatar for blank stored avatars', () => {
-    useQueryMock.mockReturnValue({
-      data: {
-        items: [
-          {
-            ...AGENTS_RESPONSE.items[0],
-            configuration: {
-              ...AGENTS_RESPONSE.items[0].configuration,
-              avatar: '   '
-            }
-          }
-        ],
-        total: 1,
-        page: 1
-      },
-      isLoading: false,
-      isRefreshing: false,
-      error: undefined,
-      refetch: refetchAgentsMock,
-      mutate: vi.fn()
-    })
-
+  it('renders a generic agent icon without the stored emoji', () => {
     renderSelector()
     openPopover()
 
-    expect(screen.getByRole('option', { name: /Alpha Agent/ })).toHaveTextContent('🤖')
+    const option = screen.getByRole('option', { name: /Alpha Agent/ })
+    expect(option).not.toHaveTextContent('🤖')
+    expect(option.querySelector('svg')).not.toBeNull()
   })
 
   it('fires onChange with the selected agent id', () => {

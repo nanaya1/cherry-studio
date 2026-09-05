@@ -1820,7 +1820,6 @@ const ChatComposerInner = ({
   const controlSlots = renderControls({
     assistantId: selectedAssistantId,
     assistantName,
-    assistantEmoji: displayAssistant?.emoji,
     model: runtimeModel,
     modelPending: runtimeModelPending,
     providers,
