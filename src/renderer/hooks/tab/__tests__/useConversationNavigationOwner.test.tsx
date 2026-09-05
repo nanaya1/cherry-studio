@@ -34,8 +34,10 @@ describe('useConversationNavigationOwner', () => {
   it('answers ownership on demand from the latest tab state', () => {
     const owner = {
       tabs: [] as Tab[],
+      activeTab: undefined as Tab | undefined,
       openTab: vi.fn(),
-      setActiveTab: vi.fn()
+      setActiveTab: vi.fn(),
+      updateTab: vi.fn()
     }
     const rendered = renderHook(({ value }) => useConversationNavigationOwner(value), {
       initialProps: { value: owner }
@@ -73,8 +75,10 @@ describe('useConversationNavigationOwner', () => {
           title: 'Refactor project'
         }
       ],
+      activeTab: undefined as Tab | undefined,
       openTab: vi.fn(),
-      setActiveTab: vi.fn()
+      setActiveTab: vi.fn(),
+      updateTab: vi.fn()
     }
     renderHook(({ value }) => useConversationNavigationOwner(value), {
       initialProps: { value: owner }
@@ -96,8 +100,10 @@ describe('useConversationNavigationOwner', () => {
   it('confirms a missing target only after the new tab is committed', async () => {
     const owner = {
       tabs: [] as Tab[],
+      activeTab: undefined as Tab | undefined,
       openTab: vi.fn(),
-      setActiveTab: vi.fn()
+      setActiveTab: vi.fn(),
+      updateTab: vi.fn()
     }
     const rendered = renderHook(({ value }) => useConversationNavigationOwner(value), {
       initialProps: { value: owner }
@@ -142,8 +148,10 @@ describe('useConversationNavigationOwner', () => {
   it('coalesces repeated open commands for the same target until the tab is committed', async () => {
     const owner = {
       tabs: [] as Tab[],
+      activeTab: undefined as Tab | undefined,
       openTab: vi.fn(),
-      setActiveTab: vi.fn()
+      setActiveTab: vi.fn(),
+      updateTab: vi.fn()
     }
     const rendered = renderHook(({ value }) => useConversationNavigationOwner(value), {
       initialProps: { value: owner }

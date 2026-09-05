@@ -36,6 +36,7 @@ vi.mock('@renderer/hooks/useWindowInitData', () => ({
 vi.mock('../useTabs', () => ({
   useTabs: () => ({
     tabs: mocks.tabs,
+    activeTab: mocks.tabs.find((tab) => tab.id === 'active-1'),
     openTab: mocks.openTab,
     setActiveTab: mocks.setActiveTab,
     updateTab: mocks.updateTab,
@@ -147,11 +148,12 @@ describe('useMainWindowNavigation', () => {
     expect(mocks.openTab).toHaveBeenCalledTimes(1)
   })
 
-  it('opens a regular tab for non-settings navigation init data', () => {
+  it('navigates the active tab in place for non-settings navigation init data', () => {
+    mocks.tabs = [{ id: 'active-1', type: 'route', url: '/app/chat', title: 'Chat' }]
     mocks.initData = { kind: 'navigation', to: '/agents', requestId: 1 }
     render(<MainWindowNavigationHarness />)
 
-    expect(mocks.openTab).toHaveBeenCalledWith('/agents')
+    expect(mocks.updateTab).toHaveBeenCalledWith('active-1', expect.objectContaining({ url: '/agents' }))
   })
 
   it('re-attaches a tab from tab-attach init data and acknowledges it', () => {
@@ -174,12 +176,13 @@ describe('useMainWindowNavigation', () => {
     expect(mocks.attachTab).toHaveBeenCalledTimes(1)
   })
 
-  it('opens a regular tab when a non-settings open_route_requested event arrives', () => {
+  it('navigates the active tab in place when a non-settings open_route_requested event arrives', () => {
+    mocks.tabs = [{ id: 'active-1', type: 'route', url: '/app/chat', title: 'Chat' }]
     render(<MainWindowNavigationHarness />)
 
     mocks.ipcListeners.get('navigation.open_route_requested')?.({ to: '/knowledge' })
 
-    expect(mocks.openTab).toHaveBeenCalledWith('/knowledge')
+    expect(mocks.updateTab).toHaveBeenCalledWith('active-1', expect.objectContaining({ url: '/knowledge' }))
   })
 
   it('routes a settings path from the open_route_requested event through the settings singleton', () => {
@@ -229,7 +232,8 @@ describe('useMainWindowNavigation', () => {
     expect(mocks.setActiveTab).not.toHaveBeenCalled()
   })
 
-  it('routes non-settings main-route event paths to a regular tab', () => {
+  it('routes non-settings main-route event paths to the active tab in place', () => {
+    mocks.tabs = [{ id: 'active-1', type: 'route', url: '/app/chat', title: 'Chat' }]
     render(<MainWindowNavigationHarness />)
 
     window.dispatchEvent(
@@ -239,7 +243,7 @@ describe('useMainWindowNavigation', () => {
       })
     )
 
-    expect(mocks.openTab).toHaveBeenCalledWith('/agents')
+    expect(mocks.updateTab).toHaveBeenCalledWith('active-1', expect.objectContaining({ url: '/agents' }))
   })
 
   it('removes the main-route event bridge on unmount', () => {

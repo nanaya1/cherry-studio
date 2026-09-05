@@ -1,3 +1,4 @@
+export { navigateActiveTab, type NavigateInPlaceOptions } from './navigateActiveTab'
 export {
   type CloseConversationTabs,
   CloseConversationTabsContext,

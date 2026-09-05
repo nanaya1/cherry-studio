@@ -1,4 +1,4 @@
-import { type TabsContextValue, useOptionalTabsContext } from '@renderer/hooks/tab'
+import { navigateActiveTab, type TabsContextValue, useOptionalTabsContext } from '@renderer/hooks/tab'
 import { useWindowFrame } from '@renderer/hooks/useWindowFrame'
 import { ipcApi } from '@renderer/ipc'
 import type { ConversationAppId } from '@renderer/types/conversation'
@@ -8,10 +8,11 @@ import { v4 as uuid } from 'uuid'
 
 export interface ConversationNavigation {
   /**
-   * Focus the tab already showing conversation `key` and return its id; open a new
-   * tab when none exists. `forceNew` skips the focus step and always opens a fresh
-   * duplicate tab. Detached windows return `undefined` instead of creating a hidden
-   * internal tab.
+   * Focus the tab already showing conversation `key` and return its id. When none exists,
+   * navigate the active tab to the conversation in place (no new tab chip); falls back to
+   * a fresh tab when the active tab is pinned or a mini-app owning tab. `forceNew` always
+   * opens a fresh duplicate tab. Detached windows return `undefined` instead of creating a
+   * hidden internal tab.
    */
   openConversationTab: (key: string, title?: string, options?: { forceNew?: boolean }) => string | undefined
   /**
@@ -50,9 +51,17 @@ function openConversationTabImpl(
       tabs.setActiveTab(existingTabId)
       return existingTabId
     }
+    openConversationTabInPlace(tabs, appId, key, title)
+    return
   }
 
   return tabs.openTab(app.conversationRoute.urlForKey(key), { forceNew: true, title })
+}
+
+function openConversationTabInPlace(tabs: TabsContextValue, appId: ConversationAppId, key: string, title?: string) {
+  const app = getSidebarApp(appId)
+  if (!app?.conversationRoute) return
+  navigateActiveTab(tabs, app.conversationRoute.urlForKey(key), { title })
 }
 
 function openConversationWindowImpl(appId: ConversationAppId, key: string, title?: string): void {

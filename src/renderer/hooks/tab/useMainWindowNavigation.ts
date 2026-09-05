@@ -6,6 +6,7 @@ import { isSettingsPath, normalizeSettingsPath, type SettingsPath } from '@share
 import type { MainWindowInitData } from '@shared/types/mainWindow'
 import { useCallback, useEffect, useRef } from 'react'
 
+import { navigateActiveTab } from './navigateActiveTab'
 import { useTabs } from './useTabs'
 
 function useOpenSettingsRoute() {
@@ -94,12 +95,12 @@ function useMainRouteEventBridge(handleRoute: (path: string) => void) {
  *   re-attached (openTabInMainWindow rebuilt the window around it); same
  *   request-id dedupe, delivered to `attachTab`.
  *
- * Settings paths land in the singleton settings tab; everything else goes
- * through `openTab`'s exact-URL dedupe.
+ * Settings paths land in the singleton settings tab; everything else navigates the
+ * active tab in place (no new tab chip).
  */
 export function useMainWindowNavigation() {
   const openSettingsRoute = useOpenSettingsRoute()
-  const { attachTab, openTab } = useTabs()
+  const { attachTab, ...navigationTabs } = useTabs()
   const initData = useWindowInitData<MainWindowInitData>()
   const handledNavigationRequestIdRef = useRef<number | null>(null)
 
@@ -108,10 +109,10 @@ export function useMainWindowNavigation() {
       if (isSettingsPath(to)) {
         openSettingsRoute(to)
       } else {
-        openTab(to)
+        navigateActiveTab(navigationTabs, to)
       }
     },
-    [openSettingsRoute, openTab]
+    [openSettingsRoute, navigationTabs]
   )
 
   useIpcOn('navigation.open_route_requested', ({ to }) => handleRoute(to))

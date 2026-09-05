@@ -5,12 +5,14 @@ import type { Tab } from '@shared/data/cache/cacheValueTypes'
 import type { ConversationNavigationTarget } from '@shared/types/navigation'
 import { useEffect, useRef } from 'react'
 
+import { navigateActiveTab } from './navigateActiveTab'
 import type { TabsContextValue } from './useTabsContext'
 
 const logger = loggerService.withContext('useConversationNavigationOwner')
 
-type ConversationNavigationOwner = Pick<TabsContextValue, 'openTab' | 'setActiveTab'> & {
+type ConversationNavigationOwner = Pick<TabsContextValue, 'openTab' | 'setActiveTab' | 'updateTab'> & {
   tabs: readonly Tab[]
+  activeTab: Tab | undefined
 }
 
 interface PendingNavigation {
@@ -32,7 +34,13 @@ function reportOwnership(requestId: string, ownsTarget: boolean): void {
  * Connects one TabsProvider to main's cross-window conversation-navigation coordinator.
  * Ownership is answered on demand from the current render state; no tab mirror or sync effect exists.
  */
-export function useConversationNavigationOwner({ tabs, openTab, setActiveTab }: ConversationNavigationOwner): void {
+export function useConversationNavigationOwner({
+  tabs,
+  openTab,
+  setActiveTab,
+  updateTab,
+  activeTab
+}: ConversationNavigationOwner): void {
   const pendingNavigationsRef = useRef(new Map<string, PendingNavigation>())
 
   useIpcOn('navigation.conversation_ownership_requested', ({ requestId, target }) => {
@@ -62,8 +70,7 @@ export function useConversationNavigationOwner({ tabs, openTab, setActiveTab }: 
 
     pendingNavigationsRef.current.set(key, { requestIds: new Set([requestId]), target })
     try {
-      openTab(app.conversationRoute.urlForKey(target.conversationId), {
-        forceNew: true,
+      navigateActiveTab({ activeTab, openTab, updateTab }, app.conversationRoute.urlForKey(target.conversationId), {
         title
       })
     } catch (error) {

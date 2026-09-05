@@ -11,7 +11,8 @@ const tabsMock = vi.hoisted(() => ({
   windowFrameMode: 'embedded' as 'embedded' | 'window'
 }))
 
-vi.mock('@renderer/hooks/tab', () => ({
+vi.mock('@renderer/hooks/tab', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
   useOptionalTabsContext: () => tabsMock.ctx
 }))
 
@@ -28,7 +29,13 @@ const ipcMock = vi.hoisted(() => ({ request: vi.fn() }))
 vi.mock('@renderer/ipc', () => ({ ipcApi: { request: ipcMock.request }, useIpcOn: vi.fn() }))
 
 function makeCtx(tabs: Array<{ id: string; type: string; url: string; metadata?: Record<string, unknown> }>) {
-  return { tabs, openTab: vi.fn(), setActiveTab: vi.fn() }
+  return {
+    tabs,
+    activeTab: tabs[0],
+    openTab: vi.fn(),
+    setActiveTab: vi.fn(),
+    updateTab: vi.fn()
+  }
 }
 
 beforeEach(() => {
@@ -39,17 +46,17 @@ beforeEach(() => {
 })
 
 describe('useConversationNavigation', () => {
-  it('openConversationTab opens a new tab on the conversation url when none exists', () => {
-    const ctx = makeCtx([])
-    ctx.openTab.mockReturnValue('new-agent-tab')
+  it('openConversationTab rewrites the active tab in place when none shows the conversation', () => {
+    const ctx = makeCtx([{ id: 'tab-main', type: 'route', url: '/app/new-task' }])
     tabsMock.ctx = ctx
     const { result } = renderHook(() => useConversationNavigation('agents'))
 
     result.current.openConversationTab('s1', 'Session 1')
-    expect(ctx.openTab).toHaveBeenCalledWith('/app/agents?sessionId=s1', {
-      forceNew: true,
-      title: 'Session 1'
-    })
+    expect(ctx.updateTab).toHaveBeenCalledWith(
+      'tab-main',
+      expect.objectContaining({ url: '/app/agents?sessionId=s1', title: 'Session 1' })
+    )
+    expect(ctx.openTab).not.toHaveBeenCalled()
     expect(tabsMock.emitResourceListReveal).not.toHaveBeenCalled()
   })
 
@@ -68,16 +75,15 @@ describe('useConversationNavigation', () => {
       { id: 'tab-agent', type: 'route', url: '/app/agents?sessionId=other' },
       { id: 'tab-chat', type: 'route', url: '/app/chat?topicId=s1' }
     ])
-    ctx.openTab.mockReturnValue('new-agent-tab')
     tabsMock.ctx = ctx
     const { result } = renderHook(() => useConversationNavigation('agents'))
 
     result.current.openConversationTab('s1', 'Session 1')
     expect(ctx.setActiveTab).not.toHaveBeenCalled()
-    expect(ctx.openTab).toHaveBeenCalledWith('/app/agents?sessionId=s1', {
-      forceNew: true,
-      title: 'Session 1'
-    })
+    expect(ctx.updateTab).toHaveBeenCalledWith(
+      'tab-agent',
+      expect.objectContaining({ url: '/app/agents?sessionId=s1', title: 'Session 1' })
+    )
   })
 
   it('openConversationTab can force opening a duplicate tab even when one exists', () => {
@@ -96,15 +102,15 @@ describe('useConversationNavigation', () => {
   })
 
   it('openConversationTab builds the chat url from the topic key', () => {
-    const ctx = makeCtx([])
+    const ctx = makeCtx([{ id: 'tab-main', type: 'route', url: '/app/new-task' }])
     tabsMock.ctx = ctx
     const { result } = renderHook(() => useConversationNavigation('assistants'))
 
     result.current.openConversationTab('t1', 'Topic 1')
-    expect(ctx.openTab).toHaveBeenCalledWith('/app/chat?topicId=t1', {
-      forceNew: true,
-      title: 'Topic 1'
-    })
+    expect(ctx.updateTab).toHaveBeenCalledWith(
+      'tab-main',
+      expect.objectContaining({ url: '/app/chat?topicId=t1', title: 'Topic 1' })
+    )
   })
 
   it('openConversation focuses the existing tab showing the same conversation', () => {
@@ -148,18 +154,17 @@ describe('useConversationNavigation', () => {
   })
 
   it('openConversation routes through current tabs when embedded and tabs are available', () => {
-    const ctx = makeCtx([])
-    ctx.openTab.mockReturnValue('new-agent-tab')
+    const ctx = makeCtx([{ id: 'tab-main', type: 'route', url: '/app/new-task' }])
     tabsMock.ctx = ctx
     tabsMock.windowFrameMode = 'embedded'
     const { result } = renderHook(() => useConversationNavigation('agents'))
 
     result.current.openConversation('s1', 'Session 1')
 
-    expect(ctx.openTab).toHaveBeenCalledWith('/app/agents?sessionId=s1', {
-      forceNew: true,
-      title: 'Session 1'
-    })
+    expect(ctx.updateTab).toHaveBeenCalledWith(
+      'tab-main',
+      expect.objectContaining({ url: '/app/agents?sessionId=s1', title: 'Session 1' })
+    )
   })
 
   it('openConversation routes to a detached window when the host frame is detached', () => {
