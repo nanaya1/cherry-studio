@@ -39,11 +39,12 @@ import { toast } from '@renderer/services/toast'
 import type { Topic } from '@renderer/types/topic'
 import { LAST_USED_ASSISTANT_CACHE_KEY, resolveDefaultAssistant } from '@renderer/utils/assistant'
 import { getTopicAssistantDisplayGroupId } from '@renderer/utils/chat/topicsHelpers'
+import { isDetailPageUrl } from '@renderer/utils/detailPage'
 import { formatErrorMessageWithPrefix } from '@renderer/utils/error'
 import { getDefaultRouteTitle } from '@renderer/utils/routeTitle'
 import { cn } from '@renderer/utils/style'
 import { isDataApiNotFoundError } from '@shared/data/api/errors'
-import { useNavigate, useSearch } from '@tanstack/react-router'
+import { useLocation, useNavigate, useSearch } from '@tanstack/react-router'
 import type { FC, HTMLAttributes } from 'react'
 import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -221,6 +222,10 @@ const HomePage: FC = () => {
     return 'empty'
   }, [visibleTopic?.id])
   const conversationResourcesEnabled = !isMessageOnlyView && !isWindowFrame
+  const location = useLocation()
+  // Detail pages hide the workspace sidebar entirely, so the expand/collapse toggle goes with it.
+  // Message-only (detached) views never had the toggle either.
+  const showSidebarControls = !isMessageOnlyView && !isDetailPageUrl(`${location.pathname}${location.searchStr}`)
   const {
     activeResourceKind,
     closeSurface,
@@ -562,7 +567,7 @@ const HomePage: FC = () => {
                 kind={activeResourceKind}
                 onOpenAssistantChat={handleOpenAssistantChatFromLibrary}
                 toolbarLeading={
-                  !isMessageOnlyView && !isWindowFrame ? (
+                  showSidebarControls && !isWindowFrame ? (
                     <ConversationSidebarToggleButton
                       sidebarOpen={shellPaneOpen}
                       onSidebarToggle={toggleShellPane}
@@ -578,8 +583,8 @@ const HomePage: FC = () => {
       activeResourceKind,
       shellPaneOpen,
       handleOpenAssistantChatFromLibrary,
-      isMessageOnlyView,
       isWindowFrame,
+      showSidebarControls,
       toggleShellPane
     ]
   )
@@ -594,7 +599,7 @@ const HomePage: FC = () => {
             onClose={closeHistoryRecords}
             onRecordSelect={handleHistoryRecordsTopicSelect}
             toolbarLeading={
-              !isMessageOnlyView && !isWindowFrame ? (
+              showSidebarControls && !isWindowFrame ? (
                 <ConversationSidebarToggleButton
                   sidebarOpen={shellPaneOpen}
                   onSidebarToggle={toggleShellPane}
@@ -766,7 +771,7 @@ const HomePage: FC = () => {
             paneManualToggle={paneManualToggle}
             onNewTopic={isMessageOnlyView ? undefined : handleCreateEmptyTopic}
             onCreateEmptyTopic={isMessageOnlyView ? undefined : handleCreateEmptyTopic}
-            showResourceListControls={!isMessageOnlyView}
+            showResourceListControls={showSidebarControls}
             sidebarOpen={shellPaneOpen}
             onSidebarToggle={toggleShellPane}
             locateMessageId={locateMessageId}

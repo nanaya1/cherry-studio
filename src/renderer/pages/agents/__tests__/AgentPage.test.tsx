@@ -302,7 +302,8 @@ vi.mock('@renderer/data/hooks/useDataApi', async () => ({
 
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => agentPageMocks.navigate,
-  useSearch: () => agentPageMocks.routeSearch
+  useSearch: () => agentPageMocks.routeSearch,
+  useLocation: () => ({ pathname: '/app/agents', searchStr: '' })
 }))
 
 vi.mock('@renderer/components/chat/shell/ConversationShell', () => ({

@@ -5,6 +5,7 @@ import { useTabs } from '@renderer/hooks/tab'
 import useMacTransparentWindow from '@renderer/hooks/useMacTransparentWindow'
 import { useNativeFullscreen } from '@renderer/hooks/useNativeFullscreen'
 import { ipcApi } from '@renderer/ipc'
+import { isDetailPageUrl } from '@renderer/utils/detailPage'
 import { miniAppIdFromTabUrl } from '@renderer/utils/miniAppKeepAlive'
 import { isMac } from '@renderer/utils/platform'
 import { getDefaultRouteTitle, isPageTitledRoute } from '@renderer/utils/routeTitle'
@@ -33,6 +34,9 @@ export const AppShell = () => {
   const activeTab = useMemo(() => tabs.find((tab) => tab.id === activeTabId), [activeTabId, tabs])
   const canCycleTabs = tabs.length > 1 && !!activeTab
   const isSettingsTabActive = isSettingsPath(activeTab?.url)
+  // Detail pages (conversation / scheduled-task) hide the workspace sidebar like settings do.
+  const isDetailPageActive = isDetailPageUrl(activeTab?.url)
+  const hideSidebar = isSettingsTabActive || isDetailPageActive
   // Single-tab mode: entering settings rewrites the (only) tab's URL, so the
   // pre-settings workspace URL must be remembered to restore it on "back".
   const previousWorkspaceUrlRef = useRef<string | undefined>(undefined)
@@ -214,7 +218,7 @@ export const AppShell = () => {
   )
 
   const contentArea = (
-    <div className={cn('flex min-h-0 min-w-0 flex-1 flex-col pb-2', isSettingsTabActive ? 'px-2' : 'pr-2')}>
+    <div className={cn('flex min-h-0 min-w-0 flex-1 flex-col pb-2', hideSidebar ? 'px-2' : 'pr-2')}>
       <main
         data-ui="app.content"
         className="relative min-h-0 flex-1 overflow-hidden rounded-[12px] border-[0.5px] border-border bg-background">
@@ -252,7 +256,7 @@ export const AppShell = () => {
               'flex h-screen w-screen flex-row overflow-hidden text-foreground',
               isMacTransparentWindow ? 'bg-transparent' : 'bg-sidebar'
             )}>
-            {!isSettingsTabActive && <Sidebar />}
+            {!hideSidebar && <Sidebar />}
             {contentColumn}
           </div>
         </QuickPanelProvider>
@@ -275,7 +279,7 @@ export const AppShell = () => {
               className="pointer-events-none absolute top-0 left-0 h-11 w-[env(titlebar-area-x)] [-webkit-app-region:drag]"
             />
           )}
-          {!isSettingsTabActive && (
+          {!hideSidebar && (
             <div className="flex h-full min-h-0 shrink-0 flex-col [&>#app-sidebar]:min-h-0 [&>#app-sidebar]:flex-1">
               {!isFullscreen && (
                 <div

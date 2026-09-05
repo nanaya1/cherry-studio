@@ -35,6 +35,7 @@ import type { ResourceListRevealPayload } from '@renderer/services/resourceListR
 import { toast } from '@renderer/services/toast'
 import type { CreateAgentSessionDefaults } from '@renderer/types/agent'
 import { buildAgentFileWorkspaceKey, buildAgentSessionTopicId } from '@renderer/utils/agentSession'
+import { isDetailPageUrl } from '@renderer/utils/detailPage'
 import { formatErrorMessageWithPrefix } from '@renderer/utils/error'
 import { getDefaultRouteTitle } from '@renderer/utils/routeTitle'
 import { cn } from '@renderer/utils/style'
@@ -42,7 +43,7 @@ import { isDataApiNotFoundError } from '@shared/data/api/errors'
 import type { AgentSessionEntity } from '@shared/data/api/schemas/agentSessions'
 import { AGENT_WORKSPACE_TYPE, type AgentSessionWorkspaceSource } from '@shared/data/api/schemas/agentWorkspaces'
 import type { TopicTabPosition } from '@shared/data/preference/preferenceTypes'
-import { useNavigate, useSearch } from '@tanstack/react-router'
+import { useLocation, useNavigate, useSearch } from '@tanstack/react-router'
 import type { PropsWithChildren } from 'react'
 import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -293,6 +294,10 @@ const AgentPage = () => {
     return 'empty'
   }, [missingAgentSelection, visibleSession?.id])
   const conversationResourcesEnabled = !isMessageOnlyView && !isWindowFrame
+  const location = useLocation()
+  // Detail pages hide the workspace sidebar entirely, so the expand/collapse toggle goes with it.
+  // Message-only (detached) views never had the toggle either.
+  const showSidebarControls = !isMessageOnlyView && !isDetailPageUrl(`${location.pathname}${location.searchStr}`)
   const {
     activeResourceKind,
     closeSurface,
@@ -964,7 +969,7 @@ const AgentPage = () => {
               <ConversationResourceView
                 kind={activeResourceKind}
                 toolbarLeading={
-                  !isMessageOnlyView && !isWindowFrame ? (
+                  showSidebarControls && !isWindowFrame ? (
                     <ConversationSidebarToggleButton
                       sidebarOpen={shellPaneOpen}
                       onSidebarToggle={toggleShellPane}
@@ -976,7 +981,7 @@ const AgentPage = () => {
             )
           }
         : null,
-    [activeResourceKind, isMessageOnlyView, isWindowFrame, shellPaneOpen, toggleShellPane]
+    [activeResourceKind, isWindowFrame, shellPaneOpen, showSidebarControls, toggleShellPane]
   )
   const historyRecordsCenter = historyRecordsActive
     ? {
@@ -989,7 +994,7 @@ const AgentPage = () => {
             onClose={closeHistoryRecords}
             onRecordSelect={handleHistoryRecordsSessionSelect}
             toolbarLeading={
-              !isMessageOnlyView && !isWindowFrame ? (
+              showSidebarControls && !isWindowFrame ? (
                 <ConversationSidebarToggleButton
                   sidebarOpen={shellPaneOpen}
                   onSidebarToggle={toggleShellPane}
@@ -1026,7 +1031,7 @@ const AgentPage = () => {
             onFileNavigationRequestChange={handleFileNavigationRequestChange}
             requestFileNavigation={requestFileNavigation}
             paneManualToggle={paneManualToggle}
-            showResourceListControls={!isMessageOnlyView}
+            showResourceListControls={showSidebarControls}
             sidebarOpen={shellPaneOpen}
             onSidebarToggle={toggleShellPane}
             missingAgentSelection={!isMessageOnlyView && missingAgentSelection && !visibleSession}
