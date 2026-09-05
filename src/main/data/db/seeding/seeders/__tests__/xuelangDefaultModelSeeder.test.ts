@@ -15,7 +15,7 @@ import {
 } from '@shared/data/presets/xuelang'
 import { DEFAULT_ASSISTANT_SETTINGS } from '@shared/data/types/assistant'
 import { setupTestDatabase } from '@test-helpers/db'
-import { and, eq } from 'drizzle-orm'
+import { and, asc, eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
 
 describe('XuelangDefaultModelSeeder', () => {
@@ -63,6 +63,20 @@ describe('XuelangDefaultModelSeeder', () => {
     for (const key of XUELANG_DEFAULT_MODEL_PREFERENCE_KEYS) {
       expect(await readPreference(key)).toBe(XUELANG_DEFAULT_UNIQUE_MODEL_ID)
     }
+  })
+
+  it('places the Xuelang provider first when adding it to an existing installation', async () => {
+    await dbh.db.insert(userProviderTable).values({
+      providerId: 'openai',
+      name: 'OpenAI',
+      orderKey: generateOrderKeyBetween(null, null)
+    })
+
+    new XuelangDefaultModelSeeder().run(dbh.db)
+
+    const providers = await dbh.db.select().from(userProviderTable).orderBy(asc(userProviderTable.orderKey))
+
+    expect(providers.map((provider) => provider.providerId)).toEqual([XUELANG_PROVIDER_ID, 'openai'])
   })
 
   it('is idempotent and preserves existing provider and preference choices', async () => {

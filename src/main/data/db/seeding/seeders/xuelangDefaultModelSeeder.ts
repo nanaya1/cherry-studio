@@ -1,8 +1,9 @@
 import { assistantTable } from '@data/db/schemas/assistant'
 import { preferenceTable } from '@data/db/schemas/preference'
 import { userModelTable } from '@data/db/schemas/userModel'
+import { userProviderTable } from '@data/db/schemas/userProvider'
 import { providerService } from '@data/services/ProviderService'
-import { insertManyWithOrderKey } from '@data/services/utils/orderKey'
+import { applyMoves, insertManyWithOrderKey } from '@data/services/utils/orderKey'
 import {
   XUELANG_DEFAULT_MODEL_ID,
   XUELANG_DEFAULT_PRESET_MODEL_ID,
@@ -16,6 +17,7 @@ import type { DbType, ISeeder } from '../../types'
 import { hashObject } from '../hashObject'
 
 const LEGACY_XUELANG_DEFAULT_UNIQUE_MODEL_ID = 'xuelang::qwen3-8-27b'
+const providerPosition = 'first' as const
 
 export const XUELANG_DEFAULT_MODEL_PREFERENCE_KEYS = [
   'chat.default_model_id',
@@ -48,12 +50,20 @@ export class XuelangDefaultModelSeeder implements ISeeder {
   readonly version: string
 
   constructor() {
-    this.version = hashObject({ providerSeed, modelSeed, preferences: XUELANG_DEFAULT_MODEL_PREFERENCE_KEYS })
+    this.version = hashObject({
+      providerSeed,
+      providerPosition,
+      modelSeed,
+      preferences: XUELANG_DEFAULT_MODEL_PREFERENCE_KEYS
+    })
   }
 
   run(db: DbType): void {
     db.transaction((tx) => {
       providerService.batchUpsertTx(tx, [providerSeed])
+      applyMoves(tx, userProviderTable, [{ id: XUELANG_PROVIDER_ID, anchor: { position: providerPosition } }], {
+        pkColumn: userProviderTable.providerId
+      })
 
       const [existingModel] = tx
         .select({ id: userModelTable.id })

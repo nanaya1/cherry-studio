@@ -1,0 +1,12 @@
+<svg width="120" height="120" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="xuelang-background" x1="60" y1="0" x2="60" y2="120" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#4563F5" stop-opacity="0"/>
+      <stop offset="1" stop-color="#3768F4"/>
+    </linearGradient>
+  </defs>
+  <rect width="120" height="120" rx="6" fill="#4563F5"/>
+  <rect width="120" height="120" rx="6" fill="url(#xuelang-background)"/>
+  <path d="M91 29H31C26.5817 29 23 32.5817 23 37V88C23 92.4183 26.5817 96 31 96H91C95.4183 96 99 92.4183 99 88V78H90V87H32V38H90V47H99V37C99 32.5817 95.4183 29 91 29Z" fill="white"/>
+  <path d="M42 43H82V52H66V80H55V57L47 65V52H42V43Z" fill="white"/>
+</svg>
