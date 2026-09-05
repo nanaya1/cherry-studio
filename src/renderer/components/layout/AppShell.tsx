@@ -68,13 +68,9 @@ export const AppShell = () => {
       lastAccessTime: Date.now()
     })
   }, [activeTab, updateTab])
-  // Single-tab mode hides the tab chips: the header stays as the window drag
-  // region / actions bar, but no tab is shown. Settings keeps its focused tab —
-  // the back button there is the way out of the settings page.
-  const tabBarTabs = useMemo(
-    () => (SINGLE_TAB_MODE && !isSettingsTabActive ? [] : isSettingsTabActive && activeTab ? [activeTab] : tabs),
-    [activeTab, isSettingsTabActive, tabs]
-  )
+  // Single-tab mode hides the tab chips entirely — the header stays as the
+  // window drag region / actions bar, with no tab of any kind in it.
+  const tabBarTabs = useMemo(() => (SINGLE_TAB_MODE ? [] : tabs), [tabs])
   const isFullscreen = useNativeFullscreen()
   const [splitOpen, setSplitOpen] = useCache('mini_app.split_open')
   const [, setSplitMiniAppId] = useCache('mini_app.split_id')

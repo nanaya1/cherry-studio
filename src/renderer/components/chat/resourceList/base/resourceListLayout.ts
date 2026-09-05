@@ -31,7 +31,7 @@ export const RESOURCE_LIST_PRESENTATION_CLASS_NAMES: Record<
   ResourceListPresentationClassNames
 > = {
   'left-panel': {
-    body: 'pt-0 pb-3',
+    body: 'pt-0 pb-0',
     frame: 'border-border border-r-[0.5px]',
     searchIconPadding: 'pl-6',
     searchInput: 'h-7 rounded-full text-[10px] md:text-[10px] placeholder:text-[10px]'

@@ -209,10 +209,10 @@ export function Sidebar({
         </div>
       )}
       {contentLayout === 'full' && sections.length > 0 && (
-        <div role="region" aria-label={sectionsLabel} className="flex min-h-0 flex-1 flex-col gap-2">
-          {sectionsLabel && (
+        <div role="region" aria-label={sectionsLabel} className="flex min-h-0 flex-1 flex-col gap-2 px-2">
+          {/* {sectionsLabel && (
             <h2 className="shrink-0 px-3 font-medium text-[11px] text-muted-foreground">{sectionsLabel}</h2>
-          )}
+          )} */}
           <div className="min-h-0 flex-1 overflow-y-auto [&::-webkit-scrollbar]:hidden">
             <div className="flex flex-col gap-2">
               {sections.map((section) => {
@@ -226,9 +226,9 @@ export function Sidebar({
                         section.collapsible &&
                         setCollapsedSections((current) => ({ ...current, [section.id]: !collapsed }))
                       }
-                      className="flex h-7 w-full items-center gap-1 px-3 font-medium text-[11px] text-sidebar-foreground [-webkit-app-region:no-drag]">
-                      <ChevronDown size={12} className={cn('transition-transform', collapsed && '-rotate-90')} />
+                      className="flex h-7 w-full items-center gap-1 px-3 font-medium text-[12px] text-muted-foreground [-webkit-app-region:no-drag]">
                       <span>{section.label}</span>
+                      <ChevronDown size={12} className={cn('transition-transform', collapsed && '-rotate-90')} />
                     </button>
                     {!collapsed && section.content}
                     {!collapsed && !section.content && section.entries && (

@@ -1,9 +1,11 @@
 import { usePersistCache } from '@data/hooks/useCache'
 import { usePreference } from '@data/hooks/usePreference'
 import { arrayMove } from '@dnd-kit/sortable'
+import { loggerService } from '@logger'
 import AppLogo from '@renderer/assets/images/logo.png'
 import Sessions from '@renderer/components/chat/resourceList/Sessions'
 import { Topics } from '@renderer/components/chat/resourceList/Topics'
+import type { AddNewTopicPayload } from '@renderer/components/composer/variants/shared/composerProviderActions'
 import { useAgents } from '@renderer/hooks/agent/useAgent'
 import { useAgentSessionsSource, useAssistantTopicsSource } from '@renderer/hooks/resourceViewSources'
 import { useTabs } from '@renderer/hooks/tab'
@@ -12,7 +14,10 @@ import useAvatar from '@renderer/hooks/useAvatar'
 import { useConversationNavigation } from '@renderer/hooks/useConversationNavigation'
 import { useMiniApps } from '@renderer/hooks/useMiniApps'
 import { useSidebarFavorites } from '@renderer/hooks/useSidebarFavorites'
+import { mapApiTopicToRendererTopic } from '@renderer/hooks/useTopic'
 import { openSettingsTab } from '@renderer/services/mainWindowNavigation'
+import { toast } from '@renderer/services/toast'
+import { formatErrorMessageWithPrefix } from '@renderer/utils/error'
 import { MINI_APP_ROUTE_PREFIX, miniAppIdFromTabUrl } from '@renderer/utils/miniAppKeepAlive'
 import { getDefaultRouteTitle } from '@renderer/utils/routeTitle'
 import type { SidebarAppId } from '@renderer/utils/sidebar'
@@ -43,6 +48,8 @@ import UserPopup from '../UserPopup'
 import { resolveSidebarEntry, type SidebarVariantContext } from './sidebarVariants'
 
 const FeedbackDialog = lazy(() => import('../feedback/FeedbackDialog'))
+
+const logger = loggerService.withContext('app.Sidebar')
 
 export default function Sidebar({ ref }: { ref?: Ref<HTMLDivElement | null> }) {
   const { t } = useTranslation()
@@ -214,6 +221,25 @@ export default function Sidebar({ ref }: { ref?: Ref<HTMLDivElement | null> }) {
     },
     [activeTab, defaultPaintingProvider, navigateRouteTab]
   )
+
+  // The group-header "+" button reuses the assistant's newest empty placeholder conversation
+  // (creating one when none qualifies) and opens it, mirroring HomePage's new-topic flow.
+  const handleNewTopic = useCallback(
+    async (payload?: AddNewTopicPayload) => {
+      try {
+        const result = await assistantTopicsSource.reuseOrCreateTopic(payload?.assistantId ?? null)
+        const topic = mapApiTopicToRendererTopic(result.topic)
+        openAssistantConversationTab(topic.id, topic.name || t('chat.conversation.new'))
+        if (result.created) {
+          void assistantTopicsSource.refetch()
+        }
+      } catch (err) {
+        logger.error('Failed to create conversation from sidebar', err as Error)
+        toast.error(formatErrorMessageWithPrefix(err, t('common.error')))
+      }
+    },
+    [assistantTopicsSource, openAssistantConversationTab, t]
+  )
   const handleOpenSettingsTab = useCallback(() => {
     openSettingsTab()
   }, [])
@@ -325,13 +351,6 @@ export default function Sidebar({ ref }: { ref?: Ref<HTMLDivElement | null> }) {
         onOpen: () => navigateRouteTab('/app/new-task', t('workspace.newTask.title'))
       },
       {
-        key: 'workspace:resources',
-        label: t('workspace.resources.title'),
-        renderIcon: (size: number) => <Shapes size={size} />,
-        isActive: () => pathname.startsWith('/app/resources'),
-        onOpen: () => navigateRouteTab('/app/resources', t('workspace.resources.title'))
-      },
-      {
         key: 'workspace:skills-connectors',
         label: t('workspace.skillsConnectors.title'),
         renderIcon: (size: number) => <Puzzle size={size} />,
@@ -344,6 +363,13 @@ export default function Sidebar({ ref }: { ref?: Ref<HTMLDivElement | null> }) {
         renderIcon: (size: number) => <CalendarClock size={size} />,
         isActive: () => pathname.startsWith('/app/scheduled-tasks'),
         onOpen: () => navigateRouteTab('/app/scheduled-tasks', t('settings.scheduledTasks.title'))
+      },
+      {
+        key: 'workspace:resources',
+        label: t('workspace.resources.title'),
+        renderIcon: (size: number) => <Shapes size={size} />,
+        isActive: () => pathname.startsWith('/app/resources'),
+        onOpen: () => navigateRouteTab('/app/resources', t('workspace.resources.title'))
       }
     ],
     [navigateRouteTab, pathname, t]
@@ -365,6 +391,7 @@ export default function Sidebar({ ref }: { ref?: Ref<HTMLDivElement | null> }) {
               setActiveTopic={(topic) =>
                 openAssistantConversationTab(topic.id, topic.name || t('chat.conversation.new'))
               }
+              onNewTopic={handleNewTopic}
               showHeader={false}
             />
           </div>
@@ -397,6 +424,7 @@ export default function Sidebar({ ref }: { ref?: Ref<HTMLDivElement | null> }) {
       activeTopic,
       assistantTopicsSource,
       handleNavigate,
+      handleNewTopic,
       activeSessionId,
       agentSessionsSource,
       openAgentConversationTab,

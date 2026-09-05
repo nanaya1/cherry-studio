@@ -404,9 +404,9 @@ describe('app Sidebar', () => {
 
     expect(getSidebarProps().navigationEntries?.map((entry) => entry.label)).toEqual([
       'New task',
-      'Resource Center',
       'Skills & Connectors',
-      'Scheduled Tasks'
+      'Scheduled Tasks',
+      'Resource Center'
     ])
     expect(getSidebarProps().sections?.map((section) => section.label)).toEqual(['Conversations', 'Tasks'])
     expect(getSidebarProps().sections?.[0]?.content).toBeDefined()

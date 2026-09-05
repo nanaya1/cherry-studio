@@ -1615,19 +1615,46 @@ describe('ResourceList', () => {
     const sessionChevronSlot = sessionChevron!.parentElement
     expect(sessionChevronSlot).toBe(sessionLabel!.nextElementSibling)
     expect(sessionLabel!).not.toHaveClass('flex-1')
-    // Keyboard focus reveals it, a mouse click on the title does not — otherwise the chevron stays
-    // pinned open after every click.
-    expect(sessionChevronSlot!).toHaveClass(
-      'hidden',
-      'size-6',
-      'group-hover/resource-list-group:flex',
-      'group-has-[:focus-visible]/resource-list-group:flex',
-      'group-has-data-[state=open]/resource-list-group:flex'
-    )
+    // A non-empty group keeps its chevron visible without hover: it is the only affordance that
+    // folds the group, so it must not hide behind a hover gate.
+    expect(sessionChevronSlot!).toHaveClass('size-6')
+    expect(sessionChevronSlot!).not.toHaveClass('hidden')
     expect(sessionChevron!.style.transform).toBe('rotate(90deg)')
 
     fireEvent.click(sessionButton)
     expect(sessionButton.querySelector<SVGSVGElement>('svg')!.style.transform).toBe('none')
+  })
+
+  it('hides the group header chevron by default for an empty group and reveals it on hover', () => {
+    const Provider = ResourceList.Provider<TestItem>
+
+    render(
+      <Provider
+        items={ITEMS}
+        groupSeeds={[{ id: 'empty-group', label: 'Empty' }]}
+        groupBy={(item) => ({ id: item.kind, label: item.kind })}>
+        <ResourceList.Frame>
+          <ResourceList.VirtualItems<TestItem>
+            renderItem={(item) => (
+              <ResourceList.Item item={item}>
+                <span>{item.name}</span>
+              </ResourceList.Item>
+            )}
+          />
+        </ResourceList.Frame>
+      </Provider>
+    )
+
+    const emptyGroupButton = screen.getByRole('button', { name: 'Empty' })
+    const emptyChevron = emptyGroupButton.querySelector<SVGSVGElement>('svg')
+    expect(emptyChevron).not.toBeNull()
+    // An empty group has nothing to fold, so its chevron stays behind the hover gate.
+    expect(emptyChevron!.parentElement).toHaveClass(
+      'hidden',
+      'group-hover/resource-list-group:flex',
+      'group-has-[:focus-visible]/resource-list-group:flex',
+      'group-has-data-[state=open]/resource-list-group:flex'
+    )
   })
 
   it('hides item leading slots when the group header has no icon', () => {

@@ -8,7 +8,6 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 
 import { useOptionalRightPanelState, useRightPanelComposerElevated } from '../panes/Shell'
 import { OverlayHost } from './OverlayHost'
-import { PageSidebar } from './PageSidebar'
 import {
   CHAT_SHELL_TRANSITION,
   type ChatPanePosition,
@@ -313,9 +312,9 @@ export function ChatAppShell({
       id={rootId}
       className={cn('relative flex min-w-0 flex-1 flex-col overflow-hidden', rootClassName)}>
       <div id={contentId} className="flex min-w-0 flex-1 shrink flex-row overflow-hidden">
-        <PageSidebar open={leftPaneOpen} onPaneCollapse={onPaneCollapse} onResizingChange={setListResizing}>
+        {/* <PageSidebar open={leftPaneOpen} onPaneCollapse={onPaneCollapse} onResizingChange={setListResizing}>
           {panePosition === 'left' ? pane : undefined}
-        </PageSidebar>
+        </PageSidebar> */}
 
         <div data-chat-app-shell-main-region className="relative flex min-w-0 flex-1 overflow-hidden">
           <div className="relative flex min-w-0 flex-1 flex-col">

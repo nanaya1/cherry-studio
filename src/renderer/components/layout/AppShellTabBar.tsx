@@ -1,6 +1,5 @@
-import { Button, Tooltip } from '@cherrystudio/ui'
+import { Tooltip } from '@cherrystudio/ui'
 import { CommandContextMenu, type CommandContextMenuExtraItem } from '@renderer/components/command'
-import { OpenInNewWindowIcon } from '@renderer/components/icons/WindowIcons'
 import type { Tab } from '@renderer/hooks/tab'
 import useMacTransparentWindow from '@renderer/hooks/useMacTransparentWindow'
 import { MINI_APP_ROUTE_PREFIX } from '@renderer/utils/miniAppKeepAlive'
@@ -30,8 +29,8 @@ type AppShellTabBarProps = {
   tabs: Tab[]
   activeTabId: string
   isFullscreen?: boolean
+  /** Shown instead of tab chips: a plain back button plus window controls. */
   isFocusedTab?: boolean
-  /** Focused-tab back action; when absent the back button closes the focused tab. */
   onFocusedTabBack?: () => void
   setActiveTab: (id: string) => void
   closeTab: (id: string) => void
@@ -150,46 +149,21 @@ const PinnedTabButton = ({
 
 const MACOS_TAB_STRIP_TRAFFIC_LIGHT_RESERVE = 'max(0px, calc(env(titlebar-area-x, 0px) - var(--sidebar-width, 0px)))'
 
-type FocusedTabButtonProps = {
-  tab: Tab
+type BackButtonProps = {
   onBack: () => void
-  drag: DragItemProps
-  tabRef: (el: HTMLButtonElement | null) => void
-  ref?: React.Ref<HTMLButtonElement>
-} & Omit<React.ComponentPropsWithoutRef<'button'>, 'onClick' | 'onPointerDown'>
+}
 
-const FocusedTabButton = ({ tab, onBack, drag, tabRef, ref, ...rest }: FocusedTabButtonProps) => {
+/** A plain back affordance for full-page views — not a tab, carries no tab identity. */
+const BackButton = ({ onBack }: BackButtonProps) => {
   const { t } = useTranslation()
-  const setRefs = useCallback(
-    (el: HTMLButtonElement | null) => {
-      tabRef(el)
-      if (typeof ref === 'function') ref(el)
-      else if (ref) ref.current = el
-    },
-    [tabRef, ref]
-  )
 
   return (
     <button
-      {...rest}
-      ref={setRefs}
-      data-tab-id={tab.id}
       data-ui="app.focused-tab-button"
       type="button"
       aria-label={t('common.back')}
-      onPointerDown={drag.onPointerDown}
       onClick={onBack}
-      style={{
-        ...rest.style,
-        transform: `translateX(${drag.translateX}px)`,
-        transition: drag.isDragging || drag.noTransition ? 'none' : 'transform 150ms ease',
-        opacity: drag.isGhost ? 0.3 : 1
-      }}
-      className={cn(
-        'group nodrag flex h-8 w-auto shrink-0 appearance-none items-center gap-1.5 border-0 bg-transparent px-2.5 text-muted-foreground text-sm shadow-none transition-colors [-webkit-app-region:no-drag] hover:text-foreground',
-        drag.isDragging ? 'cursor-grabbing' : 'cursor-pointer',
-        rest.className
-      )}>
+      className="group nodrag flex h-8 w-auto shrink-0 appearance-none items-center gap-1.5 border-0 bg-transparent px-2.5 text-muted-foreground text-sm shadow-none transition-colors [-webkit-app-region:no-drag] hover:text-foreground cursor-pointer">
       <ArrowLeft className="transition-colors group-hover:text-foreground" size={16} strokeWidth={1.7} aria-hidden />
       <span>{t('common.back')}</span>
     </button>
@@ -985,59 +959,10 @@ export const AppShellTabBar = ({
             />
           )}
 
-          {/* Normal tabs — affordances come entirely from getTabCapabilities. */}
+          {/* Normal tabs — affordances come entirely from getTabCapabilities. Focused mode
+              (settings etc.) renders NO tab chips: just the back button on the right. */}
           {normalTabs.map((tab, index) => {
-            const caps = isFocusedTab
-              ? {
-                  menu: true,
-                  reorder: false,
-                  togglePin: false,
-                  detach: !!detachTab,
-                  close: true,
-                  closeOthers: false,
-                  closeToRight: false
-                }
-              : getTabCapabilities(tab, { ...tabContext, normalIndex: index })
-            if (isFocusedTab) {
-              return (
-                <TabRightClickMenu
-                  key={tab.id}
-                  isPinned={false}
-                  capabilities={caps}
-                  onMoveToFirst={() => handleMoveToFirst(tab.id)}
-                  onTogglePin={() => handlePinToggle(tab.id)}
-                  onDetach={() => detachTab?.(tab.id)}
-                  onClose={() => closeTab(tab.id)}
-                  onCloseOthers={() => handleCloseOthers(tab.id)}
-                  onCloseToRight={() => handleCloseToRight(tab.id)}>
-                  <FocusedTabButton
-                    tab={tab}
-                    onBack={() => {
-                      if (onFocusedTabBack) {
-                        onFocusedTabBack()
-                        return
-                      }
-                      if (handleTabClick(tab.id)) closeTab(tab.id)
-                    }}
-                    drag={{
-                      isDragging: isDragging(tab.id),
-                      isGhost: isGhost(tab.id),
-                      noTransition,
-                      translateX: getTranslateX(tab.id, 'normal'),
-                      onPointerDown:
-                        caps.reorder || caps.detach ? (e) => handlePointerDown(e, tab, 'normal') : () => undefined
-                    }}
-                    tabRef={(el) => {
-                      if (el) {
-                        tabRefs.current.set(tab.id, el)
-                      } else {
-                        tabRefs.current.delete(tab.id)
-                      }
-                    }}
-                  />
-                </TabRightClickMenu>
-              )
-            }
+            const caps = getTabCapabilities(tab, { ...tabContext, normalIndex: index })
             const prevTab = normalTabs[index - 1]
             const showDivider = !!prevTab && !isReordering && !isTabLit(tab.id) && !isTabLit(prevTab.id)
             return (
@@ -1160,21 +1085,9 @@ export const AppShellTabBar = ({
 
         {isFocusedTab ? (
           <div className="flex h-full shrink-0 items-stretch">
-            {detachTab && (
-              <div className="flex items-center pr-2 [-webkit-app-region:no-drag]">
-                <Tooltip content={t('tab.open_in_new_window')} placement="bottom" delay={800}>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    aria-label={t('tab.open_in_new_window')}
-                    onClick={() => detachTab(activeTabId)}
-                    className="group size-8 cursor-pointer rounded-[8px] p-0">
-                    <OpenInNewWindowIcon
-                      className="text-foreground-tertiary transition-colors group-hover:text-foreground"
-                      size={16}
-                    />
-                  </Button>
-                </Tooltip>
+            {onFocusedTabBack && (
+              <div className="flex items-center pr-1 [-webkit-app-region:no-drag]">
+                <BackButton onBack={onFocusedTabBack} />
               </div>
             )}
             <WindowControls />

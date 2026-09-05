@@ -4767,7 +4767,7 @@
   "settings.scheduledTasks.paginationStatus": "第 {{page}} / {{pageCount}} 页 · 共 {{total}} 个任务",
   "settings.scheduledTasks.search": "搜索定时任务",
   "settings.scheduledTasks.searchPlaceholder": "搜索任务或 Agent",
-  "settings.scheduledTasks.title": "定时任务",
+  "settings.scheduledTasks.title": "自动化",
   "settings.scheduledTasks.validation.agent": "请选择 Agent。",
   "settings.scheduledTasks.validation.name": "请输入任务名称。",
   "settings.scheduledTasks.validation.prompt": "请输入任务提示词。",

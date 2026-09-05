@@ -33,10 +33,12 @@ const EMPTY_GROUP_HEADER_ITEMS: ResourceListItemBase[] = []
 /**
  * The chevron slot: an action button's 24px footprint so the chevron lands on the hover actions'
  * rhythm when the title is long, with a pulled-in left margin that keeps it the same 6px from a
- * short title as the section-header chevron.
+ * short title as the section-header chevron. Non-empty groups keep their chevron pinned visible
+ * (it is the only affordance that folds them); empty groups reveal it on hover like before.
  */
-const GROUP_HEADER_CHEVRON_SLOT_CLASS =
-  '-ml-1.5 hidden size-6 shrink-0 items-center justify-center text-muted-foreground group-hover/resource-list-group:flex group-has-[:focus-visible]/resource-list-group:flex group-has-data-[state=open]/resource-list-group:flex'
+const GROUP_HEADER_CHEVRON_SLOT_CLASS = '-ml-1.5 size-6 shrink-0 items-center justify-center text-muted-foreground'
+const GROUP_HEADER_CHEVRON_SLOT_EMPTY_CLASS =
+  'hidden group-hover/resource-list-group:flex group-has-[:focus-visible]/resource-list-group:flex group-has-data-[state=open]/resource-list-group:flex'
 
 function stopEventPropagation(event: { stopPropagation: () => void }) {
   event.stopPropagation()
@@ -281,7 +283,11 @@ export function GroupHeader({ group, className, ref, style, onContextMenu, ...pr
             type="button"
             aria-expanded={!collapsed}
             aria-label={collapsed ? t('common.expand') : t('common.collapse')}
-            className={cn(GROUP_HEADER_CHEVRON_SLOT_CLASS, 'outline-none')}
+            className={cn(
+              GROUP_HEADER_CHEVRON_SLOT_CLASS,
+              groupItems.length === 0 && GROUP_HEADER_CHEVRON_SLOT_EMPTY_CLASS,
+              'outline-none'
+            )}
             onClick={handleChevronClick}>
             {chevron}
           </button>
@@ -311,7 +317,12 @@ export function GroupHeader({ group, className, ref, style, onContextMenu, ...pr
           <span ref={labelOverflow.ref} className={groupHeaderLabelClassName}>
             {group.label}
           </span>
-          <span aria-hidden="true" className={GROUP_HEADER_CHEVRON_SLOT_CLASS}>
+          <span
+            aria-hidden="true"
+            className={cn(
+              GROUP_HEADER_CHEVRON_SLOT_CLASS,
+              groupItems.length === 0 && GROUP_HEADER_CHEVRON_SLOT_EMPTY_CLASS
+            )}>
             {chevron}
           </span>
         </button>

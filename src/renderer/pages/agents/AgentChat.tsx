@@ -665,10 +665,7 @@ const AgentChatSessionCenter = ({
     <div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden">
       {isEmptyConversation && (
         <div className="pointer-events-none absolute inset-0 z-10">
-          <ConversationGreeting
-            avatar={activeAgent ? getAgentAvatarFromConfiguration(activeAgent.configuration) : undefined}
-            title={homeWelcomeText ?? ''}
-          />
+          <ConversationGreeting title={homeWelcomeText ?? ''} />
         </div>
       )}
       {messageList}
