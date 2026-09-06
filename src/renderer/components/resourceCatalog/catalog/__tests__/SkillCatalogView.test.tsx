@@ -6,11 +6,19 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
-  ipcRequest: vi.fn()
+  ipcRequest: vi.fn(),
+  updateGlobalEnabled: vi.fn()
 }))
 
 vi.mock('@renderer/ipc', () => ({
   ipcApi: { request: mocks.ipcRequest }
+}))
+
+vi.mock('@renderer/hooks/resourceCatalog', () => ({
+  useSkillMutationsById: () => ({
+    updateGlobalEnabled: mocks.updateGlobalEnabled,
+    isUpdating: false
+  })
 }))
 
 vi.mock('@renderer/components/resourceCatalog/dialogs/delete', () => ({
@@ -26,6 +34,7 @@ vi.mock('react-i18next', () => ({
     t: (key: string) =>
       ({
         'common.all': 'All',
+        'settings.skills.globalToggle': 'Enable skill globally',
         'settings.skills.installed': 'installed',
         'workspace.skillsConnectors.mySkills': 'My Skills',
         'workspace.skillsConnectors.sourceFilter': 'Filter skills by source',
@@ -47,7 +56,7 @@ function skill(id: string, name: string, source: string, iconFileName?: string) 
     avatar: '',
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
-    raw: { id, name, source, iconFileName, version: '1.0.0' }
+    raw: { id, name, source, iconFileName, version: '1.0.0', isGlobalEnabled: true }
   }
 }
 
@@ -131,6 +140,20 @@ describe('SkillCatalogView', () => {
     expect(screen.getByLabelText('System skill')).toBeVisible()
     expect(screen.queryByLabelText('Builtin skill')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Marketplace skill')).not.toBeInTheDocument()
+  })
+
+  it('toggles a skill globally without opening its details', async () => {
+    const user = userEvent.setup()
+    const testController = controller()
+    mocks.updateGlobalEnabled.mockResolvedValueOnce({})
+    render(<SkillCatalogView controller={testController as never} />)
+
+    await waitFor(() => expect(mocks.ipcRequest).toHaveBeenCalled())
+    const toggles = screen.getAllByRole('switch', { name: 'Enable skill globally' })
+    await user.click(toggles[0])
+
+    expect(mocks.updateGlobalEnabled).toHaveBeenCalledWith(false)
+    expect(testController.gridProps.onEdit).not.toHaveBeenCalled()
   })
 
   it('resolves only skills carrying icon metadata', async () => {

@@ -24,6 +24,7 @@ import { type KeyboardEvent, lazy, Suspense, useEffect, useMemo, useState } from
 import { useTranslation } from 'react-i18next'
 
 import { ResourceCatalogSearchInput } from '../ResourceCatalogSearchInput'
+import { SkillGlobalToggle } from './ResourceCards'
 
 const ResourceCatalogDialogs = lazy(() =>
   import('./ResourceCatalogDialogs').then((module) => ({ default: module.ResourceCatalogDialogs }))
@@ -284,7 +285,7 @@ function SkillCard({
       onClick={onOpen}
       onKeyDown={handleKeyDown}
       className="group relative min-h-28 cursor-pointer rounded-lg border border-border-subtle bg-card p-3.5 transition-[background-color,border-color,box-shadow] hover:border-border-strong hover:bg-background-subtle hover:shadow-sm focus-visible:border-ring focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50">
-      <div className="flex min-w-0 items-center gap-2.5 pr-7">
+      <div className="flex min-w-0 items-center gap-2.5 pr-16">
         <Avatar className="size-8 shrink-0 rounded-full">
           {iconUrl ? (
             <AvatarImage src={iconUrl} alt="" className="rounded-full object-cover" draggable={false} />
@@ -303,17 +304,17 @@ function SkillCard({
         </div>
       </div>
       <p className="mt-3 line-clamp-2 text-muted-foreground text-sm leading-5">{resource.description}</p>
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        aria-label={t('library.action.uninstall')}
-        onClick={(event) => {
-          event.stopPropagation()
-          onDelete()
-        }}
-        className="absolute top-3.5 right-3 text-muted-foreground opacity-0 hover:bg-error-subtle hover:text-error-subtle-foreground focus-visible:opacity-100 group-hover:opacity-100">
-        <Trash2 className="size-3.5" />
-      </Button>
+      <div className="absolute top-3.5 right-3 flex items-center gap-1" onClick={(event) => event.stopPropagation()}>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={t('library.action.uninstall')}
+          onClick={onDelete}
+          className="text-muted-foreground opacity-0 hover:bg-error-subtle hover:text-error-subtle-foreground focus-visible:opacity-100 group-hover:opacity-100">
+          <Trash2 className="size-3.5" />
+        </Button>
+        <SkillGlobalToggle resource={resource} size="xs" />
+      </div>
     </div>
   )
 }

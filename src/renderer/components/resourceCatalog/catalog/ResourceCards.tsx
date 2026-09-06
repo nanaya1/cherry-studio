@@ -37,7 +37,13 @@ function hasOverflowActions(resource: ResourceItem) {
   return resource.type === 'assistant'
 }
 
-function SkillGlobalToggle({ resource }: { resource: Extract<ResourceItem, { type: 'skill' }> }) {
+export function SkillGlobalToggle({
+  resource,
+  size = 'sm'
+}: {
+  resource: Extract<ResourceItem, { type: 'skill' }>
+  size?: 'xs' | 'sm'
+}) {
   const { t } = useTranslation()
   const { updateGlobalEnabled, isUpdating } = useSkillMutationsById(resource.id)
 
@@ -51,7 +57,7 @@ function SkillGlobalToggle({ resource }: { resource: Extract<ResourceItem, { typ
 
   return (
     <Switch
-      size="sm"
+      size={size}
       checked={resource.raw.isGlobalEnabled}
       disabled={isUpdating}
       aria-label={t('settings.skills.globalToggle', { name: resource.name })}
