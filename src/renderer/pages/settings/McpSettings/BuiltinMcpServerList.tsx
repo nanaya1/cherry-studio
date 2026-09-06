@@ -15,7 +15,11 @@ import { useTranslation } from 'react-i18next'
 import { QVERIS_API_KEY_REGISTRATION_URL } from './QVerisApiKeyGuide'
 import { toCreateMcpServerDto } from './utils'
 
-const BuiltinMcpServerList: FC = () => {
+interface BuiltinMcpServerListProps {
+  variant?: 'settings' | 'catalog'
+}
+
+const BuiltinMcpServerList: FC<BuiltinMcpServerListProps> = ({ variant = 'settings' }) => {
   const { t } = useTranslation()
   const { addMcpServer, mcpServers } = useMcpServers()
   const [searchText, setSearchText] = useState('')
@@ -37,11 +41,13 @@ const BuiltinMcpServerList: FC = () => {
     }).sort((a, b) => Number(Boolean(a.shouldConfig)) - Number(Boolean(b.shouldConfig)))
   }, [filter, mcpServers, searchText, t])
 
+  const isCatalog = variant === 'catalog'
+
   return (
     <div className="mb-5">
       <div className="mb-3 flex w-full min-w-0 flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-1">
-          <SettingTitle className="m-0">{t('settings.mcp.builtinServers')}</SettingTitle>
+          {!isCatalog && <SettingTitle className="m-0">{t('settings.mcp.builtinServers')}</SettingTitle>}
           <CollapsibleSearchBar
             onSearch={setSearchText}
             placeholder={t('settings.mcp.search.placeholder')}
@@ -62,7 +68,12 @@ const BuiltinMcpServerList: FC = () => {
         </Tabs>
       </div>
 
-      <div className="flex flex-col gap-2">
+      <div
+        className={cn(
+          isCatalog
+            ? 'grid @[1120px]/mcp-discover:grid-cols-4 @[560px]/mcp-discover:grid-cols-2 @[840px]/mcp-discover:grid-cols-3 grid-cols-1 gap-3'
+            : 'flex flex-col gap-2'
+        )}>
         {filteredServers.map((server) => {
           const isInstalled = mcpServers.some((existingServer) => existingServer.name === server.name)
 
@@ -70,7 +81,8 @@ const BuiltinMcpServerList: FC = () => {
             <div
               key={server.name}
               className={cn(
-                'group flex min-h-16 items-center gap-3 rounded-lg border border-border-subtle px-3.5 py-2 transition-colors duration-200 ease-in-out hover:border-border hover:bg-muted/35',
+                'group flex items-center gap-3 rounded-lg border border-border-subtle px-3.5 transition-colors duration-200 ease-in-out hover:border-border hover:bg-muted/35',
+                isCatalog ? 'min-h-28 py-3.5' : 'min-h-16 py-2',
                 isInstalled && 'bg-muted/25'
               )}>
               <div className="min-w-0 flex-1">
@@ -120,7 +132,11 @@ const BuiltinMcpServerList: FC = () => {
                   </PopoverContent>
                 </Popover>
               </div>
-              <div className="ml-3 flex min-w-21.5 shrink-0 items-center justify-end self-center">
+              <div
+                className={cn(
+                  'flex shrink-0 items-center justify-end self-center',
+                  isCatalog ? 'ml-1' : 'ml-3 min-w-21.5'
+                )}>
                 {isInstalled ? (
                   <div className="inline-flex h-7 items-center gap-1.5 rounded-lg px-2 text-muted-foreground text-xs">
                     <Check size={13} className="text-success" />

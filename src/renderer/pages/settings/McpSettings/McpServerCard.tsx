@@ -14,7 +14,7 @@ import { formatErrorMessage } from '@renderer/utils/error'
 import { cn } from '@renderer/utils/style'
 import type { UpdateMcpServerDto } from '@shared/data/api/schemas/mcpServers'
 import type { McpServer } from '@shared/data/types/mcpServer'
-import { CircleXIcon, ExternalLink } from 'lucide-react'
+import { CircleXIcon, ExternalLink, Plug } from 'lucide-react'
 import type React from 'react'
 import type { FC } from 'react'
 import { useCallback, useEffect, useState } from 'react'
@@ -29,9 +29,10 @@ const logger = loggerService.withContext('McpServerCard')
 interface McpServerCardProps {
   server: McpServer
   onEdit: () => void
+  variant?: 'settings' | 'catalog'
 }
 
-const McpServerCard: FC<McpServerCardProps> = ({ server, onEdit }) => {
+const McpServerCard: FC<McpServerCardProps> = ({ server, onEdit, variant = 'settings' }) => {
   const { updateMcpServer, removeMcpServer } = useMcpServerMutations(server.id)
   const [loading, setLoading] = useState(false)
   const [version, setVersion] = useState<string | null>(null)
@@ -170,6 +171,7 @@ const McpServerCard: FC<McpServerCardProps> = ({ server, onEdit }) => {
   )
 
   const isLoading = loading
+  const isCatalog = variant === 'catalog'
 
   const Fallback = useCallback(
     (props: FallbackProps) => {
@@ -221,6 +223,76 @@ const McpServerCard: FC<McpServerCardProps> = ({ server, onEdit }) => {
     },
     [handleDeleteClick, t]
   )
+
+  if (isCatalog) {
+    return (
+      <ErrorBoundary fallbackComponent={Fallback}>
+        <CardContainer
+          variant="catalog"
+          onClick={handleRowClick}
+          onKeyDown={(event) => {
+            if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return
+            event.preventDefault()
+            handleRowClick()
+          }}
+          role="listitem"
+          tabIndex={0}
+          aria-label={server.name}
+          data-slot="mcp-server-row">
+          <div className="flex min-w-0 items-start gap-2.5">
+            <div className="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-info-subtle text-info-subtle-foreground">
+              {server.logoUrl ? (
+                <img src={server.logoUrl} alt="" className="size-full object-cover" draggable={false} />
+              ) : (
+                <Plug className="size-4" />
+              )}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex min-w-0 items-center gap-2">
+                <ActiveDot $state={server.isActive ? runtimeStatus.state : 'disabled'} />
+                <h3 className="truncate font-semibold text-base leading-5">{server.name}</h3>
+              </div>
+              <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                <MetaBadge className={getTypeBadgeClass()}>{typeLabel}</MetaBadge>
+                {version ? <MetaBadge className="text-foreground-tertiary">{version}</MetaBadge> : null}
+              </div>
+            </div>
+          </div>
+
+          <p className="mt-3 line-clamp-2 min-h-10 text-muted-foreground text-sm leading-5">
+            {server.description || t('settings.mcp.noDescriptionAvailable')}
+          </p>
+
+          <ToolbarWrapper className="mt-auto w-full justify-between pt-3" onClick={handleToolbarClick}>
+            <div className="min-w-0 truncate text-foreground-tertiary text-xs">
+              {server.provider || (server.installSource === 'builtin' ? t('settings.mcp.builtinServers') : typeLabel)}
+            </div>
+            <div className="flex shrink-0 items-center gap-1">
+              {server.providerUrl ? (
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className="size-7 rounded-md text-muted-foreground shadow-none hover:text-foreground"
+                  onClick={handleOpenUrl}
+                  data-no-dnd>
+                  <ExternalLink size={13} />
+                </Button>
+              ) : null}
+              <Switch
+                checked={server.isActive}
+                key={server.id}
+                disabled={isLoading}
+                size="xs"
+                className="shadow-none data-[state=checked]:bg-success"
+                onCheckedChange={handleToggleActive}
+                data-no-dnd
+              />
+            </div>
+          </ToolbarWrapper>
+        </CardContainer>
+      </ErrorBoundary>
+    )
+  }
 
   return (
     <ErrorBoundary fallbackComponent={Fallback}>
@@ -274,10 +346,16 @@ const McpServerCard: FC<McpServerCardProps> = ({ server, onEdit }) => {
   )
 }
 
-const CardContainer = ({ className, ...props }: React.ComponentPropsWithoutRef<'div'>) => (
+const CardContainer = ({
+  variant = 'settings',
+  className,
+  ...props
+}: React.ComponentPropsWithoutRef<'div'> & { variant?: 'settings' | 'catalog' }) => (
   <div
     className={cn(
-      'flex min-h-12 w-full min-w-0 cursor-pointer items-center gap-3 border-border-subtle border-b px-0 py-1.5 text-sm transition-colors',
+      variant === 'catalog'
+        ? 'flex min-h-40 w-full min-w-0 cursor-pointer flex-col rounded-lg border border-border-subtle bg-card p-3.5 text-sm transition-[background-color,border-color,box-shadow] hover:border-border-strong hover:bg-background-subtle hover:shadow-sm focus-visible:border-ring focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50'
+        : 'flex min-h-12 w-full min-w-0 cursor-pointer items-center gap-3 border-border-subtle border-b px-0 py-1.5 text-sm transition-colors',
       className
     )}
     {...props}

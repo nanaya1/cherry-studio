@@ -18,6 +18,7 @@ import { ipcApi } from '@renderer/ipc'
 import EnvironmentDependencies from '@renderer/pages/settings/DependenciesSettings/EnvironmentDependencies'
 import { toast } from '@renderer/services/toast'
 import { matchKeywordsInString } from '@renderer/utils/match'
+import { cn } from '@renderer/utils/style'
 import type { CreateMcpServerDto } from '@shared/data/api/schemas/mcpServers'
 import type { ProtocolMcpInstallRequest } from '@shared/data/types/mcpProtocolInstall'
 import type { McpServer } from '@shared/data/types/mcpServer'
@@ -46,7 +47,12 @@ const FILTER_OPTIONS: { value: McpServerFilter; labelKey?: string; label?: strin
   { value: 'builtin', labelKey: 'settings.mcp.builtinServers' }
 ]
 
-const McpServersList: FC = () => {
+interface McpServersListProps {
+  variant?: 'settings' | 'catalog'
+  showTitle?: boolean
+}
+
+const McpServersList: FC<McpServersListProps> = ({ variant = 'settings', showTitle = true }) => {
   const { mcpServers, addMcpServer, reorderMcpServers, refetch } = useMcpServers()
   const { t } = useTranslation()
   const navigate = useNavigate()
@@ -232,90 +238,141 @@ const McpServersList: FC = () => {
     setIsAddModalVisible(true)
   }, [])
 
+  const isCatalog = variant === 'catalog'
+
+  const addServerMenu = (
+    <Popover open={isAddMenuOpen} onOpenChange={setIsAddMenuOpen}>
+      <PopoverTrigger asChild>
+        <Button type="button" size="sm">
+          <Plus className="size-3" />
+          {t('common.add')}
+          <ChevronDown className="size-3" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" side="bottom" className="w-auto p-1">
+        <MenuList className="gap-1">
+          <MenuItem label={t('settings.mcp.addServer.create')} onClick={handleManualAdd} />
+          <MenuItem label={t('settings.mcp.addServer.importFrom.json')} onClick={() => handleImport('json')} />
+          <MenuItem label={t('settings.mcp.addServer.importFrom.dxt')} onClick={() => handleImport('dxt')} />
+          <MenuItem label={t('settings.mcp.addServer.importFrom.mcpb')} onClick={() => handleImport('mcpb')} />
+        </MenuList>
+      </PopoverContent>
+    </Popover>
+  )
+
   return (
-    <div className="flex h-[calc(100vh-var(--navbar-height))] w-full min-w-0 flex-1 flex-col gap-2 overflow-hidden px-6 pt-3 pb-6">
-      <div className="mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col">
-        <div className="mb-3 flex w-full flex-wrap items-center justify-between gap-3">
+    <div
+      className={cn(
+        'flex w-full min-w-0 flex-1 flex-col overflow-hidden px-6 pb-6',
+        isCatalog ? 'h-full pt-7' : 'h-[calc(100vh-var(--navbar-height))] gap-2 pt-3'
+      )}>
+      <div className={cn('mx-auto flex min-h-0 w-full flex-1 flex-col', isCatalog ? 'max-w-none' : 'max-w-3xl')}>
+        <div className={cn('flex w-full flex-wrap items-center justify-between gap-3', isCatalog ? 'mb-4' : 'mb-3')}>
           <div className="flex min-w-0 flex-wrap items-center gap-3">
-            <SettingTitle className="m-0">{t('settings.mcp.allServers')}</SettingTitle>
-            <div className="flex shrink-0 items-center gap-1">
-              <Popover open={isFilterMenuOpen} onOpenChange={setIsFilterMenuOpen}>
-                <PopoverTrigger asChild>
-                  <button
-                    type="button"
-                    aria-label={t('settings.mcp.filter.label')}
-                    className="flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-lg transition-colors hover:bg-accent">
-                    <Filter
-                      size={14}
-                      color={filter === 'all' ? 'var(--muted-foreground)' : undefined}
-                      className={filter === 'all' ? undefined : 'text-primary'}
-                    />
-                  </button>
-                </PopoverTrigger>
-                <PopoverContent align="start" side="bottom" className="w-auto min-w-36 p-1">
-                  <MenuList className="gap-1">
-                    {FILTER_OPTIONS.map((option) => (
-                      <MenuItem
-                        key={option.value}
-                        label={option.label ?? t(option.labelKey!)}
-                        className="h-8 rounded-lg px-2.5 text-sm"
-                        icon={
-                          <Check className={filter === option.value ? 'size-3.5 opacity-100' : 'size-3.5 opacity-0'} />
-                        }
-                        onClick={() => {
-                          setFilter(option.value)
-                          setIsFilterMenuOpen(false)
-                        }}
+            {showTitle ? (
+              <div className="flex items-baseline gap-2">
+                <SettingTitle className={cn('m-0', isCatalog && 'font-semibold text-xl')}>
+                  {t('settings.mcp.allServers')}
+                </SettingTitle>
+                {isCatalog ? <span className="text-foreground-tertiary text-xs">{mcpServers.length}</span> : null}
+              </div>
+            ) : null}
+            {!isCatalog ? (
+              <div className="flex shrink-0 items-center gap-1">
+                <Popover open={isFilterMenuOpen} onOpenChange={setIsFilterMenuOpen}>
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      aria-label={t('settings.mcp.filter.label')}
+                      className="flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-lg transition-colors hover:bg-accent">
+                      <Filter
+                        size={14}
+                        color={filter === 'all' ? 'var(--muted-foreground)' : undefined}
+                        className={filter === 'all' ? undefined : 'text-primary'}
                       />
-                    ))}
-                  </MenuList>
-                </PopoverContent>
-              </Popover>
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent align="start" side="bottom" className="w-auto min-w-36 p-1">
+                    <MenuList className="gap-1">
+                      {FILTER_OPTIONS.map((option) => (
+                        <MenuItem
+                          key={option.value}
+                          label={option.label ?? t(option.labelKey!)}
+                          className="h-8 rounded-lg px-2.5 text-sm"
+                          icon={
+                            <Check
+                              className={filter === option.value ? 'size-3.5 opacity-100' : 'size-3.5 opacity-0'}
+                            />
+                          }
+                          onClick={() => {
+                            setFilter(option.value)
+                            setIsFilterMenuOpen(false)
+                          }}
+                        />
+                      ))}
+                    </MenuList>
+                  </PopoverContent>
+                </Popover>
+                <CollapsibleSearchBar
+                  onSearch={setSearchText}
+                  placeholder={t('settings.mcp.search.placeholder')}
+                  tooltip={t('settings.mcp.search.tooltip')}
+                  maxWidth={200}
+                  collapsedSize={28}
+                  animated={false}
+                  style={{ borderRadius: 14 }}
+                />
+              </div>
+            ) : null}
+          </div>
+          <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
+            <EnvironmentDependencies mini />
+            {isCatalog ? (
               <CollapsibleSearchBar
                 onSearch={setSearchText}
                 placeholder={t('settings.mcp.search.placeholder')}
                 tooltip={t('settings.mcp.search.tooltip')}
-                maxWidth={200}
-                collapsedSize={28}
+                maxWidth={256}
+                collapsedSize={32}
                 animated={false}
-                style={{ borderRadius: 14 }}
               />
-            </div>
-          </div>
-          <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
-            <EnvironmentDependencies mini />
-            <Popover open={isAddMenuOpen} onOpenChange={setIsAddMenuOpen}>
-              <PopoverTrigger asChild>
-                <Button type="button" size="sm">
-                  <Plus className="size-3" />
-                  {t('common.add')}
-                  <ChevronDown className="size-3" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent align="end" side="bottom" className="w-auto p-1">
-                <MenuList className="gap-1">
-                  <MenuItem label={t('settings.mcp.addServer.create')} onClick={handleManualAdd} />
-                  <MenuItem label={t('settings.mcp.addServer.importFrom.json')} onClick={() => handleImport('json')} />
-                  <MenuItem label={t('settings.mcp.addServer.importFrom.dxt')} onClick={() => handleImport('dxt')} />
-                  <MenuItem label={t('settings.mcp.addServer.importFrom.mcpb')} onClick={() => handleImport('mcpb')} />
-                </MenuList>
-              </PopoverContent>
-            </Popover>
+            ) : null}
+            {addServerMenu}
           </div>
         </div>
+        {isCatalog ? (
+          <div role="tablist" aria-label={t('settings.mcp.filter.label')} className="mb-4 flex flex-wrap gap-1">
+            {FILTER_OPTIONS.map((option) => (
+              <Button
+                key={option.value}
+                role="tab"
+                aria-selected={filter === option.value}
+                variant={filter === option.value ? 'secondary' : 'ghost'}
+                size="sm"
+                className="h-8 rounded-md px-3 font-normal"
+                onClick={() => setFilter(option.value)}>
+                {option.label ?? t(option.labelKey!)}
+              </Button>
+            ))}
+          </div>
+        ) : null}
         <div className="flex min-h-0 w-full flex-1 flex-col overflow-hidden">
           <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
             <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
-              <Scrollbar ref={scrollRef} className="min-h-0 flex-1">
+              <Scrollbar ref={scrollRef} className={cn('min-h-0 flex-1', isCatalog && '@container/connectors')}>
                 {filteredMcpServers.length > 0 ? (
                   <Sortable
-                    className="[&>div:last-child_[data-slot=mcp-server-row]]:border-b-0"
+                    className={cn(
+                      isCatalog
+                        ? 'grid @[1120px]/connectors:grid-cols-4 @[560px]/connectors:grid-cols-2 @[840px]/connectors:grid-cols-3 grid-cols-1 gap-3'
+                        : '[&>div:last-child_[data-slot=mcp-server-row]]:border-b-0'
+                    )}
                     items={filteredMcpServers}
                     itemKey="id"
                     onSortEnd={onSortEnd}
-                    layout="list"
+                    layout={isCatalog ? 'grid' : 'list'}
                     horizontal={false}
-                    listStyle={{ gap: 0 }}
+                    listStyle={isCatalog ? undefined : { gap: 0 }}
                     itemStyle={{ transition: 'none' }}
                     gap={0}
                     restrictions={{ scrollableAncestor: true }}
@@ -324,6 +381,7 @@ const McpServersList: FC = () => {
                     renderItem={(server) => (
                       <McpServerCard
                         server={server}
+                        variant={variant}
                         onEdit={() => navigate({ to: `/settings/mcp/settings/${server.id}` })}
                       />
                     )}

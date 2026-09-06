@@ -1,12 +1,16 @@
-import { Button, Tabs, TabsContent, TabsList, TabsTrigger } from '@cherrystudio/ui'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@cherrystudio/ui'
 import { SkillCatalogHeaderActions, SkillCatalogView } from '@renderer/components/resourceCatalog/catalog'
 import { useResourceCatalogController } from '@renderer/hooks/resourceCatalog'
-import { openSettingsTab } from '@renderer/services/mainWindowNavigation'
-import { Blocks, MessagesSquare, Network, Plug } from 'lucide-react'
+import { Blocks, Plug } from 'lucide-react'
+import type { ReactNode } from 'react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-export default function SkillsConnectorsPage() {
+interface SkillsConnectorsPageProps {
+  connectorView: ReactNode
+}
+
+export default function SkillsConnectorsPage({ connectorView }: SkillsConnectorsPageProps) {
   const { t } = useTranslation()
   const [activeTab, setActiveTab] = useState('skill')
   const skillController = useResourceCatalogController('skill', { clientSideSkillSearch: true })
@@ -34,37 +38,8 @@ export default function SkillsConnectorsPage() {
       <TabsContent value="skill" className="min-h-0 flex-1">
         <SkillCatalogView controller={skillController} />
       </TabsContent>
-      <TabsContent value="connector" className="min-h-0 flex-1 overflow-y-auto p-6">
-        <div className="mx-auto max-w-3xl">
-          <h1 className="font-semibold text-2xl tracking-tight">{t('workspace.resources.connectors')}</h1>
-          <p className="mt-2 text-muted-foreground">{t('workspace.resources.connectorsDescription')}</p>
-          <div className="mt-6 grid gap-4 md:grid-cols-2">
-            <Button
-              variant="outline"
-              className="h-auto justify-start rounded-xl p-5 text-left"
-              onClick={() => openSettingsTab('/settings/mcp/servers')}>
-              <Network className="mr-3 size-5 shrink-0" />
-              <span>
-                <span className="block font-medium">{t('title.mcp-servers')}</span>
-                <span className="mt-1 block whitespace-normal font-normal text-muted-foreground text-sm">
-                  {t('workspace.resources.mcpDescription')}
-                </span>
-              </span>
-            </Button>
-            <Button
-              variant="outline"
-              className="h-auto justify-start rounded-xl p-5 text-left"
-              onClick={() => openSettingsTab('/settings/channels')}>
-              <MessagesSquare className="mr-3 size-5 shrink-0" />
-              <span>
-                <span className="block font-medium">{t('settings.channels.title')}</span>
-                <span className="mt-1 block whitespace-normal font-normal text-muted-foreground text-sm">
-                  {t('workspace.resources.channelsDescription')}
-                </span>
-              </span>
-            </Button>
-          </div>
-        </div>
+      <TabsContent value="connector" className="min-h-0 flex-1">
+        {connectorView}
       </TabsContent>
     </Tabs>
   )

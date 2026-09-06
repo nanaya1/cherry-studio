@@ -85,15 +85,24 @@ const mcpMarkets = [
   }
 ]
 
-const McpMarketList: FC = () => {
+interface McpMarketListProps {
+  variant?: 'settings' | 'catalog'
+}
+
+const McpMarketList: FC<McpMarketListProps> = ({ variant = 'settings' }) => {
   const { t } = useTranslation()
+  const isCatalog = variant === 'catalog'
 
   return (
     <>
-      <SettingTitle style={{ marginBottom: 10 }}>{t('settings.mcp.findMore')}</SettingTitle>
-      <MarketGrid>
+      {!isCatalog && <SettingTitle style={{ marginBottom: 10 }}>{t('settings.mcp.findMore')}</SettingTitle>}
+      <MarketGrid data-variant={variant}>
         {mcpMarkets.map((resource) => (
-          <MarketCard key={resource.name} onClick={() => window.open(resource.url, '_blank', 'noopener,noreferrer')}>
+          <MarketCard
+            key={resource.name}
+            type="button"
+            data-variant={variant}
+            onClick={() => window.open(resource.url, '_blank', 'noopener,noreferrer')}>
             <MarketIconWrap>
               {typeof resource.logo !== 'string' ? (
                 <resource.logo.Avatar size={22} shape="rounded" />
@@ -118,13 +127,20 @@ const McpMarketList: FC = () => {
 }
 
 const MarketGrid = ({ className, ...props }: React.ComponentPropsWithoutRef<'div'>) => (
-  <div className={cn('mb-5 flex flex-col gap-2', className)} {...props} />
-)
-
-const MarketCard = ({ className, ...props }: React.ComponentPropsWithoutRef<'div'>) => (
   <div
     className={cn(
-      'flex min-h-15 cursor-pointer items-center gap-3 rounded-lg border border-border-subtle bg-transparent px-3 py-2.5 transition-colors hover:bg-accent',
+      'mb-5 gap-3 data-[variant=settings]:flex data-[variant=catalog]:grid @[1120px]/mcp-discover:data-[variant=catalog]:grid-cols-4 @[560px]/mcp-discover:data-[variant=catalog]:grid-cols-2 @[840px]/mcp-discover:data-[variant=catalog]:grid-cols-3 data-[variant=catalog]:grid-cols-1 data-[variant=settings]:flex-col',
+      className
+    )}
+    {...props}
+  />
+)
+
+const MarketCard = ({ className, ...props }: React.ComponentPropsWithoutRef<'button'>) => (
+  <button
+    type="button"
+    className={cn(
+      'flex min-h-15 w-full cursor-pointer items-center gap-3 rounded-lg border border-border-subtle bg-card px-3 py-2.5 text-left transition-[border-color,box-shadow] hover:border-border hover:shadow-sm focus-visible:border-ring focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 data-[variant=catalog]:min-h-24',
       className
     )}
     {...props}
