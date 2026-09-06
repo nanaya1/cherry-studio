@@ -7,7 +7,6 @@ import { AgentResourceList } from '@renderer/components/chat/resourceList/AgentR
 import type { ResourceListRevealRequest } from '@renderer/components/chat/resourceList/base'
 import Sessions from '@renderer/components/chat/resourceList/Sessions'
 import { ConversationSidebarToggleButton } from '@renderer/components/chat/shell/ConversationSidebarToggleButton'
-import type { AgentComposerLaunchOptions } from '@renderer/components/composer/variants/AgentComposer'
 import {
   createRecentSessionEntryFromSession,
   recordGlobalSearchRecentEntry
@@ -53,12 +52,6 @@ import AgentSidePanel from './AgentSidePanel'
 import { AgentCreateDialog } from './components/AgentCreateDialog'
 import type { AgentFileNavigationRequest } from './components/AgentRightPane'
 import { AgentTabRuntime } from './components/AgentTabRuntime'
-import {
-  createFeedbackComposerLaunch,
-  FEEDBACK_INTENT_GUARD_TTL_MS,
-  type FeedbackComposerLaunch,
-  getFeedbackIntentGuardCacheKey
-} from './feedbackComposerLaunch'
 import { parseAgentRouteSearch } from './routeSearch'
 import { useAgentConversationBootstrap } from './useAgentConversationBootstrap'
 
@@ -96,7 +89,6 @@ const AgentPage = () => {
   const routeSearch = parseAgentRouteSearch(useSearch({ strict: false }) as Record<string, unknown>)
   const navigate = useNavigate()
   const { t } = useTranslation()
-  const isFeedbackIntent = routeSearch.intent === 'feedback'
   const currentTabId = useCurrentTabId()
   const routeSessionId = routeSearch.sessionId
   const routeAgentId = routeSearch.agentId
@@ -183,16 +175,6 @@ const AgentPage = () => {
   const lastRecordedRecentSessionRef = useRef<string | undefined>(undefined)
   const [sessionRevealRequest, setSessionRevealRequest] = useState<ResourceListRevealRequest>()
   const sessionRevealRequestIdRef = useRef(0)
-  const routeFeedbackComposerLaunch = useMemo<FeedbackComposerLaunch | null>(
-    () =>
-      isFeedbackIntent && routeSessionId
-        ? createFeedbackComposerLaunch(routeSessionId, t('settings.about.feedback.agent.description'))
-        : null,
-    [isFeedbackIntent, routeSessionId, t]
-  )
-  const [feedbackComposerLaunch, setFeedbackComposerLaunch] = useState<FeedbackComposerLaunch | null>(
-    routeFeedbackComposerLaunch
-  )
   const [selectingMissingAgent, setSelectingMissingAgent] = useState(false)
   const [replacingSessionWorkspace, setReplacingSessionWorkspace] = useState(false)
   const [missingAgentSelection, setMissingAgentSelection] = useState(false)
@@ -206,7 +188,6 @@ const AgentPage = () => {
       activeSessionId ||
       agents.length > 0 ||
       isAgentsLoading ||
-      isFeedbackIntent ||
       isMessageOnlyView ||
       missingAgentSelection
     ) {
@@ -214,7 +195,7 @@ const AgentPage = () => {
     }
 
     setMissingAgentSelection(true)
-  }, [activeSessionId, agents.length, isAgentsLoading, isFeedbackIntent, isMessageOnlyView, missingAgentSelection])
+  }, [activeSessionId, agents.length, isAgentsLoading, isMessageOnlyView, missingAgentSelection])
   const initialActiveSession = useMemo(
     () => (activeSessionId ? agentSessions.find((session) => session.id === activeSessionId) : undefined),
     [activeSessionId, agentSessions]
@@ -246,7 +227,7 @@ const AgentPage = () => {
   // this tab was dormant, or a rotted deep link). Recovery is a plain replace-navigation back
   // through the entry interceptor, which resolves the next target — no in-page state surgery.
   useEffect(() => {
-    if (isMessageOnlyView || isFeedbackIntent) return
+    if (isMessageOnlyView) return
     if (!routeSessionId || activeSessionId !== routeSessionId) return
     if (activeSession || isActiveSessionLoading) return
     if (!isDataApiNotFoundError(activeSessionError)) return
@@ -256,7 +237,6 @@ const AgentPage = () => {
     activeSessionError,
     activeSessionId,
     isActiveSessionLoading,
-    isFeedbackIntent,
     isMessageOnlyView,
     reenterAgentRoute,
     routeSessionId
@@ -724,63 +704,6 @@ const AgentPage = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `useEffectEvent` reads latest tab/session state without resubscribing.
   }, [currentTabId])
 
-  const runFeedbackIntent = useEffectEvent(async (intentGuardCacheKey: string) => {
-    closeSurface()
-    clearLocate()
-    setMissingAgentSelection(false)
-    try {
-      if (!routeSessionId || !routeFeedbackComposerLaunch) {
-        throw new Error('Feedback intent is missing its prepared session')
-      }
-      try {
-        await invalidateCache(['/agents', '/agent-sessions', `/agent-sessions/${routeSessionId}`])
-      } catch (err) {
-        logger.warn('Failed to refresh Agent cache for prepared feedback session', err as Error, {
-          sessionId: routeSessionId
-        })
-      }
-      setFeedbackComposerLaunch(routeFeedbackComposerLaunch)
-    } catch (err) {
-      setFeedbackComposerLaunch(null)
-      logger.error('Failed to prepare Cherry Support feedback session', err as Error)
-      toast.error(t('settings.about.feedback.agent_error'))
-      showMissingAgentSelection()
-    } finally {
-      try {
-        await navigate({
-          to: '/app/agents',
-          search: routeSessionId ? { sessionId: routeSessionId } : {},
-          replace: true
-        })
-      } finally {
-        cacheService.deleteCasual(intentGuardCacheKey)
-      }
-    }
-  })
-
-  useEffect(() => {
-    if (!isFeedbackIntent || !currentTabId) return
-    const intentGuardCacheKey = getFeedbackIntentGuardCacheKey(currentTabId)
-    if (cacheService.hasCasual(intentGuardCacheKey)) return
-    cacheService.setCasual(intentGuardCacheKey, true, FEEDBACK_INTENT_GUARD_TTL_MS)
-    void runFeedbackIntent(intentGuardCacheKey)
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- `useEffectEvent` reads the latest feedback orchestration without resubscribing.
-  }, [currentTabId, isFeedbackIntent, routeSessionId])
-
-  const visibleSessionId = visibleSession?.id
-  const feedbackLaunch = feedbackComposerLaunch ?? routeFeedbackComposerLaunch
-  const visibleFeedbackComposerLaunch = feedbackLaunch?.sessionId === visibleSessionId ? feedbackLaunch : null
-  const composerLaunchOptions = useMemo<AgentComposerLaunchOptions | undefined>(() => {
-    if (!visibleFeedbackComposerLaunch) return undefined
-    const launch = visibleFeedbackComposerLaunch
-    return {
-      initialDraft: launch.initialDraft,
-      onSent: () => {
-        setFeedbackComposerLaunch((current) => (current?.sessionId === launch.sessionId ? null : current))
-      }
-    }
-  }, [visibleFeedbackComposerLaunch])
-
   const setActiveSessionAndClearTransient = useCallback(
     (sessionId: string | null, session?: AgentSessionEntity | null) => {
       closeSurface()
@@ -1049,7 +972,6 @@ const AgentPage = () => {
             sessionPaneOpen={isClassicSessionLayout ? sessionPaneOpen : undefined}
             onSessionPaneOpenChange={isClassicSessionLayout ? setSessionPaneOpen : undefined}
             sessionPaneUserOpenIntentSeq={sessionPaneUserOpenIntentSeq}
-            composerLaunchOptions={composerLaunchOptions}
           />
         </div>
         <AgentCreateDialog
