@@ -67,9 +67,10 @@ const EMPTY_MCP_TOOLS: McpTool[] = []
 interface McpSettingsContentProps {
   server: McpServer
   updateMcpServer: ReturnType<typeof useMcpServer>['updateMcpServer']
+  onClose?: () => void
 }
 
-const McpSettingsContent: React.FC<McpSettingsContentProps> = ({ server, updateMcpServer }) => {
+const McpSettingsContent: React.FC<McpSettingsContentProps> = ({ server, updateMcpServer, onClose }) => {
   const { t } = useTranslation()
   const search = useSearch({ strict: false }) as McpSettingsSearch
   const serverId = server.id
@@ -275,11 +276,15 @@ const McpSettingsContent: React.FC<McpSettingsContentProps> = ({ server, updateM
 
       await removeMcpServer()
       toast.success(t('settings.mcp.deleteSuccess'))
-      void navigate({ to: '/settings/mcp' })
+      if (onClose) {
+        onClose()
+      } else {
+        void navigate({ to: '/settings/mcp' })
+      }
     } catch (error: any) {
       toast.error(`${t('settings.mcp.deleteError')}: ${error.message}`)
     }
-  }, [removeMcpServer, t, navigate])
+  }, [removeMcpServer, t, navigate, onClose])
 
   const onToggleActive = async (active: boolean) => {
     if (!server) return
@@ -550,7 +555,7 @@ const McpSettingsContent: React.FC<McpSettingsContentProps> = ({ server, updateM
                     className="-ml-2 shrink-0 rounded-full"
                     aria-label={t('common.back')}
                     title={t('common.back')}
-                    onClick={() => void navigate({ to: '/settings/mcp/servers' })}>
+                    onClick={() => (onClose ? onClose() : void navigate({ to: '/settings/mcp/servers' }))}>
                     <ArrowLeft size={16} />
                   </Button>
                   <Flex className="min-w-0 flex-1 items-center gap-2">
@@ -633,16 +638,21 @@ const McpSettingsContent: React.FC<McpSettingsContentProps> = ({ server, updateM
   )
 }
 
-const McpSettings: React.FC = () => {
+interface McpSettingsProps {
+  serverId?: string
+  onClose?: () => void
+}
+
+const McpSettings: React.FC<McpSettingsProps> = ({ serverId: serverIdProp, onClose }) => {
   const params = useParams({ strict: false })
-  const serverId = params.serverId
+  const serverId = serverIdProp ?? params.serverId
   const { server, isLoading, updateMcpServer } = useMcpServer(serverId ?? '')
 
   if (!server || isLoading) {
     return null
   }
 
-  return <McpSettingsContent key={server.id} server={server} updateMcpServer={updateMcpServer} />
+  return <McpSettingsContent key={server.id} server={server} updateMcpServer={updateMcpServer} onClose={onClose} />
 }
 
 const Container = ({ className, ...props }: React.ComponentPropsWithoutRef<'div'>) => (

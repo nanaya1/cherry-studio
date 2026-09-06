@@ -6,7 +6,6 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('@renderer/components/resourceCatalog/catalog', () => ({
-  SkillCatalogHeaderActions: () => <div>skill actions</div>,
   SkillCatalogView: () => <div>skill catalog</div>
 }))
 
@@ -40,7 +39,6 @@ describe('SkillsConnectorsPage', () => {
 
     expect(screen.getByRole('tab', { name: 'Skills' })).toBeVisible()
     expect(screen.getByText('skill catalog')).toBeVisible()
-    expect(screen.getByText('skill actions')).toBeVisible()
 
     await user.click(screen.getByRole('tab', { name: 'Connectors' }))
     expect(screen.getByText('connector catalog')).toBeVisible()

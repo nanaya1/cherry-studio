@@ -8,7 +8,7 @@ import { cn } from '@renderer/utils/style'
 import { PRESET_MCP_SERVERS } from '@shared/data/presets/mcpServers'
 import { BuiltinMcpServerNames } from '@shared/utils/mcp'
 import { Check, ExternalLink, Plus } from 'lucide-react'
-import type { FC } from 'react'
+import type { FC, ReactNode } from 'react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -17,9 +17,10 @@ import { toCreateMcpServerDto } from './utils'
 
 interface BuiltinMcpServerListProps {
   variant?: 'settings' | 'catalog'
+  toolbarStart?: ReactNode
 }
 
-const BuiltinMcpServerList: FC<BuiltinMcpServerListProps> = ({ variant = 'settings' }) => {
+const BuiltinMcpServerList: FC<BuiltinMcpServerListProps> = ({ variant = 'settings', toolbarStart }) => {
   const { t } = useTranslation()
   const { addMcpServer, mcpServers } = useMcpServers()
   const [searchText, setSearchText] = useState('')
@@ -46,26 +47,35 @@ const BuiltinMcpServerList: FC<BuiltinMcpServerListProps> = ({ variant = 'settin
   return (
     <div className="mb-5">
       <div className="mb-3 flex w-full min-w-0 flex-wrap items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-1">
-          {!isCatalog && <SettingTitle className="m-0">{t('settings.mcp.builtinServers')}</SettingTitle>}
-          <CollapsibleSearchBar
-            onSearch={setSearchText}
-            placeholder={t('settings.mcp.search.placeholder')}
-            tooltip={t('settings.mcp.search.tooltip')}
-            maxWidth={200}
-            style={{ borderRadius: 16 }}
-          />
-        </div>
-        <Tabs value={filter} onValueChange={(value) => setFilter(value as typeof filter)} className="shrink-0">
-          <TabsList className="h-8 rounded-full bg-muted/70 p-0.5">
-            <TabsTrigger value="installed" className="h-7 rounded-[14px] px-2.5 text-xs">
-              {t('settings.skills.installed')}
-            </TabsTrigger>
-            <TabsTrigger value="uninstalled" className="h-7 rounded-[14px] px-2.5 text-xs">
-              {t('settings.mcp.notInstalled')}
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
+        {isCatalog ? (
+          <>
+            {toolbarStart}
+            <div className="flex min-w-0 items-center gap-2">
+              <CollapsibleSearchBar
+                onSearch={setSearchText}
+                placeholder={t('settings.mcp.search.placeholder')}
+                tooltip={t('settings.mcp.search.tooltip')}
+                maxWidth={240}
+                style={{ borderRadius: 16 }}
+              />
+              <ServerFilter value={filter} onValueChange={setFilter} />
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="flex min-w-0 items-center gap-1">
+              <SettingTitle className="m-0">{t('settings.mcp.builtinServers')}</SettingTitle>
+              <CollapsibleSearchBar
+                onSearch={setSearchText}
+                placeholder={t('settings.mcp.search.placeholder')}
+                tooltip={t('settings.mcp.search.tooltip')}
+                maxWidth={200}
+                style={{ borderRadius: 16 }}
+              />
+            </div>
+            <ServerFilter value={filter} onValueChange={setFilter} />
+          </>
+        )}
       </div>
 
       <div
@@ -82,7 +92,7 @@ const BuiltinMcpServerList: FC<BuiltinMcpServerListProps> = ({ variant = 'settin
               key={server.name}
               className={cn(
                 'group flex items-center gap-3 rounded-lg border border-border-subtle px-3.5 transition-colors duration-200 ease-in-out hover:border-border hover:bg-muted/35',
-                isCatalog ? 'min-h-28 py-3.5' : 'min-h-16 py-2',
+                isCatalog ? 'min-h-24 py-3' : 'min-h-16 py-2',
                 isInstalled && 'bg-muted/25'
               )}>
               <div className="min-w-0 flex-1">
@@ -165,6 +175,29 @@ const BuiltinMcpServerList: FC<BuiltinMcpServerListProps> = ({ variant = 'settin
         })}
       </div>
     </div>
+  )
+}
+
+function ServerFilter({
+  value,
+  onValueChange
+}: {
+  value: 'installed' | 'uninstalled'
+  onValueChange: (value: 'installed' | 'uninstalled') => void
+}) {
+  const { t } = useTranslation()
+
+  return (
+    <Tabs value={value} onValueChange={(nextValue) => onValueChange(nextValue as typeof value)} className="shrink-0">
+      <TabsList className="h-8 rounded-full bg-muted/70 p-0.5">
+        <TabsTrigger value="installed" className="h-7 rounded-[14px] px-2.5 text-xs">
+          {t('settings.skills.installed')}
+        </TabsTrigger>
+        <TabsTrigger value="uninstalled" className="h-7 rounded-[14px] px-2.5 text-xs">
+          {t('settings.mcp.notInstalled')}
+        </TabsTrigger>
+      </TabsList>
+    </Tabs>
   )
 }
 

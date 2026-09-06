@@ -1,5 +1,5 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@cherrystudio/ui'
-import { SkillCatalogHeaderActions, SkillCatalogView } from '@renderer/components/resourceCatalog/catalog'
+import { SkillCatalogView } from '@renderer/components/resourceCatalog/catalog'
 import { useResourceCatalogController } from '@renderer/hooks/resourceCatalog'
 import { Blocks, Plug } from 'lucide-react'
 import type { ReactNode } from 'react'
@@ -17,7 +17,7 @@ export default function SkillsConnectorsPage({ connectorView }: SkillsConnectors
 
   return (
     <Tabs value={activeTab} onValueChange={setActiveTab} className="flex h-full min-h-0 flex-col gap-0">
-      <header className="flex h-(--navbar-height) shrink-0 items-center justify-between gap-4 px-6">
+      <header className="flex h-(--navbar-height) shrink-0 items-center px-6">
         <TabsList className="h-9 shrink-0 gap-1 bg-transparent p-0">
           <TabsTrigger
             value="skill"
@@ -32,7 +32,6 @@ export default function SkillsConnectorsPage({ connectorView }: SkillsConnectors
             {t('workspace.resources.connectors')}
           </TabsTrigger>
         </TabsList>
-        {activeTab === 'skill' ? <SkillCatalogHeaderActions controller={skillController} /> : null}
       </header>
 
       <TabsContent value="skill" className="min-h-0 flex-1">

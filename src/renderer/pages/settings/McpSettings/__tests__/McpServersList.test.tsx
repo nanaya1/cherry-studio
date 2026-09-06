@@ -1,6 +1,6 @@
 import type { ProtocolMcpInstallRequest, ProtocolMcpServerInstall } from '@shared/data/types/mcpProtocolInstall'
 import type { McpServer } from '@shared/data/types/mcpServer'
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -9,6 +9,7 @@ import McpServersList from '../McpServersList'
 const mocks = vi.hoisted(() => ({
   addMcpServer: vi.fn(),
   ipcRequest: vi.fn(),
+  mcpServers: [] as McpServer[],
   navigate: vi.fn(),
   pendingProtocolInstalls: [] as ProtocolMcpInstallRequest[],
   protocolInstallRequestId: 'request-1',
@@ -25,7 +26,7 @@ vi.mock('@cherrystudio/ui', async (importOriginal) => {
 
 vi.mock('@renderer/hooks/useMcpServer', () => ({
   useMcpServers: () => ({
-    mcpServers: [],
+    mcpServers: mocks.mcpServers,
     addMcpServer: mocks.addMcpServer,
     reorderMcpServers: vi.fn(),
     refetch: mocks.refetch
@@ -43,11 +44,29 @@ vi.mock('@tanstack/react-router', () => ({
   })
 }))
 
-vi.mock('@renderer/components/CollapsibleSearchBar', () => ({ default: () => null }))
+vi.mock('@renderer/components/CollapsibleSearchBar', () => ({
+  default: ({ tooltip }: { tooltip: string }) => <button type="button">{tooltip}</button>
+}))
 vi.mock('@renderer/pages/settings/DependenciesSettings/EnvironmentDependencies', () => ({ default: () => null }))
 vi.mock('../AddMcpServerModal', () => ({ default: () => null }))
 vi.mock('../QuickCreateMcpServerDialog', () => ({ default: () => null }))
-vi.mock('../McpServerCard', () => ({ default: () => null }))
+vi.mock('../McpServerCard', () => ({
+  default: ({ server, onEdit }: { server: McpServer; onEdit: () => void }) => (
+    <button type="button" onClick={onEdit}>
+      {server.name}
+    </button>
+  )
+}))
+vi.mock('../McpSettings', () => ({
+  default: ({ serverId, onClose }: { serverId: string; onClose: () => void }) => (
+    <div>
+      <span>mcp detail {serverId}</span>
+      <button type="button" onClick={onClose}>
+        close detail
+      </button>
+    </div>
+  )
+}))
 
 vi.mock('react-i18next', async (importOriginal) => {
   const actual = await importOriginal<object>()
@@ -81,6 +100,7 @@ const protocolServers: ProtocolMcpServerInstall[] = [
 describe('McpServersList protocol install', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mocks.mcpServers = []
     mocks.protocolInstallRequestId = 'request-1'
     mocks.pendingProtocolInstalls = [{ requestId: 'request-1', servers: protocolServers }]
     mocks.ipcRequest.mockImplementation(async (route: string, input?: { requestId: string }) => {
@@ -128,6 +148,42 @@ describe('McpServersList protocol install', () => {
       params: { serverId: 'second-server-id' },
       search: { autoEnable: 'true' }
     })
+  })
+
+  it('keeps catalog filters and actions in one toolbar', async () => {
+    mocks.pendingProtocolInstalls = []
+    render(<McpServersList variant="catalog" showTitle={false} />)
+    await waitFor(() => expect(mocks.ipcRequest).toHaveBeenCalledWith('mcp.protocol_install.list_pending'))
+
+    const filters = screen.getByRole('tablist', { name: 'settings.mcp.filter.label' })
+    const toolbar = filters.parentElement?.parentElement
+    expect(toolbar).not.toBeNull()
+    expect(within(toolbar!).getByRole('button', { name: 'settings.mcp.search.tooltip' })).toBeInTheDocument()
+    expect(within(toolbar!).getByRole('button', { name: 'common.add' })).toBeInTheDocument()
+  })
+
+  it('opens catalog server details in a dialog without navigating to settings', async () => {
+    const user = userEvent.setup()
+    mocks.pendingProtocolInstalls = []
+    mocks.mcpServers = [
+      {
+        id: 'catalog-server',
+        name: 'Catalog server',
+        type: 'stdio',
+        command: 'npx',
+        isActive: false
+      } as McpServer
+    ]
+
+    render(<McpServersList variant="catalog" showTitle={false} />)
+    await user.click(screen.getByText('Catalog server'))
+
+    const dialog = screen.getByRole('dialog')
+    expect(within(dialog).getByText('mcp detail catalog-server')).toBeInTheDocument()
+    expect(mocks.navigate).not.toHaveBeenCalled()
+
+    await user.click(within(dialog).getByRole('button', { name: 'close detail' }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
   it('restores a pending request after remount and removes it only after cancellation', async () => {

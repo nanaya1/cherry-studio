@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest'
 
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -68,6 +68,10 @@ function controller() {
       allResources: resources,
       search: '',
       isLoading: false,
+      onSearchChange: vi.fn(),
+      onOpenSkillMarketplace: vi.fn(),
+      onOpenSystemSkills: vi.fn(),
+      onCreate: vi.fn(),
       onEdit: vi.fn(),
       onDelete: vi.fn()
     },
@@ -113,6 +117,12 @@ describe('SkillCatalogView', () => {
     expect(screen.getByRole('tab', { name: 'Built-in 1' })).toBeVisible()
     expect(screen.getByRole('tab', { name: 'Marketplace (Online) 1' })).toBeVisible()
     expect(screen.getByRole('tab', { name: 'Custom (Upload) 3' })).toBeVisible()
+
+    const sourceTabs = screen.getByRole('tablist', { name: 'Filter skills by source' })
+    const toolbar = sourceTabs.parentElement
+    expect(toolbar).not.toBeNull()
+    expect(within(toolbar!).getByPlaceholderText('library.toolbar.search_placeholder')).toBeVisible()
+    expect(within(toolbar!).getByRole('button', { name: 'library.skill_add.add' })).toBeVisible()
 
     await user.click(screen.getByRole('tab', { name: 'Custom (Upload) 3' }))
 

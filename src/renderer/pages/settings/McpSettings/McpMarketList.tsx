@@ -9,11 +9,13 @@ import {
   Smithery,
   Zhipu
 } from '@cherrystudio/ui/icons/providers'
+import CollapsibleSearchBar from '@renderer/components/CollapsibleSearchBar'
 import { SettingTitle } from '@renderer/components/SettingsPrimitives'
 import { cn } from '@renderer/utils/style'
 import { ExternalLink } from 'lucide-react'
 import type React from 'react'
-import type { FC } from 'react'
+import type { FC, ReactNode } from 'react'
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 const mcpMarkets = [
@@ -87,17 +89,41 @@ const mcpMarkets = [
 
 interface McpMarketListProps {
   variant?: 'settings' | 'catalog'
+  toolbarStart?: ReactNode
 }
 
-const McpMarketList: FC<McpMarketListProps> = ({ variant = 'settings' }) => {
+const McpMarketList: FC<McpMarketListProps> = ({ variant = 'settings', toolbarStart }) => {
   const { t } = useTranslation()
   const isCatalog = variant === 'catalog'
+  const [searchText, setSearchText] = useState('')
+  const filteredMarkets = useMemo(() => {
+    const keyword = searchText.trim().toLowerCase()
+    if (!keyword) return mcpMarkets
+
+    return mcpMarkets.filter((market) => {
+      const description = t(market.descriptionKey).toLowerCase()
+      return market.name.toLowerCase().includes(keyword) || description.includes(keyword)
+    })
+  }, [searchText, t])
 
   return (
     <>
-      {!isCatalog && <SettingTitle style={{ marginBottom: 10 }}>{t('settings.mcp.findMore')}</SettingTitle>}
+      {isCatalog ? (
+        <div className="mb-3 flex w-full min-w-0 flex-wrap items-center justify-between gap-3">
+          {toolbarStart}
+          <CollapsibleSearchBar
+            onSearch={setSearchText}
+            placeholder={t('settings.mcp.search.placeholder')}
+            tooltip={t('settings.mcp.search.tooltip')}
+            maxWidth={240}
+            style={{ borderRadius: 16 }}
+          />
+        </div>
+      ) : (
+        <SettingTitle style={{ marginBottom: 10 }}>{t('settings.mcp.findMore')}</SettingTitle>
+      )}
       <MarketGrid data-variant={variant}>
-        {mcpMarkets.map((resource) => (
+        {filteredMarkets.map((resource) => (
           <MarketCard
             key={resource.name}
             type="button"
@@ -140,7 +166,7 @@ const MarketCard = ({ className, ...props }: React.ComponentPropsWithoutRef<'but
   <button
     type="button"
     className={cn(
-      'flex min-h-15 w-full cursor-pointer items-center gap-3 rounded-lg border border-border-subtle bg-card px-3 py-2.5 text-left transition-[border-color,box-shadow] hover:border-border hover:shadow-sm focus-visible:border-ring focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 data-[variant=catalog]:min-h-24',
+      'flex min-h-15 w-full cursor-pointer items-center gap-3 rounded-lg border border-border-subtle bg-card px-3 py-2.5 text-left transition-[border-color,box-shadow] hover:border-border hover:shadow-sm focus-visible:border-ring focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 data-[variant=catalog]:min-h-20',
       className
     )}
     {...props}

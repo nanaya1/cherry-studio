@@ -259,11 +259,11 @@ const McpServerCard: FC<McpServerCardProps> = ({ server, onEdit, variant = 'sett
             </div>
           </div>
 
-          <p className="mt-3 line-clamp-2 min-h-10 text-muted-foreground text-sm leading-5">
+          <p className="mt-2 line-clamp-2 min-h-8 text-muted-foreground text-xs leading-4">
             {server.description || t('settings.mcp.noDescriptionAvailable')}
           </p>
 
-          <ToolbarWrapper className="mt-auto w-full justify-between pt-3" onClick={handleToolbarClick}>
+          <ToolbarWrapper className="mt-auto w-full justify-between pt-2" onClick={handleToolbarClick}>
             <div className="min-w-0 truncate text-foreground-tertiary text-xs">
               {server.provider || (server.installSource === 'builtin' ? t('settings.mcp.builtinServers') : typeLabel)}
             </div>
@@ -354,7 +354,7 @@ const CardContainer = ({
   <div
     className={cn(
       variant === 'catalog'
-        ? 'flex min-h-40 w-full min-w-0 cursor-pointer flex-col rounded-lg border border-border-subtle bg-card p-3.5 text-sm transition-[background-color,border-color,box-shadow] hover:border-border-strong hover:bg-background-subtle hover:shadow-sm focus-visible:border-ring focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50'
+        ? 'flex min-h-32 w-full min-w-0 cursor-pointer flex-col rounded-lg border border-border-subtle bg-card p-3 text-sm transition-[background-color,border-color,box-shadow] hover:border-border-strong hover:bg-background-subtle hover:shadow-sm focus-visible:border-ring focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50'
         : 'flex min-h-12 w-full min-w-0 cursor-pointer items-center gap-3 border-border-subtle border-b px-0 py-1.5 text-sm transition-colors',
       className
     )}

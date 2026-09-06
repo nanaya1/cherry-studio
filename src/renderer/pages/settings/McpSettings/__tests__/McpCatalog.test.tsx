@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest'
 
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import type { ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('@renderer/hooks/useMcpServer', () => ({
@@ -10,11 +11,21 @@ vi.mock('@renderer/hooks/useMcpServer', () => ({
 }))
 
 vi.mock('../BuiltinMcpServerList', () => ({
-  default: ({ variant }: { variant: string }) => <div>builtin {variant}</div>
+  default: ({ variant, toolbarStart }: { variant: string; toolbarStart: ReactNode }) => (
+    <div>
+      {toolbarStart}
+      builtin {variant}
+    </div>
+  )
 }))
 
 vi.mock('../McpMarketList', () => ({
-  default: ({ variant }: { variant: string }) => <div>market {variant}</div>
+  default: ({ variant, toolbarStart }: { variant: string; toolbarStart: ReactNode }) => (
+    <div>
+      {toolbarStart}
+      market {variant}
+    </div>
+  )
 }))
 
 vi.mock('../McpServersList', () => ({
@@ -26,9 +37,20 @@ vi.mock('../McpServersList', () => ({
 }))
 
 vi.mock('../McpProviderSettings', () => ({
-  default: ({ provider, existingServers }: { provider: { key: string }; existingServers: unknown[] }) => (
+  default: ({
+    provider,
+    existingServers,
+    onBack
+  }: {
+    provider: { key: string }
+    existingServers: unknown[]
+    onBack: () => void
+  }) => (
     <div>
       provider detail {provider.key} {existingServers.length}
+      <button type="button" onClick={onBack}>
+        Back
+      </button>
     </div>
   )
 }))
@@ -46,7 +68,7 @@ vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string) =>
       ({
-        'common.back': 'Back',
+        'common.close': 'Close',
         'settings.mcp.builtinServers': 'Built-in Servers',
         'settings.mcp.discover': 'Discover',
         'settings.mcp.marketplaces': 'Marketplaces',
@@ -75,10 +97,13 @@ describe('McpCatalog', () => {
     expect(screen.getByText('market catalog')).toBeVisible()
 
     await user.click(screen.getByRole('button', { name: /Bailian/ }))
+    expect(screen.getByRole('dialog')).toBeVisible()
+    expect(screen.getByRole('heading', { name: 'Bailian' })).toHaveClass('sr-only')
     expect(screen.getByText('provider detail bailian 1')).toBeVisible()
+    expect(screen.getByRole('button', { name: /ModelScope/ })).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Back' }))
-    expect(screen.getByRole('button', { name: /ModelScope/ })).toBeVisible()
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
 
     expect(screen.getByText('installed catalog false')).toBeVisible()
   })

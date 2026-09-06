@@ -192,23 +192,26 @@ export function SkillCatalogView({ controller }: { controller: SkillController }
                 {gridProps.allResources.length} {t('settings.skills.installed')}
               </span>
             </div>
-            <div
-              role="tablist"
-              aria-label={t('workspace.skillsConnectors.sourceFilter')}
-              className="mt-4 flex flex-wrap gap-1">
-              {filters.map((filter) => (
-                <Button
-                  key={filter.value}
-                  role="tab"
-                  aria-selected={sourceFilter === filter.value}
-                  variant={sourceFilter === filter.value ? 'secondary' : 'ghost'}
-                  size="sm"
-                  onClick={() => setSourceFilter(filter.value)}
-                  className="h-8 gap-1.5 rounded-md px-3 font-normal">
-                  <span>{filter.label}</span>
-                  <span className="text-foreground-tertiary text-xs tabular-nums">{counts[filter.value]}</span>
-                </Button>
-              ))}
+            <div className="mt-4 flex w-full flex-wrap items-center justify-between gap-3">
+              <div
+                role="tablist"
+                aria-label={t('workspace.skillsConnectors.sourceFilter')}
+                className="flex min-w-0 flex-wrap gap-1">
+                {filters.map((filter) => (
+                  <Button
+                    key={filter.value}
+                    role="tab"
+                    aria-selected={sourceFilter === filter.value}
+                    variant={sourceFilter === filter.value ? 'secondary' : 'ghost'}
+                    size="sm"
+                    onClick={() => setSourceFilter(filter.value)}
+                    className="h-8 gap-1.5 rounded-md px-3 font-normal">
+                    <span>{filter.label}</span>
+                    <span className="text-foreground-tertiary text-xs tabular-nums">{counts[filter.value]}</span>
+                  </Button>
+                ))}
+              </div>
+              <SkillCatalogHeaderActions controller={controller} />
             </div>
           </div>
 

@@ -1,5 +1,8 @@
 import {
   Button,
+  Dialog,
+  DialogContent,
+  DialogTitle,
   EmptyState,
   MenuItem,
   MenuList,
@@ -31,6 +34,7 @@ import { useTranslation } from 'react-i18next'
 import AddMcpServerModal from './AddMcpServerModal'
 import McpProtocolInstallDialog from './McpProtocolInstallDialog'
 import McpServerCard from './McpServerCard'
+import McpSettings from './McpSettings'
 import QuickCreateMcpServerDialog from './QuickCreateMcpServerDialog'
 
 const logger = loggerService.withContext('McpServersList')
@@ -65,6 +69,7 @@ const McpServersList: FC<McpServersListProps> = ({ variant = 'settings', showTit
   const [isQuickCreateOpen, setIsQuickCreateOpen] = useState(false)
   const [modalType, setModalType] = useState<ImportMethod>('json')
   const [filter, setFilter] = useState<McpServerFilter>('all')
+  const [selectedServerId, setSelectedServerId] = useState<string | null>(null)
   const [protocolInstallQueue, setProtocolInstallQueue] = useState<ProtocolMcpInstallRequest[]>([])
   const protocolInstallQueueRef = useRef<ProtocolMcpInstallRequest[]>([])
   const pendingAutoEnableServerIdRef = useRef<string | null>(null)
@@ -239,6 +244,7 @@ const McpServersList: FC<McpServersListProps> = ({ variant = 'settings', showTit
   }, [])
 
   const isCatalog = variant === 'catalog'
+  const selectedServer = selectedServerId ? mcpServers.find((server) => server.id === selectedServerId) : undefined
 
   const addServerMenu = (
     <Popover open={isAddMenuOpen} onOpenChange={setIsAddMenuOpen}>
@@ -260,6 +266,40 @@ const McpServersList: FC<McpServersListProps> = ({ variant = 'settings', showTit
     </Popover>
   )
 
+  const catalogFilters = (
+    <div role="tablist" aria-label={t('settings.mcp.filter.label')} className="flex min-w-0 flex-wrap gap-1">
+      {FILTER_OPTIONS.map((option) => (
+        <Button
+          key={option.value}
+          role="tab"
+          aria-selected={filter === option.value}
+          variant={filter === option.value ? 'secondary' : 'ghost'}
+          size="sm"
+          className="h-8 rounded-md px-3 font-normal"
+          onClick={() => setFilter(option.value)}>
+          {option.label ?? t(option.labelKey!)}
+        </Button>
+      ))}
+    </div>
+  )
+
+  const headerActions = (
+    <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
+      <EnvironmentDependencies mini />
+      {isCatalog ? (
+        <CollapsibleSearchBar
+          onSearch={setSearchText}
+          placeholder={t('settings.mcp.search.placeholder')}
+          tooltip={t('settings.mcp.search.tooltip')}
+          maxWidth={256}
+          collapsedSize={32}
+          animated={false}
+        />
+      ) : null}
+      {addServerMenu}
+    </div>
+  )
+
   return (
     <div
       className={cn(
@@ -267,17 +307,23 @@ const McpServersList: FC<McpServersListProps> = ({ variant = 'settings', showTit
         isCatalog ? 'h-full pt-7' : 'h-[calc(100vh-var(--navbar-height))] gap-2 pt-3'
       )}>
       <div className={cn('mx-auto flex min-h-0 w-full flex-1 flex-col', isCatalog ? 'max-w-none' : 'max-w-3xl')}>
-        <div className={cn('flex w-full flex-wrap items-center justify-between gap-3', isCatalog ? 'mb-4' : 'mb-3')}>
-          <div className="flex min-w-0 flex-wrap items-center gap-3">
-            {showTitle ? (
-              <div className="flex items-baseline gap-2">
-                <SettingTitle className={cn('m-0', isCatalog && 'font-semibold text-xl')}>
-                  {t('settings.mcp.allServers')}
-                </SettingTitle>
-                {isCatalog ? <span className="text-foreground-tertiary text-xs">{mcpServers.length}</span> : null}
-              </div>
-            ) : null}
-            {!isCatalog ? (
+        {isCatalog ? (
+          <div className="mb-4 flex w-full flex-wrap items-center justify-between gap-3">
+            <div className="flex min-w-0 flex-wrap items-center gap-3">
+              {showTitle ? (
+                <div className="flex items-baseline gap-2">
+                  <SettingTitle className="m-0 font-semibold text-xl">{t('settings.mcp.allServers')}</SettingTitle>
+                  <span className="text-foreground-tertiary text-xs">{mcpServers.length}</span>
+                </div>
+              ) : null}
+              {catalogFilters}
+            </div>
+            {headerActions}
+          </div>
+        ) : (
+          <div className="mb-3 flex w-full flex-wrap items-center justify-between gap-3">
+            <div className="flex min-w-0 flex-wrap items-center gap-3">
+              {showTitle ? <SettingTitle className="m-0">{t('settings.mcp.allServers')}</SettingTitle> : null}
               <div className="flex shrink-0 items-center gap-1">
                 <Popover open={isFilterMenuOpen} onOpenChange={setIsFilterMenuOpen}>
                   <PopoverTrigger asChild>
@@ -323,39 +369,10 @@ const McpServersList: FC<McpServersListProps> = ({ variant = 'settings', showTit
                   style={{ borderRadius: 14 }}
                 />
               </div>
-            ) : null}
+            </div>
+            {headerActions}
           </div>
-          <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
-            <EnvironmentDependencies mini />
-            {isCatalog ? (
-              <CollapsibleSearchBar
-                onSearch={setSearchText}
-                placeholder={t('settings.mcp.search.placeholder')}
-                tooltip={t('settings.mcp.search.tooltip')}
-                maxWidth={256}
-                collapsedSize={32}
-                animated={false}
-              />
-            ) : null}
-            {addServerMenu}
-          </div>
-        </div>
-        {isCatalog ? (
-          <div role="tablist" aria-label={t('settings.mcp.filter.label')} className="mb-4 flex flex-wrap gap-1">
-            {FILTER_OPTIONS.map((option) => (
-              <Button
-                key={option.value}
-                role="tab"
-                aria-selected={filter === option.value}
-                variant={filter === option.value ? 'secondary' : 'ghost'}
-                size="sm"
-                className="h-8 rounded-md px-3 font-normal"
-                onClick={() => setFilter(option.value)}>
-                {option.label ?? t(option.labelKey!)}
-              </Button>
-            ))}
-          </div>
-        ) : null}
+        )}
         <div className="flex min-h-0 w-full flex-1 flex-col overflow-hidden">
           <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
             <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
@@ -382,7 +399,11 @@ const McpServersList: FC<McpServersListProps> = ({ variant = 'settings', showTit
                       <McpServerCard
                         server={server}
                         variant={variant}
-                        onEdit={() => navigate({ to: `/settings/mcp/settings/${server.id}` })}
+                        onEdit={() =>
+                          isCatalog
+                            ? setSelectedServerId(server.id)
+                            : navigate({ to: `/settings/mcp/settings/${server.id}` })
+                        }
                       />
                     )}
                   />
@@ -423,6 +444,20 @@ const McpServersList: FC<McpServersListProps> = ({ variant = 'settings', showTit
           onInstall={handleProtocolInstall}
         />
       )}
+
+      <Dialog open={Boolean(selectedServer)} onOpenChange={(open) => !open && setSelectedServerId(null)}>
+        <DialogContent
+          size="xl"
+          showCloseButton={false}
+          className="h-[80vh] max-h-[80vh] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0">
+          <DialogTitle className="sr-only">{selectedServer?.name}</DialogTitle>
+          {selectedServer ? (
+            <div className="min-h-0 overflow-hidden">
+              <McpSettings serverId={selectedServer.id} onClose={() => setSelectedServerId(null)} />
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

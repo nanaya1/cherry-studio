@@ -7,7 +7,7 @@ import { useMcpServers } from '@renderer/hooks/useMcpServer'
 import { toast } from '@renderer/services/toast'
 import { cn } from '@renderer/utils/style'
 import type { McpServer } from '@shared/data/types/mcpServer'
-import { Check, ExternalLink, Plus } from 'lucide-react'
+import { ArrowLeft, Check, ExternalLink, Plus } from 'lucide-react'
 import type React from 'react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -20,9 +20,10 @@ const logger = loggerService.withContext('McpProviderSettings')
 interface Props {
   provider: ProviderConfig
   existingServers: McpServer[]
+  onBack?: () => void
 }
 
-const McpProviderSettings: React.FC<Props> = ({ provider, existingServers }) => {
+const McpProviderSettings: React.FC<Props> = ({ provider, existingServers, onBack }) => {
   const { addMcpServer } = useMcpServers()
   const [isFetching, setIsFetching] = useState(false)
   const [token, setToken] = useState<string>('')
@@ -103,7 +104,19 @@ const McpProviderSettings: React.FC<Props> = ({ provider, existingServers }) => 
   return (
     <DetailContainer>
       <ProviderHeader>
-        <div className="flex min-w-0 items-center gap-3">
+        <div className="flex min-w-0 items-center gap-2">
+          {onBack && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              className="-ml-2 shrink-0 rounded-full"
+              aria-label={t('common.back')}
+              title={t('common.back')}
+              onClick={onBack}>
+              <ArrowLeft size={16} />
+            </Button>
+          )}
           <div className="min-w-0">
             <div className="flex min-w-0 items-center gap-1.5">
               <ProviderName>{getProviderDisplayName(provider, t)}</ProviderName>
@@ -121,27 +134,29 @@ const McpProviderSettings: React.FC<Props> = ({ provider, existingServers }) => 
             </div>
           </div>
         </div>
-        <Button
-          onClick={handleFetch}
-          disabled={isFetching || isFetchDisabled}
-          size="sm"
-          className="h-7 shrink-0 rounded-lg px-2 text-xs shadow-none">
-          {t('settings.mcp.fetch.button', 'Fetch Servers')}
-        </Button>
       </ProviderHeader>
 
       <SettingsPanel>
         <div className="mb-2 flex items-center justify-between gap-3">
           <PanelTitle>{t('settings.provider.api_key.label')}</PanelTitle>
         </div>
-        <Input
-          type="password"
-          value={token}
-          placeholder={t('settings.mcp.sync.tokenPlaceholder', 'Enter API token here')}
-          onChange={(e) => handleTokenChange(e.target.value)}
-          spellCheck={false}
-          className="h-9 rounded-lg bg-background shadow-none"
-        />
+        <div className="flex items-center gap-2">
+          <Input
+            type="password"
+            value={token}
+            placeholder={t('settings.mcp.sync.tokenPlaceholder', 'Enter API token here')}
+            onChange={(e) => handleTokenChange(e.target.value)}
+            spellCheck={false}
+            className="h-9 min-w-0 flex-1 rounded-lg bg-background shadow-none"
+          />
+          <Button
+            onClick={handleFetch}
+            disabled={isFetching || isFetchDisabled}
+            size="sm"
+            className="h-9 shrink-0 rounded-lg px-3 shadow-none">
+            {t('settings.mcp.fetch.button', 'Fetch Servers')}
+          </Button>
+        </div>
         {provider.apiKeyUrl && (
           <a
             target="_blank"
