@@ -474,8 +474,12 @@ describe('app Sidebar', () => {
     expect(mocks.openSettingsTab).not.toHaveBeenCalled()
   })
 
-  it('opens the New Task page from the conversations + action without creating a topic', async () => {
+  it('reuses or creates a conversation from the conversations + action', async () => {
     const user = userEvent.setup()
+    mocks.useAssistantTopicsSource.reuseOrCreateTopic.mockResolvedValue({
+      topic: { id: 'topic-new', name: '' },
+      created: true
+    })
 
     render(<Sidebar />)
 
@@ -485,14 +489,9 @@ describe('app Sidebar', () => {
 
     await user.click(screen.getByRole('button', { name: 'new-conversation' }))
 
-    expect(mocks.updateTab).toHaveBeenCalledWith('chat', {
-      url: '/app/new-task',
-      title: 'New task',
-      icon: undefined,
-      metadata: undefined
-    })
-    expect(mocks.useAssistantTopicsSource.reuseOrCreateTopic).not.toHaveBeenCalled()
-    expect(mocks.openAssistantConversationTab).not.toHaveBeenCalled()
+    expect(mocks.useAssistantTopicsSource.reuseOrCreateTopic).toHaveBeenCalledWith(null)
+    expect(mocks.openAssistantConversationTab).toHaveBeenCalledWith('topic-new', 'chat.conversation.new')
+    expect(mocks.updateTab).not.toHaveBeenCalledWith('chat', expect.objectContaining({ url: '/app/new-task' }))
   })
 
   it('opens conversation and task history entries at their exact routes', async () => {
