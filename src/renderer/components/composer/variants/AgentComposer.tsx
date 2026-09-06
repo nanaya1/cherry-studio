@@ -86,8 +86,8 @@ import { isPathWithinAccessiblePath } from './agent/accessiblePath'
 import {
   AgentConversationControls,
   type AgentConversationControlsProps,
-  type AgentConversationWorkspace
-} from './agent/AgentConversationControls'
+  type AgentConversationWorkspace,
+  AgentModelControl} from './agent/AgentConversationControls'
 import {
   type AgentComposerDraftCache,
   type AgentComposerDraftCacheKey,
@@ -316,6 +316,9 @@ type Props = {
   onAgentChange?: (agentId: string | null) => void | Promise<void>
   agentChanging?: boolean
   canChangeAgent?: boolean
+  showAgentControl?: boolean
+  modelControlInSendAccessory?: boolean
+  toolShortcutsBeforeContextControls?: boolean
   workspaceId?: string | null
   onWorkspaceChange?: (workspaceId: string | null) => void | Promise<void>
   workspaceChanging?: boolean
@@ -347,6 +350,9 @@ const AgentComposerRoot = ({
   onAgentChange,
   agentChanging,
   canChangeAgent = false,
+  showAgentControl,
+  modelControlInSendAccessory,
+  toolShortcutsBeforeContextControls,
   workspaceId,
   onWorkspaceChange,
   workspaceChanging,
@@ -479,6 +485,9 @@ const AgentComposerRoot = ({
         onAgentChange={onAgentChange}
         agentChanging={agentChanging}
         canChangeAgent={canChangeAgent}
+        showAgentControl={showAgentControl}
+        modelControlInSendAccessory={modelControlInSendAccessory}
+        toolShortcutsBeforeContextControls={toolShortcutsBeforeContextControls}
         onWorkspaceChange={onWorkspaceChange}
         workspaceChanging={workspaceChanging}
         canChangeModel={canChangeModel}
@@ -522,6 +531,9 @@ interface InnerProps {
   onAgentChange?: Props['onAgentChange']
   agentChanging?: boolean
   canChangeAgent: boolean
+  showAgentControl?: boolean
+  modelControlInSendAccessory?: boolean
+  toolShortcutsBeforeContextControls?: boolean
   onWorkspaceChange?: Props['onWorkspaceChange']
   workspaceChanging?: boolean
   canChangeModel: boolean
@@ -587,9 +599,13 @@ type AgentComposerControlProps = Omit<
   topBarPortalAvailable: boolean
   topBarPortalIconOnly: boolean
   leadingControl?: React.ReactNode
+  toolShortcutsBeforeContextControls?: boolean
   renderQuickPanelShortcuts?: (args: {
     inputAdapter?: AgentComposerInputAdapter
     unifiedPanelControl?: AgentComposerUnifiedPanelControl
+    onlyPinnedIds?: readonly string[]
+    hiddenPinnedIds?: readonly string[]
+    showPinnedLabels?: boolean
   }) => React.ReactNode
 }
 type ComposerSurfaceProps = React.ComponentProps<typeof ComposerSurface>
@@ -692,7 +708,11 @@ const renderAgentInputControls: AgentComposerControlsRenderer = (props) => {
 const renderAgentHomeControls: AgentComposerControlsRenderer = (props) => {
   return {
     renderLeftControls: (inputAdapter, unifiedPanelControl) => {
-      const quickPanelShortcuts = props.renderQuickPanelShortcuts?.({ inputAdapter, unifiedPanelControl })
+      const quickPanelShortcuts = props.renderQuickPanelShortcuts?.({
+        inputAdapter,
+        unifiedPanelControl,
+        hiddenPinnedIds: props.toolShortcutsBeforeContextControls ? ['permission-mode'] : undefined
+      })
 
       return (
         <>
@@ -712,11 +732,21 @@ const renderAgentHomeControls: AgentComposerControlsRenderer = (props) => {
     },
     renderBelowControls: props.topBarPortalAvailable
       ? undefined
-      : (inputAdapter) => (
+          : (inputAdapter, unifiedPanelControl) => (
           <ComposerBelowControls
-            renderContextControls={({ side, iconOnly }) =>
-              renderAgentComposerContextControls(props, inputAdapter, { side, iconOnly })
-            }
+            renderContextControls={({ side, iconOnly }) => (
+              <>
+                {props.toolShortcutsBeforeContextControls
+                  ? props.renderQuickPanelShortcuts?.({
+                      inputAdapter,
+                      unifiedPanelControl,
+                      onlyPinnedIds: ['permission-mode'],
+                      showPinnedLabels: true
+                    })
+                  : null}
+                {renderAgentComposerContextControls(props, inputAdapter, { side, iconOnly })}
+              </>
+            )}
           />
         )
   }
@@ -742,6 +772,9 @@ const AgentComposerInner = ({
   onAgentChange,
   agentChanging,
   canChangeAgent,
+  showAgentControl,
+  modelControlInSendAccessory,
+  toolShortcutsBeforeContextControls,
   onWorkspaceChange,
   workspaceChanging,
   canChangeModel,
@@ -1663,10 +1696,16 @@ const AgentComposerInner = ({
   const renderQuickPanelShortcuts = useCallback(
     ({
       inputAdapter,
-      unifiedPanelControl
+      unifiedPanelControl,
+      onlyPinnedIds,
+      hiddenPinnedIds,
+      showPinnedLabels
     }: {
       inputAdapter?: AgentComposerInputAdapter
       unifiedPanelControl?: AgentComposerUnifiedPanelControl
+      onlyPinnedIds?: readonly string[]
+      hiddenPinnedIds?: readonly string[]
+      showPinnedLabels?: boolean
     }) => (
       <ComposerToolbarShortcuts
         scope={TopicType.Session}
@@ -1678,6 +1717,9 @@ const AgentComposerInner = ({
         customizeOpen={customizeToolbarOpen}
         onCustomizeOpenChange={setCustomizeToolbarOpen}
         isModelUnavailable={isModelUnavailable}
+        onlyPinnedIds={onlyPinnedIds}
+        hiddenPinnedIds={hiddenPinnedIds}
+        showPinnedLabels={showPinnedLabels}
         inputAdapter={inputAdapter}
         unifiedPanelControl={unifiedPanelControl}
       />
@@ -1706,6 +1748,9 @@ const AgentComposerInner = ({
     agentChanging,
     agentTriggerMode: canChangeAgent ? 'selector' : 'edit',
     shouldAutoSelectCreatedAgent: true,
+    showAgentControl,
+    showModelControl: !modelControlInSendAccessory,
+    toolShortcutsBeforeContextControls,
     topBarPortalAvailable,
     topBarPortalIconOnly,
     canChangeModel,
@@ -1720,6 +1765,17 @@ const AgentComposerInner = ({
 
   const sendAccessory: ComposerSurfaceProps['sendAccessory'] = (
     <>
+      {modelControlInSendAccessory ? (
+        <AgentModelControl
+          model={model}
+          selectModelLabel={t('button.select_model')}
+          side="top"
+          canChangeModel={canChangeModel}
+          onModelSelect={handleModelSelect}
+          modelFilter={agentModelFilter}
+          isModelDisabled={isModelDisabled}
+        />
+      ) : null}
       {model ? (
         <ComposerSpeedControl
           model={model}

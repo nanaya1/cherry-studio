@@ -489,7 +489,7 @@ export default function NewTaskPage() {
           <Tabs
             value={taskMode}
             onValueChange={(value) => setTaskMode(value as TaskMode)}
-            className="mt-5 gap-8 [&_[data-ui~='part:composer-input']]:min-h-20!">
+            className="mt-5 gap-8 [&_[data-ui~='part:composer-input']]:min-h-24!">
             <TabsList className="mx-auto flex w-fit rounded-lg bg-muted p-1">
               <TabsTrigger value="chat" className="flex h-8 items-center gap-2 rounded-md px-4 text-sm">
                 <MessageSquare size={15} />
@@ -509,6 +509,9 @@ export default function NewTaskPage() {
                     assistantId={chatAssistantId ?? undefined}
                     resolvedContext={chatContext}
                     resolvedProviders={providers}
+                    showAssistantControl={false}
+                    modelControlInSendAccessory
+                    hideBelowControls
                     onDraftAssistantChange={handleChatAssistantChange}
                     onSend={handleChatSend}
                     onDraftCleared={handleDraftCleared}
@@ -586,6 +589,9 @@ export default function NewTaskPage() {
                     stop={async () => undefined}
                     onAgentChange={handleAgentChange}
                     agentChanging={agentLoading}
+                    showAgentControl={false}
+                    modelControlInSendAccessory
+                    toolShortcutsBeforeContextControls
                     workspaceId={agentWorkspaceId}
                     onWorkspaceChange={handleWorkspaceChange}
                     isStreaming={false}

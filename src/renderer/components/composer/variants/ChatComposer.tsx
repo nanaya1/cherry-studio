@@ -172,6 +172,9 @@ export interface ChatComposerProps {
   chatTarget?: ComposerChatTarget
   sendDisabled?: boolean
   useMentionedModelSelector?: boolean
+  showAssistantControl?: boolean
+  modelControlInSendAccessory?: boolean
+  hideBelowControls?: boolean
   onDraftAssistantChange?: (assistantId: string | null) => void | Promise<void>
   onNewTopic?: (payload?: AddNewTopicPayload) => void | Promise<void>
   onCreateEmptyTopic?: (payload?: AddNewTopicPayload) => void | Promise<void>
@@ -417,6 +420,9 @@ const ChatComposerRoot = ({
   sendDisabled,
   compactWhenSingleLine = false,
   useMentionedModelSelector,
+  showAssistantControl,
+  modelControlInSendAccessory,
+  hideBelowControls,
   onDraftAssistantChange,
   onNewTopic,
   onCreateEmptyTopic,
@@ -477,6 +483,9 @@ const ChatComposerRoot = ({
             sendDisabled={sendDisabled}
             compactWhenSingleLine={compactWhenSingleLine}
             useMentionedModelSelector={useMentionedModelSelector}
+            showAssistantControl={showAssistantControl}
+            modelControlInSendAccessory={modelControlInSendAccessory}
+            hideBelowControls={hideBelowControls}
             onDraftAssistantChange={onDraftAssistantChange}
             onNewTopic={onNewTopic}
             onCreateEmptyTopic={onCreateEmptyTopic}
@@ -518,6 +527,9 @@ const ChatComposerInner = ({
   sendDisabled = false,
   compactWhenSingleLine = false,
   useMentionedModelSelector,
+  showAssistantControl,
+  modelControlInSendAccessory,
+  hideBelowControls,
   onDraftAssistantChange,
   onNewTopic,
   onCreateEmptyTopic,
@@ -1817,7 +1829,7 @@ const ChatComposerInner = ({
 
   if (isMultiSelectMode) return null
 
-  const controlSlots = renderControls({
+  const controlProps: ChatComposerControlProps = {
     assistantId: selectedAssistantId,
     assistantName,
     model: runtimeModel,
@@ -1829,6 +1841,8 @@ const ChatComposerInner = ({
     mentionedModelMultiSelectMode,
     useMentionedModelSelector,
     shouldAutoSelectCreatedAssistant: Boolean(onDraftAssistantChange),
+    showAssistantControl,
+    showModelControl: !modelControlInSendAccessory,
     selectModelLabel: runtimeModelPending ? t('common.loading') : t('button.select_model'),
     topBarPortalAvailable,
     topBarPortalIconOnly,
@@ -1838,9 +1852,18 @@ const ChatComposerInner = ({
     onMentionedModelsSelect: handleMentionedModelsSelect,
     onMentionedModelMultiSelectModeChange: handleMentionedModelMultiSelectModeChange,
     onMentionedModelSelectorRestore: handleMentionedModelSelectorRestore
-  })
+  }
+  const controlSlots = renderControls(controlProps)
+  if (hideBelowControls) controlSlots.renderBelowControls = undefined
   const sendAccessory: ComposerSurfaceProps['sendAccessory'] = (
     <>
+      {modelControlInSendAccessory
+        ? renderChatComposerContextControls(
+            { ...controlProps, showAssistantControl: false, showModelControl: true },
+            undefined,
+            { side: 'top', iconOnly: false }
+          )
+        : null}
       {speedControlModel ? (
         <ComposerSpeedControl
           model={speedControlModel}
