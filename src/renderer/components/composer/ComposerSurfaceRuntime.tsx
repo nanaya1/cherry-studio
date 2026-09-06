@@ -30,7 +30,7 @@ import type { EditorView } from '@tiptap/pm/view'
 import type { Editor } from '@tiptap/react'
 import { EditorContent, type NodeViewProps } from '@tiptap/react'
 import { Check, CirclePause, LocateFixed, Maximize2, Minimize2, Pencil, X } from 'lucide-react'
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import React, { startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { useActiveComposerOverride } from './ComposerContext'
@@ -1798,11 +1798,9 @@ export default function ComposerSurfaceRuntime({
     },
     onCreate: ({ editor: createdEditor }) => {
       lastSerializedDraftRef.current = serializeComposerDocument(createdEditor)
-      // Flip synchronously: with `immediatelyRender: true` the editor view already attached in the
-      // same commit, so the only thing waiting on `editorReady` is the conditional mount of
-      // <QuickPanelView>. Wrapping this in startTransition used to let the home placement eat the
-      // update behind continuous keystroke dispatches, leaving `/` and `#` unable to pop the panel.
-      setEditorReady(true)
+      window.requestAnimationFrame(() => {
+        startTransition(() => setEditorReady(true))
+      })
     }
   })
 
