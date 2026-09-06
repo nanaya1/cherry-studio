@@ -7,6 +7,7 @@ import {
 } from '@renderer/components/composer/variants/AgentComposer'
 import { agentSkillToComposerToken } from '@renderer/components/composer/variants/agentComposerTokens'
 import { ChatPlacementComposer } from '@renderer/components/composer/variants/ChatComposer'
+import { QuickPanelProvider } from '@renderer/components/QuickPanel'
 import { usePersistCache } from '@renderer/data/hooks/useCache'
 import { useInvalidateCache, useQuery } from '@renderer/data/hooks/useDataApi'
 import { useAgent } from '@renderer/hooks/agent/useAgent'
@@ -456,16 +457,18 @@ export default function NewTaskPage() {
               </TabsTrigger>
             </TabsList>
             <TabsContent value="chat" forceMount className="mt-4 data-[state=inactive]:hidden">
-              <ChatPlacementComposer
-                placement="home"
-                scopeKey={chatDraftScopeKey}
-                assistantId={chatAssistantId ?? undefined}
-                resolvedContext={chatContext}
-                resolvedProviders={providers}
-                onDraftAssistantChange={handleChatAssistantChange}
-                onSend={handleChatSend}
-                onDraftCleared={handleDraftCleared}
-              />
+              <QuickPanelProvider>
+                <ChatPlacementComposer
+                  placement="home"
+                  scopeKey={chatDraftScopeKey}
+                  assistantId={chatAssistantId ?? undefined}
+                  resolvedContext={chatContext}
+                  resolvedProviders={providers}
+                  onDraftAssistantChange={handleChatAssistantChange}
+                  onSend={handleChatSend}
+                  onDraftCleared={handleDraftCleared}
+                />
+              </QuickPanelProvider>
             </TabsContent>
             <TabsContent value="agent" forceMount className="data-[state=inactive]:hidden">
               {hasPendingSkillLaunch && !agentId && !agentsLoading && !agentsRefreshing && (
@@ -523,31 +526,33 @@ export default function NewTaskPage() {
                   }
                 />
               )}
-              <AgentHomeComposer
-                agentId={agentId ?? ''}
-                sessionId={temporaryAgentSessionId}
-                draftScopeKey={agentDraftScopeKey}
-                sessionOverride={{ workspace: agentWorkspace, workspaceId: agentWorkspaceId }}
-                resolvedAgent={agent}
-                resolvedModel={agentModel}
-                resolvedWorkspaceWarning={null}
-                sendMessage={handleAgentSend}
-                stop={async () => undefined}
-                onAgentChange={handleAgentChange}
-                agentChanging={agentLoading}
-                workspaceId={agentWorkspaceId}
-                onWorkspaceChange={handleWorkspaceChange}
-                isStreaming={false}
-                sendDisabled={
-                  !agentId ||
-                  agentModelLoading ||
-                  !agentModel ||
-                  (hasPendingSkillLaunch &&
-                    (isSkillBindingLoading || requiresSkillBinding || isLaunchSkillUnavailable || !canUseLaunchSkill))
-                }
-                launchOptions={canUseLaunchSkill ? skillLaunchOptions : undefined}
-                onDraftCleared={handleDraftCleared}
-              />
+              <QuickPanelProvider>
+                <AgentHomeComposer
+                  agentId={agentId ?? ''}
+                  sessionId={temporaryAgentSessionId}
+                  draftScopeKey={agentDraftScopeKey}
+                  sessionOverride={{ workspace: agentWorkspace, workspaceId: agentWorkspaceId }}
+                  resolvedAgent={agent}
+                  resolvedModel={agentModel}
+                  resolvedWorkspaceWarning={null}
+                  sendMessage={handleAgentSend}
+                  stop={async () => undefined}
+                  onAgentChange={handleAgentChange}
+                  agentChanging={agentLoading}
+                  workspaceId={agentWorkspaceId}
+                  onWorkspaceChange={handleWorkspaceChange}
+                  isStreaming={false}
+                  sendDisabled={
+                    !agentId ||
+                    agentModelLoading ||
+                    !agentModel ||
+                    (hasPendingSkillLaunch &&
+                      (isSkillBindingLoading || requiresSkillBinding || isLaunchSkillUnavailable || !canUseLaunchSkill))
+                  }
+                  launchOptions={canUseLaunchSkill ? skillLaunchOptions : undefined}
+                  onDraftCleared={handleDraftCleared}
+                />
+              </QuickPanelProvider>
             </TabsContent>
           </Tabs>
         </div>

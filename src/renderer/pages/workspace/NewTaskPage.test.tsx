@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest'
 
+import { QuickPanelProvider, useQuickPanel } from '@renderer/components/QuickPanel'
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ComponentProps, ReactNode } from 'react'
@@ -38,6 +39,7 @@ const mocks = vi.hoisted(() => ({
   updateAgent: vi.fn(),
   updateGlobalEnabled: vi.fn(),
   refreshAgentSkills: vi.fn(),
+  renderQuickPanelHarness: false,
   chatProps: undefined as Record<string, unknown> | undefined,
   agentProps: undefined as Record<string, unknown> | undefined
 }))
@@ -79,19 +81,69 @@ vi.mock('@renderer/assets/images/logo.png', () => ({ default: 'logo.png' }))
 
 vi.mock('@renderer/components/composer/variants/ChatComposer', async () => {
   const React = await import('react')
+  const { useQuickPanel } = await import('@renderer/components/QuickPanel')
+
   return {
     ChatPlacementComposer: (props: Record<string, unknown>) => {
       mocks.chatProps = props
-      return React.createElement('div', { 'aria-label': 'chat-composer' })
+      if (!mocks.renderQuickPanelHarness) return React.createElement('div', { 'aria-label': 'chat-composer' })
+
+      const ChatQuickPanelHarness = () => {
+        const quickPanel = useQuickPanel()
+        return React.createElement(
+          React.Fragment,
+          null,
+          React.createElement('output', { 'aria-label': 'quick-panel-visible' }, String(quickPanel.isVisible)),
+          React.createElement(
+            'button',
+            {
+              onClick: () =>
+                quickPanel.open({
+                  list: [],
+                  symbol: '/',
+                  queryAnchor: 0,
+                  trackInputQuery: true,
+                  triggerInfo: { type: 'input', position: 0, originalText: '/' }
+                })
+            },
+            'Type slash'
+          )
+        )
+      }
+
+      return React.createElement(ChatQuickPanelHarness)
     }
   }
 })
 
 vi.mock('@renderer/components/composer/variants/AgentComposer', async () => {
   const React = await import('react')
+  const { useQuickPanel } = await import('@renderer/components/QuickPanel')
+
   return {
     AgentHomeComposer: (props: Record<string, unknown>) => {
       mocks.agentProps = props
+
+      const AgentQuickPanelHarness = () => {
+        const quickPanel = useQuickPanel()
+        React.useEffect(() => {
+          if (quickPanel.isVisible && quickPanel.triggerInfo?.type === 'input') {
+            quickPanel.close('input_trigger_removed')
+          }
+        }, [quickPanel])
+
+        return React.createElement(
+          'div',
+          { 'aria-label': 'agent-composer' },
+          React.createElement(
+            'button',
+            { onClick: () => (props.onAgentChange as (id: string) => void)('agent-1') },
+            'Select agent'
+          )
+        )
+      }
+
+      if (mocks.renderQuickPanelHarness) return React.createElement(AgentQuickPanelHarness)
       return React.createElement(
         'div',
         { 'aria-label': 'agent-composer' },
@@ -229,6 +281,7 @@ beforeEach(() => {
     { id: 'craftsman-agent', name: 'User-renamed builtin', configuration: { builtin_role: 'assistant' } }
   ]
   mocks.lastUsedAssistantId = 'assistant-2'
+  mocks.renderQuickPanelHarness = false
   mocks.routeSearch = {}
   mocks.globalSkills = []
   mocks.agentSkillsByAgent = {}
@@ -254,6 +307,21 @@ afterEach(() => {
 })
 
 describe('NewTaskPage', () => {
+  it('keeps the chat slash panel open while the inactive agent composer is mounted', async () => {
+    mocks.renderQuickPanelHarness = true
+    const user = userEvent.setup()
+
+    render(
+      <QuickPanelProvider>
+        <NewTaskPage />
+      </QuickPanelProvider>
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Type slash' }))
+
+    await waitFor(() => expect(screen.getByLabelText('quick-panel-visible')).toHaveTextContent('true'))
+  })
+
   it('uses the shared default assistant priority for new chat tasks', () => {
     render(<NewTaskPage />)
 
