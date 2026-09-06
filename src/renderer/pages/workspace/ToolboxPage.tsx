@@ -1,3 +1,4 @@
+import { Scrollbar } from '@cherrystudio/ui'
 import { useMiniAppPopup } from '@renderer/hooks/useMiniAppPopup'
 import { cn } from '@renderer/utils/style'
 import { ArrowUpRight } from 'lucide-react'
@@ -51,6 +52,37 @@ const PRODUCTS: ToolboxProduct[] = [
     descriptionKey: 'workspace.toolbox.products.ontology.description',
     url: 'https://mro.xuelangyun.com/aiops/#/',
     toneClass: 'bg-warning-subtle text-warning-subtle-foreground'
+  },
+  {
+    id: 'tuling',
+    nameKey: 'workspace.toolbox.products.tuling.name',
+    taglineKey: 'workspace.toolbox.products.tuling.tagline',
+    descriptionKey: 'workspace.toolbox.products.tuling.description',
+    url: 'https://tl.xuelangyun.com/',
+    toneClass: 'bg-chart-2/15 text-chart-2'
+  },
+  {
+    id: 'production-control',
+    nameKey: 'workspace.toolbox.products.productionControl.name',
+    taglineKey: 'workspace.toolbox.products.productionControl.tagline',
+    descriptionKey: 'workspace.toolbox.products.productionControl.description',
+    url: 'http://10.88.40.213:3000/',
+    toneClass: 'bg-info-subtle text-info-subtle-foreground'
+  },
+  {
+    id: 'pro',
+    nameKey: 'workspace.toolbox.products.pro.name',
+    taglineKey: 'workspace.toolbox.products.pro.tagline',
+    descriptionKey: 'workspace.toolbox.products.pro.description',
+    toneClass: 'bg-success-subtle text-success-subtle-foreground'
+  },
+  {
+    id: 'aiops',
+    nameKey: 'workspace.toolbox.products.aiops.name',
+    taglineKey: 'workspace.toolbox.products.aiops.tagline',
+    descriptionKey: 'workspace.toolbox.products.aiops.description',
+    url: 'https://mro.xuelangyun.com/aiops/#/login',
+    toneClass: 'bg-warning-subtle text-warning-subtle-foreground'
   }
 ]
 
@@ -71,47 +103,58 @@ const ToolboxPage: FC = () => {
   )
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-y-auto bg-background">
-      <main className="flex min-h-[520px] flex-1 items-start justify-center px-6 pt-35 pb-12">
-        <div className="w-full max-w-2xl">
-          <div className="text-center">
-            <h2 className="font-semibold text-2xl tracking-tight">{t('workspace.toolbox.title')}</h2>
-            <p className="mt-2 text-muted-foreground text-sm">{t('workspace.toolbox.subtitle')}</p>
-          </div>
-          <div className="mt-8 grid grid-cols-1 gap-3 md:grid-cols-2">
+    <div className="flex h-full min-h-0 flex-col bg-background">
+      <main className="flex min-h-0 flex-1 flex-col">
+        <div className="shrink-0 px-6 pt-7 pb-5">
+          <h2 className="font-semibold text-xl">{t('workspace.toolbox.title')}</h2>
+          <p className="mt-1.5 max-w-3xl text-muted-foreground text-sm leading-6">{t('workspace.toolbox.subtitle')}</p>
+        </div>
+
+        <Scrollbar className="@container/toolbox min-h-0 flex-1 px-6 pb-6">
+          <div
+            className="grid @[1120px]/toolbox:grid-cols-4 @[560px]/toolbox:grid-cols-2 @[840px]/toolbox:grid-cols-3 grid-cols-1 gap-3"
+            role="list">
             {PRODUCTS.map((product) => (
               <button
                 key={product.id}
                 type="button"
                 disabled={!product.url}
                 onClick={() => openProduct(product)}
-                className="group relative flex min-h-28 cursor-pointer items-start gap-3 rounded-lg border border-border-subtle bg-card p-4 text-left transition-[border-color,box-shadow] hover:border-border-strong hover:shadow-sm focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-default disabled:hover:border-border-subtle disabled:hover:shadow-none">
-                <span
-                  aria-hidden
-                  className={cn(
-                    'flex size-11 shrink-0 items-center justify-center rounded-lg font-semibold text-lg',
-                    product.toneClass
-                  )}>
-                  {t(product.nameKey).slice(0, 1)}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block font-medium text-sm">{t(product.nameKey)}</span>
-                  <span className="mt-0.5 block text-muted-foreground text-xs">{t(product.taglineKey)}</span>
-                  <span className="mt-1.5 block text-muted-foreground text-xs leading-relaxed">
-                    {t(product.descriptionKey)}
-                  </span>
-                </span>
-                {product.url && (
-                  <ArrowUpRight
-                    size={14}
+                className="group relative flex min-h-36 cursor-pointer flex-col rounded-lg border border-border-subtle bg-card p-4 text-left transition-[background-color,border-color,box-shadow] hover:border-border-strong hover:bg-background-subtle hover:shadow-sm focus-visible:border-ring focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-default disabled:opacity-70 disabled:hover:border-border-subtle disabled:hover:bg-card disabled:hover:shadow-none">
+                <span className="flex w-full min-w-0 items-start gap-3">
+                  <span
                     aria-hidden
-                    className="absolute right-3.5 bottom-3 text-foreground-tertiary opacity-0 transition-opacity group-hover:opacity-100"
-                  />
-                )}
+                    className={cn(
+                      'flex size-10 shrink-0 items-center justify-center rounded-lg font-semibold text-base',
+                      product.toneClass
+                    )}>
+                    {t(product.nameKey).slice(0, 1)}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-semibold text-base leading-5">{t(product.nameKey)}</span>
+                    <span className="mt-1 line-clamp-2 block text-muted-foreground text-xs leading-4">
+                      {t(product.taglineKey)}
+                    </span>
+                  </span>
+                  {product.url ? (
+                    <ArrowUpRight
+                      size={15}
+                      aria-hidden
+                      className="group-hover:-translate-y-0.5 mt-0.5 shrink-0 text-foreground-tertiary opacity-0 transition-[opacity,transform] group-hover:translate-x-0.5 group-hover:opacity-100 group-focus-visible:opacity-100"
+                    />
+                  ) : (
+                    <span className="shrink-0 rounded-md bg-background-subtle px-2 py-1 text-[10px] text-foreground-tertiary">
+                      {t('agent.channels.comingSoon')}
+                    </span>
+                  )}
+                </span>
+                <span className="mt-4 line-clamp-2 text-muted-foreground text-sm leading-5">
+                  {t(product.descriptionKey)}
+                </span>
               </button>
             ))}
           </div>
-        </div>
+        </Scrollbar>
       </main>
     </div>
   )

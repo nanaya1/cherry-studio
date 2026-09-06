@@ -39,7 +39,11 @@ const TOOLBOX_PRODUCT_NAME_KEYS: Record<string, string> = {
   mdo: 'workspace.toolbox.products.mdo.name',
   metam: 'workspace.toolbox.products.metam.name',
   rto: 'workspace.toolbox.products.rto.name',
-  ontology: 'workspace.toolbox.products.ontology.name'
+  ontology: 'workspace.toolbox.products.ontology.name',
+  tuling: 'workspace.toolbox.products.tuling.name',
+  'production-control': 'workspace.toolbox.products.productionControl.name',
+  pro: 'workspace.toolbox.products.pro.name',
+  aiops: 'workspace.toolbox.products.aiops.name'
 }
 
 export const AppShell = () => {
