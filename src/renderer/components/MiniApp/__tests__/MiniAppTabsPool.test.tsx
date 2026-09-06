@@ -447,6 +447,47 @@ describe('MiniAppTabsPool', () => {
     expect(mocks.setMiniAppShow).toHaveBeenCalledWith(true)
   })
 
+  it('keeps the active app pooled while the single-tab URL rewrite is still in flight', async () => {
+    // Single-tab mode: openTab rewrites the active tab's URL in place while the
+    // keep-alive cache write (a sync store) already landed. On that render the
+    // tabs store still holds the pre-rewrite URL — the app looks orphaned, and
+    // evicting it ping-pongs with MiniAppPage's register effect forever (the
+    // toolbox freeze loop). Orphan cleanup defers the removal past the commit
+    // window and re-verifies; by then the tabs store has committed the
+    // rewritten URL, so nothing is evicted.
+    vi.useFakeTimers()
+    try {
+      mocks.openedKeepAliveMiniApps = [stubApp('toolbox-mdo')]
+      mocks.currentMiniAppId = 'toolbox-mdo'
+      mocks.tabs = [{ id: 't1', url: '/app/toolbox' }]
+      mocks.activeTabId = 't1'
+
+      const { rerender } = render(<MiniAppTabsPool />)
+
+      // The tabs store commits the rewritten URL before the deferred re-check's
+      // delay elapses.
+      mocks.tabs = [{ id: 't1', url: '/app/mini-app/toolbox-mdo' }]
+      act(() => {
+        rerender(<MiniAppTabsPool />)
+      })
+      act(() => {
+        vi.advanceTimersByTime(250)
+      })
+
+      expect(mocks.setOpenedKeepAliveMiniApps).not.toHaveBeenCalled()
+      expect(clearWebviewState).not.toHaveBeenCalledWith('toolbox-mdo')
+
+      // With the URL committed, the app is tab-referenced and stays pooled even
+      // after subsequent renders.
+      act(() => {
+        rerender(<MiniAppTabsPool />)
+      })
+      expect(mocks.setOpenedKeepAliveMiniApps).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('leaves a one-off current app untouched while orphan cleanup evicts pooled apps', async () => {
     mocks.openedKeepAliveMiniApps = [stubApp('alpha')]
     mocks.openedOneOffMiniApp = stubApp('solo')

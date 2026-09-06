@@ -28,6 +28,11 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
  */
 const logger = loggerService.withContext('MiniAppTabsPool')
 
+// Orphan-cleanup re-check delay: long enough to outlast the React commit that
+// lands a single-tab URL rewrite (the toolbox freeze race), short enough that a
+// genuinely dropped entry still frees its webview promptly.
+const ORPHAN_RECHECK_DELAY_MS = 200
+
 /**
  * Horizontal placement of one pane. Only the CSS box changes between split and
  * full width — the `<webview>` node itself never moves in the DOM, which would
@@ -165,13 +170,41 @@ const MiniAppTabsPool: React.FC = () => {
     if (splitOpen && splitMiniAppId) splitPooledIds.current.add(splitMiniAppId)
     const isReferenced = (appId: string) => tabMiniAppIds.has(appId) || splitPooledIds.current.has(appId)
     const orphanedApps = openedKeepAliveMiniApps.filter((app) => !isReferenced(app.appId))
-    if (orphanedApps.length === 0) return
+    if (orphanedApps.length === 0) {
+      if (orphanRecheckRef.current !== null) {
+        window.clearTimeout(orphanRecheckRef.current)
+        orphanRecheckRef.current = null
+      }
+      return
+    }
 
-    // The updater filters the latest stored pool, which can hold apps this render never
-    // saw — current/show must not be derived here; the realign effect below owns that.
-    setOpenedKeepAliveMiniApps((prev) => prev.filter((app) => isReferenced(app.appId)))
-    for (const app of orphanedApps) clearWebviewState(app.appId)
+    // Single-tab mode rewrites the active tab's URL in place, so the keep-alive
+    // write (a sync cache store) can land a render before the tabs store commits
+    // the new URL — on that render the fresh app still looks orphaned, and
+    // evicting it ping-pongs with MiniAppPage's register effect forever (the
+    // toolbox freeze loop). Defer the removal past the commit window and
+    // re-verify against the committed tabs before dropping anything.
+    if (orphanRecheckRef.current !== null) return
+    const orphanSnapshot = orphanedApps
+    orphanRecheckRef.current = window.setTimeout(() => {
+      orphanRecheckRef.current = null
+      const stillReferenced = (appId: string) => latestTabIdsRef.current.has(appId) || splitPooledIds.current.has(appId)
+      const confirmed = orphanSnapshot.filter((app) => !stillReferenced(app.appId))
+      if (confirmed.length === 0) return
+      setOpenedKeepAliveMiniApps((prev) => prev.filter((app) => stillReferenced(app.appId)))
+      for (const app of confirmed) clearWebviewState(app.appId)
+    }, ORPHAN_RECHECK_DELAY_MS)
   }, [openedKeepAliveMiniApps, setOpenedKeepAliveMiniApps, splitMiniAppId, splitOpen, tabMiniAppIds])
+
+  const orphanRecheckRef = useRef<number | null>(null)
+  const latestTabIdsRef = useRef(tabMiniAppIds)
+  latestTabIdsRef.current = tabMiniAppIds
+  useEffect(
+    () => () => {
+      if (orphanRecheckRef.current !== null) window.clearTimeout(orphanRecheckRef.current)
+    },
+    []
+  )
 
   // Realign a current id that resolves to no shown app. Always-on, not gated behind orphan
   // cleanup: a stale-snapshot decision then self-heals on the fresh-pool re-run.
