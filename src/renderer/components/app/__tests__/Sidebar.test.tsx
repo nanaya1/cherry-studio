@@ -423,6 +423,7 @@ describe('app Sidebar', () => {
 
     expect(getSidebarProps().navigationEntries?.map((entry) => entry.label)).toEqual([
       'New task',
+      'workspace.toolbox.title',
       'Skills & Connectors',
       'Scheduled Tasks'
     ])

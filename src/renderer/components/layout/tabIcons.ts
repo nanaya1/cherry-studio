@@ -13,7 +13,8 @@ import {
   Rocket,
   ScanSearch,
   Settings,
-  Sparkles
+  Sparkles,
+  Wrench
 } from 'lucide-react'
 
 export type IconComponent = React.FC<{ size?: number; strokeWidth?: number; className?: string }>
@@ -23,6 +24,7 @@ export type IconComponent = React.FC<{ size?: number; strokeWidth?: number; clas
 export const ROUTE_ICONS: Record<string, IconComponent> = {
   '/app/chat': MessageCircle,
   '/app/agents': MousePointerClick,
+  '/app/toolbox': Wrench,
   '/app/paintings': Palette,
   '/app/translate': Languages,
   '/app/mini-app': LayoutGrid,

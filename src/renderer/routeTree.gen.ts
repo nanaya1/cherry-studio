@@ -38,6 +38,7 @@ import { Route as SettingsAppearanceRouteImport } from './routes/settings/appear
 import { Route as SettingsApiGatewayRouteImport } from './routes/settings/api-gateway'
 import { Route as SettingsAboutRouteImport } from './routes/settings/about'
 import { Route as AppTranslateRouteImport } from './routes/app/translate'
+import { Route as AppToolboxRouteImport } from './routes/app/toolbox'
 import { Route as AppSkillsConnectorsRouteImport } from './routes/app/skills-connectors'
 import { Route as AppScheduledTasksRouteImport } from './routes/app/scheduled-tasks'
 import { Route as AppResourcesRouteImport } from './routes/app/resources'
@@ -214,6 +215,11 @@ const AppTranslateRoute = AppTranslateRouteImport.update({
   path: '/translate',
   getParentRoute: () => AppRoute,
 } as any)
+const AppToolboxRoute = AppToolboxRouteImport.update({
+  id: '/toolbox',
+  path: '/toolbox',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppSkillsConnectorsRoute = AppSkillsConnectorsRouteImport.update({
   id: '/skills-connectors',
   path: '/skills-connectors',
@@ -379,6 +385,7 @@ export interface FileRoutesByFullPath {
   '/app/resources': typeof AppResourcesRoute
   '/app/scheduled-tasks': typeof AppScheduledTasksRouteWithChildren
   '/app/skills-connectors': typeof AppSkillsConnectorsRoute
+  '/app/toolbox': typeof AppToolboxRoute
   '/app/translate': typeof AppTranslateRoute
   '/settings/about': typeof SettingsAboutRoute
   '/settings/api-gateway': typeof SettingsApiGatewayRoute
@@ -437,6 +444,7 @@ export interface FileRoutesByTo {
   '/app/release-notes': typeof AppReleaseNotesRoute
   '/app/resources': typeof AppResourcesRoute
   '/app/skills-connectors': typeof AppSkillsConnectorsRoute
+  '/app/toolbox': typeof AppToolboxRoute
   '/app/translate': typeof AppTranslateRoute
   '/settings/about': typeof SettingsAboutRoute
   '/settings/api-gateway': typeof SettingsApiGatewayRoute
@@ -496,6 +504,7 @@ export interface FileRoutesById {
   '/app/resources': typeof AppResourcesRoute
   '/app/scheduled-tasks': typeof AppScheduledTasksRouteWithChildren
   '/app/skills-connectors': typeof AppSkillsConnectorsRoute
+  '/app/toolbox': typeof AppToolboxRoute
   '/app/translate': typeof AppTranslateRoute
   '/settings/about': typeof SettingsAboutRoute
   '/settings/api-gateway': typeof SettingsApiGatewayRoute
@@ -558,6 +567,7 @@ export interface FileRouteTypes {
     | '/app/resources'
     | '/app/scheduled-tasks'
     | '/app/skills-connectors'
+    | '/app/toolbox'
     | '/app/translate'
     | '/settings/about'
     | '/settings/api-gateway'
@@ -616,6 +626,7 @@ export interface FileRouteTypes {
     | '/app/release-notes'
     | '/app/resources'
     | '/app/skills-connectors'
+    | '/app/toolbox'
     | '/app/translate'
     | '/settings/about'
     | '/settings/api-gateway'
@@ -674,6 +685,7 @@ export interface FileRouteTypes {
     | '/app/resources'
     | '/app/scheduled-tasks'
     | '/app/skills-connectors'
+    | '/app/toolbox'
     | '/app/translate'
     | '/settings/about'
     | '/settings/api-gateway'
@@ -929,6 +941,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppTranslateRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/toolbox': {
+      id: '/app/toolbox'
+      path: '/toolbox'
+      fullPath: '/app/toolbox'
+      preLoaderRoute: typeof AppToolboxRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/app/skills-connectors': {
       id: '/app/skills-connectors'
       path: '/skills-connectors'
@@ -1162,6 +1181,7 @@ interface AppRouteChildren {
   AppResourcesRoute: typeof AppResourcesRoute
   AppScheduledTasksRoute: typeof AppScheduledTasksRouteWithChildren
   AppSkillsConnectorsRoute: typeof AppSkillsConnectorsRoute
+  AppToolboxRoute: typeof AppToolboxRoute
   AppTranslateRoute: typeof AppTranslateRoute
   AppMiniAppAppIdRoute: typeof AppMiniAppAppIdRoute
   AppPaintingsSplatRoute: typeof AppPaintingsSplatRoute
@@ -1183,6 +1203,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppResourcesRoute: AppResourcesRoute,
   AppScheduledTasksRoute: AppScheduledTasksRouteWithChildren,
   AppSkillsConnectorsRoute: AppSkillsConnectorsRoute,
+  AppToolboxRoute: AppToolboxRoute,
   AppTranslateRoute: AppTranslateRoute,
   AppMiniAppAppIdRoute: AppMiniAppAppIdRoute,
   AppPaintingsSplatRoute: AppPaintingsSplatRoute,

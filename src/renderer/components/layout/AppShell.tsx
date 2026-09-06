@@ -14,6 +14,7 @@ import { DefaultRendererPersistCache } from '@shared/data/cache/cacheSchemas'
 import { isSettingsPath } from '@shared/data/types/settingsPath'
 import { MIN_WINDOW_HEIGHT, SECOND_MIN_WINDOW_WIDTH } from '@shared/utils/window'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import Sidebar from '../app/Sidebar'
 import { createRecentRouteEntryFromTab, recordGlobalSearchRecentEntry } from '../GlobalSearch/globalSearchGroups'
@@ -29,13 +30,33 @@ import { TabRouter } from './TabRouter'
 const isCompactMinWidthRoute = (url?: string): boolean =>
   !!url && (url.startsWith('/app/chat') || url.startsWith('/app/agents'))
 
+// Toolbox products open as transient mini apps whose appId carries this prefix
+// (see ToolboxPage's openSmartMiniApp call); the remainder names the product.
+const TOOLBOX_APP_ID_PREFIX = 'toolbox-'
+
+// Breadcrumb name keys, explicit (template literals in t() are banned by the i18n lint rule).
+const TOOLBOX_PRODUCT_NAME_KEYS: Record<string, string> = {
+  mdo: 'workspace.toolbox.products.mdo.name',
+  metam: 'workspace.toolbox.products.metam.name',
+  rto: 'workspace.toolbox.products.rto.name',
+  ontology: 'workspace.toolbox.products.ontology.name'
+}
+
 export const AppShell = () => {
+  const { t: i18nT } = useTranslation()
   const isMacTransparentWindow = useMacTransparentWindow()
   const { tabs, activeTabId, setActiveTab, closeTab, closeTabs, updateTab, reorderTabs, pinTab, unpinTab, detachTab } =
     useTabs()
   const activeTab = useMemo(() => tabs.find((tab) => tab.id === activeTabId), [activeTabId, tabs])
   const canCycleTabs = tabs.length > 1 && !!activeTab
   const isSettingsTabActive = isSettingsPath(activeTab?.url)
+  // A toolbox product runs inside a transient mini-app tab (/app/mini-app/toolbox-<id>).
+  // That tab is a focused-tab view like settings: breadcrumb back to /app/toolbox.
+  const toolboxProductId = useMemo(() => {
+    const miniAppId = miniAppIdFromTabUrl(activeTab?.url)
+    return miniAppId?.startsWith(TOOLBOX_APP_ID_PREFIX) ? miniAppId.slice(TOOLBOX_APP_ID_PREFIX.length) : null
+  }, [activeTab?.url])
+  const isFocusedTabView = isSettingsTabActive || toolboxProductId != null
   const hideSidebar = isSettingsTabActive
   // Single-tab mode: entering settings rewrites the (only) tab's URL, so the
   // pre-settings workspace URL must be remembered to restore it on "back".
@@ -63,6 +84,20 @@ export const AppShell = () => {
     updateTab(activeTab.id, {
       url: previousWorkspaceUrlRef.current ?? '/app/new-task',
       title: '',
+      icon: undefined,
+      metadata: undefined,
+      lastAccessTime: Date.now()
+    })
+  }, [activeTab, updateTab])
+
+  // Toolbox breadcrumb back: the product tab replaced this tab's URL in place
+  // (single-tab mode), so restoring /app/toolbox is enough. Default title is
+  // rewritten from the route so the Wrench icon + localized label return.
+  const handleToolboxBack = useCallback(() => {
+    if (!SINGLE_TAB_MODE || !activeTab) return
+    updateTab(activeTab.id, {
+      url: '/app/toolbox',
+      title: getDefaultRouteTitle('/app/toolbox'),
       icon: undefined,
       metadata: undefined,
       lastAccessTime: Date.now()
@@ -203,8 +238,18 @@ export const AppShell = () => {
       tabs={tabBarTabs}
       activeTabId={activeTabId}
       isFullscreen={isFullscreen}
-      isFocusedTab={isSettingsTabActive}
-      onFocusedTabBack={SINGLE_TAB_MODE ? handleSettingsBack : undefined}
+      isFocusedTab={isFocusedTabView}
+      onFocusedTabBack={
+        SINGLE_TAB_MODE ? (toolboxProductId != null ? handleToolboxBack : handleSettingsBack) : undefined
+      }
+      focusedTabBreadcrumb={
+        toolboxProductId != null
+          ? {
+              label: i18nT('workspace.toolbox.title'),
+              current: i18nT(TOOLBOX_PRODUCT_NAME_KEYS[toolboxProductId] ?? 'workspace.toolbox.title')
+            }
+          : undefined
+      }
       setActiveTab={setActiveTab}
       closeTab={handleCloseTab}
       closeTabs={closeTabs}
@@ -238,7 +283,7 @@ export const AppShell = () => {
     </div>
   )
 
-  const showTabBar = !isMac || isSettingsTabActive
+  const showTabBar = !isMac || isFocusedTabView
   const contentColumn = (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       {showTabBar ? tabBar : null}

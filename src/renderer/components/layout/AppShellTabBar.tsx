@@ -32,6 +32,8 @@ type AppShellTabBarProps = {
   /** Shown instead of tab chips: a plain back button plus window controls. */
   isFocusedTab?: boolean
   onFocusedTabBack?: () => void
+  /** Replaces the back button's plain label with "label / current" (e.g. 工具箱 / 图灵). */
+  focusedTabBreadcrumb?: { label: string; current: string }
   setActiveTab: (id: string) => void
   closeTab: (id: string) => void
   closeTabs: (ids: readonly string[], activateId?: string) => void
@@ -151,10 +153,11 @@ const MACOS_TAB_STRIP_TRAFFIC_LIGHT_RESERVE = 'max(0px, calc(env(titlebar-area-x
 
 type BackButtonProps = {
   onBack: () => void
+  breadcrumb?: { label: string; current: string }
 }
 
 /** A plain back affordance for full-page views — not a tab, carries no tab identity. */
-const BackButton = ({ onBack }: BackButtonProps) => {
+const BackButton = ({ onBack, breadcrumb }: BackButtonProps) => {
   const { t } = useTranslation()
 
   return (
@@ -163,9 +166,19 @@ const BackButton = ({ onBack }: BackButtonProps) => {
       type="button"
       aria-label={t('common.back')}
       onClick={onBack}
-      className="group nodrag flex h-8 w-auto shrink-0 appearance-none items-center gap-1.5 border-0 bg-transparent px-2.5 text-muted-foreground text-sm shadow-none transition-colors [-webkit-app-region:no-drag] hover:text-foreground cursor-pointer">
+      className="group nodrag flex h-8 w-auto shrink-0 cursor-pointer appearance-none items-center gap-1.5 border-0 bg-transparent px-2.5 text-muted-foreground text-sm shadow-none transition-colors [-webkit-app-region:no-drag] hover:text-foreground">
       <ArrowLeft className="transition-colors group-hover:text-foreground" size={16} strokeWidth={1.7} aria-hidden />
-      <span>{t('common.back')}</span>
+      {breadcrumb ? (
+        <span className="flex items-center gap-1.5">
+          <span>{breadcrumb.label}</span>
+          <span aria-hidden className="text-foreground-tertiary">
+            /
+          </span>
+          <span className="text-foreground-tertiary">{breadcrumb.current}</span>
+        </span>
+      ) : (
+        <span>{t('common.back')}</span>
+      )}
     </button>
   )
 }
@@ -568,6 +581,7 @@ export const AppShellTabBar = ({
   isFullscreen = false,
   isFocusedTab = false,
   onFocusedTabBack,
+  focusedTabBreadcrumb,
   setActiveTab,
   closeTab,
   closeTabs,
@@ -890,13 +904,21 @@ export const AppShellTabBar = ({
           isMacTransparentWindow ? 'bg-transparent' : 'bg-sidebar',
           'pl-0'
         )}>
-        {/* Tab buttons are no-drag; empty tabbar space remains available for moving the window. */}
+        {/* Tab buttons are no-drag; empty tabbar space remains available for moving the window.
+            Focused views differ: settings hides the sidebar (raw traffic-light reserve),
+            a toolbox product keeps it (subtract --sidebar-width like the normal strip). */}
         <div
           ref={stripRef}
           data-testid="app-shell-tab-strip"
           style={
             isMac && !isFullscreen
-              ? { paddingLeft: isFocusedTab ? 'env(titlebar-area-x)' : MACOS_TAB_STRIP_TRAFFIC_LIGHT_RESERVE }
+              ? {
+                  paddingLeft: isFocusedTab
+                    ? focusedTabBreadcrumb
+                      ? MACOS_TAB_STRIP_TRAFFIC_LIGHT_RESERVE
+                      : 'env(titlebar-area-x)'
+                    : MACOS_TAB_STRIP_TRAFFIC_LIGHT_RESERVE
+                }
               : undefined
           }
           onMouseEnter={() => {
@@ -907,7 +929,7 @@ export const AppShellTabBar = ({
           className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto pr-1 [&::-webkit-scrollbar]:hidden">
           {isFocusedTab && onFocusedTabBack && (
             <div className="flex items-center [-webkit-app-region:no-drag]">
-              <BackButton onBack={onFocusedTabBack} />
+              <BackButton onBack={onFocusedTabBack} breadcrumb={focusedTabBreadcrumb} />
             </div>
           )}
 

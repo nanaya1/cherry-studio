@@ -30,7 +30,7 @@ import {
   tabBelongsToApp
 } from '@renderer/utils/sidebar'
 import { APP_NAME } from '@shared/utils/constants'
-import { CalendarClock, Plus, Puzzle, Shapes } from 'lucide-react'
+import { CalendarClock, Plus, Puzzle, Shapes, Wrench } from 'lucide-react'
 import type { Ref } from 'react'
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -357,6 +357,13 @@ export default function Sidebar({
         presentation: 'primary' as const,
         isActive: () => pathname.startsWith('/app/new-task'),
         onOpen: () => navigateRouteTab('/app/new-task', t('workspace.newTask.title'))
+      },
+      {
+        key: 'workspace:toolbox',
+        label: t('workspace.toolbox.title'),
+        renderIcon: (size: number) => <Wrench size={size} />,
+        isActive: () => pathname.startsWith('/app/toolbox'),
+        onOpen: () => navigateRouteTab('/app/toolbox', t('workspace.toolbox.title'))
       },
       {
         key: 'workspace:skills-connectors',
