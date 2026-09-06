@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest'
 
-import { QuickPanelProvider, useQuickPanel } from '@renderer/components/QuickPanel'
+import { QuickPanelProvider } from '@renderer/components/QuickPanel'
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ComponentProps, ReactNode } from 'react'
@@ -113,6 +113,7 @@ vi.mock('@renderer/components/composer/variants/ChatComposer', async () => {
     focus: vi.fn(),
     getCursorOffset: () => 1,
     getText: () => '/',
+    insertText: vi.fn(),
     subscribeInput: vi.fn()
   }
 
@@ -128,11 +129,16 @@ vi.mock('@renderer/components/composer/variants/ChatComposer', async () => {
           null,
           React.createElement('output', { 'aria-label': 'quick-panel-visible' }, String(quickPanel.isVisible)),
           React.createElement(
+            'output',
+            { 'aria-label': 'quick-panel-visible' },
+            String(quickPanel.isVisible)
+          ),
+          React.createElement(
             'button',
             {
               onClick: () =>
                 quickPanel.open({
-                  list: [{ id: 'chat-action', label: 'Chat action' }],
+                  list: [{ id: 'chat-action', label: 'Chat action', icon: undefined }],
                   symbol: '/',
                   queryAnchor: 0,
                   trackInputQuery: true,
@@ -158,6 +164,7 @@ vi.mock('@renderer/components/composer/variants/AgentComposer', async () => {
     focus: vi.fn(),
     getCursorOffset: () => 0,
     getText: () => '',
+    insertText: vi.fn(),
     subscribeInput: vi.fn()
   }
 
@@ -322,11 +329,6 @@ async function selectAgent() {
   expect(mocks.agentProps?.agentId).toBe('agent-1')
 }
 
-function QuickPanelState() {
-  const quickPanel = useQuickPanel()
-  return <output aria-label="quick-panel-visible">{String(quickPanel.isVisible)}</output>
-}
-
 beforeEach(() => {
   mocks.assistants = [{ id: 'assistant-1' }, { id: 'assistant-2' }]
   mocks.agents = [
@@ -369,7 +371,6 @@ describe('NewTaskPage', () => {
 
     render(
       <QuickPanelProvider>
-        <QuickPanelState />
         <NewTaskPage />
       </QuickPanelProvider>
     )
