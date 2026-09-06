@@ -107,7 +107,7 @@ const ToolboxPage: FC = () => {
       <main className="flex min-h-0 flex-1 flex-col">
         <div className="shrink-0 px-6 pt-7 pb-5">
           <h2 className="font-semibold text-xl">{t('workspace.toolbox.title')}</h2>
-          <p className="mt-1.5 max-w-3xl text-muted-foreground text-sm leading-6">{t('workspace.toolbox.subtitle')}</p>
+          <p className="mt-1.5 text-muted-foreground text-sm leading-6">{t('workspace.toolbox.subtitle')}</p>
         </div>
 
         <Scrollbar className="@container/toolbox min-h-0 flex-1 px-6 pb-6">

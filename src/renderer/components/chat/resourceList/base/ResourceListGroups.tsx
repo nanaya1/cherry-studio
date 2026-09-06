@@ -36,7 +36,7 @@ const EMPTY_GROUP_HEADER_ITEMS: ResourceListItemBase[] = []
  * short title as the section-header chevron. Non-empty groups keep their chevron pinned visible
  * (it is the only affordance that folds them); empty groups reveal it on hover like before.
  */
-const GROUP_HEADER_CHEVRON_SLOT_CLASS = '-ml-1.5 size-6 shrink-0 items-center justify-center text-muted-foreground'
+const GROUP_HEADER_CHEVRON_SLOT_CLASS = '-ml-1.5 shrink-0 items-center justify-center text-muted-foreground'
 const GROUP_HEADER_CHEVRON_SLOT_EMPTY_CLASS =
   'hidden group-hover/resource-list-group:flex group-has-[:focus-visible]/resource-list-group:flex group-has-data-[state=open]/resource-list-group:flex'
 
@@ -286,7 +286,7 @@ export function GroupHeader({ group, className, ref, style, onContextMenu, ...pr
             className={cn(
               GROUP_HEADER_CHEVRON_SLOT_CLASS,
               groupItems.length === 0 && GROUP_HEADER_CHEVRON_SLOT_EMPTY_CLASS,
-              'outline-none'
+              'size-6 outline-none'
             )}
             onClick={handleChevronClick}>
             {chevron}
