@@ -75,8 +75,8 @@ vi.mock('@cherrystudio/ui', () => {
       onDialogOpenChange = onOpenChange
       return open ? <>{children}</> : null
     },
-    DialogContent: ({ children }: { children: ReactNode }) => (
-      <div role="dialog">
+    DialogContent: ({ children, className, size }: { children: ReactNode; className?: string; size?: string }) => (
+      <div role="dialog" className={className} data-size={size}>
         {children}
         <button type="button" onClick={() => onDialogOpenChange?.(false)}>
           common.close
@@ -149,7 +149,9 @@ describe('SkillDetailDialog', () => {
   it('shows skill metadata and the restored file browser without delete entry points', () => {
     render(<SkillDetailDialog skill={createSkill()} open onOpenChange={vi.fn()} />)
 
-    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    const dialog = screen.getByRole('dialog')
+    expect(dialog).toHaveAttribute('data-size', 'xl')
+    expect(dialog).toHaveClass('max-h-[min(720px,calc(100vh-2rem))]')
     expect(screen.getByRole('heading', { name: 'Review Helper' })).toBeInTheDocument()
     expect(screen.getByText('Review pull requests')).toBeInTheDocument()
     expect(screen.getByText('library.skill_detail.created_at')).toBeInTheDocument()

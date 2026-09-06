@@ -144,7 +144,7 @@ const SkillDetailDialog: FC<Props> = ({ skill, open, onOpenChange, onDelete }) =
 
   return (
     <Dialog open={dialogOpen} onOpenChange={handleOpenChange}>
-      <DialogContent className="flex max-h-[calc(100vh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-[1050px]">
+      <DialogContent size="xl" className="flex max-h-[min(720px,calc(100vh-2rem))] flex-col gap-0 overflow-hidden p-0">
         <div className="shrink-0 px-7 pt-7 pb-6">
           <DialogHeader className="pr-8 text-left">
             <div className="flex min-w-0 items-start gap-4">
