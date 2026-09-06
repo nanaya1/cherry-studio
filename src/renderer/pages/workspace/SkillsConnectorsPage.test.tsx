@@ -10,7 +10,12 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('@renderer/components/resourceCatalog/catalog', () => ({
-  ResourceCatalogView: ({ resourceType }: { resourceType: string }) => <div>{`${resourceType} catalog`}</div>
+  SkillCatalogHeaderActions: () => <div>skill actions</div>,
+  SkillCatalogView: () => <div>skill catalog</div>
+}))
+
+vi.mock('@renderer/hooks/resourceCatalog', () => ({
+  useResourceCatalogController: () => ({})
 }))
 
 vi.mock('@renderer/services/mainWindowNavigation', () => ({
@@ -45,8 +50,9 @@ describe('SkillsConnectorsPage', () => {
     const user = userEvent.setup()
     render(<SkillsConnectorsPage />)
 
-    expect(screen.getByRole('heading', { name: 'Skills & Connectors' })).toBeVisible()
+    expect(screen.getByRole('tab', { name: 'Skills' })).toBeVisible()
     expect(screen.getByText('skill catalog')).toBeVisible()
+    expect(screen.getByText('skill actions')).toBeVisible()
 
     await user.click(screen.getByRole('tab', { name: 'Connectors' }))
     expect(screen.getByRole('heading', { name: 'Connectors' })).toBeVisible()

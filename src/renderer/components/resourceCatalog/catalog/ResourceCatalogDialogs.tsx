@@ -8,7 +8,7 @@ import {
   SystemSkillDialog
 } from '@renderer/components/resourceCatalog/dialogs/skill'
 import type { useResourceCatalogController } from '@renderer/hooks/resourceCatalog'
-import type { ResourceType } from '@renderer/types/resourceCatalog'
+import type { ResourceItem, ResourceType } from '@renderer/types/resourceCatalog'
 import { isNonChatModel } from '@shared/utils/model'
 
 import { AssistantLibraryDialog } from './AssistantLibraryDialog'
@@ -33,6 +33,22 @@ export function ResourceCatalogDialogs({
         open={Boolean(dialogs.selectedSkill)}
         onOpenChange={(open) => {
           if (!open) dialogs.setSelectedSkill(null)
+        }}
+        onDelete={() => {
+          const skill = dialogs.selectedSkill
+          if (!skill) return
+          const resource: Extract<ResourceItem, { type: 'skill' }> = {
+            type: 'skill',
+            id: skill.id,
+            name: skill.name,
+            description: skill.description ?? '',
+            avatar: '',
+            createdAt: skill.createdAt,
+            updatedAt: skill.updatedAt,
+            raw: skill
+          }
+          dialogs.setSelectedSkill(null)
+          dialogs.setDeleteConfirm(resource)
         }}
       />
       <ImportAssistantDialog

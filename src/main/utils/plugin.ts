@@ -25,6 +25,7 @@ export const PluginMetadataSchema = z.object({
   // Versioning (for future updates)
   version: z.string().optional(),
   author: z.string().optional(),
+  iconFileName: z.string().optional(),
 
   // Metadata
   size: z.number().nullable(), // file size in bytes

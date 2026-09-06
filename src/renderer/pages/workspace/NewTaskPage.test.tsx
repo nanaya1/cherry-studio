@@ -3,8 +3,17 @@ import '@testing-library/jest-dom/vitest'
 
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import type { ReactNode } from 'react'
+import type { ComponentProps, ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+type SkillFixture = {
+  id: string
+  name: string
+  description: string
+  folderName: string
+  isGlobalEnabled: boolean
+  isEnabled: boolean
+}
 
 const mocks = vi.hoisted(() => ({
   navigate: vi.fn(),
@@ -23,6 +32,12 @@ const mocks = vi.hoisted(() => ({
   ],
   lastUsedAssistantId: 'assistant-2' as string | null,
   setLastUsedAssistantId: vi.fn(),
+  routeSearch: {} as { mode?: 'chat' | 'agent'; skillId?: string },
+  globalSkills: [] as SkillFixture[],
+  agentSkillsByAgent: {} as Record<string, SkillFixture[]>,
+  updateAgent: vi.fn(),
+  updateGlobalEnabled: vi.fn(),
+  refreshAgentSkills: vi.fn(),
   chatProps: undefined as Record<string, unknown> | undefined,
   agentProps: undefined as Record<string, unknown> | undefined
 }))
@@ -30,7 +45,24 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@cherrystudio/ui', async () => {
   const React = await import('react')
   return {
-    Tabs: ({ children }: { children: ReactNode }) => React.createElement('div', null, children),
+    Alert: ({ action, message }: { action?: ReactNode; message?: ReactNode }) =>
+      React.createElement('div', { role: 'alert' }, message, action),
+    Button: ({
+      children,
+      loading,
+      size,
+      variant,
+      ...props
+    }: ComponentProps<'button'> & { loading?: boolean; size?: string; variant?: string }) => {
+      void loading
+      void size
+      void variant
+      return React.createElement('button', props, children)
+    },
+    Tabs: ({ children, onValueChange }: { children: ReactNode; onValueChange?: () => void }) => {
+      void onValueChange
+      return React.createElement('div', null, children)
+    },
     TabsContent: ({ children }: { children: ReactNode }) => React.createElement('div', null, children),
     TabsList: ({ children }: { children: ReactNode }) => React.createElement('div', null, children),
     TabsTrigger: ({ children }: { children: ReactNode }) => React.createElement('button', null, children)
@@ -80,17 +112,23 @@ vi.mock('@renderer/data/hooks/useCache', () => ({
 vi.mock('@renderer/data/hooks/useDataApi', () => ({
   useInvalidateCache: () => mocks.invalidateCache,
   useQuery: (path: string) => ({
-    data: path === '/agents' ? { items: mocks.agents } : [],
+    data: path === '/agents' ? { items: mocks.agents } : path === '/skills' ? mocks.globalSkills : [],
     isLoading: false,
-    isRefreshing: false
+    isRefreshing: false,
+    error: undefined
   })
 }))
 
 vi.mock('@renderer/hooks/agent/useAgent', () => ({
   useAgent: (id: string | null) => ({
-    agent: id ? { id, model: 'provider:model' } : undefined,
+    agent: id ? { ...mocks.agents.find((agent) => agent.id === id), id, model: 'provider:model' } : undefined,
     isLoading: false
   })
+}))
+
+vi.mock('@renderer/hooks/resourceCatalog', () => ({
+  useAgentMutationsById: () => ({ updateAgent: mocks.updateAgent }),
+  useSkillMutationsById: () => ({ updateGlobalEnabled: mocks.updateGlobalEnabled })
 }))
 
 vi.mock('@renderer/hooks/resourceViewSources', () => ({
@@ -125,6 +163,16 @@ vi.mock('@renderer/hooks/useProvider', () => ({
   useProviders: () => ({ providers: [] })
 }))
 
+vi.mock('@renderer/hooks/useSkills', () => ({
+  useInstalledSkills: (agentId?: string) => ({
+    skills: agentId ? (mocks.agentSkillsByAgent[agentId] ?? []) : [],
+    loading: false,
+    refreshing: false,
+    error: null,
+    refresh: mocks.refreshAgentSkills
+  })
+}))
+
 vi.mock('@renderer/hooks/useTopicMessages', () => ({
   useTopicMessages: () => ({ mutate: vi.fn() })
 }))
@@ -148,7 +196,8 @@ vi.mock('@renderer/services/toast', () => ({
 }))
 
 vi.mock('@tanstack/react-router', () => ({
-  useNavigate: () => mocks.navigate
+  useNavigate: () => mocks.navigate,
+  useSearch: () => mocks.routeSearch
 }))
 
 vi.mock('react-i18next', () => ({
@@ -180,6 +229,12 @@ beforeEach(() => {
     { id: 'craftsman-agent', name: 'User-renamed builtin', configuration: { builtin_role: 'assistant' } }
   ]
   mocks.lastUsedAssistantId = 'assistant-2'
+  mocks.routeSearch = {}
+  mocks.globalSkills = []
+  mocks.agentSkillsByAgent = {}
+  mocks.updateAgent.mockResolvedValue({})
+  mocks.updateGlobalEnabled.mockResolvedValue({})
+  mocks.refreshAgentSkills.mockResolvedValue(undefined)
   mocks.reuseOrCreateTopic.mockResolvedValue({ topic: { id: 'topic-1' } })
   mocks.reuseOrCreateSession.mockResolvedValue({
     session: { id: 'session-1' },
@@ -226,6 +281,74 @@ describe('NewTaskPage', () => {
     expect(mocks.agentProps?.draftScopeKey).toBe('new-task:tab-1:agent')
     expect(mocks.agentProps?.sendDisabled).toBe(false)
     expect(screen.getByLabelText('chat-composer')).toBeInTheDocument()
+  })
+
+  it('restores global enablement and binds an unbound launch skill before injecting it', async () => {
+    const skill = {
+      id: 'skill-1',
+      name: 'Review Helper',
+      description: 'Review changes',
+      folderName: 'review-helper',
+      isGlobalEnabled: false,
+      isEnabled: false
+    }
+    mocks.routeSearch = { mode: 'agent', skillId: skill.id }
+    mocks.globalSkills = [skill]
+    mocks.updateGlobalEnabled.mockImplementation(async () => {
+      skill.isGlobalEnabled = true
+      return skill
+    })
+    mocks.updateAgent.mockImplementation(async () => {
+      mocks.agentSkillsByAgent['craftsman-agent'] = [{ ...skill, isEnabled: true }]
+      return {}
+    })
+    render(<NewTaskPage />)
+
+    await waitFor(() => expect(mocks.agentProps?.agentId).toBe('craftsman-agent'))
+    expect(mocks.agentProps?.sendDisabled).toBe(true)
+    expect(mocks.agentProps?.launchOptions).toBeUndefined()
+
+    await userEvent.click(screen.getByRole('button', { name: 'workspace.newTask.skill.bindAction' }))
+
+    await waitFor(() => expect(mocks.agentProps?.sendDisabled).toBe(false))
+    expect(mocks.updateGlobalEnabled).toHaveBeenCalledWith(true)
+    expect(mocks.updateAgent).toHaveBeenCalledWith({ skillUpdates: [{ skillId: 'skill-1', isEnabled: true }] })
+    expect(mocks.updateGlobalEnabled.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.updateAgent.mock.invocationCallOrder[0]
+    )
+    expect(mocks.agentProps?.launchOptions).toBeDefined()
+  })
+
+  it('rechecks the launch skill when the user switches agents', async () => {
+    const skill = {
+      id: 'skill-1',
+      name: 'Review Helper',
+      description: 'Review changes',
+      folderName: 'review-helper',
+      isGlobalEnabled: true,
+      isEnabled: true
+    }
+    mocks.routeSearch = { mode: 'agent', skillId: skill.id }
+    mocks.globalSkills = [skill]
+    mocks.agentSkillsByAgent['craftsman-agent'] = [skill]
+    render(<NewTaskPage />)
+
+    await waitFor(() => expect(mocks.agentProps?.launchOptions).toBeDefined())
+    await selectAgent()
+
+    expect(mocks.agentProps?.sendDisabled).toBe(true)
+    expect(mocks.agentProps?.launchOptions).toBeUndefined()
+    expect(screen.getByRole('button', { name: 'workspace.newTask.skill.bindAction' })).toBeInTheDocument()
+  })
+
+  it('keeps an unavailable launch skill out of the composer', async () => {
+    mocks.routeSearch = { mode: 'agent', skillId: 'missing-skill' }
+    render(<NewTaskPage />)
+
+    await waitFor(() => expect(mocks.agentProps?.agentId).toBe('craftsman-agent'))
+    expect(screen.getByText('workspace.newTask.skill.unavailable')).toBeInTheDocument()
+    expect(mocks.agentProps?.sendDisabled).toBe(true)
+    expect(mocks.agentProps?.launchOptions).toBeUndefined()
   })
 
   it('replaces the current tab only after the chat composer clears a successful send', async () => {

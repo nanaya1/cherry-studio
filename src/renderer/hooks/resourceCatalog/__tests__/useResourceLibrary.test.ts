@@ -262,6 +262,25 @@ describe('useResourceLibrary', () => {
     expect(result.current.resources.map((resource) => resource.id)).toEqual(['skill-filtered'])
   })
 
+  it('combines client-side skill search with a complete installed-skill result set', () => {
+    mocks.useSkillList.mockReturnValue(
+      listResult([
+        skillListItem,
+        { ...skillListItem, id: 'skill-2', name: 'Local Files', description: 'Read documents' }
+      ])
+    )
+
+    const { result } = renderResourceLibrary({
+      resourceType: 'skill',
+      search: 'DOCUMENTS',
+      clientSideSkillSearch: true
+    })
+
+    expect(mocks.useSkillList).toHaveBeenCalledWith({ enabled: true, search: undefined })
+    expect(result.current.allResources).toHaveLength(2)
+    expect(result.current.resources.map((resource) => resource.id)).toEqual(['skill-2'])
+  })
+
   it('maps prompt resources and forwards search without tag filters', () => {
     mocks.usePromptList.mockReturnValue(
       listResult([

@@ -11,7 +11,8 @@ const {
   getInstalledSkillDirectoryMock,
   importSystemMock,
   openPathMock,
-  reconcileMock
+  reconcileMock,
+  resolveIconUrlsMock
 } = vi.hoisted(() => ({
   installMock: vi.fn(),
   uninstallMock: vi.fn(),
@@ -23,7 +24,8 @@ const {
   getInstalledSkillDirectoryMock: vi.fn(),
   importSystemMock: vi.fn(),
   openPathMock: vi.fn(),
-  reconcileMock: vi.fn()
+  reconcileMock: vi.fn(),
+  resolveIconUrlsMock: vi.fn()
 }))
 
 vi.mock('electron', () => ({
@@ -41,7 +43,8 @@ vi.mock('@main/ai/skills/SkillService', () => ({
     getById: getByIdMock,
     getInstalledSkillDirectory: getInstalledSkillDirectoryMock,
     importSystem: importSystemMock,
-    reconcileSkills: reconcileMock
+    reconcileSkills: reconcileMock,
+    resolveIconUrls: resolveIconUrlsMock
   }
 }))
 
@@ -118,6 +121,15 @@ describe('skillHandlers', () => {
 
     await expect(skillHandlers['skill.reconcile']({}, ctx)).resolves.toBeUndefined()
     expect(reconcileMock).toHaveBeenCalledWith()
+  })
+
+  it('resolves skill icons from ids without accepting renderer paths', async () => {
+    resolveIconUrlsMock.mockResolvedValue({ s1: 'file:///managed/icon.png' })
+
+    await expect(skillHandlers['skill.icons.resolve']({ skillIds: ['s1'] }, ctx)).resolves.toEqual({
+      s1: 'file:///managed/icon.png'
+    })
+    expect(resolveIconUrlsMock).toHaveBeenCalledWith(['s1'])
   })
 
   it('opens the registered skill directory without accepting a renderer-supplied path', async () => {

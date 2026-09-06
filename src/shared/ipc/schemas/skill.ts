@@ -49,5 +49,9 @@ export const skillRequestSchemas = {
   'skill.folder.open': defineRoute({
     input: z.object({ skillId: z.string().min(1) }),
     output: z.void()
+  }),
+  'skill.icons.resolve': defineRoute({
+    input: z.object({ skillIds: z.array(z.string().min(1)).max(100) }),
+    output: z.record(z.string(), z.string())
   })
 }

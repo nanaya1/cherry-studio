@@ -11,7 +11,12 @@ import { agentSkillTable } from '@data/db/schemas/agentSkill'
 import { agentGlobalSkillService } from '@data/services/AgentGlobalSkillService'
 import { loggerService } from '@logger'
 import { isWin } from '@main/core/platform'
-import { findAllSkillDirectories, findSkillMdPath, parseSkillMetadata } from '@main/utils/markdownParser'
+import {
+  findAllSkillDirectories,
+  findSkillIconFileName,
+  findSkillMdPath,
+  parseSkillMetadata
+} from '@main/utils/markdownParser'
 import { SKILL_LIST_MEMBERSHIP_DIMENSIONS } from '@shared/data/api/schemas/skills'
 import type { DataApiDataChangeEffect } from '@shared/data/api/types'
 import { setupTestDatabase } from '@test-helpers/db'
@@ -26,8 +31,10 @@ vi.mock('@data/dataApiDataChange', () => ({ notifyDataApiDataChange: notifyDataA
 
 vi.mock('@main/utils/markdownParser', () => ({
   parseSkillMetadata: vi.fn(),
+  findSkillIconFileName: vi.fn().mockResolvedValue(undefined),
   findAllSkillDirectories: vi.fn().mockResolvedValue([]),
-  findSkillMdPath: vi.fn()
+  findSkillMdPath: vi.fn(),
+  SKILL_ICON_FILE_NAMES: ['icon.webp', 'icon.png', 'icon.jpg', 'icon.jpeg']
 }))
 
 vi.mock('@main/utils/shellEnv', () => ({
@@ -93,6 +100,7 @@ describe('SkillService', () => {
     vi.mocked(skillPaths.safeRemoveDirectory).mockReset()
     vi.mocked(skillArchive.extractZip).mockReset()
     vi.mocked(skillArchive.resolveSkillDirectory).mockReset()
+    vi.mocked(findSkillIconFileName).mockReset().mockResolvedValue(undefined)
   })
 
   async function seedAgent() {
@@ -103,6 +111,18 @@ describe('SkillService', () => {
       instructions: 'You are a helpful assistant.',
       model: null,
       orderKey: 'a0'
+    })
+  }
+
+  async function seedDefaultAgent() {
+    await dbh.db.insert(agentTable).values({
+      id: AGENT_ID,
+      type: 'claude-code',
+      name: 'Craftsman',
+      instructions: 'You are a helpful assistant.',
+      model: null,
+      orderKey: 'a0',
+      configuration: { builtin_role: 'assistant' }
     })
   }
 
@@ -274,6 +294,46 @@ describe('SkillService', () => {
       const result = await skillService.list({ search: '%' })
 
       expect(result.map((s) => s.id)).toEqual([SKILL_ID_1])
+    })
+  })
+
+  describe('resolveIconUrls', () => {
+    it('returns only supported regular icon files contained by the managed skill directory', async () => {
+      const root = await createTempDir('skill-icons-')
+      const storageRoot = path.join(root, 'Skills')
+      const skillRoot = path.join(storageRoot, 'skill-one')
+      const outsideIcon = path.join(root, 'outside.png')
+      await fs.promises.mkdir(skillRoot, { recursive: true })
+      await fs.promises.writeFile(path.join(skillRoot, 'icon.png'), 'inside')
+      await fs.promises.writeFile(outsideIcon, 'outside')
+      await seedSkills()
+      await dbh.db
+        .update(agentGlobalSkillTable)
+        .set({ iconFileName: 'icon.png' })
+        .where(eq(agentGlobalSkillTable.id, SKILL_ID_1))
+      const getPathSpy = vi.spyOn(application, 'getPath').mockImplementation((key: string, filename?: string) => {
+        if (key === 'feature.agents.skills') return filename ? path.join(storageRoot, filename) : storageRoot
+        return filename ? `/mock/${key}/${filename}` : `/mock/${key}`
+      })
+
+      try {
+        const skillService = new SkillService()
+        await expect(skillService.resolveIconUrls([SKILL_ID_1])).resolves.toEqual({
+          [SKILL_ID_1]: pathToFileURL(await fs.promises.realpath(path.join(skillRoot, 'icon.png'))).href
+        })
+
+        await fs.promises.rm(path.join(skillRoot, 'icon.png'))
+        await fs.promises.symlink(outsideIcon, path.join(skillRoot, 'icon.png'))
+        await expect(skillService.resolveIconUrls([SKILL_ID_1])).resolves.toEqual({})
+
+        await dbh.db
+          .update(agentGlobalSkillTable)
+          .set({ iconFileName: '../icon.png' })
+          .where(eq(agentGlobalSkillTable.id, SKILL_ID_1))
+        await expect(skillService.resolveIconUrls([SKILL_ID_1])).resolves.toEqual({})
+      } finally {
+        getPathSpy.mockRestore()
+      }
     })
   })
 
@@ -570,7 +630,9 @@ describe('SkillService', () => {
       )
     })
 
-    it('imports a system skill into the managed library without changing agent associations', async () => {
+    it('imports a system skill and enables it for the default Craftsman agent', async () => {
+      await seedDefaultAgent()
+
       const result = await skillService.importSystem({ directoryPath: sourceSkillDir })
 
       expect(result).toMatchObject({
@@ -596,7 +658,9 @@ describe('SkillService', () => {
         )
       }
       expect(path.normalize(skillService.getInstalledSkillDirectory(result))).toBe(path.normalize(managed))
-      expect(await dbh.db.select().from(agentSkillTable)).toEqual([])
+      expect(await dbh.db.select().from(agentSkillTable)).toEqual([
+        expect.objectContaining({ agentId: AGENT_ID, skillId: result.id, isEnabled: true })
+      ])
     })
 
     it('serves only bounded text content to the skill file preview', async () => {
@@ -832,11 +896,13 @@ describe('SkillService', () => {
         refs: [{ name: 'main', oid: 'a'.repeat(40) }],
         realInstall: true
       })
+      await seedDefaultAgent()
 
       try {
         const installed = await skillService.install({
           installSource: 'github:https://github.com/owner/repo/blob/main/skills/demo/SKILL.md'
         })
+        await dbh.db.update(agentSkillTable).set({ isEnabled: false }).where(eq(agentSkillTable.skillId, installed.id))
         const updatedFromRaw = await skillService.install({
           installSource: 'github:https://raw.githubusercontent.com/owner/repo/refs/heads/main/skills/demo/SKILL.md'
         })
@@ -846,6 +912,9 @@ describe('SkillService', () => {
 
         expect(updatedFromRaw).toMatchObject({ id: installed.id, sourceUrl: installed.sourceUrl })
         expect(updatedFromBlob).toMatchObject({ id: installed.id, sourceUrl: installed.sourceUrl })
+        expect(await dbh.db.select().from(agentSkillTable).where(eq(agentSkillTable.skillId, installed.id))).toEqual([
+          expect.objectContaining({ agentId: AGENT_ID, isEnabled: false })
+        ])
       } finally {
         getPathSpy.mockRestore()
         vi.mocked(parseSkillMetadata).mockReset()
@@ -1741,6 +1810,21 @@ describe('SkillService', () => {
       expect(updated).toMatchObject({ id: installed.id, version: '2.0.0' })
     })
 
+    it('persists and clears detected icons when reinstalling the same origin', async () => {
+      const sourceDir = await createTempDir('icon-skill-')
+      const sourceUrl = pathToFileURL(sourceDir).href
+      await fs.promises.writeFile(path.join(sourceDir, 'SKILL.md'), '# Icon')
+      vi.mocked(parseSkillMetadata).mockResolvedValue(skillMeta('icon-skill', { iconFileName: 'icon.png' }))
+
+      const installed = await skillService['installSkillDir'](sourceDir, 'local', sourceUrl)
+      expect(installed.iconFileName).toBe('icon.png')
+
+      vi.mocked(parseSkillMetadata).mockResolvedValue(skillMeta('icon-skill', { iconFileName: undefined }))
+      const updated = await skillService['installSkillDir'](sourceDir, 'local', sourceUrl)
+
+      expect(updated).toMatchObject({ id: installed.id, iconFileName: null })
+    })
+
     function skillMeta(folderName: string, overrides: Record<string, unknown> = {}) {
       return {
         sourcePath: folderName,
@@ -1803,6 +1887,7 @@ describe('SkillService', () => {
     })
 
     it('reconcileSkills adopts a skill authored directly in the managed library', async () => {
+      await seedDefaultAgent()
       vi.mocked(parseSkillMetadata).mockResolvedValue(
         skillMeta('new-skill', { name: 'New Skill', description: 'freshly authored', version: '3.0.0' })
       )
@@ -1819,6 +1904,9 @@ describe('SkillService', () => {
       expect(rows[0]?.name).toBe('New Skill')
       expect(rows[0]?.version).toBe('3.0.0')
       expect(rows[0]?.isEnabled).toBe(true)
+      expect(await dbh.db.select().from(agentSkillTable).where(eq(agentSkillTable.skillId, rows[0].id))).toEqual([
+        expect.objectContaining({ agentId: AGENT_ID, isEnabled: true })
+      ])
       await expect(fs.promises.access(path.join(authored, 'SKILL.md'))).resolves.toBeUndefined()
       expect((await fs.promises.lstat(path.join(mirrorRoot, 'new-skill'))).isSymbolicLink()).toBe(!isWin)
     })

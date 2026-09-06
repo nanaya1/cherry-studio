@@ -28,6 +28,7 @@ const YAML_PARSE_OPTIONS = { schema: 'failsafe' as const }
 
 // Skill markdown filename variants (case-insensitive support)
 const SKILL_MD_VARIANTS = ['SKILL.md', 'skill.md']
+export const SKILL_ICON_FILE_NAMES = ['icon.webp', 'icon.png', 'icon.jpg', 'icon.jpeg'] as const
 
 /**
  * Find the skill markdown file in a directory (supports SKILL.md or skill.md)
@@ -44,6 +45,17 @@ export async function findSkillMdPath(dirPath: string): Promise<string | null> {
     }
   }
   return null
+}
+
+export async function findSkillIconFileName(dirPath: string): Promise<string | undefined> {
+  for (const fileName of SKILL_ICON_FILE_NAMES) {
+    try {
+      if ((await fs.promises.lstat(path.join(dirPath, fileName))).isFile()) return fileName
+    } catch {
+      // Try the next supported filename.
+    }
+  }
+  return undefined
 }
 
 /**
@@ -395,6 +407,7 @@ export async function parseSkillMetadata(
       : undefined
   const version = toString(data.version) ?? toString(nestedMetadata?.version)
   const author = toString(data.author)
+  const iconFileName = await findSkillIconFileName(skillFolderPath)
 
   logger.debug('Successfully parsed skill metadata', {
     skillFolderPath,
@@ -417,6 +430,7 @@ export async function parseSkillMetadata(
     tags,
     version,
     author,
+    iconFileName,
     size: folderSize,
     contentHash // Hash of SKILL.md content only
   }

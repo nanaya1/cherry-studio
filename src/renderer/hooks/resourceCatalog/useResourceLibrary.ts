@@ -24,6 +24,7 @@ export interface UseResourceLibraryOptions {
   activeGroupId: string | null
   search: string
   sort: SortKey
+  clientSideSkillSearch?: boolean
 }
 
 export interface UseResourceLibraryResult {
@@ -39,7 +40,8 @@ export function useResourceLibrary({
   resourceType,
   activeGroupId,
   search,
-  sort
+  sort,
+  clientSideSkillSearch = false
 }: UseResourceLibraryOptions): UseResourceLibraryResult {
   const { t } = useTranslation()
   const assistantGroups = useGroups('assistant')
@@ -71,7 +73,10 @@ export function useResourceLibrary({
   // Agent search stays server-side so matching spans the full database, not only the
   // current page. The main service resolves the builtin fallback description for this predicate.
   const agents = agentAdapter.useList({ enabled: isAgent, search: isAgent ? trimmedSearch : undefined })
-  const skills = skillAdapter.useList({ enabled: isSkill, search: isSkill ? trimmedSearch : undefined })
+  const skills = skillAdapter.useList({
+    enabled: isSkill,
+    search: isSkill && !clientSideSkillSearch ? trimmedSearch : undefined
+  })
   const prompts = promptAdapter.useList({ enabled: isPrompt, search: isPrompt ? trimmedSearch : undefined })
 
   const buildAssistantItem = useCallback(
@@ -166,7 +171,14 @@ export function useResourceLibrary({
     [filteredAssistants.data, buildAssistantItem]
   )
   const agentItems = useMemo(() => agents.data.map(buildAgentItem), [agents.data, buildAgentItem])
-  const skillItems = useMemo(() => skills.data.map(buildSkillItem), [skills.data, buildSkillItem])
+  const skillItems = useMemo(() => {
+    const items = skills.data.map(buildSkillItem)
+    if (!clientSideSkillSearch || !trimmedSearch) return items
+    const query = trimmedSearch.toLocaleLowerCase()
+    return items.filter(
+      (item) => item.name.toLocaleLowerCase().includes(query) || item.description.toLocaleLowerCase().includes(query)
+    )
+  }, [buildSkillItem, clientSideSkillSearch, skills.data, trimmedSearch])
   const promptItems = useMemo(() => prompts.data.map(buildPromptItem), [prompts.data, buildPromptItem])
 
   const resources = useMemo<ResourceItem[]>(() => {

@@ -47,7 +47,10 @@ function buildGroups(resources: ResourceItem[], groups: Group[], filterType?: Re
   })
 }
 
-export function useResourceCatalogController(resourceType: ResourceCatalogControllerType) {
+export function useResourceCatalogController(
+  resourceType: ResourceCatalogControllerType,
+  options: { clientSideSkillSearch?: boolean } = {}
+) {
   const { t } = useTranslation()
   const [search, setSearch] = useState('')
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null)
@@ -75,7 +78,8 @@ export function useResourceCatalogController(resourceType: ResourceCatalogContro
     resourceType,
     activeGroupId: isAssistantLibrary ? activeGroupId : null,
     search,
-    sort: 'name'
+    sort: 'name',
+    clientSideSkillSearch: options.clientSideSkillSearch
   })
 
   useEffect(() => {
@@ -195,6 +199,7 @@ export function useResourceCatalogController(resourceType: ResourceCatalogContro
     refetch,
     gridProps: {
       resources,
+      allResources,
       isLoading,
       activeResourceType: resourceType,
       search,

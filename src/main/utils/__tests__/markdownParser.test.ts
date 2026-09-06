@@ -1,12 +1,13 @@
 import * as fs from 'fs'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { parsePluginMetadata, parseSkillMetadata } from '../markdownParser'
+import { findSkillIconFileName, parsePluginMetadata, parseSkillMetadata } from '../markdownParser'
 
 vi.mock('fs', () => ({
   promises: {
     readFile: vi.fn(),
-    stat: vi.fn()
+    stat: vi.fn(),
+    lstat: vi.fn()
   }
 }))
 
@@ -34,6 +35,7 @@ Body`
   beforeEach(() => {
     vi.clearAllMocks()
     vi.mocked(fs.promises.stat).mockResolvedValue({ size: 42 } as fs.Stats)
+    vi.mocked(fs.promises.lstat).mockRejectedValue(new Error('ENOENT'))
     vi.mocked(fs.promises.readFile).mockImplementation(async (filePath) => {
       if (String(filePath).includes('SKILL.md')) {
         return skillContent
@@ -131,5 +133,23 @@ Body`)
     const metadata = await parseSkillMetadata('/abs/skill', 'skills/versioned-skill', 'skills')
 
     expect(metadata.version).toBe('2.0.0')
+  })
+
+  it.each(['icon.webp', 'icon.png', 'icon.jpg', 'icon.jpeg'])(
+    'detects supported root skill icon %s',
+    async (fileName) => {
+      vi.mocked(fs.promises.lstat).mockImplementation(async (filePath) => {
+        if (String(filePath).endsWith(fileName)) return { isFile: () => true } as fs.Stats
+        throw new Error('ENOENT')
+      })
+
+      await expect(findSkillIconFileName('/abs/skill')).resolves.toBe(fileName)
+    }
+  )
+
+  it('prefers WebP when several supported skill icons exist', async () => {
+    vi.mocked(fs.promises.lstat).mockResolvedValue({ isFile: () => true } as fs.Stats)
+
+    await expect(findSkillIconFileName('/abs/skill')).resolves.toBe('icon.webp')
   })
 })

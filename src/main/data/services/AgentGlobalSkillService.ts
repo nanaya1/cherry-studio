@@ -283,6 +283,7 @@ export class AgentGlobalSkillService {
       namespace: row.namespace,
       author: row.author,
       version: row.version,
+      iconFileName: row.iconFileName,
       sourceTags: row.tags,
       contentHash: row.contentHash,
       isGlobalEnabled: row.isEnabled,

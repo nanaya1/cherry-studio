@@ -42,5 +42,6 @@ export const skillHandlers: IpcHandlersFor<typeof skillRequestSchemas> = {
 
     const errorMessage = await shell.openPath(skillService.getInstalledSkillDirectory(skill))
     if (errorMessage) throw new Error(`Failed to open skill folder: ${errorMessage}`)
-  }
+  },
+  'skill.icons.resolve': ({ skillIds }) => skillService.resolveIconUrls(skillIds)
 }

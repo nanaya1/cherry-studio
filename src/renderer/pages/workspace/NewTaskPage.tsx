@@ -1,16 +1,23 @@
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@cherrystudio/ui'
+import { Alert, Button, Tabs, TabsContent, TabsList, TabsTrigger } from '@cherrystudio/ui'
 import { loggerService } from '@logger'
-import { type AgentComposerSendOptions, AgentHomeComposer } from '@renderer/components/composer/variants/AgentComposer'
+import {
+  type AgentComposerLaunchOptions,
+  type AgentComposerSendOptions,
+  AgentHomeComposer
+} from '@renderer/components/composer/variants/AgentComposer'
+import { agentSkillToComposerToken } from '@renderer/components/composer/variants/agentComposerTokens'
 import { ChatPlacementComposer } from '@renderer/components/composer/variants/ChatComposer'
 import { usePersistCache } from '@renderer/data/hooks/useCache'
 import { useInvalidateCache, useQuery } from '@renderer/data/hooks/useDataApi'
 import { useAgent } from '@renderer/hooks/agent/useAgent'
+import { useAgentMutationsById, useSkillMutationsById } from '@renderer/hooks/resourceCatalog'
 import { useAgentSessionsSource, useAssistantTopicsSource } from '@renderer/hooks/resourceViewSources'
 import { useCloseConversationTabs, useCurrentTabId } from '@renderer/hooks/tab'
 import { useAgentSessionParts } from '@renderer/hooks/useAgentSessionParts'
 import { useAssistant, useAssistants } from '@renderer/hooks/useAssistant'
 import { useModelById } from '@renderer/hooks/useModel'
 import { useProviders } from '@renderer/hooks/useProvider'
+import { useInstalledSkills } from '@renderer/hooks/useSkills'
 import { useTopicMessages } from '@renderer/hooks/useTopicMessages'
 import { useTopicMessagesCache } from '@renderer/hooks/useTopicMessagesCache'
 import { ipcApi } from '@renderer/ipc'
@@ -28,7 +35,7 @@ import {
   type AgentSessionWorkspaceSource,
   type AgentWorkspaceEntity
 } from '@shared/data/api/schemas/agentWorkspaces'
-import { useNavigate } from '@tanstack/react-router'
+import { useNavigate, useSearch } from '@tanstack/react-router'
 import { Bot, MessageSquare } from 'lucide-react'
 import { type ComponentProps, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -37,10 +44,15 @@ const logger = loggerService.withContext('NewTaskPage')
 
 type ChatSeed = ReturnType<typeof useTopicMessagesCache>['seedReservedMessages']
 type AgentSeed = ReturnType<typeof useAgentSessionParts>['seedReservedMessages']
+type TaskMode = 'chat' | 'agent'
 
 export default function NewTaskPage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const routeSearch = useSearch({ strict: false }) as { mode?: TaskMode; skillId?: string }
+  const routeMode = routeSearch.mode ?? (routeSearch.skillId ? 'agent' : 'chat')
+  const [taskMode, setTaskMode] = useState<TaskMode>(routeMode)
+  const [consumedSkillId, setConsumedSkillId] = useState<string | null>(null)
   const currentTabId = useCurrentTabId()
   const invalidateCache = useInvalidateCache()
   const closeConversationTabs = useCloseConversationTabs()
@@ -66,6 +78,12 @@ export default function NewTaskPage() {
     isLoading: agentsLoading,
     isRefreshing: agentsRefreshing
   } = useQuery('/agents', { query: { limit: AGENTS_MAX_LIMIT } })
+  const {
+    data: installedSkills = [],
+    isLoading: installedSkillsLoading,
+    isRefreshing: installedSkillsRefreshing,
+    error: installedSkillsError
+  } = useQuery('/skills')
   const defaultAgentId = useMemo(
     () =>
       agentsData?.items.find((candidate) => candidate.configuration?.builtin_role === BUILTIN_AGENT_ROLE.ASSISTANT)
@@ -75,12 +93,110 @@ export default function NewTaskPage() {
   const [agentId, setAgentId] = useState<string | null>(null)
   const { agent, isLoading: agentLoading } = useAgent(agentId)
   const { model: agentModel, isLoading: agentModelLoading } = useModelById(agent?.model)
+  const {
+    skills: agentSkills,
+    loading: agentSkillsLoading,
+    refreshing: agentSkillsRefreshing,
+    error: agentSkillsError,
+    refresh: refreshAgentSkills
+  } = useInstalledSkills(agentId ?? undefined, { enabled: Boolean(routeSearch.skillId && agentId) })
+  const { updateAgent } = useAgentMutationsById(agentId ?? '')
+  const { updateGlobalEnabled } = useSkillMutationsById(routeSearch.skillId ?? '')
+  const [skillBindingPending, setSkillBindingPending] = useState(false)
+  const [skillBindingError, setSkillBindingError] = useState(false)
+  const skillBindingRequestRef = useRef(0)
   const [agentWorkspaceId, setAgentWorkspaceId] = useState<string | null>(null)
   const { data: agentWorkspaces = [] } = useQuery('/agent-workspaces')
   const selectedWorkspace = useMemo(
     () => agentWorkspaces.find((workspace) => workspace.id === agentWorkspaceId),
     [agentWorkspaceId, agentWorkspaces]
   )
+  const launchSkillId = routeSearch.skillId
+  const hasPendingSkillLaunch = Boolean(launchSkillId && consumedSkillId !== launchSkillId)
+  const launchSkill = useMemo(
+    () => installedSkills.find((candidate) => candidate.id === launchSkillId),
+    [installedSkills, launchSkillId]
+  )
+  const isLaunchSkillUnavailable = Boolean(
+    hasPendingSkillLaunch &&
+      !installedSkillsLoading &&
+      !installedSkillsRefreshing &&
+      !installedSkillsError &&
+      !launchSkill
+  )
+  const isSkillBindingLoading = Boolean(
+    hasPendingSkillLaunch &&
+      (installedSkillsLoading ||
+        installedSkillsRefreshing ||
+        (agentId && (agentLoading || agentSkillsLoading || agentSkillsRefreshing)))
+  )
+  const isSkillBound = Boolean(
+    launchSkill?.isGlobalEnabled &&
+      agentSkills.some((candidate) => candidate.id === launchSkill.id && candidate.isEnabled)
+  )
+  const requiresSkillBinding = Boolean(
+    hasPendingSkillLaunch && launchSkill && agentId && (!isSkillBindingLoading || skillBindingPending) && !isSkillBound
+  )
+  const canUseLaunchSkill = Boolean(hasPendingSkillLaunch && launchSkill && agentId && isSkillBound)
+  const resolvedLaunchSkillId = launchSkill?.id
+  const launchSkillName = launchSkill?.name
+  const launchSkillDescription = launchSkill?.description
+  const launchSkillFolderName = launchSkill?.folderName
+  const skillLaunchOptions = useMemo<AgentComposerLaunchOptions | undefined>(() => {
+    if (!resolvedLaunchSkillId || !launchSkillName || !launchSkillFolderName || !hasPendingSkillLaunch) return undefined
+
+    const token = agentSkillToComposerToken({
+      name: launchSkillName,
+      description: launchSkillDescription ?? undefined,
+      filename: launchSkillFolderName
+    })
+    const initialText = token.promptText ?? `Use the ${launchSkillFolderName} skill.`
+    return {
+      initialDraft: {
+        text: initialText,
+        tokens: [{ ...token, index: 0, textOffset: 0 }]
+      },
+      onSent: () => setConsumedSkillId(resolvedLaunchSkillId)
+    }
+  }, [hasPendingSkillLaunch, launchSkillDescription, launchSkillFolderName, launchSkillName, resolvedLaunchSkillId])
+
+  const handleBindLaunchSkill = useCallback(async () => {
+    if (!launchSkill || !agentId || skillBindingPending) return
+
+    const requestId = ++skillBindingRequestRef.current
+    setSkillBindingError(false)
+    setSkillBindingPending(true)
+    try {
+      if (!launchSkill.isGlobalEnabled) {
+        await updateGlobalEnabled(true)
+      }
+      await updateAgent({ skillUpdates: [{ skillId: launchSkill.id, isEnabled: true }] })
+      await refreshAgentSkills()
+    } catch (error) {
+      logger.error('Failed to bind launch skill to agent', {
+        skillId: launchSkill.id,
+        agentId,
+        error: error instanceof Error ? error.message : String(error)
+      })
+      if (skillBindingRequestRef.current === requestId) setSkillBindingError(true)
+    } finally {
+      if (skillBindingRequestRef.current === requestId) setSkillBindingPending(false)
+    }
+  }, [agentId, launchSkill, refreshAgentSkills, skillBindingPending, updateAgent, updateGlobalEnabled])
+
+  useEffect(() => {
+    setTaskMode(routeMode)
+  }, [routeMode])
+
+  useEffect(() => {
+    skillBindingRequestRef.current += 1
+    setSkillBindingError(false)
+    setSkillBindingPending(false)
+  }, [agentId, launchSkillId])
+
+  useEffect(() => {
+    if (isSkillBound) setSkillBindingError(false)
+  }, [isSkillBound])
 
   const [chatTopicId, setChatTopicId] = useState('')
   const chatMessages = useTopicMessages(chatTopicId, { enabled: !!chatTopicId, fetchOnMount: false })
@@ -301,6 +417,7 @@ export default function NewTaskPage() {
     agentEpochRef.current += 1
     agentPlaceholderRef.current = null
     pendingNavigationRef.current = null
+    skillBindingRequestRef.current += 1
     setAgentId(nextAgentId)
   }, [])
   const handleWorkspaceChange = useCallback((workspaceId: string | null) => {
@@ -324,7 +441,10 @@ export default function NewTaskPage() {
           <div className="text-center">
             <h2 className="font-semibold text-2xl tracking-tight">{t('workspace.newTask.heading')}</h2>
           </div>
-          <Tabs defaultValue="chat" className="mt-5 gap-8 [&_[data-ui~='part:composer-input']]:min-h-20!">
+          <Tabs
+            value={taskMode}
+            onValueChange={(value) => setTaskMode(value as TaskMode)}
+            className="mt-5 gap-8 [&_[data-ui~='part:composer-input']]:min-h-20!">
             <TabsList className="mx-auto flex w-fit rounded-lg bg-muted p-1">
               <TabsTrigger value="chat" className="flex h-8 items-center gap-2 rounded-md px-4 text-sm">
                 <MessageSquare size={15} />
@@ -335,7 +455,7 @@ export default function NewTaskPage() {
                 {t('workspace.newTask.agent.title')}
               </TabsTrigger>
             </TabsList>
-            <TabsContent value="chat" forceMount className="data-[state=inactive]:hidden mt-4">
+            <TabsContent value="chat" forceMount className="mt-4 data-[state=inactive]:hidden">
               <ChatPlacementComposer
                 placement="home"
                 scopeKey={chatDraftScopeKey}
@@ -348,6 +468,61 @@ export default function NewTaskPage() {
               />
             </TabsContent>
             <TabsContent value="agent" forceMount className="data-[state=inactive]:hidden">
+              {hasPendingSkillLaunch && !agentId && !agentsLoading && !agentsRefreshing && (
+                <Alert
+                  type="info"
+                  showIcon
+                  message={t('workspace.newTask.skill.selectAgent')}
+                  className="mb-3 shadow-none"
+                />
+              )}
+              {isLaunchSkillUnavailable && (
+                <Alert
+                  type="error"
+                  showIcon
+                  message={t('workspace.newTask.skill.unavailable')}
+                  className="mb-3 shadow-none"
+                />
+              )}
+              {hasPendingSkillLaunch && (installedSkillsError || agentSkillsError || skillBindingError) && (
+                <Alert
+                  type="error"
+                  showIcon
+                  message={t('workspace.newTask.skill.bindFailed')}
+                  className="mb-3 shadow-none"
+                  action={
+                    launchSkill && agentId ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        loading={skillBindingPending}
+                        onClick={() => void handleBindLaunchSkill()}>
+                        {t('workspace.newTask.skill.bindAction')}
+                      </Button>
+                    ) : undefined
+                  }
+                />
+              )}
+              {requiresSkillBinding && !installedSkillsError && !agentSkillsError && !skillBindingError && (
+                <Alert
+                  type="warning"
+                  showIcon
+                  message={t('workspace.newTask.skill.notBound', {
+                    skill: launchSkill?.name,
+                    agent: agent?.name ?? ''
+                  })}
+                  className="mb-3 shadow-none"
+                  action={
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      loading={skillBindingPending}
+                      onClick={() => void handleBindLaunchSkill()}>
+                      {t('workspace.newTask.skill.bindAction')}
+                    </Button>
+                  }
+                />
+              )}
               <AgentHomeComposer
                 agentId={agentId ?? ''}
                 sessionId={temporaryAgentSessionId}
@@ -363,7 +538,14 @@ export default function NewTaskPage() {
                 workspaceId={agentWorkspaceId}
                 onWorkspaceChange={handleWorkspaceChange}
                 isStreaming={false}
-                sendDisabled={!agentId || agentModelLoading || !agentModel}
+                sendDisabled={
+                  !agentId ||
+                  agentModelLoading ||
+                  !agentModel ||
+                  (hasPendingSkillLaunch &&
+                    (isSkillBindingLoading || requiresSkillBinding || isLaunchSkillUnavailable || !canUseLaunchSkill))
+                }
+                launchOptions={canUseLaunchSkill ? skillLaunchOptions : undefined}
                 onDraftCleared={handleDraftCleared}
               />
             </TabsContent>

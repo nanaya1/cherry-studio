@@ -77,6 +77,7 @@ export const ClawhubSearchItemSchema = z.object({
   displayName: z.string(),
   summary: z.string(),
   version: z.string().nullable(),
+  iconFileName: z.string().nullable().optional(),
   updatedAt: z.number(),
   ownerHandle: z.string().optional()
 })

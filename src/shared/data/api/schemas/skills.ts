@@ -14,6 +14,7 @@ export const InstalledSkillSchema = z.strictObject({
   namespace: z.string().nullable(),
   author: z.string().nullable(),
   version: z.string().nullable(),
+  iconFileName: z.string().nullable().optional(),
   /** Skill metadata tags from SKILL.md. */
   sourceTags: z.array(z.string()),
   contentHash: z.string(),

@@ -4,13 +4,22 @@ import * as path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { application } from '@application'
+import type { DbOrTx } from '@data/db/types'
 import { agentGlobalSkillService } from '@data/services/AgentGlobalSkillService'
+import { agentService } from '@data/services/AgentService'
 import { loggerService } from '@logger'
 import { isWin } from '@main/core/platform'
 import { decodeTextBufferIfText, isOutsidePath, openReadableFileSnapshot } from '@main/utils/file'
 import { directoryExists } from '@main/utils/legacyFile'
-import { findAllSkillDirectories, findSkillMdPath, parseSkillMetadata } from '@main/utils/markdownParser'
+import {
+  findAllSkillDirectories,
+  findSkillIconFileName,
+  findSkillMdPath,
+  parseSkillMetadata,
+  SKILL_ICON_FILE_NAMES
+} from '@main/utils/markdownParser'
 import { getShellEnv } from '@main/utils/shellEnv'
+import { BUILTIN_AGENT_ROLE } from '@shared/ai/builtinAgent'
 import type { InstalledSkill, ListSkillsQuery } from '@shared/data/api/schemas/skills'
 import { AbsoluteFilePathSchema } from '@shared/types/file'
 import type {
@@ -164,6 +173,39 @@ export class SkillService {
   /** Resolve the app-owned directory for an installed skill. */
   getInstalledSkillDirectory(skill: Pick<InstalledSkill, 'folderName' | 'source' | 'sourceUrl'>): string {
     return this.getSkillStoragePath(skill.folderName)
+  }
+
+  async resolveIconUrls(skillIds: string[]): Promise<Record<string, string>> {
+    const storageRoot = path.resolve(application.getPath('feature.agents.skills'))
+    const realStorageRoot = await fs.promises.realpath(storageRoot).catch(() => null)
+    if (!realStorageRoot) return {}
+
+    const resolved: Record<string, string> = {}
+    for (const skillId of new Set(skillIds)) {
+      const skill = agentGlobalSkillService.getById(skillId)
+      if (!skill?.iconFileName || !SKILL_ICON_FILE_NAMES.some((name) => name === skill.iconFileName)) continue
+
+      const skillRoot = path.resolve(storageRoot, skill.folderName)
+      if (isOutsidePath(path.relative(storageRoot, skillRoot))) continue
+
+      const iconPath = path.resolve(skillRoot, skill.iconFileName)
+      if (isOutsidePath(path.relative(skillRoot, iconPath))) continue
+
+      try {
+        const [realSkillRoot, realIcon, iconStats] = await Promise.all([
+          fs.promises.realpath(skillRoot),
+          fs.promises.realpath(iconPath),
+          fs.promises.stat(iconPath)
+        ])
+        if (!iconStats.isFile()) continue
+        if (isOutsidePath(path.relative(realStorageRoot, realSkillRoot))) continue
+        if (isOutsidePath(path.relative(realSkillRoot, realIcon))) continue
+        resolved[skillId] = pathToFileURL(realIcon).href
+      } catch {
+        // Missing or unreadable icons use the renderer fallback.
+      }
+    }
+    return resolved
   }
 
   /** Local plugin bridge used when the SDK user setting source must remain isolated. */
@@ -539,6 +581,7 @@ export class SkillService {
           description: metadata.description ?? null,
           author: metadata.author ?? null,
           version: metadata.version ?? null,
+          iconFileName: metadata.iconFileName ?? null,
           tags,
           contentHash,
           ...(source === 'system' ? { sourceUrl, namespace: provenance.namespace ?? null } : {})
@@ -552,6 +595,7 @@ export class SkillService {
     const isBuiltin = source === 'builtin'
 
     let inserted: InstalledSkill | undefined
+    let defaultAgentId: string | null = null
     try {
       application.get('DbService').withWriteTx((tx) => {
         const insertedRow = agentGlobalSkillService.insertTx(tx, {
@@ -563,9 +607,13 @@ export class SkillService {
           namespace: provenance.namespace ?? null,
           author: metadata.author ?? null,
           version: metadata.version ?? null,
+          iconFileName: metadata.iconFileName ?? null,
           tags,
           contentHash
         })
+        if (!isBuiltin) {
+          defaultAgentId = this.bindNewSkillToDefaultAgentTx(tx, insertedRow.id)
+        }
         inserted = agentGlobalSkillService.getById(insertedRow.id) ?? undefined
       })
     } catch (error) {
@@ -587,6 +635,10 @@ export class SkillService {
 
     if (isBuiltin) {
       this.enableForAllAgents(inserted.id)
+    } else if (defaultAgentId) {
+      logger.info('Bound new skill to default agent', { skillId: inserted.id, agentId: defaultAgentId })
+    } else {
+      logger.warn('Default agent unavailable; skipped new skill binding', { skillId: inserted.id })
     }
 
     logger.info('Skill installed', { id: inserted.id, name: metadata.name, folderName: destFolderName, source })
@@ -599,6 +651,14 @@ export class SkillService {
 
   private getSkillStoragePath(folderName: string): string {
     return path.join(application.getPath('feature.agents.skills'), folderName)
+  }
+
+  private bindNewSkillToDefaultAgentTx(tx: DbOrTx, skillId: string): string | null {
+    const defaultAgent = agentService.findBuiltinAgentByRoleTx(tx, BUILTIN_AGENT_ROLE.ASSISTANT)
+    if (!defaultAgent) return null
+
+    agentGlobalSkillService.upsertJoinTx(tx, defaultAgent.id, skillId, true)
+    return defaultAgent.id
   }
 
   // ===========================================================================
@@ -806,7 +866,7 @@ export class SkillService {
         })
       }
     }
-    const onDisk = new Map<string, string>()
+    const onDisk = new Map<string, { contentHash: string; iconFileName: string | null }>()
     // Every skill folder physically enumerated on disk, regardless of whether its descriptor is
     // currently readable. Pruning keys off THIS set, not off a successful descriptor read: an editor
     // saving a SKILL.md atomically briefly removes it (both casings ENOENT), and that transient
@@ -852,7 +912,10 @@ export class SkillService {
       await this.normalizeSkillMdCasing(dir)
       const read = await this.readSkillMdState(dir)
       if (read.status === 'found') {
-        onDisk.set(entry.name, createHash('sha256').update(read.content).digest('hex'))
+        onDisk.set(entry.name, {
+          contentHash: createHash('sha256').update(read.content).digest('hex'),
+          iconFileName: (await findSkillIconFileName(dir)) ?? null
+        })
       } else if (read.status === 'error') {
         logger.warn('Skill descriptor unreadable during reconcile; keeping any catalog row', {
           folderName: entry.name
@@ -862,7 +925,7 @@ export class SkillService {
       // not adopted, and the presentFolders guard below keeps any existing row + enablement intact.
     }
 
-    for (const [folderName, contentHash] of onDisk) {
+    for (const [folderName, diskMetadata] of onDisk) {
       const folderKey = normalizeFolderKey(folderName)
       if (conflictingDbKeys.has(folderKey)) continue
 
@@ -873,7 +936,13 @@ export class SkillService {
         // hash and removes the mirror when canonical content no longer matches the trusted DB hash.
         continue
       }
-      if (existing && existing.contentHash === contentHash) continue
+      if (
+        existing &&
+        existing.contentHash === diskMetadata.contentHash &&
+        existing.iconFileName === diskMetadata.iconFileName
+      ) {
+        continue
+      }
 
       let metadata: Awaited<ReturnType<typeof parseSkillMetadata>>
       try {
@@ -895,22 +964,38 @@ export class SkillService {
           author: metadata.author ?? null,
           version: metadata.version ?? null,
           tags,
-          contentHash
+          contentHash: diskMetadata.contentHash,
+          iconFileName: metadata.iconFileName ?? null
         })
       } else {
-        agentGlobalSkillService.insert({
-          name: metadata.name,
-          description: metadata.description ?? null,
-          folderName,
-          source: 'local',
-          sourceUrl: null,
-          namespace: null,
-          author: metadata.author ?? null,
-          version: metadata.version ?? null,
-          tags,
-          contentHash
+        let insertedSkillId = ''
+        let defaultAgentId: string | null = null
+        application.get('DbService').withWriteTx((tx) => {
+          const inserted = agentGlobalSkillService.insertTx(tx, {
+            name: metadata.name,
+            description: metadata.description ?? null,
+            folderName,
+            source: 'local',
+            sourceUrl: null,
+            namespace: null,
+            author: metadata.author ?? null,
+            version: metadata.version ?? null,
+            tags,
+            contentHash: diskMetadata.contentHash,
+            iconFileName: metadata.iconFileName ?? null
+          })
+          insertedSkillId = inserted.id
+          defaultAgentId = this.bindNewSkillToDefaultAgentTx(tx, inserted.id)
         })
-        logger.info('Adopted library skill into catalog', { folderName })
+        if (defaultAgentId) {
+          logger.info('Adopted library skill and bound it to default agent', {
+            folderName,
+            skillId: insertedSkillId,
+            agentId: defaultAgentId
+          })
+        } else {
+          logger.warn('Adopted library skill without a default agent binding', { folderName, skillId: insertedSkillId })
+        }
       }
     }
 
@@ -1137,9 +1222,13 @@ export class SkillService {
         await fs.promises.writeFile(path.join(destPath, BUILTIN_VERSION_FILE), appVersion, 'utf-8')
       }
 
+      const iconFileName = (await findSkillIconFileName(destPath)) ?? null
+
       // Builtin contentHash is the trusted full-directory hash (excluding Cherry's version marker),
       // unlike authored skills whose hash tracks SKILL.md metadata changes.
-      if (existing && !filesUpdated && existing.contentHash === sourceHash) return false
+      if (existing && !filesUpdated && existing.contentHash === sourceHash && existing.iconFileName === iconFileName) {
+        return false
+      }
 
       const metadata = await parseSkillMetadata(destPath, folderName, 'skills')
       const tags = metadata.tags ?? []
@@ -1150,6 +1239,7 @@ export class SkillService {
           description: metadata.description ?? null,
           author: metadata.author ?? null,
           version: metadata.version ?? null,
+          iconFileName,
           tags,
           contentHash: sourceHash,
           namespace
@@ -1164,6 +1254,7 @@ export class SkillService {
           namespace,
           author: metadata.author ?? null,
           version: metadata.version ?? null,
+          iconFileName,
           tags,
           contentHash: sourceHash
         })
