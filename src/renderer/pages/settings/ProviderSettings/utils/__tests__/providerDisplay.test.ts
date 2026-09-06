@@ -1,4 +1,3 @@
-import { LOCAL_EMBEDDING_PROVIDER_ID } from '@shared/data/presets/localEmbedding'
 import type { Provider } from '@shared/data/types/provider'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -6,15 +5,12 @@ import { describe, expect, it, vi } from 'vitest'
 vi.mock('@renderer/i18n', () => ({ default: { t: (k: string) => k } }))
 vi.mock('@renderer/i18n/label', () => ({ getProviderLabelKey: (id: string) => id }))
 vi.mock('@shared/utils/provider', () => ({
-  isCherryAIProvider: (p: Provider) => p.id === 'cherryai',
   isLoginBasedProvider: (p: Provider) =>
     p.authMethods !== undefined && p.authMethods.length > 0 && !p.authMethods.includes('api-key')
 }))
 
 const { isProviderPresetInstanceSource } = await import('../providerDisplay')
-const { isProviderSettingsListVisibleProvider } = await import('@renderer/utils/providerSettings')
 
-const provider = (id: string): Provider => ({ id }) as Provider
 const presetSource = (overrides: Partial<Provider> = {}): Provider =>
   ({
     id: 'openai',
@@ -27,20 +23,6 @@ const presetSource = (overrides: Partial<Provider> = {}): Provider =>
     },
     ...overrides
   }) as Provider
-
-describe('isProviderSettingsListVisibleProvider', () => {
-  it('hides the internal local-embedding provider from the management list', () => {
-    expect(isProviderSettingsListVisibleProvider(provider(LOCAL_EMBEDDING_PROVIDER_ID))).toBe(false)
-  })
-
-  it('hides the CherryAI provider', () => {
-    expect(isProviderSettingsListVisibleProvider(provider('cherryai'))).toBe(false)
-  })
-
-  it('keeps a normal provider visible', () => {
-    expect(isProviderSettingsListVisibleProvider(provider('openai'))).toBe(true)
-  })
-})
 
 describe('isProviderPresetInstanceSource', () => {
   it('accepts a canonical URL-based preset with a configured primary endpoint', () => {

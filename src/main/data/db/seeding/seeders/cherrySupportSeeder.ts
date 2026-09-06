@@ -1,68 +1,24 @@
 import { agentService } from '@data/services/AgentService'
-import { BUILTIN_AGENT_ROLE, CHERRY_SUPPORT_AGENT_ID } from '@shared/ai/builtinAgent'
-import type { AgentConfiguration } from '@shared/data/api/schemas/agents'
-import { app } from 'electron'
+import { agentSessionService } from '@data/services/AgentSessionService'
+import { BUILTIN_AGENT_ROLE } from '@shared/ai/builtinAgent'
 
 import type { DbType, ISeeder } from '../../types'
 
-const CHERRY_SUPPORT_SEED = {
-  name: {
-    default: 'Cherry Support',
-    zh: '产品反馈'
-  },
-  configuration: {
-    avatar: '🧰',
-    permission_mode: 'acceptEdits',
-    bootstrap_completed: true,
-    builtin_role: BUILTIN_AGENT_ROLE.SUPPORT,
-    env_vars: {}
-  } satisfies AgentConfiguration
-} as const
-
 export class CherrySupportSeeder implements ISeeder {
   readonly name = 'cherrySupport'
-  readonly description = 'Insert the builtin Cherry Support agent in every agent library'
+  readonly description = 'Remove the builtin Cherry Support agent from agent libraries'
   readonly executionPolicy = 'run-on-change' as const
-  readonly version = '3'
+  readonly version = '4'
 
   run(db: DbType): void {
     db.transaction((tx) => {
-      agentService.clearUntrustedBuiltinSupportRolesTx(tx)
-      agentService.claimBuiltinSupportIdentityTx(tx)
       const existing = agentService.findBuiltinAgentByRoleTx(tx, BUILTIN_AGENT_ROLE.SUPPORT, {
         includeDeleted: true
       })
-      if (existing) {
-        if (existing.name === 'Cherry 支持') {
-          agentService.updateAgentTx(tx, existing.id, { name: CHERRY_SUPPORT_SEED.name.zh })
-        }
-        return
-      }
+      if (!existing) return
 
-      const assistant = agentService.findBuiltinAgentByRoleTx(tx, BUILTIN_AGENT_ROLE.ASSISTANT)
-      const agentId = CHERRY_SUPPORT_AGENT_ID
-      const row = agentService.createAgentTx(tx, agentId, {
-        id: agentId,
-        type: 'claude-code',
-        name: this.getNameForPreferredSystemLanguage(),
-        description: '',
-        instructions: '',
-        model: assistant?.model ?? null,
-        configuration: { ...CHERRY_SUPPORT_SEED.configuration }
-      })
-
-      if (!row) {
-        throw new Error('insert succeeded but select returned no builtin Cherry Support row')
-      }
+      agentSessionService.prepareForAgentDeletionTx(tx, existing.id, { deleteSessions: true })
+      agentService.deleteAgentTx(tx, existing.id)
     })
-  }
-
-  private getNameForPreferredSystemLanguage(): string {
-    try {
-      const language = app.getPreferredSystemLanguages()[0]
-      return language?.toLowerCase().startsWith('zh') ? CHERRY_SUPPORT_SEED.name.zh : CHERRY_SUPPORT_SEED.name.default
-    } catch {
-      return CHERRY_SUPPORT_SEED.name.default
-    }
   }
 }

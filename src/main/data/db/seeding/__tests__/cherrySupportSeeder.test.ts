@@ -1,127 +1,76 @@
+import '@data/services/AgentSessionMessageService'
+
 import { agentTable } from '@data/db/schemas/agent'
 import { agentSessionTable } from '@data/db/schemas/agentSession'
-import { CherryAiDefaultModelSeeder } from '@data/db/seeding/seeders/cherryaiDefaultModelSeeder'
-import { CherryAssistantSeeder } from '@data/db/seeding/seeders/cherryAssistantSeeder'
+import { agentWorkspaceTable } from '@data/db/schemas/agentWorkspace'
 import { CherrySupportSeeder } from '@data/db/seeding/seeders/cherrySupportSeeder'
-import { BUILTIN_AGENT_ROLE, CHERRY_SUPPORT_AGENT_ID } from '@shared/ai/builtinAgent'
-import { CHERRYAI_DEFAULT_UNIQUE_MODEL_ID } from '@shared/data/presets/cherryai'
+import { CHERRY_SUPPORT_AGENT_ID } from '@shared/ai/builtinAgent'
 import { setupTestDatabase } from '@test-helpers/db'
-import { eq, sql } from 'drizzle-orm'
-import { app } from 'electron'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-
-function builtinAgents(db: ReturnType<typeof setupTestDatabase>['db'], role: string) {
-  return db
-    .select()
-    .from(agentTable)
-    .where(sql`json_extract(${agentTable.configuration}, '$.builtin_role') = ${role}`)
-    .all()
-}
+import { eq } from 'drizzle-orm'
+import { describe, expect, it } from 'vitest'
 
 describe('CherrySupportSeeder', () => {
   const dbh = setupTestDatabase()
 
-  beforeEach(() => {
-    vi.mocked(app.getPreferredSystemLanguages).mockReturnValue(['en-US'])
-  })
-
-  it('creates Cherry Support beside Cherry Assistant with the copied model and no seeded session', () => {
-    new CherryAiDefaultModelSeeder().run(dbh.db)
-    new CherryAssistantSeeder().run(dbh.db)
-    const [assistant] = builtinAgents(dbh.db, BUILTIN_AGENT_ROLE.ASSISTANT)
+  function insertSupportAgent(overrides: Partial<typeof agentTable.$inferInsert> = {}) {
     dbh.db
-      .update(agentTable)
-      .set({ model: CHERRYAI_DEFAULT_UNIQUE_MODEL_ID })
-      .where(eq(agentTable.id, assistant.id))
-      .run()
-
-    new CherrySupportSeeder().run(dbh.db)
-
-    const [support] = builtinAgents(dbh.db, BUILTIN_AGENT_ROLE.SUPPORT)
-    expect(support).toMatchObject({
-      id: CHERRY_SUPPORT_AGENT_ID,
-      name: 'Cherry Support',
-      description: '',
-      instructions: '',
-      model: CHERRYAI_DEFAULT_UNIQUE_MODEL_ID
-    })
-    expect(support.configuration).toMatchObject({
-      avatar: '🧰',
-      permission_mode: 'acceptEdits',
-      bootstrap_completed: true,
-      builtin_role: BUILTIN_AGENT_ROLE.SUPPORT
-    })
-    expect(builtinAgents(dbh.db, BUILTIN_AGENT_ROLE.ASSISTANT)).toHaveLength(1)
-    expect(dbh.db.select().from(agentSessionTable).all()).toHaveLength(0)
-  })
-
-  it('uses the Chinese name and remains idempotent', () => {
-    vi.mocked(app.getPreferredSystemLanguages).mockReturnValue(['zh-CN'])
-
-    new CherrySupportSeeder().run(dbh.db)
-    new CherrySupportSeeder().run(dbh.db)
-
-    expect(builtinAgents(dbh.db, BUILTIN_AGENT_ROLE.SUPPORT)).toHaveLength(1)
-    expect(builtinAgents(dbh.db, BUILTIN_AGENT_ROLE.SUPPORT)[0].name).toBe('产品反馈')
-    expect(dbh.db.select().from(agentSessionTable).all()).toHaveLength(0)
-  })
-
-  it('updates the previous stock Chinese name without replacing a custom name', () => {
-    new CherrySupportSeeder().run(dbh.db)
-    dbh.db.update(agentTable).set({ name: 'Cherry 支持' }).where(eq(agentTable.id, CHERRY_SUPPORT_AGENT_ID)).run()
-
-    new CherrySupportSeeder().run(dbh.db)
-    expect(builtinAgents(dbh.db, BUILTIN_AGENT_ROLE.SUPPORT)[0].name).toBe('产品反馈')
-
-    dbh.db.update(agentTable).set({ name: '我的反馈助手' }).where(eq(agentTable.id, CHERRY_SUPPORT_AGENT_ID)).run()
-    new CherrySupportSeeder().run(dbh.db)
-
-    expect(builtinAgents(dbh.db, BUILTIN_AGENT_ROLE.SUPPORT)[0].name).toBe('我的反馈助手')
-  })
-
-  it('claims an active reserved ID in place without replacing data', () => {
-    new CherrySupportSeeder().run(dbh.db)
-    dbh.db
-      .update(agentTable)
-      .set({
-        name: 'My Reserved Agent',
-        instructions: 'Keep these instructions',
-        configuration: { avatar: 'U', heartbeat_interval: 7 }
+      .insert(agentTable)
+      .values({
+        id: CHERRY_SUPPORT_AGENT_ID,
+        type: 'claude-code',
+        name: '产品反馈',
+        instructions: '',
+        model: null,
+        orderKey: 'a1',
+        configuration: { avatar: '🧰', builtin_role: 'support' },
+        ...overrides
       })
-      .where(eq(agentTable.id, CHERRY_SUPPORT_AGENT_ID))
       .run()
+  }
 
-    new CherrySupportSeeder().run(dbh.db)
-
-    const [support] = builtinAgents(dbh.db, BUILTIN_AGENT_ROLE.SUPPORT)
-    expect(support).toMatchObject({
-      id: CHERRY_SUPPORT_AGENT_ID,
-      name: 'My Reserved Agent',
-      instructions: 'Keep these instructions',
-      configuration: { avatar: 'U', heartbeat_interval: 7, builtin_role: 'support' }
-    })
-  })
-
-  it('does not recreate a soft-deleted Cherry Support', () => {
-    new CherrySupportSeeder().run(dbh.db)
-    const [support] = builtinAgents(dbh.db, BUILTIN_AGENT_ROLE.SUPPORT)
+  function insertSupportSession(sessionId: string) {
     dbh.db
-      .update(agentTable)
-      .set({ deletedAt: Date.UTC(2026, 0, 1), configuration: { avatar: 'S' } })
-      .where(eq(agentTable.id, support.id))
+      .insert(agentWorkspaceTable)
+      .values({ id: `ws-${sessionId}`, name: 'Workspace', path: `/tmp/${sessionId}`, orderKey: 'a0' })
       .run()
+    dbh.db
+      .insert(agentSessionTable)
+      .values({
+        id: sessionId,
+        agentId: CHERRY_SUPPORT_AGENT_ID,
+        name: 'Feedback session',
+        workspaceId: `ws-${sessionId}`,
+        orderKey: 'a0'
+      })
+      .run()
+  }
+
+  it('removes an existing Cherry Support agent together with its sessions', () => {
+    insertSupportAgent()
+    insertSupportSession('support-session-1')
 
     new CherrySupportSeeder().run(dbh.db)
 
-    expect(builtinAgents(dbh.db, BUILTIN_AGENT_ROLE.SUPPORT)).toHaveLength(1)
-    expect(builtinAgents(dbh.db, BUILTIN_AGENT_ROLE.SUPPORT)[0].deletedAt).not.toBeNull()
-    expect(builtinAgents(dbh.db, BUILTIN_AGENT_ROLE.SUPPORT)[0].configuration).toEqual({
-      avatar: 'S',
-      builtin_role: 'support'
-    })
+    expect(dbh.db.select().from(agentTable).where(eq(agentTable.id, CHERRY_SUPPORT_AGENT_ID)).all()).toHaveLength(0)
+    expect(dbh.db.select().from(agentSessionTable).all()).toHaveLength(0)
   })
 
-  it('isolates a legacy forged role and preserves the ordinary Agent while creating official Support', () => {
+  it('is a no-op when the library has no Cherry Support agent', () => {
+    new CherrySupportSeeder().run(dbh.db)
+
+    expect(dbh.db.select().from(agentTable).all()).toHaveLength(0)
+    expect(dbh.db.select().from(agentSessionTable).all()).toHaveLength(0)
+  })
+
+  it('hard-deletes a soft-deleted Cherry Support row', () => {
+    insertSupportAgent({ deletedAt: Date.UTC(2026, 0, 1) })
+
+    new CherrySupportSeeder().run(dbh.db)
+
+    expect(dbh.db.select().from(agentTable).where(eq(agentTable.id, CHERRY_SUPPORT_AGENT_ID)).all()).toHaveLength(0)
+  })
+
+  it('leaves an ordinary agent that merely carries a forged support role untouched', () => {
     dbh.db
       .insert(agentTable)
       .values({
@@ -131,7 +80,7 @@ describe('CherrySupportSeeder', () => {
         instructions: 'Keep my instructions',
         model: null,
         orderKey: 'a0',
-        configuration: { builtin_role: 'support', avatar: 'U', heartbeat_interval: 7 }
+        configuration: { avatar: 'U', builtin_role: 'support' }
       })
       .run()
 
@@ -139,9 +88,6 @@ describe('CherrySupportSeeder', () => {
 
     const [ordinary] = dbh.db.select().from(agentTable).where(eq(agentTable.id, 'ordinary-agent')).all()
     expect(ordinary).toMatchObject({ name: 'My Agent', instructions: 'Keep my instructions' })
-    expect(ordinary.configuration).toEqual({ avatar: 'U', heartbeat_interval: 7 })
-    expect(builtinAgents(dbh.db, BUILTIN_AGENT_ROLE.SUPPORT)).toEqual([
-      expect.objectContaining({ id: CHERRY_SUPPORT_AGENT_ID })
-    ])
+    expect(ordinary.configuration).toEqual({ avatar: 'U', builtin_role: 'support' })
   })
 })
