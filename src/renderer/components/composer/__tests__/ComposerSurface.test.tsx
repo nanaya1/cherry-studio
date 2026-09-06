@@ -601,48 +601,32 @@ describe('ComposerSurface', () => {
     expect(screen.getByText('内容由 AI 生成，仅供参考')).toBeInTheDocument()
   })
 
-  it('renders controls immediately while mounting the quick panel after the editor is ready', () => {
+  it('mounts the quick panel synchronously when the editor signals readiness, even with deferQuickPanel', () => {
     mocks.stabilizeEditor = true
-    const animationFrames: FrameRequestCallback[] = []
-    const requestAnimationFrameSpy = vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
-      animationFrames.push(callback)
-      return animationFrames.length
+
+    render(
+      <ComposerSurface
+        {...baseProps}
+        quickPanelEnabled
+        deferQuickPanel
+        renderLeftControls={() => <button type="button">dynamic control</button>}
+      />
+    )
+
+    expect(screen.getByTestId('editor-content')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'dynamic control' })).toBeInTheDocument()
+    expect(screen.queryByTestId('quick-panel-view')).not.toBeInTheDocument()
+    expect(document.querySelector('[data-composer-controls-loading]')).not.toBeInTheDocument()
+
+    act(() => {
+      mocks.editorOptions.onCreate({ editor: mocks.editorInstance })
     })
-    const flushAnimationFrame = () => {
-      act(() => {
-        const callbacks = animationFrames.splice(0)
-        callbacks.forEach((callback) => callback(0))
-      })
-    }
 
-    try {
-      render(
-        <ComposerSurface
-          {...baseProps}
-          quickPanelEnabled
-          deferQuickPanel
-          renderLeftControls={() => <button type="button">dynamic control</button>}
-        />
-      )
-
-      expect(screen.getByTestId('editor-content')).toBeInTheDocument()
-      expect(screen.getByRole('button', { name: 'dynamic control' })).toBeInTheDocument()
-      expect(screen.queryByTestId('quick-panel-view')).not.toBeInTheDocument()
-      expect(document.querySelector('[data-composer-controls-loading]')).not.toBeInTheDocument()
-
-      act(() => {
-        mocks.editorOptions.onCreate({ editor: mocks.editorInstance })
-      })
-
-      expect(screen.getByRole('button', { name: 'dynamic control' })).toBeInTheDocument()
-      expect(screen.queryByTestId('quick-panel-view')).not.toBeInTheDocument()
-      expect(document.querySelector('[data-composer-controls-loading]')).not.toBeInTheDocument()
-
-      flushAnimationFrame()
-      expect(screen.getByTestId('quick-panel-view')).toBeInTheDocument()
-    } finally {
-      requestAnimationFrameSpy.mockRestore()
-    }
+    // The panel must mount in the same commit the editor fires onCreate — a deferred (rAF +
+    // startTransition) flip lets continuous keystroke updates on the home placement starve
+    // `editorReady`, which leaves `/` and `#` unable to pop QuickPanel.
+    expect(screen.getByTestId('quick-panel-view')).toBeInTheDocument()
+    expect(document.querySelector('[data-composer-controls-loading]')).not.toBeInTheDocument()
   })
 
   it('does not restore mount focus for an eagerly loaded draft the fallback never focused', () => {
