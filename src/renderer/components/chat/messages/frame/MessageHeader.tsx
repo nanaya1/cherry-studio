@@ -1,10 +1,9 @@
 import { Checkbox, Tooltip } from '@cherrystudio/ui'
-import { useIcon } from '@cherrystudio/ui/icons'
+import AppLogo from '@renderer/assets/images/logo.png'
 import ModelAvatar from '@renderer/components/Avatar/ModelAvatar'
 import { useTheme } from '@renderer/hooks/useTheme'
 import type { Model } from '@renderer/types/model'
-import { getModelLogoRef } from '@renderer/utils/model'
-import { firstLetter, removeLeadingEmoji } from '@renderer/utils/naming'
+import { removeLeadingEmoji } from '@renderer/utils/naming'
 import dayjs from 'dayjs'
 import { ArrowUpRight, MousePointerClick, Sparkle } from 'lucide-react'
 import type { FC, ReactNode } from 'react'
@@ -20,7 +19,7 @@ import {
 } from '../MessageListProvider'
 import { defaultMessageRenderConfig, type MessageListItem } from '../types'
 import { getMessageListItemModel } from '../utils/messageListItem'
-import MessageAvatar, { MESSAGE_MODEL_AVATAR_ICON_CLASS, MessageAvatarFrame } from './MessageAvatar'
+import MessageAvatar from './MessageAvatar'
 import MessageTokens from './MessageTokens'
 
 interface Props {
@@ -98,7 +97,6 @@ const MessageHeader: FC<Props> = memo(
     const messageModel = useMemo(() => getMessageListItemModel(message), [message])
     const displayModel = messageModel ?? model
     const displayModelName = displayModel?.name || displayModel?.id
-    const ModelIcon = useIcon(useMemo(() => getModelLogoRef(displayModel), [displayModel]))
 
     // Producing author (assistant/agent) snapshotted at creation — shown first; the model is secondary.
     // Once a snapshot exists the header is frozen: consult the live profile only when it's entirely absent,
@@ -123,7 +121,6 @@ const MessageHeader: FC<Props> = memo(
       : 'group-hover/message:pointer-events-auto group-hover/message:opacity-100'
 
     const username = useMemo(() => removeLeadingEmoji(getUserName()), [getUserName])
-    const avatarName = useMemo(() => firstLetter(authorName ?? username ?? '').toUpperCase(), [authorName, username])
 
     const openUserProfile = useCallback(() => {
       void actions.openUserProfile?.()
@@ -136,19 +133,11 @@ const MessageHeader: FC<Props> = memo(
       <div
         className={`message-header group/header relative flex gap-2.5 ${hasBodySlot ? 'mb-0 items-start' : 'mb-2 items-center'}`}>
         {isAssistantMessage ? (
-          ModelIcon ? (
-            <MessageAvatarFrame className="bg-background">
-              <ModelIcon className={MESSAGE_MODEL_AVATAR_ICON_CLASS} aria-hidden="true" />
-            </MessageAvatarFrame>
-          ) : (
-            <MessageAvatar
-              fallback={avatarName}
-              fallbackAvatarStyle={{
-                border: 'none',
-                filter: theme === 'dark' ? 'invert(0.05)' : undefined
-              }}
-            />
-          )
+          <MessageAvatar
+            avatar={AppLogo}
+            aria-label={username}
+            className="border border-border/60 bg-background p-0.5 shadow-xs"
+          />
         ) : (
           <MessageAvatar avatar={userAvatar} onClick={canOpenUserProfile ? openUserProfile : undefined} />
         )}

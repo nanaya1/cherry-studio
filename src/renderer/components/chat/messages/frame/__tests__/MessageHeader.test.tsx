@@ -5,6 +5,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import MessageHeader from '../MessageHeader'
 
+vi.mock('@renderer/assets/images/logo.png', () => ({ default: 'logo.png' }))
+
 const providerState = vi.hoisted(() => ({
   actions: {} as {
     navigateToRoute?: (target: { path: string; query?: Record<string, string> }) => void
@@ -20,7 +22,7 @@ vi.mock('@cherrystudio/ui', () => ({
   AvatarFallback: ({ children, className }: { children?: ReactNode; className?: string }) => (
     <div className={className}>{children}</div>
   ),
-  AvatarImage: ({ className }: { className?: string }) => <div className={className} />,
+  AvatarImage: ({ className, src }: { className?: string; src?: string }) => <img alt="" className={className} src={src} />,
   Badge: ({ asChild, children }: { asChild?: boolean; children?: ReactNode }) =>
     asChild ? <>{children}</> : <span>{children}</span>,
   Checkbox: ({
@@ -117,6 +119,25 @@ describe('MessageHeader', () => {
     const { container } = render(<MessageHeader message={createMessage()} />)
 
     expect(container.querySelector('.message-body-column')).toBeNull()
+  })
+
+  it('uses the app logo for assistant messages regardless of the producing model', () => {
+    render(
+      <MessageHeader
+        message={createMessage('assistant', {
+          model: { id: 'gpt-4', name: 'GPT-4', provider: 'openai' },
+          messageSnapshot: {
+            id: 'a1',
+            name: 'My Assistant',
+            model: { id: 'gpt-4', name: 'GPT-4', provider: 'openai' }
+          }
+        })}
+      />
+    )
+
+    const logo = screen.getByRole('presentation')
+    expect(screen.getByLabelText('My Assistant')).toContainElement(logo)
+    expect(logo).toHaveAttribute('src', 'logo.png')
   })
 
   it('shows the snapshot assistant name without repeating the model beside it', () => {
