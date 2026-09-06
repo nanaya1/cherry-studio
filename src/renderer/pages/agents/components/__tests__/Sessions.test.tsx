@@ -1220,8 +1220,7 @@ describe('Sessions', () => {
     expect(onCreateSession).not.toHaveBeenCalled()
   })
 
-  it('renders no-project sessions in a bottom no-project section', () => {
-    const onCreateSession = vi.fn()
+  it('renders workdir and system task groups without section headings', () => {
     const systemWorkspace = makeWorkspace('/Users/jd/Data/Agents/system/2026-05-25/120000-session', {
       id: 'system-ws',
       name: 'System Workspace',
@@ -1247,23 +1246,14 @@ describe('Sessions', () => {
       ]
     })
 
-    render(<SessionsForTest onCreateSession={onCreateSession} />)
+    render(<SessionsForTest />)
 
-    const projectSection = screen.getByRole('button', { name: 'Work directory' })
-    const noProjectSection = screen.getByRole('button', { name: 'Tasks' })
-    expect(projectSection.compareDocumentPosition(noProjectSection) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Work directory' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Tasks' })).not.toBeInTheDocument()
+    expect(screen.getByText('Beta session')).toBeInTheDocument()
     expect(screen.getByText('System session')).toBeInTheDocument()
     const systemSessionRow = screen.getByText('System session').closest('[role="option"]')
     expect(systemSessionRow?.querySelector('[data-resource-list-leading-slot="true"]') ?? null).not.toBeInTheDocument()
-
-    const noProjectSectionHeader = noProjectSection.closest('[class*="group/resource-list-section"]')
-    expect(noProjectSectionHeader).not.toBeNull()
-    fireEvent.click(within(noProjectSectionHeader as HTMLElement).getByRole('button', { name: 'New task' }))
-
-    expect(onCreateSession).toHaveBeenCalledWith({
-      agentId: 'agent-a',
-      workspace: { type: 'system' }
-    })
   })
 
   it('does not reserve leading icon space for time grouped session rows', () => {

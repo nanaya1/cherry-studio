@@ -354,7 +354,6 @@ export default function Sidebar({
         key: 'workspace:new-task',
         label: t('workspace.newTask.title'),
         renderIcon: (size: number) => <Plus size={size} />,
-        presentation: 'primary' as const,
         isActive: () => pathname.startsWith('/app/new-task'),
         onOpen: () => navigateRouteTab('/app/new-task', t('workspace.newTask.title'))
       },

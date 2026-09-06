@@ -568,7 +568,7 @@ export const DefaultPreferences: PreferenceSchemas = {
   default: {
     'agent.icon_type': 'none',
     'agent.input.toolbar.pinned_tools': ['composer:new-session', 'skills', 'permission-mode'],
-    'agent.session.display_mode': 'agent',
+    'agent.session.display_mode': 'workdir',
     'agent.session.position': 'left',
     'app.developer_mode.enabled': false,
     'app.dist.auto_update.enabled': true,
@@ -849,7 +849,7 @@ export const DefaultPreferences: PreferenceSchemas = {
     'shortcut.topic.sidebar.toggle': { binding: ['CommandOrControl', ']'], enabled: true },
     'topic.naming.enabled': true,
     'topic.naming_prompt': '',
-    'topic.tab.display_mode': 'assistant',
+    'topic.tab.display_mode': 'time',
     'topic.tab.position': 'left',
     'topic.tab.show': true,
     'ui.custom_css': '',

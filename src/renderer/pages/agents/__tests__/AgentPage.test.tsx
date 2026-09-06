@@ -886,17 +886,17 @@ describe('AgentPage', () => {
     expect(screen.queryByTestId('agent-side-panel')).not.toBeInTheDocument()
   })
 
-  it('renders the classic agent layout for the new-user display default', () => {
+  it('renders the modern session sidebar for the new-user display default', () => {
     agentPageMocks.sessionDisplayMode = DefaultPreferences.default['agent.session.display_mode']
     activeSessionMocks.session = { ...agentPageMocks.persistedSession, agentId: 'agent-a' }
     activeSessionMocks.sessionSource = 'query'
 
     render(<AgentPage />)
 
-    expect(DefaultPreferences.default['agent.session.display_mode']).toBe('agent')
-    expect(screen.getByTestId('agent-resource-list')).toBeInTheDocument()
-    expect(screen.getByTestId('session-resource-panel')).toHaveAttribute('data-presentation', 'right-panel')
-    expect(screen.queryByTestId('agent-side-panel')).not.toBeInTheDocument()
+    expect(DefaultPreferences.default['agent.session.display_mode']).toBe('workdir')
+    expect(screen.getByTestId('agent-side-panel')).toBeInTheDocument()
+    expect(screen.queryByTestId('agent-resource-list')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('session-resource-panel')).not.toBeInTheDocument()
   })
 
   it('passes the same agent session source to the classic rail and right panel', () => {

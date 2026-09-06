@@ -14,7 +14,6 @@ import {
   type ResourceListPresentation,
   type ResourceListReorderPayload,
   type ResourceListRevealRequest,
-  type ResourceListSection,
   SESSION_DISPLAY_LABEL_KEYS,
   SessionListOptionsMenu
 } from '@renderer/components/chat/resourceList/base'
@@ -69,10 +68,8 @@ import {
   normalizeSessionDropPayload,
   SESSION_AGENT_SECTION_ID,
   SESSION_NO_PROJECT_GROUP_ID,
-  SESSION_NO_PROJECT_SECTION_ID,
   SESSION_NO_WORKDIR_GROUP_ID,
   SESSION_PINNED_GROUP_ID,
-  SESSION_PINNED_SECTION_ID,
   SESSION_UNKNOWN_AGENT_GROUP_ID,
   SESSION_WORKDIR_SECTION_ID,
   type SessionListItem,
@@ -695,7 +692,6 @@ const Sessions = ({
         },
         mode: displayMode,
         now: groupNow,
-        pinnedAsSection: displayMode === 'workdir',
         workdirDisplay
       }),
     [agentById, displayMode, groupNow, t, workdirDisplay]
@@ -727,50 +723,31 @@ const Sessions = ({
   const sessionSectionBy = useMemo(() => {
     if (displayMode === 'time') return undefined
 
-    return (session: SessionListItem): ResourceListSection => {
-      if (displayMode === 'workdir' && session.pinned) {
-        return { id: SESSION_PINNED_SECTION_ID, label: t('selector.common.pinned_title') }
-      }
-
-      if (displayMode === 'workdir' && isSystemWorkspaceSession(session)) {
-        return { id: SESSION_NO_PROJECT_SECTION_ID, label: t('agent.session.group.tasks') }
-      }
-
-      return {
-        id: displayMode === 'agent' ? SESSION_AGENT_SECTION_ID : SESSION_WORKDIR_SECTION_ID,
-        label: t(SESSION_DISPLAY_LABEL_KEYS[displayMode])
-      }
-    }
+    // A single invisible section: group headers carry the hierarchy, so no section
+    // headers render, while the display options menu keeps its collapse-all anchor.
+    const sectionId = displayMode === 'agent' ? SESSION_AGENT_SECTION_ID : SESSION_WORKDIR_SECTION_ID
+    return () => ({ id: sectionId, label: t(SESSION_DISPLAY_LABEL_KEYS[displayMode]) })
   }, [displayMode, t])
 
   const sessionGroupSeeds = useMemo<ResourceListGroupSeed[]>(() => {
     if (displayMode === 'agent') {
-      const section = { id: SESSION_AGENT_SECTION_ID, label: t(SESSION_DISPLAY_LABEL_KEYS.agent) }
-      return agentsForDisplay.map((agent) => ({ id: getSessionAgentGroupId(agent.id), label: agent.name, section }))
+      return agentsForDisplay.map((agent) => {
+        const section = { id: SESSION_AGENT_SECTION_ID, label: t(SESSION_DISPLAY_LABEL_KEYS.agent) }
+        return { id: getSessionAgentGroupId(agent.id), label: agent.name, section }
+      })
     }
 
     if (displayMode === 'workdir') {
       const section = { id: SESSION_WORKDIR_SECTION_ID, label: t(SESSION_DISPLAY_LABEL_KEYS.workdir) }
-      const groupSeeds = workspaceRowsForDisplay.flatMap((workspace) => {
+      return workspaceRowsForDisplay.flatMap((workspace) => {
         const groupId = workdirDisplay.groupIdByWorkspaceId.get(workspace.id)
         const label = groupId ? workdirDisplay.labelByGroupId.get(groupId) : undefined
         return groupId && label ? [{ id: groupId, label, section }] : []
       })
-      const hasNoProjectSessions = filteredGroupedSessions.some(
-        (session) => !session.pinned && isSystemWorkspaceSession(session)
-      )
-      if (hasNoProjectSessions) {
-        groupSeeds.push({
-          id: SESSION_NO_PROJECT_GROUP_ID,
-          label: '',
-          section: { id: SESSION_NO_PROJECT_SECTION_ID, label: t('agent.session.group.tasks') }
-        })
-      }
-      return groupSeeds
     }
 
     return []
-  }, [agentsForDisplay, displayMode, filteredGroupedSessions, t, workdirDisplay, workspaceRowsForDisplay])
+  }, [agentsForDisplay, displayMode, t, workdirDisplay, workspaceRowsForDisplay])
 
   const collapsedSessionState = useMemo(() => {
     const resolvedSessionExpansion = resolveDefaultCollapsedGroupIds({
@@ -1747,32 +1724,6 @@ const Sessions = ({
     ]
   )
 
-  const getSectionHeaderAction = useCallback(
-    (section: ResourceListSection) => {
-      if (section.id !== SESSION_NO_PROJECT_SECTION_ID) return null
-
-      const createSessionSeed = createSessionSeedIndex.byGroupId.get(SESSION_NO_PROJECT_GROUP_ID) ?? null
-      const canCreateSession = !!createSessionSeed?.agentId && agentById.has(createSessionSeed.agentId)
-      if (!canCreateSession) return null
-
-      return (
-        <Tooltip title={t('agent.session.new')} delay={500}>
-          <ResourceList.GroupHeaderActionButton
-            type="button"
-            aria-label={t('agent.session.new')}
-            disabled={creatingSession}
-            onClick={(event) => {
-              event.stopPropagation()
-              requestCreateSessionFromSeed(createSessionSeed)
-            }}>
-            <NewConversationIcon className="block" />
-          </ResourceList.GroupHeaderActionButton>
-        </Tooltip>
-      )
-    },
-    [agentById, createSessionSeedIndex, creatingSession, requestCreateSessionFromSeed, t]
-  )
-
   const getGroupHeaderIcon = useCallback(
     (group: ResourceListGroup, context: { collapsed: boolean }) => {
       if (group.id === SESSION_PINNED_GROUP_ID) return undefined
@@ -1986,7 +1937,6 @@ const Sessions = ({
       revealRequest={revealRequest}
       defaultGroupVisibleCount={defaultGroupVisibleCount}
       groupLoadStep={DEFAULT_SESSION_GROUP_VISIBLE_COUNT}
-      getSectionHeaderAction={getSectionHeaderAction}
       getGroupHeaderAction={getGroupHeaderAction}
       getGroupHeaderContextMenu={getGroupHeaderContextMenu}
       getGroupHeaderIcon={getGroupHeaderIcon}
@@ -2164,7 +2114,7 @@ function SessionListBody({
         channelType={channelTypeMap[session.id]}
         pinned={session.pinned}
         // The slot exists to line a row up under its group's icon. A pinned row is lifted out to the
-        // pinned section, where there is no such icon above it, so it indents against nothing.
+        // pinned group, where there is no such icon above it, so it indents against nothing.
         reserveLeadingIconSlot={
           !session.pinned && displayMode !== 'time' && !(displayMode === 'workdir' && isSystemWorkspaceSession(session))
         }

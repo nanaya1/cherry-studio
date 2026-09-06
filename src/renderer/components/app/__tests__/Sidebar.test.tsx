@@ -427,6 +427,7 @@ describe('app Sidebar', () => {
       'Skills & Connectors',
       'Scheduled Tasks'
     ])
+    expect(getSidebarProps().navigationEntries?.every((entry) => entry.presentation === undefined)).toBe(true)
     expect(getSidebarProps().sections?.map((section) => section.label)).toEqual(['Conversations', 'Tasks'])
     expect(getSidebarProps().sections?.[0]?.content).toBeDefined()
     expect(getSidebarProps().sections?.[1]?.content).toBeDefined()
