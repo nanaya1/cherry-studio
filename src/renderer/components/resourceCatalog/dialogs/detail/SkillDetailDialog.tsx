@@ -12,10 +12,9 @@ import { DIALOG_UNMOUNT_DELAY_MS } from '@cherrystudio/ui/utils'
 import { ipcApi } from '@renderer/ipc'
 import { loggerService } from '@renderer/services/LoggerService'
 import { openRoute } from '@renderer/services/mainWindowNavigation'
-import { toast } from '@renderer/services/toast'
 import { cn } from '@renderer/utils/style'
 import type { InstalledSkill } from '@shared/data/types/agent'
-import { FolderOpen, Play, Trash2 } from 'lucide-react'
+import { Play, Trash2 } from 'lucide-react'
 import { type FC, useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -124,16 +123,6 @@ const SkillDetailDialog: FC<Props> = ({ skill, open, onOpenChange, onDelete }) =
     [clearCloseTimer, onOpenChange]
   )
 
-  const handleOpenFolder = async () => {
-    if (!skill) return
-    try {
-      await ipcApi.request('skill.folder.open', { skillId: skill.id })
-    } catch (error) {
-      logger.error('Failed to open skill folder', error as Error)
-      toast.error(t('library.skill_detail.open_folder_failed'))
-    }
-  }
-
   const handleTry = () => {
     if (!skill) return
     openRoute('/app/new-task', { mode: 'agent', skillId: skill.id })
@@ -191,17 +180,13 @@ const SkillDetailDialog: FC<Props> = ({ skill, open, onOpenChange, onDelete }) =
               <Play className="size-3.5" />
               {t('library.skill_detail.try')}
             </Button>
-            <Button type="button" variant="outline" size="sm" onClick={() => void handleOpenFolder()}>
-              <FolderOpen className="size-3.5" />
-              {t('library.skill_detail.open_folder')}
-            </Button>
             {onDelete ? (
               <Button
                 type="button"
                 variant="ghost"
                 size="sm"
                 onClick={onDelete}
-                className="ml-auto text-destructive hover:bg-error-subtle hover:text-destructive">
+                className="border border-destructive/50 text-destructive hover:border-destructive hover:bg-error-subtle hover:text-destructive">
                 <Trash2 className="size-3.5" />
                 {t('common.delete')}
               </Button>
