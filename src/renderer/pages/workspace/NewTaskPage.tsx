@@ -10,7 +10,8 @@ import { ChatPlacementComposer } from '@renderer/components/composer/variants/Ch
 import { QuickPanelProvider } from '@renderer/components/QuickPanel'
 import { usePersistCache } from '@renderer/data/hooks/useCache'
 import { useInvalidateCache, useQuery } from '@renderer/data/hooks/useDataApi'
-import { useAgent } from '@renderer/hooks/agent/useAgent'
+import { usePreference } from '@renderer/data/hooks/usePreference'
+import { useAgent, useUpdateAgent } from '@renderer/hooks/agent/useAgent'
 import { useAgentMutationsById, useSkillMutationsById } from '@renderer/hooks/resourceCatalog'
 import { useAgentSessionsSource, useAssistantTopicsSource } from '@renderer/hooks/resourceViewSources'
 import { useCloseConversationTabs, useCurrentTabId } from '@renderer/hooks/tab'
@@ -36,6 +37,8 @@ import {
   type AgentSessionWorkspaceSource,
   type AgentWorkspaceEntity
 } from '@shared/data/api/schemas/agentWorkspaces'
+import { CHERRYAI_DEFAULT_UNIQUE_MODEL_ID } from '@shared/data/presets/cherryai'
+import type { UniqueModelId } from '@shared/data/types/model'
 import { useNavigate, useSearch } from '@tanstack/react-router'
 import { Bot, MessageSquare } from 'lucide-react'
 import { type ComponentProps, useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -93,6 +96,8 @@ export default function NewTaskPage() {
   )
   const [agentId, setAgentId] = useState<string | null>(null)
   const { agent, isLoading: agentLoading } = useAgent(agentId)
+  const { updateModel } = useUpdateAgent()
+  const [defaultModelId] = usePreference('chat.default_model_id')
   const { model: agentModel, isLoading: agentModelLoading } = useModelById(agent?.model)
   const {
     skills: agentSkills,
@@ -263,6 +268,23 @@ export default function NewTaskPage() {
     agentSelectionInitializedRef.current = true
     setAgentId(defaultAgentId)
   }, [agentsData, agentsLoading, agentsRefreshing, defaultAgentId])
+
+  // The builtin craftsman agent is seeded with model: null (the managed CherryAI
+  // default cannot drive the agent runtime), so a fresh install lands here with
+  // no model. Persist the user's default model onto it — the same write path as
+  // picking a model in the composer — so the first send works without a manual
+  // model selection. Managed-CherryAI-only installs keep the explicit gap.
+  const agentModelProvisionedRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (agentId !== defaultAgentId || !agentId || agentsLoading) return
+    if (agent?.model || agentLoading) return
+    const fallbackModelId = (defaultModelId ?? null) as UniqueModelId | null
+    if (!fallbackModelId || fallbackModelId === CHERRYAI_DEFAULT_UNIQUE_MODEL_ID) return
+    agentModelProvisionedRef.current = agentId
+    updateModel({ agentId, modelId: fallbackModelId }, { showSuccessToast: false }).catch(() => {
+      if (agentModelProvisionedRef.current === agentId) agentModelProvisionedRef.current = null
+    })
+  }, [agent, agentId, agentLoading, agentsLoading, defaultAgentId, defaultModelId, updateModel])
 
   useEffect(
     () => () => {

@@ -102,7 +102,7 @@ describe('MainWindowContent', () => {
     expect(document.getElementById('spinner')).toBeNull()
   })
 
-  it('passes the first visible sidebar app as the startup landing tab', () => {
+  it('lands on the new-task page as the startup default tab regardless of sidebar favorites', () => {
     MockUsePreferenceUtils.setPreferenceValue('app.onboarding.provider_setup.status', 'completed')
     MockUsePreferenceUtils.setPreferenceValue('ui.sidebar.favorites', [
       { type: 'app', id: 'agents' },
@@ -112,10 +112,10 @@ describe('MainWindowContent', () => {
 
     render(<MainWindowContent />)
 
-    expect(tabsProviderMock.lastInitialDefaultTab).toMatchObject({ url: '/app/agents' })
+    expect(tabsProviderMock.lastInitialDefaultTab).toMatchObject({ url: '/app/new-task' })
   })
 
-  it('falls back to the new-task page when no sidebar app is visible', () => {
+  it('lands on the new-task page when no sidebar app is visible', () => {
     MockUsePreferenceUtils.setPreferenceValue('app.onboarding.provider_setup.status', 'completed')
     MockUsePreferenceUtils.setPreferenceValue('ui.sidebar.favorites', [])
     MockUsePreferenceUtils.setPreferenceValue('feature.paintings.default_provider', 'zhipu')

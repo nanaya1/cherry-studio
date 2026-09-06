@@ -1,4 +1,4 @@
-import { useMultiplePreferences, usePreference } from '@data/hooks/usePreference'
+import { useMultiplePreferences } from '@data/hooks/usePreference'
 import { loggerService } from '@logger'
 import AppLogo from '@renderer/assets/images/logo.png'
 import { CodeStyleProvider } from '@renderer/components/CodeStyleProvider'
@@ -17,7 +17,6 @@ import { useIsPrivacyUpdateRequired } from '@renderer/hooks/useIsPrivacyUpdateRe
 import { useStorageMonitorNotification } from '@renderer/hooks/useStorageMonitorNotification'
 import { useWindowRuntime } from '@renderer/hooks/useWindowRuntime'
 import { registerImageModeChooser } from '@renderer/services/imageExportModeChooser'
-import { getSidebarDefaultLandingUrl } from '@renderer/utils/sidebar'
 import type { Tab } from '@shared/data/cache/cacheValueTypes'
 import { LATEST_PRIVACY_POLICY_VERSION } from '@shared/utils/constants'
 import { useEffect, useMemo } from 'react'
@@ -94,8 +93,6 @@ export function MainWindowContent(): React.ReactElement {
     ONBOARDING_PREFERENCE_KEYS,
     PESSIMISTIC_PREFERENCE_OPTIONS
   )
-  const [sidebarFavorites] = usePreference('ui.sidebar.favorites')
-  const [defaultPaintingProvider] = usePreference('feature.paintings.default_provider')
   const privacyUpdateRequired = useIsPrivacyUpdateRequired()
   const privacyGateOpen = providerSetupStatus !== 'pending' && privacyUpdateRequired
 
@@ -110,16 +107,19 @@ export function MainWindowContent(): React.ReactElement {
     })
   }, [providerSetupStatus, updateOnboardingPreferences])
 
+  // Fresh-session landing tab: the New Task page. Only used when there is no
+  // persisted session to restore (first launch / nothing was open) — an existing
+  // session resumes from TabsProvider's persisted cache instead.
   const initialDefaultTab = useMemo<Tab>(
     () => ({
       id: 'home',
       type: 'route',
-      url: getSidebarDefaultLandingUrl(sidebarFavorites, defaultPaintingProvider) || '/app/new-task',
+      url: '/app/new-task',
       title: '',
       lastAccessTime: Date.now(),
       isDormant: false
     }),
-    [defaultPaintingProvider, sidebarFavorites]
+    []
   )
 
   return (

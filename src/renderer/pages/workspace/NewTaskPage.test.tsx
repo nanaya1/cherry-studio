@@ -26,6 +26,9 @@ const mocks = vi.hoisted(() => ({
   invalidateCache: vi.fn(),
   closeConversationTabs: vi.fn(),
   toastError: vi.fn(),
+  updateModel: vi.fn(),
+  preferenceValues: {} as Record<string, unknown>,
+  agentModel: null as string | null,
   assistants: [{ id: 'assistant-1' }, { id: 'assistant-2' }],
   agents: [
     { id: 'agent-1', name: 'Custom agent', configuration: {} },
@@ -43,6 +46,28 @@ const mocks = vi.hoisted(() => ({
   chatProps: undefined as Record<string, unknown> | undefined,
   agentProps: undefined as Record<string, unknown> | undefined
 }))
+
+vi.mock('@renderer/components/VirtualList', async () => {
+  const React = await import('react')
+  return {
+    DynamicVirtualList: ({
+      children,
+      list,
+      ref
+    }: {
+      children: (item: { id?: string }, index: number) => ReactNode
+      list: Array<{ id?: string }>
+      ref?: React.Ref<{ scrollToIndex: () => void; scrollToOffset: () => void }>
+    }) => {
+      React.useImperativeHandle(ref, () => ({ scrollToIndex: vi.fn(), scrollToOffset: vi.fn() }))
+      return React.createElement(
+        'div',
+        null,
+        list.map((item, index) => React.createElement(React.Fragment, { key: item.id ?? index }, children(item, index)))
+      )
+    }
+  }
+})
 
 vi.mock('@cherrystudio/ui', async () => {
   const React = await import('react')
@@ -67,7 +92,8 @@ vi.mock('@cherrystudio/ui', async () => {
     },
     TabsContent: ({ children }: { children: ReactNode }) => React.createElement('div', null, children),
     TabsList: ({ children }: { children: ReactNode }) => React.createElement('div', null, children),
-    TabsTrigger: ({ children }: { children: ReactNode }) => React.createElement('button', null, children)
+    TabsTrigger: ({ children }: { children: ReactNode }) => React.createElement('button', null, children),
+    Kbd: ({ children }: { children: ReactNode }) => React.createElement('kbd', null, children)
   }
 })
 
@@ -81,7 +107,14 @@ vi.mock('@renderer/assets/images/logo.png', () => ({ default: 'logo.png' }))
 
 vi.mock('@renderer/components/composer/variants/ChatComposer', async () => {
   const React = await import('react')
-  const { useQuickPanel } = await import('@renderer/components/QuickPanel')
+  const { QuickPanelView, useQuickPanel } = await import('@renderer/components/QuickPanel')
+  const chatInputAdapter = {
+    deleteTriggerRange: vi.fn(),
+    focus: vi.fn(),
+    getCursorOffset: () => 1,
+    getText: () => '/',
+    subscribeInput: vi.fn()
+  }
 
   return {
     ChatPlacementComposer: (props: Record<string, unknown>) => {
@@ -99,7 +132,7 @@ vi.mock('@renderer/components/composer/variants/ChatComposer', async () => {
             {
               onClick: () =>
                 quickPanel.open({
-                  list: [],
+                  list: [{ id: 'chat-action', label: 'Chat action' }],
                   symbol: '/',
                   queryAnchor: 0,
                   trackInputQuery: true,
@@ -107,7 +140,8 @@ vi.mock('@renderer/components/composer/variants/ChatComposer', async () => {
                 })
             },
             'Type slash'
-          )
+          ),
+          React.createElement(QuickPanelView, { inputAdapter: chatInputAdapter })
         )
       }
 
@@ -118,7 +152,14 @@ vi.mock('@renderer/components/composer/variants/ChatComposer', async () => {
 
 vi.mock('@renderer/components/composer/variants/AgentComposer', async () => {
   const React = await import('react')
-  const { useQuickPanel } = await import('@renderer/components/QuickPanel')
+  const { QuickPanelView, useQuickPanel } = await import('@renderer/components/QuickPanel')
+  const agentInputAdapter = {
+    deleteTriggerRange: vi.fn(),
+    focus: vi.fn(),
+    getCursorOffset: () => 0,
+    getText: () => '',
+    subscribeInput: vi.fn()
+  }
 
   return {
     AgentHomeComposer: (props: Record<string, unknown>) => {
@@ -139,7 +180,8 @@ vi.mock('@renderer/components/composer/variants/AgentComposer', async () => {
             'button',
             { onClick: () => (props.onAgentChange as (id: string) => void)('agent-1') },
             'Select agent'
-          )
+          ),
+          React.createElement(QuickPanelView, { inputAdapter: agentInputAdapter })
         )
       }
 
@@ -151,7 +193,8 @@ vi.mock('@renderer/components/composer/variants/AgentComposer', async () => {
           'button',
           { onClick: () => (props.onAgentChange as (id: string) => void)('agent-1') },
           'Select agent'
-        )
+        ),
+        mocks.renderQuickPanelHarness ? React.createElement(QuickPanelView, { inputAdapter: agentInputAdapter }) : null
       )
     }
   }
@@ -159,6 +202,10 @@ vi.mock('@renderer/components/composer/variants/AgentComposer', async () => {
 
 vi.mock('@renderer/data/hooks/useCache', () => ({
   usePersistCache: () => [mocks.lastUsedAssistantId, mocks.setLastUsedAssistantId]
+}))
+
+vi.mock('@renderer/data/hooks/usePreference', () => ({
+  usePreference: (key: string) => [mocks.preferenceValues[key] ?? null, vi.fn()]
 }))
 
 vi.mock('@renderer/data/hooks/useDataApi', () => ({
@@ -173,9 +220,10 @@ vi.mock('@renderer/data/hooks/useDataApi', () => ({
 
 vi.mock('@renderer/hooks/agent/useAgent', () => ({
   useAgent: (id: string | null) => ({
-    agent: id ? { ...mocks.agents.find((agent) => agent.id === id), id, model: 'provider:model' } : undefined,
+    agent: id ? { ...mocks.agents.find((agent) => agent.id === id), id, model: mocks.agentModel } : undefined,
     isLoading: false
-  })
+  }),
+  useUpdateAgent: () => ({ updateModel: mocks.updateModel })
 }))
 
 vi.mock('@renderer/hooks/resourceCatalog', () => ({
@@ -274,6 +322,11 @@ async function selectAgent() {
   expect(mocks.agentProps?.agentId).toBe('agent-1')
 }
 
+function QuickPanelState() {
+  const quickPanel = useQuickPanel()
+  return <output aria-label="quick-panel-visible">{String(quickPanel.isVisible)}</output>
+}
+
 beforeEach(() => {
   mocks.assistants = [{ id: 'assistant-1' }, { id: 'assistant-2' }]
   mocks.agents = [
@@ -288,6 +341,9 @@ beforeEach(() => {
   mocks.updateAgent.mockResolvedValue({})
   mocks.updateGlobalEnabled.mockResolvedValue({})
   mocks.refreshAgentSkills.mockResolvedValue(undefined)
+  mocks.preferenceValues = { 'chat.default_model_id': 'provider:model' }
+  mocks.agentModel = null
+  mocks.updateModel.mockResolvedValue({ id: 'craftsman-agent' })
   mocks.reuseOrCreateTopic.mockResolvedValue({ topic: { id: 'topic-1' } })
   mocks.reuseOrCreateSession.mockResolvedValue({
     session: { id: 'session-1' },
@@ -313,6 +369,7 @@ describe('NewTaskPage', () => {
 
     render(
       <QuickPanelProvider>
+        <QuickPanelState />
         <NewTaskPage />
       </QuickPanelProvider>
     )
@@ -320,6 +377,7 @@ describe('NewTaskPage', () => {
     await user.click(screen.getByRole('button', { name: 'Type slash' }))
 
     await waitFor(() => expect(screen.getByLabelText('quick-panel-visible')).toHaveTextContent('true'))
+    expect(screen.getByText('Chat action')).toBeVisible()
   })
 
   it('uses the shared default assistant priority for new chat tasks', () => {
@@ -333,6 +391,43 @@ describe('NewTaskPage', () => {
 
     await waitFor(() => expect(mocks.agentProps?.agentId).toBe('craftsman-agent'))
     expect(mocks.agentProps?.sendDisabled).toBe(false)
+  })
+
+  it('provisions the default model onto the builtin craftsman agent without one', async () => {
+    render(<NewTaskPage />)
+
+    await waitFor(() =>
+      expect(mocks.updateModel).toHaveBeenCalledWith(
+        { agentId: 'craftsman-agent', modelId: 'provider:model' },
+        { showSuccessToast: false }
+      )
+    )
+  })
+
+  it('does not provision a model when the default model is unset or the managed CherryAI default', () => {
+    mocks.preferenceValues = { 'chat.default_model_id': null }
+    render(<NewTaskPage />)
+    expect(mocks.updateModel).not.toHaveBeenCalled()
+
+    cleanup()
+    mocks.preferenceValues = { 'chat.default_model_id': 'cherryai::qwen' }
+    render(<NewTaskPage />)
+    expect(mocks.updateModel).not.toHaveBeenCalled()
+  })
+
+  it('does not provision a model when the craftsman agent already has one or a custom agent is selected', async () => {
+    mocks.agentModel = 'provider:custom'
+    render(<NewTaskPage />)
+    await waitFor(() => expect(mocks.agentProps?.agentId).toBe('craftsman-agent'))
+    expect(mocks.updateModel).not.toHaveBeenCalled()
+
+    cleanup()
+    mocks.agentModel = null
+    mocks.agents = [{ id: 'agent-1', name: 'Custom agent', configuration: {} }]
+    render(<NewTaskPage />)
+    await userEvent.click(screen.getByRole('button', { name: 'Select agent' }))
+    await waitFor(() => expect(mocks.agentProps?.agentId).toBe('agent-1'))
+    expect(mocks.updateModel).not.toHaveBeenCalled()
   })
 
   it('keeps the same agent composer visible before and after selecting an agent', async () => {
