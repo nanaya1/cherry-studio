@@ -7,7 +7,7 @@ import {
 } from '@renderer/components/composer/variants/AgentComposer'
 import { agentSkillToComposerToken } from '@renderer/components/composer/variants/agentComposerTokens'
 import { ChatPlacementComposer } from '@renderer/components/composer/variants/ChatComposer'
-import { QuickPanelProvider } from '@renderer/components/QuickPanel'
+import { QuickPanelProvider, useQuickPanel } from '@renderer/components/QuickPanel'
 import { usePersistCache } from '@renderer/data/hooks/useCache'
 import { useInvalidateCache, useQuery } from '@renderer/data/hooks/useDataApi'
 import { usePreference } from '@renderer/data/hooks/usePreference'
@@ -41,7 +41,16 @@ import { CHERRYAI_DEFAULT_UNIQUE_MODEL_ID } from '@shared/data/presets/cherryai'
 import type { UniqueModelId } from '@shared/data/types/model'
 import { useNavigate, useSearch } from '@tanstack/react-router'
 import { Bot, MessageSquare } from 'lucide-react'
-import { type ComponentProps, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  type ComponentProps,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState
+} from 'react'
 import { useTranslation } from 'react-i18next'
 
 const logger = loggerService.withContext('NewTaskPage')
@@ -49,6 +58,17 @@ const logger = loggerService.withContext('NewTaskPage')
 type ChatSeed = ReturnType<typeof useTopicMessagesCache>['seedReservedMessages']
 type AgentSeed = ReturnType<typeof useAgentSessionParts>['seedReservedMessages']
 type TaskMode = 'chat' | 'agent'
+
+function NewTaskQuickPanelFill({ children }: { children: ReactNode }) {
+  const { setFillToAvailableHeight } = useQuickPanel()
+
+  useLayoutEffect(() => {
+    setFillToAvailableHeight(true)
+    return () => setFillToAvailableHeight(false)
+  }, [setFillToAvailableHeight])
+
+  return children
+}
 
 export default function NewTaskPage() {
   const { t } = useTranslation()
@@ -459,7 +479,9 @@ export default function NewTaskPage() {
       {/* <header className="flex h-(--navbar-height) shrink-0 items-center border-border-subtle border-b px-5">
         <h1 className="font-medium text-sm">{t('workspace.newTask.title')}</h1>
       </header> */}
-      <main className="flex min-h-[520px] flex-1 items-start justify-center px-6 pt-35 pb-12">
+      <main
+        data-composer-dock-layer=""
+        className="flex min-h-[520px] flex-1 items-start justify-center px-6 pt-35 pb-12">
         <div className="w-full max-w-2xl">
           <div className="text-center">
             <h2 className="font-semibold text-2xl tracking-tight">{t('workspace.newTask.heading')}</h2>
@@ -480,16 +502,18 @@ export default function NewTaskPage() {
             </TabsList>
             <TabsContent value="chat" forceMount className="mt-4 data-[state=inactive]:hidden">
               <QuickPanelProvider>
-                <ChatPlacementComposer
-                  placement="home"
-                  scopeKey={chatDraftScopeKey}
-                  assistantId={chatAssistantId ?? undefined}
-                  resolvedContext={chatContext}
-                  resolvedProviders={providers}
-                  onDraftAssistantChange={handleChatAssistantChange}
-                  onSend={handleChatSend}
-                  onDraftCleared={handleDraftCleared}
-                />
+                <NewTaskQuickPanelFill>
+                  <ChatPlacementComposer
+                    placement="home"
+                    scopeKey={chatDraftScopeKey}
+                    assistantId={chatAssistantId ?? undefined}
+                    resolvedContext={chatContext}
+                    resolvedProviders={providers}
+                    onDraftAssistantChange={handleChatAssistantChange}
+                    onSend={handleChatSend}
+                    onDraftCleared={handleDraftCleared}
+                  />
+                </NewTaskQuickPanelFill>
               </QuickPanelProvider>
             </TabsContent>
             <TabsContent value="agent" forceMount className="data-[state=inactive]:hidden">
@@ -549,31 +573,33 @@ export default function NewTaskPage() {
                 />
               )}
               <QuickPanelProvider>
-                <AgentHomeComposer
-                  agentId={agentId ?? ''}
-                  sessionId={temporaryAgentSessionId}
-                  draftScopeKey={agentDraftScopeKey}
-                  sessionOverride={{ workspace: agentWorkspace, workspaceId: agentWorkspaceId }}
-                  resolvedAgent={agent}
-                  resolvedModel={agentModel}
-                  resolvedWorkspaceWarning={null}
-                  sendMessage={handleAgentSend}
-                  stop={async () => undefined}
-                  onAgentChange={handleAgentChange}
-                  agentChanging={agentLoading}
-                  workspaceId={agentWorkspaceId}
-                  onWorkspaceChange={handleWorkspaceChange}
-                  isStreaming={false}
-                  sendDisabled={
-                    !agentId ||
-                    agentModelLoading ||
-                    !agentModel ||
-                    (hasPendingSkillLaunch &&
-                      (isSkillBindingLoading || requiresSkillBinding || isLaunchSkillUnavailable || !canUseLaunchSkill))
-                  }
-                  launchOptions={canUseLaunchSkill ? skillLaunchOptions : undefined}
-                  onDraftCleared={handleDraftCleared}
-                />
+                <NewTaskQuickPanelFill>
+                  <AgentHomeComposer
+                    agentId={agentId ?? ''}
+                    sessionId={temporaryAgentSessionId}
+                    draftScopeKey={agentDraftScopeKey}
+                    sessionOverride={{ workspace: agentWorkspace, workspaceId: agentWorkspaceId }}
+                    resolvedAgent={agent}
+                    resolvedModel={agentModel}
+                    resolvedWorkspaceWarning={null}
+                    sendMessage={handleAgentSend}
+                    stop={async () => undefined}
+                    onAgentChange={handleAgentChange}
+                    agentChanging={agentLoading}
+                    workspaceId={agentWorkspaceId}
+                    onWorkspaceChange={handleWorkspaceChange}
+                    isStreaming={false}
+                    sendDisabled={
+                      !agentId ||
+                      agentModelLoading ||
+                      !agentModel ||
+                      (hasPendingSkillLaunch &&
+                        (isSkillBindingLoading || requiresSkillBinding || isLaunchSkillUnavailable || !canUseLaunchSkill))
+                    }
+                    launchOptions={canUseLaunchSkill ? skillLaunchOptions : undefined}
+                    onDraftCleared={handleDraftCleared}
+                  />
+                </NewTaskQuickPanelFill>
               </QuickPanelProvider>
             </TabsContent>
           </Tabs>

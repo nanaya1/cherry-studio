@@ -130,15 +130,19 @@ vi.mock('@renderer/components/composer/variants/ChatComposer', async () => {
           React.createElement('output', { 'aria-label': 'quick-panel-visible' }, String(quickPanel.isVisible)),
           React.createElement(
             'output',
-            { 'aria-label': 'quick-panel-visible' },
-            String(quickPanel.isVisible)
+            { 'aria-label': 'chat-quick-panel-fill' },
+            String(quickPanel.fillToAvailableHeight)
           ),
           React.createElement(
             'button',
             {
               onClick: () =>
                 quickPanel.open({
-                  list: [{ id: 'chat-action', label: 'Chat action', icon: undefined }],
+                  list: Array.from({ length: 10 }, (_, index) => ({
+                    id: `chat-action-${index}`,
+                    label: index === 0 ? 'Chat action' : `Chat action ${index + 1}`,
+                    icon: undefined
+                  })),
                   symbol: '/',
                   queryAnchor: 0,
                   trackInputQuery: true,
@@ -171,28 +175,13 @@ vi.mock('@renderer/components/composer/variants/AgentComposer', async () => {
   return {
     AgentHomeComposer: (props: Record<string, unknown>) => {
       mocks.agentProps = props
+      const quickPanel = useQuickPanel()
+      React.useEffect(() => {
+        if (quickPanel.isVisible && quickPanel.triggerInfo?.type === 'input') {
+          quickPanel.close('input_trigger_removed')
+        }
+      }, [quickPanel])
 
-      const AgentQuickPanelHarness = () => {
-        const quickPanel = useQuickPanel()
-        React.useEffect(() => {
-          if (quickPanel.isVisible && quickPanel.triggerInfo?.type === 'input') {
-            quickPanel.close('input_trigger_removed')
-          }
-        }, [quickPanel])
-
-        return React.createElement(
-          'div',
-          { 'aria-label': 'agent-composer' },
-          React.createElement(
-            'button',
-            { onClick: () => (props.onAgentChange as (id: string) => void)('agent-1') },
-            'Select agent'
-          ),
-          React.createElement(QuickPanelView, { inputAdapter: agentInputAdapter })
-        )
-      }
-
-      if (mocks.renderQuickPanelHarness) return React.createElement(AgentQuickPanelHarness)
       return React.createElement(
         'div',
         { 'aria-label': 'agent-composer' },
@@ -201,7 +190,18 @@ vi.mock('@renderer/components/composer/variants/AgentComposer', async () => {
           { onClick: () => (props.onAgentChange as (id: string) => void)('agent-1') },
           'Select agent'
         ),
-        mocks.renderQuickPanelHarness ? React.createElement(QuickPanelView, { inputAdapter: agentInputAdapter }) : null
+        mocks.renderQuickPanelHarness
+          ? React.createElement(
+              React.Fragment,
+              null,
+              React.createElement(
+                'output',
+                { 'aria-label': 'agent-quick-panel-fill' },
+                String(quickPanel.fillToAvailableHeight)
+              ),
+              React.createElement(QuickPanelView, { inputAdapter: agentInputAdapter })
+            )
+          : null
       )
     }
   }
@@ -379,6 +379,45 @@ describe('NewTaskPage', () => {
 
     await waitFor(() => expect(screen.getByLabelText('quick-panel-visible')).toHaveTextContent('true'))
     expect(screen.getByText('Chat action')).toBeVisible()
+  })
+
+  it('caps both new-task quick panels to the height available above their composers', async () => {
+    mocks.renderQuickPanelHarness = true
+    const user = userEvent.setup()
+    const getRectSpy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function rectFor(
+      this: HTMLElement
+    ) {
+      const top = this.dataset.composerDockLayer !== undefined ? 100 : 0
+      const bottom = this.dataset.testid === 'quick-panel' ? 400 : top
+      return {
+        x: 0,
+        y: top,
+        top,
+        right: 0,
+        bottom,
+        left: 0,
+        width: 0,
+        height: bottom - top,
+        toJSON: () => ({})
+      }
+    })
+
+    try {
+      render(<NewTaskPage />)
+      await user.click(screen.getByRole('button', { name: 'Type slash' }))
+
+      await waitFor(() => {
+        expect(screen.getByLabelText('chat-quick-panel-fill')).toHaveTextContent('true')
+        expect(screen.getByLabelText('agent-quick-panel-fill')).toHaveTextContent('true')
+        expect(screen.getAllByTestId('quick-panel')[0]).toHaveStyle({ maxHeight: '292px' })
+      })
+      expect(screen.getAllByTestId('quick-panel')).toHaveLength(2)
+      expect(screen.getAllByTestId('quick-panel').every((panel) => panel.closest('[data-composer-dock-layer]'))).toBe(
+        true
+      )
+    } finally {
+      getRectSpy.mockRestore()
+    }
   })
 
   it('uses the shared default assistant priority for new chat tasks', () => {
