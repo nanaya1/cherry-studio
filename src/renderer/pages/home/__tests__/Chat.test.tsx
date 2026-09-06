@@ -14,6 +14,9 @@ const conversationShellProps = vi.hoisted(() => ({
 const chatContentProps = vi.hoisted(() => ({
   current: null as any
 }))
+const chatConversationControlsProps = vi.hoisted(() => ({
+  current: null as any
+}))
 const assistantContextMock = vi.hoisted(() => ({
   isLoading: false,
   isModelPending: false
@@ -146,12 +149,13 @@ vi.mock('@renderer/services/EventService', () => ({
 }))
 
 vi.mock('@renderer/components/composer/variants/chat/ChatConversationControls', () => ({
-  ChatConversationControls: ({ assistantName, model, providers }: any) => {
-    const provider = providers.find((currentProvider: any) => currentProvider.id === model?.providerId)
+  ChatConversationControls: (props: any) => {
+    chatConversationControlsProps.current = props
+    const provider = props.providers.find((currentProvider: any) => currentProvider.id === props.model?.providerId)
     return (
       <div data-testid="chat-conversation-controls">
-        {assistantName}
-        {model && provider ? `${model.name} | ${provider.name}` : null}
+        {props.assistantName}
+        {props.model && provider ? `${props.model.name} | ${provider.name}` : null}
       </div>
     )
   }
@@ -217,6 +221,7 @@ describe('Chat', () => {
     vi.clearAllMocks()
     conversationShellProps.current = null
     chatContentProps.current = null
+    chatConversationControlsProps.current = null
     assistantContextMock.isLoading = false
     assistantContextMock.isModelPending = false
     commandHandlers.clear()
@@ -261,7 +266,7 @@ describe('Chat', () => {
     expect(conversationShellProps.current?.topBar).toBeTruthy()
     expect(conversationShellProps.current?.topRightTool).toBeTruthy()
     expect(screen.getByTestId('topic-right-shortcuts')).toBeInTheDocument()
-    expect(screen.getByTestId('chat-conversation-controls')).toHaveTextContent('Assistant')
+    expect(chatConversationControlsProps.current?.showAssistantControl).toBe(false)
     expect(chatContentProps.current?.assistantContext?.assistant?.id).toBe('assistant-1')
   })
 

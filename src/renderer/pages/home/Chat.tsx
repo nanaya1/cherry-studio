@@ -265,6 +265,7 @@ const Chat: FC<Props> = (props) => {
                   selectModelLabel={assistantContext.isModelPending ? t('common.loading') : t('button.select_model')}
                   useMentionedModelSelector
                   shouldAutoSelectCreatedAssistant={false}
+                  showAssistantControl={false}
                   assistantTriggerAction={topicDisplayMode === 'assistant' ? 'edit' : 'select'}
                   onDialogCloseAutoFocus={handleRestoreComposerFocus}
                   onAssistantChange={handleAssistantChange}
