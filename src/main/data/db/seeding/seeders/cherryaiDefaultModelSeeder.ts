@@ -1,8 +1,8 @@
 import { ENDPOINT_TYPE } from '@cherrystudio/provider-registry'
-import { preferenceTable } from '@data/db/schemas/preference'
 import type { InsertUserModelRow } from '@data/db/schemas/userModel'
 import { userModelTable } from '@data/db/schemas/userModel'
 import type { InsertUserProviderRow } from '@data/db/schemas/userProvider'
+import { userProviderTable } from '@data/db/schemas/userProvider'
 import { providerService } from '@data/services/ProviderService'
 import { insertManyWithOrderKey } from '@data/services/utils/orderKey'
 import { loggerService } from '@logger'
@@ -17,28 +17,16 @@ import {
   CHERRYAI_PROVIDER_NAME
 } from '@shared/data/presets/cherryai'
 import type { ModelCapability } from '@shared/data/types/model'
-import { and, eq } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 
 import type { DbType, ISeeder } from '../../types'
 import { hashObject } from '../hashObject'
 
 const logger = loggerService.withContext('CherryAiDefaultModelSeeder')
 
-const DEFAULT_MODEL_PREFERENCE_SCOPE = 'default' as const
-export const DEFAULT_MODEL_PREFERENCE_KEYS = [
-  'chat.default_model_id',
-  'feature.quick_assistant.model_id',
-  'feature.translate.model_id'
-] as const
-
 type TxLike = Pick<DbType, 'select' | 'insert' | 'update'>
 type ManagedCherryProviderRow = Omit<InsertUserProviderRow, 'orderKey'>
 type CherryAiDefaultModelRow = Omit<InsertUserModelRow, 'orderKey'>
-type DefaultModelPreferenceRow = {
-  scope: typeof DEFAULT_MODEL_PREFERENCE_SCOPE
-  key: (typeof DEFAULT_MODEL_PREFERENCE_KEYS)[number]
-  value: typeof CHERRYAI_DEFAULT_UNIQUE_MODEL_ID
-}
 
 function createCherryAiProviderRow(): ManagedCherryProviderRow {
   return {
@@ -53,7 +41,7 @@ function createCherryAiProviderRow(): ManagedCherryProviderRow {
     defaultChatEndpoint: ENDPOINT_TYPE.OPENAI_CHAT_COMPLETIONS,
     authConfig: null,
     providerSettings: null,
-    isEnabled: true
+    isEnabled: false
   }
 }
 
@@ -90,8 +78,8 @@ function createCherryAiDefaultModelRow(): CherryAiDefaultModelRow {
     reasoning: null,
     parameters: null,
     pricing: null,
-    isEnabled: true,
-    isHidden: false,
+    isEnabled: false,
+    isHidden: true,
     isDeprecated: false,
     notes: null
   }
@@ -103,6 +91,10 @@ export function ensureCherryAiDefaultProviderAndModelTx(tx: TxLike): void {
   if (insertedProviderCount > 0) {
     logger.warn('Self-healed missing CherryAI default provider', { providerId: CHERRYAI_PROVIDER_ID })
   }
+  tx.update(userProviderTable)
+    .set({ isEnabled: false })
+    .where(eq(userProviderTable.providerId, CHERRYAI_PROVIDER_ID))
+    .run()
 
   const insertedCloudProviderCount = providerService.batchUpsertTx(tx, [createCherryCloudProviderRow()])
   if (insertedCloudProviderCount > 0) {
@@ -116,7 +108,13 @@ export function ensureCherryAiDefaultProviderAndModelTx(tx: TxLike): void {
     .limit(1)
     .all()
 
-  if (existing) return
+  if (existing) {
+    tx.update(userModelTable)
+      .set({ isEnabled: false, isHidden: true })
+      .where(eq(userModelTable.id, CHERRYAI_DEFAULT_UNIQUE_MODEL_ID))
+      .run()
+    return
+  }
 
   logger.warn('Self-healed missing CherryAI default model', { modelId: CHERRYAI_DEFAULT_UNIQUE_MODEL_ID })
   insertManyWithOrderKey(tx, userModelTable, [createCherryAiDefaultModelRow()], {
@@ -125,56 +123,20 @@ export function ensureCherryAiDefaultProviderAndModelTx(tx: TxLike): void {
   })
 }
 
-function createDefaultModelPreferenceRows(): DefaultModelPreferenceRow[] {
-  return DEFAULT_MODEL_PREFERENCE_KEYS.map((key) => ({
-    scope: DEFAULT_MODEL_PREFERENCE_SCOPE,
-    key,
-    value: CHERRYAI_DEFAULT_UNIQUE_MODEL_ID
-  }))
-}
-
-function ensureDefaultModelPreferencesTx(tx: TxLike): void {
-  for (const { scope, key, value } of createDefaultModelPreferenceRows()) {
-    const [existing] = tx
-      .select({ value: preferenceTable.value })
-      .from(preferenceTable)
-      .where(and(eq(preferenceTable.scope, scope), eq(preferenceTable.key, key)))
-      .limit(1)
-      .all()
-
-    if (!existing) {
-      logger.warn('Self-healed missing default model preference', { key, value })
-      tx.insert(preferenceTable)
-        .values({
-          scope,
-          key,
-          value
-        })
-        .run()
-    }
-  }
-}
-
-function ensureCherryAiDefaultModelSetupTx(tx: TxLike): void {
-  ensureCherryAiDefaultProviderAndModelTx(tx)
-  ensureDefaultModelPreferencesTx(tx)
-}
-
 export class CherryAiDefaultModelSeeder implements ISeeder {
   readonly name = 'cherryaiDefaultModel'
-  readonly description = 'Ensure CherryAI providers, default model, and default model preferences'
+  readonly description = 'Ensure hidden legacy CherryAI providers and default model'
   readonly version: string
 
   constructor() {
     this.version = hashObject({
       provider: createCherryAiProviderRow(),
       cloudProvider: createCherryCloudProviderRow(),
-      model: createCherryAiDefaultModelRow(),
-      preferences: createDefaultModelPreferenceRows()
+      model: createCherryAiDefaultModelRow()
     })
   }
 
   run(db: DbType): void {
-    db.transaction((tx) => ensureCherryAiDefaultModelSetupTx(tx))
+    db.transaction((tx) => ensureCherryAiDefaultProviderAndModelTx(tx))
   }
 }

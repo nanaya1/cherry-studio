@@ -18,8 +18,8 @@ const { mockStart, mockStop, mockSetShared, mockGetActiveUsageContext, mockPrefe
     mockGetActiveUsageContext: vi.fn(),
     mockPreferenceSet: vi.fn(async () => {}),
     captured: {
-      prefHandler: undefined as ((enabled: boolean) => void) | undefined,
-      enabledPreference: false
+      prefHandler: undefined as ((enabled: boolean | null) => void) | undefined,
+      enabledPreference: false as boolean | null
     }
   })
 )
@@ -32,7 +32,7 @@ vi.mock('@application', async () => {
   const { mockApplicationFactory } = await import('@test-mocks/main/application')
   return mockApplicationFactory({
     PreferenceService: {
-      subscribeChange: vi.fn((_key: string, cb: (enabled: boolean) => void) => {
+      subscribeChange: vi.fn((_key: string, cb: (enabled: boolean | null) => void) => {
         captured.prefHandler = cb
         return () => {}
       }),
@@ -157,6 +157,55 @@ describe('ApiGatewayService reconcile', () => {
     await ready
 
     expect(service.isActivated).toBe(true)
+  })
+
+  it('stays stopped at boot in automatic mode', async () => {
+    captured.enabledPreference = null
+    const service = new ApiGatewayService()
+
+    await service._doInit()
+
+    expect(mockStart).not.toHaveBeenCalled()
+    expect(service.isActivated).toBe(false)
+  })
+
+  it('starts on demand in automatic mode without persisting always-on intent', async () => {
+    captured.enabledPreference = null
+    const service = new ApiGatewayService()
+    await service._doInit()
+
+    const ensured = service.ensureRunning()
+    await vi.waitFor(() => expect(mockStart).toHaveBeenCalledTimes(1))
+    startResolvers[0]()
+    await ensured
+
+    expect(service.isActivated).toBe(true)
+    expect(mockPreferenceSet).not.toHaveBeenCalled()
+  })
+
+  it('does not start on demand after the user explicitly disabled the gateway', async () => {
+    const service = new ApiGatewayService()
+    await service._doInit()
+
+    await expect(service.ensureRunning()).rejects.toThrow('API Gateway is disabled')
+    expect(mockStart).not.toHaveBeenCalled()
+  })
+
+  it('stops an automatic start when the user disables the gateway while it is binding', async () => {
+    captured.enabledPreference = null
+    const service = new ApiGatewayService()
+    await service._doInit()
+
+    const ensured = service.ensureRunning()
+    await vi.waitFor(() => expect(mockStart).toHaveBeenCalledTimes(1))
+
+    captured.enabledPreference = false
+    captured.prefHandler!(false)
+    startResolvers[0]()
+
+    await expect(ensured).rejects.toThrow('disabled while starting')
+    await vi.waitFor(() => expect(mockStop).toHaveBeenCalledTimes(1))
+    expect(service.isActivated).toBe(false)
   })
 
   // The command and the persisted intent must land together: a stop whose preference write never

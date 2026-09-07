@@ -247,7 +247,7 @@ describe('OnboardingPage', () => {
       if (path === '/assistants') return { items: [], total: 0 }
       if (path === '/agents') {
         return {
-          items: [{ id: 'support-agent', model: null, configuration: { builtin_role: 'support' } }],
+          items: [{ id: 'assistant-agent', model: null, configuration: { builtin_role: 'assistant' } }],
           total: 1
         }
       }
@@ -275,7 +275,7 @@ describe('OnboardingPage', () => {
   })
 
   it('configures official resources beyond the first page before completing', async () => {
-    let resolveSupportUpdate: (() => void) | undefined
+    let resolveAgentUpdate: (() => void) | undefined
     dataApiMocks.get.mockImplementation(async (path: string, options?: { query?: { page?: number } }) => {
       if (path === '/assistants') return { items: [], total: 0 }
       if (path === '/agents' && options?.query?.page === 1) {
@@ -290,7 +290,7 @@ describe('OnboardingPage', () => {
       }
       if (path === '/agents' && options?.query?.page === 2) {
         return {
-          items: [{ id: 'support-agent', model: null, configuration: { builtin_role: 'support' } }],
+          items: [{ id: 'assistant-agent', model: null, configuration: { builtin_role: 'assistant' } }],
           total: 501
         }
       }
@@ -299,7 +299,7 @@ describe('OnboardingPage', () => {
     dataApiMocks.patch.mockImplementation(
       () =>
         new Promise<void>((resolve) => {
-          resolveSupportUpdate = resolve
+          resolveAgentUpdate = resolve
         })
     )
     render(<OnboardingPage />)
@@ -308,13 +308,13 @@ describe('OnboardingPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /onboarding\.select_model\.start/ }))
 
     await waitFor(() =>
-      expect(dataApiMocks.patch).toHaveBeenCalledWith('/agents/support-agent', {
+      expect(dataApiMocks.patch).toHaveBeenCalledWith('/agents/assistant-agent', {
         body: { model: 'default-model' }
       })
     )
     expect(MockUsePreferenceUtils.getPreferenceValue('app.onboarding.provider_setup.status')).toBe('pending')
 
-    resolveSupportUpdate?.()
+    resolveAgentUpdate?.()
 
     await waitFor(() =>
       expect(MockUsePreferenceUtils.getPreferenceValue('app.onboarding.provider_setup.status')).toBe('completed')
@@ -452,10 +452,9 @@ describe('OnboardingPage', () => {
       if (path === '/agents') {
         return {
           items: [
-            { id: 'assistant-agent', model: seededAgentModel, configuration: { builtin_role: 'assistant' } },
-            { id: 'support-agent', model: seededAgentModel, configuration: { builtin_role: 'support' } }
+            { id: 'assistant-agent', model: seededAgentModel, configuration: { builtin_role: 'assistant' } }
           ],
-          total: 2
+          total: 1
         }
       }
       throw new Error(`Unexpected path: ${path}`)
@@ -478,9 +477,6 @@ describe('OnboardingPage', () => {
     expect(dataApiMocks.patch).toHaveBeenCalledWith('/agents/assistant-agent', {
       body: { model: 'openai::gpt-4o' }
     })
-    expect(dataApiMocks.patch).toHaveBeenCalledWith('/agents/support-agent', {
-      body: { model: 'openai::gpt-4o' }
-    })
   })
 
   it('preserves assistant and agent models unless both replacement conditions match', async () => {
@@ -498,10 +494,9 @@ describe('OnboardingPage', () => {
         return {
           items: [
             { id: 'ordinary-agent', model: null, configuration: {} },
-            { id: 'assistant-agent', model: 'anthropic::custom', configuration: { builtin_role: 'assistant' } },
-            { id: 'support-agent', model: 'openai::custom', configuration: { builtin_role: 'support' } }
+            { id: 'assistant-agent', model: 'anthropic::custom', configuration: { builtin_role: 'assistant' } }
           ],
-          total: 3
+          total: 2
         }
       }
       throw new Error(`Unexpected path: ${path}`)
@@ -629,42 +624,24 @@ describe('OnboardingPage', () => {
     expect(MockUsePreferenceUtils.getPreferenceValue('app.privacy.data_collection.enabled')).toBe(false)
   })
 
-  it('starts CherryIN login without privacy acceptance and disables data collection', async () => {
+  it('hides the CherryIN/Cherry Cloud login entry instead of starting OAuth', async () => {
+    // 「登录樱桃云 / 樱桃 In」主按钮暂时隐藏（Cherry 厂商云）。原 OAuth 流程断言见 git 历史。
     MockUsePreferenceUtils.setPreferenceValue('app.privacy.policy_version', '')
-    oauthWithCherryInMock.mockImplementation(async (setKey: (keys: string) => Promise<void>) => {
-      await setKey('sk-one')
-      return 'sk-one'
-    })
-    render(<OnboardingPage />)
-
-    fireEvent.click(screen.getByRole('checkbox', { name: 'onboarding.privacy.accept_policy' }))
-    await waitFor(() =>
-      expect(MockUsePreferenceUtils.getPreferenceValue('app.privacy.data_collection.enabled')).toBe(false)
-    )
-    fireEvent.click(screen.getByRole('button', { name: 'onboarding.welcome.login_cherryin' }))
-
-    await waitFor(() => expect(oauthWithCherryInMock).toHaveBeenCalledTimes(1))
-    expect(screen.queryByTestId('privacy-policy-dialog')).not.toBeInTheDocument()
-    expect(MockUsePreferenceUtils.getPreferenceValue('app.privacy.policy_version')).toBe('')
-    expect(MockUsePreferenceUtils.getPreferenceValue('app.privacy.data_collection.enabled')).toBe(false)
-  })
-
-  it('uses cancellable Cherry Cloud login instead of CherryIN in the CN edition', async () => {
-    const user = userEvent.setup()
-    cloudMocks.appEdition = 'cn'
     render(<OnboardingPage />)
 
     expect(screen.queryByRole('button', { name: 'onboarding.welcome.login_cherryin' })).not.toBeInTheDocument()
-    await user.click(await screen.findByRole('button', { name: 'onboarding.welcome.login_cherry_cloud' }))
-
-    expect(cloudMocks.ipcRequest).toHaveBeenCalledWith('cherry_cloud.login.start')
+    expect(screen.queryByRole('button', { name: 'onboarding.welcome.login_cherry_cloud' })).not.toBeInTheDocument()
     expect(oauthWithCherryInMock).not.toHaveBeenCalled()
-    expect(screen.getByRole('button', { name: 'settings.provider.cherry_cloud.signing_in' })).toBeDisabled()
+  })
 
-    await user.click(screen.getByRole('button', { name: 'common.cancel' }))
+  it('hides the Cherry Cloud login entry in the CN edition too', () => {
+    // CN 版原走「登录樱桃云」（cherry_cloud.login.start），入口已随 Cherry 厂商云隐藏而移除。
+    cloudMocks.appEdition = 'cn'
+    render(<OnboardingPage />)
 
-    expect(cloudMocks.ipcRequest).toHaveBeenCalledWith('cherry_cloud.login.cancel')
-    expect(await screen.findByRole('button', { name: 'onboarding.welcome.login_cherry_cloud' })).toBeEnabled()
+    expect(screen.queryByRole('button', { name: 'onboarding.welcome.login_cherry_cloud' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'onboarding.welcome.login_cherryin' })).not.toBeInTheDocument()
+    expect(cloudMocks.ipcRequest).not.toHaveBeenCalledWith('cherry_cloud.login.start')
   })
 
   it('selects the first available Cherry Cloud Agent model and completes onboarding', async () => {
@@ -684,11 +661,8 @@ describe('OnboardingPage', () => {
     dataApiMocks.get.mockImplementation(async (path: string) => {
       if (path === '/agents') {
         return {
-          items: [
-            { id: 'assistant-agent', model: null, configuration: { builtin_role: 'assistant' } },
-            { id: 'support-agent', model: null, configuration: { builtin_role: 'support' } }
-          ],
-          total: 2
+          items: [{ id: 'assistant-agent', model: null, configuration: { builtin_role: 'assistant' } }],
+          total: 1
         }
       }
       throw new Error(`Unexpected path: ${path}`)
@@ -700,9 +674,6 @@ describe('OnboardingPage', () => {
 
     await waitFor(() => {
       expect(dataApiMocks.patch).toHaveBeenCalledWith('/agents/assistant-agent', {
-        body: { model: firstCloudAgentModelId }
-      })
-      expect(dataApiMocks.patch).toHaveBeenCalledWith('/agents/support-agent', {
         body: { model: firstCloudAgentModelId }
       })
       expect(MockUsePreferenceUtils.getPreferenceValue('app.onboarding.provider_setup.status')).toBe('skipped')
@@ -865,68 +836,27 @@ describe('OnboardingPage', () => {
     await waitFor(() => expect(MockUsePreferenceUtils.getPreferenceValue('app.language')).toBe('zh-CN'))
   })
 
-  it('hides the login icon while loading and restores the action after ten seconds', async () => {
-    vi.useFakeTimers()
-    oauthWithCherryInMock.mockImplementation(() => new Promise<string>(() => {}))
+  it('does not expose the login button whose loading state the old flow exercised', () => {
+    // 原「加载 10 秒后恢复按钮」的流程已随登录入口隐藏而移除；这里保底断言入口不存在。
     render(<OnboardingPage />)
 
-    const loginButton = screen.getByRole('button', { name: 'onboarding.welcome.login_cherryin' })
-    await act(async () => fireEvent.click(loginButton))
-
-    expect(loginButton).toBeDisabled()
-    expect(loginButton.querySelector('.lucide-log-in')).not.toBeInTheDocument()
-
-    await act(() => vi.advanceTimersByTime(9_999))
-    expect(loginButton).toBeDisabled()
-
-    await act(() => vi.advanceTimersByTime(1))
-    expect(loginButton).toBeEnabled()
-    expect(loginButton.querySelector('.lucide-log-in')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'onboarding.welcome.login_cherryin' })).not.toBeInTheDocument()
   })
 
-  it('syncs CherryIN models before moving a fresh install to model selection', async () => {
-    enabledProvidersMock.splice(0, enabledProvidersMock.length, { id: 'cherryai', isEnabled: true })
-    enabledModelsMock.splice(0, enabledModelsMock.length, {
-      id: 'cherryai::qwen',
-      providerId: 'cherryai',
-      isEnabled: true,
-      capabilities: []
-    })
-    selectedModelsMock.defaultModel = { id: 'cherryai::qwen', providerId: CHERRYAI_PROVIDER_ID, capabilities: [] }
-    selectedModelsMock.quickModel = { id: 'cherryai::qwen', providerId: CHERRYAI_PROVIDER_ID, capabilities: [] }
-    selectedModelsMock.translateModel = { id: 'cherryai::qwen', providerId: CHERRYAI_PROVIDER_ID, capabilities: [] }
-    oauthWithCherryInMock.mockImplementation(async (setKey: (keys: string) => Promise<void>) => {
-      await setKey('sk-one, sk-two')
-      return 'sk-one, sk-two'
-    })
-
+  it('does not run the CherryIN model sync flow from the welcome step', () => {
+    // 原「登录后同步 CherryIN 模型再进模型选择」流程已随登录入口隐藏而移除。
     render(<OnboardingPage />)
 
-    fireEvent.click(screen.getByRole('button', { name: /onboarding\.welcome\.login_cherryin/ }))
-
-    await waitFor(() => expect(screen.getByTestId('model-settings')).toBeInTheDocument())
-    expect(addApiKeyMock).toHaveBeenCalledWith('sk-one', 'OAuth')
-    expect(addApiKeyMock).toHaveBeenCalledWith('sk-two', 'OAuth')
-    expect(updateProviderMock).toHaveBeenCalledWith({ isEnabled: true })
-    expect(syncProviderModelsMock).toHaveBeenCalledTimes(1)
-    expect(toastSuccessMock).toHaveBeenCalledWith('onboarding.toast.connected')
+    expect(screen.queryByRole('button', { name: /onboarding\.welcome\.login_cherryin/ })).not.toBeInTheDocument()
+    expect(syncProviderModelsMock).not.toHaveBeenCalled()
+    expect(addApiKeyMock).not.toHaveBeenCalled()
   })
 
-  it('returns to provider setup when CherryIN sync finds no enabled model', async () => {
-    syncProviderModelsMock.mockResolvedValue([])
-    oauthWithCherryInMock.mockImplementation(async (setKey: (keys: string) => Promise<void>) => {
-      await setKey('sk-one')
-      return 'sk-one'
-    })
-
+  it('does not route back from a CherryIN sync miss because the entry is hidden', () => {
+    // 原「同步无可用模型时退回 provider 设置」流程已随登录入口隐藏而移除。
     render(<OnboardingPage />)
 
-    fireEvent.click(screen.getByRole('button', { name: /onboarding\.welcome\.login_cherryin/ }))
-
-    await waitFor(() => expect(syncProviderModelsMock).toHaveBeenCalledTimes(1))
-    expect(screen.getByTestId('provider-settings')).toBeInTheDocument()
-    expect(screen.queryByTestId('model-settings')).not.toBeInTheDocument()
-    expect(toastErrorMock).toHaveBeenCalledWith('onboarding.provider_setup.missing_model')
-    expect(toastSuccessMock).not.toHaveBeenCalled()
+    expect(screen.queryByRole('button', { name: /onboarding\.welcome\.login_cherryin/ })).not.toBeInTheDocument()
+    expect(syncProviderModelsMock).not.toHaveBeenCalled()
   })
 })

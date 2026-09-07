@@ -4,7 +4,6 @@ import { loggerService } from '@logger'
 import { createLatestReconciler, type LatestReconciler } from '@main/core/concurrency/latestReconciler'
 import { type Activatable, BaseService, Injectable, Phase, ServicePhase } from '@main/core/lifecycle'
 import { generateUserAgent, getClientId } from '@main/utils/systemInfo'
-import { LATEST_PRIVACY_POLICY_VERSION } from '@shared/utils/constants'
 import { app } from 'electron'
 
 const logger = loggerService.withContext('AnalyticsService')
@@ -37,10 +36,9 @@ export class AnalyticsService extends BaseService implements Activatable {
   })
 
   private refreshDesiredEnabled(): void {
-    const preferenceService = application.get('PreferenceService')
-    this.desiredEnabled =
-      preferenceService.get('app.privacy.data_collection.enabled') &&
-      preferenceService.get('app.privacy.policy_version') === LATEST_PRIVACY_POLICY_VERSION
+    // Mea Cowork：默认关闭 Cherry 厂商遥测（analytics.cherry-ai.com），不让用户开关即触发上报。
+    // 恢复时改回：preferenceService.get('app.privacy.data_collection.enabled') && policyVersion 检查。
+    this.desiredEnabled = false
     this.reconciler.request()
   }
 

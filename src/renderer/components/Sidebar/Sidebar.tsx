@@ -101,7 +101,7 @@ export function Sidebar({
     const content = (
       <>
         {renderLogo(size)}
-        {showTitle && <span className="truncate text-sidebar-foreground text-sm">{title}</span>}
+        {showTitle && <span className="truncate font-bold text-sidebar-foreground text-sm">{title}</span>}
       </>
     )
 

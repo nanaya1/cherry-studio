@@ -27,6 +27,7 @@ import { useTranslation } from 'react-i18next'
 import {
   buildResolvedIconTypeMenuAction,
   buildResolvedResourceEntityMenuAction,
+  DefaultEntityBadge,
   renderAgentEntityIcon,
   ResourceList,
   SessionListOptionsMenu
@@ -143,6 +144,7 @@ export function AgentResourceList({
     () =>
       agents.map((agent) => {
         const icon = renderAgentEntityIcon(assistantIconType, agent, defaultModelId)
+        const isProtectedBuiltin = isProtectedBuiltinAgentRole(agent.configuration?.builtin_role)
 
         return {
           id: agent.id,
@@ -150,6 +152,7 @@ export function AgentResourceList({
           orderKey: agent.orderKey,
           pinned: agentPinnedIdSet.has(agent.id),
           icon,
+          badge: isProtectedBuiltin ? <DefaultEntityBadge /> : undefined,
           trailingAction: (
             <Tooltip title={t('agent.session.new')} delay={500}>
               <ResourceList.GroupHeaderActionButton
@@ -166,7 +169,6 @@ export function AgentResourceList({
       }),
     [agentPinnedIdSet, agents, assistantIconType, defaultModelId, handleCreateSession, t]
   )
-
   const getSessionAgentId = useCallback((session: SessionListItem) => session.agentId, [])
   const handlePickSession = useCallback(
     (session: SessionListItem) => onSelectSession(session.id, session),
@@ -341,7 +343,7 @@ export function AgentResourceList({
           group: 'danger',
           order: 30,
           danger: true,
-          availability: { visible: true, enabled: deletingAgentId === null }
+          availability: { visible: true, enabled: deletingAgentId === null && !deleteTasksOnly }
         })
       ]
     },

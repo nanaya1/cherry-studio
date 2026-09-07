@@ -61,7 +61,7 @@ vi.mock('react-i18next', () => ({
         'settings.scheduledTasks.title': '定时任务',
         'settings.screenshot.title': '截图',
         'settings.shortcuts.title': '快捷键',
-        'settings.skills.title': '技能',
+        'settings.tool.websearch.title': '搜索',
         'settings.system.title': '系统',
         'settings.tool.file_processing.features.image_to_text.title': 'OCR',
         'settings.tool.file_processing.features.document_to_markdown.title': '文档处理'
@@ -96,7 +96,7 @@ describe('SettingsPage', () => {
     expect(navigateMock).toHaveBeenCalledWith({ to: '/settings/local-models' })
   })
 
-  it('keeps document processing and OCR together in tools and dependencies in the system group', () => {
+  it('keeps prompts first in tools and dependencies in the system group', () => {
     render(<SettingsPage />)
 
     expect(screen.getByText('工具')).toBeInTheDocument()
@@ -113,21 +113,23 @@ describe('SettingsPage', () => {
     expect(navigateMock).toHaveBeenCalledWith({ to: '/settings/dependencies' })
   })
 
-  it('places Skills below MCP and prompt management directly below Skills', () => {
+  it('hides MCP and Skills entries from the tools menu', () => {
     render(<SettingsPage />)
 
-    const mcpItem = screen.getByText('MCP').closest('button')
-    const skillsItem = screen.getByRole('button', { name: '技能' })
-
-    expect(mcpItem).not.toBeNull()
-    expect(mcpItem?.nextElementSibling).toBe(skillsItem)
-    fireEvent.click(skillsItem)
-    expect(navigateMock).toHaveBeenCalledWith({ to: '/settings/skills' })
+    expect(screen.getByText('工具')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'MCP' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '技能' })).not.toBeInTheDocument()
 
     const promptsItem = screen.getByRole('button', { name: '提示词' })
-    expect(skillsItem.nextElementSibling).toBe(promptsItem)
-    fireEvent.click(promptsItem)
-    expect(navigateMock).toHaveBeenCalledWith({ to: '/settings/prompts' })
+    const menuItems = screen.getAllByTestId('menu-item')
+    const toolsStart = menuItems.indexOf(promptsItem)
+
+    expect(menuItems.slice(toolsStart, toolsStart + 4)).toEqual([
+      promptsItem,
+      screen.getByRole('button', { name: '搜索' }),
+      screen.getByRole('button', { name: '文档处理' }),
+      screen.getByRole('button', { name: 'OCR' })
+    ])
   })
 
   it('merges quick access into efficiency and places both assistants last', () => {

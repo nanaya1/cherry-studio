@@ -18,6 +18,11 @@ import {
   CHERRYAI_DEFAULT_UNIQUE_MODEL_ID,
   CHERRYAI_PROVIDER_ID
 } from '@shared/data/presets/cherryai'
+import {
+  XUELANG_DEFAULT_MODEL_ID,
+  XUELANG_DEFAULT_UNIQUE_MODEL_ID,
+  XUELANG_PROVIDER_ID
+} from '@shared/data/presets/xuelang'
 import { createUniqueModelId, MODEL_CAPABILITY } from '@shared/data/types/model'
 import { setupTestDatabase } from '@test-helpers/db'
 import { and, eq, or } from 'drizzle-orm'
@@ -196,12 +201,16 @@ describe('ModelService.update', () => {
     )
   }
 
-  async function seedManagedCherryAiDefaultModel() {
-    await dbh.db.insert(userProviderTable).values(providerRow(CHERRYAI_PROVIDER_ID, 'CherryAI'))
+  async function seedManagedDefaultModel(
+    providerId: string = CHERRYAI_PROVIDER_ID,
+    modelId: string = CHERRYAI_DEFAULT_MODEL_ID,
+    uniqueModelId: string = CHERRYAI_DEFAULT_UNIQUE_MODEL_ID
+  ) {
+    await dbh.db.insert(userProviderTable).values(providerRow(providerId, providerId))
     await dbh.db.insert(userModelTable).values(
-      modelRow(CHERRYAI_PROVIDER_ID, CHERRYAI_DEFAULT_MODEL_ID, {
-        id: CHERRYAI_DEFAULT_UNIQUE_MODEL_ID,
-        name: CHERRYAI_DEFAULT_MODEL_ID,
+      modelRow(providerId, modelId, {
+        id: uniqueModelId,
+        name: modelId,
         isEnabled: true
       })
     )
@@ -521,7 +530,7 @@ describe('ModelService.update', () => {
   })
 
   it('allows an empty PATCH for the managed CherryAI default model', async () => {
-    await seedManagedCherryAiDefaultModel()
+    await seedManagedDefaultModel()
 
     const result = modelService.update(CHERRYAI_PROVIDER_ID, CHERRYAI_DEFAULT_MODEL_ID, {})
 
@@ -529,8 +538,16 @@ describe('ModelService.update', () => {
     expect(result.isEnabled).toBe(true)
   })
 
+  it('allows PATCHes for the editable Xuelang default model', async () => {
+    await seedManagedDefaultModel(XUELANG_PROVIDER_ID, XUELANG_DEFAULT_MODEL_ID, XUELANG_DEFAULT_UNIQUE_MODEL_ID)
+
+    const updated = modelService.update(XUELANG_PROVIDER_ID, XUELANG_DEFAULT_MODEL_ID, { isHidden: true })
+
+    expect(updated.isHidden).toBe(true)
+  })
+
   it('rejects PATCHes for the managed CherryAI default model', async () => {
-    await seedManagedCherryAiDefaultModel()
+    await seedManagedDefaultModel()
 
     let err: unknown
     try {
@@ -2626,7 +2643,7 @@ describe('ModelService.reconcileForProvider', () => {
     const pins = await dbh.db.select().from(pinTable).where(eq(pinTable.id, pin.id))
     expect(rows).toHaveLength(1)
     expect(pins).toHaveLength(1)
-    expect(warnSpy).toHaveBeenCalledWith('Skipped managed CherryAI default model removal during reconcile', {
+    expect(warnSpy).toHaveBeenCalledWith('Skipped managed default model removal during reconcile', {
       providerId: CHERRYAI_PROVIDER_ID,
       skippedCount: 1,
       skippedIds: [CHERRYAI_DEFAULT_UNIQUE_MODEL_ID]

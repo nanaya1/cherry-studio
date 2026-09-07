@@ -27,6 +27,8 @@ export type ResourceEntityRailItem = {
   tooltip?: string
   orderKey?: string
   reorderable?: boolean
+  /** Small label rendered right after the title (e.g. the "default" badge on the builtin assistant). */
+  badge?: ReactNode
   /**
    * When true, a *visible* entity floats into the "已固定" section at the top and cannot be dragged.
    * It does not affect visibility — an entity with no resources stays hidden whether pinned or not.
@@ -225,6 +227,7 @@ export function ResourceEntityRail<T extends ResourceEntityRailItem, TActionCont
           <ResourceList.ItemTitle className={ENTITY_RAIL_TITLE_CLASS} title={item.tooltip ? undefined : item.name}>
             {item.name}
           </ResourceList.ItemTitle>
+          {item.badge}
           {(hasTrailingAction || hasVisibleMenuActions) && (
             // Stop clicks bubbling to the row's onClick: the "more" menu portals its content out of
             // the DOM but React still routes the menu-item click up the React tree (…→ ItemActions →

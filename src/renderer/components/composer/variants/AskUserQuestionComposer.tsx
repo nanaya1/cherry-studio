@@ -1,6 +1,9 @@
 import { Button, Checkbox, Input } from '@cherrystudio/ui'
 import { loggerService } from '@logger'
+import { useChatLayoutMode } from '@renderer/components/chat/layout/ChatLayoutModeContext'
+import NarrowLayout, { NARROW_LAYOUT_SIDE_PADDING_PX } from '@renderer/components/chat/layout/NarrowLayout'
 import type { MessageToolApprovalInput } from '@renderer/components/chat/messages/types'
+import { usePreference } from '@renderer/data/hooks/usePreference'
 import { toast } from '@renderer/services/toast'
 import { cn } from '@renderer/utils/style'
 import { ArrowRight, ChevronLeft, ChevronRight, Pencil, X } from 'lucide-react'
@@ -40,6 +43,10 @@ export function createAskUserQuestionComposerOverride({
 
 export default function AskUserQuestionComposer({ request, onRespond, className }: AskUserQuestionComposerProps) {
   const { t } = useTranslation()
+  const [narrowMode] = usePreference('chat.narrow_mode')
+  // Mirror the regular composer surface: same NarrowLayout cap and rail gutter,
+  // so this override keeps the input's exact width and edges.
+  const { railGutterPx } = useChatLayoutMode()
   const questions = request.input.questions
   const [currentIndex, setCurrentIndex] = useState(0)
   const [selectedAnswers, setSelectedAnswers] = useState<AnswersByIndex>({})
@@ -197,148 +204,159 @@ export default function AskUserQuestionComposer({ request, onRespond, className 
       data-composer-viewport-inset-target=""
       // pointer-events-auto: the composer dock stack is click-through; override
       // composers re-enable interaction on their own root.
-      className={cn('pointer-events-auto relative z-2 flex flex-col px-4.5 pt-0 pb-4.5', className)}>
-      <div
-        className="rounded-[17px] border-[0.5px] border-border p-2.5 backdrop-blur"
-        style={{ backgroundColor: 'color-mix(in srgb, var(--background) 88%, transparent)' }}>
-        <div className="flex items-center justify-between gap-3 px-1">
-          <h2 className="max-h-36 min-w-0 flex-1 overflow-y-auto whitespace-pre-wrap break-words font-semibold text-foreground text-sm leading-5">
-            {currentQuestion.question}
-          </h2>
+      className={cn('pointer-events-auto relative z-2 flex flex-col pt-0 pb-4.5', className)}>
+      <NarrowLayout
+        narrowMode={narrowMode}
+        withSidePadding
+        style={{
+          width: '100%',
+          paddingLeft: NARROW_LAYOUT_SIDE_PADDING_PX + railGutterPx,
+          paddingRight: NARROW_LAYOUT_SIDE_PADDING_PX + railGutterPx
+        }}>
+        <div
+          className="rounded-[17px] border-[0.5px] border-border p-2.5 backdrop-blur"
+          style={{ backgroundColor: 'color-mix(in srgb, var(--background) 88%, transparent)' }}>
+          <div className="flex items-center justify-between gap-3 px-1">
+            <h2 className="max-h-36 min-w-0 flex-1 overflow-y-auto whitespace-pre-wrap break-words font-semibold text-foreground text-sm leading-5">
+              {currentQuestion.question}
+            </h2>
 
-          <div className="flex shrink-0 items-center gap-0.5 text-muted-foreground">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              className="size-7 shadow-none"
-              aria-label={t('agent.askUserQuestion.previous')}
-              disabled={isFirstQuestion || isSubmitting}
-              onClick={() => setCurrentIndex((index) => Math.max(0, index - 1))}>
-              <ChevronLeft className="size-4" />
-            </Button>
-            <span className="min-w-11 text-center text-xs">
-              {t('agent.askUserQuestion.progress', { current: currentIndex + 1, total: totalQuestions })}
-            </span>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              className="size-7 shadow-none"
-              aria-label={isLastQuestion ? t('agent.askUserQuestion.submit') : t('agent.askUserQuestion.next')}
-              disabled={(isLastQuestion && !hasAnySelectedAnswer) || isSubmitting}
-              onClick={
-                isLastQuestion
-                  ? () => void submitAnswers()
-                  : () => setCurrentIndex((index) => Math.min(totalQuestions - 1, index + 1))
-              }>
-              <ChevronRight className="size-4" />
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              className="size-7 shadow-none"
-              aria-label={t('agent.askUserQuestion.close')}
-              disabled={isSubmitting}
-              onClick={handleDismiss}>
-              <X className="size-4" />
-            </Button>
-          </div>
-        </div>
-
-        <div className="mt-2 flex flex-col gap-1.5">
-          {currentQuestion.options.map((option, optionIndex) => {
-            const isSelected = selectedForCurrent.includes(option.label)
-
-            return (
+            <div className="flex shrink-0 items-center gap-0.5 text-muted-foreground">
               <Button
-                key={`${option.label}-${optionIndex}`}
                 type="button"
                 variant="ghost"
-                className={cn(
-                  'group h-auto min-h-11 w-full justify-start gap-3 whitespace-normal rounded-[12px] px-3 py-2 text-left shadow-none',
-                  'hover:bg-muted focus-visible:bg-muted',
-                  isSelected && 'bg-muted'
-                )}
-                disabled={isSubmitting}
-                aria-pressed={isSelected}
-                onClick={() => handleSelectOption(option.label)}>
-                <span
-                  className={cn(
-                    'flex size-8 shrink-0 items-center justify-center rounded-full font-semibold text-sm transition-colors',
-                    isSelected
-                      ? 'bg-foreground text-background'
-                      : 'bg-muted text-muted-foreground group-hover:bg-foreground group-hover:text-background'
-                  )}>
-                  {optionIndex + 1}
-                </span>
-
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate font-semibold text-foreground text-sm leading-5">{option.label}</span>
-                  {option.description && (
-                    <span className="block truncate font-medium text-muted-foreground text-xs leading-4">
-                      {option.description}
-                    </span>
-                  )}
-                </span>
-
-                {currentQuestion.multiSelect ? (
-                  <Checkbox
-                    checked={isSelected}
-                    size="sm"
-                    aria-hidden="true"
-                    tabIndex={-1}
-                    className="pointer-events-none"
-                  />
-                ) : (
-                  <ArrowRight
-                    className={cn(
-                      'size-4 shrink-0 text-muted-foreground transition-opacity',
-                      isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-                    )}
-                  />
-                )}
+                size="icon-sm"
+                className="size-7 shadow-none"
+                aria-label={t('agent.askUserQuestion.previous')}
+                disabled={isFirstQuestion || isSubmitting}
+                onClick={() => setCurrentIndex((index) => Math.max(0, index - 1))}>
+                <ChevronLeft className="size-4" />
               </Button>
-            )
-          })}
-        </div>
-
-        <div className="mt-2 flex items-center gap-2 border-border-subtle border-t pt-2">
-          <div className="relative min-w-0 flex-1">
-            <Pencil className="-translate-y-1/2 absolute top-1/2 left-3 size-3.5 text-muted-foreground" />
-            <Input
-              value={currentCustomAnswer}
-              disabled={isSubmitting}
-              placeholder={t('agent.askUserQuestion.customPlaceholder')}
-              className="h-9 rounded-full border-transparent bg-muted/70 pl-9 text-sm shadow-none focus-visible:border-transparent"
-              onChange={(event) =>
-                setCustomAnswers((prev) => ({
-                  ...prev,
-                  [currentIndex]: event.target.value
-                }))
-              }
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
-                  event.preventDefault()
-                  void handleCustomAction()
-                }
-              }}
-            />
+              <span className="min-w-11 text-center text-xs">
+                {t('agent.askUserQuestion.progress', { current: currentIndex + 1, total: totalQuestions })}
+              </span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                className="size-7 shadow-none"
+                aria-label={isLastQuestion ? t('agent.askUserQuestion.submit') : t('agent.askUserQuestion.next')}
+                disabled={(isLastQuestion && !hasAnySelectedAnswer) || isSubmitting}
+                onClick={
+                  isLastQuestion
+                    ? () => void submitAnswers()
+                    : () => setCurrentIndex((index) => Math.min(totalQuestions - 1, index + 1))
+                }>
+                <ChevronRight className="size-4" />
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                className="size-7 shadow-none"
+                aria-label={t('agent.askUserQuestion.close')}
+                disabled={isSubmitting}
+                onClick={handleDismiss}>
+                <X className="size-4" />
+              </Button>
+            </div>
           </div>
-          <Button
-            type="button"
-            variant="ghost"
-            className="h-9 px-2.5 font-semibold text-muted-foreground text-sm shadow-none hover:bg-transparent hover:text-foreground"
-            loading={customActionSubmitsAll && isSubmitting}
-            disabled={isSubmitting}
-            onClick={handleCustomAction}>
-            {currentCustomAnswerText || customActionSubmitsAll
-              ? t('agent.askUserQuestion.submit')
-              : t('agent.askUserQuestion.skip')}
-          </Button>
+
+          <div className="mt-2 flex flex-col gap-1.5">
+            {currentQuestion.options.map((option, optionIndex) => {
+              const isSelected = selectedForCurrent.includes(option.label)
+
+              return (
+                <Button
+                  key={`${option.label}-${optionIndex}`}
+                  type="button"
+                  variant="ghost"
+                  className={cn(
+                    'group h-auto min-h-11 w-full justify-start gap-3 whitespace-normal rounded-[12px] px-3 py-2 text-left shadow-none',
+                    'hover:bg-muted focus-visible:bg-muted',
+                    isSelected && 'bg-muted'
+                  )}
+                  disabled={isSubmitting}
+                  aria-pressed={isSelected}
+                  onClick={() => handleSelectOption(option.label)}>
+                  <span
+                    className={cn(
+                      'flex size-8 shrink-0 items-center justify-center rounded-full font-semibold text-sm transition-colors',
+                      isSelected
+                        ? 'bg-foreground text-background'
+                        : 'bg-muted text-muted-foreground group-hover:bg-foreground group-hover:text-background'
+                    )}>
+                    {optionIndex + 1}
+                  </span>
+
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-semibold text-foreground text-sm leading-5">
+                      {option.label}
+                    </span>
+                    {option.description && (
+                      <span className="block truncate font-medium text-muted-foreground text-xs leading-4">
+                        {option.description}
+                      </span>
+                    )}
+                  </span>
+
+                  {currentQuestion.multiSelect ? (
+                    <Checkbox
+                      checked={isSelected}
+                      size="sm"
+                      aria-hidden="true"
+                      tabIndex={-1}
+                      className="pointer-events-none"
+                    />
+                  ) : (
+                    <ArrowRight
+                      className={cn(
+                        'size-4 shrink-0 text-muted-foreground transition-opacity',
+                        isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                      )}
+                    />
+                  )}
+                </Button>
+              )
+            })}
+          </div>
+
+          <div className="mt-2 flex items-center gap-2 border-border-subtle border-t pt-2">
+            <div className="relative min-w-0 flex-1">
+              <Pencil className="-translate-y-1/2 absolute top-1/2 left-3 size-3.5 text-muted-foreground" />
+              <Input
+                value={currentCustomAnswer}
+                disabled={isSubmitting}
+                placeholder={t('agent.askUserQuestion.customPlaceholder')}
+                className="h-9 rounded-full border-transparent bg-muted/70 pl-9 text-sm shadow-none focus-visible:border-transparent"
+                onChange={(event) =>
+                  setCustomAnswers((prev) => ({
+                    ...prev,
+                    [currentIndex]: event.target.value
+                  }))
+                }
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
+                    event.preventDefault()
+                    void handleCustomAction()
+                  }
+                }}
+              />
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              className="h-9 px-2.5 font-semibold text-muted-foreground text-sm shadow-none hover:bg-transparent hover:text-foreground"
+              loading={customActionSubmitsAll && isSubmitting}
+              disabled={isSubmitting}
+              onClick={handleCustomAction}>
+              {currentCustomAnswerText || customActionSubmitsAll
+                ? t('agent.askUserQuestion.submit')
+                : t('agent.askUserQuestion.skip')}
+            </Button>
+          </div>
         </div>
-      </div>
+      </NarrowLayout>
     </div>
   )
 }

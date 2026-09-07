@@ -60,13 +60,11 @@ export async function resolveApiGatewayRuntime(sessionId: string): Promise<{
 }> {
   const apiGatewayService = application.get('ApiGatewayService')
   const config = apiGatewayService.getCurrentConfig()
-  // Ask for consent on the PERSISTED intent, never on `isRunning()`: the gateway is also briefly
-  // down while binding at boot, mid-restart, or after a failed activation, and prompting the user
-  // to enable a service they already enabled would be nonsense.
-  if (!config.enabled) throw new ApiGatewayNotRunningError()
-  // Consent already given, so converging is not an implicit start. `ensureRunning()` goes through
-  // the same reconciler (serializing behind an in-flight transition) and throws the real bind
-  // error; unlike `start()` it cannot re-persist an intent, so it can never re-enable the gateway.
+  // Only an explicit opt-out requires consent. Automatic mode starts the local bridge on demand,
+  // while a gateway that is temporarily down still converges without prompting again.
+  if (config.enabled === false) throw new ApiGatewayNotRunningError()
+  // `ensureRunning()` goes through the same reconciler and never persists an intent, so automatic
+  // mode remains automatic rather than being promoted to always-on.
   if (!apiGatewayService.isRunning()) await apiGatewayService.ensureRunning()
   // Only after the checks above: this persists a freshly generated key on first use, and a failing
   // route must not leave that side effect behind.

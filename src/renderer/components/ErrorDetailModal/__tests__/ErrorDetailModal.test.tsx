@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -97,8 +97,9 @@ describe('ErrorDetailContent diagnostic report', () => {
     vi.useRealTimers()
   })
 
-  it('shows the report action only with a configured handoff and passes the reviewed description to its owner', async () => {
-    const user = userEvent.setup()
+  // 暂时下线「提交诊断报告」入口（ErrorDetailModal.tsx 内已注释）：签名依赖构建期
+  // MAIN_VITE_CHERRYAI_CLIENT_SECRET，本地构建未注入时点击即抛错。恢复入口时同步恢复这三个测试。
+  it('hides the report action even with a configured handoff while the entry is disabled', async () => {
     const onOpenDiagnosticReport = vi.fn()
     const { rerender } = render(
       <ErrorDetailContent error={{ name: 'ProviderError', message: 'failed', stack: null }} />
@@ -114,19 +115,12 @@ describe('ErrorDetailContent diagnostic report', () => {
       />
     )
 
-    expect(screen.getAllByRole('button').map((button) => button.textContent)).toEqual([
-      'Copy',
-      'Submit diagnostic report',
-      'AI diagnosis'
-    ])
-    await user.click(screen.getByRole('button', { name: 'Submit diagnostic report' }))
-    const description = onOpenDiagnosticReport.mock.calls[0][0]
-    expect(description).toContain('Location: Home conversation')
-    expect(description).toContain('Error name: ProviderError')
-    expect(description).toContain('Error message: failed')
+    expect(screen.queryByRole('button', { name: 'Submit diagnostic report' })).not.toBeInTheDocument()
+    expect(onOpenDiagnosticReport).not.toHaveBeenCalled()
+    expect(screen.getAllByRole('button').map((button) => button.textContent)).toEqual(['Copy', 'AI diagnosis'])
   })
 
-  it('waits for error details to finish closing before opening report review', async () => {
+  it('does not open report review from the error popup while the entry is disabled', async () => {
     vi.useFakeTimers()
     render(<PopupHost />)
 
@@ -136,26 +130,13 @@ describe('ErrorDetailContent diagnostic report', () => {
         error: { name: 'ProviderError', message: 'failed', stack: null }
       })
     })
-    fireEvent.click(screen.getByRole('button', { name: 'Submit diagnostic report' }))
     await act(async () => {})
 
+    expect(screen.queryByRole('button', { name: 'Submit diagnostic report' })).not.toBeInTheDocument()
     expect(screen.queryByRole('dialog', { name: 'Diagnostic report review' })).not.toBeInTheDocument()
-
-    act(() => {
-      vi.advanceTimersByTime(POPUP_EXIT_MS - 1)
-    })
-    expect(screen.queryByRole('dialog', { name: 'Diagnostic report review' })).not.toBeInTheDocument()
-
-    act(() => {
-      vi.advanceTimersByTime(1)
-    })
-    await act(async () => {})
-    const report = screen.getByRole('dialog', { name: 'Diagnostic report review' })
-    expect(report).toHaveTextContent('Location: Home conversation')
-    expect(screen.getAllByRole('dialog')).toEqual([report])
   })
 
-  it('keeps AI diagnosis visible in error details but out of the diagnostic-report prefill', async () => {
+  it('keeps AI diagnosis visible in error details', async () => {
     const user = userEvent.setup()
     const onOpenDiagnosticReport = vi.fn()
     mocks.diagnoseError.mockResolvedValueOnce({
@@ -177,9 +158,6 @@ describe('ErrorDetailContent diagnostic report', () => {
 
     await user.click(screen.getByRole('button', { name: 'AI diagnosis' }))
     expect(await screen.findByText('Leaked prompt: private diagnosis payload.')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Submit diagnostic report' }))
-    const description = onOpenDiagnosticReport.mock.calls[0][0]
-    expect(description).toContain('Error message: failed')
-    expect(description).not.toContain('private diagnosis payload')
+    expect(onOpenDiagnosticReport).not.toHaveBeenCalled()
   })
 })

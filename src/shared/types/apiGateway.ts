@@ -1,5 +1,5 @@
 export type ApiGatewayConfig = {
-  enabled: boolean
+  enabled: boolean | null
   host: string
   port: number
   apiKey: string | null

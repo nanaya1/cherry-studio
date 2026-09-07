@@ -1,5 +1,7 @@
 import { Button, Kbd, Textarea } from '@cherrystudio/ui'
 import { loggerService } from '@logger'
+import { useChatLayoutMode } from '@renderer/components/chat/layout/ChatLayoutModeContext'
+import NarrowLayout, { NARROW_LAYOUT_SIDE_PADDING_PX } from '@renderer/components/chat/layout/NarrowLayout'
 import { getToolGroupIcon, getToolGroupSemanticTitle } from '@renderer/components/chat/messages/blocks/ToolBlockGroup'
 import { isValidAgentToolsType, renderTool, UnknownToolRenderer } from '@renderer/components/chat/messages/tools/agent'
 import { AgentToolsType } from '@renderer/components/chat/messages/tools/shared/agentToolTypes'
@@ -8,6 +10,7 @@ import { ToolDisclosure, type ToolDisclosureItem } from '@renderer/components/ch
 import type { ToolResponseLike } from '@renderer/components/chat/messages/tools/toolResponse'
 import type { MessageToolApprovalInput } from '@renderer/components/chat/messages/types'
 import Scrollbar from '@renderer/components/Scrollbar'
+import { usePreference } from '@renderer/data/hooks/usePreference'
 import { toast } from '@renderer/services/toast'
 import type { McpToolResponse, NormalToolResponse } from '@renderer/types/mcpTool'
 import { cn } from '@renderer/utils/style'
@@ -159,6 +162,10 @@ function PermissionPreviewHeader({ toolName, description }: { toolName: string; 
 
 export default function PermissionRequestComposer({ request, onRespond, className }: PermissionRequestComposerProps) {
   const { t } = useTranslation()
+  const [narrowMode] = usePreference('chat.narrow_mode')
+  // Mirror the regular composer surface: same NarrowLayout cap and rail gutter,
+  // so this override keeps the input's exact width and edges.
+  const { railGutterPx } = useChatLayoutMode()
   const [submittingApprovalId, setSubmittingApprovalId] = useState<string | null>(null)
   const [rejectionDraft, setRejectionDraft] = useState({ approvalId: request.approvalId, value: '' })
   const isSubmitting = submittingApprovalId === request.approvalId
@@ -224,69 +231,80 @@ export default function PermissionRequestComposer({ request, onRespond, classNam
       data-composer-viewport-inset-target=""
       // pointer-events-auto: the composer dock stack is click-through; override
       // composers re-enable interaction on their own root.
-      className={cn('pointer-events-auto relative z-2 flex flex-col px-4.5 pt-0 pb-4.5', className)}>
-      <div
-        className="rounded-[17px] border-[0.5px] border-border p-2.5 shadow-[0_1px_5px_rgba(15,23,42,0.05)] backdrop-blur dark:shadow-[0_1px_5px_rgba(0,0,0,0.14)]"
-        style={{ backgroundColor: 'color-mix(in srgb, var(--background) 88%, transparent)' }}>
-        <div className="flex min-w-0 items-center gap-2 px-1">
-          <h2 className="flex shrink-0 items-center gap-2 font-semibold text-foreground text-sm leading-5">
-            <span className="inline-flex shrink-0 text-muted-foreground">
-              <ToolIcon aria-hidden="true" className="size-4" />
-            </span>
-            {toolTitle}
-          </h2>
-          {subtitle ? <span className="min-w-0 truncate text-muted-foreground text-xs">{subtitle}</span> : null}
-          {/* Live region stays mounted while idle so injecting the processing pill is announced */}
-          <div role="status" aria-live="polite" className="ml-auto shrink-0">
-            {isSubmitting ? (
-              <div className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-2 py-1 font-medium text-[11px] text-muted-foreground">
-                <Loader2 aria-hidden="true" className="size-3 animate-spin" />
-                {t('message.processing')}
-              </div>
-            ) : null}
+      className={cn('pointer-events-auto relative z-2 flex flex-col pt-0 pb-4.5', className)}>
+      <NarrowLayout
+        narrowMode={narrowMode}
+        withSidePadding
+        style={{
+          width: '100%',
+          paddingLeft: NARROW_LAYOUT_SIDE_PADDING_PX + railGutterPx,
+          paddingRight: NARROW_LAYOUT_SIDE_PADDING_PX + railGutterPx
+        }}>
+        <div
+          className="rounded-[17px] border-[0.5px] border-border p-2.5 shadow-[0_1px_5px_rgba(15,23,42,0.05)] backdrop-blur dark:shadow-[0_1px_5px_rgba(0,0,0,0.14)]"
+          style={{ backgroundColor: 'color-mix(in srgb, var(--background) 88%, transparent)' }}>
+          <div className="flex min-w-0 items-center gap-2 px-1">
+            <h2 className="flex shrink-0 items-center gap-2 font-semibold text-foreground text-sm leading-5">
+              <span className="inline-flex shrink-0 text-muted-foreground">
+                <ToolIcon aria-hidden="true" className="size-4" />
+              </span>
+              {toolTitle}
+            </h2>
+            {subtitle ? <span className="min-w-0 truncate text-muted-foreground text-xs">{subtitle}</span> : null}
+            {/* Live region stays mounted while idle so injecting the processing pill is announced */}
+            <div role="status" aria-live="polite" className="ml-auto shrink-0">
+              {isSubmitting ? (
+                <div className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-2 py-1 font-medium text-[11px] text-muted-foreground">
+                  <Loader2 aria-hidden="true" className="size-3 animate-spin" />
+                  {t('message.processing')}
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          <div
+            className="mt-2 overflow-hidden rounded-[12px] bg-muted dark:bg-muted/30"
+            data-testid="permission-preview">
+            <PermissionPreview toolResponse={request.toolResponse} />
+          </div>
+
+          <label className="mt-2.5 block px-1 text-muted-foreground text-xs">
+            <span>{t('agent.toolPermission.reasonLabel')}</span>
+            <Textarea.Input
+              value={rejectionReason}
+              disabled={isSubmitting}
+              maxLength={500}
+              rows={2}
+              aria-label={t('agent.toolPermission.reasonLabel')}
+              placeholder={t('agent.toolPermission.reasonPlaceholder')}
+              className="mt-1 min-h-14 resize-none px-3 py-2 text-sm"
+              onValueChange={(value) => setRejectionDraft({ approvalId: request.approvalId, value })}
+              onKeyDown={(event) => {
+                if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) return
+                event.preventDefault()
+                void (hasRejectionReason ? deny() : approve())
+              }}
+            />
+          </label>
+
+          <div className="mt-2.5 flex justify-end gap-2 px-1 pb-0.5">
+            <Button type="button" variant="outline" disabled={isSubmitting} onClick={() => void deny()}>
+              {t('agent.toolPermission.button.deny')}
+              <Kbd aria-hidden="true" className="bg-muted text-muted-foreground">
+                {hasRejectionReason ? 'Enter' : 'Esc'}
+              </Kbd>
+            </Button>
+            <Button type="button" variant="emphasis" disabled={isSubmitting} onClick={() => void approve()}>
+              {t('agent.toolPermission.button.allow')}
+              {!hasRejectionReason && (
+                <Kbd aria-hidden="true" className="bg-current/10 text-current">
+                  Enter
+                </Kbd>
+              )}
+            </Button>
           </div>
         </div>
-
-        <div className="mt-2 overflow-hidden rounded-[12px] bg-muted dark:bg-muted/30" data-testid="permission-preview">
-          <PermissionPreview toolResponse={request.toolResponse} />
-        </div>
-
-        <label className="mt-2.5 block px-1 text-muted-foreground text-xs">
-          <span>{t('agent.toolPermission.reasonLabel')}</span>
-          <Textarea.Input
-            value={rejectionReason}
-            disabled={isSubmitting}
-            maxLength={500}
-            rows={2}
-            aria-label={t('agent.toolPermission.reasonLabel')}
-            placeholder={t('agent.toolPermission.reasonPlaceholder')}
-            className="mt-1 min-h-14 resize-none px-3 py-2 text-sm"
-            onValueChange={(value) => setRejectionDraft({ approvalId: request.approvalId, value })}
-            onKeyDown={(event) => {
-              if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) return
-              event.preventDefault()
-              void (hasRejectionReason ? deny() : approve())
-            }}
-          />
-        </label>
-
-        <div className="mt-2.5 flex justify-end gap-2 px-1 pb-0.5">
-          <Button type="button" variant="outline" disabled={isSubmitting} onClick={() => void deny()}>
-            {t('agent.toolPermission.button.deny')}
-            <Kbd aria-hidden="true" className="bg-muted text-muted-foreground">
-              {hasRejectionReason ? 'Enter' : 'Esc'}
-            </Kbd>
-          </Button>
-          <Button type="button" variant="emphasis" disabled={isSubmitting} onClick={() => void approve()}>
-            {t('agent.toolPermission.button.allow')}
-            {!hasRejectionReason && (
-              <Kbd aria-hidden="true" className="bg-current/10 text-current">
-                Enter
-              </Kbd>
-            )}
-          </Button>
-        </div>
-      </div>
+      </NarrowLayout>
     </div>
   )
 }

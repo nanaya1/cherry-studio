@@ -221,6 +221,30 @@ describe('AppShellTabBar', () => {
     expect(screen.queryByRole('button', { name: 'Launchpad' })).not.toBeInTheDocument()
   })
 
+  it('renders window-level leading actions inside the tab bar', async () => {
+    const user = userEvent.setup()
+    const onClick = vi.fn()
+
+    renderTabBar({
+      tabs: [],
+      leadingActions: (
+        <div data-testid="leading-actions" className="[-webkit-app-region:no-drag]">
+          <button type="button" onClick={onClick}>
+            Expand sidebar
+          </button>
+        </div>
+      )
+    })
+
+    const tabBar = screen.getByTestId('app-shell-tab-strip').parentElement
+    const leadingActions = screen.getByTestId('leading-actions')
+    expect(tabBar).toContainElement(leadingActions)
+    expect(leadingActions).toHaveClass('[-webkit-app-region:no-drag]')
+
+    await user.click(screen.getByRole('button', { name: 'Expand sidebar' }))
+    expect(onClick).toHaveBeenCalledOnce()
+  })
+
   it('renders preset and installed mini app icons at the same circular size', () => {
     const presetMiniAppTab = createTab('preset-mini-app', {
       url: '/app/mini-app/google',

@@ -2,7 +2,7 @@ import * as fs from 'node:fs'
 import * as path from 'node:path'
 
 import { WindowType } from '@main/core/window/types'
-import { CHERRYAI_DEFAULT_UNIQUE_MODEL_ID } from '@shared/data/presets/cherryai'
+import { XUELANG_DEFAULT_UNIQUE_MODEL_ID } from '@shared/data/presets/xuelang'
 import { MockMainPreferenceServiceUtils } from '@test-mocks/main/PreferenceService'
 import { mockMainLoggerService } from '@test-mocks/MainLoggerService'
 import { app } from 'electron'
@@ -205,7 +205,7 @@ describe('TopicNamingService', () => {
     expect(mocks.generateText.mock.calls[0][0]).not.toHaveProperty('assistantId')
   })
 
-  it('falls back to the managed CherryAI default when the quick and chat default models are empty', async () => {
+  it('falls back to the managed Xuelang default when the quick and chat default models are empty', async () => {
     MockMainPreferenceServiceUtils.setPreferenceValue('feature.quick_assistant.model_id', null)
     MockMainPreferenceServiceUtils.setPreferenceValue('chat.default_model_id', null)
 
@@ -216,12 +216,12 @@ describe('TopicNamingService', () => {
 
     expect(mocks.generateText).toHaveBeenCalledWith(
       expect.objectContaining({
-        uniqueModelId: CHERRYAI_DEFAULT_UNIQUE_MODEL_ID
+        uniqueModelId: XUELANG_DEFAULT_UNIQUE_MODEL_ID
       })
     )
   })
 
-  it('falls back to the managed CherryAI default when the quick model preference is invalid', async () => {
+  it('falls back to the managed Xuelang default when the quick model preference is invalid', async () => {
     MockMainPreferenceServiceUtils.setPreferenceValue('feature.quick_assistant.model_id', 'bad-value')
     MockMainPreferenceServiceUtils.setPreferenceValue('chat.default_model_id', 'anthropic::claude-3-haiku')
 
@@ -232,16 +232,16 @@ describe('TopicNamingService', () => {
 
     expect(mocks.generateText).toHaveBeenCalledWith(
       expect.objectContaining({
-        uniqueModelId: CHERRYAI_DEFAULT_UNIQUE_MODEL_ID
+        uniqueModelId: XUELANG_DEFAULT_UNIQUE_MODEL_ID
       })
     )
     expect(mockMainLoggerService.warn).toHaveBeenCalledWith(
-      'Quick assistant model is not usable for topic naming; falling back to managed CherryAI default',
+      'Quick assistant model is not usable for topic naming; falling back to managed Xuelang default',
       { configured: 'bad-value' }
     )
   })
 
-  it('falls back to the managed CherryAI default when the quick model no longer exists', async () => {
+  it('falls back to the managed Xuelang default when the quick model no longer exists', async () => {
     MockMainPreferenceServiceUtils.setPreferenceValue('feature.quick_assistant.model_id', 'ghost::missing')
     mocks.getModelByKey.mockImplementation(() => {
       throw new Error('missing model')
@@ -255,11 +255,11 @@ describe('TopicNamingService', () => {
     expect(mocks.getModelByKey).toHaveBeenCalledWith('ghost', 'missing')
     expect(mocks.generateText).toHaveBeenCalledWith(
       expect.objectContaining({
-        uniqueModelId: CHERRYAI_DEFAULT_UNIQUE_MODEL_ID
+        uniqueModelId: XUELANG_DEFAULT_UNIQUE_MODEL_ID
       })
     )
     expect(mockMainLoggerService.warn).toHaveBeenCalledWith(
-      'Quick assistant model is not usable for topic naming; falling back to managed CherryAI default',
+      'Quick assistant model is not usable for topic naming; falling back to managed Xuelang default',
       { configured: 'ghost::missing' }
     )
   })
@@ -674,11 +674,11 @@ describe('TopicNamingService', () => {
     expect(mocks.getModelByKey).not.toHaveBeenCalledWith('claude-code', 'haiku')
     expect(mocks.generateText).toHaveBeenCalledWith(
       expect.objectContaining({
-        uniqueModelId: CHERRYAI_DEFAULT_UNIQUE_MODEL_ID
+        uniqueModelId: XUELANG_DEFAULT_UNIQUE_MODEL_ID
       })
     )
     expect(mockMainLoggerService.warn).toHaveBeenCalledWith(
-      'Quick assistant model is not usable for topic naming; falling back to managed CherryAI default',
+      'Quick assistant model is not usable for topic naming; falling back to managed Xuelang default',
       { configured: 'claude-code::haiku' }
     )
   })

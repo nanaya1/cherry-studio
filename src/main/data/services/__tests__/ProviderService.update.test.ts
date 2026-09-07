@@ -173,6 +173,19 @@ describe('ProviderService.update', () => {
     expect(row.isEnabled).toBe(true)
   })
 
+  it('allows PATCHes for the editable Xuelang provider', async () => {
+    await dbh.db.insert(userProviderTable).values({
+      providerId: 'xuelang',
+      name: '雪浪工匠',
+      orderKey: 'a0',
+      isEnabled: true
+    })
+
+    const updated = providerService.update('xuelang', { isEnabled: false })
+
+    expect(updated.isEnabled).toBe(false)
+  })
+
   it('serializes concurrent PATCHes so neither clobbers the other (read-merge-write inside the tx)', async () => {
     await dbh.db.insert(userProviderTable).values({
       providerId: 'p-concurrent',

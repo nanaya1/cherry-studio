@@ -34,7 +34,7 @@ import {
 import { formatAiSdkError, formatError, safeToString } from '@renderer/utils/error'
 import type { DiagnosisContext, DiagnosisResult } from '@renderer/utils/errorDiagnosis'
 import { parseDataUrl } from '@shared/utils/dataUrl'
-import { CheckCircle, Copy, FileUp, Loader2, Stethoscope } from 'lucide-react'
+import { CheckCircle, Copy, Loader2, Stethoscope } from 'lucide-react'
 import React, { lazy, memo, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -646,12 +646,14 @@ const ErrorDetailContent: React.FC<ErrorDetailContentProps> = ({
           <Copy size={14} />
           {t('common.copy')}
         </Button>
-        {diagnosticReport && onOpenDiagnosticReport ? (
+        {/* 暂时下线「提交诊断报告」入口：签名依赖构建期注入的 MAIN_VITE_CHERRYAI_CLIENT_SECRET，
+            本地构建未注入时点击即抛错。恢复时取消注释即可。 */}
+        {/* {diagnosticReport && onOpenDiagnosticReport ? (
           <Button variant="outline" onClick={openDiagnosticReport}>
             <FileUp size={14} />
             {t('error.diagnostic_report.action')}
           </Button>
-        ) : null}
+        ) : null} */}
         <Button disabled={diagStatus === 'loading'} onClick={handleDiagnose}>
           {diagStatus === 'loading' ? (
             <Loader2 size={14} className="animate-spin" />

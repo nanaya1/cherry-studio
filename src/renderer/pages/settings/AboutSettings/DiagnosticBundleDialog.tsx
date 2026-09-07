@@ -30,16 +30,14 @@ import { CircleCheck } from 'lucide-react'
 import { type FC, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-const SUPPORT_EMAIL = 'support@cherry-ai.com'
+// const SUPPORT_EMAIL = 'support@cherry-ai.com' — 「联系 Cherry 支持」入口暂时隐藏，恢复时取消注释。
 const logger = loggerService.withContext('DiagnosticBundleDialog')
 const RANGE_OPTIONS = [
   { translationKey: 'settings.about.diagnostics.ranges.24h', value: '24h' },
   { translationKey: 'settings.about.diagnostics.ranges.3d', value: '3d' },
   { translationKey: 'settings.about.diagnostics.ranges.7d', value: '7d' }
 ] as const
-const RANGE_TRANSLATION_KEYS = Object.fromEntries(
-  RANGE_OPTIONS.map(({ translationKey, value }) => [value, translationKey])
-) as Record<DiagnosticRange, (typeof RANGE_OPTIONS)[number]['translationKey']>
+// RANGE_TRANSLATION_KEYS 原用于「联系 Cherry 支持」邮件正文，随入口隐藏暂时移除（见 git 历史）。
 
 type InspectResult = OutputFor<'diagnostics.bundle.inspect'>
 type SavedResult = Extract<OutputFor<'diagnostics.bundle.export'>, { status: 'saved' }>
@@ -62,7 +60,8 @@ function isDestinationConflictError(error: unknown): boolean {
   )
 }
 
-const DiagnosticBundleDialog: FC<DiagnosticBundleDialogProps> = ({ appVersion, onOpenChange, open }) => {
+// appVersion prop 原用于「联系 Cherry 支持」邮件正文，随入口隐藏暂时不解构（见 git 历史）。
+const DiagnosticBundleDialog: FC<DiagnosticBundleDialogProps> = ({ onOpenChange, open }) => {
   const { t } = useTranslation()
   const [range, setRange] = useState<DiagnosticRange>('24h')
   const [includeLogs, setIncludeLogs] = useState(true)
@@ -73,7 +72,6 @@ const DiagnosticBundleDialog: FC<DiagnosticBundleDialogProps> = ({ appVersion, o
   const [inspectResult, setInspectResult] = useState<InspectResult | null>(null)
   const [inspectError, setInspectError] = useState(false)
   const [isInspecting, setIsInspecting] = useState(false)
-  const [copyEmailFallback, setCopyEmailFallback] = useState(false)
   const [exportState, setExportState] = useState<ExportState>({ status: 'idle' })
   const revealButtonRef = useRef<HTMLButtonElement>(null)
   const closeResetTimerRef = useRef<number | null>(null)
@@ -104,7 +102,6 @@ const DiagnosticBundleDialog: FC<DiagnosticBundleDialogProps> = ({ appVersion, o
       setInspectResult(null)
       setInspectError(false)
       setIsInspecting(false)
-      setCopyEmailFallback(false)
       setExportState({ status: 'idle' })
     }, DIALOG_CLOSE_DURATION_MS)
     return () => {
@@ -262,36 +259,10 @@ const DiagnosticBundleDialog: FC<DiagnosticBundleDialogProps> = ({ appVersion, o
     }
   }
 
-  const copySupportEmail = async () => {
-    try {
-      await navigator.clipboard.writeText(SUPPORT_EMAIL)
-      toast.success(t('settings.about.diagnostics.success.email_copied'))
-    } catch {
-      toast.error(t('settings.about.diagnostics.errors.copy_failed'))
-    }
-  }
-
-  const handleContactSupport = async () => {
-    if (!savedResult) return
-    const params = new URLSearchParams({
-      subject: t('settings.about.diagnostics.mail.subject', { bundleId: savedResult.bundleId }),
-      body: t('settings.about.diagnostics.mail.body', {
-        bundleId: savedResult.bundleId,
-        fileName: savedResult.fileName,
-        platform: window.electron.process.platform,
-        range: t(RANGE_TRANSLATION_KEYS[range]),
-        version: appVersion || t('settings.about.diagnostics.unknown')
-      })
-    })
-    try {
-      const query = params.toString().replaceAll('+', '%20')
-      await ipcApi.request('system.shell.open_website', `mailto:${SUPPORT_EMAIL}?${query}`)
-    } catch (error) {
-      logger.error('Failed to open support email client', error as Error)
-      setCopyEmailFallback(true)
-      toast.error(t('settings.about.diagnostics.errors.email_client_failed'))
-    }
-  }
+  // 「联系 Cherry 支持（support@cherry-ai.com）」入口暂时隐藏：Mea Cowork 暂不开放经此邮箱发送诊断。
+  // 恢复时取消下方函数注释、copyEmailFallback state 与 DialogFooter 中的按钮 JSX（见 git 历史）。
+  // const copySupportEmail = async () => { ... }
+  // const handleContactSupport = async () => { ... }
 
   const rangeOptions = RANGE_OPTIONS.map(({ translationKey, value }) => ({
     label: t(translationKey),
@@ -419,15 +390,16 @@ const DiagnosticBundleDialog: FC<DiagnosticBundleDialogProps> = ({ appVersion, o
                 <Button ref={revealButtonRef} variant="outline" onClick={() => void handleReveal()}>
                   {t('settings.about.diagnostics.actions.reveal')}
                 </Button>
-                <Button
-                  variant="emphasis"
-                  onClick={() => void (copyEmailFallback ? copySupportEmail() : handleContactSupport())}>
-                  {t(
-                    copyEmailFallback
-                      ? 'settings.about.diagnostics.actions.copy_email'
-                      : 'settings.about.diagnostics.actions.contact'
-                  )}
-                </Button>
+                {/* 「联系 Cherry 支持（support@cherry-ai.com）」入口暂时隐藏。Mea Cowork 暂不开放经此邮箱发送诊断。恢复时把 null 换成 ( */}
+                {/* <Button */}
+                {/*   variant="emphasis" */}
+                {/*   onClick={() => void (copyEmailFallback ? copySupportEmail() : handleContactSupport())}> */}
+                {/*   {t( */}
+                {/*     copyEmailFallback */}
+                {/*       ? 'settings.about.diagnostics.actions.copy_email' */}
+                {/*       : 'settings.about.diagnostics.actions.contact' */}
+                {/*   )} */}
+                {/* </Button> */}
               </>
             ) : (
               <>

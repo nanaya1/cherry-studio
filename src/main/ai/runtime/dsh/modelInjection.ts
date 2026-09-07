@@ -350,8 +350,10 @@ export async function assertDshProviderUsable(uniqueModelId: UniqueModelId): Pro
   // Unsupported beats missing-credential (parity with buildDshProviderInjection).
   if (resolveDshInjectionApi(provider, model) === undefined) {
     if (!isGatewayRoutableModel(model)) throw new DshUnsupportedProviderError(providerId)
-    // Consent only (persisted intent) — no ensureRunning/ensureValidApiKey side effects here.
-    if (!application.get('ApiGatewayService').getCurrentConfig().enabled) throw new ApiGatewayNotRunningError()
+    // Consent only (persisted intent) — automatic mode may start later during materialization.
+    if (application.get('ApiGatewayService').getCurrentConfig().enabled === false) {
+      throw new ApiGatewayNotRunningError()
+    }
     return
   }
   const apiKeys = providerService.getApiKeys(providerId, { enabled: true })

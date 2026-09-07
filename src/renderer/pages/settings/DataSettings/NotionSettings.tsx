@@ -1,4 +1,4 @@
-import { Button, InfoTooltip, Input, RowFlex, Switch } from '@cherrystudio/ui'
+import { Button, Input, RowFlex, Switch } from '@cherrystudio/ui'
 import { usePreference } from '@data/hooks/usePreference'
 import { loggerService } from '@logger'
 import { Client } from '@notionhq/client'
@@ -11,7 +11,6 @@ import {
   SettingTitle
 } from '@renderer/components/SettingsPrimitives'
 import { useTheme } from '@renderer/hooks/useTheme'
-import { ipcApi } from '@renderer/ipc'
 import { toast } from '@renderer/services/toast'
 import { formatErrorMessage } from '@renderer/utils/error'
 import type { FC } from 'react'
@@ -71,20 +70,24 @@ const NotionSettings: FC = () => {
     void setNotionExportReasoning(checked)
   }
 
-  const handleNotionTitleClick = () => {
-    void ipcApi.request('system.shell.open_website', 'https://docs.cherry-ai.com/advanced-basic/notion')
-  }
+  // 「点击问号 → 文档」入口暂时隐藏：跳转到 docs.cherry-ai.com，属 Cherry 厂商云。
+  // const handleNotionTitleClick = () => {
+  //   void ipcApi.request('system.shell.open_website', 'https://docs.cherry-ai.com/advanced-basic/notion')
+  // }
 
   return (
     <SettingGroup theme={theme}>
       <SettingTitle style={{ justifyContent: 'flex-start', gap: 10 }}>
         {t('settings.data.notion.title')}
+        {/* 「点击问号 → docs.cherry-ai.com」入口暂时隐藏。 */}
+        {/*
         <InfoTooltip
           content={t('settings.data.notion.help')}
           placement="right"
           iconProps={{ className: 'text-text-2 cursor-pointer' }}
           onClick={handleNotionTitleClick}
         />
+        */}
       </SettingTitle>
       <SettingDivider />
       <SettingRow>

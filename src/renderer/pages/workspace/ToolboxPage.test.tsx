@@ -4,18 +4,14 @@ import '@testing-library/jest-dom/vitest'
 import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const openSmartMiniApp = vi.fn()
+const openExternal = vi.fn()
 
 vi.mock('@cherrystudio/ui', () => ({
   Scrollbar: ({ children, className }: { children: ReactNode; className?: string }) => (
     <div className={className}>{children}</div>
   )
-}))
-
-vi.mock('@renderer/hooks/useMiniAppPopup', () => ({
-  useMiniAppPopup: () => ({ openSmartMiniApp })
 }))
 
 vi.mock('react-i18next', () => ({
@@ -55,6 +51,12 @@ vi.mock('react-i18next', () => ({
 
 import ToolboxPage from './ToolboxPage'
 
+beforeEach(() => {
+  ;(window as any).api = {
+    shell: { openExternal }
+  }
+})
+
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
@@ -70,17 +72,13 @@ describe('ToolboxPage', () => {
     expect(screen.queryByText('8')).not.toBeInTheDocument()
   })
 
-  it('opens an available product in the built-in mini app', async () => {
+  it('opens an available product in the external browser', async () => {
     const user = userEvent.setup()
     render(<ToolboxPage />)
 
     await user.click(screen.getByRole('button', { name: /图零/ }))
 
-    expect(openSmartMiniApp).toHaveBeenCalledWith({
-      appId: 'toolbox-tuling',
-      name: '图零',
-      url: 'https://tl.xuelangyun.com/'
-    })
+    expect(openExternal).toHaveBeenCalledWith('https://tl.xuelangyun.com/')
   })
 
   it('keeps products without a URL disabled and marks them as coming soon', async () => {
@@ -92,6 +90,6 @@ describe('ToolboxPage', () => {
     expect(proCard).toHaveTextContent('即将推出')
 
     await user.click(proCard)
-    expect(openSmartMiniApp).not.toHaveBeenCalled()
+    expect(openExternal).not.toHaveBeenCalled()
   })
 })

@@ -1,5 +1,4 @@
 import { Scrollbar } from '@cherrystudio/ui'
-import { useMiniAppPopup } from '@renderer/hooks/useMiniAppPopup'
 import { cn } from '@renderer/utils/style'
 import { ArrowUpRight } from 'lucide-react'
 import type { FC } from 'react'
@@ -7,8 +6,8 @@ import { useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 
 /**
- * One toolbox entry: a Xuelang product opened in the built-in browser via a
- * transient mini app (`openSmartMiniApp`).
+ * One toolbox entry: a Xuelang product opened in the user's default browser
+ * via `shell.openExternal`.
  */
 interface ToolboxProduct {
   id: string
@@ -88,19 +87,11 @@ const PRODUCTS: ToolboxProduct[] = [
 
 const ToolboxPage: FC = () => {
   const { t } = useTranslation()
-  const { openSmartMiniApp } = useMiniAppPopup()
 
-  const openProduct = useCallback(
-    (product: ToolboxProduct) => {
-      if (!product.url) return
-      openSmartMiniApp({
-        appId: `toolbox-${product.id}`,
-        name: t(product.nameKey),
-        url: product.url
-      })
-    },
-    [openSmartMiniApp, t]
-  )
+  const openProduct = useCallback((product: ToolboxProduct) => {
+    if (!product.url) return
+    void window.api.shell.openExternal(product.url)
+  }, [])
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-background">

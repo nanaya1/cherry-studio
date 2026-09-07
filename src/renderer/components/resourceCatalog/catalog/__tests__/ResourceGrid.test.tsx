@@ -409,7 +409,9 @@ function createAssistantResource(overrides: Partial<Extract<ResourceItem, { type
   }
 }
 
-function createAgentResource(): ResourceItem {
+function createAgentResource(
+  overrides: Partial<Extract<ResourceItem, { type: 'agent' }>> = {}
+): ResourceItem {
   return {
     id: 'agent-1',
     type: 'agent',
@@ -418,7 +420,8 @@ function createAgentResource(): ResourceItem {
     avatar: 'A',
     createdAt: '2026-05-06T00:00:00.000Z',
     updatedAt: '2026-05-06T00:00:00.000Z',
-    raw: {} as Extract<ResourceItem, { type: 'agent' }>['raw']
+    raw: {} as Extract<ResourceItem, { type: 'agent' }>['raw'],
+    ...overrides
   }
 }
 
@@ -1095,5 +1098,35 @@ describe('ResourceCardMenu group binding', () => {
     expect(screen.queryByRole('button', { name: /common.edit/ })).not.toBeInTheDocument()
     expect(screen.getByTestId('menu-divider')).toBeInTheDocument()
     expect(screen.getByRole('menuitem', { name: '删除' })).toBeInTheDocument()
+  })
+
+  it('hides delete for the default assistant and default agent cards and menus', async () => {
+    const user = userEvent.setup()
+    const onDelete = vi.fn()
+
+    // Assistant card: the builtin default keeps its overflow menu (group/duplicate/export)
+    // but the menu offers no delete entry.
+    const defaultAssistant = createAssistantResource({
+      raw: { builtinRole: 'assistant' } as Extract<ResourceItem, { type: 'assistant' }>['raw']
+    })
+
+    const { rerender } = render(
+      <ResourceCard resource={defaultAssistant} {...getResourceCardProps({ onDelete })} />
+    )
+    expect(screen.getByText('common.default')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /common.more/ }))
+    expect(screen.queryByRole('menuitem', { name: '删除' })).not.toBeInTheDocument()
+
+    // Agent card: the builtin default loses the direct delete button entirely.
+    const defaultAgent = createAgentResource({
+      raw: {
+        configuration: { builtin_role: 'assistant' }
+      } as Extract<ResourceItem, { type: 'agent' }>['raw']
+    })
+
+    rerender(<ResourceCard resource={defaultAgent} {...getResourceCardProps({ onDelete })} />)
+    expect(screen.getByText('common.default')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '删除' })).not.toBeInTheDocument()
   })
 })

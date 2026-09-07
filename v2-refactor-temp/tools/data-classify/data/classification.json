@@ -1093,7 +1093,7 @@
         {
           "originalKey": "autoCheckUpdate",
           "type": "boolean",
-          "defaultValue": true,
+          "defaultValue": false,
           "status": "classified",
           "category": "preferences",
           "targetKey": "app.dist.auto_update.enabled"

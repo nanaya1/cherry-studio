@@ -15,7 +15,6 @@ import {
   DialogHeader,
   DialogTitle
 } from '@cherrystudio/ui'
-import { ExternalLink } from 'lucide-react'
 import type { FC } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -25,7 +24,13 @@ interface Props {
   onDownload: () => void
 }
 
-export const V1DownloadDialog: FC<Props> = ({ open, onOpenChange, onDownload }) => {
+// onDownload 回调暂时未使用，等恢复「下载 V1」入口时再把 _onDownload 改回 onDownload。
+export const V1DownloadDialog: FC<Props> = ({
+  open,
+  onOpenChange,
+  // oxlint-disable-next-line no-unused-vars
+  onDownload: _onDownload
+}) => {
   const { t } = useTranslation()
 
   return (
@@ -39,10 +44,11 @@ export const V1DownloadDialog: FC<Props> = ({ open, onOpenChange, onDownload }) 
           <DialogClose asChild>
             <Button variant="outline">{t('migration.error.v1_fallback.dismiss')}</Button>
           </DialogClose>
-          <Button variant="emphasis" onClick={onDownload}>
-            <ExternalLink size={13} />
-            {t('migration.error.v1_fallback.download')}
-          </Button>
+          {/* 「下载 V1 版本」按钮暂时隐藏：跳转目标属 Cherry 厂商云。恢复时把 null 换成 ( */}
+          {/* <Button variant="emphasis" onClick={onDownload}> */}
+          {/*   <ExternalLink size={13} /> */}
+          {/*   {t('migration.error.v1_fallback.download')} */}
+          {/* </Button> */}
         </DialogFooter>
       </DialogContent>
     </Dialog>

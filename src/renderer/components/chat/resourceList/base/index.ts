@@ -4,6 +4,7 @@ export {
   type ConversationRowStatusValue
 } from './ConversationRowStatus'
 export { resolveDefaultCollapsedGroupIds } from './defaultCollapsedGroups'
+export { DefaultEntityBadge } from './DefaultEntityBadge'
 export {
   buildResolvedResourceEntityMenuAction,
   buildResourceEntityIconTypeActionDescriptor,

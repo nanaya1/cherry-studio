@@ -15,21 +15,18 @@ import {
 } from '@cherrystudio/ui'
 import { loggerService } from '@logger'
 import { ipcApi } from '@renderer/ipc'
-import { openRoute } from '@renderer/services/mainWindowNavigation'
 import { toast } from '@renderer/services/toast'
-import { Bot, ChevronRight, FileArchive, Github } from 'lucide-react'
-import { lazy, type ReactNode, Suspense, useState } from 'react'
+import { ChevronRight, Github } from 'lucide-react'
+import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-
-const DiagnosticUploadDialog = lazy(() => import('./DiagnosticUploadDialog'))
 
 export const FEEDBACK_GITHUB_URL = 'https://github.com/CherryHQ/cherry-studio/issues/new/choose'
 
 const logger = loggerService.withContext('FeedbackDialog')
 
-export function getFeedbackAgentRoute(sessionId: string): string {
-  return `/app/agents?intent=feedback&sessionId=${encodeURIComponent(sessionId)}`
-}
+// 「发送诊断报告 → Cherry 厂商云」入口暂时隐藏。Mea Cowork 暂不开放向 api.cherry-ai.com 上传诊断包，
+// 恢复时取消下方注释并把 FeedbackOption 的 import 改回原来的分组版本。
+/* const DiagnosticUploadDialog = lazy(() => import('./DiagnosticUploadDialog')) */
 
 interface FeedbackDialogProps {
   open: boolean
@@ -76,7 +73,8 @@ function FeedbackOption({ description, icon, recommended = false, title, onSelec
 
 export function FeedbackDialog({ open, onOpenChange }: FeedbackDialogProps) {
   const { t } = useTranslation()
-  const [diagnosticUploadOpen, setDiagnosticUploadOpen] = useState(false)
+  // 「发送诊断报告」入口暂时隐藏，详见顶部注释。
+  /* const [diagnosticUploadOpen, setDiagnosticUploadOpen] = useState(false) */
 
   const selectOption = (action: () => void | Promise<void>) => {
     onOpenChange(false)
@@ -85,16 +83,6 @@ export function FeedbackDialog({ open, onOpenChange }: FeedbackDialogProps) {
         .then(action)
         .catch((error) => logger.error('Failed to run deferred feedback action', error as Error))
     }, 0)
-  }
-
-  const openAgentFeedback = async () => {
-    try {
-      const { sessionId } = await ipcApi.request('ai.agent.support_session.create')
-      openRoute(getFeedbackAgentRoute(sessionId))
-    } catch (error) {
-      logger.error('Failed to create Cherry Support feedback session', error as Error)
-      toast.error(t('settings.about.feedback.agent_error'))
-    }
   }
 
   const openGitHubIssue = async () => {
@@ -107,44 +95,33 @@ export function FeedbackDialog({ open, onOpenChange }: FeedbackDialogProps) {
   }
 
   return (
-    <>
-      <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent size="lg">
-          <DialogHeader>
-            <DialogTitle>{t('settings.about.feedback.dialog.title')}</DialogTitle>
-            <DialogDescription>{t('settings.about.feedback.dialog.description')}</DialogDescription>
-          </DialogHeader>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent size="lg">
+        <DialogHeader>
+          <DialogTitle>{t('settings.about.feedback.dialog.title')}</DialogTitle>
+          <DialogDescription>{t('settings.about.feedback.dialog.description')}</DialogDescription>
+        </DialogHeader>
 
-          <ItemGroup className="gap-3 px-2">
-            <FeedbackOption
-              icon={<FileArchive className="size-5" />}
-              title={t('settings.about.feedback.diagnostics.title')}
-              description={t('settings.about.feedback.diagnostics.description')}
-              recommended
-              onSelect={() => selectOption(() => setDiagnosticUploadOpen(true))}
-            />
-            <FeedbackOption
-              icon={<Bot className="size-5" />}
-              title={t('settings.about.feedback.agent.title')}
-              description={t('settings.about.feedback.agent.description')}
-              onSelect={() => selectOption(openAgentFeedback)}
-            />
-            <FeedbackOption
-              icon={<Github className="size-5" />}
-              title={t('settings.about.feedback.github.title')}
-              description={t('settings.about.feedback.github.description')}
-              onSelect={() => selectOption(openGitHubIssue)}
-            />
-          </ItemGroup>
-        </DialogContent>
-      </Dialog>
-
-      {diagnosticUploadOpen ? (
-        <Suspense fallback={null}>
-          <DiagnosticUploadDialog open onOpenChange={setDiagnosticUploadOpen} />
-        </Suspense>
-      ) : null}
-    </>
+        <ItemGroup className="gap-3 px-2">
+          {/* 「发送诊断报告」入口暂时隐藏：Mea Cowork 暂不开放向 api.cherry-ai.com 上传诊断包。 */}
+          {/*
+          <FeedbackOption
+            icon={<FileArchive className="size-5" />}
+            title={t('settings.about.feedback.diagnostics.title')}
+            description={t('settings.about.feedback.diagnostics.description')}
+            recommended
+            onSelect={() => selectOption(() => setDiagnosticUploadOpen(true))}
+          />
+          */}
+          <FeedbackOption
+            icon={<Github className="size-5" />}
+            title={t('settings.about.feedback.github.title')}
+            description={t('settings.about.feedback.github.description')}
+            onSelect={() => selectOption(openGitHubIssue)}
+          />
+        </ItemGroup>
+      </DialogContent>
+    </Dialog>
   )
 }
 

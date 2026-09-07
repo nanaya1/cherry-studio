@@ -17,11 +17,9 @@ import {
 } from '@cherrystudio/ui'
 import { usePreference } from '@data/hooks/usePreference'
 import useAvatar from '@renderer/hooks/useAvatar'
-import { useCherryAccountSession } from '@renderer/hooks/useCherryAccountSession'
 import { ipcApi } from '@renderer/ipc'
 import { createPopup, type PopupInjectedProps } from '@renderer/services/popup'
 import { toast } from '@renderer/services/toast'
-import { getAppEdition } from '@renderer/utils/appEdition'
 import { checkEntityImageSize, prepareEntityImageBytes } from '@renderer/utils/image'
 import { isEmoji } from '@renderer/utils/naming'
 import React, { useRef, useState } from 'react'
@@ -41,18 +39,19 @@ const PopupContainer: React.FC<Props> = ({ open, resolve }) => {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { t } = useTranslation()
   const avatar = useAvatar()
-  const isCnEdition = getAppEdition() === 'cn'
-  const {
-    status: cloudStatus,
-    loadState: cloudStatusLoadState,
-    reload: loadCloudStatus,
-    login: handleCloudLogin,
-    cancelLogin: handleCloudLoginCancel,
-    revokeSession: handleCloudLogout,
-    isCancellingLogin,
-    isRevokingSession,
-    isAuthorizing
-  } = useCherryAccountSession(open)
+  // 「登录 / 退出樱桃云」入口暂时隐藏，详见下方对应 JSX 注释。
+  // const isCnEdition = getAppEdition() === 'cn'
+  // const {
+  //   status: cloudStatus,
+  //   loadState: cloudStatusLoadState,
+  //   reload: loadCloudStatus,
+  //   login: handleCloudLogin,
+  //   cancelLogin: handleCloudLoginCancel,
+  //   revokeSession: handleCloudLogout,
+  //   isCancellingLogin,
+  //   isRevokingSession,
+  //   isAuthorizing
+  // } = useCherryAccountSession(open)
 
   const onOpenChange = (nextOpen: boolean) => {
     if (!nextOpen) {
@@ -186,6 +185,8 @@ const PopupContainer: React.FC<Props> = ({ open, resolve }) => {
             maxLength={30}
           />
         </RowFlex>
+        {/* 「登录 / 退出樱桃云」入口暂时隐藏：连接 cloud.cherryai.com(.cn) 走 Cherry 厂商云。Mea Cowork 暂不开放登录。 */}
+        {/*
         {isCnEdition || cloudStatus?.phase === 'signed-in' ? (
           <RowFlex className="border-border-subtle border-t px-5 py-4">
             {cloudStatusLoadState === 'error' ? (
@@ -238,6 +239,7 @@ const PopupContainer: React.FC<Props> = ({ open, resolve }) => {
             )}
           </RowFlex>
         ) : null}
+        */}
       </DialogContent>
     </Dialog>
   )

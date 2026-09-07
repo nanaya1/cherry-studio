@@ -128,20 +128,20 @@ function maskApiKeyForSnapshot(key: string): string {
   return masked === key ? '****' : masked
 }
 
-function assertManagedCherryProviderPatchAllowed(providerId: string, dto: UpdateProviderDto): void {
+function assertManagedProviderPatchAllowed(providerId: string, dto: UpdateProviderDto): void {
   if (!isManagedCherryProviderId(providerId) || Object.keys(dto).length === 0) {
     return
   }
 
-  assertManagedCherryProviderMutationAllowed(providerId, `update provider ${providerId}`)
+  assertManagedProviderMutationAllowed(providerId, `update provider ${providerId}`)
 }
 
-function assertManagedCherryProviderMutationAllowed(providerId: string, operation: string): void {
+function assertManagedProviderMutationAllowed(providerId: string, operation: string): void {
   if (!isManagedCherryProviderId(providerId)) {
     return
   }
 
-  throw DataApiErrorFactory.invalidOperation(operation, 'managed Cherry provider cannot be modified')
+  throw DataApiErrorFactory.invalidOperation(operation, 'managed provider cannot be modified')
 }
 
 function assertProviderAvailable<T extends ProviderIdentity>(
@@ -442,7 +442,7 @@ class ProviderService {
     if (isRetiredProvider(dto.providerId, dto.presetProviderId)) {
       throw DataApiErrorFactory.invalidOperation(`create provider ${dto.providerId}`, 'provider is retired')
     }
-    assertManagedCherryProviderMutationAllowed(dto.providerId, `create provider ${dto.providerId}`)
+    assertManagedProviderMutationAllowed(dto.providerId, `create provider ${dto.providerId}`)
 
     const endpointConfigs = projectEndpointConfigOverrides(
       dto.endpointConfigs,
@@ -500,7 +500,7 @@ class ProviderService {
    * writes preserve the user's current order.
    */
   update(providerId: string, dto: UpdateProviderInput): Provider {
-    assertManagedCherryProviderPatchAllowed(providerId, dto)
+    assertManagedProviderPatchAllowed(providerId, dto)
 
     // Read + merge + write the providerSettings JSON in ONE serialized write
     // transaction. A bare read-then-update would let two concurrent PATCHes both
@@ -708,7 +708,7 @@ class ProviderService {
    * Returns the updated Provider.
    */
   addApiKey(providerId: string, key: string, label?: string): Provider {
-    assertManagedCherryProviderMutationAllowed(providerId, `add API key to provider ${providerId}`)
+    assertManagedProviderMutationAllowed(providerId, `add API key to provider ${providerId}`)
 
     const db = application.get('DbService').getDb()
     const { provider, added } = db.transaction((tx) => {
@@ -760,7 +760,7 @@ class ProviderService {
    * Replace the full API key list via the dedicated API-key resource.
    */
   replaceApiKeys(providerId: string, apiKeys: ApiKeyEntry[]): Provider {
-    assertManagedCherryProviderMutationAllowed(providerId, `replace API keys for provider ${providerId}`)
+    assertManagedProviderMutationAllowed(providerId, `replace API keys for provider ${providerId}`)
 
     const db = application.get('DbService').getDb()
     const provider = db.transaction((tx) => {
@@ -808,7 +808,7 @@ class ProviderService {
       isEnabled?: boolean
     }
   ): Provider {
-    assertManagedCherryProviderMutationAllowed(providerId, `update API key for provider ${providerId}`)
+    assertManagedProviderMutationAllowed(providerId, `update API key for provider ${providerId}`)
 
     const db = application.get('DbService').getDb()
     const provider = db.transaction((tx) => {
@@ -878,7 +878,7 @@ class ProviderService {
    * Delete an API key by key ID and return updated provider.
    */
   deleteApiKey(providerId: string, keyId: string): Provider {
-    assertManagedCherryProviderMutationAllowed(providerId, `delete API key from provider ${providerId}`)
+    assertManagedProviderMutationAllowed(providerId, `delete API key from provider ${providerId}`)
 
     const db = application.get('DbService').getDb()
     const provider = db.transaction((tx) => {
@@ -918,7 +918,7 @@ class ProviderService {
    * cannot be deleted. User-created providers that inherit from a preset can be deleted.
    */
   delete(providerId: string): void {
-    assertManagedCherryProviderMutationAllowed(providerId, `delete provider ${providerId}`)
+    assertManagedProviderMutationAllowed(providerId, `delete provider ${providerId}`)
 
     const deletedModelCount = application.get('DbService').withWriteTx((tx) => {
       const [provider] = tx
@@ -981,7 +981,7 @@ class ProviderService {
   }
 
   move(providerId: string, anchor: OrderRequest): void {
-    assertManagedCherryProviderMutationAllowed(providerId, `move provider ${providerId}`)
+    assertManagedProviderMutationAllowed(providerId, `move provider ${providerId}`)
     this.assertAvailable(providerId)
 
     const db = application.get('DbService').getDb()
@@ -1000,7 +1000,7 @@ class ProviderService {
 
   reorder(moves: OrderBatchRequest['moves']): void {
     for (const move of moves) {
-      assertManagedCherryProviderMutationAllowed(move.id, `move provider ${move.id}`)
+      assertManagedProviderMutationAllowed(move.id, `move provider ${move.id}`)
       this.assertAvailable(move.id)
     }
 
