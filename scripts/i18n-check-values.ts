@@ -15,7 +15,7 @@ const interpolations = (text: string) => (text.match(/{{[^}]*}}/g) ?? []).sort()
 const tagPlaceholders = (text: string) => (text.match(/<\/?[\w-]+\s*\/?>/g) ?? []).sort()
 const nestedKeys = (text: string) => (text.match(/\$t\([^)]*\)/g) ?? []).sort()
 
-/** Case and separators vary legitimately: "Github", "Cherry-Studio-Diagnose". Spelling does not. */
+/** Case and separators vary legitimately: "Github", "MEA-Cowork-Diagnose". Spelling does not. */
 const foldForTermMatch = (text: string) => text.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '')
 
 export const validateSource = (source: string): string | null => {

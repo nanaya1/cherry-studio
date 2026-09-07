@@ -216,7 +216,7 @@ describe('Linux package replacement', () => {
 })
 
 describe('pinned Linux native release', () => {
-  it('matches the installed Cherry Studio build inputs', () => {
+  it('matches the installed MEA Cowork build inputs', () => {
     const config = readReleaseConfig()
     expect(config.metadata).toEqual(readProjectBuildMetadata(projectRoot))
     expect(config.repository).toBe('CherryHQ/cherry-studio-better-sqlite3')

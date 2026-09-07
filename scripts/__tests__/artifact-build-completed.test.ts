@@ -6,13 +6,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import artifactBuildCompleted, { normalizeArtifactFilePath } from '../artifact-build-completed'
 
-const PRODUCT_NAME = 'Cherry Studio'
+const PRODUCT_NAME = 'MEA Cowork'
 const VERSION = '2.0.9'
 
 const temporaryDirectories: string[] = []
 
 function temporaryDirectory(): string {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'cherry-artifact-name-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'mea-cowork-artifact-name-'))
   temporaryDirectories.push(directory)
   return directory
 }
@@ -26,13 +26,13 @@ afterEach(() => {
 
 describe('normalizeArtifactFilePath', () => {
   it.each([
-    ['windows', 'Cherry Studio-2.0.9-x64-setup.exe', 'Cherry-Studio-2.0.9-win-x64-setup.exe'],
-    ['windows', 'Cherry Studio-2.0.9-arm64-portable.exe', 'Cherry-Studio-2.0.9-win-arm64-portable.exe'],
-    ['mac', 'Cherry Studio-2.0.9-x64.dmg', 'Cherry-Studio-2.0.9-mac-x64.dmg'],
-    ['mac', 'Cherry Studio-2.0.9-arm64.zip.blockmap', 'Cherry-Studio-2.0.9-mac-arm64.zip.blockmap'],
-    ['linux', 'Cherry Studio-2.0.9-x86_64.AppImage', 'Cherry-Studio-2.0.9-linux-x64.AppImage'],
-    ['linux', 'Cherry Studio-2.0.9-amd64.deb', 'Cherry-Studio-2.0.9-linux-x64.deb'],
-    ['linux', 'Cherry Studio-2.0.9-aarch64.rpm', 'Cherry-Studio-2.0.9-linux-arm64.rpm']
+    ['windows', 'MEA Cowork-2.0.9-x64-setup.exe', 'MEA-Cowork-2.0.9-win-x64-setup.exe'],
+    ['windows', 'MEA Cowork-2.0.9-arm64-portable.exe', 'MEA-Cowork-2.0.9-win-arm64-portable.exe'],
+    ['mac', 'MEA Cowork-2.0.9-x64.dmg', 'MEA-Cowork-2.0.9-mac-x64.dmg'],
+    ['mac', 'MEA Cowork-2.0.9-arm64.zip.blockmap', 'MEA-Cowork-2.0.9-mac-arm64.zip.blockmap'],
+    ['linux', 'MEA Cowork-2.0.9-x86_64.AppImage', 'MEA-Cowork-2.0.9-linux-x64.AppImage'],
+    ['linux', 'MEA Cowork-2.0.9-amd64.deb', 'MEA-Cowork-2.0.9-linux-x64.deb'],
+    ['linux', 'MEA Cowork-2.0.9-aarch64.rpm', 'MEA-Cowork-2.0.9-linux-arm64.rpm']
   ])('normalizes the %s release asset %s', (platform, source, expected) => {
     expect(normalizeArtifactFilePath(path.join('dist', source), PRODUCT_NAME, VERSION, platform)).toBe(
       path.join('dist', expected)
@@ -40,20 +40,20 @@ describe('normalizeArtifactFilePath', () => {
   })
 
   it('is idempotent for an already normalized asset', () => {
-    const file = path.join('dist', 'Cherry-Studio-2.0.9-linux-x64.AppImage')
+    const file = path.join('dist', 'MEA-Cowork-2.0.9-linux-x64.AppImage')
     expect(normalizeArtifactFilePath(file, PRODUCT_NAME, VERSION, 'linux')).toBe(file)
   })
 
   it('uses the public CN prefix for a China edition artifact', () => {
     expect(
       normalizeArtifactFilePath(
-        path.join('dist', 'Cherry Studio-2.0.9-x64.dmg'),
+        path.join('dist', 'MEA Cowork-2.0.9-x64.dmg'),
         PRODUCT_NAME,
         VERSION,
         'mac',
-        'Cherry Studio CN'
+        'MEA Cowork CN'
       )
-    ).toBe(path.join('dist', 'Cherry-Studio-CN-2.0.9-mac-x64.dmg'))
+    ).toBe(path.join('dist', 'MEA-Cowork-CN-2.0.9-mac-x64.dmg'))
   })
 
   it.each(['latest.yml', 'latest-linux.yml', 'release-history.json', 'other-product-2.0.9-x64.zip'])(
@@ -68,12 +68,12 @@ describe('normalizeArtifactFilePath', () => {
 describe('artifactBuildCompleted', () => {
   it('renames the file and exposes its final path to later publisher hooks', () => {
     const directory = temporaryDirectory()
-    const source = path.join(directory, 'Cherry Studio-2.0.9-x86_64.AppImage')
-    const expected = path.join(directory, 'Cherry-Studio-2.0.9-linux-x64.AppImage')
+    const source = path.join(directory, 'MEA Cowork-2.0.9-x86_64.AppImage')
+    const expected = path.join(directory, 'MEA-Cowork-2.0.9-linux-x64.AppImage')
     fs.writeFileSync(source, 'artifact')
     const buildResult = {
       file: source,
-      safeArtifactName: 'Cherry-Studio-2.0.9-x86_64.AppImage',
+      safeArtifactName: 'MEA-Cowork-2.0.9-x86_64.AppImage',
       packager: {
         appInfo: { productName: PRODUCT_NAME, version: VERSION },
         config: {},
@@ -84,16 +84,16 @@ describe('artifactBuildCompleted', () => {
     artifactBuildCompleted(buildResult)
 
     expect(buildResult.file).toBe(expected)
-    expect(buildResult.safeArtifactName).toBe('Cherry-Studio-2.0.9-linux-x64.AppImage')
+    expect(buildResult.safeArtifactName).toBe('MEA-Cowork-2.0.9-linux-x64.AppImage')
     expect(fs.existsSync(source)).toBe(false)
     expect(fs.readFileSync(expected, 'utf8')).toBe('artifact')
   })
 
   it('propagates rename failures so packaging cannot continue with a stale path', () => {
-    const source = path.join(temporaryDirectory(), 'Cherry Studio-2.0.9-x86_64.AppImage')
+    const source = path.join(temporaryDirectory(), 'MEA Cowork-2.0.9-x86_64.AppImage')
     const buildResult = {
       file: source,
-      safeArtifactName: 'Cherry-Studio-2.0.9-x86_64.AppImage',
+      safeArtifactName: 'MEA-Cowork-2.0.9-x86_64.AppImage',
       packager: {
         appInfo: { productName: PRODUCT_NAME, version: VERSION },
         config: {},

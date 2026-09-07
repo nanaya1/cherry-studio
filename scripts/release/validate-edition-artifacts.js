@@ -48,11 +48,12 @@ function main() {
   }
 
   const packageMetadata = require('../../package.json')
+  const builderConfig = parse(fs.readFileSync(path.join(__dirname, '..', '..', 'electron-builder.yml'), 'utf8'))
   validateEditionArtifacts({
     distDirectory: path.resolve('dist'),
     edition,
     platform,
-    productName: 'Cherry Studio',
+    productName: builderConfig.productName,
     version: packageMetadata.version
   })
   console.log(`Validated ${edition} ${platform} release artifacts`)

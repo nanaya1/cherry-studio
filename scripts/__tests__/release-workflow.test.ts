@@ -283,13 +283,13 @@ const HOTFIX_BODY = hotfixBody('[Chat] Fix messages disappearing after restart.'
 
 function releaseNotes(version: string, item: string): string {
   return `<!--LANG:en-->
-Cherry Studio ${version} - Test Release
+MEA Cowork ${version} - Test Release
 
 🐛 Bug Fixes
 - [Chat] ${item}
 
 <!--LANG:zh-CN-->
-Cherry Studio ${version} - 测试版本
+MEA Cowork ${version} - 测试版本
 
 🐛 问题修复
 - [聊天] ${item}

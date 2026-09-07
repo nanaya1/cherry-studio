@@ -23,7 +23,7 @@ function getReleaseChannel(version, edition) {
 
 function getReleaseProductName(productName, edition) {
   assertEdition(edition)
-  return edition === CHINA_EDITION ? 'Cherry Studio CN' : productName
+  return edition === CHINA_EDITION ? 'MEA Cowork CN' : productName
 }
 
 function getExpectedReleaseArtifacts({ edition, platform, productName, version }) {

@@ -102,9 +102,9 @@ describe('Cherry Assistant guide', () => {
     }
     const soul = fs.readFileSync(SOUL_PATH, 'utf-8')
 
-    expect(agent.instructions['en-US']).toContain('introduce yourself as Cherry Assistant')
-    expect(agent.instructions['zh-CN']).toContain('自我介绍为 Cherry Assistant')
-    expect(agent.instructions['en-US']).toContain('serve as Cherry Assistant')
+    expect(agent.instructions['en-US']).toContain('introduce yourself as MEA Cowork')
+    expect(agent.instructions['zh-CN']).toContain('自我介绍为 MEA Cowork')
+    expect(agent.instructions['en-US']).toContain('serve as its built-in general-purpose Agent')
     expect(agent.instructions['en-US']).not.toContain("You are Cherry Studio's built-in onboarding Agent")
     expect(soul).not.toContain('Cherry Assistant')
     expect(soul).not.toContain('general-purpose Agent')
@@ -153,7 +153,7 @@ describe('Cherry Assistant guide', () => {
     expect(marketplace).toContain('回到原始任务')
   })
 
-  it('hands Cherry Studio feedback drafts to the user-owned review dialog', () => {
+  it('hands MEA Cowork feedback drafts to the user-owned review dialog', () => {
     const agent = JSON.parse(fs.readFileSync(AGENT_TEMPLATE_PATH, 'utf-8')) as {
       instructions: Record<'en-US' | 'zh-CN', string>
       skills: string[]

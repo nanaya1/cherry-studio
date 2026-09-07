@@ -134,8 +134,8 @@ describe('edition packaging', () => {
     })
     const chinaPackageMetadata = { ...packageMetadata, ...config.extraMetadata }
 
-    expect(packageMetadata.productName ?? packageMetadata.name).toBe('CherryStudio')
-    expect(chinaPackageMetadata.productName ?? chinaPackageMetadata.name).toBe('CherryStudio')
+    expect(packageMetadata.productName ?? packageMetadata.name).toBe('MEACowork')
+    expect(chinaPackageMetadata.productName ?? chinaPackageMetadata.name).toBe('MEACowork')
   })
 
   it.each([
@@ -152,26 +152,26 @@ describe('edition packaging', () => {
       getExpectedReleaseArtifacts({
         edition: CHINA_EDITION,
         platform: 'linux',
-        productName: 'Cherry Studio',
+        productName: 'MEA Cowork',
         version: '2.1.0-rc.1'
       })
     ).toEqual({
       files: [
-        'Cherry-Studio-CN-2.1.0-rc.1-linux-x64.AppImage',
-        'Cherry-Studio-CN-2.1.0-rc.1-linux-x64.deb',
-        'Cherry-Studio-CN-2.1.0-rc.1-linux-x64.rpm',
-        'Cherry-Studio-CN-2.1.0-rc.1-linux-arm64.AppImage',
-        'Cherry-Studio-CN-2.1.0-rc.1-linux-arm64.deb',
-        'Cherry-Studio-CN-2.1.0-rc.1-linux-arm64.rpm'
+        'MEA-Cowork-CN-2.1.0-rc.1-linux-x64.AppImage',
+        'MEA-Cowork-CN-2.1.0-rc.1-linux-x64.deb',
+        'MEA-Cowork-CN-2.1.0-rc.1-linux-x64.rpm',
+        'MEA-Cowork-CN-2.1.0-rc.1-linux-arm64.AppImage',
+        'MEA-Cowork-CN-2.1.0-rc.1-linux-arm64.deb',
+        'MEA-Cowork-CN-2.1.0-rc.1-linux-arm64.rpm'
       ],
       manifests: [
         {
           file: 'rc-cn-linux.yml',
-          urls: ['Cherry-Studio-CN-2.1.0-rc.1-linux-x64.AppImage']
+          urls: ['MEA-Cowork-CN-2.1.0-rc.1-linux-x64.AppImage']
         },
         {
           file: 'rc-cn-linux-arm64.yml',
-          urls: ['Cherry-Studio-CN-2.1.0-rc.1-linux-arm64.AppImage']
+          urls: ['MEA-Cowork-CN-2.1.0-rc.1-linux-arm64.AppImage']
         }
       ]
     })
@@ -182,16 +182,16 @@ describe('edition packaging', () => {
       getExpectedReleaseArtifacts({
         edition: CHINA_EDITION,
         platform: 'mac',
-        productName: 'Cherry Studio',
+        productName: 'MEA Cowork',
         version: '2.1.0'
       }).files
     ).toEqual([
-      'Cherry-Studio-CN-2.1.0-mac-x64.zip',
-      'Cherry-Studio-CN-2.1.0-mac-x64.zip.blockmap',
-      'Cherry-Studio-CN-2.1.0-mac-arm64.zip',
-      'Cherry-Studio-CN-2.1.0-mac-arm64.zip.blockmap',
-      'Cherry-Studio-CN-2.1.0-mac-x64.dmg',
-      'Cherry-Studio-CN-2.1.0-mac-arm64.dmg'
+      'MEA-Cowork-CN-2.1.0-mac-x64.zip',
+      'MEA-Cowork-CN-2.1.0-mac-x64.zip.blockmap',
+      'MEA-Cowork-CN-2.1.0-mac-arm64.zip',
+      'MEA-Cowork-CN-2.1.0-mac-arm64.zip.blockmap',
+      'MEA-Cowork-CN-2.1.0-mac-x64.dmg',
+      'MEA-Cowork-CN-2.1.0-mac-arm64.dmg'
     ])
   })
 

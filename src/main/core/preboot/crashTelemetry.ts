@@ -37,7 +37,7 @@ export function initCrashTelemetry(): void {
 function startCrashReporter(): void {
   crashReporter.start({
     companyName: 'CherryHQ',
-    productName: 'CherryStudio',
+    productName: 'MEACowork',
     submitURL: '',
     uploadToServer: false
   })
