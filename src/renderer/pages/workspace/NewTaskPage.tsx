@@ -481,7 +481,7 @@ export default function NewTaskPage() {
       </header> */}
       <main
         data-composer-dock-layer=""
-        className="flex min-h-[520px] flex-1 items-start justify-center px-6 pt-35 pb-12">
+        className="flex min-h-[520px] flex-1 items-center justify-center px-6 pt-12 pb-[10vh]">
         <div className="w-full max-w-2xl">
           <div className="text-center">
             <h2 className="font-semibold text-2xl tracking-tight">{t('workspace.newTask.heading')}</h2>
@@ -600,7 +600,10 @@ export default function NewTaskPage() {
                       agentModelLoading ||
                       !agentModel ||
                       (hasPendingSkillLaunch &&
-                        (isSkillBindingLoading || requiresSkillBinding || isLaunchSkillUnavailable || !canUseLaunchSkill))
+                        (isSkillBindingLoading ||
+                          requiresSkillBinding ||
+                          isLaunchSkillUnavailable ||
+                          !canUseLaunchSkill))
                     }
                     launchOptions={canUseLaunchSkill ? skillLaunchOptions : undefined}
                     onDraftCleared={handleDraftCleared}
