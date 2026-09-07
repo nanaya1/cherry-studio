@@ -4,8 +4,7 @@
  *
  * Bulk component lookup — ordinary icon rendering uses loaders.ts instead
  *
- * Generated at: 2026-09-05T10:49:54.158Z
- * Total icons: 160
+ * Generated at: 2026-08-26T09:13:48.306Z * Total icons: 159
  */
 import { type CompoundIcon } from '../types'
 import { MinTop3Icon } from './3min-top'
@@ -80,6 +79,7 @@ import { InfiniIcon } from './infini'
 import { InflectionIcon } from './inflection'
 import { IntelIcon } from './intel'
 import { InternlmIcon } from './internlm'
+import { JalapenoCloudIcon } from './jalapeno-cloud'
 import { JimengIcon } from './jimeng'
 import { JinaIcon } from './jina'
 import { KlingIcon } from './kling'
@@ -162,7 +162,6 @@ import { WorkersAiIcon } from './workers-ai'
 import { XiaoyiIcon } from './xiaoyi'
 import { XinghuoIcon } from './xinghuo'
 import { XirangIcon } from './xirang'
-import { XuelangIcon } from './xuelang'
 import { YouIcon } from './you'
 import { YuanbaoIcon } from './yuanbao'
 import { ZAiIcon } from './z-ai'
@@ -243,6 +242,7 @@ export const PROVIDER_ICON_CATALOG = {
   inflection: InflectionIcon,
   intel: IntelIcon,
   internlm: InternlmIcon,
+  'jalapeno-cloud': JalapenoCloudIcon,
   jimeng: JimengIcon,
   jina: JinaIcon,
   kling: KlingIcon,
@@ -324,7 +324,6 @@ export const PROVIDER_ICON_CATALOG = {
   xiaoyi: XiaoyiIcon,
   xinghuo: XinghuoIcon,
   xirang: XirangIcon,
-  xuelang: XuelangIcon,
   you: YouIcon,
   yuanbao: YuanbaoIcon,
   'z-ai': ZAiIcon,

@@ -151,6 +151,7 @@ const AboutSettings: FC = () => {
       <SettingGroup theme={theme}>
         {/* 帮助文档、更新日志、官方网站、意见反馈、企业版、邮件联系与加入我们暂时隐藏。 */}
         <AboutActionRow
+          id="setting-about-diagnostics"
           icon={<FileArchive className="size-4.5" />}
           title={t('settings.about.diagnostics.entry.title')}
           actionLabel={t('settings.about.diagnostics.entry.button')}
@@ -158,6 +159,7 @@ const AboutSettings: FC = () => {
         />
         <Divider className="my-3" />
         <AboutActionRow
+          id="setting-about-debug-tools"
           icon={<Bug className="size-4.5" />}
           title={t('settings.about.debug.title')}
           actionLabel={t('settings.about.debug.open')}
@@ -176,16 +178,18 @@ const AboutSettings: FC = () => {
 function AboutActionRow({
   actionLabel,
   icon,
+  id,
   onAction,
   title
 }: {
   actionLabel: string
   icon: ReactNode
+  id?: string
   onAction: () => void | Promise<void>
   title: string
 }) {
   return (
-    <SettingRow className="gap-3">
+    <SettingRow id={id} className={id ? 'scroll-mt-6 gap-3' : 'gap-3'}>
       <SettingRowTitle className="gap-2.5">
         {icon}
         {title}

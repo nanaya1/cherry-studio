@@ -151,7 +151,8 @@ const PinnedTabButton = ({
   )
 }
 
-const MACOS_TAB_STRIP_TRAFFIC_LIGHT_RESERVE = 'max(0px, calc(env(titlebar-area-x, 0px) - var(--sidebar-width, 0px)))'
+const MACOS_TAB_STRIP_TRAFFIC_LIGHT_RESERVE =
+  'max(0px, calc(env(titlebar-area-x, 0px) - var(--sidebar-width, 0px) + 2px))'
 
 type BackButtonProps = {
   onBack: () => void

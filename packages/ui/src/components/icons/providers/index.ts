@@ -3,8 +3,7 @@
  * Each icon supports: <Icon /> (auto light/dark), <Icon variant="light" />, <Icon variant="dark" />, <Icon.Avatar />, Icon.colorPrimary
  * Do not edit manually
  *
- * Generated at: 2026-09-05T10:49:47.366Z
- * Total icons: 160
+ * Generated at: 2026-08-26T09:13:47.814Z * Total icons: 159
  */
 export { MinTop3Icon as MinTop3 } from './3min-top'
 export { Ai302Icon as Ai302 } from './302ai'
@@ -78,6 +77,7 @@ export { InfiniIcon as Infini } from './infini'
 export { InflectionIcon as Inflection } from './inflection'
 export { IntelIcon as Intel } from './intel'
 export { InternlmIcon as Internlm } from './internlm'
+export { JalapenoCloudIcon as JalapenoCloud } from './jalapeno-cloud'
 export { JimengIcon as Jimeng } from './jimeng'
 export { JinaIcon as Jina } from './jina'
 export { KlingIcon as Kling } from './kling'
@@ -159,7 +159,6 @@ export { WorkersAiIcon as WorkersAi } from './workers-ai'
 export { XiaoyiIcon as Xiaoyi } from './xiaoyi'
 export { XinghuoIcon as Xinghuo } from './xinghuo'
 export { XirangIcon as Xirang } from './xirang'
-export { XuelangIcon as Xuelang } from './xuelang'
 export { YouIcon as You } from './you'
 export { YuanbaoIcon as Yuanbao } from './yuanbao'
 export { ZAiIcon as ZAi } from './z-ai'
