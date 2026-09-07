@@ -243,15 +243,15 @@ export const AppShell = () => {
       activeTabId={activeTabId}
       isFullscreen={isFullscreen}
       leadingActions={
-        isMac && !hideSidebar && isSidebarHidden ? (
+        !hideSidebar && isSidebarHidden ? (
           <div
             data-testid="collapsed-sidebar-title-bar-actions"
             className={cn(
               'z-30 flex h-11 shrink-0 items-center gap-1 [-webkit-app-region:no-drag]',
-              isFullscreen ? 'ml-2' : 'ml-[env(titlebar-area-x)]'
+              isMac && !isFullscreen ? 'ml-[env(titlebar-area-x)]' : 'ml-2'
             )}>
             <SidebarExpandButton onClick={() => setSidebarWidth(DefaultRendererPersistCache['ui.sidebar.width'])} />
-            <GlobalSearchButton />
+            {isMac && <GlobalSearchButton />}
           </div>
         ) : undefined
       }

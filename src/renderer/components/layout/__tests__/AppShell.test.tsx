@@ -435,6 +435,27 @@ describe('AppShell', () => {
     expect(Array.from(root.children)).toEqual([trafficLightDragRegion, leftColumn, contentColumn])
   })
 
+  it('keeps a Windows sidebar expand action in the title bar after the sidebar is collapsed', () => {
+    MockUseCacheUtils.setPersistCacheValue('ui.sidebar.width', 0)
+
+    const view = render(<AppShell />)
+
+    const actions = screen.getByTestId('collapsed-sidebar-title-bar-actions')
+    const tabBar = screen.getByTestId('tab-bar')
+
+    expect(actions).toHaveClass('ml-2', '[-webkit-app-region:no-drag]')
+    expect(tabBar).toContainElement(actions)
+    expect(screen.queryByTestId('sidebar-title-bar-actions')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Open global search' })).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show Sidebar' }))
+
+    expect(MockUseCacheUtils.getPersistCacheValue('ui.sidebar.width')).toBe(210)
+
+    view.rerender(<AppShell />)
+    expect(screen.queryByTestId('collapsed-sidebar-title-bar-actions')).toBeNull()
+  })
+
   it('removes the collapsed macOS sidebar and keeps expand and search actions in the title bar', () => {
     mocks.platformState.isMac = true
     MockUseCacheUtils.setPersistCacheValue('ui.sidebar.width', 0)
