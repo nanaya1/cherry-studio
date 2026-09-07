@@ -23,7 +23,7 @@ import MiniAppTabsPool from '../MiniApp/MiniAppTabsPool'
 import { ResourceViewSourceProvider } from '../ResourceViewSourceProvider'
 import { getSidebarLayout } from '../Sidebar'
 import { AppShellTabBar } from './AppShellTabBar'
-import { GlobalSearchButton, SidebarExpandButton } from './ShellTabBarActions'
+import { GlobalSearchButton, SidebarCollapseButton, SidebarExpandButton } from './ShellTabBarActions'
 import { TabRouter } from './TabRouter'
 
 // Routes whose pages stay usable below the global minimum window width.
@@ -243,16 +243,28 @@ export const AppShell = () => {
       activeTabId={activeTabId}
       isFullscreen={isFullscreen}
       leadingActions={
-        !hideSidebar && isSidebarHidden ? (
-          <div
-            data-testid="collapsed-sidebar-title-bar-actions"
-            className={cn(
-              'z-30 flex h-11 shrink-0 items-center gap-1 [-webkit-app-region:no-drag]',
-              isMac && !isFullscreen ? 'ml-[env(titlebar-area-x)]' : 'ml-2'
-            )}>
-            <SidebarExpandButton onClick={() => setSidebarWidth(DefaultRendererPersistCache['ui.sidebar.width'])} />
-            {isMac && <GlobalSearchButton />}
-          </div>
+        !hideSidebar ? (
+          isSidebarHidden ? (
+            <div
+              data-testid="collapsed-sidebar-title-bar-actions"
+              className={cn(
+                'z-30 flex h-11 shrink-0 items-center gap-1 [-webkit-app-region:no-drag]',
+                isMac && !isFullscreen ? 'ml-[env(titlebar-area-x)]' : 'ml-2'
+              )}>
+              <SidebarExpandButton onClick={() => setSidebarWidth(DefaultRendererPersistCache['ui.sidebar.width'])} />
+              {isMac && <GlobalSearchButton />}
+            </div>
+          ) : !isMac ? (
+            <div
+              data-testid="sidebar-title-bar-actions"
+              style={{ width: 'var(--sidebar-width)' }}
+              className={cn(
+                'flex h-11 shrink-0 items-center [-webkit-app-region:no-drag]',
+                getSidebarLayout(sidebarWidth) === 'full' ? 'justify-end pr-2' : 'justify-center'
+              )}>
+              <SidebarCollapseButton onClick={() => setSidebarWidth(0)} />
+            </div>
+          ) : undefined
         ) : undefined
       }
       isFocusedTab={isFocusedTabView}
@@ -314,11 +326,21 @@ export const AppShell = () => {
         <QuickPanelProvider>
           <div
             className={cn(
-              'flex h-screen w-screen flex-row overflow-hidden text-foreground',
+              'flex h-screen w-screen flex-col overflow-hidden text-foreground',
               isMacTransparentWindow ? 'bg-transparent' : 'bg-sidebar'
             )}>
-            {!hideSidebar && <Sidebar showTitleBar />}
-            {contentColumn}
+            {tabBar}
+            <div data-testid="app-shell-body" className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
+              {!hideSidebar &&
+                (isSidebarHidden ? (
+                  <div data-testid="hidden-sidebar-host" className="absolute inset-y-0 left-0 z-40">
+                    <Sidebar />
+                  </div>
+                ) : (
+                  <Sidebar />
+                ))}
+              {contentArea}
+            </div>
           </div>
         </QuickPanelProvider>
       </ResourceViewSourceProvider>

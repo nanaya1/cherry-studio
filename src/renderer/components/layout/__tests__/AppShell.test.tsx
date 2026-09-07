@@ -122,6 +122,9 @@ vi.mock('../AppShellTabBar', () => ({
 
 vi.mock('../ShellTabBarActions', () => ({
   GlobalSearchButton: () => <button type="button" aria-label="Open global search" onClick={mocks.showSearchPopup} />,
+  SidebarCollapseButton: ({ onClick }: { onClick: () => void }) => (
+    <button type="button" aria-label="Hide Sidebar" onClick={onClick} />
+  ),
   SidebarExpandButton: ({ onClick }: { onClick: () => void }) => (
     <button type="button" aria-label="Show Sidebar" onClick={onClick} />
   )
@@ -380,26 +383,46 @@ describe('AppShell', () => {
     expect(mocks.hideSearchPopup).toHaveBeenCalledTimes(1)
   })
 
-  it('keeps the Windows and Linux tab bar inside the content column beside the sidebar', () => {
+  it('renders one window-wide title bar above the Windows and Linux sidebar and content', () => {
     render(<AppShell />)
 
     const root = screen.getByTestId('resource-view-source-provider').firstElementChild
     const sidebar = screen.getByTestId('sidebar')
     const tabBar = screen.getByTestId('tab-bar')
+    const body = screen.getByTestId('app-shell-body')
     const tabRouter = screen.getByTestId('tab-router')
-    const contentColumn = tabBar.parentElement
 
-    if (!(root instanceof HTMLElement) || !(contentColumn instanceof HTMLElement)) {
-      throw new Error('Expected AppShell to render a root and content column')
+    if (!(root instanceof HTMLElement)) {
+      throw new Error('Expected AppShell to render a root')
     }
 
-    expect(sidebar.parentElement).toBe(root)
-    expect(contentColumn.parentElement).toBe(root)
-    expect(contentColumn).toContainElement(tabBar)
-    expect(contentColumn).toContainElement(tabRouter)
-    expect(contentColumn.querySelector('main')).toHaveAttribute('data-ui', 'app.content')
-    expect(Array.from(root.children)).toEqual([sidebar, contentColumn])
+    expect(Array.from(root.children)).toEqual([tabBar, body])
+    expect(body).toContainElement(sidebar)
+    expect(body).toContainElement(tabRouter)
+    expect(body.querySelector('main')).toHaveAttribute('data-ui', 'app.content')
+    expect(sidebar).not.toHaveAttribute('data-show-title-bar')
     expect(mocks.tabBarProps).not.toHaveProperty('leftInset')
+  })
+
+  it.each([
+    [210, 'justify-end'],
+    [50, 'justify-center']
+  ])('keeps the Windows sidebar collapse action in the window title bar at width %i', (width, alignment) => {
+    MockUseCacheUtils.setPersistCacheValue('ui.sidebar.width', width)
+
+    render(<AppShell />)
+
+    const actions = screen.getByTestId('sidebar-title-bar-actions')
+    const tabBar = screen.getByTestId('tab-bar')
+    const sidebar = screen.getByTestId('sidebar')
+
+    expect(actions).toHaveClass(alignment, '[-webkit-app-region:no-drag]')
+    expect(actions).toHaveStyle({ width: 'var(--sidebar-width)' })
+    expect(tabBar).toContainElement(actions)
+    expect(sidebar).not.toContainElement(actions)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Hide Sidebar' }))
+    expect(MockUseCacheUtils.getPersistCacheValue('ui.sidebar.width')).toBe(0)
   })
 
   it('moves macOS title-bar actions into the sidebar and removes the workspace header', () => {
@@ -442,9 +465,13 @@ describe('AppShell', () => {
 
     const actions = screen.getByTestId('collapsed-sidebar-title-bar-actions')
     const tabBar = screen.getByTestId('tab-bar')
+    const body = screen.getByTestId('app-shell-body')
+    const hiddenSidebarHost = screen.getByTestId('hidden-sidebar-host')
 
     expect(actions).toHaveClass('ml-2', '[-webkit-app-region:no-drag]')
     expect(tabBar).toContainElement(actions)
+    expect(body).toContainElement(hiddenSidebarHost)
+    expect(hiddenSidebarHost).toHaveClass('absolute', 'left-0')
     expect(screen.queryByTestId('sidebar-title-bar-actions')).toBeNull()
     expect(screen.queryByRole('button', { name: 'Open global search' })).toBeNull()
 
