@@ -1,7 +1,7 @@
 
 <h1 align="center">
   <a href="https://github.com/CherryHQ/cherry-studio/releases">
-    <img src="https://github.com/CherryHQ/cherry-studio/blob/main/build/icon.png?raw=true" width="150" height="150" alt="banner" /><br>
+    <img src="./build/logo.png" width="150" height="150" alt="banner" /><br>
   </a>
 </h1>
 
