@@ -242,6 +242,19 @@ export const AppShell = () => {
       tabs={tabBarTabs}
       activeTabId={activeTabId}
       isFullscreen={isFullscreen}
+      leadingActions={
+        isMac && !hideSidebar && isSidebarHidden ? (
+          <div
+            data-testid="collapsed-sidebar-title-bar-actions"
+            className={cn(
+              'z-30 flex h-11 shrink-0 items-center gap-1 [-webkit-app-region:no-drag]',
+              isFullscreen ? 'ml-2' : 'ml-[env(titlebar-area-x)]'
+            )}>
+            <SidebarExpandButton onClick={() => setSidebarWidth(DefaultRendererPersistCache['ui.sidebar.width'])} />
+            <GlobalSearchButton />
+          </div>
+        ) : undefined
+      }
       isFocusedTab={isFocusedTabView}
       onFocusedTabBack={
         SINGLE_TAB_MODE ? (toolboxProductId != null ? handleToolboxBack : handleSettingsBack) : undefined
@@ -287,7 +300,7 @@ export const AppShell = () => {
     </div>
   )
 
-  const showTabBar = !isMac || isFocusedTabView
+  const showTabBar = !isMac || isFocusedTabView || isSidebarHidden
   const contentColumn = (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       {showTabBar ? tabBar : null}
@@ -330,17 +343,6 @@ export const AppShell = () => {
           {!hideSidebar && !isSidebarHidden && (
             <div className="flex h-full min-h-0 shrink-0 flex-col [&>#app-sidebar]:min-h-0 [&>#app-sidebar]:flex-1">
               <Sidebar showTitleBar />
-            </div>
-          )}
-          {!hideSidebar && isSidebarHidden && (
-            <div
-              data-testid="collapsed-sidebar-title-bar-actions"
-              className={cn(
-                'absolute top-0 z-30 flex h-11 items-center gap-1 [-webkit-app-region:no-drag]',
-                isFullscreen ? 'left-2' : 'left-[env(titlebar-area-x)]'
-              )}>
-              <SidebarExpandButton onClick={() => setSidebarWidth(DefaultRendererPersistCache['ui.sidebar.width'])} />
-              <GlobalSearchButton />
             </div>
           )}
           {contentColumn}

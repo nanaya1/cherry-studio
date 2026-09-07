@@ -116,7 +116,7 @@ vi.mock('../../ResourceViewSourceProvider', () => ({
 vi.mock('../AppShellTabBar', () => ({
   AppShellTabBar: (props: Record<string, unknown>) => {
     mocks.tabBarProps = props
-    return <header data-testid="tab-bar" />
+    return <header data-testid="tab-bar">{props.leadingActions as ReactNode}</header>
   }
 }))
 
@@ -442,8 +442,16 @@ describe('AppShell', () => {
     const view = render(<AppShell />)
 
     const actions = screen.getByTestId('collapsed-sidebar-title-bar-actions')
+    const tabBar = screen.getByTestId('tab-bar')
+    const tabRouter = screen.getByTestId('tab-router')
+    const contentColumn = tabBar.parentElement
+
     expect(screen.queryByTestId('sidebar')).toBeNull()
-    expect(actions).toHaveClass('left-[env(titlebar-area-x)]')
+    expect(actions).toHaveClass('ml-[env(titlebar-area-x)]', '[-webkit-app-region:no-drag]')
+    expect(tabBar).toContainElement(actions)
+    expect(contentColumn).toContainElement(tabBar)
+    expect(contentColumn).toContainElement(tabRouter)
+    expect(Array.from(contentColumn?.children ?? [])).toEqual([tabBar, tabRouter.parentElement?.parentElement])
 
     fireEvent.click(screen.getByRole('button', { name: 'Open global search' }))
     fireEvent.click(screen.getByRole('button', { name: 'Show Sidebar' }))

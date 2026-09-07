@@ -29,6 +29,8 @@ type AppShellTabBarProps = {
   tabs: Tab[]
   activeTabId: string
   isFullscreen?: boolean
+  /** Window-level controls rendered before the tab strip inside a native no-drag region. */
+  leadingActions?: React.ReactNode
   /** Shown instead of tab chips: a plain back button plus window controls. */
   isFocusedTab?: boolean
   onFocusedTabBack?: () => void
@@ -579,6 +581,7 @@ export const AppShellTabBar = ({
   tabs,
   activeTabId,
   isFullscreen = false,
+  leadingActions,
   isFocusedTab = false,
   onFocusedTabBack,
   focusedTabBreadcrumb,
@@ -904,6 +907,7 @@ export const AppShellTabBar = ({
           isMacTransparentWindow ? 'bg-transparent' : 'bg-sidebar',
           'pl-0'
         )}>
+        {leadingActions}
         {/* Tab buttons are no-drag; empty tabbar space remains available for moving the window.
             Focused views differ: settings hides the sidebar (raw traffic-light reserve),
             a toolbox product keeps it (subtract --sidebar-width like the normal strip). */}
