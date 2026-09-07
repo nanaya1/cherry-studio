@@ -54,6 +54,15 @@ const FeedbackDialog = lazy(() => import('../feedback/FeedbackDialog'))
 
 const logger = loggerService.withContext('app.Sidebar')
 
+export function SidebarTitleBarIdentity() {
+  return (
+    <div data-testid="sidebar-title-bar-identity" className="flex min-w-0 items-center gap-2">
+      <img src={AppLogo} alt="" className="size-6 shrink-0 rounded-lg object-cover" />
+      <span className="truncate font-bold text-sidebar-foreground text-sm">{APP_NAME}</span>
+    </div>
+  )
+}
+
 export default function Sidebar({
   ref,
   showTitleBar = false
@@ -552,6 +561,7 @@ export default function Sidebar({
         <UISidebar
           width={activeSidebarWidth}
           setWidth={setSidebarWidth}
+          showHeader={isMac}
           onHoverChange={setHoverVisible}
           onResizePreview={setPreviewSidebarWidth}
           {...sidebarProps}

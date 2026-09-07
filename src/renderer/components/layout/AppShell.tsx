@@ -16,7 +16,7 @@ import { MIN_WINDOW_HEIGHT, SECOND_MIN_WINDOW_WIDTH } from '@shared/utils/window
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import Sidebar from '../app/Sidebar'
+import Sidebar, { SidebarTitleBarIdentity } from '../app/Sidebar'
 import { createRecentRouteEntryFromTab, recordGlobalSearchRecentEntry } from '../GlobalSearch/globalSearchGroups'
 import GlobalSearchPopup from '../GlobalSearch/GlobalSearchPopup'
 import MiniAppTabsPool from '../MiniApp/MiniAppTabsPool'
@@ -260,8 +260,9 @@ export const AppShell = () => {
               style={{ width: 'var(--sidebar-width)' }}
               className={cn(
                 'flex h-11 shrink-0 items-center [-webkit-app-region:no-drag]',
-                getSidebarLayout(sidebarWidth) === 'full' ? 'justify-end pr-2' : 'justify-center'
+                getSidebarLayout(sidebarWidth) === 'full' ? 'justify-between px-2' : 'justify-center'
               )}>
+              {getSidebarLayout(sidebarWidth) === 'full' && <SidebarTitleBarIdentity />}
               <SidebarCollapseButton onClick={() => setSidebarWidth(0)} />
             </div>
           ) : undefined

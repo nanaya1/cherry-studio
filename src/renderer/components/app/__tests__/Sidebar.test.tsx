@@ -2,13 +2,13 @@
 import '@testing-library/jest-dom/vitest'
 
 import type { CommandContextMenuExtraItem } from '@renderer/components/command'
+import type * as PlatformModule from '@renderer/utils/platform'
 import type { SidebarAppId } from '@renderer/utils/sidebar'
 import type { SidebarFavoriteItem } from '@shared/data/preference/preferenceTypes'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import type * as PlatformModule from '@renderer/utils/platform'
 import type * as SidebarModule from '../../Sidebar'
 import type { ResolvedSidebarEntry, SidebarProps } from '../../Sidebar'
 
@@ -546,13 +546,19 @@ describe('app Sidebar', () => {
     expect(mocks.useMiniApps).toHaveBeenLastCalledWith({ enabled: true })
   })
 
-  it('supplies product identity, user, and footer actions', () => {
+  it.each([
+    [false, false],
+    [true, true]
+  ])('shows the built-in sidebar header only on macOS when isMac=%s', (isMac, showHeader) => {
+    mocks.platformState.isMac = isMac
+
     const { container } = render(<Sidebar />)
     const props = getSidebarProps()
 
     expect(container.querySelector('#app-sidebar')).toHaveAttribute('data-ui', 'app.sidebar')
     expect(props.title).toBe('MEA Cowork')
     expect(props.logo).toBeDefined()
+    expect(props.showHeader).toBe(showHeader)
     expect(props.user).toMatchObject({ name: 'JD', description: 'Local user' })
     expect(props.actions).toEqual(expect.any(Function))
     expect(mocks.showUserPopup).not.toHaveBeenCalled()

@@ -89,7 +89,8 @@ vi.mock('../../app/Sidebar', () => ({
   default: function Sidebar({ showTitleBar }: { showTitleBar?: boolean }) {
     useQuickPanel()
     return <aside data-testid="sidebar" data-show-title-bar={showTitleBar || undefined} />
-  }
+  },
+  SidebarTitleBarIdentity: () => <div data-testid="sidebar-title-bar-identity">MEA Cowork</div>
 }))
 
 vi.mock('../../GlobalSearch/globalSearchGroups', () => ({
@@ -405,7 +406,7 @@ describe('AppShell', () => {
   })
 
   it.each([
-    [210, 'justify-end'],
+    [210, 'justify-between'],
     [50, 'justify-center']
   ])('keeps the Windows sidebar collapse action in the window title bar at width %i', (width, alignment) => {
     MockUseCacheUtils.setPersistCacheValue('ui.sidebar.width', width)
@@ -416,12 +417,22 @@ describe('AppShell', () => {
     const tabBar = screen.getByTestId('tab-bar')
     const sidebar = screen.getByTestId('sidebar')
 
+    const collapseButton = screen.getByRole('button', { name: 'Hide Sidebar' })
+
     expect(actions).toHaveClass(alignment, '[-webkit-app-region:no-drag]')
     expect(actions).toHaveStyle({ width: 'var(--sidebar-width)' })
     expect(tabBar).toContainElement(actions)
     expect(sidebar).not.toContainElement(actions)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Hide Sidebar' }))
+    if (width === 210) {
+      const identity = screen.getByTestId('sidebar-title-bar-identity')
+      expect(actions).toContainElement(identity)
+      expect(Array.from(actions.children)).toEqual([identity, collapseButton])
+    } else {
+      expect(screen.queryByTestId('sidebar-title-bar-identity')).toBeNull()
+    }
+
+    fireEvent.click(collapseButton)
     expect(MockUseCacheUtils.getPersistCacheValue('ui.sidebar.width')).toBe(0)
   })
 

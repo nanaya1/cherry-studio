@@ -36,6 +36,7 @@ export interface SidebarProps {
   logo?: React.ReactNode
   user?: SidebarUser
   isFloating?: boolean
+  showHeader?: boolean
   searchLabel?: string
   extensionsLabel?: string
   actions?: SidebarFooterActions
@@ -62,6 +63,7 @@ export function Sidebar({
   logo,
   user,
   isFloating = false,
+  showHeader = true,
   searchLabel = '',
   extensionsLabel = '',
   actions,
@@ -380,14 +382,16 @@ export function Sidebar({
         isMacTransparentWindow ? 'bg-transparent' : 'bg-sidebar'
       )}>
       {/* Header */}
-      <div
-        className={cn(
-          'flex shrink-0 items-center',
-          windowDragClassName,
-          layout === 'full' ? 'h-11 px-2' : 'h-11 justify-center'
-        )}>
-        {renderHeaderIdentity(layout === 'icon' ? 'sm' : 'default', layout === 'full')}
-      </div>
+      {showHeader && (
+        <div
+          className={cn(
+            'flex shrink-0 items-center',
+            windowDragClassName,
+            layout === 'full' ? 'h-11 px-2' : 'h-11 justify-center'
+          )}>
+          {renderHeaderIdentity(layout === 'icon' ? 'sm' : 'default', layout === 'full')}
+        </div>
+      )}
 
       {/* Search */}
       {showSearch &&
