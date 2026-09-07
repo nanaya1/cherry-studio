@@ -174,7 +174,7 @@ describe('XuelangDefaultModelSeeder', () => {
     expect(await readPreference('feature.translate.model_id')).toBe(XUELANG_DEFAULT_UNIQUE_MODEL_ID)
   })
 
-  it('restores the managed Xuelang provider and model state', async () => {
+  it('preserves user-configured Xuelang provider and model state', async () => {
     await dbh.db.insert(userProviderTable).values({
       providerId: XUELANG_PROVIDER_ID,
       presetProviderId: XUELANG_PROVIDER_ID,
@@ -204,8 +204,8 @@ describe('XuelangDefaultModelSeeder', () => {
       .from(userModelTable)
       .where(eq(userModelTable.id, XUELANG_DEFAULT_UNIQUE_MODEL_ID))
 
-    expect(provider.isEnabled).toBe(true)
-    expect(model).toMatchObject({ isEnabled: true, isHidden: false, isDeprecated: false })
+    expect(provider.isEnabled).toBe(false)
+    expect(model).toMatchObject({ isEnabled: false, isHidden: true, isDeprecated: true })
   })
 
   it('repairs the previously seeded normalized model ID', async () => {

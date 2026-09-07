@@ -14,6 +14,7 @@ const customProvider = (id: string): Provider => ({ id }) as Provider
 
 describe('isProviderSettingsListVisibleProvider', () => {
   it('keeps the whitelisted editable presets visible', () => {
+    expect(isProviderSettingsListVisibleProvider(presetProvider(XUELANG_PROVIDER_ID))).toBe(true)
     expect(isProviderSettingsListVisibleProvider(presetProvider('deepseek'))).toBe(true)
     expect(isProviderSettingsListVisibleProvider(presetProvider('zhipu'))).toBe(true)
   })
@@ -39,8 +40,7 @@ describe('isProviderSettingsListVisibleProvider', () => {
     expect(isProviderSettingsListVisibleProvider(customProvider(LOCAL_EMBEDDING_PROVIDER_ID))).toBe(false)
   })
 
-  it('hides managed providers', () => {
+  it('hides the managed CherryAI provider', () => {
     expect(isProviderSettingsListVisibleProvider(presetProvider(CHERRYAI_PROVIDER_ID))).toBe(false)
-    expect(isProviderSettingsListVisibleProvider(presetProvider(XUELANG_PROVIDER_ID))).toBe(false)
   })
 })

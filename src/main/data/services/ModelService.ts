@@ -32,7 +32,6 @@ import { loggerService } from '@logger'
 import { DataApiErrorFactory } from '@shared/data/api/errors'
 import type { CreateModelDto, ListModelsQuery, UpdateModelDto } from '@shared/data/api/schemas/models'
 import { isManagedCherryAiDefaultModel } from '@shared/data/presets/cherryai'
-import { isManagedXuelangDefaultModel } from '@shared/data/presets/xuelang'
 import type {
   EndpointType,
   Modality,
@@ -94,12 +93,8 @@ function assertModelNotUsedAsDefaultModel(uniqueModelId: string, operation: stri
   }
 }
 
-function isManagedDefaultModel(providerId: string, modelId: string): boolean {
-  return isManagedCherryAiDefaultModel(providerId, modelId) || isManagedXuelangDefaultModel(providerId, modelId)
-}
-
 function assertManagedDefaultModelPatchAllowed(providerId: string, modelId: string, dto: UpdateModelDto): void {
-  if (!isManagedDefaultModel(providerId, modelId) || Object.keys(dto).length === 0) {
+  if (!isManagedCherryAiDefaultModel(providerId, modelId) || Object.keys(dto).length === 0) {
     return
   }
 
@@ -107,7 +102,7 @@ function assertManagedDefaultModelPatchAllowed(providerId: string, modelId: stri
 }
 
 function assertManagedDefaultModelMutationAllowed(providerId: string, modelId: string, operation: string): void {
-  if (!isManagedDefaultModel(providerId, modelId)) {
+  if (!isManagedCherryAiDefaultModel(providerId, modelId)) {
     return
   }
 
@@ -585,7 +580,7 @@ class ModelService {
     const presetBackedRemovalIds = new Set<string>()
     const customModelIds = new Set<string>()
     for (const row of rows) {
-      if (isManagedDefaultModel(providerId, row.modelId)) {
+      if (isManagedCherryAiDefaultModel(providerId, row.modelId)) {
         managedDefaultIds.add(row.id)
       } else if (row.presetModelId != null && row.presetModelId !== '') {
         presetBackedRemovalIds.add(row.id)

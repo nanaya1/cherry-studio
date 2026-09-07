@@ -202,9 +202,9 @@ describe('ModelService.update', () => {
   }
 
   async function seedManagedDefaultModel(
-    providerId = CHERRYAI_PROVIDER_ID,
-    modelId = CHERRYAI_DEFAULT_MODEL_ID,
-    uniqueModelId = CHERRYAI_DEFAULT_UNIQUE_MODEL_ID
+    providerId: string = CHERRYAI_PROVIDER_ID,
+    modelId: string = CHERRYAI_DEFAULT_MODEL_ID,
+    uniqueModelId: string = CHERRYAI_DEFAULT_UNIQUE_MODEL_ID
   ) {
     await dbh.db.insert(userProviderTable).values(providerRow(providerId, providerId))
     await dbh.db.insert(userModelTable).values(
@@ -538,25 +538,12 @@ describe('ModelService.update', () => {
     expect(result.isEnabled).toBe(true)
   })
 
-  it('rejects PATCHes for the managed Xuelang default model', async () => {
+  it('allows PATCHes for the editable Xuelang default model', async () => {
     await seedManagedDefaultModel(XUELANG_PROVIDER_ID, XUELANG_DEFAULT_MODEL_ID, XUELANG_DEFAULT_UNIQUE_MODEL_ID)
 
-    let err: unknown
-    try {
-      modelService.update(XUELANG_PROVIDER_ID, XUELANG_DEFAULT_MODEL_ID, { isHidden: true })
-    } catch (e) {
-      err = e
-    }
-    expect(err).toMatchObject({
-      code: ErrorCode.INVALID_OPERATION,
-      status: 400
-    })
+    const updated = modelService.update(XUELANG_PROVIDER_ID, XUELANG_DEFAULT_MODEL_ID, { isHidden: true })
 
-    const [row] = await dbh.db
-      .select()
-      .from(userModelTable)
-      .where(eq(userModelTable.id, XUELANG_DEFAULT_UNIQUE_MODEL_ID))
-    expect(row.isHidden).toBe(false)
+    expect(updated.isHidden).toBe(true)
   })
 
   it('rejects PATCHes for the managed CherryAI default model', async () => {

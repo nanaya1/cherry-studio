@@ -29,7 +29,6 @@ import { DataApiError, DataApiErrorFactory, ErrorCode } from '@shared/data/api/e
 import type { OrderBatchRequest, OrderRequest } from '@shared/data/api/schemas/_endpointHelpers'
 import type { CreateProviderDto, ListProvidersQuery, UpdateProviderDto } from '@shared/data/api/schemas/providers'
 import { isManagedCherryProviderId } from '@shared/data/presets/cherryai'
-import { isManagedXuelangProviderId } from '@shared/data/presets/xuelang'
 import type { EndpointType } from '@shared/data/types/model'
 import type {
   ApiKeyEntry,
@@ -129,12 +128,8 @@ function maskApiKeyForSnapshot(key: string): string {
   return masked === key ? '****' : masked
 }
 
-function isManagedProviderId(providerId: string): boolean {
-  return isManagedCherryProviderId(providerId) || isManagedXuelangProviderId(providerId)
-}
-
 function assertManagedProviderPatchAllowed(providerId: string, dto: UpdateProviderDto): void {
-  if (!isManagedProviderId(providerId) || Object.keys(dto).length === 0) {
+  if (!isManagedCherryProviderId(providerId) || Object.keys(dto).length === 0) {
     return
   }
 
@@ -142,7 +137,7 @@ function assertManagedProviderPatchAllowed(providerId: string, dto: UpdateProvid
 }
 
 function assertManagedProviderMutationAllowed(providerId: string, operation: string): void {
-  if (!isManagedProviderId(providerId)) {
+  if (!isManagedCherryProviderId(providerId)) {
     return
   }
 

@@ -63,14 +63,12 @@ export class XuelangDefaultModelSeeder implements ISeeder {
 
   run(db: DbType): void {
     db.transaction((tx) => {
-      providerService.batchUpsertTx(tx, [providerSeed])
-      tx.update(userProviderTable)
-        .set({ isEnabled: true })
-        .where(eq(userProviderTable.providerId, XUELANG_PROVIDER_ID))
-        .run()
-      applyMoves(tx, userProviderTable, [{ id: XUELANG_PROVIDER_ID, anchor: { position: providerPosition } }], {
-        pkColumn: userProviderTable.providerId
-      })
+      const insertedProviderCount = providerService.batchUpsertTx(tx, [providerSeed])
+      if (insertedProviderCount > 0) {
+        applyMoves(tx, userProviderTable, [{ id: XUELANG_PROVIDER_ID, anchor: { position: providerPosition } }], {
+          pkColumn: userProviderTable.providerId
+        })
+      }
 
       const [existingModel] = tx
         .select({ id: userModelTable.id })
@@ -84,11 +82,6 @@ export class XuelangDefaultModelSeeder implements ISeeder {
           pkColumn: userModelTable.id,
           scope: eq(userModelTable.providerId, XUELANG_PROVIDER_ID)
         })
-      } else {
-        tx.update(userModelTable)
-          .set({ isEnabled: true, isHidden: false, isDeprecated: false })
-          .where(eq(userModelTable.id, XUELANG_DEFAULT_UNIQUE_MODEL_ID))
-          .run()
       }
 
       for (const replacedModelId of REPLACED_DEFAULT_MODEL_IDS) {

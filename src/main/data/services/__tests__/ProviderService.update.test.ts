@@ -6,7 +6,6 @@ import { userProviderTable } from '@data/db/schemas/userProvider'
 import { providerService } from '@data/services/ProviderService'
 import { ErrorCode } from '@shared/data/api/errors'
 import { CHERRY_CLOUD_PROVIDER_ID, CHERRYAI_PROVIDER_ID } from '@shared/data/presets/cherryai'
-import { XUELANG_PROVIDER_ID } from '@shared/data/presets/xuelang'
 import { setupTestDatabase } from '@test-helpers/db'
 import { eq } from 'drizzle-orm'
 import { describe, expect, it, type Mock } from 'vitest'
@@ -150,8 +149,7 @@ describe('ProviderService.update', () => {
 
   it.each([
     ['CherryAI', CHERRYAI_PROVIDER_ID],
-    ['Cherry Cloud', CHERRY_CLOUD_PROVIDER_ID],
-    ['Xuelang', XUELANG_PROVIDER_ID]
+    ['Cherry Cloud', CHERRY_CLOUD_PROVIDER_ID]
   ])('rejects PATCHes for the managed %s provider', async (_name, providerId) => {
     await dbh.db.insert(userProviderTable).values({
       providerId,
@@ -173,6 +171,19 @@ describe('ProviderService.update', () => {
 
     const [row] = await dbh.db.select().from(userProviderTable).where(eq(userProviderTable.providerId, providerId))
     expect(row.isEnabled).toBe(true)
+  })
+
+  it('allows PATCHes for the editable Xuelang provider', async () => {
+    await dbh.db.insert(userProviderTable).values({
+      providerId: 'xuelang',
+      name: '雪浪工匠',
+      orderKey: 'a0',
+      isEnabled: true
+    })
+
+    const updated = providerService.update('xuelang', { isEnabled: false })
+
+    expect(updated.isEnabled).toBe(false)
   })
 
   it('serializes concurrent PATCHes so neither clobbers the other (read-merge-write inside the tx)', async () => {
