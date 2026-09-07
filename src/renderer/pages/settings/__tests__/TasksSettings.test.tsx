@@ -1080,7 +1080,7 @@ describe('TasksSettings routing and creation', () => {
     const agentCreate = screen.getByRole('menuitem', { name: 'settings.scheduledTasks.agentCreate' })
     expect(agentCreate).toBeEnabled()
     fireEvent.click(agentCreate)
-    expect(navigationMocks.openRoute).toHaveBeenCalledWith('/app/agents?intent=new')
+    expect(navigationMocks.openRoute).toHaveBeenCalledWith('/app/new-task?mode=agent')
   })
 
   it('uses the header as the only creation entry when the empty state has an Agent', async () => {

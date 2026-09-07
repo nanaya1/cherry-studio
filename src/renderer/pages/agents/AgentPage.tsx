@@ -142,7 +142,6 @@ const AgentPage = () => {
     defaultOpen: !isWindowFrame && panePosition === 'right'
   })
   const isCreatingEmptySessionRef = useRef(false)
-  const newSessionIntentHandledRef = useRef(false)
   const routeAgentActivationGenerationRef = useRef(0)
   const routeAgentSessionRequestRef = useRef<{
     agentId: string
@@ -564,17 +563,6 @@ const AgentPage = () => {
       setPendingSession
     ]
   )
-
-  useEffect(() => {
-    if (routeSearch.intent !== 'new') {
-      newSessionIntentHandledRef.current = false
-      return
-    }
-    if (newSessionIntentHandledRef.current || routeAgentId || routeSessionId || activeSessionId || isAgentsLoading) return
-
-    newSessionIntentHandledRef.current = true
-    void createDefaultEmptySession()
-  }, [activeSessionId, createDefaultEmptySession, isAgentsLoading, routeAgentId, routeSearch.intent, routeSessionId])
 
   // Stable wrapper for the classic-layout rail's per-agent "new session" action. Adapting the
   // `(agentId) => ...` signature inline at the JSX call site would hand `AgentResourceList` a fresh

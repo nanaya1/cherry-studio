@@ -1664,7 +1664,7 @@ const TasksSettings: FC<TasksSettingsProps> = ({ routeBase = '/settings/schedule
                     <PencilLine />
                     {t('settings.scheduledTasks.manualCreate')}
                   </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => openRoute('/app/agents?intent=new')}>
+                  <DropdownMenuItem onSelect={() => openRoute('/app/new-task?mode=agent')}>
                     <Bot />
                     {t('settings.scheduledTasks.agentCreate')}
                   </DropdownMenuItem>
@@ -1691,7 +1691,7 @@ const TasksSettings: FC<TasksSettingsProps> = ({ routeBase = '/settings/schedule
               }
               actionLabel={agents.length === 0 ? t('settings.scheduledTasks.agentCreate') : undefined}
               className="py-20"
-              onAction={agents.length === 0 ? () => openRoute('/app/agents?intent=new') : undefined}
+              onAction={agents.length === 0 ? () => openRoute('/app/new-task?mode=agent') : undefined}
             />
           ) : (
             <>

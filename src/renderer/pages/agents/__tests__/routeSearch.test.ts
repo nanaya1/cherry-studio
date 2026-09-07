@@ -3,10 +3,10 @@ import { describe, expect, it } from 'vitest'
 import { parseAgentRouteSearch } from '../routeSearch'
 
 describe('parseAgentRouteSearch', () => {
-  it.each(['feedback', 'new'] as const)('accepts the %s intent alongside existing search fields', (intent) => {
-    expect(parseAgentRouteSearch({ intent, sessionId: 'session-1', view: 'message' })).toEqual({
+  it('accepts the feedback intent alongside existing search fields', () => {
+    expect(parseAgentRouteSearch({ intent: 'feedback', sessionId: 'session-1', view: 'message' })).toEqual({
       agentId: undefined,
-      intent,
+      intent: 'feedback',
       sessionId: 'session-1',
       view: 'message'
     })
