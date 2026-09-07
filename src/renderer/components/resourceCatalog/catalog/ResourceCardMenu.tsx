@@ -4,6 +4,7 @@ import { type CommandContextMenuExtraItem, CommandPopupMenu } from '@renderer/co
 import { useAssistantMutationsById } from '@renderer/hooks/resourceCatalog'
 import { toast } from '@renderer/services/toast'
 import type { ResourceItem } from '@renderer/types/resourceCatalog'
+import { isProtectedBuiltinAgentRole } from '@shared/ai/builtinAgent'
 import type { Group } from '@shared/data/types/group'
 import { Copy, Download, MoreHorizontal, Tag, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -13,6 +14,16 @@ const logger = loggerService.withContext('ResourceCardMenu')
 
 function canDuplicateResource(resource: ResourceItem) {
   return resource.type === 'assistant'
+}
+
+/**
+ * The builtin assistant / default agent mirrors the main-process delete guard:
+ * its library card simply offers no delete action instead of a failing one.
+ */
+function isProtectedDefaultResource(resource: ResourceItem): boolean {
+  if (resource.type === 'assistant') return resource.raw.builtinRole === 'assistant'
+  if (resource.type === 'agent') return isProtectedBuiltinAgentRole(resource.raw.configuration?.builtin_role)
+  return false
 }
 
 interface ResourceCardMenuProps {
@@ -45,7 +56,8 @@ function useResourceCardMenuItems({
   const canAssignGroup = resource.type === 'assistant'
   const canDuplicate = canDuplicateResource(resource)
   const canExport = resource.type === 'assistant'
-  const hasActionsBeforeDelete = canAssignGroup || canDuplicate || canExport
+  const canDelete = !isProtectedDefaultResource(resource)
+  const hasActionsBeforeDelete = (canAssignGroup || canDuplicate || canExport) && canDelete
 
   useEffect(() => {
     if (bindingPendingRef.current) return
@@ -152,23 +164,26 @@ function useResourceCardMenuItems({
       items.push({ type: 'separator' })
     }
 
-    items.push({
-      type: 'item',
-      id: 'delete',
-      label: resource.type === 'skill' ? t('library.action.uninstall') : t('common.delete'),
-      icon: <Trash2 size={14} />,
-      destructive: true,
-      onSelect: () => {
-        onDelete(resource)
-        onClose?.()
-      }
-    })
+    if (canDelete) {
+      items.push({
+        type: 'item',
+        id: 'delete',
+        label: resource.type === 'skill' ? t('library.action.uninstall') : t('common.delete'),
+        icon: <Trash2 size={14} />,
+        destructive: true,
+        onSelect: () => {
+          onDelete(resource)
+          onClose?.()
+        }
+      })
+    }
 
     return items
   }, [
     allGroups,
     bindingPending,
     canAssignGroup,
+    canDelete,
     canDuplicate,
     canExport,
     hasActionsBeforeDelete,

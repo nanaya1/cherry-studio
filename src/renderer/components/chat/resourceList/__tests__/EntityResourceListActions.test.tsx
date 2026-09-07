@@ -17,6 +17,34 @@ const assistantDataMocks = vi.hoisted(() => ({
   deleteAssistant: vi.fn(),
   refreshTopics: vi.fn(),
   refetchAssistants: vi.fn(),
+  assistants: [
+    {
+      id: 'assistant-1',
+      name: 'Assistant 1',
+      builtinRole: null,
+      orderKey: 'a',
+      emoji: 'A',
+      modelId: 'openai::gpt-4o',
+      modelName: 'GPT-4o'
+    },
+    {
+      id: 'assistant-2',
+      name: 'Assistant 2',
+      builtinRole: null,
+      orderKey: 'b',
+      emoji: 'B',
+      modelId: 'openai::gpt-4o',
+      modelName: 'GPT-4o'
+    }
+  ] as Array<{
+    id: string
+    name: string
+    builtinRole: string | null
+    orderKey: string
+    emoji: string
+    modelId: string
+    modelName: string
+  }>,
   topics: [
     { id: 'topic-1', assistantId: 'assistant-1', name: 'Topic 1' },
     { id: 'topic-2', assistantId: 'assistant-2', name: 'Topic 2' }
@@ -209,6 +237,7 @@ vi.mock('@renderer/components/chat/resourceList/ResourceEntityRail', () => ({
           return (
             <section key={item.id} aria-label={item.name} title={item.tooltip}>
               {item.icon}
+              {item.badge}
               <div data-testid={`${item.id}-context-menu`}>
                 {renderedActions.map((action) => (
                   <button
@@ -245,24 +274,7 @@ vi.mock('@renderer/hooks/useAssistant', () => ({
     deleteAssistant: assistantDataMocks.deleteAssistant
   }),
   useAssistantsApi: () => ({
-    assistants: [
-      {
-        id: 'assistant-1',
-        name: 'Assistant 1',
-        orderKey: 'a',
-        emoji: 'A',
-        modelId: 'openai::gpt-4o',
-        modelName: 'GPT-4o'
-      },
-      {
-        id: 'assistant-2',
-        name: 'Assistant 2',
-        orderKey: 'b',
-        emoji: 'B',
-        modelId: 'openai::gpt-4o',
-        modelName: 'GPT-4o'
-      }
-    ],
+    assistants: assistantDataMocks.assistants,
     error: null,
     hasLoaded: true,
     isLoading: false,
@@ -416,6 +428,26 @@ describe('classic layout entity resource list actions', () => {
     preferenceMocks.values.clear()
     preferenceMocks.setPreference.mockClear()
     preferenceMocks.setSortType.mockClear()
+    assistantDataMocks.assistants = [
+      {
+        id: 'assistant-1',
+        name: 'Assistant 1',
+        builtinRole: null,
+        orderKey: 'a',
+        emoji: 'A',
+        modelId: 'openai::gpt-4o',
+        modelName: 'GPT-4o'
+      },
+      {
+        id: 'assistant-2',
+        name: 'Assistant 2',
+        builtinRole: null,
+        orderKey: 'b',
+        emoji: 'B',
+        modelId: 'openai::gpt-4o',
+        modelName: 'GPT-4o'
+      }
+    ]
     assistantDataMocks.topics = [
       { id: 'topic-1', assistantId: 'assistant-1', name: 'Topic 1' },
       { id: 'topic-2', assistantId: 'assistant-2', name: 'Topic 2' }
@@ -483,6 +515,78 @@ describe('classic layout entity resource list actions', () => {
     // remaining topic) and must NOT open the modern layout draft compose.
     await waitFor(() => expect(onActiveAssistantDeleted).toHaveBeenCalledWith('assistant-1'))
     expect(onCreateTopic).not.toHaveBeenCalled()
+  })
+
+  it('marks the default assistant and disables its delete actions in the classic rail', () => {
+    assistantDataMocks.assistants = [
+      {
+        id: 'assistant-default',
+        name: 'Default Assistant',
+        builtinRole: 'assistant',
+        orderKey: 'a',
+        emoji: 'A',
+        modelId: 'openai::gpt-4o',
+        modelName: 'GPT-4o'
+      },
+      ...assistantDataMocks.assistants.filter((assistant) => assistant.id !== 'assistant-1')
+    ]
+
+    render(<TestAssistantResourceList activeAssistantId="assistant-1" onSelectTopic={vi.fn()} onCreateTopic={vi.fn()} />)
+
+    // The builtin assistant carries the default badge and its delete action is
+    // disabled in both the context menu and the more menu; ordinary assistants
+    // stay deletable and badge-free.
+    const defaultRegion = screen.getByRole('region', { name: 'Default Assistant' })
+    expect(within(defaultRegion).getByText('common.default')).toBeInTheDocument()
+    expect(
+      within(screen.getByTestId('assistant-default-context-menu')).getByRole('button', {
+        name: 'assistants.delete.title'
+      })
+    ).toBeDisabled()
+    expect(
+      within(screen.getByTestId('assistant-default-more-menu')).getByRole('button', {
+        name: 'assistants.delete.title'
+      })
+    ).toBeDisabled()
+
+    const ordinaryMenu = screen.getByTestId('assistant-2-context-menu')
+    expect(within(ordinaryMenu).getByRole('button', { name: 'assistants.delete.title' })).not.toBeDisabled()
+    expect(within(screen.getByRole('region', { name: 'Assistant 2' })).queryByText('common.default')).toBeNull()
+  })
+
+  it('marks the built-in default agent and disables its delete action in the classic rail', () => {
+    agentDataMocks.agents = [
+      {
+        id: 'agent-1',
+        name: 'Cherry Assistant',
+        orderKey: 'a',
+        configuration: { builtin_role: 'assistant' },
+        model: 'anthropic::claude-sonnet-4',
+        modelName: 'Claude Sonnet 4'
+      }
+    ]
+
+    render(
+      <AgentResourceList
+        activeAgentId="agent-1"
+        agentSessionsSource={createAgentSessionsSource()}
+        onSelectSession={vi.fn()}
+        onCreateSession={vi.fn()}
+        onShowMissingAgentSelection={vi.fn()}
+      />
+    )
+
+    expect(within(screen.getByRole('region', { name: 'Cherry Assistant' })).getByText('common.default')).toBeVisible()
+    expect(
+      within(screen.getByTestId('agent-1-context-menu')).getByRole('button', {
+        name: 'agent.session.agent.delete.trigger'
+      })
+    ).toBeDisabled()
+    expect(
+      within(screen.getByTestId('agent-1-more-menu')).getByRole('button', {
+        name: 'agent.session.agent.delete.trigger'
+      })
+    ).toBeDisabled()
   })
 
   it('creates a new topic for the hovered assistant row', () => {
@@ -907,22 +1011,22 @@ describe('classic layout entity resource list actions', () => {
     expect(screen.getByTestId('agent-1-context-menu')).toHaveTextContent('agent.session.agent.delete.trigger')
     expect(screen.getByTestId('agent-1-context-menu')).not.toHaveTextContent('agent.delete.title')
 
-    fireEvent.click(screen.getAllByRole('button', { name: 'agent.session.agent.delete.trigger' })[0])
-
-    await waitFor(() =>
-      expect(popup.confirm).toHaveBeenCalledWith(
-        expect.objectContaining({
-          title: 'agent.session.agent.delete.title',
-          content: 'agent.session.agent.delete.content'
-        })
-      )
-    )
-    await waitFor(() =>
-      expect(agentDataMocks.deleteAgentSessions).toHaveBeenCalledWith({ params: { agentId: 'agent-1' } })
-    )
+    // The default agent cannot be deleted, so its delete-tasks entry is disabled
+    // in both menus and the flow never reaches the confirm dialog.
+    expect(
+      within(screen.getByTestId('agent-1-context-menu')).getByRole('button', {
+        name: 'agent.session.agent.delete.trigger'
+      })
+    ).toBeDisabled()
+    expect(
+      within(screen.getByTestId('agent-1-more-menu')).getByRole('button', {
+        name: 'agent.session.agent.delete.trigger'
+      })
+    ).toBeDisabled()
+    expect(popup.confirm).not.toHaveBeenCalled()
+    expect(agentDataMocks.deleteAgentSessions).not.toHaveBeenCalled()
     expect(agentDataMocks.deleteAgent).not.toHaveBeenCalled()
-    expect(tabsContextMocks.closeConversationTabs).toHaveBeenCalledWith('agents', ['session-1', 'session-not-loaded'])
-    expect(onActiveAgentDeleted).toHaveBeenCalledWith('agent-1')
+    expect(onActiveAgentDeleted).not.toHaveBeenCalled()
   })
 
   it('creates a new session for the hovered agent row', () => {

@@ -4,6 +4,7 @@ import { toast } from '@renderer/services/toast'
 import type { ResourceItem } from '@renderer/types/resourceCatalog'
 import { RESOURCE_TYPE_META } from '@renderer/utils/resourceCatalog'
 import { cn } from '@renderer/utils/style'
+import { isProtectedBuiltinAgentRole } from '@shared/ai/builtinAgent'
 import type { Group } from '@shared/data/types/group'
 import { Trash2 } from 'lucide-react'
 import type { KeyboardEvent } from 'react'
@@ -35,6 +36,13 @@ interface ResourceCardProps {
 
 function hasOverflowActions(resource: ResourceItem) {
   return resource.type === 'assistant'
+}
+
+/** Mirrors the main-process delete guard: builtin assistant / default agent cannot be deleted. */
+function isProtectedDefaultResource(resource: ResourceItem): boolean {
+  if (resource.type === 'assistant') return resource.raw.builtinRole === 'assistant'
+  if (resource.type === 'agent') return isProtectedBuiltinAgentRole(resource.raw.configuration?.builtin_role)
+  return false
 }
 
 export function SkillGlobalToggle({
@@ -83,6 +91,7 @@ export function ResourceCard({
   const showOverflowMenu = hasOverflowActions(r)
   const visibleGroup = r.type === 'assistant' ? r.groupName : undefined
   const skillVersion = r.type === 'skill' ? r.raw.version?.trim() : undefined
+  const isDefault = isProtectedDefaultResource(r)
 
   return (
     <div
@@ -110,6 +119,13 @@ export function ResourceCard({
           <div className="min-w-0 flex-1">
             <div className="flex min-w-0 items-center gap-1.5">
               <h4 className="min-w-0 truncate font-medium text-foreground text-sm leading-5">{r.name}</h4>
+              {isDefault && (
+                <Badge
+                  variant="secondary"
+                  className="shrink-0 border-0 bg-secondary px-1.5 py-px font-normal text-muted-foreground text-xs">
+                  {t('common.default')}
+                </Badge>
+              )}
               {skillVersion && (
                 <Badge
                   variant="secondary"
@@ -157,7 +173,7 @@ export function ResourceCard({
                 allGroups={allGroups}
                 triggerClassName="text-muted-foreground opacity-0 hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100 data-[state=open]:opacity-100"
               />
-            ) : (
+            ) : isDefault ? null : (
               <Button
                 variant="ghost"
                 size="icon-sm"

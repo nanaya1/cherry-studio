@@ -28,6 +28,7 @@ import { useTranslation } from 'react-i18next'
 import {
   buildResolvedIconTypeMenuAction,
   buildResolvedResourceEntityMenuAction,
+  DefaultEntityBadge,
   renderAssistantEntityIcon,
   ResourceList,
   TopicListOptionsMenu
@@ -208,6 +209,7 @@ export function AssistantResourceList({
           },
           defaultModelId
         )
+        const isDefault = assistant.builtinRole === 'assistant'
 
         return {
           id: assistant.id,
@@ -218,6 +220,7 @@ export function AssistantResourceList({
           groupName: group?.name,
           groupOrderKey: group?.orderKey,
           icon,
+          badge: isDefault ? <DefaultEntityBadge /> : undefined,
           trailingAction: (
             <Tooltip title={t('chat.conversation.new')} delay={500}>
               <ResourceList.GroupHeaderActionButton
@@ -386,6 +389,9 @@ export function AssistantResourceList({
   const handleDeleteAssistant = useCallback(
     async (assistantId: string) => {
       if (deletingAssistantId) return
+      // Mirrors the AssistantService guard so the rail never opens a confirm
+      // dialog the backend would only reject.
+      if (assistants.find((assistant) => assistant.id === assistantId)?.builtinRole === 'assistant') return
 
       setDeletingAssistantId(assistantId)
       try {
@@ -419,6 +425,7 @@ export function AssistantResourceList({
     },
     [
       activeAssistantId,
+      assistants,
       closeConversationTabs,
       deleteAssistant,
       deletingAssistantId,
@@ -435,6 +442,7 @@ export function AssistantResourceList({
 
       const pinned = assistantPinnedIdSet.has(item.id)
       const sidebarPinned = sidebarAssistantFavoriteIdSet.has(item.id)
+      const isDefaultAssistant = assistants.find((assistant) => assistant.id === item.id)?.builtinRole === 'assistant'
 
       return [
         buildResolvedResourceEntityMenuAction({
@@ -484,13 +492,14 @@ export function AssistantResourceList({
           group: 'danger',
           order: 30,
           danger: true,
-          availability: { visible: true, enabled: deletingAssistantId === null }
+          availability: { visible: true, enabled: deletingAssistantId === null && !isDefaultAssistant }
         })
       ]
     },
     [
       assistantIconType,
       assistantPinnedIdSet,
+      assistants,
       clearingTopicsAssistantId,
       deletingAssistantId,
       isAssistantPinActionDisabled,
