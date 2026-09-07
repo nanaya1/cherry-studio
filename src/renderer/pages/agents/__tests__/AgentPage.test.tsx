@@ -2530,6 +2530,34 @@ describe('AgentPage', () => {
     expect(agentPageMocks.dataApiPost).not.toHaveBeenCalled()
   })
 
+  it('creates and activates a new conversation for a new-session route intent', async () => {
+    agentPageMocks.routeSearch = { intent: 'new' }
+    agentPageMocks.agents = [
+      { id: 'agent-a', model: 'model-a', name: 'Agent A' },
+      { id: 'agent-b', model: 'model-b', name: 'Agent B' }
+    ]
+    agentPageMocks.lastUsedAgentId = 'agent-b'
+    agentPageMocks.classicLayoutSessions = []
+    agentPageMocks.dataApiPost.mockResolvedValue({
+      ...agentPageMocks.persistedSession,
+      id: 'session-new-intent',
+      agentId: 'agent-b',
+      name: '',
+      workspaceId: '',
+      workspace: { type: AGENT_WORKSPACE_TYPE.SYSTEM }
+    })
+
+    render(<AgentPage />)
+
+    await waitFor(() =>
+      expect(agentPageMocks.dataApiPost).toHaveBeenCalledWith(
+        '/agent-sessions',
+        expect.objectContaining({ body: expect.objectContaining({ agentId: 'agent-b' }) })
+      )
+    )
+    await waitFor(() => expect(agentPageMocks.activeSessionOptions?.activeSessionId).toBe('session-new-intent'))
+  })
+
   it('creates and activates a conversation for an agentId entry with no session yet', async () => {
     agentPageMocks.routeSearch = { agentId: 'agent-a' }
     agentPageMocks.agents = [
