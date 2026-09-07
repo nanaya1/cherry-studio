@@ -1,0 +1,1 @@
+ALTER TABLE `agent_global_skill` ADD `display_name_en` text;

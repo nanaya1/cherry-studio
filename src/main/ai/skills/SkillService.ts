@@ -16,7 +16,8 @@ import {
   findSkillIconFileName,
   findSkillMdPath,
   parseSkillMetadata,
-  SKILL_ICON_FILE_NAMES
+  SKILL_ICON_FILE_NAMES,
+  skillMdHasDisplayName
 } from '@main/utils/markdownParser'
 import { getShellEnv } from '@main/utils/shellEnv'
 import { BUILTIN_AGENT_ROLE } from '@shared/ai/builtinAgent'
@@ -412,6 +413,8 @@ export class SkillService {
           candidates.set(canonicalPath, {
             id: createHash('sha256').update(canonicalPath).digest('hex'),
             name: metadata.name,
+            displayName: metadata.displayName ?? null,
+            displayNameEn: metadata.displayNameEn ?? null,
             description: metadata.description,
             filename: folderName,
             directoryPath: canonicalPath,
@@ -579,6 +582,8 @@ export class SkillService {
       application.get('DbService').withWriteTx((tx) => {
         agentGlobalSkillService.updateTx(tx, existing.id, {
           name: metadata.name,
+          displayName: metadata.displayName ?? null,
+          displayNameEn: metadata.displayNameEn ?? null,
           description: metadata.description ?? null,
           author: metadata.author ?? null,
           version: metadata.version ?? null,
@@ -601,6 +606,8 @@ export class SkillService {
       application.get('DbService').withWriteTx((tx) => {
         const insertedRow = agentGlobalSkillService.insertTx(tx, {
           name: metadata.name,
+          displayName: metadata.displayName ?? null,
+          displayNameEn: metadata.displayNameEn ?? null,
           description: metadata.description ?? null,
           folderName: destFolderName,
           source,
@@ -970,6 +977,8 @@ export class SkillService {
       if (existing) {
         agentGlobalSkillService.update(existing.id, {
           name: metadata.name,
+          displayName: metadata.displayName ?? null,
+          displayNameEn: metadata.displayNameEn ?? null,
           description: metadata.description ?? null,
           author: metadata.author ?? null,
           version: metadata.version ?? null,
@@ -983,6 +992,8 @@ export class SkillService {
         application.get('DbService').withWriteTx((tx) => {
           const inserted = agentGlobalSkillService.insertTx(tx, {
             name: metadata.name,
+            displayName: metadata.displayName ?? null,
+            displayNameEn: metadata.displayNameEn ?? null,
             description: metadata.description ?? null,
             folderName,
             source: 'local',
@@ -1239,8 +1250,20 @@ export class SkillService {
 
       // Builtin contentHash is the trusted full-directory hash (excluding Cherry's version marker),
       // unlike authored skills whose hash tracks SKILL.md metadata changes.
+      //
+      // Rows written before the display-name columns existed store null even when SKILL.md has
+      // values. The cheap key-only probes backfill those rows exactly once; afterwards the columns
+      // match and the original hash short-circuit applies without re-parsing the (potentially
+      // large) directory.
+      let needsDisplayNameBackfill = false
+      if (existing && (existing.displayName ?? null) === null) {
+        needsDisplayNameBackfill = await skillMdHasDisplayName(destPath)
+      }
+      if (!needsDisplayNameBackfill && existing && (existing.displayNameEn ?? null) === null) {
+        needsDisplayNameBackfill = await skillMdHasDisplayName(destPath, 'display_name_en')
+      }
       if (existing && !filesUpdated && existing.contentHash === sourceHash && existing.iconFileName === iconFileName) {
-        return false
+        if (!needsDisplayNameBackfill) return false
       }
 
       const metadata = await parseSkillMetadata(destPath, folderName, 'skills')
@@ -1249,6 +1272,8 @@ export class SkillService {
       if (existing) {
         agentGlobalSkillService.update(existing.id, {
           name: metadata.name,
+          displayName: metadata.displayName ?? null,
+          displayNameEn: metadata.displayNameEn ?? null,
           description: metadata.description ?? null,
           author: metadata.author ?? null,
           version: metadata.version ?? null,
@@ -1260,6 +1285,8 @@ export class SkillService {
       } else {
         agentGlobalSkillService.insert({
           name: metadata.name,
+          displayName: metadata.displayName ?? null,
+          displayNameEn: metadata.displayNameEn ?? null,
           description: metadata.description ?? null,
           folderName: destFolderName,
           source: 'builtin',

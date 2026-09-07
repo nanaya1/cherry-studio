@@ -13,6 +13,7 @@ import { ipcApi } from '@renderer/ipc'
 import { loggerService } from '@renderer/services/LoggerService'
 import { openRoute } from '@renderer/services/mainWindowNavigation'
 import { cn } from '@renderer/utils/style'
+import { getSkillDisplayName } from '@shared/data/api/schemas/skills'
 import type { InstalledSkill } from '@shared/data/types/agent'
 import { Play, Trash2 } from 'lucide-react'
 import { type FC, useCallback, useEffect, useRef, useState } from 'react'
@@ -131,6 +132,8 @@ const SkillDetailDialog: FC<Props> = ({ skill, open, onOpenChange, onDelete }) =
 
   if (!skill) return null
 
+  const displayName = getSkillDisplayName(skill, locale)
+
   return (
     <Dialog open={dialogOpen} onOpenChange={handleOpenChange}>
       <DialogContent size="xl" className="flex max-h-[min(720px,calc(100vh-2rem))] flex-col gap-0 overflow-hidden p-0">
@@ -147,12 +150,12 @@ const SkillDetailDialog: FC<Props> = ({ skill, open, onOpenChange, onDelete }) =
                     onError={() => setIconFailed(true)}
                   />
                 ) : null}
-                <AvatarFallback className={cn('rounded-lg font-semibold text-xl', getFallbackStyle(skill.name))}>
-                  {getSkillInitial(skill.name)}
+                <AvatarFallback className={cn('rounded-lg font-semibold text-xl', getFallbackStyle(displayName))}>
+                  {getSkillInitial(displayName)}
                 </AvatarFallback>
               </Avatar>
               <div className="min-w-0 pt-0.5">
-                <DialogTitle className="truncate text-xl leading-7">{skill.name}</DialogTitle>
+                <DialogTitle className="truncate text-xl leading-7">{displayName}</DialogTitle>
                 <p className="mt-1.5 line-clamp-2 text-muted-foreground text-sm leading-5">
                   {skill.description || t('library.skill_detail.no_description')}
                 </p>

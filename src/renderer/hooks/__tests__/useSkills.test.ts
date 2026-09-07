@@ -62,6 +62,8 @@ function createSkill(overrides: Partial<InstalledSkill> = {}): InstalledSkill {
   return {
     id: 'skill-1',
     name: 'Skill One',
+    displayName: null,
+    displayNameEn: null,
     description: 'First skill',
     folderName: 'skill-one',
     source: 'builtin',

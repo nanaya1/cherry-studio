@@ -7,6 +7,10 @@ import * as z from 'zod'
 export const InstalledSkillSchema = z.strictObject({
   id: z.string(),
   name: z.string(),
+  /** Human-friendly label from SKILL.md frontmatter; null when absent (display falls back to name). */
+  displayName: z.string().nullable(),
+  /** English display label; preferred over displayName when the app locale is English. */
+  displayNameEn: z.string().nullable(),
   description: z.string().nullable(),
   folderName: z.string(),
   source: z.string(),
@@ -27,6 +31,15 @@ export const InstalledSkillSchema = z.strictObject({
 })
 export type InstalledSkill = z.infer<typeof InstalledSkillSchema>
 
+/** Display label for an installed skill. English locales prefer `displayNameEn`, then `displayName`, else `name`. */
+export function getSkillDisplayName(
+  skill: Pick<InstalledSkill, 'displayName' | 'displayNameEn' | 'name'>,
+  locale?: string | null
+): string {
+  if (skill.displayNameEn && locale?.toLowerCase().startsWith('en')) return skill.displayNameEn
+  return skill.displayName ?? skill.name
+}
+
 /**
  * Query parameters for `GET /skills`.
  *
@@ -35,7 +48,7 @@ export type InstalledSkill = z.infer<typeof InstalledSkillSchema>
  * SQL layer:
  * - `agentId` controls the effective per-agent `isEnabled` projection;
  *   `isGlobalEnabled` is returned independently for every query.
- * - `search` LIKEs against `name` OR `description`.
+ * - `search` LIKEs against `displayName`, `name` OR `description`.
  */
 export const ListSkillsQuerySchema = z.strictObject({
   agentId: z.string().min(1).optional(),

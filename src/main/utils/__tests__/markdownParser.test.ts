@@ -1,7 +1,12 @@
 import * as fs from 'fs'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { findSkillIconFileName, parsePluginMetadata, parseSkillMetadata } from '../markdownParser'
+import {
+  findSkillIconFileName,
+  parsePluginMetadata,
+  parseSkillMetadata,
+  skillMdHasDisplayName
+} from '../markdownParser'
 
 vi.mock('fs', () => ({
   promises: {
@@ -133,6 +138,109 @@ Body`)
     const metadata = await parseSkillMetadata('/abs/skill', 'skills/versioned-skill', 'skills')
 
     expect(metadata.version).toBe('2.0.0')
+  })
+
+  it('parses display_name and keeps name as the identifier', async () => {
+    vi.mocked(fs.promises.readFile).mockResolvedValue(`---
+name: xiao-ying-work-rules
+display_name: 小樱的工作准则
+---
+
+Body`)
+
+    const metadata = await parseSkillMetadata('/abs/skill', 'skills/xiao-ying-work-rules', 'skills')
+
+    expect(metadata.name).toBe('xiao-ying-work-rules')
+    expect(metadata.displayName).toBe('小樱的工作准则')
+    expect(metadata.displayNameEn).toBeNull()
+  })
+
+  it('parses display_name_en and accepts camelCase variants', async () => {
+    vi.mocked(fs.promises.readFile).mockResolvedValue(`---
+name: xiao-ying-work-rules
+display_name: 小樱的工作准则
+displayNameEn: "  Sakura Work Rules  "
+---
+
+Body`)
+
+    const metadata = await parseSkillMetadata('/abs/skill', 'skills/xiao-ying-work-rules', 'skills')
+
+    expect(metadata.displayName).toBe('小樱的工作准则')
+    expect(metadata.displayNameEn).toBe('Sakura Work Rules')
+  })
+
+  it('accepts camelCase displayName and trims surrounding whitespace', async () => {
+    vi.mocked(fs.promises.readFile).mockResolvedValue(`---
+name: my-skill
+displayName: "  Fancy Skill  "
+---
+
+Body`)
+
+    const metadata = await parseSkillMetadata('/abs/skill', 'skills/my-skill', 'skills')
+
+    expect(metadata.displayName).toBe('Fancy Skill')
+  })
+
+  it('normalizes an absent or blank display_name to null', async () => {
+    vi.mocked(fs.promises.readFile).mockResolvedValue(`---
+name: plain-skill
+display_name: ""
+---
+
+Body`)
+
+    const metadata = await parseSkillMetadata('/abs/skill', 'skills/plain-skill', 'skills')
+
+    expect(metadata.name).toBe('plain-skill')
+    expect(metadata.displayName).toBeNull()
+  })
+
+  it('caps an oversized display_name at 100 characters', async () => {
+    vi.mocked(fs.promises.readFile).mockResolvedValue(`---
+name: long-skill
+display_name: "${'长'.repeat(150)}"
+---
+
+Body`)
+
+    const metadata = await parseSkillMetadata('/abs/skill', 'skills/long-skill', 'skills')
+
+    expect(metadata.displayName).toHaveLength(100)
+  })
+
+  it('detects a display_name key in SKILL.md without full parsing', async () => {
+    vi.mocked(fs.promises.stat).mockResolvedValue({} as fs.Stats)
+    vi.mocked(fs.promises.readFile).mockResolvedValue(`---
+name: labeled-skill
+display_name: '机械设计知识查询助手'
+---
+
+Body`)
+
+    await expect(skillMdHasDisplayName('/abs/skill')).resolves.toBe(true)
+    await expect(skillMdHasDisplayName('/abs/skill', 'display_name_en')).resolves.toBe(false)
+
+    vi.mocked(fs.promises.readFile).mockResolvedValue(`---
+name: labeled-skill
+display_name_en: 'Mechanical Design Assistant'
+---
+
+Body`)
+
+    await expect(skillMdHasDisplayName('/abs/skill')).resolves.toBe(false)
+    await expect(skillMdHasDisplayName('/abs/skill', 'display_name_en')).resolves.toBe(true)
+
+    vi.mocked(fs.promises.readFile).mockResolvedValue(`---
+name: plain-skill
+description: no display label
+---
+
+Body`)
+
+    await expect(skillMdHasDisplayName('/abs/skill')).resolves.toBe(false)
+    await expect(skillMdHasDisplayName('/abs/skill', 'display_name_en')).resolves.toBe(false)
   })
 
   it.each(['icon.webp', 'icon.png', 'icon.jpg', 'icon.jpeg'])(

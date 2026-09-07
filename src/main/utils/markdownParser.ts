@@ -26,6 +26,16 @@ export class PluginError extends Error {
 
 const YAML_PARSE_OPTIONS = { schema: 'failsafe' as const }
 
+// Upper bound for the display_name label so an oversized frontmatter value
+// cannot break UI layouts.
+const MAX_DISPLAY_NAME_LENGTH = 100
+
+/** Trim and clamp a frontmatter display label; absent or blank becomes null. */
+function sanitizeDisplayName(raw: string | undefined): string | null {
+  const trimmed = raw?.trim()
+  return trimmed ? trimmed.slice(0, MAX_DISPLAY_NAME_LENGTH) : null
+}
+
 // Skill markdown filename variants (case-insensitive support)
 const SKILL_MD_VARIANTS = ['SKILL.md', 'skill.md']
 export const SKILL_ICON_FILE_NAMES = ['icon.webp', 'icon.png', 'icon.jpg', 'icon.jpeg'] as const
@@ -56,6 +66,26 @@ export async function findSkillIconFileName(dirPath: string): Promise<string | u
     }
   }
   return undefined
+}
+
+/**
+ * Cheap check for a `display_name` / `display_name_en` key in the SKILL.md
+ * frontmatter without parsing the full skill (no icon lookup, no directory
+ * walk). Used to backfill display names on DB rows written before the columns
+ * existed.
+ */
+export async function skillMdHasDisplayName(
+  dirPath: string,
+  key: 'display_name' | 'display_name_en' = 'display_name'
+): Promise<boolean> {
+  const skillMdPath = await findSkillMdPath(dirPath)
+  if (!skillMdPath) return false
+  try {
+    const content = await fs.promises.readFile(skillMdPath, 'utf8')
+    return new RegExp(`^${key}\\s*:`, 'm').test(content)
+  } catch {
+    return false
+  }
 }
 
 /**
@@ -396,6 +426,12 @@ export async function parseSkillMetadata(
   const name = rawName && rawName.trim() ? rawName.trim() : folderName
   const slug = toString(data.slug)
 
+  // Human-friendly display labels, distinct from the `name` identifier.
+  // Accepts both snake_case and camelCase; empty strings fall back to null so
+  // consumers can rely on a single "absent" representation.
+  const displayName = sanitizeDisplayName(toString(data.display_name) ?? toString(data.displayName))
+  const displayNameEn = sanitizeDisplayName(toString(data.display_name_en) ?? toString(data.displayNameEn))
+
   // Validate and sanitize description
   const rawDescription = toString(data.description)
   const description = rawDescription && rawDescription.trim() ? rawDescription.trim() : undefined
@@ -420,6 +456,8 @@ export async function parseSkillMetadata(
     filename: folderName, // e.g., "my-skill" (folder name, NO .md extension)
     name,
     slug,
+    displayName,
+    displayNameEn,
     description,
     allowed_tools: allowedTools,
     tools,

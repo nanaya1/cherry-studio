@@ -1,6 +1,7 @@
 import { useGroups } from '@renderer/hooks/useGroups'
 import type { AgentDetail, ResourceItem, ResourceType, SortKey } from '@renderer/types/resourceCatalog'
 import { getAgentAvatarFromConfiguration, getAgentDescriptionForDisplay } from '@renderer/utils/agent'
+import { getSkillDisplayName } from '@shared/data/api/schemas/skills'
 import type { InstalledSkill } from '@shared/data/types/agent'
 import type { Assistant } from '@shared/data/types/assistant'
 import type { Prompt } from '@shared/data/types/prompt'
@@ -43,7 +44,7 @@ export function useResourceLibrary({
   sort,
   clientSideSkillSearch = false
 }: UseResourceLibraryOptions): UseResourceLibraryResult {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const assistantGroups = useGroups('assistant')
 
   const trimmedSearch = search.trim() || undefined
@@ -118,21 +119,24 @@ export function useResourceLibrary({
     [t]
   )
 
-  const buildSkillItem = useCallback((s: InstalledSkill): ResourceItem => {
-    return {
-      id: s.id,
-      type: 'skill',
-      name: s.name,
-      description: s.description ?? '',
-      // No emoji on InstalledSkill — fall back to the lightning glyph.
-      avatar: '⚡',
-      // Skill metadata tags from SKILL.md live on `sourceTags`; assistant
-      // organization in the resource library uses Group rows instead.
-      createdAt: s.createdAt,
-      updatedAt: s.updatedAt,
-      raw: s
-    }
-  }, [])
+  const buildSkillItem = useCallback(
+    (s: InstalledSkill): ResourceItem => {
+      return {
+        id: s.id,
+        type: 'skill',
+        name: getSkillDisplayName(s, i18n.resolvedLanguage ?? i18n.language),
+        description: s.description ?? '',
+        // No emoji on InstalledSkill — fall back to the lightning glyph.
+        avatar: '⚡',
+        // Skill metadata tags from SKILL.md live on `sourceTags`; assistant
+        // organization in the resource library uses Group rows instead.
+        createdAt: s.createdAt,
+        updatedAt: s.updatedAt,
+        raw: s
+      }
+    },
+    [i18n]
+  )
 
   const buildPromptItem = useCallback((p: Prompt): ResourceItem => {
     return {

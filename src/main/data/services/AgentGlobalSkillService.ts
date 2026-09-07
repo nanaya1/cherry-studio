@@ -72,9 +72,10 @@ export class AgentGlobalSkillService {
 
     if (query.search) {
       const pattern = `%${query.search.replace(/[\\%_]/g, '\\$&')}%`
+      const displayNameMatch = sql`${agentGlobalSkillTable.displayName} LIKE ${pattern} ESCAPE '\\'`
       const nameMatch = sql`${agentGlobalSkillTable.name} LIKE ${pattern} ESCAPE '\\'`
       const descMatch = sql`${agentGlobalSkillTable.description} LIKE ${pattern} ESCAPE '\\'`
-      const searchClause = or(nameMatch, descMatch)
+      const searchClause = or(displayNameMatch, nameMatch, descMatch)
       if (searchClause) conditions.push(searchClause)
     }
 
@@ -319,6 +320,8 @@ export class AgentGlobalSkillService {
     return {
       id: row.id,
       name: row.name,
+      displayName: row.displayName,
+      displayNameEn: row.displayNameEn,
       description: row.description,
       folderName: row.folderName,
       source: row.source,

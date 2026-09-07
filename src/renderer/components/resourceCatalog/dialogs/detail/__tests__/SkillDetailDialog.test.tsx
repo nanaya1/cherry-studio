@@ -82,6 +82,8 @@ function createSkill(overrides: Partial<InstalledSkill> = {}): InstalledSkill {
   return {
     id: 'skill-1',
     name: 'Review Helper',
+    displayName: null,
+    displayNameEn: null,
     description: 'Review pull requests',
     folderName: 'review-helper',
     source: 'local',

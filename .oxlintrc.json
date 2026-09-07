@@ -19,7 +19,8 @@
     "src/renderer/ui/**",
     "packages/**/dist",
     "eslint.config.mjs",
-    "v2-refactor-temp/**"
+    "v2-refactor-temp/**",
+    ".workbuddy/**"
   ],
   "options": {
     "typeAware": true

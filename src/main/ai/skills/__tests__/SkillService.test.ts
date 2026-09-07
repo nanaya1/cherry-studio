@@ -15,7 +15,8 @@ import {
   findAllSkillDirectories,
   findSkillIconFileName,
   findSkillMdPath,
-  parseSkillMetadata
+  parseSkillMetadata,
+  skillMdHasDisplayName
 } from '@main/utils/markdownParser'
 import { SKILL_LIST_MEMBERSHIP_DIMENSIONS } from '@shared/data/api/schemas/skills'
 import type { DataApiDataChangeEffect } from '@shared/data/api/types'
@@ -34,6 +35,7 @@ vi.mock('@main/utils/markdownParser', () => ({
   findSkillIconFileName: vi.fn().mockResolvedValue(undefined),
   findAllSkillDirectories: vi.fn().mockResolvedValue([]),
   findSkillMdPath: vi.fn(),
+  skillMdHasDisplayName: vi.fn().mockResolvedValue(false),
   SKILL_ICON_FILE_NAMES: ['icon.webp', 'icon.png', 'icon.jpg', 'icon.jpeg']
 }))
 
@@ -101,6 +103,7 @@ describe('SkillService', () => {
     vi.mocked(skillArchive.extractZip).mockReset()
     vi.mocked(skillArchive.resolveSkillDirectory).mockReset()
     vi.mocked(findSkillIconFileName).mockReset().mockResolvedValue(undefined)
+    vi.mocked(skillMdHasDisplayName).mockReset().mockResolvedValue(false)
   })
 
   async function seedAgent() {
@@ -1555,6 +1558,54 @@ describe('SkillService', () => {
       await skillService.syncBuiltinSkill(FOLDER_NAME, sourcePath, APP_VERSION)
 
       expect(installSpy).not.toHaveBeenCalled()
+      expect(parseSkillMetadata).not.toHaveBeenCalled()
+    })
+
+    it('backfills displayName once for rows written before the column existed', async () => {
+      const skillService = new SkillService()
+      await fs.promises.mkdir(destPath, { recursive: true })
+      await fs.promises.writeFile(path.join(destPath, 'SKILL.md'), '# Builtin')
+      await fs.promises.writeFile(path.join(destPath, '.version'), APP_VERSION)
+      const contentHash = await skillService['computeBuiltinDirectoryHash'](sourcePath)
+      await seedAgent()
+      await dbh.db.insert(agentGlobalSkillTable).values({
+        id: SKILL_ID_BUILTIN,
+        name: 'My Builtin',
+        folderName: FOLDER_NAME,
+        source: 'builtin',
+        contentHash,
+        isEnabled: false
+      })
+      const installSpy = vi.spyOn(skillService['installer'], 'install')
+      vi.mocked(skillMdHasDisplayName).mockResolvedValue(true)
+      vi.mocked(parseSkillMetadata).mockResolvedValue({
+        sourcePath: FOLDER_NAME,
+        filename: FOLDER_NAME,
+        name: 'My Builtin',
+        displayName: '机械设计知识查询助手',
+        displayNameEn: 'Mechanical Design Assistant',
+        description: 'desc',
+        category: 'skills',
+        type: 'skill',
+        tags: [],
+        size: 0,
+        contentHash: 'hash'
+      } as Awaited<ReturnType<typeof parseSkillMetadata>>)
+
+      await skillService.syncBuiltinSkill(FOLDER_NAME, sourcePath, APP_VERSION)
+
+      expect(installSpy).not.toHaveBeenCalled()
+      expect(parseSkillMetadata).toHaveBeenCalledTimes(1)
+      const [row] = await dbh.db
+        .select()
+        .from(agentGlobalSkillTable)
+        .where(eq(agentGlobalSkillTable.id, SKILL_ID_BUILTIN))
+      expect(row.displayName).toBe('机械设计知识查询助手')
+      expect(row.displayNameEn).toBe('Mechanical Design Assistant')
+
+      // Second sync: displayName now matches, the hash short-circuit applies again.
+      vi.mocked(parseSkillMetadata).mockClear()
+      await skillService.syncBuiltinSkill(FOLDER_NAME, sourcePath, APP_VERSION)
       expect(parseSkillMetadata).not.toHaveBeenCalled()
     })
 

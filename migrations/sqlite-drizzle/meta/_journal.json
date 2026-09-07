@@ -168,6 +168,20 @@
       "when": 1788715203610,
       "tag": "0023_neat_bloodscream",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1788769928406,
+      "tag": "0024_daily_the_initiative",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "6",
+      "when": 1788781707526,
+      "tag": "0025_slimy_zaran",
+      "breakpoints": true
     }
   ],
   "version": "7"

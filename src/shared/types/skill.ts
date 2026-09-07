@@ -142,6 +142,10 @@ export type SkillSearchResult = z.infer<typeof SkillSearchResultSchema>
 export const InstalledSkillSchema = z.object({
   id: z.string(),
   name: z.string(),
+  /** Human-friendly label from SKILL.md frontmatter; null when absent (display falls back to name). */
+  displayName: z.string().nullable(),
+  /** English display label; preferred over displayName when the app locale is English. */
+  displayNameEn: z.string().nullable(),
   description: z.string().nullable(),
   folderName: z.string(),
   source: z.string(),
@@ -219,6 +223,8 @@ export type SystemSkillStatus = 'available' | 'registered' | 'conflict'
 export interface SystemSkillCandidate {
   id: string
   name: string
+  displayName?: string | null
+  displayNameEn?: string | null
   description?: string
   filename: string
   directoryPath: string

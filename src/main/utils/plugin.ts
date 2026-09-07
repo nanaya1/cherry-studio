@@ -9,6 +9,8 @@ export const PluginMetadataSchema = z.object({
   // - For skills: folder name only, no extension (e.g., "my-skill")
   name: z.string(), // Display name from frontmatter or filename
   slug: z.string().optional(), // Stable marketplace identifier from skill frontmatter
+  displayName: z.string().nullable().optional(), // Human-friendly label from frontmatter; null when absent
+  displayNameEn: z.string().nullable().optional(), // English display label from frontmatter; null when absent
 
   // Content
   description: z.string().optional(),

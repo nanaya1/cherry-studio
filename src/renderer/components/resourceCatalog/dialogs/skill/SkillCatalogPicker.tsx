@@ -7,6 +7,7 @@ import {
   Switch
 } from '@cherrystudio/ui'
 import { ResourceCatalogSearchInput } from '@renderer/components/resourceCatalog/ResourceCatalogSearchInput'
+import { getSkillDisplayName } from '@shared/data/api/schemas/skills'
 import type { InstalledSkill } from '@shared/data/types/agent'
 import { ChevronDown, FolderSearch, Import, Plus, Search, Sparkles } from 'lucide-react'
 import type { ReactNode } from 'react'
@@ -42,7 +43,7 @@ export function SkillCatalogPicker({
   disabled = false,
   trailingItem
 }: SkillCatalogPickerProps) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const [query, setQuery] = useState('')
   const [marketplaceOpen, setMarketplaceOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
@@ -69,12 +70,17 @@ export function SkillCatalogPicker({
     const normalizedQuery = query.trim().toLowerCase()
 
     return availableSkills
-      .filter((skill) => !normalizedQuery || skill.name.toLowerCase().includes(normalizedQuery))
+      .filter(
+        (skill) =>
+          !normalizedQuery ||
+          [skill.displayName, skill.name].some((value) => value?.toLowerCase().includes(normalizedQuery))
+      )
       .map((skill) => {
+        const name = getSkillDisplayName(skill, i18n.resolvedLanguage ?? i18n.language)
         if (mode === 'create' && skill.source === 'builtin') {
           return {
             id: skill.id,
-            name: skill.name,
+            name,
             disableToggle: true,
             inactiveBadge: t('library.config.dialogs.create.capability.builtin_badge')
           }
@@ -82,12 +88,12 @@ export function SkillCatalogPicker({
 
         return {
           id: skill.id,
-          name: skill.name,
+          name,
           description: mode === 'edit' ? skill.description : undefined,
           icon: mode === 'edit' ? <Sparkles size={13} strokeWidth={1.5} className="text-warning" /> : undefined
         }
       })
-  }, [availableSkills, mode, query, t])
+  }, [availableSkills, mode, query, t, i18n])
   const allSelected = selectableIds.length > 0 && selectableIds.every((id) => selectedIdSet.has(id))
 
   const setSelected = (id: string, enabled: boolean) => {
