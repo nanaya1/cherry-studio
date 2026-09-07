@@ -31,11 +31,8 @@ import { insertManyWithOrderKey } from '@data/services/utils/orderKey'
 import { loggerService } from '@logger'
 import { DataApiErrorFactory } from '@shared/data/api/errors'
 import type { CreateModelDto, ListModelsQuery, UpdateModelDto } from '@shared/data/api/schemas/models'
-import {
-  CHERRYAI_DEFAULT_UNIQUE_MODEL_ID,
-  CHERRYAI_PROVIDER_ID,
-  isManagedCherryAiDefaultModel
-} from '@shared/data/presets/cherryai'
+import { isManagedCherryAiDefaultModel } from '@shared/data/presets/cherryai'
+import { isManagedXuelangDefaultModel } from '@shared/data/presets/xuelang'
 import type {
   EndpointType,
   Modality,
@@ -97,24 +94,24 @@ function assertModelNotUsedAsDefaultModel(uniqueModelId: string, operation: stri
   }
 }
 
-function assertManagedCherryAiDefaultModelPatchAllowed(providerId: string, modelId: string, dto: UpdateModelDto): void {
-  if (!isManagedCherryAiDefaultModel(providerId, modelId) || Object.keys(dto).length === 0) {
-    return
-  }
-
-  assertManagedCherryAiDefaultModelMutationAllowed(providerId, modelId, `update model ${providerId}/${modelId}`)
+function isManagedDefaultModel(providerId: string, modelId: string): boolean {
+  return isManagedCherryAiDefaultModel(providerId, modelId) || isManagedXuelangDefaultModel(providerId, modelId)
 }
 
-function assertManagedCherryAiDefaultModelMutationAllowed(
-  providerId: string,
-  modelId: string,
-  operation: string
-): void {
-  if (!isManagedCherryAiDefaultModel(providerId, modelId)) {
+function assertManagedDefaultModelPatchAllowed(providerId: string, modelId: string, dto: UpdateModelDto): void {
+  if (!isManagedDefaultModel(providerId, modelId) || Object.keys(dto).length === 0) {
     return
   }
 
-  throw DataApiErrorFactory.invalidOperation(operation, 'managed CherryAI default model cannot be modified')
+  assertManagedDefaultModelMutationAllowed(providerId, modelId, `update model ${providerId}/${modelId}`)
+}
+
+function assertManagedDefaultModelMutationAllowed(providerId: string, modelId: string, operation: string): void {
+  if (!isManagedDefaultModel(providerId, modelId)) {
+    return
+  }
+
+  throw DataApiErrorFactory.invalidOperation(operation, 'managed default model cannot be modified')
 }
 
 function assertProvidersAvailable(providerIds: Iterable<string>): void {
@@ -568,13 +565,14 @@ class ModelService {
       return { toRemove, presetBackedRemovalIds: new Set() }
     }
 
-    const rows: { id: string; presetModelId: string | null }[] = []
+    const rows: { id: string; modelId: string; presetModelId: string | null }[] = []
     for (let i = 0; i < toRemove.length; i += SQLITE_INARRAY_CHUNK) {
       const chunk = toRemove.slice(i, i + SQLITE_INARRAY_CHUNK)
       rows.push(
         ...db
           .select({
             id: userModelTable.id,
+            modelId: userModelTable.modelId,
             presetModelId: userModelTable.presetModelId
           })
           .from(userModelTable)
@@ -587,7 +585,7 @@ class ModelService {
     const presetBackedRemovalIds = new Set<string>()
     const customModelIds = new Set<string>()
     for (const row of rows) {
-      if (providerId === CHERRYAI_PROVIDER_ID && row.id === CHERRYAI_DEFAULT_UNIQUE_MODEL_ID) {
+      if (isManagedDefaultModel(providerId, row.modelId)) {
         managedDefaultIds.add(row.id)
       } else if (row.presetModelId != null && row.presetModelId !== '') {
         presetBackedRemovalIds.add(row.id)
@@ -617,7 +615,7 @@ class ModelService {
     const removableCustomModelIds = new Set([...customModelIds].filter((id) => !userDefaultIds.has(id)))
 
     if (managedDefaultIds.size > 0) {
-      logger.warn('Skipped managed CherryAI default model removal during reconcile', {
+      logger.warn('Skipped managed default model removal during reconcile', {
         providerId,
         skippedCount: managedDefaultIds.size,
         skippedIds: [...managedDefaultIds]
@@ -900,7 +898,7 @@ class ModelService {
     if (items.length === 0) return []
     assertProvidersAvailable(items.map(({ dto }) => dto.providerId))
     for (const { dto } of items) {
-      assertManagedCherryAiDefaultModelMutationAllowed(
+      assertManagedDefaultModelMutationAllowed(
         dto.providerId,
         dto.modelId,
         `create model ${dto.providerId}/${dto.modelId}`
@@ -958,7 +956,7 @@ class ModelService {
    */
   update(providerId: string, modelId: string, dto: UpdateModelDto): Model {
     providerService.assertAvailable(providerId)
-    assertManagedCherryAiDefaultModelPatchAllowed(providerId, modelId, dto)
+    assertManagedDefaultModelPatchAllowed(providerId, modelId, dto)
 
     const db = application.get('DbService').getDb()
 
@@ -1010,7 +1008,7 @@ class ModelService {
     const db = application.get('DbService').getDb()
 
     for (const { providerId, modelId, patch } of items) {
-      assertManagedCherryAiDefaultModelPatchAllowed(providerId, modelId, patch)
+      assertManagedDefaultModelPatchAllowed(providerId, modelId, patch)
     }
 
     const rows = db.transaction((tx) => {
@@ -1166,7 +1164,7 @@ class ModelService {
    */
   delete(providerId: string, modelId: string): void {
     providerService.assertAvailable(providerId)
-    assertManagedCherryAiDefaultModelMutationAllowed(providerId, modelId, `delete model ${providerId}/${modelId}`)
+    assertManagedDefaultModelMutationAllowed(providerId, modelId, `delete model ${providerId}/${modelId}`)
 
     const uniqueModelId = createUniqueModelId(providerId, modelId)
     assertModelNotUsedAsDefaultModel(uniqueModelId, `delete model ${uniqueModelId}`)
@@ -1203,7 +1201,7 @@ class ModelService {
     const uniqueItems = new Map<string, { providerId: string; modelId: string }>()
 
     for (const item of items) {
-      assertManagedCherryAiDefaultModelMutationAllowed(
+      assertManagedDefaultModelMutationAllowed(
         item.providerId,
         item.modelId,
         `delete model ${item.providerId}/${item.modelId}`

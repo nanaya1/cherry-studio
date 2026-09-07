@@ -1,5 +1,6 @@
 import { CHERRYAI_PROVIDER_ID } from '@shared/data/presets/cherryai'
 import { LOCAL_EMBEDDING_PROVIDER_ID } from '@shared/data/presets/localEmbedding'
+import { XUELANG_PROVIDER_ID } from '@shared/data/presets/xuelang'
 import type { Provider } from '@shared/data/types/provider'
 import { describe, expect, it } from 'vitest'
 
@@ -12,8 +13,7 @@ const presetInstance = (id: string, presetProviderId: string): Provider => ({ id
 const customProvider = (id: string): Provider => ({ id }) as Provider
 
 describe('isProviderSettingsListVisibleProvider', () => {
-  it('keeps the whitelisted presets visible', () => {
-    expect(isProviderSettingsListVisibleProvider(presetProvider('xuelang'))).toBe(true)
+  it('keeps the whitelisted editable presets visible', () => {
     expect(isProviderSettingsListVisibleProvider(presetProvider('deepseek'))).toBe(true)
     expect(isProviderSettingsListVisibleProvider(presetProvider('zhipu'))).toBe(true)
   })
@@ -39,7 +39,8 @@ describe('isProviderSettingsListVisibleProvider', () => {
     expect(isProviderSettingsListVisibleProvider(customProvider(LOCAL_EMBEDDING_PROVIDER_ID))).toBe(false)
   })
 
-  it('hides the CherryAI provider', () => {
+  it('hides managed providers', () => {
     expect(isProviderSettingsListVisibleProvider(presetProvider(CHERRYAI_PROVIDER_ID))).toBe(false)
+    expect(isProviderSettingsListVisibleProvider(presetProvider(XUELANG_PROVIDER_ID))).toBe(false)
   })
 })

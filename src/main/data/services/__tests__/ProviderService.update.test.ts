@@ -6,6 +6,7 @@ import { userProviderTable } from '@data/db/schemas/userProvider'
 import { providerService } from '@data/services/ProviderService'
 import { ErrorCode } from '@shared/data/api/errors'
 import { CHERRY_CLOUD_PROVIDER_ID, CHERRYAI_PROVIDER_ID } from '@shared/data/presets/cherryai'
+import { XUELANG_PROVIDER_ID } from '@shared/data/presets/xuelang'
 import { setupTestDatabase } from '@test-helpers/db'
 import { eq } from 'drizzle-orm'
 import { describe, expect, it, type Mock } from 'vitest'
@@ -149,7 +150,8 @@ describe('ProviderService.update', () => {
 
   it.each([
     ['CherryAI', CHERRYAI_PROVIDER_ID],
-    ['Cherry Cloud', CHERRY_CLOUD_PROVIDER_ID]
+    ['Cherry Cloud', CHERRY_CLOUD_PROVIDER_ID],
+    ['Xuelang', XUELANG_PROVIDER_ID]
   ])('rejects PATCHes for the managed %s provider', async (_name, providerId) => {
     await dbh.db.insert(userProviderTable).values({
       providerId,

@@ -4,6 +4,7 @@ import { userModelTable } from '@data/db/schemas/userModel'
 import { userProviderTable } from '@data/db/schemas/userProvider'
 import { providerService } from '@data/services/ProviderService'
 import { applyMoves, insertManyWithOrderKey } from '@data/services/utils/orderKey'
+import { CHERRYAI_DEFAULT_UNIQUE_MODEL_ID, CHERRYAI_PROVIDER_ID } from '@shared/data/presets/cherryai'
 import {
   XUELANG_DEFAULT_MODEL_ID,
   XUELANG_DEFAULT_PRESET_MODEL_ID,
@@ -17,6 +18,7 @@ import type { DbType, ISeeder } from '../../types'
 import { hashObject } from '../hashObject'
 
 const LEGACY_XUELANG_DEFAULT_UNIQUE_MODEL_ID = 'xuelang::qwen3-8-27b'
+const REPLACED_DEFAULT_MODEL_IDS = [LEGACY_XUELANG_DEFAULT_UNIQUE_MODEL_ID, CHERRYAI_DEFAULT_UNIQUE_MODEL_ID] as const
 const providerPosition = 'first' as const
 
 export const XUELANG_DEFAULT_MODEL_PREFERENCE_KEYS = [
@@ -54,13 +56,18 @@ export class XuelangDefaultModelSeeder implements ISeeder {
       providerSeed,
       providerPosition,
       modelSeed,
-      preferences: XUELANG_DEFAULT_MODEL_PREFERENCE_KEYS
+      preferences: XUELANG_DEFAULT_MODEL_PREFERENCE_KEYS,
+      replacedDefaultModelIds: REPLACED_DEFAULT_MODEL_IDS
     })
   }
 
   run(db: DbType): void {
     db.transaction((tx) => {
       providerService.batchUpsertTx(tx, [providerSeed])
+      tx.update(userProviderTable)
+        .set({ isEnabled: true })
+        .where(eq(userProviderTable.providerId, XUELANG_PROVIDER_ID))
+        .run()
       applyMoves(tx, userProviderTable, [{ id: XUELANG_PROVIDER_ID, anchor: { position: providerPosition } }], {
         pkColumn: userProviderTable.providerId
       })
@@ -77,16 +84,32 @@ export class XuelangDefaultModelSeeder implements ISeeder {
           pkColumn: userModelTable.id,
           scope: eq(userModelTable.providerId, XUELANG_PROVIDER_ID)
         })
+      } else {
+        tx.update(userModelTable)
+          .set({ isEnabled: true, isHidden: false, isDeprecated: false })
+          .where(eq(userModelTable.id, XUELANG_DEFAULT_UNIQUE_MODEL_ID))
+          .run()
       }
 
-      tx.update(assistantTable)
-        .set({ modelId: XUELANG_DEFAULT_UNIQUE_MODEL_ID })
-        .where(eq(assistantTable.modelId, LEGACY_XUELANG_DEFAULT_UNIQUE_MODEL_ID))
-        .run()
+      for (const replacedModelId of REPLACED_DEFAULT_MODEL_IDS) {
+        tx.update(assistantTable)
+          .set({ modelId: XUELANG_DEFAULT_UNIQUE_MODEL_ID })
+          .where(eq(assistantTable.modelId, replacedModelId))
+          .run()
+      }
 
       tx.update(userModelTable)
         .set({ isEnabled: false, isHidden: true })
         .where(eq(userModelTable.id, LEGACY_XUELANG_DEFAULT_UNIQUE_MODEL_ID))
+        .run()
+
+      tx.update(userProviderTable)
+        .set({ isEnabled: false })
+        .where(eq(userProviderTable.providerId, CHERRYAI_PROVIDER_ID))
+        .run()
+      tx.update(userModelTable)
+        .set({ isEnabled: false, isHidden: true })
+        .where(eq(userModelTable.id, CHERRYAI_DEFAULT_UNIQUE_MODEL_ID))
         .run()
 
       for (const key of XUELANG_DEFAULT_MODEL_PREFERENCE_KEYS) {
@@ -97,7 +120,7 @@ export class XuelangDefaultModelSeeder implements ISeeder {
           .limit(1)
           .all()
 
-        if (existingPreference?.value === LEGACY_XUELANG_DEFAULT_UNIQUE_MODEL_ID) {
+        if (REPLACED_DEFAULT_MODEL_IDS.some((modelId) => existingPreference?.value === modelId)) {
           tx.update(preferenceTable)
             .set({ value: XUELANG_DEFAULT_UNIQUE_MODEL_ID })
             .where(and(eq(preferenceTable.scope, 'default'), eq(preferenceTable.key, key)))
