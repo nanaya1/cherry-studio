@@ -3711,7 +3711,7 @@
   "settings.data.s3.restore.modal.title": "Restauración de datos S3",
   "settings.data.s3.restore.success": "Restauración de datos exitosa",
   "settings.data.s3.root.label": "Carpeta de copia de seguridad (opcional)",
-  "settings.data.s3.root.placeholder": "Por ejemplo: /cherry-studio",
+  "settings.data.s3.root.placeholder": "Por ejemplo: /mea-cowork",
   "settings.data.s3.secretAccessKey.label": "Clave de acceso secreta",
   "settings.data.s3.secretAccessKey.placeholder": "Clave de acceso secreta",
   "settings.data.s3.skipBackupFile.help": "Al activarlo, durante el respaldo se omitirán los datos de archivos, respaldando solo la configuración, lo que reduce significativamente el tamaño del archivo de respaldo",

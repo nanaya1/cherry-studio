@@ -3711,7 +3711,7 @@
   "settings.data.s3.restore.modal.title": "S3 資料還原",
   "settings.data.s3.restore.success": "資料還原成功",
   "settings.data.s3.root.label": "備份目錄（可選）",
-  "settings.data.s3.root.placeholder": "例如：/cherry-studio",
+  "settings.data.s3.root.placeholder": "例如：/mea-cowork",
   "settings.data.s3.secretAccessKey.label": "Secret Access Key",
   "settings.data.s3.secretAccessKey.placeholder": "Secret Access Key",
   "settings.data.s3.skipBackupFile.help": "開啟後備份時將跳過檔案資料，僅備份設定資訊，顯著減小備份檔案體積",

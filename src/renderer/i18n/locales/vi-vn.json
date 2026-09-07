@@ -3711,7 +3711,7 @@
   "settings.data.s3.restore.modal.title": "Khôi phục dữ liệu S3",
   "settings.data.s3.restore.success": "Khôi phục dữ liệu thành công",
   "settings.data.s3.root.label": "Thư mục sao lưu (Tùy chọn)",
-  "settings.data.s3.root.placeholder": "ví dụ: /cherry-studio",
+  "settings.data.s3.root.placeholder": "ví dụ: /mea-cowork",
   "settings.data.s3.secretAccessKey.label": "Khóa Truy Cập Bí Mật",
   "settings.data.s3.secretAccessKey.placeholder": "Khóa truy cập bí mật",
   "settings.data.s3.skipBackupFile.help": "Khi được bật, dữ liệu tập tin sẽ được bỏ qua trong quá trình sao lưu, chỉ thông tin cấu hình được sao lưu, giảm đáng kể kích thước tệp sao lưu",

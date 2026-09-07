@@ -3711,7 +3711,7 @@
   "settings.data.s3.restore.modal.title": "Restauração de Dados S3",
   "settings.data.s3.restore.success": "Restauração de dados realizada com sucesso",
   "settings.data.s3.root.label": "Pasta de backup (opcional)",
-  "settings.data.s3.root.placeholder": "Por exemplo: /cherry-studio",
+  "settings.data.s3.root.placeholder": "Por exemplo: /mea-cowork",
   "settings.data.s3.secretAccessKey.label": "Chave de Acesso Secreta",
   "settings.data.s3.secretAccessKey.placeholder": "Chave de Acesso Secreta",
   "settings.data.s3.skipBackupFile.help": "Quando ativado, a cópia de segurança ignora os dados dos ficheiros e guarda apenas as definições, reduzindo significativamente o tamanho do ficheiro de cópia de segurança",

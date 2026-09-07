@@ -3711,7 +3711,7 @@
   "settings.data.s3.restore.modal.title": "Restauration des données S3",
   "settings.data.s3.restore.success": "Restauration des données réussie",
   "settings.data.s3.root.label": "Répertoire de sauvegarde (optionnel)",
-  "settings.data.s3.root.placeholder": "Par exemple : /cherry-studio",
+  "settings.data.s3.root.placeholder": "Par exemple : /mea-cowork",
   "settings.data.s3.secretAccessKey.label": "Clé d'accès secrète",
   "settings.data.s3.secretAccessKey.placeholder": "Clé d'accès secrète",
   "settings.data.s3.skipBackupFile.help": "Lorsqu'activé, les données de fichiers seront ignorées lors de la sauvegarde, seules les configurations seront sauvegardées, réduisant considérablement la taille du fichier de sauvegarde",

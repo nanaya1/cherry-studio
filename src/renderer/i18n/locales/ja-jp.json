@@ -3711,7 +3711,7 @@
   "settings.data.s3.restore.modal.title": "S3データ復元",
   "settings.data.s3.restore.success": "データの復元に成功しました",
   "settings.data.s3.root.label": "バックアップフォルダー（オプション）",
-  "settings.data.s3.root.placeholder": "例：/cherry-studio",
+  "settings.data.s3.root.placeholder": "例：/mea-cowork",
   "settings.data.s3.secretAccessKey.label": "Secret Access Key",
   "settings.data.s3.secretAccessKey.placeholder": "Secret Access Key",
   "settings.data.s3.skipBackupFile.help": "有効にすると、バックアップ時にファイルデータがスキップされ、設定情報のみがバックアップされ、バックアップファイルのサイズが大幅に削減されます。",

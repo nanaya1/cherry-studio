@@ -3711,7 +3711,7 @@
   "settings.data.s3.restore.modal.title": "S3 Verilerini Geri Yükleme",
   "settings.data.s3.restore.success": "Veriler başarıyla geri yüklendi",
   "settings.data.s3.root.label": "Yedekleme Dizini (İsteğe Bağlı)",
-  "settings.data.s3.root.placeholder": "örn.: /cherry-studio",
+  "settings.data.s3.root.placeholder": "örn.: /mea-cowork",
   "settings.data.s3.secretAccessKey.label": "Gizli Erişim Anahtarı",
   "settings.data.s3.secretAccessKey.placeholder": "Gizli Erişim Anahtarı",
   "settings.data.s3.skipBackupFile.help": "Etkinleştirildiğinde yedekleme sırasında dosya verileri atlanır ve yalnızca yapılandırma bilgileri yedeklenir; böylece yedekleme dosyasının boyutu önemli ölçüde azalır",

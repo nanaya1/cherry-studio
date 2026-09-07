@@ -3711,7 +3711,7 @@
   "settings.data.s3.restore.modal.title": "Restaurare date S3",
   "settings.data.s3.restore.success": "Restaurarea datelor a reușit",
   "settings.data.s3.root.label": "Director backup (Opțional)",
-  "settings.data.s3.root.placeholder": "de ex.: /cherry-studio",
+  "settings.data.s3.root.placeholder": "de ex.: /mea-cowork",
   "settings.data.s3.secretAccessKey.label": "Cheie secretă de acces",
   "settings.data.s3.secretAccessKey.placeholder": "Cheie secretă de acces",
   "settings.data.s3.skipBackupFile.help": "Când este activat, datele fișierelor vor fi omise în timpul backup-ului, vor fi salvate doar informațiile de configurare, reducând semnificativ dimensiunea fișierului de backup",

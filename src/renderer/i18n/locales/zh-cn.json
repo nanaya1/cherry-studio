@@ -3711,7 +3711,7 @@
   "settings.data.s3.restore.modal.title": "S3 数据恢复",
   "settings.data.s3.restore.success": "数据恢复成功",
   "settings.data.s3.root.label": "备份目录（可选）",
-  "settings.data.s3.root.placeholder": "例如：/cherry-studio",
+  "settings.data.s3.root.placeholder": "例如：/mea-cowork",
   "settings.data.s3.secretAccessKey.label": "Secret Access Key",
   "settings.data.s3.secretAccessKey.placeholder": "Secret Access Key",
   "settings.data.s3.skipBackupFile.help": "开启后备份时将跳过文件数据，仅备份配置信息，显著减小备份文件体积",

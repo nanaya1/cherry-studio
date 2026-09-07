@@ -3711,7 +3711,7 @@
   "settings.data.s3.restore.modal.title": "Восстановление данных S3",
   "settings.data.s3.restore.success": "Восстановление данных успешно",
   "settings.data.s3.root.label": "Каталог резервных копий (необязательно)",
-  "settings.data.s3.root.placeholder": "например: /cherry-studio",
+  "settings.data.s3.root.placeholder": "например: /mea-cowork",
   "settings.data.s3.secretAccessKey.label": "Secret Access Key",
   "settings.data.s3.secretAccessKey.placeholder": "Secret Access Key",
   "settings.data.s3.skipBackupFile.help": "Если включено, данные файлов будут пропущены во время резервного копирования, будет скопирована только информация о конфигурации, что значительно уменьшит размер файла резервной копии.",

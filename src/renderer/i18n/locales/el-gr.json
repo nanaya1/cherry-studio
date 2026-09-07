@@ -3711,7 +3711,7 @@
   "settings.data.s3.restore.modal.title": "Επαναφορά δεδομένων S3",
   "settings.data.s3.restore.success": "Επιτυχής επαναφορά δεδομένων",
   "settings.data.s3.root.label": "Κατάλογος αντιγράφου ασφαλείας (προαιρετικό)",
-  "settings.data.s3.root.placeholder": "Π.χ.: /cherry-studio",
+  "settings.data.s3.root.placeholder": "Π.χ.: /mea-cowork",
   "settings.data.s3.secretAccessKey.label": "Secret Access Key",
   "settings.data.s3.secretAccessKey.placeholder": "Secret Access Key",
   "settings.data.s3.skipBackupFile.help": "Όταν ενεργοποιηθεί, η δημιουργία αντιγράφου ασφαλείας θα παραλείπει τα δεδομένα αρχείων και θα δημιουργεί αντίγραφο μόνο τις πληροφορίες ρυθμίσεων, μειώνοντας σημαντικά το μέγεθος του αρχείου αντιγράφου ασφαλείας",
