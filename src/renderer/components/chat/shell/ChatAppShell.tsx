@@ -282,7 +282,6 @@ export function ChatAppShell({
   centerId,
   centerRef,
   centerClassName,
-  onPaneCollapse,
   onPaneAutoCollapseChange,
   paneManualToggle
 }: ChatAppShellProps) {
@@ -295,7 +294,7 @@ export function ChatAppShell({
   // wipe as visible scale distortion, so the center reflows instantly instead.
   const centerTransition = rightPanelState?.layoutAnimationPending ? { duration: 0 } : CHAT_SHELL_TRANSITION
   const rootRef = useRef<HTMLDivElement>(null)
-  const [listResizing, setListResizing] = useState(false)
+  const [listResizing] = useState(false)
 
   useResourceListAutoCollapse({
     leftPaneOpen,
