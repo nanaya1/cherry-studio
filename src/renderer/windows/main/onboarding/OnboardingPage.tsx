@@ -21,13 +21,12 @@ import AppLogo from '@renderer/assets/images/logo.png'
 import { WindowControls } from '@renderer/components/WindowControls'
 import { useCherryAccountSession } from '@renderer/hooks/useCherryAccountSession'
 import { useDefaultModel, useModels } from '@renderer/hooks/useModel'
-import { useProvider, useProviders } from '@renderer/hooks/useProvider'
+import { useProviders } from '@renderer/hooks/useProvider'
 import { appLanguageOptions, isAppLanguage } from '@renderer/i18n/languages'
 import i18n from '@renderer/i18n/resolver'
 import { ipcApi } from '@renderer/ipc'
 import ModelSettings from '@renderer/pages/settings/ModelSettings/ModelSettings'
-import { ProviderSettingsPage, useProviderModelSync } from '@renderer/pages/settings/ProviderSettings'
-import { oauthWithCherryIn } from '@renderer/services/oauth'
+import { ProviderSettingsPage } from '@renderer/pages/settings/ProviderSettings'
 import { toast } from '@renderer/services/toast'
 import { getAppEdition } from '@renderer/utils/appEdition'
 import { isProtectedBuiltinAgentRole } from '@shared/ai/builtinAgent'
@@ -39,7 +38,7 @@ import { LATEST_PRIVACY_POLICY_VERSION } from '@shared/utils/constants'
 import { defaultLanguage } from '@shared/utils/languages'
 import { isNonChatModel } from '@shared/utils/model'
 import { createMemoryHistory, createRootRoute, createRouter, RouterProvider } from '@tanstack/react-router'
-import { ArrowLeft, Check, KeyRound, Languages, LogIn } from 'lucide-react'
+import { ArrowLeft, Check, KeyRound, Languages } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -49,8 +48,7 @@ type OnboardingStep = 'welcome' | 'provider' | 'select-model'
 type OnboardingCompletionStatus = Exclude<OnboardingProviderSetupStatus, 'pending'>
 type PrivacyChoiceAction = () => void | Promise<void>
 
-const CHERRYIN_OAUTH_SERVER = 'https://open.cherryin.ai'
-const CHERRYIN_LOGIN_LOADING_TIMEOUT_MS = 10_000
+// CHERRYIN_OAUTH_SERVER / CHERRYIN_LOGIN_LOADING_TIMEOUT_MS 暂时未使用（原 CherryIn 登录流程），恢复入口时再加回。
 const PESSIMISTIC_PREFERENCE_OPTIONS = { optimistic: false } as const
 const isOnboardingModel = (model: Model) => !isManagedCherryProviderId(model.providerId) && !isNonChatModel(model)
 const ONBOARDING_PREFERENCE_KEYS = {
@@ -77,30 +75,26 @@ export default function OnboardingPage() {
     ONBOARDING_PREFERENCE_KEYS,
     PESSIMISTIC_PREFERENCE_OPTIONS
   )
-  const { addApiKey, updateProvider } = useProvider('cherryin')
-  const { syncProviderModels } = useProviderModelSync('cherryin')
+  // useProviderModelSync / addApiKey / updateProvider 原服务于 CherryIn 登录流程，随入口隐藏暂时移除（见 git 历史）。
   const { providers: enabledProviders, isLoading: isProvidersLoading } = useProviders({ enabled: true })
   const { models: enabledModels, isLoading: isModelsLoading } = useModels({ enabled: true })
   const { defaultModel, quickModel, translateModel } = useDefaultModel()
   const [step, setStep] = useState<OnboardingStep>('welcome')
-  const [isLoggingIn, setIsLoggingIn] = useState(false)
+  // isLoggingIn / setIsLoggingIn 暂时未使用，等恢复「登录樱桃云/樱桃 In」主按钮时再用。
+  // const [isLoggingIn, setIsLoggingIn] = useState(false)
   const [isCompleting, setIsCompleting] = useState(false)
   const [isUpdatingPrivacy, setIsUpdatingPrivacy] = useState(false)
   const [privacyAccepted, setPrivacyAccepted] = useState(true)
   const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false)
   const [showNoCloudModelsDialog, setShowNoCloudModelsDialog] = useState(false)
-  const loginAttemptRef = useRef(0)
-  const loginLoadingTimeoutRef = useRef<number | null>(null)
+  // loginAttemptRef / loginLoadingTimeoutRef 暂时未使用（原 CherryIn 登录流程），恢复入口时再加回。
   const cloudStatusRef = useRef<CherryCloudStatus | null>(null)
   const hasRoutedCloudLoginRef = useRef(false)
   const isCnEdition = appEdition === 'cn'
-  const {
-    status: cloudStatus,
-    login: handleCherryCloudLogin,
-    cancelLogin: handleCherryCloudLoginCancel,
-    isCancellingLogin: isCancellingCloudLogin,
-    isAuthorizing: isCloudAuthorizing
-  } = useCherryAccountSession(isCnEdition)
+  // 登录动作相关成员暂时未使用，等恢复「登录樱桃云」主按钮时再解构回来：
+  // login: handleCherryCloudLogin / cancelLogin: handleCherryCloudLoginCancel /
+  // isCancellingLogin: isCancellingCloudLogin / isAuthorizing: isCloudAuthorizing
+  const { status: cloudStatus } = useCherryAccountSession(isCnEdition)
   cloudStatusRef.current = cloudStatus
   const eligibleProviderIds = new Set(
     enabledProviders.filter((provider) => !isManagedCherryProviderId(provider.id)).map((provider) => provider.id)
@@ -307,80 +301,10 @@ export default function OnboardingPage() {
     [persistPrivacyChoice]
   )
 
-  useEffect(
-    () => () => {
-      if (loginLoadingTimeoutRef.current !== null) {
-        window.clearTimeout(loginLoadingTimeoutRef.current)
-      }
-    },
-    []
-  )
-
-  const handleCherryInLogin = useCallback(async () => {
-    const attemptId = ++loginAttemptRef.current
-
-    if (loginLoadingTimeoutRef.current !== null) {
-      window.clearTimeout(loginLoadingTimeoutRef.current)
-    }
-
-    setIsLoggingIn(true)
-    loginLoadingTimeoutRef.current = window.setTimeout(() => {
-      if (loginAttemptRef.current === attemptId) {
-        loginLoadingTimeoutRef.current = null
-        setIsLoggingIn(false)
-      }
-    }, CHERRYIN_LOGIN_LOADING_TIMEOUT_MS)
-
-    try {
-      await oauthWithCherryIn(
-        async (apiKeys) => {
-          if (loginAttemptRef.current !== attemptId) return
-
-          const keys = apiKeys
-            .split(',')
-            .map((key) => key.trim())
-            .filter(Boolean)
-
-          await Promise.all(keys.map((key) => addApiKey(key, 'OAuth')))
-          await updateProvider({ isEnabled: true })
-        },
-        { oauthServer: CHERRYIN_OAUTH_SERVER }
-      )
-      if (loginAttemptRef.current !== attemptId) return
-
-      const cherryInModels = await syncProviderModels()
-      if (loginAttemptRef.current !== attemptId) return
-
-      if (!cherryInModels.some((model) => model.isEnabled)) {
-        toast.error(t('onboarding.provider_setup.missing_model'))
-        setStep('provider')
-        return
-      }
-      toast.success(t('onboarding.toast.connected'))
-      setStep('select-model')
-    } catch {
-      if (loginAttemptRef.current === attemptId) {
-        toast.error(t('settings.provider.oauth.error'))
-      }
-    } finally {
-      if (loginAttemptRef.current === attemptId) {
-        if (loginLoadingTimeoutRef.current !== null) {
-          window.clearTimeout(loginLoadingTimeoutRef.current)
-          loginLoadingTimeoutRef.current = null
-        }
-        setIsLoggingIn(false)
-      }
-    }
-  }, [addApiKey, syncProviderModels, t, updateProvider])
-
-  const isPrimaryLoginPending = isCnEdition ? isCloudAuthorizing : isLoggingIn
-  const primaryLoginLabel = isCnEdition
-    ? cloudStatus?.phase === 'signed-in'
-      ? t('settings.provider.cherry_cloud.logged_in')
-      : isCloudAuthorizing
-        ? t('settings.provider.cherry_cloud.signing_in')
-        : t('onboarding.welcome.login_cherry_cloud')
-    : t('onboarding.welcome.login_cherryin')
+  // 「登录樱桃云 / 樱桃 In」主按钮暂时隐藏：目标属 Cherry 厂商云。
+  // 恢复方法：从 git 历史找回 handleCherryInLogin useCallback、isPrimaryLoginPending /
+  // primaryLoginLabel 派生变量、loginAttemptRef / loginLoadingTimeoutRef / isLoggingIn、
+  // useCherryAccountSession 登录相关解构成员、以及 welcome 步骤里的按钮 JSX。
 
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-sidebar text-foreground">
@@ -430,6 +354,9 @@ export default function OnboardingPage() {
                     <p className="m-0 text-muted-foreground text-sm">{t('onboarding.welcome.subtitle')}</p>
                   </div>
                   <div className="mt-8 flex w-full flex-col gap-3">
+                    {/* 「登录樱桃云」按钮暂时隐藏：连接 cloud.cherryai.com(.cn) 走 Cherry 厂商云，Mea Cowork 暂不开放登录。
+                        恢复时取消下方 JSX 注释，并把 primaryLoginLabel / isPrimaryLoginPending 表达式里 isCnEdition 分支恢复。 */}
+                    {/*
                     <Button
                       type="button"
                       size="lg"
@@ -453,6 +380,8 @@ export default function OnboardingPage() {
                         {t('common.cancel')}
                       </Button>
                     ) : null}
+                    */}
+                    {/* CherryIn 登录暂时保留走「其他服务商」入口，迁移 Cherry Cloud 登录为该入口之一。 */}
                     <Button
                       type="button"
                       variant="outline"

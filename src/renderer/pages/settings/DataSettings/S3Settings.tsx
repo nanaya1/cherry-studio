@@ -1,6 +1,5 @@
-import { Button, InfoTooltip, Input, RowFlex, Switch, WarnTooltip } from '@cherrystudio/ui'
+import { Button, Input, RowFlex, Switch, WarnTooltip } from '@cherrystudio/ui'
 import { usePreference } from '@data/hooks/usePreference'
-import AppLogo from '@renderer/assets/images/logo.png'
 import { S3BackupManager } from '@renderer/components/S3BackupManager'
 import { S3BackupModal, useS3BackupModal } from '@renderer/components/S3Modals'
 import Selector from '@renderer/components/Selector'
@@ -13,7 +12,6 @@ import {
   SettingTitle
 } from '@renderer/components/SettingsPrimitives'
 import { useBackupSyncState } from '@renderer/hooks/useBackupSyncState'
-import { useMiniAppPopup } from '@renderer/hooks/useMiniAppPopup'
 import { useTheme } from '@renderer/hooks/useTheme'
 import dayjs from 'dayjs'
 import { FolderOpen, RefreshCw, Save } from 'lucide-react'
@@ -40,8 +38,6 @@ const S3Settings: FC = () => {
   const { theme } = useTheme()
   const { t } = useTranslation()
 
-  const { openSmartMiniApp } = useMiniAppPopup()
-
   const s3Sync = useBackupSyncState('s3')
 
   const onSyncIntervalChange = async (value: number) => {
@@ -53,14 +49,15 @@ const S3Settings: FC = () => {
     }
   }
 
-  const handleTitleClick = () => {
-    openSmartMiniApp({
-      appId: 's3-help',
-      name: 'S3 Compatible Storage Help',
-      url: 'https://docs.cherry-ai.com/data-settings/s3-compatible',
-      logo: AppLogo
-    })
-  }
+  // 「点击问号 → 文档」入口暂时隐藏：跳转到 docs.cherry-ai.com，属 Cherry 厂商云。
+  // const handleTitleClick = () => {
+  //   openSmartMiniApp({
+  //     appId: 's3-help',
+  //     name: 'S3 Compatible Storage Help',
+  //     url: 'https://docs.cherry-ai.com/data-settings/s3-compatible',
+  //     logo: AppLogo
+  //   })
+  // }
 
   const onMaxBackupsChange = (value: number) => {
     void setS3MaxBackups(value)
@@ -106,12 +103,15 @@ const S3Settings: FC = () => {
     <SettingGroup theme={theme}>
       <SettingTitle style={{ justifyContent: 'flex-start', gap: 10 }}>
         {t('settings.data.s3.title.label')}
+        {/* 「点击问号 → docs.cherry-ai.com」入口暂时隐藏。 */}
+        {/*
         <InfoTooltip
           content={t('settings.data.s3.title.tooltip')}
           placement="right"
           iconProps={{ className: 'text-color-text-2 cursor-pointer' }}
           onClick={handleTitleClick}
         />
+        */}
       </SettingTitle>
       <SettingHelpText>{t('settings.data.s3.title.help')}</SettingHelpText>
       <SettingDivider />

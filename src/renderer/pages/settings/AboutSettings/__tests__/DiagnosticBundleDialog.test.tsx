@@ -168,7 +168,7 @@ describe('DiagnosticBundleDialog', () => {
     )
   })
 
-  it('reveals the saved file without embedding its local path in the support email', async () => {
+  it('reveals the saved bundle in the local folder', async () => {
     const user = userEvent.setup()
     renderDialog()
     await screen.findByText('settings.about.diagnostics.sources.logs.title')
@@ -182,21 +182,8 @@ describe('DiagnosticBundleDialog', () => {
         path: '/tmp/cherry-studio-diagnostics.zip'
       })
     )
-
-    await user.click(screen.getByRole('button', { name: 'settings.about.diagnostics.actions.contact' }))
-    await waitFor(() => {
-      const mailCall = mocks.request.mock.calls.find(([route]) => route === 'system.shell.open_website')
-      expect(mailCall).toBeDefined()
-      const mailto = String(mailCall?.[1])
-      expect(mailto).toMatch(/^mailto:support@cherry-ai\.com\?/)
-      expect(mailto).not.toContain('+')
-      expect(mailto).toContain('%20')
-      expect(decodeURIComponent(mailto)).toContain('Diagnostics bundle-123')
-      expect(decodeURIComponent(mailto)).toContain('bundle-123')
-      expect(decodeURIComponent(mailto)).toContain('cherry-studio-diagnostics.zip')
-      expect(decodeURIComponent(mailto)).not.toContain('/Users/')
-      expect(decodeURIComponent(mailto)).not.toContain('/tmp/')
-    })
+    // 联系支持入口已隐藏（见实现中的注释），不再发起 mailto 请求。
+    expect(mocks.request).not.toHaveBeenCalledWith('system.shell.open_website', expect.stringMatching(/^mailto:/))
   })
 
   it('allows a system-only export without consent when no optional sources are available', async () => {
@@ -291,7 +278,8 @@ describe('DiagnosticBundleDialog', () => {
     ).toBeDisabled()
   })
 
-  it('falls back to copying the support email when no mail client can be opened', async () => {
+  it('does not offer the copy-email fallback because the support entry is hidden', async () => {
+    // 「联系 Cherry 支持」与「复制邮箱」兜底入口均已随 Cherry 厂商云隐藏而移除。
     const user = userEvent.setup()
     const clipboardWrite = vi.spyOn(navigator.clipboard, 'writeText')
     mocks.request.mockImplementation(async (route: string) => {
@@ -305,12 +293,10 @@ describe('DiagnosticBundleDialog', () => {
     await confirmSensitiveExport(user)
     await screen.findByText('settings.about.diagnostics.success.title')
 
-    await user.click(screen.getByRole('button', { name: 'settings.about.diagnostics.actions.contact' }))
-    const copyButton = await screen.findByRole('button', { name: 'settings.about.diagnostics.actions.copy_email' })
-    expect(mocks.toastError).toHaveBeenCalledWith('settings.about.diagnostics.errors.email_client_failed')
-
-    await user.click(copyButton)
-    await waitFor(() => expect(clipboardWrite).toHaveBeenCalledWith('support@cherry-ai.com'))
-    expect(mocks.toastSuccess).toHaveBeenCalledWith('settings.about.diagnostics.success.email_copied')
+    expect(screen.queryByRole('button', { name: 'settings.about.diagnostics.actions.contact' })).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'settings.about.diagnostics.actions.copy_email' })
+    ).not.toBeInTheDocument()
+    expect(clipboardWrite).not.toHaveBeenCalledWith('support@cherry-ai.com')
   })
 })

@@ -1,4 +1,4 @@
-import { Button, InfoTooltip, Input, RowFlex } from '@cherrystudio/ui'
+import { Button, Input, RowFlex } from '@cherrystudio/ui'
 import { usePreference } from '@data/hooks/usePreference'
 import { loggerService } from '@logger'
 import {
@@ -9,7 +9,6 @@ import {
   SettingTitle
 } from '@renderer/components/SettingsPrimitives'
 import { useTheme } from '@renderer/hooks/useTheme'
-import { ipcApi } from '@renderer/ipc'
 import { toast } from '@renderer/services/toast'
 import type { FC } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -41,9 +40,10 @@ const SiyuanSettings: FC = () => {
     void setSiyuanRootPath(e.target.value)
   }
 
-  const handleSiyuanHelpClick = () => {
-    void ipcApi.request('system.shell.open_website', 'https://docs.cherry-ai.com/advanced-basic/siyuan')
-  }
+  // 「点击问号 → 文档」入口暂时隐藏：跳转到 docs.cherry-ai.com，属 Cherry 厂商云。
+  // const handleSiyuanHelpClick = () => {
+  //   void ipcApi.request('system.shell.open_website', 'https://docs.cherry-ai.com/advanced-basic/siyuan')
+  // }
 
   const handleCheckConnection = async () => {
     try {
@@ -97,12 +97,15 @@ const SiyuanSettings: FC = () => {
       <SettingRow>
         <SettingRowTitle style={{ display: 'flex', alignItems: 'center' }}>
           <span>{t('settings.data.siyuan.token.label')}</span>
+          {/* 「点击问号 → docs.cherry-ai.com」入口暂时隐藏。 */}
+          {/*
           <InfoTooltip
             content={t('settings.data.siyuan.token.help')}
             placement="left"
             iconProps={{ className: 'text-text-2 cursor-pointer ml-1' }}
             onClick={handleSiyuanHelpClick}
           />
+          */}
         </SettingRowTitle>
         <RowFlex className="w-78.75 min-w-0 max-w-full items-center gap-1.25">
           <RowFlex className="w-full min-w-0 items-center gap-1.25">

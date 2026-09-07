@@ -3,9 +3,9 @@ import { LATEST_PRIVACY_POLICY_VERSION } from '@shared/utils/constants'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 /**
- * Exercises the data-collection preference and reconcile-after-settle convergence. The reachable
- * race lives in async deactivation: a re-enable that lands while client.destroy() is pending must
- * still be honoured.
+ * Mea Cowork 关闭 Cherry 厂商遥测（analytics.cherry-ai.com）后的契约：
+ * 无论隐私偏好如何变化，服务都不得激活、不得创建 AnalyticsClient、不得上报数据。
+ * 原「按偏好激活 / 收敛 / token 上报」行为见 git 历史。
  */
 
 const { mockTrackAppLaunch, mockTrackTokenUsage, mockTrackAppUpdate, mockDestroy, MockAnalyticsClient, captured } =
@@ -56,8 +56,6 @@ vi.mock('@application', async () => {
 
 import { AnalyticsService } from '../AnalyticsService'
 
-let destroyResolvers: Array<() => void>
-
 function changePreference(key: string, value: boolean | string): void {
   captured.preferenceValues[key] = value
   captured.prefHandlers[key]?.(value as never)
@@ -70,19 +68,15 @@ beforeEach(() => {
   }
   captured.preferenceValues['app.privacy.data_collection.enabled'] = true
   captured.preferenceValues['app.privacy.policy_version'] = LATEST_PRIVACY_POLICY_VERSION
-  destroyResolvers = []
   mockTrackAppLaunch.mockReset()
   mockTrackTokenUsage.mockReset()
   mockTrackAppUpdate.mockReset()
   mockDestroy.mockReset()
   MockAnalyticsClient.mockClear()
-  mockDestroy.mockImplementation(() => new Promise<void>((resolve) => destroyResolvers.push(resolve)))
 })
 
 describe('AnalyticsService data collection preference', () => {
-  it('does not activate before the latest privacy policy is accepted', async () => {
-    captured.preferenceValues['app.privacy.policy_version'] = ''
-
+  it('stays inactive even after the latest privacy policy is accepted', async () => {
     const service = new AnalyticsService()
     await service._doInit()
 
@@ -94,82 +88,48 @@ describe('AnalyticsService data collection preference', () => {
     expect(mockTrackAppUpdate).not.toHaveBeenCalled()
   })
 
-  it('activates after the latest privacy policy is accepted', async () => {
+  it('stays inactive when the policy version changes at runtime', async () => {
     captured.preferenceValues['app.privacy.policy_version'] = ''
     const service = new AnalyticsService()
     await service._doInit()
 
     changePreference('app.privacy.policy_version', LATEST_PRIVACY_POLICY_VERSION)
 
-    await vi.waitFor(() => expect(service.isActivated).toBe(true))
-    expect(MockAnalyticsClient).toHaveBeenCalledTimes(1)
-    expect(mockTrackAppLaunch).toHaveBeenCalledTimes(1)
-  })
-
-  it('deactivates when data collection is disabled', async () => {
-    const service = new AnalyticsService()
-    await service._doInit()
-    await vi.waitFor(() => expect(service.isActivated).toBe(true))
-
-    changePreference('app.privacy.data_collection.enabled', false)
-    await vi.waitFor(() => expect(mockDestroy).toHaveBeenCalledTimes(1))
-
-    service.trackTokenUsage({
-      provider: 'test-provider',
-      model: 'test-model',
-      input_tokens: 1,
-      output_tokens: 1
-    })
     await service.trackAppUpdate()
-    expect(mockTrackTokenUsage).not.toHaveBeenCalled()
-    expect(mockTrackAppUpdate).not.toHaveBeenCalled()
-
-    destroyResolvers[0]()
-    await vi.waitFor(() => expect(service.isActivated).toBe(false))
-    expect(MockAnalyticsClient).toHaveBeenCalledTimes(1)
+    expect(service.isActivated).toBe(false)
+    expect(MockAnalyticsClient).not.toHaveBeenCalled()
+    expect(mockTrackAppLaunch).not.toHaveBeenCalled()
   })
 
-  it('re-activates when re-enabled during an in-flight async deactivate', async () => {
+  it('does not activate when data collection is toggled', async () => {
     const service = new AnalyticsService()
     await service._doInit()
-    expect(captured.prefHandlers['app.privacy.data_collection.enabled']).toBeDefined()
-    expect(captured.prefHandlers['app.privacy.policy_version']).toBeDefined()
-    await vi.waitFor(() => expect(service.isActivated).toBe(true))
-    expect(MockAnalyticsClient).toHaveBeenCalledTimes(1)
 
     changePreference('app.privacy.data_collection.enabled', false)
-    await vi.waitFor(() => expect(mockDestroy).toHaveBeenCalledTimes(1))
-    expect(service.isActivated).toBe(true)
-
     changePreference('app.privacy.data_collection.enabled', true)
-    destroyResolvers[0]()
 
-    await vi.waitFor(() => expect(MockAnalyticsClient).toHaveBeenCalledTimes(2))
-    expect(service.isActivated).toBe(true)
+    expect(service.isActivated).toBe(false)
+    expect(MockAnalyticsClient).not.toHaveBeenCalled()
+    expect(mockDestroy).not.toHaveBeenCalled()
   })
 
-  it('tracks app launch only once when analytics is re-enabled', async () => {
+  it('never re-activates across preference churn', async () => {
     const service = new AnalyticsService()
     await service._doInit()
-    await vi.waitFor(() => expect(service.isActivated).toBe(true))
-    expect(mockTrackAppLaunch).toHaveBeenCalledTimes(1)
 
     changePreference('app.privacy.data_collection.enabled', false)
-    await vi.waitFor(() => expect(mockDestroy).toHaveBeenCalledTimes(1))
-    destroyResolvers[0]()
-    await vi.waitFor(() => expect(service.isActivated).toBe(false))
-
     changePreference('app.privacy.data_collection.enabled', true)
-    await vi.waitFor(() => expect(MockAnalyticsClient).toHaveBeenCalledTimes(2))
-    expect(mockTrackAppLaunch).toHaveBeenCalledTimes(1)
+    changePreference('app.privacy.data_collection.enabled', false)
+
+    expect(service.isActivated).toBe(false)
+    expect(MockAnalyticsClient).not.toHaveBeenCalled()
   })
 })
 
 describe('AnalyticsService token usage', () => {
-  it('forwards reportable usage without changing its source', async () => {
+  it('does not forward usage while telemetry is disabled', async () => {
     const service = new AnalyticsService()
     await service._doInit()
-    await vi.waitFor(() => expect(service.isActivated).toBe(true))
 
     service.trackTokenUsage({
       provider: 'test-provider',
@@ -179,19 +139,12 @@ describe('AnalyticsService token usage', () => {
       source: 'agent'
     })
 
-    expect(mockTrackTokenUsage).toHaveBeenCalledWith({
-      provider: 'test-provider',
-      model: 'test-model',
-      input_tokens: 3,
-      output_tokens: 5,
-      source: 'agent'
-    })
+    expect(mockTrackTokenUsage).not.toHaveBeenCalled()
   })
 
-  it('forwards embedding usage when output tokens are zero', async () => {
+  it('does not forward embedding usage', async () => {
     const service = new AnalyticsService()
     await service._doInit()
-    await vi.waitFor(() => expect(service.isActivated).toBe(true))
 
     service.trackTokenUsage({
       provider: 'test-provider',
@@ -201,19 +154,12 @@ describe('AnalyticsService token usage', () => {
       source: 'chat'
     })
 
-    expect(mockTrackTokenUsage).toHaveBeenCalledWith({
-      provider: 'test-provider',
-      model: 'test-embedding-model',
-      input_tokens: 42,
-      output_tokens: 0,
-      source: 'chat'
-    })
+    expect(mockTrackTokenUsage).not.toHaveBeenCalled()
   })
 
   it('does not forward usage when all token counts are zero', async () => {
     const service = new AnalyticsService()
     await service._doInit()
-    await vi.waitFor(() => expect(service.isActivated).toBe(true))
 
     service.trackTokenUsage({
       provider: 'test-provider',

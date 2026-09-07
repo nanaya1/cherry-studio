@@ -1,4 +1,4 @@
-import { Button, error as showErrorToast, success as showSuccessToast } from '@cherrystudio/ui'
+import { Button, error as showErrorToast } from '@cherrystudio/ui'
 import { loggerService } from '@renderer/services/LoggerService'
 import { Download } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
@@ -6,7 +6,6 @@ import { useTranslation } from 'react-i18next'
 
 import { useMigrationActions } from '../hooks/useMigrationProgress'
 
-const SUPPORT_EMAIL = 'support@cherry-ai.com'
 const logger = loggerService.withContext('MigrationDiagnosticPanel')
 
 type DiagnosticStatus = 'idle' | 'saving' | 'saved_with_logs' | 'saved_without_logs' | 'failed'
@@ -81,14 +80,16 @@ export function MigrationDiagnosticPanel({
     }
   }
 
-  const handleContact = async () => {
-    try {
-      await navigator.clipboard.writeText(SUPPORT_EMAIL)
-      showSuccessToast(t('migration.diagnostics.copy_success'))
-    } catch {
-      showErrorToast(t('migration.diagnostics.copy_failed'))
-    }
-  }
+  // 「复制 support@cherry-ai.com」入口暂时隐藏：Mea Cowork 暂不开放经此邮箱联系 Cherry 支持。
+  // 恢复时取消下方注释。
+  // const handleContact = async () => {
+  //   try {
+  //     await navigator.clipboard.writeText(SUPPORT_EMAIL)
+  //     showSuccessToast(t('migration.diagnostics.copy_success'))
+  //   } catch {
+  //     showErrorToast(t('migration.diagnostics.copy_failed'))
+  //   }
+  // }
 
   return (
     <section
@@ -116,9 +117,10 @@ export function MigrationDiagnosticPanel({
             onClick={() => void handleReveal()}>
             {t('migration.diagnostics.open_folder')}
           </Button>
-          <Button type="button" variant="default" className="flex-1" onClick={() => void handleContact()}>
-            {t('migration.diagnostics.contact')}
-          </Button>
+          {/* 「复制 support@cherry-ai.com」入口暂时隐藏：Mea Cowork 暂不开放经此邮箱联系 Cherry 支持。恢复时把 null 换成 ( */}
+          {/* <Button type="button" variant="default" className="flex-1" onClick={() => void handleContact()}> */}
+          {/*   {t('migration.diagnostics.contact')} */}
+          {/* </Button> */}
         </div>
       ) : (
         <Button

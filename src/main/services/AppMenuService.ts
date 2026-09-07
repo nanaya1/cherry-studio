@@ -146,20 +146,21 @@ export class AppMenuService extends BaseService {
         type: 'submenu',
         label: t('appMenu.help'),
         children: [
-          {
-            type: 'custom',
-            label: t('appMenu.website'),
-            click: () => {
-              void shell.openExternal('https://cherry-ai.com')
-            }
-          },
-          {
-            type: 'custom',
-            label: t('appMenu.documentation'),
-            click: () => {
-              void shell.openExternal('https://cherry-ai.com/docs')
-            }
-          },
+          // 「官方网站 / 文档」入口暂时隐藏：跳转目标属 Cherry 厂商云。恢复时取消下方注释。
+          // {
+          //   type: 'custom',
+          //   label: t('appMenu.website'),
+          //   click: () => {
+          //     void shell.openExternal('https://cherry-ai.com')
+          //   }
+          // },
+          // {
+          //   type: 'custom',
+          //   label: t('appMenu.documentation'),
+          //   click: () => {
+          //     void shell.openExternal('https://cherry-ai.com/docs')
+          //   }
+          // },
           {
             type: 'custom',
             label: t('appMenu.feedback'),

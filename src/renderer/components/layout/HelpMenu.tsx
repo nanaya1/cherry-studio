@@ -1,11 +1,9 @@
 import { Button, MenuItem, MenuList, Popover, PopoverContent, PopoverTrigger, Tooltip } from '@cherrystudio/ui'
 import { loggerService } from '@logger'
-import AppLogo from '@renderer/assets/images/logo.png'
 import type { SidebarVisibleLayout } from '@renderer/components/Sidebar'
-import { useMiniAppPopup } from '@renderer/hooks/useMiniAppPopup'
 import { useOpenReleaseNotes } from '@renderer/hooks/useOpenReleaseNotes'
 import { ipcApi } from '@renderer/ipc'
-import { BookOpen, CircleQuestionMark, Github, MessageSquareText, Sparkles } from 'lucide-react'
+import { CircleQuestionMark, Github, MessageSquareText, Sparkles } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -21,8 +19,7 @@ export function HelpMenu({
   onFeedbackClick: () => void
   onOverlayOpenChange?: (open: boolean) => void
 }) {
-  const { t, i18n } = useTranslation()
-  const { openSmartMiniApp } = useMiniAppPopup()
+  const { t } = useTranslation()
   const openReleaseNotes = useOpenReleaseNotes()
   const [menuOpen, setMenuOpen] = useState(false)
   const firstActionRef = useRef<HTMLButtonElement>(null)
@@ -57,19 +54,21 @@ export function HelpMenu({
     }, 0)
   }
 
-  const openDocs = () => {
-    const language = i18n.resolvedLanguage ?? i18n.language
-    const url =
-      language === 'zh-CN' || language === 'zh-TW'
-        ? 'https://docs.cherryai.com.cn/'
-        : 'https://docs.cherryai.com.cn/docs/en-us'
-    openSmartMiniApp({
-      appId: 'cherrystudio-guide',
-      name: t('help.guide'),
-      url,
-      logo: AppLogo
-    })
-  }
+  // 「使用指南」入口暂时隐藏，跳转目标属 Cherry 厂商云。
+  // 恢复时取消下方函数注释并保留 MenuItem（见 git 历史）。
+  // const openDocs = () => {
+  //   const language = i18n.resolvedLanguage ?? i18n.language
+  //   const url =
+  //     language === 'zh-CN' || language === 'zh-TW'
+  //       ? 'https://docs.cherryai.com.cn/'
+  //       : 'https://docs.cherryai.com.cn/docs/en-us'
+  //   openSmartMiniApp({
+  //     appId: 'cherrystudio-guide',
+  //     name: t('help.guide'),
+  //     url,
+  //     logo: AppLogo
+  //   })
+  // }
 
   const openGitHubRepository = () => {
     return ipcApi.request('system.shell.open_website', GITHUB_REPOSITORY_URL)
@@ -120,11 +119,12 @@ export function HelpMenu({
             <MenuItem
               size="sm"
               className="h-8"
-              ref={firstActionRef}
               icon={<Sparkles size={16} />}
               label={t('help.whats_new')}
               onClick={() => runAfterClose(openReleaseNotes)}
             />
+            {/* 「使用指南」入口暂时隐藏：跳转到 docs.cherryai.com.cn，属 Cherry 厂商云。 */}
+            {/*
             <MenuItem
               size="sm"
               className="h-8"
@@ -132,6 +132,7 @@ export function HelpMenu({
               label={t('help.guide')}
               onClick={() => runAfterClose(openDocs)}
             />
+            */}
             <MenuItem
               size="sm"
               className="h-8"

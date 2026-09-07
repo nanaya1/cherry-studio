@@ -166,9 +166,11 @@ rpm:
   # Workaround for electron build issue on rpm package:
   # https://github.com/electron/forge/issues/3594
   fpm: ["--rpm-rpmbuild-define=_build_id_links none"]
-publish:
-  provider: generic
-  url: https://releases.cherry-ai.com
+# Mea Cowork：默认烧进安装包的 release 来源暂时清空，避免 electron-updater 解析到 Cherry 厂商云源。
+# 恢复时取消下方注释即可。
+# publish:
+#   provider: generic
+#   url: https://releases.cherry-ai.com
 electronDownload:
   mirror: https://npmmirror.com/mirrors/electron/
 beforePack: scripts/before-pack.js

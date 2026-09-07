@@ -81,14 +81,15 @@ describe('HelpMenu', () => {
     }
   })
 
-  it('shows four compact 32px actions and opens release notes', async () => {
+  it('shows compact 32px actions and opens release notes', async () => {
     render(<HelpMenu layout="icon" onFeedbackClick={mocks.openFeedback} />)
     const user = await openMenu()
 
-    const actions = ['help.whats_new', 'help.guide', 'help.feedback', 'help.star'].map((name) =>
+    // 「使用指南」（docs.cherryai.com.cn，Cherry 厂商云）入口暂时隐藏，剩 3 个动作。
+    const actions = ['help.whats_new', 'help.feedback', 'help.star'].map((name) =>
       screen.getByRole('button', { name })
     )
-    expect(actions).toHaveLength(4)
+    expect(actions).toHaveLength(3)
     actions.forEach((action) => expect(action).toHaveClass('h-8'))
 
     await user.click(actions[0])
@@ -111,22 +112,14 @@ describe('HelpMenu', () => {
     ['zh-CN', 'https://docs.cherryai.com.cn/'],
     ['zh-TW', 'https://docs.cherryai.com.cn/'],
     ['en-US', 'https://docs.cherryai.com.cn/docs/en-us']
-  ])('opens the language-specific guide in app content for %s', async (language, expectedUrl) => {
+  ])('hides the Cherry-vendor guide entry for %s', async (language) => {
+    // 「使用指南」跳转 docs.cherryai.com.cn（Cherry 厂商云），入口已隐藏；原 URL 断言见 git 历史。
     mocks.language = language
     render(<HelpMenu layout="full" onFeedbackClick={mocks.openFeedback} />)
-    const user = await openMenu()
+    await openMenu()
 
-    await user.click(screen.getByRole('button', { name: 'help.guide' }))
-
-    await waitFor(() =>
-      expect(mocks.openSmartMiniApp).toHaveBeenCalledWith(
-        expect.objectContaining({
-          appId: 'cherrystudio-guide',
-          name: 'help.guide',
-          url: expectedUrl
-        })
-      )
-    )
+    expect(screen.queryByRole('button', { name: 'help.guide' })).not.toBeInTheDocument()
+    expect(mocks.openSmartMiniApp).not.toHaveBeenCalled()
   })
 
   it('requests the feedback dialog from the secondary menu action', async () => {

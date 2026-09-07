@@ -256,30 +256,18 @@ describe('AppUpdaterService', () => {
       expect(autoUpdater.checkForUpdates).toHaveBeenCalledOnce()
     })
 
-    it('fetches and validates release history through the managed release service', async () => {
+    it('does not fetch release history from the Cherry vendor feed', async () => {
       vi.mocked(regionService.getCountry).mockResolvedValue('CN')
-      const releaseNotes = '<!--LANG:en-->Remote notes<!--LANG:zh-CN-->远端说明<!--LANG:END-->'
-      const history = [{ releaseNotes, version: '1.1.0' }]
+      const history = [{ releaseNotes: 'Remote notes', version: '1.1.0' }]
       netFetchMock.mockResolvedValue(new Response(JSON.stringify(history)))
 
-      await expect(appUpdater.getReleaseHistory()).resolves.toEqual(history)
-
-      expect(net.fetch).toHaveBeenCalledWith(
-        'https://releases.cherry-ai.com/release-history.json',
-        expect.objectContaining({
-          headers: expect.objectContaining({
-            'App-Version': 'v1.0.0',
-            'X-Edition': 'global',
-            'X-Region': 'cn'
-          }),
-          redirect: 'follow',
-          signal: expect.any(AbortSignal)
-        })
-      )
-      expect(releaseNotesUpdaterInstances).toHaveLength(1)
+      // Cherry 厂商云 release-history 源（releases.cherry-ai.com）已停用，任何情况下都不出网。
+      await expect(appUpdater.getReleaseHistory()).resolves.toBeNull()
+      expect(net.fetch).not.toHaveBeenCalled()
+      expect(releaseNotesUpdaterInstances).toHaveLength(0)
     })
 
-    it('uses the China edition channel for the latest release notes request', async () => {
+    it('does not create a release notes updater for the latest notes request', async () => {
       appEditionState.current = 'cn'
       MockMainPreferenceServiceUtils.setPreferenceValue('app.dist.test_plan.enabled', true)
       MockMainPreferenceServiceUtils.setPreferenceValue('app.dist.test_plan.channel', UpgradeChannel.RC)
@@ -287,38 +275,32 @@ describe('AppUpdaterService', () => {
 
       await appUpdater.getLatestReleaseNotes()
 
-      expect(releaseNotesUpdaterInstances).toHaveLength(1)
-      expect(releaseNotesUpdaterInstances[0]).toMatchObject({
-        channel: 'rc-cn',
-        requestHeaders: expect.objectContaining({ 'X-Edition': 'cn' })
-      })
+      expect(await appUpdater.getLatestReleaseNotes()).toBeNull()
+      expect(releaseNotesUpdaterInstances).toHaveLength(0)
+      expect(releaseNotesCheckMock).not.toHaveBeenCalled()
     })
 
-    it('merges a newer channel release with stable release history', async () => {
-      const stableNotes = '<!--LANG:en-->Stable notes<!--LANG:zh-CN-->稳定版说明<!--LANG:END-->'
-      const rcNotes = '<!--LANG:en-->RC notes<!--LANG:zh-CN-->测试版说明<!--LANG:END-->'
+    it('returns null instead of merging channel releases with release history', async () => {
+      const stableNotes = 'Stable notes'
       netFetchMock.mockResolvedValue(new Response(JSON.stringify([{ releaseNotes: stableNotes, version: '1.1.0' }])))
       releaseNotesCheckMock.mockResolvedValue({
         isUpdateAvailable: true,
-        updateInfo: { releaseNotes: rcNotes, version: '1.2.0-rc.1' }
+        updateInfo: { releaseNotes: 'RC notes', version: '1.2.0-rc.1' }
       })
 
-      await expect(appUpdater.getReleaseHistory()).resolves.toEqual([
-        { releaseNotes: rcNotes, version: '1.2.0-rc.1' },
-        { releaseNotes: stableNotes, version: '1.1.0' }
-      ])
+      await expect(appUpdater.getReleaseHistory()).resolves.toBeNull()
+      expect(net.fetch).not.toHaveBeenCalled()
     })
 
-    it('keeps newer updater notes when release history is unavailable', async () => {
+    it('returns null when the managed feed is unreachable', async () => {
       netFetchMock.mockRejectedValue(new Error('offline'))
       releaseNotesCheckMock.mockResolvedValue({
         isUpdateAvailable: true,
         updateInfo: { releaseNotes: 'New release notes', version: '1.1.0' }
       })
 
-      await expect(appUpdater.getReleaseHistory()).resolves.toEqual([
-        { releaseNotes: 'New release notes', version: '1.1.0' }
-      ])
+      await expect(appUpdater.getReleaseHistory()).resolves.toBeNull()
+      expect(releaseNotesCheckMock).not.toHaveBeenCalled()
     })
 
     it('falls back to bundled history when the managed response is invalid', async () => {

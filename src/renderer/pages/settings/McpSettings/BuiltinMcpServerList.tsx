@@ -1,4 +1,4 @@
-import { Badge, Button, Popover, PopoverContent, PopoverTrigger, Tabs, TabsList, TabsTrigger } from '@cherrystudio/ui'
+import { Button, Popover, PopoverContent, PopoverTrigger, Tabs, TabsList, TabsTrigger } from '@cherrystudio/ui'
 import CollapsibleSearchBar from '@renderer/components/CollapsibleSearchBar'
 import { SettingTitle } from '@renderer/components/SettingsPrimitives'
 import { useMcpServers } from '@renderer/hooks/useMcpServer'
@@ -7,7 +7,7 @@ import { toast } from '@renderer/services/toast'
 import { cn } from '@renderer/utils/style'
 import { PRESET_MCP_SERVERS } from '@shared/data/presets/mcpServers'
 import { BuiltinMcpServerNames } from '@shared/utils/mcp'
-import { Check, ExternalLink, Plus } from 'lucide-react'
+import { Check, Plus } from 'lucide-react'
 import type { FC, ReactNode } from 'react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -98,19 +98,8 @@ const BuiltinMcpServerList: FC<BuiltinMcpServerListProps> = ({ variant = 'settin
               <div className="min-w-0 flex-1">
                 <div className="mb-1 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 overflow-hidden">
                   <span className="truncate text-[14px] leading-5">{server.name}</span>
-                  {server?.shouldConfig && (
-                    <a
-                      href="https://docs.cherry-ai.com/advanced-basic/mcp/buildin"
-                      target="_blank"
-                      rel="noopener noreferrer">
-                      <Badge
-                        variant="outline"
-                        className="h-5 gap-1 rounded-md border-error-border bg-error-subtle px-1.5 text-[11px] text-error-subtle-foreground leading-none">
-                        {t('settings.mcp.requiresConfig')}
-                        <ExternalLink size={10} />
-                      </Badge>
-                    </a>
-                  )}
+                  {/* 「需配置」徽章暂时隐藏：target="_blank" 跳转到 docs.cherry-ai.com，属 Cherry 厂商云。恢复时把 null 换成下面的 <a>。 */}
+                  {null}
                 </div>
                 <Popover>
                   <PopoverTrigger asChild>

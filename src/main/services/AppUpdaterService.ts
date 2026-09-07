@@ -14,22 +14,22 @@ import {
   hasMultiLanguageReleaseNotes,
   localizeReleaseNotes,
   mergeReleaseHistory,
-  parseReleaseHistory,
   type ReleaseNotesEntry
 } from '@shared/utils/releaseNotes'
 import type { ProgressInfo, UpdateInfo } from 'builder-util-runtime'
 import { CancellationToken } from 'builder-util-runtime'
-import { app, net } from 'electron'
+import { app } from 'electron'
 import type { Logger, NsisUpdater, UpdateCheckResult } from 'electron-updater'
-import { AppUpdater, autoUpdater } from 'electron-updater'
+import { autoUpdater } from 'electron-updater'
 
 const logger = loggerService.withContext('AppUpdaterService')
 
 type ReleaseRegion = 'cn' | 'global'
 
-const RELEASE_HISTORY_URL = 'https://releases.cherry-ai.com/release-history.json'
-const RELEASE_HISTORY_TIMEOUT_MS = 10_000
-const RELEASE_HISTORY_MAX_BYTES = 1024 * 1024
+// Cherry 厂商云 release-history 源暂时停用，恢复时取消下方注释。
+// const RELEASE_HISTORY_URL = 'https://releases.cherry-ai.com/release-history.json'
+// const RELEASE_HISTORY_TIMEOUT_MS = 10_000
+// const RELEASE_HISTORY_MAX_BYTES = 1024 * 1024
 
 function getEditionUpdateChannel(channel: UpgradeChannel, edition: AppEdition): string {
   return edition === 'cn' ? `${channel}-cn` : channel
@@ -48,19 +48,8 @@ function getUpdateHeaders({ region, edition }: { region: ReleaseRegion; edition:
   }
 }
 
-class ReleaseNotesUpdater extends AppUpdater {
-  constructor() {
-    super(undefined)
-  }
-
-  protected doDownloadUpdate(): Promise<string[]> {
-    return Promise.reject(new Error('Release-notes updater cannot download updates'))
-  }
-
-  quitAndInstall(): never {
-    throw new Error('Release-notes updater cannot install updates')
-  }
-}
+// ReleaseNotesUpdater（仅用于拉取 latest release notes）随 Cherry 厂商云 release-history 源停用暂时移除，
+// 恢复时从 git 历史找回（含 AppUpdater import 与 parseReleaseHistory / net）。
 
 // Auto update-check scheduling. The cadence lives in the main process (this
 // service), not the renderer, so it survives window close and runs exactly
@@ -215,6 +204,10 @@ export class AppUpdaterService extends BaseService {
   }
 
   private async fetchReleaseHistory(): Promise<ReleaseNotesEntry[] | null> {
+    // Mea Cowork：暂时不向 releases.cherry-ai.com 拉取 release-history。恢复时取消下方注释并保留 URL。
+    logger.info('Release history fetch is disabled (Cherry vendor cloud is hidden)')
+    return null
+    /*
     try {
       const { updateHeaders } = await this.getUpdateRequest()
       const response = await net.fetch(RELEASE_HISTORY_URL, {
@@ -242,9 +235,14 @@ export class AppUpdaterService extends BaseService {
       logger.warn('Failed to fetch release history', error as Error)
       return null
     }
+    */
   }
 
   public async getLatestReleaseNotes(): Promise<ReleaseNotesEntry | null> {
+    // Mea Cowork：暂时不向 Cherry 厂商源请求最新发布说明（避免触发 electron-updater 拉 latest.yml）。
+    logger.info('Latest release notes fetch is disabled (Cherry vendor cloud is hidden)')
+    return null
+    /*
     try {
       const { updateChannel, updateHeaders } = await this.getUpdateRequest()
       const updater = new ReleaseNotesUpdater()
@@ -271,6 +269,7 @@ export class AppUpdaterService extends BaseService {
       logger.warn('Failed to fetch latest release notes', error as Error)
       return null
     }
+    */
   }
 
   public async getReleaseHistory(): Promise<ReleaseNotesEntry[] | null> {
