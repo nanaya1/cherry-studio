@@ -74,7 +74,7 @@ export default function NewTaskPage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const routeSearch = useSearch({ strict: false }) as { mode?: TaskMode; skillId?: string }
-  const routeMode = routeSearch.mode ?? (routeSearch.skillId ? 'agent' : 'chat')
+  const routeMode = routeSearch.mode ?? 'agent'
   const [taskMode, setTaskMode] = useState<TaskMode>(routeMode)
   const [consumedSkillId, setConsumedSkillId] = useState<string | null>(null)
   const currentTabId = useCurrentTabId()
