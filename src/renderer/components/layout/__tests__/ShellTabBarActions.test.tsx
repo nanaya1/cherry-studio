@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest'
 
+import type * as PlatformModule from '@renderer/utils/platform'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { cacheState, mocks, updateState } = vi.hoisted(() => ({
+const { cacheState, mocks, updateState, platformState } = vi.hoisted(() => ({
   cacheState: { sidebarWidth: 50 },
   mocks: {
     openSettingsTab: vi.fn(),
@@ -16,7 +17,8 @@ const { cacheState, mocks, updateState } = vi.hoisted(() => ({
     available: false,
     downloaded: false,
     info: null as { version: string } | null
-  }
+  },
+  platformState: { isMac: false }
 }))
 
 vi.mock('@logger', () => ({
@@ -50,6 +52,16 @@ vi.mock('@cherrystudio/ui', () => ({
 vi.mock('@data/hooks/useCache', () => ({
   usePersistCache: () => [cacheState.sidebarWidth, vi.fn()]
 }))
+
+vi.mock('@renderer/utils/platform', async (importOriginal) => {
+  const actual = await importOriginal<typeof PlatformModule>()
+  return {
+    ...actual,
+    get isMac() {
+      return platformState.isMac
+    }
+  }
+})
 
 vi.mock('@renderer/hooks/useAppUpdateState', () => ({
   useAppUpdateState: () => ({ appUpdateState: updateState, updateAppUpdateState: vi.fn() })
@@ -125,6 +137,7 @@ afterEach(() => {
   updateState.available = false
   updateState.downloaded = false
   updateState.info = null
+  platformState.isMac = false
 })
 
 describe('ShellTabBarActions', () => {
@@ -148,6 +161,24 @@ describe('ShellTabBarActions', () => {
       'dark:text-muted-foreground'
     )
     expect(mocks.showSearchPopup).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([
+    [210, false],
+    [50, true],
+    [0, false]
+  ])('shows the tab bar search on macOS only for the icon sidebar (%spx)', (sidebarWidth, shouldShow) => {
+    platformState.isMac = true
+    cacheState.sidebarWidth = sidebarWidth
+
+    render(<ShellTabBarActions />)
+
+    const search = screen.queryByRole('button', { name: 'Open global search' })
+    if (shouldShow) {
+      expect(search).toBeInTheDocument()
+    } else {
+      expect(search).not.toBeInTheDocument()
+    }
   })
 
   it.each([

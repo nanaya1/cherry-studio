@@ -6,6 +6,7 @@ import GlobalSearchPopup from '@renderer/components/GlobalSearch/GlobalSearchPop
 import { getSidebarLayout, type SidebarVisibleLayout } from '@renderer/components/Sidebar'
 import { useAppUpdateState } from '@renderer/hooks/useAppUpdateState'
 import { openSettingsTab } from '@renderer/services/mainWindowNavigation'
+import { isMac } from '@renderer/utils/platform'
 import { CircleArrowUp, PanelLeftClose, PanelLeftOpen, Search, Settings } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
@@ -71,7 +72,11 @@ export function ShellTabBarActions() {
   const { t } = useTranslation()
   const [sidebarWidth] = usePersistCache('ui.sidebar.width')
   const { appUpdateState } = useAppUpdateState()
-  const isSidebarHidden = getSidebarLayout(sidebarWidth) === 'hidden'
+  const sidebarLayout = getSidebarLayout(sidebarWidth)
+  const isSidebarHidden = sidebarLayout === 'hidden'
+  // On macOS the search lives in the sidebar title bar (full) and the collapsed
+  // corner (hidden); only the icon rail borrows the tab bar's search slot.
+  const showSearch = !isMac || sidebarLayout === 'icon'
   const hasUpdateAction = Boolean(appUpdateState.available && appUpdateState.downloaded && appUpdateState.info)
 
   const handleSettingsClick = () => {
@@ -120,7 +125,7 @@ export function ShellTabBarActions() {
             </Button>
           </CommandTooltip>
         )}
-        <GlobalSearchButton />
+        {showSearch && <GlobalSearchButton />}
       </div>
 
       <WindowControls />

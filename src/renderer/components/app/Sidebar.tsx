@@ -19,6 +19,7 @@ import { openSettingsTab } from '@renderer/services/mainWindowNavigation'
 import { toast } from '@renderer/services/toast'
 import { formatErrorMessageWithPrefix } from '@renderer/utils/error'
 import { MINI_APP_ROUTE_PREFIX, miniAppIdFromTabUrl } from '@renderer/utils/miniAppKeepAlive'
+import { isMac } from '@renderer/utils/platform'
 import { getDefaultRouteTitle } from '@renderer/utils/routeTitle'
 import type { SidebarAppId } from '@renderer/utils/sidebar'
 import {
@@ -29,6 +30,7 @@ import {
   resolveSidebarActiveItem,
   tabBelongsToApp
 } from '@renderer/utils/sidebar'
+import { cn } from '@renderer/utils/style'
 import { APP_NAME } from '@shared/utils/constants'
 import { CalendarClock, Plus, Puzzle, Shapes, Wrench } from 'lucide-react'
 import type { Ref } from 'react'
@@ -141,7 +143,6 @@ export default function Sidebar({
   // Floating sidebar (hover reveal when hidden)
   const [hoverVisible, setHoverVisible] = useState(false)
   const layout = getSidebarLayout(activeSidebarWidth)
-  const showTitleBarActions = showTitleBar && layout === 'full'
 
   // Menu items
   const pathname = activeTab?.url || '/'
@@ -535,13 +536,16 @@ export default function Sidebar({
         <div
           data-testid="sidebar-title-bar-actions"
           style={{ width: getSidebarDisplayWidth(activeSidebarWidth) }}
-          className="flex h-11 shrink-0 items-center justify-end gap-1 pr-2 [-webkit-app-region:drag]">
-          {showTitleBarActions ? (
+          className={cn(
+            'flex h-11 shrink-0 items-center gap-1 [-webkit-app-region:drag]',
+            layout === 'full' ? 'justify-end pr-2' : 'justify-center'
+          )}>
+          {(layout === 'full' || !isMac) && (
             <div className="flex items-center gap-1 [-webkit-app-region:no-drag]">
               <SidebarCollapseButton onClick={() => setSidebarWidth(0)} />
-              <GlobalSearchButton />
+              {isMac && layout === 'full' && <GlobalSearchButton />}
             </div>
-          ) : null}
+          )}
         </div>
       ) : null}
       <div className="min-h-0 flex-1">

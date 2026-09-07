@@ -304,7 +304,7 @@ export const AppShell = () => {
               'flex h-screen w-screen flex-row overflow-hidden text-foreground',
               isMacTransparentWindow ? 'bg-transparent' : 'bg-sidebar'
             )}>
-            {!hideSidebar && <Sidebar />}
+            {!hideSidebar && <Sidebar showTitleBar />}
             {contentColumn}
           </div>
         </QuickPanelProvider>

@@ -79,7 +79,8 @@ const mocks = vi.hoisted(() => ({
   allApps: [] as FakeMiniApp[],
   visibleMiniApps: null as FakeMiniApp[] | null,
   pinnedMiniApps: [] as FakeMiniApp[],
-  sidebarProps: [] as unknown[]
+  sidebarProps: [] as unknown[],
+  platformState: { isMac: false }
 }))
 
 vi.mock('@data/hooks/useCache', () => ({
@@ -93,6 +94,16 @@ vi.mock('@data/hooks/useCache', () => ({
     ]
   }
 }))
+
+vi.mock('@renderer/utils/platform', async (importOriginal) => {
+  const actual = await importOriginal<typeof RendererConstantModule>()
+  return {
+    ...actual,
+    get isMac() {
+      return mocks.platformState.isMac
+    }
+  }
+})
 
 vi.mock('@data/hooks/usePreference', () => ({
   usePreference: (key: string) => {
@@ -408,6 +419,7 @@ afterEach(() => {
   mocks.pinnedMiniApps = []
   mocks.sidebarWidth = 50
   mocks.sidebarProps = []
+  mocks.platformState.isMac = false
   vi.useRealTimers()
   document.documentElement.style.removeProperty('--sidebar-width')
 })
@@ -546,6 +558,7 @@ describe('app Sidebar', () => {
   })
 
   it('moves search and sidebar collapse actions into the macOS sidebar title bar', () => {
+    mocks.platformState.isMac = true
     mocks.sidebarWidth = 210
     render(<Sidebar showTitleBar />)
 
@@ -556,6 +569,33 @@ describe('app Sidebar', () => {
 
     expect(mocks.showSearchPopup).toHaveBeenCalledOnce()
     expect(mocks.setSidebarWidth).toHaveBeenCalledWith(0)
+  })
+
+  it('keeps only the collapse button in the non-macOS full sidebar title bar', () => {
+    mocks.sidebarWidth = 210
+    render(<Sidebar showTitleBar />)
+
+    expect(screen.getByRole('button', { name: 'Collapse' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Open global search' })).not.toBeInTheDocument()
+  })
+
+  it('centers the collapse button in the non-macOS icon sidebar title bar', () => {
+    mocks.sidebarWidth = 50
+    render(<Sidebar showTitleBar />)
+
+    expect(screen.getByTestId('sidebar-title-bar-actions')).toHaveClass('justify-center')
+    expect(screen.getByRole('button', { name: 'Collapse' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Open global search' })).not.toBeInTheDocument()
+  })
+
+  it('leaves the macOS icon sidebar title bar empty under the traffic lights', () => {
+    mocks.platformState.isMac = true
+    mocks.sidebarWidth = 50
+    render(<Sidebar showTitleBar />)
+
+    expect(screen.getByTestId('sidebar-title-bar-actions')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Collapse' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Open global search' })).not.toBeInTheDocument()
   })
 
   it('opens settings in a main-window tab from the sidebar footer action', () => {
