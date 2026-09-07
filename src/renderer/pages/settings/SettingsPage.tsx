@@ -1,6 +1,5 @@
 import { MenuDivider, MenuItem, MenuList, PageHeader } from '@cherrystudio/ui'
 import { GatewayIcon } from '@renderer/components/icons/GatewayIcon'
-import { McpLogo } from '@renderer/components/icons/SvgIcon'
 import Scrollbar from '@renderer/components/Scrollbar'
 import useMacTransparentWindow from '@renderer/hooks/useMacTransparentWindow'
 import {
@@ -32,7 +31,6 @@ import {
   Settings2,
   Terminal,
   TextCursorInput,
-  ToolCase,
   Zap
 } from 'lucide-react'
 import type { CSSProperties, FC } from 'react'
@@ -97,22 +95,6 @@ const SettingsPage: FC = () => {
               />
               <MenuDivider className={settingsSubmenuDividerClassName} />
               <div className={settingsSubmenuSectionTitleClassName}>{t('settings.menuGroups.capabilities')}</div>
-              <MenuItem
-                className={settingsSubmenuItemClassName}
-                labelClassName={settingsSubmenuItemLabelClassName}
-                icon={<McpLogo width={16} height={16} className="text-foreground" />}
-                label={t('agent.settings.toolsMcp.mcp.tab')}
-                active={isActive('/settings/mcp')}
-                onClick={() => go('/settings/mcp')}
-              />
-              <MenuItem
-                className={settingsSubmenuItemClassName}
-                labelClassName={settingsSubmenuItemLabelClassName}
-                icon={<ToolCase />}
-                label={t('settings.skills.title')}
-                active={isActive('/settings/skills')}
-                onClick={() => go('/settings/skills')}
-              />
               <MenuItem
                 className={settingsSubmenuItemClassName}
                 labelClassName={settingsSubmenuItemLabelClassName}
