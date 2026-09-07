@@ -362,8 +362,8 @@ export interface PreferenceSchemas {
     'data.integration.yuque.url': string
     // redux/settings/apiServer.apiKey
     'feature.api_gateway.api_key': string | null
-    // redux/settings/apiServer.enabled
-    'feature.api_gateway.enabled': boolean
+    // null = automatic, true = always on, false = explicitly disabled
+    'feature.api_gateway.enabled': boolean | null
     // redux/settings/apiServer.host
     'feature.api_gateway.host': string
     // redux/settings/apiServer.port
@@ -571,7 +571,7 @@ export const DefaultPreferences: PreferenceSchemas = {
     'agent.session.display_mode': 'workdir',
     'agent.session.position': 'left',
     'app.developer_mode.enabled': false,
-    'app.dist.auto_update.enabled': true,
+    'app.dist.auto_update.enabled': false,
     'app.dist.test_plan.channel': PreferenceTypes.UpgradeChannel.LATEST,
     'app.dist.test_plan.enabled': false,
     'app.fetch.allow_private_network': true,
@@ -729,7 +729,7 @@ export const DefaultPreferences: PreferenceSchemas = {
     'data.integration.yuque.token': '',
     'data.integration.yuque.url': '',
     'feature.api_gateway.api_key': null,
-    'feature.api_gateway.enabled': false,
+    'feature.api_gateway.enabled': null,
     'feature.api_gateway.host': '127.0.0.1',
     'feature.api_gateway.port': 23333,
     'feature.binary.install_settings': {
