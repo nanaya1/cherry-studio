@@ -61,7 +61,7 @@ export const AgentConfigurationSchema = z
     scheduler_last_run: z.string().optional(),
     heartbeat_enabled: z.boolean().optional(),
     heartbeat_interval: z.number().optional(),
-    builtin_role: z.enum([BUILTIN_AGENT_ROLE.ASSISTANT]).optional(),
+    builtin_role: z.enum([BUILTIN_AGENT_ROLE.ASSISTANT, BUILTIN_AGENT_ROLE.SUPPORT]).optional(),
     /** Read-only exclusions maintained by Main when the default agent's MCP selection changes. */
     excluded_mcp_server_ids: z.array(z.string()).optional()
   })
