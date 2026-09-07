@@ -66,21 +66,11 @@ describe('DefaultAssistantSeeder', () => {
     expect(model?.id).toBe(XUELANG_DEFAULT_UNIQUE_MODEL_ID)
     expect(preference?.value).toBe(XUELANG_DEFAULT_UNIQUE_MODEL_ID)
 
-    const [topic] = await dbh.db.select().from(topicTable).limit(1)
-    expect(topic?.id).toMatch(UUID_V4_PATTERN)
-    expect(topic).toMatchObject({
-      name: '',
-      assistantId: assistant.id,
-      activeNodeId: null
-    })
+    const topics = await dbh.db.select().from(topicTable)
+    expect(topics).toHaveLength(0)
 
-    const messages = await dbh.db.select().from(messageTable).where(eq(messageTable.topicId, topic.id))
-    expect(messages).toHaveLength(1)
-    expect(messages[0]).toMatchObject({
-      parentId: null,
-      role: 'root',
-      data: { parts: [] }
-    })
+    const messages = await dbh.db.select().from(messageTable)
+    expect(messages).toHaveLength(0)
   })
 
   it('seeds the default assistant as MEA Cowork for Chinese app locales', async () => {

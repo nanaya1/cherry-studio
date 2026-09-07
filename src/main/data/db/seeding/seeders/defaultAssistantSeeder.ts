@@ -1,7 +1,6 @@
 import { assistantTable } from '@data/db/schemas/assistant'
 import { messageTable } from '@data/db/schemas/message'
 import { topicTable } from '@data/db/schemas/topic'
-import { messageService } from '@data/services/MessageService'
 import { insertWithOrderKey } from '@data/services/utils/orderKey'
 import { DEFAULT_ASSISTANT_SEED, getDefaultAssistantNameForLocale } from '@shared/data/presets/defaultAssistant'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
@@ -19,7 +18,6 @@ export class DefaultAssistantSeeder implements ISeeder {
   constructor() {
     this.version = hashObject({
       assistant: DEFAULT_ASSISTANT_SEED,
-      topic: { name: '', empty: true },
       freshGuard: 'no active assistant/topic/message',
       localizedName: 'MEA Cowork for every locale',
       stockRename: 'unique stock name=>MEA Cowork+builtinRole'
@@ -41,19 +39,10 @@ export class DefaultAssistantSeeder implements ISeeder {
         settings: { ...DEFAULT_ASSISTANT_SEED.settings }
       } satisfies Omit<typeof assistantTable.$inferInsert, 'orderKey'>
 
-      const assistant = insertWithOrderKey(tx, assistantTable, insertValues, {
+      insertWithOrderKey(tx, assistantTable, insertValues, {
         pkColumn: assistantTable.id,
         scope: isNull(assistantTable.deletedAt)
       })
-
-      const topic = insertWithOrderKey(
-        tx,
-        topicTable,
-        { name: '', assistantId: assistant.id as string, activeNodeId: null },
-        { pkColumn: topicTable.id, scope: isNull(topicTable.deletedAt) }
-      )
-
-      messageService.createRootMessageTx(tx, topic.id as string)
     })
   }
 
