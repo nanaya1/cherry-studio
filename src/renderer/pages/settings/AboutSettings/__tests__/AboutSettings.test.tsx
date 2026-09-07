@@ -5,11 +5,16 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
+  popupInfo: vi.fn(),
   request: vi.fn()
 }))
 
 vi.mock('@renderer/ipc', () => ({
   ipcApi: { request: mocks.request }
+}))
+
+vi.mock('@renderer/services/popup', () => ({
+  popup: { info: mocks.popupInfo }
 }))
 
 vi.mock('@renderer/hooks/useAppUpdateState', () => ({
@@ -65,23 +70,47 @@ vi.mock('@renderer/components/icons/LogoAvatar', () => ({
 
 import { AboutSettings } from '..'
 
-const REPOSITORY_URL = 'https://github.com/CherryHQ/cherry-studio'
+const HIDDEN_TITLES = [
+  'docs.title',
+  'settings.about.website.title',
+  'settings.about.feedback.title',
+  'settings.about.enterprise.title',
+  'settings.about.contact.title',
+  'settings.about.careers.title',
+  'settings.about.releases.title',
+  'settings.general.auto_check_update.title',
+  'settings.general.test_plan.title'
+] as const
+
+const REPOSITORY_BUTTON_LABEL = 'settings.about.repository'
 
 async function renderAboutSettings() {
   render(<AboutSettings />)
   await waitFor(() => expect(mocks.request).toHaveBeenCalledWith('app.get_info'))
 }
 
-describe('AboutSettings diagnostics entry', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-    mocks.request.mockImplementation(async (route: string) => {
-      if (route === 'app.get_info') return { isPortable: false, version: '2.0.0' }
-      return undefined
-    })
+beforeEach(() => {
+  vi.clearAllMocks()
+  mocks.request.mockImplementation(async (route: string) => {
+    if (route === 'app.get_info') return { isPortable: false, version: '2.0.0' }
+    return undefined
   })
+})
 
-  it('places diagnostics next to the debug panel and opens the export dialog', async () => {
+describe('AboutSettings update check', () => {
+  it('shows the coming soon dialog without requesting an update', async () => {
+    const user = userEvent.setup()
+    await renderAboutSettings()
+
+    await user.click(screen.getByRole('button', { name: 'settings.about.checkUpdate.label' }))
+
+    expect(mocks.popupInfo).toHaveBeenCalledWith({ title: '敬请期待', icon: null })
+    expect(mocks.request).not.toHaveBeenCalledWith('app.updater.check_for_update')
+  })
+})
+
+describe('AboutSettings diagnostics and debug entries', () => {
+  it('keeps diagnostics and debug with debug listed after diagnostics', async () => {
     const user = userEvent.setup()
     await renderAboutSettings()
 
@@ -95,28 +124,17 @@ describe('AboutSettings diagnostics entry', () => {
   })
 })
 
-describe('AboutSettings repository controls accessibility', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-    mocks.request.mockImplementation(async (route: string) => {
-      if (route === 'app.get_info') return { isPortable: false, version: '2.0.0' }
-      return undefined
-    })
-  })
-
-  it('names the GitHub icon and app logo by their repository destination and hides decorative media', async () => {
-    const user = userEvent.setup()
+describe('AboutSettings hidden entries', () => {
+  it('hides the GitHub repo controls and all other entry rows that were removed from the page', async () => {
     await renderAboutSettings()
 
-    const repositoryButtons = screen.getAllByRole('button', { name: 'settings.about.repository' })
-    expect(repositoryButtons).toHaveLength(2)
-    expect(screen.queryByRole('button', { name: 'Cherry Studio' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('img')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: REPOSITORY_BUTTON_LABEL })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'settings.about.releases.title' })).not.toBeInTheDocument()
+    // The version badge should be a non-interactive badge now, not a button.
+    expect(screen.queryByRole('button', { name: /v2\.0\.0/ })).not.toBeInTheDocument()
 
-    await user.click(repositoryButtons[0])
-    expect(mocks.request).toHaveBeenCalledWith('system.shell.open_website', REPOSITORY_URL)
-
-    await user.click(repositoryButtons[1])
-    expect(mocks.request).toHaveBeenCalledWith('system.shell.open_website', REPOSITORY_URL)
+    for (const title of HIDDEN_TITLES) {
+      expect(screen.queryByText(title)).not.toBeInTheDocument()
+    }
   })
 })
