@@ -1,5 +1,5 @@
 import { loggerService } from '@logger'
-import { CHERRYAI_DEFAULT_UNIQUE_MODEL_ID } from '@shared/data/presets/cherryai'
+import { XUELANG_DEFAULT_UNIQUE_MODEL_ID } from '@shared/data/presets/xuelang'
 
 import { legacyChatModelToUniqueId, type LegacyModelRef } from '../transformers/ModelTransformers'
 import type { TransformResult } from './ComplexPreferenceMappings'
@@ -26,13 +26,13 @@ function resolveChatModelPreference(preferenceKey: string, value: unknown): stri
   }
 
   if (value != null) {
-    logger.warn('Legacy model preference could not be parsed; falling back to managed CherryAI default model', {
+    logger.warn('Legacy model preference could not be parsed; falling back to managed Xuelang default model', {
       preferenceKey,
       ...describeLegacyModelRef(value)
     })
   }
 
-  return CHERRYAI_DEFAULT_UNIQUE_MODEL_ID
+  return XUELANG_DEFAULT_UNIQUE_MODEL_ID
 }
 
 /**
