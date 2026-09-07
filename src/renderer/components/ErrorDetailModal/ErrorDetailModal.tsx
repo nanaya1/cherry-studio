@@ -590,6 +590,9 @@ const ErrorDetailContent: React.FC<ErrorDetailContentProps> = ({
     )
   }, [diagnosticReport, diagnosisContext, error, onOpenDiagnosticReport, t])
 
+  // 按钮入口暂时下线（见下方注释块），保留回调以便恢复时直接取消注释
+  void openDiagnosticReport
+
   const renderErrorDetails = (error?: SerializedError) => {
     if (!error) {
       return <div>{t('error.unknown')}</div>

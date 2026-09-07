@@ -8,6 +8,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import type * as PlatformModule from '@renderer/utils/platform'
 import type * as SidebarModule from '../../Sidebar'
 import type { ResolvedSidebarEntry, SidebarProps } from '../../Sidebar'
 
@@ -96,7 +97,7 @@ vi.mock('@data/hooks/useCache', () => ({
 }))
 
 vi.mock('@renderer/utils/platform', async (importOriginal) => {
-  const actual = await importOriginal<typeof RendererConstantModule>()
+  const actual = await importOriginal<typeof PlatformModule>()
   return {
     ...actual,
     get isMac() {
