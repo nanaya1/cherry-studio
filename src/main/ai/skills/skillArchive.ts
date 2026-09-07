@@ -17,7 +17,7 @@ const logger = loggerService.withContext('SkillArchive')
 
 /** The install-wide ceilings — a Git tree is checked against these before checkout, too. */
 export const MAX_EXTRACTED_SIZE = 100 * 1024 * 1024 // 100MB
-export const MAX_FILES_COUNT = 2000
+export const MAX_FILES_COUNT = 3000
 
 export async function validateZipFile(zipFilePath: string): Promise<void> {
   const stats = await fs.promises.stat(zipFilePath)
