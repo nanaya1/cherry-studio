@@ -272,6 +272,28 @@ describe('SkillService', () => {
       expect(result.find((s) => s.id === SKILL_ID_BUILTIN)?.isEnabled).toBe(false)
     })
 
+    it('a default-disabled builtin projects isEnabled false without a join row and true once the user opts in', async () => {
+      const skillService = new SkillService()
+      await seedAgent()
+      await dbh.db.insert(agentGlobalSkillTable).values({
+        id: SKILL_ID_BUILTIN,
+        name: 'mechtool',
+        description: 'Mechanical design corpus',
+        folderName: 'mechtool-mechanical-design',
+        source: 'builtin',
+        contentHash: 'mmm111',
+        isEnabled: true
+      })
+
+      const defaultList = await skillService.list({ agentId: AGENT_ID })
+      expect(defaultList.find((s) => s.id === SKILL_ID_BUILTIN)?.isEnabled).toBe(false)
+
+      skillService.toggle({ agentId: AGENT_ID, skillId: SKILL_ID_BUILTIN, isEnabled: true })
+
+      const optedIn = await skillService.list({ agentId: AGENT_ID })
+      expect(optedIn.find((s) => s.id === SKILL_ID_BUILTIN)?.isEnabled).toBe(true)
+    })
+
     it('filters by search against name or description in the database', async () => {
       const skillService = new SkillService()
       await seedSkills()
@@ -1557,6 +1579,29 @@ describe('SkillService', () => {
 
       const rows = await dbh.db.select().from(agentSkillTable).where(eq(agentSkillTable.skillId, SKILL_ID_BUILTIN))
       expect(rows).toEqual([expect.objectContaining({ agentId: AGENT_ID, isEnabled: false })])
+    })
+
+    it('skips the enable fan-out for a default-disabled builtin on first install', async () => {
+      const skillService = new SkillService()
+      const FOLDER = 'mechtool-mechanical-design'
+      const skillSource = path.join(path.dirname(sourcePath), FOLDER)
+      await fs.promises.mkdir(skillSource, { recursive: true })
+      await fs.promises.writeFile(path.join(skillSource, 'SKILL.md'), '# Builtin')
+      await seedAgent()
+
+      await skillService.syncBuiltinSkill(FOLDER, skillSource, APP_VERSION)
+
+      const joinRows = await dbh.db.select().from(agentSkillTable).where(eq(agentSkillTable.agentId, AGENT_ID))
+      expect(joinRows).toHaveLength(0)
+      const [row] = await dbh.db
+        .select()
+        .from(agentGlobalSkillTable)
+        .where(eq(agentGlobalSkillTable.folderName, FOLDER))
+      expect(row?.isEnabled).toBe(false)
+      // The agent-scoped catalog excludes globally disabled skills entirely;
+      // the global settings catalog (no agentId) still lists it for opt-in.
+      const globalList = await skillService.list()
+      expect(globalList.find((s) => s.folderName === FOLDER)?.isGlobalEnabled).toBe(false)
     })
 
     it('updates metadata when skill exists and files were updated', async () => {

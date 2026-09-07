@@ -34,6 +34,7 @@ import type {
 } from '@shared/types/skill'
 import { Mutex } from 'async-mutex'
 
+import { isBuiltinSkillDisabledByDefault } from './builtinSkillDefaults'
 import { extractZip, resolveSkillDirectory, validateZipFile } from './skillArchive'
 import { SkillInstaller } from './SkillInstaller'
 import { buildFileTree, createTempDir, normalizeFolderKey, safeRemoveDirectory, sanitizeFolderName } from './skillPaths'
@@ -634,7 +635,16 @@ export class SkillService {
     }
 
     if (isBuiltin) {
-      this.enableForAllAgents(inserted.id)
+      // Default-disabled builtins (see builtinSkillDefaults) ship without an
+      // enable fan-out: list() projects them as disabled until the user opts in.
+      if (isBuiltinSkillDisabledByDefault(destFolderName)) {
+        logger.info('Skipped enable fan-out for default-disabled builtin skill', {
+          skillId: inserted.id,
+          folderName: destFolderName
+        })
+      } else {
+        this.enableForAllAgents(inserted.id)
+      }
     } else if (defaultAgentId) {
       logger.info('Bound new skill to default agent', { skillId: inserted.id, agentId: defaultAgentId })
     } else {
@@ -1165,10 +1175,13 @@ export class SkillService {
    * - If files were updated, refreshes the metadata row in-place.
    * - If the row is missing (first install), inserts it.
    *
-   * Per-agent enablement needs no fan-out here: `AgentGlobalSkillService.list()`
-   * defaults a builtin skill to enabled for every agent until a user explicitly
-   * toggles it off, so a fresh `agent_global_skill` row is enabled everywhere —
-   * for existing and future agents alike — without any `agent_skill` rows.
+   * Per-agent enablement needs no fan-out here for regular builtins:
+   * `AgentGlobalSkillService.list()` defaults a builtin skill to enabled for
+   * every agent until a user explicitly toggles it off, so a fresh
+   * `agent_global_skill` row is enabled everywhere — for existing and future
+   * agents alike — without any `agent_skill` rows. Builtins listed in
+   * `builtinSkillDefaults` are inserted with the global gate off instead and
+   * project as disabled until the user opts in.
    */
   async syncBuiltinSkill(
     folderName: string,
@@ -1256,7 +1269,10 @@ export class SkillService {
           version: metadata.version ?? null,
           iconFileName,
           tags,
-          contentHash: sourceHash
+          contentHash: sourceHash,
+          // Default-disabled builtins (see builtinSkillDefaults) ship with the
+          // global gate off; list() already projects them as agent-disabled.
+          isEnabled: !isBuiltinSkillDisabledByDefault(destFolderName)
         })
       }
 

@@ -1,0 +1,83 @@
+# 固定弦齿厚计算公式 | 齿厚的测量与计算 | 齿轮传动
+
+<!-- src: https://www.mechtool.cn/geardrive/geardrive_fixedchordtooththicknesscalculationformula.html -->
+
+[
+]()
+## 固定弦齿厚计算公式
+-
+-
+[外啮合标准齿轮]()
+-
+-
+[外啮合变位齿轮]()
+-
+-
+[内啮合变位(标准)齿轮]()
+## 外啮合标准齿轮
+#### 直齿轮固定弦齿厚
+| 请输入已知参数值:
+m=
+α=
+| 计算说明:
+sc=(πmcos²α)/2
+| 计算结果:
+s=
+| 计算结果
+#### 直齿轮固定弦齿高
+| 请输入已知参数值:
+m=
+α=
+| 计算说明:
+hc=m[1-πsin(2α)/8]
+| 计算结果:
+hc=
+| 计算结果
+#### 斜齿轮固定弦齿厚
+| 请输入已知参数值:
+mn=
+αn=
+| 计算说明:
+scn=(πmncos²αn)/2
+| 计算结果:
+scn=
+| 计算结果
+#### 斜齿轮固定弦齿高
+| 请输入已知参数值:
+mn=
+αn=
+| 计算说明:
+hcn=mn[1-πsin(2αn)/8]
+| 计算结果:
+hcn=
+| 计算结果
+[
+]()
+[ 上一项 ]()
+[ 下一项 ]()
+#### 评论
+[
+![elesa-ganter伊莉莎冈特全系列机械标准配件](https://www.mechdoc.cn/images/ads/elesa-ganterweb.jpg)
+]()
+[
+![m-haste艾姆华世特传动设备](https://www.mechdoc.cn/images/ads/m-hasteweb.png)
+]()
+[
+![关注'机械小哥'微信公众号](https://www.mechdoc.cn/images/index_adwechatmechboy560x172.png)
+]()
+[
+Mechtool
+]()
+Mechtool 简体中文版提供的内容仅用于提供参考,不保证内容的正确性.通过使用本站内容随之而来的风险与本站无关.版权所有,保留一切权利.
+-
+- [使用条款]()
+-
+- [隐私条款]()
+-
+- [问题反馈]()
+-
+- [侵权删除]()
+-
+- [帮助本站]()
+-
+- 访问量：0

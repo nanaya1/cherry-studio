@@ -1,0 +1,49 @@
+# 液压系统及元件基本术语（摘自GB/T 17446-2024） | 液压系统及元件基本术语（摘自GB/T 17446-2024） | 液压传动
+
+<!-- src: https://www.mechtool.cn/hydraulic/hydraulic_commonhydraulicterms.html -->
+
+[
+]()
+## 液压系统及元件基本术语（摘自GB/T 17446-2024）
+#### 常用的关键形容词和名词术语
+![图](https://www.mechdoc.cn/images/hydraulic/lg-img/mechanicaldesignbook/7-5-66-2.png)
+#### 通用术语
+![图](https://www.mechdoc.cn/images/hydraulic/lg-img/mechanicaldesignbook/7-5-67.png)
+![图](https://www.mechdoc.cn/images/hydraulic/lg-img/mechanicaldesignbook/7-5-68-1.png)
+#### 流量与流动特性术语
+![图](https://www.mechdoc.cn/images/hydraulic/lg-img/mechanicaldesignbook/7-5-68-2.png)
+![图](https://www.mechdoc.cn/images/hydraulic/lg-img/mechanicaldesignbook/7-5-69-1.png)
+#### 压力术语
+![图](https://www.mechdoc.cn/images/hydraulic/lg-img/mechanicaldesignbook/7-5-69-2.png)
+![图](https://www.mechdoc.cn/images/hydraulic/lg-img/mechanicaldesignbook/7-5-70.png)
+![图](https://www.mechdoc.cn/images/hydraulic/lg-img/mechanicaldesignbook/7-5-71-1.png)
+[
+]()
+[ 上一项 ]()
+[ 下一项 ]()
+#### 评论
+[
+![elesa-ganter伊莉莎冈特全系列机械标准配件](https://www.mechdoc.cn/images/ads/elesa-ganterweb.jpg)
+]()
+[
+![m-haste艾姆华世特传动设备](https://www.mechdoc.cn/images/ads/m-hasteweb.png)
+]()
+[
+![关注'机械小哥'微信公众号](https://www.mechdoc.cn/images/index_adwechatmechboy560x172.png)
+]()
+[
+Mechtool
+]()
+Mechtool 简体中文版提供的内容仅用于提供参考,不保证内容的正确性.通过使用本站内容随之而来的风险与本站无关.版权所有,保留一切权利.
+-
+- [使用条款]()
+-
+- [隐私条款]()
+-
+- [问题反馈]()
+-
+- [侵权删除]()
+-
+- [帮助本站]()
+-
+- 访问量：0

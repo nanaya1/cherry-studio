@@ -1,0 +1,41 @@
+# 基础标准与通用方法 | 仪器、仪表综合 | 机械标准
+
+<!-- src: https://www.mechtool.cn/mechstds/mechstds_instrumentsandmeters.html -->
+
+[
+]()
+## 基础标准与通用方法
+#### 基础标准与通用方法
+| 标准号
+| 标准名称
+| [HG/T 20507-2014]() | 自动化仪表选型设计规范
+[
+]()
+[ 上一项 ]()
+[ 下一项 ]()
+#### 评论
+[
+![elesa-ganter伊莉莎冈特全系列机械标准配件](https://www.mechdoc.cn/images/ads/elesa-ganterweb.jpg)
+]()
+[
+![m-haste艾姆华世特传动设备](https://www.mechdoc.cn/images/ads/m-hasteweb.png)
+]()
+[
+![关注'机械小哥'微信公众号](https://www.mechdoc.cn/images/index_adwechatmechboy560x172.png)
+]()
+[
+Mechtool
+]()
+Mechtool 简体中文版提供的内容仅用于提供参考,不保证内容的正确性.通过使用本站内容随之而来的风险与本站无关.版权所有,保留一切权利.
+-
+- [使用条款]()
+-
+- [隐私条款]()
+-
+- [问题反馈]()
+-
+- [侵权删除]()
+-
+- [帮助本站]()
+-
+- 访问量：0
