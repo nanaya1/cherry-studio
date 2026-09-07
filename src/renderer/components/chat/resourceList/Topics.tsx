@@ -1049,7 +1049,9 @@ export function Topics({
               <AssistantGroupMoreMenu
                 assistantId={assistantGroupId}
                 assistantIconType={assistantIconType}
-                deleteAssistantDisabled={deletingAssistantId !== null}
+                deleteAssistantDisabled={
+                  deletingAssistantId !== null || assistantById.get(assistantGroupId)?.builtinRole === 'assistant'
+                }
                 deleteTopicsDisabled={
                   deletingAssistantGroupId !== null ||
                   deletingAssistantId !== null ||
@@ -1117,7 +1119,8 @@ export function Topics({
       const actionContext: AssistantGroupActionContext = {
         assistantId,
         assistantIconType,
-        deleteAssistantDisabled: deletingAssistantId !== null,
+        deleteAssistantDisabled:
+          deletingAssistantId !== null || assistantById.get(assistantId)?.builtinRole === 'assistant',
         deleteTopicsDisabled:
           deletingAssistantGroupId !== null || deletingAssistantId !== null || !assistantIdsWithTopics.has(assistantId),
         disabled: isAssistantPinActionDisabled,

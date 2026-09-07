@@ -61,6 +61,7 @@
       "/app/resources",
       "/app/scheduled-tasks",
       "/app/skills-connectors",
+      "/app/toolbox",
       "/app/translate",
       "/settings/about",
       "/settings/api-gateway",
@@ -453,9 +454,13 @@
     }
   ],
   "providers": {
-    "version": "edaf6c7d22e41cb9",
-    "count": 61,
+    "version": "02aa08aabd32f67c",
+    "count": 62,
     "entries": [
+      {
+        "id": "xuelang",
+        "name": "雪浪工匠"
+      },
       {
         "id": "cherryin",
         "name": "CherryIN"

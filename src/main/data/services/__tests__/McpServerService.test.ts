@@ -1,4 +1,7 @@
+import { agentTable } from '@data/db/schemas/agent'
+import { agentMcpServerTable } from '@data/db/schemas/assistantRelations'
 import { mcpServerTable } from '@data/db/schemas/mcpServer'
+import { generateOrderKeyBetween } from '@data/services/utils/orderKey'
 import { McpServerService, mcpServerService } from '@data/services/McpServerService'
 import { DataApiError, ErrorCode } from '@shared/data/api/errors'
 import { setupTestDatabase } from '@test-helpers/db'
@@ -7,6 +10,18 @@ import { describe, expect, it } from 'vitest'
 
 describe('McpServerService', () => {
   const dbh = setupTestDatabase()
+
+  async function seedBuiltinAgent(configuration: Record<string, unknown> = { builtin_role: 'assistant' }) {
+    await dbh.db.insert(agentTable).values({
+      id: 'builtin-assistant',
+      type: 'claude-code',
+      name: 'Cherry Assistant',
+      description: '',
+      instructions: '',
+      configuration,
+      orderKey: generateOrderKeyBetween(null, null)
+    })
+  }
 
   async function seedServer(overrides: Partial<typeof mcpServerTable.$inferInsert> = {}) {
     const values: typeof mcpServerTable.$inferInsert = {
@@ -159,6 +174,15 @@ describe('McpServerService', () => {
 
       const [row] = await dbh.db.select().from(mcpServerTable).where(eq(mcpServerTable.id, 'srv-1'))
       expect(row.name).toBe('updated-name')
+    })
+
+    it('syncs a server when it becomes active unless the default agent excluded it', async () => {
+      await seedBuiltinAgent({ builtin_role: 'assistant', excluded_mcp_server_ids: ['srv-1'] })
+      await seedServer()
+
+      mcpServerService.update('srv-1', { isActive: true })
+
+      expect(dbh.db.select().from(agentMcpServerTable).all()).toHaveLength(0)
     })
 
     it('should throw NOT_FOUND when updating non-existent server', () => {

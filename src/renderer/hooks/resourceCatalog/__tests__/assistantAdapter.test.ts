@@ -28,6 +28,7 @@ function createAssistant(overrides: Partial<Assistant> = {}): Assistant {
     id: 'ast-source',
     orderKey: 'a0',
     name: '原助手',
+    builtinRole: null,
     prompt: 'prompt',
     emoji: '💬',
     description: 'desc',

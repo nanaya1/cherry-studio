@@ -154,6 +154,20 @@
       "when": 1788667876547,
       "tag": "0021_yummy_skullbuster",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "6",
+      "when": 1788713665293,
+      "tag": "0022_ambitious_calypso",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "6",
+      "when": 1788715203610,
+      "tag": "0023_neat_bloodscream",
+      "breakpoints": true
     }
   ],
   "version": "7"

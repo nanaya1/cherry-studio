@@ -1319,6 +1319,13 @@ describe('AssistantDataService', () => {
   })
 
   describe('delete', () => {
+    it('rejects deleting the protected default assistant', async () => {
+      await seedAssistantRow({ id: 'ast-default', name: 'Default', builtinRole: 'assistant' })
+
+      expect(() => assistantDataService.delete('ast-default')).toThrow('the default assistant cannot be deleted')
+      expect(assistantDataService.getById('ast-default')).not.toBeNull()
+    })
+
     it('should soft-delete by setting deletedAt timestamp', async () => {
       await seedAssistantRow({ id: 'ast-1', name: 'test' })
 

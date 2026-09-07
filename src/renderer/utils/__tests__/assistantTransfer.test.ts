@@ -8,6 +8,7 @@ function createAssistant(overrides: Partial<Assistant> = {}): Assistant {
   return {
     id: 'ast-1',
     name: '写作助手',
+    builtinRole: null,
     prompt: 'You are helpful',
     emoji: '✍️',
     description: '擅长写作润色',

@@ -13,6 +13,7 @@ import type { DbOrTx } from '@data/db/types'
 import { agentService } from '@data/services/AgentService'
 import { registerDataService } from '@data/services/dataServiceRegistry'
 import { timestampToISO } from '@data/services/utils/rowMappers'
+import { isBuiltinSkillDisabledByDefault } from '@main/ai/skills/builtinSkillDefaults'
 import { DataApiErrorFactory } from '@shared/data/api/errors'
 import type { AgentSkillUpdateDto } from '@shared/data/api/schemas/agents'
 import {
@@ -57,7 +58,8 @@ export class AgentGlobalSkillService {
    * Without an agent, every installed skill is returned for the global
    * settings catalog and `isEnabled` is false. With `query.agentId`, globally
    * disabled skills are excluded from the Agent capability catalog; remaining
-   * rows project the `agent_skill` preference (with builtins enabled by default).
+   * rows project the `agent_skill` preference (with builtins enabled by
+   * default, except those listed in `builtinSkillDefaults`).
    */
   list(query: ListSkillsQuery = {}): InstalledSkill[] {
     const conditions: SQL[] = []
@@ -91,7 +93,7 @@ export class AgentGlobalSkillService {
     const enabledMap = this.loadEnabledMap(query.agentId)
     return skills.map((s) => ({
       ...s,
-      isEnabled: enabledMap.get(s.id) ?? s.source === 'builtin'
+      isEnabled: enabledMap.get(s.id) ?? (s.source === 'builtin' && !isBuiltinSkillDisabledByDefault(s.folderName))
     }))
   }
 
@@ -101,17 +103,21 @@ export class AgentGlobalSkillService {
     return rows.map((row) => this.rowToInstalledSkill(row))
   }
 
-  insert(values: InsertAgentGlobalSkillRow): AgentGlobalSkillRow {
+  insert(values: Omit<InsertAgentGlobalSkillRow, 'isEnabled'> & { isEnabled?: boolean }): AgentGlobalSkillRow {
     return this.insertTx(application.get('DbService').getDb(), values)
   }
 
-  insertTx(tx: DbOrTx, values: InsertAgentGlobalSkillRow): AgentGlobalSkillRow {
+  insertTx(
+    tx: DbOrTx,
+    values: Omit<InsertAgentGlobalSkillRow, 'isEnabled'> & { isEnabled?: boolean }
+  ): AgentGlobalSkillRow {
     const [inserted] = tx
       .insert(agentGlobalSkillTable)
       .values({ isEnabled: true, ...values })
       .returning()
       .all()
     if (!inserted) throw new Error(`Failed to insert agent_global_skill row: ${values.folderName}`)
+    if (inserted.isEnabled) this.syncSkillToBuiltinAssistantTx(tx, inserted.id)
     return inserted
   }
 
@@ -120,12 +126,21 @@ export class AgentGlobalSkillService {
   }
 
   updateGlobalEnabled(id: string, isGlobalEnabled: boolean): InstalledSkill | null {
-    const [updated] = this.db
-      .update(agentGlobalSkillTable)
-      .set({ isEnabled: isGlobalEnabled })
-      .where(eq(agentGlobalSkillTable.id, id))
-      .returning()
-      .all()
+    const updated = application.get('DbService').withWriteTx((tx) => {
+      const [current] = tx.select().from(agentGlobalSkillTable).where(eq(agentGlobalSkillTable.id, id)).limit(1).all()
+      if (!current) return null
+
+      const [next] = tx
+        .update(agentGlobalSkillTable)
+        .set({ isEnabled: isGlobalEnabled })
+        .where(eq(agentGlobalSkillTable.id, id))
+        .returning()
+        .all()
+      if (!current.isEnabled && isGlobalEnabled) {
+        this.syncSkillToBuiltinAssistantTx(tx, id)
+      }
+      return next
+    })
     if (!updated) return null
 
     notifyDataApiDataChange([
@@ -226,6 +241,34 @@ export class AgentGlobalSkillService {
     for (const update of uniqueUpdates) {
       this.upsertJoinTx(tx, agentId, update.skillId, update.isEnabled)
     }
+  }
+
+  /** Enable a skill for the default agent only when it has no explicit preference. */
+  syncSkillToBuiltinAssistantTx(tx: DbOrTx, skillId: string): string[] {
+    const assistant = agentService.findBuiltinAgentByRoleTx(tx, 'assistant')
+    if (!assistant) return []
+
+    const result = tx
+      .insert(agentSkillTable)
+      .values({ agentId: assistant.id, skillId, isEnabled: true })
+      .onConflictDoNothing()
+      .run()
+    return result.changes > 0 ? [assistant.id] : []
+  }
+
+  /** Sync every globally enabled skill to the default agent without overriding explicit preferences. */
+  syncEnabledSkillsToBuiltinAssistantTx(tx: DbOrTx): string[] {
+    const skillIds = tx
+      .select({ id: agentGlobalSkillTable.id })
+      .from(agentGlobalSkillTable)
+      .where(eq(agentGlobalSkillTable.isEnabled, true))
+      .all()
+      .map((row) => row.id)
+    const affected = new Set<string>()
+    for (const skillId of skillIds) {
+      for (const agentId of this.syncSkillToBuiltinAssistantTx(tx, skillId)) affected.add(agentId)
+    }
+    return Array.from(affected)
   }
 
   /** Upsert the join row for every agent in `agent`. Returns the affected agent ids. */

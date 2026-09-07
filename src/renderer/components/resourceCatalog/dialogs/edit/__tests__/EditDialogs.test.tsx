@@ -525,6 +525,7 @@ import { AssistantEditDialog } from '../AssistantEditDialog'
 const ASSISTANT: Assistant = {
   id: 'assistant-1',
   name: 'Alpha Assistant',
+  builtinRole: null,
   prompt: 'Original prompt',
   emoji: '💬',
   description: 'Original assistant description',

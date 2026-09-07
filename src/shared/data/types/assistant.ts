@@ -135,6 +135,8 @@ export const AssistantSchema = z.strictObject({
   id: AssistantIdSchema,
   /** Display name */
   name: z.string().min(1),
+  /** Server-owned identity for protected built-in assistants. */
+  builtinRole: z.literal('assistant').nullable(),
   /** System prompt text or prompt template ID reference */
   prompt: z.string(),
   /** Emoji icon for UI display */

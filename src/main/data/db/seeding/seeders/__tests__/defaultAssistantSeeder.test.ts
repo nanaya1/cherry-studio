@@ -52,11 +52,12 @@ describe('DefaultAssistantSeeder', () => {
 
     expect(assistant?.id).toMatch(UUID_V4_PATTERN)
     expect(assistant).toMatchObject({
-      name: 'Cherry Assistant',
+      name: 'MEA Cowork',
       emoji: DEFAULT_ASSISTANT_EMOJI,
       prompt: DEFAULT_ASSISTANT_PROMPT,
       modelId: XUELANG_DEFAULT_UNIQUE_MODEL_ID,
-      settings: DEFAULT_ASSISTANT_SETTINGS
+      builtinRole: 'assistant',
+      settings: { ...DEFAULT_ASSISTANT_SETTINGS, mcpMode: 'auto' }
     })
     expect(provider).toMatchObject({
       providerId: XUELANG_PROVIDER_ID,
@@ -82,33 +83,61 @@ describe('DefaultAssistantSeeder', () => {
     })
   })
 
-  it('seeds the default assistant with the Chinese name for Chinese app locales', async () => {
+  it('seeds the default assistant as MEA Cowork for Chinese app locales', async () => {
     vi.mocked(app.getPreferredSystemLanguages).mockReturnValue(['zh-CN'])
     await runDefaultModelDependencySeed()
 
     new DefaultAssistantSeeder().run(dbh.db)
 
     const [assistant] = await dbh.db.select().from(assistantTable).limit(1)
-    expect(assistant?.name).toBe('工匠助手')
+    expect(assistant?.name).toBe('MEA Cowork')
   })
 
-  it.each(['默认助手', 'Cherry 助手'])('renames an existing assistant named %s to 工匠助手', async (stockName) => {
-    await dbh.db.insert(assistantTable).values({
-      id: '55555555-5555-4555-8555-555555555555',
-      name: stockName,
-      emoji: DEFAULT_ASSISTANT_EMOJI,
-      settings: DEFAULT_ASSISTANT_SETTINGS,
-      orderKey: generateOrderKeyBetween(null, null)
-    })
+  it.each(['默认助手', 'Cherry 助手', '工匠助手', 'Cherry Assistant'])(
+    'renames an existing assistant named %s to MEA Cowork',
+    async (stockName) => {
+      await dbh.db.insert(assistantTable).values({
+        id: '55555555-5555-4555-8555-555555555555',
+        name: stockName,
+        emoji: DEFAULT_ASSISTANT_EMOJI,
+        settings: DEFAULT_ASSISTANT_SETTINGS,
+        orderKey: generateOrderKeyBetween(null, null)
+      })
 
-    new DefaultAssistantSeeder().run(dbh.db)
+      new DefaultAssistantSeeder().run(dbh.db)
 
-    const [assistant] = await dbh.db
-      .select()
-      .from(assistantTable)
-      .where(eq(assistantTable.id, '55555555-5555-4555-8555-555555555555'))
-      .limit(1)
-    expect(assistant?.name).toBe('工匠助手')
+      const [assistant] = await dbh.db
+        .select()
+        .from(assistantTable)
+        .where(eq(assistantTable.id, '55555555-5555-4555-8555-555555555555'))
+        .limit(1)
+      expect(assistant).toMatchObject({ name: 'MEA Cowork', builtinRole: 'assistant' })
+    }
+  )
+
+  it('does not claim an ambiguous stock-name match as the default assistant', async () => {
+    await dbh.db.insert(assistantTable).values([
+      {
+        id: '77777777-7777-4777-8777-777777777777',
+        name: '默认助手',
+        emoji: DEFAULT_ASSISTANT_EMOJI,
+        settings: DEFAULT_ASSISTANT_SETTINGS,
+        orderKey: generateOrderKeyBetween(null, null)
+      },
+      {
+        id: '88888888-8888-4888-8888-888888888888',
+        name: 'Cherry Assistant',
+        emoji: DEFAULT_ASSISTANT_EMOJI,
+        settings: DEFAULT_ASSISTANT_SETTINGS,
+        orderKey: generateOrderKeyBetween(null, null)
+      }
+    ])
+
+    expect(() => new DefaultAssistantSeeder().run(dbh.db)).not.toThrow()
+
+    const assistants = await dbh.db.select().from(assistantTable)
+    expect(assistants).toHaveLength(2)
+    expect(assistants.every((assistant) => assistant.builtinRole === null)).toBe(true)
   })
 
   it('preserves a user-renamed default assistant', async () => {
@@ -140,7 +169,7 @@ describe('DefaultAssistantSeeder', () => {
     expect(() => new DefaultAssistantSeeder().run(dbh.db)).not.toThrow()
 
     const [assistant] = await dbh.db.select().from(assistantTable).limit(1)
-    expect(assistant?.name).toBe('工匠助手')
+    expect(assistant?.name).toBe('MEA Cowork')
   })
 
   it('falls back to the English default assistant name when preferred system languages are unavailable', async () => {
@@ -153,7 +182,7 @@ describe('DefaultAssistantSeeder', () => {
     expect(() => new DefaultAssistantSeeder().run(dbh.db)).not.toThrow()
 
     const [assistant] = await dbh.db.select().from(assistantTable).limit(1)
-    expect(assistant?.name).toBe('Cherry Assistant')
+    expect(assistant?.name).toBe('MEA Cowork')
   })
 
   it('falls back to the English default assistant name when preferred system languages are empty', async () => {
@@ -164,7 +193,7 @@ describe('DefaultAssistantSeeder', () => {
     new DefaultAssistantSeeder().run(dbh.db)
 
     const [assistant] = await dbh.db.select().from(assistantTable).limit(1)
-    expect(assistant?.name).toBe('Cherry Assistant')
+    expect(assistant?.name).toBe('MEA Cowork')
   })
 
   it('does not seed the default assistant when an active assistant already exists', async () => {

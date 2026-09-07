@@ -86,17 +86,23 @@ export class McpServerService {
     this.validateName(dto.name)
     this.validateQVerisConfiguration({ name: dto.name, env: dto.env, isActive: dto.isActive ?? false })
 
-    const { sortOrder, isActive, ...rest } = dto
-
-    const [row] = this.db
-      .insert(mcpServerTable)
-      .values({
-        ...rest,
-        sortOrder: sortOrder ?? 0,
-        isActive: isActive ?? false
-      })
-      .returning()
-      .all()
+    const { row, affectedAgentIds } = application.get('DbService').withWriteTx((tx) => {
+      const { sortOrder, isActive, ...rest } = dto
+      const [created] = tx
+        .insert(mcpServerTable)
+        .values({
+          ...rest,
+          sortOrder: sortOrder ?? 0,
+          isActive: isActive ?? false
+        })
+        .returning()
+        .all()
+      return {
+        row: created,
+        affectedAgentIds: created.isActive ? agentService.syncActiveMcpsToBuiltinAssistantTx(tx, [created.id]) : []
+      }
+    })
+    this.emitAgentMcpUpdates(affectedAgentIds, row.id, 'created')
 
     logger.info('Created MCP server', { id: row.id, name: row.name })
 
@@ -104,7 +110,7 @@ export class McpServerService {
   }
 
   createMany(dtos: CreateMcpServerDto[]): McpServer[] {
-    const created = application.get('DbService').withWriteTx((tx) => {
+    const { created, affectedAgentIds } = application.get('DbService').withWriteTx((tx) => {
       const names = new Set<string>()
       for (const dto of dtos) {
         this.validateName(dto.name)
@@ -124,7 +130,7 @@ export class McpServerService {
         throw DataApiErrorFactory.conflict(`MCP server '${existing.name}' already exists`, 'McpServer')
       }
 
-      return dtos.map(({ sortOrder, isActive, ...rest }) => {
+      const created = dtos.map(({ sortOrder, isActive, ...rest }) => {
         const [row] = tx
           .insert(mcpServerTable)
           .values({
@@ -136,7 +142,13 @@ export class McpServerService {
           .all()
         return row
       })
+      const activeIds = created.filter((row) => row.isActive).map((row) => row.id)
+      return {
+        created,
+        affectedAgentIds: agentService.syncActiveMcpsToBuiltinAssistantTx(tx, activeIds)
+      }
     })
+    this.emitAgentMcpUpdates(affectedAgentIds, created.map((row) => row.id).join(','), 'created')
 
     logger.info('Created MCP servers', { count: created.length })
     return created.map(rowToMcpServer)
@@ -146,7 +158,7 @@ export class McpServerService {
    * Update an existing MCP server
    */
   update(id: string, dto: UpdateMcpServerDto): McpServer {
-    const result = application.get('DbService').withWriteTx((tx) => {
+    const { server, affectedAgentIds } = application.get('DbService').withWriteTx((tx) => {
       const [existingRow] = tx.select().from(mcpServerTable).where(eq(mcpServerTable.id, id)).limit(1).all()
       if (!existingRow) {
         throw DataApiErrorFactory.notFound('McpServer', id)
@@ -164,12 +176,17 @@ export class McpServerService {
         typeof mcpServerTable.$inferInsert
       >
       const [row] = tx.update(mcpServerTable).set(updates).where(eq(mcpServerTable.id, id)).returning().all()
-      return rowToMcpServer(row)
+      return {
+        server: rowToMcpServer(row),
+        affectedAgentIds:
+          !existing.isActive && row.isActive ? agentService.syncActiveMcpsToBuiltinAssistantTx(tx, [id]) : []
+      }
     })
+    this.emitAgentMcpUpdates(affectedAgentIds, id, 'enabled')
 
     logger.info('Updated MCP server', { id, changes: Object.keys(dto) })
 
-    return result
+    return server
   }
 
   /**
@@ -227,6 +244,20 @@ export class McpServerService {
     })
 
     logger.info('Reordered MCP servers', { count: orderedIds.length })
+  }
+
+  private emitAgentMcpUpdates(affectedAgentIds: string[], mcpServerId: string, action: string): void {
+    if (affectedAgentIds.length === 0) return
+    try {
+      agentService.emitAgentUpdatedForIds(affectedAgentIds, 'mcps')
+    } catch (error) {
+      logger.error('MCP server changed but agent refresh failed; affected agents may retain stale tool policy', {
+        mcpServerId,
+        action,
+        affectedAgentIds,
+        error
+      })
+    }
   }
 
   private validateName(name: string): void {

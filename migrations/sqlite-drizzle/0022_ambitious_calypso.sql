@@ -1,0 +1,1 @@
+ALTER TABLE `assistant` ADD `builtin_role` text;

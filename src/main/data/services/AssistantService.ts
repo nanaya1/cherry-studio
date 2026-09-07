@@ -63,6 +63,7 @@ function rowToAssistant(
     // Preserve the T | null contract: `modelId` is legitimately nullable (R3 exception).
     modelId: row.modelId as UniqueModelId | null,
     groupId: row.groupId,
+    builtinRole: row.builtinRole === 'assistant' ? 'assistant' : null,
     mcpServerIds: relations.mcpServerIds,
     knowledgeBaseIds: relations.knowledgeBaseIds,
     createdAt: timestampToISO(row.createdAt),
@@ -626,6 +627,16 @@ export class AssistantDataService {
   }
 
   deleteTx(tx: DbOrTx, id: string): boolean {
+    const [assistant] = tx
+      .select({ builtinRole: assistantTable.builtinRole })
+      .from(assistantTable)
+      .where(and(eq(assistantTable.id, id), isNull(assistantTable.deletedAt)))
+      .limit(1)
+      .all()
+    if (assistant?.builtinRole === 'assistant') {
+      throw DataApiErrorFactory.invalidOperation('delete assistant', 'the default assistant cannot be deleted')
+    }
+
     const [row] = tx
       .update(assistantTable)
       .set({ deletedAt: Date.now(), groupId: null })

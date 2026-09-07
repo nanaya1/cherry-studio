@@ -23,7 +23,6 @@ import { knowledgeBaseService } from '@data/services/KnowledgeBaseService'
 import { mcpServerService } from '@data/services/McpServerService'
 import { pinService } from '@data/services/PinService'
 import { generateOrderKeyBetween, generateOrderKeySequence } from '@data/services/utils/orderKey'
-import { CHERRY_SUPPORT_AGENT_ID } from '@shared/ai/builtinAgent'
 import { ErrorCode } from '@shared/data/api/errors'
 import { createUniqueModelId } from '@shared/data/types/model'
 import { setupTestDatabase } from '@test-helpers/db'
@@ -335,15 +334,13 @@ describe('AgentService', () => {
       expect(activeBuiltinRows()).toHaveLength(1)
     })
 
-    it('restores the assistant after the Agent delete endpoint removed its row', () => {
-      const first = agentService.ensureBuiltinAgent(defaults)
+    it('rejects deleting the assistant through the Agent delete endpoint', () => {
+      const assistant = agentService.ensureBuiltinAgent(defaults)
 
-      expect(agentService.deleteAgent(first.id, { deleteSessions: true })).toMatchObject({ deleted: true })
-
-      const restored = agentService.ensureBuiltinAgent(defaults)
-
-      expect(restored.id).not.toBe(first.id)
-      expect(agentService.getAgent(first.id)).toBeNull()
+      expect(() => agentService.deleteAgent(assistant.id, { deleteSessions: true })).toThrow(
+        'the default agent cannot be deleted'
+      )
+      expect(agentService.getAgent(assistant.id)).not.toBeNull()
       expect(activeBuiltinRows()).toHaveLength(1)
     })
 
@@ -371,46 +368,6 @@ describe('AgentService', () => {
       })
 
       expect(assistant.model).toBeNull()
-    })
-
-    it('does not trust a Support role on an ordinary ID and restores the fixed identity in place', async () => {
-      await insertAgent({
-        id: 'ordinary-support',
-        name: 'User Agent',
-        instructions: 'User instructions',
-        configuration: { builtin_role: 'support', avatar: 'U' }
-      })
-      await insertAgent({
-        id: CHERRY_SUPPORT_AGENT_ID,
-        name: 'Existing Support',
-        description: 'Keep description',
-        instructions: 'Keep fixed instructions',
-        model: TEST_MODEL_ID,
-        deletedAt: Date.UTC(2026, 0, 1),
-        configuration: { avatar: 'S', heartbeat_interval: 7 }
-      })
-
-      const support = agentService.ensureBuiltinAgent({ ...defaults, builtinRole: 'support' })
-
-      expect(support).toMatchObject({
-        id: CHERRY_SUPPORT_AGENT_ID,
-        name: 'Existing Support',
-        description: 'Keep description',
-        instructions: 'Keep fixed instructions',
-        model: TEST_MODEL_ID,
-        configuration: { avatar: 'S', heartbeat_interval: 7, builtin_role: 'support' }
-      })
-      const [restoredRow] = dbh.db
-        .select({ deletedAt: agentTable.deletedAt })
-        .from(agentTable)
-        .where(eq(agentTable.id, CHERRY_SUPPORT_AGENT_ID))
-        .all()
-      expect(restoredRow.deletedAt).toBeNull()
-      expect(agentService.getAgent('ordinary-support')).toMatchObject({
-        name: 'User Agent',
-        instructions: 'User instructions',
-        configuration: { avatar: 'U' }
-      })
     })
   })
 
@@ -530,12 +487,6 @@ describe('AgentService', () => {
   })
 
   describe('builtin_role write protection', () => {
-    it('does not expose a legacy Support marker on an ordinary Agent', async () => {
-      await insertAgent({ id: 'legacy-support-read', configuration: { builtin_role: 'support', avatar: 'U' } })
-
-      expect(agentService.getAgent('legacy-support-read')?.configuration).toEqual({ avatar: 'U' })
-    })
-
     it('rejects createAgent when configuration carries a builtin_role', async () => {
       const error = captureError(() =>
         createAgentForTest({
@@ -599,17 +550,39 @@ describe('AgentService', () => {
       expect(updated?.configuration?.builtin_role).toBe('assistant')
       expect(updated?.configuration?.avatar).toBe('🍒')
     })
+  })
 
-    it('rejects preserving a legacy Support marker on a non-system ID', async () => {
-      const agentId = 'legacy-forged-support'
-      await insertAgent({ id: agentId, configuration: { builtin_role: 'support', avatar: 'U' } })
+  describe('default agent MCP exclusions', () => {
+    it('rejects client attempts to write the server-owned exclusion list', () => {
+      const agent = agentService.ensureBuiltinAgent({
+        builtinRole: 'assistant',
+        configuration: { builtin_role: 'assistant' },
+        name: 'Cherry Assistant',
+        preferredModelId: null,
+        type: 'claude-code'
+      })
 
-      const error = captureError(() =>
-        agentService.updateAgent(agentId, { configuration: { builtin_role: 'support', avatar: 'changed' } })
-      )
+      expect(() =>
+        agentService.updateAgent(agent.id, { configuration: { excluded_mcp_server_ids: ['forged'] } })
+      ).toThrow('configuration.excluded_mcp_server_ids is reserved for system synchronization')
+    })
 
-      expect(error).toMatchObject({ code: ErrorCode.INVALID_OPERATION })
-      expect(agentService.getAgent(agentId)?.configuration).toEqual({ avatar: 'U' })
+    it('records removed active MCPs and clears exclusions when they are re-added', async () => {
+      const agent = agentService.ensureBuiltinAgent({
+        builtinRole: 'assistant',
+        configuration: { builtin_role: 'assistant' },
+        name: 'Cherry Assistant',
+        preferredModelId: null,
+        type: 'claude-code'
+      })
+      const first = mcpServerService.create({ name: 'first-active', isActive: true })
+      const second = mcpServerService.create({ name: 'second-active', isActive: true })
+
+      const removed = agentService.updateAgent(agent.id, { mcps: [first.id] })
+      expect(removed?.configuration?.excluded_mcp_server_ids).toEqual([second.id])
+
+      const restored = agentService.updateAgent(agent.id, { mcps: [first.id, second.id] })
+      expect(restored?.configuration?.excluded_mcp_server_ids).toEqual([])
     })
   })
 
@@ -1064,6 +1037,19 @@ describe('AgentService', () => {
   })
 
   describe('deleteAgent', () => {
+    it('rejects deleting the protected default agent', async () => {
+      const agent = agentService.ensureBuiltinAgent({
+        builtinRole: 'assistant',
+        configuration: { builtin_role: 'assistant' },
+        name: 'Cherry Assistant',
+        preferredModelId: null,
+        type: 'claude-code'
+      })
+
+      expect(() => agentService.deleteAgent(agent.id)).toThrow('the default agent cannot be deleted')
+      expect(agentService.getAgent(agent.id)).not.toBeNull()
+    })
+
     it('hard-deletes an agent and removes the row', async () => {
       const { id } = await insertAgent({ id: 'agent_regular_test_001' })
       notifyDataApiDataChangeMock.mockClear()
@@ -1597,23 +1583,6 @@ describe('AgentService', () => {
           id: 'agent_builtin_global_search',
           subtitle:
             'Built-in MEA Cowork advisor. Diagnose issues, guide operations, collect FAQs, submit bugs/feature requests, and search/create Skills'
-        })
-      ])
-    })
-
-    it('matches and displays Cherry Support through its localized fallback description', async () => {
-      await insertAgent({
-        id: CHERRY_SUPPORT_AGENT_ID,
-        name: 'Cherry Support',
-        description: '',
-        configuration: { builtin_role: 'support' },
-        updatedAt: 100
-      })
-
-      expect(agentService.search({ q: 'troubleshooting', limit: 5 })).toEqual([
-        expect.objectContaining({
-          id: CHERRY_SUPPORT_AGENT_ID,
-          subtitle: 'Official MEA Cowork support Agent for setup guidance, troubleshooting, FAQs, and feedback'
         })
       ])
     })

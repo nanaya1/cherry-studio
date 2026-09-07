@@ -21,8 +21,8 @@ export class DefaultAssistantSeeder implements ISeeder {
       assistant: DEFAULT_ASSISTANT_SEED,
       topic: { name: '', empty: true },
       freshGuard: 'no active assistant/topic/message',
-      localizedName: 'preferredSystemLanguages[0]; zh=>工匠助手; other=>Cherry Assistant',
-      stockRename: "zh['默认助手','Cherry 助手']=>工匠助手"
+      localizedName: 'MEA Cowork for every locale',
+      stockRename: 'unique stock name=>MEA Cowork+builtinRole'
     })
   }
 
@@ -37,6 +37,7 @@ export class DefaultAssistantSeeder implements ISeeder {
       const insertValues = {
         ...DEFAULT_ASSISTANT_SEED,
         name: getDefaultAssistantNameForLocale(this.getPreferredSystemLanguage()),
+        builtinRole: 'assistant',
         settings: { ...DEFAULT_ASSISTANT_SEED.settings }
       } satisfies Omit<typeof assistantTable.$inferInsert, 'orderKey'>
 
@@ -61,9 +62,36 @@ export class DefaultAssistantSeeder implements ISeeder {
    * any other name (including the English default and user renames) is preserved.
    */
   private renameStockNames(tx: DbOrTx): void {
+    const [builtin] = tx
+      .select({ id: assistantTable.id, name: assistantTable.name })
+      .from(assistantTable)
+      .where(eq(assistantTable.builtinRole, 'assistant'))
+      .limit(1)
+      .all()
+    if (builtin) {
+      if (['默认助手', 'Cherry 助手', '工匠助手', 'Cherry Assistant'].includes(builtin.name)) {
+        tx.update(assistantTable).set({ name: 'MEA Cowork' }).where(eq(assistantTable.id, builtin.id)).run()
+      }
+      return
+    }
+
+    const candidates = tx
+      .select({ id: assistantTable.id, name: assistantTable.name })
+      .from(assistantTable)
+      .where(
+        and(
+          inArray(assistantTable.name, ['默认助手', 'Cherry 助手', '工匠助手', 'Cherry Assistant']),
+          isNull(assistantTable.deletedAt)
+        )
+      )
+      .limit(2)
+      .all()
+    if (candidates.length !== 1) return
+
+    const [candidate] = candidates
     tx.update(assistantTable)
-      .set({ name: '工匠助手' })
-      .where(and(inArray(assistantTable.name, ['默认助手', 'Cherry 助手']), isNull(assistantTable.deletedAt)))
+      .set({ builtinRole: 'assistant', name: 'MEA Cowork' })
+      .where(eq(assistantTable.id, candidate.id))
       .run()
   }
 

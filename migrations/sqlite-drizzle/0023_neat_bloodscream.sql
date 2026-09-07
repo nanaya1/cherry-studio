@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX `assistant_builtin_role_unique` ON `assistant` (`builtin_role`);

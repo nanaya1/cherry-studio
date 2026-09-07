@@ -1,5 +1,5 @@
 import type { AssistantSettings } from '@shared/data/types/assistant'
-import { index, sqliteTable, text } from 'drizzle-orm/sqlite-core'
+import { index, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
 
 import { createUpdateDeleteTimestamps, orderKeyColumns, orderKeyIndex, uuidPrimaryKey } from './_columnHelpers'
 import { groupTable } from './group'
@@ -16,6 +16,7 @@ export const assistantTable = sqliteTable(
   {
     id: uuidPrimaryKey(),
     name: text().notNull(),
+    builtinRole: text('builtin_role'),
     // Type-level empty: DB DEFAULT is the single source of truth
     prompt: text().notNull().default(''),
     // Product-chosen value: AssistantService.create() supplies '🌟' (see spec § DB defaults are near-permanent)
@@ -34,7 +35,11 @@ export const assistantTable = sqliteTable(
     ...orderKeyColumns,
     ...createUpdateDeleteTimestamps
   },
-  (t) => [index('assistant_created_at_idx').on(t.createdAt), orderKeyIndex('assistant')(t)]
+  (t) => [
+    index('assistant_created_at_idx').on(t.createdAt),
+    uniqueIndex('assistant_builtin_role_unique').on(t.builtinRole),
+    orderKeyIndex('assistant')(t)
+  ]
 )
 
 export type InsertAssistantRow = typeof assistantTable.$inferInsert

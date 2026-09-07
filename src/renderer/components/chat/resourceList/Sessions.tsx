@@ -1650,7 +1650,10 @@ const Sessions = ({
               <AgentGroupMoreMenu
                 agentId={agentGroupId}
                 assistantIconType={assistantIconType}
-                deleteAgentDisabled={deletingAgentId !== null}
+                deleteAgentDisabled={
+                  deletingAgentId !== null ||
+                  isProtectedBuiltinAgentRole(agentById.get(agentGroupId)?.configuration?.builtin_role)
+                }
                 deleteTasksOnly={isProtectedBuiltinAgentRole(agentById.get(agentGroupId)?.configuration?.builtin_role)}
                 pinDisabled={isAgentPinActionDisabled}
                 pinned={agentPinnedIdSet.has(agentGroupId)}
@@ -1793,7 +1796,9 @@ const Sessions = ({
         const actionContext: AgentGroupActionContext = {
           agentId,
           assistantIconType,
-          deleteAgentDisabled: deletingAgentId !== null,
+          deleteAgentDisabled:
+            deletingAgentId !== null ||
+            isProtectedBuiltinAgentRole(agentById.get(agentId)?.configuration?.builtin_role),
           deleteTasksOnly: isProtectedBuiltinAgentRole(agentById.get(agentId)?.configuration?.builtin_role),
           onDeleteAgent: handleDeleteAgent,
           onEdit: openAgentEditor,
