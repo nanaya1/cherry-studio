@@ -38457,15 +38457,15 @@
       "providerId": "voyageai"
     },
     {
-      "apiModelId": "Qwen3.6-35B-A3B",
-      "modelId": "qwen3-6-35b-a3b",
-      "name": "Qwen3.6 35B A3B",
-      "providerId": "xuelang"
-    },
-    {
       "apiModelId": "Qwen3.8-27B",
       "modelId": "qwen3-8-27b",
       "name": "Qwen3.8 27B",
+      "providerId": "xuelang"
+    },
+    {
+      "apiModelId": "chemindustry",
+      "modelId": "chemindustry",
+      "name": "化工大模型",
       "providerId": "xuelang"
     },
     {

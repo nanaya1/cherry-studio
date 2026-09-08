@@ -15,9 +15,9 @@ export default openaiCompatible({
       name: 'Qwen3.8 27B'
     },
     {
-      apiModelId: 'Qwen3.6-35B-A3B',
-      modelId: 'qwen3-6-35b-a3b',
-      name: 'Qwen3.6 35B A3B'
+      apiModelId: 'chemindustry',
+      modelId: 'chemindustry',
+      name: '化工大模型'
     }
   ]
 })
