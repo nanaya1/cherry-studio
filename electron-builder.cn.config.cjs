@@ -5,7 +5,7 @@ module.exports = async function createChinaEditionConfig({ packageMetadata }) {
 
   return {
     extends: './electron-builder.yml',
-    appId: 'com.cherryai.cherrystudio.cn',
+    appId: 'com.meacowork.desktop.cn',
     extraMetadata: {
       cherryEdition: CHINA_EDITION
     },

@@ -15,7 +15,7 @@ vi.mock('@application', () => ({
 
 import { DeepLinkCallbackTransport } from '../DeepLinkCallbackTransport'
 
-const REDIRECT_URI = 'cherrystudio://oauth/callback'
+const REDIRECT_URI = 'meacowork://oauth/callback'
 const FLOW_TTL_MS = 10 * 60 * 1000
 
 function registerFlow(transport: DeepLinkCallbackTransport, state = 'state') {

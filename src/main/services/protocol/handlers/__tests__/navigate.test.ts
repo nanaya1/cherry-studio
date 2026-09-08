@@ -32,7 +32,7 @@ describe('navigate protocol handler', () => {
   })
 
   it('blocks paths outside the route allowlist', () => {
-    handleNavigateProtocolUrl(new URL('cherrystudio://navigate/agents-legacy'))
+    handleNavigateProtocolUrl(new URL('meacowork://navigate/agents-legacy'))
 
     expect(loggerMock.warn).toHaveBeenCalledWith('Blocked navigation to disallowed route: /agents-legacy')
     expect(openRouteInMainWindowMock).not.toHaveBeenCalled()
@@ -40,14 +40,14 @@ describe('navigate protocol handler', () => {
   })
 
   it('opens settings routes through the main-window settings helper', () => {
-    handleNavigateProtocolUrl(new URL('cherrystudio://navigate/settings/provider?id=openai'))
+    handleNavigateProtocolUrl(new URL('meacowork://navigate/settings/provider?id=openai'))
 
     expect(openSettingsInMainWindowMock).toHaveBeenCalledWith('/settings/provider?id=openai')
     expect(openRouteInMainWindowMock).not.toHaveBeenCalled()
   })
 
   it('opens non-settings routes with the query string preserved', () => {
-    handleNavigateProtocolUrl(new URL('cherrystudio://navigate/agents?x=1&y=2'))
+    handleNavigateProtocolUrl(new URL('meacowork://navigate/agents?x=1&y=2'))
 
     expect(openRouteInMainWindowMock).toHaveBeenCalledWith('/agents?x=1&y=2')
     expect(openSettingsInMainWindowMock).not.toHaveBeenCalled()
@@ -55,7 +55,7 @@ describe('navigate protocol handler', () => {
 
   it('blocks internal MCP install parameters', () => {
     handleNavigateProtocolUrl(
-      new URL('cherrystudio://navigate/settings/mcp/servers?protocolInstall=forged&protocolInstallRequestId=1')
+      new URL('meacowork://navigate/settings/mcp/servers?protocolInstall=forged&protocolInstallRequestId=1')
     )
 
     expect(loggerMock.warn).toHaveBeenCalledWith('Blocked navigation with internal MCP install parameters')

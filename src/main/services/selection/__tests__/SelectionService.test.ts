@@ -5,7 +5,7 @@ import { WindowType } from '@main/core/window/types'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { getApplicationIdMock } = vi.hoisted(() => ({
-  getApplicationIdMock: vi.fn(() => 'com.kangfenmao.CherryStudio')
+  getApplicationIdMock: vi.fn(() => 'com.meacowork.desktop')
 }))
 
 vi.mock('@main/utils/appEdition', () => ({
@@ -242,8 +242,8 @@ describe('SelectionService macOS toolbar', () => {
   })
 
   it.each([
-    ['global', 'com.kangfenmao.CherryStudio'],
-    ['China', 'com.cherryai.cherrystudio.cn']
+    ['global', 'com.meacowork.desktop'],
+    ['China', 'com.meacowork.desktop.cn']
   ])('preserves selection inside the %s edition', (_edition, applicationId) => {
     getApplicationIdMock.mockReturnValue(applicationId)
     const { access, toolbarWindow } = createToolbarHarness()
@@ -255,10 +255,10 @@ describe('SelectionService macOS toolbar', () => {
   })
 
   it('treats the other edition as an external app', () => {
-    getApplicationIdMock.mockReturnValue('com.kangfenmao.CherryStudio')
+    getApplicationIdMock.mockReturnValue('com.meacowork.desktop')
     const { access, toolbarWindow } = createToolbarHarness()
 
-    access.showToolbarAtPosition({ x: 10, y: 20 }, 'bottomLeft', 'com.cherryai.cherrystudio.cn')
+    access.showToolbarAtPosition({ x: 10, y: 20 }, 'bottomLeft', 'com.meacowork.desktop.cn')
 
     expect(toolbarWindow.setFocusable).toHaveBeenCalledWith(false)
     expect(toolbarWindow.setVisibleOnAllWorkspaces).toHaveBeenCalledWith(true, {

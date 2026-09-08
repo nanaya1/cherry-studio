@@ -39,7 +39,7 @@ describe('providersImport protocol handler', () => {
     }
     const data = toUrlSafeBase64(config)
 
-    await handleProvidersProtocolUrl(new URL(`cherrystudio://providers/api-keys?v=1&data=${data}`))
+    await handleProvidersProtocolUrl(new URL(`meacowork://providers/api-keys?v=1&data=${data}`))
 
     expect(openSettingsInMainWindowMock).toHaveBeenCalledWith(
       `/settings/provider?addProviderData=${encodeURIComponent(JSON.stringify(config))}`
@@ -47,7 +47,7 @@ describe('providersImport protocol handler', () => {
   })
 
   it('does not open settings when provider import data is invalid', async () => {
-    await handleProvidersProtocolUrl(new URL('cherrystudio://providers/api-keys?v=1&data=not-json'))
+    await handleProvidersProtocolUrl(new URL('meacowork://providers/api-keys?v=1&data=not-json'))
 
     expect(openSettingsInMainWindowMock).not.toHaveBeenCalled()
     expect(loggerMock.error).toHaveBeenCalled()
@@ -60,7 +60,7 @@ describe('providersImport protocol handler', () => {
     expect(data).toContain('+')
     expect(data).toContain('/')
 
-    await handleProvidersProtocolUrl(new URL(`cherrystudio://providers/api-keys?v=1&data=${data}`))
+    await handleProvidersProtocolUrl(new URL(`meacowork://providers/api-keys?v=1&data=${data}`))
 
     expect(openSettingsInMainWindowMock).toHaveBeenCalledWith(
       `/settings/provider?addProviderData=${encodeURIComponent(JSON.stringify(config))}`

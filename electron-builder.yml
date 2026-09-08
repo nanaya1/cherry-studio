@@ -1,4 +1,4 @@
-appId: com.kangfenmao.CherryStudio
+appId: com.meacowork.desktop
 productName: MEA Cowork
 extraMetadata:
   cherryEdition: global
@@ -18,7 +18,7 @@ directories:
 protocols:
   - name: MEA Cowork
     schemes:
-      - cherrystudio
+      - meacowork
 files:
   - "**/*"
   - "!**/{.vscode,.yarn,.yarn-lock,.github,.cursorrules,.prettierrc}"
@@ -116,17 +116,14 @@ win:
     sign: scripts/win-sign.js
   verifyUpdateCodeSignature: false
 nsis:
-  # Preserve the existing global installer identity so either edition replaces the same Windows installation.
-  guid: 41a4ccd8-bcc0-5710-9eee-0e164da68057
+  # Stable MEA Cowork installer identity; keep this GUID unchanged for future upgrades.
+  guid: 845e0f97-161d-4a9e-919b-aa4d3665880d
   artifactName: ${productName}-${version}-${arch}-setup.${ext}
   shortcutName: ${productName}
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
   allowToChangeInstallationDirectory: true
   oneClick: false
-  # Explicitly pin the default install directory to the product name. electron-builder already does
-  # this by default, but spelling it out keeps the install folder stable if productName ever drifts.
-  installationDirectory: ${productName}
   include: build/nsis-installer.nsh
   buildUniversalInstaller: false
   differentialPackage: false
@@ -163,7 +160,7 @@ linux:
       Name: MEA Cowork
       StartupWMClass: MEACowork
   mimeTypes:
-    - x-scheme-handler/cherrystudio
+    - x-scheme-handler/meacowork
 rpm:
   # Workaround for electron build issue on rpm package:
   # https://github.com/electron/forge/issues/3594

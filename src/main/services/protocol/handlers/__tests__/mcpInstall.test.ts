@@ -4,7 +4,7 @@ import { parseMcpInstallProtocolUrl } from '../mcpInstall'
 
 const createInstallUrl = (payload: unknown) => {
   const servers = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64')
-  return new URL(`cherrystudio://mcp/install?servers=${encodeURIComponent(servers)}`)
+  return new URL(`meacowork://mcp/install?servers=${encodeURIComponent(servers)}`)
 }
 
 const parsePreviewServers = (payload: unknown) => {

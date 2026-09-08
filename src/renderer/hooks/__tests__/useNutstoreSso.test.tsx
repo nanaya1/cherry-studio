@@ -50,21 +50,21 @@ describe('useNutstoreSso', () => {
     vi.useRealTimers()
   })
 
-  it('accepts only a token-bearing Cherry Studio callback and cleans up after success', async () => {
+  it('accepts only a token-bearing MEA Cowork callback and cleans up after success', async () => {
     const { result } = renderHook(() => useNutstoreSso())
     const pending = result.current()
 
     act(() => {
       emitProtocolData('not a url')
       emitProtocolData('https://example.com/callback?s=wrong-scheme')
-      emitProtocolData('cherrystudio://navigate/settings')
-      emitProtocolData('cherrystudio://unknown/callback?s=forged-token')
+      emitProtocolData('meacowork://navigate/settings')
+      emitProtocolData('meacowork://unknown/callback?s=forged-token')
     })
 
     expect(mocks.activeListeners.size).toBe(1)
 
     act(() => {
-      emitProtocolData('cherrystudio://?s=encrypted-token')
+      emitProtocolData('meacowork://?s=encrypted-token')
     })
 
     await expect(pending).resolves.toBe('encrypted-token')
@@ -86,7 +86,7 @@ describe('useNutstoreSso', () => {
     expect(mocks.activeListeners.size).toBe(1)
 
     act(() => {
-      emitProtocolData('cherrystudio://?s=second-token')
+      emitProtocolData('meacowork://?s=second-token')
     })
 
     await expect(second).resolves.toBe('second-token')

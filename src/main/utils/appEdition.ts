@@ -5,8 +5,8 @@ import type { AppEdition } from '@shared/types/appEdition'
 import { app } from 'electron'
 
 const APPLICATION_IDS = {
-  global: 'com.kangfenmao.CherryStudio',
-  cn: 'com.cherryai.cherrystudio.cn'
+  global: 'com.meacowork.desktop',
+  cn: 'com.meacowork.desktop.cn'
 } as const satisfies Record<AppEdition, string>
 
 function parseAppEdition(value: unknown): AppEdition {

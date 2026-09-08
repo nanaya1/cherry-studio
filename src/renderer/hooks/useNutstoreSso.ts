@@ -55,7 +55,7 @@ export function useNutstoreSso() {
 
         const encryptedToken = url.searchParams.get('s')
         const isSchemeRoot = url.hostname === '' && (url.pathname === '' || url.pathname === '/')
-        if (url.protocol !== 'cherrystudio:' || !isSchemeRoot || !encryptedToken) return
+        if (url.protocol !== 'meacowork:' || !isSchemeRoot || !encryptedToken) return
         finish(encryptedToken)
       }
 

@@ -68,7 +68,7 @@ export class AppService extends BaseService {
     } else if (isLinux) {
       const autostartDir = AbsoluteFilePathSchema.parse(application.getPath('sys.appdata.autostart'))
       const desktopFile = AbsoluteFilePathSchema.parse(
-        path.join(autostartDir, isDev ? 'cherry-studio-dev.desktop' : 'cherry-studio.desktop')
+        path.join(autostartDir, isDev ? 'meacowork-dev.desktop' : 'meacowork.desktop')
       )
 
       if (isLaunchOnBoot) {
@@ -87,7 +87,7 @@ export class AppService extends BaseService {
   Name=MEA Cowork
   Comment=A powerful AI assistant for producer.
   Exec=${executablePath}
-  Icon=cherrystudio
+  Icon=MEACowork
   Terminal=false
   StartupNotify=false
   Categories=Development;Utility;

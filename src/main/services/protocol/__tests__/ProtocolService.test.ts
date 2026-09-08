@@ -162,7 +162,7 @@ describe('ProtocolService', () => {
     await (service as any).onInit()
 
     expect(appMock.setAsDefaultProtocolClient).toHaveBeenCalledTimes(1)
-    expect(appMock.setAsDefaultProtocolClient).toHaveBeenCalledWith('cherrystudio')
+    expect(appMock.setAsDefaultProtocolClient).toHaveBeenCalledWith('meacowork')
   })
 
   it('registers the dev protocol handler with an absolute app entry', async () => {
@@ -172,7 +172,7 @@ describe('ProtocolService', () => {
     await (service as any).onInit()
 
     expect(appMock.setAsDefaultProtocolClient).toHaveBeenCalledTimes(1)
-    expect(appMock.setAsDefaultProtocolClient).toHaveBeenCalledWith('cherrystudio', process.execPath, [
+    expect(appMock.setAsDefaultProtocolClient).toHaveBeenCalledWith('meacowork', process.execPath, [
       path.resolve(process.cwd(), '.')
     ])
   })
@@ -182,7 +182,7 @@ describe('ProtocolService', () => {
     handlersMock.handleProvidersProtocolUrl.mockRejectedValueOnce(error)
     await markProtocolHandlingReady()
 
-    ;(service as any).handleProtocolUrl('cherrystudio://providers/api-keys?v=1&data=abc')
+    ;(service as any).handleProtocolUrl('meacowork://providers/api-keys?v=1&data=abc')
 
     await vi.waitFor(() => {
       expect(loggerMock.error).toHaveBeenCalledWith('Failed to handle providers protocol URL', error)
@@ -192,10 +192,10 @@ describe('ProtocolService', () => {
   it('broadcasts unknown protocol hosts to all windows', async () => {
     await markProtocolHandlingReady()
 
-    ;(service as any).handleProtocolUrl('cherrystudio://unknown/path?foo=bar')
+    ;(service as any).handleProtocolUrl('meacowork://unknown/path?foo=bar')
 
     expect(ipcApiServiceMock.broadcast).toHaveBeenCalledWith('navigation.protocol_data', {
-      url: 'cherrystudio://unknown/path?foo=bar',
+      url: 'meacowork://unknown/path?foo=bar',
       params: { foo: 'bar' }
     })
   })
@@ -213,7 +213,7 @@ describe('ProtocolService', () => {
       const handler = getOpenUrlHandler()
       const event = { preventDefault: vi.fn() }
 
-      handler(event, 'cherrystudio://mcp/install?servers=abc')
+      handler(event, 'meacowork://mcp/install?servers=abc')
 
       expect(event.preventDefault).toHaveBeenCalledTimes(1)
       expect(handlersMock.parseMcpInstallProtocolUrl).not.toHaveBeenCalled()
@@ -228,17 +228,17 @@ describe('ProtocolService', () => {
 
       expect(handlersMock.parseMcpInstallProtocolUrl).toHaveBeenCalledTimes(1)
       expect(handlersMock.parseMcpInstallProtocolUrl.mock.calls[0][0].href).toBe(
-        'cherrystudio://mcp/install?servers=abc'
+        'meacowork://mcp/install?servers=abc'
       )
     })
 
     it('handles a hot-start URL immediately', async () => {
       await markProtocolHandlingReady()
 
-      ;(service as any).handleProtocolUrl('cherrystudio://navigate/agents')
+      ;(service as any).handleProtocolUrl('meacowork://navigate/agents')
 
       expect(handlersMock.handleNavigateProtocolUrl).toHaveBeenCalledTimes(1)
-      expect(handlersMock.handleNavigateProtocolUrl.mock.calls[0][0].href).toBe('cherrystudio://navigate/agents')
+      expect(handlersMock.handleNavigateProtocolUrl.mock.calls[0][0].href).toBe('meacowork://navigate/agents')
     })
 
     it('keeps MCP install payloads in Main until installation succeeds', async () => {
@@ -256,7 +256,7 @@ describe('ProtocolService', () => {
       handlersMock.parseMcpInstallProtocolUrl.mockReturnValueOnce(servers)
       await markProtocolHandlingReady()
 
-      ;(service as any).handleProtocolUrl('cherrystudio://mcp/install?servers=secret')
+      ;(service as any).handleProtocolUrl('meacowork://mcp/install?servers=secret')
 
       const path = openSettingsInMainWindowMock.mock.calls[0][0] as string
       expect(path).toMatch(/^\/settings\/mcp\/servers\?protocolInstallRequestId=[0-9a-f-]+$/)
@@ -288,7 +288,7 @@ describe('ProtocolService', () => {
         throw new Error('duplicate server')
       })
       await markProtocolHandlingReady()
-      ;(service as any).handleProtocolUrl('cherrystudio://mcp/install?servers=duplicate')
+      ;(service as any).handleProtocolUrl('meacowork://mcp/install?servers=duplicate')
       const [request] = service.listPendingMcpInstallRequests('main-1')
 
       expect(() => service.installPendingMcpInstallRequest('main-1', request.requestId)).toThrow('duplicate server')
@@ -314,14 +314,14 @@ describe('ProtocolService', () => {
       await markProtocolHandlingReady()
 
       listeners.get('did-start-loading')?.()
-      ;(service as any).handleProtocolUrl('cherrystudio://navigate/agents')
+      ;(service as any).handleProtocolUrl('meacowork://navigate/agents')
       expect(handlersMock.handleNavigateProtocolUrl).not.toHaveBeenCalled()
 
       service.onMainRendererReady('main-1')
       expect(handlersMock.handleNavigateProtocolUrl).toHaveBeenCalledTimes(1)
 
       listeners.get('render-process-gone')?.()
-      ;(service as any).handleProtocolUrl('cherrystudio://navigate/knowledge')
+      ;(service as any).handleProtocolUrl('meacowork://navigate/knowledge')
       expect(handlersMock.handleNavigateProtocolUrl).toHaveBeenCalledTimes(1)
 
       service.onMainRendererReady('main-1')
@@ -336,9 +336,9 @@ describe('ProtocolService', () => {
       })
       handlersMock.handleNavigateProtocolUrl.mockImplementation((url: URL) => handledUrls.push(url.href))
 
-      ;(service as any).handleProtocolUrl('cherrystudio://mcp/install?servers=first')
+      ;(service as any).handleProtocolUrl('meacowork://mcp/install?servers=first')
       ;(service as any).handleProtocolUrl('not a url')
-      ;(service as any).handleProtocolUrl('cherrystudio://navigate/agents')
+      ;(service as any).handleProtocolUrl('meacowork://navigate/agents')
 
       await (service as any).onAllReady()
 
@@ -346,12 +346,12 @@ describe('ProtocolService', () => {
 
       service.onMainRendererReady('main-1')
 
-      expect(handledUrls).toEqual(['cherrystudio://mcp/install?servers=first', 'cherrystudio://navigate/agents'])
+      expect(handledUrls).toEqual(['meacowork://mcp/install?servers=first', 'meacowork://navigate/agents'])
       expect(loggerMock.error).toHaveBeenCalledWith('Failed to handle protocol URL', expect.any(TypeError))
     })
 
     it('waits for services when the main renderer becomes ready first', async () => {
-      ;(service as any).handleProtocolUrl('cherrystudio://navigate/agents')
+      ;(service as any).handleProtocolUrl('meacowork://navigate/agents')
 
       service.onMainRendererReady('main-1')
       expect(handlersMock.handleNavigateProtocolUrl).not.toHaveBeenCalled()
@@ -364,7 +364,7 @@ describe('ProtocolService', () => {
     it('ignores readiness notifications from non-main windows', async () => {
       windowManagerMock.getWindowType.mockReturnValueOnce('subWindow')
       await (service as any).onAllReady()
-      ;(service as any).handleProtocolUrl('cherrystudio://navigate/agents')
+      ;(service as any).handleProtocolUrl('meacowork://navigate/agents')
 
       service.onMainRendererReady('subwindow-1')
 
@@ -379,17 +379,17 @@ describe('ProtocolService', () => {
       return call[1] as (event: unknown, argv: string[]) => void
     }
 
-    it('dispatches the URL when argv carries a cherrystudio:// deep link', async () => {
+    it('dispatches the URL when argv carries a meacowork:// deep link', async () => {
       await (service as any).onInit()
       await markProtocolHandlingReady()
       const handler = getSecondInstanceHandler()
 
-      handler({}, ['/path/to/electron', '.', 'cherrystudio://oauth/callback?code=abc'])
+      handler({}, ['/path/to/electron', '.', 'meacowork://oauth/callback?code=abc'])
 
       expect(mainWindowServiceMock.showMainWindow).not.toHaveBeenCalled()
       expect(oauthRuntimeServiceMock.handleDeepLinkCallback).toHaveBeenCalledTimes(1)
       const url = oauthRuntimeServiceMock.handleDeepLinkCallback.mock.calls[0][0] as URL
-      expect(url.href).toBe('cherrystudio://oauth/callback?code=abc')
+      expect(url.href).toBe('meacowork://oauth/callback?code=abc')
       expect(ipcApiServiceMock.broadcast).not.toHaveBeenCalled()
     })
 

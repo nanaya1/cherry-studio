@@ -19,9 +19,9 @@ import { parseMcpInstallProtocolUrl } from './handlers/mcpInstall'
 import { handleNavigateProtocolUrl } from './handlers/navigate'
 import { handleProvidersProtocolUrl } from './handlers/providersImport'
 
-export const CHERRY_STUDIO_PROTOCOL = 'cherrystudio'
+export const CHERRY_STUDIO_PROTOCOL = 'meacowork'
 
-const DESKTOP_FILE_NAME = 'cherrystudio-url-handler.desktop'
+const DESKTOP_FILE_NAME = 'meacowork-url-handler.desktop'
 const execAsync = promisify(exec)
 const logger = loggerService.withContext('ProtocolService')
 
@@ -66,7 +66,7 @@ export class ProtocolService extends BaseService {
     this.registerDisposable(() => app.removeListener('open-url', openUrlHandler))
 
     // 3) Windows/Linux second-instance: sole owner.
-    //    - argv carries `cherrystudio://...` → dispatch to URL handler; each handler
+    //    - argv carries `meacowork://...` → dispatch to URL handler; each handler
     //      self-routes focus (mcp / navigate raise Main, providers / oauth do not),
     //      so we never raise Main behind their backs.
     //    - argv carries no URL → plain re-launch (user double-clicked the icon while
@@ -244,7 +244,7 @@ export class ProtocolService extends BaseService {
 
   /**
    * Sets up deep linking for the AppImage build on Linux by creating a .desktop file.
-   * This allows the OS to open cherrystudio:// URLs with this App.
+   * This allows the OS to open meacowork:// URLs with this App.
    */
   private async setupAppImageDeepLink(): Promise<void> {
     // Only run on Linux and when packaged as an AppImage

@@ -5,12 +5,12 @@ import { normalizeSettingsPath } from '@shared/data/types/settingsPath'
 const logger = loggerService.withContext('ProtocolService:navigate')
 
 /**
- * Handle cherrystudio://navigate/<path> deep links.
+ * Handle meacowork://navigate/<path> deep links.
  *
  * Examples:
- *   cherrystudio://navigate/settings/provider
- *   cherrystudio://navigate/agents
- *   cherrystudio://navigate/knowledge
+ *   meacowork://navigate/settings/provider
+ *   meacowork://navigate/agents
+ *   meacowork://navigate/knowledge
  *
  * Delivery (window creation, focus, live-window event vs cold-start init data)
  * is entirely owned by openRouteInMainWindow — no retry loop is needed here.

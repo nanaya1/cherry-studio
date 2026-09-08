@@ -91,7 +91,7 @@ describe('edition packaging', () => {
     expect(script).toContain(`--${arch}`)
   })
 
-  it('keeps the existing global product and update identity', () => {
+  it('uses the independent MEA Cowork product and update identity', () => {
     const config = parse(readFileSync(path.join(projectRoot, 'electron-builder.yml'), 'utf8'))
 
     expect({
@@ -103,12 +103,12 @@ describe('edition packaging', () => {
       publish: config.publish,
       windowsArtifactName: config.win.artifactName
     }).toEqual({
-      appId: 'com.kangfenmao.CherryStudio',
+      appId: 'com.meacowork.desktop',
       edition: GLOBAL_EDITION,
-      nsisGuid: '41a4ccd8-bcc0-5710-9eee-0e164da68057',
+      nsisGuid: '845e0f97-161d-4a9e-919b-aa4d3665880d',
       productName: 'MEA Cowork',
-      protocol: 'cherrystudio',
-      publish: { provider: 'generic', url: 'https://releases.cherry-ai.com' },
+      protocol: 'meacowork',
+      publish: undefined,
       windowsArtifactName: '${productName}-${version}-${arch}-setup.${ext}'
     })
   })
@@ -120,7 +120,7 @@ describe('edition packaging', () => {
 
     expect(config).toEqual({
       extends: './electron-builder.yml',
-      appId: 'com.cherryai.cherrystudio.cn',
+      appId: 'com.meacowork.desktop.cn',
       extraMetadata: {
         cherryEdition: CHINA_EDITION
       },
