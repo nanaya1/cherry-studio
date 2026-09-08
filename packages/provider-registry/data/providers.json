@@ -1,20 +1,19 @@
 {
   "providers": [
     {
-      "authOptional": true,
       "availableInEditions": ["global", "cn"],
       "defaultChatEndpoint": "openai-chat-completions",
       "description": "雪浪工匠 - AI model provider",
       "endpointConfigs": {
         "openai-chat-completions": {
           "adapterFamily": "openai-compatible",
-          "baseUrl": "http://36.150.116.247:8069/v1"
+          "baseUrl": "https://api.xuelanglm.com/v1"
         }
       },
       "id": "xuelang",
       "metadata": {
         "website": {
-          "official": "http://36.150.116.247:8069"
+          "official": "https://api.xuelanglm.com/"
         }
       },
       "name": "雪浪工匠"
@@ -2502,5 +2501,5 @@
       "presetProviderId": "minimax"
     }
   ],
-  "version": "02aa08aabd32f67c"
+  "version": "70ab75e9262eff1e"
 }

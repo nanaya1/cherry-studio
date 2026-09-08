@@ -3,11 +3,10 @@ import { openaiCompatible } from './types'
 export default openaiCompatible({
   id: 'xuelang',
   name: '雪浪工匠',
-  baseUrl: 'http://36.150.116.247:8069/v1',
+  baseUrl: 'https://api.xuelanglm.com/v1',
   availableInEditions: ['global', 'cn'],
-  authOptional: true,
   website: {
-    official: 'http://36.150.116.247:8069'
+    official: 'https://api.xuelanglm.com/'
   },
   overrides: [
     {
