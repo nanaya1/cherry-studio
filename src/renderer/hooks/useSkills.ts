@@ -3,6 +3,7 @@ import { loggerService } from '@logger'
 import { ipcApi } from '@renderer/ipc'
 import { toast } from '@renderer/services/toast'
 import { searchSkills } from '@renderer/utils/skillSearch'
+import { getSkillDescription, getSkillDisplayName } from '@shared/data/api/schemas/skills'
 import type {
   InstalledSkill,
   LocalSkill,
@@ -132,8 +133,8 @@ function buildAvailableSkills(
     if (!skill.isEnabled) continue
     seen.add(skill.folderName)
     available.push({
-      name: skill.name,
-      description: (isEn && skill.descriptionEn) || skill.description || undefined,
+      name: getSkillDisplayName(skill, locale),
+      description: getSkillDescription(skill, locale) ?? undefined,
       filename: skill.folderName
     })
   }

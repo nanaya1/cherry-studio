@@ -48,6 +48,20 @@ const SKILL_FILE_PREVIEW_MAX_SIZE_BYTES = 2 * 1024 * 1024
 const SKILLS_PLUGIN_MANIFEST = `${JSON.stringify({ name: 'cherry-studio-skills' }, null, 2)}\n`
 const BUILTIN_VERSION_FILE = '.version'
 
+interface CatalogDisplayMetadata {
+  displayName: string
+  displayNameEn: string
+  description: string
+  descriptionEn: string
+}
+
+interface SkillInstallProvenance {
+  namespace?: string | null
+  catalogSkillId?: string | null
+  catalogVersion?: string | null
+  catalogDisplayMetadata?: CatalogDisplayMetadata
+}
+
 /**
  * Skill management service.
  *
@@ -292,12 +306,14 @@ export class SkillService {
   async installFromCatalog(
     directoryPath: string,
     catalogSkillId: string,
-    catalogVersion: string
+    catalogVersion: string,
+    catalogDisplayMetadata: CatalogDisplayMetadata
   ): Promise<InstalledSkill> {
     const canonicalPath = await fs.promises.realpath(directoryPath)
     return this.installSkillDir(canonicalPath, 'catalog', `skill-catalog:${catalogSkillId}`, {
       catalogSkillId,
-      catalogVersion
+      catalogVersion,
+      catalogDisplayMetadata
     })
   }
 
@@ -537,7 +553,7 @@ export class SkillService {
     skillDir: string,
     source: string,
     sourceUrl: string | null,
-    provenance: { namespace?: string | null; catalogSkillId?: string | null; catalogVersion?: string | null } = {}
+    provenance: SkillInstallProvenance = {}
   ): Promise<InstalledSkill> {
     // Serialize against reconcile / uninstall / builtin sync so a concurrent reconcile can't see
     // this install's transient `.bak` / half-copied state and then prune or mis-adopt the row.
@@ -548,7 +564,7 @@ export class SkillService {
     skillDir: string,
     source: string,
     sourceUrl: string | null,
-    provenance: { namespace?: string | null; catalogSkillId?: string | null; catalogVersion?: string | null } = {}
+    provenance: SkillInstallProvenance = {}
   ): Promise<InstalledSkill> {
     const metadata = await parseSkillMetadata(skillDir, path.basename(skillDir), 'skills')
 
@@ -596,16 +612,19 @@ export class SkillService {
     await this.linkMirror(destFolderName)
 
     const tags = metadata.tags ?? []
+    const displayMetadata = provenance.catalogDisplayMetadata ?? {
+      displayName: metadata.displayName ?? null,
+      displayNameEn: metadata.displayNameEn ?? null,
+      description: metadata.description ?? null,
+      descriptionEn: metadata.descriptionEn ?? null
+    }
 
     if (existing) {
       // Update metadata in-place to preserve the skill ID and its agent_skills rows.
       application.get('DbService').withWriteTx((tx) => {
         agentGlobalSkillService.updateTx(tx, existing.id, {
           name: metadata.name,
-          displayName: metadata.displayName ?? null,
-          displayNameEn: metadata.displayNameEn ?? null,
-          description: metadata.description ?? null,
-          descriptionEn: metadata.descriptionEn ?? null,
+          ...displayMetadata,
           author: metadata.author ?? null,
           version: metadata.version ?? null,
           iconFileName: metadata.iconFileName ?? null,
@@ -633,10 +652,7 @@ export class SkillService {
       application.get('DbService').withWriteTx((tx) => {
         const insertedRow = agentGlobalSkillService.insertTx(tx, {
           name: metadata.name,
-          displayName: metadata.displayName ?? null,
-          displayNameEn: metadata.displayNameEn ?? null,
-          description: metadata.description ?? null,
-          descriptionEn: metadata.descriptionEn ?? null,
+          ...displayMetadata,
           folderName: destFolderName,
           source,
           sourceUrl,
@@ -1007,10 +1023,10 @@ export class SkillService {
       if (existing) {
         agentGlobalSkillService.update(existing.id, {
           name: metadata.name,
-          displayName: metadata.displayName ?? null,
-          displayNameEn: metadata.displayNameEn ?? null,
-          description: metadata.description ?? null,
-          descriptionEn: metadata.descriptionEn ?? null,
+          displayName: existing.source === 'catalog' ? existing.displayName : (metadata.displayName ?? null),
+          displayNameEn: existing.source === 'catalog' ? existing.displayNameEn : (metadata.displayNameEn ?? null),
+          description: existing.source === 'catalog' ? existing.description : (metadata.description ?? null),
+          descriptionEn: existing.source === 'catalog' ? existing.descriptionEn : (metadata.descriptionEn ?? null),
           author: metadata.author ?? null,
           version: metadata.version ?? null,
           tags,

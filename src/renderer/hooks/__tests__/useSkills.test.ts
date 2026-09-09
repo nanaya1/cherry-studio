@@ -199,7 +199,13 @@ describe('useInstalledSkills', () => {
   it('combines enabled installed skills with local workspace skills', async () => {
     useQueryMock.mockReturnValue({
       data: [
-        createSkill({ id: 'global-on', name: 'PDF', folderName: 'pdf', isEnabled: true }),
+        createSkill({
+          id: 'global-on',
+          name: 'pdf',
+          displayName: 'PDF 中文助手',
+          folderName: 'pdf',
+          isEnabled: true
+        }),
         createSkill({ id: 'global-off', name: 'Docx', folderName: 'docx', isEnabled: false })
       ],
       isLoading: false,
@@ -219,9 +225,43 @@ describe('useInstalledSkills', () => {
     await waitFor(() => expect(result.current.loading).toBe(false))
 
     expect(result.current.skills).toEqual([
-      expect.objectContaining({ name: 'PDF', filename: 'pdf' }),
+      expect.objectContaining({ name: 'PDF 中文助手', filename: 'pdf' }),
       expect.objectContaining({ name: 'repo-skill', filename: 'repo-skill' })
     ])
+  })
+
+  it('uses English catalog display metadata while keeping the real folder name for execution', async () => {
+    const { default: i18n } = await import('@renderer/i18n/resolver')
+    await act(() => i18n.changeLanguage('en-US'))
+    useQueryMock.mockReturnValue({
+      data: [
+        createSkill({
+          name: 'machine-skill-name',
+          displayName: '目录中文名称',
+          displayNameEn: 'Catalog English name',
+          description: '目录中文描述',
+          descriptionEn: 'Catalog English description',
+          folderName: 'real-skill-folder',
+          isEnabled: true
+        })
+      ],
+      isLoading: false,
+      isRefreshing: false,
+      error: undefined,
+      refetch: vi.fn(),
+      mutate: vi.fn()
+    })
+
+    const { result } = renderHook(() => useAvailableSkills('agent-1'))
+
+    expect(result.current.skills).toEqual([
+      {
+        name: 'Catalog English name',
+        description: 'Catalog English description',
+        filename: 'real-skill-folder'
+      }
+    ])
+    await act(() => i18n.changeLanguage('zh-CN'))
   })
 
   it('reports loading before the first local skill request resolves for a workspace', async () => {

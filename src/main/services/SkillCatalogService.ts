@@ -235,7 +235,27 @@ export class SkillCatalogService extends BaseService {
       throw new Error(`Catalog artifact hash mismatch: ${catalogSkillId}`)
     }
 
-    const installed = await skillService.installFromCatalog(realArtifact, catalogSkillId, catalogSkill.artifact.version)
+    const translations = db
+      .select()
+      .from(skillCatalogTranslationTable)
+      .where(eq(skillCatalogTranslationTable.skillId, catalogSkillId))
+      .all()
+    const zh = translations.find((item) => item.locale === 'zh-CN')
+    const en = translations.find((item) => item.locale === 'en-US')
+    const fallback = zh ?? en
+    if (!fallback) throw new Error(`Catalog skill has no display metadata: ${catalogSkillId}`)
+
+    const installed = await skillService.installFromCatalog(
+      realArtifact,
+      catalogSkillId,
+      catalogSkill.artifact.version,
+      {
+        displayName: zh?.name ?? fallback.name,
+        displayNameEn: en?.name ?? fallback.name,
+        description: zh?.description ?? fallback.description,
+        descriptionEn: en?.description ?? fallback.description
+      }
+    )
     return installed.id
   }
 

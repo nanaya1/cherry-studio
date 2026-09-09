@@ -1924,6 +1924,37 @@ describe('SkillService', () => {
       expect(updated).toMatchObject({ id: installed.id, iconFileName: null })
     })
 
+    it('uses catalog names and descriptions instead of SKILL.md display metadata', async () => {
+      const sourceDir = await createTempDir('catalog-skill-')
+      await fs.promises.writeFile(path.join(sourceDir, 'SKILL.md'), '# Catalog skill')
+      vi.mocked(parseSkillMetadata).mockResolvedValue(
+        skillMeta('catalog-skill', {
+          displayName: 'SKILL.md 中文名称',
+          displayNameEn: 'SKILL.md English name',
+          description: 'SKILL.md 中文描述',
+          descriptionEn: 'SKILL.md English description'
+        })
+      )
+
+      const installed = await skillService.installFromCatalog(sourceDir, 'catalog-skill-id', '1.0.0', {
+        displayName: '目录中文名称',
+        displayNameEn: 'Catalog English name',
+        description: '目录中文描述',
+        descriptionEn: 'Catalog English description'
+      })
+
+      expect(installed).toMatchObject({
+        name: 'catalog-skill',
+        displayName: '目录中文名称',
+        displayNameEn: 'Catalog English name',
+        description: '目录中文描述',
+        descriptionEn: 'Catalog English description'
+      })
+      expect(
+        dbh.db.select().from(agentGlobalSkillTable).where(eq(agentGlobalSkillTable.id, installed.id)).get()
+      ).toMatchObject({ catalogSkillId: 'catalog-skill-id', catalogVersion: '1.0.0' })
+    })
+
     function skillMeta(folderName: string, overrides: Record<string, unknown> = {}) {
       return {
         sourcePath: folderName,
@@ -1983,6 +2014,44 @@ describe('SkillService', () => {
       expect(
         await dbh.db.select().from(agentGlobalSkillTable).where(eq(agentGlobalSkillTable.folderName, 'builtin-gone'))
       ).toHaveLength(1)
+    })
+
+    it('reconcileSkills preserves catalog display metadata when the installed files change', async () => {
+      await writeLibrarySkill('catalog-skill', '# changed catalog skill')
+      await dbh.db.insert(agentGlobalSkillTable).values({
+        id: SKILL_ID_1,
+        name: 'catalog-skill',
+        displayName: '目录中文名称',
+        displayNameEn: 'Catalog English name',
+        description: '目录中文描述',
+        descriptionEn: 'Catalog English description',
+        folderName: 'catalog-skill',
+        source: 'catalog',
+        sourceUrl: 'skill-catalog:catalog-skill-id',
+        catalogSkillId: 'catalog-skill-id',
+        catalogVersion: '1.0.0',
+        contentHash: 'stale-hash',
+        isEnabled: true
+      })
+      vi.mocked(parseSkillMetadata).mockResolvedValue(
+        skillMeta('catalog-skill', {
+          displayName: 'SKILL.md 中文名称',
+          displayNameEn: 'SKILL.md English name',
+          description: 'SKILL.md 中文描述',
+          descriptionEn: 'SKILL.md English description'
+        })
+      )
+
+      await skillService.reconcileSkills()
+
+      expect(
+        dbh.db.select().from(agentGlobalSkillTable).where(eq(agentGlobalSkillTable.id, SKILL_ID_1)).get()
+      ).toMatchObject({
+        displayName: '目录中文名称',
+        displayNameEn: 'Catalog English name',
+        description: '目录中文描述',
+        descriptionEn: 'Catalog English description'
+      })
     })
 
     it('reconcileSkills adopts a skill authored directly in the managed library', async () => {
