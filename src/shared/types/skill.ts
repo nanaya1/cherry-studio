@@ -147,6 +147,8 @@ export const InstalledSkillSchema = z.object({
   /** English display label; preferred over displayName when the app locale is English. */
   displayNameEn: z.string().nullable(),
   description: z.string().nullable(),
+  /** English description; preferred over description when the app locale is English. */
+  descriptionEn: z.string().nullable(),
   folderName: z.string(),
   source: z.string(),
   sourceUrl: z.string().nullable(),
@@ -208,6 +210,8 @@ export interface SkillFileNode {
 export interface LocalSkill {
   name: string
   description?: string
+  /** English description; preferred over description when the app locale is English. */
+  descriptionEn?: string
   filename: string
 }
 
@@ -226,6 +230,7 @@ export interface SystemSkillCandidate {
   displayName?: string | null
   displayNameEn?: string | null
   description?: string
+  descriptionEn?: string | null
   filename: string
   directoryPath: string
   placements: SystemSkillPlacement[]

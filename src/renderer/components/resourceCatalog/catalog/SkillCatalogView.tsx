@@ -66,46 +66,64 @@ function getSkillFallbackStyle(name: string): string {
   return FALLBACK_STYLES[hash % FALLBACK_STYLES.length]
 }
 
-export function SkillCatalogHeaderActions({ controller }: { controller: SkillController }) {
+export function SkillCatalogHeaderActions({
+  controller,
+  showSearch = true,
+  showAdd = true
+}: {
+  controller: SkillController
+  showSearch?: boolean
+  showAdd?: boolean
+}) {
   const { t } = useTranslation()
   const { gridProps } = controller
 
   return (
     <div className="flex min-w-0 items-center gap-2">
-      <ResourceCatalogSearchInput
-        value={gridProps.search}
-        onValueChange={gridProps.onSearchChange}
-        placeholder={t('library.toolbar.search_placeholder')}
-        className="w-64 max-w-[32vw] max-lg:w-40"
-      />
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button size="sm" className="shrink-0">
-            <Plus className="size-3.5" />
-            <span className="max-lg:sr-only">{t('library.skill_add.add')}</span>
-            <ChevronDown className="size-3.5 max-lg:hidden" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="min-w-40">
-          <DropdownMenuItem onSelect={gridProps.onOpenSkillMarketplace} className="gap-2">
-            <Search className="size-3.5" />
-            <span>{t('library.skill_add.online_search')}</span>
-          </DropdownMenuItem>
-          <DropdownMenuItem onSelect={gridProps.onOpenSystemSkills} className="gap-2">
-            <FolderSearch className="size-3.5" />
-            <span>{t('library.skill_add.system_search')}</span>
-          </DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => gridProps.onCreate('skill')} className="gap-2">
-            <Import className="size-3.5" />
-            <span>{t('library.skill_add.local_import')}</span>
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      {showSearch ? (
+        <ResourceCatalogSearchInput
+          value={gridProps.search}
+          onValueChange={gridProps.onSearchChange}
+          placeholder={t('library.toolbar.search_placeholder')}
+          className="w-64 max-w-[32vw] max-lg:w-40"
+        />
+      ) : null}
+      {showAdd ? (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button size="sm" className="h-8 shrink-0">
+              <Plus className="size-3.5" />
+              <span className="max-lg:sr-only">{t('library.skill_add.add')}</span>
+              <ChevronDown className="size-3.5 max-lg:hidden" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="min-w-40">
+            <DropdownMenuItem onSelect={gridProps.onOpenSkillMarketplace} className="gap-2">
+              <Search className="size-3.5" />
+              <span>{t('library.skill_add.online_search')}</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={gridProps.onOpenSystemSkills} className="gap-2">
+              <FolderSearch className="size-3.5" />
+              <span>{t('library.skill_add.system_search')}</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => gridProps.onCreate('skill')} className="gap-2">
+              <Import className="size-3.5" />
+              <span>{t('library.skill_add.local_import')}</span>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : null}
     </div>
   )
 }
 
-export function SkillCatalogView({ controller }: { controller: SkillController }) {
+export function SkillCatalogView({
+  controller,
+  secondary = false
+}: {
+  controller: SkillController
+  secondary?: boolean
+}) {
   const { t } = useTranslation()
   const { resourceError, refetch, gridProps, dialogs } = controller
   const [sourceFilter, setSourceFilter] = useState<SkillSourceFilter>('all')
@@ -153,10 +171,10 @@ export function SkillCatalogView({ controller }: { controller: SkillController }
 
   const visibleResources = useMemo(
     () =>
-      sourceFilter === 'all'
+      secondary || sourceFilter === 'all'
         ? resources
         : resources.filter((resource) => getSkillSourceFilter(resource.raw.source) === sourceFilter),
-    [resources, sourceFilter]
+    [resources, secondary, sourceFilter]
   )
 
   const filters: Array<{ value: SkillSourceFilter; label: string }> = [
@@ -186,34 +204,46 @@ export function SkillCatalogView({ controller }: { controller: SkillController }
         </div>
       ) : (
         <>
-          <div className="shrink-0 px-6 pt-7 pb-4">
-            <div className="flex items-baseline gap-2">
-              <h2 className="font-semibold text-xl">{t('workspace.skillsConnectors.mySkills')}</h2>
-              <span className="text-foreground-tertiary text-xs">
-                {gridProps.allResources.length} {t('settings.skills.installed')}
-              </span>
-            </div>
-            <div className="mt-4 flex w-full flex-wrap items-center justify-between gap-3">
-              <div
-                role="tablist"
-                aria-label={t('workspace.skillsConnectors.sourceFilter')}
-                className="flex min-w-0 flex-wrap gap-1">
-                {filters.map((filter) => (
-                  <Button
-                    key={filter.value}
-                    role="tab"
-                    aria-selected={sourceFilter === filter.value}
-                    variant={sourceFilter === filter.value ? 'secondary' : 'ghost'}
-                    size="sm"
-                    onClick={() => setSourceFilter(filter.value)}
-                    className="h-8 gap-1.5 rounded-md px-3 font-normal">
-                    <span>{filter.label}</span>
-                    <span className="text-foreground-tertiary text-xs tabular-nums">{counts[filter.value]}</span>
-                  </Button>
-                ))}
+          <div className={secondary ? 'shrink-0 px-6 py-6' : 'shrink-0 px-6 pt-7 pb-4'}>
+            {secondary ? (
+              <div className="flex w-full items-center justify-between gap-4">
+                <div className="flex min-w-0 items-baseline gap-2">
+                  <h1 className="truncate font-semibold text-xl">{t('workspace.skill_catalog.my_installed')}</h1>
+                  <span className="shrink-0 text-foreground-tertiary text-xs tabular-nums">{resources.length}</span>
+                </div>
+                <SkillCatalogHeaderActions controller={controller} showAdd={false} />
               </div>
-              <SkillCatalogHeaderActions controller={controller} />
-            </div>
+            ) : (
+              <>
+                <div className="flex items-baseline gap-2">
+                  <h2 className="font-semibold text-xl">{t('workspace.skillsConnectors.mySkills')}</h2>
+                  <span className="text-foreground-tertiary text-xs">
+                    {gridProps.allResources.length} {t('settings.skills.installed')}
+                  </span>
+                </div>
+                <div className="mt-4 flex w-full flex-wrap items-center justify-between gap-3">
+                  <div
+                    role="tablist"
+                    aria-label={t('workspace.skillsConnectors.sourceFilter')}
+                    className="flex min-w-0 flex-wrap gap-1">
+                    {filters.map((filter) => (
+                      <Button
+                        key={filter.value}
+                        role="tab"
+                        aria-selected={sourceFilter === filter.value}
+                        variant={sourceFilter === filter.value ? 'secondary' : 'ghost'}
+                        size="sm"
+                        onClick={() => setSourceFilter(filter.value)}
+                        className="h-8 gap-1.5 rounded-md px-3 font-normal">
+                        <span>{filter.label}</span>
+                        <span className="text-foreground-tertiary text-xs tabular-nums">{counts[filter.value]}</span>
+                      </Button>
+                    ))}
+                  </div>
+                  <SkillCatalogHeaderActions controller={controller} />
+                </div>
+              </>
+            )}
           </div>
 
           <Scrollbar className="@container/skills min-h-0 flex-1 px-6 pb-6">
@@ -269,7 +299,7 @@ function SkillCard({
   const { t } = useTranslation()
   const initial = getSkillInitial(resource.name)
   const fallbackStyle = getSkillFallbackStyle(resource.name)
-  const version = resource.raw.version?.trim()
+  const isBuiltin = resource.raw.source === 'builtin'
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return
@@ -294,11 +324,11 @@ function SkillCard({
         </Avatar>
         <div className="flex min-w-0 items-center gap-2">
           <h3 className="truncate font-semibold text-base leading-5">{resource.name}</h3>
-          {version ? (
+          {isBuiltin ? (
             <Badge
               variant="secondary"
               className="shrink-0 border-0 px-1.5 py-px font-normal text-[10px] text-foreground-tertiary">
-              {version}
+              {t('workspace.skillsConnectors.sources.builtin')}
             </Badge>
           ) : null}
         </div>

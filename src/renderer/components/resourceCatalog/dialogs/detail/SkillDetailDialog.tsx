@@ -13,7 +13,7 @@ import { ipcApi } from '@renderer/ipc'
 import { loggerService } from '@renderer/services/LoggerService'
 import { openRoute } from '@renderer/services/mainWindowNavigation'
 import { cn } from '@renderer/utils/style'
-import { getSkillDisplayName } from '@shared/data/api/schemas/skills'
+import { getSkillDescription, getSkillDisplayName } from '@shared/data/api/schemas/skills'
 import type { InstalledSkill } from '@shared/data/types/agent'
 import { Play, Trash2 } from 'lucide-react'
 import { type FC, useCallback, useEffect, useRef, useState } from 'react'
@@ -55,15 +55,6 @@ function getFallbackStyle(name: string): string {
   let hash = 0
   for (const character of name) hash = (hash * 31 + character.codePointAt(0)!) >>> 0
   return FALLBACK_STYLES[hash % FALLBACK_STYLES.length]
-}
-
-function getSourceLabel(source: string, t: ReturnType<typeof useTranslation>['t']): string {
-  if (source === 'builtin') return t('workspace.skillsConnectors.sources.builtin')
-  if (source === 'marketplace') return t('workspace.skillsConnectors.sources.marketplace')
-  if (source === 'local' || source === 'zip' || source === 'system') {
-    return t('workspace.skillsConnectors.sources.custom')
-  }
-  return source
 }
 
 const SkillDetailDialog: FC<Props> = ({ skill, open, onOpenChange, onDelete }) => {
@@ -133,6 +124,7 @@ const SkillDetailDialog: FC<Props> = ({ skill, open, onOpenChange, onDelete }) =
   if (!skill) return null
 
   const displayName = getSkillDisplayName(skill, locale)
+  const description = getSkillDescription(skill, locale)
 
   return (
     <Dialog open={dialogOpen} onOpenChange={handleOpenChange}>
@@ -157,7 +149,7 @@ const SkillDetailDialog: FC<Props> = ({ skill, open, onOpenChange, onDelete }) =
               <div className="min-w-0 pt-0.5">
                 <DialogTitle className="truncate text-xl leading-7">{displayName}</DialogTitle>
                 <p className="mt-1.5 line-clamp-2 text-muted-foreground text-sm leading-5">
-                  {skill.description || t('library.skill_detail.no_description')}
+                  {description || t('library.skill_detail.no_description')}
                 </p>
               </div>
             </div>
@@ -165,8 +157,8 @@ const SkillDetailDialog: FC<Props> = ({ skill, open, onOpenChange, onDelete }) =
 
           <dl className="mt-5 grid grid-cols-1 gap-3 text-sm sm:grid-cols-3">
             <div>
-              <dt className="text-foreground-tertiary">{t('library.skill_detail.source')}</dt>
-              <dd className="mt-1 text-foreground">{getSourceLabel(skill.source, t)}</dd>
+              <dt className="text-foreground-tertiary">{t('workspace.skill_catalog.version')}</dt>
+              <dd className="mt-1 text-foreground">{skill.version?.trim() || '-'}</dd>
             </div>
             <div>
               <dt className="text-foreground-tertiary">{t('library.skill_detail.created_at')}</dt>

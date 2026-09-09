@@ -37,7 +37,7 @@ import {
   type AgentSessionWorkspaceSource,
   type AgentWorkspaceEntity
 } from '@shared/data/api/schemas/agentWorkspaces'
-import { getSkillDisplayName } from '@shared/data/api/schemas/skills'
+import { getSkillDescription, getSkillDisplayName } from '@shared/data/api/schemas/skills'
 import { CHERRYAI_DEFAULT_UNIQUE_MODEL_ID } from '@shared/data/presets/cherryai'
 import type { UniqueModelId } from '@shared/data/types/model'
 import { useNavigate, useSearch } from '@tanstack/react-router'
@@ -169,7 +169,9 @@ export default function NewTaskPage() {
   const launchSkillName = launchSkill
     ? getSkillDisplayName(launchSkill, i18n.resolvedLanguage ?? i18n.language)
     : undefined
-  const launchSkillDescription = launchSkill?.description
+  const launchSkillDescription = launchSkill
+    ? (getSkillDescription(launchSkill, i18n.resolvedLanguage ?? i18n.language) ?? undefined)
+    : undefined
   const launchSkillFolderName = launchSkill?.folderName
   const skillLaunchOptions = useMemo<AgentComposerLaunchOptions | undefined>(() => {
     if (!resolvedLaunchSkillId || !launchSkillName || !launchSkillFolderName || !hasPendingSkillLaunch) return undefined

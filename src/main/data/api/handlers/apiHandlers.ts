@@ -35,6 +35,7 @@ import { pinHandlers } from './pins'
 import { promptHandlers } from './prompts'
 import { providerHandlers } from './providers'
 import { searchHandlers } from './search'
+import { skillCatalogHandlers } from './skillCatalog'
 import { skillHandlers } from './skills'
 import { tagHandlers } from './tags'
 import { temporaryChatHandlers } from './temporaryChats'
@@ -62,6 +63,7 @@ export const apiHandlers: ApiImplementation = {
   ...agentSessionHandlers,
   ...agentSessionMessageHandlers,
   ...skillHandlers,
+  ...skillCatalogHandlers,
   ...knowledgeHandlers,
   ...translateHandlers,
   ...mcpServerHandlers,

@@ -28,6 +28,7 @@
       "!**/.claude/**",
       "!**/.vscode/**",
       "!**/.conductor/**",
+      "!**/.workbuddy/**",
       "!v2-refactor-temp/**",
       "!resources/**",
       "!**/storybook-static/**",

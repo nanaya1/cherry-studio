@@ -431,6 +431,7 @@ export default defineConfig([
       '.yarn/**',
       '.gitignore',
       '.conductor/**',
+      '.workbuddy/**',
       'scripts/cloudflare-worker.js',
       'src/main/services/nutstore/sso/lib/**',
       'src/renderer/ui/**',

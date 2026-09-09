@@ -1,0 +1,44 @@
+{
+  "cmapss_fd001_rul": {
+    "metric": "rmse",
+    "baseline": 11.93,
+    "tolerance_pct": 10,
+    "direction": "lower_is_better",
+    "dataset": "C-MAPSS FD001",
+    "model": "RULPredictor(window_size=30, rul_cap=125, backend=optuna, n_trials=30, stride=5, drop_constant_sensors=True)",
+    "time_limit": 180,
+    "locked_at": "2026-07-02"
+  },
+  "ai4i_classification": {
+    "metric": "f1",
+    "baseline": 0.8197,
+    "tolerance_pct": 5,
+    "direction": "higher_is_better",
+    "dataset": "AI4I 2020",
+    "model": "FailureClassifier()",
+    "time_limit": 120,
+    "locked_at": "2026-07-02"
+  },
+  "hdfail_survival": {
+    "metric": "concordance_index",
+    "baseline": 0.8821,
+    "tolerance_pct": 5,
+    "direction": "higher_is_better",
+    "dataset": "Backblaze Hard Drive Failure (hdfail, 52K drives, 5 features)",
+    "model": "SurvivalPredictor()",
+    "time_limit": 300,
+    "locked_at": "2026-07-02",
+    "note": "Replaces saturated NASA Battery benchmark. 94% censoring, 5.5% failure rate. Source: frailtySurv R package (Backblaze Drive Stats). Published SOTA C=0.958 with 21 SMART features (Ahmed & Green, 2024)."
+  },
+  "smap_anomaly_detection": {
+    "metric": "f1",
+    "baseline": 0.9667,
+    "tolerance_pct": 10,
+    "direction": "higher_is_better",
+    "dataset": "NASA SMAP (55 channels, 25 dims)",
+    "model": "SpectralResidualDetector(sr_window=5, aggregation_percentile=95)",
+    "time_limit": 300,
+    "locked_at": "2026-07-02",
+    "note": "Point-adjust F1; spectral residual with z-score normalization and percentile aggregation"
+  }
+}

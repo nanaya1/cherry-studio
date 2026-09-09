@@ -16,7 +16,7 @@ import {
   findSkillIconFileName,
   findSkillMdPath,
   parseSkillMetadata,
-  skillMdHasDisplayName
+  skillMdHasFrontmatterKey
 } from '@main/utils/markdownParser'
 import { SKILL_LIST_MEMBERSHIP_DIMENSIONS } from '@shared/data/api/schemas/skills'
 import type { DataApiDataChangeEffect } from '@shared/data/api/types'
@@ -35,7 +35,7 @@ vi.mock('@main/utils/markdownParser', () => ({
   findSkillIconFileName: vi.fn().mockResolvedValue(undefined),
   findAllSkillDirectories: vi.fn().mockResolvedValue([]),
   findSkillMdPath: vi.fn(),
-  skillMdHasDisplayName: vi.fn().mockResolvedValue(false),
+  skillMdHasFrontmatterKey: vi.fn().mockResolvedValue(false),
   SKILL_ICON_FILE_NAMES: ['icon.webp', 'icon.png', 'icon.jpg', 'icon.jpeg']
 }))
 
@@ -103,7 +103,7 @@ describe('SkillService', () => {
     vi.mocked(skillArchive.extractZip).mockReset()
     vi.mocked(skillArchive.resolveSkillDirectory).mockReset()
     vi.mocked(findSkillIconFileName).mockReset().mockResolvedValue(undefined)
-    vi.mocked(skillMdHasDisplayName).mockReset().mockResolvedValue(false)
+    vi.mocked(skillMdHasFrontmatterKey).mockReset().mockResolvedValue(false)
   })
 
   async function seedAgent() {
@@ -1577,7 +1577,7 @@ describe('SkillService', () => {
         isEnabled: false
       })
       const installSpy = vi.spyOn(skillService['installer'], 'install')
-      vi.mocked(skillMdHasDisplayName).mockResolvedValue(true)
+      vi.mocked(skillMdHasFrontmatterKey).mockResolvedValue(true)
       vi.mocked(parseSkillMetadata).mockResolvedValue({
         sourcePath: FOLDER_NAME,
         filename: FOLDER_NAME,
@@ -1585,6 +1585,7 @@ describe('SkillService', () => {
         displayName: '机械设计知识查询助手',
         displayNameEn: 'Mechanical Design Assistant',
         description: 'desc',
+        descriptionEn: 'English desc',
         category: 'skills',
         type: 'skill',
         tags: [],
@@ -1602,6 +1603,8 @@ describe('SkillService', () => {
         .where(eq(agentGlobalSkillTable.id, SKILL_ID_BUILTIN))
       expect(row.displayName).toBe('机械设计知识查询助手')
       expect(row.displayNameEn).toBe('Mechanical Design Assistant')
+      expect(row.description).toBe('desc')
+      expect(row.descriptionEn).toBe('English desc')
 
       // Second sync: displayName now matches, the hash short-circuit applies again.
       vi.mocked(parseSkillMetadata).mockClear()

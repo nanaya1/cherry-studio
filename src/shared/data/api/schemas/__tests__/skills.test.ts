@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { getSkillDisplayName, InstalledSkillSchema, ListSkillsQuerySchema } from '../skills'
+import { getSkillDescription, getSkillDisplayName, InstalledSkillSchema, ListSkillsQuerySchema } from '../skills'
 
 describe('Skill schemas', () => {
   it('keeps skill sourceTags but removes outer user tags and tag filters', () => {
@@ -10,6 +10,7 @@ describe('Skill schemas', () => {
       displayName: null,
       displayNameEn: null,
       description: null,
+      descriptionEn: null,
       folderName: 'skill',
       source: 'builtin',
       sourceUrl: null,
@@ -52,5 +53,18 @@ describe('Skill schemas', () => {
     const skill = { displayName: '小樱的工作准则', displayNameEn: null, name: 'xiao-ying-work-rules' }
 
     expect(getSkillDisplayName(skill, 'en-US')).toBe('小樱的工作准则')
+  })
+
+  it('prefers descriptionEn only for English locales and falls back to description', () => {
+    const skill = { description: '中文描述', descriptionEn: 'English description' }
+
+    expect(getSkillDescription(skill, 'en-US')).toBe('English description')
+    expect(getSkillDescription(skill, 'zh-CN')).toBe('中文描述')
+    expect(getSkillDescription(skill, null)).toBe('中文描述')
+  })
+
+  it('falls back to description when descriptionEn is absent even in English locales', () => {
+    expect(getSkillDescription({ description: '中文描述', descriptionEn: null }, 'en-US')).toBe('中文描述')
+    expect(getSkillDescription({ description: null, descriptionEn: null }, 'en-US')).toBeNull()
   })
 })

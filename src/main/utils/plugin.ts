@@ -14,6 +14,7 @@ export const PluginMetadataSchema = z.object({
 
   // Content
   description: z.string().optional(),
+  descriptionEn: z.string().optional(), // English description from frontmatter; preferred over description when the app locale is English
   allowed_tools: z.array(z.string()).optional(), // from frontmatter (for commands and skills)
   tools: z.array(z.string()).optional(), // from frontmatter (for agents and skills)
   context: z.string().optional(), // skill execution context (for example, "fork")

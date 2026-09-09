@@ -1,0 +1,48 @@
+{
+  "skill_info": {
+    "name": "智能调度优化算法技能",
+    "category": "优化算法",
+    "version": "1.0.0",
+    "author": "SdYTH-Factory Team",
+    "description": "基于NSGA-II多目标遗传算法的通用调度优化解决方案，可适配厂-车间-机组等多层级调度需求",
+    "tags": [
+      "调度优化",
+      "遗传算法",
+      "多目标优化",
+      "NSGA-II",
+      "资源分配",
+      "生产排程"
+    ],
+    "requirements": {
+      "jdk": ">=1.8",
+      "memory": ">=512MB RAM推荐",
+      "dependencies": [
+        "java.util",
+        "java.util.stream",
+        "java.util.concurrent"
+      ]
+    },
+    "entry_points": [
+      {
+        "name": "SchedulerOptimizer",
+        "type": "interface",
+        "description": "调度优化器统一接口"
+      },
+      {
+        "name": "NsgaII_SchedulerOptimizer", 
+        "type": "implementation",
+        "description": "NSGA-II多目标调度算法实现"
+      },
+      {
+        "name": "SchedulingProblem",
+        "type": "interface", 
+        "description": "调度问题定义接口"
+      },
+      {
+        "name": "OptimizerConfig",
+        "type": "class",
+        "description": "优化器通用配置类"
+      }
+    ]
+  }
+}

@@ -3,7 +3,7 @@ import { ResourceCatalogSearchInput } from '@renderer/components/resourceCatalog
 import { useSystemSkills } from '@renderer/hooks/useSkills'
 import { toast } from '@renderer/services/toast'
 import type { SystemSkillCandidate } from '@shared/types/skill'
-import { getSystemSkillDisplayName } from '@shared/utils/skillDisplay'
+import { getSystemSkillDescription, getSystemSkillDisplayName } from '@shared/utils/skillDisplay'
 import { Check, FolderSearch, Import, Loader2, TriangleAlert } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -29,7 +29,7 @@ export function SystemSkillDialog({ mode, open, onOpenChange, onEnabled, selecte
     if (!normalizedQuery) return skills
 
     return skills.filter((skill) =>
-      [skill.displayName, skill.displayNameEn, skill.name, skill.description].some((value) =>
+      [skill.displayName, skill.displayNameEn, skill.name, skill.description, skill.descriptionEn].some((value) =>
         value?.toLowerCase().includes(normalizedQuery)
       )
     )
@@ -127,7 +127,9 @@ function SystemSkillRow({
   onEnable: () => void
 }) {
   const { t, i18n } = useTranslation()
+  const locale = i18n.resolvedLanguage ?? i18n.language
   const placementNames = Array.from(new Set(skill.placements.map((placement) => placement.sourceName))).join(', ')
+  const description = getSystemSkillDescription(skill, locale)
   const imported = skill.status === 'registered'
   const enabled = mode === 'agent-create' && selected
   const disabled = importing || skill.status === 'conflict' || (mode === 'manage' ? imported : enabled)
@@ -157,9 +159,7 @@ function SystemSkillRow({
           </span>
           <span className="shrink-0 text-foreground-tertiary text-xs">{placementNames}</span>
         </div>
-        {skill.description ? (
-          <p className="mt-0.5 truncate text-muted-foreground text-xs">{skill.description}</p>
-        ) : null}
+        {description ? <p className="mt-0.5 truncate text-muted-foreground text-xs">{description}</p> : null}
         <p className="mt-1 truncate font-mono text-[11px] text-foreground-tertiary">{skill.directoryPath}</p>
       </div>
       <Button variant="outline" size="sm" disabled={disabled} onClick={onClick} className="shrink-0">

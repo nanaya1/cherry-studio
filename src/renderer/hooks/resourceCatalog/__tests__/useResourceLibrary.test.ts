@@ -42,7 +42,8 @@ vi.mock('@renderer/hooks/useGroups', () => ({
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string) => (key === 'agent.builtin.cherry_assistant.description' ? 'Advisor 诊断 helper' : key)
+    t: (key: string) => (key === 'agent.builtin.cherry_assistant.description' ? 'Advisor 诊断 helper' : key),
+    i18n: { resolvedLanguage: 'zh-CN', language: 'zh-CN' }
   })
 }))
 
@@ -93,7 +94,10 @@ const agentListItem = {
 const skillListItem = {
   id: 'skill-1',
   name: '网页摘要',
+  displayName: null,
+  displayNameEn: null,
   description: '自动提取网页核心内容',
+  descriptionEn: null,
   folderName: 'web-summary',
   source: 'marketplace',
   sourceUrl: null,

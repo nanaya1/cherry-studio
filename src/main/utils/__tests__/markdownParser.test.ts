@@ -5,7 +5,7 @@ import {
   findSkillIconFileName,
   parsePluginMetadata,
   parseSkillMetadata,
-  skillMdHasDisplayName
+  skillMdHasFrontmatterKey
 } from '../markdownParser'
 
 vi.mock('fs', () => ({
@@ -219,8 +219,8 @@ display_name: '机械设计知识查询助手'
 
 Body`)
 
-    await expect(skillMdHasDisplayName('/abs/skill')).resolves.toBe(true)
-    await expect(skillMdHasDisplayName('/abs/skill', 'display_name_en')).resolves.toBe(false)
+    await expect(skillMdHasFrontmatterKey('/abs/skill', 'display_name')).resolves.toBe(true)
+    await expect(skillMdHasFrontmatterKey('/abs/skill', 'display_name_en')).resolves.toBe(false)
 
     vi.mocked(fs.promises.readFile).mockResolvedValue(`---
 name: labeled-skill
@@ -229,8 +229,8 @@ display_name_en: 'Mechanical Design Assistant'
 
 Body`)
 
-    await expect(skillMdHasDisplayName('/abs/skill')).resolves.toBe(false)
-    await expect(skillMdHasDisplayName('/abs/skill', 'display_name_en')).resolves.toBe(true)
+    await expect(skillMdHasFrontmatterKey('/abs/skill', 'display_name')).resolves.toBe(false)
+    await expect(skillMdHasFrontmatterKey('/abs/skill', 'display_name_en')).resolves.toBe(true)
 
     vi.mocked(fs.promises.readFile).mockResolvedValue(`---
 name: plain-skill
@@ -239,8 +239,60 @@ description: no display label
 
 Body`)
 
-    await expect(skillMdHasDisplayName('/abs/skill')).resolves.toBe(false)
-    await expect(skillMdHasDisplayName('/abs/skill', 'display_name_en')).resolves.toBe(false)
+    await expect(skillMdHasFrontmatterKey('/abs/skill', 'display_name')).resolves.toBe(false)
+    await expect(skillMdHasFrontmatterKey('/abs/skill', 'display_name_en')).resolves.toBe(false)
+  })
+
+  it('detects a description_en key in SKILL.md without full parsing', async () => {
+    vi.mocked(fs.promises.stat).mockResolvedValue({} as fs.Stats)
+
+    vi.mocked(fs.promises.readFile).mockResolvedValue(`---
+name: labeled-skill
+description_en: 'English description'
+---
+
+Body`)
+
+    await expect(skillMdHasFrontmatterKey('/abs/skill', 'description_en')).resolves.toBe(true)
+
+    vi.mocked(fs.promises.readFile).mockResolvedValue(`---
+name: plain-skill
+description: 中文描述
+---
+
+Body`)
+
+    await expect(skillMdHasFrontmatterKey('/abs/skill', 'description_en')).resolves.toBe(false)
+  })
+
+  it('parses description_en and accepts camelCase variants', async () => {
+    vi.mocked(fs.promises.readFile).mockResolvedValue(`---
+name: my-skill
+description: 中文描述
+descriptionEn: "  English description  "
+---
+
+Body`)
+
+    const metadata = await parseSkillMetadata('/abs/skill', 'skills/my-skill', 'skills')
+
+    expect(metadata.description).toBe('中文描述')
+    expect(metadata.descriptionEn).toBe('English description')
+  })
+
+  it('normalizes an absent or blank description_en to undefined', async () => {
+    vi.mocked(fs.promises.readFile).mockResolvedValue(`---
+name: plain-skill
+description: 中文描述
+description_en: "   "
+---
+
+Body`)
+
+    const metadata = await parseSkillMetadata('/abs/skill', 'skills/plain-skill', 'skills')
+
+    expect(metadata.description).toBe('中文描述')
+    expect(metadata.descriptionEn).toBeUndefined()
   })
 
   it.each(['icon.webp', 'icon.png', 'icon.jpg', 'icon.jpeg'])(

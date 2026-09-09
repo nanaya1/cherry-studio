@@ -17,7 +17,7 @@ import {
   findSkillMdPath,
   parseSkillMetadata,
   SKILL_ICON_FILE_NAMES,
-  skillMdHasDisplayName
+  skillMdHasFrontmatterKey
 } from '@main/utils/markdownParser'
 import { getShellEnv } from '@main/utils/shellEnv'
 import { BUILTIN_AGENT_ROLE } from '@shared/ai/builtinAgent'
@@ -289,16 +289,35 @@ export class SkillService {
     return this.installSkillDir(canonicalPath, 'local', pathToFileURL(canonicalPath).href)
   }
 
+  async installFromCatalog(
+    directoryPath: string,
+    catalogSkillId: string,
+    catalogVersion: string
+  ): Promise<InstalledSkill> {
+    const canonicalPath = await fs.promises.realpath(directoryPath)
+    return this.installSkillDir(canonicalPath, 'catalog', `skill-catalog:${catalogSkillId}`, {
+      catalogSkillId,
+      catalogVersion
+    })
+  }
+
   /** List user-owned workspace skills from supported project skill roots. */
-  async listLocal(workdir: string): Promise<Array<{ name: string; description?: string; filename: string }>> {
-    const results: Array<{ name: string; description?: string; filename: string }> = []
+  async listLocal(
+    workdir: string
+  ): Promise<Array<{ name: string; description?: string; descriptionEn?: string; filename: string }>> {
+    const results: Array<{ name: string; description?: string; descriptionEn?: string; filename: string }> = []
 
     for (const skill of await this.listLocalSkillDirectories(workdir)) {
       try {
         const metadata = await parseSkillMetadata(skill.path, skill.name, 'skills', {
           calculateSize: false
         })
-        results.push({ name: metadata.name, description: metadata.description, filename: skill.name })
+        results.push({
+          name: metadata.name,
+          description: metadata.description,
+          descriptionEn: metadata.descriptionEn,
+          filename: skill.name
+        })
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue
         logger.warn('Failed to parse skill metadata; skipping', {
@@ -416,6 +435,7 @@ export class SkillService {
             displayName: metadata.displayName ?? null,
             displayNameEn: metadata.displayNameEn ?? null,
             description: metadata.description,
+            descriptionEn: metadata.descriptionEn ?? null,
             filename: folderName,
             directoryPath: canonicalPath,
             placements: [placement],
@@ -517,7 +537,7 @@ export class SkillService {
     skillDir: string,
     source: string,
     sourceUrl: string | null,
-    provenance: { namespace?: string | null } = {}
+    provenance: { namespace?: string | null; catalogSkillId?: string | null; catalogVersion?: string | null } = {}
   ): Promise<InstalledSkill> {
     // Serialize against reconcile / uninstall / builtin sync so a concurrent reconcile can't see
     // this install's transient `.bak` / half-copied state and then prune or mis-adopt the row.
@@ -528,7 +548,7 @@ export class SkillService {
     skillDir: string,
     source: string,
     sourceUrl: string | null,
-    provenance: { namespace?: string | null } = {}
+    provenance: { namespace?: string | null; catalogSkillId?: string | null; catalogVersion?: string | null } = {}
   ): Promise<InstalledSkill> {
     const metadata = await parseSkillMetadata(skillDir, path.basename(skillDir), 'skills')
 
@@ -585,12 +605,19 @@ export class SkillService {
           displayName: metadata.displayName ?? null,
           displayNameEn: metadata.displayNameEn ?? null,
           description: metadata.description ?? null,
+          descriptionEn: metadata.descriptionEn ?? null,
           author: metadata.author ?? null,
           version: metadata.version ?? null,
           iconFileName: metadata.iconFileName ?? null,
           tags,
           contentHash,
-          ...(source === 'system' ? { sourceUrl, namespace: provenance.namespace ?? null } : {})
+          ...(source === 'system' ? { sourceUrl, namespace: provenance.namespace ?? null } : {}),
+          ...(source === 'catalog'
+            ? {
+                catalogSkillId: provenance.catalogSkillId ?? null,
+                catalogVersion: provenance.catalogVersion ?? null
+              }
+            : {})
         })
       })
       const updated = agentGlobalSkillService.getById(existing.id)!
@@ -609,6 +636,7 @@ export class SkillService {
           displayName: metadata.displayName ?? null,
           displayNameEn: metadata.displayNameEn ?? null,
           description: metadata.description ?? null,
+          descriptionEn: metadata.descriptionEn ?? null,
           folderName: destFolderName,
           source,
           sourceUrl,
@@ -617,7 +645,9 @@ export class SkillService {
           version: metadata.version ?? null,
           iconFileName: metadata.iconFileName ?? null,
           tags,
-          contentHash
+          contentHash,
+          catalogSkillId: provenance.catalogSkillId ?? null,
+          catalogVersion: provenance.catalogVersion ?? null
         })
         if (!isBuiltin) {
           defaultAgentId = this.bindNewSkillToDefaultAgentTx(tx, insertedRow.id)
@@ -980,6 +1010,7 @@ export class SkillService {
           displayName: metadata.displayName ?? null,
           displayNameEn: metadata.displayNameEn ?? null,
           description: metadata.description ?? null,
+          descriptionEn: metadata.descriptionEn ?? null,
           author: metadata.author ?? null,
           version: metadata.version ?? null,
           tags,
@@ -995,6 +1026,7 @@ export class SkillService {
             displayName: metadata.displayName ?? null,
             displayNameEn: metadata.displayNameEn ?? null,
             description: metadata.description ?? null,
+            descriptionEn: metadata.descriptionEn ?? null,
             folderName,
             source: 'local',
             sourceUrl: null,
@@ -1251,16 +1283,24 @@ export class SkillService {
       // Builtin contentHash is the trusted full-directory hash (excluding Cherry's version marker),
       // unlike authored skills whose hash tracks SKILL.md metadata changes.
       //
-      // Rows written before the display-name columns existed store null even when SKILL.md has
-      // values. The cheap key-only probes backfill those rows exactly once; afterwards the columns
-      // match and the original hash short-circuit applies without re-parsing the (potentially
-      // large) directory.
+      // Rows written before the display-name / description_en columns existed store null even
+      // when SKILL.md has values. The cheap key-only probes backfill those rows exactly once;
+      // afterwards the columns match and the original hash short-circuit applies without
+      // re-parsing the (potentially large) directory.
       let needsDisplayNameBackfill = false
       if (existing && (existing.displayName ?? null) === null) {
-        needsDisplayNameBackfill = await skillMdHasDisplayName(destPath)
+        needsDisplayNameBackfill = await skillMdHasFrontmatterKey(destPath, 'display_name')
       }
       if (!needsDisplayNameBackfill && existing && (existing.displayNameEn ?? null) === null) {
-        needsDisplayNameBackfill = await skillMdHasDisplayName(destPath, 'display_name_en')
+        needsDisplayNameBackfill = await skillMdHasFrontmatterKey(destPath, 'display_name_en')
+      }
+      if (
+        !needsDisplayNameBackfill &&
+        existing &&
+        (existing.description ?? null) !== null &&
+        (existing.descriptionEn ?? null) === null
+      ) {
+        needsDisplayNameBackfill = await skillMdHasFrontmatterKey(destPath, 'description_en')
       }
       if (existing && !filesUpdated && existing.contentHash === sourceHash && existing.iconFileName === iconFileName) {
         if (!needsDisplayNameBackfill) return false
@@ -1275,6 +1315,7 @@ export class SkillService {
           displayName: metadata.displayName ?? null,
           displayNameEn: metadata.displayNameEn ?? null,
           description: metadata.description ?? null,
+          descriptionEn: metadata.descriptionEn ?? null,
           author: metadata.author ?? null,
           version: metadata.version ?? null,
           iconFileName,
@@ -1288,6 +1329,7 @@ export class SkillService {
           displayName: metadata.displayName ?? null,
           displayNameEn: metadata.displayNameEn ?? null,
           description: metadata.description ?? null,
+          descriptionEn: metadata.descriptionEn ?? null,
           folderName: destFolderName,
           source: 'builtin',
           sourceUrl: null,

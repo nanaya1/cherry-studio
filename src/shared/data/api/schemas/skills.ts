@@ -12,6 +12,8 @@ export const InstalledSkillSchema = z.strictObject({
   /** English display label; preferred over displayName when the app locale is English. */
   displayNameEn: z.string().nullable(),
   description: z.string().nullable(),
+  /** English description; preferred over description when the app locale is English. */
+  descriptionEn: z.string().nullable(),
   folderName: z.string(),
   source: z.string(),
   sourceUrl: z.string().nullable(),
@@ -38,6 +40,15 @@ export function getSkillDisplayName(
 ): string {
   if (skill.displayNameEn && locale?.toLowerCase().startsWith('en')) return skill.displayNameEn
   return skill.displayName ?? skill.name
+}
+
+/** Description for an installed skill. English locales prefer `descriptionEn`, then `description`. */
+export function getSkillDescription(
+  skill: Pick<InstalledSkill, 'description' | 'descriptionEn'>,
+  locale?: string | null
+): string | null {
+  if (skill.descriptionEn && locale?.toLowerCase().startsWith('en')) return skill.descriptionEn
+  return skill.description ?? null
 }
 
 /**

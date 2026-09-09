@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "generatedAt": "2026-09-09T00:00:00Z",
+  "minAppVersion": "1.0.0",
+  "files": {
+    "catalog.json": "sha256:26cb9c11afec63b02cc3e43b8cc471059eab1a246c40bab97bc2df4d96473d92"
+  }
+}

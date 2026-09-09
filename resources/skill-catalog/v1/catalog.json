@@ -1,0 +1,1034 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "defaultLocale": "zh-CN",
+  "supportedLocales": [
+    "zh-CN",
+    "en-US"
+  ],
+  "industries": [
+    {
+      "code": "aerospace",
+      "sortOrder": 10,
+      "isEnabled": true,
+      "translations": {
+        "zh-CN": {
+          "name": "航空航天"
+        },
+        "en-US": {
+          "name": "Aerospace"
+        }
+      }
+    },
+    {
+      "code": "construction-machinery",
+      "sortOrder": 20,
+      "isEnabled": true,
+      "translations": {
+        "zh-CN": {
+          "name": "工程机械"
+        },
+        "en-US": {
+          "name": "Construction Machinery"
+        }
+      }
+    },
+    {
+      "code": "energy-chemical",
+      "sortOrder": 30,
+      "isEnabled": true,
+      "translations": {
+        "zh-CN": {
+          "name": "能源化工"
+        },
+        "en-US": {
+          "name": "Energy and Chemical"
+        }
+      }
+    },
+    {
+      "code": "uncategorized",
+      "sortOrder": 40,
+      "isEnabled": true,
+      "translations": {
+        "zh-CN": {
+          "name": "待分类"
+        },
+        "en-US": {
+          "name": "Uncategorized"
+        }
+      }
+    }
+  ],
+  "professionalDimensions": [
+    {
+      "code": "rnd-design",
+      "sortOrder": 10,
+      "isEnabled": true,
+      "translations": {
+        "zh-CN": {
+          "name": "研发设计"
+        },
+        "en-US": {
+          "name": "Research and Design"
+        }
+      }
+    },
+    {
+      "code": "manufacturing",
+      "sortOrder": 20,
+      "isEnabled": true,
+      "translations": {
+        "zh-CN": {
+          "name": "生产制造"
+        },
+        "en-US": {
+          "name": "Manufacturing"
+        }
+      }
+    },
+    {
+      "code": "ops-service",
+      "sortOrder": 30,
+      "isEnabled": true,
+      "translations": {
+        "zh-CN": {
+          "name": "运维服务"
+        },
+        "en-US": {
+          "name": "Operations and Service"
+        }
+      }
+    },
+    {
+      "code": "business-mgmt",
+      "sortOrder": 40,
+      "isEnabled": true,
+      "translations": {
+        "zh-CN": {
+          "name": "经营管理"
+        },
+        "en-US": {
+          "name": "Business Management"
+        }
+      }
+    }
+  ],
+  "skills": [
+    {
+      "id": "ui-ux-pro-max",
+      "industryScope": "universal",
+      "industryCodes": [],
+      "professionalDimensionCodes": [
+        "rnd-design",
+        "ops-service",
+        "business-mgmt"
+      ],
+      "logo": null,
+      "artifact": {
+        "type": "directory",
+        "location": "packages/ui-ux-pro-max",
+        "version": "unknown",
+        "sha256": "sha256:f66b17600aed03da23e2f038c5ffe4bf96c8227522339439dd5720b48d3a5824"
+      },
+      "status": "published",
+      "sortOrder": 1,
+      "translations": {
+        "zh-CN": {
+          "name": "UI/UX 设计器",
+          "description": "设计阶段：UI/UX Pro Max（88.7k Star，全球第一设计Skill）\n不写前端也能出设计方向。67种UI风格、161套调色板、57种字体自动组合，一句话就能出几套方案。"
+        },
+        "en-US": {
+          "name": "ui-ux-pro-max",
+          "description": "UI/UX design intelligence for web, mobile, and desktop. This skill should be used when designing, building, reviewing, or fixing interfaces, including pages, components, design systems, accessibility, interaction, responsive layout, typography, color, charts, and stack-specific UI implementation. Searchable local data: 79 searchable styles (50 active), 192 product palettes and reasoning profiles, 74 font pairings, 119 UX guidelines, 105 icons, 17 GSAP presets, 25 chart types, and 22 stacks."
+        }
+      }
+    },
+    {
+      "id": "image-to-editable-ppt",
+      "industryScope": "universal",
+      "industryCodes": [],
+      "professionalDimensionCodes": [
+        "rnd-design",
+        "manufacturing",
+        "ops-service",
+        "business-mgmt"
+      ],
+      "logo": null,
+      "artifact": {
+        "type": "directory",
+        "location": "packages/image-to-editable-ppt",
+        "version": "unknown",
+        "sha256": "sha256:88bbbe268f4258bcbc4c4138928d14e177e23802dd3a429409bed60d0c8733a3"
+      },
+      "status": "published",
+      "sortOrder": 3,
+      "translations": {
+        "zh-CN": {
+          "name": "可编辑ppt skills",
+          "description": "快速生成、将图片转化为要素齐全的\n可编辑ppt。"
+        },
+        "en-US": {
+          "name": "image-to-editable-ppt",
+          "description": "Quickly generate and convert images into element-complete, editable PowerPoint presentations."
+        }
+      }
+    },
+    {
+      "id": "nist-stat-handbook",
+      "industryScope": "specific",
+      "industryCodes": [
+        "construction-machinery"
+      ],
+      "professionalDimensionCodes": [
+        "rnd-design",
+        "manufacturing",
+        "ops-service"
+      ],
+      "logo": null,
+      "artifact": {
+        "type": "directory",
+        "location": "packages/nist-stat-handbook",
+        "version": "unknown",
+        "sha256": "sha256:56052edce040293891d3e0f7000d39b9c4363b415b09fc12d22e3810caf3cac4"
+      },
+      "status": "published",
+      "sortOrder": 5,
+      "translations": {
+        "zh-CN": {
+          "name": "工程统计与SPC",
+          "description": "覆盖测量不确定度、Gauge R&R、\n回归、DOE、响应面、SPC、\nShewhart/CUSUM/EWMA、过程能力、\n假设检验、ANOVA、可靠性和加速\n寿命试验。覆盖试验数据分析、制造\n质量和高质量数据集统计检查。"
+        },
+        "en-US": {
+          "name": "nist-stat-handbook",
+          "description": "Knowledge base from the NIST/SEMATECH e-Handbook of Statistical Methods (NIST HB 151) — the practical statistics reference for engineering, metrology, and quality. Use for: exploratory data analysis and the four univariate assumptions (4-plot); measurement process characterization including bias/precision, calibration designs, gauge R&R, and ISO/GUM uncertainty budgets; production process characterization (stability vs. capability); process modeling and regression (LS/WLS/NLS/LOESS); design of experiments (screening, fractional/factorial, response-surface, Taguchi); statistical process control (Shewhart/CUSUM/EWMA charts, capability indices, acceptance sampling); product/process comparisons (hypothesis tests and confidence intervals for 1/2/3+ groups, ANOVA, multiple comparisons); and reliability (lifetime & repair-rate models, accelerated testing, reliability growth). Scope limits: this is applied frequentist statistics for measurement and quality — it does NOT reproduce the per-distribution formula galleries, worked case studies, datasets, plot images, or Dataplot/R code of the original web Handbook (those are described, not copied); it is thin on modern machine learning, Bayesian methods beyond conjugate reliability priors, time-series/forecasting, and Bayesian experimental design."
+        }
+      }
+    },
+    {
+      "id": "production-scheduling-comeonoliver",
+      "industryScope": "universal",
+      "industryCodes": [],
+      "professionalDimensionCodes": [
+        "manufacturing"
+      ],
+      "logo": null,
+      "artifact": {
+        "type": "directory",
+        "location": "packages/production-scheduling-comeonoliver",
+        "version": "1.0.0",
+        "sha256": "sha256:80a345074b43a82b63235075d2e2bf6915040d8857a30c7a075204849f8339c3"
+      },
+      "status": "published",
+      "sortOrder": 6,
+      "translations": {
+        "zh-CN": {
+          "name": "生产排程",
+          "description": "面向离散与批量制造场景的生产排程与产线优化技能，覆盖作业排序（EDD/SPT）、换型优化（SMED）、瓶颈识别（TOC/DBR）、OEE 分析与扰动响应等关键流程；可以与 ERP（SAP PP / Oracle / Epicor）、APS（Preactor / PlanetTogether）、MES 和 CMMS 协同，将工单集合转化为分钟级执行序列，最大化瓶颈产能并兼顾交付期与换型成本。"
+        },
+        "en-US": {
+          "name": "production-scheduling",
+          "description": "Codified expertise for production scheduling, job sequencing, line balancing, changeover optimization, and bottleneck resolution in discrete and batch manufacturing. Informed by production schedulers with 15+ years experience. Includes TOC/drum-buffer-rope, SMED, OEE analysis, disruption response frameworks, and ERP/MES interaction patterns. Use when scheduling production, resolving bottlenecks, optimizing changeovers, responding to disruptions, or balancing manufacturing lines.\n"
+        }
+      }
+    },
+    {
+      "id": "capacity-planner",
+      "industryScope": "universal",
+      "industryCodes": [],
+      "professionalDimensionCodes": [
+        "manufacturing"
+      ],
+      "logo": null,
+      "artifact": {
+        "type": "directory",
+        "location": "packages/capacity-planner",
+        "version": "unknown",
+        "sha256": "sha256:ba9e643f4f25448396802d154a9dc00ebdce8aac58b7296b68b9a6d737f02ee5"
+      },
+      "status": "published",
+      "sortOrder": 7,
+      "translations": {
+        "zh-CN": {
+          "name": "产能规划",
+          "description": "面向生产运营的产能需求规划技能，支持按需求计算产能需求、评估有效产能、识别产能缺口；提供领先/滞后/匹配三种产能策略建模、资源负荷分析、粗能力计划（RCCP）与 What-if 情景分析（需求激增、设备故障、人力短缺、新品导入、季节高峰），可对接 ERP/MRP系统。"
+        },
+        "en-US": {
+          "name": "capacity-planner",
+          "description": "Capacity requirements planning skill with demand-capacity gap analysis and capacity strategy recommendations"
+        }
+      }
+    },
+    {
+      "id": "smart-scheduling-optimization",
+      "industryScope": "universal",
+      "industryCodes": [],
+      "professionalDimensionCodes": [
+        "manufacturing"
+      ],
+      "logo": null,
+      "artifact": {
+        "type": "directory",
+        "location": "packages/smart-scheduling-optimization",
+        "version": "unknown",
+        "sha256": "sha256:243d9d5eaedd72cdb7bbc16d4b8bef2fcda24dc5de0fe43ba98bc77332578efa"
+      },
+      "status": "published",
+      "sortOrder": 8,
+      "translations": {
+        "zh-CN": {
+          "name": "生产排程",
+          "description": "基于NSGA-II多目标遗传算法的智能调度优化，用于生产排程、资源分配、多目标优化等场景。适用于\"优化排产\"、\"调度算法\"、\"多目标优化\"、\"遗传算法调度\"等需求。"
+        },
+        "en-US": {
+          "name": "smart-scheduling-optimization",
+          "description": "Intelligent scheduling optimization based on the NSGA-II multi-objective genetic algorithm, for production scheduling, resource allocation, and multi-objective optimization scenarios. Suitable for needs such as 'optimized production scheduling', 'scheduling algorithms', 'multi-objective optimization', and 'genetic-algorithm scheduling'."
+        }
+      }
+    },
+    {
+      "id": "troubleshoot-print-issues",
+      "industryScope": "universal",
+      "industryCodes": [],
+      "professionalDimensionCodes": [
+        "ops-service"
+      ],
+      "logo": null,
+      "artifact": {
+        "type": "directory",
+        "location": "packages/troubleshoot-print-issues",
+        "version": "unknown",
+        "sha256": "sha256:ce51e978633577db81da671c253ae1141408adfe078b192239f8e1f9f1711536"
+      },
+      "status": "published",
+      "sortOrder": 9,
+      "translations": {
+        "zh-CN": {
+          "name": "3D打印故障排查",
+          "description": "通过系统化的症状分析诊断并解决常见的 3D 打印故障。涵盖附着力、拉丝、层偏移、翘曲以及挤出不足 / 挤出过量等问题。适用于打印在首层或打印中途失败、成品存在质量缺陷（拉丝、料团、缝隙）、出现尺寸精度问题（翘曲、象脚效应）、层间附着力失效，或是更换新材料、硬件改动导致打印结果不稳定的场景。"
+        },
+        "en-US": {
+          "name": "troubleshoot-print-issues",
+          "description": "Diagnose and fix common 3D printing failures through systematic symptom analysis. Covers adhesion, stringing, layer shifts, warping, and under/over-extrusion issues. Use when a print fails during the first layer or partway through, finished prints have quality defects (stringing, blobs, gaps), dimensional accuracy issues occur (warping, elephant foot), layer adhesion fails, or new material or hardware changes are causing inconsistent results.\n"
+        }
+      }
+    },
+    {
+      "id": "5s-implementation",
+      "industryScope": "universal",
+      "industryCodes": [],
+      "professionalDimensionCodes": [
+        "manufacturing"
+      ],
+      "logo": null,
+      "artifact": {
+        "type": "directory",
+        "location": "packages/5s-implementation",
+        "version": "1",
+        "sha256": "sha256:39bdfd2b64717c47bea4f1d750337870a13ef38e8c059502171e5948c4dc2b44"
+      },
+      "status": "published",
+      "sortOrder": 10,
+      "translations": {
+        "zh-CN": {
+          "name": "5S 现场管理",
+          "description": "推行 5S 现场管理。触发条件‑当用户需要处理与 5S 推行相关的任务时使用。"
+        },
+        "en-US": {
+          "name": "5s-implementation",
+          "description": "Implement 5S workplace organization.\nTRIGGERS - Use when user needs help with 5s-implementation related tasks.\n"
+        }
+      }
+    },
+    {
+      "id": "supplier-risk-agent",
+      "industryScope": "universal",
+      "industryCodes": [],
+      "professionalDimensionCodes": [
+        "business-mgmt"
+      ],
+      "logo": null,
+      "artifact": {
+        "type": "directory",
+        "location": "packages/supplier-risk-agent",
+        "version": "unknown",
+        "sha256": "sha256:9c2aa2e8f4fc10cd730b6e32c718a673bc02d09560e26c7451676ac0653e4fd4"
+      },
+      "status": "published",
+      "sortOrder": 11,
+      "translations": {
+        "zh-CN": {
+          "name": "供应商风险管理",
+          "description": "监控供应商交付、质量以及业务连续性风险。只要该领域内的任务需要开展此项工作（监控供应商交付、质量以及业务连续性风险），即可调用本技能，即使用户仅直白描述任务，并未提及该代理角色名称也同样适用。该代理在人类供应链经理的管理下运行，工作范围止于本业务领域的权责边界。"
+        },
+        "en-US": {
+          "name": "supplier-risk-agent",
+          "description": "AI-personnel skill: **Supplier risk agent** for the Manufacturing and Industrial Production operating system. This agent monitors supplier delivery, quality, and continuity risk. Use this skill whenever a task in this domain needs this work (monitors supplier delivery, quality, and continuity risk) — even if the user describes the task plainly rather than naming the role. Operates under a human supply chain manager and stops at the sector's accountability boundary."
+        }
+      }
+    },
+    {
+      "id": "statistical-analysis",
+      "industryScope": "universal",
+      "industryCodes": [],
+      "professionalDimensionCodes": [
+        "rnd-design",
+        "manufacturing"
+      ],
+      "logo": null,
+      "artifact": {
+        "type": "directory",
+        "location": "packages/statistical-analysis",
+        "version": "unknown",
+        "sha256": "sha256:528f0623284c41d5566324c7ef2ea9451d40f8d8c4ad2b68460eb470df0855b3"
+      },
+      "status": "published",
+      "sortOrder": 12,
+      "translations": {
+        "zh-CN": {
+          "name": "统计分析",
+          "description": "支持ANOVA、假设检验、回归、非参数分析、效应量等，可用于飞行试验、可靠性试验、工艺与质量数据分析。"
+        },
+        "en-US": {
+          "name": "statistical-analysis",
+          "description": "Guided statistical analysis for research data - test selection, assumption checking, effect sizes, power analysis, Bayesian alternatives, and APA-formatted reporting. Use whenever a user wants to compare groups, test a hypothesis, analyze experimental or survey data, check statistical assumptions, compute required sample sizes, or write up results - even if they never name a specific test. Covers t-tests, ANOVA, chi-square, correlation, regression, non-parametric and Bayesian methods. For low-level model APIs, see the statsmodels and pymc skills."
+        }
+      }
+    },
+    {
+      "id": "quality-nonconformance",
+      "industryScope": "universal",
+      "industryCodes": [],
+      "professionalDimensionCodes": [
+        "manufacturing"
+      ],
+      "logo": null,
+      "artifact": {
+        "type": "directory",
+        "location": "packages/quality-nonconformance",
+        "version": "unknown",
+        "sha256": "sha256:da3605b824490853265367a3b92e26b922108eb126157d3d665d845c89edcc50"
+      },
+      "status": "published",
+      "sortOrder": 13,
+      "translations": {
+        "zh-CN": {
+          "name": "质量分析",
+          "description": "覆盖NCR、RCA、CAPA、SPC、供应商质量和审核，且明确涉及AS9100等受监管制造环境，可直接参考航空制造质量场景。"
+        },
+        "en-US": {
+          "name": "quality-nonconformance",
+          "description": "Codified expertise for quality control, non-conformance investigation, root cause analysis, corrective action, and supplier quality management in regulated manufacturing."
+        }
+      }
+    },
+    {
+      "id": "production-scheduling-sickn33",
+      "industryScope": "specific",
+      "industryCodes": [
+        "uncategorized"
+      ],
+      "professionalDimensionCodes": [
+        "manufacturing"
+      ],
+      "logo": null,
+      "artifact": {
+        "type": "directory",
+        "location": "packages/production-scheduling-sickn33",
+        "version": "unknown",
+        "sha256": "sha256:d4e85c1a8c7398b9375f7fffba51c4d69a8f9d735c1be8ff27dcb36fc48156bf"
+      },
+      "status": "published",
+      "sortOrder": 14,
+      "translations": {
+        "zh-CN": {
+          "name": "生产排程",
+          "description": "支持有限产能、瓶颈、换型、工单优先级、异常重排及MES/ERP协同，可作为复杂离散制造排产Skill的基础。"
+        },
+        "en-US": {
+          "name": "production-scheduling",
+          "description": "Codified expertise for production scheduling, job sequencing, line balancing, changeover optimisation, and bottleneck resolution in discrete and batch manufacturing."
+        }
+      }
+    },
+    {
+      "id": "iso-9001-internal-audit",
+      "industryScope": "specific",
+      "industryCodes": [
+        "uncategorized"
+      ],
+      "professionalDimensionCodes": [
+        "manufacturing"
+      ],
+      "logo": null,
+      "artifact": {
+        "type": "directory",
+        "location": "packages/iso-9001-internal-audit",
+        "version": "unknown",
+        "sha256": "sha256:d083a3849460f7f33f18a74a76740e83a42337650fcff4ac2c6351d23fdb82c3"
+      },
+      "status": "published",
+      "sortOrder": 15,
+      "translations": {
+        "zh-CN": {
+          "name": "ISO-9001-内部审计",
+          "description": "质量体系审核，用于准备第4条第5条第6条第7条第8条第9条第10条审核的证据。通过条款提供关键审计问题，分类及审计报告撰写"
+        },
+        "en-US": {
+          "name": "iso-9001-internal-audit",
+          "description": "Conduct an internal audit by clause, answer ISO 9001 internal audit questions, or prepare evidence for §4 §5 §6 §7 §8 §9 §10. Provides key audit questions by clause, finding classification (Major NC / Minor NC / OFI), and audit report writing. Use when planning or conducting an ISO 9001:2015 internal audit or preparing for third-party certification."
+        }
+      }
+    },
+    {
+      "id": "browser-use",
+      "industryScope": "universal",
+      "industryCodes": [],
+      "professionalDimensionCodes": [
+        "rnd-design",
+        "manufacturing",
+        "ops-service",
+        "business-mgmt"
+      ],
+      "logo": {
+        "type": "snapshot",
+        "location": "logos/browser-use.png",
+        "sha256": "sha256:3e72f0ba6839ff7c85d4bab1ffd98d38111c3d99e508fb2bc34a002f8a3f0e6e"
+      },
+      "artifact": {
+        "type": "directory",
+        "location": "packages/browser-use",
+        "version": "unknown",
+        "sha256": "sha256:50191d2add2367d273b136b9e18f1eb6377bedf706a56ec4a6031055a2df835c"
+      },
+      "status": "published",
+      "sortOrder": 16,
+      "translations": {
+        "zh-CN": {
+          "name": "浏览器使用",
+          "description": "通过 CDP 实现对浏览器的直接控制，用于网页交互：自动化、网页抓取、测试、截图以及网站/应用开发。"
+        },
+        "en-US": {
+          "name": "browser-use",
+          "description": "Direct browser control via CDP for web interaction: automation, scraping, testing, screenshots, and site/app work."
+        }
+      }
+    },
+    {
+      "id": "quarry-rock-splitter",
+      "industryScope": "specific",
+      "industryCodes": [
+        "energy-chemical"
+      ],
+      "professionalDimensionCodes": [
+        "manufacturing"
+      ],
+      "logo": null,
+      "artifact": {
+        "type": "directory",
+        "location": "packages/quarry-rock-splitter",
+        "version": "unknown",
+        "sha256": "sha256:0d7c0d3d02b55db40fc7b7c2c079219d9b32bdf9bbaf1d9bb93891c1e9706dda"
+      },
+      "status": "published",
+      "sortOrder": 17,
+      "translations": {
+        "zh-CN": {
+          "name": "采石场岩石破碎机",
+          "description": "适用于需要采石岩体劈裂工判断的情形——如根据纹理、裂隙或硬面走向确定劈裂线的布置方式，选择楔子与榫槽法、风镐开槽法，或机械化劈裂方法（如钢丝锯、圆盘锯、液压劈裂机），为特定岩性合理布置楔子与榫槽孔排布，于正式切割前对岩面进行探缝以识别节理，或决定是否应修订块体规格，以避免采用硬面手工劈裂。"
+        },
+        "en-US": {
+          "name": "quarry-rock-splitter",
+          "description": "Use when a task needs the judgment of a Quarry Rock Splitter — reading grain/rift/hard-way direction to lay out a split line, choosing plug-and-feather vs jackhammer channel vs mechanized (wire saw, chop saw, hydraulic splitter) splitting method, spacing a plug-and-feather hole line for a given rock type, sounding a face for seams before committing a cut, or deciding whether a block spec should be revised to avoid a hard-way hand split."
+        }
+      }
+    },
+    {
+      "id": "patent-quality-review-pro",
+      "industryScope": "universal",
+      "industryCodes": [],
+      "professionalDimensionCodes": [
+        "rnd-design"
+      ],
+      "logo": {
+        "type": "snapshot",
+        "location": "logos/patsnap.png",
+        "sha256": "sha256:5d7640f829e7865c10d630fc702147a6086fc707718a8276ed68259f294cde9c"
+      },
+      "artifact": {
+        "type": "directory",
+        "location": "packages/patent-quality-review-pro",
+        "version": "unknown",
+        "sha256": "sha256:00dffe296e77421d6a4a2c6ece2694fd5452534e71b69ae83e4efc83437c14dd"
+      },
+      "status": "published",
+      "sortOrder": 18,
+      "translations": {
+        "zh-CN": {
+          "name": "专利申请文件质量审核工具（全量指标版）",
+          "description": "专利申请文件质量审核工具（全量指标版）。上传PDF或Word版专利申请文件，自动对全部评审指标进行统一评审（无重点/非重点分档），结合复审无效实践中的常见决定要点辅助判断，并默认生成 HTML 格式《专利申请文件质量评价表》（主表+附表1，按需含附表2/附表3）；用户明确要求时再生成 Word 文件。支持化学/机械/电学/通用四领域AHP权重方案自动切换；（智慧芽）"
+        },
+        "en-US": {
+          "name": "patent-quality-review-pro",
+          "description": "Patent application document quality review tool (full-indicator edition). Upload a PDF or Word patent application document; it automatically evaluates all review indicators uniformly (no priority / non-priority tiering) and assists judgment using common decision points from re-examination and invalidation practice, by default generating an HTML 'Patent Application Document Quality Evaluation Form' (main form + appendix 1, with appendices 2/3 as needed); it generates a Word file only when explicitly requested. Supports automatic switching among AHP weighting schemes for the chemistry / mechanical / electrical / general domains. (Patsnap)"
+        }
+      }
+    },
+    {
+      "id": "aircraft-structure-assembler",
+      "industryScope": "specific",
+      "industryCodes": [
+        "aerospace"
+      ],
+      "professionalDimensionCodes": [
+        "manufacturing"
+      ],
+      "logo": null,
+      "artifact": {
+        "type": "directory",
+        "location": "packages/aircraft-structure-assembler",
+        "version": "unknown",
+        "sha256": "sha256:a669d4fba631d7959861c0ef6ecbe3914daa0818c74f66eccebb8733ceb83216"
+      },
+      "status": "published",
+      "sortOrder": 19,
+      "translations": {
+        "zh-CN": {
+          "name": "飞机结构装配工",
+          "description": "适用于需要飞机结构、表面、索具及系统装配工进行判断的情形——例如，判定超差孔或紧固件是应提交不合格报告还是实施现场修复，在安装紧固件前核查扭矩与校准状态，或在封闭结构之前评估异物损伤风险，以及对照相冲突的作业指导书核对图纸标注。"
+        },
+        "en-US": {
+          "name": "aircraft-structure-assembler",
+          "description": "Use when a task needs the judgment of an Aircraft Structure, Surfaces, Rigging, and Systems Assembler — deciding whether an out-of-tolerance hole or fastener needs a nonconformance report versus a field fix, verifying torque and calibration status before a fastener installation, diagnosing a FOD (foreign object debris) risk before closing a structure, or reading a drawing callout against a conflicting work instruction."
+        }
+      }
+    },
+    {
+      "id": "feishu-task",
+      "industryScope": "universal",
+      "industryCodes": [],
+      "professionalDimensionCodes": [
+        "business-mgmt"
+      ],
+      "logo": {
+        "type": "snapshot",
+        "location": "logos/feishu.png",
+        "sha256": "sha256:41efb99e9f7e9b23bd96b11128eec35331f258233047f4e3ecb126fcdc215ab7"
+      },
+      "artifact": {
+        "type": "directory",
+        "location": "packages/feishu-task",
+        "version": "unknown",
+        "sha256": "sha256:994e5964d93fc11e10b48f0fad7f35cc113626a6a305ef518d33db9b83e1f254"
+      },
+      "status": "published",
+      "sortOrder": 20,
+      "translations": {
+        "zh-CN": {
+          "name": "飞书任务助手",
+          "description": "飞书任务管理工具,用于创建、查询、更新任务和清单。 **当以下情况时使用此 Skill**: (1) 需要创建、查询、更新任务 (2) 需要创建、管理任务清单 (3) 需要查看任务列表或清单内的任务 (4) 用户提到\"任务\"、\"待办\"、\"to-do\"、\"清单\"、\"task\" (5) 需要设置任务负责人、关注人、截止时间、添加成员 (6) 需要追加任务步骤记录（Task 的 steps） (7) 需要上传任务附件（支持 task / task_delivery） (8) 需要注册 Agent / 更新 Agent 信息（register / update_profile）"
+        },
+        "en-US": {
+          "name": "feishu-task",
+          "description": "Feishu (Lark) task management tool for creating, querying, and updating tasks and checklists. Use this skill when: (1) creating, querying, or updating tasks; (2) creating or managing task checklists; (3) viewing task lists or checklist items; (4) the user mentions '任务', '待办', 'to-do', '清单', or 'task'; (5) setting task owners, followers, due dates, or adding members; (6) appending task step records (Task steps); (7) uploading task attachments (supports task / task_delivery); (8) registering or updating an agent (register / update_profile)."
+        }
+      }
+    },
+    {
+      "id": "production-scheduling-niloy",
+      "industryScope": "specific",
+      "industryCodes": [
+        "construction-machinery"
+      ],
+      "professionalDimensionCodes": [
+        "rnd-design"
+      ],
+      "logo": null,
+      "artifact": {
+        "type": "directory",
+        "location": "packages/production-scheduling-niloy",
+        "version": "1.0.0",
+        "sha256": "sha256:26b7ce7596420f575028bc5debfc6286735283f82347513564b35b36a553f0fa"
+      },
+      "status": "published",
+      "sortOrder": 21,
+      "translations": {
+        "zh-CN": {
+          "name": "生产制造领域专业知识助手",
+          "description": "为离散和批量制造中的生产调度、作业排序、产线平衡、换模优化和瓶颈解决提供编码化专业知识。基于拥有15年以上经验的生产调度师的知识。包括约束理论/鼓-缓冲-绳、快速换模、设备综合效率分析、中断响应框架以及企业资源计划/制造执行系统交互模式。适用于调度生产、解决瓶颈、优化换模、应对中断或平衡制造产线时。"
+        },
+        "en-US": {
+          "name": "production-scheduling",
+          "description": "Provides codified expert knowledge for production scheduling, job sequencing, line balancing, changeover optimization, and bottleneck resolution in discrete and batch manufacturing. Based on the knowledge of a production scheduler with 15+ years of experience. Includes theory of constraints / drum-buffer-rope, SMED quick changeover, OEE analysis, disruption-response frameworks, and ERP / MES interaction patterns. Applies when scheduling production, resolving bottlenecks, optimizing changeovers, responding to disruptions, or balancing manufacturing lines."
+        }
+      }
+    },
+    {
+      "id": "manufacturing-doc-writer",
+      "industryScope": "specific",
+      "industryCodes": [
+        "construction-machinery"
+      ],
+      "professionalDimensionCodes": [
+        "rnd-design"
+      ],
+      "logo": null,
+      "artifact": {
+        "type": "directory",
+        "location": "packages/manufacturing-doc-writer",
+        "version": "unknown",
+        "sha256": "sha256:99b23b3111403c191e779f6c6b24b6b9cd66ca337b728333d3a5ec2bf2230511"
+      },
+      "status": "published",
+      "sortOrder": 22,
+      "translations": {
+        "zh-CN": {
+          "name": "工艺文档助手",
+          "description": "当需要编写生产工艺文档、制造流程说明时使用"
+        },
+        "en-US": {
+          "name": "manufacturing-doc-writer",
+          "description": "Use when writing manufacturing process documents and production flow descriptions."
+        }
+      }
+    },
+    {
+      "id": "academic-paper",
+      "industryScope": "universal",
+      "industryCodes": [],
+      "professionalDimensionCodes": [
+        "business-mgmt"
+      ],
+      "logo": null,
+      "artifact": {
+        "type": "directory",
+        "location": "packages/academic-paper",
+        "version": "unknown",
+        "sha256": "sha256:68803fdcde35e5410cdc84c86ac4eec650201c02d6666b980f5cfeb64c32f050"
+      },
+      "status": "published",
+      "sortOrder": 23,
+      "translations": {
+        "zh-CN": {
+          "name": "学术论文写作代理团队",
+          "description": "系统化文献综述：多数据库检索、主题化综合、逐条引文核验，输出 Markdown 与 PDF；配套 gget、bioservices 等数据库技能做学术数据源。"
+        },
+        "en-US": {
+          "name": "academic-paper",
+          "description": "Systematized literature review: multi-database retrieval, thematic synthesis, and citation-by-citation verification, outputting Markdown and PDF; paired with database skills such as gget and bioservices as academic data sources."
+        }
+      }
+    },
+    {
+      "id": "equipment-telematics",
+      "industryScope": "specific",
+      "industryCodes": [
+        "construction-machinery"
+      ],
+      "professionalDimensionCodes": [
+        "ops-service"
+      ],
+      "logo": null,
+      "artifact": {
+        "type": "directory",
+        "location": "packages/equipment-telematics",
+        "version": "unknown",
+        "sha256": "sha256:815c6698c639cc46893917aa5fdcef46bbeccb39e00f09427b5f411e95b778fd"
+      },
+      "status": "published",
+      "sortOrder": 24,
+      "translations": {
+        "zh-CN": {
+          "name": "设备远程信息处理",
+          "description": "集成重型建筑设备（挖掘机、起重机、装载机、卡车）的远程信息处理数据，以监测设备利用率、追踪位置、分析燃油效率、预测维护需求，并确保安全运行。"
+        },
+        "en-US": {
+          "name": "equipment-telematics",
+          "description": "Integrate and analyze telematics data from heavy construction equipment. Track location, utilization, fuel consumption, maintenance needs, and operator behavior."
+        }
+      }
+    },
+    {
+      "id": "curriculum-knowledge-architecture-designer",
+      "industryScope": "universal",
+      "industryCodes": [],
+      "professionalDimensionCodes": [
+        "business-mgmt"
+      ],
+      "logo": null,
+      "artifact": {
+        "type": "directory",
+        "location": "packages/curriculum-knowledge-architecture-designer",
+        "version": "1.0",
+        "sha256": "sha256:81764dc271f11988b8397fe4080efda521d2215c4c5cdc8f4b1a6c9695618359"
+      },
+      "status": "published",
+      "sortOrder": 25,
+      "translations": {
+        "zh-CN": {
+          "name": "课程知识架构诊断",
+          "description": "判定课程属于层级型 / 水平型 / 素养型知识结构（Bernstein 知识结构、Maton 语义波、Muller 课程连贯性理论），输出教学序列、评估设计与 AI 辅导架构建议——做人才培养方案论证的理论工具。"
+        },
+        "en-US": {
+          "name": "curriculum-knowledge-architecture-designer",
+          "description": "Map the epistemic structure of a subject to determine knowledge types and inform curriculum sequencing. Use when designing courses, restructuring programmes, or analysing knowledge architecture."
+        }
+      }
+    },
+    {
+      "id": "scholar-search",
+      "industryScope": "universal",
+      "industryCodes": [],
+      "professionalDimensionCodes": [
+        "rnd-design"
+      ],
+      "logo": {
+        "type": "snapshot",
+        "location": "logos/openalex.png",
+        "sha256": "sha256:4d88bcf61173e727395eb9bbc65e2ea708d38dac0836ffcc50b1c78ae6e455be"
+      },
+      "artifact": {
+        "type": "directory",
+        "location": "packages/scholar-search",
+        "version": "unknown",
+        "sha256": "sha256:982654ff5b8783d85b9ef938af0ef09f429f240a5e55623e00647fe46c968b60"
+      },
+      "status": "published",
+      "sortOrder": 26,
+      "translations": {
+        "zh-CN": {
+          "name": "学术文献检索",
+          "description": "面向科研文献检索的智能技能，支持通过学术数据库发现相关论文、会议资料、期刊文章和书籍信息，并结合文献关联关系辅助研究者定位关键资料。该 Skill 主要解决科研过程中信息获取效率低、文献筛选困难的问题，帮助用户快速建立研究领域知识基础，提升文献调研、研究综述和技术趋势分析的效率。"
+        },
+        "en-US": {
+          "name": "scholar-search",
+          "description": "Search scholarly works across arXiv, conferences, journals, and books via OpenAlex. Returns citation counts, reconstructed abstracts, venue, open-access PDF links, and external IDs (arXiv/DOI/PMID). No API key required. Use when the user says \"search scholar\", \"search papers\", \"find papers with citations\", \"papers by author\", \"cross-discipline search\", or \"papers from <venue>\". Complements arxiv-search (preprints-only)."
+        }
+      }
+    },
+    {
+      "id": "molecular-dynamics",
+      "industryScope": "specific",
+      "industryCodes": [
+        "uncategorized"
+      ],
+      "professionalDimensionCodes": [
+        "rnd-design"
+      ],
+      "logo": null,
+      "artifact": {
+        "type": "directory",
+        "location": "packages/molecular-dynamics",
+        "version": "unknown",
+        "sha256": "sha256:567537497657bd993874a3b5637b9398c973b03869ae2ef27beebfa563ae8a23"
+      },
+      "status": "published",
+      "sortOrder": 27,
+      "translations": {
+        "zh-CN": {
+          "name": "分子动力学模拟与分析",
+          "description": "用于分子动力学模拟与分析的科研技能，支持利用专业计算工具完成分子体系构建、模拟运行以及轨迹数据分析等任务，可应用于蛋白质结构研究、药物分子相互作用分析和生物物理研究。该 Skill 解决传统分子模拟流程复杂、工具使用门槛高的问题，帮助科研人员更高效地开展分子行为预测与机制探索。"
+        },
+        "en-US": {
+          "name": "molecular-dynamics",
+          "description": "Run and analyze molecular dynamics simulations with OpenMM and MDAnalysis. Set up protein/small molecule systems, define force fields, run energy minimization and production MD, analyze trajectories (RMSD, RMSF, contact maps, free energy surfaces). For structural biology, drug binding, and biophysics."
+        }
+      }
+    },
+    {
+      "id": "scientific-brainstorming",
+      "industryScope": "universal",
+      "industryCodes": [],
+      "professionalDimensionCodes": [
+        "rnd-design"
+      ],
+      "logo": null,
+      "artifact": {
+        "type": "directory",
+        "location": "packages/scientific-brainstorming",
+        "version": "unknown",
+        "sha256": "sha256:83f9dbeb88f50a3edc5fe5dc6c6c3924c9a86ac9353a34a76d38f86af7c1bd1f"
+      },
+      "status": "published",
+      "sortOrder": 28,
+      "translations": {
+        "zh-CN": {
+          "name": "科学研究头脑风暴",
+          "description": "面向科研创新设计的智能辅助技能，支持开放式研究思路探索、跨领域知识连接、关键假设挑战以及潜在研究空白发现。该 Skill 主要解决科研选题初期缺少系统思考和创新方向的问题，通过结构化讨论帮助研究人员生成可验证的研究假设，拓展研究视角，提高科研方案设计和问题分析能力。"
+        },
+        "en-US": {
+          "name": "scientific-brainstorming",
+          "description": "Facilitates evidence-aware scientific ideation with independent generation, structured discussion, explicit assumptions, transparent evaluation, adversarial review, and decision logs. Use for early-stage research brainstorming or prioritizing candidate directions; hand off empirical validation, study design, ethics or regulatory review, and clinical questions to appropriate experts or skills."
+        }
+      }
+    },
+    {
+      "id": "mesh-generation",
+      "industryScope": "universal",
+      "industryCodes": [],
+      "professionalDimensionCodes": [
+        "rnd-design"
+      ],
+      "logo": null,
+      "artifact": {
+        "type": "directory",
+        "location": "packages/mesh-generation",
+        "version": "unknown",
+        "sha256": "sha256:992f24f6307ff67631fd0b1a3b7efaff38b1a4af04ef1be19f564a62aae63995"
+      },
+      "status": "published",
+      "sortOrder": 29,
+      "translations": {
+        "zh-CN": {
+          "name": "网格生成",
+          "description": "以三维网格生成与处理为核心的生成执行技能，用于数值模拟的网格生成规划与评估，适用于在选择网格分辨率、检查纵横比/畸变、估算网格质量约束时使用"
+        },
+        "en-US": {
+          "name": "mesh-generation",
+          "description": "Plan and evaluate mesh generation for numerical simulations. Use when choosing grid resolution, checking aspect ratios/skewness, estimating mesh quality constraints, or planning adaptive mesh refinement for PDE discretization."
+        }
+      }
+    },
+    {
+      "id": "composite-structures",
+      "industryScope": "universal",
+      "industryCodes": [],
+      "professionalDimensionCodes": [
+        "rnd-design"
+      ],
+      "logo": null,
+      "artifact": {
+        "type": "directory",
+        "location": "packages/composite-structures",
+        "version": "unknown",
+        "sha256": "sha256:b4238a3103045e7447cc74c5973c083b8de30ae67996a39cdb5ce9ba8dbac2ee"
+      },
+      "status": "published",
+      "sortOrder": 30,
+      "translations": {
+        "zh-CN": {
+          "name": "复合结构",
+          "description": "用于复合材料结构设计、力学分析、失效评估和方案优化的专业工程技能"
+        },
+        "en-US": {
+          "name": "composite-structures",
+          "description": "Expert skill for composite aerospace structure design and analysis"
+        }
+      }
+    },
+    {
+      "id": "text-to-cad",
+      "industryScope": "specific",
+      "industryCodes": [
+        "aerospace"
+      ],
+      "professionalDimensionCodes": [
+        "rnd-design"
+      ],
+      "logo": null,
+      "artifact": {
+        "type": "directory",
+        "location": "packages/text-to-cad",
+        "version": "unknown",
+        "sha256": "sha256:4c2654a46d9a802653139a201826524d68dbc87f4af99093b07940c816b03d95"
+      },
+      "status": "published",
+      "sortOrder": 31,
+      "translations": {
+        "zh-CN": {
+          "name": "智能CAD设计与模型生成",
+          "description": "面向机械产品研发设计的智能CAD Skill，可根据自然语言、参考图片或二维工程图创建、修改、检查和验证参数化CAD零件及装配体，支持自动生成STEP/STP，并进一步输出STL、3MF、GLB等格式；同时具备尺寸测量、装配关系检查和几何验证能力，可用于支架、夹具、壳体、孔槽、装配体等机械结构的辅助设计。目前项目已形成CAD、DXF、DfAM、G-code、机器人URDF等一系列工程Skills。"
+        },
+        "en-US": {
+          "name": "cad",
+          "description": "Create, modify, inspect, and validate parametric CAD parts and assemblies authored as cadgen model scripts. Use for natural-language CAD specs, reference images, 2D technical drawings, STEP/STP generation or direct inspection, Python CAD source, source-level joints, selector references, geometry facts, measurements, mating deltas, snapshots, and STL/3MF/native GLB outputs from CAD geometry. Also covers project structure for multi-part CAD work - src/ for model scripts and shared code, format folders (STEP/, DXF/, STL/) for raw outputs, naming, and commit policy for projects with several @step/@dxf model scripts and imported source files; use it when starting a CAD project with more than a couple of models, when asked how to organize CAD code and artifacts, or when growing a flat folder of models into a project."
+        }
+      }
+    },
+    {
+      "id": "predictive-maintenance",
+      "industryScope": "universal",
+      "industryCodes": [],
+      "professionalDimensionCodes": [
+        "rnd-design"
+      ],
+      "logo": {
+        "type": "snapshot",
+        "location": "logos/aws.png",
+        "sha256": "sha256:b56ca98210902943a33d021639a15fd23e2b81b20c2e44c7626abee70b4be69a"
+      },
+      "artifact": {
+        "type": "directory",
+        "location": "packages/predictive-maintenance",
+        "version": "unknown",
+        "sha256": "sha256:7067538123257175964bd0706466f4ad3d530577baa5dd0734e3707861b1f27e"
+      },
+      "status": "published",
+      "sortOrder": 32,
+      "translations": {
+        "zh-CN": {
+          "name": "设备预测性维护模型生成",
+          "description": "AWS开源的设备预测性维护Skill，可从设备IoT传感器原始数据出发，自动完成数据探索、数据聚合、特征工程、模型训练、验证和部署，支持剩余寿命RUL预测、设备故障分类、生存分析和异常检测等典型工业运维场景，并可将模型部署为实时服务、批处理任务或边缘推理应用。"
+        },
+        "en-US": {
+          "name": "predictive-maintenance",
+          "description": "End-to-end Predictive Maintenance: explores raw data in S3, builds a feature engineering pipeline, trains an AutoML model (RUL regression, failure classification, multi-label classification, or survival analysis), and deploys as a real-time endpoint, daily batch inference job, or edge device via AWS IoT Greengrass. Use when asked to build a failure prediction model, predict equipment failures, train on IoT sensor data, or estimate remaining useful life."
+        }
+      }
+    },
+    {
+      "id": "proposal-writer",
+      "industryScope": "universal",
+      "industryCodes": [],
+      "professionalDimensionCodes": [
+        "rnd-design"
+      ],
+      "logo": null,
+      "artifact": {
+        "type": "directory",
+        "location": "packages/proposal-writer",
+        "version": "1.0.0",
+        "sha256": "sha256:edec9b909c89e418290bf76008dce3d54623d90ec7b7553ee1a0bdb8858f0fd1"
+      },
+      "status": "published",
+      "sortOrder": 34,
+      "translations": {
+        "zh-CN": {
+          "name": "投标方案编写",
+          "description": "生成项目建议书、RFP/RFI响应、交付范围、实施计划、报价结构和商务条款框架。"
+        },
+        "en-US": {
+          "name": "proposal-writer",
+          "description": "Create compelling business proposals that win deals and partnerships"
+        }
+      }
+    },
+    {
+      "id": "specification-extractor",
+      "industryScope": "universal",
+      "industryCodes": [],
+      "professionalDimensionCodes": [
+        "manufacturing"
+      ],
+      "logo": null,
+      "artifact": {
+        "type": "directory",
+        "location": "packages/specification-extractor",
+        "version": "unknown",
+        "sha256": "sha256:23f0fdd43e01025edc3493fdbb7ca8844f38cdda488372dba58993430d8ba10b"
+      },
+      "status": "published",
+      "sortOrder": 35,
+      "translations": {
+        "zh-CN": {
+          "name": "技术规范提取",
+          "description": "从PDF规范中提取章节、产品要求、提交材料、引用标准和采购信息，形成结构化清单。"
+        },
+        "en-US": {
+          "name": "specification-extractor",
+          "description": "Extract structured data from construction specifications. Parse CSI sections, requirements, submittals, and product data from spec documents."
+        }
+      }
+    }
+  ]
+}

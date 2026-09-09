@@ -75,7 +75,8 @@ export class AgentGlobalSkillService {
       const displayNameMatch = sql`${agentGlobalSkillTable.displayName} LIKE ${pattern} ESCAPE '\\'`
       const nameMatch = sql`${agentGlobalSkillTable.name} LIKE ${pattern} ESCAPE '\\'`
       const descMatch = sql`${agentGlobalSkillTable.description} LIKE ${pattern} ESCAPE '\\'`
-      const searchClause = or(displayNameMatch, nameMatch, descMatch)
+      const descEnMatch = sql`${agentGlobalSkillTable.descriptionEn} LIKE ${pattern} ESCAPE '\\'`
+      const searchClause = or(displayNameMatch, nameMatch, descMatch, descEnMatch)
       if (searchClause) conditions.push(searchClause)
     }
 
@@ -323,6 +324,7 @@ export class AgentGlobalSkillService {
       displayName: row.displayName,
       displayNameEn: row.displayNameEn,
       description: row.description,
+      descriptionEn: row.descriptionEn,
       folderName: row.folderName,
       source: row.source,
       sourceUrl: row.sourceUrl,

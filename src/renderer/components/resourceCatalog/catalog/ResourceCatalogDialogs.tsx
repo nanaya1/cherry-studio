@@ -9,7 +9,7 @@ import {
 } from '@renderer/components/resourceCatalog/dialogs/skill'
 import type { useResourceCatalogController } from '@renderer/hooks/resourceCatalog'
 import type { ResourceItem, ResourceType } from '@renderer/types/resourceCatalog'
-import { getSkillDisplayName } from '@shared/data/api/schemas/skills'
+import { getSkillDescription, getSkillDisplayName } from '@shared/data/api/schemas/skills'
 import { isNonChatModel } from '@shared/utils/model'
 import { useTranslation } from 'react-i18next'
 
@@ -29,6 +29,7 @@ export function ResourceCatalogDialogs({
   resourceType
 }: ResourceCatalogDialogsProps) {
   const { i18n } = useTranslation()
+  const locale = i18n.resolvedLanguage ?? i18n.language
   return (
     <>
       <SkillDetailDialog
@@ -43,8 +44,8 @@ export function ResourceCatalogDialogs({
           const resource: Extract<ResourceItem, { type: 'skill' }> = {
             type: 'skill',
             id: skill.id,
-            name: getSkillDisplayName(skill, i18n.resolvedLanguage ?? i18n.language),
-            description: skill.description ?? '',
+            name: getSkillDisplayName(skill, locale),
+            description: getSkillDescription(skill, locale) ?? '',
             avatar: '',
             createdAt: skill.createdAt,
             updatedAt: skill.updatedAt,

@@ -60,6 +60,7 @@ import { QuickAssistantService } from '@main/services/QuickAssistantService'
 import { ScreenshotOverlayService } from '@main/services/screenshot'
 import { SelectionService } from '@main/services/selection/SelectionService'
 import { ShortcutService } from '@main/services/ShortcutService'
+import { SkillCatalogService } from '@main/services/SkillCatalogService'
 import { StorageMonitorService } from '@main/services/StorageMonitorService'
 import { SubWindowService } from '@main/services/SubWindowService'
 import { ThemeService } from '@main/services/ThemeService'
@@ -117,6 +118,7 @@ export const services = {
   PowerService,
   SelectionService,
   ShortcutService,
+  SkillCatalogService,
   ThemeService,
   TraceStorageService,
   NodeTraceService,

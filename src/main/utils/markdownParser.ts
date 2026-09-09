@@ -74,10 +74,12 @@ export async function findSkillIconFileName(dirPath: string): Promise<string | u
  * walk). Used to backfill display names on DB rows written before the columns
  * existed.
  */
-export async function skillMdHasDisplayName(
-  dirPath: string,
-  key: 'display_name' | 'display_name_en' = 'display_name'
-): Promise<boolean> {
+/**
+ * Cheap key-only probe for a frontmatter key without parsing the full skill
+ * (no icon lookup, no directory walk). Used to backfill DB rows written before
+ * a column existed — e.g. `display_name` / `description_en`.
+ */
+export async function skillMdHasFrontmatterKey(dirPath: string, key: string): Promise<boolean> {
   const skillMdPath = await findSkillMdPath(dirPath)
   if (!skillMdPath) return false
   try {
@@ -435,6 +437,8 @@ export async function parseSkillMetadata(
   // Validate and sanitize description
   const rawDescription = toString(data.description)
   const description = rawDescription && rawDescription.trim() ? rawDescription.trim() : undefined
+  const rawDescriptionEn = toString(data.description_en) ?? toString(data.descriptionEn)
+  const descriptionEn = rawDescriptionEn && rawDescriptionEn.trim() ? rawDescriptionEn.trim() : undefined
 
   // Validate version and author
   const nestedMetadata =
@@ -459,6 +463,7 @@ export async function parseSkillMetadata(
     displayName,
     displayNameEn,
     description,
+    descriptionEn,
     allowed_tools: allowedTools,
     tools,
     context,

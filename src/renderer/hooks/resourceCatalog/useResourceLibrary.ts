@@ -1,7 +1,7 @@
 import { useGroups } from '@renderer/hooks/useGroups'
 import type { AgentDetail, ResourceItem, ResourceType, SortKey } from '@renderer/types/resourceCatalog'
 import { getAgentAvatarFromConfiguration, getAgentDescriptionForDisplay } from '@renderer/utils/agent'
-import { getSkillDisplayName } from '@shared/data/api/schemas/skills'
+import { getSkillDescription, getSkillDisplayName } from '@shared/data/api/schemas/skills'
 import type { InstalledSkill } from '@shared/data/types/agent'
 import type { Assistant } from '@shared/data/types/assistant'
 import type { Prompt } from '@shared/data/types/prompt'
@@ -121,11 +121,12 @@ export function useResourceLibrary({
 
   const buildSkillItem = useCallback(
     (s: InstalledSkill): ResourceItem => {
+      const locale = i18n.resolvedLanguage ?? i18n.language
       return {
         id: s.id,
         type: 'skill',
-        name: getSkillDisplayName(s, i18n.resolvedLanguage ?? i18n.language),
-        description: s.description ?? '',
+        name: getSkillDisplayName(s, locale),
+        description: getSkillDescription(s, locale) ?? '',
         // No emoji on InstalledSkill — fall back to the lightning glyph.
         avatar: '⚡',
         // Skill metadata tags from SKILL.md live on `sourceTags`; assistant
@@ -179,9 +180,12 @@ export function useResourceLibrary({
     const items = skills.data.map(buildSkillItem)
     if (!clientSideSkillSearch || !trimmedSearch) return items
     const query = trimmedSearch.toLocaleLowerCase()
-    return items.filter(
-      (item) => item.name.toLocaleLowerCase().includes(query) || item.description.toLocaleLowerCase().includes(query)
-    )
+    return items.filter((item) => {
+      const haystack = [item.name, item.description, ...(item.type === 'skill' ? item.raw.sourceTags : [])]
+        .join(' ')
+        .toLocaleLowerCase()
+      return haystack.includes(query)
+    })
   }, [buildSkillItem, clientSideSkillSearch, skills.data, trimmedSearch])
   const promptItems = useMemo(() => prompts.data.map(buildPromptItem), [prompts.data, buildPromptItem])
 
