@@ -47,7 +47,9 @@ export const PROVIDER_SPECIFIC_SETTINGS_REGISTRY: Record<ProviderSpecificPlaceme
     },
     {
       key: 'cherryin-oauth',
-      when: ({ meta }) => meta.isCherryIN,
+      // 雪浪工匠 rides the same gateway OAuth panel, but its login entry is
+      // hidden until the production auth server host lands.
+      when: ({ provider }) => matchesPreset(provider, 'cherryin'),
       render: (providerId) => <CherryInOauth providerId={providerId} />
     },
     {

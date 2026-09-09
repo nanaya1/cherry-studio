@@ -62,6 +62,7 @@ export const SystemProviderIdSchema = z.enum([
   'vertexai',
   'voyageai',
   'xirang',
+  'xuelang',
   'zai',
   'zhipu'
 ])
@@ -129,6 +130,7 @@ export const SystemProviderIds = {
   vertexai: 'vertexai',
   voyageai: 'voyageai',
   xirang: 'xirang',
+  xuelang: 'xuelang',
   zai: 'zai',
   zhipu: 'zhipu'
 } as const satisfies Record<SystemProviderId, SystemProviderId>

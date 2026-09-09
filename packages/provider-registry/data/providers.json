@@ -5,8 +5,23 @@
       "defaultChatEndpoint": "openai-chat-completions",
       "description": "雪浪工匠 - AI model provider",
       "endpointConfigs": {
+        "anthropic-messages": {
+          "adapterFamily": "cherryin",
+          "baseUrl": "https://api.xuelanglm.com/v1"
+        },
+        "google-generate-content": {
+          "adapterFamily": "cherryin",
+          "baseUrl": "https://api.xuelanglm.com/v1"
+        },
         "openai-chat-completions": {
-          "adapterFamily": "openai-compatible",
+          "adapterFamily": "cherryin",
+          "baseUrl": "https://api.xuelanglm.com/v1",
+          "reasoningFormat": {
+            "type": "openai-chat"
+          }
+        },
+        "openai-responses": {
+          "adapterFamily": "cherryin",
           "baseUrl": "https://api.xuelanglm.com/v1"
         }
       },
@@ -2501,5 +2516,5 @@
       "presetProviderId": "minimax"
     }
   ],
-  "version": "70ab75e9262eff1e"
+  "version": "54a3e3478d096593"
 }

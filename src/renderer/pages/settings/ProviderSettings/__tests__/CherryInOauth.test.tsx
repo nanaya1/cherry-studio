@@ -47,6 +47,9 @@ vi.mock('@cherrystudio/ui', async (importOriginal) => {
 vi.mock('@cherrystudio/ui/icons/providers', () => ({
   Cherryin: {
     Avatar: ({ size }: { size?: number }) => <div data-testid="cherryin-avatar">{size ?? 0}</div>
+  },
+  Xuelang: {
+    Avatar: ({ size }: { size?: number }) => <div data-testid="xuelang-avatar">{size ?? 0}</div>
   }
 }))
 
@@ -80,7 +83,10 @@ describe('CherryInOauth', () => {
     render(<CherryInOauth providerId="cherryin" />)
 
     await waitFor(() => {
-      expect(ipcApiRequestMock).toHaveBeenCalledWith('cherryin.get_balance', { apiHost: 'https://open.cherryin.ai' })
+      expect(ipcApiRequestMock).toHaveBeenCalledWith('cherryin.get_balance', {
+        apiHost: 'https://open.cherryin.ai',
+        providerId: 'cherryin'
+      })
     })
 
     expect(screen.getByText('Siin')).toBeInTheDocument()
@@ -113,7 +119,10 @@ describe('CherryInOauth', () => {
     render(<CherryInOauth providerId="cherryin" />)
 
     await waitFor(() => {
-      expect(ipcApiRequestMock).toHaveBeenCalledWith('cherryin.get_balance', { apiHost: 'https://open.cherryin.ai' })
+      expect(ipcApiRequestMock).toHaveBeenCalledWith('cherryin.get_balance', {
+        apiHost: 'https://open.cherryin.ai',
+        providerId: 'cherryin'
+      })
     })
     expect(toast.error).not.toHaveBeenCalled()
     expect(screen.getByText('-')).toBeInTheDocument()
@@ -177,7 +186,10 @@ describe('CherryInOauth', () => {
       expect(toast.success).toHaveBeenCalled()
     })
 
-    expect(ipcApiRequestMock).toHaveBeenCalledWith('cherryin.logout', { apiHost: 'https://open.cherryin.ai' })
+    expect(ipcApiRequestMock).toHaveBeenCalledWith('cherryin.logout', {
+      apiHost: 'https://open.cherryin.ai',
+      providerId: 'cherryin'
+    })
     expect(ipcApiRequestMock).toHaveBeenCalledWith('oauth.has_token', { providerId: 'cherryin' })
     expect(deleteApiKey).toHaveBeenCalledTimes(2)
     expect(deleteApiKey).toHaveBeenNthCalledWith(1, 'oauth-1')
@@ -253,11 +265,38 @@ describe('CherryInOauth', () => {
     await screen.findByText('$256.00')
     expect(ipcApiRequestMock).toHaveBeenCalledTimes(1)
     expect(ipcApiRequestMock).toHaveBeenCalledWith('cherryin.get_balance', {
-      apiHost: 'https://open.cherryin.ai'
+      apiHost: 'https://open.cherryin.ai',
+      providerId: 'cherryin'
     })
 
     ipcApiRequestMock.mockClear()
     fireEvent.focus(window)
     expect(ipcApiRequestMock).not.toHaveBeenCalled()
+  })
+
+  it('renders the xuelang gateway card with its own host and branding', async () => {
+    useProviderMock.mockReturnValue({
+      provider: {
+        id: 'xuelang',
+        name: '雪浪工匠',
+        apiKeys: [{ id: 'oauth-1', label: 'OAuth', isEnabled: true }],
+        isEnabled: true
+      },
+      updateProvider: vi.fn(),
+      addApiKey: vi.fn(),
+      deleteApiKey: vi.fn()
+    })
+
+    render(<CherryInOauth providerId="xuelang" />)
+
+    await waitFor(() => {
+      expect(ipcApiRequestMock).toHaveBeenCalledWith('cherryin.get_balance', {
+        apiHost: 'https://api.xuelanglm.com',
+        providerId: 'xuelang'
+      })
+    })
+    expect(ipcApiRequestMock).toHaveBeenCalledWith('oauth.has_token', { providerId: 'xuelang' })
+    expect(screen.getByTestId('xuelang-avatar')).toBeInTheDocument()
+    expect(screen.getByText(/雪浪工匠|Xuelang/)).toBeInTheDocument()
   })
 })

@@ -787,6 +787,44 @@ describe('providerToAiSdkConfig — builder dispatch matrix', () => {
       expect(settings.geminiBaseURL).toBeDefined()
     })
 
+    it('routes xuelang gateway chat models through buildCherryinConfig at the xuelang host', async () => {
+      // 雪浪工匠 rides the cherryin adapterFamily; the resolved chat variant and
+      // the relay URLs must come from xuelang's own endpointConfigs.
+      getByProviderIdMock.mockReturnValue(
+        makeProvider({
+          id: 'xuelang',
+          endpointConfigs: {
+            [ENDPOINT_TYPE.ANTHROPIC_MESSAGES]: { baseUrl: 'https://api.xuelanglm.com' },
+            [ENDPOINT_TYPE.GOOGLE_GENERATE_CONTENT]: { baseUrl: 'https://api.xuelanglm.com' }
+          }
+        })
+      )
+      const provider = makeProvider({
+        id: 'xuelang',
+        defaultChatEndpoint: ENDPOINT_TYPE.OPENAI_CHAT_COMPLETIONS,
+        endpointConfigs: {
+          [ENDPOINT_TYPE.OPENAI_CHAT_COMPLETIONS]: {
+            baseUrl: 'https://api.xuelanglm.com',
+            adapterFamily: 'cherryin'
+          }
+        }
+      })
+      const model = makeModel({
+        id: 'xuelang::qwen3-8-27b',
+        apiModelId: 'Qwen3.8-27B',
+        endpointTypes: undefined
+      })
+
+      const config = await providerToAiSdkConfig(provider, model)
+      const settings = config.providerSettings as Record<string, unknown>
+
+      expect(config.providerId).toBe('cherryin-chat')
+      expect(settings.endpointType).toBe('openai')
+      expect(settings.baseURL).toBe('https://api.xuelanglm.com/v1')
+      expect(settings.anthropicBaseURL).toBe('')
+      expect(settings.geminiBaseURL).toBe('https://api.xuelanglm.com/v1beta')
+    })
+
     it('routes a CherryIN OpenAI model on the Responses endpoint through the CherryIN provider', async () => {
       const provider = makeProvider({
         id: 'cherryin',

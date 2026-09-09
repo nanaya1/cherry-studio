@@ -368,7 +368,8 @@ export async function resolveProviderAiSdkConfig(
       build: withProviderAuth('iam-gcp', buildVertexConfig)
     },
     {
-      match: (p) => matchesPreset(p, SystemProviderIds.cherryin),
+      // Gateway stack shared by CherryIN and 雪浪工匠.
+      match: (p) => matchesPreset(p, SystemProviderIds.cherryin) || matchesPreset(p, SystemProviderIds.xuelang),
       build: withSelectedApiKey(buildCherryinConfig)
     },
     { match: (_, id) => id === 'newapi', build: withSelectedApiKey(buildNewApiConfig) },

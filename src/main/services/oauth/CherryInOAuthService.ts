@@ -2,11 +2,11 @@ import { application } from '@application'
 import { loggerService } from '@logger'
 import type { CherryInBalance, CherryInProfile } from '@shared/ipc/schemas/cherryin'
 import { isSensitiveKey, REDACTED, redactSecretText } from '@shared/utils/redaction'
-import { SystemProviderIds } from '@shared/utils/systemProviderId'
 import { net } from 'electron'
 import * as z from 'zod'
 
-import { CherryInOAuthServiceError, validateCherryInApiHost } from './CherryInOAuthConfig'
+import type { GatewayProviderId } from './CherryInOAuthConfig'
+import { CherryInOAuthServiceError, validateCherryInApiHost, validateGatewayApiHost } from './CherryInOAuthConfig'
 import { describeOAuthError, OAuthTransientError } from './errors'
 
 const logger = loggerService.withContext('CherryInOAuthService')
@@ -58,16 +58,23 @@ const UserSelfResponseSchema = z
  * singleton, not a lifecycle service (see lifecycle-decision-guide.md).
  */
 export class CherryInOAuthService {
-  private validateApiHost(apiHost: string): void {
-    validateCherryInApiHost(apiHost)
+  private validateApiHost(apiHost: string, providerId: GatewayProviderId = 'cherryin'): void {
+    if (providerId === 'cherryin') {
+      validateCherryInApiHost(apiHost)
+    } else {
+      validateGatewayApiHost(providerId, apiHost)
+    }
   }
 
-  public getToken = async (apiHost = 'https://open.cherryin.ai'): Promise<string | null> => {
-    this.validateApiHost(apiHost)
+  public getToken = async (
+    apiHost = 'https://open.cherryin.ai',
+    providerId: GatewayProviderId = 'cherryin'
+  ): Promise<string | null> => {
+    this.validateApiHost(apiHost, providerId)
     try {
       const credentials = await application
         .get('OAuthRuntimeService')
-        .getValidAccessToken(SystemProviderIds.cherryin, { apiHost })
+        .getValidAccessToken(providerId, { apiHost })
       return credentials?.accessToken ?? null
     } catch (error) {
       // A transient refresh failure means the session is still valid but we
@@ -152,9 +159,14 @@ export class CherryInOAuthService {
   // OAuthRuntimeService.authenticatedFetch (shared with Codex/Grok). CherryIN only
   // shapes the request (apiHost + bearer/json headers), threads its `apiHost`
   // context for refresh, and supplies the 401 diagnostic log.
-  private authenticatedFetch = (apiHost: string, endpoint: string, options: RequestInit = {}): Promise<Response> => {
+  private authenticatedFetch = (
+    apiHost: string,
+    endpoint: string,
+    options: RequestInit = {},
+    providerId: GatewayProviderId = 'cherryin'
+  ): Promise<Response> => {
     return application.get('OAuthRuntimeService').authenticatedFetch(
-      SystemProviderIds.cherryin,
+      providerId,
       (creds) => ({
         input: `${apiHost}${endpoint}`,
         init: {
@@ -183,9 +195,9 @@ export class CherryInOAuthService {
     )
   }
 
-  private getProfile = async (apiHost: string): Promise<CherryInProfile | null> => {
+  private getProfile = async (apiHost: string, providerId: GatewayProviderId = 'cherryin'): Promise<CherryInProfile | null> => {
     try {
-      const response = await this.authenticatedFetch(apiHost, '/api/user/self')
+      const response = await this.authenticatedFetch(apiHost, '/api/user/self', {}, providerId)
 
       if (!response.ok) {
         logger.warn('Failed to fetch CherryIN profile', {
@@ -208,11 +220,11 @@ export class CherryInOAuthService {
     }
   }
 
-  public getBalance = async (apiHost: string): Promise<CherryInBalance> => {
-    this.validateApiHost(apiHost)
+  public getBalance = async (apiHost: string, providerId: GatewayProviderId = 'cherryin'): Promise<CherryInBalance> => {
+    this.validateApiHost(apiHost, providerId)
 
     try {
-      const response = await this.authenticatedFetch(apiHost, '/api/v1/oauth/balance')
+      const response = await this.authenticatedFetch(apiHost, '/api/v1/oauth/balance', {}, providerId)
 
       if (!response.ok) {
         throw new CherryInOAuthServiceError(`HTTP ${response.status} ${response.statusText} from /api/v1/oauth/balance`)
@@ -227,7 +239,7 @@ export class CherryInOAuthService {
       }
 
       const { quota, used_quota: usedQuota } = parsed.data
-      const profile = await this.getProfile(apiHost)
+      const profile = await this.getProfile(apiHost, providerId)
       const balance = quota / 500000
       logger.info('Balance fetched successfully', { balance, usedQuota })
       return {
@@ -245,11 +257,11 @@ export class CherryInOAuthService {
     }
   }
 
-  public logout = async (apiHost: string): Promise<void> => {
-    this.validateApiHost(apiHost)
+  public logout = async (apiHost: string, providerId: GatewayProviderId = 'cherryin'): Promise<void> => {
+    this.validateApiHost(apiHost, providerId)
 
     try {
-      const token = await this.getToken(apiHost)
+      const token = await this.getToken(apiHost, providerId)
 
       if (token) {
         try {
@@ -269,8 +281,8 @@ export class CherryInOAuthService {
         }
       }
 
-      await application.get('OAuthRuntimeService').logout(SystemProviderIds.cherryin)
-      logger.debug('Successfully cleared CherryIN OAuth tokens from auth config')
+      await application.get('OAuthRuntimeService').logout(providerId)
+      logger.debug('Successfully cleared gateway OAuth tokens from auth config')
     } catch (error) {
       logger.error('Failed to logout:', error as Error)
       throw new CherryInOAuthServiceError('Failed to logout', error)

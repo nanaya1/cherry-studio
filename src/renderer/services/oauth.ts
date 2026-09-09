@@ -187,10 +187,12 @@ export const oauthWithAiOnly = async (setKey) => {
 export interface NewApiOAuthConfig {
   oauthServer: string
   apiHost?: string
+  /** Gateway provider to authenticate; defaults to cherryin for legacy callers. */
+  providerId?: 'cherryin' | 'xuelang'
 }
 
 /**
- * CherryIN OAuth flow using Authorization Code with PKCE.
+ * Gateway OAuth flow (CherryIN / 雪浪工匠) using Authorization Code with PKCE.
  *
  * PKCE, token exchange and API-key fetch all happen in the main process
  * (`OAuthRuntimeService`); the deep-link callback is routed by `ProtocolService`
@@ -201,10 +203,10 @@ export const oauthWithCherryIn = async (
   setKey: (key: string) => void | Promise<void>,
   config: NewApiOAuthConfig
 ): Promise<string> => {
-  const { oauthServer, apiHost } = config
+  const { oauthServer, apiHost, providerId = SystemProviderIds.cherryin } = config
 
   const { authUrl, state } = await ipcApi.request('oauth.start_deep_link_flow', {
-    providerId: SystemProviderIds.cherryin,
+    providerId,
     oauthServer,
     apiHost
   })

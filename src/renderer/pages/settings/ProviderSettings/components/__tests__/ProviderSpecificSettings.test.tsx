@@ -179,6 +179,17 @@ describe('ProviderSpecificSettings', () => {
     }
   )
 
+  it('does not render the OAuth login card for xuelang', () => {
+    useProviderMock.mockReturnValue({
+      provider: { id: 'xuelang', name: '雪浪工匠', isEnabled: true }
+    })
+    useProviderMetaMock.mockReturnValue({ isCherryIN: false, isDmxapi: false })
+
+    const { container } = render(<ProviderSpecificSettings providerId="xuelang" placement="beforeAuth" />)
+
+    expect(container).toBeEmptyDOMElement()
+  })
+
   it('does not render AMD GPU Cloud OAuth while account login is disabled', () => {
     useProviderMock.mockReturnValue({
       provider: { id: 'radeon-cloud', name: 'AMD GPU Cloud', isEnabled: true }
