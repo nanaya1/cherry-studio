@@ -163,6 +163,7 @@ import { WorkersAiIcon } from './workers-ai'
 import { XiaoyiIcon } from './xiaoyi'
 import { XinghuoIcon } from './xinghuo'
 import { XirangIcon } from './xirang'
+import { XuelangIcon } from './xuelang'
 import { YouIcon } from './you'
 import { YuanbaoIcon } from './yuanbao'
 import { ZAiIcon } from './z-ai'
@@ -325,6 +326,7 @@ export const PROVIDER_ICON_CATALOG = {
   xiaoyi: XiaoyiIcon,
   xinghuo: XinghuoIcon,
   xirang: XirangIcon,
+  xuelang: XuelangIcon,
   you: YouIcon,
   yuanbao: YuanbaoIcon,
   'z-ai': ZAiIcon,

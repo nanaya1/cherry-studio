@@ -160,6 +160,7 @@ import { meta as workersAiMeta } from './workers-ai/meta'
 import { meta as xiaoyiMeta } from './xiaoyi/meta'
 import { meta as xinghuoMeta } from './xinghuo/meta'
 import { meta as xirangMeta } from './xirang/meta'
+import { meta as xuelangMeta } from './xuelang/meta'
 import { meta as youMeta } from './you/meta'
 import { meta as yuanbaoMeta } from './yuanbao/meta'
 import { meta as zAiMeta } from './z-ai/meta'
@@ -322,6 +323,7 @@ export const PROVIDER_ICON_META_CATALOG = {
   xiaoyi: xiaoyiMeta,
   xinghuo: xinghuoMeta,
   xirang: xirangMeta,
+  xuelang: xuelangMeta,
   you: youMeta,
   yuanbao: yuanbaoMeta,
   'z-ai': zAiMeta,

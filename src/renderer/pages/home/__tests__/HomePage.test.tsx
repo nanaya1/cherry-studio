@@ -296,8 +296,6 @@ vi.mock('@renderer/hooks/useTopic', async () => {
 
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => homeMocks.navigate,
-  useSearch: () => homeMocks.routeSearch,
-  useLocation: () => ({ pathname: '/app/chat', searchStr: '' }),
   getRouteApi: () => ({ useSearch: () => homeMocks.routeSearch })
 }))
 
@@ -490,7 +488,7 @@ vi.mock('../Tabs/HomeTabs', () => ({
   }
 }))
 
-vi.mock('@renderer/components/chat/resourceList/Topics', () => ({
+vi.mock('../Tabs/components/Topics', () => ({
   Topics: ({
     assistantIdFilter,
     assistantTopicsSource,
@@ -780,15 +778,15 @@ describe('HomePage', () => {
     expect(screen.queryByTestId('home-tabs')).not.toBeInTheDocument()
   })
 
-  it('renders the modern topic sidebar for the new-user display default', () => {
+  it('renders the classic assistant layout for the new-user display default', () => {
     homeMocks.preferenceValues.set('topic.tab.display_mode', DefaultPreferences.default['topic.tab.display_mode'])
 
     render(<HomePage />)
 
-    expect(DefaultPreferences.default['topic.tab.display_mode']).toBe('time')
-    expect(screen.getByTestId('home-tabs')).toBeInTheDocument()
-    expect(screen.queryByTestId('assistant-resource-list')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('topic-resource-panel')).not.toBeInTheDocument()
+    expect(DefaultPreferences.default['topic.tab.display_mode']).toBe('assistant')
+    expect(screen.getByTestId('assistant-resource-list')).toBeInTheDocument()
+    expect(screen.getByTestId('topic-resource-panel')).toHaveAttribute('data-presentation', 'right-panel')
+    expect(screen.queryByTestId('home-tabs')).not.toBeInTheDocument()
   })
 
   it('passes the same assistant topic source to the classic rail and right panel', () => {

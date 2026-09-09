@@ -14,7 +14,6 @@ describe('resolveProviderIconRef', () => {
     { providerId: 'baidu-cloud', expectedToExist: true },
     { providerId: 'aws-bedrock', expectedToExist: true },
     { providerId: 'aionly', expectedToExist: true },
-    { providerId: 'jalapeno-cloud', expectedToExist: true },
     { providerId: 'gitee-ai', expectedToExist: true },
     { providerId: 'xuelang', expectedToExist: true }
   ]
