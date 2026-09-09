@@ -391,7 +391,6 @@ const McpServersList: FC<McpServersListProps> = ({ variant = 'settings', showTit
                     horizontal={false}
                     listStyle={isCatalog ? undefined : { gap: 0 }}
                     itemStyle={{ transition: 'none' }}
-                    gap={0}
                     restrictions={{ scrollableAncestor: true }}
                     useDragOverlay
                     showGhost
