@@ -108,21 +108,23 @@ export function RecommendedSkillCatalogView({ search }: RecommendedSkillCatalogV
 
   const skills = useMemo(() => {
     const query = search.trim().toLocaleLowerCase()
-    return (data?.skills ?? []).filter((skill) => {
-      const matchesIndustry =
-        industry === 'all' ||
-        (industry === 'universal' && skill.industryScope === 'universal') ||
-        skill.industries.some((item) => item.code === industry)
-      const haystack = [
-        skill.name,
-        skill.description,
-        ...skill.industries.map((item) => item.name),
-        ...skill.professionalDimensions.map((item) => item.name)
-      ]
-        .join(' ')
-        .toLocaleLowerCase()
-      return matchesIndustry && (!query || haystack.includes(query))
-    })
+    return (data?.skills ?? [])
+      .filter((skill) => {
+        const matchesIndustry =
+          industry === 'all' ||
+          (industry === 'universal' && skill.industryScope === 'universal') ||
+          skill.industries.some((item) => item.code === industry)
+        const haystack = [
+          skill.name,
+          skill.description,
+          ...skill.industries.map((item) => item.name),
+          ...skill.professionalDimensions.map((item) => item.name)
+        ]
+          .join(' ')
+          .toLocaleLowerCase()
+        return matchesIndustry && (!query || haystack.includes(query))
+      })
+      .sort((left, right) => Number(left.installState === 'installed') - Number(right.installState === 'installed'))
   }, [data?.skills, industry, search])
 
   const handleInstall = async (skill: SkillCatalogItem) => {
@@ -200,7 +202,7 @@ export function RecommendedSkillCatalogView({ search }: RecommendedSkillCatalogV
               return (
                 <article
                   key={skill.id}
-                  className="group hover:-translate-y-0.5 relative flex min-w-0 flex-col rounded-lg border bg-background p-4 transition-[transform,border-color,box-shadow] duration-200 focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 hover:border-foreground/20 hover:shadow-foreground/5 hover:shadow-lg">
+                  className="group relative flex min-w-0 flex-col rounded-lg border bg-background p-4 transition-colors duration-150 focus-within:border-border-strong hover:border-border-strong hover:bg-accent/30">
                   <button
                     type="button"
                     onClick={() => setSelectedSkill(skill)}
@@ -216,11 +218,11 @@ export function RecommendedSkillCatalogView({ search }: RecommendedSkillCatalogV
                         ? t('workspace.skill_catalog.installed')
                         : t('workspace.skill_catalog.install', { name: skill.name })
                     }
-                    className="absolute top-3 right-3 z-10 grid size-7 place-items-center rounded-md border border-transparent text-muted-foreground transition-colors hover:border-border hover:bg-muted hover:text-foreground disabled:cursor-default disabled:text-primary">
+                    className="absolute top-3 right-3 z-10 grid size-7 place-items-center rounded-md border border-transparent text-muted-foreground transition-colors hover:border-border hover:bg-muted hover:text-foreground disabled:cursor-default">
                     {busy ? (
                       <LoaderCircle className="size-3.5 animate-spin" />
                     ) : installed ? (
-                      <Check className="size-3.5" />
+                      <Check className="size-3.5 text-success" />
                     ) : (
                       <Download className="size-3.5" />
                     )}
