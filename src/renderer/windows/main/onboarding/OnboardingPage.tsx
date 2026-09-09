@@ -268,6 +268,9 @@ export default function OnboardingPage({
     setStep('provider')
   }
 
+  // MEA Cowork 定制：默认隐藏登录入口（ENABLE_CHERRY_ACCOUNT_LOGIN=false），生产路径无调用方传 prop。
+  // shouldUseCherryAccountLogin 仅在测试中显式开启（enableCherryAccountLogin），用于驱动云模型同步 effect。
+  const shouldUseCherryAccountLogin = isCnEdition && enableCherryAccountLogin
   useEffect(() => {
     if (!shouldUseCherryAccountLogin || cloudStatus?.phase !== 'signed-in') {
       hasRoutedCloudLoginRef.current = false

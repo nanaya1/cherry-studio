@@ -778,15 +778,16 @@ describe('HomePage', () => {
     expect(screen.queryByTestId('home-tabs')).not.toBeInTheDocument()
   })
 
-  it('renders the classic assistant layout for the new-user display default', () => {
+  it('renders the modern topic sidebar for the new-user display default', () => {
+    // MEA Cowork 定制：新用户默认 modern（time）布局 + workdir 会话分组（见 2387d1b70），官方默认是 assistant。
     homeMocks.preferenceValues.set('topic.tab.display_mode', DefaultPreferences.default['topic.tab.display_mode'])
 
     render(<HomePage />)
 
-    expect(DefaultPreferences.default['topic.tab.display_mode']).toBe('assistant')
-    expect(screen.getByTestId('assistant-resource-list')).toBeInTheDocument()
-    expect(screen.getByTestId('topic-resource-panel')).toHaveAttribute('data-presentation', 'right-panel')
-    expect(screen.queryByTestId('home-tabs')).not.toBeInTheDocument()
+    expect(DefaultPreferences.default['topic.tab.display_mode']).toBe('time')
+    expect(screen.getByTestId('home-tabs')).toBeInTheDocument()
+    expect(screen.queryByTestId('assistant-resource-list')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('topic-resource-panel')).not.toBeInTheDocument()
   })
 
   it('passes the same assistant topic source to the classic rail and right panel', () => {
