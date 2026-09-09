@@ -645,7 +645,6 @@ describe('OnboardingPage', () => {
   })
 
   it('uses cancellable Cherry Cloud login instead of CherryIN in the CN edition', async () => {
-    const user = userEvent.setup()
     cloudMocks.appEdition = 'cn'
     render(<OnboardingPage enableCherryAccountLogin />)
 

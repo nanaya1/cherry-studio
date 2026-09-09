@@ -6,6 +6,7 @@ import { useEffect } from 'react'
 
 type Props = {
   title: string
+  emoji?: string | null
   preserveVisuals: boolean
   activeSessionId?: string | null
   activeSessionSource: AgentSessionSource
@@ -14,6 +15,7 @@ type Props = {
 
 export function AgentTabRuntime({
   title,
+  emoji,
   preserveVisuals,
   activeSessionId,
   activeSessionSource,
@@ -23,6 +25,7 @@ export function AgentTabRuntime({
 
   useTabSelfVisuals({
     title,
+    emoji,
     appId: 'agents',
     preserveVisuals
   })

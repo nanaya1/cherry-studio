@@ -4,7 +4,6 @@ import { loggerService } from '@logger'
 import type { ResourcePaneConfig, ResourcePaneCountButtonProps } from '@renderer/components/chat/panes/Shell'
 import { AssistantResourceList } from '@renderer/components/chat/resourceList/AssistantResourceList'
 import type { ResourceListRevealRequest } from '@renderer/components/chat/resourceList/base'
-import { ChatAppShell } from '@renderer/components/chat/shell/ChatAppShell'
 import { ConversationSidebarToggleButton } from '@renderer/components/chat/shell/ConversationSidebarToggleButton'
 import type { ChatPanePosition } from '@renderer/components/chat/shell/paneLayout'
 import {
@@ -60,7 +59,6 @@ import type { AddNewTopicPayload } from './types'
 
 const logger = loggerService.withContext('HomePage')
 const chatRouteApi = getRouteApi('/app/chat')
-const LAST_USED_ASSISTANT_CACHE_KEY = 'ui.chat.last_used_assistant_id'
 type AssistantConversationResourceKind = 'assistant'
 const ASSISTANT_CONVERSATION_RESOURCE_KINDS = [
   'assistant'

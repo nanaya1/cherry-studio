@@ -7,8 +7,7 @@ import {
   Dialog,
   DialogContent,
   DialogHeader,
-  DialogTitle,
-  Scrollbar
+  DialogTitle
 } from '@cherrystudio/ui'
 import { DIALOG_UNMOUNT_DELAY_MS } from '@cherrystudio/ui/utils'
 import { ipcApi } from '@renderer/ipc'

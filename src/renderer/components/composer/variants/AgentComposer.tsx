@@ -92,7 +92,8 @@ import {
   AgentConversationControls,
   type AgentConversationControlsProps,
   type AgentConversationWorkspace,
-  AgentModelControl} from './agent/AgentConversationControls'
+  AgentModelControl
+} from './agent/AgentConversationControls'
 import {
   type AgentComposerDraftCache,
   type AgentComposerDraftCacheKey,
@@ -732,7 +733,7 @@ const renderAgentHomeControls: AgentComposerControlsRenderer = (props) => {
     },
     renderBelowControls: props.topBarPortalAvailable
       ? undefined
-          : (inputAdapter, unifiedPanelControl) => (
+      : (inputAdapter, unifiedPanelControl) => (
           <ComposerBelowControls
             renderContextControls={({ side, iconOnly }) => (
               <>
@@ -1195,10 +1196,6 @@ const AgentComposerInner = ({
       }),
     [availableSkills, insertSkillToken, skillLabel]
   )
-  const skillPanelItems = useMemo(
-    () => (hasSelectedAgent ? [...skillItems, skillManageFooterItem] : []),
-    [hasSelectedAgent, skillItems, skillManageFooterItem]
-  )
 
   const skillsLauncher = useMemo<ComposerToolLauncher>(() => {
     return {
@@ -1219,7 +1216,7 @@ const AgentComposerInner = ({
         })
         quickPanel.open({
           title: skillLabel,
-          list: skillPanelItems,
+          list: skillItems,
           symbol: AGENT_SKILLS_LAUNCHER_ID,
           parentPanel,
           queryAnchor,
@@ -1228,7 +1225,7 @@ const AgentComposerInner = ({
         })
       }
     }
-  }, [hasSelectedAgent, refreshAvailableSkills, skillItems, skillLabel, skillPanelItems])
+  }, [hasSelectedAgent, refreshAvailableSkills, skillItems, skillLabel])
 
   useEffect(
     () => toolsRegistry.registerLaunchers(AGENT_SKILLS_LAUNCHER_ID, [skillsLauncher], [skillManageFooterAction]),

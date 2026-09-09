@@ -53,8 +53,9 @@ interface OnboardingPageProps {
 
 const ENABLE_CHERRY_ACCOUNT_LOGIN = false
 // MEA Cowork 定制：Cherry 厂商云登录入口已隐藏（见 dfdfaf1d8），以下常量与流程保留自官方，恢复入口时解回。
-const CHERRYIN_OAUTH_SERVER = 'https://open.cherryin.ai'
-const CHERRYIN_LOGIN_LOADING_TIMEOUT_MS = 10_000
+// CHERRYIN_OAUTH_SERVER / CHERRYIN_LOGIN_LOADING_TIMEOUT_MS 暂时未使用（原 CherryIn 登录流程），恢复入口时再加回。
+// const CHERRYIN_OAUTH_SERVER = 'https://open.cherryin.ai'
+// const CHERRYIN_LOGIN_LOADING_TIMEOUT_MS = 10_000
 const PESSIMISTIC_PREFERENCE_OPTIONS = { optimistic: false } as const
 const isOnboardingModel = (model: Model) => !isManagedCherryProviderId(model.providerId) && !isNonChatModel(model)
 const ONBOARDING_PREFERENCE_KEYS = {

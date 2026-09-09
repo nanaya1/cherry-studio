@@ -7,6 +7,7 @@ import { AgentResourceList } from '@renderer/components/chat/resourceList/AgentR
 import type { ResourceListRevealRequest } from '@renderer/components/chat/resourceList/base'
 import Sessions from '@renderer/components/chat/resourceList/Sessions'
 import { ConversationSidebarToggleButton } from '@renderer/components/chat/shell/ConversationSidebarToggleButton'
+import type { AgentComposerLaunchOptions } from '@renderer/components/composer/variants/AgentComposer'
 import {
   createRecentSessionEntryFromSession,
   recordGlobalSearchRecentEntry
@@ -43,7 +44,7 @@ import { isDataApiNotFoundError } from '@shared/data/api/errors'
 import type { AgentSessionEntity } from '@shared/data/api/schemas/agentSessions'
 import { AGENT_WORKSPACE_TYPE, type AgentSessionWorkspaceSource } from '@shared/data/api/schemas/agentWorkspaces'
 import type { TopicTabPosition } from '@shared/data/preference/preferenceTypes'
-import { useLocation, useNavigate } from '@tanstack/react-router'
+import { getRouteApi, useLocation, useNavigate } from '@tanstack/react-router'
 import type { PropsWithChildren } from 'react'
 import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -53,7 +54,6 @@ import AgentSidePanel from './AgentSidePanel'
 import { AgentCreateDialog } from './components/AgentCreateDialog'
 import type { AgentFileNavigationRequest } from './components/AgentRightPane'
 import { AgentTabRuntime } from './components/AgentTabRuntime'
-import { parseAgentRouteSearch } from './routeSearch'
 import {
   createFeedbackComposerLaunch,
   FEEDBACK_INTENT_GUARD_TTL_MS,
@@ -95,6 +95,7 @@ const AgentPage = () => {
   const [panePosition, setPanePosition] = usePreference('agent.session.position')
   const isClassicSessionLayout = sessionDisplayMode === 'agent'
   const routeSearch = agentsRouteApi.useSearch<AppRouter>()
+  const isFeedbackIntent = routeSearch.intent === 'feedback'
   const navigate = useNavigate()
   const { t } = useTranslation()
   const currentTabId = useCurrentTabId()
@@ -178,6 +179,16 @@ const AgentPage = () => {
   const lastRecordedRecentSessionRef = useRef<string | undefined>(undefined)
   const [sessionRevealRequest, setSessionRevealRequest] = useState<ResourceListRevealRequest>()
   const sessionRevealRequestIdRef = useRef(0)
+  const routeFeedbackComposerLaunch = useMemo<FeedbackComposerLaunch | null>(
+    () =>
+      isFeedbackIntent && routeSessionId
+        ? createFeedbackComposerLaunch(routeSessionId, t('settings.about.feedback.agent.description'))
+        : null,
+    [isFeedbackIntent, routeSessionId, t]
+  )
+  const [feedbackComposerLaunch, setFeedbackComposerLaunch] = useState<FeedbackComposerLaunch | null>(
+    routeFeedbackComposerLaunch
+  )
   const [selectingMissingAgent, setSelectingMissingAgent] = useState(false)
   const [replacingSessionWorkspace, setReplacingSessionWorkspace] = useState(false)
   const [missingAgentSelection, setMissingAgentSelection] = useState(false)
@@ -698,6 +709,63 @@ const AgentPage = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `useEffectEvent` reads latest tab/session state without resubscribing.
   }, [currentTabId])
 
+  const runFeedbackIntent = useEffectEvent(async (intentGuardCacheKey: string) => {
+    closeSurface()
+    clearLocate()
+    setMissingAgentSelection(false)
+    try {
+      if (!routeSessionId || !routeFeedbackComposerLaunch) {
+        throw new Error('Feedback intent is missing its prepared session')
+      }
+      try {
+        await invalidateCache(['/agents', '/agent-sessions', `/agent-sessions/${routeSessionId}`])
+      } catch (err) {
+        logger.warn('Failed to refresh Agent cache for prepared feedback session', err as Error, {
+          sessionId: routeSessionId
+        })
+      }
+      setFeedbackComposerLaunch(routeFeedbackComposerLaunch)
+    } catch (err) {
+      setFeedbackComposerLaunch(null)
+      logger.error('Failed to prepare Cherry Support feedback session', err as Error)
+      toast.error(t('settings.about.feedback.agent_error'))
+      showMissingAgentSelection()
+    } finally {
+      try {
+        await navigate({
+          to: '/app/agents',
+          search: routeSessionId ? { sessionId: routeSessionId } : {},
+          replace: true
+        })
+      } finally {
+        cacheService.deleteCasual(intentGuardCacheKey)
+      }
+    }
+  })
+
+  useEffect(() => {
+    if (!isFeedbackIntent || !currentTabId) return
+    const intentGuardCacheKey = getFeedbackIntentGuardCacheKey(currentTabId)
+    if (cacheService.hasCasual(intentGuardCacheKey)) return
+    cacheService.setCasual(intentGuardCacheKey, true, FEEDBACK_INTENT_GUARD_TTL_MS)
+    void runFeedbackIntent(intentGuardCacheKey)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `useEffectEvent` reads the latest feedback orchestration without resubscribing.
+  }, [currentTabId, isFeedbackIntent, routeSessionId])
+
+  const visibleSessionId = visibleSession?.id
+  const feedbackLaunch = feedbackComposerLaunch ?? routeFeedbackComposerLaunch
+  const visibleFeedbackComposerLaunch = feedbackLaunch?.sessionId === visibleSessionId ? feedbackLaunch : null
+  const composerLaunchOptions = useMemo<AgentComposerLaunchOptions | undefined>(() => {
+    if (!visibleFeedbackComposerLaunch) return undefined
+    const launch = visibleFeedbackComposerLaunch
+    return {
+      initialDraft: launch.initialDraft,
+      onSent: () => {
+        setFeedbackComposerLaunch((current) => (current?.sessionId === launch.sessionId ? null : current))
+      }
+    }
+  }, [visibleFeedbackComposerLaunch])
+
   const setActiveSessionAndClearTransient = useCallback(
     (sessionId: string | null, session?: AgentSessionEntity | null) => {
       closeSurface()
@@ -929,6 +997,7 @@ const AgentPage = () => {
     <>
       <AgentTabRuntime
         title={visibleSession?.name?.trim() || visibleAgent?.name?.trim() || getDefaultRouteTitle('/app/agents')}
+        emoji={visibleAgent?.configuration?.avatar}
         preserveVisuals={preserveTabVisuals}
         activeSessionId={activeSession?.id}
         activeSessionSource={activeSessionSource}
@@ -966,6 +1035,7 @@ const AgentPage = () => {
             sessionPaneOpen={isClassicSessionLayout ? sessionPaneOpen : undefined}
             onSessionPaneOpenChange={isClassicSessionLayout ? setSessionPaneOpen : undefined}
             sessionPaneUserOpenIntentSeq={sessionPaneUserOpenIntentSeq}
+            composerLaunchOptions={composerLaunchOptions}
           />
         </div>
         <AgentCreateDialog
