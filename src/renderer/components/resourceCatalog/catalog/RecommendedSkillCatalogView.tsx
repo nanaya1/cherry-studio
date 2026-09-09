@@ -1,13 +1,23 @@
-import { Button, Dialog, DialogContent, DialogHeader, DialogTitle, Scrollbar, Tooltip } from '@cherrystudio/ui'
+import {
+  Button,
+  ConfirmDialog,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  Scrollbar,
+  Tooltip
+} from '@cherrystudio/ui'
 import { useMutation, useQuery } from '@renderer/data/hooks/useDataApi'
 import { toast } from '@renderer/services/toast'
 import type { SkillCatalogItem } from '@shared/data/api/schemas/skillCatalog'
-import { Check, Download, List, LoaderCircle } from 'lucide-react'
+import { Check, Download, List, LoaderCircle, TriangleAlert } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 interface RecommendedSkillCatalogViewProps {
   search: string
+  onViewInstalled: () => void
 }
 
 function SkillDimensionTags({ items }: { items: SkillCatalogItem['professionalDimensions'] }) {
@@ -96,13 +106,14 @@ function SkillDimensionTags({ items }: { items: SkillCatalogItem['professionalDi
   )
 }
 
-export function RecommendedSkillCatalogView({ search }: RecommendedSkillCatalogViewProps) {
+export function RecommendedSkillCatalogView({ search, onViewInstalled }: RecommendedSkillCatalogViewProps) {
   const { t, i18n } = useTranslation()
   const locale = i18n.resolvedLanguage?.toLowerCase().startsWith('en') ? 'en-US' : 'zh-CN'
   const { data, isLoading, error } = useQuery('/skill-catalog', { query: { locale } })
   const [industry, setIndustry] = useState<string>('all')
   const [installing, setInstalling] = useState<string | null>(null)
   const [selectedSkill, setSelectedSkill] = useState<SkillCatalogItem | null>(null)
+  const [conflictingSkill, setConflictingSkill] = useState<SkillCatalogItem | null>(null)
   const install = useMutation('POST', '/skill-catalog/:catalogSkillId/install', {
     refresh: ['/skill-catalog', '/skills']
   })
@@ -129,6 +140,11 @@ export function RecommendedSkillCatalogView({ search }: RecommendedSkillCatalogV
   }, [data?.skills, industry, search])
 
   const handleInstall = async (skill: SkillCatalogItem) => {
+    if (skill.installState === 'name-conflict') {
+      setSelectedSkill(null)
+      setConflictingSkill(skill)
+      return
+    }
     if (skill.installState === 'installed' || installing) return
     setInstalling(skill.id)
     try {
@@ -204,6 +220,7 @@ export function RecommendedSkillCatalogView({ search }: RecommendedSkillCatalogV
             {skills.map((skill, index) => {
               const busy = installing === skill.id
               const installed = skill.installState === 'installed'
+              const nameConflict = skill.installState === 'name-conflict'
               return (
                 <article
                   key={skill.id}
@@ -221,13 +238,17 @@ export function RecommendedSkillCatalogView({ search }: RecommendedSkillCatalogV
                     aria-label={
                       installed
                         ? t('workspace.skill_catalog.installed')
-                        : t('workspace.skill_catalog.install', { name: skill.name })
+                        : nameConflict
+                          ? t('workspace.skill_catalog.name_conflict')
+                          : t('workspace.skill_catalog.install', { name: skill.name })
                     }
                     className="absolute top-3 right-3 z-10 grid size-7 place-items-center rounded-md border border-transparent text-muted-foreground transition-colors hover:border-border hover:bg-muted hover:text-foreground disabled:cursor-default">
                     {busy ? (
                       <LoaderCircle className="size-3.5 animate-spin" />
                     ) : installed ? (
                       <Check className="size-3.5 text-success" />
+                    ) : nameConflict ? (
+                      <TriangleAlert className="size-3.5 text-warning" />
                     ) : (
                       <Download className="size-3.5" />
                     )}
@@ -291,12 +312,16 @@ export function RecommendedSkillCatalogView({ search }: RecommendedSkillCatalogV
                         <LoaderCircle className="size-3.5 animate-spin" />
                       ) : selectedSkill.installState === 'installed' ? (
                         <Check className="size-3.5" />
+                      ) : selectedSkill.installState === 'name-conflict' ? (
+                        <TriangleAlert className="size-3.5" />
                       ) : (
                         <Download className="size-3.5" />
                       )}
                       {selectedSkill.installState === 'installed'
                         ? t('workspace.skill_catalog.installed')
-                        : t('settings.skills.install')}
+                        : selectedSkill.installState === 'name-conflict'
+                          ? t('workspace.skill_catalog.name_conflict')
+                          : t('settings.skills.install')}
                     </Button>
                   </div>
                 </div>
@@ -326,6 +351,20 @@ export function RecommendedSkillCatalogView({ search }: RecommendedSkillCatalogV
           ) : null}
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={conflictingSkill !== null}
+        onOpenChange={(open) => !open && setConflictingSkill(null)}
+        title={t('workspace.skill_catalog.name_conflict_title')}
+        description={
+          conflictingSkill
+            ? t('workspace.skill_catalog.name_conflict_description', { name: conflictingSkill.name })
+            : undefined
+        }
+        confirmText={t('workspace.skill_catalog.name_conflict_action')}
+        cancelText={t('workspace.skill_catalog.name_conflict_cancel')}
+        onConfirm={onViewInstalled}
+      />
     </Scrollbar>
   )
 }

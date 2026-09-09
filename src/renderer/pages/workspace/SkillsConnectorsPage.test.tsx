@@ -20,7 +20,14 @@ type MockSkillController = {
 }
 
 vi.mock('@renderer/components/resourceCatalog/catalog', () => ({
-  RecommendedSkillCatalogView: ({ search }: { search: string }) => <div>recommended skills: {search}</div>,
+  RecommendedSkillCatalogView: ({ search, onViewInstalled }: { search: string; onViewInstalled: () => void }) => (
+    <div>
+      recommended skills: {search}
+      <button type="button" onClick={onViewInstalled}>
+        resolve conflict
+      </button>
+    </div>
+  ),
   SkillCatalogDialogs: ({ controller }: { controller: MockSkillController }) => (
     <div>
       skill dialogs: {controller.dialogs.skillMarketplaceOpen ? 'marketplace' : ''}
@@ -102,7 +109,7 @@ describe('SkillsConnectorsPage', () => {
     await user.click(screen.getByRole('button', { name: 'import' }))
     expect(screen.getByText(/skill dialogs: marketplacesystemimport/)).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: /My installed/ }))
+    await user.click(screen.getByRole('button', { name: 'resolve conflict' }))
     expect(screen.getByText('installed skills: shared dialogs')).toBeVisible()
     expect(screen.queryByText('installed skill actions')).not.toBeInTheDocument()
     expect(screen.queryByRole('tab', { name: 'Skills' })).not.toBeInTheDocument()

@@ -21,8 +21,9 @@ export const SkillCatalogItemSchema = z.strictObject({
   industries: z.array(SkillCatalogFacetSchema),
   professionalDimensions: z.array(SkillCatalogFacetSchema),
   logoUrl: z.string().nullable(),
-  installState: z.enum(['not-installed', 'installed', 'update-available']),
-  installedSkillId: z.string().nullable()
+  installState: z.enum(['not-installed', 'installed', 'update-available', 'name-conflict']),
+  installedSkillId: z.string().nullable(),
+  conflictingInstalledSkillId: z.string().nullable()
 })
 export type SkillCatalogItem = z.infer<typeof SkillCatalogItemSchema>
 

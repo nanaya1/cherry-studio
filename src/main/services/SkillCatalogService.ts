@@ -18,6 +18,7 @@ import {
 } from '@data/db/schemas/skillCatalog'
 import { loggerService } from '@logger'
 import { skillService } from '@main/ai/skills/SkillService'
+import { normalizeFolderKey } from '@main/ai/skills/skillPaths'
 import { BaseService, DependsOn, Injectable, Phase, ServicePhase } from '@main/core/lifecycle'
 import type { SkillCatalogFacet, SkillCatalogItem, SkillCatalogResponse } from '@shared/data/api/schemas/skillCatalog'
 import {
@@ -157,6 +158,7 @@ export class SkillCatalogService extends BaseService {
     const installed = db
       .select({
         id: agentGlobalSkillTable.id,
+        folderName: agentGlobalSkillTable.folderName,
         catalogSkillId: agentGlobalSkillTable.catalogSkillId,
         version: agentGlobalSkillTable.catalogVersion
       })
@@ -165,6 +167,7 @@ export class SkillCatalogService extends BaseService {
     const installedByCatalogId = new Map(
       installed.flatMap((item) => (item.catalogSkillId ? [[item.catalogSkillId, item]] : []))
     )
+    const installedByFolderName = new Map(installed.map((item) => [normalizeFolderKey(item.folderName), item]))
     const snapshotRoot = path.resolve(application.getPath('feature.agents.skills.catalog'))
 
     const skills = db
@@ -177,11 +180,17 @@ export class SkillCatalogService extends BaseService {
         const text = translate(translations.filter((item) => item.skillId === row.id))
         if (!text) return []
         const installedSkill = installedByCatalogId.get(row.id)
-        const installState = !installedSkill
-          ? 'not-installed'
-          : installedSkill.version === row.artifact.version
+        const artifactFolderName = path.posix.basename(row.artifact.location)
+        const conflictingSkill = installedSkill
+          ? undefined
+          : installedByFolderName.get(normalizeFolderKey(artifactFolderName))
+        const installState = installedSkill
+          ? installedSkill.version === row.artifact.version
             ? 'installed'
             : 'update-available'
+          : conflictingSkill
+            ? 'name-conflict'
+            : 'not-installed'
         return [
           {
             id: row.id,
@@ -197,7 +206,8 @@ export class SkillCatalogService extends BaseService {
               .flatMap((item) => dimensionByCode.get(item.professionalDimensionCode) ?? []),
             logoUrl: row.logo ? resolveSnapshotFileUrl(snapshotRoot, row.logo.location, row.logo.sha256) : null,
             installState,
-            installedSkillId: installedSkill?.id ?? null
+            installedSkillId: installedSkill?.id ?? null,
+            conflictingInstalledSkillId: conflictingSkill?.id ?? null
           }
         ]
       })

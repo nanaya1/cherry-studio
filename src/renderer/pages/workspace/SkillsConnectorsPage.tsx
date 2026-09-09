@@ -82,7 +82,7 @@ export default function SkillsConnectorsPage({ connectorView }: SkillsConnectors
 
       <TabsContent value="skill" className="min-h-0 flex-1">
         {skillView === 'recommended' ? (
-          <RecommendedSkillCatalogView search={recommendedSearch} />
+          <RecommendedSkillCatalogView search={recommendedSearch} onViewInstalled={() => setSkillView('installed')} />
         ) : (
           <SkillCatalogView controller={skillController} secondary showDialogs={false} />
         )}
