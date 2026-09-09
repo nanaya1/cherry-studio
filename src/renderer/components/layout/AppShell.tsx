@@ -365,7 +365,7 @@ export const AppShell = () => {
           )}
           {!hideSidebar && !isSidebarHidden && (
             <div className="flex h-full min-h-0 shrink-0 flex-col [&>#app-sidebar]:min-h-0 [&>#app-sidebar]:flex-1">
-              <Sidebar showTitleBar />
+              <Sidebar showTitleBar isFullscreen={isFullscreen} />
             </div>
           )}
           {contentColumn}

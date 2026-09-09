@@ -26,7 +26,6 @@ import {
   getSidebarApp,
   getSidebarFavoriteKey,
   getSidebarMenuPath,
-  isMessageOnlyConversationUrl,
   resolveSidebarActiveItem,
   tabBelongsToApp
 } from '@renderer/utils/sidebar'
@@ -65,10 +64,12 @@ export function SidebarTitleBarIdentity() {
 
 export default function Sidebar({
   ref,
-  showTitleBar = false
+  showTitleBar = false,
+  isFullscreen = false
 }: {
   ref?: Ref<HTMLDivElement | null>
   showTitleBar?: boolean
+  isFullscreen?: boolean
 }) {
   const { t } = useTranslation()
   const [userName] = usePreference('app.user.name')
@@ -225,13 +226,9 @@ export default function Sidebar({
       if (!options?.inNewTab) {
         // Conversation apps: any owned tab is already "there" — its URL carries its own
         // conversation, and re-entering through the route interceptor would just rebind
-        // it. Message-only viewers are not an app entry, so they navigate like any
-        // foreign tab. Apps without sub-instances keep exact-URL matching.
+        // it. Apps without sub-instances keep exact-URL matching.
         const isActiveTarget =
-          !!activeTab &&
-          (app.conversationRoute
-            ? tabBelongsToApp(app, activeTab.url) && !isMessageOnlyConversationUrl(activeTab.url)
-            : activeTab.url === path)
+          !!activeTab && (app.conversationRoute ? tabBelongsToApp(app, activeTab.url) : activeTab.url === path)
         if (isActiveTarget) return
       }
 
@@ -514,6 +511,7 @@ export default function Sidebar({
 
   // Common props shared between normal and floating sidebar
   const sidebarProps = {
+    isFullscreen,
     entries,
     navigationEntries,
     moreMenu: { label: t('common.more'), entries: moreMenuEntries },

@@ -2,11 +2,13 @@ import {
   Avatar,
   AvatarFallback,
   AvatarImage,
+  Badge,
   Button,
   Dialog,
   DialogContent,
   DialogHeader,
-  DialogTitle
+  DialogTitle,
+  Scrollbar
 } from '@cherrystudio/ui'
 import { DIALOG_UNMOUNT_DELAY_MS } from '@cherrystudio/ui/utils'
 import { ipcApi } from '@renderer/ipc'
@@ -179,6 +181,12 @@ const SkillDetailDialog: FC<Props> = ({ skill, open, onOpenChange, onDelete }) =
           </dl>
 
           <div className="mt-5 flex flex-wrap items-center gap-2">
+            <Badge
+              variant="secondary"
+              className="gap-1.5 border-0 bg-success-subtle px-2 py-0.5 text-success-subtle-foreground text-xs">
+              <span className="size-1.5 rounded-full bg-success" aria-hidden="true" />
+              {t('library.skill_detail.installed')}
+            </Badge>
             <Button type="button" size="sm" onClick={handleTry}>
               <Play className="size-3.5" />
               {t('library.skill_detail.try')}

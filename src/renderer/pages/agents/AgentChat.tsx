@@ -1,6 +1,5 @@
 import { Checkbox, ConfirmDialog } from '@cherrystudio/ui'
 import { usePreference } from '@data/hooks/usePreference'
-import CitationsPanel from '@renderer/components/chat/citations/CitationsPanel'
 import { ChatLayoutModeProvider } from '@renderer/components/chat/layout/ChatLayoutModeContext'
 import { locateAgentMessageInList } from '@renderer/components/chat/messages/agentMessageListAdapter'
 import {
@@ -42,7 +41,7 @@ import type { AgentSessionEntity } from '@shared/data/api/schemas/agentSessions'
 import type { CherryMessagePart, CherryUIMessage } from '@shared/data/types/message'
 import type { Model } from '@shared/data/types/model'
 import type { ReactNode } from 'react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import AgentChatMain from './AgentChatMain'
@@ -52,6 +51,8 @@ import { type AgentFileNavigationRequest, AgentRightPane, AgentTaskProgressCapsu
 import { ApiGatewayRequiredDialog } from './components/ApiGatewayRequiredDialog'
 import { type AgentChatRuntimeState, useAgentChatRuntimeState } from './useAgentChatRuntimeState'
 import type { AgentConversationBootstrap } from './useAgentConversationBootstrap'
+
+const CitationsPanel = lazy(() => import('@renderer/components/chat/citations/CitationsPanel'))
 
 const EMPTY_MESSAGES: CherryUIMessage[] = []
 const EMPTY_PARTS: Record<string, CherryMessagePart[]> = {}
@@ -190,6 +191,7 @@ const AgentChat = ({
   )
   const currentSessionId = conversationBootstrap.session?.id
   const [citationPanelState, setCitationPanelState] = useState<CitationPanelState | null>(null)
+  const [shouldMountCitationsPanel, setShouldMountCitationsPanel] = useState(false)
   const [modelSwitchTarget, setModelSwitchTarget] = useState<ModelSwitchTarget>()
   const [modelSwitchConfirmOpen, setModelSwitchConfirmOpen] = useState(false)
   const [skipModelSwitchConfirmation, setSkipModelSwitchConfirmation] = useState(false)
@@ -231,6 +233,7 @@ const AgentChat = ({
   const handleOpenCitationsPanel = useCallback(
     ({ citations }: { citations: Citation[] }) => {
       if (!currentSessionId) return
+      setShouldMountCitationsPanel(true)
       setCitationPanelState({ sessionId: currentSessionId, citations })
     },
     [currentSessionId]
@@ -436,6 +439,7 @@ const AgentChat = ({
       <AgentChatNavbar
         className="min-w-0"
         activeAgent={activeAgent ?? null}
+        conversationTitle={sessionSnapshot.name?.trim() || t('agent.session.new')}
         conversationControls={
           activeAgent ? (
             <AgentTopBarControls
@@ -466,13 +470,15 @@ const AgentChat = ({
         onSidebarToggle={onSidebarToggle}
       />
     )
-    sidePanel = (
-      <CitationsPanel
-        open={citationsPanelOpen}
-        onClose={() => setCitationPanelState(null)}
-        citations={citationPanelCitations ?? []}
-      />
-    )
+    sidePanel = shouldMountCitationsPanel ? (
+      <Suspense fallback={null}>
+        <CitationsPanel
+          open={citationsPanelOpen}
+          onClose={() => setCitationPanelState(null)}
+          citations={citationPanelCitations ?? []}
+        />
+      </Suspense>
+    ) : undefined
     centerClassName = 'transform-[translateZ(0)] relative justify-between'
     center = (
       <AgentChatSessionCenter

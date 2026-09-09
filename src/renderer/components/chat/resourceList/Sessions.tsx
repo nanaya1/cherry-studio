@@ -2121,7 +2121,8 @@ function SessionListBody({
         // The slot exists to line a row up under its group's icon. A pinned row is lifted out to the
         // pinned group, where there is no such icon above it, so it indents against nothing.
         reserveLeadingIconSlot={
-          !session.pinned && displayMode !== 'time' && !(displayMode === 'workdir' && isSystemWorkspaceSession(session))
+          displayMode === 'agent' ||
+          (displayMode === 'workdir' && !session.pinned && !isSystemWorkspaceSession(session))
         }
         onTogglePin={onTogglePin}
         onDelete={onDeleteSession}
