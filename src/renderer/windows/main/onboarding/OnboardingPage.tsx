@@ -47,8 +47,14 @@ import { PrivacyPolicyDialog } from '../privacy/PrivacyPolicyDialog'
 type OnboardingStep = 'welcome' | 'provider' | 'select-model'
 type OnboardingCompletionStatus = Exclude<OnboardingProviderSetupStatus, 'pending'>
 type PrivacyChoiceAction = () => void | Promise<void>
+interface OnboardingPageProps {
+  enableCherryAccountLogin?: boolean
+}
 
-// CHERRYIN_OAUTH_SERVER / CHERRYIN_LOGIN_LOADING_TIMEOUT_MS 暂时未使用（原 CherryIn 登录流程），恢复入口时再加回。
+const ENABLE_CHERRY_ACCOUNT_LOGIN = false
+// MEA Cowork 定制：Cherry 厂商云登录入口已隐藏（见 dfdfaf1d8），以下常量与流程保留自官方，恢复入口时解回。
+const CHERRYIN_OAUTH_SERVER = 'https://open.cherryin.ai'
+const CHERRYIN_LOGIN_LOADING_TIMEOUT_MS = 10_000
 const PESSIMISTIC_PREFERENCE_OPTIONS = { optimistic: false } as const
 const isOnboardingModel = (model: Model) => !isManagedCherryProviderId(model.providerId) && !isNonChatModel(model)
 const ONBOARDING_PREFERENCE_KEYS = {
@@ -67,7 +73,9 @@ function OnboardingProviderSettings() {
   return <RouterProvider router={router} />
 }
 
-export default function OnboardingPage() {
+export default function OnboardingPage({
+  enableCherryAccountLogin = ENABLE_CHERRY_ACCOUNT_LOGIN
+}: OnboardingPageProps) {
   const { t } = useTranslation()
   const appEdition = getAppEdition()
   const [language, setLanguage] = usePreference('app.language')
@@ -91,9 +99,7 @@ export default function OnboardingPage() {
   const cloudStatusRef = useRef<CherryCloudStatus | null>(null)
   const hasRoutedCloudLoginRef = useRef(false)
   const isCnEdition = appEdition === 'cn'
-  // 登录动作相关成员暂时未使用，等恢复「登录樱桃云」主按钮时再解构回来：
-  // login: handleCherryCloudLogin / cancelLogin: handleCherryCloudLoginCancel /
-  // isCancellingLogin: isCancellingCloudLogin / isAuthorizing: isCloudAuthorizing
+  // MEA Cowork 定制：登录入口隐藏，只保留会话状态查询；login/cancel/authorizing 等动作成员等恢复入口再解构。
   const { status: cloudStatus } = useCherryAccountSession(isCnEdition)
   cloudStatusRef.current = cloudStatus
   const eligibleProviderIds = new Set(
@@ -263,7 +269,7 @@ export default function OnboardingPage() {
   }
 
   useEffect(() => {
-    if (!isCnEdition || cloudStatus?.phase !== 'signed-in') {
+    if (!shouldUseCherryAccountLogin || cloudStatus?.phase !== 'signed-in') {
       hasRoutedCloudLoginRef.current = false
       setShowNoCloudModelsDialog(false)
       return
@@ -290,7 +296,13 @@ export default function OnboardingPage() {
           setStep(canContinueProviderSetup ? 'select-model' : 'provider')
         }
       })
-  }, [canContinueProviderSetup, cloudStatus, completeWithCloudAgentModel, isCnEdition, isProviderSetupLoading])
+  }, [
+    canContinueProviderSetup,
+    cloudStatus,
+    completeWithCloudAgentModel,
+    isProviderSetupLoading,
+    shouldUseCherryAccountLogin
+  ])
 
   const runAfterPrivacyChoice = useCallback(
     async (action: PrivacyChoiceAction) => {
@@ -301,8 +313,8 @@ export default function OnboardingPage() {
     [persistPrivacyChoice]
   )
 
-  // 「登录樱桃云 / 樱桃 In」主按钮暂时隐藏：目标属 Cherry 厂商云。
-  // 恢复方法：从 git 历史找回 handleCherryInLogin useCallback、isPrimaryLoginPending /
+  // MEA Cowork 定制：「登录樱桃云 / 樱桃 In」主按钮已隐藏（目标属 Cherry 厂商云，见 dfdfaf1d8）。
+  // 恢复方法：从 git 历史找回 handleCherryInLogin useCallback（官方 4288e251f）、isPrimaryLoginPending /
   // primaryLoginLabel 派生变量、loginAttemptRef / loginLoadingTimeoutRef / isLoggingIn、
   // useCherryAccountSession 登录相关解构成员、以及 welcome 步骤里的按钮 JSX。
 
@@ -362,14 +374,18 @@ export default function OnboardingPage() {
                       size="lg"
                       className="h-11 w-full rounded-xl"
                       loading={isPrimaryLoginPending}
-                      disabled={isUpdatingPrivacy || (isCnEdition && cloudStatus?.phase === 'signed-in')}
+                      disabled={
+                        isUpdatingPrivacy || (shouldUseCherryAccountLogin && cloudStatus?.phase === 'signed-in')
+                      }
                       onClick={() =>
-                        void runAfterPrivacyChoice(isCnEdition ? handleCherryCloudLogin : handleCherryInLogin)
+                        void runAfterPrivacyChoice(
+                          shouldUseCherryAccountLogin ? handleCherryCloudLogin : handleCherryInLogin
+                        )
                       }>
                       {!isPrimaryLoginPending && <LogIn size={16} />}
                       {primaryLoginLabel}
                     </Button>
-                    {isCnEdition && cloudStatus?.phase === 'authorizing' ? (
+                    {shouldUseCherryAccountLogin && cloudStatus?.phase === 'authorizing' ? (
                       <Button
                         type="button"
                         variant="outline"

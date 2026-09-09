@@ -451,9 +451,7 @@ describe('OnboardingPage', () => {
       }
       if (path === '/agents') {
         return {
-          items: [
-            { id: 'assistant-agent', model: seededAgentModel, configuration: { builtin_role: 'assistant' } }
-          ],
+          items: [{ id: 'assistant-agent', model: seededAgentModel, configuration: { builtin_role: 'assistant' } }],
           total: 1
         }
       }
@@ -625,9 +623,31 @@ describe('OnboardingPage', () => {
   })
 
   it('hides the CherryIN/Cherry Cloud login entry instead of starting OAuth', async () => {
-    // 「登录樱桃云 / 樱桃 In」主按钮暂时隐藏（Cherry 厂商云）。原 OAuth 流程断言见 git 历史。
+    // MEA Cowork 定制：「登录樱桃云 / 樱桃 In」主按钮已隐藏（Cherry 厂商云）。
+    // 原 OAuth 流程断言（官方 4288e251f）见 git 历史。
+    cloudMocks.appEdition = 'cn'
     MockUsePreferenceUtils.setPreferenceValue('app.privacy.policy_version', '')
     render(<OnboardingPage />)
+
+    expect(screen.queryByRole('button', { name: 'onboarding.welcome.login_cherryin' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'onboarding.welcome.login_cherry_cloud' })).not.toBeInTheDocument()
+    expect(oauthWithCherryInMock).not.toHaveBeenCalled()
+    expect(cloudMocks.ipcRequest).not.toHaveBeenCalledWith('cherry_cloud.login.start')
+  })
+
+  it('hides the CherryIN/Cherry Cloud login entry in the global edition too', () => {
+    MockUsePreferenceUtils.setPreferenceValue('app.privacy.policy_version', '')
+    render(<OnboardingPage />)
+
+    expect(screen.queryByRole('button', { name: 'onboarding.welcome.login_cherryin' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'onboarding.welcome.login_cherry_cloud' })).not.toBeInTheDocument()
+    expect(oauthWithCherryInMock).not.toHaveBeenCalled()
+  })
+
+  it('uses cancellable Cherry Cloud login instead of CherryIN in the CN edition', async () => {
+    const user = userEvent.setup()
+    cloudMocks.appEdition = 'cn'
+    render(<OnboardingPage enableCherryAccountLogin />)
 
     expect(screen.queryByRole('button', { name: 'onboarding.welcome.login_cherryin' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'onboarding.welcome.login_cherry_cloud' })).not.toBeInTheDocument()
@@ -667,7 +687,7 @@ describe('OnboardingPage', () => {
       }
       throw new Error(`Unexpected path: ${path}`)
     })
-    render(<OnboardingPage />)
+    render(<OnboardingPage enableCherryAccountLogin />)
 
     await waitFor(() => expect(cloudMocks.statusListener).toBeDefined())
     act(() => cloudMocks.statusListener?.({ phase: 'signed-in', displayName: 'Alice' }))
@@ -687,7 +707,7 @@ describe('OnboardingPage', () => {
   it('opens provider setup after the warning even when an ordinary chat model is available', async () => {
     const user = userEvent.setup()
     cloudMocks.appEdition = 'cn'
-    render(<OnboardingPage />)
+    render(<OnboardingPage enableCherryAccountLogin />)
 
     await waitFor(() => expect(cloudMocks.statusListener).toBeDefined())
     act(() => cloudMocks.statusListener?.({ phase: 'signed-in', displayName: 'Alice' }))

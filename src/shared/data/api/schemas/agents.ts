@@ -7,6 +7,7 @@
  */
 
 import { BUILTIN_AGENT_ROLE } from '@shared/ai/builtinAgent'
+import { AgentLanguageSchema } from '@shared/data/types/agentLanguage'
 import { ServiceTierSelectionSchema, UniqueModelIdSchema } from '@shared/data/types/model'
 import { ReasoningEffortOptionSchema } from '@shared/types/aiSdk'
 import * as z from 'zod'
@@ -62,6 +63,7 @@ export const AgentConfigurationSchema = z
     heartbeat_enabled: z.boolean().optional(),
     heartbeat_interval: z.number().optional(),
     builtin_role: z.enum([BUILTIN_AGENT_ROLE.ASSISTANT, BUILTIN_AGENT_ROLE.SUPPORT]).optional(),
+    language: AgentLanguageSchema.nullable().optional(),
     /** Read-only exclusions maintained by Main when the default agent's MCP selection changes. */
     excluded_mcp_server_ids: z.array(z.string()).optional()
   })
