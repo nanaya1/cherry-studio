@@ -1,6 +1,7 @@
 import { Button, Tabs, TabsContent, TabsList, TabsTrigger } from '@cherrystudio/ui'
 import {
   RecommendedSkillCatalogView,
+  SkillCatalogDialogs,
   SkillCatalogHeaderActions,
   SkillCatalogView
 } from '@renderer/components/resourceCatalog/catalog'
@@ -83,12 +84,13 @@ export default function SkillsConnectorsPage({ connectorView }: SkillsConnectors
         {skillView === 'recommended' ? (
           <RecommendedSkillCatalogView search={recommendedSearch} />
         ) : (
-          <SkillCatalogView controller={skillController} secondary />
+          <SkillCatalogView controller={skillController} secondary showDialogs={false} />
         )}
       </TabsContent>
       <TabsContent value="connector" className="min-h-0 flex-1">
         {connectorView}
       </TabsContent>
+      <SkillCatalogDialogs controller={skillController} />
     </Tabs>
   )
 }

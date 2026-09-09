@@ -117,15 +117,30 @@ export function SkillCatalogHeaderActions({
   )
 }
 
+export function SkillCatalogDialogs({ controller }: { controller: SkillController }) {
+  const { dialogs, refetch } = controller
+
+  return (
+    <>
+      <ResourceDeleteConfirmDialog resource={dialogs.deleteConfirm} onClose={() => dialogs.setDeleteConfirm(null)} />
+      <Suspense fallback={null}>
+        <ResourceCatalogDialogs dialogs={dialogs} onRefetch={refetch} resourceType="skill" />
+      </Suspense>
+    </>
+  )
+}
+
 export function SkillCatalogView({
   controller,
-  secondary = false
+  secondary = false,
+  showDialogs = true
 }: {
   controller: SkillController
   secondary?: boolean
+  showDialogs?: boolean
 }) {
   const { t } = useTranslation()
-  const { resourceError, refetch, gridProps, dialogs } = controller
+  const { resourceError, refetch, gridProps } = controller
   const [sourceFilter, setSourceFilter] = useState<SkillSourceFilter>('all')
   const [iconUrls, setIconUrls] = useState<Record<string, string>>({})
   const resources = gridProps.resources.filter((resource): resource is SkillResource => resource.type === 'skill')
@@ -277,10 +292,7 @@ export function SkillCatalogView({
         </>
       )}
 
-      <ResourceDeleteConfirmDialog resource={dialogs.deleteConfirm} onClose={() => dialogs.setDeleteConfirm(null)} />
-      <Suspense fallback={null}>
-        <ResourceCatalogDialogs dialogs={dialogs} onRefetch={refetch} resourceType="skill" />
-      </Suspense>
+      {showDialogs ? <SkillCatalogDialogs controller={controller} /> : null}
     </div>
   )
 }

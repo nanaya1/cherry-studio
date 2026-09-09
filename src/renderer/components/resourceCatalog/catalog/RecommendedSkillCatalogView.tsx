@@ -1,5 +1,6 @@
 import { Button, Dialog, DialogContent, DialogHeader, DialogTitle, Scrollbar, Tooltip } from '@cherrystudio/ui'
 import { useMutation, useQuery } from '@renderer/data/hooks/useDataApi'
+import { toast } from '@renderer/services/toast'
 import type { SkillCatalogItem } from '@shared/data/api/schemas/skillCatalog'
 import { Check, Download, List, LoaderCircle } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -136,6 +137,10 @@ export function RecommendedSkillCatalogView({ search }: RecommendedSkillCatalogV
         current?.id === skill.id
           ? { ...current, installState: 'installed', installedSkillId: result.installedSkillId }
           : current
+      )
+    } catch (error) {
+      toast.error(
+        t('settings.skills.installFailed', { name: skill.name }) + (error instanceof Error ? `: ${error.message}` : '')
       )
     } finally {
       setInstalling(null)

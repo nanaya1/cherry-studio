@@ -4,6 +4,7 @@ export { ResourceCatalogView, type ResourceCatalogViewProps } from './ResourceCa
 export {
   getSkillInitial,
   getSkillSourceFilter,
+  SkillCatalogDialogs,
   SkillCatalogHeaderActions,
   SkillCatalogView,
   type SkillSourceFilter
