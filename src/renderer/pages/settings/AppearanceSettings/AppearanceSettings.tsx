@@ -55,6 +55,24 @@ import ThemeColorPicker from './components/ThemeColorPicker'
 
 const DEFAULT_COLOR_PRIMARY = '#00b96b'
 const DEFAULT_ZOOM_FACTOR = 1
+
+// 「显示与语言」下拉框暂时只开放中文和英文，其余语言注释保留，需要时取消注释即可
+const VISIBLE_APP_LANGUAGE_VALUES = [
+  'zh-CN',
+  'en-US'
+  // 'zh-TW',
+  // 'de-DE',
+  // 'ja-JP',
+  // 'ru-RU',
+  // 'el-GR',
+  // 'es-ES',
+  // 'fr-FR',
+  // 'pt-PT',
+  // 'ro-RO',
+  // 'vi-VN',
+  // 'tr-TR'
+]
+const visibleAppLanguageOptions = appLanguageOptions.filter((lang) => VISIBLE_APP_LANGUAGE_VALUES.includes(lang.value))
 const THEME_COLOR_PRESETS = [
   DEFAULT_COLOR_PRIMARY,
   '#EF4444', // Red
@@ -365,11 +383,11 @@ const AppearanceSettings: FC = () => {
               <SelectTrigger
                 size="sm"
                 className="w-full text-sm"
-                aria-label={appLanguageOptions.find((lang) => lang.value === displayLanguage)?.label}>
+                aria-label={visibleAppLanguageOptions.find((lang) => lang.value === displayLanguage)?.label}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent className="text-sm">
-                {appLanguageOptions.map((lang) => (
+                {visibleAppLanguageOptions.map((lang) => (
                   <SelectItem className="text-sm" key={lang.value} value={lang.value}>
                     <Flex className="items-center gap-2">
                       <span role="img" aria-label={lang.flag}>
