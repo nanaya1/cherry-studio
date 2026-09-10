@@ -28,7 +28,7 @@ describe('DefaultAssistantSeeder', () => {
     vi.mocked(app.getPreferredSystemLanguages).mockReturnValue(['en-US'])
   })
 
-  it('seeds the default assistant with the Xuelang default model', async () => {
+  it('seeds the default assistant without a default model', async () => {
     await runDefaultModelDependencySeed()
 
     new DefaultAssistantSeeder().run(dbh.db)
@@ -55,7 +55,7 @@ describe('DefaultAssistantSeeder', () => {
       name: 'MEA Cowork',
       emoji: DEFAULT_ASSISTANT_EMOJI,
       prompt: DEFAULT_ASSISTANT_PROMPT,
-      modelId: XUELANG_DEFAULT_UNIQUE_MODEL_ID,
+      modelId: null,
       builtinRole: 'assistant',
       settings: { ...DEFAULT_ASSISTANT_SETTINGS, mcpMode: 'auto' }
     })
@@ -63,8 +63,8 @@ describe('DefaultAssistantSeeder', () => {
       providerId: XUELANG_PROVIDER_ID,
       isEnabled: true
     })
-    expect(model?.id).toBe(XUELANG_DEFAULT_UNIQUE_MODEL_ID)
-    expect(preference?.value).toBe(XUELANG_DEFAULT_UNIQUE_MODEL_ID)
+    expect(model).toBeUndefined()
+    expect(preference).toBeUndefined()
 
     const topics = await dbh.db.select().from(topicTable)
     expect(topics).toHaveLength(0)

@@ -1,3 +1,4 @@
+import { agentTable } from '@data/db/schemas/agent'
 import { assistantTable } from '@data/db/schemas/assistant'
 import { preferenceTable } from '@data/db/schemas/preference'
 import { userModelTable } from '@data/db/schemas/userModel'
@@ -35,7 +36,7 @@ describe('XuelangDefaultModelSeeder', () => {
       .then((rows) => rows[0]?.value)
   }
 
-  it('seeds the enabled provider, default model, and missing model preferences', async () => {
+  it('seeds the enabled provider without a provisional model or default model preferences', async () => {
     new XuelangDefaultModelSeeder().run(dbh.db)
 
     const [provider] = await dbh.db
@@ -55,18 +56,10 @@ describe('XuelangDefaultModelSeeder', () => {
       name: XUELANG_PROVIDER_NAME,
       isEnabled: true
     })
-    expect(model).toMatchObject({
-      id: XUELANG_DEFAULT_UNIQUE_MODEL_ID,
-      providerId: XUELANG_PROVIDER_ID,
-      modelId: 'Qwen3.8-27B',
-      presetModelId: XUELANG_DEFAULT_PRESET_MODEL_ID,
-      contextWindow: 32768,
-      isEnabled: true,
-      isHidden: false
-    })
+    expect(model).toBeUndefined()
 
     for (const key of XUELANG_DEFAULT_MODEL_PREFERENCE_KEYS) {
-      expect(await readPreference(key)).toBe(XUELANG_DEFAULT_UNIQUE_MODEL_ID)
+      expect(await readPreference(key)).toBeUndefined()
     }
   })
 
@@ -109,7 +102,7 @@ describe('XuelangDefaultModelSeeder', () => {
 
     expect(providers).toHaveLength(1)
     expect(providers[0].name).toBe('用户命名的雪浪供应商')
-    expect(models).toHaveLength(1)
+    expect(models).toHaveLength(0)
     expect(await readPreference('chat.default_model_id')).toBe('openai::gpt-4o')
   })
 
@@ -168,13 +161,77 @@ describe('XuelangDefaultModelSeeder', () => {
 
     expect(cherryProvider.isEnabled).toBe(false)
     expect(cherryModel).toMatchObject({ isEnabled: false, isHidden: true })
-    expect(assistant.modelId).toBe(XUELANG_DEFAULT_UNIQUE_MODEL_ID)
-    expect(await readPreference('chat.default_model_id')).toBe(XUELANG_DEFAULT_UNIQUE_MODEL_ID)
+    expect(assistant.modelId).toBeNull()
+    expect(await readPreference('chat.default_model_id')).toBeNull()
     expect(await readPreference('feature.quick_assistant.model_id')).toBe('openai::gpt-4o')
-    expect(await readPreference('feature.translate.model_id')).toBe(XUELANG_DEFAULT_UNIQUE_MODEL_ID)
+    expect(await readPreference('feature.translate.model_id')).toBeUndefined()
   })
 
-  it('preserves user-configured Xuelang provider and model state', async () => {
+  it('clears the previously assigned Xuelang model while preserving other model choices', async () => {
+    await dbh.db.insert(userProviderTable).values({
+      providerId: XUELANG_PROVIDER_ID,
+      presetProviderId: XUELANG_PROVIDER_ID,
+      name: XUELANG_PROVIDER_NAME,
+      orderKey: generateOrderKeyBetween(null, null)
+    })
+    await dbh.db.insert(userModelTable).values({
+      id: XUELANG_DEFAULT_UNIQUE_MODEL_ID,
+      providerId: XUELANG_PROVIDER_ID,
+      modelId: 'Qwen3.8-27B',
+      presetModelId: XUELANG_DEFAULT_PRESET_MODEL_ID,
+      orderKey: generateOrderKeyBetween(null, null)
+    })
+    await dbh.db.insert(preferenceTable).values([
+      {
+        scope: 'default',
+        key: 'chat.default_model_id',
+        value: XUELANG_DEFAULT_UNIQUE_MODEL_ID
+      },
+      {
+        scope: 'default',
+        key: 'feature.quick_assistant.model_id',
+        value: XUELANG_DEFAULT_UNIQUE_MODEL_ID
+      },
+      {
+        scope: 'default',
+        key: 'feature.translate.model_id',
+        value: 'openai::gpt-4o'
+      }
+    ])
+    await dbh.db.insert(assistantTable).values({
+      name: 'MEA Cowork',
+      emoji: '😀',
+      modelId: XUELANG_DEFAULT_UNIQUE_MODEL_ID,
+      settings: DEFAULT_ASSISTANT_SETTINGS,
+      orderKey: generateOrderKeyBetween(null, null)
+    })
+    await dbh.db.insert(agentTable).values({
+      type: 'claude-code',
+      name: 'MEA Cowork',
+      instructions: '',
+      model: XUELANG_DEFAULT_UNIQUE_MODEL_ID,
+      planModel: XUELANG_DEFAULT_UNIQUE_MODEL_ID,
+      smallModel: XUELANG_DEFAULT_UNIQUE_MODEL_ID,
+      orderKey: generateOrderKeyBetween(null, null)
+    })
+
+    new XuelangDefaultModelSeeder().run(dbh.db)
+
+    const [assistant] = await dbh.db.select().from(assistantTable).limit(1)
+    const [agent] = await dbh.db.select().from(agentTable).limit(1)
+    const [model] = await dbh.db
+      .select()
+      .from(userModelTable)
+      .where(eq(userModelTable.id, XUELANG_DEFAULT_UNIQUE_MODEL_ID))
+    expect(assistant.modelId).toBeNull()
+    expect(agent).toMatchObject({ model: null, planModel: null, smallModel: null })
+    expect(model).toMatchObject({ isEnabled: false, isHidden: true, isDeprecated: true })
+    expect(await readPreference('chat.default_model_id')).toBeNull()
+    expect(await readPreference('feature.quick_assistant.model_id')).toBeNull()
+    expect(await readPreference('feature.translate.model_id')).toBe('openai::gpt-4o')
+  })
+
+  it('preserves user-configured provider state while retiring the provisional model', async () => {
     await dbh.db.insert(userProviderTable).values({
       providerId: XUELANG_PROVIDER_ID,
       presetProviderId: XUELANG_PROVIDER_ID,
@@ -241,8 +298,8 @@ describe('XuelangDefaultModelSeeder', () => {
     const [legacyModel] = await dbh.db.select().from(userModelTable).where(eq(userModelTable.id, legacyModelId))
     const [assistant] = await dbh.db.select().from(assistantTable).limit(1)
 
-    expect(legacyModel).toMatchObject({ isEnabled: false, isHidden: true })
-    expect(assistant.modelId).toBe(XUELANG_DEFAULT_UNIQUE_MODEL_ID)
-    expect(await readPreference('chat.default_model_id')).toBe(XUELANG_DEFAULT_UNIQUE_MODEL_ID)
+    expect(legacyModel).toMatchObject({ isEnabled: false, isHidden: true, isDeprecated: true })
+    expect(assistant.modelId).toBeNull()
+    expect(await readPreference('chat.default_model_id')).toBeNull()
   })
 })
