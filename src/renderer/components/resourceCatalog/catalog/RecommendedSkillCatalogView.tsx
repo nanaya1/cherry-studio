@@ -109,7 +109,7 @@ function SkillDimensionTags({ items }: { items: SkillCatalogItem['professionalDi
 export function RecommendedSkillCatalogView({ search, onViewInstalled }: RecommendedSkillCatalogViewProps) {
   const { t, i18n } = useTranslation()
   const locale = i18n.resolvedLanguage?.toLowerCase().startsWith('en') ? 'en-US' : 'zh-CN'
-  const { data, isLoading, error } = useQuery('/skill-catalog', { query: { locale } })
+  const { data, isLoading, error, refetch } = useQuery('/skill-catalog', { query: { locale } })
   const [industry, setIndustry] = useState<string>('all')
   const [installing, setInstalling] = useState<string | null>(null)
   const [selectedSkill, setSelectedSkill] = useState<SkillCatalogItem | null>(null)
@@ -155,6 +155,9 @@ export function RecommendedSkillCatalogView({ search, onViewInstalled }: Recomme
           : current
       )
     } catch (error) {
+      // A failed install may have been rejected as a folder-name conflict server-side; refresh so
+      // the card flips from the install button to the warning state.
+      void refetch()
       toast.error(
         t('settings.skills.installFailed', { name: skill.name }) + (error instanceof Error ? `: ${error.message}` : '')
       )
