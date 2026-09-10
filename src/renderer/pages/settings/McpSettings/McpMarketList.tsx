@@ -166,7 +166,7 @@ const MarketCard = ({ className, ...props }: React.ComponentPropsWithoutRef<'but
   <button
     type="button"
     className={cn(
-      'flex min-h-15 w-full cursor-pointer items-center gap-3 rounded-lg border border-border-subtle bg-card px-3 py-2.5 text-left transition-[border-color,box-shadow] hover:border-border hover:shadow-sm focus-visible:border-ring focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 data-[variant=catalog]:min-h-20',
+      'flex min-h-15 w-full cursor-pointer items-center gap-3 rounded-lg border border-border-subtle bg-card px-3 py-2.5 text-left transition-[background-color,border-color,box-shadow] hover:border-border-strong hover:bg-background-subtle hover:shadow-sm focus-visible:border-ring focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 data-[variant=catalog]:min-h-20 data-[variant=catalog]:p-3',
       className
     )}
     {...props}
@@ -174,7 +174,13 @@ const MarketCard = ({ className, ...props }: React.ComponentPropsWithoutRef<'but
 )
 
 const MarketIconWrap = ({ className, ...props }: React.ComponentPropsWithoutRef<'div'>) => (
-  <div className={cn('flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted', className)} {...props} />
+  <div
+    className={cn(
+      'flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted data-[variant=catalog]:size-8 data-[variant=catalog]:rounded-full',
+      className
+    )}
+    {...props}
+  />
 )
 
 const MarketContent = ({ className, ...props }: React.ComponentPropsWithoutRef<'div'>) => (
@@ -186,11 +192,23 @@ const MarketHeader = ({ className, ...props }: React.ComponentPropsWithoutRef<'d
 )
 
 const MarketLogo = ({ className, ...props }: React.ComponentPropsWithoutRef<'img'>) => (
-  <img className={cn('size-5.5 rounded object-cover', className)} {...props} />
+  <img
+    className={cn(
+      'size-5.5 rounded object-cover data-[variant=catalog]:size-5 data-[variant=catalog]:rounded-full',
+      className
+    )}
+    {...props}
+  />
 )
 
 const MarketName = ({ className, ...props }: React.ComponentPropsWithoutRef<'span'>) => (
-  <span className={cn('flex-1 truncate text-sm', className)} {...props} />
+  <span
+    className={cn(
+      'flex-1 truncate text-sm data-[variant=catalog]:font-semibold data-[variant=catalog]:text-base data-[variant=catalog]:leading-5',
+      className
+    )}
+    {...props}
+  />
 )
 
 const ExternalLinkIcon = ({ className, ...props }: React.ComponentPropsWithoutRef<'div'>) => (
@@ -199,7 +217,10 @@ const ExternalLinkIcon = ({ className, ...props }: React.ComponentPropsWithoutRe
 
 const MarketDescription = ({ className, ...props }: React.ComponentPropsWithoutRef<'div'>) => (
   <div
-    className={cn('mt-0.5 line-clamp-1 overflow-hidden text-[13px] text-muted-foreground leading-[1.35]', className)}
+    className={cn(
+      'mt-0.5 line-clamp-1 overflow-hidden text-[13px] text-muted-foreground leading-[1.35] data-[variant=catalog]:mt-2 data-[variant=catalog]:line-clamp-2 data-[variant=catalog]:text-sm data-[variant=catalog]:leading-5',
+      className
+    )}
     {...props}
   />
 )

@@ -239,33 +239,31 @@ const McpServerCard: FC<McpServerCardProps> = ({ server, onEdit, variant = 'sett
           tabIndex={0}
           aria-label={server.name}
           data-slot="mcp-server-row">
-          <div className="flex min-w-0 items-start gap-2.5">
-            <div className="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-info-subtle text-info-subtle-foreground">
+          <div className="flex min-w-0 items-center gap-2.5 pr-16">
+            <div className="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted">
               {server.logoUrl ? (
                 <img src={server.logoUrl} alt="" className="size-full object-cover" draggable={false} />
               ) : (
-                <Plug className="size-4" />
+                <Plug className="size-4 text-muted-foreground" />
               )}
             </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex min-w-0 items-center gap-2">
-                <ActiveDot $state={server.isActive ? runtimeStatus.state : 'disabled'} />
-                <h3 className="truncate font-semibold text-base leading-5">{server.name}</h3>
-              </div>
-              <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                <MetaBadge className={getTypeBadgeClass()}>{typeLabel}</MetaBadge>
-                {version ? <MetaBadge className="text-foreground-tertiary">{version}</MetaBadge> : null}
-              </div>
-            </div>
+            <h3 className="min-w-0 truncate font-semibold text-base leading-5">{server.name}</h3>
+            <ActiveDot $state={server.isActive ? runtimeStatus.state : 'disabled'} />
           </div>
 
-          <p className="mt-2 line-clamp-2 min-h-8 text-muted-foreground text-xs leading-4">
+          <p className="mt-3 line-clamp-2 text-muted-foreground text-sm leading-5">
             {server.description || t('settings.mcp.noDescriptionAvailable')}
           </p>
 
-          <ToolbarWrapper className="mt-auto w-full justify-between pt-2" onClick={handleToolbarClick}>
-            <div className="min-w-0 truncate text-foreground-tertiary text-xs">
-              {server.provider || (server.installSource === 'builtin' ? t('settings.mcp.builtinServers') : typeLabel)}
+          <div className="mt-auto flex w-full items-center justify-between gap-2 pt-2" onClick={handleToolbarClick}>
+            <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+              <MetaBadge className={getTypeBadgeClass()}>{typeLabel}</MetaBadge>
+              {version ? <MetaBadge className="text-foreground-tertiary">{version}</MetaBadge> : null}
+              {server.provider || server.installSource === 'builtin' ? (
+                <span className="truncate text-foreground-tertiary text-xs">
+                  {server.provider || t('settings.mcp.builtinServers')}
+                </span>
+              ) : null}
             </div>
             <div className="flex shrink-0 items-center gap-1">
               {server.providerUrl ? (
@@ -288,7 +286,7 @@ const McpServerCard: FC<McpServerCardProps> = ({ server, onEdit, variant = 'sett
                 data-no-dnd
               />
             </div>
-          </ToolbarWrapper>
+          </div>
         </CardContainer>
       </ErrorBoundary>
     )
@@ -354,7 +352,7 @@ const CardContainer = ({
   <div
     className={cn(
       variant === 'catalog'
-        ? 'flex min-h-32 w-full min-w-0 cursor-pointer flex-col rounded-lg border border-border-subtle bg-card p-3 text-sm transition-[background-color,border-color,box-shadow] hover:border-border-strong hover:bg-background-subtle hover:shadow-sm focus-visible:border-ring focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50'
+        ? 'flex min-h-28 w-full min-w-0 cursor-pointer flex-col rounded-lg border border-border-subtle bg-card p-3.5 text-sm transition-[background-color,border-color,box-shadow] hover:border-border-strong hover:bg-background-subtle hover:shadow-sm focus-visible:border-ring focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50'
         : 'flex min-h-12 w-full min-w-0 cursor-pointer items-center gap-3 border-border-subtle border-b px-0 py-1.5 text-sm transition-colors',
       className
     )}

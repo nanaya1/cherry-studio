@@ -7,7 +7,7 @@ import { toast } from '@renderer/services/toast'
 import { cn } from '@renderer/utils/style'
 import { PRESET_MCP_SERVERS } from '@shared/data/presets/mcpServers'
 import { BuiltinMcpServerNames } from '@shared/utils/mcp'
-import { Check, Plus } from 'lucide-react'
+import { Check, Download, LoaderCircle, Plug } from 'lucide-react'
 import type { FC, ReactNode } from 'react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -25,6 +25,7 @@ const BuiltinMcpServerList: FC<BuiltinMcpServerListProps> = ({ variant = 'settin
   const { addMcpServer, mcpServers } = useMcpServers()
   const [searchText, setSearchText] = useState('')
   const [filter, setFilter] = useState<'installed' | 'uninstalled'>('uninstalled')
+  const [installingServer, setInstallingServer] = useState<string | null>(null)
 
   const filteredServers = useMemo(() => {
     const keyword = searchText.trim().toLowerCase()
@@ -91,19 +92,26 @@ const BuiltinMcpServerList: FC<BuiltinMcpServerListProps> = ({ variant = 'settin
             <div
               key={server.name}
               className={cn(
-                'group flex items-center gap-3 rounded-lg border border-border-subtle px-3.5 transition-colors duration-200 ease-in-out hover:border-border hover:bg-muted/35',
-                isCatalog ? 'min-h-24 py-3' : 'min-h-16 py-2',
+                'group relative min-w-0 rounded-lg border border-border-subtle bg-card transition-[background-color,border-color,box-shadow] hover:border-border-strong hover:bg-background-subtle hover:shadow-sm focus-visible:border-ring focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50',
+                isCatalog ? 'flex min-h-28 flex-col p-3.5' : 'flex min-h-16 items-center gap-3 px-3.5 py-2',
                 isInstalled && 'bg-muted/25'
               )}>
               <div className="min-w-0 flex-1">
-                <div className="mb-1 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 overflow-hidden">
-                  <span className="truncate text-[14px] leading-5">{server.name}</span>
+                <div className={cn('flex min-w-0 items-center gap-2.5', isCatalog && 'pr-16')}>
+                  <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted">
+                    <Plug className="size-4 text-muted-foreground" />
+                  </div>
+                  <h3 className="min-w-0 truncate font-semibold text-base leading-5">{server.name}</h3>
                   {/* 「需配置」徽章暂时隐藏：target="_blank" 跳转到 docs.cherry-ai.com，属 Cherry 厂商云。恢复时把 null 换成下面的 <a>。 */}
                   {null}
                 </div>
                 <Popover>
                   <PopoverTrigger asChild>
-                    <div className="line-clamp-2 cursor-pointer text-[13px] text-muted-foreground leading-5 transition-colors hover:text-foreground">
+                    <div
+                      className={cn(
+                        'line-clamp-2 cursor-pointer text-muted-foreground text-sm leading-5 transition-colors hover:text-foreground',
+                        isCatalog ? 'mt-3' : 'mt-1'
+                      )}>
                       {t(getBuiltInMcpServerDescriptionLabelKey(server.name))}
                     </div>
                   </PopoverTrigger>
@@ -133,29 +141,45 @@ const BuiltinMcpServerList: FC<BuiltinMcpServerListProps> = ({ variant = 'settin
               </div>
               <div
                 className={cn(
-                  'flex shrink-0 items-center justify-end self-center',
-                  isCatalog ? 'ml-1' : 'ml-3 min-w-21.5'
+                  'flex shrink-0 items-center justify-end gap-1',
+                  isCatalog ? 'absolute top-3.5 right-3' : 'ml-3 min-w-21.5 self-center'
                 )}>
                 {isInstalled ? (
-                  <div className="inline-flex h-7 items-center gap-1.5 rounded-lg px-2 text-muted-foreground text-xs">
+                  <div
+                    className={cn(
+                      'inline-flex items-center gap-1.5 rounded-lg px-2 text-muted-foreground text-xs',
+                      isCatalog ? 'h-7' : 'h-7 min-w-21.5 justify-center'
+                    )}>
                     <Check size={13} className="text-success" />
                     {t('settings.skills.installed')}
                   </div>
                 ) : (
                   <Button
+                    type="button"
                     variant="ghost"
-                    size="sm"
-                    className="h-7 rounded-lg px-2 text-muted-foreground text-xs shadow-none hover:bg-muted hover:text-foreground hover:shadow-none"
+                    size="icon-sm"
+                    disabled={installingServer === server.name}
+                    aria-label={
+                      installingServer === server.name ? t('settings.skills.installed') : t('settings.skills.install')
+                    }
+                    className="size-7 rounded-md text-muted-foreground shadow-none hover:bg-muted hover:text-foreground hover:shadow-none"
                     onClick={async () => {
+                      if (installingServer) return
+                      setInstallingServer(server.name)
                       try {
                         await addMcpServer(toCreateMcpServerDto(server))
                         toast.success(t('settings.mcp.addSuccess'))
                       } catch {
                         toast.error(t('settings.mcp.addError'))
+                      } finally {
+                        setInstallingServer(null)
                       }
                     }}>
-                    <Plus size={13} />
-                    {t('settings.skills.install')}
+                    {installingServer === server.name ? (
+                      <LoaderCircle size={14} className="animate-spin" />
+                    ) : (
+                      <Download size={14} />
+                    )}
                   </Button>
                 )}
               </div>

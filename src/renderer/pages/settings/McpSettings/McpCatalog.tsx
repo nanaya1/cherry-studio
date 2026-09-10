@@ -101,16 +101,20 @@ export default function McpCatalog() {
                   type="button"
                   className={cn(
                     'group flex min-h-20 items-center gap-3 rounded-lg border border-border-subtle bg-card p-3 text-left',
-                    'transition-[border-color,box-shadow] hover:border-border hover:shadow-sm',
+                    'transition-[background-color,border-color,box-shadow] hover:border-border-strong hover:bg-background-subtle hover:shadow-sm',
                     'focus-visible:border-ring focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50'
                   )}
                   onClick={() => setSelectedProvider(provider)}>
-                  <div className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-muted">
-                    {Logo ? <Logo.Avatar size={28} shape="circle" /> : <FolderCog className="size-5" />}
+                  <div className="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted">
+                    {Logo ? (
+                      <Logo.Avatar size={22} shape="circle" />
+                    ) : (
+                      <FolderCog className="size-4 text-muted-foreground" />
+                    )}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div className="truncate font-medium text-sm leading-5">{providerName}</div>
-                    <div className="mt-1 truncate text-muted-foreground text-xs">
+                    <div className="truncate font-semibold text-base leading-5">{providerName}</div>
+                    <div className="mt-2 truncate text-muted-foreground text-sm leading-5">
                       {t('settings.provider.api_key.label')}
                     </div>
                   </div>
