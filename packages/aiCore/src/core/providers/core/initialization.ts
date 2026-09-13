@@ -137,6 +137,10 @@ const AzureExtension = ProviderExtension.create({
 
 const CherryInExtension = ProviderExtension.create({
   name: 'cherryin',
+  // `meacowork` is the adapterFamily declared by the 雪浪工匠 registry entry —
+  // it must resolve to this same gateway runtime (resolveAiSdkProviderId looks
+  // adapterFamily up in appProviderIds and falls back to openai-compatible).
+  aliases: ['meacowork'] as const,
   supportsImageGeneration: true,
   create: async (settings) => (await import('@cherrystudio/ai-sdk-provider')).createCherryIn(settings),
 

@@ -788,8 +788,9 @@ describe('providerToAiSdkConfig — builder dispatch matrix', () => {
     })
 
     it('routes xuelang gateway chat models through buildCherryinConfig at the xuelang host', async () => {
-      // 雪浪工匠 rides the cherryin adapterFamily; the resolved chat variant and
-      // the relay URLs must come from xuelang's own endpointConfigs.
+      // 雪浪工匠 declares adapterFamily 'meacowork', aliased onto the cherryin
+      // runtime; the resolved chat variant and the relay URLs must come from
+      // xuelang's own endpointConfigs.
       getByProviderIdMock.mockReturnValue(
         makeProvider({
           id: 'xuelang',
@@ -805,7 +806,7 @@ describe('providerToAiSdkConfig — builder dispatch matrix', () => {
         endpointConfigs: {
           [ENDPOINT_TYPE.OPENAI_CHAT_COMPLETIONS]: {
             baseUrl: 'https://api.xuelanglm.com',
-            adapterFamily: 'cherryin'
+            adapterFamily: 'meacowork'
           }
         }
       })

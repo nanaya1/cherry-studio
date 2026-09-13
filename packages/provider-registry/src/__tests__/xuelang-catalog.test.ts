@@ -2,9 +2,10 @@ import { describe, expect, it } from 'vitest'
 
 import { PROVIDERS } from '../providers'
 
-// 雪浪工匠 rides the CherryIN gateway stack: same adapterFamily, same four
-// endpoints, different host. These tests pin that contract so a future edit
-// cannot silently demote xuelang back to a plain openai-compatible provider.
+// 雪浪工匠 rides the MEA Cowork gateway stack (adapterFamily `meacowork`,
+// aliased onto the cherryin runtime in aiCore): same four endpoints, different
+// host. These tests pin that contract so a future edit cannot silently demote
+// xuelang back to a plain openai-compatible provider.
 describe('xuelang provider registry entry', () => {
   const provider = PROVIDERS.find((p) => p.id === 'xuelang')
   if (!provider) throw new Error('Missing provider: xuelang')
@@ -15,14 +16,12 @@ describe('xuelang provider registry entry', () => {
     )
   })
 
-  it.each([
-    'anthropic-messages',
-    'google-generate-content',
-    'openai-responses',
-    'openai-chat-completions'
-  ] as const)('routes %s through the cherryin adapterFamily', (endpoint) => {
-    expect(provider.endpointConfigs?.[endpoint]?.adapterFamily).toBe('cherryin')
-  })
+  it.each(['anthropic-messages', 'google-generate-content', 'openai-responses', 'openai-chat-completions'] as const)(
+    'routes %s through the meacowork adapterFamily',
+    (endpoint) => {
+      expect(provider.endpointConfigs?.[endpoint]?.adapterFamily).toBe('meacowork')
+    }
+  )
 
   it('points every endpoint at the xuelang gateway host', () => {
     for (const config of Object.values(provider.endpointConfigs ?? {})) {
