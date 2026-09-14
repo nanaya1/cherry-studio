@@ -1,5 +1,5 @@
 import { application } from '@application'
-import { OAuthSignInCancelledError } from '@main/services/oauth/errors'
+import { OAuthServiceError, OAuthSignInCancelledError } from '@main/services/oauth/errors'
 import { isClaudeCodeProviderId } from '@shared/data/presets/claudeCode'
 import { IpcError } from '@shared/ipc/errors/IpcError'
 import { oauthErrorCodes } from '@shared/ipc/errors/oauth'
@@ -19,6 +19,20 @@ async function mapSignInCancellation<T>(request: Promise<T>): Promise<T> {
   }
 }
 
+// OAuthServiceError carries a gateway error code (e.g. MANAGED_KEY_UNAVAILABLE)
+// but IpcError.from would collapse it to INTERNAL, so the renderer could not map
+// it to a human-readable message. Re-throw as IpcError to keep the code intact.
+async function mapOAuthServiceError<T>(request: Promise<T>): Promise<T> {
+  try {
+    return await request
+  } catch (error) {
+    if (error instanceof OAuthServiceError && error.code) {
+      throw new IpcError(error.code, error.message)
+    }
+    throw error
+  }
+}
+
 export const oauthHandlers: IpcHandlersFor<typeof oauthRequestSchemas> = {
   'oauth.sign_in': ({ providerId, requestId }) => mapSignInCancellation(runtime().signIn(providerId, requestId)),
   'oauth.sign_in.attach': ({ providerId, requestId }) =>
@@ -27,6 +41,7 @@ export const oauthHandlers: IpcHandlersFor<typeof oauthRequestSchemas> = {
   'oauth.has_token': ({ providerId }) => runtime().hasToken(providerId),
   'oauth.get_account': ({ providerId }) => runtime().getAccount(providerId),
   'oauth.logout': ({ providerId }) => runtime().logout(providerId),
+  'oauth.provision_api_keys': ({ providerId }) => mapOAuthServiceError(runtime().provisionApiKeys(providerId)),
   // External-CLI login probe. `claude-code` is the only provider whose
   // `authMethods` includes `'external-cli'` today; reject anything else rather
   // than silently returning the Claude probe for an unrelated providerId. A
