@@ -9,19 +9,19 @@ export default defineProvider({
   defaultChatEndpoint: 'openai-chat-completions',
   endpointConfigs: {
     'anthropic-messages': {
-      adapterFamily: 'cherryin',
+      adapterFamily: 'meacowork',
       baseUrl: XUELANG_GATEWAY_BASE_URL
     },
     'google-generate-content': {
-      adapterFamily: 'cherryin',
+      adapterFamily: 'meacowork',
       baseUrl: XUELANG_GATEWAY_BASE_URL
     },
     'openai-responses': {
-      adapterFamily: 'cherryin',
+      adapterFamily: 'meacowork',
       baseUrl: XUELANG_GATEWAY_BASE_URL
     },
     'openai-chat-completions': {
-      adapterFamily: 'cherryin',
+      adapterFamily: 'meacowork',
       baseUrl: XUELANG_GATEWAY_BASE_URL,
       reasoningFormat: { type: 'openai-chat' }
     }

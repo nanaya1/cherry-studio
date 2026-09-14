@@ -20,6 +20,15 @@ vi.mock('react-i18next', () => ({
       ({
         'workspace.toolbox.title': '工具箱',
         'workspace.toolbox.subtitle': '工具箱说明',
+        'workspace.toolbox.products.hufu.name': '虎符',
+        'workspace.toolbox.products.hufu.tagline': '虎符副标题',
+        'workspace.toolbox.products.hufu.description': '虎符说明',
+        'workspace.toolbox.products.gonggong.name': '共工',
+        'workspace.toolbox.products.gonggong.tagline': '共工副标题',
+        'workspace.toolbox.products.gonggong.description': '共工说明',
+        'workspace.toolbox.products.suanpan.name': '算盘',
+        'workspace.toolbox.products.suanpan.tagline': '算盘副标题',
+        'workspace.toolbox.products.suanpan.description': '算盘说明',
         'workspace.toolbox.products.mdo.name': 'MDO',
         'workspace.toolbox.products.mdo.tagline': 'MDO 副标题',
         'workspace.toolbox.products.mdo.description': 'MDO 说明',
@@ -32,18 +41,9 @@ vi.mock('react-i18next', () => ({
         'workspace.toolbox.products.ontology.name': '本体',
         'workspace.toolbox.products.ontology.tagline': '本体副标题',
         'workspace.toolbox.products.ontology.description': '本体说明',
-        'workspace.toolbox.products.tuling.name': '图零',
-        'workspace.toolbox.products.tuling.tagline': '图零副标题',
-        'workspace.toolbox.products.tuling.description': '图零说明',
-        'workspace.toolbox.products.productionControl.name': '生产管控',
-        'workspace.toolbox.products.productionControl.tagline': '生产管控副标题',
-        'workspace.toolbox.products.productionControl.description': '生产管控说明',
-        'workspace.toolbox.products.pro.name': 'PRO',
-        'workspace.toolbox.products.pro.tagline': 'PRO 副标题',
-        'workspace.toolbox.products.pro.description': 'PRO 说明',
-        'workspace.toolbox.products.aiops.name': '智能运维',
-        'workspace.toolbox.products.aiops.tagline': '智能运维副标题',
-        'workspace.toolbox.products.aiops.description': '智能运维说明',
+        'workspace.toolbox.products.aiops.name': '运维',
+        'workspace.toolbox.products.aiops.tagline': '运维副标题',
+        'workspace.toolbox.products.aiops.description': '运维说明',
         'agent.channels.comingSoon': '即将推出'
       })[key] ?? key
   })
@@ -76,20 +76,27 @@ describe('ToolboxPage', () => {
     const user = userEvent.setup()
     render(<ToolboxPage />)
 
-    await user.click(screen.getByRole('button', { name: /图零/ }))
+    await user.click(screen.getByRole('button', { name: /虎符/ }))
 
-    expect(openExternal).toHaveBeenCalledWith('https://tl.xuelangyun.com/')
+    expect(openExternal).toHaveBeenCalledWith('http://osdev.xuelangyun.com:30080')
   })
 
-  it('keeps products without a URL disabled and marks them as coming soon', async () => {
+  it('opens every product in the new roster with its own URL', async () => {
     const user = userEvent.setup()
     render(<ToolboxPage />)
 
-    const proCard = screen.getByRole('button', { name: /PRO/ })
-    expect(proCard).toBeDisabled()
-    expect(proCard).toHaveTextContent('即将推出')
-
-    await user.click(proCard)
-    expect(openExternal).not.toHaveBeenCalled()
+    for (const [name, url] of [
+      [/共工/, 'http://osdev.xuelangyun.com:30080'],
+      [/算盘/, 'http://osdev.xuelangyun.com:30080'],
+      [/本体/, 'http://121.36.244.169:30009/?open_in_browser=true#/auth/login'],
+      [/MDO/, 'http://mdo.xuelangyun.com/'],
+      [/MetaM/, 'http://metam.xuelangyun.com/'],
+      [/RTO/, 'http://rto.xuelangyun.com'],
+      [/运维/, 'https://mro.xuelangyun.com/']
+    ]) {
+      openExternal.mockClear()
+      await user.click(screen.getByRole('button', { name }))
+      expect(openExternal).toHaveBeenCalledWith(url)
+    }
   })
 })

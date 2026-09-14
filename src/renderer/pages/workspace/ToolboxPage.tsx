@@ -22,26 +22,27 @@ interface ToolboxProduct {
 
 const PRODUCTS: ToolboxProduct[] = [
   {
-    id: 'mdo',
-    nameKey: 'workspace.toolbox.products.mdo.name',
-    taglineKey: 'workspace.toolbox.products.mdo.tagline',
-    descriptionKey: 'workspace.toolbox.products.mdo.description',
-    url: 'http://mdo.xuelangyun.com:30080/idaas/login.html?ssoReqParams=95138ace-24fc-4a13-aa22-5cbcbb3d44d7&referer=null#/login',
+    id: 'hufu',
+    nameKey: 'workspace.toolbox.products.hufu.name',
+    taglineKey: 'workspace.toolbox.products.hufu.tagline',
+    descriptionKey: 'workspace.toolbox.products.hufu.description',
+    url: 'http://osdev.xuelangyun.com:30080',
     toneClass: 'bg-chart-1/15 text-chart-1'
   },
   {
-    id: 'metam',
-    nameKey: 'workspace.toolbox.products.metam.name',
-    taglineKey: 'workspace.toolbox.products.metam.tagline',
-    descriptionKey: 'workspace.toolbox.products.metam.description',
-    url: 'https://spuc.xuelangyun.com/auth/login?callback=http%3A%2F%2Fmetam.xuelangyun.com%3A30080%2Fweb',
+    id: 'gonggong',
+    nameKey: 'workspace.toolbox.products.gonggong.name',
+    taglineKey: 'workspace.toolbox.products.gonggong.tagline',
+    descriptionKey: 'workspace.toolbox.products.gonggong.description',
+    url: 'http://osdev.xuelangyun.com:30080',
     toneClass: 'bg-info-subtle text-info-subtle-foreground'
   },
   {
-    id: 'rto',
-    nameKey: 'workspace.toolbox.products.rto.name',
-    taglineKey: 'workspace.toolbox.products.rto.tagline',
-    descriptionKey: 'workspace.toolbox.products.rto.description',
+    id: 'suanpan',
+    nameKey: 'workspace.toolbox.products.suanpan.name',
+    taglineKey: 'workspace.toolbox.products.suanpan.tagline',
+    descriptionKey: 'workspace.toolbox.products.suanpan.description',
+    url: 'http://osdev.xuelangyun.com:30080',
     toneClass: 'bg-success-subtle text-success-subtle-foreground'
   },
   {
@@ -49,30 +50,31 @@ const PRODUCTS: ToolboxProduct[] = [
     nameKey: 'workspace.toolbox.products.ontology.name',
     taglineKey: 'workspace.toolbox.products.ontology.tagline',
     descriptionKey: 'workspace.toolbox.products.ontology.description',
-    url: 'https://mro.xuelangyun.com/aiops/#/',
+    url: 'http://121.36.244.169:30009/?open_in_browser=true#/auth/login',
     toneClass: 'bg-warning-subtle text-warning-subtle-foreground'
   },
   {
-    id: 'tuling',
-    nameKey: 'workspace.toolbox.products.tuling.name',
-    taglineKey: 'workspace.toolbox.products.tuling.tagline',
-    descriptionKey: 'workspace.toolbox.products.tuling.description',
-    url: 'https://tl.xuelangyun.com/',
+    id: 'mdo',
+    nameKey: 'workspace.toolbox.products.mdo.name',
+    taglineKey: 'workspace.toolbox.products.mdo.tagline',
+    descriptionKey: 'workspace.toolbox.products.mdo.description',
+    url: 'http://mdo.xuelangyun.com/',
     toneClass: 'bg-chart-2/15 text-chart-2'
   },
   {
-    id: 'production-control',
-    nameKey: 'workspace.toolbox.products.productionControl.name',
-    taglineKey: 'workspace.toolbox.products.productionControl.tagline',
-    descriptionKey: 'workspace.toolbox.products.productionControl.description',
-    url: 'http://10.88.40.213:3000/',
+    id: 'metam',
+    nameKey: 'workspace.toolbox.products.metam.name',
+    taglineKey: 'workspace.toolbox.products.metam.tagline',
+    descriptionKey: 'workspace.toolbox.products.metam.description',
+    url: 'http://metam.xuelangyun.com/',
     toneClass: 'bg-info-subtle text-info-subtle-foreground'
   },
   {
-    id: 'pro',
-    nameKey: 'workspace.toolbox.products.pro.name',
-    taglineKey: 'workspace.toolbox.products.pro.tagline',
-    descriptionKey: 'workspace.toolbox.products.pro.description',
+    id: 'rto',
+    nameKey: 'workspace.toolbox.products.rto.name',
+    taglineKey: 'workspace.toolbox.products.rto.tagline',
+    descriptionKey: 'workspace.toolbox.products.rto.description',
+    url: 'http://rto.xuelangyun.com',
     toneClass: 'bg-success-subtle text-success-subtle-foreground'
   },
   {
@@ -80,7 +82,7 @@ const PRODUCTS: ToolboxProduct[] = [
     nameKey: 'workspace.toolbox.products.aiops.name',
     taglineKey: 'workspace.toolbox.products.aiops.tagline',
     descriptionKey: 'workspace.toolbox.products.aiops.description',
-    url: 'https://mro.xuelangyun.com/aiops/#/login',
+    url: 'https://mro.xuelangyun.com/',
     toneClass: 'bg-warning-subtle text-warning-subtle-foreground'
   }
 ]

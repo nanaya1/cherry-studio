@@ -1,3 +1,4 @@
+import { XUELANG_API_HOST } from '@shared/utils/constants'
 import * as z from 'zod'
 
 /**
@@ -15,7 +16,7 @@ export const GATEWAY_OAUTH_CONFIGS = {
   },
   xuelang: {
     CLIENT_ID: '2a348c87-bae1-4756-a62f-b2e97200fd6d',
-    ALLOWED_HOSTS: ['https://api.xuelanglm.com'],
+    ALLOWED_HOSTS: [XUELANG_API_HOST],
     REDIRECT_URI: 'meacowork://oauth/callback',
     SCOPES: 'openid profile email offline_access balance:read usage:read tokens:read tokens:write'
   }

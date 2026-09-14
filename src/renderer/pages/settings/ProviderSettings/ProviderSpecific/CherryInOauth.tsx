@@ -9,6 +9,7 @@ import { popup } from '@renderer/services/popup'
 import { toast } from '@renderer/services/toast'
 import { cn } from '@renderer/utils/style'
 import type { CherryInBalance } from '@shared/ipc/schemas/cherryin'
+import { XUELANG_API_HOST } from '@shared/utils/constants'
 import { hasApiKeys } from '@shared/utils/provider'
 import type { FC } from 'react'
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -31,8 +32,8 @@ const GATEWAY_PRESENTATION = {
     i18nNs: 'cherryIn'
   },
   xuelang: {
-    oauthServer: 'https://api.xuelanglm.com',
-    topupUrl: 'https://api.xuelanglm.com/console/topup',
+    oauthServer: XUELANG_API_HOST,
+    topupUrl: `${XUELANG_API_HOST}/console/topup`,
     i18nNs: 'xuelang'
   }
 } as const

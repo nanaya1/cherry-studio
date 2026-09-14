@@ -16,9 +16,6 @@ import { XuelangDefaultModelSeeder } from './seeders/xuelangDefaultModelSeeder'
 /**
  * All seeders in execution order.
  *
- * Keep XuelangDefaultModelSeeder before DefaultAssistantSeeder because the
- * seeded assistant references the Xuelang default model (FK to user_model).
- *
  * To add a new seeder: create an ISeeder class, add it to this array.
  * No changes to DbService needed.
  */

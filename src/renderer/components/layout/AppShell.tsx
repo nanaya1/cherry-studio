@@ -36,13 +36,13 @@ const TOOLBOX_APP_ID_PREFIX = 'toolbox-'
 
 // Breadcrumb name keys, explicit (template literals in t() are banned by the i18n lint rule).
 const TOOLBOX_PRODUCT_NAME_KEYS: Record<string, string> = {
+  hufu: 'workspace.toolbox.products.hufu.name',
+  gonggong: 'workspace.toolbox.products.gonggong.name',
+  suanpan: 'workspace.toolbox.products.suanpan.name',
+  ontology: 'workspace.toolbox.products.ontology.name',
   mdo: 'workspace.toolbox.products.mdo.name',
   metam: 'workspace.toolbox.products.metam.name',
   rto: 'workspace.toolbox.products.rto.name',
-  ontology: 'workspace.toolbox.products.ontology.name',
-  tuling: 'workspace.toolbox.products.tuling.name',
-  'production-control': 'workspace.toolbox.products.productionControl.name',
-  pro: 'workspace.toolbox.products.pro.name',
   aiops: 'workspace.toolbox.products.aiops.name'
 }
 

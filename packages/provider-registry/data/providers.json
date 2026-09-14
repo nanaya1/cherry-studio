@@ -6,22 +6,22 @@
       "description": "雪浪工匠 - AI model provider",
       "endpointConfigs": {
         "anthropic-messages": {
-          "adapterFamily": "cherryin",
+          "adapterFamily": "meacowork",
           "baseUrl": "https://api.xuelanglm.com/v1"
         },
         "google-generate-content": {
-          "adapterFamily": "cherryin",
+          "adapterFamily": "meacowork",
           "baseUrl": "https://api.xuelanglm.com/v1"
         },
         "openai-chat-completions": {
-          "adapterFamily": "cherryin",
+          "adapterFamily": "meacowork",
           "baseUrl": "https://api.xuelanglm.com/v1",
           "reasoningFormat": {
             "type": "openai-chat"
           }
         },
         "openai-responses": {
-          "adapterFamily": "cherryin",
+          "adapterFamily": "meacowork",
           "baseUrl": "https://api.xuelanglm.com/v1"
         }
       },
@@ -2516,5 +2516,5 @@
       "presetProviderId": "minimax"
     }
   ],
-  "version": "54a3e3478d096593"
+  "version": "13c8d99d4f4195fd"
 }
