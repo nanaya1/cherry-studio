@@ -2016,6 +2016,7 @@
   "library.skill_marketplace.github_url_invalid": "Doğrudan bir SKILL.md dosyasına yönlendiren, desteklenen bir GitHub bağlantısı yapıştırın",
   "library.skill_marketplace.github_url_label": "GitHub SKILL.md URL'si",
   "library.skill_marketplace.github_url_placeholder": "/SKILL.md ile biten GitHub bağlantısı",
+  "library.skill_marketplace.installing_close_blocked": "Bir beceri yükleniyor. Kapatmadan önce yüklemenin tamamlanmasını bekleyin.",
   "library.skill_marketplace.no_results_description": "Başka bir anahtar sözcük deneyin veya yerel bir ZIP dosyasını ya da dizini içe aktarın.",
   "library.skill_marketplace.no_results_title": "Beceri bulunamadı",
   "library.skill_marketplace.search_failed_description": "Arama başarısız oldu. Lütfen daha sonra tekrar deneyin.",

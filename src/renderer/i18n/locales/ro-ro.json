@@ -2016,6 +2016,7 @@
   "library.skill_marketplace.github_url_invalid": "Lipește un link GitHub acceptat care indică direct către un fișier SKILL.md",
   "library.skill_marketplace.github_url_label": "URL SKILL.md GitHub",
   "library.skill_marketplace.github_url_placeholder": "Link GitHub care se termină cu /SKILL.md",
+  "library.skill_marketplace.installing_close_blocked": "Se instalează o abilitate. Așteptați finalizarea instalării înainte de a închide.",
   "library.skill_marketplace.no_results_description": "Încearcă un alt cuvânt cheie sau importă un fișier ZIP sau director local.",
   "library.skill_marketplace.no_results_title": "Nu au fost găsite abilități",
   "library.skill_marketplace.search_failed_description": "Căutarea a eșuat. Încearcă din nou mai târziu.",

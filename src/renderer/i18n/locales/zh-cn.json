@@ -2016,6 +2016,7 @@
   "library.skill_marketplace.github_url_invalid": "请粘贴受支持且直接指向 SKILL.md 文件的 GitHub 链接",
   "library.skill_marketplace.github_url_label": "GitHub SKILL.md 链接",
   "library.skill_marketplace.github_url_placeholder": "GitHub 链接，以 /SKILL.md 结尾",
+  "library.skill_marketplace.installing_close_blocked": "技能正在安装中，请等待安装完成后关闭。",
   "library.skill_marketplace.no_results_description": "请尝试其他关键词,或本地导入 ZIP 文件/目录。",
   "library.skill_marketplace.no_results_title": "未找到技能",
   "library.skill_marketplace.search_failed_description": "搜索失败,请稍后重试。",

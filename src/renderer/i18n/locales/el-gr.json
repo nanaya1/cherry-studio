@@ -2016,6 +2016,7 @@
   "library.skill_marketplace.github_url_invalid": "Επικολλήστε έναν υποστηριζόμενο σύνδεσμο GitHub που οδηγεί απευθείας σε αρχείο SKILL.md",
   "library.skill_marketplace.github_url_label": "URL SKILL.md GitHub",
   "library.skill_marketplace.github_url_placeholder": "Σύνδεσμος GitHub που λήγει σε /SKILL.md",
+  "library.skill_marketplace.installing_close_blocked": "Γίνεται εγκατάσταση δεξιότητας. Περιμένετε να ολοκληρωθεί η εγκατάσταση πριν κλείσετε.",
   "library.skill_marketplace.no_results_description": "Δοκιμάστε μια άλλη λέξη-κλειδί ή εισαγάγετε ένα τοπικό αρχείο ZIP ή φάκελο.",
   "library.skill_marketplace.no_results_title": "Δεν βρέθηκαν δεξιότητες",
   "library.skill_marketplace.search_failed_description": "Η αναζήτηση απέτυχε. Παρακαλώ δοκιμάστε ξανά αργότερα.",
