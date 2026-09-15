@@ -78,7 +78,7 @@ describe('ApiGatewaySettings', () => {
     useApiGatewayMock.mockReturnValue({
       apiGatewayConfig: {
         host: '127.0.0.1',
-        port: 23333,
+        port: 24333,
         apiKey: 'cs-sk-test-key',
         enabled: false
       },

@@ -55,17 +55,17 @@ describe('formatGatewayModelId', () => {
 describe('gatewayClientOrigin', () => {
   it('maps wildcard binds to a reachable loopback address', () => {
     // A bind host is not a connect target: a CLI subprocess handed 0.0.0.0 has no host to dial.
-    expect(gatewayClientOrigin('0.0.0.0', 23333)).toBe('http://127.0.0.1:23333')
-    expect(gatewayClientOrigin('::', 23333)).toBe('http://[::1]:23333')
+    expect(gatewayClientOrigin('0.0.0.0', 24333)).toBe('http://127.0.0.1:24333')
+    expect(gatewayClientOrigin('::', 24333)).toBe('http://[::1]:24333')
   })
 
   it('brackets an IPv6 literal so the URL parses', () => {
-    expect(() => new URL(gatewayClientOrigin('fe80::1', 23333))).not.toThrow()
-    expect(gatewayClientOrigin('fe80::1', 23333)).toBe('http://[fe80::1]:23333')
+    expect(() => new URL(gatewayClientOrigin('fe80::1', 24333))).not.toThrow()
+    expect(gatewayClientOrigin('fe80::1', 24333)).toBe('http://[fe80::1]:24333')
   })
 
   it('leaves an ordinary host untouched', () => {
-    expect(gatewayClientOrigin('127.0.0.1', 23333)).toBe('http://127.0.0.1:23333')
+    expect(gatewayClientOrigin('127.0.0.1', 24333)).toBe('http://127.0.0.1:24333')
     expect(gatewayClientOrigin('localhost', 8080)).toBe('http://localhost:8080')
   })
 })

@@ -51,7 +51,7 @@ const GATEWAY_USAGE_HEADERS = {
   'x-cherry-agent-session-id': 'session-1',
   'x-cherry-internal-usage-token': 'usage-token'
 }
-const GATEWAY = { baseUrl: 'http://127.0.0.1:23333', apiKey: GATEWAY_KEY, usageHeaders: GATEWAY_USAGE_HEADERS }
+const GATEWAY = { baseUrl: 'http://127.0.0.1:24333', apiKey: GATEWAY_KEY, usageHeaders: GATEWAY_USAGE_HEADERS }
 
 /** A Vertex-family Google provider: no native dsh wire family, but gateway-routable. */
 const vertexProvider = {
@@ -127,7 +127,7 @@ describe('buildDshGatewayInjection', () => {
     const injection = buildDshGatewayInjection(vertexProvider, makeModel(), GATEWAY)
 
     expect(injection.api).toBe('openai-completions')
-    expect(injection.baseUrl).toBe('http://127.0.0.1:23333/v1')
+    expect(injection.baseUrl).toBe('http://127.0.0.1:24333/v1')
     expect(injection.modelId).toBe('vertexai:gemini-2.5-pro')
     expect(injection.modelConfig.id).toBe('vertexai:gemini-2.5-pro')
     expect(injection.modelConfig.compat).toEqual({ supportsDeveloperRole: true })
@@ -159,7 +159,7 @@ describe('buildDshGatewayInjection', () => {
     expect(route).toMatchObject({
       apiKeyEnv: 'CHERRY_DSH_API_KEY',
       api: 'openai-completions',
-      baseURL: 'http://127.0.0.1:23333/v1',
+      baseURL: 'http://127.0.0.1:24333/v1',
       headers: GATEWAY_USAGE_HEADERS
     })
     expect(route).not.toHaveProperty('apiKey')
@@ -170,7 +170,7 @@ describe('buildDshGatewayInjection', () => {
     const injection = buildDshGatewayInjection(cloudProvider, makeCloudModel(), GATEWAY)
 
     expect(injection.api).toBe('anthropic-messages')
-    expect(injection.baseUrl).toBe('http://127.0.0.1:23333')
+    expect(injection.baseUrl).toBe('http://127.0.0.1:24333')
     expect(injection.modelId).toBe('cherryai-subscription:deepseek-free')
     expect(injection.modelConfig.contextWindow).toBe(128_000)
     expect(injection.modelConfig.compat).toBeUndefined()

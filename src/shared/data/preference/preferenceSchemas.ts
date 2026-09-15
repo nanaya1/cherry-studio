@@ -731,7 +731,7 @@ export const DefaultPreferences: PreferenceSchemas = {
     'feature.api_gateway.api_key': null,
     'feature.api_gateway.enabled': null,
     'feature.api_gateway.host': '127.0.0.1',
-    'feature.api_gateway.port': 23333,
+    'feature.api_gateway.port': 24333,
     'feature.binary.install_settings': {
       githubMirror: '',
       githubToken: '',
@@ -760,7 +760,7 @@ export const DefaultPreferences: PreferenceSchemas = {
     'feature.notes.show_table_of_contents': true,
     'feature.notes.show_workspace': true,
     'feature.notes.sort_type': 'sort_a2z',
-    'feature.openclaw.gateway_port': 18790,
+    'feature.openclaw.gateway_port': 19790,
     'feature.openclaw.selected_model_id': null,
     'feature.paintings.default_model_id': null,
     'feature.paintings.default_provider': 'zhipu',

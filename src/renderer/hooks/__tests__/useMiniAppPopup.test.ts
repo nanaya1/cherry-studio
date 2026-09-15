@@ -175,8 +175,8 @@ describe('useMiniAppPopup', () => {
     })
 
     it('should replace a changed app at the tail without recreating its keep-alive entry', async () => {
-      const stale = createMiniApp('openclaw-dashboard', { url: 'http://127.0.0.1:18790#token=stale' })
-      const fresh = { ...stale, url: 'http://127.0.0.1:18790#token=fresh' }
+      const stale = createMiniApp('openclaw-dashboard', { url: 'http://127.0.0.1:19790#token=stale' })
+      const fresh = { ...stale, url: 'http://127.0.0.1:19790#token=fresh' }
       MockUseCacheUtils.setCacheValue(KEEP_ALIVE_KEY, [stale])
 
       const { result } = renderHook(() => useTestMiniAppPopup())
@@ -424,7 +424,7 @@ describe('useMiniAppPopup', () => {
         result.current.openSmartMiniApp({
           appId: 'openclaw-dashboard',
           name: 'OpenClaw',
-          url: 'http://127.0.0.1:18790#token=secret',
+          url: 'http://127.0.0.1:19790#token=secret',
           logo: 'openclaw'
         })
       })
@@ -432,7 +432,7 @@ describe('useMiniAppPopup', () => {
       expect(mockCacheService.getShared('mini_app.transient_descriptor.openclaw-dashboard')).toEqual({
         appId: 'openclaw-dashboard',
         name: 'OpenClaw',
-        url: 'http://127.0.0.1:18790#token=secret',
+        url: 'http://127.0.0.1:19790#token=secret',
         logo: 'openclaw'
       })
     })
@@ -447,13 +447,13 @@ describe('useMiniAppPopup', () => {
         result.current.openSmartMiniApp({
           appId: 'openclaw-dashboard',
           name: 'OpenClaw',
-          url: 'http://127.0.0.1:18790#token=fresh',
+          url: 'http://127.0.0.1:19790#token=fresh',
           logo: 'openclaw'
         })
       })
 
       expect(mockCacheService.getShared('mini_app.transient_descriptor.openclaw-dashboard')).toMatchObject({
-        url: 'http://127.0.0.1:18790#token=fresh'
+        url: 'http://127.0.0.1:19790#token=fresh'
       })
     })
 
@@ -461,7 +461,7 @@ describe('useMiniAppPopup', () => {
       const first = createMiniApp('first')
       const cached = createMiniApp('openclaw-dashboard', {
         name: 'OpenClaw',
-        url: 'http://127.0.0.1:18790#token=stale',
+        url: 'http://127.0.0.1:19790#token=stale',
         logo: 'openclaw'
       })
       const last = createMiniApp('last')
@@ -472,7 +472,7 @@ describe('useMiniAppPopup', () => {
         result.current.openSmartMiniApp({
           appId: 'openclaw-dashboard',
           name: 'OpenClaw',
-          url: 'http://127.0.0.1:18790?cherry_navigation_revision=1#token=fresh',
+          url: 'http://127.0.0.1:19790?cherry_navigation_revision=1#token=fresh',
           logo: 'openclaw'
         })
       })
@@ -480,7 +480,7 @@ describe('useMiniAppPopup', () => {
       const list = getKeepAlive()
       expect(list).toHaveLength(3)
       expect(list.map((app) => app.appId)).toEqual(['first', 'openclaw-dashboard', 'last'])
-      expect(list[1].url).toBe('http://127.0.0.1:18790?cherry_navigation_revision=1#token=fresh')
+      expect(list[1].url).toBe('http://127.0.0.1:19790?cherry_navigation_revision=1#token=fresh')
       expect(mockSetWebviewLoaded).toHaveBeenCalledWith('openclaw-dashboard', false)
       expect(mockClearWebviewState).not.toHaveBeenCalled()
     })
@@ -488,7 +488,7 @@ describe('useMiniAppPopup', () => {
     it('does not rebuild a cached transient app when its descriptor is unchanged', async () => {
       const cached = createMiniApp('openclaw-dashboard', {
         name: 'OpenClaw',
-        url: 'http://127.0.0.1:18790?cherry_navigation_revision=1#token=fresh',
+        url: 'http://127.0.0.1:19790?cherry_navigation_revision=1#token=fresh',
         logo: 'openclaw'
       })
       const seeded = [cached]
@@ -499,7 +499,7 @@ describe('useMiniAppPopup', () => {
         result.current.openSmartMiniApp({
           appId: 'openclaw-dashboard',
           name: 'OpenClaw',
-          url: 'http://127.0.0.1:18790?cherry_navigation_revision=1#token=fresh',
+          url: 'http://127.0.0.1:19790?cherry_navigation_revision=1#token=fresh',
           logo: 'openclaw'
         })
       })

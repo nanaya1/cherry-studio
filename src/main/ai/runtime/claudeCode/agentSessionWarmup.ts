@@ -702,7 +702,7 @@ function deriveRouteFacts(
     const apiGatewayService = application.get('ApiGatewayService')
     const config = apiGatewayService.getCurrentConfig()
     const host = config.host || '127.0.0.1'
-    const port = config.port || 23333
+    const port = config.port || 24333
     return {
       branch: 'gateway',
       baseUrl: gatewayClientOrigin(host, port),

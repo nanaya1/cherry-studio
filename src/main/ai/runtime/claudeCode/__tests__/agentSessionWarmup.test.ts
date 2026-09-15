@@ -173,7 +173,7 @@ describe('buildClaudeCodeQueryRequestForAgentSession resume-token precedence', (
     mocks.apiGatewayGetCurrentConfig.mockReturnValue({
       enabled: true,
       host: '127.0.0.1',
-      port: 23333,
+      port: 24333,
       apiKey: 'gateway-key'
     })
     mocks.apiGatewayGetAgentSessionUsageHeaders.mockReturnValue({
@@ -676,7 +676,7 @@ describe('buildClaudeCodeQueryRequestForAgentSession resume-token precedence', (
     expect(mocks.apiGatewayEnsureKey).toHaveBeenCalled()
     expect(request?.sdkModelId).toBe('opencode:deepseek-v4-pro')
     expect(request?.settings.env).toMatchObject({
-      ANTHROPIC_BASE_URL: 'http://127.0.0.1:23333',
+      ANTHROPIC_BASE_URL: 'http://127.0.0.1:24333',
       ANTHROPIC_MODEL: 'opencode:deepseek-v4-pro'
     })
     expect(request?.usageCapture).toEqual({ owner: 'provider-calls' })
@@ -733,7 +733,7 @@ describe('buildClaudeCodeQueryRequestForAgentSession resume-token precedence', (
     mocks.apiGatewayGetCurrentConfig.mockReturnValue({
       enabled: true,
       host: '127.0.0.1',
-      port: 23333,
+      port: 24333,
       apiKey: 'gateway-key'
     })
     mocks.apiGatewayIsRunning.mockReturnValue(false)
@@ -747,7 +747,7 @@ describe('buildClaudeCodeQueryRequestForAgentSession resume-token precedence', (
     expect(mocks.apiGatewayEnsureRunning).toHaveBeenCalledOnce()
     expect(request?.connectionConfig.rebuildSignature).toBe(current.config.rebuildSignature)
     expect(request?.settings.env).toMatchObject({
-      ANTHROPIC_BASE_URL: 'http://127.0.0.1:23333',
+      ANTHROPIC_BASE_URL: 'http://127.0.0.1:24333',
       ANTHROPIC_MODEL: `${CHERRY_CLOUD_PROVIDER_ID}:deepseek-free`
     })
     expect(mocks.resolveApiKey).not.toHaveBeenCalled()
@@ -767,7 +767,7 @@ describe('buildClaudeCodeQueryRequestForAgentSession resume-token precedence', (
       group: CHERRY_CLOUD_MODEL_GROUP,
       endpointTypes: [ENDPOINT_TYPE.ANTHROPIC_MESSAGES]
     })
-    mocks.apiGatewayGetCurrentConfig.mockReturnValue({ enabled: false, host: '127.0.0.1', port: 23333 })
+    mocks.apiGatewayGetCurrentConfig.mockReturnValue({ enabled: false, host: '127.0.0.1', port: 24333 })
     mocks.apiGatewayIsRunning.mockReturnValue(false)
 
     await expect(buildClaudeCodeQueryRequestForAgentSession('session-1')).rejects.toBeInstanceOf(
@@ -797,7 +797,7 @@ describe('buildClaudeCodeQueryRequestForAgentSession resume-token precedence', (
 
     expect(mocks.apiGatewayEnsureKey).toHaveBeenCalled()
     expect(request?.settings.env).toMatchObject({
-      ANTHROPIC_BASE_URL: 'http://127.0.0.1:23333',
+      ANTHROPIC_BASE_URL: 'http://127.0.0.1:24333',
       ANTHROPIC_MODEL: 'custom:relay-model'
     })
   })
@@ -969,7 +969,7 @@ describe('buildClaudeCodeQueryRequestForAgentSession resume-token precedence', (
       endpointConfigs: { 'openai-chat-completions': { baseUrl: 'https://openai.example.com' } }
     })
     mocks.getModelByKey.mockReturnValue({ id: 'gpt-main', apiModelId: 'gpt-main-api' })
-    mocks.apiGatewayGetCurrentConfig.mockReturnValue({ enabled: false, host: '127.0.0.1', port: 23333 })
+    mocks.apiGatewayGetCurrentConfig.mockReturnValue({ enabled: false, host: '127.0.0.1', port: 24333 })
     mocks.apiGatewayIsRunning.mockReturnValue(false)
 
     await expect(buildClaudeCodeQueryRequestForAgentSession('session-1')).rejects.toBeInstanceOf(
@@ -996,7 +996,7 @@ describe('buildClaudeCodeQueryRequestForAgentSession resume-token precedence', (
     // `ensureRunning`, never `start`: converging must not be able to re-persist the intent.
     expect(mocks.apiGatewayEnsureRunning).toHaveBeenCalled()
     expect(mocks.apiGatewayStart).not.toHaveBeenCalled()
-    expect(request?.settings.env).toMatchObject({ ANTHROPIC_BASE_URL: 'http://127.0.0.1:23333' })
+    expect(request?.settings.env).toMatchObject({ ANTHROPIC_BASE_URL: 'http://127.0.0.1:24333' })
   })
 
   it('bypasses the materialized API gateway host without making the rebuild baseline stale', async () => {
@@ -1010,7 +1010,7 @@ describe('buildClaudeCodeQueryRequestForAgentSession resume-token precedence', (
     mocks.apiGatewayGetCurrentConfig.mockReturnValue({
       enabled: true,
       host: '127.0.0.2',
-      port: 23333,
+      port: 24333,
       apiKey: 'gateway-key'
     })
     mocks.getProxyEnvironment.mockReturnValue({ HTTP_PROXY: proxyUrl })
@@ -1021,7 +1021,7 @@ describe('buildClaudeCodeQueryRequestForAgentSession resume-token precedence', (
 
     if (!request || !current.ok) throw new Error('expected materialized request and current config')
     expect(request.settings.env).toMatchObject({
-      ANTHROPIC_BASE_URL: 'http://127.0.0.2:23333',
+      ANTHROPIC_BASE_URL: 'http://127.0.0.2:24333',
       NO_PROXY: 'localhost,127.0.0.1,::1,[::1],127.0.0.2',
       no_proxy: 'localhost,127.0.0.1,::1,[::1],127.0.0.2'
     })
@@ -1182,7 +1182,7 @@ describe('buildClaudeCodeQueryRequestForAgentSession resume-token precedence', (
     expect(mocks.apiGatewayStart).not.toHaveBeenCalled()
     expect(request?.sdkModelId).toBe('gemini:gemini-2.5-pro')
     expect(request?.settings.env).toMatchObject({
-      ANTHROPIC_BASE_URL: 'http://127.0.0.1:23333',
+      ANTHROPIC_BASE_URL: 'http://127.0.0.1:24333',
       ANTHROPIC_API_KEY: 'gateway-key',
       ANTHROPIC_AUTH_TOKEN: 'gateway-key',
       ANTHROPIC_MODEL: 'gemini:gemini-2.5-pro',
@@ -1227,7 +1227,7 @@ describe('deriveConnectionConfig', () => {
     mocks.apiGatewayGetCurrentConfig.mockReturnValue({
       enabled: true,
       host: '127.0.0.1',
-      port: 23333,
+      port: 24333,
       apiKey: 'gateway-key'
     })
     mocks.getAppLanguage.mockReturnValue('en-US')
@@ -1289,7 +1289,7 @@ describe('deriveConnectionConfig', () => {
     mocks.apiGatewayGetCurrentConfig.mockReturnValue({
       enabled: true,
       host: '127.0.0.1',
-      port: 23333,
+      port: 24333,
       apiKey: 'gateway-key-1'
     })
     const first = await deriveSignature()
@@ -1297,7 +1297,7 @@ describe('deriveConnectionConfig', () => {
     mocks.apiGatewayGetCurrentConfig.mockReturnValue({
       enabled: true,
       host: '127.0.0.1',
-      port: 23333,
+      port: 24333,
       apiKey: 'gateway-key-2'
     })
     const changed = await deriveSignature()

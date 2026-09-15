@@ -36,13 +36,13 @@ import {
 describe('gatewayCredentialsFingerprint', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mocks.getCurrentConfig.mockReturnValue({ enabled: true, host: '127.0.0.1', port: 23333, apiKey: 'gw-key-1' })
+    mocks.getCurrentConfig.mockReturnValue({ enabled: true, host: '127.0.0.1', port: 24333, apiKey: 'gw-key-1' })
     mocks.isRunning.mockReturnValue(true)
   })
 
   it('changes when the gateway key rotates', () => {
     const before = gatewayCredentialsFingerprint()
-    mocks.getCurrentConfig.mockReturnValue({ enabled: true, host: '127.0.0.1', port: 23333, apiKey: 'gw-key-2' })
+    mocks.getCurrentConfig.mockReturnValue({ enabled: true, host: '127.0.0.1', port: 24333, apiKey: 'gw-key-2' })
     expect(gatewayCredentialsFingerprint()).not.toBe(before)
   })
 
@@ -51,7 +51,7 @@ describe('gatewayCredentialsFingerprint', () => {
     mocks.getCurrentConfig.mockReturnValue({ enabled: true, host: '127.0.0.2', port: 24444, apiKey: 'gw-key-1' })
     expect(gatewayCredentialsFingerprint()).not.toBe(before)
 
-    mocks.getCurrentConfig.mockReturnValue({ enabled: true, host: '127.0.0.1', port: 23333, apiKey: 'gw-key-1' })
+    mocks.getCurrentConfig.mockReturnValue({ enabled: true, host: '127.0.0.1', port: 24333, apiKey: 'gw-key-1' })
     mocks.isRunning.mockReturnValue(false)
     expect(gatewayCredentialsFingerprint()).not.toBe(before)
   })
@@ -66,7 +66,7 @@ describe('gatewayCredentialsFingerprint', () => {
 describe('resolveApiGatewayRuntime', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mocks.getCurrentConfig.mockReturnValue({ enabled: null, host: '127.0.0.1', port: 23333, apiKey: null })
+    mocks.getCurrentConfig.mockReturnValue({ enabled: null, host: '127.0.0.1', port: 24333, apiKey: null })
     mocks.isRunning.mockReturnValue(false)
     mocks.ensureRunning.mockResolvedValue(undefined)
     mocks.ensureValidApiKey.mockResolvedValue('generated-key')
@@ -76,7 +76,7 @@ describe('resolveApiGatewayRuntime', () => {
 
   it('starts the gateway on demand when intent is automatic', async () => {
     await expect(resolveApiGatewayRuntime('session-1')).resolves.toEqual({
-      baseUrl: 'http://127.0.0.1:23333',
+      baseUrl: 'http://127.0.0.1:24333',
       apiKey: 'generated-key',
       usageHeaders: { 'x-session': 'session-1' },
       internalRequestToken: 'internal-token'
@@ -87,7 +87,7 @@ describe('resolveApiGatewayRuntime', () => {
   })
 
   it('does not start the gateway after the user explicitly disabled it', async () => {
-    mocks.getCurrentConfig.mockReturnValue({ enabled: false, host: '127.0.0.1', port: 23333, apiKey: null })
+    mocks.getCurrentConfig.mockReturnValue({ enabled: false, host: '127.0.0.1', port: 24333, apiKey: null })
 
     await expect(resolveApiGatewayRuntime('session-1')).rejects.toBeInstanceOf(ApiGatewayNotRunningError)
     expect(mocks.ensureRunning).not.toHaveBeenCalled()

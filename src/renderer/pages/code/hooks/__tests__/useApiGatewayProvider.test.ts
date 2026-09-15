@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useApiGatewayProvider } from '../useApiGatewayProvider'
 
 const mocks = vi.hoisted(() => ({
-  apiGatewayConfig: { host: '127.0.0.1', port: 23333, apiKey: 'cs-sk-old', enabled: false } as {
+  apiGatewayConfig: { host: '127.0.0.1', port: 24333, apiKey: 'cs-sk-old', enabled: false } as {
     host: string
     port: number
     apiKey: string | null
@@ -29,7 +29,7 @@ vi.mock('react-i18next', () => ({
 
 describe('useApiGatewayProvider gateway lifecycle', () => {
   beforeEach(() => {
-    mocks.apiGatewayConfig = { host: '127.0.0.1', port: 23333, apiKey: 'cs-sk-old', enabled: false }
+    mocks.apiGatewayConfig = { host: '127.0.0.1', port: 24333, apiKey: 'cs-sk-old', enabled: false }
     mocks.apiGatewayRunning = false
     mocks.startApiGateway.mockReset()
     vi.mocked(preferenceService.get).mockReset()
@@ -58,7 +58,7 @@ describe('useApiGatewayProvider gateway lifecycle', () => {
 
   it('does not restart a running gateway', async () => {
     mocks.apiGatewayRunning = true
-    mocks.apiGatewayConfig = { host: '127.0.0.1', port: 23333, apiKey: 'cs-sk-live', enabled: true }
+    mocks.apiGatewayConfig = { host: '127.0.0.1', port: 24333, apiKey: 'cs-sk-live', enabled: true }
 
     const { result } = renderHook(() => useApiGatewayProvider())
 

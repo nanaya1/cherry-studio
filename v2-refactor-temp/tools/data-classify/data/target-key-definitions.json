@@ -322,7 +322,7 @@
     {
       "targetKey": "feature.openclaw.gateway_port",
       "type": "number",
-      "defaultValue": 18790,
+      "defaultValue": 19790,
       "status": "classified",
       "description": "OpenClaw gateway port"
     },
