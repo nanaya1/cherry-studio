@@ -53,6 +53,7 @@ import p_silicon from './silicon'
 import p_sophnet from './sophnet'
 import p_stepfun from './stepfun'
 import p_together from './together'
+import p_tokendance from './tokendance'
 import p_tokenhub from './tokenhub'
 import type { Provider } from './types'
 import p_vertexai from './vertexai'
@@ -66,7 +67,6 @@ import p_zhipu from './zhipu'
 export const PROVIDERS: Provider[] = [
   p_xuelang,
   p_cherryin,
-  p_radeon_cloud,
   p_silicon,
   p_aihubmix,
   p_ovms,
@@ -85,6 +85,8 @@ export const PROVIDERS: Provider[] = [
   p_qiniu,
   p_openrouter,
   p_ollama,
+  p_radeon_cloud,
+  p_tokendance,
   p_new_api,
   p_lmstudio,
   p_anthropic,

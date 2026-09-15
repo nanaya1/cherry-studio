@@ -1,5 +1,6 @@
-import { cn } from '@cherrystudio/ui/lib/utils'
 import type { FC, HTMLAttributes, ReactNode } from 'react'
+
+import { cn } from '@cherrystudio/ui/lib/utils'
 
 /** Matches NarrowLayout's `px-6` side padding, for callers doing inline padding math. */
 export const NARROW_LAYOUT_SIDE_PADDING_PX = 24

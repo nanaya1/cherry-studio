@@ -1,3 +1,9 @@
+import dayjs from 'dayjs'
+import { FilePenLine, MoreHorizontal, PinIcon, Plus, Trash2, Unlink, XIcon } from 'lucide-react'
+import type { MouseEvent, RefObject } from 'react'
+import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { useTranslation } from 'react-i18next'
+
 import { Tooltip } from '@cherrystudio/ui'
 import { dataApiService } from '@data/DataApiService'
 import { useCache, usePersistCache, useSharedCacheSelector } from '@data/hooks/useCache'
@@ -88,11 +94,6 @@ import { findLatestActive, pickNeighbourAfterRemoval } from '@renderer/utils/res
 import { cn } from '@renderer/utils/style'
 import { classifyTurn, type TopicStatusSnapshotEntry } from '@shared/ai/transport'
 import type { AssistantIconType, TopicTabPosition } from '@shared/data/preference/preferenceTypes'
-import dayjs from 'dayjs'
-import { FilePenLine, MoreHorizontal, PinIcon, Plus, Trash2, Unlink, XIcon } from 'lucide-react'
-import type { MouseEvent, RefObject } from 'react'
-import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
-import { useTranslation } from 'react-i18next'
 
 import {
   rejectPendingTopicImageActions,
@@ -1556,7 +1557,7 @@ export function Topics({
           assistantMoveTargets={assistantMoveTargets}
           deletingTopicId={deletingTopicId}
           displayMode={displayMode}
-          exportMenuOptions={exportMenuOptions as TopicExportMenuOptions}
+          exportMenuOptions={exportMenuOptions}
           isNewlyRenamed={isNewlyRenamed}
           isRenaming={isRenaming}
           listRef={listRef}
@@ -1842,7 +1843,7 @@ const TopicRow = memo(function TopicRow({
           : null
   const hasTopicStreamIndicator = conversationRowStatus !== null && conversationRowStatus !== 'approval'
   const showPinAction = !rowState.renaming
-  const showLeadingSlot = displayMode !== 'time' && !topic.pinned
+  const showLeadingSlot = displayMode !== 'time'
   const isConfirmingDeletion = deletingTopicId === topic.id
   const canDeleteTopic = !topic.pinned
   const [renameDialogOpen, setRenameDialogOpen] = useState(false)
@@ -1916,11 +1917,12 @@ const TopicRow = memo(function TopicRow({
           status={conversationRowStatus}
         />
       )}
-      <ResourceList.ItemActions active={isConfirmingDeletion}>
+      <ResourceList.ItemActions active={isConfirmingDeletion} pinned={topic.pinned && showPinAction}>
         {showPinAction && (
           <Tooltip title={topic.pinned ? t('chat.topics.unpin') : t('chat.topics.pin')} delay={500}>
             <ResourceList.ItemAction
               aria-label={topic.pinned ? t('chat.topics.unpin') : t('chat.topics.pin')}
+              aria-pressed={topic.pinned}
               className={cn(topic.pinned && 'text-foreground')}
               onClick={(event) => {
                 event.stopPropagation()

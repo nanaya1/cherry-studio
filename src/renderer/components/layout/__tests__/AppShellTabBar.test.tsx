@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest'
-
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ComponentProps, ReactNode } from 'react'
@@ -156,12 +155,9 @@ const mockCloseAnimation = () => {
     x: 0,
     y: 0,
     toJSON: () => ({})
-  } as DOMRect)
+  })
   vi.useFakeTimers()
-  vi.stubGlobal(
-    'requestAnimationFrame',
-    (cb: FrameRequestCallback) => window.setTimeout(() => cb(0), 16) as unknown as number
-  )
+  vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => window.setTimeout(() => cb(0), 16))
   vi.stubGlobal('cancelAnimationFrame', (id: number) => window.clearTimeout(id))
 
   return () => {
@@ -317,7 +313,7 @@ describe('AppShellTabBar', () => {
         x: 0,
         y: 0,
         toJSON: () => ({})
-      } as DOMRect
+      }
     })
     Object.defineProperty(HTMLElement.prototype, 'setPointerCapture', {
       configurable: true,
@@ -381,7 +377,7 @@ describe('AppShellTabBar', () => {
         x: 0,
         y: 0,
         toJSON: () => ({})
-      } as DOMRect
+      }
     })
     const originalSetPointerCapture = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'setPointerCapture')
     Object.defineProperty(HTMLElement.prototype, 'setPointerCapture', {
@@ -672,7 +668,7 @@ describe('AppShellTabBar', () => {
         x: 0,
         y: 0,
         toJSON: () => ({})
-      } as DOMRect)
+      })
 
       try {
         const closeTab = renderTabBar()
@@ -772,12 +768,9 @@ describe('AppShellTabBar', () => {
       x: 0,
       y: 0,
       toJSON: () => ({})
-    } as DOMRect)
+    })
     vi.useFakeTimers()
-    vi.stubGlobal(
-      'requestAnimationFrame',
-      (cb: FrameRequestCallback) => window.setTimeout(() => cb(0), 16) as unknown as number
-    )
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => window.setTimeout(() => cb(0), 16))
 
     try {
       const staleCloseTab = vi.fn()
@@ -1020,13 +1013,10 @@ describe('AppShellTabBar', () => {
         x: geometry.left,
         y: 0,
         toJSON: () => ({})
-      } as DOMRect
+      }
     })
     vi.useFakeTimers()
-    vi.stubGlobal(
-      'requestAnimationFrame',
-      (cb: FrameRequestCallback) => window.setTimeout(() => cb(0), 16) as unknown as number
-    )
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => window.setTimeout(() => cb(0), 16))
 
     try {
       renderTabBar({
@@ -1152,7 +1142,7 @@ describe('AppShellTabBar', () => {
         width: geometry.width,
         height: geometry.height,
         toJSON: () => ({})
-      } as DOMRect
+      }
     })
 
     Object.defineProperty(HTMLElement.prototype, 'setPointerCapture', { configurable: true, value: vi.fn() })

@@ -1,8 +1,9 @@
+import { useCallback } from 'react'
+
 import { useMutation } from '@data/hooks/useDataApi'
 import { getTopicBranchCachePaths } from '@renderer/hooks/useTopicMessagesCache'
 import { useTopicStreamStatus } from '@renderer/hooks/useTopicStreamStatus'
 import { EVENT_NAMES, EventEmitter } from '@renderer/services/EventService'
-import { useCallback } from 'react'
 
 export function useTopicBranchActions(topicId: string) {
   const { isPending, status } = useTopicStreamStatus(topicId)

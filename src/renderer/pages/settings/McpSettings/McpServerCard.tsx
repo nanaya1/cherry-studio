@@ -1,3 +1,9 @@
+import { CircleXIcon, ExternalLink, Plug } from 'lucide-react'
+import type React from 'react'
+import { FC, useCallback, useEffect, useState } from 'react'
+import type { FallbackProps } from 'react-error-boundary'
+import { useTranslation } from 'react-i18next'
+
 import { Alert, Badge, Button, Switch, Tooltip } from '@cherrystudio/ui'
 import { loggerService } from '@logger'
 import { ErrorBoundary } from '@renderer/components/ErrorBoundary'
@@ -9,17 +15,10 @@ import { getMcpTypeLabelKey } from '@renderer/i18n/label'
 import { ipcApi } from '@renderer/ipc'
 import { popup } from '@renderer/services/popup'
 import { toast } from '@renderer/services/toast'
-import { formatMcpError } from '@renderer/utils/error'
-import { formatErrorMessage } from '@renderer/utils/error'
+import { formatMcpError, formatErrorMessage } from '@renderer/utils/error'
 import { cn } from '@renderer/utils/style'
 import type { UpdateMcpServerDto } from '@shared/data/api/schemas/mcpServers'
 import type { McpServer } from '@shared/data/types/mcpServer'
-import { CircleXIcon, ExternalLink, Plug } from 'lucide-react'
-import type React from 'react'
-import type { FC } from 'react'
-import { useCallback, useEffect, useState } from 'react'
-import type { FallbackProps } from 'react-error-boundary'
-import { useTranslation } from 'react-i18next'
 
 import { isQVerisApiKeyMissing, QVerisApiKeyGuide } from './QVerisApiKeyGuide'
 import { useMcpServerTrust } from './useMcpServerTrust'
@@ -202,7 +201,7 @@ const McpServerCard: FC<McpServerCardProps> = ({ server, onEdit, variant = 'sett
           showIcon
           type="error"
           style={{ height: 125, alignItems: 'flex-start', padding: 12, borderRadius: 'var(--radius-lg)' }}
-          description={<div className="line-clamp-3 text-error text-xs leading-5">{errorDetails}</div>}
+          description={<div className="line-clamp-3 text-xs leading-5 text-error">{errorDetails}</div>}
           onClick={onClickDetails}
           action={
             <div className="flex items-center gap-1">
@@ -375,7 +374,7 @@ const ServerLogo = ({ className, ...props }: React.ComponentPropsWithoutRef<'img
 const MutedCell = ({ className, ...props }: React.ComponentPropsWithoutRef<'div'>) => (
   <div
     className={cn(
-      'hidden w-16 shrink-0 truncate text-right text-muted-foreground text-sm tabular-nums min-[1180px]:block',
+      'hidden w-16 shrink-0 truncate text-right text-sm text-muted-foreground tabular-nums min-[1180px]:block',
       className
     )}
     {...props}

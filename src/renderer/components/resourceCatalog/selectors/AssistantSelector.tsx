@@ -1,3 +1,6 @@
+import { lazy, type ReactElement, Suspense, useCallback, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+
 import { loggerService } from '@logger'
 import {
   ResourceCreateWizard,
@@ -13,8 +16,6 @@ import { buildCreateAssistantDto } from '@renderer/utils/resourceCatalog'
 import type { Assistant } from '@shared/data/types/assistant'
 import { isNonChatModel } from '@shared/utils/model'
 import { Bot } from 'lucide-react'
-import { lazy, type ReactElement, Suspense, useCallback, useMemo, useState } from 'react'
-import { useTranslation } from 'react-i18next'
 
 import {
   ResourceSelectorShell,

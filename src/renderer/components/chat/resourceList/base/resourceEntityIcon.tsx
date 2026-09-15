@@ -1,11 +1,12 @@
+import type { TFunction } from 'i18next'
+import { Bot, Check } from 'lucide-react'
+import type { ReactNode } from 'react'
+
 import ModelAvatar from '@renderer/components/Avatar/ModelAvatar'
 import type { ActionDescriptor, ResolvedAction } from '@renderer/components/chat/actions/actionTypes'
 import type { AgentConfiguration } from '@shared/data/api/schemas/agents'
 import type { AssistantIconType } from '@shared/data/preference/preferenceTypes'
 import { isUniqueModelId, parseUniqueModelId } from '@shared/data/types/model'
-import type { TFunction } from 'i18next'
-import { Bot, Check } from 'lucide-react'
-import type { ReactNode } from 'react'
 
 import { buildResolvedResourceEntityMenuAction } from './resourceEntityActions'
 

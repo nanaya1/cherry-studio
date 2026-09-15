@@ -1,4 +1,4 @@
-import { type SystemProviderId,SystemProviderIds } from '@shared/utils/systemProviderId'
+import { type SystemProviderId, SystemProviderIds } from '@shared/utils/systemProviderId'
 import { net } from 'electron'
 
 import {

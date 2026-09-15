@@ -1,11 +1,11 @@
 import './Sidebar.css'
+import { Search, ChevronDown } from 'lucide-react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 
 import { MenuItem } from '@cherrystudio/ui'
 import useMacTransparentWindow from '@renderer/hooks/useMacTransparentWindow'
 import { isMac } from '@renderer/utils/platform'
 import { cn } from '@renderer/utils/style'
-import { ChevronDown, Search } from 'lucide-react'
-import React, { useCallback, useEffect, useRef, useState } from 'react'
 
 import { getSidebarDisplayWidth, getSidebarLayout } from './constants'
 import { DefaultLogo } from './primitives'
@@ -37,6 +37,7 @@ export interface SidebarProps {
   user?: SidebarUser
   isFloating?: boolean
   showHeader?: boolean
+  isFullscreen?: boolean
   searchLabel?: string
   extensionsLabel?: string
   actions?: SidebarFooterActions
@@ -64,6 +65,7 @@ export function Sidebar({
   user,
   isFloating = false,
   showHeader = true,
+  isFullscreen = false,
   searchLabel = '',
   extensionsLabel = '',
   actions,
@@ -313,7 +315,12 @@ export function Sidebar({
             floatingPointerInsideRef.current = true
             clearHoverDismiss()
           }}>
-          <div className={cn('flex h-11 shrink-0 items-center px-2', windowDragClassName)}>
+          <div
+            className={cn(
+              'flex shrink-0 px-2',
+              isMac && !isFullscreen ? 'h-10 items-start' : 'h-12 items-center',
+              windowDragClassName
+            )}>
             {renderHeaderIdentity('default', true)}
           </div>
 
@@ -385,9 +392,10 @@ export function Sidebar({
       {showHeader && (
         <div
           className={cn(
-            'flex shrink-0 items-center',
+            'flex shrink-0',
+            isMac && !isFullscreen ? 'h-10 items-start' : 'h-12 items-center',
             windowDragClassName,
-            layout === 'full' ? 'h-11 px-2' : 'h-11 justify-center'
+            layout === 'full' ? 'px-2' : 'justify-center'
           )}>
           {renderHeaderIdentity(layout === 'icon' ? 'sm' : 'default', layout === 'full')}
         </div>

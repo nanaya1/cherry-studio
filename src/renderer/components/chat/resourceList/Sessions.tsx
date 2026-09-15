@@ -1,3 +1,7 @@
+import { Folder, FolderOpen, MoreHorizontal, Plus } from 'lucide-react'
+import { lazy, memo, type RefObject, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+
 import { Button, Tooltip } from '@cherrystudio/ui'
 import { loggerService } from '@logger'
 import { actionsToCommandMenuExtraItems } from '@renderer/components/chat/actions/actionMenuItems'
@@ -86,9 +90,6 @@ import {
   type AgentWorkspaceEntity
 } from '@shared/data/api/schemas/agentWorkspaces'
 import type { AssistantIconType, TopicTabPosition } from '@shared/data/preference/preferenceTypes'
-import { Folder, FolderOpen, MoreHorizontal, Plus } from 'lucide-react'
-import { lazy, memo, type RefObject, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useTranslation } from 'react-i18next'
 
 import {
   type AgentSessionImageActionRequest,
@@ -1005,9 +1006,8 @@ const Sessions = ({
 
   const handleExportSessionWord = useCallback(
     async (session: AgentSessionEntity) => {
-      const { agentSessionToMarkdown, getAgentSessionExportTitle } = await import(
-        '@renderer/services/agentSessionExport'
-      )
+      const { agentSessionToMarkdown, getAgentSessionExportTitle } =
+        await import('@renderer/services/agentSessionExport')
       const title = getAgentSessionExportTitle(session)
       const markdown = await agentSessionToMarkdown(session, undefined, undefined, getSessionExportOptions(session))
       await ipcApi.request('export.word.from_markdown', {
@@ -1865,7 +1865,7 @@ const Sessions = ({
 
   const sessionMenuActions = useMemo<SessionItemMenuActions>(
     () => ({
-      exportMenuOptions: exportMenuOptions as SessionItemMenuActions['exportMenuOptions'],
+      exportMenuOptions: exportMenuOptions,
       onAutoRename: handleAutoRenameSession,
       onCopyImage: handleCopySessionImage,
       onCopyMarkdown: handleCopySessionMarkdown,
@@ -2121,7 +2121,8 @@ function SessionListBody({
         // The slot exists to line a row up under its group's icon. A pinned row is lifted out to the
         // pinned group, where there is no such icon above it, so it indents against nothing.
         reserveLeadingIconSlot={
-          !session.pinned && displayMode !== 'time' && !(displayMode === 'workdir' && isSystemWorkspaceSession(session))
+          displayMode === 'agent' ||
+          (displayMode === 'workdir' && !session.pinned && !isSystemWorkspaceSession(session))
         }
         onTogglePin={onTogglePin}
         onDelete={onDeleteSession}

@@ -1,7 +1,8 @@
+import type { ReactNode } from 'react'
+
 import { MenuItem } from '@cherrystudio/ui'
 import { CommandContextMenu } from '@renderer/components/command'
 import { cn } from '@renderer/utils/style'
-import type { ReactNode } from 'react'
 
 import { ActiveIndicator } from './primitives'
 import type { SidebarClickGuard } from './SidebarSortableList'

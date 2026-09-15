@@ -1,12 +1,13 @@
+import { Check, FolderSearch, Import, Loader2, TriangleAlert } from 'lucide-react'
+import { useCallback, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+
 import { Button, Center, Dialog, DialogContent, DialogHeader, DialogTitle, EmptyState, Spinner } from '@cherrystudio/ui'
 import { ResourceCatalogSearchInput } from '@renderer/components/resourceCatalog/ResourceCatalogSearchInput'
 import { useSystemSkills } from '@renderer/hooks/useSkills'
 import { toast } from '@renderer/services/toast'
 import type { SystemSkillCandidate } from '@shared/types/skill'
 import { getSystemSkillDescription, getSystemSkillDisplayName } from '@shared/utils/skillDisplay'
-import { Check, FolderSearch, Import, Loader2, TriangleAlert } from 'lucide-react'
-import { useCallback, useMemo, useState } from 'react'
-import { useTranslation } from 'react-i18next'
 
 type BaseProps = {
   open: boolean
@@ -60,10 +61,10 @@ export function SystemSkillDialog({ mode, open, onOpenChange, onEnabled, selecte
         size="xl"
         className="flex h-[min(640px,82vh)] flex-col gap-0 overflow-hidden p-0"
         data-testid="system-skill-dialog">
-        <div className="shrink-0 border-border-subtle border-b px-6 pt-5 pb-4">
+        <div className="shrink-0 border-b border-border-subtle px-6 pt-5 pb-4">
           <DialogHeader className="min-w-0 text-left">
             <DialogTitle>{t('library.system_skill.title')}</DialogTitle>
-            <p className="mt-1 text-muted-foreground text-xs">{t('library.system_skill.description')}</p>
+            <p className="mt-1 text-xs text-muted-foreground">{t('library.system_skill.description')}</p>
           </DialogHeader>
           <ResourceCatalogSearchInput
             autoFocus
@@ -76,7 +77,7 @@ export function SystemSkillDialog({ mode, open, onOpenChange, onEnabled, selecte
 
         <div className="flex min-h-0 flex-1 flex-col">
           {loading && skills.length === 0 ? (
-            <Center className="min-h-0 flex-1 text-foreground-tertiary text-sm">
+            <Center className="min-h-0 flex-1 text-sm text-foreground-tertiary">
               <Spinner text={t('common.loading')} />
             </Center>
           ) : error ? (
@@ -148,7 +149,7 @@ function SystemSkillRow({
   return (
     <div
       role="listitem"
-      className="flex min-h-20 items-center gap-4 border-border-subtle border-b px-2 py-3 last:border-b-0">
+      className="flex min-h-20 items-center gap-4 border-b border-border-subtle px-2 py-3 last:border-b-0">
       <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-secondary text-foreground-tertiary">
         {skill.status === 'conflict' ? <TriangleAlert className="size-4" /> : <FolderSearch className="size-4" />}
       </div>

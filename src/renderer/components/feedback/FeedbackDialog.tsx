@@ -1,3 +1,7 @@
+import { ChevronRight, Github } from 'lucide-react'
+import { type ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
+
 import {
   Badge,
   Dialog,
@@ -16,9 +20,6 @@ import {
 import { loggerService } from '@logger'
 import { ipcApi } from '@renderer/ipc'
 import { toast } from '@renderer/services/toast'
-import { ChevronRight, Github } from 'lucide-react'
-import type { ReactNode } from 'react'
-import { useTranslation } from 'react-i18next'
 
 export const FEEDBACK_GITHUB_URL = 'https://github.com/CherryHQ/cherry-studio/issues/new/choose'
 
