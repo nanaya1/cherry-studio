@@ -60,6 +60,7 @@ const SelectionAssistantSettings: FC = () => {
     const checkMacProcessTrust = async () => {
       const isTrusted = await ipcApi.request('system.mac.is_process_trusted')
       if (!isTrusted) {
+        setIsMacTrustModalOpen(true)
         void setSelectionEnabled(false)
       }
     }
