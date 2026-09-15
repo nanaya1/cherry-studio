@@ -470,7 +470,7 @@ describe('PiRuntimeConnection', () => {
         api: 'anthropic-messages',
         providerConfig: {
           name: 'Cherry Cloud',
-          baseUrl: 'http://127.0.0.1:23333',
+          baseUrl: 'http://127.0.0.1:24333',
           apiKey: 'placeholder',
           api: 'anthropic-messages',
           models: []

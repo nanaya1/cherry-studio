@@ -171,7 +171,7 @@ describe('extractConnectionFromCliConfigDraft', () => {
           provider: {
             'cherry-gateway': {
               npm: '@ai-sdk/anthropic',
-              options: { apiKey: 'cs-sk', baseURL: 'http://127.0.0.1:23333/v1' },
+              options: { apiKey: 'cs-sk', baseURL: 'http://127.0.0.1:24333/v1' },
               models: { 'deepseek:deepseek-chat': { name: 'DeepSeek Chat' } }
             }
           }
@@ -179,7 +179,7 @@ describe('extractConnectionFromCliConfigDraft', () => {
       }
     ]
     expect(extractConnectionFromCliConfigDraft(CodeCli.OPEN_CODE, files)).toEqual({
-      baseUrl: 'http://127.0.0.1:23333/v1',
+      baseUrl: 'http://127.0.0.1:24333/v1',
       apiKey: 'cs-sk',
       model: 'deepseek:deepseek-chat'
     })

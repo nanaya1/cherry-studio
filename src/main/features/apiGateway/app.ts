@@ -73,14 +73,14 @@ interface BuildAppOptions {
  * `host`/`port` default to the `feature.api_gateway.*` preference defaults so the
  * integration tests can call `buildApp()` with no arguments; `server.ts` passes
  * the live preference values. They populate the OpenAPI `servers` URL so Scalar
- * renders copyable absolute curl examples (e.g. `curl http://127.0.0.1:23333/health`)
+ * renders copyable absolute curl examples (e.g. `curl http://127.0.0.1:24333/health`)
  * instead of relative paths.
  *
  * Exported for both the runtime server (`server.ts`) and the integration tests.
  */
 export function buildApp({
   host = '127.0.0.1',
-  port = 23333,
+  port = 24333,
   mcpSessions = new McpSessionStore()
 }: BuildAppOptions = {}) {
   const app = new Elysia({ adapter: node() })

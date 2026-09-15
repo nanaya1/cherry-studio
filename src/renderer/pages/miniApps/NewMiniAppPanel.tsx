@@ -23,7 +23,9 @@ import { checkEntityImageSize, prepareEntityImageBytes } from '@renderer/utils/i
 import { uuid } from '@renderer/utils/uuid'
 import { MiniAppUrlSchema } from '@shared/data/api/schemas/miniApps'
 import type { MiniApp } from '@shared/data/types/miniApp'
-import { ExternalLink, Globe, Package, Upload } from 'lucide-react'
+// 停用 ExternalLink 引用（「开发者文档」入口暂时隐藏）。恢复时取消下方注释。
+// import { ExternalLink, Globe, Package, Upload } from 'lucide-react'
+import { Globe, Package, Upload } from 'lucide-react'
 import type { ChangeEvent, FC } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -39,7 +41,8 @@ interface Props {
 type AddTab = 'site' | 'app'
 
 const logger = loggerService.withContext('NewMiniAppPanel')
-const MINI_APP_DEVELOPER_DOCS_URL = 'https://github.com/CherryHQ/cherry-studio-miniapps'
+// 「开发者文档」入口暂时隐藏：跳转目标属 Cherry（CherryHQ）官方仓库。恢复时取消下方注释。
+// const MINI_APP_DEVELOPER_DOCS_URL = 'https://github.com/CherryHQ/cherry-studio-miniapps'
 
 /**
  * The one "add" dialog. Creating offers two tabs — a custom website, or an installed
@@ -126,14 +129,15 @@ const NewMiniAppPanel: FC<Props> = ({ open, app, onClose }) => {
     setStagedFile(file)
   }
 
-  const handleOpenDeveloperDocs = async () => {
-    try {
-      await ipcApi.request('system.shell.open_website', MINI_APP_DEVELOPER_DOCS_URL)
-    } catch (error) {
-      logger.error('Failed to open mini app developer documentation', error as Error)
-      toast.error(t('miniApp.add.developer_docs_open_failed'))
-    }
-  }
+  // 「开发者文档」入口暂时隐藏：跳转目标属 Cherry（CherryHQ）官方仓库。恢复时取消下方注释。
+  // const handleOpenDeveloperDocs = async () => {
+  //   try {
+  //     await ipcApi.request('system.shell.open_website', MINI_APP_DEVELOPER_DOCS_URL)
+  //   } catch (error) {
+  //     logger.error('Failed to open mini app developer documentation', error as Error)
+  //     toast.error(t('miniApp.add.developer_docs_open_failed'))
+  //   }
+  // }
 
   const handleSubmit = async () => {
     const trimmedUrl = url.trim()
@@ -278,6 +282,8 @@ const NewMiniAppPanel: FC<Props> = ({ open, app, onClose }) => {
                 <div className="mt-3 flex items-center gap-3 rounded-lg bg-muted px-3 py-2.5">
                   <Package className="size-4 shrink-0 text-muted-foreground" />
                   <p className="min-w-0 flex-1 text-sm">{t('miniApp.add.app_description')}</p>
+                  {/* 「开发者文档」入口暂时隐藏：跳转目标属 Cherry（CherryHQ）官方仓库。恢复时取消下方注释。 */}
+                  {/*
                   <Button
                     type="button"
                     variant="link"
@@ -287,6 +293,7 @@ const NewMiniAppPanel: FC<Props> = ({ open, app, onClose }) => {
                     {t('miniApp.add.developer_docs')}
                     <ExternalLink className="size-3.5" />
                   </Button>
+                  */}
                 </div>
                 <InstallMiniAppPicker onClose={handleClose} />
               </TabsContent>

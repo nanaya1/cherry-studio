@@ -1196,7 +1196,7 @@ describe('writeCliConfigDraft', () => {
   })
 
   describe('cherry gateway (synthetic provider — gateway URL + gateway key, never the real provider key)', () => {
-    const GATEWAY_BASE_URL = 'http://127.0.0.1:23333'
+    const GATEWAY_BASE_URL = 'http://127.0.0.1:24333'
     // Field-complete synthetic provider, mirroring useApiGatewayProvider: all three
     // endpoints point at the local gateway, so any CLI's endpoint pick resolves to it.
     const gatewayProvider = {

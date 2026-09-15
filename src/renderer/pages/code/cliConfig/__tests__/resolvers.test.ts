@@ -88,13 +88,13 @@ describe('resolveGeminiBaseUrl', () => {
         provider({
           id: CLI_API_GATEWAY_PROVIDER_ID,
           endpointConfigs: {
-            'anthropic-messages': { baseUrl: 'http://127.0.0.1:23333' },
-            'openai-chat-completions': { baseUrl: 'http://127.0.0.1:23333' },
-            'openai-responses': { baseUrl: 'http://127.0.0.1:23333' }
+            'anthropic-messages': { baseUrl: 'http://127.0.0.1:24333' },
+            'openai-chat-completions': { baseUrl: 'http://127.0.0.1:24333' },
+            'openai-responses': { baseUrl: 'http://127.0.0.1:24333' }
           }
         })
       )
-    ).toBe('http://127.0.0.1:23333')
+    ).toBe('http://127.0.0.1:24333')
   })
 })
 

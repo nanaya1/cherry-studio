@@ -250,7 +250,7 @@ describe('updateCliConfigDraftConfig', () => {
           provider: {
             'cherry-gateway': {
               npm: '@ai-sdk/anthropic',
-              options: { apiKey: 'cs-sk', baseURL: 'http://127.0.0.1:23333/v1' },
+              options: { apiKey: 'cs-sk', baseURL: 'http://127.0.0.1:24333/v1' },
               models: { 'deepseek:deepseek-chat': { name: 'DeepSeek Chat' } }
             }
           }
@@ -279,7 +279,7 @@ describe('updateCliConfigDraftConfig', () => {
         path: '/resolved~/.gemini/.env',
         language: 'dotenv',
         content:
-          'GEMINI_API_KEY=cs-sk-gateway\nGOOGLE_GEMINI_BASE_URL=http://127.0.0.1:23333\nGOOGLE_GENAI_API_VERSION=v1beta\n'
+          'GEMINI_API_KEY=cs-sk-gateway\nGOOGLE_GEMINI_BASE_URL=http://127.0.0.1:24333\nGOOGLE_GENAI_API_VERSION=v1beta\n'
       },
       {
         target: 'gemini-settings' as CliConfigTarget,

@@ -23,8 +23,9 @@ describe('createGatewayOAuthProvider', () => {
 
     // PkceOAuthClient keeps its config private; the authorize URL it builds is
     // the observable contract (minus the per-request PKCE/state randomness).
-    const request = (def.createClient({}) as { createAuthorizationRequest: () => { authUrl: string } })
-      .createAuthorizationRequest()
+    const request = (
+      def.createClient({}) as { createAuthorizationRequest: () => { authUrl: string } }
+    ).createAuthorizationRequest()
     expect(request.authUrl.startsWith('https://open.cherryin.ai/oauth2/auth?')).toBe(true)
     expect(request.authUrl).toContain('client_id=2a348c87-bae1-4756-a62f-b2e97200fd6d')
     expect(request.authUrl).toContain('redirect_uri=meacowork%3A%2F%2Foauth%2Fcallback')
@@ -36,13 +37,32 @@ describe('createGatewayOAuthProvider', () => {
     expect(def.providerId).toBe('xuelang')
     expect(def.clientId).toBe('2a348c87-bae1-4756-a62f-b2e97200fd6d')
 
-    const request = (def.createClient({}) as { createAuthorizationRequest: () => { authUrl: string } })
-      .createAuthorizationRequest()
+    const request = (
+      def.createClient({}) as { createAuthorizationRequest: () => { authUrl: string } }
+    ).createAuthorizationRequest()
     expect(request.authUrl).toContain('https://api.xuelanglm.com/oauth2/auth?')
     expect(request.authUrl).toContain('client_id=2a348c87-bae1-4756-a62f-b2e97200fd6d')
   })
 
-  it('rejects hosts outside the provider allowlist', () => {
+  it('keeps production xuelang isolated from local configuration', () => {
+    const def = createGatewayOAuthProvider('xuelang')
+    const request = (def.createClient({}) as { createAuthorizationRequest: () => { authUrl: string } }).createAuthorizationRequest()
+    expect(request.authUrl).toContain('https://api.xuelanglm.com/oauth2/auth?')
+    expect(request.authUrl).not.toContain('localhost')
+  })
+
+  it('ignores renderer host overrides for xuelang', () => {
+    const def = createGatewayOAuthProvider('xuelang')
+    const request = (
+      def.createClient({ oauthServer: 'https://open.cherryin.ai', apiHost: 'https://open.cherryin.ai' }) as {
+        createAuthorizationRequest: () => { authUrl: string }
+      }
+    ).createAuthorizationRequest()
+
+    expect(request.authUrl).toContain('https://api.xuelanglm.com/oauth2/auth?')
+  })
+
+  it('rejects hosts outside the provider allowlist for CherryIN', () => {
     const def = createGatewayOAuthProvider('cherryin')
     expect(() => def.createClient({ oauthServer: 'https://api.xuelanglm.com' })).toThrow(/Unauthorized API host/)
   })

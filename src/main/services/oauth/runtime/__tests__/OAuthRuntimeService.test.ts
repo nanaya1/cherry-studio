@@ -79,7 +79,8 @@ vi.mock('../providerDefinitions', () => ({
       clientId: 'cherryin-client',
       transport: { type: 'deep-link', config: { redirectUri: 'app://cb' } },
       createClient: () => h.clientMock,
-      afterPersistTokens: (tokenData: unknown, context: unknown) => h.afterPersistMock(tokenData, context)
+      afterPersistTokens: (tokenData: unknown, context: unknown) => h.afterPersistMock(tokenData, context),
+      provisionApiKeys: vi.fn(async () => 'managed-key')
     }
   }
 }))
@@ -119,6 +120,16 @@ describe('OAuthRuntimeService', () => {
     h.transportMock.close.mockReset()
     service = new TestOAuthRuntimeService()
     service.initializeForTest()
+  })
+
+  it('provisions managed keys from the current OAuth access token', async () => {
+    seedOAuth('cherryin', { accessToken: 'tok', expiresAt: FUTURE() })
+
+    await expect(service.provisionApiKeys('cherryin')).resolves.toBe('managed-key')
+  })
+
+  it('rejects managed key provisioning without an OAuth session', async () => {
+    await expect(service.provisionApiKeys('cherryin')).rejects.toThrow(/not signed in/)
   })
 
   it('returns a still-valid token without refreshing', async () => {
@@ -259,6 +270,10 @@ describe('OAuthRuntimeService', () => {
     expect(h.refreshMock).toHaveBeenCalledTimes(1)
     expect(a?.accessToken).toBe('new')
     expect(b?.accessToken).toBe('new')
+    expect(h.providerStore.get('codex')?.authConfig).toMatchObject({
+      accessToken: 'new',
+      refreshToken: 'r2'
+    })
   })
 
   // W3: a server-revoked token 401s before local expiry; authenticatedFetch

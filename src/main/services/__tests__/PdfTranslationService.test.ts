@@ -146,7 +146,7 @@ describe('PdfTranslationService', () => {
     })
     apiGateway.acquireLease.mockResolvedValue(undefined)
     apiGateway.ensureValidApiKey.mockResolvedValue('cs-sk-test')
-    apiGateway.getCurrentConfig.mockReturnValue({ host: '127.0.0.1', port: 23333 })
+    apiGateway.getCurrentConfig.mockReturnValue({ host: '127.0.0.1', port: 24333 })
 
     mocks.spawn.mockImplementation((_command: string, args: string[]) => {
       const child = new EventEmitter() as EventEmitter & {
@@ -199,7 +199,7 @@ describe('PdfTranslationService', () => {
         '--openai-model',
         'openai:gpt-4.1',
         '--openai-base-url',
-        'http://127.0.0.1:23333/v1',
+        'http://127.0.0.1:24333/v1',
         '--lang-in',
         'en-US',
         '--lang-out',
@@ -902,7 +902,7 @@ describe('PdfTranslationService', () => {
     })
 
     it('strips the brackets an IPv6 gateway host carries', async () => {
-      apiGateway.getCurrentConfig.mockReturnValue({ host: '::', port: 23333 })
+      apiGateway.getCurrentConfig.mockReturnValue({ host: '::', port: 24333 })
 
       const env = await spawnedEnv()
 

@@ -3,6 +3,8 @@ import { createHash, randomBytes } from 'node:crypto'
 import { net } from 'electron'
 import * as z from 'zod'
 
+import { OAuthServiceError } from '../errors'
+
 // Bound every token-endpoint call (code exchange + refresh). Electron's `net.fetch`
 // has no default timeout, so a hung/unreachable token endpoint would otherwise
 // block indefinitely — stalling both the aiSdk chat path and the pi runtime's
@@ -32,6 +34,8 @@ export interface PkceOAuthClientConfig {
   scope: string
   /** Provider-specific flags appended to the authorization URL query. */
   extraAuthParams?: Record<string, string>
+  /** Require the gateway token contract on the initial authorization exchange. */
+  requireGatewayTokenResponse?: boolean
 }
 
 export interface AuthorizationRequest {
@@ -137,6 +141,18 @@ export class PkceOAuthClient {
       throw new OAuthHttpError(`${errorPrefix}: ${response.status}`, response.status, body)
     }
 
-    return OAuthTokenResponseSchema.parse(await response.json())
+    const tokenData = OAuthTokenResponseSchema.parse(await response.json())
+    if (this.config.requireGatewayTokenResponse) {
+      if (!tokenData.refresh_token) {
+        throw new OAuthServiceError('Gateway token response is missing refresh_token', undefined, 'INVALID_TOKEN_RESPONSE')
+      }
+      if (tokenData.token_type && tokenData.token_type !== 'Bearer') {
+        throw new OAuthServiceError('Gateway token response has an unsupported token_type', undefined, 'INVALID_TOKEN_RESPONSE')
+      }
+      if (tokenData.expires_in === undefined || tokenData.expires_in <= 0) {
+        throw new OAuthServiceError('Gateway token response has an invalid expires_in', undefined, 'INVALID_TOKEN_RESPONSE')
+      }
+    }
+    return tokenData
   }
 }

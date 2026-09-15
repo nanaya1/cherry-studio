@@ -172,7 +172,7 @@ describe('DeepSeekHarnessService', () => {
     mocks.rollbackConfig.mockResolvedValue(true)
     mocks.gatewayStart.mockResolvedValue(undefined)
     mocks.gatewayEnsureKey.mockResolvedValue('gateway-key')
-    mocks.gatewayGetConfig.mockReturnValue({ host: '127.0.0.1', port: 23333 })
+    mocks.gatewayGetConfig.mockReturnValue({ host: '127.0.0.1', port: 24333 })
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => ({ status: 200, body: { cancel: vi.fn(async () => undefined) } }))
@@ -311,7 +311,7 @@ describe('DeepSeekHarnessService', () => {
         credentialRef: 'CHERRY_STUDIO_CODEMATE_GATEWAY_API_KEY',
         credentialValue: 'gateway-key',
         protocol: 'openai-completions',
-        baseUrl: 'http://127.0.0.1:23333/v1',
+        baseUrl: 'http://127.0.0.1:24333/v1',
         modelId: 'anthropic:claude-sonnet',
         agentPreset: 'code'
       })

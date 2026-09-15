@@ -51,7 +51,7 @@ const GATEWAY_USAGE_HEADERS = {
   'x-cherry-internal-usage-token': 'usage-token'
 }
 const GATEWAY = {
-  baseUrl: 'http://127.0.0.1:23333',
+  baseUrl: 'http://127.0.0.1:24333',
   apiKey: GATEWAY_KEY,
   usageHeaders: GATEWAY_USAGE_HEADERS
 }
@@ -537,7 +537,7 @@ describe('Cherry Cloud Pi injection', () => {
     const injection = buildPiGatewayInjection(provider, model, GATEWAY)
 
     expect(injection.api).toBe('anthropic-messages')
-    expect(injection.providerConfig.baseUrl).toBe('http://127.0.0.1:23333')
+    expect(injection.providerConfig.baseUrl).toBe('http://127.0.0.1:24333')
     expect(injection.providerConfig.headers).toEqual(GATEWAY_USAGE_HEADERS)
     expect(injection.providerConfig.models?.[0]).toMatchObject({
       id: 'cherryai-subscription:deepseek-free',

@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const { appGetMock } = vi.hoisted(() => ({ appGetMock: vi.fn() }))
 vi.mock('@application', () => ({ application: { get: appGetMock } }))
 
-import { OAuthSignInCancelledError } from '@main/services/oauth/errors'
+import { OAuthServiceError, OAuthSignInCancelledError } from '@main/services/oauth/errors'
 import { IpcError } from '@shared/ipc/errors/IpcError'
 import { oauthErrorCodes } from '@shared/ipc/errors/oauth'
 
@@ -16,6 +16,7 @@ const runtimeService = {
   hasToken: vi.fn(() => Promise.resolve(true)),
   getAccount: vi.fn(() => Promise.resolve({ accountId: 'acc-1' })),
   logout: vi.fn(() => Promise.resolve()),
+  provisionApiKeys: vi.fn(() => Promise.resolve('managed-key')),
   startDeepLinkFlow: vi.fn(() => Promise.resolve({ authUrl: 'https://open.cherryin.ai/auth', state: 'st' }))
 }
 
@@ -85,6 +86,37 @@ describe('oauthHandlers', () => {
   it('dispatches logout to OAuthRuntimeService', async () => {
     await oauthHandlers['oauth.logout'](provider, ctx)
     expect(runtimeService.logout).toHaveBeenCalledWith('codex')
+  })
+
+  it('dispatches managed key provisioning to OAuthRuntimeService', async () => {
+    await expect(oauthHandlers['oauth.provision_api_keys']({ providerId: 'xuelang' }, ctx)).resolves.toBe('managed-key')
+    expect(runtimeService.provisionApiKeys).toHaveBeenCalledWith('xuelang')
+  })
+
+  // OAuthServiceError carries a gateway code (e.g. MANAGED_KEY_UNAVAILABLE);
+  // the handler must re-throw it as IpcError so the renderer can map the code
+  // to a localized message instead of seeing INTERNAL.
+  it('maps OAuthServiceError codes to IpcError codes for provision_api_keys', async () => {
+    runtimeService.provisionApiKeys.mockRejectedValueOnce(
+      new OAuthServiceError('Failed to fetch API keys: 403', undefined, 'MANAGED_KEY_UNAVAILABLE')
+    )
+
+    const error = await oauthHandlers['oauth.provision_api_keys']({ providerId: 'xuelang' }, ctx).catch(
+      (caught: unknown) => caught
+    )
+
+    expect(error).toBeInstanceOf(IpcError)
+    expect(error).toHaveProperty('code', 'MANAGED_KEY_UNAVAILABLE')
+  })
+
+  it('keeps codeless OAuthServiceError unclassified for provision_api_keys', async () => {
+    runtimeService.provisionApiKeys.mockRejectedValueOnce(new OAuthServiceError('session is not signed in'))
+
+    const error = await oauthHandlers['oauth.provision_api_keys']({ providerId: 'xuelang' }, ctx).catch(
+      (caught: unknown) => caught
+    )
+
+    expect(error).not.toBeInstanceOf(IpcError)
   })
 
   it('dispatches check_external_login to CodeCliService', async () => {

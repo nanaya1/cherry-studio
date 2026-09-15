@@ -6,15 +6,25 @@ import { net } from 'electron'
 import * as z from 'zod'
 
 import type { GatewayProviderId } from './CherryInOAuthConfig'
-import { CherryInOAuthServiceError, validateCherryInApiHost, validateGatewayApiHost } from './CherryInOAuthConfig'
+import {
+  CherryInOAuthServiceError,
+  GATEWAY_OAUTH_CONFIGS,
+  validateCherryInApiHost,
+  validateGatewayApiHost
+} from './CherryInOAuthConfig'
 import { describeOAuthError, OAuthTransientError } from './errors'
 
 const logger = loggerService.withContext('CherryInOAuthService')
 
-const BalanceDataSchema = z.object({
-  quota: z.number(),
-  used_quota: z.number()
-})
+const BalanceDataSchema = z
+  .object({
+    available_balance: z.number().optional(),
+    quota: z.number().optional(),
+    used_quota: z.number().optional()
+  })
+  .refine(({ available_balance, quota }) => available_balance !== undefined || quota !== undefined, {
+    message: 'Balance response must include available_balance or quota'
+  })
 
 const BalanceResponseSchema = z.object({
   success: z.boolean(),
@@ -72,9 +82,7 @@ export class CherryInOAuthService {
   ): Promise<string | null> => {
     this.validateApiHost(apiHost, providerId)
     try {
-      const credentials = await application
-        .get('OAuthRuntimeService')
-        .getValidAccessToken(providerId, { apiHost })
+      const credentials = await application.get('OAuthRuntimeService').getValidAccessToken(providerId, { apiHost })
       return credentials?.accessToken ?? null
     } catch (error) {
       // A transient refresh failure means the session is still valid but we
@@ -195,7 +203,10 @@ export class CherryInOAuthService {
     )
   }
 
-  private getProfile = async (apiHost: string, providerId: GatewayProviderId = 'cherryin'): Promise<CherryInProfile | null> => {
+  private getProfile = async (
+    apiHost: string,
+    providerId: GatewayProviderId = 'cherryin'
+  ): Promise<CherryInProfile | null> => {
     try {
       const response = await this.authenticatedFetch(apiHost, '/api/user/self', {}, providerId)
 
@@ -238,9 +249,9 @@ export class CherryInOAuthService {
         throw new CherryInOAuthServiceError('API returned success: false')
       }
 
-      const { quota, used_quota: usedQuota } = parsed.data
+      const { available_balance: availableBalance, quota, used_quota: usedQuota } = parsed.data
       const profile = await this.getProfile(apiHost, providerId)
-      const balance = quota / 500000
+      const balance = availableBalance ?? (quota as number) / 500000
       logger.info('Balance fetched successfully', { balance, usedQuota })
       return {
         balance,
@@ -272,7 +283,8 @@ export class CherryInOAuthService {
             },
             body: new URLSearchParams({
               token,
-              token_type_hint: 'access_token'
+              token_type_hint: 'access_token',
+              client_id: GATEWAY_OAUTH_CONFIGS[providerId].CLIENT_ID
             }).toString()
           })
           logger.debug('Successfully revoked token on server')

@@ -49,6 +49,19 @@ describe('CherryInOAuthService (gateway providers)', () => {
     service = new CherryInOAuthService()
   })
 
+  it('prefers xuelang available_balance over legacy quota', async () => {
+    netMocks.fetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      json: async () => ({ success: true, data: { available_balance: 12.5, quota: 500000, used_quota: 0 } })
+    } as Response)
+
+    const result = await service.getBalance('https://api.xuelanglm.com', 'xuelang')
+
+    expect(result.balance).toBe(12.5)
+  })
+
   it('fetches balance for xuelang under the xuelang provider id and host', async () => {
     const result = await service.getBalance('https://api.xuelanglm.com', 'xuelang')
 
@@ -59,9 +72,20 @@ describe('CherryInOAuthService (gateway providers)', () => {
       expect.any(Function),
       expect.objectContaining({ context: { apiHost: 'https://api.xuelanglm.com' } })
     )
+    expect(netMocks.fetch).toHaveBeenCalledWith('https://api.xuelanglm.com/api/v1/oauth/balance', expect.anything())
+  })
+
+  it('includes the xuelang client id when revoking the session', async () => {
+    runtimeMocks.getValidAccessToken.mockResolvedValue({ accessToken: 'xuelang-token' })
+    netMocks.fetch.mockResolvedValue({ ok: true, status: 200, statusText: 'OK' } as Response)
+
+    await service.logout('https://api.xuelanglm.com', 'xuelang')
+
     expect(netMocks.fetch).toHaveBeenCalledWith(
-      'https://api.xuelanglm.com/api/v1/oauth/balance',
-      expect.anything()
+      'https://api.xuelanglm.com/oauth2/revoke',
+      expect.objectContaining({
+        body: 'token=xuelang-token&token_type_hint=access_token&client_id=2a348c87-bae1-4756-a62f-b2e97200fd6d'
+      })
     )
   })
 

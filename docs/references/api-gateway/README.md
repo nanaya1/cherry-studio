@@ -11,7 +11,7 @@ sources:
 The **API Gateway** exposes Cherry Studio's AI capabilities over a local HTTP
 server that speaks the **OpenAI**, **Anthropic**, and **Gemini** wire protocols,
 plus Cherry REST and Streamable HTTP MCP endpoints. Compatible clients can point at
-`http://127.0.0.1:23333` and drive whatever provider/model the desktop app has
+`http://127.0.0.1:24333` and drive whatever provider/model the desktop app has
 configured — Cherry becomes a universal translation gateway in front of every
 provider it knows.
 
@@ -289,7 +289,7 @@ model must use the gateway while the user's persisted gateway intent is off.
 |---|---|---|---|
 | `feature.api_gateway.enabled` | `boolean` | `false` | Auto-start on launch / toggled from settings |
 | `feature.api_gateway.host` | `string` | `'127.0.0.1'` | Bind address |
-| `feature.api_gateway.port` | `number` | `23333` | TCP port (UI clamps 1000–65535) |
+| `feature.api_gateway.port` | `number` | `24333` | TCP port (UI clamps 1000–65535) |
 | `feature.api_gateway.api_key` | `string \| null` | `null` | Auto-generated `cs-sk-<uuid>` on first activate |
 
 Migrated from v1 `redux/settings/apiServer.{enabled,host,port,apiKey}` via the

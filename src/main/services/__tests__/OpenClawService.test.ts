@@ -215,7 +215,7 @@ describe('OpenClawService gateway status state machine', () => {
 
     // Reset internal state via reflection
     ;(service as any).gatewayStatus = 'stopped'
-    ;(service as any).gatewayPort = 18790
+    ;(service as any).gatewayPort = 19790
     ;(service as any).gatewayAuthToken = ''
 
     // Spy on private methods via prototype
@@ -600,7 +600,7 @@ describe('OpenClawService gateway status state machine', () => {
       service.gatewayAuthToken = 'a b+c'
 
       const url = service.getDashboardUrl()
-      expect(url).toBe(`http://127.0.0.1:18790#token=${encodeURIComponent('a b+c')}`)
+      expect(url).toBe(`http://127.0.0.1:19790#token=${encodeURIComponent('a b+c')}`)
     })
   })
 
@@ -623,7 +623,7 @@ describe('OpenClawService gateway status state machine', () => {
 
       await expect((service as any).checkGatewayHealthWithError()).resolves.toEqual({ status: 'healthy' })
       expect(fetchSpy).toHaveBeenCalledWith(
-        'http://127.0.0.1:18790/healthz',
+        'http://127.0.0.1:19790/healthz',
         expect.objectContaining({ signal: expect.any(AbortSignal) })
       )
     })
@@ -651,62 +651,62 @@ describe('OpenClawService gateway status state machine', () => {
 
       const result = await service.getStatus()
 
-      expect(result).toEqual({ status: 'starting', port: 18790 })
+      expect(result).toEqual({ status: 'starting', port: 19790 })
       expect(checkHealthSpy).not.toHaveBeenCalled()
     })
 
     it('detects externally running gateway when stopped', async () => {
       ;(service as any).gatewayStatus = 'stopped'
-      checkHealthSpy.mockResolvedValue({ status: 'healthy', gatewayPort: 18790 })
+      checkHealthSpy.mockResolvedValue({ status: 'healthy', gatewayPort: 19790 })
 
       const result = await service.getStatus()
 
-      expect(result).toEqual({ status: 'running', port: 18790 })
+      expect(result).toEqual({ status: 'running', port: 19790 })
     })
 
     it('detects externally running gateway when in error state', async () => {
       ;(service as any).gatewayStatus = 'error'
-      checkHealthSpy.mockResolvedValue({ status: 'healthy', gatewayPort: 18790 })
+      checkHealthSpy.mockResolvedValue({ status: 'healthy', gatewayPort: 19790 })
 
       const result = await service.getStatus()
 
-      expect(result).toEqual({ status: 'running', port: 18790 })
+      expect(result).toEqual({ status: 'running', port: 19790 })
     })
 
     it('detects crashed gateway and transitions running → stopped', async () => {
       ;(service as any).gatewayStatus = 'running'
-      checkHealthSpy.mockResolvedValue({ status: 'unhealthy', gatewayPort: 18790 })
+      checkHealthSpy.mockResolvedValue({ status: 'unhealthy', gatewayPort: 19790 })
 
       const result = await service.getStatus()
 
-      expect(result).toEqual({ status: 'stopped', port: 18790 })
+      expect(result).toEqual({ status: 'stopped', port: 19790 })
     })
 
     it('stays running when health probe is healthy', async () => {
       ;(service as any).gatewayStatus = 'running'
-      checkHealthSpy.mockResolvedValue({ status: 'healthy', gatewayPort: 18790 })
+      checkHealthSpy.mockResolvedValue({ status: 'healthy', gatewayPort: 19790 })
 
       const result = await service.getStatus()
 
-      expect(result).toEqual({ status: 'running', port: 18790 })
+      expect(result).toEqual({ status: 'running', port: 19790 })
     })
 
     it('stays stopped when health probe is unhealthy', async () => {
       ;(service as any).gatewayStatus = 'stopped'
-      checkHealthSpy.mockResolvedValue({ status: 'unhealthy', gatewayPort: 18790 })
+      checkHealthSpy.mockResolvedValue({ status: 'unhealthy', gatewayPort: 19790 })
 
       const result = await service.getStatus()
 
-      expect(result).toEqual({ status: 'stopped', port: 18790 })
+      expect(result).toEqual({ status: 'stopped', port: 19790 })
     })
 
     it('stays in error when health probe is unhealthy', async () => {
       ;(service as any).gatewayStatus = 'error'
-      checkHealthSpy.mockResolvedValue({ status: 'unhealthy', gatewayPort: 18790 })
+      checkHealthSpy.mockResolvedValue({ status: 'unhealthy', gatewayPort: 19790 })
 
       const result = await service.getStatus()
 
-      expect(result).toEqual({ status: 'error', port: 18790 })
+      expect(result).toEqual({ status: 'error', port: 19790 })
     })
 
     it('discards a probe that resolves after a transition completed mid-flight', async () => {
@@ -716,10 +716,10 @@ describe('OpenClawService gateway status state machine', () => {
 
       const pending = service.getStatus()
       ;(service as any).setGatewayStatus('starting') // startGateway began while the probe was pending
-      resolveProbe({ status: 'healthy', gatewayPort: 18790 })
+      resolveProbe({ status: 'healthy', gatewayPort: 19790 })
 
       // Returns the newer authoritative state instead of reviving 'running' from the stale probe.
-      await expect(pending).resolves.toEqual({ status: 'starting', port: 18790 })
+      await expect(pending).resolves.toEqual({ status: 'starting', port: 19790 })
       expect(broadcastMock).not.toHaveBeenCalledWith('openclaw.status_changed', { status: 'running' })
     })
   })
@@ -749,7 +749,7 @@ describe('OpenClawService gateway status state machine', () => {
 
     it('rejects an invalid formal config before checking or stopping the gateway port', async () => {
       checkPortOpenSpy.mockResolvedValue(true)
-      checkHealthSpy.mockResolvedValue({ status: 'healthy', gatewayPort: 18790 })
+      checkHealthSpy.mockResolvedValue({ status: 'healthy', gatewayPort: 19790 })
       const stopGatewaySpy = vi.spyOn(service, 'stopGateway').mockResolvedValue({ success: true })
       validateConfigSpy.mockResolvedValueOnce({
         valid: false,
@@ -800,7 +800,7 @@ describe('OpenClawService gateway status state machine', () => {
       crossPlatformSpawnMock.mockReturnValue(child)
       vi.spyOn(service as any, 'checkGatewayHealthWithError').mockResolvedValue({
         status: 'healthy',
-        gatewayPort: 18790
+        gatewayPort: 19790
       })
       vi.useFakeTimers()
 
@@ -831,7 +831,7 @@ describe('OpenClawService gateway status state machine', () => {
       crossPlatformSpawnMock.mockReturnValue(child)
       vi.spyOn(service as any, 'checkGatewayHealthWithError').mockResolvedValue({
         status: 'healthy',
-        gatewayPort: 18790
+        gatewayPort: 19790
       })
       vi.useFakeTimers()
 
@@ -865,7 +865,7 @@ describe('OpenClawService gateway status state machine', () => {
       crossPlatformSpawnMock.mockReturnValue(child)
       vi.spyOn(service as any, 'checkGatewayHealthWithError').mockResolvedValue({
         status: 'healthy',
-        gatewayPort: 18790
+        gatewayPort: 19790
       })
       vi.useFakeTimers()
 
@@ -895,7 +895,7 @@ describe('OpenClawService gateway status state machine', () => {
     it('stops stale gateway and restarts when port is in use by our gateway', async () => {
       // First call: port occupied; after stop: port free
       checkPortOpenSpy.mockResolvedValueOnce(true).mockResolvedValue(false)
-      checkHealthSpy.mockResolvedValue({ status: 'healthy', gatewayPort: 18790 }) // startGateway detects our gateway
+      checkHealthSpy.mockResolvedValue({ status: 'healthy', gatewayPort: 19790 }) // startGateway detects our gateway
       findBinarySpy.mockResolvedValue({ source: 'mise', path: '/mock/bin/openclaw', version: '1.0.0' })
       startAndWaitSpy.mockResolvedValue(undefined)
 
@@ -907,7 +907,7 @@ describe('OpenClawService gateway status state machine', () => {
 
     it('fails when port is in use by another application', async () => {
       checkPortOpenSpy.mockResolvedValue(true)
-      checkHealthSpy.mockResolvedValue({ status: 'unhealthy', gatewayPort: 18790 })
+      checkHealthSpy.mockResolvedValue({ status: 'unhealthy', gatewayPort: 19790 })
 
       const result = await service.startGateway()
 
@@ -1081,7 +1081,7 @@ describe('OpenClawService gateway status state machine', () => {
 
       ;(service as any).syncGatewayPortFromPreference()
 
-      expect((service as any).gatewayPort).toBe(18790)
+      expect((service as any).gatewayPort).toBe(19790)
     })
 
     it('keeps the current port when the preference value exceeds the valid range', () => {
@@ -1134,7 +1134,7 @@ describe('OpenClawService gateway status state machine', () => {
   describe('probeGatewayTick (liveness of a running gateway)', () => {
     it('marks a dead gateway stopped when the probe goes unhealthy', async () => {
       ;(service as any).gatewayStatus = 'running'
-      checkHealthSpy.mockResolvedValue({ status: 'unhealthy', gatewayPort: 18790 })
+      checkHealthSpy.mockResolvedValue({ status: 'unhealthy', gatewayPort: 19790 })
 
       await (service as any).probeGatewayTick()
 
@@ -1156,7 +1156,7 @@ describe('OpenClawService gateway status state machine', () => {
 
     it('broadcasts nothing while the gateway stays healthy', async () => {
       ;(service as any).gatewayStatus = 'running'
-      checkHealthSpy.mockResolvedValue({ status: 'healthy', gatewayPort: 18790 })
+      checkHealthSpy.mockResolvedValue({ status: 'healthy', gatewayPort: 19790 })
 
       await (service as any).probeGatewayTick()
 
@@ -1178,7 +1178,7 @@ describe('OpenClawService gateway status state machine', () => {
 
       const tick = (service as any).probeGatewayTick()
       ;(service as any).setGatewayStatus('stopped') // stopGateway completed while the probe was pending
-      resolveProbe({ status: 'healthy', gatewayPort: 18790 })
+      resolveProbe({ status: 'healthy', gatewayPort: 19790 })
       await tick
 
       expect((service as any).gatewayStatus).toBe('stopped')
@@ -1192,7 +1192,7 @@ describe('OpenClawService gateway status state machine', () => {
 
       const tick = (service as any).probeGatewayTick()
       ;(service as any).gatewayPort = 18888 // syncConfig-style port change during the probe
-      resolveProbe({ status: 'unhealthy', gatewayPort: 18790 }) // result belongs to the old port
+      resolveProbe({ status: 'unhealthy', gatewayPort: 19790 }) // result belongs to the old port
       await tick
 
       expect((service as any).gatewayStatus).toBe('running')
@@ -1209,7 +1209,7 @@ describe('OpenClawService gateway status state machine', () => {
       // A full restart completes inside the probe window: same terminal values, newer generation.
       ;(service as any).setGatewayStatus('stopped')
       ;(service as any).setGatewayStatus('running')
-      resolveProbe({ status: 'unhealthy', gatewayPort: 18790 }) // stale result from the dying old gateway
+      resolveProbe({ status: 'unhealthy', gatewayPort: 19790 }) // stale result from the dying old gateway
       await tick
 
       expect((service as any).gatewayStatus).toBe('running')
@@ -1224,7 +1224,7 @@ describe('OpenClawService gateway status state machine', () => {
   describe('syncConfig', () => {
     // Regression: syncProviderConfig writes config.gateway.port from this.gatewayPort, but sync
     // runs before startGateway(port) updates it. A caller-supplied port must be applied first, or
-    // a custom port is written as the stale default (18790) and the gateway binds the wrong port.
+    // a custom port is written as the stale default (19790) and the gateway binds the wrong port.
     it('applies the caller port before syncProviderConfig writes the config', async () => {
       const { modelService } = await import('@data/services/ModelService')
       const { providerService } = await import('@data/services/ProviderService')
@@ -2177,7 +2177,7 @@ describe('OpenClawService gateway status state machine', () => {
       expect((service as any).gatewayStatus).toBe('running')
 
       // Gateway crashes externally — getStatus detects it
-      checkHealthSpy.mockResolvedValue({ status: 'unhealthy', gatewayPort: 18790 })
+      checkHealthSpy.mockResolvedValue({ status: 'unhealthy', gatewayPort: 19790 })
       const status = await service.getStatus()
       expect(status.status).toBe('stopped')
     })
@@ -2191,7 +2191,7 @@ describe('OpenClawService gateway status state machine', () => {
       expect((service as any).gatewayStatus).toBe('error')
 
       // External recovery — someone starts gateway manually
-      checkHealthSpy.mockResolvedValue({ status: 'healthy', gatewayPort: 18790 })
+      checkHealthSpy.mockResolvedValue({ status: 'healthy', gatewayPort: 19790 })
       const status = await service.getStatus()
       expect(status.status).toBe('running')
     })
@@ -2200,12 +2200,12 @@ describe('OpenClawService gateway status state machine', () => {
       ;(service as any).gatewayStatus = 'running'
 
       // getStatus detects crash
-      checkHealthSpy.mockResolvedValue({ status: 'unhealthy', gatewayPort: 18790 })
+      checkHealthSpy.mockResolvedValue({ status: 'unhealthy', gatewayPort: 19790 })
       const crashed = await service.getStatus()
       expect(crashed.status).toBe('stopped')
 
       // getStatus detects recovery
-      checkHealthSpy.mockResolvedValue({ status: 'healthy', gatewayPort: 18790 })
+      checkHealthSpy.mockResolvedValue({ status: 'healthy', gatewayPort: 19790 })
       const recovered = await service.getStatus()
       expect(recovered.status).toBe('running')
     })

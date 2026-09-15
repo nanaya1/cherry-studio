@@ -8,7 +8,7 @@ import { useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
 const DEFAULT_GATEWAY_HOST = '127.0.0.1'
-const DEFAULT_GATEWAY_PORT = 23333
+const DEFAULT_GATEWAY_PORT = 24333
 
 /**
  * The synthetic "Cherry Gateway" entry for the code-CLI provider list, plus the

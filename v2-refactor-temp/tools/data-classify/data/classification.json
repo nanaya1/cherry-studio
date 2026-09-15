@@ -2412,7 +2412,7 @@
         {
           "originalKey": "apiServer",
           "type": "unknown",
-          "defaultValue": "{ enabled: false, host: 'localhost', port: 23333, apiKey: `cs-sk-${uuid()}` }",
+          "defaultValue": "{ enabled: false, host: 'localhost', port: 24333, apiKey: `cs-sk-${uuid()}` }",
           "status": "pending",
           "category": null,
           "targetKey": null,
@@ -2435,7 +2435,7 @@
             },
             {
               "category": "preferences",
-              "defaultValue": 23333,
+              "defaultValue": 24333,
               "originalKey": "port",
               "status": "classified",
               "targetKey": "feature.api_gateway.port",

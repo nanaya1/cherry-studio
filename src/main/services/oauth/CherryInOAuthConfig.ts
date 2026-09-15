@@ -7,6 +7,15 @@ import * as z from 'zod'
  * redirect / scopes) and differs only in the allowed API hosts. Update the
  * xuelang hosts when the production auth server domain lands.
  */
+const XUELANG_PRODUCTION = {
+  CLIENT_ID: '2a348c87-bae1-4756-a62f-b2e97200fd6d',
+  ALLOWED_HOSTS: [XUELANG_API_HOST],
+  REDIRECT_URI: 'meacowork://oauth/callback',
+  // 2026-09-14：雪浪服务端暂不签发 id_token，原 openid scope 注释保留并移除。
+  // SCOPES: 'openid profile email offline_access balance:read usage:read tokens:read tokens:write'
+  SCOPES: 'profile email offline_access balance:read usage:read tokens:read tokens:write'
+} as const
+
 export const GATEWAY_OAUTH_CONFIGS = {
   cherryin: {
     CLIENT_ID: '2a348c87-bae1-4756-a62f-b2e97200fd6d',
@@ -14,12 +23,7 @@ export const GATEWAY_OAUTH_CONFIGS = {
     REDIRECT_URI: 'meacowork://oauth/callback',
     SCOPES: 'openid profile email offline_access balance:read usage:read tokens:read tokens:write'
   },
-  xuelang: {
-    CLIENT_ID: '2a348c87-bae1-4756-a62f-b2e97200fd6d',
-    ALLOWED_HOSTS: [XUELANG_API_HOST],
-    REDIRECT_URI: 'meacowork://oauth/callback',
-    SCOPES: 'openid profile email offline_access balance:read usage:read tokens:read tokens:write'
-  }
+  xuelang: XUELANG_PRODUCTION
 } as const
 
 export type GatewayProviderId = keyof typeof GATEWAY_OAUTH_CONFIGS

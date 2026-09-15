@@ -18,7 +18,7 @@ vi.mock('@renderer/pages/code/cliConfig', async (importOriginal) => {
 const { createManagedConfigDraft, loadInitialConfigDraft } = await import('../configDraftState')
 const { extractConfigFromCliConfigDraft } = await import('@renderer/pages/code/cliConfig')
 
-const GATEWAY_BASE_URL = 'http://127.0.0.1:23333'
+const GATEWAY_BASE_URL = 'http://127.0.0.1:24333'
 
 const gatewayProvider = {
   id: CLI_API_GATEWAY_PROVIDER_ID,

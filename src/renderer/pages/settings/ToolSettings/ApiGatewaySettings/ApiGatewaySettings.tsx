@@ -30,7 +30,7 @@ import { v4 as uuidv4 } from 'uuid'
 
 const API_SERVER_DEFAULTS = {
   HOST: '127.0.0.1',
-  PORT: 23333
+  PORT: 24333
 }
 
 const ApiGatewaySettings: FC = () => {

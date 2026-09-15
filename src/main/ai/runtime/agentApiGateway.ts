@@ -22,7 +22,7 @@ export function requiresAgentGateway(providerId: string): boolean {
 export function gatewayCredentialsFingerprint(): string {
   const apiGatewayService = application.get('ApiGatewayService')
   const config = apiGatewayService.getCurrentConfig()
-  const baseUrl = `http://${config.host || '127.0.0.1'}:${config.port || 23333}`
+  const baseUrl = `http://${config.host || '127.0.0.1'}:${config.port || 24333}`
   return createHash('sha256')
     .update(
       JSON.stringify(
@@ -70,7 +70,7 @@ export async function resolveApiGatewayRuntime(sessionId: string): Promise<{
   // route must not leave that side effect behind.
   const apiKey = await apiGatewayService.ensureValidApiKey()
   const host = config.host || '127.0.0.1'
-  const port = config.port || 23333
+  const port = config.port || 24333
   return {
     baseUrl: gatewayClientOrigin(host, port),
     apiKey,

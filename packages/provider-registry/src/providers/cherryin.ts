@@ -138,7 +138,8 @@ export default defineProvider({
   metadata: {
     website: {
       apiKey: 'https://open.cherryin.ai/console/token',
-      docs: 'https://open.cherryin.ai',
+      // 「文档」链接暂时隐藏：跳转到 CherryIN 厂商云。恢复时取消下方注释。
+      // docs: 'https://open.cherryin.ai',
       models: 'https://open.cherryin.ai/pricing',
       official: 'https://open.cherryin.ai'
     }

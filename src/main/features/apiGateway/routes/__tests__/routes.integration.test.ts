@@ -107,7 +107,7 @@ describe('API gateway routes (integration)', () => {
       // keeps the health-check example copyable (`curl http://.../health`)
       // instead of a bare relative path (`curl /health`).
       const { body } = await read(await get(app, '/openapi/json', {}))
-      expect(body.servers).toEqual([{ url: 'http://127.0.0.1:23333' }])
+      expect(body.servers).toEqual([{ url: 'http://127.0.0.1:24333' }])
 
       // A wildcard bind is not a dialable target, so the advertised URL must be the
       // loopback the curl example can actually reach.

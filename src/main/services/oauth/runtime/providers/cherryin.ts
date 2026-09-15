@@ -1,4 +1,4 @@
-import { type SystemProviderId,SystemProviderIds } from '@shared/utils/systemProviderId'
+import { type SystemProviderId, SystemProviderIds } from '@shared/utils/systemProviderId'
 import { net } from 'electron'
 
 import {
@@ -8,7 +8,7 @@ import {
   isGatewayProviderId,
   validateGatewayApiHost
 } from '../../CherryInOAuthConfig'
-import { OAuthServiceError } from '../../errors'
+import { OAuthServiceError, OAuthTransientError } from '../../errors'
 import { PkceOAuthClient } from '../PkceOAuthClient'
 import type { OAuthRuntimeProviderContext, OAuthRuntimeProviderDefinition } from '../types'
 
@@ -24,6 +24,13 @@ export function createGatewayOAuthProvider(providerId: SystemProviderId | string
   const gatewayConfig = GATEWAY_OAUTH_CONFIGS[providerId]
 
   const resolveContext = (context?: OAuthRuntimeProviderContext): { oauthServer: string; apiHost: string } => {
+    // Snowwave uses one fixed service origin until sub2api publishes its final
+    // client registration. Do not let renderer input redirect this identity.
+    if (providerId === SystemProviderIds.xuelang) {
+      const [oauthServer] = gatewayConfig.ALLOWED_HOSTS
+      return { oauthServer, apiHost: oauthServer }
+    }
+
     const oauthServer = context?.oauthServer ?? gatewayConfig.ALLOWED_HOSTS[0]
     validateGatewayApiHost(providerId, oauthServer)
 
@@ -39,7 +46,20 @@ export function createGatewayOAuthProvider(providerId: SystemProviderId | string
     })
 
     if (!response.ok) {
-      throw new OAuthServiceError(`Failed to fetch API keys: ${response.status}`)
+      if (response.status === 408 || response.status === 425 || response.status === 429 || response.status >= 500) {
+        throw new OAuthTransientError(`Failed to fetch API keys temporarily: ${response.status}`)
+      }
+
+      let code: string | undefined
+      try {
+        const body = (await response.clone().json()) as { code?: unknown; error?: { code?: unknown } }
+        const candidate = body.code ?? body.error?.code
+        if (typeof candidate === 'string') code = candidate
+      } catch {
+        // Keep the HTTP error when the provider returns a non-JSON body.
+      }
+
+      throw new OAuthServiceError(`Failed to fetch API keys: ${response.status}`, undefined, code)
     }
 
     const keysArray = ApiKeysResponseSchema.parse(await response.json())
@@ -56,18 +76,23 @@ export function createGatewayOAuthProvider(providerId: SystemProviderId | string
     transport: { type: 'deep-link', config: { redirectUri: gatewayConfig.REDIRECT_URI } },
     createClient: (context?: OAuthRuntimeProviderContext) => {
       const { oauthServer, apiHost } = resolveContext(context)
-      const tokenHost = context?.oauthServer ?? apiHost
+      const tokenHost = providerId === SystemProviderIds.xuelang ? oauthServer : (context?.oauthServer ?? apiHost)
       return new PkceOAuthClient({
         clientId: gatewayConfig.CLIENT_ID,
         authorizeUrl: `${oauthServer}/oauth2/auth`,
         tokenUrl: `${tokenHost}/oauth2/token`,
         redirectUri: gatewayConfig.REDIRECT_URI,
-        scope: gatewayConfig.SCOPES
+        scope: gatewayConfig.SCOPES,
+        requireGatewayTokenResponse: providerId === SystemProviderIds.xuelang
       })
     },
     afterPersistTokens: async (tokenData, context) => {
       const { apiHost } = resolveContext(context)
       return { apiKeys: await fetchApiKeys(tokenData.access_token, apiHost) }
+    },
+    provisionApiKeys: async (accessToken, context) => {
+      const { apiHost } = resolveContext(context)
+      return fetchApiKeys(accessToken, apiHost)
     }
   } satisfies OAuthRuntimeProviderDefinition
 }

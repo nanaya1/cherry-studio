@@ -40,7 +40,7 @@ const openclawConfigPath = (): AbsoluteFilePath =>
   AbsoluteFilePathSchema.parse(path.join(openclawConfigDir(), 'openclaw.json'))
 const openclawConfigBakPath = () => path.join(openclawConfigDir(), 'openclaw.json.bak')
 const openclawLegacyConfigPath = () => path.join(openclawConfigDir(), 'openclaw.cherry.json')
-const DEFAULT_GATEWAY_PORT = 18790
+const DEFAULT_GATEWAY_PORT = 19790
 const GATEWAY_PROBE_INTERVAL_MS = 5000
 const OPENCLAW_COMMAND_TIMEOUT_MS = 10000
 const OPENCLAW_COMMAND_CAPTURE_LIMIT_BYTES = 1024 * 1024
@@ -1094,7 +1094,7 @@ export class OpenClawService extends BaseService {
     try {
       // Apply the caller's gateway port before writing openclaw.json so the config's
       // gateway.port matches the port startGateway() will bind and health-check. Without
-      // this, a custom port is written as the stale in-memory port (default 18790) because
+      // this, a custom port is written as the stale in-memory port (default 19790) because
       // sync runs before startGateway(port), so the gateway binds the wrong port on launch.
       if (port !== undefined) {
         this.gatewayPort = port

@@ -141,7 +141,7 @@ describe('useConfigDraftController (initial load vs. apiKeys race)', () => {
 })
 
 describe('useConfigDraftController (cherry gateway)', () => {
-  const GATEWAY_BASE_URL = 'http://127.0.0.1:23333'
+  const GATEWAY_BASE_URL = 'http://127.0.0.1:24333'
   const gatewayProvider = {
     id: CLI_API_GATEWAY_PROVIDER_ID,
     name: '统一网关',
