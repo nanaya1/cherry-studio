@@ -3,6 +3,7 @@ import { isCodexProviderId } from '@shared/data/presets/codex'
 import { isGrokCliProviderId } from '@shared/data/presets/grokCli'
 import type { Provider } from '@shared/data/types/provider'
 import { isAwsBedrockProvider, isProviderSupportAuth, isVertexProvider, matchesPreset } from '@shared/utils/provider'
+import { SystemProviderIds } from '@shared/utils/systemProviderId'
 import { lazy, type ReactNode } from 'react'
 
 import type { useProviderMeta } from '../hooks/providerSetting/useProviderMeta'
@@ -47,9 +48,12 @@ export const PROVIDER_SPECIFIC_SETTINGS_REGISTRY: Record<ProviderSpecificPlaceme
     },
     {
       key: 'cherryin-oauth',
-      // 雪浪工匠 rides the same gateway OAuth panel, but its login entry is
-      // hidden until the production auth server host lands.
-      when: ({ provider }) => matchesPreset(provider, 'cherryin'),
+      when: ({ provider }) => provider.id === SystemProviderIds.cherryin,
+      render: (providerId) => <CherryInOauth providerId={providerId} />
+    },
+    {
+      key: 'xuelang-oauth',
+      when: ({ provider }) => provider.id === SystemProviderIds.xuelang,
       render: (providerId) => <CherryInOauth providerId={providerId} />
     },
     {

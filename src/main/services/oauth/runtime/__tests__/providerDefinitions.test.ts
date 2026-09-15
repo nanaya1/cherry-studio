@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('electron', () => ({
+  // 2026-09-14：gateway 工厂改为读取 app.isPackaged（本地联调开关），mock 需补 app 导出。
+  app: { isPackaged: true },
   net: {
     fetch: vi.fn()
   }

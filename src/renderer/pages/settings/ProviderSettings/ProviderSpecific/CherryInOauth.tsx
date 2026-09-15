@@ -4,13 +4,13 @@ import { loggerService } from '@logger'
 import { useProvider } from '@renderer/hooks/useProvider'
 import { ipcApi } from '@renderer/ipc'
 import { oauthCardClasses } from '@renderer/pages/settings/ProviderSettings/primitives/ProviderSettingsPrimitives'
-import { oauthWithCherryIn } from '@renderer/services/oauth'
+import { oauthWithCherryIn, provisionOAuthApiKeys } from '@renderer/services/oauth'
 import { popup } from '@renderer/services/popup'
 import { toast } from '@renderer/services/toast'
 import { cn } from '@renderer/utils/style'
 import type { CherryInBalance } from '@shared/ipc/schemas/cherryin'
 import { XUELANG_API_HOST } from '@shared/utils/constants'
-import { hasApiKeys } from '@shared/utils/provider'
+import { SystemProviderIds } from '@shared/utils/systemProviderId'
 import type { FC } from 'react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
@@ -40,7 +40,11 @@ const GATEWAY_PRESENTATION = {
 
 type GatewayPresentationKey = keyof typeof GATEWAY_PRESENTATION
 
-const isGatewayPresentationKey = (value: string): value is GatewayPresentationKey => value in GATEWAY_PRESENTATION
+const resolveGateway = (providerId: string): GatewayPresentationKey | undefined => {
+  if (providerId === SystemProviderIds.cherryin) return 'cherryin'
+  if (providerId === SystemProviderIds.xuelang) return 'xuelang'
+  return undefined
+}
 
 function formatCurrency(value: number | null | undefined): string {
   if (typeof value !== 'number' || Number.isNaN(value)) {
@@ -54,13 +58,14 @@ const CherryInOauth: FC<CherryInOauthProps> = ({ providerId }) => {
   const { provider, updateProvider, addApiKey, deleteApiKey } = useProvider(providerId)
   const { t } = useTranslation()
 
-  const gateway: GatewayPresentationKey =
-    provider && isGatewayPresentationKey(provider.id) && GATEWAY_PRESENTATION[provider.id]
-      ? (provider.id)
-      : 'cherryin'
-  const { oauthServer, topupUrl, i18nNs } = GATEWAY_PRESENTATION[gateway]
+  const gateway = provider ? resolveGateway(provider.id) : undefined
+  const presentation = gateway ? GATEWAY_PRESENTATION[gateway] : undefined
+  const oauthServer = presentation?.oauthServer
+  const topupUrl = presentation?.topupUrl
+  const i18nNs = presentation?.i18nNs
 
   const [isLoggingOut, setIsLoggingOut] = useState(false)
+  const [isProvisioningKey, setIsProvisioningKey] = useState(false)
   const [isLoadingData, setIsLoadingData] = useState(false)
   const [balanceInfo, setBalanceInfo] = useState<CherryInBalance | null>(null)
   const [oauthTokenOverride, setOauthTokenOverride] = useState<boolean | null>(null)
@@ -70,23 +75,28 @@ const CherryInOauth: FC<CherryInOauthProps> = ({ providerId }) => {
   const topupInProgressRef = useRef(false)
 
   const refreshHasToken = useCallback(async () => {
+    if (!gateway) return
+
     try {
-      setRemoteHasOAuthToken(await ipcApi.request('oauth.has_token', { providerId }))
+      setRemoteHasOAuthToken(await ipcApi.request('oauth.has_token', { providerId: gateway }))
     } catch (error) {
       logger.warn('Failed to check gateway OAuth token status:', error as Error)
       setRemoteHasOAuthToken(false)
     }
-  }, [providerId])
+  }, [gateway])
 
   useEffect(() => {
     void refreshHasToken()
   }, [refreshHasToken])
 
-  const hasKeys = provider ? hasApiKeys(provider) : false
+  const hasOAuthKey =
+    provider?.apiKeys?.some((key) => key.label === 'OAuth' && key.isEnabled) ?? false
   const hasOAuthToken = oauthTokenOverride ?? remoteHasOAuthToken ?? false
-  const isOAuthLoggedIn = hasKeys && hasOAuthToken
+  const isOAuthLoggedIn = hasOAuthKey && hasOAuthToken
 
   const fetchData = useCallback(async () => {
+    if (!gateway || !oauthServer) return
+
     setIsLoadingData(true)
     try {
       const balance = await ipcApi.request('cherryin.get_balance', { apiHost: oauthServer, providerId: gateway })
@@ -126,7 +136,36 @@ const CherryInOauth: FC<CherryInOauthProps> = ({ providerId }) => {
     return () => window.removeEventListener('focus', handleWindowFocus)
   }, [fetchData])
 
+  const handleProvisionApiKey = useCallback(async () => {
+    if (!gateway) return
+
+    setIsProvisioningKey(true)
+    try {
+      const apiKeys = await provisionOAuthApiKeys(gateway)
+      const keys = apiKeys
+        .split(',')
+        .map((key) => key.trim())
+        .filter(Boolean)
+
+      await Promise.all(keys.map((key) => addApiKey(key, 'OAuth')))
+      await updateProvider({ isEnabled: true })
+      setOauthTokenOverride(true)
+      void refreshHasToken()
+      await fetchData()
+      toast.success(t('auth.get_key_success'))
+    } catch (error) {
+      logger.error('Failed to provision OAuth API keys:', error as Error)
+      const code = error instanceof Error && 'code' in error && typeof error.code === 'string' ? error.code : undefined
+      const errorKey = code ? `settings.provider.oauth.error_codes.${code}` : 'settings.provider.oauth.error'
+      toast.error(t(errorKey, { defaultValue: t('settings.provider.oauth.error') }))
+    } finally {
+      setIsProvisioningKey(false)
+    }
+  }, [addApiKey, fetchData, gateway, refreshHasToken, t, updateProvider])
+
   const handleOAuthLogin = useCallback(async () => {
+    if (!gateway || !oauthServer) return
+
     try {
       await oauthWithCherryIn(
         async (apiKeys: string) => {
@@ -143,17 +182,21 @@ const CherryInOauth: FC<CherryInOauthProps> = ({ providerId }) => {
           toast.success(t('auth.get_key_success'))
         },
         {
-          oauthServer,
+          oauthServer: oauthServer,
           providerId: gateway
         }
       )
     } catch (error) {
       logger.error('OAuth error:', error as Error)
-      toast.error(t('settings.provider.oauth.error'))
+      const code = error instanceof Error && 'code' in error && typeof error.code === 'string' ? error.code : undefined
+      const errorKey = code ? `settings.provider.oauth.error_codes.${code}` : 'settings.provider.oauth.error'
+      toast.error(t(errorKey, { defaultValue: t('settings.provider.oauth.error') }))
     }
   }, [addApiKey, fetchData, gateway, oauthServer, refreshHasToken, t, updateProvider])
 
   const handleLogout = useCallback(async () => {
+    if (!gateway || !oauthServer) return
+
     const confirmed = await popup.confirm({
       title: t('settings.provider.oauth.logout'),
       content: t('settings.provider.oauth.logout_confirm'),
@@ -189,15 +232,16 @@ const CherryInOauth: FC<CherryInOauthProps> = ({ providerId }) => {
   }, [deleteApiKey, gateway, oauthServer, provider?.apiKeys, refreshHasToken, t])
 
   const handleTopup = useCallback(() => {
+    if (!topupUrl) return
     topupInProgressRef.current = true
     window.open(topupUrl, '_blank')
   }, [topupUrl])
 
-  if (!provider) {
+  if (!provider || !gateway || !presentation) {
     return null
   }
 
-  if (remoteHasOAuthToken === null && hasKeys) {
+  if (remoteHasOAuthToken === null && hasOAuthKey) {
     return (
       <div className={oauthCardClasses.container}>
         <div className={oauthCardClasses.shell}>
@@ -210,6 +254,13 @@ const CherryInOauth: FC<CherryInOauthProps> = ({ providerId }) => {
   }
 
   if (!isOAuthLoggedIn) {
+    const statusText = hasOAuthKey
+      ? t('settings.provider.oauth.session_expired')
+      : t(`settings.provider.oauth.${i18nNs}.not_logged_in`)
+    const actionText = hasOAuthToken
+      ? t('settings.provider.oauth.provision_key')
+      : t(`settings.provider.oauth.${i18nNs}.login_button`)
+
     return (
       <div className={oauthCardClasses.container}>
         <div className={oauthCardClasses.shell}>
@@ -217,16 +268,18 @@ const CherryInOauth: FC<CherryInOauthProps> = ({ providerId }) => {
             <div className={oauthCardClasses.profileMeta}>
               <ProviderAvatar gateway={gateway} />
               <div className={oauthCardClasses.nameBlock}>
-                <div className={oauthCardClasses.loggedInName}>
-                  {t(`settings.provider.oauth.${i18nNs}.not_logged_in`)}
-                </div>
+                <div className={oauthCardClasses.loggedInName}>{statusText}</div>
                 <div className={cn(oauthCardClasses.loggedInEmail, 'text-muted-foreground')}>
                   {t(`settings.provider.oauth.${i18nNs}.tagline`)}
                 </div>
               </div>
             </div>
-            <Button variant="emphasis" onClick={handleOAuthLogin}>
-              {t(`settings.provider.oauth.${i18nNs}.login_button`)}
+            <Button
+              variant="emphasis"
+              onClick={hasOAuthToken ? handleProvisionApiKey : handleOAuthLogin}
+              disabled={isProvisioningKey}
+            >
+              {actionText}
             </Button>
           </div>
         </div>

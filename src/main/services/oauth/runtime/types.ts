@@ -102,4 +102,5 @@ export interface OAuthRuntimeProviderDefinition {
     tokenData: { access_token: string; refresh_token?: string; expires_in?: number },
     context: OAuthRuntimeProviderContext
   ): Promise<OAuthTokenExchangeSideEffectResult | void>
+  provisionApiKeys?(accessToken: string, context: OAuthRuntimeProviderContext): Promise<string>
 }

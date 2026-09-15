@@ -199,6 +199,10 @@ export interface NewApiOAuthConfig {
  * directly to this renderer's webContents (captured at flow-start time), so we
  * just await a single point-to-point IPC event keyed by `state`.
  */
+export const provisionOAuthApiKeys = async (providerId: 'cherryin' | 'xuelang'): Promise<string> => {
+  return ipcApi.request('oauth.provision_api_keys', { providerId })
+}
+
 export const oauthWithCherryIn = async (
   setKey: (key: string) => void | Promise<void>,
   config: NewApiOAuthConfig

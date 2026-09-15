@@ -352,6 +352,23 @@ export class OAuthRuntimeService extends BaseService {
     this.logger.info(`Cleared ${providerId} OAuth tokens`)
   }
 
+  public provisionApiKeys = async (
+    providerId: string,
+    context: OAuthRuntimeProviderContext = {}
+  ): Promise<string> => {
+    const definition = this.getDefinition(providerId)
+    if (!definition.provisionApiKeys) {
+      throw new OAuthServiceError(`OAuth provider does not support API key provisioning: ${providerId}`)
+    }
+
+    const credentials = await this.getValidAccessToken(providerId, context)
+    if (!credentials) {
+      throw new OAuthServiceError(`${providerId} OAuth session is not signed in`)
+    }
+
+    return definition.provisionApiKeys(credentials.accessToken, context)
+  }
+
   public getValidAccessToken = async (
     providerId: string,
     context: OAuthRuntimeProviderContext = {}
