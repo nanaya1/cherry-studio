@@ -13,7 +13,10 @@ function isLegacyMcpAutoInstall(row: McpServerRow): boolean {
     row.installSource === null &&
     row.name === BuiltinMcpServerNames.mcpAutoInstall &&
     row.type === 'inMemory' &&
-    row.reference === 'https://docs.cherry-ai.com/advanced-basic/mcp/auto-install' &&
+    // Mea Cowork：preset 已停用 docs.cherry-ai.com 的 reference（属 Cherry 厂商云），
+    // 这里同步放宽 legacy 行的 reference 匹配，让迁移继续生效。恢复时取消下方原判断注释。
+    // row.reference === 'https://docs.cherry-ai.com/advanced-basic/mcp/auto-install' &&
+    (row.reference === null || row.reference === 'https://docs.cherry-ai.com/advanced-basic/mcp/auto-install') &&
     row.baseUrl === null &&
     row.command === 'npx' &&
     row.registryUrl === null &&

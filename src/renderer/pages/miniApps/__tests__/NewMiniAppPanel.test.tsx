@@ -1,7 +1,6 @@
 import { toast } from '@renderer/services/toast'
 import type * as ImageUtils from '@renderer/utils/image'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
 import type React from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -236,11 +235,8 @@ describe('NewMiniAppPanel', () => {
     expect(screen.getByRole('button', { name: 'miniApp.install.choose_file' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /common\.save/ })).toBeNull()
 
-    fireEvent.click(screen.getByRole('button', { name: 'miniApp.add.developer_docs' }))
-    expect(mocks.ipcRequest).toHaveBeenCalledWith(
-      'system.shell.open_website',
-      'https://github.com/CherryHQ/cherry-studio-miniapps'
-    )
+    // 「开发者文档」（CherryHQ 官方仓库）入口暂时隐藏，无对应按钮，也不会发起跳转。
+    expect(screen.queryByRole('button', { name: 'miniApp.add.developer_docs' })).toBeNull()
 
     rerender(
       <NewMiniAppPanel
@@ -262,18 +258,8 @@ describe('NewMiniAppPanel', () => {
     expect(screen.getByRole('button', { name: /common\.save/ })).toBeInTheDocument()
   })
 
-  it('shows an error when the developer documentation cannot be opened', async () => {
-    const user = userEvent.setup()
-    mocks.ipcRequest.mockRejectedValueOnce(new Error('open failed'))
-    render(<NewMiniAppPanel open={true} onClose={vi.fn()} />)
-
-    await user.click(screen.getByRole('tab', { name: 'miniApp.add.tab_app' }))
-    await user.click(screen.getByRole('button', { name: 'miniApp.add.developer_docs' }))
-
-    await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith('miniApp.add.developer_docs_open_failed')
-    })
-  })
+  // 「开发者文档」（CherryHQ 官方仓库）入口暂时隐藏：按钮已不存在，打开失败分支无从触发。
+  // 原用例见 git 历史。
 
   it('submits with the trimmed form values', async () => {
     render(<NewMiniAppPanel open={true} onClose={vi.fn()} />)

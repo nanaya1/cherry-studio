@@ -62,7 +62,6 @@
       "metadata": {
         "website": {
           "apiKey": "https://open.cherryin.ai/console/token",
-          "docs": "https://open.cherryin.ai",
           "models": "https://open.cherryin.ai/pricing",
           "official": "https://open.cherryin.ai"
         }
@@ -557,7 +556,6 @@
       "metadata": {
         "website": {
           "apiKey": "https://ppio.com/settings/key-management",
-          "docs": "https://docs.cherry-ai.com/pre-basic/providers/ppio",
           "models": "https://ppio.com/model-api/product/llm-api",
           "official": "https://ppio.com/"
         }
@@ -2516,5 +2514,5 @@
       "presetProviderId": "minimax"
     }
   ],
-  "version": "13c8d99d4f4195fd"
+  "version": "da77f2079aef201f"
 }
