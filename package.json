@@ -7,8 +7,6 @@
   "main": "./out/main/main.js",
   "author": "support@cherry-ai.com",
   "homepage": "https://github.com/CherryHQ/cherry-studio",
-  "author": "support@cherry-ai.com",
-  "main": "./out/main/main.js",
   "scripts": {
     "analyze:main": "VISUALIZER_MAIN=true pnpm build",
     "analyze:renderer": "VISUALIZER_RENDERER=true pnpm build",
@@ -573,6 +571,5 @@
   "engines": {
     "node": ">=24.11.1 <24.16.0"
   },
-  "packageManager": "pnpm@12.3.4+sha512.961aa41fb077da3a04a441d9f8e15ebc0c96da8ef710b2eb67bf9ee7cb0610eabd48f1fd85f51cffe73846785fa0f87c56a3a872a1d893f8446741b5cce45457",
-  "desktopName": "CherryStudio.desktop"
+  "packageManager": "pnpm@12.3.4+sha512.961aa41fb077da3a04a441d9f8e15ebc0c96da8ef710b2eb67bf9ee7cb0610eabd48f1fd85f51cffe73846785fa0f87c56a3a872a1d893f8446741b5cce45457"
 }
