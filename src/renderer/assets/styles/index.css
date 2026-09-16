@@ -109,7 +109,7 @@
     -webkit-user-drag: none;
   }
 
-  ul {
+  ul:not(.tiptap ul) {
     list-style: none;
   }
 
