@@ -9,6 +9,7 @@ import { AppShell } from '@renderer/components/layout/AppShell'
 import { TabsProvider } from '@renderer/components/layout/TabsProvider'
 import { MandatoryGateProvider } from '@renderer/components/MandatoryGateProvider'
 import { PopupHost } from '@renderer/components/PopupHost'
+import { ResourceEditDialogEventHost } from '@renderer/components/resourceCatalog/dialogs/ResourceEditDialogEventHost'
 import { ThemeProvider } from '@renderer/components/ThemeProvider'
 import ToastHost from '@renderer/components/ToastHost'
 import { WindowFatalFallback } from '@renderer/components/WindowFatalFallback'
@@ -128,6 +129,8 @@ export function MainWindowContent(): React.ReactElement {
         {providerSetupStatus === 'pending' ? <BootFallback /> : <AppShell />}
         <MainWindowRuntime />
         <ConversationNotificationRuntime />
+        {/* 窗口级编辑弹窗宿主：任意 Tab（含全局搜索）请求打开编辑弹窗时在此承载，弹窗不随某个 Tab/弹层卸载 */}
+        <ResourceEditDialogEventHost />
         <PopupHost />
         <ToastHost />
         {providerSetupStatus === 'pending' ? null : <PrivacyPolicyUpdateGate />}

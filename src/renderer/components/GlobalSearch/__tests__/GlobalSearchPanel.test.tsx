@@ -224,9 +224,11 @@ vi.mock('@cherrystudio/ui', async () => {
   }
 })
 
-vi.mock('@renderer/components/resourceCatalog/dialogs/edit', () => ({
-  ResourceEditDialogHost: ({ target }: { target: { kind: string; id: string } | null }) =>
-    target ? <div data-testid="resource-edit-dialog-host" data-kind={target.kind} data-id={target.id} /> : null
+vi.mock('@renderer/components/resourceCatalog/dialogs/ResourceEditDialogEventHost', () => ({
+  // The panel only imports `openResourceEditDialog`; the dialog itself renders at the window level.
+  openResourceEditDialog: (target: { kind: string; id: string }) =>
+    mocks.eventEmit('OPEN_RESOURCE_EDIT_DIALOG', target),
+  ResourceEditDialogEventHost: () => null
 }))
 
 vi.mock('@renderer/components/icons/SvgIcon', () => ({
@@ -410,7 +412,9 @@ vi.mock('@renderer/services/EventService', () => ({
     GLOBAL_SEARCH_SELECT_TOPIC_MESSAGE: 'GLOBAL_SEARCH_SELECT_TOPIC_MESSAGE',
     GLOBAL_SEARCH_SELECT_AGENT_SESSION: 'GLOBAL_SEARCH_SELECT_AGENT_SESSION',
     GLOBAL_SEARCH_SELECT_AGENT_SESSION_MESSAGE: 'GLOBAL_SEARCH_SELECT_AGENT_SESSION_MESSAGE',
-    GLOBAL_SEARCH_SELECT_KNOWLEDGE_BASE: 'GLOBAL_SEARCH_SELECT_KNOWLEDGE_BASE'
+    GLOBAL_SEARCH_SELECT_KNOWLEDGE_BASE: 'GLOBAL_SEARCH_SELECT_KNOWLEDGE_BASE',
+    REVEAL_ACTIVE_RESOURCE_LIST: 'REVEAL_ACTIVE_RESOURCE_LIST',
+    OPEN_RESOURCE_EDIT_DIALOG: 'OPEN_RESOURCE_EDIT_DIALOG'
   },
   EventEmitter: { emit: mocks.eventEmit }
 }))
@@ -2063,7 +2067,7 @@ describe('GlobalSearchPanel', () => {
     expect(highlights).toHaveLength(2)
   })
 
-  it('opens the active assistant result in the edit dialog with Enter', async () => {
+  it('requests the assistant edit dialog via the window-level event host and closes the panel with Enter', async () => {
     const user = userEvent.setup()
     mocks.queryResult = {
       query: 'assistant',
@@ -2089,13 +2093,38 @@ describe('GlobalSearchPanel', () => {
     await screen.findByRole('option', { name: /Writing Assistant/ })
     await user.keyboard('{Enter}')
 
-    expect(screen.getByTestId('resource-edit-dialog-host')).toHaveAttribute('data-kind', 'assistant')
-    expect(screen.getByTestId('resource-edit-dialog-host')).toHaveAttribute('data-id', 'assistant-1')
-    expect(mocks.openTab).not.toHaveBeenCalledWith(
-      '/app/library?resourceType=assistant&action=edit&id=assistant-1',
-      expect.anything()
-    )
-    expect(mocks.onClose).not.toHaveBeenCalled()
+    expect(mocks.eventEmit).toHaveBeenCalledWith('OPEN_RESOURCE_EDIT_DIALOG', { kind: 'assistant', id: 'assistant-1' })
+    expect(mocks.onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('requests the agent edit dialog via the window-level event host and closes the panel with Enter', async () => {
+    const user = userEvent.setup()
+    mocks.queryResult = {
+      query: 'agent',
+      groups: [
+        {
+          type: 'agent',
+          items: [
+            {
+              type: 'agent',
+              id: 'agent-1',
+              title: 'Coding Agent',
+              target: { agentId: 'agent-1' }
+            }
+          ]
+        }
+      ]
+    }
+
+    render(<GlobalSearchPanel onClose={mocks.onClose} />)
+
+    const input = screen.getByLabelText('Search conversations, tasks, assistants, agents, and knowledge...')
+    await user.type(input, 'agent')
+    await screen.findByRole('option', { name: /Coding Agent/ })
+    await user.keyboard('{Enter}')
+
+    expect(mocks.eventEmit).toHaveBeenCalledWith('OPEN_RESOURCE_EDIT_DIALOG', { kind: 'agent', id: 'agent-1' })
+    expect(mocks.onClose).toHaveBeenCalledTimes(1)
   })
 
   it('does not open the active result when Enter confirms an IME candidate', async () => {

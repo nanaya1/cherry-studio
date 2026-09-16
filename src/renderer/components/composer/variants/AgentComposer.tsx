@@ -31,8 +31,8 @@ import {
   useOptionalQuickPanel
 } from '@renderer/components/QuickPanel'
 import {
-  openResourceEditDialog,
-  ResourceEditDialogEventHost
+  openResourceEditDialog
+  // ResourceEditDialogEventHost — 已上移到窗口级（MainApp/SubWindowApp），避免多宿主重复响应同一事件
 } from '@renderer/components/resourceCatalog/dialogs/ResourceEditDialogEventHost'
 import { usePreference } from '@renderer/data/hooks/usePreference'
 import { useUpdateAgent } from '@renderer/hooks/agent/useAgent'
@@ -1797,7 +1797,7 @@ const AgentComposerInner = ({
       extensions={supportedExts}
       selectableKnowledgeBases={selectableKnowledgeBases}>
       {model && <ComposerToolRuntimeHost scope={scope} model={model} session={toolsSession} />}
-      <ResourceEditDialogEventHost />
+      {/* 停用 composer 级编辑弹窗宿主：已上移到窗口级（MainApp/SubWindowApp），避免多宿主重复响应同一事件 */}
       <ComposerPinnedToolsProvider value={pinnedLauncherIds}>
         <ComposerSurface
           showAiDisclaimer
