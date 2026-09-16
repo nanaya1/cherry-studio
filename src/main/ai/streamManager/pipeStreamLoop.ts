@@ -10,8 +10,8 @@
  *    naturally via `Agent.stream` honouring the same signal upstream.
  *    Cancelling the accumulator reader directly races AI SDK's
  *    `controller.close()` → `ERR_INVALID_STATE`.
- *  - Accumulator errors are swallowed; the broadcast path owns terminal
- *    status.
+ *  - Accumulator errors are returned for diagnostics; the broadcast path still
+ *    owns terminal status.
  *  - `broadcastCompletedAt` is captured before accumulator drain so
  *    callers tracking provider-side completion time aren't inflated.
  */
