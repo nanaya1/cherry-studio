@@ -63,6 +63,7 @@ const CherryInOauth: FC<CherryInOauthProps> = ({ providerId }) => {
   const oauthServer = presentation?.oauthServer
   const topupUrl = presentation?.topupUrl
   const i18nNs = presentation?.i18nNs
+  const shouldShowTopup = gateway === 'cherryin'
 
   const [isLoggingOut, setIsLoggingOut] = useState(false)
   const [isProvisioningKey, setIsProvisioningKey] = useState(false)
@@ -320,13 +321,23 @@ const CherryInOauth: FC<CherryInOauthProps> = ({ providerId }) => {
                 )}
               </div>
             </div>
-            <Button
+            {shouldShowTopup ? (
+              <Button
+                className={cn(oauthCardClasses.topupPrimaryButton, 'h-7 px-2.5 py-0')}
+                onClick={handleTopup}
+                size="sm"
+                variant="default">
+                {t('settings.provider.oauth.topup')}
+              </Button>
+            ) : null}
+            {/* 雪浪工匠隐藏充值入口，保留原按钮逻辑以便后续恢复。 */}
+            {/* <Button
               className={cn(oauthCardClasses.topupPrimaryButton, 'h-7 px-2.5 py-0')}
               onClick={handleTopup}
               size="sm"
               variant="default">
               {t('settings.provider.oauth.topup')}
-            </Button>
+            </Button> */}
             <Button
               className={cn(oauthCardClasses.logoutCompact, 'h-7 px-2 py-0 text-muted-foreground')}
               disabled={isLoggingOut}
