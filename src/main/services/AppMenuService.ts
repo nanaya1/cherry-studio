@@ -15,7 +15,9 @@ import {
   resolveMenu
 } from '@shared/utils/command'
 import type { BrowserWindow } from 'electron'
-import { app, Menu, shell } from 'electron'
+// 「帮助」子菜单（含 shell.openExternal 反馈/更新日志跳转）暂时隐藏，shell import 随之注释。恢复时一并恢复。
+// import { app, Menu, shell } from 'electron'
+import { app, Menu } from 'electron'
 
 const appMenuCommands: CommandId[] = ['app.settings.open', 'app.zoom.in', 'app.zoom.out', 'app.zoom.reset']
 
@@ -142,7 +144,9 @@ export class AppMenuService extends BaseService {
           { type: 'role', role: 'front', label: t('appMenu.front') }
         ]
       },
-      {
+      // Mea Cowork：「帮助」子菜单整体暂时隐藏——反馈/更新日志跳转 CherryHQ GitHub，官网/文档属 Cherry 厂商云。
+      // 恢复时取消下方注释。
+      /* {
         type: 'submenu',
         label: t('appMenu.help'),
         children: [
@@ -176,7 +180,7 @@ export class AppMenuService extends BaseService {
             }
           }
         ]
-      }
+      } */
     ]
 
     const template = toElectronMenuTemplate(items, {

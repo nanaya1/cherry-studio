@@ -98,7 +98,8 @@ const SelectionAssistantSettings: FC = () => {
       <SettingGroup theme={theme}>
         <SettingTitle>
           <span className="font-semibold text-[15px]">{t('selection.name')}</span>
-          <div className="flex items-center">
+          {/* 隐藏 FAQ & 反馈入口（原跳转 Cherry Studio GitHub issues），MEA 版不展示；恢复 = 取消注释 */}
+          {/* <div className="flex items-center">
             <button
               type="button"
               className="cursor-pointer border-0 bg-transparent p-0 font-normal text-link text-xs hover:underline"
@@ -107,7 +108,7 @@ const SelectionAssistantSettings: FC = () => {
               }>
               {'FAQ & ' + t('settings.about.feedback.button')}
             </button>
-          </div>
+          </div> */}
         </SettingTitle>
         <SettingDivider />
         <SettingRow>

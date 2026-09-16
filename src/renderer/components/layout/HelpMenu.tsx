@@ -2,12 +2,14 @@ import { Button, MenuItem, MenuList, Popover, PopoverContent, PopoverTrigger, To
 import { loggerService } from '@logger'
 import type { SidebarVisibleLayout } from '@renderer/components/Sidebar'
 import { useOpenReleaseNotes } from '@renderer/hooks/useOpenReleaseNotes'
-import { ipcApi } from '@renderer/ipc'
-import { CircleQuestionMark, Github, MessageSquareText, Sparkles } from 'lucide-react'
+// 「GitHub 点赞」入口暂时隐藏：跳转 CherryHQ 官方仓库，ipcApi 仅其使用，import 随之注释。恢复时一并恢复。
+// import { ipcApi } from '@renderer/ipc'
+// import { CircleQuestionMark, Github, MessageSquareText, Sparkles } from 'lucide-react'
+import { CircleQuestionMark, MessageSquareText, Sparkles } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-const GITHUB_REPOSITORY_URL = 'https://github.com/CherryHQ/cherry-studio'
+// const GITHUB_REPOSITORY_URL = 'https://github.com/CherryHQ/cherry-studio'
 const logger = loggerService.withContext('HelpMenu')
 
 export function HelpMenu({
@@ -70,9 +72,10 @@ export function HelpMenu({
   //   })
   // }
 
-  const openGitHubRepository = () => {
-    return ipcApi.request('system.shell.open_website', GITHUB_REPOSITORY_URL)
-  }
+  // 「GitHub 点赞」入口暂时隐藏：跳转 CherryHQ 官方仓库。恢复时取消下方注释。
+  // const openGitHubRepository = () => {
+  //   return ipcApi.request('system.shell.open_website', GITHUB_REPOSITORY_URL)
+  // }
 
   const trigger =
     layout === 'icon' ? (
@@ -140,6 +143,8 @@ export function HelpMenu({
               label={t('help.feedback')}
               onClick={() => runAfterClose(onFeedbackClick)}
             />
+            {/* 「GitHub 点赞」入口暂时隐藏：跳转 CherryHQ 官方仓库。恢复时取消下方注释。 */}
+            {/*
             <MenuItem
               size="sm"
               className="h-8"
@@ -147,6 +152,7 @@ export function HelpMenu({
               label={t('help.star')}
               onClick={() => runAfterClose(openGitHubRepository)}
             />
+            */}
           </MenuList>
         </PopoverContent>
       </Popover>

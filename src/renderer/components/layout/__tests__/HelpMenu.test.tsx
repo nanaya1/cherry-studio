@@ -85,11 +85,9 @@ describe('HelpMenu', () => {
     render(<HelpMenu layout="icon" onFeedbackClick={mocks.openFeedback} />)
     const user = await openMenu()
 
-    // 「使用指南」（docs.cherryai.com.cn，Cherry 厂商云）入口暂时隐藏，剩 3 个动作。
-    const actions = ['help.whats_new', 'help.feedback', 'help.star'].map((name) =>
-      screen.getByRole('button', { name })
-    )
-    expect(actions).toHaveLength(3)
+    // 「使用指南」（docs.cherryai.com.cn，Cherry 厂商云）与「GitHub 点赞」（CherryHQ 仓库）入口暂时隐藏，剩 2 个动作。
+    const actions = ['help.whats_new', 'help.feedback'].map((name) => screen.getByRole('button', { name }))
+    expect(actions).toHaveLength(2)
     actions.forEach((action) => expect(action).toHaveClass('h-8'))
 
     await user.click(actions[0])
@@ -131,19 +129,13 @@ describe('HelpMenu', () => {
     await waitFor(() => expect(mocks.openFeedback).toHaveBeenCalledOnce())
   })
 
-  it('opens the repository in the system browser for the GitHub Star action', async () => {
+  it('hides the GitHub Star entry while it is disabled', async () => {
+    // 「GitHub 点赞」跳转 https://github.com/CherryHQ/cherry-studio（CherryHQ 官方仓库），入口已隐藏；原 URL 断言见 git 历史。
     render(<HelpMenu layout="icon" onFeedbackClick={mocks.openFeedback} />)
-    const user = await openMenu()
+    await openMenu()
 
-    await user.click(screen.getByRole('button', { name: 'help.star' }))
-
-    await waitFor(() =>
-      expect(mocks.ipcRequest).toHaveBeenCalledWith(
-        'system.shell.open_website',
-        'https://github.com/CherryHQ/cherry-studio'
-      )
-    )
-    expect(mocks.openSmartMiniApp).not.toHaveBeenCalled()
+    expect(screen.queryByRole('button', { name: 'help.star' })).not.toBeInTheDocument()
+    expect(mocks.ipcRequest).not.toHaveBeenCalledWith('system.shell.open_website', expect.anything())
   })
 
   it('supports keyboard activation from the focused first action', async () => {

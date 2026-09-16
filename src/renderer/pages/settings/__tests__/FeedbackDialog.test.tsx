@@ -1,6 +1,8 @@
 import '@testing-library/jest-dom/vitest'
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+// fireEvent / waitFor 随 GitHub 反馈入口点击断言一起停用，恢复时改回。
+// import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { useState } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -47,20 +49,21 @@ describe('FeedbackDialog', () => {
     mocks.ipcRequest.mockResolvedValue({ sessionId: 'feedback-session' })
   })
 
-  it('shows only the GitHub option while the diagnostics entry is hidden', () => {
-    // 「发送诊断报告」（上传 api.cherry-ai.com，Cherry 厂商云）入口暂时隐藏，恢复时改回双入口断言（见 git 历史）。
+  it('shows an empty dialog while both entries are hidden', () => {
+    // 「发送诊断报告」（→ api.cherry-ai.com）与「GitHub 反馈」（→ CherryHQ issues）入口均已暂时隐藏，
+    // 对话框只剩标题骨架；恢复时改回入口断言（见 git 历史）。
     render(<FeedbackDialog open onOpenChange={vi.fn()} />)
 
-    expect(screen.getByRole('button', { name: /settings.about.feedback.github.title/ })).toBeInTheDocument()
+    expect(screen.getByText('settings.about.feedback.dialog.title')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /settings.about.feedback.github.title/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /settings.about.feedback.diagnostics.title/ })).not.toBeInTheDocument()
     expect(screen.queryByText('settings.about.feedback.recommended')).not.toBeInTheDocument()
   })
 
-  it('uses the shared large dialog size with inset, spacious options', () => {
+  it('uses the shared large dialog size', () => {
     render(<FeedbackDialog open onOpenChange={vi.fn()} />)
 
     expect(screen.getByTestId('dialog-content')).toHaveAttribute('data-size', 'lg')
-    expect(screen.getByRole('list')).toHaveClass('gap-3', 'px-2')
   })
 
   it('does not render the diagnostic upload dialog while the entry is hidden', () => {
@@ -70,29 +73,10 @@ describe('FeedbackDialog', () => {
     expect(mocks.ipcRequest).not.toHaveBeenCalledWith('diagnostics.bundle.upload', expect.anything())
   })
 
-  it('opens the GitHub issue chooser', async () => {
-    render(<FeedbackDialog open onOpenChange={vi.fn()} />)
-
-    fireEvent.click(screen.getByRole('button', { name: /settings.about.feedback.github.title/ }))
-
-    await waitFor(() => expect(mocks.ipcRequest).toHaveBeenCalledWith('system.shell.open_website', FEEDBACK_GITHUB_URL))
-  })
-
-  it('closes before reporting GitHub issue chooser failures', async () => {
-    mocks.ipcRequest.mockImplementation((route: string) => {
-      if (route === 'system.shell.open_website') {
-        expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-        return Promise.reject(new Error('open failed'))
-      }
-      return Promise.resolve({ sessionId: 'feedback-session' })
-    })
+  it('never opens the GitHub issue chooser while the entry is hidden', async () => {
+    // 「GitHub 反馈」入口暂时隐藏，任何交互都不应触发 open_website（原点击断言见 git 历史）。
     render(<ControlledFeedbackDialog />)
 
-    fireEvent.click(screen.getByRole('button', { name: /settings.about.feedback.github.title/ }))
-
-    await waitFor(() =>
-      expect(mocks.loggerError).toHaveBeenCalledWith('Failed to open GitHub issue chooser', expect.any(Error))
-    )
-    expect(mocks.toastError).toHaveBeenCalledWith('settings.about.feedback.github.error')
+    expect(mocks.ipcRequest).not.toHaveBeenCalledWith('system.shell.open_website', FEEDBACK_GITHUB_URL)
   })
 })
