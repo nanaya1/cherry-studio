@@ -187,6 +187,7 @@ export class JobManager extends BaseService {
    * this field.
    */
   protected _recoveryDone: Promise<void> | undefined
+  private startupRecoveryCutoffAt = Number.POSITIVE_INFINITY
 
   /**
    * Live pause holds (write quiesce, see `pause()`). Refcounted: the manager
@@ -316,6 +317,7 @@ export class JobManager extends BaseService {
    * teardown arrives inside the quiet window — see `_isShuttingDown`.
    */
   protected override onAllReady(): void {
+    this.startupRecoveryCutoffAt = Date.now()
     const handle = setTimeout(() => {
       if (this._isShuttingDown) {
         logger.info('Startup recovery skipped: shutdown requested during quiet window')
@@ -421,7 +423,7 @@ export class JobManager extends BaseService {
     if (startIndex <= RECOVERY_STEPS.indexOf('reset')) {
       if (interruptedAt({ step: 'reset' })) return
       try {
-        const stats = runStartupRecovery(this.handlers, (id) => this.inFlightExecuted.has(id))
+        const stats = runStartupRecovery(this.handlers, (id) => this.inFlightExecuted.has(id), this.startupRecoveryCutoffAt)
         logger.info('Startup recovery complete', stats)
       } catch (err) {
         logger.error('Startup recovery failed', err as Error)

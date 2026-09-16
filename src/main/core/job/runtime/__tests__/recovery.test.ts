@@ -228,4 +228,75 @@ describe('runStartupRecovery — in-flight exclusion', () => {
     expect(inFlight?.status).toBe('running')
     expect(orphan?.status).toBe('cancelled')
   })
+
+  it('abandon: leaves jobs created after recovery cutoff pending', async () => {
+    const type = 'task.abandon.unit.cutoff'
+    const dbh = MockMainDbServiceExport.dbService.getDb() as DbType
+    const cutoff = Date.now()
+    const inserted = await dbh
+      .insert(jobTable)
+      .values([
+        {
+          type,
+          status: 'running',
+          queue: type,
+          scheduledAt: cutoff - 2000,
+          startedAt: cutoff - 1500,
+          attempt: 0,
+          maxAttempts: 1,
+          input: { marker: 'old' },
+          cancelRequested: false,
+          metadata: {},
+          createdAt: cutoff - 1000
+        },
+        {
+          type,
+          status: 'pending',
+          queue: type,
+          scheduledAt: cutoff,
+          startedAt: null,
+          attempt: 0,
+          maxAttempts: 1,
+          input: { marker: 'new' },
+          cancelRequested: false,
+          metadata: {},
+          createdAt: cutoff + 1
+        }
+      ])
+      .returning()
+
+    const oldId = inserted.find((r) => (r.input as { marker: string }).marker === 'old')!.id
+    const newId = inserted.find((r) => (r.input as { marker: string }).marker === 'new')!.id
+
+    runStartupRecovery(handlersOf(type, 'abandon'), () => false, cutoff)
+
+    expect(jobService.getById(oldId)?.status).toBe('cancelled')
+    expect(jobService.getById(newId)?.status).toBe('pending')
+  })
+
+  it('does not cancel an unregistered job created after recovery cutoff', async () => {
+    const type = 'task.orphan.unit.cutoff'
+    const dbh = MockMainDbServiceExport.dbService.getDb() as DbType
+    const cutoff = Date.now()
+    const [row] = await dbh
+      .insert(jobTable)
+      .values({
+        type,
+        status: 'pending',
+        queue: type,
+        scheduledAt: cutoff,
+        startedAt: null,
+        attempt: 0,
+        maxAttempts: 1,
+        input: { marker: 'new-orphan' },
+        cancelRequested: false,
+        metadata: {},
+        createdAt: cutoff + 1
+      })
+      .returning()
+
+    runStartupRecovery(new Map(), () => false, cutoff)
+
+    expect(jobService.getById(row.id)?.status).toBe('pending')
+  })
 })
