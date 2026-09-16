@@ -438,10 +438,16 @@
   cursor: col-resize;
 }
 
+/*
+ * !important here is deliberate: vendor stylesheets assigned to `app` load
+ * before this file in production bundles, so the `app` layer is created first
+ * and loses to Tailwind preflight's `base` layer (layer order = first
+ * appearance). The important declarations invert that for these rules only.
+ */
 .tiptap ul,
 .tiptap ol {
-  padding: 0 1rem;
-  margin: 1.25rem 1rem 1.25rem 0.4rem;
+  padding: 0 1rem !important;
+  margin: 1.25rem 1rem 1.25rem 0.4rem !important;
 }
 
 .tiptap ul li p,
@@ -455,21 +461,21 @@
 .tiptap ul ol,
 .tiptap ol ul,
 .tiptap ol ol {
-  margin: 0.5rem 0.5rem 0.5rem 0.2rem;
+  margin: 0.5rem 0.5rem 0.5rem 0.2rem !important;
 }
 
 .tiptap ul {
-  list-style: disc;
+  list-style: disc !important;
 }
 
 .tiptap ol {
-  list-style: decimal;
+  list-style: decimal !important;
 }
 
 .tiptap ul[data-type='taskList'] {
-  list-style: none;
-  margin-left: 0;
-  padding: 0;
+  list-style: none !important;
+  margin-left: 0 !important;
+  padding: 0 !important;
 }
 
 .tiptap ul[data-type='taskList'] li {
