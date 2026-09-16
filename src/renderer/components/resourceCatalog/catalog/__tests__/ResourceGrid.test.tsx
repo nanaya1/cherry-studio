@@ -831,6 +831,14 @@ describe('ResourceGrid card actions', () => {
     expect(screen.queryByRole('button', { name: '删除' })).not.toBeInTheDocument()
   })
 
+  it('hides the overflow menu on assistant cards when management actions are disabled', () => {
+    render(
+      <ResourceCard resource={createAssistantResource()} showManagementActions={false} {...getResourceCardProps()} />
+    )
+
+    expect(screen.queryByRole('button', { name: /common.more/ })).not.toBeInTheDocument()
+  })
+
   it('shows a direct delete action when delete is the only card action', async () => {
     const user = userEvent.setup()
     const resource = createAgentResource()

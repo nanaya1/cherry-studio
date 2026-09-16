@@ -27,6 +27,7 @@ function activateCardOnKeyDown(event: KeyboardEvent<HTMLDivElement>, activate: (
 interface ResourceCardProps {
   resource: ResourceItem
   variant?: 'library' | 'settings'
+  showManagementActions?: boolean
   allGroups: Group[]
   onDelete: (resource: ResourceItem) => void
   onDuplicate: (resource: ResourceItem) => void
@@ -77,6 +78,7 @@ export function SkillGlobalToggle({
 export function ResourceCard({
   resource: r,
   variant = 'library',
+  showManagementActions = true,
   allGroups,
   onDelete,
   onDuplicate,
@@ -88,7 +90,7 @@ export function ResourceCard({
   const isSettings = variant === 'settings'
   const showTypeIcon = r.type === 'assistant' || r.type === 'agent' || r.type === 'skill'
   const TypeIcon = cfg.icon
-  const showOverflowMenu = hasOverflowActions(r)
+  const showOverflowMenu = showManagementActions && hasOverflowActions(r)
   const visibleGroup = r.type === 'assistant' ? r.groupName : undefined
   const skillVersion = r.type === 'skill' ? r.raw.version?.trim() : undefined
   const isDefault = isProtectedDefaultResource(r)

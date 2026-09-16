@@ -80,6 +80,7 @@ interface Props {
   allGroups: Group[]
   toolbarLeading?: ReactNode
   variant?: 'library' | 'settings'
+  showManagementActions?: boolean
   /** Settings variant only: page heading rendered above the search row. */
   title?: ReactNode
   description?: ReactNode
@@ -212,6 +213,7 @@ export const ResourceGrid: FC<Props> = ({
   allGroups,
   toolbarLeading,
   variant = 'library',
+  showManagementActions = true,
   title,
   description
 }) => {
@@ -230,7 +232,7 @@ export const ResourceGrid: FC<Props> = ({
   const [renaming, setRenaming] = useState(false)
   const [deletingGroup, setDeletingGroup] = useState<GroupItem | null>(null)
   const [deleting, setDeleting] = useState(false)
-  const showGroupToolbar = activeResourceType === 'assistant'
+  const showGroupToolbar = showManagementActions && activeResourceType === 'assistant'
   const unusedGroups = useMemo(() => {
     const usedIds = new Set(groups.map((group) => group.id))
     return allGroups
@@ -316,7 +318,7 @@ export const ResourceGrid: FC<Props> = ({
   }, [activeGroupId, deleteGroup, deleting, deletingGroup, onGroupFilter, t])
 
   const addActions =
-    activeResourceType === 'assistant' ? (
+    !showManagementActions ? null : activeResourceType === 'assistant' ? (
       <AssistantAddActions
         onNew={() => onCreate('assistant')}
         onImport={onImportAssistant}
@@ -518,6 +520,7 @@ export const ResourceGrid: FC<Props> = ({
             columnCount={columnCount}
             resources={resources}
             variant={variant}
+            showManagementActions={showManagementActions}
             allGroups={allGroups}
             onDelete={onDelete}
             onDuplicate={onDuplicate}
@@ -563,6 +566,7 @@ interface VirtualizedResourceGridProps {
   columnCount: number
   resources: ResourceItem[]
   variant: 'library' | 'settings'
+  showManagementActions?: boolean
   allGroups: Group[]
   onDelete: (r: ResourceItem) => void
   onDuplicate: (r: ResourceItem) => void
@@ -575,6 +579,7 @@ function VirtualizedResourceGrid({
   columnCount,
   resources,
   variant,
+  showManagementActions,
   allGroups,
   onDelete,
   onDuplicate,
@@ -619,6 +624,7 @@ function VirtualizedResourceGrid({
                 key={resource.id}
                 resource={resource}
                 variant={variant}
+                showManagementActions={showManagementActions}
                 allGroups={allGroups}
                 onDelete={onDelete}
                 onDuplicate={onDuplicate}
