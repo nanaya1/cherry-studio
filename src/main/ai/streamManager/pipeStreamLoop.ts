@@ -35,6 +35,8 @@ export interface PipeStreamLoopResult {
   threw?: { error: unknown }
   /** Captured before accumulator drain. */
   broadcastCompletedAt: number
+  /** Non-fatal accumulator failure; the broadcast path still owns terminal status. */
+  accumulatorError?: unknown
 }
 
 export async function pipeStreamLoop(
@@ -48,8 +50,6 @@ export async function pipeStreamLoop(
   const accumulator = runAccumulator(forAccum, options.accumulatorSeed, (msg: CherryUIMessage) => {
     finalMessage = msg
     options.onAccumulatedSnapshot?.(msg)
-  }).catch(() => {
-    // Accumulator failures are non-fatal — broadcast loop owns terminal status.
   })
 
   const broadcastReader = forBroadcast.getReader()
@@ -61,6 +61,7 @@ export async function pipeStreamLoop(
 
   let streamErrorText: string | undefined
   let threw: { error: unknown } | undefined
+  let accumulatorError: unknown
   let broadcastCompletedAt: number
 
   try {
@@ -79,9 +80,13 @@ export async function pipeStreamLoop(
     broadcastReader.releaseLock()
   }
 
-  await accumulator
+  try {
+    await accumulator
+  } catch (error) {
+    accumulatorError = error
+  }
 
-  return { finalMessage, streamErrorText, threw, broadcastCompletedAt }
+  return { finalMessage, streamErrorText, threw, broadcastCompletedAt, accumulatorError }
 }
 
 async function runAccumulator(
