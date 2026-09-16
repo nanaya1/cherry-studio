@@ -136,19 +136,19 @@ vi.mock('@renderer/utils/model', () => {
 
 vi.mock('@renderer/types', () => {
   const builtinMcpServerNames = {
-    flomo: '@cherry/flomo',
-    mcpAutoInstall: '@cherry/mcp-auto-install',
-    memory: '@cherry/memory',
-    sequentialThinking: '@cherry/sequentialthinking',
-    braveSearch: '@cherry/brave-search',
-    fetch: '@cherry/fetch',
-    filesystem: '@cherry/filesystem',
-    difyKnowledge: '@cherry/dify-knowledge',
-    python: '@cherry/python',
-    didiMCP: '@cherry/didi-mcp',
-    browser: '@cherry/browser',
-    nowledgeMem: '@cherry/nowledge-mem',
-    hub: '@cherry/hub'
+    flomo: 'flomo',
+    mcpAutoInstall: 'mcp-auto-install',
+    memory: 'memory',
+    sequentialThinking: 'sequentialthinking',
+    braveSearch: 'brave-search',
+    fetch: 'fetch',
+    filesystem: 'filesystem',
+    difyKnowledge: 'dify-knowledge',
+    python: 'python',
+    didiMCP: 'didi-mcp',
+    browser: 'browser',
+    nowledgeMem: 'nowledge-mem',
+    hub: 'hub'
   }
 
   return {

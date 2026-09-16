@@ -83,7 +83,7 @@ export function getBuiltinHttpHeaders(server: McpServer): Record<string, string>
 }
 
 /**
- * Extra env for servers that resolve packages from a custom registry: `@cherry/mcp-auto-install`
+ * Extra env for servers that resolve packages from a custom registry: `mcp-auto-install`
  * reads its catalog from a file whose location only exists at runtime.
  */
 export function getBuiltinRegistryEnv(server: McpServer): Record<string, string> {

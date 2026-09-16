@@ -1,4 +1,4 @@
-import { Button, Popover, PopoverContent, PopoverTrigger, Tabs, TabsList, TabsTrigger } from '@cherrystudio/ui'
+import { Badge, Button, Popover, PopoverContent, PopoverTrigger, Tabs, TabsList, TabsTrigger } from '@cherrystudio/ui'
 import CollapsibleSearchBar from '@renderer/components/CollapsibleSearchBar'
 import { SettingTitle } from '@renderer/components/SettingsPrimitives'
 import { useMcpServers } from '@renderer/hooks/useMcpServer'
@@ -31,6 +31,9 @@ const BuiltinMcpServerList: FC<BuiltinMcpServerListProps> = ({ variant = 'settin
     const keyword = searchText.trim().toLowerCase()
 
     return PRESET_MCP_SERVERS.filter((server) => {
+      // MEA：需要配置（shouldConfig）的内置服务器暂时隐藏，配置流程完善后删除此行恢复
+      if (server.shouldConfig) return false
+
       const isInstalled = mcpServers.some((existingServer) => existingServer.name === server.name)
 
       if (filter === 'installed' && !isInstalled) return false
@@ -102,8 +105,14 @@ const BuiltinMcpServerList: FC<BuiltinMcpServerListProps> = ({ variant = 'settin
                     <Plug className="size-4 text-muted-foreground" />
                   </div>
                   <h3 className="min-w-0 truncate font-semibold text-base leading-5">{server.name}</h3>
-                  {/* 「需配置」徽章暂时隐藏：target="_blank" 跳转到 docs.cherry-ai.com，属 Cherry 厂商云。恢复时把 null 换成下面的 <a>。 */}
-                  {null}
+                  {/* 「需配置」徽章：原版外层 <a> 跳转 docs.cherry-ai.com（Cherry 厂商云），已去链接保留纯徽章。恢复跳转时参考 dfdfaf1d82^。 */}
+                  {server?.shouldConfig && (
+                    <Badge
+                      variant="outline"
+                      className="h-5 shrink-0 rounded-md border-error-border bg-error-subtle px-1.5 text-[11px] text-error-subtle-foreground leading-none">
+                      {t('settings.mcp.requiresConfig')}
+                    </Badge>
+                  )}
                 </div>
                 <Popover>
                   <PopoverTrigger asChild>

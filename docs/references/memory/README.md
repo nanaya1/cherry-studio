@@ -12,7 +12,7 @@ sources:
 Cherry Studio provides three memory mechanisms that differ in who they serve,
 how they persist, and where they are stored: file-based memory for Agents
 (`SOUL.md` / `USER.md` / `FACT.md` / `JOURNAL.jsonl`), the Knowledge Base, and
-the built-in `@cherry/memory` MCP server. The v1 "Global Memory" toggle was
+the built-in `memory` MCP server. The v1 "Global Memory" toggle was
 removed in v2 ([#14250](https://github.com/CherryHQ/cherry-studio/issues/14250));
 see the overview for what to use instead.
 

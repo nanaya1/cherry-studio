@@ -17,7 +17,7 @@ Cherry Studio provides three distinct memory mechanisms. They differ in who they
 |---|---|---|---|---|---|
 | Agent File Memory | Agent | File read/write (`SOUL.md` / `USER.md` / `FACT.md` / `JOURNAL.jsonl`) | Agent data directory (`{agentData}/memory/`) | Yes | No (per-agent) |
 | Knowledge Base | Assistant + Agent | Indexed retrieval (ingestion + vector/query) | Knowledge base directory | Yes | Yes |
-| MCP Memory | Agent | MCP protocol (`@cherry/memory` built-in server) | MCP server (`memory.json` knowledge graph) | Yes | Depends on server impl |
+| MCP Memory | Agent | MCP protocol (`memory` built-in server) | MCP server (`memory.json` knowledge graph) | Yes | Depends on server impl |
 
 ## About "Global Memory"
 
@@ -48,7 +48,7 @@ If you relied on Global Memory in v1:
 
 ### MCP Memory (Agent)
 
-- The built-in `@cherry/memory` MCP server (`src/main/ai/mcp/servers/memory.ts`) exposes a `memory.json` knowledge-graph (entities / relations / observations).
+- The built-in `memory` MCP server (`src/main/ai/mcp/servers/memory.ts`) exposes a `memory.json` knowledge-graph (entities / relations / observations).
 - Agents call it through MCP tools; persistence and sharing depend on the server implementation.
 
 ## Choosing

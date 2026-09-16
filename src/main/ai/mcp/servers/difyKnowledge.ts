@@ -64,7 +64,7 @@ class DifyKnowledgeServer {
     }
     this.server = new Server(
       {
-        name: '@cherry/dify-knowledge-server',
+        name: 'dify-knowledge-server',
         version: '0.1.0'
       },
       {

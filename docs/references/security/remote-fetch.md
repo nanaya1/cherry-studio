@@ -33,7 +33,7 @@ blocked.
 
 `fetchRemoteText` reads this preference and passes it to `resolveRemoteFetchUrl` as
 `allowPrivateNetwork`. When on — the default — both the literal and the DNS private-address
-rejections are skipped, so `@cherry/fetch`, `web_fetch`, web search extraction, and citation previews
+rejections are skipped, so `fetch`, `web_fetch`, web search extraction, and citation previews
 can reach `localhost`, a LAN NAS, or a proxy-only host. Every other rule above still applies: scheme
 and credential validation, connection pinning, redirect limits, and the response size bound.
 

@@ -29,8 +29,8 @@ function isLegacyMcpAutoInstall(row: McpServerRow): boolean {
 
 /**
  * Adopt the transport a builtin MCP server preset declares for rows that were installed
- * while it was still started in-process (`@cherry/flomo` and `@cherry/nowledge-mem` are HTTP
- * endpoints, `@cherry/mcp-auto-install` is an npx child process).
+ * while it was still started in-process (`flomo` and `nowledge-mem` are HTTP
+ * endpoints, `mcp-auto-install` is an npx child process).
  *
  * Only explicit builtin rows or the exact legacy mcp-auto-install default are rewritten. Ambiguous
  * rows without ownership, already-migrated rows, and deleted builtins stay untouched.

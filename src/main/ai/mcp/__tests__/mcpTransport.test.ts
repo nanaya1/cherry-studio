@@ -66,9 +66,9 @@ describe('createTransport', () => {
   beforeEach(() => vi.clearAllMocks())
 
   it('starts an in-process server and hands back its side of the pipe', async () => {
-    const transport = await create({ type: 'inMemory', name: '@cherry/memory', env: { MEMORY_FILE_PATH: '/tmp/m' } })
+    const transport = await create({ type: 'inMemory', name: 'memory', env: { MEMORY_FILE_PATH: '/tmp/m' } })
 
-    expect(createInMemoryMcpServer).toHaveBeenCalledWith('@cherry/memory', [], { MEMORY_FILE_PATH: '/tmp/m' })
+    expect(createInMemoryMcpServer).toHaveBeenCalledWith('memory', [], { MEMORY_FILE_PATH: '/tmp/m' })
     expect(inMemoryServerMock.connect).toHaveBeenCalledWith('server-transport')
     expect(transport).toBe('client-transport')
   })
@@ -76,7 +76,7 @@ describe('createTransport', () => {
   it('reports a failed in-process start instead of returning a dead transport', async () => {
     inMemoryServerMock.connect.mockRejectedValueOnce(new Error('boom'))
 
-    await expect(create({ type: 'inMemory', name: '@cherry/memory' })).rejects.toThrow(
+    await expect(create({ type: 'inMemory', name: 'memory' })).rejects.toThrow(
       /Failed to start in-memory server: boom/
     )
   })
@@ -202,7 +202,7 @@ describe('createTransport', () => {
 
     const transport = (await create({
       type: 'inMemory',
-      name: '@cherry/mcp-auto-install',
+      name: 'mcp-auto-install',
       command: 'npx'
     })) as unknown as FakeStdioTransport
 
@@ -213,8 +213,8 @@ describe('createTransport', () => {
   it('names the missing in-process server when the row declares no connection either', async () => {
     hasInMemoryImplementation.mockReturnValueOnce(false)
 
-    await expect(create({ type: 'inMemory', name: '@cherry/ghost' })).rejects.toThrow(
-      /Unknown in-memory MCP server: @cherry\/ghost/
+    await expect(create({ type: 'inMemory', name: 'ghost' })).rejects.toThrow(
+      /Unknown in-memory MCP server: ghost/
     )
   })
 
