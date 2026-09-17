@@ -218,6 +218,7 @@ describe('Chat panels', () => {
     MockUseDataApiUtils.mockQueryData('/assistants/:id', {
       id: 'assistant-1',
       name: 'Assistant',
+      builtinRole: null,
       prompt: '',
       emoji: '😀',
       description: '',

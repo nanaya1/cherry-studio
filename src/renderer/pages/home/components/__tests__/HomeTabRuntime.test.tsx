@@ -28,7 +28,8 @@ describe('HomeTabRuntime', () => {
 
     expect(tabMocks.useTabSelfVisuals).toHaveBeenCalledWith({
       title: 'Topic A',
-      emoji: '🍒',
+      // MEA customization: assistant/agent emoji display is hidden, so no emoji is passed.
+      emoji: undefined,
       routePrefix: '/app/chat',
       preserveVisuals: false
     })

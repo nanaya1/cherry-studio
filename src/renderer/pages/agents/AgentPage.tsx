@@ -1,5 +1,6 @@
-import { useNavigate, useLocation, useSearch } from '@tanstack/react-router'
-import { PropsWithChildren, useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { getRouteApi, useLocation, useNavigate } from '@tanstack/react-router'
+import type { PropsWithChildren } from 'react'
+import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { cacheService } from '@data/CacheService'
@@ -9,8 +10,8 @@ import { loggerService } from '@logger'
 import type { ResourcePaneConfig, ResourcePaneCountButtonProps } from '@renderer/components/chat/panes/Shell'
 import { AgentResourceList } from '@renderer/components/chat/resourceList/AgentResourceList'
 import type { ResourceListRevealRequest } from '@renderer/components/chat/resourceList/base'
-import Sessions from '@renderer/components/chat/resourceList/Sessions'
 import { ConversationSidebarToggleButton } from '@renderer/components/chat/shell/ConversationSidebarToggleButton'
+import type { AgentComposerLaunchOptions } from '@renderer/components/composer/variants/AgentComposer'
 import {
   createRecentSessionEntryFromSession,
   recordGlobalSearchRecentEntry
@@ -36,10 +37,10 @@ import { useConversationShellPaneState } from '@renderer/hooks/useConversationSh
 import { EVENT_NAMES, EventEmitter } from '@renderer/services/EventService'
 import type { ResourceListRevealPayload } from '@renderer/services/resourceListRevealEvents'
 import { toast } from '@renderer/services/toast'
-import type { CreateAgentSessionDefaults } from '@renderer/types/agent'
+import type { AppRouter } from '@renderer/types/router'
 import { buildAgentFileWorkspaceKey, buildAgentSessionTopicId } from '@renderer/utils/agentSession'
-import { isDetailPageUrl } from '@renderer/utils/detailPage'
 import { formatErrorMessageWithPrefix } from '@renderer/utils/error'
+import { isDetailPageUrl } from '@renderer/utils/detailPage'
 import { getDefaultRouteTitle } from '@renderer/utils/routeTitle'
 import { cn } from '@renderer/utils/style'
 import { isDataApiNotFoundError } from '@shared/data/api/errors'
@@ -52,10 +53,18 @@ import AgentSidePanel from './AgentSidePanel'
 import { AgentCreateDialog } from './components/AgentCreateDialog'
 import type { AgentFileNavigationRequest } from './components/AgentRightPane'
 import { AgentTabRuntime } from './components/AgentTabRuntime'
-import { parseAgentRouteSearch } from './routeSearch'
+import Sessions from '@renderer/components/chat/resourceList/Sessions'
+import {
+  createFeedbackComposerLaunch,
+  FEEDBACK_INTENT_GUARD_TTL_MS,
+  type FeedbackComposerLaunch,
+  getFeedbackIntentGuardCacheKey
+} from './feedbackComposerLaunch'
+import type { CreateAgentSessionDefaults } from '@renderer/types/agent'
 import { useAgentConversationBootstrap } from './useAgentConversationBootstrap'
 
 const logger = loggerService.withContext('AgentPage')
+const agentsRouteApi = getRouteApi('/app/agents')
 type AgentConversationResourceKind = 'agent'
 const AGENT_CONVERSATION_RESOURCE_KINDS = ['agent'] as const satisfies readonly AgentConversationResourceKind[]
 
@@ -86,14 +95,17 @@ const AgentPage = () => {
   const [sessionDisplayMode, setSessionDisplayMode] = usePreference('agent.session.display_mode')
   const [panePosition, setPanePosition] = usePreference('agent.session.position')
   const isClassicSessionLayout = sessionDisplayMode === 'agent'
-  const routeSearch = parseAgentRouteSearch(useSearch({ strict: false }) as Record<string, unknown>)
+  const routeSearch = agentsRouteApi.useSearch<AppRouter>()
   const navigate = useNavigate()
   const { t } = useTranslation()
+  const isFeedbackIntent = routeSearch.intent === 'feedback'
+  const location = useLocation()
+  // Detail pages hide the in-shell conversation list, so the expand/collapse toggle goes with it.
+  const showSidebarControls = !isDetailPageUrl(`${location.pathname}${location.searchStr}`)
   const currentTabId = useCurrentTabId()
   const routeSessionId = routeSearch.sessionId
   const routeAgentId = routeSearch.agentId
-  const isMessageOnlyView = routeSearch.view === 'message' && !!routeSessionId
-  const routeActiveSessionId = isMessageOnlyView ? null : (routeSessionId ?? null)
+  const routeActiveSessionId = routeSessionId ?? null
   // Shared full-list source for session UI plus exact latest/reusable lookups.
   const agentSessionsSource = useAgentSessionsSource()
   const { sessions: agentSessions, loadLatestSession, reuseOrCreateSession } = agentSessionsSource
@@ -106,7 +118,6 @@ const AgentPage = () => {
     toggleShellPane,
     handlePaneAutoCollapseChange
   } = useConversationShellPaneState({
-    isMessageOnlyView,
     persistedPaneOpen: showSidebar,
     setPersistedPaneOpen: setShowSidebar
   })
@@ -174,6 +185,16 @@ const AgentPage = () => {
   const lastRecordedRecentSessionRef = useRef<string | undefined>(undefined)
   const [sessionRevealRequest, setSessionRevealRequest] = useState<ResourceListRevealRequest>()
   const sessionRevealRequestIdRef = useRef(0)
+  const routeFeedbackComposerLaunch = useMemo<FeedbackComposerLaunch | null>(
+    () =>
+      isFeedbackIntent && routeSessionId
+        ? createFeedbackComposerLaunch(routeSessionId, t('settings.about.feedback.agent.description'))
+        : null,
+    [isFeedbackIntent, routeSessionId, t]
+  )
+  const [feedbackComposerLaunch, setFeedbackComposerLaunch] = useState<FeedbackComposerLaunch | null>(
+    routeFeedbackComposerLaunch
+  )
   const [selectingMissingAgent, setSelectingMissingAgent] = useState(false)
   const [replacingSessionWorkspace, setReplacingSessionWorkspace] = useState(false)
   const [missingAgentSelection, setMissingAgentSelection] = useState(false)
@@ -183,18 +204,12 @@ const AgentPage = () => {
   const closeConversationTabs = useCloseConversationTabs()
   const { setSessionWorkspace } = useUpdateSession()
   useEffect(() => {
-    if (
-      activeSessionId ||
-      agents.length > 0 ||
-      isAgentsLoading ||
-      isMessageOnlyView ||
-      missingAgentSelection
-    ) {
+    if (activeSessionId || agents.length > 0 || isAgentsLoading || isFeedbackIntent || missingAgentSelection) {
       return
     }
 
     setMissingAgentSelection(true)
-  }, [activeSessionId, agents.length, isAgentsLoading, isMessageOnlyView, missingAgentSelection])
+  }, [activeSessionId, agents.length, isAgentsLoading, isFeedbackIntent, missingAgentSelection])
   const initialActiveSession = useMemo(
     () => (activeSessionId ? agentSessions.find((session) => session.id === activeSessionId) : undefined),
     [activeSessionId, agentSessions]
@@ -225,7 +240,7 @@ const AgentPage = () => {
   // this tab was dormant, or a rotted deep link). Recovery is a plain replace-navigation back
   // through the entry interceptor, which resolves the next target — no in-page state surgery.
   useEffect(() => {
-    if (isMessageOnlyView) return
+    if (isFeedbackIntent) return
     if (!routeSessionId || activeSessionId !== routeSessionId) return
     if (activeSession || isActiveSessionLoading) return
     if (!isDataApiNotFoundError(activeSessionError)) return
@@ -235,7 +250,7 @@ const AgentPage = () => {
     activeSessionError,
     activeSessionId,
     isActiveSessionLoading,
-    isMessageOnlyView,
+    isFeedbackIntent,
     reenterAgentRoute,
     routeSessionId
   ])
@@ -270,11 +285,7 @@ const AgentPage = () => {
     if (missingAgentSelection) return 'missing-agent-selection'
     return 'empty'
   }, [missingAgentSelection, visibleSession?.id])
-  const conversationResourcesEnabled = !isMessageOnlyView && !isWindowFrame
-  const location = useLocation()
-  // Detail pages hide the in-shell conversation list, so the expand/collapse toggle goes with it.
-  // Message-only (detached) views never had the toggle either.
-  const showSidebarControls = !isMessageOnlyView && !isDetailPageUrl(`${location.pathname}${location.searchStr}`)
+  const conversationResourcesEnabled = !isWindowFrame
   const {
     activeResourceKind,
     closeSurface,
@@ -672,6 +683,63 @@ const AgentPage = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `useEffectEvent` reads latest tab/session state without resubscribing.
   }, [currentTabId])
 
+  const runFeedbackIntent = useEffectEvent(async (intentGuardCacheKey: string) => {
+    closeSurface()
+    clearLocate()
+    setMissingAgentSelection(false)
+    try {
+      if (!routeSessionId || !routeFeedbackComposerLaunch) {
+        throw new Error('Feedback intent is missing its prepared session')
+      }
+      try {
+        await invalidateCache(['/agents', '/agent-sessions', `/agent-sessions/${routeSessionId}`])
+      } catch (err) {
+        logger.warn('Failed to refresh Agent cache for prepared feedback session', err as Error, {
+          sessionId: routeSessionId
+        })
+      }
+      setFeedbackComposerLaunch(routeFeedbackComposerLaunch)
+    } catch (err) {
+      setFeedbackComposerLaunch(null)
+      logger.error('Failed to prepare Cherry Support feedback session', err as Error)
+      toast.error(t('settings.about.feedback.agent_error'))
+      showMissingAgentSelection()
+    } finally {
+      try {
+        await navigate({
+          to: '/app/agents',
+          search: routeSessionId ? { sessionId: routeSessionId } : {},
+          replace: true
+        })
+      } finally {
+        cacheService.deleteCasual(intentGuardCacheKey)
+      }
+    }
+  })
+
+  useEffect(() => {
+    if (!isFeedbackIntent || !currentTabId) return
+    const intentGuardCacheKey = getFeedbackIntentGuardCacheKey(currentTabId)
+    if (cacheService.hasCasual(intentGuardCacheKey)) return
+    cacheService.setCasual(intentGuardCacheKey, true, FEEDBACK_INTENT_GUARD_TTL_MS)
+    void runFeedbackIntent(intentGuardCacheKey)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `useEffectEvent` reads the latest feedback orchestration without resubscribing.
+  }, [currentTabId, isFeedbackIntent, routeSessionId])
+
+  const visibleSessionId = visibleSession?.id
+  const feedbackLaunch = feedbackComposerLaunch ?? routeFeedbackComposerLaunch
+  const visibleFeedbackComposerLaunch = feedbackLaunch?.sessionId === visibleSessionId ? feedbackLaunch : null
+  const composerLaunchOptions = useMemo<AgentComposerLaunchOptions | undefined>(() => {
+    if (!visibleFeedbackComposerLaunch) return undefined
+    const launch = visibleFeedbackComposerLaunch
+    return {
+      initialDraft: launch.initialDraft,
+      onSent: () => {
+        setFeedbackComposerLaunch((current) => (current?.sessionId === launch.sessionId ? null : current))
+      }
+    }
+  }, [visibleFeedbackComposerLaunch])
+
   const setActiveSessionAndClearTransient = useCallback(
     (sessionId: string | null, session?: AgentSessionEntity | null) => {
       closeSurface()
@@ -787,6 +855,7 @@ const AgentPage = () => {
     isClassicSessionLayout && sessionListPosition === 'right' ? (
       <AgentResourceList
         activeAgentId={activeResourceAgentId}
+        activeSessionId={visibleSession?.id ?? null}
         dataEnabled={shellPaneOpen}
         agentSessionsSource={agentSessionsSource}
         onAddAgent={() => {
@@ -886,7 +955,7 @@ const AgentPage = () => {
             onRecordSelect={handleHistoryRecordsSessionSelect}
             onActiveRecordChange={handleHistoryActiveSessionChange}
             toolbarLeading={
-              showSidebarControls && !isWindowFrame ? (
+              !isWindowFrame ? (
                 <ConversationSidebarToggleButton
                   sidebarOpen={shellPaneOpen}
                   onSidebarToggle={toggleShellPane}
@@ -904,7 +973,6 @@ const AgentPage = () => {
     <>
       <AgentTabRuntime
         title={visibleSession?.name?.trim() || visibleAgent?.name?.trim() || getDefaultRouteTitle('/app/agents')}
-        emoji={visibleAgent?.configuration?.avatar}
         preserveVisuals={preserveTabVisuals}
         activeSessionId={activeSession?.id}
         activeSessionSource={activeSessionSource}
@@ -942,6 +1010,7 @@ const AgentPage = () => {
             sessionPaneOpen={isClassicSessionLayout ? sessionPaneOpen : undefined}
             onSessionPaneOpenChange={isClassicSessionLayout ? setSessionPaneOpen : undefined}
             sessionPaneUserOpenIntentSeq={sessionPaneUserOpenIntentSeq}
+            composerLaunchOptions={composerLaunchOptions}
           />
         </div>
         <AgentCreateDialog

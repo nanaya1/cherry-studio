@@ -29,7 +29,7 @@ import {
   captureScrollableAsBlob as captureScrollableAsBlobUtil,
   captureScrollableAsDataUrl as captureScrollableAsDataUrlUtil
 } from '@renderer/utils/image'
-import { convertMathFormula, markdownToPlainText } from '@renderer/utils/markdown'
+import { convertLatexMathToDollars, markdownToPlainText } from '@renderer/utils/markdown'
 import { stripCitationMarkers } from '@renderer/utils/message/citations'
 import { getComposerTextFromMessage } from '@renderer/utils/message/composerTokens'
 import {
@@ -308,7 +308,7 @@ const createBaseMarkdown = async (
       // survives and no second, conflicting sequence appears.
       reasoningContent = stripCitationMarkers(reasoningContent)
       if (forceDollarMathInMarkdown) {
-        reasoningContent = convertMathFormula(reasoningContent)
+        reasoningContent = convertLatexMathToDollars(reasoningContent)
       }
       reasoningSection = `<div style="border: 2px solid #dddddd; border-radius: 10px;">
   <details style="padding: 5px;">
@@ -334,7 +334,7 @@ const createBaseMarkdown = async (
   const { content, citation: toolCitation } = getToolCitationExport(message, rawContent)
   let citation = excludeCitations ? '' : getCitationContent(message) || toolCitation
 
-  let processedContent = forceDollarMathInMarkdown ? convertMathFormula(content) : content
+  let processedContent = forceDollarMathInMarkdown ? convertLatexMathToDollars(content) : content
 
   // 处理引用标记
   if (excludeCitations) {

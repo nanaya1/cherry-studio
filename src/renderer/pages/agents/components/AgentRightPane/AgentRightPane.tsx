@@ -112,7 +112,7 @@ import { createFilePathHandle, toSafeFileUrl, type TreeDirRoot } from '@shared/u
 import { formatAgentWebviewAnnotationPrompt } from '@shared/utils/webviewAnnotations'
 import { WebviewSecurityProfile } from '@shared/utils/webviewSecurity'
 
-import { useAgentMessageListProviderValue } from '../../messages/agentMessageListAdapter'
+import { useAgentMessageListProviderValue } from '@renderer/components/chat/messages/agentMessageListAdapter'
 import { AgentBrowserView } from './AgentBrowserView'
 import {
   type AgentArtifactFile,

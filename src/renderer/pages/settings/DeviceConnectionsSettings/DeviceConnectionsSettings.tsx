@@ -42,7 +42,8 @@ const DeviceConnectionsSettings: FC = () => {
   })
 
   const lanEnabled = apiGatewayConfig.host === LAN_HOST
-  const gatewayAvailable = apiGatewayConfig.enabled && apiGatewayRunning
+  // `enabled` is tri-state (null = automatic on-demand); only an explicit false disables.
+  const gatewayAvailable = apiGatewayConfig.enabled !== false && apiGatewayRunning
   const connectionReady = lanEnabled && lanRunning && gatewayAvailable
   const [pairingOffer, setPairingOffer] = useState<OutputFor<'api_gateway.create_pairing_offer'>>()
   const [isCreatingOffer, setIsCreatingOffer] = useState(false)

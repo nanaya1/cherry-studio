@@ -1,7 +1,7 @@
-import {
-  ResourceViewSourceProvider,
-  shouldLoadResourceViewSource
-} from '@renderer/components/ResourceViewSourceProvider'
+import { render, screen, waitFor } from '@testing-library/react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+import { ResourceViewSourceProvider } from '@renderer/components/ResourceViewSourceProvider'
 import type * as ResourceViewSourcesModule from '@renderer/hooks/resourceViewSources'
 import {
   type AgentSessionsSource,
@@ -11,8 +11,6 @@ import {
 } from '@renderer/hooks/resourceViewSources'
 import type * as TabHooksModule from '@renderer/hooks/tab'
 import type { Tab } from '@shared/data/cache/cacheValueTypes'
-import { render, screen, waitFor } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const sourceMocks = vi.hoisted(() => ({
   tabs: [] as Tab[],
@@ -337,31 +335,16 @@ describe('ResourceViewSourceProvider', () => {
     expect(screen.getByTestId('session-pins')).toHaveTextContent('session-1')
   })
 
-  it('enables both sources for an active non-settings tab and disables both without an active tab', () => {
-    sourceMocks.tabs = [createTab('files', '/app/files')]
-    sourceMocks.activeTabId = 'files'
-
-    const { rerender } = render(createProviderTree())
-
-    expect(sourceMocks.assistantEnabled.at(-1)).toBe(true)
-    expect(sourceMocks.agentEnabled.at(-1)).toBe(true)
-    expect(shouldLoadResourceViewSource(sourceMocks.tabs, sourceMocks.activeTabId)).toBe(true)
-
-    sourceMocks.activeTabId = null
-    rerender(createProviderTree())
-
-    expect(sourceMocks.assistantEnabled.at(-1)).toBe(false)
-    expect(sourceMocks.agentEnabled.at(-1)).toBe(false)
-    expect(shouldLoadResourceViewSource(sourceMocks.tabs, sourceMocks.activeTabId)).toBe(false)
-  })
-
-  it('disables both sources for an active settings tab', () => {
-    sourceMocks.tabs = [createTab('settings', '/settings/about')]
-    sourceMocks.activeTabId = 'settings'
+  it('loads only the source owned by the active non-dormant route tab', () => {
+    sourceMocks.tabs = [
+      createTab('agent-dormant', '/app/agents?sessionId=session-1', true),
+      createTab('chat', '/app/chat?topicId=topic-2')
+    ]
+    sourceMocks.activeTabId = 'chat'
 
     render(createProviderTree())
 
-    expect(sourceMocks.assistantEnabled.at(-1)).toBe(false)
+    expect(sourceMocks.assistantEnabled.at(-1)).toBe(true)
     expect(sourceMocks.agentEnabled.at(-1)).toBe(false)
   })
 })

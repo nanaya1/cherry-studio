@@ -322,7 +322,8 @@ export function GroupHeader({ group, className, ref, style, onContextMenu, ...pr
             aria-hidden="true"
             className={cn(
               GROUP_HEADER_CHEVRON_SLOT_CLASS,
-              groupItems.length === 0 && GROUP_HEADER_CHEVRON_SLOT_EMPTY_CLASS
+              groupItems.length === 0 && GROUP_HEADER_CHEVRON_SLOT_EMPTY_CLASS,
+              'size-6'
             )}>
             {chevron}
           </span>

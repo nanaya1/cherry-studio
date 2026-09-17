@@ -1,12 +1,14 @@
+import { getRouteApi, useNavigate, useLocation } from '@tanstack/react-router'
+import type { FC, HTMLAttributes } from 'react'
+import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+
 import { cacheService } from '@data/CacheService'
 import { usePreference } from '@data/hooks/usePreference'
 import { loggerService } from '@logger'
 import type { ResourcePaneConfig, ResourcePaneCountButtonProps } from '@renderer/components/chat/panes/Shell'
-import { EmptyState, LoadingState } from '@renderer/components/chat/primitives'
 import { AssistantResourceList } from '@renderer/components/chat/resourceList/AssistantResourceList'
 import type { ResourceListRevealRequest } from '@renderer/components/chat/resourceList/base'
-import { Topics } from '@renderer/components/chat/resourceList/Topics'
-import { ChatAppShell } from '@renderer/components/chat/shell/ChatAppShell'
 import { ConversationSidebarToggleButton } from '@renderer/components/chat/shell/ConversationSidebarToggleButton'
 import type { ChatPanePosition } from '@renderer/components/chat/shell/paneLayout'
 import {
@@ -32,22 +34,18 @@ import { useConversationCenterSurface } from '@renderer/hooks/useConversationCen
 import { useConversationLocateRequest } from '@renderer/hooks/useConversationLocateRequest'
 import { useConversationShellPaneState } from '@renderer/hooks/useConversationShellPaneState'
 import { useModelById } from '@renderer/hooks/useModel'
-import { mapApiTopicToRendererTopic, useActiveTopic, useTopicById, useTopicMutations } from '@renderer/hooks/useTopic'
+import { mapApiTopicToRendererTopic, useActiveTopic, useTopicMutations } from '@renderer/hooks/useTopic'
 import { EVENT_NAMES, EventEmitter } from '@renderer/services/EventService'
 import type { ResourceListRevealPayload } from '@renderer/services/resourceListRevealEvents'
 import { toast } from '@renderer/services/toast'
+import type { AppRouter } from '@renderer/types/router'
 import type { Topic } from '@renderer/types/topic'
-import { LAST_USED_ASSISTANT_CACHE_KEY, resolveDefaultAssistant } from '@renderer/utils/assistant'
 import { getTopicAssistantDisplayGroupId } from '@renderer/utils/chat/topicsHelpers'
-import { isDetailPageUrl } from '@renderer/utils/detailPage'
 import { formatErrorMessageWithPrefix } from '@renderer/utils/error'
+import { isDetailPageUrl } from '@renderer/utils/detailPage'
 import { getDefaultRouteTitle } from '@renderer/utils/routeTitle'
 import { cn } from '@renderer/utils/style'
 import { isDataApiNotFoundError } from '@shared/data/api/errors'
-import { useLocation, useNavigate, useSearch } from '@tanstack/react-router'
-import type { FC, HTMLAttributes } from 'react'
-import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { useTranslation } from 'react-i18next'
 
 import Chat from './Chat'
 import {
@@ -56,15 +54,20 @@ import {
 } from './components/AssistantConversationPickerDialog'
 import { HomeTabRuntime } from './components/HomeTabRuntime'
 import { TopicRightPane } from './components/TopicRightPane'
-import { parseChatRouteSearch } from './routeSearch'
+import { Topics } from '@renderer/components/chat/resourceList/Topics'
 import HomeTabs from './Tabs/HomeTabs'
 import type { AddNewTopicPayload } from './types'
 
 const logger = loggerService.withContext('HomePage')
+const chatRouteApi = getRouteApi('/app/chat')
+const LAST_USED_ASSISTANT_CACHE_KEY = 'ui.chat.last_used_assistant_id'
 type AssistantConversationResourceKind = 'assistant'
 const ASSISTANT_CONVERSATION_RESOURCE_KINDS = [
   'assistant'
 ] as const satisfies readonly AssistantConversationResourceKind[]
+
+type NewTopicAssistantSelectionSource = 'explicit' | 'route' | 'last-used' | 'first-assistant' | 'runtime-fallback'
+type ResolvedNewTopicAssistantSelection = { assistantId?: string; source: NewTopicAssistantSelectionSource }
 
 type NewTopicAssistantTargetOptions = {
   excludedAssistantIds?: readonly string[]
@@ -86,11 +89,10 @@ const HomePage: FC = () => {
   const isClassicTopicLayout = topicDisplayMode === 'assistant'
   const [assistantPickerOpen, setAssistantPickerOpen] = useState(false)
 
-  const routeSearch = parseChatRouteSearch(useSearch({ strict: false }) as Record<string, unknown>)
+  const routeSearch = chatRouteApi.useSearch<AppRouter>()
   const navigate = useNavigate()
   const routeTopicId = routeSearch.topicId
   const routeAssistantId = routeSearch.assistantId
-  const isMessageOnlyView = routeSearch.view === 'message' && !!routeTopicId
   const handleManualPaneOpen = useCallback(() => {
     requestAnimationFrame(() => {
       void EventEmitter.emit(EVENT_NAMES.SHOW_ASSISTANTS)
@@ -105,11 +107,14 @@ const HomePage: FC = () => {
     toggleShellPane,
     handlePaneAutoCollapseChange
   } = useConversationShellPaneState({
-    isMessageOnlyView,
     persistedPaneOpen: showSidebar,
     setPersistedPaneOpen: setShowSidebar,
     onManualPaneOpen: handleManualPaneOpen
   })
+
+  const location = useLocation()
+  // Detail pages hide the in-shell conversation list, so the expand/collapse toggle goes with it.
+  const showSidebarControls = !isDetailPageUrl(`${location.pathname}${location.searchStr}`)
   const topicListPosition: ChatPanePosition =
     !isWindowFrame && isClassicTopicLayout && panePosition === 'right' ? 'right' : 'left'
   const [topicPaneOpen, setTopicPaneOpen] = useClassicLayoutRightPaneOpen('chat', {
@@ -119,13 +124,6 @@ const HomePage: FC = () => {
   // Shared full-topics list source plus exact latest/reusable lookups.
   const assistantTopicsSource = useAssistantTopicsSource()
   const { topics: allTopics, loadLatestTopic, reuseOrCreateTopic } = assistantTopicsSource
-  const { topic: routeApiTopic, isLoading: isRouteTopicLoading } = useTopicById(
-    isMessageOnlyView ? routeTopicId : undefined
-  )
-  const routeTopic = useMemo(
-    () => (routeApiTopic ? mapApiTopicToRendererTopic(routeApiTopic) : undefined),
-    [routeApiTopic]
-  )
 
   const { createTopic, refreshTopics } = useTopicMutations()
   const {
@@ -136,19 +134,42 @@ const HomePage: FC = () => {
     addAssistant
   } = useAssistants()
   const assistantIdSet = useMemo(() => new Set(assistants.map((assistant) => assistant.id)), [assistants])
+  const validLastUsedAssistantId =
+    lastUsedAssistantId && assistantIdSet.has(lastUsedAssistantId) ? lastUsedAssistantId : undefined
   const isAssistantListResolved = hasAssistantsLoaded && !isAssistantsLoading && !isAssistantsRefreshing
   const resolveNewTopicAssistantTarget = useCallback(
-    (explicitAssistantId?: string | null, options: NewTopicAssistantTargetOptions = {}) =>
-      resolveDefaultAssistant(assistants, {
-        explicitAssistantId,
-        preferredAssistantId: routeAssistantId,
-        lastUsedAssistantId,
-        excludedAssistantIds: options.excludedAssistantIds
-      }),
-    [assistants, lastUsedAssistantId, routeAssistantId]
+    (
+      explicitAssistantId?: string | null,
+      options: NewTopicAssistantTargetOptions = {}
+    ): ResolvedNewTopicAssistantSelection => {
+      const excludedAssistantIds = new Set(options.excludedAssistantIds ?? [])
+      const isAvailableAssistantId = (assistantId: string | null | undefined): assistantId is string =>
+        !!assistantId && assistantIdSet.has(assistantId) && !excludedAssistantIds.has(assistantId)
+
+      if (explicitAssistantId === null) {
+        return { source: 'explicit' }
+      }
+      if (isAvailableAssistantId(explicitAssistantId)) {
+        return { assistantId: explicitAssistantId, source: 'explicit' }
+      }
+      // A sidebar `?assistantId=` entry whose assistant has no topics yet creates for that exact
+      // assistant, not whatever was last focused (mirrors AgentPage's `preferredAgentId`).
+      if (isAvailableAssistantId(routeAssistantId)) {
+        return { assistantId: routeAssistantId, source: 'route' }
+      }
+      if (isAvailableAssistantId(validLastUsedAssistantId)) {
+        return { assistantId: validLastUsedAssistantId, source: 'last-used' }
+      }
+      const fallbackAssistantId = assistants.find((assistant) => !excludedAssistantIds.has(assistant.id))?.id
+      if (fallbackAssistantId) {
+        return { assistantId: fallbackAssistantId, source: 'first-assistant' }
+      }
+      return { source: 'runtime-fallback' }
+    },
+    [assistantIdSet, assistants, routeAssistantId, validLastUsedAssistantId]
   )
 
-  const routeActiveTopicId = isMessageOnlyView ? null : (routeTopicId ?? null)
+  const routeActiveTopicId = routeTopicId ?? null
   const [activeTopicId, setActiveTopicIdState] = useState<string | null>(() => routeActiveTopicId)
   // Page-initiated selection writes the tab URL — the conversation's sole identity channel —
   // and mirrors into state immediately so the UI doesn't wait a router round trip. Route-driven
@@ -158,11 +179,11 @@ const HomePage: FC = () => {
     (id: string | null) => {
       ownerFallbackRequestIdRef.current += 1
       setActiveTopicIdState(id)
-      if (id && !isMessageOnlyView) {
+      if (id) {
         void navigate({ to: '/app/chat', search: { topicId: id }, replace: true })
       }
     },
-    [isMessageOnlyView, navigate]
+    [navigate]
   )
 
   useLayoutEffect(() => {
@@ -182,10 +203,7 @@ const HomePage: FC = () => {
     topicSource: activeTopicSource
   } = useActiveTopic({
     activeTopicId,
-    setActiveTopicId,
-    // Message-only view loads its target via useTopicById; the active hook
-    // must not emit or expose a visible activeTopic.
-    passive: isMessageOnlyView
+    setActiveTopicId
   })
   const reenterChatRoute = useCallback(() => {
     clearActiveTopic()
@@ -195,37 +213,23 @@ const HomePage: FC = () => {
   // this tab was dormant, or a rotted deep link). Recovery is a plain replace-navigation back
   // through the entry interceptor, which resolves the next target — no in-page state surgery.
   useEffect(() => {
-    if (isMessageOnlyView) return
     if (!routeTopicId || activeTopicId !== routeTopicId) return
     if (activeTopic || isActiveTopicLoading) return
     if (!isDataApiNotFoundError(activeTopicError)) return
     reenterChatRoute()
-  }, [
-    activeTopic,
-    activeTopicError,
-    activeTopicId,
-    isActiveTopicLoading,
-    isMessageOnlyView,
-    reenterChatRoute,
-    routeTopicId
-  ])
+  }, [activeTopic, activeTopicError, activeTopicId, isActiveTopicLoading, reenterChatRoute, routeTopicId])
   const lastVisibleTopicRef = useRef<Topic | undefined>(undefined)
-  const visibleTopic = isMessageOnlyView
-    ? routeTopic
-    : (activeTopic ??
-      (isActiveTopicLoading && lastVisibleTopicRef.current?.id === activeTopicId
-        ? lastVisibleTopicRef.current
-        : undefined))
+  const visibleTopic =
+    activeTopic ??
+    (isActiveTopicLoading && lastVisibleTopicRef.current?.id === activeTopicId
+      ? lastVisibleTopicRef.current
+      : undefined)
   const requestComposerFocus = useComposerFocusRequest(visibleTopic?.id)
   const resourceConversationKey = useMemo(() => {
     if (visibleTopic?.id) return `topic:${visibleTopic.id}`
     return 'empty'
   }, [visibleTopic?.id])
-  const conversationResourcesEnabled = !isMessageOnlyView && !isWindowFrame
-  const location = useLocation()
-  // Detail pages hide the in-shell conversation list, so the expand/collapse toggle goes with it.
-  // Message-only (detached) views never had the toggle either.
-  const showSidebarControls = !isMessageOnlyView && !isDetailPageUrl(`${location.pathname}${location.searchStr}`)
+  const conversationResourcesEnabled = !isWindowFrame
   const {
     activeResourceKind,
     closeSurface,
@@ -271,7 +275,7 @@ const HomePage: FC = () => {
   }, [])
 
   const revealActiveTopicInResourceList = useEffectEvent(() => {
-    if (isMessageOnlyView || !visibleTopic?.id) return
+    if (!visibleTopic?.id) return
     const requestId = topicRevealRequestIdRef.current + 1
     topicRevealRequestIdRef.current = requestId
     setTopicRevealRequest({
@@ -308,7 +312,7 @@ const HomePage: FC = () => {
   }, [allTopics, isClassicTopicLayout, topicListPosition, t, visibleAssistantId])
   // While the bound topic is still loading, keep the tab's stored title/icon instead of stamping
   // a generic one.
-  const targetTopicId = isMessageOnlyView ? routeTopicId : (activeTopicId ?? undefined)
+  const targetTopicId = activeTopicId ?? undefined
   const { locateMessageId, requestLocate, clearLocate } = useConversationLocateRequest({
     activeConversationId: targetTopicId,
     visibleConversationId: visibleTopic?.id
@@ -321,14 +325,13 @@ const HomePage: FC = () => {
   }, [activeTopic])
 
   useEffect(() => {
-    if (isMessageOnlyView) return
     if (!activeTopic) return
     const signature = `${activeTopic.id}:${activeTopic.name}`
     if (lastRecordedRecentTopicRef.current === signature) return
 
     lastRecordedRecentTopicRef.current = signature
     recordGlobalSearchRecentEntry(createRecentTopicEntryFromTopic(activeTopic))
-  }, [activeTopic, isMessageOnlyView])
+  }, [activeTopic])
 
   const [topicPaneUserOpenIntentSeq, setTopicPaneUserOpenIntentSeq] = useState(0)
   useCommandHandler('app.sidebar.toggle', toggleShellPane)
@@ -582,14 +585,7 @@ const HomePage: FC = () => {
             )
           }
         : null,
-    [
-      activeResourceKind,
-      shellPaneOpen,
-      handleOpenAssistantChatFromLibrary,
-      isWindowFrame,
-      showSidebarControls,
-      toggleShellPane
-    ]
+    [activeResourceKind, shellPaneOpen, handleOpenAssistantChatFromLibrary, isWindowFrame, showSidebarControls, toggleShellPane]
   )
   const historyRecordsCenter = historyRecordsActive
     ? {
@@ -597,7 +593,7 @@ const HomePage: FC = () => {
         content: (
           <HistoryRecordsView
             mode="assistant"
-            open={historyRecordsActive && !isMessageOnlyView && !isWindowFrame}
+            open={historyRecordsActive && !isWindowFrame}
             activeRecordId={activeTopicId}
             onClose={closeHistoryRecords}
             onRecordSelect={handleHistoryRecordsTopicSelect}
@@ -633,37 +629,12 @@ const HomePage: FC = () => {
     },
     [allTopics, setPanePosition, setShellPaneOpen, setTopicDisplayMode, setTopicPaneOpen, visibleTopic]
   )
-  // Message-only (detached) view has no rail: resolve its single target topic and show its own
-  // loading / not-found status. The normal view falls through to the loading shell below (which keeps
-  // the rail visible) instead of returning a blank frame.
-  if (isMessageOnlyView && !visibleTopic && !resourceCenter) {
-    return (
-      <>
-        <HomeTabRuntime
-          title={tabTitle}
-          emoji={visibleAssistant?.emoji}
-          preserveVisuals={preserveTabVisuals}
-          activeTopicId={activeTopic?.id}
-          activeTopicSource={activeTopicSource}
-        />
-        <Container id="home-page">
-          <ContentContainer>
-            <MessageOnlyStatus
-              loading={isRouteTopicLoading}
-              loadingLabel={t('common.loading')}
-              missingTitle={t('history.error.topic_not_found')}
-            />
-          </ContentContainer>
-        </Container>
-      </>
-    )
-  }
-
   // Classic layout = entity rail + right topic panel; modern layout = one left navigation panel (HomeTabs).
   const pane =
     isClassicTopicLayout && topicListPosition === 'right' ? (
       <AssistantResourceList
         activeAssistantId={visibleAssistantId ?? null}
+        activeTopicId={visibleTopic?.id ?? null}
         dataEnabled={shellPaneOpen}
         assistantTopicsSource={assistantTopicsSource}
         onAddAssistant={() => {
@@ -694,7 +665,7 @@ const HomePage: FC = () => {
         }}
         clearActiveTopic={clearActiveTopicAndCloseResourceView}
         setActiveTopic={setActiveTopicAndCloseResourceView}
-        onNewTopic={isMessageOnlyView ? undefined : handleCreateEmptyTopic}
+        onNewTopic={handleCreateEmptyTopic}
         historyRecordsActive={historyRecordsActive}
         onOpenHistoryRecords={isWindowFrame ? undefined : openHistoryRecords}
         revealRequest={topicRevealRequest}
@@ -720,7 +691,7 @@ const HomePage: FC = () => {
               assistantIdFilter={visibleAssistantId ?? null}
               clearActiveTopic={clearActiveTopicAndCloseResourceView}
               setActiveTopic={setActiveTopicAndCloseResourceView}
-              onNewTopic={isMessageOnlyView ? undefined : handleCreateEmptyTopic}
+              onNewTopic={handleCreateEmptyTopic}
               onSetPanePosition={setTopicListPosition}
               panePosition="right"
               revealRequest={topicRevealRequest}
@@ -756,7 +727,6 @@ const HomePage: FC = () => {
       revealRequest={topicRevealRequest}>
       <HomeTabRuntime
         title={tabTitle}
-        emoji={visibleAssistant?.emoji}
         preserveVisuals={preserveTabVisuals}
         activeTopicId={activeTopic?.id}
         activeTopicSource={activeTopicSource}
@@ -765,7 +735,7 @@ const HomePage: FC = () => {
         <ContentContainer $detached={isWindowFrame}>
           <Chat
             activeTopic={visibleTopic}
-            topicPending={isActiveTopicLoading || isRouteTopicLoading}
+            topicPending={isActiveTopicLoading}
             centerSurface={centerSurface}
             pane={pane}
             paneOpen={shellPaneOpen}
@@ -773,8 +743,8 @@ const HomePage: FC = () => {
             onPaneCollapse={() => setShellPaneOpenManually(false)}
             onPaneAutoCollapseChange={handlePaneAutoCollapseChange}
             paneManualToggle={paneManualToggle}
-            onNewTopic={isMessageOnlyView ? undefined : handleCreateEmptyTopic}
-            onCreateEmptyTopic={isMessageOnlyView ? undefined : handleCreateEmptyTopic}
+            onNewTopic={handleCreateEmptyTopic}
+            onCreateEmptyTopic={handleCreateEmptyTopic}
             showResourceListControls={showSidebarControls}
             sidebarOpen={shellPaneOpen}
             onSidebarToggle={toggleShellPane}
@@ -786,26 +756,6 @@ const HomePage: FC = () => {
         {assistantPickerDialog}
       </Container>
     </TopicRightPane.Scope>
-  )
-}
-
-type MessageOnlyStatusProps = {
-  loading: boolean
-  loadingLabel: string
-  missingTitle: string
-}
-
-function MessageOnlyStatus({ loading, loadingLabel, missingTitle }: MessageOnlyStatusProps) {
-  return (
-    <div className="flex h-[calc(100vh_-_var(--navbar-height)_-_6px)] flex-1 overflow-hidden rounded-tl-[10px] rounded-bl-[10px] bg-background">
-      <ChatAppShell
-        centerContent={
-          <div className="flex h-full min-h-0 flex-1 items-center justify-center px-6">
-            {loading ? <LoadingState label={loadingLabel} /> : <EmptyState compact title={missingTitle} />}
-          </div>
-        }
-      />
-    </div>
   )
 }
 

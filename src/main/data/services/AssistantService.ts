@@ -6,7 +6,7 @@
  * - Listing with optional filters
  */
 
-import { and, asc, desc, eq, gte, inArray, isNull, or, type SQL, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, or, type SQL, sql } from 'drizzle-orm'
 
 import { application } from '@application'
 import { assistantTable } from '@data/db/schemas/assistant'
@@ -69,6 +69,7 @@ function rowToAssistant(
     knowledgeBaseIds: relations.knowledgeBaseIds,
     createdAt: timestampToISO(row.createdAt),
     updatedAt: timestampToISO(row.updatedAt),
+    deletedAt: row.deletedAt != null ? timestampToISO(row.deletedAt) : undefined,
     modelName
   }
 }
@@ -277,7 +278,9 @@ export class AssistantDataService {
     const { page, limit } = query
     const offset = (page - 1) * limit
 
-    const conditions: SQL[] = [isNull(assistantTable.deletedAt)]
+    const conditions: SQL[] = [
+      query.inTrash === true ? isNotNull(assistantTable.deletedAt) : isNull(assistantTable.deletedAt)
+    ]
     if (query.id !== undefined) {
       conditions.push(eq(assistantTable.id, query.id))
     }

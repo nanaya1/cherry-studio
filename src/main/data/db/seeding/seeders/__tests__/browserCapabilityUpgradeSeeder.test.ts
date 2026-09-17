@@ -6,6 +6,7 @@ import { agentTable } from '@data/db/schemas/agent'
 import { assistantTable } from '@data/db/schemas/assistant'
 import { assistantMcpServerTable, agentMcpServerTable } from '@data/db/schemas/assistantRelations'
 import { mcpServerTable } from '@data/db/schemas/mcpServer'
+import { BuiltinMcpServerNames } from '@shared/utils/mcp'
 import { DEFAULT_ASSISTANT_SETTINGS } from '@shared/data/types/assistant'
 
 import { BrowserCapabilityUpgradeSeeder } from '../browserCapabilityUpgradeSeeder'
@@ -18,12 +19,12 @@ describe('browser capability upgrade', () => {
       .values([
         {
           id: 'builtin',
-          name: '@cherry/browser',
+          name: BuiltinMcpServerNames.browser,
           type: 'inMemory',
           isActive: true,
           disabledAutoApproveTools: ['click']
         },
-        { id: 'remote', name: '@cherry/browser', type: 'streamableHttp', isActive: true }
+        { id: 'remote', name: BuiltinMcpServerNames.browser, type: 'streamableHttp', isActive: true }
       ])
       .run()
     db.insert(assistantTable)

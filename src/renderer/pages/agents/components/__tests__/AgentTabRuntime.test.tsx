@@ -41,7 +41,8 @@ describe('AgentTabRuntime', () => {
 
     expect(runtimeMocks.useTabSelfVisuals).toHaveBeenCalledWith({
       title: 'Session A',
-      emoji: 'agent-avatar',
+      // MEA customization: assistant/agent emoji display is hidden, so no emoji is passed.
+      emoji: undefined,
       routePrefix: '/app/agents',
       preserveVisuals: false
     })
