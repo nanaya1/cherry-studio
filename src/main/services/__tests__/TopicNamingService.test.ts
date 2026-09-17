@@ -8,7 +8,8 @@ import { mockMainLoggerService } from '@test-mocks/MainLoggerService'
 import { app } from 'electron'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { CHERRYAI_DEFAULT_UNIQUE_MODEL_ID } from '@shared/data/presets/cherryai'
+// 停用：MEA 删除 CherryAI 用例后未再使用（恢复用例时取消注释）
+// import { CHERRYAI_DEFAULT_UNIQUE_MODEL_ID } from '@shared/data/presets/cherryai'
 
 const mocks = vi.hoisted(() => ({
   generateText: vi.fn(),

@@ -1,6 +1,8 @@
 import { setupTestDatabase } from '@test-helpers/db'
 import { mockMainLoggerService } from '@test-mocks/MainLoggerService'
-import { and, eq } from 'drizzle-orm'
+// 停用：MEA 删除 CherryAI 用例后 and 未再使用（恢复用例时取消注释）
+// import { and } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import { beforeEach, describe, expect, it } from 'vitest'
 
 import { preferenceTable } from '@data/db/schemas/preference'

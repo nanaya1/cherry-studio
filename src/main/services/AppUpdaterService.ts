@@ -1,8 +1,11 @@
 import type { ProgressInfo, UpdateInfo } from 'builder-util-runtime'
 import { CancellationToken } from 'builder-util-runtime'
-import { app, net } from 'electron'
+import { app } from 'electron'
+// 停用：release-history 拉取已禁用，net/AppUpdater 仅存在于注释块中（恢复时取消注释）
+// import { net } from 'electron'
 import type { Logger, NsisUpdater, UpdateCheckResult } from 'electron-updater'
-import { AppUpdater, autoUpdater } from 'electron-updater'
+// import { AppUpdater } from 'electron-updater'
+import { autoUpdater } from 'electron-updater'
 
 import { application } from '@application'
 import { loggerService } from '@logger'

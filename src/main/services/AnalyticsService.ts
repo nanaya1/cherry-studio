@@ -5,7 +5,8 @@ import type { AnalyticsClient, TokenUsageData } from '@cherrystudio/analytics-cl
 import { loggerService } from '@logger'
 import { createLatestReconciler, type LatestReconciler } from '@main/core/concurrency/latestReconciler'
 import { type Activatable, BaseService, Injectable, Phase, ServicePhase } from '@main/core/lifecycle'
-import { isDataCollectionConsented } from '@main/utils/privacyConsent'
+// 停用原默认遥测同意检查（MEA 关闭 Cherry 厂商遥测后未再使用，恢复遥测时取消注释）
+// import { isDataCollectionConsented } from '@main/utils/privacyConsent'
 import { generateUserAgent, getClientId } from '@main/utils/systemInfo'
 
 const logger = loggerService.withContext('AnalyticsService')

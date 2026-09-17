@@ -1,5 +1,6 @@
 import { application } from '@application'
-import { loggerService } from '@logger'
+// 停用：logger 已随官方菜单项一同注释（恢复时取消注释）
+// import { loggerService } from '@logger'
 import { BaseService, Conditional, Injectable, onPlatform, Phase, ServicePhase } from '@main/core/lifecycle'
 import { t } from '@main/i18n'
 import { openSettingsInMainWindow } from '@main/services/mainWindowNavigation'
@@ -20,7 +21,8 @@ import type { BrowserWindow } from 'electron'
 // import { app, Menu, shell } from 'electron'
 import { app, Menu } from 'electron'
 
-const logger = loggerService.withContext('AppMenuService')
+// 停用：logger 仅在被注释的官方菜单项代码中使用（恢复菜单时取消注释）
+// const logger = loggerService.withContext('AppMenuService')
 
 const appMenuCommands: CommandId[] = ['app.settings.open', 'app.zoom.in', 'app.zoom.out', 'app.zoom.reset']
 

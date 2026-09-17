@@ -116,6 +116,7 @@ vi.mock('electron-updater', () => {
   }
 })
 
+// 合并残留的重复 import，去重（原 119/126 两行相同）
 import { MockMainPreferenceServiceUtils } from '@test-mocks/main/PreferenceService'
 import { app, net } from 'electron'
 import { autoUpdater } from 'electron-updater'
@@ -123,7 +124,6 @@ import { autoUpdater } from 'electron-updater'
 import { application } from '@application'
 import { regionService } from '@main/services/RegionService'
 import { UpgradeChannel } from '@shared/data/preference/preferenceTypes'
-import { MockMainPreferenceServiceUtils } from '@test-mocks/main/PreferenceService'
 
 import { AppUpdaterService } from '../AppUpdaterService'
 

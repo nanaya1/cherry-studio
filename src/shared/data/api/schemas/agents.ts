@@ -185,8 +185,8 @@ export const ScheduledTaskEntitySchema = z.strictObject({
   lastRun: z.string().nullable().optional(),
   /** Live enable/disable flag — pause/resume flips this. */
   enabled: z.boolean(),
-  /** Output-only derived label kept for UI continuity (active / paused / completed). */
-  status: z.enum(['active', 'paused', 'completed']),
+  /** Output-only state derived from the schedule and its execution history. */
+  status: z.enum(['active', 'paused', 'completed', 'missed']),
   createdAt: z.string(),
   updatedAt: z.string()
 })

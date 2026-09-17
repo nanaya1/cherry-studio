@@ -378,7 +378,8 @@ function getTaskStatusLabel(status: string, t: TFunction) {
   const labels: Record<string, string> = {
     active: t('agent.tasks.status.active'),
     paused: t('agent.tasks.status.paused'),
-    completed: t('agent.tasks.status.completed')
+    completed: t('agent.tasks.status.completed'),
+    missed: t('agent.tasks.status.missed')
   }
   return labels[status] ?? status
 }
@@ -391,6 +392,7 @@ function getTaskScheduleStatusIconPresentation(status: ScheduledTaskEntity['stat
         wrapperClassName: 'bg-info-subtle text-info-subtle-foreground',
         iconClassName: 'text-info-subtle-foreground'
       }
+    case 'missed':
     case 'paused':
       return {
         Icon: CalendarFold,
@@ -1056,7 +1058,8 @@ const TaskDetail: FC<{
               <ArrowLeft size={16} />
             </Button>
             <span className="min-w-0 break-words">{task.name}</span>
-            {!isCompleted && (
+            {task.status === 'missed' && <Badge variant="secondary">{t('agent.tasks.status.missed')}</Badge>}
+            {!isCompleted && task.status !== 'missed' && (
               <Switch
                 className="ml-1 shrink-0"
                 size="sm"
