@@ -1,0 +1,29 @@
+diff --git a/index.js b/index.js
+--- a/index.js
++++ b/index.js
+@@ -23,8 +23,24 @@
+ try {
+   if (!isWindows && !isMac && !isLinux) {
+     throw new Error("[selection-hook] Only supports Windows, macOS, and Linux platforms");
+   }
+-  nativeModule = gypBuild(path.resolve(__dirname));
++  // In Electron packaged apps, __dirname is inside app.asar virtual path.
++  // node-gyp-build (and Electron's require.addon) cannot resolve .node files
++  // through the asar virtual filesystem, so we must remap to app.asar.unpacked
++  // and load the .node file directly.
++  let modulePath = path.resolve(__dirname);
++  if (modulePath.includes("app.asar")) {
++    modulePath = modulePath.replace("app.asar", "app.asar.unpacked");
++  }
++  try {
++    nativeModule = gypBuild(modulePath);
++  } catch (gypErr) {
++    // Fallback: load the .node file directly
++    const platformName = isWindows ? "win32" : isMac ? "darwin" : "linux";
++    const arch = process.env.npm_config_arch || require("os").arch();
++    const nodePath = path.join(modulePath, "prebuilds", platformName + "-" + arch, "selection-hook.node");
++    nativeModule = require(nodePath);
++  }
+ } catch (err) {
+   console.error("[selection-hook] Failed to load native module:", err.message);
+ }
