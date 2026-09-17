@@ -335,7 +335,9 @@ describe('ResourceViewSourceProvider', () => {
     expect(screen.getByTestId('session-pins')).toHaveTextContent('session-1')
   })
 
-  it('loads only the source owned by the active non-dormant route tab', () => {
+  it('loads both sources for any active non-settings tab (MEA sidebar lists are cross-page)', () => {
+    // MEA: Sidebar 收藏里的「对话/任务」列表跨页面常驻，非 agents/chat 激活 tab 也必须加载数据源，
+    // 否则骨架屏常驻（见 ResourceViewSourceProvider 中 shouldLoadResourceViewSource 的 MEA 注释）
     sourceMocks.tabs = [
       createTab('agent-dormant', '/app/agents?sessionId=session-1', true),
       createTab('chat', '/app/chat?topicId=topic-2')
@@ -345,6 +347,16 @@ describe('ResourceViewSourceProvider', () => {
     render(createProviderTree())
 
     expect(sourceMocks.assistantEnabled.at(-1)).toBe(true)
+    expect(sourceMocks.agentEnabled.at(-1)).toBe(true)
+  })
+
+  it('disables both sources on a settings tab', () => {
+    sourceMocks.tabs = [createTab('settings', '/settings/provider')]
+    sourceMocks.activeTabId = 'settings'
+
+    render(createProviderTree())
+
+    expect(sourceMocks.assistantEnabled.at(-1)).toBe(false)
     expect(sourceMocks.agentEnabled.at(-1)).toBe(false)
   })
 })

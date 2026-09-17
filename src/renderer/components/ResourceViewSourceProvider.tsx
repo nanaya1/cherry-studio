@@ -12,7 +12,12 @@ import {
   useRawAssistantTopicsSource
 } from '@renderer/hooks/resourceViewSources'
 import { useTabs } from '@renderer/hooks/tab'
-import { getSidebarApp, type SidebarAppId, tabBelongsToApp } from '@renderer/utils/sidebar'
+// MEA: 宽松门控后 getSidebarApp/tabBelongsToApp 不再被代码引用（见 shouldLoadResourceViewSource 注释），
+// 保留注释以便恢复 upstream 门控时取消注释：
+// import { getSidebarApp, tabBelongsToApp } from '@renderer/utils/sidebar'
+import type { SidebarAppId } from '@renderer/utils/sidebar'
+// MEA: 宽松门控依赖 isSettingsPath（见 shouldLoadResourceViewSource 注释）；upstream 无此依赖
+import { isSettingsPath } from '@shared/data/types/settingsPath'
 import type { Tab } from '@shared/data/cache/cacheValueTypes'
 
 const EMPTY_PIN_IDS = new Map<string, string>()
@@ -27,11 +32,17 @@ export function shouldLoadResourceViewSource(
   activeTabId: string | null | undefined,
   appId: SidebarAppId
 ): boolean {
-  const app = getSidebarApp(appId)
-  if (!app) return false
-
+  // MEA: Sidebar 收藏里的「对话/任务」列表跨页面常驻渲染（upstream 仅在对应 app 页面内渲染）。
+  // upstream 的 app 归属门控会让非 agents/chat 页面（如 home、skills-connectors）上的
+  // Sidebar 列表永远等不到 enabled=true → 骨架屏常驻。恢复 meacowork 的宽松门控：
+  // 任意非 settings 激活 tab 即加载。原 upstream 判定保留如下（恢复时取消注释并删除上面实现）：
+  // const app = getSidebarApp(appId)
+  // if (!app) return false
+  // const activeTab = tabs.find((tab) => tab.id === activeTabId)
+  // return Boolean(activeTab?.type === 'route' && !activeTab.isDormant && tabBelongsToApp(app, activeTab.url))
+  void appId
   const activeTab = tabs.find((tab) => tab.id === activeTabId)
-  return Boolean(activeTab?.type === 'route' && !activeTab.isDormant && tabBelongsToApp(app, activeTab.url))
+  return Boolean(activeTab && !isSettingsPath(activeTab.url))
 }
 
 function useCommittedAssistantTopicsSource(enabled: boolean, retainDerivedView: boolean): AssistantTopicsSource {
@@ -199,11 +210,13 @@ export function ResourceViewSourceProvider({ children }: { children: ReactNode }
     () => shouldLoadResourceViewSource(tabs, activeTabId, 'assistants'),
     [activeTabId, tabs]
   )
-  const retainAssistantTopicsView = useMemo(() => {
-    const app = getSidebarApp('assistants')
-    if (!app) return false
-    return tabs.some((tab) => tab.type === 'route' && !tab.isDormant && tabBelongsToApp(app, tab.url))
-  }, [tabs])
+  // MEA: Sidebar 收藏的「对话」列表跨页面常驻，派生视图（rendererTopics）不能随 chat tab
+  // 休眠被释放，否则在非 chat 页面上 Sidebar 对话列表为空。恢复 meacowork 行为：数据源
+  // 启用即保留派生视图。原 upstream 判定保留如下（恢复时取消注释并删除下面一行）：
+  // const app = getSidebarApp('assistants')
+  // if (!app) return false
+  // return tabs.some((tab) => tab.type === 'route' && !tab.isDormant && tabBelongsToApp(app, tab.url))
+  const retainAssistantTopicsView = useMemo(() => assistantTopicsEnabled, [assistantTopicsEnabled])
   const agentSessionsEnabled = useMemo(
     () => shouldLoadResourceViewSource(tabs, activeTabId, 'agents'),
     [activeTabId, tabs]
