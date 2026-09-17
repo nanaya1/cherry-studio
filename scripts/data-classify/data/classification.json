@@ -1061,7 +1061,7 @@
         {
           "originalKey": "assistantIconType",
           "type": "PreferenceTypes.AssistantIconType",
-          "defaultValue": "none",
+          "defaultValue": "emoji",
           "status": "classified",
           "category": "preferences",
           "targetKey": "assistant.icon_type"
@@ -1093,7 +1093,7 @@
         {
           "originalKey": "autoCheckUpdate",
           "type": "boolean",
-          "defaultValue": false,
+          "defaultValue": true,
           "status": "classified",
           "category": "preferences",
           "targetKey": "app.dist.auto_update.enabled"
@@ -2412,7 +2412,7 @@
         {
           "originalKey": "apiServer",
           "type": "unknown",
-          "defaultValue": "{ enabled: false, host: 'localhost', port: 24333, apiKey: `cs-sk-${uuid()}` }",
+          "defaultValue": "{ enabled: false, host: 'localhost', port: 23333, apiKey: `cs-sk-${uuid()}` }",
           "status": "pending",
           "category": null,
           "targetKey": null,
@@ -2435,7 +2435,7 @@
             },
             {
               "category": "preferences",
-              "defaultValue": 24333,
+              "defaultValue": 23333,
               "originalKey": "port",
               "status": "classified",
               "targetKey": "feature.api_gateway.port",

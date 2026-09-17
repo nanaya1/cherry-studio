@@ -1,6 +1,7 @@
 import { Globe } from 'lucide-react'
 import type { FC } from 'react'
 
+import { Avatar, AvatarFallback, AvatarImage } from '@cherrystudio/ui'
 import { getMiniAppsLogoRef, useMiniAppLogo } from '@renderer/components/icons/miniAppsLogo'
 import { MINI_APP_ROUTE_PREFIX } from '@renderer/utils/miniAppKeepAlive'
 import { cn } from '@renderer/utils/style'

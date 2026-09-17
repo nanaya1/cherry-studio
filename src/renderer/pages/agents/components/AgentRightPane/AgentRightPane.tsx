@@ -42,7 +42,6 @@ import {
 } from '@cherrystudio/ui'
 import { loggerService } from '@logger'
 import { AgentContextUsageSummary } from '@renderer/components/chat/agent/AgentContextUsageSummary'
-import { useAgentMessageListProviderValue } from '@renderer/components/chat/messages/agentMessageListAdapter'
 import MessageList from '@renderer/components/chat/messages/MessageList'
 import { MessageListProvider } from '@renderer/components/chat/messages/MessageListProvider'
 import type { MessageStreamingLayers } from '@renderer/components/chat/messages/types'
