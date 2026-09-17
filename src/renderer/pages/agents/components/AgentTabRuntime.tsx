@@ -7,6 +7,7 @@ import { useIsActiveTab, useTabSelfVisuals } from '@renderer/hooks/tab'
 
 type Props = {
   title: string
+  emoji?: string | null
   preserveVisuals: boolean
   activeSessionId?: string | null
   activeSessionSource: AgentSessionSource
@@ -15,6 +16,7 @@ type Props = {
 
 export function AgentTabRuntime({
   title,
+  emoji,
   preserveVisuals,
   activeSessionId,
   activeSessionSource,
@@ -24,7 +26,8 @@ export function AgentTabRuntime({
 
   useTabSelfVisuals({
     title,
-    appId: 'agents',
+    emoji,
+    routePrefix: '/app/agents',
     preserveVisuals
   })
 

@@ -28,7 +28,8 @@ describe('HomeTabRuntime', () => {
 
     expect(tabMocks.useTabSelfVisuals).toHaveBeenCalledWith({
       title: 'Topic A',
-      appId: 'assistants',
+      emoji: '🍒',
+      routePrefix: '/app/chat',
       preserveVisuals: false
     })
     expect(cacheService.setPersist).toHaveBeenCalledWith('ui.chat.last_used_topic_id', 'topic-a')
