@@ -1,28 +1,30 @@
+// Mea Cowork：「发送诊断报告」（→ api.cherry-ai.com）与「GitHub 反馈」（→ CherryHQ issues）入口均已暂时隐藏，
+// 仅对话框骨架使用的 import 保留激活，其余随之注释。恢复入口时按注释逐一恢复。
 import {
-  Badge,
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
-  DialogTitle,
-  Item,
-  ItemActions,
-  ItemContent,
-  ItemDescription,
-  ItemGroup,
-  ItemMedia,
-  ItemTitle
+  DialogTitle
+  // Badge,
+  // Item,
+  // ItemActions,
+  // ItemContent,
+  // ItemDescription,
+  // ItemGroup,
+  // ItemMedia,
+  // ItemTitle
 } from '@cherrystudio/ui'
-import { loggerService } from '@logger'
-import { ipcApi } from '@renderer/ipc'
-import { toast } from '@renderer/services/toast'
-import { ChevronRight, Github } from 'lucide-react'
-import type { ReactNode } from 'react'
+// import { loggerService } from '@logger'
+// import { ipcApi } from '@renderer/ipc'
+// import { toast } from '@renderer/services/toast'
+// import { ChevronRight, Github } from 'lucide-react'
+// import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
 export const FEEDBACK_GITHUB_URL = 'https://github.com/CherryHQ/cherry-studio/issues/new/choose'
 
-const logger = loggerService.withContext('FeedbackDialog')
+// const logger = loggerService.withContext('FeedbackDialog')
 
 // 「发送诊断报告 → Cherry 厂商云」入口暂时隐藏。Mea Cowork 暂不开放向 api.cherry-ai.com 上传诊断包，
 // 恢复时取消下方注释并把 FeedbackOption 的 import 改回原来的分组版本。
@@ -33,66 +35,69 @@ interface FeedbackDialogProps {
   onOpenChange: (open: boolean) => void
 }
 
-interface FeedbackOptionProps {
+// FeedbackOptionProps / FeedbackOption 组件随两个入口一起暂时隐藏，恢复时取消注释。
+/* interface FeedbackOptionProps {
   description: string
   icon: ReactNode
   recommended?: boolean
   title: string
   onSelect: () => void | Promise<void>
-}
+} */
 
-function FeedbackOption({ description, icon, recommended = false, title, onSelect }: FeedbackOptionProps) {
-  const { t } = useTranslation()
-
-  return (
-    <Item asChild size="sm" variant="outline" className="w-full cursor-pointer rounded-xl hover:bg-accent/50">
-      <button type="button" onClick={() => void onSelect()}>
-        <ItemMedia
-          variant="icon"
-          className="border-primary/20 bg-primary/10 text-primary [&_.lucide:not(.lucide-custom)]:text-current!">
-          {icon}
-        </ItemMedia>
-        <ItemContent className="min-w-0 text-left">
-          <ItemTitle>
-            {title}
-            {recommended ? (
-              <Badge className="border-primary/20 bg-primary/10 text-primary">
-                {t('settings.about.feedback.recommended')}
-              </Badge>
-            ) : null}
-          </ItemTitle>
-          <ItemDescription className="line-clamp-none">{description}</ItemDescription>
-        </ItemContent>
-        <ItemActions>
-          <ChevronRight className="size-4 text-muted-foreground" />
-        </ItemActions>
-      </button>
-    </Item>
-  )
-}
+// FeedbackOption 组件随两个入口一起暂时隐藏，恢复时取消注释。
+// function FeedbackOption({ description, icon, recommended = false, title, onSelect }: FeedbackOptionProps) {
+//   const { t } = useTranslation()
+//
+//   return (
+//     <Item asChild size="sm" variant="outline" className="w-full cursor-pointer rounded-xl hover:bg-accent/50">
+//       <button type="button" onClick={() => void onSelect()}>
+//         <ItemMedia
+//           variant="icon"
+//           className="border-primary/20 bg-primary/10 text-primary [&_.lucide:not(.lucide-custom)]:text-current!">
+//           {icon}
+//         </ItemMedia>
+//         <ItemContent className="min-w-0 text-left">
+//           <ItemTitle>
+//             {title}
+//             {recommended ? (
+//               <Badge className="border-primary/20 bg-primary/10 text-primary">
+//                 {t('settings.about.feedback.recommended')}
+//               </Badge>
+//             ) : null}
+//           </ItemTitle>
+//           <ItemDescription className="line-clamp-none">{description}</ItemDescription>
+//         </ItemContent>
+//         <ItemActions>
+//           <ChevronRight className="size-4 text-muted-foreground" />
+//         </ItemActions>
+//       </button>
+//     </Item>
+//   )
+// }
 
 export function FeedbackDialog({ open, onOpenChange }: FeedbackDialogProps) {
   const { t } = useTranslation()
   // 「发送诊断报告」入口暂时隐藏，详见顶部注释。
   /* const [diagnosticUploadOpen, setDiagnosticUploadOpen] = useState(false) */
 
-  const selectOption = (action: () => void | Promise<void>) => {
-    onOpenChange(false)
-    window.setTimeout(() => {
-      void Promise.resolve()
-        .then(action)
-        .catch((error) => logger.error('Failed to run deferred feedback action', error as Error))
-    }, 0)
-  }
-
-  const openGitHubIssue = async () => {
-    try {
-      await ipcApi.request('system.shell.open_website', FEEDBACK_GITHUB_URL)
-    } catch (error) {
-      logger.error('Failed to open GitHub issue chooser', error as Error)
-      toast.error(t('settings.about.feedback.github.error'))
-    }
-  }
+  // selectOption / openGitHubIssue 随 GitHub 反馈入口一起暂时隐藏，恢复时取消注释。
+  // const selectOption = (action: () => void | Promise<void>) => {
+  //   onOpenChange(false)
+  //   window.setTimeout(() => {
+  //     void Promise.resolve()
+  //       .then(action)
+  //       .catch((error) => logger.error('Failed to run deferred feedback action', error as Error))
+  //   }, 0)
+  // }
+  //
+  // const openGitHubIssue = async () => {
+  //   try {
+  //     await ipcApi.request('system.shell.open_website', FEEDBACK_GITHUB_URL)
+  //   } catch (error) {
+  //     logger.error('Failed to open GitHub issue chooser', error as Error)
+  //     toast.error(t('settings.about.feedback.github.error'))
+  //   }
+  // }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -102,9 +107,9 @@ export function FeedbackDialog({ open, onOpenChange }: FeedbackDialogProps) {
           <DialogDescription>{t('settings.about.feedback.dialog.description')}</DialogDescription>
         </DialogHeader>
 
+        {/* 「发送诊断报告」（→ api.cherry-ai.com）与「GitHub 反馈」（→ CherryHQ issues）入口均暂时隐藏。 */}
+        {/*
         <ItemGroup className="gap-3 px-2">
-          {/* 「发送诊断报告」入口暂时隐藏：Mea Cowork 暂不开放向 api.cherry-ai.com 上传诊断包。 */}
-          {/*
           <FeedbackOption
             icon={<FileArchive className="size-5" />}
             title={t('settings.about.feedback.diagnostics.title')}
@@ -112,7 +117,6 @@ export function FeedbackDialog({ open, onOpenChange }: FeedbackDialogProps) {
             recommended
             onSelect={() => selectOption(() => setDiagnosticUploadOpen(true))}
           />
-          */}
           <FeedbackOption
             icon={<Github className="size-5" />}
             title={t('settings.about.feedback.github.title')}
@@ -120,6 +124,7 @@ export function FeedbackDialog({ open, onOpenChange }: FeedbackDialogProps) {
             onSelect={() => selectOption(openGitHubIssue)}
           />
         </ItemGroup>
+        */}
       </DialogContent>
     </Dialog>
   )

@@ -183,6 +183,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             $active={isActive}
             data-active={isActive}
             disabled={isDisabled}
+            onMouseDown={(event) => event.preventDefault()}
             onClick={() => handleCommand(command)}
             data-testid={`toolbar-${command}`}
             aria-label={tooltipText}

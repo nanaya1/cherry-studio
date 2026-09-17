@@ -44,10 +44,13 @@ export interface RecoveryStats {
  * @param isJobInFlight - Predicate returning true when the given jobId is
  *   currently being executed by this process; such rows are excluded from all
  *   recovery actions.
+ * @param recoveryStartedAt - Creation-time cutoff; rows created at or after it
+ *   belong to the current startup window and are excluded from recovery.
  */
 export function runStartupRecovery(
   handlers: ReadonlyMap<string, JobHandler>,
-  isJobInFlight: (jobId: string) => boolean
+  isJobInFlight: (jobId: string) => boolean,
+  recoveryStartedAt = Number.POSITIVE_INFINITY
 ): RecoveryStats {
   const stats: RecoveryStats = { cancelled: 0, pendingReset: 0, delayedKept: 0, singletonKept: 0 }
   const cancelledByRecovery: JobError = {
@@ -61,7 +64,9 @@ export function runStartupRecovery(
     // prior-process leftovers. Filtering here (above the cancelRequested
     // override and every strategy) keeps retry/singleton from re-dispatching a
     // live job and abandon from cancelling it mid-flight (#16291).
-    const active = jobService.getActiveByType(type).filter((r) => !isJobInFlight(r.id))
+    const active = jobService
+      .getActiveByType(type)
+      .filter((r) => r.createdAt < recoveryStartedAt && !isJobInFlight(r.id))
     if (active.length === 0) continue
 
     // 1. cancelRequested → cancelled, regardless of strategy. Includes pending
@@ -131,7 +136,7 @@ export function runStartupRecovery(
   // promoted to pending but never run), and pending (would never be
   // claimed). All three should be cancelled so no row leaks indefinitely.
   const allActive = jobService.getStaleActive()
-  const orphans = allActive.filter((r) => !handlers.has(r.type))
+  const orphans = allActive.filter((r) => r.createdAt < recoveryStartedAt && !handlers.has(r.type))
   const orphanIds = orphans.map((r) => r.id)
   if (orphanIds.length) {
     jobService.cancelByIds(orphanIds, {

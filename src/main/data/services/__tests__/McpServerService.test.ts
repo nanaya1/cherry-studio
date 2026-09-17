@@ -122,7 +122,7 @@ describe('McpServerService', () => {
     it('rejects an enabled QVeris server without an API key', () => {
       expect(() =>
         mcpServerService.create({
-          name: '@cherry/qveris',
+          name: 'qveris',
           type: 'inMemory',
           env: { QVERIS_API_KEY: '' },
           isActive: true
@@ -208,7 +208,7 @@ describe('McpServerService', () => {
     })
 
     it('requires an API key before enabling QVeris', async () => {
-      await seedServer({ name: '@cherry/qveris', type: 'inMemory', env: { QVERIS_API_KEY: '' }, isActive: false })
+      await seedServer({ name: 'qveris', type: 'inMemory', env: { QVERIS_API_KEY: '' }, isActive: false })
 
       expect(() => mcpServerService.update('srv-1', { isActive: true })).toThrow(DataApiError)
       expect(mcpServerService.getById('srv-1').isActive).toBe(false)

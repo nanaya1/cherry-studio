@@ -1,4 +1,4 @@
-import { render } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('@renderer/hooks/useCodeStyle', () => ({
@@ -6,6 +6,18 @@ vi.mock('@renderer/hooks/useCodeStyle', () => ({
 }))
 
 import RichEditor from '../RichEditor'
+
+describe('RichEditor toolbar', () => {
+  it('prevents list buttons from taking focus before the command runs', () => {
+    render(<RichEditor initialContent="first" autoFocus={false} />)
+
+    const bulletButton = screen.getByTestId('toolbar-bulletList')
+    const event = new MouseEvent('mousedown', { bubbles: true, cancelable: true })
+    bulletButton.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(true)
+  })
+})
 
 describe('RichEditor accessibility', () => {
   // Asserted on the attribute rather than through `getByRole('textbox', { name })`: ProseMirror

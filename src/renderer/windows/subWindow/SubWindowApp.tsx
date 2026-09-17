@@ -4,6 +4,7 @@ import { ConversationNotificationRuntime } from '@renderer/components/Conversati
 import { ErrorBoundary } from '@renderer/components/ErrorBoundary'
 import { TabsProvider } from '@renderer/components/layout/TabsProvider'
 import { PopupHost } from '@renderer/components/PopupHost'
+import { ResourceEditDialogEventHost } from '@renderer/components/resourceCatalog/dialogs/ResourceEditDialogEventHost'
 import { ThemeProvider } from '@renderer/components/ThemeProvider'
 import ToastHost from '@renderer/components/ToastHost'
 import { WindowFatalFallback } from '@renderer/components/WindowFatalFallback'
@@ -43,6 +44,8 @@ function SubWindowApp(): React.ReactElement {
                 <SubWindowAppShell />
                 <SubWindowRuntime />
                 <ConversationNotificationRuntime />
+                {/* 窗口级编辑弹窗宿主：与 MainApp 对齐，分离窗口内打开的编辑弹窗在此承载 */}
+                <ResourceEditDialogEventHost />
                 <PopupHost />
                 <ToastHost />
               </TabsProvider>

@@ -19,7 +19,7 @@ vi.mock('@application', () => ({
 
 import { getEffectiveMcpMode, resolveAssistantMcpToolIds } from '../resolveAssistantMcpTools'
 
-const SERVER = { id: 'srv-1', name: '@cherry/filesystem', isActive: true }
+const SERVER = { id: 'srv-1', name: 'filesystem', isActive: true }
 const TOOLS = [
   { id: 'mcp__fs__read', name: 'read' },
   { id: 'mcp__fs__ls', name: 'ls' }

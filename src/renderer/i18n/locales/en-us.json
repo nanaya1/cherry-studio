@@ -2016,6 +2016,7 @@
   "library.skill_marketplace.github_url_invalid": "Paste a supported GitHub link directly to a SKILL.md file",
   "library.skill_marketplace.github_url_label": "GitHub SKILL.md URL",
   "library.skill_marketplace.github_url_placeholder": "GitHub link ending in /SKILL.md",
+  "library.skill_marketplace.installing_close_blocked": "A skill is being installed. Please wait for the installation to finish before closing.",
   "library.skill_marketplace.no_results_description": "Try another keyword or import a local ZIP or directory.",
   "library.skill_marketplace.no_results_title": "No skills found",
   "library.skill_marketplace.search_failed_description": "Search failed. Please try again later.",

@@ -15,10 +15,8 @@ import { usePersistCache } from '@data/hooks/useCache'
 import { useInvalidateCache } from '@data/hooks/useDataApi'
 import { usePreference } from '@data/hooks/usePreference'
 import { loggerService } from '@logger'
-import {
-  ResourceEditDialogHost,
-  type ResourceEditDialogTarget
-} from '@renderer/components/resourceCatalog/dialogs/edit'
+// 停用面板内嵌编辑弹窗宿主：改由窗口级 ResourceEditDialogEventHost 承载，避免弹窗与搜索框叠加显示
+import { openResourceEditDialog } from '@renderer/components/resourceCatalog/dialogs/ResourceEditDialogEventHost'
 import {
   type DynamicVirtualListRef,
   GroupedVirtualList,
@@ -321,7 +319,7 @@ export function GlobalSearchPanel({ onClose }: GlobalSearchPanelProps) {
   )
   const [expandedMessageParentIds, setExpandedMessageParentIds] = useState<ReadonlySet<string>>(() => new Set())
   const [messagePreviewTarget, setMessagePreviewTarget] = useState<GlobalSearchMessagePreviewTarget | null>(null)
-  const [editDialogTarget, setEditDialogTarget] = useState<ResourceEditDialogTarget | null>(null)
+  // const [editDialogTarget, setEditDialogTarget] = useState<ResourceEditDialogTarget | null>(null)
   const [recentItems, setRecentItems] = usePersistCache('ui.global_search.recent_items')
   const sanitizedRecentItems = useMemo(() => sanitizeGlobalSearchRecentEntries(recentItems ?? []), [recentItems])
   const [userName] = usePreference('app.user.name')
@@ -749,13 +747,15 @@ export function GlobalSearchPanel({ onClose }: GlobalSearchPanelProps) {
           case 'assistant': {
             const assistantId = getAssistantTargetId(result.target)
             if (!assistantId) return
-            setEditDialogTarget({ kind: 'assistant', id: assistantId })
+            openResourceEditDialog({ kind: 'assistant', id: assistantId })
+            onClose()
             return
           }
           case 'agent': {
             const agentId = getAgentTargetId(result.target)
             if (!agentId) return
-            setEditDialogTarget({ kind: 'agent', id: agentId })
+            openResourceEditDialog({ kind: 'agent', id: agentId })
+            onClose()
             return
           }
           case 'topic': {
@@ -1166,12 +1166,7 @@ export function GlobalSearchPanel({ onClose }: GlobalSearchPanelProps) {
           </KbdGroup>
         </div>
       )}
-      <ResourceEditDialogHost
-        target={editDialogTarget}
-        onOpenChange={(open) => {
-          if (!open) setEditDialogTarget(null)
-        }}
-      />
+      {/* 停用面板内嵌编辑弹窗宿主：编辑弹窗由窗口级 ResourceEditDialogEventHost 承载（搜索框关闭后弹窗仍存活） */}
     </div>
   )
 }

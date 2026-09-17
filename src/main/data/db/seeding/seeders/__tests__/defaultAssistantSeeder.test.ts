@@ -59,6 +59,8 @@ describe('DefaultAssistantSeeder', () => {
       builtinRole: 'assistant',
       settings: { ...DEFAULT_ASSISTANT_SETTINGS, mcpMode: 'auto' }
     })
+    expect(DEFAULT_ASSISTANT_PROMPT).toContain('为制造业打造专属的「AI总工程师」')
+    expect(DEFAULT_ASSISTANT_PROMPT).toContain('设计、制造、运维中的工程要求或难题')
     expect(provider).toMatchObject({
       providerId: XUELANG_PROVIDER_ID,
       isEnabled: true

@@ -2016,6 +2016,7 @@
   "library.skill_marketplace.github_url_invalid": "Collez un lien GitHub pris en charge qui pointe directement vers un fichier SKILL.md",
   "library.skill_marketplace.github_url_label": "URL SKILL.md GitHub",
   "library.skill_marketplace.github_url_placeholder": "Lien GitHub se terminant par /SKILL.md",
+  "library.skill_marketplace.installing_close_blocked": "Une compétence est en cours d’installation. Attendez la fin de l’installation avant de fermer.",
   "library.skill_marketplace.no_results_description": "Essayez un autre mot-clé ou importez un fichier ZIP local ou un répertoire.",
   "library.skill_marketplace.no_results_title": "Aucune compétence trouvée",
   "library.skill_marketplace.search_failed_description": "La recherche a échoué. Veuillez réessayer plus tard.",

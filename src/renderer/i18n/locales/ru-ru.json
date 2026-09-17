@@ -2016,6 +2016,7 @@
   "library.skill_marketplace.github_url_invalid": "Вставьте поддерживаемую ссылку GitHub, ведущую непосредственно к файлу SKILL.md",
   "library.skill_marketplace.github_url_label": "Ссылка GitHub на SKILL.md",
   "library.skill_marketplace.github_url_placeholder": "Ссылка GitHub, оканчивающаяся на /SKILL.md",
+  "library.skill_marketplace.installing_close_blocked": "Идет установка навыка. Дождитесь завершения установки перед закрытием.",
   "library.skill_marketplace.no_results_description": "Попробуйте другое ключевое слово или импортируйте локальный ZIP-архив или папку.",
   "library.skill_marketplace.no_results_title": "Навыки не найдены",
   "library.skill_marketplace.search_failed_description": "Поиск не удался. Пожалуйста, попробуйте позже.",

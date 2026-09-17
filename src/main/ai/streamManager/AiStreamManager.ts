@@ -35,7 +35,7 @@ import type { MessageRuntimeSpan, MessageRuntimeTiming } from '@shared/data/type
 import type { ServiceTierSelection, UniqueModelId } from '@shared/data/types/model'
 import type { ReasoningEffortOption } from '@shared/types/aiSdk'
 import type { SerializedError } from '@shared/types/error'
-import type { UIMessageChunk } from 'ai'
+import { readUIMessageStream, type UIMessageChunk } from 'ai'
 
 import { extractAgentSessionId, isAgentSessionTopic } from '../agentSession/topic'
 import { applyTurnOutputAttributes } from '../observability'
@@ -286,6 +286,30 @@ function ensureTerminalFinalMessage(exec: StreamExecution): CherryUIMessage {
     parts: []
   } as CherryUIMessage
   exec.finalMessage = finalMessage
+  return finalMessage
+}
+
+async function rebuildFinalMessageFromBuffer(
+  buffer: readonly StreamChunkPayload[],
+  maxDeltaBytes: number
+): Promise<CherryUIMessage | undefined> {
+  const replay = buildCompactReplay(buffer, maxDeltaBytes)
+  if (replay.length === 0) return undefined
+
+  const stream = new ReadableStream<UIMessageChunk>({
+    start(controller) {
+      for (const payload of replay) controller.enqueue(payload.chunk)
+      controller.close()
+    }
+  })
+  let finalMessage: CherryUIMessage | undefined
+  try {
+    for await (const snapshot of readUIMessageStream<CherryUIMessage>({ stream, terminateOnError: false })) {
+      finalMessage = snapshot
+    }
+  } catch {
+    return undefined
+  }
   return finalMessage
 }
 
@@ -1941,6 +1965,20 @@ export class AiStreamManager extends BaseService {
     })
 
     exec.timings.completedAt = result.broadcastCompletedAt
+
+    if (result.accumulatorError !== undefined) {
+      logger.error('Stream accumulator failed', {
+        topicId,
+        modelId,
+        attemptId: exec.attemptId,
+        error: result.accumulatorError,
+        bufferedChunks: exec.buffer.length,
+        droppedChunks: exec.droppedChunks,
+        hadFinalMessage: Boolean(exec.finalMessage)
+      })
+      const rebuilt = await rebuildFinalMessageFromBuffer(exec.buffer, this.config.maxDeltaBytes)
+      if (rebuilt) exec.finalMessage = withCompactionAnchors(rebuilt, exec)
+    }
 
     if (result.threw !== undefined) {
       if (signal.aborted) {

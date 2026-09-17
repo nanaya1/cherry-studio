@@ -25,7 +25,7 @@ import { getComposerToolConfig } from '@renderer/components/composer/tools/regis
 import NewConversationIcon from '@renderer/components/icons/NewConversationIcon'
 import { McpLogo } from '@renderer/components/icons/SvgIcon'
 import { type QuickPanelListItem, useOptionalQuickPanel } from '@renderer/components/QuickPanel'
-import { ResourceEditDialogEventHost } from '@renderer/components/resourceCatalog/dialogs/ResourceEditDialogEventHost'
+// import { ResourceEditDialogEventHost } from '@renderer/components/resourceCatalog/dialogs/ResourceEditDialogEventHost'
 import { useCache } from '@renderer/data/hooks/useCache'
 import { usePreference } from '@renderer/data/hooks/usePreference'
 import { useChatWrite } from '@renderer/hooks/chat/ChatWriteContext'
@@ -1889,7 +1889,7 @@ const ChatComposerInner = ({
       {displayAssistant && runtimeModel && (
         <ComposerToolRuntimeHost scope={scope} assistant={displayAssistant} model={runtimeModel} />
       )}
-      <ResourceEditDialogEventHost />
+      {/* 停用 composer 级编辑弹窗宿主：已上移到窗口级（MainApp/SubWindowApp），避免多宿主重复响应同一事件 */}
       <ComposerPinnedToolsProvider value={pinnedToolIds}>
         <ComposerSurface
           showAiDisclaimer

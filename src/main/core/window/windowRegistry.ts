@@ -130,7 +130,7 @@ export const WINDOW_TYPE_REGISTRY: Partial<Record<WindowType, WindowTypeMetadata
     }
   },
 
-  // Hidden CDP browser surface for the built-in @cherry/browser MCP server.
+  // Hidden CDP browser surface for the built-in browser MCP server.
   // CdpBrowserController owns content (tab BrowserViews + tab bar), show timing,
   // and close; the per-mode session partition (persist:default / private) is
   // injected per open via wm.open({ options: { webPreferences } }).

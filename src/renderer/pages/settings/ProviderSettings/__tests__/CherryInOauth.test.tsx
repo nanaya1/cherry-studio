@@ -300,6 +300,7 @@ describe('CherryInOauth', () => {
     expect(ipcApiRequestMock).toHaveBeenCalledWith('oauth.has_token', { providerId: 'xuelang' })
     expect(screen.getByTestId('xuelang-avatar')).toBeInTheDocument()
     expect(screen.getByText(/雪浪工匠|Xuelang/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /充值|Top Up/i })).not.toBeInTheDocument()
   })
 })
 

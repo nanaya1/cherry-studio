@@ -13,10 +13,14 @@ const searchMock = vi.fn()
 const clearMock = vi.fn()
 const installMock = vi.fn()
 const isInstallingMock = vi.fn()
-const { toastSuccess, toastError } = vi.hoisted(() => ({ toastSuccess: vi.fn(), toastError: vi.fn() }))
+const { toastSuccess, toastError, toastWarning } = vi.hoisted(() => ({
+  toastSuccess: vi.fn(),
+  toastError: vi.fn(),
+  toastWarning: vi.fn()
+}))
 
 vi.mock('@renderer/services/toast', () => ({
-  toast: { success: toastSuccess, error: toastError }
+  toast: { success: toastSuccess, error: toastError, warning: toastWarning }
 }))
 const SEARCH_DEBOUNCE_MS = 300
 
@@ -91,7 +95,21 @@ vi.mock('@cherrystudio/ui', () => ({
     )
   },
   Center: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
-  Dialog: ({ children, open }: { children?: ReactNode; open?: boolean }) => (open ? <>{children}</> : null),
+  Dialog: ({
+    children,
+    open,
+    onOpenChange
+  }: {
+    children?: ReactNode
+    open?: boolean
+    onOpenChange?: (open: boolean) => void
+  }) =>
+    open ? (
+      <>
+        {children}
+        <button type="button" aria-label="close-dialog" onClick={() => onOpenChange?.(false)} />
+      </>
+    ) : null,
   DialogContent: ({
     children,
     size,
@@ -424,6 +442,37 @@ describe('SkillMarketplaceDialog', () => {
     const installButtons = screen.getAllByRole('button', { name: /settings.skills.install/ })
     expect(installButtons[0]).toBeDisabled()
     expect(installButtons[1]).not.toBeDisabled()
+  })
+
+  it('blocks closing and explains why while a marketplace install is pending', async () => {
+    const user = userEvent.setup()
+    const onOpenChange = vi.fn()
+    installMock.mockImplementation(() => new Promise(() => {}))
+    isInstallingMock.mockImplementation((key?: string) => (key ? false : true))
+    renderDialog({ onOpenChange })
+
+    typeSearchQuery('code')
+    await user.click(screen.getByRole('button', { name: /settings.skills.install/ }))
+    await user.click(screen.getByRole('button', { name: 'close-dialog' }))
+
+    expect(installMock).toHaveBeenCalledWith('skills.sh:vercel/skills/react-skill')
+    expect(onOpenChange).not.toHaveBeenCalled()
+    expect(toastWarning).toHaveBeenCalledWith({
+      description: 'library.skill_marketplace.installing_close_blocked',
+      key: 'skill-marketplace-installing-close-blocked'
+    })
+  })
+
+  it('allows closing after marketplace installs finish', async () => {
+    const user = userEvent.setup()
+    const onOpenChange = vi.fn()
+    isInstallingMock.mockReturnValue(false)
+    renderDialog({ onOpenChange })
+
+    await user.click(screen.getByRole('button', { name: 'close-dialog' }))
+
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+    expect(toastWarning).not.toHaveBeenCalled()
   })
 
   it('starts installs for multiple marketplace skills without waiting for the first one', async () => {

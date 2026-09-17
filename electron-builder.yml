@@ -63,7 +63,7 @@ files:
   - "!node_modules/@tavily/core/node_modules/js-tiktoken"
   - "!node_modules/pdf-parse/lib/pdf.js/{v1.9.426,v1.10.88,v2.0.550}"
   - "!node_modules/mammoth/{mammoth.browser.js,mammoth.browser.min.js}"
-  - "!node_modules/selection-hook/prebuilds/**/*" # we rebuild .node, don't use prebuilds
+  # - "!node_modules/selection-hook/prebuilds/**/*" # selection-hook uses the platform prebuild in packaged apps
   - "!node_modules/selection-hook/node_modules" # we don't need what in the node_modules dir
   - "!node_modules/selection-hook/src" # we don't need source files
   - "!**/node_modules/node-pty/build/**" # ship upstream prebuilds; the rebuilt binary needs GLIBC_2.34 and is never cross-compiled
@@ -87,6 +87,7 @@ asarUnpack:
   - "node_modules/@img/colour/**"
   - "node_modules/detect-libc/**"
   - "node_modules/semver/**"
+  - "node_modules/selection-hook/**"
   - "node_modules/node-pty/**"
   - "node_modules/koffi/**"
   - "node_modules/@koromix/koffi-*/**"

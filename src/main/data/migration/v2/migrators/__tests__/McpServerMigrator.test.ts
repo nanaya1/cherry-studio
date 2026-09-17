@@ -46,7 +46,7 @@ function createMockContext(reduxData: Record<string, unknown> = {}) {
 const SAMPLE_SERVERS = [
   {
     id: 'srv-1',
-    name: '@cherry/fetch',
+    name: 'fetch',
     type: 'inMemory',
     isActive: true,
     provider: 'CherryAI',

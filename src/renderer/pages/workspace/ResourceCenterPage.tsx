@@ -16,10 +16,10 @@ export default function ResourceCenterPage() {
       </header>
 
       <TabsContent value="assistant" className="min-h-0 flex-1">
-        <ResourceCatalogView resourceType="assistant" />
+        <ResourceCatalogView resourceType="assistant" showManagementActions={false} />
       </TabsContent>
       <TabsContent value="agent" className="min-h-0 flex-1">
-        <ResourceCatalogView resourceType="agent" />
+        <ResourceCatalogView resourceType="agent" showManagementActions={false} />
       </TabsContent>
     </Tabs>
   )
