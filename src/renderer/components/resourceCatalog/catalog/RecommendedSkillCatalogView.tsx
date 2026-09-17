@@ -9,6 +9,9 @@ import {
   Tooltip
 } from '@cherrystudio/ui'
 import { useMutation, useQuery } from '@renderer/data/hooks/useDataApi'
+// MEA: 安装成功后刷新技能缓存 — 合并 upstream 后"我的安装"列表已切换到 skill.list_catalog SWR 缓存，
+// 原有的 refresh: ['/skills'] 只刷新 DataApi 缓存无法触达新列表，需叠加 useInvalidateSkills()（MEA 特有接线）
+import { useInvalidateSkills } from '@renderer/hooks/useSkills'
 import { toast } from '@renderer/services/toast'
 import type { SkillCatalogItem } from '@shared/data/api/schemas/skillCatalog'
 import { Check, Download, List, LoaderCircle, TriangleAlert } from 'lucide-react'
@@ -117,6 +120,8 @@ export function RecommendedSkillCatalogView({ search, onViewInstalled }: Recomme
   const install = useMutation('POST', '/skill-catalog/:catalogSkillId/install', {
     refresh: ['/skill-catalog', '/skills']
   })
+  // MEA: 见顶部注释 — 安装成功后显式失效"我的安装"列表缓存（skill.list_catalog + /skills）
+  const invalidateSkills = useInvalidateSkills()
 
   const skills = useMemo(() => {
     const query = search.trim().toLocaleLowerCase()
@@ -149,6 +154,8 @@ export function RecommendedSkillCatalogView({ search, onViewInstalled }: Recomme
     setInstalling(skill.id)
     try {
       const result = await install.trigger({ params: { catalogSkillId: skill.id } })
+      // MEA: 安装成功后刷新"我的安装"列表缓存，否则列表不出现新技能（见顶部注释）
+      void invalidateSkills().catch(() => {})
       setSelectedSkill((current) =>
         current?.id === skill.id
           ? { ...current, installState: 'installed', installedSkillId: result.installedSkillId }
