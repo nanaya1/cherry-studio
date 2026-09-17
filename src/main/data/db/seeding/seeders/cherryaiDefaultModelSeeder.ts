@@ -1,3 +1,5 @@
+import { eq } from 'drizzle-orm'
+
 import { ENDPOINT_TYPE } from '@cherrystudio/provider-registry'
 import type { InsertUserModelRow } from '@data/db/schemas/userModel'
 import { userModelTable } from '@data/db/schemas/userModel'
@@ -17,7 +19,6 @@ import {
   CHERRYAI_PROVIDER_NAME
 } from '@shared/data/presets/cherryai'
 import type { ModelCapability } from '@shared/data/types/model'
-import { eq } from 'drizzle-orm'
 
 import type { DbType, ISeeder } from '../../types'
 import { hashObject } from '../hashObject'

@@ -1,3 +1,6 @@
+import { CircleArrowUp, Search, Settings, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+
 import { Button, Tooltip } from '@cherrystudio/ui'
 import { usePersistCache } from '@data/hooks/useCache'
 import { loggerService } from '@logger'
@@ -7,8 +10,6 @@ import { getSidebarLayout, type SidebarVisibleLayout } from '@renderer/component
 import { useAppUpdateState } from '@renderer/hooks/useAppUpdateState'
 import { openSettingsTab } from '@renderer/services/mainWindowNavigation'
 import { isMac } from '@renderer/utils/platform'
-import { CircleArrowUp, PanelLeftClose, PanelLeftOpen, Search, Settings } from 'lucide-react'
-import { useTranslation } from 'react-i18next'
 
 import { WindowControls } from '../WindowControls'
 

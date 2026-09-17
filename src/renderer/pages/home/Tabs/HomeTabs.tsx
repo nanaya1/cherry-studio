@@ -1,10 +1,11 @@
+import type { CSSProperties, FC } from 'react'
+
 import type { ResourceListRevealRequest } from '@renderer/components/chat/resourceList/base'
 import { Topics } from '@renderer/components/chat/resourceList/Topics'
 import { ConversationNavigationPane } from '@renderer/components/chat/shell/ConversationNavigationPane'
 import type { AssistantTopicsSource } from '@renderer/hooks/resourceViewSources'
 import type { Topic } from '@renderer/types/topic'
 import type { TopicTabPosition } from '@shared/data/preference/preferenceTypes'
-import type { CSSProperties, FC } from 'react'
 
 import type { AddNewTopicPayload } from '../types'
 

@@ -1,10 +1,11 @@
+import type { TFunction } from 'i18next'
+import { Bot } from 'lucide-react'
+
 import type { AgentSessionStreamState } from '@renderer/hooks/agent/useAgentSessionStreamStatuses'
 import type { AgentSessionEntity } from '@shared/data/api/schemas/agentSessions'
 import type { AgentEntity } from '@shared/data/types/agent'
 import type { Assistant } from '@shared/data/types/assistant'
 import type { Topic as ApiTopic } from '@shared/data/types/topic'
-import type { TFunction } from 'i18next'
-import { Bot } from 'lucide-react'
 
 import type { HistorySourceOption, HistorySourceStatus, HistoryStatusOption } from './historyRecordsTypes'
 

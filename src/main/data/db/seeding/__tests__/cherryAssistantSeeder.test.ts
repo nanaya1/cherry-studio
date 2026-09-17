@@ -1,3 +1,8 @@
+import { setupTestDatabase } from '@test-helpers/db'
+import { eq, isNull, sql } from 'drizzle-orm'
+import { app } from 'electron'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
 import { agentTable } from '@data/db/schemas/agent'
 import { agentGlobalSkillTable } from '@data/db/schemas/agentGlobalSkill'
 import { agentSessionTable } from '@data/db/schemas/agentSession'
@@ -15,10 +20,6 @@ import { agentService } from '@data/services/AgentService'
 import { generateOrderKeyBetween } from '@data/services/utils/orderKey'
 import { AGENT_WORKSPACE_TYPE } from '@shared/data/api/schemas/agentWorkspaces'
 import { CHERRYAI_DEFAULT_UNIQUE_MODEL_ID } from '@shared/data/presets/cherryai'
-import { setupTestDatabase } from '@test-helpers/db'
-import { eq, isNull, sql } from 'drizzle-orm'
-import { app } from 'electron'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 function builtinAgents(db: ReturnType<typeof setupTestDatabase>['db']) {
   return db

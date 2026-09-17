@@ -6,10 +6,12 @@
  * a response payload and an entity). DTOs are derived via .pick().
  */
 
+import * as z from 'zod'
+
 import { BUILTIN_AGENT_ROLE } from '@shared/ai/builtinAgent'
+import { AgentLanguageSchema } from '@shared/data/types/agentLanguage'
 import { ServiceTierSelectionSchema, UniqueModelIdSchema } from '@shared/data/types/model'
 import { ReasoningEffortOptionSchema } from '@shared/types/aiSdk'
-import * as z from 'zod'
 
 import type { OffsetPaginationResponse } from '../types'
 import type { OrderEndpoints } from './_endpointHelpers'
@@ -63,7 +65,8 @@ export const AgentConfigurationSchema = z
     heartbeat_interval: z.number().optional(),
     builtin_role: z.enum([BUILTIN_AGENT_ROLE.ASSISTANT, BUILTIN_AGENT_ROLE.SUPPORT]).optional(),
     /** Read-only exclusions maintained by Main when the default agent's MCP selection changes. */
-    excluded_mcp_server_ids: z.array(z.string()).optional()
+    excluded_mcp_server_ids: z.array(z.string()).optional(),
+    language: AgentLanguageSchema.nullable().optional()
   })
   // .loose() (passthrough) is intentional: the configuration object is stored as a JSON blob
   // and may contain keys written by older or newer versions of the app. Unknown fields must
@@ -101,7 +104,7 @@ export function sanitizeAgentConfiguration(raw: unknown): {
   }
   const reparsed = AgentConfigurationSchema.safeParse(filtered)
   return {
-    data: reparsed.success ? reparsed.data : ({} as AgentConfiguration),
+    data: reparsed.success ? reparsed.data : {},
     invalidKeys
   }
 }
@@ -220,6 +223,10 @@ export type TaskRunLogEntity = z.infer<typeof TaskRunLogEntitySchema>
  * removes that configuration key; omission preserves it.
  */
 export const UpdateAgentSchema = AgentEntitySchema.pick(AGENT_MUTABLE_FIELDS).partial().extend({
+  // Nullable overrides of the picked columns: `null` clears the tier so the
+  // runtime falls back to the main model (unset is the default state).
+  planModel: UniqueModelIdSchema.nullable().optional(),
+  smallModel: UniqueModelIdSchema.nullable().optional(),
   configuration: AgentConfigurationSchema.partial().optional(),
   /**
    * Per-skill enablement changes for this agent. Omitted means "leave skills

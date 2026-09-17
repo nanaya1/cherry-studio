@@ -1,6 +1,10 @@
 import '@data/services/AgentSessionMessageService'
-
 import { randomUUID } from 'node:crypto'
+
+import { setupTestDatabase } from '@test-helpers/db'
+import { MockMainPreferenceServiceUtils } from '@test-mocks/main/PreferenceService'
+import { eq, sql } from 'drizzle-orm'
+import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest'
 
 import { application } from '@application'
 import { agentTable } from '@data/db/schemas/agent'
@@ -25,10 +29,6 @@ import { pinService } from '@data/services/PinService'
 import { generateOrderKeyBetween, generateOrderKeySequence } from '@data/services/utils/orderKey'
 import { ErrorCode } from '@shared/data/api/errors'
 import { createUniqueModelId } from '@shared/data/types/model'
-import { setupTestDatabase } from '@test-helpers/db'
-import { MockMainPreferenceServiceUtils } from '@test-mocks/main/PreferenceService'
-import { eq, sql } from 'drizzle-orm'
-import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest'
 
 const { notifyDataApiDataChangeMock } = vi.hoisted(() => ({ notifyDataApiDataChangeMock: vi.fn() }))
 vi.mock('@data/dataApiDataChange', () => ({ notifyDataApiDataChange: notifyDataApiDataChangeMock }))
@@ -208,6 +208,22 @@ describe('AgentService', () => {
       })
     })
 
+    it('clears plan and small models when PATCHed with null', async () => {
+      const created = await insertAgent({
+        model: TEST_MODEL_ID,
+        planModel: TEST_MODEL_ID,
+        smallModel: TEST_MODEL_ID
+      })
+
+      const updated = agentService.updateAgent(created.id, { planModel: null, smallModel: null })
+
+      // The entity reports the tiers as unset; the row itself holds SQL NULL.
+      expect(updated).toMatchObject({ planModel: undefined, smallModel: undefined })
+      const [row] = await dbh.db.select().from(agentTable).where(eq(agentTable.id, created.id))
+      expect(row.planModel).toBeNull()
+      expect(row.smallModel).toBeNull()
+    })
+
     it('does not mislabel non-skill FK failures as stale selected skills', async () => {
       const error = captureError(() =>
         createAgentForTest({
@@ -372,6 +388,37 @@ describe('AgentService', () => {
   })
 
   describe('model updates', () => {
+    it('normalizes a stored medium effort when switching the agent to Kimi K3', async () => {
+      const kimiK3ModelId = createUniqueModelId('moonshot', 'kimi-k3')
+      await dbh.db
+        .insert(userProviderTable)
+        .values({
+          providerId: 'moonshot',
+          presetProviderId: 'moonshot',
+          name: 'Moonshot',
+          orderKey: generateOrderKeyBetween(null, null)
+        })
+        .onConflictDoNothing()
+      await dbh.db
+        .insert(userModelTable)
+        .values({
+          id: kimiK3ModelId,
+          providerId: 'moonshot',
+          modelId: 'kimi-k3',
+          presetModelId: 'kimi-k3',
+          orderKey: generateOrderKeyBetween(null, null)
+        })
+        .onConflictDoNothing()
+      const created = await insertAgent({ configuration: { reasoning_effort: 'medium' } })
+
+      const updated = agentService.updateAgent(created.id, { model: kimiK3ModelId })
+
+      expect(updated).toMatchObject({
+        model: kimiK3ModelId,
+        configuration: { reasoning_effort: 'high' }
+      })
+    })
+
     it('atomically normalizes the agent reasoning effort and preserves configuration', async () => {
       const created = await insertAgent({
         configuration: { avatar: '🤖', reasoning_effort: 'high' }

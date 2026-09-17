@@ -1,6 +1,6 @@
 import { act, renderHook } from '@testing-library/react'
 import type { ReactNode } from 'react'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi, type Mock } from 'vitest'
 
 import { useConversationShellPaneState } from '../useConversationShellPaneState'
 import { WindowFrameContext } from '../useWindowFrame'
@@ -12,12 +12,12 @@ interface HarnessProps {
 
 function renderPaneState({
   initialProps = {},
-  setPersistedPaneOpen = vi.fn(),
+  setPersistedPaneOpen = vi.fn<(open: boolean) => void | Promise<unknown>>() as Mock,
   onManualPaneOpen,
   windowFrame
 }: {
   initialProps?: HarnessProps
-  setPersistedPaneOpen?: ReturnType<typeof vi.fn>
+  setPersistedPaneOpen?: Mock
   onManualPaneOpen?: () => void
   windowFrame?: 'window'
 } = {}) {

@@ -1,10 +1,11 @@
+import { useMemo } from 'react'
+import { v4 as uuid } from 'uuid'
+
 import { navigateActiveTab, type TabsContextValue, useOptionalTabsContext } from '@renderer/hooks/tab'
 import { useWindowFrame } from '@renderer/hooks/useWindowFrame'
 import { ipcApi } from '@renderer/ipc'
 import type { ConversationAppId } from '@renderer/types/conversation'
 import { getSidebarApp, type SidebarApp, tabBelongsToApp } from '@renderer/utils/sidebar'
-import { useMemo } from 'react'
-import { v4 as uuid } from 'uuid'
 
 export interface ConversationNavigation {
   /**

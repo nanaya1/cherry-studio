@@ -1,3 +1,8 @@
+import type { ReactNode } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import { v4 as uuid } from 'uuid'
+
 import { loggerService } from '@logger'
 import { usePersistCache } from '@renderer/data/hooks/useCache'
 import {
@@ -14,10 +19,6 @@ import { TabLruManager } from '@renderer/services/TabLruManager'
 import { getDefaultRouteTitle, isPageTitledRoute, isTopLevelRoute } from '@renderer/utils/routeTitle'
 import { SINGLE_TAB_MODE } from '@renderer/utils/tabMode'
 import type { Tab, TabSavedState } from '@shared/data/cache/cacheValueTypes'
-import type { ReactNode } from 'react'
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { useTranslation } from 'react-i18next'
-import { v4 as uuid } from 'uuid'
 
 const logger = loggerService.withContext('TabsProvider')
 

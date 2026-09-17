@@ -1,4 +1,3 @@
-import type { Tab } from '@renderer/hooks/tab'
 import {
   Code,
   FileSearch,
@@ -16,6 +15,8 @@ import {
   Sparkles,
   Wrench
 } from 'lucide-react'
+
+import type { Tab } from '@renderer/hooks/tab'
 
 export type IconComponent = React.FC<{ size?: number; strokeWidth?: number; className?: string }>
 

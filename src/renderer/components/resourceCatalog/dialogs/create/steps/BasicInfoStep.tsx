@@ -1,3 +1,7 @@
+import { useEffect, useState } from 'react'
+import { type UseFormReturn, useWatch } from 'react-hook-form'
+import { useTranslation } from 'react-i18next'
+
 import { FormControl, FormField, FormItem, FormLabel, FormMessage } from '@cherrystudio/ui'
 import { AgentRuntimeTiles } from '@renderer/components/AgentRuntimeOption'
 import type { ModelSelectorFilter } from '@renderer/components/ModelSelector'
@@ -10,9 +14,6 @@ import {
 import { getPermissionModeCards } from '@renderer/utils/agent'
 import { AGENT_RUNTIME_CAPABILITIES } from '@shared/ai/agentRuntimeCapabilities'
 import type { AgentType } from '@shared/data/types/agent'
-import { useEffect, useState } from 'react'
-import { type UseFormReturn, useWatch } from 'react-hook-form'
-import { useTranslation } from 'react-i18next'
 
 import type { ResourceCreateWizardFormValues } from '../types'
 

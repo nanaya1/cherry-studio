@@ -1,5 +1,7 @@
-import type { Provider } from '@shared/data/types/provider'
 import { describe, expect, it, vi } from 'vitest'
+
+import '@shared/data/presets/localEmbedding'
+import type { Provider } from '@shared/data/types/provider'
 
 // Stub imported i18n and provider helpers so these tests stay focused on provider eligibility.
 vi.mock('@renderer/i18n', () => ({ default: { t: (k: string) => k } }))

@@ -1,3 +1,7 @@
+import { Trash2 } from 'lucide-react'
+import type { KeyboardEvent } from 'react'
+import { useTranslation } from 'react-i18next'
+
 import { Badge, Button, Switch } from '@cherrystudio/ui'
 import { useSkillMutationsById } from '@renderer/hooks/resourceCatalog'
 import { toast } from '@renderer/services/toast'
@@ -6,9 +10,6 @@ import { RESOURCE_TYPE_META } from '@renderer/utils/resourceCatalog'
 import { cn } from '@renderer/utils/style'
 import { isProtectedBuiltinAgentRole } from '@shared/ai/builtinAgent'
 import type { Group } from '@shared/data/types/group'
-import { Trash2 } from 'lucide-react'
-import type { KeyboardEvent } from 'react'
-import { useTranslation } from 'react-i18next'
 
 import { ResourceCardMenu } from './ResourceCardMenu'
 

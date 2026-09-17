@@ -1,3 +1,7 @@
+import { ChevronDown, Clock3, CornerDownLeft, Search, X } from 'lucide-react'
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+
 import {
   Button,
   DropdownMenu,
@@ -10,6 +14,7 @@ import {
   KbdGroup,
   SegmentedControl
 } from '@cherrystudio/ui'
+import { cacheService } from '@data/CacheService'
 import { dataApiService } from '@data/DataApiService'
 import { usePersistCache } from '@data/hooks/useCache'
 import { useInvalidateCache } from '@data/hooks/useDataApi'
@@ -31,9 +36,6 @@ import { toast } from '@renderer/services/toast'
 import { cn } from '@renderer/utils/style'
 import type { EntitySearchItem } from '@shared/data/api/schemas/search'
 import type { GlobalSearchRecentEntry } from '@shared/data/cache/cacheValueTypes'
-import { ChevronDown, Clock3, CornerDownLeft, Search, X } from 'lucide-react'
-import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
-import { useTranslation } from 'react-i18next'
 
 import {
   areGlobalSearchRecentEntriesEqual,
@@ -95,7 +97,7 @@ const SEARCH_SCOPE_CONTROL_CLASS_NAME =
   'h-7 shrink-0 border-border-subtle bg-muted/40 p-0.5 [&_[role=radio]]:h-6 [&_[role=radio]]:px-2 [&_[role=radio]]:text-xs [&_[role=radio]]:leading-none'
 const logger = loggerService.withContext('GlobalSearchPanel')
 const RECENT_ITEMS_REFRESH_THROTTLE_MS = 60 * 1000 // 1 minute throttle
-const recentRefreshHistory = new Map<string, number>()
+const recentRefreshCacheKey = (id: string) => `global-search:recent-refresh:${id}`
 const FILTER_LABEL_KEYS: Record<GlobalSearchFilter, string> = {
   all: 'globalSearch.filters.all',
   topic: 'globalSearch.filters.topic',
@@ -395,11 +397,9 @@ export function GlobalSearchPanel({ onClose }: GlobalSearchPanelProps) {
       return [entry]
     })
 
-    const now = Date.now()
     const due = refreshable.filter((entry) => {
       if (entry.title.trim() === '') return true
-      const lastRefresh = recentRefreshHistory.get(getGlobalSearchRecentEntryId(entry)) ?? 0
-      return now - lastRefresh > RECENT_ITEMS_REFRESH_THROTTLE_MS
+      return !cacheService.hasCasual(recentRefreshCacheKey(getGlobalSearchRecentEntryId(entry)))
     })
 
     if (due.length === 0) return
@@ -417,10 +417,10 @@ export function GlobalSearchPanel({ onClose }: GlobalSearchPanelProps) {
           )
           const name = (fetched as { name?: string })?.name?.trim()
           if (name) {
-            recentRefreshHistory.set(refreshKey, Date.now())
+            cacheService.setCasual(recentRefreshCacheKey(refreshKey), true, RECENT_ITEMS_REFRESH_THROTTLE_MS)
             return { id: refreshKey, name }
           }
-          recentRefreshHistory.set(refreshKey, Date.now())
+          cacheService.setCasual(recentRefreshCacheKey(refreshKey), true, RECENT_ITEMS_REFRESH_THROTTLE_MS)
           return null
         } catch (error) {
           logger.warn('Failed to refresh recent title', { entryKind: entry.kind, id: refreshKey, error })
@@ -1169,8 +1169,4 @@ export function GlobalSearchPanel({ onClose }: GlobalSearchPanelProps) {
       {/* 停用面板内嵌编辑弹窗宿主：编辑弹窗由窗口级 ResourceEditDialogEventHost 承载（搜索框关闭后弹窗仍存活） */}
     </div>
   )
-}
-
-export const testOnlyClearRefreshHistory = () => {
-  recentRefreshHistory.clear()
 }

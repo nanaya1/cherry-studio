@@ -1,3 +1,8 @@
+import { createMemoryHistory, createRootRoute, createRouter, RouterProvider } from '@tanstack/react-router'
+import { ArrowLeft, Check, KeyRound, Languages } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+
 import {
   Button,
   Checkbox,
@@ -37,16 +42,17 @@ import type { CherryCloudStatus } from '@shared/ipc/schemas/cherryCloud'
 import { LATEST_PRIVACY_POLICY_VERSION } from '@shared/utils/constants'
 import { defaultLanguage } from '@shared/utils/languages'
 import { isNonChatModel } from '@shared/utils/model'
-import { createMemoryHistory, createRootRoute, createRouter, RouterProvider } from '@tanstack/react-router'
-import { ArrowLeft, Check, KeyRound, Languages } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useTranslation } from 'react-i18next'
 
 import { PrivacyPolicyDialog } from '../privacy/PrivacyPolicyDialog'
+
+const ENABLE_CHERRY_ACCOUNT_LOGIN = false
 
 type OnboardingStep = 'welcome' | 'provider' | 'select-model'
 type OnboardingCompletionStatus = Exclude<OnboardingProviderSetupStatus, 'pending'>
 type PrivacyChoiceAction = () => void | Promise<void>
+interface OnboardingPageProps {
+  enableCherryAccountLogin?: boolean
+}
 
 // CHERRYIN_OAUTH_SERVER / CHERRYIN_LOGIN_LOADING_TIMEOUT_MS 暂时未使用（原 CherryIn 登录流程），恢复入口时再加回。
 const PESSIMISTIC_PREFERENCE_OPTIONS = { optimistic: false } as const
@@ -67,7 +73,9 @@ function OnboardingProviderSettings() {
   return <RouterProvider router={router} />
 }
 
-export default function OnboardingPage() {
+export default function OnboardingPage({
+  enableCherryAccountLogin = ENABLE_CHERRY_ACCOUNT_LOGIN
+}: OnboardingPageProps) {
   const { t } = useTranslation()
   const appEdition = getAppEdition()
   const [language, setLanguage] = usePreference('app.language')
@@ -94,6 +102,9 @@ export default function OnboardingPage() {
   // 登录动作相关成员暂时未使用，等恢复「登录樱桃云」主按钮时再解构回来：
   // login: handleCherryCloudLogin / cancelLogin: handleCherryCloudLoginCancel /
   // isCancellingLogin: isCancellingCloudLogin / isAuthorizing: isCloudAuthorizing
+  // MEA: enableCherryAccountLogin（上游开关，默认 false）只用于注释掉的登录按钮 JSX；
+  // MEA 不启用该开关，登录入口保持隐藏，云状态订阅按 CN 版本保留。
+  void enableCherryAccountLogin
   const { status: cloudStatus } = useCherryAccountSession(isCnEdition)
   cloudStatusRef.current = cloudStatus
   const eligibleProviderIds = new Set(
@@ -263,6 +274,7 @@ export default function OnboardingPage() {
   }
 
   useEffect(() => {
+    // MEA: 云模型同步不受 enableCherryAccountLogin 开关控制（开关只管登录按钮 UI），按 CN 版本触发
     if (!isCnEdition || cloudStatus?.phase !== 'signed-in') {
       hasRoutedCloudLoginRef.current = false
       setShowNoCloudModelsDialog(false)
@@ -362,14 +374,18 @@ export default function OnboardingPage() {
                       size="lg"
                       className="h-11 w-full rounded-xl"
                       loading={isPrimaryLoginPending}
-                      disabled={isUpdatingPrivacy || (isCnEdition && cloudStatus?.phase === 'signed-in')}
+                      disabled={
+                        isUpdatingPrivacy || (shouldUseCherryAccountLogin && cloudStatus?.phase === 'signed-in')
+                      }
                       onClick={() =>
-                        void runAfterPrivacyChoice(isCnEdition ? handleCherryCloudLogin : handleCherryInLogin)
+                        void runAfterPrivacyChoice(
+                          shouldUseCherryAccountLogin ? handleCherryCloudLogin : handleCherryInLogin
+                        )
                       }>
                       {!isPrimaryLoginPending && <LogIn size={16} />}
                       {primaryLoginLabel}
                     </Button>
-                    {isCnEdition && cloudStatus?.phase === 'authorizing' ? (
+                    {shouldUseCherryAccountLogin && cloudStatus?.phase === 'authorizing' ? (
                       <Button
                         type="button"
                         variant="outline"

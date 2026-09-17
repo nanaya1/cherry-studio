@@ -4,7 +4,7 @@
  *
  * Bulk component lookup — ordinary icon rendering uses loaders.ts instead
  *
- * Generated at: 2026-09-05T10:49:54.158Z
+ * Generated at: 2026-09-07T13:21:05.291Z
  * Total icons: 160
  */
 import { type CompoundIcon } from '../types'
@@ -150,6 +150,7 @@ import { TesseractJsIcon } from './tesseract-js'
 import { ThinkAnyIcon } from './think-any'
 import { TngIcon } from './tng'
 import { TogetherIcon } from './together'
+import { TokendanceIcon } from './tokendance'
 import { TwitterIcon } from './twitter'
 import { UpstageIcon } from './upstage'
 import { VercelIcon } from './vercel'
@@ -312,6 +313,7 @@ export const PROVIDER_ICON_CATALOG = {
   'think-any': ThinkAnyIcon,
   tng: TngIcon,
   together: TogetherIcon,
+  tokendance: TokendanceIcon,
   twitter: TwitterIcon,
   upstage: UpstageIcon,
   vercel: VercelIcon,
