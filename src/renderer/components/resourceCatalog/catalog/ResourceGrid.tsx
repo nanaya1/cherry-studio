@@ -1,5 +1,6 @@
 import { useVirtualizer } from '@tanstack/react-virtual'
 import {
+  Building2,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -75,6 +76,8 @@ interface Props {
   onOpenAssistantLibrary?: () => void
   onOpenSkillMarketplace: () => void
   onOpenSystemSkills?: () => void
+  /** [enterprise] T0 企业技能目录入口 */
+  onOpenOrgSkills?: () => void
   groups: GroupItem[]
   activeGroupId: string | null
   onGroupFilter: (groupId: string | null) => void
@@ -161,10 +164,12 @@ function AssistantAddActions({ onNew, onImport, onOpenLibrary }: AssistantAddAct
 interface SkillAddActionsProps {
   onSearchMarketplace: () => void
   onSearchSystem?: () => void
+  /** [enterprise] T0 企业技能目录入口；未提供时隐藏菜单项 */
+  onOpenOrgSkills?: () => void
   onImportLocal: () => void
 }
 
-function SkillAddActions({ onSearchMarketplace, onSearchSystem, onImportLocal }: SkillAddActionsProps) {
+function SkillAddActions({ onSearchMarketplace, onSearchSystem, onOpenOrgSkills, onImportLocal }: SkillAddActionsProps) {
   const { t } = useTranslation()
 
   return (
@@ -177,6 +182,12 @@ function SkillAddActions({ onSearchMarketplace, onSearchSystem, onImportLocal }:
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-40">
+        {onOpenOrgSkills ? (
+          <DropdownMenuItem onSelect={onOpenOrgSkills} className="gap-2">
+            <Building2 size={13} />
+            <span>{t('library.skill_add.org_skills')}</span>
+          </DropdownMenuItem>
+        ) : null}
         <DropdownMenuItem onSelect={onSearchMarketplace} className="gap-2">
           <Search size={13} />
           <span>{t('library.skill_add.online_search')}</span>
@@ -211,6 +222,7 @@ export const ResourceGrid: FC<Props> = ({
   onOpenAssistantLibrary,
   onOpenSkillMarketplace,
   onOpenSystemSkills,
+  onOpenOrgSkills,
   groups,
   activeGroupId,
   onGroupFilter,
@@ -339,6 +351,7 @@ export const ResourceGrid: FC<Props> = ({
       <SkillAddActions
         onSearchMarketplace={onOpenSkillMarketplace}
         onSearchSystem={onOpenSystemSkills}
+        onOpenOrgSkills={onOpenOrgSkills}
         onImportLocal={() => onCreate('skill')}
       />
     ) : (

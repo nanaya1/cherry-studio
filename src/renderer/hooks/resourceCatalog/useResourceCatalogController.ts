@@ -66,6 +66,8 @@ export function useResourceCatalogController(
   const [skillImportOpen, setSkillImportOpen] = useState(false)
   const [skillMarketplaceOpen, setSkillMarketplaceOpen] = useState(false)
   const [systemSkillOpen, setSystemSkillOpen] = useState(false)
+  // [enterprise] T0 企业技能目录弹窗
+  const [orgSkillOpen, setOrgSkillOpen] = useState(false)
 
   const isAssistantLibrary = resourceType === 'assistant'
 
@@ -216,6 +218,7 @@ export function useResourceCatalogController(
       onOpenAssistantLibrary: isAssistantLibrary ? () => setAssistantLibraryOpen(true) : undefined,
       onOpenSkillMarketplace: () => setSkillMarketplaceOpen(true),
       onOpenSystemSkills: () => setSystemSkillOpen(true),
+      onOpenOrgSkills: () => setOrgSkillOpen(true),
       groups: scopedGroups,
       activeGroupId,
       onGroupFilter: setActiveGroupId,
@@ -236,6 +239,7 @@ export function useResourceCatalogController(
       skillImportOpen,
       skillMarketplaceOpen,
       systemSkillOpen,
+      orgSkillOpen,
       setAssistantImportOpen,
       setAssistantLibraryOpen,
       setDeleteConfirm,
@@ -244,6 +248,7 @@ export function useResourceCatalogController(
       setSkillImportOpen,
       setSkillMarketplaceOpen,
       setSystemSkillOpen,
+      setOrgSkillOpen,
       handleCreateDialogOpenChange,
       handleSubmitCreateResource
     }

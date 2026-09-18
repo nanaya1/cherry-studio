@@ -32,11 +32,16 @@ const ResourceCatalogDialogs = lazy(() =>
 
 const logger = loggerService.withContext('SkillCatalogView')
 
-export type SkillSourceFilter = 'all' | 'builtin' | 'marketplace' | 'custom'
+// [enterprise] T0 筛选类型扩展 'org'，原类型注释保留
+// export type SkillSourceFilter = 'all' | 'builtin' | 'marketplace' | 'custom'
+export type SkillSourceFilter = 'all' | 'builtin' | 'marketplace' | 'custom' | 'org'
 type SkillResource = Extract<ResourceItem, { type: 'skill' }>
 type SkillController = ReturnType<typeof useResourceCatalogController>
 
+// [enterprise] T0 新增 'org'（企业下发）来源分组，原集合注释保留
+// const CUSTOM_SKILL_SOURCES = new Set(['local', 'zip', 'system'])
 const CUSTOM_SKILL_SOURCES = new Set(['local', 'zip', 'system'])
+const ORG_SKILL_SOURCES = new Set(['org'])
 const FALLBACK_STYLES = [
   'bg-chart-1/15 text-chart-1',
   'bg-chart-2/15 text-chart-2',
@@ -52,6 +57,7 @@ const FALLBACK_STYLES = [
 export function getSkillSourceFilter(source: string): Exclude<SkillSourceFilter, 'all'> | null {
   if (source === 'builtin') return 'builtin'
   if (source === 'marketplace') return 'marketplace'
+  if (ORG_SKILL_SOURCES.has(source)) return 'org' // [enterprise] org → 组织分组
   if (CUSTOM_SKILL_SOURCES.has(source)) return 'custom'
   return null
 }
@@ -176,7 +182,8 @@ export function SkillCatalogView({
   }, [iconSkillIds])
 
   const counts = useMemo(() => {
-    const next: Record<SkillSourceFilter, number> = { all: resources.length, builtin: 0, marketplace: 0, custom: 0 }
+    // [enterprise] T0 增加 org 计数
+    const next: Record<SkillSourceFilter, number> = { all: resources.length, builtin: 0, marketplace: 0, custom: 0, org: 0 }
     for (const resource of resources) {
       const group = getSkillSourceFilter(resource.raw.source)
       if (group) next[group] += 1
@@ -194,6 +201,7 @@ export function SkillCatalogView({
 
   const filters: Array<{ value: SkillSourceFilter; label: string }> = [
     { value: 'all', label: t('common.all') },
+    { value: 'org', label: t('workspace.skillsConnectors.sources.org') }, // [enterprise] 组织
     { value: 'builtin', label: t('workspace.skillsConnectors.sources.builtin') },
     { value: 'marketplace', label: t('workspace.skillsConnectors.sources.marketplace') },
     { value: 'custom', label: t('workspace.skillsConnectors.sources.custom') }
@@ -312,6 +320,8 @@ function SkillCard({
   const initial = getSkillInitial(resource.name)
   const fallbackStyle = getSkillFallbackStyle(resource.name)
   const isBuiltin = resource.raw.source === 'builtin'
+  // [enterprise] T0 组织技能显示来源徽章
+  const isOrg = resource.raw.source === 'org'
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return
@@ -341,6 +351,14 @@ function SkillCard({
               variant="secondary"
               className="shrink-0 border-0 px-1.5 py-px font-normal text-[10px] text-foreground-tertiary">
               {t('workspace.skillsConnectors.sources.builtin')}
+            </Badge>
+          ) : null}
+          {/* [enterprise] 组织技能来源徽章 */}
+          {isOrg ? (
+            <Badge
+              variant="secondary"
+              className="shrink-0 border-0 bg-primary/10 px-1.5 py-px font-normal text-[10px] text-primary">
+              {t('workspace.skillsConnectors.sources.org')}
             </Badge>
           ) : null}
         </div>

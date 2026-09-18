@@ -4,6 +4,7 @@ import { ResourceEditDialogHost } from '@renderer/components/resourceCatalog/dia
 import { ImportAssistantDialog } from '@renderer/components/resourceCatalog/dialogs/import'
 import {
   ImportSkillDialog,
+  OrgSkillDialog,
   SkillMarketplaceDialog,
   SystemSkillDialog
 } from '@renderer/components/resourceCatalog/dialogs/skill'
@@ -70,6 +71,8 @@ export function ResourceCatalogDialogs({
       ) : null}
       <ImportSkillDialog open={dialogs.skillImportOpen} onOpenChange={dialogs.setSkillImportOpen} />
       <SkillMarketplaceDialog open={dialogs.skillMarketplaceOpen} onOpenChange={dialogs.setSkillMarketplaceOpen} />
+      {/* [enterprise] T0 企业技能目录 */}
+      <OrgSkillDialog open={dialogs.orgSkillOpen} onOpenChange={dialogs.setOrgSkillOpen} />
       {resourceType === 'skill' ? (
         <SystemSkillDialog mode="manage" open={dialogs.systemSkillOpen} onOpenChange={dialogs.setSystemSkillOpen} />
       ) : null}

@@ -19,10 +19,12 @@ import BuiltinMcpServerList from './BuiltinMcpServerList'
 import McpMarketList from './McpMarketList'
 import McpProviderSettings from './McpProviderSettings'
 import McpServersList from './McpServersList'
+// [enterprise] T0 组织连接器目录
+import OrgConnectorList from './OrgConnectorList'
 import { getMcpProviderLogo, getProviderDisplayName, type ProviderConfig, providers } from './providers/config'
 
 type CatalogTab = 'discover' | 'providers' | 'mine'
-type DiscoverTab = 'builtin' | 'marketplace'
+type DiscoverTab = 'builtin' | 'marketplace' | 'org'
 
 const primaryTabClassName =
   'h-10 flex-none rounded-none border-x-0 border-t-0 border-b-2 border-transparent bg-transparent px-1.5 font-medium text-muted-foreground shadow-none hover:bg-transparent hover:text-foreground data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none dark:data-[state=active]:border-foreground dark:data-[state=active]:bg-transparent'
@@ -59,6 +61,16 @@ export default function McpCatalog() {
         onClick={() => setDiscoverTab('marketplace')}>
         {t('settings.mcp.marketplaces')}
       </Button>
+      {/* [enterprise] 组织连接器入口 */}
+      <Button
+        role="tab"
+        aria-selected={discoverTab === 'org'}
+        variant={discoverTab === 'org' ? 'secondary' : 'ghost'}
+        size="sm"
+        className="h-8 rounded-md px-3 font-normal"
+        onClick={() => setDiscoverTab('org')}>
+        {t('workspace.skillsConnectors.sources.org')}
+      </Button>
     </div>
   )
 
@@ -82,6 +94,9 @@ export default function McpCatalog() {
         <Scrollbar className="@container/mcp-discover min-h-0 flex-1 px-6 pt-5 pb-6">
           {discoverTab === 'builtin' ? (
             <BuiltinMcpServerList variant="catalog" toolbarStart={discoverTabs} />
+          ) : discoverTab === 'org' ? (
+            /* [enterprise] 组织连接器目录 */
+            <OrgConnectorList variant="catalog" toolbarStart={discoverTabs} />
           ) : (
             <McpMarketList variant="catalog" toolbarStart={discoverTabs} />
           )}

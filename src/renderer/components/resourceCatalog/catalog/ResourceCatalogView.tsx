@@ -100,6 +100,7 @@ export function ResourceCatalogView({
             toolbarFooter={toolbarFooter}
             allowColumnToggle={allowColumnToggle}
             onOpenSystemSkills={resourceType === 'skill' ? gridProps.onOpenSystemSkills : undefined}
+            onOpenOrgSkills={resourceType === 'skill' ? gridProps.onOpenOrgSkills : undefined}
             toolbarLeading={toolbarLeading}
             variant={variant}
             showManagementActions={showManagementActions}
