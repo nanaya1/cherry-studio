@@ -10,9 +10,12 @@ import { loggerService } from '@logger'
 
 const logger = loggerService.withContext('OrgCredentialStore')
 
-// T0 复用 feature 路径机制：在技能库同级建 enterprise 私有目录存凭据
-const credDir = join(application.getPath('feature.agents.skills'), '..', 'enterprise')
-const credFile = join(credDir, 'org-session.json')
+// T0 复用 feature 路径机制：在技能库同级建 enterprise 私有目录存凭据。
+// 必须延迟到调用时取路径——模块加载早于 application.initPathRegistry()，
+// 顶层取值会在 Electron 启动时抛 "called before initPathRegistry" 并崩掉 App。
+function credFile(): string {
+  return join(application.getPath('feature.agents.skills'), '..', 'enterprise', 'org-session.json')
+}
 
 export const orgSessionSchema = z.object({
   userId: z.string(),
@@ -30,8 +33,9 @@ const fileSchema = z.object({ session: orgSessionSchema.strict() })
 export class OrgCredentialStore {
   load(): OrgSession | null {
     try {
-      if (!existsSync(credFile)) return null
-      const parsed = fileSchema.safeParse(JSON.parse(readFileSync(credFile, 'utf8')))
+      const filePath = credFile()
+      if (!existsSync(filePath)) return null
+      const parsed = fileSchema.safeParse(JSON.parse(readFileSync(filePath, 'utf8')))
       if (!parsed.success) {
         logger.warn('org session file corrupted, ignoring')
         return null
@@ -44,14 +48,16 @@ export class OrgCredentialStore {
   }
 
   save(session: OrgSession) {
-    mkdirSync(dirname(credFile), { recursive: true })
-    writeFileSync(credFile, JSON.stringify({ session }, null, 2), { mode: 0o600 })
-    chmodSync(credFile, 0o600)
+    const filePath = credFile()
+    mkdirSync(dirname(filePath), { recursive: true })
+    writeFileSync(filePath, JSON.stringify({ session }, null, 2), { mode: 0o600 })
+    chmodSync(filePath, 0o600)
   }
 
   clear() {
     try {
-      if (existsSync(credFile)) rmSync(credFile)
+      const filePath = credFile()
+      if (existsSync(filePath)) rmSync(filePath)
     } catch (error) {
       logger.warn('failed to remove org session file', { error: String(error) })
     }
