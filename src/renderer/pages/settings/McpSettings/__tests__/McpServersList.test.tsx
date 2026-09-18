@@ -40,6 +40,8 @@ vi.mock('@renderer/ipc', () => ({
 
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => mocks.navigate,
+  useMatches: () => [{ routeId: '/settings/mcp/servers', search: { protocolInstallRequestId: mocks.protocolInstallRequestId } }],
+  // 停用原 routeApi mock（组件已改用 useMatches；保留以兼容旧实现回滚）：
   getRouteApi: () => ({
     useSearch: () => ({ protocolInstallRequestId: mocks.protocolInstallRequestId })
   })
