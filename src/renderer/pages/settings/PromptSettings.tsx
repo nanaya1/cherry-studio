@@ -1,3 +1,7 @@
+import { GripVertical, MoreHorizontal, Plus, Trash2, Bot } from 'lucide-react'
+import { useCallback, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+
 import {
   Alert,
   Badge,
@@ -29,9 +33,6 @@ import { toast } from '@renderer/services/toast'
 import { formatErrorMessageWithPrefix } from '@renderer/utils/error'
 import { DataApiError, ErrorCode } from '@shared/data/api/errors'
 import type { Prompt, PromptBindingRelation, PromptBindingTarget, PromptVisibility } from '@shared/data/types/prompt'
-import { Bot, GripVertical, MoreHorizontal, Plus, Trash2 } from 'lucide-react'
-import { useCallback, useMemo, useState } from 'react'
-import { useTranslation } from 'react-i18next'
 
 import { type PromptTargetOption, PromptTargetPopover } from './PromptTargetPopover'
 

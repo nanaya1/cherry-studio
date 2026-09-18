@@ -1,4 +1,5 @@
 const { Arch } = require('electron-builder')
+const { rebuild } = require('@electron/rebuild')
 const { execSync } = require('child_process')
 const fs = require('fs')
 const path = require('path')
@@ -22,7 +23,7 @@ const { ensureLinuxNativeArtifact } = require('./linux-native/download')
 // - registry-js: only used on Windows (src/main/utils/shellEnv.ts) for shell env probing
 // node-pty is intentionally excluded — it ships working prebuilds in prebuilds/<platform>-<arch>/,
 // and electron-builder's auto-rebuild step would delete those and force-compile from source.
-const ELECTRON_REBUILD_MODULES = ['better-sqlite3', 'registry-js']
+// const ELECTRON_REBUILD_MODULES = ['better-sqlite3', 'registry-js'] // 停用：上游 @electron/rebuild 已覆盖此逻辑
 
 // if you want to add new prebuild binaries packages with different architectures, you can add them here
 // please add to allX64 and allArm64 from pnpm-lock.yaml
@@ -123,6 +124,47 @@ const platformToArch = {
   linuxmusl: 'linuxmusl'
 }
 
+async function prepareNativeModulesForElectron(
+  context,
+  rebuildFn = rebuild,
+  ensureLinuxArtifact = ensureLinuxNativeArtifact
+) {
+  const arch = context.arch === Arch.arm64 ? 'arm64' : 'x64'
+  const platformName = context.packager.platform.name
+  const platform = platformToArch[platformName]
+  const electronVersion = context.packager.config.electronVersion
+  const projectRoot = path.join(__dirname, '..')
+
+  if (!platform || !electronVersion) {
+    throw new Error(`Cannot resolve Electron rebuild target for ${platformName}-${arch}`)
+  }
+
+  if (platform === 'linux') {
+    if (context.arch !== Arch.arm64 && context.arch !== Arch.x64) {
+      throw new Error(`Unsupported Linux packaging architecture: ${context.arch}`)
+    }
+    const artifact = ensureLinuxArtifact({ projectRoot, arch })
+    process.stdout.write(
+      `${artifact.cached ? 'Verified cached' : 'Downloaded'} GLIBC-compatible better-sqlite3 for ` +
+        `linux-${arch} (${artifact.inspection.sha256})\n`
+    )
+    return
+  }
+
+  // electron-builder's automatic pnpm rebuild can retain the host Node prebuild.
+  // Force the ABI-sensitive addon from source for the exact target before app files are copied.
+  await rebuildFn({
+    buildPath: projectRoot,
+    electronVersion,
+    platform,
+    arch,
+    onlyModules: ['better-sqlite3'],
+    force: true,
+    buildFromSource: true
+  })
+}
+exports.prepareNativeModulesForElectron = prepareNativeModulesForElectron
+
 // Most native packages encode Electron's platform key (win32) in their name, but some
 // (e.g. sqlite-vec) use the npm `windows` convention. Match either so a win32 build keeps
 // sqlite-vec-windows-x64 instead of wrongly excluding it.
@@ -158,68 +200,9 @@ exports.default = async function (context) {
   const arch = context.arch === Arch.arm64 ? 'arm64' : 'x64'
   const platformName = context.packager.platform.name
   const platform = platformToArch[platformName]
-  const projectRoot = path.join(__dirname, '..')
 
+  await prepareNativeModulesForElectron(context)
   assertPrebuiltPackages(platform, arch)
-
-  if (platform === 'linux') {
-    const linuxArch = context.arch === Arch.arm64 ? 'arm64' : context.arch === Arch.x64 ? 'x64' : null
-    if (!linuxArch) throw new Error(`Unsupported Linux packaging architecture: ${context.arch}`)
-
-    const artifact = ensureLinuxNativeArtifact({ projectRoot, arch: linuxArch })
-    process.stdout.write(
-      `${artifact.cached ? 'Verified cached' : 'Downloaded'} GLIBC-compatible better-sqlite3 for ` +
-        `linux-${linuxArch} (${artifact.inspection.sha256})\n`
-    )
-  }
-
-  if (platform === 'win32' && ELECTRON_REBUILD_MODULES.length > 0) {
-    const electronRebuildBin = path.join(projectRoot, 'node_modules', '.bin', 'electron-rebuild')
-    if (!fs.existsSync(electronRebuildBin)) {
-      throw new Error(
-        `Cannot find electron-rebuild at ${electronRebuildBin}. Run \`pnpm install\` first.`
-      )
-    }
-    const onlyArg = ELECTRON_REBUILD_MODULES.join(',')
-    process.stdout.write(`Rebuilding ${ELECTRON_REBUILD_MODULES.join(', ')} for Electron…\n`)
-    // node-gyp's default `rebuild` flow calls `clean` first, which deletes the entire
-    // build/ tree for every module and trips the WorkBuddy bulk-delete sandbox guard
-    // (4185+ files for better-sqlite3 alone). Pre-delete build/ for each module so
-    // node-gyp can build fresh without invoking `clean`. Without --force on
-    // electron-rebuild, node-gyp skips clean when build/ is already absent.
-    for (const moduleName of ELECTRON_REBUILD_MODULES) {
-      let pkgJsonPath
-      try {
-        pkgJsonPath = require.resolve(`${moduleName}/package.json`, { paths: [projectRoot] })
-      } catch {
-        continue
-      }
-      const moduleBuild = path.join(path.dirname(pkgJsonPath), 'build')
-      if (fs.existsSync(moduleBuild)) {
-        fs.rmSync(moduleBuild, { recursive: true, force: true })
-        process.stdout.write(`Pre-cleaned ${moduleName}/build\n`)
-      }
-    }
-    // Strip WorkBuddy bulk-delete sandbox env vars before spawning electron-rebuild.
-    // The sandbox tracks fs.rm / fs.unlink via CODEBUDDY_* env vars across a single tool
-    // call, and node-gyp's configure step creates+deletes many .tmp files plus the entire
-    // module build/ tree, which trips the threshold. We pre-deleted build/ above so the
-    // rebuild itself doesn't need a clean pass; the remaining deletes are unavoidable
-    // node-gyp internals and are safe inside the build output tree.
-    const sandboxEnvVars = [
-        'CODEBUDDY_SAFE_DELETE_BULK_STATE_DIR',
-        'CODEBUDDY_SAFE_DELETE_BULK_GUARD',
-        'CODEBUDDY_NODE_BIN',
-        'CODEBUDDY_TOOL_CALL_ID'
-      ]
-    const env = { ...process.env, npm_config_build_from_source: 'true' }
-    for (const key of sandboxEnvVars) delete env[key]
-    execSync(`"${electronRebuildBin}" --only ${onlyArg}`, {
-      cwd: projectRoot,
-      stdio: 'inherit',
-      env
-    })
-  }
 
   console.log(`Downloading bundled binaries for ${platform}-${arch}...`)
   execSync(`node "${path.join(__dirname, 'download-binaries.js')}" ${platform} ${arch} --packaging`, {

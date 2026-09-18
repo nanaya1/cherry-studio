@@ -1,8 +1,14 @@
+import { and, asc, count, desc, eq, gte, inArray, isNotNull, isNull, lt, ne, or, type SQL, sql } from 'drizzle-orm'
+import { v4 as uuidv4 } from 'uuid'
+
 import { application } from '@application'
 import { notifyDataApiDataChange } from '@data/dataApiDataChange'
 import { type AgentRow, agentTable as agentsTable, type InsertAgentRow } from '@data/db/schemas/agent'
+import { agentChannelTable } from '@data/db/schemas/agentChannel'
+import { agentSessionTable } from '@data/db/schemas/agentSession'
 import { agentKnowledgeBaseTable, agentMcpServerTable } from '@data/db/schemas/assistantRelations'
 import { knowledgeBaseTable } from '@data/db/schemas/knowledge'
+// MEA 定制：syncActiveMcpsToBuiltinAssistantTx 需要
 import { mcpServerTable } from '@data/db/schemas/mcpServer'
 import { pinTable } from '@data/db/schemas/pin'
 import { defaultHandlersFor, withSqliteErrors } from '@data/db/sqliteErrors'
@@ -18,7 +24,7 @@ import { nullsToUndefined, timestampToISO } from '@data/services/utils/rowMapper
 import { loggerService } from '@logger'
 import { Emitter, type Event } from '@main/core/lifecycle'
 import { t } from '@main/i18n'
-import { BUILTIN_AGENT_ROLE, type BuiltinAgentRole } from '@shared/ai/builtinAgent'
+import { BUILTIN_AGENT_ROLE, type BuiltinAgentRole, CHERRY_SUPPORT_AGENT_ID } from '@shared/ai/builtinAgent'
 import { resolveReasoningEffortForModel } from '@shared/ai/reasoning'
 import { DataApiErrorFactory } from '@shared/data/api/errors'
 import type { OrderRequest } from '@shared/data/api/schemas/_endpointHelpers'
@@ -30,14 +36,11 @@ import {
   sanitizeAgentConfiguration,
   type UpdateAgentDto
 } from '@shared/data/api/schemas/agents'
-import type { AgentSessionMessageEntity } from '@shared/data/api/schemas/agentSessionMessages'
 import type { EntitySearchItem } from '@shared/data/api/schemas/search'
 import type { ListOptions } from '@shared/data/api/types'
 import type { AgentType } from '@shared/data/types/agent'
 import type { UniqueModelId } from '@shared/data/types/model'
 import { isGatewayRoutableModel } from '@shared/utils/model'
-import { and, asc, count, desc, eq, gte, inArray, isNull, or, type SQL, sql } from 'drizzle-orm'
-import { v4 as uuidv4 } from 'uuid'
 
 const logger = loggerService.withContext('AgentService')
 
@@ -52,9 +55,13 @@ export interface AgentCreatedEvent {
   agent: AgentEntity
 }
 
-export interface AgentDeletedEvent {
-  agentId: string
+export interface AgentPurgeImpact {
+  readonly purgedIds: readonly string[]
+  readonly affectedSessionIds: readonly string[]
+  readonly affectedChannelIds: readonly string[]
 }
+
+export type AgentLifecycleState = 'active' | 'trashed' | 'missing'
 
 type AgentEntitySearchItem = Extract<EntitySearchItem, { type: 'agent' }>
 type AgentRelationField = 'mcps' | 'knowledgeBaseIds'
@@ -76,12 +83,15 @@ export interface EnsureBuiltinAgentResult {
   created: boolean
 }
 
-function getAgentDescription(description: string, configuration: unknown): string {
+function getAgentDescription(id: string, description: string, configuration: unknown): string {
   if (description) return description
   if (typeof configuration === 'object' && configuration !== null) {
     const builtinRole = (configuration as { builtin_role?: unknown }).builtin_role
     if (builtinRole === BUILTIN_AGENT_ROLE.ASSISTANT) {
       return t('agent.builtin.cherry_assistant.description')
+    }
+    if (id === CHERRY_SUPPORT_AGENT_ID && builtinRole === BUILTIN_AGENT_ROLE.SUPPORT) {
+      return t('agent.builtin.cherry_support.description')
     }
   }
   return ''
@@ -94,22 +104,37 @@ function buildAgentSearchPredicate(search: string): SQL {
   // The builtin description is an i18n-owned fallback when the database value is blank, so include
   // its localized main-process fallback in SQL rather than limiting search to a renderer page.
   const assistantDescriptionMatch = sql`${agentsTable.description} = '' AND json_extract(${agentsTable.configuration}, '$.builtin_role') = ${BUILTIN_AGENT_ROLE.ASSISTANT} AND ${t('agent.builtin.cherry_assistant.description')} LIKE ${pattern} ESCAPE '\\'`
-  return or(nameMatch, descriptionMatch, assistantDescriptionMatch)!
+  const supportDescriptionMatch = sql`${agentsTable.id} = ${CHERRY_SUPPORT_AGENT_ID} AND ${agentsTable.description} = '' AND json_extract(${agentsTable.configuration}, '$.builtin_role') = ${BUILTIN_AGENT_ROLE.SUPPORT} AND ${t('agent.builtin.cherry_support.description')} LIKE ${pattern} ESCAPE '\\'`
+  return or(nameMatch, descriptionMatch, assistantDescriptionMatch, supportDescriptionMatch)!
 }
 
 /**
- * `builtin_role` is a capability identity, not user data. Only internal seeding
- * (`createAgentTx`) may write the role; public DataApi cannot forge it.
+ * `builtin_role` is a capability identity, not user data. Support additionally requires its
+ * reserved ID, so historical configuration cannot grant an ordinary Agent system capabilities.
+ * Only internal seeding (`createAgentTx`) may write the role; public DataApi cannot forge it.
  */
 function getBuiltinRole(configuration: unknown): unknown {
   if (!configuration || typeof configuration !== 'object') return undefined
   return (configuration as { builtin_role?: unknown }).builtin_role
 }
 
+// MEA 定制：MCP 自动绑定内置助手所需的排除清单（excluded_mcp_server_ids）
 function getExcludedMcpServerIds(configuration: unknown): Set<string> {
   if (!configuration || typeof configuration !== 'object') return new Set()
   const ids = (configuration as { excluded_mcp_server_ids?: unknown }).excluded_mcp_server_ids
   return new Set(Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : [])
+}
+
+function removeUntrustedSupportRole(id: string, configuration: unknown): Record<string, unknown> {
+  const next =
+    configuration && typeof configuration === 'object' && !Array.isArray(configuration)
+      ? { ...(configuration as Record<string, unknown>) }
+      : {}
+  if (id === CHERRY_SUPPORT_AGENT_ID || getBuiltinRole(configuration) !== BUILTIN_AGENT_ROLE.SUPPORT) {
+    return next
+  }
+  delete next.builtin_role
+  return next
 }
 
 /**
@@ -129,7 +154,7 @@ function applyAgentConfigurationPatch(
       : {}
 
   for (const [key, value] of Object.entries(patch ?? {})) {
-    if (key === 'builtin_role' || key === 'excluded_mcp_server_ids') continue
+    if (key === 'builtin_role') continue
     if (value === undefined) {
       delete next[key]
     } else {
@@ -140,10 +165,13 @@ function applyAgentConfigurationPatch(
   return next
 }
 
-function parseConfiguration(raw: unknown): AgentConfiguration | undefined {
+function parseConfiguration(raw: unknown, agentId: string): AgentConfiguration | undefined {
   const { data, invalidKeys } = sanitizeAgentConfiguration(raw)
   if (invalidKeys.length > 0) {
     logger.warn('Agent configuration drift detected; dropping invalid keys', { invalidKeys })
+  }
+  if (agentId !== CHERRY_SUPPORT_AGENT_ID && data?.builtin_role === BUILTIN_AGENT_ROLE.SUPPORT) {
+    delete data.builtin_role
   }
   return data
 }
@@ -169,9 +197,10 @@ function rowToAgent(
     model: (clean.model ?? null) as UniqueModelId | null,
     planModel: clean.planModel as UniqueModelId | undefined,
     smallModel: clean.smallModel as UniqueModelId | undefined,
-    configuration: parseConfiguration(row.configuration),
+    configuration: parseConfiguration(row.configuration, row.id),
     createdAt: timestampToISO(row.createdAt),
     updatedAt: timestampToISO(row.updatedAt),
+    deletedAt: row.deletedAt != null ? timestampToISO(row.deletedAt) : undefined,
     modelName
   }
 }
@@ -237,8 +266,31 @@ export class AgentService {
   private readonly _onAgentUpdated = new Emitter<AgentUpdatedEvent>()
   readonly onAgentUpdated: Event<AgentUpdatedEvent> = this._onAgentUpdated.event
 
-  private readonly _onAgentDeleted = new Emitter<AgentDeletedEvent>()
-  readonly onAgentDeleted: Event<AgentDeletedEvent> = this._onAgentDeleted.event
+  notifyReadModelChange(agentIds: readonly string[], kind: 'membership' | 'projection'): void {
+    if (agentIds.length === 0) return
+    const entityIds = [...new Set(agentIds)]
+    notifyDataApiDataChange([
+      { endpoint: '/agents', kind, entityIds },
+      { endpoint: '/agents/:agentId', entityIds }
+    ])
+  }
+
+  /** Publish the post-commit effects of a retention purge. */
+  notifyPurged(impact: AgentPurgeImpact): void {
+    if (impact.purgedIds.length === 0) return
+    const entityIds = [...new Set(impact.purgedIds)]
+    this.notifyReadModelChange(entityIds, 'membership')
+    // Prompt bindings deliberately survive trashing and disappear only at retention purge.
+    promptService.notifyTargetBindingsChanged()
+    agentSessionService.notifyReadModelChange(impact.affectedSessionIds, 'projection')
+    if (impact.affectedChannelIds.length > 0) {
+      const affectedChannelIds = [...new Set(impact.affectedChannelIds)]
+      notifyDataApiDataChange([
+        { endpoint: '/agent-channels', kind: 'projection', entityIds: affectedChannelIds },
+        { endpoint: '/agent-channels/:channelId', entityIds: affectedChannelIds }
+      ])
+    }
+  }
 
   /**
    * Create primitive for main-process command orchestration. The caller owns
@@ -331,6 +383,12 @@ export class AgentService {
     insertData: Omit<InsertAgentRow, 'orderKey'>,
     position: 'first' | 'last' = 'last'
   ): { agent: AgentRow; modelName: string | null } | null {
+    if (getBuiltinRole(insertData.configuration) === BUILTIN_AGENT_ROLE.SUPPORT && id !== CHERRY_SUPPORT_AGENT_ID) {
+      throw DataApiErrorFactory.invalidOperation(
+        'create built-in Agent',
+        'Cherry Support must use its reserved system identity'
+      )
+    }
     insertWithOrderKey(tx, agentsTable, insertData, { pkColumn: agentsTable.id, position })
     const [agent] = tx.select().from(agentsTable).where(eq(agentsTable.id, id)).limit(1).all()
     if (!agent) return null
@@ -351,7 +409,13 @@ export class AgentService {
     builtinRole: string,
     options: { includeDeleted?: boolean } = {}
   ): AgentRow | null {
-    const roleCondition = sql`json_extract(${agentsTable.configuration}, '$.builtin_role') = ${builtinRole}`
+    const roleCondition =
+      builtinRole === BUILTIN_AGENT_ROLE.SUPPORT
+        ? and(
+            eq(agentsTable.id, CHERRY_SUPPORT_AGENT_ID),
+            sql`json_extract(${agentsTable.configuration}, '$.builtin_role') = ${builtinRole}`
+          )
+        : sql`json_extract(${agentsTable.configuration}, '$.builtin_role') = ${builtinRole}`
     const [agent] = tx
       .select()
       .from(agentsTable)
@@ -359,6 +423,51 @@ export class AgentService {
       .limit(1)
       .all()
     return agent ?? null
+  }
+
+  /** Remove legacy Support markers from non-system IDs without changing other Agent data. */
+  clearUntrustedBuiltinSupportRolesTx(tx: DbOrTx): void {
+    const rows = tx
+      .select({ id: agentsTable.id, configuration: agentsTable.configuration })
+      .from(agentsTable)
+      .where(
+        and(
+          ne(agentsTable.id, CHERRY_SUPPORT_AGENT_ID),
+          sql`json_extract(${agentsTable.configuration}, '$.builtin_role') = ${BUILTIN_AGENT_ROLE.SUPPORT}`
+        )
+      )
+      .all()
+    for (const row of rows) {
+      tx.update(agentsTable)
+        .set({ configuration: removeUntrustedSupportRole(row.id, row.configuration) })
+        .where(eq(agentsTable.id, row.id))
+        .run()
+    }
+  }
+
+  /** Claim the reserved Support ID without replacing user-owned fields or relations. */
+  claimBuiltinSupportIdentityTx(tx: DbOrTx, options: { restoreDeleted?: boolean } = {}): AgentRow | null {
+    const [existing] = tx.select().from(agentsTable).where(eq(agentsTable.id, CHERRY_SUPPORT_AGENT_ID)).limit(1).all()
+    if (!existing) return null
+
+    const shouldRestore = options.restoreDeleted === true && existing.deletedAt !== null
+    if (getBuiltinRole(existing.configuration) === BUILTIN_AGENT_ROLE.SUPPORT && !shouldRestore) {
+      return existing
+    }
+    const configuration =
+      existing.configuration && typeof existing.configuration === 'object' && !Array.isArray(existing.configuration)
+        ? { ...existing.configuration, builtin_role: BUILTIN_AGENT_ROLE.SUPPORT }
+        : { builtin_role: BUILTIN_AGENT_ROLE.SUPPORT }
+    tx.update(agentsTable)
+      .set({
+        configuration,
+        ...(shouldRestore ? { deletedAt: null } : {})
+      })
+      .where(eq(agentsTable.id, CHERRY_SUPPORT_AGENT_ID))
+      .run()
+
+    const [claimed] = tx.select().from(agentsTable).where(eq(agentsTable.id, CHERRY_SUPPORT_AGENT_ID)).limit(1).all()
+    return claimed ?? null
   }
 
   /**
@@ -370,6 +479,10 @@ export class AgentService {
    * converge on one active system Agent.
    */
   ensureBuiltinAgentTx(tx: DbOrTx, input: EnsureBuiltinAgentInput): EnsureBuiltinAgentResult {
+    if (input.builtinRole === BUILTIN_AGENT_ROLE.SUPPORT) {
+      this.clearUntrustedBuiltinSupportRolesTx(tx)
+      this.claimBuiltinSupportIdentityTx(tx, { restoreDeleted: true })
+    }
     const existing = this.findBuiltinAgentByRoleTx(tx, input.builtinRole)
 
     if (existing) {
@@ -386,7 +499,7 @@ export class AgentService {
 
     const preferredModel = input.preferredModelId ? modelService.findByIdTx(tx, input.preferredModelId) : null
     const model = preferredModel && isGatewayRoutableModel(preferredModel) ? input.preferredModelId : null
-    const agentId = uuidv4()
+    const agentId = input.builtinRole === BUILTIN_AGENT_ROLE.SUPPORT ? CHERRY_SUPPORT_AGENT_ID : uuidv4()
     const created = this.createAgentTx(tx, agentId, {
       id: agentId,
       type: input.type,
@@ -456,12 +569,14 @@ export class AgentService {
     return rowToAgent(agent, modelName, mcpsMap.get(id) ?? [], knowledgeBasesMap.get(id) ?? [])
   }
 
-  listAgents(options: ListOptions = {}): { agents: AgentEntity[]; total: number } {
+  listAgents(options: ListOptions & { inTrash?: boolean } = {}): { agents: AgentEntity[]; total: number } {
     const database = application.get('DbService').getDb()
 
     // AND-compose deletedAt-null + optional server-side search. The localized builtin
     // fallback is part of the predicate, so pagination and full-library search stay authoritative.
-    const conditions: SQL[] = [isNull(agentsTable.deletedAt)]
+    const conditions: SQL[] = [
+      options.inTrash === true ? isNotNull(agentsTable.deletedAt) : isNull(agentsTable.deletedAt)
+    ]
     if (options.search) {
       conditions.push(buildAgentSearchPredicate(options.search))
     }
@@ -561,7 +676,7 @@ export class AgentService {
       type: 'agent',
       id: row.id,
       title: row.name,
-      subtitle: getAgentDescription(row.description, row.configuration) || undefined,
+      subtitle: getAgentDescription(row.id, row.description, row.configuration) || undefined,
       emoji: getAgentAvatar(row.configuration),
       updatedAt: timestampToISO(row.updatedAt),
       target: { agentId: row.id }
@@ -628,16 +743,8 @@ export class AgentService {
             Object.prototype.hasOwnProperty.call(configurationPatch, 'reasoning_effort')
           const reasoningEffortRemoved = reasoningEffortPatched && configurationPatch?.reasoning_effort === undefined
 
-          const persistedConfiguration =
-            current.configuration && typeof current.configuration === 'object' && !Array.isArray(current.configuration)
-              ? { ...current.configuration }
-              : {}
-          let nextConfiguration =
-            configurationPatch !== undefined
-              ? applyAgentConfigurationPatch(persistedConfiguration, configurationPatch)
-              : persistedConfiguration
-
           if (configurationPatch !== undefined || modelChanged) {
+            const persistedConfiguration = removeUntrustedSupportRole(current.id, current.configuration)
             const existingRole = getBuiltinRole(persistedConfiguration)
             const incomingRole = getBuiltinRole(configurationPatch)
             if (incomingRole !== undefined && incomingRole !== existingRole) {
@@ -646,52 +753,17 @@ export class AgentService {
                 'configuration.builtin_role is reserved for system agents'
               )
             }
-            if (
-              configurationPatch !== undefined &&
-              Object.prototype.hasOwnProperty.call(configurationPatch, 'excluded_mcp_server_ids')
-            ) {
-              throw DataApiErrorFactory.invalidOperation(
-                'update agent',
-                'configuration.excluded_mcp_server_ids is reserved for system synchronization'
-              )
-            }
 
+            const nextConfiguration = applyAgentConfigurationPatch(persistedConfiguration, configurationPatch)
             const effectiveModelId = updates.model !== undefined ? updates.model : current.model
             if (!reasoningEffortRemoved && effectiveModelId && (modelChanged || reasoningEffortPatched)) {
               const nextModel = modelService.findByIdTx(tx, effectiveModelId)
               if (nextModel) {
-                const currentEffort = parseConfiguration(nextConfiguration)?.reasoning_effort ?? 'default'
+                const currentEffort = parseConfiguration(nextConfiguration, current.id)?.reasoning_effort ?? 'default'
                 nextConfiguration.reasoning_effort =
                   resolveReasoningEffortForModel(nextModel, currentEffort) ?? 'default'
               }
             }
-          }
-
-          if (newMcps !== undefined && getBuiltinRole(persistedConfiguration) === BUILTIN_AGENT_ROLE.ASSISTANT) {
-            const previousMcps = fetchMcpsForAgents(tx, [id]).get(id) ?? []
-            const activeMcpIds = new Set(
-              previousMcps.length > 0
-                ? tx
-                    .select({ id: mcpServerTable.id })
-                    .from(mcpServerTable)
-                    .where(and(inArray(mcpServerTable.id, previousMcps), eq(mcpServerTable.isActive, true)))
-                    .all()
-                    .map((row) => row.id)
-                : []
-            )
-            const nextMcpSet = new Set(newMcps)
-            const excludedMcpIds = getExcludedMcpServerIds(persistedConfiguration)
-            for (const mcpId of activeMcpIds) {
-              if (!nextMcpSet.has(mcpId)) excludedMcpIds.add(mcpId)
-            }
-            for (const mcpId of nextMcpSet) excludedMcpIds.delete(mcpId)
-            nextConfiguration = {
-              ...nextConfiguration,
-              excluded_mcp_server_ids: Array.from(excludedMcpIds)
-            }
-          }
-
-          if (configurationPatch !== undefined || modelChanged || nextConfiguration !== persistedConfiguration) {
             updateData.configuration = nextConfiguration
           }
 
@@ -735,93 +807,215 @@ export class AgentService {
     tx.update(agentsTable).set(updateData).where(eq(agentsTable.id, id)).run()
   }
 
-  deleteAgent(
-    id: string,
-    options: { deleteSessions?: boolean } = {}
-  ): { deleted: boolean; deletedSessionIds?: string[] } {
-    const result = this.deleteAgentForDelivery(id, options)
+  deleteAgent(id: string, options: { deleteSessions?: boolean; permanent?: boolean } = {}) {
+    const impact = application.get('DbService').withWriteTx((tx) => this.deleteAgentStateTx(tx, id, options))
+    this.notifyDeleted(id, impact)
     return {
-      deleted: result.deleted,
-      ...(result.deletedSessionIds ? { deletedSessionIds: result.deletedSessionIds } : {})
+      deleted: impact.deleted,
+      ...(impact.deletedSessionIds ? { deletedSessionIds: impact.deletedSessionIds } : {})
     }
   }
 
-  deleteAgentForDelivery(
+  deleteAgentStateTx(
+    tx: DbOrTx,
     id: string,
-    options: { deleteSessions?: boolean } = {}
-  ): {
-    deleted: boolean
-    deletedSessionIds?: string[]
-    affectedSessionIds: string[]
-    deliveryResults: AgentSessionMessageEntity[]
-  } {
-    // By default sessions detach (agentId → NULL) via FK ON DELETE SET NULL; callers
-    // can opt into deleting them in this same transaction. `pin` has no FK back
-    // to agent, so purge it alongside the agent row. Junction table rows are
-    // cascade-deleted by FK.
-    const result = withSqliteErrors(
-      () =>
-        application.get('DbService').withWriteTx((tx) => {
-          const [agent] = tx
-            .select({ id: agentsTable.id })
-            .from(agentsTable)
-            .where(and(eq(agentsTable.id, id), isNull(agentsTable.deletedAt)))
-            .limit(1)
-            .all()
-          if (!agent) return { rowsAffected: 0, sessionImpact: undefined }
+    options: { deleteSessions?: boolean; permanent?: boolean; targetState?: 'active' | 'trashed' } = {}
+  ) {
+    const permanent = options.permanent === true
+    const deleteSessions = options.deleteSessions === true && (!permanent || options.targetState === 'active')
+    const affectedChannelIds = permanent
+      ? tx
+          .select({ id: agentChannelTable.id })
+          .from(agentChannelTable)
+          .where(eq(agentChannelTable.agentId, id))
+          .all()
+          .map((row) => row.id)
+      : []
+    const result = (() => {
+      const [agent] = tx
+        .select({ id: agentsTable.id })
+        .from(agentsTable)
+        .where(
+          permanent && options.targetState !== 'active'
+            ? and(eq(agentsTable.id, id), isNotNull(agentsTable.deletedAt))
+            : and(eq(agentsTable.id, id), isNull(agentsTable.deletedAt))
+        )
+        .limit(1)
+        .all()
+      if (!agent) return { rowsAffected: 0, sessionImpact: undefined }
 
-          const sessionImpact = agentSessionService.prepareForAgentDeletionTx(tx, id, {
-            deleteSessions: options.deleteSessions === true
-          })
-          return { ...this.deleteAgentTx(tx, id), sessionImpact }
-        }),
-      defaultHandlersFor('Agent', id)
-    )
+      if (permanent) {
+        const sessionImpact = agentSessionService.prepareForAgentDeletionTx(tx, id, {
+          deleteSessions
+        })
+        return {
+          ...this.deleteAgentTx(tx, id),
+          sessionImpact: {
+            ...sessionImpact,
+            deletedSessionIds: deleteSessions ? sessionImpact.sessionIds : []
+          }
+        }
+      }
 
-    const deleted = result.rowsAffected > 0
-    if (deleted && result.sessionImpact) {
-      agentTaskService.notifyReadModelChange(result.sessionImpact.taskScheduleIds)
-      getDataService('AgentSessionMessageService').publishDeliveryChanges(result.sessionImpact.deliveryResults)
-      agentSessionService.notifyReadModelChange(result.sessionImpact.sessionIds, result.sessionImpact.changeKind)
-    }
-    if (deleted) {
-      notifyDataApiDataChange([
-        { endpoint: '/agents', kind: 'membership', entityIds: [id] },
-        { endpoint: '/agents/:agentId', routeParams: { agentId: id }, entityIds: [id] }
-      ])
-      promptService.notifyTargetBindingsChanged()
-      this._onAgentDeleted.fire({ agentId: id })
-    }
-    if (deleted) pinService.notifyPurged()
-    const deletedSessionIds = options.deleteSessions === true ? result.sessionImpact?.sessionIds : undefined
+      const trashedAt = Date.now()
+      const sessionIds = agentSessionService.listIdsByAgentTx(tx, id)
+      const trashed =
+        options.deleteSessions === true
+          ? agentSessionService.trashByAgentIdTx(tx, id, {
+              validateAgent: false,
+              deletedAt: trashedAt
+            })
+          : {
+              trashedIds: [],
+              taskScheduleIds: [],
+              // Sessions outlive the trashed agent, but deliveries targeting
+              // them can no longer complete — interrupt them like a hard delete.
+              deliveryResults: getDataService('AgentSessionMessageService').prepareRetainedSessionAgentDeletionTx(
+                tx,
+                sessionIds
+              )
+            }
+      const result = tx
+        .update(agentsTable)
+        .set({ deletedAt: trashedAt })
+        .where(and(eq(agentsTable.id, id), isNull(agentsTable.deletedAt)))
+        .run()
+      pinService.purgeForEntityTx(tx, 'agent', id)
+      return {
+        rowsAffected: result.changes,
+        sessionImpact: {
+          sessionIds,
+          deletedSessionIds: trashed.trashedIds,
+          taskScheduleIds: trashed.taskScheduleIds,
+          changeKind: trashed.trashedIds.length > 0 ? ('membership' as const) : ('projection' as const),
+          deliveryResults: trashed.deliveryResults
+        }
+      }
+    })()
     return {
-      deleted,
-      deletedSessionIds,
+      deleted: result.rowsAffected > 0,
+      deletedSessionIds:
+        deleteSessions && result.sessionImpact && 'deletedSessionIds' in result.sessionImpact
+          ? result.sessionImpact.deletedSessionIds
+          : undefined,
       affectedSessionIds: result.sessionImpact?.sessionIds ?? [],
-      deliveryResults: result.sessionImpact?.deliveryResults ?? []
+      affectedChannelIds,
+      taskScheduleIds: result.sessionImpact?.taskScheduleIds ?? [],
+      changeKind: result.sessionImpact?.changeKind ?? 'projection',
+      deliveryResults: result.sessionImpact?.deliveryResults ?? [],
+      purgedSystemWorkspacePaths:
+        result.sessionImpact && 'purgedSystemWorkspacePaths' in result.sessionImpact
+          ? result.sessionImpact.purgedSystemWorkspacePaths
+          : []
     }
+  }
+
+  notifyDeleted(id: string, impact: ReturnType<AgentService['deleteAgentStateTx']>): void {
+    if (!impact.deleted) return
+    agentTaskService.notifyReadModelChange(impact.taskScheduleIds)
+    getDataService('AgentSessionMessageService').publishDeliveryChanges(impact.deliveryResults)
+    agentSessionService.notifyReadModelChange(impact.affectedSessionIds, impact.changeKind)
+    if (impact.affectedChannelIds.length > 0)
+      notifyDataApiDataChange([
+        { endpoint: '/agent-channels', kind: 'projection', entityIds: impact.affectedChannelIds },
+        { endpoint: '/agent-channels/:channelId', entityIds: impact.affectedChannelIds }
+      ])
+    this.notifyReadModelChange([id], 'membership')
+    promptService.notifyTargetBindingsChanged()
+    pinService.notifyPurged()
   }
 
   deleteAgentTx(tx: DbOrTx, id: string): { rowsAffected: number } {
-    const [agent] = tx
-      .select({ configuration: agentsTable.configuration })
-      .from(agentsTable)
-      .where(eq(agentsTable.id, id))
-      .limit(1)
-      .all()
-    if (getBuiltinRole(agent?.configuration) === BUILTIN_AGENT_ROLE.ASSISTANT) {
-      throw DataApiErrorFactory.invalidOperation('delete agent', 'the default agent cannot be deleted')
-    }
-
     pinService.purgeForEntityTx(tx, 'agent', id)
     promptService.purgeForTargetTx(tx, 'agent', id)
     const result = tx.delete(agentsTable).where(eq(agentsTable.id, id)).run()
     return { rowsAffected: result.changes }
   }
 
+  /** Restore a trashed agent. Related sessions remain independently restorable. */
+  restoreAgent(id: string): AgentEntity {
+    const agent = application.get('DbService').withWriteTx((tx) => this.restoreAgentTx(tx, id))
+    this.notifyReadModelChange([id], 'membership')
+    return agent
+  }
+
+  restoreAgentTx(tx: DbOrTx, id: string): AgentEntity {
+    const [row] = tx
+      .update(agentsTable)
+      .set({ deletedAt: null })
+      .where(and(eq(agentsTable.id, id), isNotNull(agentsTable.deletedAt)))
+      .returning()
+      .all()
+    if (!row) throw DataApiErrorFactory.notFound('Agent', id)
+    const database = tx
+    const modelName = row.model
+      ? (modelService.getNamesByUniqueIdsTx(database, [row.model]).get(row.model) ?? null)
+      : null
+    const agent = rowToAgent(
+      row,
+      modelName,
+      fetchMcpsForAgents(database, [id]).get(id) ?? [],
+      fetchKnowledgeBasesForAgents(database, [id]).get(id) ?? []
+    )
+    logger.info('Restored agent', { id })
+    return agent
+  }
+
+  purgeExpiredTx(tx: DbOrTx, cutoffMs: number, limit: number): AgentPurgeImpact {
+    const rows = tx
+      .select({ id: agentsTable.id })
+      .from(agentsTable)
+      .where(and(isNotNull(agentsTable.deletedAt), lt(agentsTable.deletedAt, cutoffMs)))
+      .limit(limit)
+      .all()
+    const purgedIds = rows.map((row) => row.id)
+    if (purgedIds.length === 0) return { purgedIds, affectedSessionIds: [], affectedChannelIds: [] }
+
+    const affectedSessionIds = tx
+      .select({ id: agentSessionTable.id })
+      .from(agentSessionTable)
+      .where(inArray(agentSessionTable.agentId, purgedIds))
+      .orderBy(asc(agentSessionTable.id))
+      .all()
+      .map((row) => row.id)
+    const affectedChannelIds = tx
+      .select({ id: agentChannelTable.id })
+      .from(agentChannelTable)
+      .where(inArray(agentChannelTable.agentId, purgedIds))
+      .orderBy(asc(agentChannelTable.id))
+      .all()
+      .map((row) => row.id)
+
+    for (const id of purgedIds) this.deleteAgentTx(tx, id)
+    return { purgedIds, affectedSessionIds, affectedChannelIds }
+  }
+
   agentExists(id: string): boolean {
     const result = this.findAgentRow(id)
     return !!result
+  }
+
+  getLifecycleState(id: string): AgentLifecycleState {
+    const row = this.findAgentRow(id, { includeDeleted: true })
+    if (!row) return 'missing'
+    return row.deletedAt == null ? 'active' : 'trashed'
+  }
+
+  listExpiredTrashIds(cutoffMs: number, limit: number): string[] {
+    return application
+      .get('DbService')
+      .getDb()
+      .select({ id: agentsTable.id })
+      .from(agentsTable)
+      .where(and(isNotNull(agentsTable.deletedAt), lt(agentsTable.deletedAt, cutoffMs)))
+      .limit(limit)
+      .all()
+      .map((row) => row.id)
+  }
+
+  isExpiredTrash(id: string, cutoffMs: number): boolean {
+    const row = this.findAgentRow(id, { includeDeleted: true })
+    return row?.deletedAt != null && row.deletedAt < cutoffMs
   }
 
   /**
@@ -934,7 +1128,7 @@ export class AgentService {
     return affectedIds
   }
 
-  /** Bind active MCP servers to the default agent unless the user explicitly excluded them. */
+  // MEA 定制：把激活的 MCP 服务器自动绑定到内置默认助手（用户显式排除的除外）
   syncActiveMcpsToBuiltinAssistantTx(tx: DbOrTx, mcpServerIds?: readonly string[]): string[] {
     const assistant = this.findBuiltinAgentByRoleTx(tx, BUILTIN_AGENT_ROLE.ASSISTANT)
     if (!assistant) return []

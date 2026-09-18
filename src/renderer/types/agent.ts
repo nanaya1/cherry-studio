@@ -1,3 +1,5 @@
+import * as z from 'zod'
+
 /**
  * Renderer-only agent UI / form types.
  *
@@ -17,7 +19,6 @@ import {
 import type { AgentSessionWorkspaceSource } from '@shared/data/api/schemas/agentWorkspaces'
 import type { AgentBase, AgentEntity, AgentType } from '@shared/data/types/agent'
 import type { UniqueModelId } from '@shared/data/types/model'
-import * as z from 'zod'
 
 // ------------------ Permission mode ------------------
 // Alias, not a mirror: the renderer's UI cards/forms speak the exact same enum the

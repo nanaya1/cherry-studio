@@ -1,8 +1,9 @@
-import type { ProtocolMcpInstallRequest, ProtocolMcpServerInstall } from '@shared/data/types/mcpProtocolInstall'
-import type { McpServer } from '@shared/data/types/mcpServer'
+import { ProtocolMcpInstallRequest, ProtocolMcpServerInstall } from '@shared/data/types/mcpProtocolInstall'
+import { McpServer } from '@shared/data/types/mcpServer'
 import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+
 
 import McpServersList from '../McpServersList'
 
@@ -39,8 +40,10 @@ vi.mock('@renderer/ipc', () => ({
 
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => mocks.navigate,
-  useSearch: () => ({
-    protocolInstallRequestId: mocks.protocolInstallRequestId
+  useMatches: () => [{ routeId: '/settings/mcp/servers', search: { protocolInstallRequestId: mocks.protocolInstallRequestId } }],
+  // 停用原 routeApi mock（组件已改用 useMatches；保留以兼容旧实现回滚）：
+  getRouteApi: () => ({
+    useSearch: () => ({ protocolInstallRequestId: mocks.protocolInstallRequestId })
   })
 }))
 
@@ -114,7 +117,7 @@ describe('McpServersList protocol install', () => {
         mocks.pendingProtocolInstalls = mocks.pendingProtocolInstalls.filter(
           ({ requestId }) => requestId !== input?.requestId
         )
-        return request.servers.map((server) => ({ ...server, id: `${server.name}-id` }) as McpServer)
+        return request.servers.map((server) => ({ ...server, id: `${server.name}-id` }))
       }
 
       if (route === 'mcp.protocol_install.cancel') {
@@ -250,9 +253,7 @@ describe('McpServersList protocol install', () => {
     expect(screen.queryByText('queued-server')).not.toBeInTheDocument()
 
     mocks.pendingProtocolInstalls = mocks.pendingProtocolInstalls.filter(({ requestId }) => requestId !== 'request-1')
-    await act(async () =>
-      resolveInstall(protocolServers.map((server) => ({ ...server, id: `${server.name}-id` }) as McpServer))
-    )
+    await act(async () => resolveInstall(protocolServers.map((server) => ({ ...server, id: `${server.name}-id` }))))
 
     expect(await screen.findByText('queued-server')).toBeInTheDocument()
     expect(mocks.navigate).not.toHaveBeenCalled()

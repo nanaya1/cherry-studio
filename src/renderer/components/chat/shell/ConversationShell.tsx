@@ -1,7 +1,9 @@
+import type { ReactNode, Ref } from 'react'
+
+import { QuickPanelProvider } from '@renderer/components/QuickPanel'
 import { useWindowFrame } from '@renderer/hooks/useWindowFrame'
 import type { PaneManualToggleSignal } from '@renderer/types/conversationLayout'
 import { cn } from '@renderer/utils/style'
-import type { ReactNode, Ref } from 'react'
 
 import { useOptionalRightPanelState } from '../panes/Shell'
 import { ChatAppShell } from './ChatAppShell'
@@ -69,30 +71,32 @@ export default function ConversationShell({
       id={id}
       data-ui="chat.view"
       className={cn(
-        'relative flex flex-1 overflow-hidden bg-background',
-        isWindow ? 'h-full' : 'h-[calc(100vh-var(--navbar-height)-6px)] rounded-tl-[10px] rounded-bl-[10px]',
+        'relative flex h-full min-h-0 flex-1 overflow-hidden bg-background',
+        !isWindow && 'rounded-tl-[10px] rounded-bl-[10px]',
         className
       )}>
-      <ConversationTopBarPortalProvider>
-        <ChatAppShell
-          pane={pane}
-          paneOpen={paneOpen}
-          panePosition={panePosition}
-          topBar={resolvedTopBar}
-          centerContent={center}
-          sidePanel={sidePanel}
-          centerOverlay={centerOverlay}
-          centerTopOverlay={centerTopOverlay}
-          rightPane={rightPane}
-          overlay={overlay}
-          centerId={centerId}
-          centerRef={centerRef}
-          centerClassName={centerClassName}
-          onPaneCollapse={onPaneCollapse}
-          onPaneAutoCollapseChange={onPaneAutoCollapseChange}
-          paneManualToggle={paneManualToggle}
-        />
-      </ConversationTopBarPortalProvider>
+      <QuickPanelProvider>
+        <ConversationTopBarPortalProvider>
+          <ChatAppShell
+            pane={pane}
+            paneOpen={paneOpen}
+            panePosition={panePosition}
+            topBar={resolvedTopBar}
+            centerContent={center}
+            sidePanel={sidePanel}
+            centerOverlay={centerOverlay}
+            centerTopOverlay={centerTopOverlay}
+            rightPane={rightPane}
+            overlay={overlay}
+            centerId={centerId}
+            centerRef={centerRef}
+            centerClassName={centerClassName}
+            onPaneCollapse={onPaneCollapse}
+            onPaneAutoCollapseChange={onPaneAutoCollapseChange}
+            paneManualToggle={paneManualToggle}
+          />
+        </ConversationTopBarPortalProvider>
+      </QuickPanelProvider>
     </div>
   )
 }

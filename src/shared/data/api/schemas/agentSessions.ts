@@ -2,8 +2,9 @@
  * Agent session domain API Schema definitions.
  */
 
-import { TraceIdSchema } from '@shared/data/types/trace'
 import * as z from 'zod'
+
+import { TraceIdSchema } from '@shared/data/types/trace'
 
 import type { CursorPaginationResponse } from '../types'
 import type { OrderEndpoints } from './_endpointHelpers'
@@ -39,7 +40,9 @@ export const AgentSessionEntitySchema = z.strictObject({
   /** Last real conversation activity timestamp. */
   lastActivityAt: z.iso.datetime(),
   createdAt: z.string(),
-  updatedAt: z.string()
+  updatedAt: z.string(),
+  /** Read-only soft-delete timestamp, present only for trashed sessions. */
+  deletedAt: z.string().optional()
 })
 export type AgentSessionEntity = z.infer<typeof AgentSessionEntitySchema>
 
@@ -75,7 +78,9 @@ export type SetAgentSessionWorkspaceDto = AgentSessionWorkspaceSource
 export const ListAgentSessionsQuerySchema = z.strictObject({
   agentId: z.string().optional(),
   cursor: z.string().optional(),
-  limit: z.coerce.number().int().positive().max(200).optional()
+  limit: z.coerce.number().int().positive().max(200).optional(),
+  /** `true` lists only trashed sessions; omitted/false lists active sessions. */
+  inTrash: z.boolean().optional()
 })
 export type ListAgentSessionsQueryParams = z.input<typeof ListAgentSessionsQuerySchema>
 export type ListAgentSessionsQuery = z.output<typeof ListAgentSessionsQuerySchema>

@@ -1,10 +1,10 @@
+import { net } from 'electron'
+import * as z from 'zod'
+
 import { application } from '@application'
 import { loggerService } from '@logger'
 import type { CherryInBalance, CherryInProfile } from '@shared/ipc/schemas/cherryin'
 import { isSensitiveKey, REDACTED, redactSecretText } from '@shared/utils/redaction'
-import { net } from 'electron'
-import * as z from 'zod'
-
 import type { GatewayProviderId } from './CherryInOAuthConfig'
 import {
   CherryInOAuthServiceError,

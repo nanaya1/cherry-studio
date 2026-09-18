@@ -1,10 +1,11 @@
-import { Tooltip } from '@cherrystudio/ui'
-import { CommandContextMenu } from '@renderer/components/command'
-import { cn } from '@renderer/utils/style'
 import { ChevronRight } from 'lucide-react'
 import type { ComponentProps, MouseEvent, ReactNode, Ref } from 'react'
 import { isValidElement, useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+
+import { Tooltip } from '@cherrystudio/ui'
+import { CommandContextMenu } from '@renderer/components/command'
+import { cn } from '@renderer/utils/style'
 
 import {
   type ResourceListGroup,
@@ -321,7 +322,8 @@ export function GroupHeader({ group, className, ref, style, onContextMenu, ...pr
             aria-hidden="true"
             className={cn(
               GROUP_HEADER_CHEVRON_SLOT_CLASS,
-              groupItems.length === 0 && GROUP_HEADER_CHEVRON_SLOT_EMPTY_CLASS
+              groupItems.length === 0 && GROUP_HEADER_CHEVRON_SLOT_EMPTY_CLASS,
+              'size-6'
             )}>
             {chevron}
           </span>

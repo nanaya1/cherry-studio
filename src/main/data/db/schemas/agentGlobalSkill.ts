@@ -23,7 +23,10 @@ export const agentGlobalSkillTable = sqliteTable(
     catalogSkillId: text('catalog_skill_id'),
     /** Catalog artifact version recorded at install/update time. */
     catalogVersion: text('catalog_version'),
-    tags: text({ mode: 'json' }).$type<string[]>().notNull().default(sql`'[]'`),
+    tags: text({ mode: 'json' })
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'`),
     contentHash: text().notNull(),
     isEnabled: integer({ mode: 'boolean' }).notNull().default(false),
     ...createUpdateTimestamps

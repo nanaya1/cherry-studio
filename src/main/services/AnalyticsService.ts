@@ -1,10 +1,13 @@
+import { app } from 'electron'
+
 import { application } from '@application'
 import type { AnalyticsClient, TokenUsageData } from '@cherrystudio/analytics-client'
 import { loggerService } from '@logger'
 import { createLatestReconciler, type LatestReconciler } from '@main/core/concurrency/latestReconciler'
 import { type Activatable, BaseService, Injectable, Phase, ServicePhase } from '@main/core/lifecycle'
+// 停用原默认遥测同意检查（MEA 关闭 Cherry 厂商遥测后未再使用，恢复遥测时取消注释）
+// import { isDataCollectionConsented } from '@main/utils/privacyConsent'
 import { generateUserAgent, getClientId } from '@main/utils/systemInfo'
-import { app } from 'electron'
 
 const logger = loggerService.withContext('AnalyticsService')
 

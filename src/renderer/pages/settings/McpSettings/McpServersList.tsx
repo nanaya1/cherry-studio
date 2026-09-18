@@ -1,3 +1,9 @@
+import { useMatches, useNavigate } from '@tanstack/react-router'
+import { Check, ChevronDown, Filter, Plus } from 'lucide-react'
+import type { FC } from 'react'
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+
 import {
   Button,
   Dialog,
@@ -20,16 +26,14 @@ import { useMcpServers } from '@renderer/hooks/useMcpServer'
 import { ipcApi } from '@renderer/ipc'
 import EnvironmentDependencies from '@renderer/pages/settings/DependenciesSettings/EnvironmentDependencies'
 import { toast } from '@renderer/services/toast'
+// 停用原 AppRouter 类型导入（随 routeApi.useSearch 一起停用；恢复时取消注释）：
+// import type { AppRouter } from '@renderer/types/router'
 import { matchKeywordsInString } from '@renderer/utils/match'
 import { cn } from '@renderer/utils/style'
 import type { CreateMcpServerDto } from '@shared/data/api/schemas/mcpServers'
 import type { ProtocolMcpInstallRequest } from '@shared/data/types/mcpProtocolInstall'
 import type { McpServer } from '@shared/data/types/mcpServer'
-import { useNavigate, useSearch } from '@tanstack/react-router'
-import { Check, ChevronDown, Filter, Plus } from 'lucide-react'
-import type { FC } from 'react'
-import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
-import { useTranslation } from 'react-i18next'
+import { isBrowserMcpServer } from '@shared/utils/mcp'
 
 import AddMcpServerModal from './AddMcpServerModal'
 import McpProtocolInstallDialog from './McpProtocolInstallDialog'
@@ -38,6 +42,8 @@ import McpSettings from './McpSettings'
 import QuickCreateMcpServerDialog from './QuickCreateMcpServerDialog'
 
 const logger = loggerService.withContext('McpServersList')
+// 停用原路由 API 实例（配合下方 useMatches 方案；恢复时取消注释即可）：
+// const mcpServersRouteApi = getRouteApi('/settings/mcp/servers')
 
 type ImportMethod = 'json' | 'dxt' | 'mcpb'
 type McpServerFilter = 'all' | 'enabled' | 'disabled' | 'stdio' | 'sse' | 'streamableHttp' | 'builtin'
@@ -60,9 +66,17 @@ const McpServersList: FC<McpServersListProps> = ({ variant = 'settings', showTit
   const { mcpServers, addMcpServer, reorderMcpServers, refetch } = useMcpServers()
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const search = useSearch({ strict: false }) as {
-    protocolInstallRequestId?: string
-  }
+  // 停用原路由 API 读取（MEA 定制注释保留）：本组件同时作为 catalog 变体嵌入
+  // /app/skills-connectors（SkillsConnectorsPage → McpCatalog），该路由下
+  // '/settings/mcp/servers' 不在激活匹配链中，routeApi.useSearch 会抛
+  // "Invariant failed: Could not find an active match" 导致整页崩溃。
+  // const search = mcpServersRouteApi.useSearch<AppRouter>()
+  // 改用 useMatches 从当前匹配链中安全取出该路由的 search（非 settings 场景为 undefined）。
+  const matches = useMatches()
+  const search = useMemo(() => {
+    const match = matches.find((m) => m.routeId === '/settings/mcp/servers')
+    return (match?.search ?? {}) as { protocolInstallRequestId?: string }
+  }, [matches])
   const [isAddModalVisible, setIsAddModalVisible] = useState(false)
   const [isAddMenuOpen, setIsAddMenuOpen] = useState(false)
   const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false)
@@ -136,6 +150,7 @@ const McpServersList: FC<McpServersListProps> = ({ variant = 'settings', showTit
     const keywords = deferredSearchText.toLowerCase().split(/\s+/).filter(Boolean)
 
     return mcpServers.filter((server) => {
+      if (isBrowserMcpServer(server)) return false
       if (filter === 'enabled' && !server.isActive) return false
       if (filter === 'disabled' && server.isActive) return false
       if (filter === 'stdio' && server.type !== 'stdio') return false

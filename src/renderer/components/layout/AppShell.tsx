@@ -335,10 +335,10 @@ export const AppShell = () => {
               {!hideSidebar &&
                 (isSidebarHidden ? (
                   <div data-testid="hidden-sidebar-host" className="absolute inset-y-0 left-0 z-40">
-                    <Sidebar />
+                    <Sidebar isFullscreen={isFullscreen} />
                   </div>
                 ) : (
-                  <Sidebar />
+                  <Sidebar isFullscreen={isFullscreen} />
                 ))}
               {contentArea}
             </div>
@@ -365,7 +365,7 @@ export const AppShell = () => {
           )}
           {!hideSidebar && !isSidebarHidden && (
             <div className="flex h-full min-h-0 shrink-0 flex-col [&>#app-sidebar]:min-h-0 [&>#app-sidebar]:flex-1">
-              <Sidebar showTitleBar />
+              <Sidebar showTitleBar isFullscreen={isFullscreen} />
             </div>
           )}
           {contentColumn}

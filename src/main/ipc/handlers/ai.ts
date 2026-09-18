@@ -1,34 +1,34 @@
+import { randomUUID } from 'node:crypto'
+
+import { isToolUIPart } from 'ai'
+
 import { application } from '@application'
 import { agentSessionMessageService } from '@data/services/AgentSessionMessageService'
 import { fileEntryService } from '@data/services/FileEntryService'
 import { messageService } from '@data/services/MessageService'
 import { loggerService } from '@logger'
+import { AgentSessionArchiveBusyError } from '@main/ai/agents/AgentLifecycleService'
 import { createAgent } from '@main/ai/agents/createAgent'
 import { createBuiltinSupportSession } from '@main/ai/agents/createBuiltinSupportSession'
 import { extractAgentSessionId, isAgentSessionTopic } from '@main/ai/agentSession/topic'
 import { inflateEntities, isToolOutputBlobEntry, reconstructOutput } from '@main/ai/contextBuild/toolOutputStore'
 import { AiStreamAdmissionError, WebContentsListener } from '@main/ai/streamManager'
 import { serializeError } from '@main/ai/utils/serializeError'
-import type {
-  AiStreamOpenRequest,
-  AiToolResultResponse,
-  PersistedToolOutput,
-  PersistedToolOutputBlobRef
-} from '@shared/ai/transport'
+import type { AiToolResultResponse, PersistedToolOutput, PersistedToolOutputBlobRef } from '@shared/ai/transport'
 import { blobRefsOf, isPersistedToolOutput } from '@shared/ai/transport'
+import { ErrorCode, isDataApiError } from '@shared/data/api/errors'
 import { JOB_ERROR_CODES } from '@shared/data/api/schemas/jobs'
 import { aiErrorCodes } from '@shared/ipc/errors/ai'
 import { IpcError } from '@shared/ipc/errors/IpcError'
 import type { aiRequestSchemas } from '@shared/ipc/schemas/ai'
 import type { IpcHandlersFor, WindowId } from '@shared/ipc/types'
-import { isToolUIPart } from 'ai'
 
 const logger = loggerService.withContext('ipc/ai')
 
 /**
  * Thin adapters for the AI routes. The non-streaming model ops delegate to `AiService`;
  * the streaming-chat ops delegate to `AiStreamManager`. Business logic, provider
- * resolution, the image abort registry and the stream registry all stay in those
+ * resolution, the abort registry and the stream registry all stay in those
  * services — these handlers only translate the IPC call.
  *
  * Every generating call is wrapped by {@link exposeAiError}: a provider/SDK failure
@@ -45,10 +45,11 @@ async function exposeAiError<T>(route: string, op: () => Promise<T>): Promise<T>
     // reject keeps only `message`, and a downstream normalize (e.g. the paintings
     // pipeline → `REMOTE_ERROR`) can collapse even that — so the only durable record of
     // the real cause is this log. User-initiated aborts are control flow, not failures.
+    const serializedError = serializeError(e)
     if (!(e instanceof Error && e.name === 'AbortError')) {
-      logger.error(`${route} failed`, serializeError(e))
+      logger.error(`${route} failed`, serializedError)
     }
-    throw new IpcError(aiErrorCodes.AI_REQUEST_FAILED, e instanceof Error ? e.message : String(e), serializeError(e))
+    throw new IpcError(aiErrorCodes.AI_REQUEST_FAILED, serializedError.message ?? '', serializedError)
   }
 }
 
@@ -152,16 +153,50 @@ function agentTaskNotFound(taskId: string): IpcError {
   return new IpcError(aiErrorCodes.AI_AGENT_TASK_NOT_FOUND, `Task not found: ${taskId}`)
 }
 
+async function restoreAgentSession(sessionId: string) {
+  try {
+    return await application.get('AgentLifecycleService').restoreSession(sessionId)
+  } catch (e) {
+    if (isDataApiError(e) && e.code === ErrorCode.NOT_FOUND) {
+      throw new IpcError(aiErrorCodes.AI_AGENT_SESSION_NOT_FOUND, e.message)
+    }
+    throw e
+  }
+}
+
+async function exposeAgentSessionArchiveError<T>(operation: () => T | Promise<T>): Promise<T> {
+  try {
+    return await operation()
+  } catch (error) {
+    if (error instanceof AgentSessionArchiveBusyError) {
+      throw new IpcError(aiErrorCodes.AI_AGENT_SESSION_ARCHIVE_BUSY, error.message, {
+        sessionIds: error.sessionIds
+      })
+    }
+    throw error
+  }
+}
+
 export const aiHandlers: IpcHandlersFor<typeof aiRequestSchemas> = {
   // ── One-shot model calls — AiService owns the provider clients. ──
-  'ai.text.generate': (request) =>
-    exposeAiError('ai.text.generate', () => application.get('AiService').generateText(request)),
+  // A renderer one-shot call has no topic; it is its own conversation.
+  'ai.text.generate': ({ requestId, ...request }) => {
+    const generate = { ...request, conversation: { id: `one-shot:${randomUUID()}` } }
+    return exposeAiError('ai.text.generate', () =>
+      requestId
+        ? application.get('AiService').runTextRequest(requestId, generate)
+        : application.get('AiService').generateText(generate)
+    )
+  },
+  'ai.text.abort': async ({ requestId }) => {
+    application.get('AiService').abortRequest(requestId)
+  },
   'ai.embedding.embed_many': (request) =>
     exposeAiError('ai.embedding.embed_many', () => application.get('AiService').embedMany(request)),
   'ai.image.generate': ({ requestId, payload }) =>
     exposeAiError('ai.image.generate', () => application.get('AiService').runImageRequest(requestId, payload)),
   'ai.image.abort': async ({ requestId }) => {
-    application.get('AiService').abortImage(requestId)
+    application.get('AiService').abortRequest(requestId)
   },
 
   // ── Provider model catalog & reachability probe. ──
@@ -175,9 +210,7 @@ export const aiHandlers: IpcHandlersFor<typeof aiRequestSchemas> = {
     const wc = senderWebContents(senderId)
     if (!wc) throw new Error('ai.stream.open requires a managed window')
     const subscriber = new WebContentsListener(wc, request.topicId)
-    return exposeAiStreamAdmission(() =>
-      application.get('AiStreamManager').dispatch(subscriber, request as AiStreamOpenRequest)
-    )
+    return exposeAiStreamAdmission(() => application.get('AiStreamManager').dispatch(subscriber, request))
   },
   'ai.stream.attach': async (request, { senderId }) => {
     const wc = senderWebContents(senderId)
@@ -206,10 +239,28 @@ export const aiHandlers: IpcHandlersFor<typeof aiRequestSchemas> = {
 
   // ── Agent creation + session warm-connection lifecycle. ──
   'ai.agent.create': createAgent,
-  'ai.agent.delete': ({ agentId, deleteSessions }) =>
-    application.get('AgentSessionDeliveryService').deleteAgent(agentId, deleteSessions),
+  'ai.agent.restore': async ({ agentId }) => {
+    try {
+      return await application.get('AgentLifecycleService').restoreAgent(agentId)
+    } catch (error) {
+      if (isDataApiError(error) && error.code === ErrorCode.NOT_FOUND) {
+        throw new IpcError(aiErrorCodes.AI_AGENT_NOT_FOUND, error.message)
+      }
+      throw error
+    }
+  },
+  'ai.agent.delete': ({ agentId, deleteSessions, permanent }) =>
+    exposeAgentSessionArchiveError(() =>
+      permanent
+        ? application.get('AgentLifecycleService').purgeAgent(agentId)
+        : application.get('AgentLifecycleService').archiveAgent(agentId, { archiveSessions: deleteSessions })
+    ),
+  'ai.agent.delete_permanently': ({ agentId, deleteSessions }) =>
+    exposeAgentSessionArchiveError(() =>
+      application.get('AgentLifecycleService').deleteActiveAgentPermanently(agentId, deleteSessions)
+    ),
   'ai.agent.sessions.delete': ({ agentId }) =>
-    application.get('AgentSessionDeliveryService').deleteAgentSessions(agentId),
+    exposeAgentSessionArchiveError(() => application.get('AgentLifecycleService').archiveAgentSessions(agentId)),
   'ai.agent.support_session.create': async () => ({ sessionId: createBuiltinSupportSession().id }),
   // Warm-lease acquire: opens the live connection eagerly (not just a warm-query park) so the
   // session's slash-command catalog is read into the cache before the first message — the
@@ -224,12 +275,20 @@ export const aiHandlers: IpcHandlersFor<typeof aiRequestSchemas> = {
   'ai.agent.session.close_warm': async ({ sessionId }, { senderId }) => {
     application.get('AgentSessionRuntimeService').releaseWarmLease(sessionId, senderWebContents(senderId))
   },
-  'ai.agent.session.delete': ({ sessionIds }) =>
-    application.get('AgentSessionDeliveryService').deleteSessions(sessionIds),
-  'ai.agent.session.reuse_or_create': (input) =>
-    application.get('AgentSessionDeliveryService').reuseOrCreateSession(input),
+  'ai.agent.session.delete': ({ sessionIds, permanent }) =>
+    exposeAgentSessionArchiveError(() =>
+      permanent
+        ? application.get('AgentLifecycleService').purgeSessions(sessionIds)
+        : application.get('AgentLifecycleService').archiveSessions(sessionIds)
+    ),
+  'ai.agent.session.restore': ({ sessionId }) => restoreAgentSession(sessionId),
+  'ai.agent.session.delete_permanently': ({ sessionIds }) =>
+    exposeAgentSessionArchiveError(() =>
+      application.get('AgentLifecycleService').deleteActiveSessionsPermanently(sessionIds)
+    ),
+  'ai.agent.session.reuse_or_create': (input) => application.get('AgentLifecycleService').reuseOrCreateSession(input),
   'ai.agent.workspace.delete': ({ workspaceId }) =>
-    application.get('AgentSessionDeliveryService').deleteWorkspace(workspaceId),
+    application.get('AgentLifecycleService').deleteWorkspace(workspaceId),
 
   // ── Agent session runtime queries & commands. ──
   'ai.agent.session.refresh_context_usage': async ({ sessionId }) => {

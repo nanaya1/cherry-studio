@@ -3,8 +3,11 @@ import path from 'node:path'
 
 import type { AgentSessionEvent } from '@earendil-works/pi-coding-agent'
 import { SpanStatusCode, trace } from '@opentelemetry/api'
-import { CHERRY_CLOUD_MODEL_GROUP, CHERRY_CLOUD_PROVIDER_ID } from '@shared/data/presets/cherryai'
+import { MockMainPreferenceServiceUtils } from '@test-mocks/main/PreferenceService'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+import type * as UserDataSqliteGuard from '@main/ai/toolApproval/userDataSqliteGuard'
+import { CHERRY_CLOUD_MODEL_GROUP, CHERRY_CLOUD_PROVIDER_ID } from '@shared/data/presets/cherryai'
 
 import type { AgentRuntimeConnectInput, AgentRuntimeEvent, AgentRuntimeUserInput } from '../types'
 
@@ -57,7 +60,6 @@ const mocks = vi.hoisted(() => ({
   findChannelBySessionId: vi.fn(),
   buildPromptParts: vi.fn(),
   buildCitationsGuidance: vi.fn(),
-  getAppLanguage: vi.fn(),
   loadBuiltinAgentDefinition: vi.fn(),
   provisionBuiltinAgent: vi.fn(),
   replacePromptVariables: vi.fn(),
@@ -104,16 +106,24 @@ vi.mock('node:fs', async (importOriginal) => ({
 vi.mock('@logger', () => ({
   loggerService: { withContext: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }) }
 }))
-vi.mock('@application', () => ({
-  application: {
-    getPath: mocks.getPath,
-    get: (name: string) => {
-      if (name === 'AgentSessionRuntimeService') return { getInteractionState: mocks.getInteractionState }
-      if (name === 'IpcApiService') return { broadcast: mocks.broadcast }
-      return {}
+vi.mock('@main/ai/toolApproval/userDataSqliteGuard', async (importOriginal) => ({
+  ...(await importOriginal<typeof UserDataSqliteGuard>()),
+  evaluateUserDataSqliteGuard: vi.fn(async () => undefined)
+}))
+vi.mock('@application', async () => {
+  const { createMockApplication } = await import('@test-mocks/main/application')
+  const application = createMockApplication({ IpcApiService: { broadcast: mocks.broadcast } })
+  return {
+    application: {
+      ...application,
+      getPath: mocks.getPath,
+      get: (name: string) => {
+        if (name === 'AgentSessionRuntimeService') return { getInteractionState: mocks.getInteractionState }
+        return application.get(name)
+      }
     }
   }
-}))
+})
 vi.mock('@data/services/AgentSessionService', () => ({ agentSessionService: { getById: mocks.getById } }))
 vi.mock('@data/services/AgentService', () => ({ agentService: { getAgent: mocks.getAgent } }))
 vi.mock('@data/services/AgentChannelService', () => ({
@@ -129,7 +139,6 @@ vi.mock('@main/ai/agents/builtin/BuiltinAgentProvisioner', () => ({
   loadBuiltinAgentDefinition: mocks.loadBuiltinAgentDefinition,
   provisionBuiltinAgent: mocks.provisionBuiltinAgent
 }))
-vi.mock('@main/i18n', () => ({ getAppLanguage: mocks.getAppLanguage }))
 vi.mock('@main/utils/prompt', () => ({ replacePromptVariables: mocks.replacePromptVariables }))
 vi.mock('@main/ai/runtime/agentMcpServers', () => ({ buildAgentMcpServers: mocks.buildAgentMcpServers }))
 vi.mock('@main/ai/runtime/citationsGuidance', () => ({ buildCitationsGuidance: mocks.buildCitationsGuidance }))
@@ -313,7 +322,7 @@ beforeEach(() => {
   mocks.findChannelBySessionId.mockReturnValue(null)
   mocks.buildPromptParts.mockResolvedValue({ base: { kind: 'native' }, context: 'AGENT PROMPT' })
   mocks.buildCitationsGuidance.mockReturnValue(undefined)
-  mocks.getAppLanguage.mockReturnValue('en-US')
+  MockMainPreferenceServiceUtils.setPreferenceValue('agent.language', null)
   mocks.loadBuiltinAgentDefinition.mockReturnValue(undefined)
   mocks.provisionBuiltinAgent.mockResolvedValue(undefined)
   mocks.replacePromptVariables.mockImplementation(async (prompt: string) => prompt)
@@ -541,7 +550,45 @@ describe('PiRuntimeConnection', () => {
     expect(appendedSystemPrompt()).toContain('AGENT PROMPT')
     expect(appendedSystemPrompt()).toContain('<agent_instructions>\nBe helpful.\n</agent_instructions>')
     expect(appendedSystemPrompt()).toContain(REPORT_ARTIFACTS_PROMPT)
-    expect(appendedSystemPrompt()).toContain('IMPORTANT: You must respond in English.')
+    // Default global null => no language constraint is injected (decoupled from UI language)
+    expect(appendedSystemPrompt()).not.toContain('By default, respond in')
+  })
+
+  it('injects global agent language when agent.language is set', async () => {
+    MockMainPreferenceServiceUtils.setPreferenceValue('agent.language', 'English')
+
+    await new PiRuntimeConnection(input).start()
+
+    expect(appendedSystemPrompt()).toContain('By default, respond in English.')
+  })
+
+  it('per-agent language overrides the global default', async () => {
+    MockMainPreferenceServiceUtils.setPreferenceValue('agent.language', 'English')
+    mocks.getAgent.mockReturnValue({
+      id: 'agent-1',
+      model: 'p::m',
+      instructions: 'Be helpful.',
+      configuration: { language: 'Thai' }
+    })
+
+    await new PiRuntimeConnection(input).start()
+
+    expect(appendedSystemPrompt()).toContain('By default, respond in Thai.')
+    expect(appendedSystemPrompt()).not.toContain('By default, respond in English.')
+  })
+
+  it('per-agent language set to null suppresses the global language', async () => {
+    MockMainPreferenceServiceUtils.setPreferenceValue('agent.language', 'English')
+    mocks.getAgent.mockReturnValue({
+      id: 'agent-1',
+      model: 'p::m',
+      instructions: 'Be helpful.',
+      configuration: { language: null }
+    })
+
+    await new PiRuntimeConnection(input).start()
+
+    expect(appendedSystemPrompt()).not.toContain('By default, respond in')
   })
 
   it('uses Cherry network transport and preserves provider request environment', async () => {
@@ -704,8 +751,8 @@ describe('PiRuntimeConnection', () => {
     expect(providerSpan.end).toHaveBeenCalledOnce()
 
     const cb = mocks.subscribeCb!
-    cb({ type: 'tool_execution_start', toolCallId: 'tool-a', toolName: 'read', args: {} } as AgentSessionEvent)
-    cb({ type: 'tool_execution_start', toolCallId: 'tool-b', toolName: 'bash', args: {} } as AgentSessionEvent)
+    cb({ type: 'tool_execution_start', toolCallId: 'tool-a', toolName: 'read', args: {} })
+    cb({ type: 'tool_execution_start', toolCallId: 'tool-b', toolName: 'bash', args: {} })
     cb({ type: 'tool_execution_end', toolCallId: 'tool-b', toolName: 'bash', result: {}, isError: true })
     cb({ type: 'tool_execution_end', toolCallId: 'tool-a', toolName: 'read', result: {}, isError: false })
 
@@ -739,7 +786,7 @@ describe('PiRuntimeConnection', () => {
       toolCallId: 'tool-open',
       toolName: 'bash',
       args: {}
-    } as AgentSessionEvent)
+    })
 
     await connection.close()
 
@@ -897,10 +944,107 @@ describe('PiRuntimeConnection', () => {
             noCacheTokens: 10,
             cacheReadTokens: 3,
             cacheWriteTokens: 2
-          }
+          },
+          // The default mock stream has no push(), so no first-token sample exists.
+          metrics: { timeCompletionMs: expect.any(Number) }
         }
       }
     ])
+  })
+
+  it('captures first-token and completion timing from provider stream events', async () => {
+    const conn = await new PiRuntimeConnection(input).start()
+    mocks.providerResult = {
+      role: 'assistant',
+      responseId: 'response-timing',
+      model: 'm',
+      stopReason: 'stop',
+      timestamp: 123,
+      usage: { input: 10, output: 4, cacheRead: 0, cacheWrite: 0, totalTokens: 14 }
+    }
+    let emitted = false
+    mocks.providerStreamSimple.mockImplementationOnce(() => {
+      let resolveResult!: (value: unknown) => void
+      const resultPromise = new Promise((resolve) => {
+        resolveResult = resolve
+      })
+      const stream = {
+        push: (event: { type?: string; [key: string]: unknown }) => {
+          if (event.type === 'done') resolveResult(mocks.providerResult)
+        },
+        result: () => resultPromise
+      }
+      // Emit in a macrotask so the capture layer's push() wrapper is already installed.
+      setTimeout(() => {
+        emitted = true
+        const partial = mocks.providerResult
+        stream.push({ type: 'start', partial })
+        stream.push({ type: 'text_start', contentIndex: 0, partial })
+        stream.push({ type: 'text_delta', contentIndex: 0, delta: 'hi', partial })
+        stream.push({ type: 'done', reason: 'stop', message: mocks.providerResult })
+      }, 15)
+      return stream
+    })
+    const providerConfig = mocks.registerProvider.mock.calls[0][1]
+    providerConfig.streamSimple({}, {})
+    // The mocked stream self-emits asynchronously; wait for it so the usage event
+    // (queued from the capture callback) lands before the terminal turn-complete.
+    await vi.waitFor(() => expect(emitted).toBe(true))
+    mocks.subscribeCb!({ type: 'agent_end', messages: [], willRetry: false } as unknown as AgentSessionEvent)
+
+    const events = await collectUntilTerminal(conn.events)
+    const usageEvents = events.filter((event) => event.type === 'usage')
+    expect(usageEvents).toHaveLength(1)
+    const invocation = usageEvents[0].invocation
+    expect(invocation.metrics?.timeFirstTokenMs).toEqual(expect.any(Number))
+    expect(invocation.metrics?.timeCompletionMs).toEqual(expect.any(Number))
+    expect(invocation.metrics?.timeCompletionMs ?? 0).toBeGreaterThanOrEqual(invocation.metrics?.timeFirstTokenMs ?? 0)
+  })
+
+  it('treats toolcall events as first semantic output for tool-only responses', async () => {
+    const conn = await new PiRuntimeConnection(input).start()
+    mocks.providerResult = {
+      role: 'assistant',
+      responseId: 'response-toolcall-timing',
+      model: 'm',
+      stopReason: 'toolUse',
+      timestamp: 123,
+      usage: { input: 10, output: 4, cacheRead: 0, cacheWrite: 0, totalTokens: 14 }
+    }
+    let emitted = false
+    mocks.providerStreamSimple.mockImplementationOnce(() => {
+      let resolveResult!: (value: unknown) => void
+      const resultPromise = new Promise((resolve) => {
+        resolveResult = resolve
+      })
+      const stream = {
+        push: (event: { type?: string; [key: string]: unknown }) => {
+          if (event.type === 'done') resolveResult(mocks.providerResult)
+        },
+        result: () => resultPromise
+      }
+      // Pure tool-use stream: no text_* or thinking_* events ever arrive.
+      setTimeout(() => {
+        emitted = true
+        const partial = mocks.providerResult
+        stream.push({ type: 'start', partial })
+        stream.push({ type: 'toolcall_start', contentIndex: 0, partial })
+        stream.push({ type: 'toolcall_delta', contentIndex: 0, delta: '{}', partial })
+        stream.push({ type: 'done', reason: 'toolUse', message: mocks.providerResult })
+      }, 15)
+      return stream
+    })
+    const providerConfig = mocks.registerProvider.mock.calls[0][1]
+    providerConfig.streamSimple({}, {})
+    await vi.waitFor(() => expect(emitted).toBe(true))
+    mocks.subscribeCb!({ type: 'agent_end', messages: [], willRetry: false } as unknown as AgentSessionEvent)
+
+    const events = await collectUntilTerminal(conn.events)
+    const usageEvents = events.filter((event) => event.type === 'usage')
+    expect(usageEvents).toHaveLength(1)
+    const toolInvocation = usageEvents[0].invocation
+    expect(toolInvocation.metrics?.timeFirstTokenMs).toEqual(expect.any(Number))
+    expect(toolInvocation.metrics?.timeCompletionMs).toEqual(expect.any(Number))
   })
 
   it('does not emit invocation usage for failed assistant responses', async () => {
@@ -1596,7 +1740,7 @@ describe('PiRuntimeConnection', () => {
       expect(mocks.buildAgentMcpServers).toHaveBeenCalledWith(
         expect.anything(),
         expect.anything(),
-        new Set(['cherry-tools', 'agent-memory', 'skills', 'mcp-manager']),
+        new Set(['cherry-tools', 'agent-memory', 'browser', 'skills', 'mcp-manager']),
         expect.any(Map),
         null,
         AGENT_DATA_PATH,
@@ -1695,7 +1839,7 @@ describe('PiRuntimeConnection', () => {
       expect(mocks.buildAgentMcpServers).toHaveBeenCalledWith(
         agentSession,
         expect.objectContaining({ id: 'agent-1' }),
-        new Set(['cherry-tools', 'agent-memory', 'skills', 'mcp-manager']),
+        new Set(['cherry-tools', 'agent-memory', 'browser', 'skills', 'mcp-manager']),
         expect.any(Map),
         null,
         AGENT_DATA_PATH,

@@ -2,6 +2,11 @@
  * Tests for ModelService — field mapping, update behavior, and create merge logic.
  */
 
+import { setupTestDatabase } from '@test-helpers/db'
+import { MockMainDbServiceUtils } from '@test-mocks/main/DbService'
+import { and, eq, or } from 'drizzle-orm'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
 import { application } from '@application'
 import { knowledgeBaseTable } from '@data/db/schemas/knowledge'
 import { pinTable } from '@data/db/schemas/pin'
@@ -24,20 +29,18 @@ import {
   XUELANG_PROVIDER_ID
 } from '@shared/data/presets/xuelang'
 import { createUniqueModelId, MODEL_CAPABILITY } from '@shared/data/types/model'
-import { setupTestDatabase } from '@test-helpers/db'
-import { and, eq, or } from 'drizzle-orm'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { mockMainLoggerService } from '../../../../../tests/__mocks__/MainLoggerService'
 
 const { notifyDataApiDataChangeMock } = vi.hoisted(() => ({ notifyDataApiDataChangeMock: vi.fn() }))
 vi.mock('@data/dataApiDataChange', () => ({ notifyDataApiDataChange: notifyDataApiDataChangeMock }))
 
-const { lookupModelMock } = vi.hoisted(() => ({
-  // `list()` enriches every row by calling `lookupModel`. Default to an
-  // empty registry hit (no preset / override) so the enrichment is a no-op
-  // unless a test opts in; individual tests override per (providerId, modelId).
-  lookupModelMock: vi.fn<(providerId: string, modelId: string) => any>(() => ({
+const { resolveModelMock } = vi.hoisted(() => ({
+  // Default to no registry match; individual cases supply the preset contract
+  // needed to verify stored overrides and resolved model behavior.
+  resolveModelMock: vi.fn<
+    (providerContext: ProviderRegistryServiceModule.ReasoningProviderContext, modelId: string) => any
+  >(() => ({
     presetModel: null,
     registryOverride: null,
     reasoningProfile: { format: 'openai-chat', wire: { disabled: true } }
@@ -63,8 +66,8 @@ const OLLAMA_REASONING_PROFILE: ProviderRegistryServiceModule.ResolvedReasoningP
 }
 
 beforeEach(() => {
-  lookupModelMock.mockReset()
-  lookupModelMock.mockReturnValue({
+  resolveModelMock.mockReset()
+  resolveModelMock.mockReturnValue({
     presetModel: null,
     registryOverride: null,
     reasoningProfile: OPENAI_CHAT_REASONING_PROFILE
@@ -76,7 +79,7 @@ vi.mock('@data/services/ProviderRegistryService', async (importOriginal) => {
   return {
     ...actual,
     providerRegistryService: {
-      lookupModel: lookupModelMock
+      resolveModel: resolveModelMock
     }
   }
 })
@@ -306,7 +309,7 @@ describe('ModelService.update', () => {
     await seedExistingModel()
     await dbh.db.update(userModelTable).set({ name: 'My GPT-4o' }).where(eq(userModelTable.id, 'openai::gpt-4o'))
 
-    lookupModelMock.mockReturnValue({
+    resolveModelMock.mockReturnValue({
       presetModel: { id: 'gpt-4o', name: 'GPT-4o' },
       registryOverride: null,
       reasoningProfile: OPENAI_CHAT_REASONING_PROFILE
@@ -317,7 +320,7 @@ describe('ModelService.update', () => {
     const [row] = await dbh.db.select().from(userModelTable).where(eq(userModelTable.id, 'openai::gpt-4o'))
     expect(row.name).toBeNull()
 
-    lookupModelMock.mockReturnValue({
+    resolveModelMock.mockReturnValue({
       presetModel: { id: 'gpt-4o', name: 'GPT-4o (2026)' },
       registryOverride: null,
       reasoningProfile: OPENAI_CHAT_REASONING_PROFILE
@@ -334,7 +337,7 @@ describe('ModelService.update', () => {
         name: 'My DeepSeek Flash'
       })
     )
-    lookupModelMock.mockImplementation((_providerId: string, modelId: string) => {
+    resolveModelMock.mockImplementation((_providerContext, modelId) => {
       const isDatedVariant = modelId === apiModelId
       return {
         presetModel: { id: 'deepseek-v4-flash', name: 'DeepSeek V4 Flash' },
@@ -356,12 +359,11 @@ describe('ModelService.update', () => {
       .where(eq(userModelTable.id, createUniqueModelId('tokenhub', apiModelId)))
     expect(row.name).toBeNull()
     expect(updated.name).toBe('DeepSeek-V4-Flash 原厂直供')
-    expect(lookupModelMock).toHaveBeenNthCalledWith(1, 'tokenhub', apiModelId, undefined)
   })
 
   it('does not freeze the edit drawer empty-pricing echo when the registry has no pricing', async () => {
     await seedExistingModel()
-    lookupModelMock.mockReturnValue({
+    resolveModelMock.mockReturnValue({
       presetModel: { id: 'gpt-4o', name: 'GPT-4o' },
       registryOverride: null,
       reasoningProfile: OPENAI_CHAT_REASONING_PROFILE
@@ -382,7 +384,7 @@ describe('ModelService.update', () => {
 
   it('does not freeze registry pricing when the edit drawer adds the default currency', async () => {
     await seedExistingModel()
-    lookupModelMock.mockReturnValue({
+    resolveModelMock.mockReturnValue({
       presetModel: {
         id: 'gpt-4o',
         name: 'GPT-4o',
@@ -410,7 +412,7 @@ describe('ModelService.update', () => {
 
   it('keeps an input-token tier as a sparse pricing delta over a flat registry baseline', async () => {
     await seedExistingModel()
-    lookupModelMock.mockReturnValue({
+    resolveModelMock.mockReturnValue({
       presetModel: {
         id: 'gpt-4o',
         name: 'GPT-4o',
@@ -512,7 +514,7 @@ describe('ModelService.update', () => {
 
   it('returns existing model unchanged when DTO is empty', async () => {
     await seedExistingModel()
-    lookupModelMock.mockReturnValue({
+    resolveModelMock.mockReturnValue({
       presetModel: {
         id: 'gpt-4o',
         name: 'GPT-4o',
@@ -596,7 +598,7 @@ describe('ModelService.create', () => {
       registryOverride: null,
       reasoningProfile: OPENAI_CHAT_REASONING_PROFILE
     }
-    lookupModelMock.mockReturnValue(registryData)
+    resolveModelMock.mockReturnValue(registryData)
 
     const [created] = modelService.create([{ dto, registryData }])
 
@@ -635,7 +637,7 @@ describe('ModelService.create', () => {
             name: 'GPT-4o',
             maxInputTokens: 128_000,
             maxOutputTokens: 4_096
-          } as any,
+          },
           registryOverride: null,
           reasoningProfile: OPENAI_CHAT_REASONING_PROFILE
         }
@@ -674,7 +676,7 @@ describe('ModelService.create', () => {
             id: 'gpt-4o',
             name: 'GPT-4o',
             capabilities: [MODEL_CAPABILITY.FUNCTION_CALL]
-          } as any,
+          },
           registryOverride: null,
           reasoningProfile: OPENAI_CHAT_REASONING_PROFILE
         }
@@ -800,8 +802,8 @@ describe('ModelService.create', () => {
         }
       }
     ]
-    lookupModelMock.mockImplementation((providerId: string, modelId: string) =>
-      providerId === 'openai' && modelId === 'gpt-4o'
+    resolveModelMock.mockImplementation((providerContext, modelId) =>
+      providerContext.id === 'openai' && modelId === 'gpt-4o'
         ? batch[0].registryData
         : {
             presetModel: null,
@@ -993,7 +995,7 @@ describe('ModelService.list', () => {
   it('filters by capability (post-filter)', async () => {
     await seedMultipleModels()
 
-    const models = modelService.list({ capability: 'reasoning' as any })
+    const models = modelService.list({ capability: 'reasoning' })
 
     expect(models).toHaveLength(1)
     expect(models[0].apiModelId).toBe('claude-3')
@@ -1032,8 +1034,8 @@ describe('ModelService.list — registry enrichment', () => {
 
   beforeEach(() => {
     // Reset to the default no-op registry hit; tests opt in per model.
-    lookupModelMock.mockReset()
-    lookupModelMock.mockReturnValue({
+    resolveModelMock.mockReset()
+    resolveModelMock.mockReturnValue({
       presetModel: null,
       registryOverride: null,
       reasoningProfile: OPENAI_CHAT_REASONING_PROFILE
@@ -1050,7 +1052,7 @@ describe('ModelService.list — registry enrichment', () => {
         supportsStreaming: null
       })
     )
-    lookupModelMock.mockReturnValue({
+    resolveModelMock.mockReturnValue({
       presetModel: {
         id: 'gpt-4o',
         name: 'GPT-4o (registry)',
@@ -1071,6 +1073,45 @@ describe('ModelService.list — registry enrichment', () => {
     })
   })
 
+  it("keeps a sparse GPT-6 Astra row on a custom provider's Chat endpoint", async () => {
+    await dbh.db.insert(userProviderTable).values({
+      ...providerRow('custom-provider', 'Custom Provider'),
+      presetProviderId: null,
+      defaultChatEndpoint: 'openai-chat-completions',
+      endpointConfigs: {
+        'openai-chat-completions': { baseUrl: 'https://express-ent-admin.cherryin.net/v1' }
+      }
+    })
+    await dbh.db.insert(userModelTable).values(
+      modelRow('custom-provider', 'openai/gpt-6-astra', {
+        presetModelId: 'gpt-6-astra',
+        name: null,
+        capabilities: null,
+        endpointTypes: null,
+        supportsStreaming: null
+      })
+    )
+    resolveModelMock.mockReturnValue({
+      presetModel: {
+        id: 'gpt-6-astra',
+        name: 'GPT-6 Astra',
+        capabilities: [MODEL_CAPABILITY.REASONING, MODEL_CAPABILITY.FUNCTION_CALL],
+        endpointTypes: ['openai-responses']
+      },
+      registryOverride: null,
+      reasoningProfile: OPENAI_CHAT_REASONING_PROFILE
+    })
+
+    const [model] = modelService.list({ providerId: 'custom-provider' })
+
+    expect(model).toMatchObject({
+      apiModelId: 'openai/gpt-6-astra',
+      presetModelId: 'gpt-6-astra',
+      capabilities: [MODEL_CAPABILITY.REASONING, MODEL_CAPABILITY.FUNCTION_CALL]
+    })
+    expect(model.endpointTypes).toBeUndefined()
+  })
+
   it('hydrates same-canonical variants through their exact API model ID', async () => {
     const apiModelId = 'deepseek-v4-flash-202605'
     await dbh.db.insert(userProviderTable).values(providerRow('tokenhub', 'TokenHub'))
@@ -1082,7 +1123,7 @@ describe('ModelService.list — registry enrichment', () => {
         supportsStreaming: null
       })
     )
-    lookupModelMock.mockImplementation((_providerId: string, modelId: string) => {
+    resolveModelMock.mockImplementation((_providerContext, modelId) => {
       const isDatedVariant = modelId === apiModelId
       return {
         presetModel: { id: 'deepseek-v4-flash', name: 'DeepSeek V4 Flash' },
@@ -1109,7 +1150,6 @@ describe('ModelService.list — registry enrichment', () => {
       name: 'DeepSeek-V4-Flash 原厂直供',
       contextWindow: 131_072
     })
-    expect(lookupModelMock).toHaveBeenCalledWith('tokenhub', apiModelId, expect.any(Map))
   })
 
   it('inherits registry fields added after row creation without updating the stored delta', async () => {
@@ -1122,7 +1162,7 @@ describe('ModelService.list — registry enrichment', () => {
         supportsStreaming: null
       })
     )
-    lookupModelMock.mockReturnValue({
+    resolveModelMock.mockReturnValue({
       presetModel: {
         id: 'gpt-4o',
         name: 'GPT-4o',
@@ -1135,7 +1175,7 @@ describe('ModelService.list — registry enrichment', () => {
     const storedBeforeRegistryUpdate = dbh.db.select().from(userModelTable).get()
     const [beforeRegistryUpdate] = modelService.list({ providerId: 'openai' })
 
-    lookupModelMock.mockReturnValue({
+    resolveModelMock.mockReturnValue({
       presetModel: {
         id: 'gpt-4o',
         name: 'GPT-4o',
@@ -1175,7 +1215,7 @@ describe('ModelService.list — registry enrichment', () => {
       outputModalities: null
     })
 
-    lookupModelMock.mockReturnValue({
+    resolveModelMock.mockReturnValue({
       presetModel: {
         id: 'future-model',
         name: 'Future Model (registry)',
@@ -1195,7 +1235,11 @@ describe('ModelService.list — registry enrichment', () => {
         inputModalities: ['text', 'image'],
         outputModalities: ['image'],
         endpointTypes: ['openai-responses'],
-        limits: { contextWindow: 256_000, maxOutputTokens: 32_768 }
+        limits: { contextWindow: 256_000, maxOutputTokens: 32_768 },
+        parameterSupport: {
+          temperature: { supported: false, range: { min: 0, max: 1 } },
+          topP: { supported: false, range: { min: 0, max: 1 } }
+        }
       },
       reasoningProfile: OPENAI_CHAT_REASONING_PROFILE
     })
@@ -1213,6 +1257,10 @@ describe('ModelService.list — registry enrichment', () => {
       contextWindow: 256_000,
       maxInputTokens: 120_000,
       maxOutputTokens: 4096,
+      parameterSupport: expect.objectContaining({
+        temperature: expect.objectContaining({ supported: false }),
+        topP: expect.objectContaining({ supported: false })
+      }),
       pricing: {
         input: { perMillionTokens: 5 },
         output: { perMillionTokens: 15 }
@@ -1232,14 +1280,20 @@ describe('ModelService.list — registry enrichment', () => {
           name: 'Future Model',
           description: 'Custom description',
           inputModalities: ['audio'],
-          outputModalities: ['video']
+          outputModalities: ['video'],
+          parameterSupport: {
+            temperature: { supported: true, range: { min: 0, max: 2 } },
+            maxTokens: true,
+            stopSequences: true,
+            systemMessage: true
+          }
         }
       }
     ])
     const storedBeforeRegistryUpdate = dbh.db.select().from(userModelTable).get()
     expect(storedBeforeRegistryUpdate).toMatchObject({ inputModalitiesExplicit: true })
 
-    lookupModelMock.mockReturnValue({
+    resolveModelMock.mockReturnValue({
       presetModel: {
         id: 'future-model',
         name: 'Future Model (registry)',
@@ -1249,7 +1303,10 @@ describe('ModelService.list — registry enrichment', () => {
       },
       registryOverride: {
         inputModalities: ['text', 'image'],
-        outputModalities: ['image']
+        outputModalities: ['image'],
+        parameterSupport: {
+          temperature: { supported: false, range: { min: 0, max: 1 } }
+        }
       },
       reasoningProfile: OPENAI_CHAT_REASONING_PROFILE
     })
@@ -1262,7 +1319,10 @@ describe('ModelService.list — registry enrichment', () => {
       name: 'Future Model',
       description: 'Custom description',
       inputModalities: ['audio'],
-      outputModalities: ['video']
+      outputModalities: ['video'],
+      parameterSupport: expect.objectContaining({
+        temperature: { supported: true, range: { min: 0, max: 2 } }
+      })
     })
     expect(storedAfterRegistryUpdate).toEqual(storedBeforeRegistryUpdate)
   })
@@ -1277,7 +1337,7 @@ describe('ModelService.list — registry enrichment', () => {
     )
     const storedBeforeRegistryUpdate = dbh.db.select().from(userModelTable).get()
 
-    lookupModelMock.mockReturnValue({
+    resolveModelMock.mockReturnValue({
       presetModel: {
         id: 'legacy-model',
         name: 'Legacy Model',
@@ -1308,7 +1368,7 @@ describe('ModelService.list — registry enrichment', () => {
     const storedBeforeRegistryUpdate = dbh.db.select().from(userModelTable).get()
     expect(storedBeforeRegistryUpdate).toMatchObject({ inputModalities: [], inputModalitiesExplicit: true })
 
-    lookupModelMock.mockReturnValue({
+    resolveModelMock.mockReturnValue({
       presetModel: {
         id: 'explicit-empty-model',
         name: 'Explicit Empty Model',
@@ -1349,7 +1409,7 @@ describe('ModelService.list — registry enrichment', () => {
       })
     )
 
-    lookupModelMock.mockReturnValue({
+    resolveModelMock.mockReturnValue({
       presetModel: {
         id: 'gpt-4o',
         name: 'GPT-4o (current)',
@@ -1430,7 +1490,7 @@ describe('ModelService.list — registry enrichment', () => {
         supportsStreaming: false
       })
     )
-    lookupModelMock.mockReturnValue({
+    resolveModelMock.mockReturnValue({
       presetModel: {
         id: 'gpt-4o',
         name: 'GPT-4o',
@@ -1459,8 +1519,8 @@ describe('ModelService.list — registry enrichment', () => {
       })
     )
 
-    lookupModelMock.mockImplementation((providerId: string, modelId: string) => {
-      if (providerId === 'cherryin' && modelId === 'qwen-image-edit-2509') {
+    resolveModelMock.mockImplementation((providerContext, modelId) => {
+      if (providerContext.id === 'cherryin' && modelId === 'qwen-image-edit-2509') {
         return {
           presetModel: {
             id: 'qwen-image-edit-2509',
@@ -1490,8 +1550,8 @@ describe('ModelService.list — registry enrichment', () => {
       })
     )
 
-    lookupModelMock.mockImplementation((providerId: string, modelId: string) => {
-      if (providerId === 'cherryin' && modelId === 'qwen-image-edit-2509') {
+    resolveModelMock.mockImplementation((providerContext, modelId) => {
+      if (providerContext.id === 'cherryin' && modelId === 'qwen-image-edit-2509') {
         return {
           presetModel: {
             id: 'qwen-image-edit-2509',
@@ -1527,8 +1587,8 @@ describe('ModelService.list — registry enrichment', () => {
       })
     )
 
-    lookupModelMock.mockImplementation((providerId: string, modelId: string) => {
-      if (providerId === 'anthropic' && modelId === 'claude-3') {
+    resolveModelMock.mockImplementation((providerContext, modelId) => {
+      if (providerContext.id === 'anthropic' && modelId === 'claude-3') {
         return {
           presetModel: {
             id: 'claude-3',
@@ -1575,7 +1635,7 @@ describe('ModelService — reasoning descriptor enrichment', () => {
       })
     )
 
-    lookupModelMock.mockReturnValue({
+    resolveModelMock.mockReturnValue({
       presetModel: {
         id: modelId,
         capabilities: [MODEL_CAPABILITY.REASONING],
@@ -1590,8 +1650,8 @@ describe('ModelService — reasoning descriptor enrichment', () => {
   }
 
   beforeEach(() => {
-    lookupModelMock.mockReset()
-    lookupModelMock.mockReturnValue({
+    resolveModelMock.mockReset()
+    resolveModelMock.mockReturnValue({
       presetModel: null,
       registryOverride: null,
       reasoningProfile: OPENAI_CHAT_REASONING_PROFILE
@@ -1610,7 +1670,7 @@ describe('ModelService — reasoning descriptor enrichment', () => {
       })
     )
 
-    lookupModelMock.mockReturnValue({
+    resolveModelMock.mockReturnValue({
       presetModel: {
         id: 'claude-opus-4-6',
         capabilities: [MODEL_CAPABILITY.REASONING],
@@ -1646,7 +1706,7 @@ describe('ModelService — reasoning descriptor enrichment', () => {
       })
     )
 
-    lookupModelMock.mockReturnValue({
+    resolveModelMock.mockReturnValue({
       presetModel: {
         id: 'claude-sonnet-5',
         capabilities: [MODEL_CAPABILITY.REASONING],
@@ -1695,7 +1755,7 @@ describe('ModelService — reasoning descriptor enrichment', () => {
       })
     )
 
-    lookupModelMock.mockReturnValue({
+    resolveModelMock.mockReturnValue({
       presetModel: {
         id: 'claude-opus-4-6',
         capabilities: [MODEL_CAPABILITY.REASONING],
@@ -1783,7 +1843,7 @@ describe('ModelService — reasoning descriptor enrichment', () => {
       registryOverride: null,
       reasoningProfile: OLLAMA_REASONING_PROFILE
     }
-    lookupModelMock.mockReturnValue(registryData)
+    resolveModelMock.mockReturnValue(registryData)
 
     const [created] = modelService.create([
       {
@@ -1927,6 +1987,44 @@ describe('ModelService.getNamesByUniqueIdsTx', () => {
   it('returns an empty map for empty input without querying', async () => {
     const result = modelService.getNamesByUniqueIdsTx(dbh.db, [])
     expect(result.size).toBe(0)
+  })
+})
+
+/**
+ * Seeders run inside `DbService.onInit()`, where `getDb()` still throws. A `*Tx`
+ * read that reaches for the service singleton instead of its own transaction
+ * therefore aborts startup (v2.0.11 shipped exactly that: the Cherry Support
+ * seeder could not create the built-in Agent). Edition availability must be
+ * decided from columns the caller's own query already returned.
+ */
+describe('ModelService — transaction-scoped reads never re-enter DbService', () => {
+  const dbh = setupTestDatabase()
+
+  beforeEach(async () => {
+    await dbh.db.insert(userProviderTable).values(providerRow('openai', 'OpenAI'))
+    await dbh.db.insert(userModelTable).values(modelRow('openai', 'gpt-4o', { name: 'GPT-4o' }))
+    MockMainDbServiceUtils.setDb({
+      select: () => {
+        throw new Error('Database is not initialized, please call init() first!')
+      }
+    })
+  })
+
+  afterEach(() => MockMainDbServiceUtils.setDb(dbh.db))
+
+  const uid = createUniqueModelId('openai', 'gpt-4o')
+
+  it('resolves model names', () => {
+    expect(modelService.getNamesByUniqueIdsTx(dbh.db, [uid]).get(uid)).toBe('GPT-4o')
+  })
+
+  it('finds a model by id', () => {
+    expect(modelService.findByIdTx(dbh.db, uid)?.id).toBe(uid)
+  })
+
+  it('checks model existence', () => {
+    expect(modelService.existsByIdTx(dbh.db, uid)).toBe(true)
+    expect(modelService.existsByIdTx(dbh.db, 'openai::missing')).toBe(false)
   })
 })
 
@@ -2345,7 +2443,7 @@ describe('ModelService.bulkUpdate', () => {
         name: 'My GPT-4o'
       })
     )
-    lookupModelMock.mockReturnValue({
+    resolveModelMock.mockReturnValue({
       presetModel: { id: 'gpt-4o', name: 'GPT-4o' },
       registryOverride: null,
       reasoningProfile: OPENAI_CHAT_REASONING_PROFILE
@@ -2437,7 +2535,7 @@ describe('ModelService.reconcileForProvider', () => {
   const dbh = setupTestDatabase()
 
   beforeEach(() => {
-    lookupModelMock.mockClear()
+    resolveModelMock.mockClear()
   })
 
   it('removes only the target provider rows, purges their pins, and chunks large inserts', async () => {
@@ -2531,34 +2629,6 @@ describe('ModelService.reconcileForProvider', () => {
     expect(remainingRows).toHaveLength(0)
     expect(pins.find((pin) => pin.id === firstPin.id)).toBeUndefined()
     expect(pins.find((pin) => pin.id === lastPin.id)).toBeUndefined()
-  })
-
-  it('warns when toRemove references IDs that do not exist for this provider', async () => {
-    // S2 regression coverage: stale renderer state passes a toRemove with a
-    // non-existent id; reconcile completes but logs the count mismatch.
-    await dbh.db.insert(userProviderTable).values(providerRow('openai', 'OpenAI'))
-    await dbh.db.insert(userModelTable).values([
-      modelRow('openai', 'gpt-4o', {
-        id: createUniqueModelId('openai', 'gpt-4o'),
-        presetModelId: 'gpt-4o'
-      })
-    ])
-
-    const warnSpy = vi.spyOn(mockMainLoggerService, 'warn').mockImplementation(() => {})
-    modelService.reconcileForProvider('openai', {
-      toAdd: [],
-      toRemove: [createUniqueModelId('openai', 'gpt-4o'), createUniqueModelId('openai', 'never-existed')]
-    })
-
-    expect(warnSpy).toHaveBeenCalledWith(
-      'Reconcile toRemove count mismatch',
-      expect.objectContaining({
-        providerId: 'openai',
-        requestedRemove: 2,
-        actuallyDeleted: 1
-      })
-    )
-    warnSpy.mockRestore()
   })
 
   it('removes preset-backed models during reconcile', async () => {

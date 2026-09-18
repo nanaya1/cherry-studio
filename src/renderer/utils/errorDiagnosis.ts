@@ -3,10 +3,10 @@ import { loggerService } from '@logger'
 import i18n from '@renderer/i18n/resolver'
 import type { SerializedError } from '@renderer/types/error'
 import { fetchGenerate } from '@renderer/utils/aiGeneration'
-import { isMcpErrorMessage, isProxyErrorMessage, isQuotaErrorMessage } from '@renderer/utils/errorClassifier'
 import { CHERRYAI_DEFAULT_UNIQUE_MODEL_ID } from '@shared/data/presets/cherryai'
 import type { Model } from '@shared/data/types/model'
 import type { DiagnosisResult } from '@shared/data/types/uiParts'
+import { isMcpErrorMessage, isProxyErrorMessage, isQuotaErrorMessage } from '@shared/utils/errorCategory'
 
 const logger = loggerService.withContext('errorDiagnosis')
 
@@ -115,11 +115,24 @@ function buildContextHint(errorInfo: Record<string, unknown>, context?: Diagnosi
     return `## Context\nThe prompt exceeds the model's context window. Suggest clearing chat history, removing large attachments, or switching to a model with a larger context window. DO NOT suggest checking the API key.\n`
   }
 
-  // Network / proxy
+  // Network / proxy. Mirrors the Chromium `net::ERR_*` transport tokens the shared
+  // classifier recognizes, so classified failures keep the transport context hint
+  // instead of falling back to the generic AI diagnosis context.
   if (
     msg.includes('econnrefused') ||
     msg.includes('timeout') ||
     msg.includes('fetch failed') ||
+    msg.includes('err_name_not_resolved') ||
+    msg.includes('err_name_resolution_failed') ||
+    msg.includes('err_internet_disconnected') ||
+    msg.includes('err_network_changed') ||
+    msg.includes('err_address_unreachable') ||
+    msg.includes('err_connection_refused') ||
+    msg.includes('err_connection_timed_out') ||
+    msg.includes('err_connection_aborted') ||
+    msg.includes('err_connection_reset') ||
+    msg.includes('err_connection_closed') ||
+    msg.includes('err_timed_out') ||
     isProxyErrorMessage(msg) ||
     msg.includes('certificate')
   ) {

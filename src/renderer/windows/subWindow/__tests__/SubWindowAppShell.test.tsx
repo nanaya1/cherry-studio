@@ -2,10 +2,11 @@
 import '@testing-library/jest-dom/vitest'
 
 import type { useQuickPanel as UseQuickPanel } from '@renderer/components/QuickPanel'
-import type { SubWindowInitData } from '@shared/types/subWindow'
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+
+import type { SubWindowInitData } from '@shared/types/subWindow'
 
 type ShellTab = {
   id: string

@@ -1,3 +1,10 @@
+import { setupTestDatabase } from '@test-helpers/db'
+import { mockMainLoggerService } from '@test-mocks/MainLoggerService'
+// 停用：MEA 删除 CherryAI 用例后 and 未再使用（恢复用例时取消注释）
+// import { and } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
+import { beforeEach, describe, expect, it } from 'vitest'
+
 import { preferenceTable } from '@data/db/schemas/preference'
 import { userModelTable } from '@data/db/schemas/userModel'
 import { userProviderTable } from '@data/db/schemas/userProvider'
@@ -13,10 +20,6 @@ import {
   CHERRYAI_PROVIDER_ID
 } from '@shared/data/presets/cherryai'
 import { ENDPOINT_TYPE } from '@shared/data/types/model'
-import { setupTestDatabase } from '@test-helpers/db'
-import { mockMainLoggerService } from '@test-mocks/MainLoggerService'
-import { eq } from 'drizzle-orm'
-import { beforeEach, describe, expect, it } from 'vitest'
 
 describe('CherryAiDefaultModelSeeder', () => {
   const dbh = setupTestDatabase()

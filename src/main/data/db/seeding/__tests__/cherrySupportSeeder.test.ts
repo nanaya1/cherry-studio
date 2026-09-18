@@ -1,13 +1,12 @@
-import '@data/services/AgentSessionMessageService'
+import { setupTestDatabase } from '@test-helpers/db'
+import { eq } from 'drizzle-orm'
+import { describe, expect, it } from 'vitest'
 
 import { agentTable } from '@data/db/schemas/agent'
 import { agentSessionTable } from '@data/db/schemas/agentSession'
 import { agentWorkspaceTable } from '@data/db/schemas/agentWorkspace'
 import { CherrySupportSeeder } from '@data/db/seeding/seeders/cherrySupportSeeder'
 import { CHERRY_SUPPORT_AGENT_ID } from '@shared/ai/builtinAgent'
-import { setupTestDatabase } from '@test-helpers/db'
-import { eq } from 'drizzle-orm'
-import { describe, expect, it } from 'vitest'
 
 describe('CherrySupportSeeder', () => {
   const dbh = setupTestDatabase()

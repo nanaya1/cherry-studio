@@ -1,3 +1,7 @@
+import { CircleCheck } from 'lucide-react'
+import { type FC, useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+
 import {
   Alert,
   Button,
@@ -26,9 +30,6 @@ import { IpcError } from '@shared/ipc/errors/IpcError'
 import type { DiagnosticRange } from '@shared/ipc/schemas/diagnostics'
 import type { OutputFor } from '@shared/ipc/types'
 import { createFilePathHandle } from '@shared/utils/file'
-import { CircleCheck } from 'lucide-react'
-import { type FC, useEffect, useRef, useState } from 'react'
-import { useTranslation } from 'react-i18next'
 
 // const SUPPORT_EMAIL = 'support@cherry-ai.com' — 「联系 Cherry 支持」入口暂时隐藏，恢复时取消注释。
 const logger = loggerService.withContext('DiagnosticBundleDialog')

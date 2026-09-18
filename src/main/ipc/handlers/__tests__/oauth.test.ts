@@ -1,7 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { appGetMock } = vi.hoisted(() => ({ appGetMock: vi.fn() }))
+const { appGetMock, authorizeTokenDanceApiKeyMock } = vi.hoisted(() => ({
+  appGetMock: vi.fn(),
+  authorizeTokenDanceApiKeyMock: vi.fn(() => Promise.resolve('td-key'))
+}))
 vi.mock('@application', () => ({ application: { get: appGetMock } }))
+vi.mock('@main/services/tokenDanceOAuth', () => ({ authorizeTokenDanceApiKey: authorizeTokenDanceApiKeyMock }))
 
 import { OAuthServiceError, OAuthSignInCancelledError } from '@main/services/oauth/errors'
 import { IpcError } from '@shared/ipc/errors/IpcError'
@@ -117,6 +121,11 @@ describe('oauthHandlers', () => {
     )
 
     expect(error).not.toBeInstanceOf(IpcError)
+  })
+
+  it('authorizes a TokenDance API key', async () => {
+    await expect(oauthHandlers['oauth.tokendance.authorize_api_key'](undefined, ctx)).resolves.toBe('td-key')
+    expect(authorizeTokenDanceApiKeyMock).toHaveBeenCalledOnce()
   })
 
   it('dispatches check_external_login to CodeCliService', async () => {

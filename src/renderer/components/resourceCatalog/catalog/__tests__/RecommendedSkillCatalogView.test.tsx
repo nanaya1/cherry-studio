@@ -29,6 +29,11 @@ vi.mock('react-i18next', () => ({
   })
 }))
 
+// MEA: 组件安装成功后会调用 useInvalidateSkills() 刷新"我的安装"列表缓存；mock 掉避免拉起真实 SWR/IPC 链路
+vi.mock('@renderer/hooks/useSkills', () => ({
+  useInvalidateSkills: () => vi.fn(async () => {})
+}))
+
 import { RecommendedSkillCatalogView } from '../RecommendedSkillCatalogView'
 
 const catalog: SkillCatalogResponse = {

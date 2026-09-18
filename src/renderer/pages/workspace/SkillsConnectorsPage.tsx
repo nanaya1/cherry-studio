@@ -80,7 +80,10 @@ export default function SkillsConnectorsPage({ connectorView }: SkillsConnectors
         )}
       </header>
 
-      <TabsContent value="skill" className="min-h-0 flex-1">
+      {/* MEA: 加 flex 容器属性 — TabsContent（radix）本身非 flex 容器，内层 SkillCatalogView 根节点的
+          flex-1 会失效导致高度=内容高度、内层 Scrollbar 无法收缩触发滚动。原样式保留在上行注释。 */}
+      {/* <TabsContent value="skill" className="min-h-0 flex-1"> */}
+      <TabsContent value="skill" className="flex min-h-0 flex-1 flex-col">
         {skillView === 'recommended' ? (
           <RecommendedSkillCatalogView search={recommendedSearch} onViewInstalled={() => setSkillView('installed')} />
         ) : (

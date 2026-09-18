@@ -6,6 +6,7 @@ import { getBuiltInMcpServerDescriptionLabelKey } from '@renderer/i18n/label'
 import { toast } from '@renderer/services/toast'
 import { cn } from '@renderer/utils/style'
 import { PRESET_MCP_SERVERS } from '@shared/data/presets/mcpServers'
+import { isBrowserMcpServer } from '@shared/utils/mcp'
 import { BuiltinMcpServerNames } from '@shared/utils/mcp'
 import { Check, Download, LoaderCircle, Plug } from 'lucide-react'
 import type { FC, ReactNode } from 'react'
@@ -34,6 +35,7 @@ const BuiltinMcpServerList: FC<BuiltinMcpServerListProps> = ({ variant = 'settin
       // MEA：需要配置（shouldConfig）的内置服务器暂时隐藏，配置流程完善后删除此行恢复
       if (server.shouldConfig) return false
 
+      if (isBrowserMcpServer(server)) return false
       const isInstalled = mcpServers.some((existingServer) => existingServer.name === server.name)
 
       if (filter === 'installed' && !isInstalled) return false

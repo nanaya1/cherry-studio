@@ -1,3 +1,6 @@
+import type { ChatRequestOptions } from 'ai'
+import { useCallback, useMemo, useRef, useState } from 'react'
+
 /**
  * Build the `ChatWriteActions` bag passed down through context.
  *
@@ -34,8 +37,6 @@ import type {
 } from '@shared/data/types/message'
 import { type UniqueModelId } from '@shared/data/types/model'
 import { createClearContextPart, hasClearContextPart } from '@shared/data/types/uiParts'
-import type { ChatRequestOptions } from 'ai'
-import { useCallback, useMemo, useRef, useState } from 'react'
 
 const logger = loggerService.withContext('useChatWriteActions')
 
@@ -218,9 +219,8 @@ export function useChatWriteActions(params: Params): Result {
         throw new Error('Message deletion is unavailable')
       }
 
-      const optimisticIds = new Set([id])
-      await seedOptimisticBranch((prev) => branchWithoutIds(prev, optimisticIds))
-
+      // Main owns context inheritance and reparenting; wait for its authoritative
+      // refresh to preserve the surviving replies in the group.
       try {
         await deleteMessageTrigger({ params: { id }, query: { cascade: false } })
         invalidateCachedMessageUiStates([id])
@@ -230,7 +230,7 @@ export function useChatWriteActions(params: Params): Result {
       }
       logger.info('Deleted message', { id })
     },
-    [branchWithoutIds, deleteMessageTrigger, getMessageDeleteAvailability, rollbackBranch, seedOptimisticBranch]
+    [deleteMessageTrigger, getMessageDeleteAvailability, rollbackBranch]
   )
 
   const handleDeleteMessageGroup = useCallback<ChatWriteActions['deleteMessageGroup']>(
@@ -397,7 +397,7 @@ export function useChatWriteActions(params: Params): Result {
             status: newMessage.status,
             createdAt: newMessage.createdAt
           }
-        } as CherryUIMessage
+        }
       ])
       // Sync `useChat` from DB before regenerate. The server flipped
       // `activeNodeId` to the new branch in the same transaction.

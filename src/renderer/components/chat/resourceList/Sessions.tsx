@@ -1,7 +1,11 @@
+import { Folder, FolderOpen, MoreHorizontal, Plus } from 'lucide-react'
+import { lazy, memo, type RefObject, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+
 import { Button, Tooltip } from '@cherrystudio/ui'
 import { loggerService } from '@logger'
 import { actionsToCommandMenuExtraItems } from '@renderer/components/chat/actions/actionMenuItems'
-import { useOptionalAgentFileNavigation } from '@renderer/components/chat/panes/AgentFileNavigationContext'
+import { deleteConversationOwnerPopup } from '@renderer/components/chat/DeleteConversationOwnerConfirmDialog'
 import {
   remapResourceListCollapsedGroupIds,
   renderAgentEntityIcon,
@@ -14,6 +18,7 @@ import {
   type ResourceListPresentation,
   type ResourceListReorderPayload,
   type ResourceListRevealRequest,
+  type ResourceListSection,
   SESSION_DISPLAY_LABEL_KEYS,
   SessionListOptionsMenu
 } from '@renderer/components/chat/resourceList/base'
@@ -26,8 +31,9 @@ import {
   ResourceEditDialogHost,
   type ResourceEditDialogTarget
 } from '@renderer/components/resourceCatalog/dialogs/edit'
+import { dataApiService } from '@renderer/data/DataApiService'
 import { usePersistCache } from '@renderer/data/hooks/useCache'
-import { useInvalidateCache, useMutation, useQuery } from '@renderer/data/hooks/useDataApi'
+import { useDataChange, useInvalidateCache, useMutation, useQuery } from '@renderer/data/hooks/useDataApi'
 import { useMultiplePreferences, usePreference } from '@renderer/data/hooks/usePreference'
 import { useAgents } from '@renderer/hooks/agent/useAgent'
 import { useUpdateSession } from '@renderer/hooks/agent/useSession'
@@ -44,8 +50,14 @@ import { useWindowFrame } from '@renderer/hooks/useWindowFrame'
 import { ipcApi } from '@renderer/ipc'
 import type { AgentSessionExportOptions } from '@renderer/services/agentSessionExport'
 import { popup } from '@renderer/services/popup'
+import {
+  restoreRecycleBinItem,
+  restoreRecycleBinItems,
+  restoreRecycleBinUndoGroup,
+  showRecycleBinBatchUndo,
+  showRecycleBinUndo
+} from '@renderer/services/recycleBinFeedback'
 import { toast } from '@renderer/services/toast'
-import type { CreateAgentSessionDefaults } from '@renderer/types/agent'
 import { getAgentModelFallbackSnapshot } from '@renderer/utils/agent'
 import { buildAgentFileWorkspaceKey, buildAgentSessionTopicId } from '@renderer/utils/agentSession'
 import { fetchMessagesSummary } from '@renderer/utils/aiGeneration'
@@ -68,8 +80,10 @@ import {
   normalizeSessionDropPayload,
   SESSION_AGENT_SECTION_ID,
   SESSION_NO_PROJECT_GROUP_ID,
+  SESSION_NO_PROJECT_SECTION_ID,
   SESSION_NO_WORKDIR_GROUP_ID,
   SESSION_PINNED_GROUP_ID,
+  SESSION_PINNED_SECTION_ID,
   SESSION_UNKNOWN_AGENT_GROUP_ID,
   SESSION_WORKDIR_SECTION_ID,
   type SessionListItem,
@@ -86,9 +100,7 @@ import {
   type AgentWorkspaceEntity
 } from '@shared/data/api/schemas/agentWorkspaces'
 import type { AssistantIconType, TopicTabPosition } from '@shared/data/preference/preferenceTypes'
-import { Folder, FolderOpen, MoreHorizontal, Plus } from 'lucide-react'
-import { lazy, memo, type RefObject, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useTranslation } from 'react-i18next'
+import { isAgentNotFoundError, isAgentSessionNotFoundError } from '@shared/ipc/errors/ai'
 
 import {
   type AgentSessionImageActionRequest,
@@ -97,7 +109,9 @@ import {
   requestAgentSessionImageAction
 } from '../messages/agentSessionImageActionBus'
 const AgentSessionImageCaptureHost = lazy(() => import('../messages/AgentSessionImageCaptureHost'))
+import type { CreateAgentSessionDefaults } from '@renderer/types/agent'
 import { type AgentGroupActionContext, executeAgentGroupAction, resolveAgentGroupActions } from './agentGroupActions'
+import { useOptionalAgentFileNavigation } from '@renderer/components/chat/panes/AgentFileNavigationContext'
 import SessionItem, { type SessionItemMenuActions } from './SessionItem'
 import { EMPTY_SESSION_LIST_ITEM_RECONCILIATION, reconcileSessionListItems } from './sessionListItemSharing'
 import {
@@ -153,7 +167,7 @@ function AgentGroupMoreMenu({
   agentId,
   assistantIconType,
   deleteAgentDisabled,
-  deleteTasksOnly,
+  deleteSessionsOnly,
   pinDisabled,
   pinned,
   onDeleteAgent,
@@ -166,11 +180,11 @@ function AgentGroupMoreMenu({
   agentId: string
   assistantIconType: AssistantIconType
   deleteAgentDisabled?: boolean
-  deleteTasksOnly?: boolean
+  deleteSessionsOnly?: boolean
   pinDisabled?: boolean
   pinned: boolean
   sidebarPinned: boolean
-  onDeleteAgent: (agentId: string) => void | Promise<void>
+  onDeleteAgent: (agentId: string, permanent?: boolean) => void | Promise<void>
   onEdit: (agentId: string) => void
   onSetAgentIconType: (iconType: AssistantIconType) => void | Promise<void>
   onTogglePin: (agentId: string) => void | Promise<void>
@@ -181,7 +195,7 @@ function AgentGroupMoreMenu({
     agentId,
     assistantIconType,
     deleteAgentDisabled,
-    deleteTasksOnly,
+    deleteSessionsOnly,
     onDeleteAgent,
     onEdit,
     onSetAgentIconType,
@@ -347,8 +361,8 @@ const Sessions = ({
   panePosition,
   presentation = 'left-panel',
   revealRequest,
-  showHeader = true,
-  setActiveSessionId: setControlledActiveSessionId
+  setActiveSessionId: setControlledActiveSessionId,
+  showHeader = true
 }: SessionsProps) => {
   const { t } = useTranslation()
   const closeConversationTabs = useCloseConversationTabs()
@@ -411,6 +425,7 @@ const Sessions = ({
     isValidating,
     reload,
     reorderSession,
+    restoreSession,
     togglePin
   } = agentSessionsSource
   const { agents, error: agentsError, isLoading: isAgentsLoading, refetch: refetchAgents } = useAgents()
@@ -434,7 +449,8 @@ const Sessions = ({
       rejectPendingActions: rejectPendingAgentSessionImageActions
     })
 
-  const { data: channels } = useQuery('/agent-channels', { enabled: dataEnabled })
+  const { data: channels, refetch: refetchChannels } = useQuery('/agent-channels', { enabled: dataEnabled })
+  useDataChange(dataEnabled ? '/agent-channels' : [], () => void refetchChannels())
   const channelTypeMap = useMemo(() => {
     const map: Record<string, string> = {}
     for (const ch of channels ?? []) {
@@ -692,6 +708,7 @@ const Sessions = ({
         },
         mode: displayMode,
         now: groupNow,
+        pinnedAsSection: displayMode === 'workdir',
         workdirDisplay
       }),
     [agentById, displayMode, groupNow, t, workdirDisplay]
@@ -723,31 +740,50 @@ const Sessions = ({
   const sessionSectionBy = useMemo(() => {
     if (displayMode === 'time') return undefined
 
-    // A single invisible section: group headers carry the hierarchy, so no section
-    // headers render, while the display options menu keeps its collapse-all anchor.
-    const sectionId = displayMode === 'agent' ? SESSION_AGENT_SECTION_ID : SESSION_WORKDIR_SECTION_ID
-    return () => ({ id: sectionId, label: t(SESSION_DISPLAY_LABEL_KEYS[displayMode]) })
+    return (session: SessionListItem): ResourceListSection => {
+      if (displayMode === 'workdir' && session.pinned) {
+        return { id: SESSION_PINNED_SECTION_ID, label: t('selector.common.pinned_title') }
+      }
+
+      if (displayMode === 'workdir' && isSystemWorkspaceSession(session)) {
+        return { id: SESSION_NO_PROJECT_SECTION_ID, label: t('agent.session.group.tasks') }
+      }
+
+      return {
+        id: displayMode === 'agent' ? SESSION_AGENT_SECTION_ID : SESSION_WORKDIR_SECTION_ID,
+        label: t(SESSION_DISPLAY_LABEL_KEYS[displayMode])
+      }
+    }
   }, [displayMode, t])
 
   const sessionGroupSeeds = useMemo<ResourceListGroupSeed[]>(() => {
     if (displayMode === 'agent') {
-      return agentsForDisplay.map((agent) => {
-        const section = { id: SESSION_AGENT_SECTION_ID, label: t(SESSION_DISPLAY_LABEL_KEYS.agent) }
-        return { id: getSessionAgentGroupId(agent.id), label: agent.name, section }
-      })
+      const section = { id: SESSION_AGENT_SECTION_ID, label: t(SESSION_DISPLAY_LABEL_KEYS.agent) }
+      return agentsForDisplay.map((agent) => ({ id: getSessionAgentGroupId(agent.id), label: agent.name, section }))
     }
 
     if (displayMode === 'workdir') {
       const section = { id: SESSION_WORKDIR_SECTION_ID, label: t(SESSION_DISPLAY_LABEL_KEYS.workdir) }
-      return workspaceRowsForDisplay.flatMap((workspace) => {
+      const groupSeeds = workspaceRowsForDisplay.flatMap((workspace) => {
         const groupId = workdirDisplay.groupIdByWorkspaceId.get(workspace.id)
         const label = groupId ? workdirDisplay.labelByGroupId.get(groupId) : undefined
         return groupId && label ? [{ id: groupId, label, section }] : []
       })
+      const hasNoProjectSessions = filteredGroupedSessions.some(
+        (session) => !session.pinned && isSystemWorkspaceSession(session)
+      )
+      if (hasNoProjectSessions) {
+        groupSeeds.push({
+          id: SESSION_NO_PROJECT_GROUP_ID,
+          label: '',
+          section: { id: SESSION_NO_PROJECT_SECTION_ID, label: t('agent.session.group.tasks') }
+        })
+      }
+      return groupSeeds
     }
 
     return []
-  }, [agentsForDisplay, displayMode, t, workdirDisplay, workspaceRowsForDisplay])
+  }, [agentsForDisplay, displayMode, filteredGroupedSessions, t, workdirDisplay, workspaceRowsForDisplay])
 
   const collapsedSessionState = useMemo(() => {
     const resolvedSessionExpansion = resolveDefaultCollapsedGroupIds({
@@ -781,7 +817,7 @@ const Sessions = ({
   )
 
   const handleDeleteSession = useCallback(
-    async (id: string) => {
+    async (id: string, permanent = false) => {
       const deletedSession =
         filteredGroupedSessions.find((session) => session.id === id) ??
         sessionItemsRef.current.find((session) => session.id === id)
@@ -796,13 +832,31 @@ const Sessions = ({
       const wasActive = activeSessionIdRef.current === id
 
       const performDelete = async () => {
-        const success = await deleteSession(id)
+        const success = permanent ? await deleteSession(id, { permanent: true }) : await deleteSession(id)
         if (!success) {
           if (replacement && wasActive && activeSessionIdRef.current === replacement.id) setActiveSessionId(id)
           return
         }
 
         if (wasActive && !replacement) setTrackedActiveSessionId(null, null)
+
+        if (permanent) {
+          toast.success(t('settings.data.trash.permanent_delete.success'))
+          return
+        }
+
+        showRecycleBinUndo({
+          itemName: deletedSession?.name || t('common.unnamed'),
+          title: t('common.archived', { name: deletedSession?.name || t('common.unnamed') }),
+          onUndo: () =>
+            restoreRecycleBinItem({
+              id,
+              restore: restoreSession,
+              getActive: (sessionId) => dataApiService.get(`/agent-sessions/${sessionId}`),
+              isNotFound: isAgentSessionNotFoundError,
+              refresh: reload
+            })
+        })
       }
 
       // Switch away from the URL-bound session before deletion so its invalidation cannot trigger
@@ -834,9 +888,12 @@ const Sessions = ({
       deleteSession,
       filteredGroupedSessions,
       requestFileNavigation,
+      reload,
+      restoreSession,
       sessionGroupBy,
       setActiveSessionId,
-      setTrackedActiveSessionId
+      setTrackedActiveSessionId,
+      t
     ]
   )
 
@@ -1005,9 +1062,8 @@ const Sessions = ({
 
   const handleExportSessionWord = useCallback(
     async (session: AgentSessionEntity) => {
-      const { agentSessionToMarkdown, getAgentSessionExportTitle } = await import(
-        '@renderer/services/agentSessionExport'
-      )
+      const { agentSessionToMarkdown, getAgentSessionExportTitle } =
+        await import('@renderer/services/agentSessionExport')
       const title = getAgentSessionExportTitle(session)
       const markdown = await agentSessionToMarkdown(session, undefined, undefined, getSessionExportOptions(session))
       await ipcApi.request('export.word.from_markdown', {
@@ -1107,6 +1163,7 @@ const Sessions = ({
   const invalidate = useInvalidateCache()
   const { trigger: reorderWorkspace } = useMutation('PATCH', '/agent-workspaces/:id/order')
   const { trigger: reorderAgent } = useMutation('PATCH', '/agents/:id/order', { refresh: ['/agents'] })
+  const restoreAgent = useCallback((agentId: string) => ipcApi.request('ai.agent.restore', { agentId }), [])
 
   const createSessionFromSeed = useCallback(
     async (seed: CreateSessionSeed | null | undefined) => {
@@ -1189,74 +1246,139 @@ const Sessions = ({
     }
   }, [displayMode, refetchWorkspaces, reload])
 
+  const refreshAgentResources = useCallback(async () => {
+    const outcomes = await Promise.allSettled([refetchAgents(), reload()])
+    for (const outcome of outcomes) {
+      if (outcome.status === 'rejected') {
+        logger.warn('Failed to refresh Agent resources from session group', { err: outcome.reason })
+      }
+    }
+  }, [refetchAgents, reload])
+
   const handleDeleteAgent = useCallback(
-    async (agentId: string) => {
+    async (agentId: string, permanent = false) => {
       if (deletingAgentId) return
 
-      const deleteTasksOnly = isProtectedBuiltinAgentRole(agentById.get(agentId)?.configuration?.builtin_role)
+      const agent = agentById.get(agentId)
+      const deleteSessionsOnly = isProtectedBuiltinAgentRole(agent?.configuration?.builtin_role)
+      if (permanent && deleteSessionsOnly) return
 
-      const currentActiveSessionId = activeSessionIdRef.current
-      const currentActiveSession = currentActiveSessionId
-        ? sessionItemsRef.current.find((session) => session.id === currentActiveSessionId)
-        : undefined
-
-      setDeletingAgentId(agentId)
-      try {
-        const confirmed = await popup.confirm({
-          title: t(deleteTasksOnly ? 'agent.session.agent.delete.title' : 'agent.delete.title'),
-          content: t(deleteTasksOnly ? 'agent.session.agent.delete.content' : 'agent.delete.content'),
-          okText: t('common.delete'),
-          cancelText: t('common.cancel'),
-          centered: true,
-          okButtonProps: {
-            danger: true
-          }
-        })
-        if (!confirmed) return
-
-        if (deleteTasksOnly) {
-          const result = await ipcApi.request('ai.agent.sessions.delete', { agentId })
-          closeConversationTabs('agents', result.deletedIds)
-        } else {
-          const result = await ipcApi.request('ai.agent.delete', { agentId, deleteSessions: true })
-          closeConversationTabs('agents', result.deletedSessionIds ?? [])
-        }
+      const performDelete = async (deleteSessions: boolean) => {
+        const currentActiveSessionId = activeSessionIdRef.current
+        setDeletingAgentId(agentId)
         try {
-          await Promise.all(
+          let deletedSessionIds: string[] = []
+          let deletionChangedState = false
+          if (deleteSessionsOnly) {
+            const result = await ipcApi.request('ai.agent.sessions.delete', { agentId })
+            deletedSessionIds = result.deletedIds
+            deletionChangedState = deletedSessionIds.length > 0
+          } else {
+            const result = await ipcApi.request(permanent ? 'ai.agent.delete_permanently' : 'ai.agent.delete', {
+              agentId,
+              deleteSessions
+            })
+            deletionChangedState = result.deleted
+            deletedSessionIds = result.deletedSessionIds ?? []
+          }
+          if (deletedSessionIds.length > 0) closeConversationTabs('agents', deletedSessionIds)
+
+          const invalidateOutcomes = await Promise.allSettled(
             ['/agents', '/agent-sessions', '/agent-workspaces', '/pins', '/agent-channels'].map((key) =>
               invalidate(key)
             )
           )
-        } catch (err) {
-          logger.warn('Failed to refresh after deleting Agent from session group', { agentId, err })
-        }
-        if (currentActiveSession?.agentId === agentId) {
-          try {
-            if (onActiveAgentDeleted) {
-              await onActiveAgentDeleted(agentId)
-            } else {
-              const remaining = findLatestActive(
-                sessionItemsRef.current.filter((session) => session.agentId !== agentId)
-              )
-              setActiveSessionId(remaining?.id ?? null)
-            }
-          } catch (err) {
-            logger.warn('Failed to reconcile active Agent after deletion from session group', { agentId, err })
+          if (invalidateOutcomes.some((outcome) => outcome.status === 'rejected')) {
+            logger.warn('Failed to refresh after deleting Agent from session group', { agentId })
           }
-        }
 
-        try {
-          await Promise.all([...(deleteTasksOnly ? [] : [refetchAgents()]), reload(), refetchWorkspaces()])
+          const reloadResources = async () => {
+            try {
+              await Promise.all([...(deleteSessionsOnly ? [] : [refetchAgents()]), reload(), refetchWorkspaces()])
+            } catch (err) {
+              logger.warn('Failed to reload resources after deleting Agent from session group', { agentId, err })
+            }
+          }
+          if (!deletionChangedState) {
+            await reloadResources()
+            toast.info(t('recycle_bin.already_moved'))
+            return
+          }
+
+          if (currentActiveSessionId && deletedSessionIds.includes(currentActiveSessionId)) {
+            try {
+              if (onActiveAgentDeleted) {
+                await onActiveAgentDeleted(agentId)
+              } else {
+                const deletedSessionIdSet = new Set(deletedSessionIds)
+                const remaining = findLatestActive(
+                  sessionItemsRef.current.filter((session) => !deletedSessionIdSet.has(session.id))
+                )
+                setActiveSessionId(remaining?.id ?? null)
+              }
+            } catch (err) {
+              logger.warn('Failed to reconcile active Agent after deletion from session group', { agentId, err })
+            }
+          }
+
+          await reloadResources()
+          if (permanent) {
+            toast.success(t('settings.data.trash.permanent_delete.success'))
+            return
+          }
+          if (deleteSessionsOnly) {
+            if (deletedSessionIds.length > 0) {
+              const restoredIds = [...deletedSessionIds]
+              showRecycleBinBatchUndo({
+                itemCount: restoredIds.length,
+                onUndo: () =>
+                  restoreRecycleBinItems({
+                    ids: restoredIds,
+                    restore: restoreSession,
+                    getActive: (sessionId) => dataApiService.get(`/agent-sessions/${sessionId}`),
+                    isNotFound: isAgentSessionNotFoundError,
+                    refresh: reload
+                  })
+              })
+            }
+          } else {
+            showRecycleBinUndo({
+              itemName: agent?.name || t('common.unnamed'),
+              title: t('common.archived', { name: agent?.name || t('common.unnamed') }),
+              description: t('agent.archive.related_resources'),
+              onUndo: () =>
+                restoreRecycleBinUndoGroup({
+                  primary: {
+                    id: agentId,
+                    restore: (id) => restoreAgent(id),
+                    isNotFound: isAgentNotFoundError,
+                    getActive: (id) => dataApiService.get(`/agents/${id}`)
+                  },
+                  related: {
+                    ids: deletedSessionIds,
+                    restore: restoreSession,
+                    getActive: (id) => dataApiService.get(`/agent-sessions/${id}`),
+                    isNotFound: isAgentSessionNotFoundError
+                  },
+                  refresh: refreshAgentResources
+                })
+            })
+          }
         } catch (err) {
-          logger.warn('Failed to reload resources after deleting Agent from session group', { agentId, err })
+          logger.error('Failed to delete agent from session group', { agentId, err })
+          if (!deleteSessionsOnly) throw err
+          toast.error(formatErrorMessageWithPrefix(err, t('agent.delete.error.failed')))
+        } finally {
+          setDeletingAgentId(null)
         }
-        toast.success(t('common.delete_success'))
-      } catch (err) {
-        logger.error('Failed to delete agent from session group', { agentId, err })
-        toast.error(formatErrorMessageWithPrefix(err, t('agent.delete.error.failed')))
-      } finally {
-        setDeletingAgentId(null)
       }
+
+      if (deleteSessionsOnly) {
+        await performDelete(true)
+        return
+      }
+
+      await deleteConversationOwnerPopup.show({ type: 'agent', permanent, action: performDelete })
     },
     [
       closeConversationTabs,
@@ -1265,8 +1387,11 @@ const Sessions = ({
       invalidate,
       onActiveAgentDeleted,
       refetchAgents,
+      refreshAgentResources,
       refetchWorkspaces,
       reload,
+      restoreAgent,
+      restoreSession,
       setActiveSessionId,
       t
     ]
@@ -1638,7 +1763,10 @@ const Sessions = ({
                 workspace: { type: AGENT_WORKSPACE_TYPE.USER, workspaceId }
               }
             : null)
-      const canCreateSession = createSessionSeed !== null && !!(onCreateSession || onShowMissingAgentSelection)
+      const canCreateSession =
+        group.id !== SESSION_UNKNOWN_AGENT_GROUP_ID &&
+        createSessionSeed !== null &&
+        !!(onCreateSession || onShowMissingAgentSelection)
       const canManageAgentGroup = !!agentGroupId && agentById.has(agentGroupId)
 
       if (!canCreateSession && !workdirPath && !canManageAgentGroup) return null
@@ -1650,11 +1778,10 @@ const Sessions = ({
               <AgentGroupMoreMenu
                 agentId={agentGroupId}
                 assistantIconType={assistantIconType}
-                deleteAgentDisabled={
-                  deletingAgentId !== null ||
-                  isProtectedBuiltinAgentRole(agentById.get(agentGroupId)?.configuration?.builtin_role)
-                }
-                deleteTasksOnly={isProtectedBuiltinAgentRole(agentById.get(agentGroupId)?.configuration?.builtin_role)}
+                deleteAgentDisabled={deletingAgentId !== null}
+                deleteSessionsOnly={isProtectedBuiltinAgentRole(
+                  agentById.get(agentGroupId)?.configuration?.builtin_role
+                )}
                 pinDisabled={isAgentPinActionDisabled}
                 pinned={agentPinnedIdSet.has(agentGroupId)}
                 onDeleteAgent={handleDeleteAgent}
@@ -1727,6 +1854,32 @@ const Sessions = ({
     ]
   )
 
+  const getSectionHeaderAction = useCallback(
+    (section: ResourceListSection) => {
+      if (section.id !== SESSION_NO_PROJECT_SECTION_ID) return null
+
+      const createSessionSeed = createSessionSeedIndex.byGroupId.get(SESSION_NO_PROJECT_GROUP_ID) ?? null
+      const canCreateSession = !!createSessionSeed?.agentId && agentById.has(createSessionSeed.agentId)
+      if (!canCreateSession) return null
+
+      return (
+        <Tooltip title={t('agent.session.new')} delay={500}>
+          <ResourceList.GroupHeaderActionButton
+            type="button"
+            aria-label={t('agent.session.new')}
+            disabled={creatingSession}
+            onClick={(event) => {
+              event.stopPropagation()
+              requestCreateSessionFromSeed(createSessionSeed)
+            }}>
+            <NewConversationIcon className="block" />
+          </ResourceList.GroupHeaderActionButton>
+        </Tooltip>
+      )
+    },
+    [agentById, createSessionSeedIndex, creatingSession, requestCreateSessionFromSeed, t]
+  )
+
   const getGroupHeaderIcon = useCallback(
     (group: ResourceListGroup, context: { collapsed: boolean }) => {
       if (group.id === SESSION_PINNED_GROUP_ID) return undefined
@@ -1796,10 +1949,8 @@ const Sessions = ({
         const actionContext: AgentGroupActionContext = {
           agentId,
           assistantIconType,
-          deleteAgentDisabled:
-            deletingAgentId !== null ||
-            isProtectedBuiltinAgentRole(agentById.get(agentId)?.configuration?.builtin_role),
-          deleteTasksOnly: isProtectedBuiltinAgentRole(agentById.get(agentId)?.configuration?.builtin_role),
+          deleteAgentDisabled: deletingAgentId !== null,
+          deleteSessionsOnly: isProtectedBuiltinAgentRole(agentById.get(agentId)?.configuration?.builtin_role),
           onDeleteAgent: handleDeleteAgent,
           onEdit: openAgentEditor,
           onSetAgentIconType: setAssistantIconType,
@@ -1865,7 +2016,7 @@ const Sessions = ({
 
   const sessionMenuActions = useMemo<SessionItemMenuActions>(
     () => ({
-      exportMenuOptions: exportMenuOptions as SessionItemMenuActions['exportMenuOptions'],
+      exportMenuOptions: exportMenuOptions,
       onAutoRename: handleAutoRenameSession,
       onCopyImage: handleCopySessionImage,
       onCopyMarkdown: handleCopySessionMarkdown,
@@ -1942,6 +2093,7 @@ const Sessions = ({
       revealRequest={revealRequest}
       defaultGroupVisibleCount={defaultGroupVisibleCount}
       groupLoadStep={DEFAULT_SESSION_GROUP_VISIBLE_COUNT}
+      getSectionHeaderAction={getSectionHeaderAction}
       getGroupHeaderAction={getGroupHeaderAction}
       getGroupHeaderContextMenu={getGroupHeaderContextMenu}
       getGroupHeaderIcon={getGroupHeaderIcon}
@@ -1967,43 +2119,43 @@ const Sessions = ({
       onReorder={handleSessionReorder}
       onCollapsedStateChange={handleSessionCollapsedStateChange}>
       {showHeader && (
-        <ResourceList.Header>
-          {isRightPanel ? (
-            <ResourceList.Search
-              aria-label={t('agent.session.search.title')}
-              placeholder={t('agent.session.search.placeholder')}
+      <ResourceList.Header>
+        {isRightPanel ? (
+          <ResourceList.Search
+            aria-label={t('agent.session.search.title')}
+            placeholder={t('agent.session.search.placeholder')}
+          />
+        ) : (
+          <>
+            <ResourceList.HeaderItem
+              type="button"
+              command={displayMode === 'agent' ? undefined : 'topic.create'}
+              aria-label={headerCreateLabel}
+              disabled={headerCreateDisabled}
+              icon={displayMode === 'agent' ? <Plus /> : <NewConversationIcon />}
+              label={headerCreateLabel}
+              onClick={handleHeaderCreate}
+              actions={
+                <SessionListOptionsMenu
+                  historyRecordsActive={historyRecordsActive}
+                  manageAgentsActive={manageAgentsActive}
+                  mode={displayMode}
+                  onChange={(nextMode) => void setSessionDisplayMode(nextMode)}
+                  onManageAgents={onManageAgents}
+                  onOpenHistoryRecords={onOpenHistoryRecords}
+                  sectionIds={
+                    displayMode === 'agent'
+                      ? [SESSION_AGENT_SECTION_ID]
+                      : displayMode === 'workdir'
+                        ? [SESSION_WORKDIR_SECTION_ID]
+                        : undefined
+                  }
+                />
+              }
             />
-          ) : (
-            <>
-              <ResourceList.HeaderItem
-                type="button"
-                command={displayMode === 'agent' ? undefined : 'topic.create'}
-                aria-label={headerCreateLabel}
-                disabled={headerCreateDisabled}
-                icon={displayMode === 'agent' ? <Plus /> : <NewConversationIcon />}
-                label={headerCreateLabel}
-                onClick={handleHeaderCreate}
-                actions={
-                  <SessionListOptionsMenu
-                    historyRecordsActive={historyRecordsActive}
-                    manageAgentsActive={manageAgentsActive}
-                    mode={displayMode}
-                    onChange={(nextMode) => void setSessionDisplayMode(nextMode)}
-                    onManageAgents={onManageAgents}
-                    onOpenHistoryRecords={onOpenHistoryRecords}
-                    sectionIds={
-                      displayMode === 'agent'
-                        ? [SESSION_AGENT_SECTION_ID]
-                        : displayMode === 'workdir'
-                          ? [SESSION_WORKDIR_SECTION_ID]
-                          : undefined
-                    }
-                  />
-                }
-              />
-            </>
-          )}
-        </ResourceList.Header>
+          </>
+        )}
+      </ResourceList.Header>
       )}
       {refreshError && <ResourceRefreshErrorBanner onRetry={handleRetry} retrying={listValidating} />}
       <SessionListBody
@@ -2077,7 +2229,7 @@ interface SessionListBodyProps {
   isDraggable: boolean
   isValidating: boolean
   listRef: RefObject<HTMLDivElement | null>
-  onDeleteSession: (id: string) => Promise<void>
+  onDeleteSession: (id: string, permanent?: boolean) => Promise<void>
   onOpenInNewTab?: (session: AgentSessionEntity) => void
   onOpenInNewWindow?: (session: AgentSessionEntity) => void
   onOpenRenameDialog: (session: AgentSessionEntity) => void
@@ -2118,10 +2270,9 @@ function SessionListBody({
         active={session.id === activeSessionId}
         channelType={channelTypeMap[session.id]}
         pinned={session.pinned}
-        // The slot exists to line a row up under its group's icon. A pinned row is lifted out to the
-        // pinned group, where there is no such icon above it, so it indents against nothing.
         reserveLeadingIconSlot={
-          !session.pinned && displayMode !== 'time' && !(displayMode === 'workdir' && isSystemWorkspaceSession(session))
+          displayMode === 'agent' ||
+          (displayMode === 'workdir' && !session.pinned && !isSystemWorkspaceSession(session))
         }
         onTogglePin={onTogglePin}
         onDelete={onDeleteSession}

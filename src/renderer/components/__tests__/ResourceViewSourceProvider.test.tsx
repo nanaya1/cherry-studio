@@ -1,7 +1,7 @@
-import {
-  ResourceViewSourceProvider,
-  shouldLoadResourceViewSource
-} from '@renderer/components/ResourceViewSourceProvider'
+import { render, screen, waitFor } from '@testing-library/react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+import { ResourceViewSourceProvider } from '@renderer/components/ResourceViewSourceProvider'
 import type * as ResourceViewSourcesModule from '@renderer/hooks/resourceViewSources'
 import {
   type AgentSessionsSource,
@@ -11,8 +11,6 @@ import {
 } from '@renderer/hooks/resourceViewSources'
 import type * as TabHooksModule from '@renderer/hooks/tab'
 import type { Tab } from '@shared/data/cache/cacheValueTypes'
-import { render, screen, waitFor } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const sourceMocks = vi.hoisted(() => ({
   tabs: [] as Tab[],
@@ -337,26 +335,23 @@ describe('ResourceViewSourceProvider', () => {
     expect(screen.getByTestId('session-pins')).toHaveTextContent('session-1')
   })
 
-  it('enables both sources for an active non-settings tab and disables both without an active tab', () => {
-    sourceMocks.tabs = [createTab('files', '/app/files')]
-    sourceMocks.activeTabId = 'files'
+  it('loads both sources for any active non-settings tab (MEA sidebar lists are cross-page)', () => {
+    // MEA: Sidebar 收藏里的「对话/任务」列表跨页面常驻，非 agents/chat 激活 tab 也必须加载数据源，
+    // 否则骨架屏常驻（见 ResourceViewSourceProvider 中 shouldLoadResourceViewSource 的 MEA 注释）
+    sourceMocks.tabs = [
+      createTab('agent-dormant', '/app/agents?sessionId=session-1', true),
+      createTab('chat', '/app/chat?topicId=topic-2')
+    ]
+    sourceMocks.activeTabId = 'chat'
 
-    const { rerender } = render(createProviderTree())
+    render(createProviderTree())
 
     expect(sourceMocks.assistantEnabled.at(-1)).toBe(true)
     expect(sourceMocks.agentEnabled.at(-1)).toBe(true)
-    expect(shouldLoadResourceViewSource(sourceMocks.tabs, sourceMocks.activeTabId)).toBe(true)
-
-    sourceMocks.activeTabId = null
-    rerender(createProviderTree())
-
-    expect(sourceMocks.assistantEnabled.at(-1)).toBe(false)
-    expect(sourceMocks.agentEnabled.at(-1)).toBe(false)
-    expect(shouldLoadResourceViewSource(sourceMocks.tabs, sourceMocks.activeTabId)).toBe(false)
   })
 
-  it('disables both sources for an active settings tab', () => {
-    sourceMocks.tabs = [createTab('settings', '/settings/about')]
+  it('disables both sources on a settings tab', () => {
+    sourceMocks.tabs = [createTab('settings', '/settings/provider')]
     sourceMocks.activeTabId = 'settings'
 
     render(createProviderTree())

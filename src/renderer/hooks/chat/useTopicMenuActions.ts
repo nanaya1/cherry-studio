@@ -1,3 +1,6 @@
+import type { TFunction } from 'i18next'
+import { useCallback, useMemo } from 'react'
+
 import type { ResolvedAction } from '@renderer/components/chat/actions/actionTypes'
 import {
   executeTopicMenuAction,
@@ -15,21 +18,22 @@ import { toast } from '@renderer/services/toast'
 import type { Topic } from '@renderer/types/topic'
 import { removeSpecialCharactersForFileName } from '@renderer/utils/file'
 import type { TopicTabPosition } from '@shared/data/preference/preferenceTypes'
-import type { TFunction } from 'i18next'
-import { useCallback, useMemo } from 'react'
 
 type TopicMenuHandler = (topic: Topic) => void | Promise<void>
+type TopicDeleteHandler = (topic: Topic) => void | Promise<void>
 type TopicMoveToAssistantHandler = (topic: Topic, assistantId: string) => void | Promise<void>
 
 export interface TopicMenuActionOptions {
   exportMenuOptions: TopicExportMenuOptions
+  isArchiveBlocked: boolean
   isActiveInCurrentTab: boolean
   isRenaming: boolean
   notesPath: string
   onAutoRename: TopicMenuHandler
   onClearMessages: TopicMenuHandler
   onCopyImage?: TopicMenuHandler
-  onDelete: TopicMenuHandler
+  onDelete: TopicDeleteHandler
+  onDeletePermanently?: TopicDeleteHandler
   onExportImage?: TopicMenuHandler
   assistantMoveTargets?: readonly TopicMoveAssistantTarget[]
   onMoveToAssistant?: TopicMoveToAssistantHandler
@@ -46,6 +50,7 @@ export interface TopicMenuActionOptions {
 
 export function createTopicActionContext({
   exportMenuOptions,
+  isArchiveBlocked,
   isActiveInCurrentTab,
   isRenaming,
   notesPath,
@@ -54,6 +59,7 @@ export function createTopicActionContext({
   onClearMessages,
   onCopyImage,
   onDelete,
+  onDeletePermanently,
   onExportImage,
   onMoveToAssistant,
   onOpenInNewTab,
@@ -68,6 +74,7 @@ export function createTopicActionContext({
 }: TopicMenuActionOptions): TopicActionContext {
   return {
     exportMenuOptions,
+    isArchiveBlocked,
     isActiveInCurrentTab,
     isRenaming,
     onAutoRename,
@@ -76,6 +83,7 @@ export function createTopicActionContext({
     onCopyMarkdown: copyTopicAsMarkdown,
     onCopyPlainText: copyTopicAsPlainText,
     onDelete,
+    onDeletePermanently,
     onExportImage: onExportImage ?? ((topic) => void EventEmitter.emit(EVENT_NAMES.EXPORT_TOPIC_IMAGE, topic)),
     onExportJoplin: async (topic) => {
       const { exportMarkdownToJoplin } = await import('@renderer/services/ExportService')
@@ -186,10 +194,7 @@ export function useTopicMenuPreset<TItem>({
   )
   const onAction = useCallback(
     async (item: TItem, action: ResolvedAction, contextOverride?: TopicMenuActionContextOverride) => {
-      await runTopicMenuAction(
-        action as ResolvedAction<TopicActionContext>,
-        getActionContextWithOverride(item, contextOverride)
-      )
+      await runTopicMenuAction(action, getActionContextWithOverride(item, contextOverride))
     },
     [getActionContextWithOverride]
   )
@@ -200,6 +205,7 @@ export function useTopicMenuPreset<TItem>({
 export function useTopicMenuActions(options: TopicMenuActionOptions) {
   const {
     exportMenuOptions,
+    isArchiveBlocked,
     isActiveInCurrentTab,
     isRenaming,
     notesPath,
@@ -208,6 +214,7 @@ export function useTopicMenuActions(options: TopicMenuActionOptions) {
     onClearMessages,
     onCopyImage,
     onDelete,
+    onDeletePermanently,
     onExportImage,
     onMoveToAssistant,
     onOpenInNewTab,
@@ -224,6 +231,7 @@ export function useTopicMenuActions(options: TopicMenuActionOptions) {
     () =>
       createTopicActionContext({
         exportMenuOptions,
+        isArchiveBlocked,
         isActiveInCurrentTab,
         isRenaming,
         notesPath,
@@ -232,6 +240,7 @@ export function useTopicMenuActions(options: TopicMenuActionOptions) {
         onClearMessages,
         onCopyImage,
         onDelete,
+        onDeletePermanently,
         onExportImage,
         onMoveToAssistant,
         onOpenInNewTab,
@@ -246,6 +255,7 @@ export function useTopicMenuActions(options: TopicMenuActionOptions) {
       }),
     [
       exportMenuOptions,
+      isArchiveBlocked,
       isActiveInCurrentTab,
       isRenaming,
       notesPath,
@@ -254,6 +264,7 @@ export function useTopicMenuActions(options: TopicMenuActionOptions) {
       onClearMessages,
       onCopyImage,
       onDelete,
+      onDeletePermanently,
       onExportImage,
       onMoveToAssistant,
       onOpenInNewTab,

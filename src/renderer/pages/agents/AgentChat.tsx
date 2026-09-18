@@ -1,7 +1,11 @@
+import type { ReactNode } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+
 import { Checkbox, ConfirmDialog } from '@cherrystudio/ui'
 import { usePreference } from '@data/hooks/usePreference'
-import CitationsPanel from '@renderer/components/chat/citations/CitationsPanel'
 import { ChatLayoutModeProvider } from '@renderer/components/chat/layout/ChatLayoutModeContext'
+import type { MessageStreamingLayers } from '@renderer/components/chat/messages/types'
 import { locateAgentMessageInList } from '@renderer/components/chat/messages/agentMessageListAdapter'
 import {
   type ResourcePaneConfig,
@@ -41,9 +45,6 @@ import { BUILTIN_AGENT_ROLE } from '@shared/ai/builtinAgent'
 import type { AgentSessionEntity } from '@shared/data/api/schemas/agentSessions'
 import type { CherryMessagePart, CherryUIMessage } from '@shared/data/types/message'
 import type { Model } from '@shared/data/types/model'
-import type { ReactNode } from 'react'
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { useTranslation } from 'react-i18next'
 
 import AgentChatMain from './AgentChatMain'
 import AgentComposerSlot from './AgentComposerSlot'
@@ -52,6 +53,8 @@ import { type AgentFileNavigationRequest, AgentRightPane, AgentTaskProgressCapsu
 import { ApiGatewayRequiredDialog } from './components/ApiGatewayRequiredDialog'
 import { type AgentChatRuntimeState, useAgentChatRuntimeState } from './useAgentChatRuntimeState'
 import type { AgentConversationBootstrap } from './useAgentConversationBootstrap'
+
+const CitationsPanel = lazy(() => import('@renderer/components/chat/citations/CitationsPanel'))
 
 const EMPTY_MESSAGES: CherryUIMessage[] = []
 const EMPTY_PARTS: Record<string, CherryMessagePart[]> = {}
@@ -130,6 +133,8 @@ interface AgentChatLayoutProps {
   centerSurface?: ConversationCenterSlot | null
   className?: string
   conversationState: 'pending' | 'ready' | 'unavailable'
+  streamingLayers: MessageStreamingLayers
+  isMessageHistoryLoading: boolean
   messages: CherryUIMessage[]
   onPaneAutoCollapseChange?: (collapsed: boolean) => void
   onPaneCollapse?: () => void
@@ -190,6 +195,7 @@ const AgentChat = ({
   )
   const currentSessionId = conversationBootstrap.session?.id
   const [citationPanelState, setCitationPanelState] = useState<CitationPanelState | null>(null)
+  const [shouldMountCitationsPanel, setShouldMountCitationsPanel] = useState(false)
   const [modelSwitchTarget, setModelSwitchTarget] = useState<ModelSwitchTarget>()
   const [modelSwitchConfirmOpen, setModelSwitchConfirmOpen] = useState(false)
   const [skipModelSwitchConfirmation, setSkipModelSwitchConfirmation] = useState(false)
@@ -201,6 +207,9 @@ const AgentChat = ({
   const visibleWorkspace = sessionSnapshot?.workspace ?? null
   const activeAgent = conversationBootstrap.resources.agent
   const isSupportAgent = activeAgent?.configuration?.builtin_role === BUILTIN_AGENT_ROLE.SUPPORT
+  const isAssistantAgent = activeAgent?.configuration?.builtin_role === BUILTIN_AGENT_ROLE.ASSISTANT
+  // Assistant now exposes prepare_diagnostic_report, so it needs the same review dialog as Support.
+  const canReviewDiagnosticReport = isSupportAgent || isAssistantAgent
   const isActiveAgentLoading = conversationBootstrap.resources.agentLoading
   const activeModel = conversationBootstrap.resources.model
   const isActiveModelLoading = conversationBootstrap.resources.modelLoading
@@ -231,6 +240,7 @@ const AgentChat = ({
   const handleOpenCitationsPanel = useCallback(
     ({ citations }: { citations: Citation[] }) => {
       if (!currentSessionId) return
+      setShouldMountCitationsPanel(true)
       setCitationPanelState({ sessionId: currentSessionId, citations })
     },
     [currentSessionId]
@@ -244,9 +254,9 @@ const AgentChat = ({
   const composerAgentId = isActiveAgentLoading ? (sessionAgentId ?? undefined) : sendableAgentId
   const shouldFetchSessionHistoryOnMount = Boolean(
     sessionSnapshot &&
-      (conversationBootstrap.sessionSource === 'query' ||
-        conversationBootstrap.sessionSource === 'pending' ||
-        conversationBootstrap.sessionSource === 'none')
+    (conversationBootstrap.sessionSource === 'query' ||
+      conversationBootstrap.sessionSource === 'pending' ||
+      conversationBootstrap.sessionSource === 'none')
   )
   const sessionMessagesEnabled = Boolean(sessionSnapshot)
   const runtime = useAgentChatRuntimeState({
@@ -271,11 +281,11 @@ const AgentChat = ({
   )
   const isEmptyConversation = Boolean(
     sessionSnapshot &&
-      sessionMessagesEnabled &&
-      !runtime.isLoading &&
-      !runtime.isPending &&
-      !runtime.hasOlder &&
-      runtime.uiMessages.length === 0
+    sessionMessagesEnabled &&
+    !runtime.isLoading &&
+    !runtime.isPending &&
+    !runtime.hasOlder &&
+    runtime.uiMessages.length === 0
   )
   const canChangeWorkspace = Boolean(onSessionWorkspaceChange && isEmptyConversation)
   const runAfterFileNavigation = useCallback(
@@ -466,13 +476,15 @@ const AgentChat = ({
         onSidebarToggle={onSidebarToggle}
       />
     )
-    sidePanel = (
-      <CitationsPanel
-        open={citationsPanelOpen}
-        onClose={() => setCitationPanelState(null)}
-        citations={citationPanelCitations ?? []}
-      />
-    )
+    sidePanel = shouldMountCitationsPanel ? (
+      <Suspense fallback={null}>
+        <CitationsPanel
+          open={citationsPanelOpen}
+          onClose={() => setCitationPanelState(null)}
+          citations={citationPanelCitations ?? []}
+        />
+      </Suspense>
+    ) : undefined
     centerClassName = 'transform-[translateZ(0)] relative justify-between'
     center = (
       <AgentChatSessionCenter
@@ -491,7 +503,7 @@ const AgentChat = ({
         onOpenCitationsPanel={handleOpenCitationsPanel}
         onCreateEmptySession={sessionAgentId && onCreateEmptySession ? handleCreateEmptySession : undefined}
         composerLaunchOptions={composerLaunchOptions}
-        openDiagnosticReport={isSupportAgent ? openDiagnosticReport : undefined}
+        openDiagnosticReport={canReviewDiagnosticReport ? openDiagnosticReport : undefined}
       />
     )
   }
@@ -506,6 +518,8 @@ const AgentChat = ({
       'multi-select-mode': Boolean(!centerSurface && sessionSnapshot && isMultiSelectMode)
     }),
     conversationState,
+    streamingLayers: runtime.streamingLayers,
+    isMessageHistoryLoading: runtimeIsLoading,
     messages: sessionSnapshot ? runtime.uiMessages : EMPTY_MESSAGES,
     onFileNavigationRequestChange,
     onPaneAutoCollapseChange,
@@ -529,7 +543,7 @@ const AgentChat = ({
   return (
     <>
       <AgentChatLayout {...layoutProps} />
-      {isSupportAgent && activeDiagnosticReportDraft ? (
+      {canReviewDiagnosticReport && activeDiagnosticReportDraft ? (
         <DiagnosticUploadDialog
           key={activeDiagnosticReportDraft.sessionId}
           initialDescription={activeDiagnosticReportDraft.description}
@@ -656,6 +670,7 @@ const AgentChatSessionCenter = ({
       isLoading={runtime.isLoading}
       hasOlder={runtime.hasOlder}
       loadOlder={runtime.loadOlder}
+      selectAllPagination={runtime.selectAllPagination}
       onOpenCitationsPanel={onOpenCitationsPanel}
       openDiagnosticReport={openDiagnosticReport}
       deleteMessage={runtime.deleteMessage}
@@ -685,6 +700,8 @@ function AgentChatLayout({
   centerSurface,
   className,
   conversationState,
+  streamingLayers,
+  isMessageHistoryLoading,
   messages,
   onFileNavigationRequestChange,
   onPaneAutoCollapseChange,
@@ -708,6 +725,8 @@ function AgentChatLayout({
     <AgentRightPane.Scope
       model={model}
       conversationState={conversationState}
+      streamingLayers={streamingLayers}
+      isMessageHistoryLoading={isMessageHistoryLoading}
       workspaceId={sessionSnapshot?.workspaceId}
       workspacePath={sessionSnapshot?.workspace?.path}
       workspaceType={sessionSnapshot?.workspace?.type}
