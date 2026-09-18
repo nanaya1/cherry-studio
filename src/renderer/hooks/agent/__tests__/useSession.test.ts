@@ -4,7 +4,8 @@ import {
   mockUseInfiniteQuery,
   mockUseInvalidateCache,
   mockUseMutation,
-  mockUseQuery
+  mockUseQuery,
+  mockUseWriteCache
 } from '@test-mocks/renderer/useDataApi'
 import { act, renderHook } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -735,11 +736,16 @@ describe('useSessions', () => {
 
     const { result } = renderHook(() => useSessions('agent-1'))
     const invalidate = mockUseInvalidateCache.mock.results.at(-1)?.value
+    const writeCache = mockUseWriteCache.mock.results.at(-1)?.value
     const restored = await act(async () => result.current.restoreSession('session-a'))
 
     expect(mockIpcRequest).toHaveBeenCalledWith('ai.agent.session.restore', { sessionId: 'session-a' })
     expect(invalidate).toHaveBeenCalledWith(['/agent-sessions', '/agent-sessions/session-a', '/agents/*'])
     expect(restored).toBe(restoredSession)
+    // Regression: the restored entity must seed the by-id cache so the stale NOT_FOUND
+    // left there by the delete-time revalidation is dropped. Otherwise the next click
+    // on the restored session trips AgentPage's NOT_FOUND recovery into a blank page.
+    expect(writeCache).toHaveBeenCalledWith('/agent-sessions/session-a', restoredSession)
   })
 
   it('keeps a committed session deletion successful when cache refresh fails', async () => {

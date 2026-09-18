@@ -462,6 +462,11 @@ describe('useTopicMutations', () => {
       '/topics',
       '/topics/topic-a'
     ])
+    // Regression: the restored entity must seed the by-id cache so the stale NOT_FOUND
+    // left there by the archive-time revalidation is dropped. Otherwise the next click
+    // on the restored topic trips HomePage's NOT_FOUND recovery into a blank page.
+    const writeCache = mockUseWriteCache.mock.results.at(-1)?.value
+    expect(writeCache).toHaveBeenCalledWith('/topics/topic-a', restoredTopic)
   })
 
   it('archives selected topics through one all-or-nothing lifecycle command', async () => {

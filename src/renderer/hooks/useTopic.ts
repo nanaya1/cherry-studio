@@ -459,10 +459,16 @@ export function useTopicMutations() {
   const restoreTopic = useCallback(
     async (topicId: string): Promise<Topic> => {
       const topic = await restoreTrigger({ params: { id: topicId } })
+      // Seed the restored entity into the by-id cache. The archive flow leaves a stale
+      // NOT_FOUND error there (the by-id query revalidated while the topic was trashed);
+      // with no mounted hook, plain invalidation can't clear it and the next click would
+      // trip the page-level NOT_FOUND recovery into a blank re-entry. A cache write both
+      // drops that error (SWR clears `error` on populate) and paints the entity instantly.
+      await writeCache(`/topics/${topicId}`, topic)
       logger.info('Restored topic', { id: topicId })
       return topic
     },
-    [restoreTrigger]
+    [restoreTrigger, writeCache]
   )
 
   const deleteTopics = useCallback(

@@ -18,7 +18,8 @@ import {
   useInfiniteQuery,
   useInvalidateCache,
   useMutation,
-  useQuery
+  useQuery,
+  useWriteCache
 } from '@renderer/data/hooks/useDataApi'
 import { useReorder } from '@renderer/data/hooks/useReorder'
 import { useCloseConversationTabs } from '@renderer/hooks/tab'
@@ -226,6 +227,7 @@ export const useSessions = (
   const { t } = useTranslation()
   const closeConversationTabs = useCloseConversationTabs()
   const invalidate = useInvalidateCache()
+  const writeCache = useWriteCache()
   const pageSize = typeof options === 'number' ? options : (options.pageSize ?? DEFAULT_SESSION_PAGE_SIZE)
   const loadAll = typeof options === 'number' ? false : (options.loadAll ?? false)
   const enabled = typeof options === 'number' ? undefined : options.enabled
@@ -367,6 +369,12 @@ export const useSessions = (
   const restoreSession = useCallback(
     async (id: string): Promise<AgentSessionEntity> => {
       const session = await ipcApi.request('ai.agent.session.restore', { sessionId: id })
+      // Seed the restored entity into the by-id cache. The delete flow leaves a stale
+      // NOT_FOUND error there (the by-id query revalidated while the session was trashed);
+      // with no mounted hook, plain invalidation can't clear it and the next click would
+      // trip the page-level NOT_FOUND recovery into a blank re-entry. A cache write both
+      // drops that error (SWR clears `error` on populate) and paints the entity instantly.
+      await writeCache(`/agent-sessions/${id}`, session)
       try {
         await invalidate(['/agent-sessions', `/agent-sessions/${id}`, '/agents/*'])
       } catch (error) {
@@ -375,7 +383,7 @@ export const useSessions = (
       logger.info('Restored Agent Session', { sessionId: id })
       return session
     },
-    [invalidate]
+    [invalidate, writeCache]
   )
 
   const deleteSessions = useCallback(
