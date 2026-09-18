@@ -22,6 +22,7 @@ const {
   knowledgeBasesState,
   mcpStatusState,
   openSettingsTabMock,
+  openRouteMock,
   promptCatalogState,
   promptProcessorMock,
   settingsNavigateMock,
@@ -65,6 +66,7 @@ const {
   },
   mcpStatusState: { current: {} as Record<string, { state: string; lastCheckedAt: number }> },
   openSettingsTabMock: vi.fn(),
+  openRouteMock: vi.fn(),
   promptCatalogState: {
     current: {
       all: [
@@ -304,7 +306,8 @@ vi.mock('@renderer/utils/aiGeneration', () => ({
 }))
 
 vi.mock('@renderer/services/mainWindowNavigation', () => ({
-  openSettingsTab: openSettingsTabMock
+  openSettingsTab: openSettingsTabMock,
+  openRoute: openRouteMock
 }))
 
 vi.mock('react-i18next', async (importOriginal) => {
@@ -1804,11 +1807,11 @@ describe('edit dialogs', () => {
     expect(screen.getByText('MCP One')).toBeInTheDocument()
     expect(screen.getByText('Connected')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'MCP services Settings' }))
-    expect(openSettingsTabMock).toHaveBeenCalledWith('/settings/mcp/servers')
+    expect(openRouteMock).toHaveBeenCalledWith('/app/skills-connectors')
     expect(onAssistantOpenChange).not.toHaveBeenCalled()
 
     cleanup()
-    openSettingsTabMock.mockClear()
+    openRouteMock.mockClear()
     const onAgentOpenChange = vi.fn()
 
     render(<AgentEditDialog open resource={AGENT} onOpenChange={onAgentOpenChange} />)
@@ -1819,7 +1822,7 @@ describe('edit dialogs', () => {
     expect(screen.getByText('MCP One')).toBeInTheDocument()
     expect(screen.getByText('Connected')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'MCP services Settings' }))
-    expect(openSettingsTabMock).toHaveBeenCalledWith('/settings/mcp/servers')
+    expect(openRouteMock).toHaveBeenCalledWith('/app/skills-connectors')
     expect(onAgentOpenChange).not.toHaveBeenCalled()
   })
 

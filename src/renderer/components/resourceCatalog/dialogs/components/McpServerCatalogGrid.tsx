@@ -1,7 +1,8 @@
 import { Button, Tooltip } from '@cherrystudio/ui'
 import { useQuery } from '@renderer/data/hooks/useDataApi'
 import { useMcpRuntimeStatusMap } from '@renderer/hooks/useMcpRuntimeStatus'
-import { openSettingsTab } from '@renderer/services/mainWindowNavigation'
+// import { openSettingsTab } from '@renderer/services/mainWindowNavigation'
+import { openRoute } from '@renderer/services/mainWindowNavigation'
 import type { McpRuntimeStatus } from '@shared/data/cache/cacheValueTypes'
 import type { McpServer } from '@shared/data/types/mcpServer'
 import type { TFunction } from 'i18next'
@@ -11,7 +12,9 @@ import { useTranslation } from 'react-i18next'
 
 import { type CatalogItem, CatalogToggleGrid } from './CatalogPicker'
 
-const MCP_SERVERS_SETTINGS_PATH = '/settings/mcp/servers'
+// 停用原设置页跳转：MCP 入口改跳「技能·连接器」合并页
+// const MCP_SERVERS_SETTINGS_PATH = '/settings/mcp/servers'
+const SKILLS_CONNECTORS_PATH = '/app/skills-connectors'
 
 function getStatusBadge(t: TFunction, state: McpRuntimeStatus['state']) {
   switch (state) {
@@ -81,7 +84,8 @@ export function McpServerCatalogGrid({
   )
 
   const handleOpenMcpSettings = () => {
-    openSettingsTab(MCP_SERVERS_SETTINGS_PATH)
+    // 合并页是 workspace 路由，非 /settings 前缀，openSettingsTab 会被 normalize 回 /settings/provider，须用 openRoute
+    openRoute(SKILLS_CONNECTORS_PATH)
     onOpenSettings?.()
   }
 
