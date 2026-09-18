@@ -27,6 +27,8 @@ import { checkEntityImageSize, prepareEntityImageBytes } from '@renderer/utils/i
 import { isEmoji } from '@renderer/utils/naming'
 
 import { EmojiPicker } from './EmojiPicker'
+// [enterprise] T0 企业登录入口
+import { useOrgAccountSession } from '@renderer/hooks/useOrgAccountSession'
 
 type Props = PopupInjectedProps<Record<string, never>>
 
@@ -53,6 +55,16 @@ const PopupContainer: React.FC<Props> = ({ open, resolve }) => {
   //   isRevokingSession,
   //   isAuthorizing
   // } = useCherryAccountSession(open)
+
+  // [enterprise] T0 企业服务登录状态（登录走系统浏览器，回调经 meacowork://auth 深链）
+  const {
+    status: orgStatus,
+    loadState: orgLoadState,
+    login: handleOrgLogin,
+    logout: handleOrgLogout,
+    isLoggingIn: isOrgLoggingIn,
+    isLoggingOut: isOrgLoggingOut
+  } = useOrgAccountSession(open)
 
   const onOpenChange = (nextOpen: boolean) => {
     if (!nextOpen) {
@@ -241,6 +253,34 @@ const PopupContainer: React.FC<Props> = ({ open, resolve }) => {
           </RowFlex>
         ) : null}
         */}
+        {/* [enterprise] T0 企业服务登录入口（樱桃云入口同款布局） */}
+        {orgLoadState === 'ready' && orgStatus ? (
+          <RowFlex className="border-border-subtle border-t px-5 py-4">
+            {orgStatus.phase === 'signed-in' ? (
+              <ColFlex className="w-full items-center gap-1.5">
+                <Button
+                  className="w-full"
+                  loading={isOrgLoggingOut}
+                  onClick={() => void handleOrgLogout()}
+                  variant="outline">
+                  退出企业服务
+                </Button>
+                {orgStatus.phone ? (
+                  <div role="status" className="max-w-full truncate text-foreground-tertiary text-xs leading-tight">
+                    {orgStatus.phone}
+                    {orgStatus.role === 'super_admin' ? ' · 管理员' : ''}
+                  </div>
+                ) : null}
+              </ColFlex>
+            ) : (
+              <ColFlex className="w-full gap-2">
+                <Button className="w-full" loading={isOrgLoggingIn} onClick={() => void handleOrgLogin()} variant="emphasis">
+                  {isOrgLoggingIn || orgStatus.phase === 'authorizing' ? '等待浏览器授权…' : '企业服务登录'}
+                </Button>
+              </ColFlex>
+            )}
+          </RowFlex>
+        ) : null}
       </DialogContent>
     </Dialog>
   )
