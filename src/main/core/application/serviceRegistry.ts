@@ -32,6 +32,8 @@ import { BrowserSessionService } from '@main/features/browser'
 import { FileProcessingService, TesseractRuntimeService } from '@main/features/fileProcessing'
 import { KnowledgeService, KnowledgeVectorStoreService } from '@main/features/knowledge'
 import { MiniAppRuntimeService } from '@main/features/miniApp/runtime/MiniAppRuntimeService'
+// [enterprise] T0 企业扩展插件
+import { EnterprisePlugin } from '@main/enterprise/EnterprisePlugin'
 import { IpcApiService } from '@main/ipc/IpcApiService'
 import { AnalyticsService } from '@main/services/AnalyticsService'
 import { AppMenuService } from '@main/services/AppMenuService'
@@ -118,6 +120,8 @@ export const services = {
   ConversationNavigationService,
   CitationPreviewService,
   CherryCloudService,
+  // [enterprise] T0 企业扩展插件
+  EnterprisePlugin,
   DeepSeekHarnessService,
   HermesDashboardService,
   LanTransferService,

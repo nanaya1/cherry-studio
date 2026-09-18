@@ -9,6 +9,7 @@ import { binaryHandlers } from './binary'
 import { browserHandlers } from './browser'
 import { channelHandlers } from './channel'
 import { cherryCloudHandlers } from './cherryCloud'
+import { enterpriseHandlers } from './enterprise' // [enterprise] T0 企业扩展
 import { cherryinHandlers } from './cherryin'
 import { citationHandlers } from './citation'
 import { codeCliHandlers } from './codeCli'
@@ -62,6 +63,7 @@ export const ipcHandlers: IpcHandlersFor<IpcRequestSchemas> = {
   ...channelHandlers,
   ...cherryinHandlers,
   ...cherryCloudHandlers,
+  ...enterpriseHandlers, // [enterprise]
   ...citationHandlers,
   ...codeCliHandlers,
   ...deepSeekHarnessHandlers,

@@ -7,6 +7,8 @@ import { type BinaryEventSchemas, binaryRequestSchemas } from './binary'
 import { type BrowserEventSchemas, browserRequestSchemas } from './browser'
 import { type ChannelEventSchemas, channelRequestSchemas } from './channel'
 import { type CherryCloudEventSchemas, cherryCloudRequestSchemas } from './cherryCloud'
+// [enterprise] T0 企业扩展 IPC 契约
+import { type EnterpriseEventSchemas, enterpriseRequestSchemas } from './enterprise'
 import { cherryinRequestSchemas } from './cherryin'
 import { citationRequestSchemas } from './citation'
 import { codeCliRequestSchemas } from './codeCli'
@@ -58,6 +60,7 @@ export const ipcRequestSchemas = {
   ...channelRequestSchemas,
   ...cherryinRequestSchemas,
   ...cherryCloudRequestSchemas,
+  ...enterpriseRequestSchemas, // [enterprise]
   ...citationRequestSchemas,
   ...codeCliRequestSchemas,
   ...deepSeekHarnessRequestSchemas,
@@ -109,6 +112,7 @@ export type IpcEventSchemas = AiEventSchemas &
   BrowserEventSchemas &
   ChannelEventSchemas &
   CherryCloudEventSchemas &
+  EnterpriseEventSchemas & // [enterprise]
   FileEventSchemas &
   McpEventSchemas &
   MiniAppEventSchemas &

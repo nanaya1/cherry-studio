@@ -203,6 +203,14 @@ export class ProtocolService extends BaseService {
             .handleDeepLinkCallback(urlObj)
             .catch((error) => logger.error('Failed to handle OAuth callback', error as Error))
           return
+        // [enterprise] T0 企业登录回调：code 属敏感参数，必须独立 case，
+        // 不得落入 default broadcast（上游 TODO(security) 同款要求）。
+        case 'auth':
+          application
+            .get('EnterprisePlugin')
+            .auth.handleAuthCallback(urlObj)
+            .catch((error) => logger.error('Failed to handle enterprise auth callback', error as Error))
+          return
       }
 
       // Default branch: deep link with no main-process handler. Fan out to every
