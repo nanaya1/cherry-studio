@@ -19,6 +19,20 @@ export const enterpriseHandlers: IpcHandlersFor<typeof enterpriseRequestSchemas>
     application.get('EnterprisePlugin').skills.reportExec(slug, detail)
     return { ok: true }
   },
+  // [enterprise] C2 停用拦截：返回当前已停用/已下架的 org 技能 slug
+  'enterprise.skills.listDisabled': async () => ({
+    disabled: await application.get('EnterprisePlugin').skills.listDisabled()
+  }),
+  // [enterprise] C4 删除上报：用户卸载 org 技能时上报 deleted（幂等 record）并清 state
+  'enterprise.skills.reportDeleted': async ({ slug }) => {
+    await application.get('EnterprisePlugin').skills.reportDeleted(slug)
+    return { ok: true }
+  },
+  // [enterprise] C3 组织可用性查询（登出标记 / 重登恢复）
+  'enterprise.status.orgUnavailable': async () => {
+    const { orgStateStore } = await import('@main/enterprise/OrgStateStore')
+    return { unavailable: orgStateStore.snapshotUnavailable() }
+  },
   'enterprise.connectors.list': async () => ({
     connectors: await application.get('EnterprisePlugin').connectors.list()
   }),

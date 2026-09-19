@@ -13,11 +13,18 @@ export function useOrgAccountSession(enabled = true) {
   const [status, setStatus] = useState<EnterpriseStatus | null>(null)
   const [loadState, setLoadState] = useState<OrgStatusLoadState>('loading')
   const [pendingAction, setPendingAction] = useState<OrgSessionAction | null>(null)
+  // [enterprise] C3：登出后 org 技能/连接器标记"组织不可用"（本地保留，重登恢复）
+  const [orgUnavailable, setOrgUnavailable] = useState(false)
   const requestRef = useRef(0)
 
   const applyStatus = useCallback((next: EnterpriseStatus) => {
     setStatus(next)
     setLoadState('ready')
+    // [enterprise] C3：登录态变化时同步查询不可用标记（登出置位 / 重登恢复）
+    ipcApi
+      .request('enterprise.status.orgUnavailable')
+      .then((res) => setOrgUnavailable(res.unavailable))
+      .catch(() => setOrgUnavailable(false))
   }, [])
 
   useIpcOn('enterprise.status_changed', (next) => {
@@ -73,6 +80,8 @@ export function useOrgAccountSession(enabled = true) {
     reload,
     login: useCallback(() => runAction('login'), [runAction]),
     logout: useCallback(() => runAction('logout'), [runAction]),
+    // [enterprise] C3
+    orgUnavailable,
     isLoggingIn: pendingAction === 'login',
     isLoggingOut: pendingAction === 'logout'
   }

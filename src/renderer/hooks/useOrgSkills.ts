@@ -25,6 +25,8 @@ export function useOrgSkills(enabled: boolean) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [installing, setInstalling] = useState<Set<string>>(() => new Set())
+  // [enterprise] C2：本地已安装但企业已停用/下架的 slug（提示"可删除"，不注入新会话）
+  const [disabledSlugs, setDisabledSlugs] = useState<string[]>([])
   const invalidate = useInvalidateSkills()
 
   const refetch = useCallback(async () => {
@@ -38,6 +40,13 @@ export function useOrgSkills(enabled: boolean) {
     try {
       const { skills: list } = await ipcApi.request('enterprise.skills.list')
       setSkills(list)
+      // [enterprise] C2：并行查询停用列表（查询失败不影响目录展示）
+      try {
+        const { disabled } = await ipcApi.request('enterprise.skills.listDisabled')
+        setDisabledSlugs(disabled)
+      } catch {
+        setDisabledSlugs([])
+      }
     } catch (cause) {
       const message = orgSkillErrorMessage(cause)
       logger.warn('Failed to list org skills', { error: message })
@@ -75,5 +84,18 @@ export function useOrgSkills(enabled: boolean) {
     [invalidate]
   )
 
-  return { skills, loading, error, install, installing, refetch }
+  // [enterprise] C4：删除（卸载）企业技能并上报 deleted 事件
+  const remove = useCallback(async (slug: string): Promise<boolean> => {
+    try {
+      await ipcApi.request('enterprise.skills.reportDeleted', { slug })
+      await invalidate()
+      return true
+    } catch (cause) {
+      const message = orgSkillErrorMessage(cause)
+      logger.error('Failed to remove org skill', { slug, error: message })
+      throw new Error(message)
+    }
+  }, [invalidate])
+
+  return { skills, loading, error, install, installing, refetch, disabledSlugs, remove }
 }

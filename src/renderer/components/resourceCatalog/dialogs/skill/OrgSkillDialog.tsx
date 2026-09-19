@@ -16,8 +16,33 @@ type Props = {
 export function OrgSkillDialog({ open, onOpenChange }: Props) {
   const { t } = useTranslation()
   const [query, setQuery] = useState('')
-  const { skills, loading, error, install, installing, refetch } = useOrgSkills(open)
+  // [enterprise] C2/C4：disabledSlugs 停用提示 + remove 删除上报
+  const { skills, loading, error, install, installing, refetch, disabledSlugs, remove } = useOrgSkills(open)
   const [lastError, setLastError] = useState<string | null>(null)
+  const [removing, setRemoving] = useState<Set<string>>(() => new Set())
+
+  const handleRemove = useCallback(
+    async (skill: OrgSkillItem) => {
+      setLastError(null)
+      setRemoving((current) => new Set(current).add(skill.slug))
+      try {
+        await remove(skill.slug)
+        toast.success(t('library.org_skill.remove_success', { name: skill.name }))
+        await refetch()
+      } catch (cause) {
+        const message = cause instanceof Error ? cause.message : String(cause)
+        setLastError(message)
+        toast.error(message)
+      } finally {
+        setRemoving((current) => {
+          const next = new Set(current)
+          next.delete(skill.slug)
+          return next
+        })
+      }
+    },
+    [remove, refetch, t]
+  )
 
   const visibleSkills = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase()
@@ -92,7 +117,10 @@ export function OrgSkillDialog({ open, onOpenChange }: Props) {
                   skill={skill}
                   installing={installing.has(skill.slug)}
                   error={lastError}
+                  disabled={disabledSlugs.includes(skill.slug)}
+                  removing={removing.has(skill.slug)}
                   onInstall={() => void handleInstall(skill)}
+                  onRemove={() => void handleRemove(skill)}
                 />
               ))}
             </div>
@@ -107,12 +135,20 @@ function OrgSkillRow({
   skill,
   installing,
   error,
-  onInstall
+  disabled = false,
+  removing = false,
+  onInstall,
+  onRemove
 }: {
   skill: OrgSkillItem
   installing: boolean
   error: string | null
+  // [enterprise] C2：企业已停用/下架 → 提示"可删除"
+  disabled?: boolean
+  // [enterprise] C4：删除进行中
+  removing?: boolean
   onInstall: () => void
+  onRemove: () => void
 }) {
   const { t } = useTranslation()
 
@@ -127,13 +163,27 @@ function OrgSkillRow({
         <div className="flex items-center gap-2">
           <span className="truncate font-medium text-[13px] text-foreground">{skill.name}</span>
           <span className="shrink-0 text-foreground-tertiary text-xs">v{skill.version}</span>
+          {/* [enterprise] C2：停用徽标（本地已保留但不再注入新会话） */}
+          {disabled ? (
+            <span className="shrink-0 rounded bg-secondary px-1.5 py-0.5 text-foreground-tertiary text-[11px] leading-none">
+              {t('library.org_skill.disabled_badge')}
+            </span>
+          ) : null}
         </div>
         <p className="mt-0.5 truncate text-muted-foreground text-xs">{skill.description}</p>
       </div>
-      <Button variant="outline" size="sm" disabled={installing} onClick={onInstall} className="shrink-0">
-        {installing ? <Loader2 className="size-3 animate-spin" /> : <Check className="size-3" />}
-        {installing ? t('library.org_skill.installing') : t('library.org_skill.install')}
-      </Button>
+      {/* [enterprise] C2/C4：停用项显示"删除"（上报 deleted + 本地卸载），正常项显示"安装" */}
+      {disabled ? (
+        <Button variant="outline" size="sm" disabled={removing} onClick={onRemove} className="shrink-0">
+          {removing ? <Loader2 className="size-3 animate-spin" /> : null}
+          {removing ? t('library.org_skill.removing') : t('library.org_skill.remove')}
+        </Button>
+      ) : (
+        <Button variant="outline" size="sm" disabled={installing} onClick={onInstall} className="shrink-0">
+          {installing ? <Loader2 className="size-3 animate-spin" /> : <Check className="size-3" />}
+          {installing ? t('library.org_skill.installing') : t('library.org_skill.install')}
+        </Button>
+      )}
     </div>
   )
 }

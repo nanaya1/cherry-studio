@@ -63,7 +63,9 @@ const PopupContainer: React.FC<Props> = ({ open, resolve }) => {
     login: handleOrgLogin,
     logout: handleOrgLogout,
     isLoggingIn: isOrgLoggingIn,
-    isLoggingOut: isOrgLoggingOut
+    isLoggingOut: isOrgLoggingOut,
+    // [enterprise] C3：登出后 org 资源标记"组织不可用"，重登自动恢复
+    orgUnavailable
   } = useOrgAccountSession(open)
 
   const onOpenChange = (nextOpen: boolean) => {
@@ -274,6 +276,14 @@ const PopupContainer: React.FC<Props> = ({ open, resolve }) => {
               </ColFlex>
             ) : (
               <ColFlex className="w-full gap-2">
+                {/* [enterprise] C3：登出后企业技能/连接器标记"组织不可用"（本地保留，重登恢复） */}
+                {orgUnavailable ? (
+                  <div
+                    role="status"
+                    className="rounded-lg border border-border-subtle bg-secondary px-3 py-2 text-center text-foreground-tertiary text-xs leading-tight">
+                    企业技能与连接器暂不可用（已退出登录），重新登录后自动恢复
+                  </div>
+                ) : null}
                 <Button className="w-full" loading={isOrgLoggingIn} onClick={() => void handleOrgLogin()} variant="emphasis">
                   {isOrgLoggingIn || orgStatus.phase === 'authorizing' ? '等待浏览器授权…' : '企业服务登录'}
                 </Button>

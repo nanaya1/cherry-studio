@@ -9,6 +9,7 @@ import { application } from '@application'
 import { loggerService } from '@logger'
 import { OrgApiClient } from './OrgApiClient'
 import { OrgCredentialStore, type OrgSession } from './OrgCredentialStore'
+import { orgStateStore } from './OrgStateStore'
 import type { OrgAuthPhase } from './types'
 
 const logger = loggerService.withContext('OrgAuthManager')
@@ -133,6 +134,8 @@ export class OrgAuthManager {
       }
       this.credentialStore.save(this.session)
       this.pending = null
+      // [enterprise] C3：重新登录成功 → 恢复 org 资源可用标记
+      orgStateStore.markAvailable()
       logger.info('org login succeeded', { phone: this.session.phone, role: this.session.role })
       this.emitStatus()
     } catch (error) {
@@ -148,6 +151,8 @@ export class OrgAuthManager {
     this.session = null
     this.pending = null
     this.credentialStore.clear()
+    // [enterprise] C3：登出 → org 技能/连接器标记"组织不可用"（保留本地文件，重登恢复）
+    orgStateStore.markUnavailable()
     logger.info('org logout')
     this.emitStatus()
   }
