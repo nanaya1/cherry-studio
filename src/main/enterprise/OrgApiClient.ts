@@ -11,25 +11,45 @@ const logger = loggerService.withContext('OrgApiClient')
 export const ORG_SERVER_BASE_URL = 'http://127.0.0.1:3000'
 
 export class OrgApiClient {
-  constructor(private readonly getSession: () => OrgSession | null) {}
+  // [enterprise] 修复 401：改为异步取「有效期内的会话」（过期自动刷新）。
+  // 原同步裸取：constructor(private readonly getSession: () => OrgSession | null) {}
+  constructor(private readonly getValidSession: () => Promise<OrgSession | null>) {}
 
   private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
-    const session = this.getSession()
+    const session = await this.getValidSession()
     if (!session) throw new Error('未登录企业服务')
-    const res = await fetch(`${ORG_SERVER_BASE_URL}${path}`, {
-      ...init,
-      headers: {
-        'content-type': 'application/json',
-        authorization: `Bearer ${session.accessToken}`,
-        ...init.headers
+    const res = await this.send(path, session.accessToken, init)
+    // [enterprise] 修复 401：access token 被服务端提前吊销时兜底——刷新一次重试一次
+    if (res.status === 401) {
+      const refreshed = await this.getValidSession()
+      if (!refreshed || refreshed.accessToken === session.accessToken) {
+        throw new Error(`企业服务请求失败 (${res.status})`)
       }
-    })
+      const retry = await this.send(path, refreshed.accessToken, init)
+      if (!retry.ok) {
+        const body = await retry.text().catch(() => '')
+        logger.warn('org api request failed', { path, status: retry.status, body: body.slice(0, 200) })
+        throw new Error(`企业服务请求失败 (${retry.status})`)
+      }
+      return (await retry.json()) as T
+    }
     if (!res.ok) {
       const body = await res.text().catch(() => '')
       logger.warn('org api request failed', { path, status: res.status, body: body.slice(0, 200) })
       throw new Error(`企业服务请求失败 (${res.status})`)
     }
     return (await res.json()) as T
+  }
+
+  private async send(path: string, accessToken: string, init: RequestInit): Promise<Response> {
+    return fetch(`${ORG_SERVER_BASE_URL}${path}`, {
+      ...init,
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${accessToken}`,
+        ...init.headers
+      }
+    })
   }
 
   listSkills() {
@@ -48,7 +68,9 @@ export class OrgApiClient {
     const { createWriteStream } = await import('node:fs')
     const { createHash } = await import('node:crypto')
 
-    const session = this.getSession()
+    // [enterprise] 修复 401：与 request() 一致改走异步 getValidSession（原裸 getSession 注释保留）
+    // const session = this.getSession()
+    const session = await this.getValidSession()
     if (!session) throw new Error('未登录企业服务')
     const res = await fetch(`${ORG_SERVER_BASE_URL}/api/skills/${slug}/download`, {
       headers: { authorization: `Bearer ${session.accessToken}` }

@@ -36,7 +36,9 @@ export class OrgAuthManager {
   private pending: PendingAuth | null = null
   private refreshing: Promise<void> | null = null
 
-  apiClient = new OrgApiClient(() => this.session)
+  // [enterprise] 修复 401：apiClient 改用 getValidSession（过期自动刷新）。
+  // 原裸会话注入注释保留：apiClient = new OrgApiClient(() => this.session)
+  apiClient = new OrgApiClient(() => this.getValidSession())
 
   constructor() {
     // 启动时恢复持久化会话（冷启动恢复）
