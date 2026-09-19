@@ -1,0 +1,129 @@
+<html style="margin:0;padding:0;">
+<title>远端知识库服务接入方案（Remote Knowledge Service）</title>
+<div style="width:100%;box-sizing:border-box;font-family:-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;background:#f7f9fb;padding:28px 20px;color:#1f2733;line-height:1.6;">
+  <div style="max-width:980px;margin:0 auto;">
+
+    <div style="font-size:23px;font-weight:700;color:#17324d;margin-bottom:6px;">远端知识库服务接入方案</div>
+    <div style="font-size:13px;color:#5a6b7f;margin-bottom:18px;">MEACowork（cherry-studio）· 新增远端知识库服务配置，对接外部不同知识库服务 · 方案 v0.1（评审稿）</div>
+
+    <!-- 1 背景目标 -->
+    <div style="font-size:16px;font-weight:700;color:#17324d;margin:14px 0 8px;">一、背景与目标</div>
+    <div style="background:#fff;border:1px solid #cfd8e2;border-radius:10px;padding:14px 16px;font-size:14px;">
+      现状：知识库为<b>本地索引</b>（文档解析 → 分块 → 本地向量化 → SQLite 向量库），经 <code>kb_search / kb_list / kb_read / kb_manage</code> 工具在助手会话与智能体会话中被模型调用（<code>knowledgeLookup.ts</code> 共享核心，AI-SDK 与 MCP 两条路径共用）。<br/><br/>
+      目标：新增<b>「远端知识库服务」配置</b>——定义一套标准 REST 接口规范，外部知识库服务按规范适配后即可接入现有 kb_* 检索链路；<b>我们定义契约，外部实现服务端</b>。本地知识库能力保持不变。
+    </div>
+
+    <!-- 2 职责边界 -->
+    <div style="font-size:16px;font-weight:700;color:#17324d;margin:14px 0 8px;">二、职责边界</div>
+    <div style="display:flex;flex-wrap:wrap;gap:10px;">
+      <div style="flex:1;min-width:280px;background:#eef4fc;border:1px solid #bcd4ef;border-radius:10px;padding:12px 14px;">
+        <div style="font-weight:700;color:#17324d;margin-bottom:6px;">本工程（客户端 / 调用方）</div>
+        <div style="font-size:13px;color:#3c5a78;">· 定义接口规范并交付外部<br/>· 远端服务配置管理（地址 / 认证 / 密钥）<br/>· 远端知识库发现与检索路由（kb_list / kb_search / kb_read）<br/>· 本地知识库链路保持不变</div>
+      </div>
+      <div style="flex:1;min-width:280px;background:#e9f6ee;border:1px solid #a8d4b8;border-radius:10px;padding:12px 14px;">
+        <div style="font-weight:700;color:#2c6e45;margin-bottom:6px;">外部知识库服务（提供方）</div>
+        <div style="font-size:13px;color:#2c5a3c;">· 按本规范实现 bases / search / read / health<br/>· 负责服务端向量化、检索、Rerank、权限校验（如企业版链路）<br/>· 返回带来源与元数据的检索片段</div>
+      </div>
+    </div>
+
+    <!-- 3 接口规范 -->
+    <div style="font-size:16px;font-weight:700;color:#17324d;margin:14px 0 8px;">三、接口规范（外部服务需实现，核心交付）</div>
+    <div style="background:#fff;border:1px solid #cfd8e2;border-radius:10px;padding:14px 16px;margin-bottom:10px;">
+      <div style="font-size:14px;margin-bottom:6px;"><b>通用约定</b>：路径前缀 <code>/v1</code>；<code>Content-Type: application/json</code>；认证按配置 <code>Authorization: Bearer &lt;token&gt;</code> 或 <code>X-API-Key: &lt;key&gt;</code>；分数归一化 <code>[0,1]</code>。</div>
+      <table style="width:100%;border-collapse:collapse;font-size:13px;min-width:640px;">
+        <tr style="background:#17324d;color:#fff;">
+          <th style="padding:8px 10px;text-align:left;">端点</th><th style="padding:8px 10px;text-align:left;">用途</th><th style="padding:8px 10px;text-align:left;">映射 kb 工具</th>
+        </tr>
+        <tr style="border-top:1px solid #e3e9f0;"><td style="padding:8px 10px;"><code>GET /v1/health</code></td><td style="padding:8px 10px;">连通性 / 配置校验</td><td style="padding:8px 10px;">设置页「测试连接」</td></tr>
+        <tr style="border-top:1px solid #e3e9f0;background:#f7f9fb;"><td style="padding:8px 10px;"><code>GET /v1/knowledge/bases</code></td><td style="padding:8px 10px;">列出该服务下可检索的知识库</td><td style="padding:8px 10px;"><code>kb_list</code></td></tr>
+        <tr style="border-top:1px solid #e3e9f0;"><td style="padding:8px 10px;"><code>POST /v1/knowledge/search</code></td><td style="padding:8px 10px;">检索（query + base_ids + top_k + rerank + filters）</td><td style="padding:8px 10px;"><code>kb_search</code></td></tr>
+        <tr style="border-top:1px solid #e3e9f0;background:#f7f9fb;"><td style="padding:8px 10px;"><code>POST /v1/knowledge/read</code></td><td style="padding:8px 10px;">按片段/文档读取内容（供追问溯源）</td><td style="padding:8px 10px;"><code>kb_read</code></td></tr>
+      </table>
+      <div style="font-size:13px;color:#3c5a78;margin-top:8px;">
+        <b>search 响应片段</b>：<code>chunk_id / base_id / document_id / title / content / score / source（url|path）/ metadata</code>；<br/>
+        <b>错误模型</b>：<code>{"error":{"code","message"}}</code>，code ∈ <code>unauthorized / forbidden / not_found / invalid_request / rate_limited / upstream_error</code>。
+      </div>
+    </div>
+
+    <!-- 4 工程接入设计 -->
+    <div style="font-size:16px;font-weight:700;color:#17324d;margin:14px 0 8px;">四、工程接入设计</div>
+    <div style="display:flex;flex-wrap:wrap;gap:10px;">
+      <div style="flex:1;min-width:280px;background:#fff;border:1px solid #cfd8e2;border-radius:10px;padding:12px 14px;font-size:13px;">
+        <b>远端 base 标识（命名空间）</b><br/>远端知识库以 <code>remote:{serviceId}:{remoteBaseId}</code> 标识，与本地 uuid 区分；解析/构建工具放在 shared 层。<b>作用域解析（resolveKnowledgeBaseScope）无需改动</b>——按字符串处理，现有"绑定=天花板、选择只收窄"语义直接适用。
+      </div>
+      <div style="flex:1;min-width:280px;background:#fff;border:1px solid #cfd8e2;border-radius:10px;padding:12px 14px;font-size:13px;">
+        <b>配置存储</b><br/>新表 <code>remote_knowledge_service</code>（drizzle + migration）：id / name / base_url / auth_type / api_key（AES 加密）/ headers(JSON) / timeout_ms / enabled / 时间戳。
+      </div>
+      <div style="flex:1;min-width:280px;background:#fff;border:1px solid #cfd8e2;border-radius:10px;padding:12px 14px;font-size:13px;">
+        <b>路由分发（最小侵入）</b><br/>在 <code>knowledgeLookup.ts</code> 按前缀分流：本地 → 现有 <code>KnowledgeService</code>；远端 → 新 <code>RemoteKnowledgeClient</code>（electron <code>net.fetch</code>）。<code>kb_list</code> 合并本地 + 各启用服务的远端库；<code>kb_manage</code> 对远端返回只读提示。
+      </div>
+      <div style="flex:1;min-width:280px;background:#fff;border:1px solid #cfd8e2;border-radius:10px;padding:12px 14px;font-size:13px;">
+        <b>门控调整</b><br/><code>hasAnyKnowledgeBase</code> 纳入「存在启用的远端服务」，保证仅配置远端服务时 kb_* 工具仍可见。
+      </div>
+    </div>
+
+    <!-- 5 时序 -->
+    <div style="font-size:16px;font-weight:700;color:#17324d;margin:14px 0 8px;">五、调用时序</div>
+    <div style="background:#fff;border:1px solid #cfd8e2;border-radius:10px;padding:14px 16px;margin-bottom:10px;">
+      <div style="font-size:14px;font-weight:700;color:#17324d;margin-bottom:6px;">A. 管理侧：配置远端服务</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:stretch;">
+        <div style="flex:1;min-width:140px;background:#eef4fc;border-radius:8px;padding:10px 12px;font-size:13px;"><b>设置页</b><br/>新增服务（名称/URL/认证/密钥）</div>
+        <div style="align-self:center;color:#7a8a9c;">→</div>
+        <div style="flex:1;min-width:140px;background:#eef4fc;border-radius:8px;padding:10px 12px;font-size:13px;"><b>IPC</b><br/>remote_knowledge.* 路由</div>
+        <div style="align-self:center;color:#7a8a9c;">→</div>
+        <div style="flex:1;min-width:140px;background:#e9f6ee;border-radius:8px;padding:10px 12px;font-size:13px;"><b>RemoteKnowledgeService</b><br/>CRUD + 连通测试（GET /health）</div>
+        <div style="align-self:center;color:#7a8a9c;">→</div>
+        <div style="flex:1;min-width:140px;background:#2c6e45;color:#fff;border-radius:8px;padding:10px 12px;font-size:13px;"><b>SQLite</b><br/>remote_knowledge_service 表</div>
+      </div>
+    </div>
+    <div style="background:#fff;border:1px solid #cfd8e2;border-radius:10px;padding:14px 16px;">
+      <div style="font-size:14px;font-weight:700;color:#17324d;margin-bottom:6px;">B. 检索侧：提问 → 远端检索 → 回答</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:stretch;">
+        <div style="flex:1;min-width:130px;background:#eef4fc;border-radius:8px;padding:10px 12px;font-size:13px;"><b>模型调 kb_list</b><br/>合并本地 + 远端发现（remote:… id）</div>
+        <div style="align-self:center;color:#7a8a9c;">→</div>
+        <div style="flex:1;min-width:130px;background:#eef4fc;border-radius:8px;padding:10px 12px;font-size:13px;"><b>模型调 kb_search</b><br/>baseIds 含 remote:…</div>
+        <div style="align-self:center;color:#7a8a9c;">→</div>
+        <div style="flex:1;min-width:130px;background:#e9f6ee;border-radius:8px;padding:10px 12px;font-size:13px;"><b>knowledgeLookup 分流</b><br/>解析 remote:serviceId:baseId</div>
+        <div style="align-self:center;color:#7a8a9c;">→</div>
+        <div style="flex:1;min-width:130px;background:#e9f6ee;border-radius:8px;padding:10px 12px;font-size:13px;"><b>RemoteKnowledgeClient</b><br/>按服务并行调 POST /search（可多 base、rerank）</div>
+        <div style="align-self:center;color:#7a8a9c;">→</div>
+        <div style="flex:1;min-width:130px;background:#e9f6ee;border-radius:8px;padding:10px 12px;font-size:13px;"><b>合并 + 归一化</b><br/>score [0,1] 去重排序，补 citeId 溯源</div>
+        <div style="align-self:center;color:#7a8a9c;">→</div>
+        <div style="flex:1;min-width:130px;background:#2c6e45;color:#fff;border-radius:8px;padding:10px 12px;font-size:13px;"><b>上下文注入 → LLM 回答（带引用）</b><br/>追问可 kb_read 回溯远端片段</div>
+      </div>
+    </div>
+
+    <!-- 6 文件清单 -->
+    <div style="font-size:16px;font-weight:700;color:#17324d;margin:14px 0 8px;">六、文件改动清单</div>
+    <div style="display:flex;flex-wrap:wrap;gap:10px;">
+      <div style="flex:1;min-width:300px;background:#fff;border:1px dashed #b8c4d1;border-radius:10px;padding:12px 14px;font-size:13px;color:#3c5a78;">
+        <b>新增（9）：</b><br/>shared/data/types/remoteKnowledge.ts（类型+baseId 工具）<br/>shared/ipc/schemas/remoteKnowledge.ts（IPC 契约）<br/>main/data/db/schemas/remoteKnowledgeService.ts（表）+ 迁移 SQL<br/>main/features/remoteKnowledge/RemoteKnowledgeClient.ts<br/>main/features/remoteKnowledge/RemoteKnowledgeService.ts<br/>main/ipc/handlers/remoteKnowledge.ts<br/>docs/remote-knowledge-service-api.md（接口规范交付）<br/>设置页 UI（远端服务管理）+ 单元测试
+      </div>
+      <div style="flex:1;min-width:300px;background:#fff;border:1px dashed #b8c4d1;border-radius:10px;padding:12px 14px;font-size:13px;color:#3c5a78;">
+        <b>修改（5）：</b><br/>knowledgeLookup.ts（远端分流）<br/>serviceRegistry.ts（注册服务）<br/>ipcHandlers.ts + ipcSchemas.ts（挂载路由）<br/>buildAgentParams.ts（门控纳入远端服务）<br/>docs 索引（README）
+      </div>
+    </div>
+
+    <!-- 7 阶段 -->
+    <div style="font-size:16px;font-weight:700;color:#17324d;margin:14px 0 8px;">七、实施阶段</div>
+    <table style="width:100%;border-collapse:collapse;font-size:13px;min-width:640px;background:#fff;border:1px solid #cfd8e2;border-radius:10px;overflow:hidden;">
+      <tr style="background:#17324d;color:#fff;"><th style="padding:8px 10px;text-align:left;">阶段</th><th style="padding:8px 10px;text-align:left;">内容</th><th style="padding:8px 10px;text-align:left;">验收</th></tr>
+      <tr style="border-top:1px solid #e3e9f0;"><td style="padding:8px 10px;"><b>P0</b></td><td style="padding:8px 10px;">接口规范文档 + shared 类型 + baseId 工具</td><td style="padding:8px 10px;">外部可按文档独立实现</td></tr>
+      <tr style="border-top:1px solid #e3e9f0;background:#f7f9fb;"><td style="padding:8px 10px;"><b>P1</b></td><td style="padding:8px 10px;">配置表 + RemoteKnowledgeService + IPC（CRUD/测试连接）</td><td style="padding:8px 10px;">typecheck + 单测通过</td></tr>
+      <tr style="border-top:1px solid #e3e9f0;"><td style="padding:8px 10px;"><b>P2</b></td><td style="padding:8px 10px;">knowledgeLookup 远端分流（list/search/read）+ 门控</td><td style="padding:8px 10px;">本地链路回归不变</td></tr>
+      <tr style="border-top:1px solid #e3e9f0;background:#f7f9fb;"><td style="padding:8px 10px;"><b>P3</b></td><td style="padding:8px 10px;">设置页 UI（列表/新增/编辑/测试连接/启用）</td><td style="padding:8px 10px;">可完整配置并检索</td></tr>
+      <tr style="border-top:1px solid #e3e9f0;"><td style="padding:8px 10px;"><b>P4</b></td><td style="padding:8px 10px;">mock 外部服务联调 + 端到端验证</td><td style="padding:8px 10px;">检索→引用→溯源闭环</td></tr>
+    </table>
+
+    <!-- 8 开放问题 -->
+    <div style="font-size:16px;font-weight:700;color:#17324d;margin:14px 0 8px;">八、风险与开放问题</div>
+    <div style="background:#fff8e6;border:1px solid #f0d58a;border-radius:10px;padding:12px 16px;font-size:13px;color:#5a4a1e;">
+      · <b>认证范围</b>：先支持 Bearer / API-Key；OAuth2 client-credentials 是否纳入，取决于外部服务现状。<br/>
+      · <b>助手静态绑定远端库</b>：本轮不做绑定表，远端库经 <code>kb_list</code> 发现 + 每轮选择使用；静态绑定（<code>assistant ↔ remote:…</code> 关系表）留待后续。<br/>
+      · <b>联邦搜索语义</b>：客户端并行调用多服务并合并（复用现有合并逻辑）；若外部需要服务端聚合，可作为扩展能力。<br/>
+      · <b>kb_manage（写）</b>：远端只读；文档管理仍在外部服务自身完成。<br/>
+      · <b>可靠性</b>：单服务失败不影响其他（沿用 partial-failure 语义）；超时/重试策略需定阈值（默认 30s）。<br/>
+      · <b>密钥安全</b>：apiKey 落库前 AES 加密（复用 main/utils/aes.ts）。
+    </div>
+  </div>
+</div>
