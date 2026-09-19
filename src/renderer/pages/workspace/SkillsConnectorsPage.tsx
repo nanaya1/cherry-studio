@@ -94,15 +94,27 @@ export default function SkillsConnectorsPage({ connectorView }: SkillsConnectors
         {skillView === 'recommended' ? (
           // [enterprise] 推荐一级视图内分「推荐 / 组织」二级 tab；组织页为卡片式目录
           <Tabs value={orgSubTab} onValueChange={(value) => setOrgSubTab(value as OrgSubTab)} className="flex min-h-0 flex-1 flex-col">
-            <TabsList className="mx-6 shrink-0 justify-start gap-1 bg-transparent p-0">
-              <TabsTrigger
+            {/* [enterprise] 二级 tab 改为筛选 chip 风格：选中=浅灰药丸(bg-muted≈#F2F2F2)+近黑文字，未选中=灰字（原深色实心样式保留在下行注释） */}
+            {/* <TabsList className="mx-6 shrink-0 justify-start gap-1 bg-transparent p-0"> */}
+            <TabsList className="mx-6 h-auto shrink-0 justify-start gap-1 bg-transparent p-0">
+              {/* <TabsTrigger
                 value="recommended"
                 className="gap-1.5 border-0 px-2.5 py-1.5 text-muted-foreground shadow-none data-[state=active]:bg-foreground data-[state=active]:text-background">
                 {t('workspace.skill_catalog.recommended')}
-              </TabsTrigger>
+              </TabsTrigger> */}
               <TabsTrigger
+                value="recommended"
+                className="h-7 gap-1.5 rounded-full border-0 px-3 py-0 text-muted-foreground shadow-none hover:text-foreground data-[state=active]:bg-muted data-[state=active]:text-foreground data-[state=active]:shadow-none dark:data-[state=active]:text-foreground">
+                {t('workspace.skill_catalog.recommended')}
+              </TabsTrigger>
+              {/* <TabsTrigger
                 value="org"
                 className="gap-1.5 border-0 px-2.5 py-1.5 text-muted-foreground shadow-none data-[state=active]:bg-foreground data-[state=active]:text-background">
+                {t('workspace.skill_catalog.org')}
+              </TabsTrigger> */}
+              <TabsTrigger
+                value="org"
+                className="h-7 gap-1.5 rounded-full border-0 px-3 py-0 text-muted-foreground shadow-none hover:text-foreground data-[state=active]:bg-muted data-[state=active]:text-foreground data-[state=active]:shadow-none dark:data-[state=active]:text-foreground">
                 {t('workspace.skill_catalog.org')}
               </TabsTrigger>
             </TabsList>
