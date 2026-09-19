@@ -19,7 +19,7 @@ import type { useResourceCatalogController } from '@renderer/hooks/resourceCatal
 import { ipcApi } from '@renderer/ipc'
 import type { ResourceItem } from '@renderer/types/resourceCatalog'
 import { cn } from '@renderer/utils/style'
-import { ChevronDown, FolderSearch, Import, Plus, Search, Trash2 } from 'lucide-react'
+import { Building2, ChevronDown, FolderSearch, Import, Plus, Search, Trash2 } from 'lucide-react'
 import { type KeyboardEvent, lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -94,6 +94,13 @@ export function SkillCatalogHeaderActions({
           className="w-64 max-w-[32vw] max-lg:w-40"
         />
       ) : null}
+      {/* [enterprise] 组织技能提升为顶层可见按钮（原先仅在部分入口的下拉里，不易发现） */}
+      {gridProps.onOpenOrgSkills ? (
+        <Button variant="outline" size="sm" className="h-8 shrink-0" onClick={gridProps.onOpenOrgSkills}>
+          <Building2 className="size-3.5" />
+          <span>{t('library.skill_add.org_skills')}</span>
+        </Button>
+      ) : null}
       {showAdd ? (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -104,6 +111,7 @@ export function SkillCatalogHeaderActions({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="min-w-40">
+            {/* [enterprise] 组织技能已提升为顶层按钮，下拉不再包含该项 */}
             <DropdownMenuItem onSelect={gridProps.onOpenSkillMarketplace} className="gap-2">
               <Search className="size-3.5" />
               <span>{t('library.skill_add.online_search')}</span>

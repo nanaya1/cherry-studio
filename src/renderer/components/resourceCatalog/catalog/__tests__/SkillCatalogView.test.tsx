@@ -3,7 +3,11 @@ import '@testing-library/jest-dom/vitest'
 
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import type * as ReactModule from 'react'
+import type { ComponentProps, ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+import type * as CherryUiModule from '@cherrystudio/ui'
 
 const mocks = vi.hoisted(() => ({
   ipcRequest: vi.fn(),
@@ -25,6 +29,70 @@ vi.mock('@renderer/components/resourceCatalog/dialogs/delete', () => ({
   ResourceDeleteConfirmDialog: () => null
 }))
 
+// [enterprise] 覆写 DropdownMenu 家族为可交互 fake（真实 Radix 内容仅在 open 时渲染，jsdom 点击不可靠）。
+// 其余组件保留真实实现，避免影响既有断言。
+vi.mock('@cherrystudio/ui', async (importOriginal) => {
+  const actual = await importOriginal<typeof CherryUiModule>()
+  const React = await vi.importActual<typeof ReactModule>('react')
+  const DropdownMenuContext = React.createContext<{ open: boolean; setOpen: (open: boolean) => void }>({
+    open: false,
+    setOpen: () => {}
+  })
+
+  return {
+    ...actual,
+    DropdownMenu: ({
+      children,
+      open,
+      onOpenChange
+    }: {
+      children?: ReactNode
+      open?: boolean
+      onOpenChange?: (open: boolean) => void
+    }) => {
+      const [internalOpen, setInternalOpen] = React.useState(open ?? false)
+      const actualOpen = open ?? internalOpen
+      const setOpen = (nextOpen: boolean) => {
+        if (open === undefined) setInternalOpen(nextOpen)
+        onOpenChange?.(nextOpen)
+      }
+      return <DropdownMenuContext value={{ open: actualOpen, setOpen }}>{children}</DropdownMenuContext>
+    },
+    DropdownMenuContent: ({ children }: { children?: ReactNode }) => {
+      const { open } = React.use(DropdownMenuContext)
+      return open ? <div role="menu">{children}</div> : null
+    },
+    DropdownMenuItem: ({
+      children,
+      disabled,
+      onSelect,
+      ...props
+    }: ComponentProps<'button'> & {
+      disabled?: boolean
+      onSelect?: (event: React.MouseEvent<HTMLButtonElement>) => void
+    }) => (
+      <button
+        type="button"
+        role="menuitem"
+        disabled={disabled}
+        aria-disabled={disabled || undefined}
+        onClick={(event) => onSelect?.(event)}
+        {...props}>
+        {children}
+      </button>
+    ),
+    DropdownMenuTrigger: ({ asChild, children }: { asChild?: boolean; children?: ReactNode }) => {
+      const { open, setOpen } = React.use(DropdownMenuContext)
+      if (asChild) return <span onClickCapture={() => setOpen(!open)}>{children}</span>
+      return (
+        <button type="button" onClick={() => setOpen(!open)}>
+          {children}
+        </button>
+      )
+    }
+  }
+})
+
 vi.mock('../ResourceCatalogDialogs', () => ({
   ResourceCatalogDialogs: () => null
 }))
@@ -40,7 +108,9 @@ vi.mock('react-i18next', () => ({
         'workspace.skillsConnectors.sourceFilter': 'Filter skills by source',
         'workspace.skillsConnectors.sources.builtin': 'Built-in',
         'workspace.skillsConnectors.sources.custom': 'Custom (Upload)',
-        'workspace.skillsConnectors.sources.marketplace': 'Marketplace (Online)'
+        'workspace.skillsConnectors.sources.marketplace': 'Marketplace (Online)',
+        'library.skill_add.add': 'Add skill',
+        'library.skill_add.org_skills': 'Organization skills'
       })[key] ?? key
   })
 }))
@@ -131,7 +201,7 @@ describe('SkillCatalogView', () => {
     const toolbar = sourceTabs.parentElement
     expect(toolbar).not.toBeNull()
     expect(within(toolbar!).getByPlaceholderText('library.toolbar.search_placeholder')).toBeVisible()
-    expect(within(toolbar!).getByRole('button', { name: 'library.skill_add.add' })).toBeVisible()
+    expect(within(toolbar!).getByRole('button', { name: 'Add skill' })).toBeVisible()
 
     await user.click(screen.getByRole('tab', { name: 'Custom (Upload) 3' }))
 
@@ -162,5 +232,37 @@ describe('SkillCatalogView', () => {
     await waitFor(() => {
       expect(mocks.ipcRequest).toHaveBeenCalledWith('skill.icons.resolve', { skillIds: ['builtin'] })
     })
+  })
+
+  it('[enterprise] shows the org skills entry as a top-level button when the handler exists', async () => {
+    const user = userEvent.setup()
+    const testController = controller()
+    const onOpenOrgSkills = vi.fn()
+    ;(testController.gridProps as Record<string, unknown>).onOpenOrgSkills = onOpenOrgSkills
+    render(<SkillCatalogView controller={testController as never} />)
+
+    const orgButton = screen.getByRole('button', { name: 'Organization skills' })
+    await user.click(orgButton)
+    expect(onOpenOrgSkills).toHaveBeenCalledTimes(1)
+  })
+
+  it('[enterprise] keeps the org item out of the add dropdown when the handler exists', async () => {
+    const user = userEvent.setup()
+    const testController = controller()
+    ;(testController.gridProps as Record<string, unknown>).onOpenOrgSkills = vi.fn()
+    render(<SkillCatalogView controller={testController as never} />)
+
+    await user.click(screen.getByRole('button', { name: 'Add skill' }))
+
+    const menu = screen.getByRole('menu')
+    const items = within(menu).getAllByRole('menuitem')
+    expect(items.some((item) => /Organization skills/.test(item.textContent ?? ''))).toBe(false)
+    expect(within(menu).getByRole('menuitem', { name: 'library.skill_add.online_search' })).toBeVisible()
+  })
+
+  it('[enterprise] hides the org skills button when no handler is available', () => {
+    render(<SkillCatalogView controller={controller() as never} />)
+
+    expect(screen.queryByRole('button', { name: 'Organization skills' })).not.toBeInTheDocument()
   })
 })
