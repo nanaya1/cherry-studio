@@ -47,10 +47,13 @@ function stateFile(): string {
 }
 
 export class OrgStateStore {
-  private data: z.infer<typeof fileSchema>
+  private data: z.infer<typeof fileSchema> | null = null
 
-  constructor() {
-    this.data = this.load()
+  // [enterprise] 惰性初始化：模块加载早于 application.initPathRegistry()（OrgCredentialStore
+  // 同款坑），构造函数里立即 load() 会在启动时抛错 → state 被静默重置为空 →
+  // startupScan C1 误判「本地无记录」把已删技能全部重装。改为首次数据访问时才读文件。
+  private ensureLoaded(): void {
+    if (this.data === null) this.data = this.load()
   }
 
   private load(): z.infer<typeof fileSchema> {
@@ -76,84 +79,99 @@ export class OrgStateStore {
   }
 
   get(slug: string): OrgSkillState | undefined {
-    return this.data.skills[slug]
+    this.ensureLoaded()
+    return this.data!.skills[slug]
   }
 
   snapshot(): Record<string, OrgSkillState> {
-    return { ...this.data.skills }
+    this.ensureLoaded()
+    return { ...this.data!.skills }
   }
 
   upsert(slug: string, state: Omit<OrgSkillState, 'enabled'> & { enabled?: boolean }): void {
+    this.ensureLoaded()
     const parsed = skillStateSchema.parse({ enabled: true, ...state })
-    this.data.skills[slug] = parsed
+    this.data!.skills[slug] = parsed
     this.persist()
   }
 
   remove(slug: string): void {
-    delete this.data.skills[slug]
+    this.ensureLoaded()
+    delete this.data!.skills[slug]
     this.persist()
   }
 
   // [enterprise] C4 删除墓碑：记录 slug 删除时的 contentHash 并持久化（幂等，重复标记以后一次为准）
   markDeleted(slug: string, contentHash: string): void {
-    this.data.deletedSkills[slug] = contentHash
+    this.ensureLoaded()
+    this.data!.deletedSkills[slug] = contentHash
     this.persist()
   }
 
   // [enterprise] C4 墓碑查询：返回删除时记录的 contentHash（无墓碑返回 undefined）
   deletedHash(slug: string): string | undefined {
-    return this.data.deletedSkills[slug]
+    this.ensureLoaded()
+    return this.data!.deletedSkills[slug]
   }
 
   // [enterprise] C4 清除墓碑（企业推新版重新下发时由 startupScan 调用）
   clearDeleted(slug: string): void {
-    delete this.data.deletedSkills[slug]
+    this.ensureLoaded()
+    delete this.data!.deletedSkills[slug]
     this.persist()
   }
 
   setEnabled(slug: string, enabled: boolean): void {
-    const current = this.data.skills[slug]
+    this.ensureLoaded()
+    const current = this.data!.skills[slug]
     if (!current) return
-    this.data.skills[slug] = { ...current, enabled }
+    this.data!.skills[slug] = { ...current, enabled }
     this.persist()
   }
 
   /** C3：登出标记组织不可用（org 技能保留本地但提示不可用） */
   markUnavailable(): void {
-    this.data.unavailable = true
+    this.ensureLoaded()
+    this.data!.unavailable = true
     this.persist()
   }
 
   /** [enterprise] C6 连接器映射写入 */
   upsertConnector(slug: string, state: OrgConnectorState): void {
-    this.data.connectors[slug] = connectorStateSchema.parse(state)
+    this.ensureLoaded()
+    this.data!.connectors[slug] = connectorStateSchema.parse(state)
     this.persist()
   }
 
   /** [enterprise] C6 连接器映射读取 */
   getConnector(slug: string): OrgConnectorState | undefined {
-    return this.data.connectors[slug]
+    this.ensureLoaded()
+    return this.data!.connectors[slug]
   }
 
   snapshotConnectors(): Record<string, OrgConnectorState> {
-    return { ...this.data.connectors }
+    this.ensureLoaded()
+    return { ...this.data!.connectors }
   }
 
   removeConnector(slug: string): void {
-    delete this.data.connectors[slug]
+    this.ensureLoaded()
+    delete this.data!.connectors[slug]
     this.persist()
   }
 
   /** C3：重新登录恢复 */
   markAvailable(): void {
-    this.data.unavailable = false
+    this.ensureLoaded()
+    this.data!.unavailable = false
     this.persist()
   }
 
   snapshotUnavailable(): boolean {
-    return this.data.unavailable
+    this.ensureLoaded()
+    return this.data!.unavailable
   }
 }
 
-/** [enterprise] 企业模块共用单例（进程内一份 state） */
+/** [enterprise] 企业模块共用单例（进程内一份 state）；惰性初始化，见 ensureLoaded 注释 */
 export const orgStateStore = new OrgStateStore()

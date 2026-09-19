@@ -143,4 +143,29 @@ describe('OrgStateStore', () => {
     store.markDeleted('demo', 'h2')
     expect(store.deletedHash('demo')).toBe('h2')
   })
+
+  // 回归：orgStateStore 是模块顶层单例，模块加载早于 application.initPathRegistry()。
+  // 若构造函数里立即 getPath() 会抛错 → 静默重置为空 → startupScan C1 误判"本地无记录"全部重装。
+  // 单例必须惰性初始化（首次访问时才读文件），getPath 只发生在真正需要时。
+  it('模块单例是惰性初始化：getPath 在首次数据访问时才调用', async () => {
+    vi.resetModules()
+    applicationMock.getPath.mockClear()
+
+    // 模拟路径注册表未初始化：此时调用 getPath 应抛错（与启动时一致）
+    applicationMock.getPath.mockImplementation(() => {
+      throw new Error("application.getPath called before application.initPathRegistry() ran")
+    })
+
+    const { orgStateStore } = await import('@main/enterprise/OrgStateStore')
+    // 模块加载本身不触发 getPath（不会抛）——这是本次修复的核心断言
+    expect(applicationMock.getPath).not.toHaveBeenCalled()
+
+    // 恢复路径后首次数据访问正常工作
+    applicationMock.getPath.mockImplementation((key: string) =>
+      key === 'feature.agents.skills' ? join(tmp, 'Skills') : Promise.reject(new Error(`unexpected: ${key}`))
+    )
+    orgStateStore.upsert('lazy-demo', { version: '1', contentHash: 'h', skillId: 's', folderName: 'd' })
+    expect(applicationMock.getPath).toHaveBeenCalled()
+    expect(orgStateStore.get('lazy-demo')?.skillId).toBe('s')
+  })
 })
