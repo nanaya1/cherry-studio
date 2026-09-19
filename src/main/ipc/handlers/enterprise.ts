@@ -10,7 +10,11 @@ export const enterpriseHandlers: IpcHandlersFor<typeof enterpriseRequestSchemas>
     application.get('EnterprisePlugin').auth.logout()
     return { ok: true }
   },
-  'enterprise.skills.list': async () => ({ skills: await application.get('EnterprisePlugin').skills.list() }),
+  // [enterprise] installedSlugs：随目录返回已装状态（对话框据此标记「已安装」）
+  'enterprise.skills.list': async () => {
+    const plugin = application.get('EnterprisePlugin')
+    return { skills: await plugin.skills.list(), installedSlugs: plugin.skills.installedSlugs() }
+  },
   'enterprise.skills.install': async ({ slug }) => {
     await application.get('EnterprisePlugin').skills.install(slug)
     return { ok: true }

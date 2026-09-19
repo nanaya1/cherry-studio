@@ -2064,6 +2064,7 @@
   "library.org_skill.empty_title": "No organization skills",
   "library.org_skill.install": "Install",
   "library.org_skill.install_success": "Organization skill \"{{name}}\" installed",
+  "library.org_skill.installed": "Installed",
   "library.org_skill.installing": "Installing…",
   "library.org_skill.remove": "Șterge",
   "library.org_skill.remove_success": "Competența organizației „{{name}}” a fost ștearsă",

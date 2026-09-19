@@ -115,6 +115,11 @@ export class OrgSkillCatalog {
     await this.downloadAndInstall(slug)
   }
 
+  /** [enterprise] 已安装的 org 技能 slug 列表（供目录对话框标记「已安装」状态） */
+  installedSlugs(): string[] {
+    return Object.keys(orgStateStore.snapshot())
+  }
+
   /**
    * [enterprise] C1 下载 + 安装 + state 记录 + install 上报（install 与 startupScan 共用）。
    */

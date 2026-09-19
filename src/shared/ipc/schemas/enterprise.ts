@@ -39,7 +39,8 @@ export const enterpriseRequestSchemas = {
   'enterprise.session.logout': defineRoute({ input: z.void(), output: z.strictObject({ ok: z.boolean() }) }),
   'enterprise.skills.list': defineRoute({
     input: z.void(),
-    output: z.strictObject({ skills: z.array(orgSkillItemSchema) })
+    // [enterprise] installedSlugs：本地已安装的 org 技能 slug（对话框标记「已安装」状态）
+    output: z.strictObject({ skills: z.array(orgSkillItemSchema), installedSlugs: z.array(z.string()) })
   }),
   'enterprise.skills.install': defineRoute({
     input: z.strictObject({ slug: z.string() }),

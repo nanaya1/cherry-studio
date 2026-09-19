@@ -16,8 +16,9 @@ type Props = {
 export function OrgSkillDialog({ open, onOpenChange }: Props) {
   const { t } = useTranslation()
   const [query, setQuery] = useState('')
-  // [enterprise] C2/C4：disabledSlugs 停用提示 + remove 删除上报
-  const { skills, loading, error, install, installing, refetch, disabledSlugs, remove } = useOrgSkills(open)
+  // [enterprise] C2/C4：disabledSlugs 停用提示 + remove 删除上报；installedSlugs 已装标记
+  const { skills, loading, error, install, installing, refetch, disabledSlugs, installedSlugs, remove } =
+    useOrgSkills(open)
   const [lastError, setLastError] = useState<string | null>(null)
   const [removing, setRemoving] = useState<Set<string>>(() => new Set())
 
@@ -118,6 +119,8 @@ export function OrgSkillDialog({ open, onOpenChange }: Props) {
                   installing={installing.has(skill.slug)}
                   error={lastError}
                   disabled={disabledSlugs.includes(skill.slug)}
+                  // [enterprise] 已安装标记：state 中有记录即视为已装
+                  installed={installedSlugs.has(skill.slug)}
                   removing={removing.has(skill.slug)}
                   onInstall={() => void handleInstall(skill)}
                   onRemove={() => void handleRemove(skill)}
@@ -136,6 +139,7 @@ function OrgSkillRow({
   installing,
   error,
   disabled = false,
+  installed = false,
   removing = false,
   onInstall,
   onRemove
@@ -145,12 +149,16 @@ function OrgSkillRow({
   error: string | null
   // [enterprise] C2：企业已停用/下架 → 提示"可删除"
   disabled?: boolean
+  // [enterprise] 本地已安装 → 按钮显示「已安装」禁用态
+  installed?: boolean
   // [enterprise] C4：删除进行中
   removing?: boolean
   onInstall: () => void
   onRemove: () => void
 }) {
   const { t } = useTranslation()
+  // [enterprise] 停用项优先级更高（提示可删除），其次已安装
+  const showAsInstalled = installed && !disabled
 
   return (
     <div
@@ -172,11 +180,16 @@ function OrgSkillRow({
         </div>
         <p className="mt-0.5 truncate text-muted-foreground text-xs">{skill.description}</p>
       </div>
-      {/* [enterprise] C2/C4：停用项显示"删除"（上报 deleted + 本地卸载），正常项显示"安装" */}
+      {/* [enterprise] C2/C4：停用项显示"删除"（上报 deleted + 本地卸载）；已装项显示禁用「已安装」；正常项显示"安装" */}
       {disabled ? (
         <Button variant="outline" size="sm" disabled={removing} onClick={onRemove} className="shrink-0">
           {removing ? <Loader2 className="size-3 animate-spin" /> : null}
           {removing ? t('library.org_skill.removing') : t('library.org_skill.remove')}
+        </Button>
+      ) : showAsInstalled ? (
+        <Button variant="secondary" size="sm" disabled className="shrink-0">
+          <Check className="size-3" />
+          {t('library.org_skill.installed')}
         </Button>
       ) : (
         <Button variant="outline" size="sm" disabled={installing} onClick={onInstall} className="shrink-0">

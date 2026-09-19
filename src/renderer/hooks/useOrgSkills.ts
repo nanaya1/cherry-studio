@@ -25,6 +25,8 @@ export function useOrgSkills(enabled: boolean) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [installing, setInstalling] = useState<Set<string>>(() => new Set())
+  // [enterprise] 本地已安装的 slug（对话框标记「已安装」状态）
+  const [installedSlugs, setInstalledSlugs] = useState<Set<string>>(() => new Set())
   // [enterprise] C2：本地已安装但企业已停用/下架的 slug（提示"可删除"，不注入新会话）
   const [disabledSlugs, setDisabledSlugs] = useState<string[]>([])
   const invalidate = useInvalidateSkills()
@@ -38,8 +40,11 @@ export function useOrgSkills(enabled: boolean) {
     setLoading(true)
     setError(null)
     try {
-      const { skills: list } = await ipcApi.request('enterprise.skills.list')
+      // [enterprise] 目录响应携带 installedSlugs（原解构注释保留）
+      // const { skills: list } = await ipcApi.request('enterprise.skills.list')
+      const { skills: list, installedSlugs: installed } = await ipcApi.request('enterprise.skills.list')
       setSkills(list)
+      setInstalledSlugs(new Set(installed))
       // [enterprise] C2：并行查询停用列表（查询失败不影响目录展示）
       try {
         const { disabled } = await ipcApi.request('enterprise.skills.listDisabled')
@@ -66,6 +71,8 @@ export function useOrgSkills(enabled: boolean) {
       setInstalling((current) => new Set(current).add(slug))
       try {
         await ipcApi.request('enterprise.skills.install', { slug })
+        // [enterprise] 安装成功即时标记「已安装」（不等 refetch）
+        setInstalledSlugs((current) => new Set(current).add(slug))
         // 刷新 SQLite 列表与文件系统增强目录（useInvalidateSkills 同时覆盖两者）
         await invalidate()
         return true
@@ -88,6 +95,12 @@ export function useOrgSkills(enabled: boolean) {
   const remove = useCallback(async (slug: string): Promise<boolean> => {
     try {
       await ipcApi.request('enterprise.skills.reportDeleted', { slug })
+      // [enterprise] 卸载成功即时移除「已安装」标记
+      setInstalledSlugs((current) => {
+        const next = new Set(current)
+        next.delete(slug)
+        return next
+      })
       await invalidate()
       return true
     } catch (cause) {
@@ -97,5 +110,5 @@ export function useOrgSkills(enabled: boolean) {
     }
   }, [invalidate])
 
-  return { skills, loading, error, install, installing, refetch, disabledSlugs, remove }
+  return { skills, loading, error, install, installing, refetch, disabledSlugs, installedSlugs, remove }
 }

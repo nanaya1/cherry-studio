@@ -240,4 +240,17 @@ describe('OrgSkillCatalog C1/C2/C4', () => {
     )
     expect(apiMock.reportLifecycle).toHaveBeenCalledWith('new-skill', 'install', { version: '1.0.0' })
   })
+
+  it('[enterprise] installedSlugs：返回 state 中已装的 slug 列表', () => {
+    stateStoreMock.snapshot.mockReturnValue({
+      'installed-a': { version: '1.0.0', contentHash: 'h1', skillId: 'id-1', folderName: 'installed-a', enabled: true },
+      'installed-b': { version: '2.0.0', contentHash: 'h2', skillId: 'id-2', folderName: 'installed-b', enabled: false }
+    })
+    expect(catalog.installedSlugs()).toEqual(['installed-a', 'installed-b'])
+  })
+
+  it('[enterprise] installedSlugs：无安装记录时返回空数组', () => {
+    stateStoreMock.snapshot.mockReturnValue({})
+    expect(catalog.installedSlugs()).toEqual([])
+  })
 })
