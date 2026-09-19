@@ -19,7 +19,11 @@ async function reportOrgSkillDeletedIfManaged(skillId: string): Promise<void> {
     const { orgStateStore } = await import('@main/enterprise/OrgStateStore')
     const entry = Object.entries(orgStateStore.snapshot()).find(([, s]) => s.skillId === skillId)
     if (!entry) return // 非 org 技能，走原逻辑
-    const plugin = application.getOptional('EnterprisePlugin')
+    // [enterprise] 回归修复：getOptional 对非 conditional 服务（EnterprisePlugin 是普通
+    // @Injectable）按容器契约直接抛错，被 catch 吞掉后 state 永不清除 → 组织 tab 永远「已安装」。
+    // 改用 getExisting（只在已创建时解析，永不抛错）。原实现保留在下行注释。
+    // const plugin = application.getOptional('EnterprisePlugin')
+    const plugin = application.getExisting('EnterprisePlugin')
     if (!plugin) return // enterprise 插件未注册（测试/未启用环境）
     await plugin.skills.reportDeleted(entry[0])
   } catch (error) {

@@ -35,7 +35,10 @@ const fileSchema = z.object({
   // [enterprise] C6 连接器本地映射：slug → { mcpId, baseUrl }
   connectors: z.record(z.string(), connectorStateSchema).default({}),
   /** C3 登出时置 true：所有 org 资源标记"组织不可用"，重登恢复 */
-  unavailable: z.boolean().default(false)
+  unavailable: z.boolean().default(false),
+  // [enterprise] C4 删除墓碑：slug → 删除时的 contentHash。
+  // startupScan C1 据此防复活：同 hash 不重装（用户删过），hash 变化（企业推新版）清墓碑重装。
+  deletedSkills: z.record(z.string(), z.string()).default({})
 })
 
 function stateFile(): string {
@@ -88,6 +91,23 @@ export class OrgStateStore {
 
   remove(slug: string): void {
     delete this.data.skills[slug]
+    this.persist()
+  }
+
+  // [enterprise] C4 删除墓碑：记录 slug 删除时的 contentHash 并持久化（幂等，重复标记以后一次为准）
+  markDeleted(slug: string, contentHash: string): void {
+    this.data.deletedSkills[slug] = contentHash
+    this.persist()
+  }
+
+  // [enterprise] C4 墓碑查询：返回删除时记录的 contentHash（无墓碑返回 undefined）
+  deletedHash(slug: string): string | undefined {
+    return this.data.deletedSkills[slug]
+  }
+
+  // [enterprise] C4 清除墓碑（企业推新版重新下发时由 startupScan 调用）
+  clearDeleted(slug: string): void {
+    delete this.data.deletedSkills[slug]
     this.persist()
   }
 

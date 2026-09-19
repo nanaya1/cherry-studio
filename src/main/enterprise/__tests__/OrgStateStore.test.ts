@@ -112,4 +112,35 @@ describe('OrgStateStore', () => {
       enabled: true
     })
   })
+
+  // [enterprise] C4 墓碑：删除记录移入 deletedSkills（含删除时 hash），供 startupScan
+  // 防复活判断（同 hash 不重装、企业推新版 hash 变化时覆盖重装）。原 remove 逻辑保留。
+  it('markDeleted 写入墓碑并持久化，含删除时 contentHash', () => {
+    const store = new OrgStateStore()
+    store.upsert('demo', { version: '1', contentHash: 'h1', skillId: 's1', folderName: 'd' })
+    store.markDeleted('demo', 'h1')
+
+    expect(store.deletedHash('demo')).toBe('h1')
+    const reloaded = new OrgStateStore()
+    expect(reloaded.deletedHash('demo')).toBe('h1')
+    // 墓碑后原记录仍在（installedSlugs 语义由 OrgSkillCatalog 过滤，store 不管）
+    expect(reloaded.get('demo')?.skillId).toBe('s1')
+  })
+
+  it('clearDeleted 移除墓碑且持久化', () => {
+    const store = new OrgStateStore()
+    store.markDeleted('demo', 'h1')
+    store.clearDeleted('demo')
+
+    expect(store.deletedHash('demo')).toBeUndefined()
+    const reloaded = new OrgStateStore()
+    expect(reloaded.deletedHash('demo')).toBeUndefined()
+  })
+
+  it('markDeleted 幂等：重复标记以后一次 hash 为准', () => {
+    const store = new OrgStateStore()
+    store.markDeleted('demo', 'h1')
+    store.markDeleted('demo', 'h2')
+    expect(store.deletedHash('demo')).toBe('h2')
+  })
 })

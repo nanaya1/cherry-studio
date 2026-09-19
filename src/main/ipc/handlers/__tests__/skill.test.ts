@@ -12,7 +12,11 @@ const {
   importSystemMock,
   openPathMock,
   reconcileMock,
-  resolveIconUrlsMock
+  resolveIconUrlsMock,
+  appGetOptionalMock,
+  appGetExistingMock,
+  reportDeletedMock,
+  orgSnapshotMock
 } = vi.hoisted(() => ({
   installMock: vi.fn(),
   uninstallMock: vi.fn(),
@@ -25,12 +29,39 @@ const {
   importSystemMock: vi.fn(),
   openPathMock: vi.fn(),
   reconcileMock: vi.fn(),
-  resolveIconUrlsMock: vi.fn()
+  resolveIconUrlsMock: vi.fn(),
+  // [enterprise] C4 拦截层用例：getOptional 对非 conditional 服务抛错（真实容器契约），
+  // getExisting 只在已创建时解析——拦截层必须用后者
+  appGetOptionalMock: vi.fn(),
+  appGetExistingMock: vi.fn(),
+  reportDeletedMock: vi.fn(),
+  orgSnapshotMock: vi.fn()
 }))
 
 vi.mock('electron', () => ({
   shell: { openPath: openPathMock }
 }))
+
+// [enterprise] 真实容器契约：非 conditional 服务 getOptional 抛错
+vi.mock('@application', () => ({
+  application: {
+    getOptional: appGetOptionalMock,
+    getExisting: appGetExistingMock
+  }
+}))
+
+vi.mock('@logger', () => ({
+  loggerService: { withContext: () => ({ warn: vi.fn(), info: vi.fn(), error: vi.fn() }) }
+}))
+
+vi.mock('@main/enterprise/OrgStateStore', () => ({
+  orgStateStore: { snapshot: orgSnapshotMock }
+}))
+
+// [enterprise] EnterprisePlugin 非 conditional（普通 @Injectable），getOptional 必须抛错
+appGetOptionalMock.mockImplementation(() => {
+  throw new Error("[ServiceContainer] Service 'EnterprisePlugin' is not conditional — use get('EnterprisePlugin').")
+})
 
 vi.mock('@main/ai/skills/SkillService', () => ({
   skillService: {
@@ -179,5 +210,49 @@ describe('skillHandlers', () => {
     await expect(skillHandlers['skill.import_system']({ directoryPath: '/skill' }, ctx)).rejects.toThrow(
       'import failed'
     )
+  })
+
+  // [enterprise] C4：卸载 org 技能时必须清 state（否则组织 tab 永远显示「已安装」）。
+  // 回归背景：曾用 getOptional 取 EnterprisePlugin，非 conditional 服务按容器契约抛错
+  // 被 catch 吞掉 → org-state.json 残留孤儿记录。
+  it('uninstall of an org skill reports deleted via getExisting (not getOptional)', async () => {
+    orgSnapshotMock.mockReturnValue({
+      'org-code-review': { version: '2.0.0', contentHash: 'h', skillId: 's-org', folderName: 'org-code-review', enabled: true }
+    })
+    appGetExistingMock.mockReturnValue({ skills: { reportDeleted: reportDeletedMock } })
+    reportDeletedMock.mockResolvedValue(undefined)
+    uninstallMock.mockResolvedValue(undefined)
+
+    await skillHandlers['skill.uninstall']({ skillId: 's-org' }, ctx)
+
+    expect(appGetExistingMock).toHaveBeenCalledWith('EnterprisePlugin')
+    expect(appGetOptionalMock).not.toHaveBeenCalledWith('EnterprisePlugin')
+    expect(reportDeletedMock).toHaveBeenCalledWith('org-code-review')
+    expect(uninstallMock).toHaveBeenCalledWith('s-org')
+  })
+
+  it('uninstall of a non-org skill skips the enterprise report entirely', async () => {
+    orgSnapshotMock.mockReturnValue({})
+    uninstallMock.mockResolvedValue(undefined)
+
+    await skillHandlers['skill.uninstall']({ skillId: 's-local' }, ctx)
+
+    expect(appGetExistingMock).not.toHaveBeenCalled()
+    expect(reportDeletedMock).not.toHaveBeenCalled()
+    expect(uninstallMock).toHaveBeenCalledWith('s-local')
+  })
+
+  it('uninstall still completes locally when the enterprise plugin is not ready', async () => {
+    orgSnapshotMock.mockReturnValue({
+      'org-pdf': { version: '1.0.0', contentHash: 'h', skillId: 's-pdf', folderName: 'pdf', enabled: true }
+    })
+    appGetExistingMock.mockReturnValue(undefined)
+    uninstallMock.mockResolvedValue(undefined)
+
+    await skillHandlers['skill.uninstall']({ skillId: 's-pdf' }, ctx)
+
+    expect(appGetExistingMock).toHaveBeenCalledWith('EnterprisePlugin')
+    expect(reportDeletedMock).not.toHaveBeenCalled()
+    expect(uninstallMock).toHaveBeenCalledWith('s-pdf')
   })
 })

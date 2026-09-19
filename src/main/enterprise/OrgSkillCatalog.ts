@@ -79,9 +79,16 @@ export class OrgSkillCatalog {
     const remote = new Map(catalog.map((s) => [s.slug, s]))
     const local = orgStateStore.snapshot()
 
-    // C1：远端有 & hash 变化 → 重装
+    // C1：远端有 & hash 变化 → 重装。
+    // [enterprise] C4 防复活：有删除墓碑且 hash 与远端一致 → 用户明确删过，跳过；
+    // hash 不一致（企业推了新版）→ 用户删除意图失效，清墓碑重新下发。
     for (const [slug, item] of remote) {
       const state = local[slug]
+      const tombstoneHash = orgStateStore.deletedHash(slug)
+      if (!state && tombstoneHash !== undefined) {
+        if (tombstoneHash === item.contentHash) continue
+        orgStateStore.clearDeleted(slug)
+      }
       if (state && state.contentHash === item.contentHash) continue
       try {
         await this.downloadAndInstall(slug, item)
@@ -115,9 +122,9 @@ export class OrgSkillCatalog {
     await this.downloadAndInstall(slug)
   }
 
-  /** [enterprise] 已安装的 org 技能 slug 列表（供目录对话框标记「已安装」状态） */
+  /** [enterprise] 已安装的 org 技能 slug 列表（供目录对话框标记「已安装」状态）；删除墓碑（C4）不算已安装 */
   installedSlugs(): string[] {
-    return Object.keys(orgStateStore.snapshot())
+    return Object.keys(orgStateStore.snapshot()).filter((slug) => orgStateStore.deletedHash(slug) === undefined)
   }
 
   /**
@@ -165,12 +172,16 @@ export class OrgSkillCatalog {
 
   /**
    * [enterprise] C4 删除上报：用户卸载 org 技能时调用（由 skill.uninstall IPC 拦截层触发）。
-   * 上报失败不阻塞本地卸载；state 记录同步清除。
+   * 上报失败不阻塞本地卸载；state 记录同步清除，并写入删除墓碑（slug → 删除时 hash），
+   * 供 startupScan C1 防复活：同 hash 不自动重装，企业推新版（hash 变化）时清墓碑重装。
    */
   async reportDeleted(slug: string): Promise<void> {
     try {
       await this.auth.apiClient.reportLifecycle(slug, 'deleted', { slug })
     } finally {
+      // [enterprise] 墓碑取删除时的 hash；安装记录已被卸载链路删除也要兜底清掉
+      const deletedHash = orgStateStore.get(slug)?.contentHash
+      if (deletedHash) orgStateStore.markDeleted(slug, deletedHash)
       orgStateStore.remove(slug)
     }
   }

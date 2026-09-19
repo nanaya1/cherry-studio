@@ -27,7 +27,11 @@ const { authMock, apiMock, skillServiceMock, stateStoreMock } = vi.hoisted(() =>
     setEnabled: vi.fn(),
     markUnavailable: vi.fn(),
     markAvailable: vi.fn(),
-    snapshotUnavailable: vi.fn()
+    snapshotUnavailable: vi.fn(),
+    // [enterprise] C4 墓碑 API
+    markDeleted: vi.fn(),
+    clearDeleted: vi.fn(),
+    deletedHash: vi.fn()
   }
 }))
 
@@ -252,5 +256,83 @@ describe('OrgSkillCatalog C1/C2/C4', () => {
   it('[enterprise] installedSlugs：无安装记录时返回空数组', () => {
     stateStoreMock.snapshot.mockReturnValue({})
     expect(catalog.installedSlugs()).toEqual([])
+  })
+
+  // [enterprise] C4 墓碑：删除后 installedSlugs 不得再包含该 slug（否则组织 tab 永远「已安装」）
+  it('C4 installedSlugs：排除已删除（墓碑）的 slug', () => {
+    stateStoreMock.snapshot.mockReturnValue({
+      kept: { version: '1', contentHash: 'hk', skillId: 's1', folderName: 'kept', enabled: true },
+      gone: { version: '1', contentHash: 'hg', skillId: 's2', folderName: 'gone', enabled: true }
+    })
+    stateStoreMock.deletedHash.mockImplementation((slug: string) => (slug === 'gone' ? 'hg' : undefined))
+    expect(catalog.installedSlugs()).toEqual(['kept'])
+  })
+
+  it('C4 reportDeleted：上报后写墓碑（记录删除时 hash）并清安装记录', async () => {
+    apiMock.reportLifecycle.mockResolvedValue(undefined)
+
+    await catalog.reportDeleted('a')
+
+    expect(apiMock.reportLifecycle).toHaveBeenCalledWith('a', 'deleted', expect.anything())
+    expect(stateStoreMock.remove).toHaveBeenCalledWith('a')
+  })
+
+  it('C4 reportDeleted：删除时把当前 contentHash 记入墓碑（供 C1 防复活）', async () => {
+    apiMock.reportLifecycle.mockResolvedValue(undefined)
+    stateStoreMock.get.mockReturnValue({
+      version: '1.0.0',
+      contentHash: 'hash-deleted-at',
+      skillId: 's1',
+      folderName: 'a',
+      enabled: true
+    })
+
+    await catalog.reportDeleted('a')
+
+    expect(stateStoreMock.markDeleted).toHaveBeenCalledWith('a', 'hash-deleted-at')
+  })
+
+  // [enterprise] C1 防复活：用户删过的技能（墓碑 hash 一致）重启后不得自动重装
+  it('C1 startupScan：墓碑 hash 与远端一致 → 跳过重装（删除不被复活）', async () => {
+    apiMock.listSkills.mockResolvedValue({ skills: [makeItem('a', 'hash-deleted-at')] })
+    stateStoreMock.snapshot.mockReturnValue({})
+    stateStoreMock.deletedHash.mockImplementation((slug: string) => (slug === 'a' ? 'hash-deleted-at' : undefined))
+
+    const downloadAndInstall = vi.fn().mockResolvedValue(undefined)
+    ;(catalog as unknown as { downloadAndInstall: unknown }).downloadAndInstall = downloadAndInstall
+
+    const result = await (catalog as unknown as { startupScan: () => Promise<{ updated: string[]; disabled: string[] }> }).startupScan()
+    expect(downloadAndInstall).not.toHaveBeenCalled()
+    expect(result.updated).toEqual([])
+  })
+
+  // 企业推新版（hash 变化）→ 用户删除意图失效，清墓碑重新下发
+  it('C1 startupScan：墓碑 hash 与远端不一致 → 清墓碑并重装（新版下发）', async () => {
+    apiMock.listSkills.mockResolvedValue({ skills: [makeItem('a', 'hash-new', '2.0.0')] })
+    stateStoreMock.snapshot.mockReturnValue({})
+    stateStoreMock.deletedHash.mockImplementation((slug: string) => (slug === 'a' ? 'hash-old' : undefined))
+
+    const downloadAndInstall = vi.fn().mockResolvedValue(undefined)
+    ;(catalog as unknown as { downloadAndInstall: unknown }).downloadAndInstall = downloadAndInstall
+
+    const result = await (catalog as unknown as { startupScan: () => Promise<{ updated: string[]; disabled: string[] }> }).startupScan()
+    expect(stateStoreMock.clearDeleted).toHaveBeenCalledWith('a')
+    expect(downloadAndInstall).toHaveBeenCalledWith('a', expect.objectContaining({ contentHash: 'hash-new' }))
+    expect(result.updated).toEqual(['a'])
+  })
+
+  // 无墓碑时行为不变：远端有、本地无 → 视为新技能安装
+  it('C1 startupScan：远端有本地无且无墓碑 → 正常安装（原语义保留）', async () => {
+    apiMock.listSkills.mockResolvedValue({ skills: [makeItem('fresh', 'hash-f')] })
+    stateStoreMock.snapshot.mockReturnValue({})
+    stateStoreMock.deletedHash.mockReturnValue(undefined)
+
+    const downloadAndInstall = vi.fn().mockResolvedValue(undefined)
+    ;(catalog as unknown as { downloadAndInstall: unknown }).downloadAndInstall = downloadAndInstall
+
+    const result = await (catalog as unknown as { startupScan: () => Promise<{ updated: string[]; disabled: string[] }> }).startupScan()
+    expect(stateStoreMock.clearDeleted).not.toHaveBeenCalled()
+    expect(downloadAndInstall).toHaveBeenCalledWith('fresh', expect.anything())
+    expect(result.updated).toEqual(['fresh'])
   })
 })
