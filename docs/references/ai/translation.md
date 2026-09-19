@@ -8,7 +8,7 @@ sources:
   - src/renderer/utils/translate/translateText.ts
   - src/renderer/pages/translate/TranslateSettings.tsx
   - src/renderer/pages/translate/useTranslateReasoningEffort.ts
-  - src/renderer/pages/home/messages/homeMessageListAdapter.tsx
+  - src/renderer/components/chat/messages/homeMessageListAdapter.tsx
 ---
 
 # Text Translation
