@@ -1,5 +1,6 @@
 import { Button, Tabs, TabsContent, TabsList, TabsTrigger } from '@cherrystudio/ui'
 import {
+  OrgSkillCatalogView,
   RecommendedSkillCatalogView,
   SkillCatalogDialogs,
   SkillCatalogHeaderActions,
@@ -16,13 +17,19 @@ interface SkillsConnectorsPageProps {
   connectorView: ReactNode
 }
 
-type SkillView = 'recommended' | 'installed'
+// [enterprise] skillView 增加 'org'：组织技能升级为首页二级 tab（原二态注释保留）
+// type SkillView = 'recommended' | 'installed'
+type SkillView = 'recommended' | 'installed' | 'org'
+// [enterprise] 二级 tab：推荐（原技能市场内容）/ 组织（企业下发技能）
+type OrgSubTab = 'recommended' | 'org'
 
 export default function SkillsConnectorsPage({ connectorView }: SkillsConnectorsPageProps) {
   const { t } = useTranslation()
   const [activeTab, setActiveTab] = useState('skill')
   const [skillView, setSkillView] = useState<SkillView>('recommended')
   const [recommendedSearch, setRecommendedSearch] = useState('')
+  // [enterprise] 「推荐」一级视图内的二级 tab 状态
+  const [orgSubTab, setOrgSubTab] = useState<OrgSubTab>('recommended')
   const skillController = useResourceCatalogController('skill', { clientSideSkillSearch: true })
   const installedCount = skillController.gridProps.allResources.filter((resource) => resource.type === 'skill').length
 
@@ -85,7 +92,27 @@ export default function SkillsConnectorsPage({ connectorView }: SkillsConnectors
       {/* <TabsContent value="skill" className="min-h-0 flex-1"> */}
       <TabsContent value="skill" className="flex min-h-0 flex-1 flex-col">
         {skillView === 'recommended' ? (
-          <RecommendedSkillCatalogView search={recommendedSearch} onViewInstalled={() => setSkillView('installed')} />
+          // [enterprise] 推荐一级视图内分「推荐 / 组织」二级 tab；组织页为卡片式目录
+          <Tabs value={orgSubTab} onValueChange={(value) => setOrgSubTab(value as OrgSubTab)} className="flex min-h-0 flex-1 flex-col">
+            <TabsList className="mx-6 shrink-0 justify-start gap-1 bg-transparent p-0">
+              <TabsTrigger
+                value="recommended"
+                className="gap-1.5 border-0 px-2.5 py-1.5 text-muted-foreground shadow-none data-[state=active]:bg-foreground data-[state=active]:text-background">
+                {t('workspace.skill_catalog.recommended')}
+              </TabsTrigger>
+              <TabsTrigger
+                value="org"
+                className="gap-1.5 border-0 px-2.5 py-1.5 text-muted-foreground shadow-none data-[state=active]:bg-foreground data-[state=active]:text-background">
+                {t('workspace.skill_catalog.org')}
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value="recommended" className="flex min-h-0 flex-1 flex-col">
+              <RecommendedSkillCatalogView search={recommendedSearch} onViewInstalled={() => setSkillView('installed')} />
+            </TabsContent>
+            <TabsContent value="org" className="flex min-h-0 flex-1 flex-col">
+              <OrgSkillCatalogView />
+            </TabsContent>
+          </Tabs>
         ) : (
           <SkillCatalogView controller={skillController} secondary showDialogs={false} />
         )}

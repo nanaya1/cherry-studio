@@ -5535,6 +5535,7 @@
   "workspace.skill_catalog.name_conflict_cancel": "Не сейчас",
   "workspace.skill_catalog.name_conflict_description": "Навык «{{name}}» использует то же имя папки, что и уже установленный навык. Чтобы не перезаписать существующие данные, сначала устраните конфликт в разделе установленных навыков.",
   "workspace.skill_catalog.name_conflict_title": "Не удалось установить рекомендованный навык",
+  "workspace.skill_catalog.org": "Организация",
   "workspace.skill_catalog.recommended": "Recommended",
   "workspace.skill_catalog.universal": "All industries",
   "workspace.skill_catalog.version": "Version",

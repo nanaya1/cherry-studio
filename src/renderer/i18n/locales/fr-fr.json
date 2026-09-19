@@ -5535,6 +5535,7 @@
   "workspace.skill_catalog.name_conflict_cancel": "Plus tard",
   "workspace.skill_catalog.name_conflict_description": "« {{name}} » utilise le même nom de dossier qu’une compétence installée. Pour éviter d’écraser du contenu existant, résolvez d’abord ce conflit dans Mes compétences installées.",
   "workspace.skill_catalog.name_conflict_title": "Impossible d’installer la compétence recommandée",
+  "workspace.skill_catalog.org": "Organisation",
   "workspace.skill_catalog.recommended": "Recommended",
   "workspace.skill_catalog.universal": "All industries",
   "workspace.skill_catalog.version": "Version",

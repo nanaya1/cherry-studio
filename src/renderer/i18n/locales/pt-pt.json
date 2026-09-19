@@ -5535,6 +5535,7 @@
   "workspace.skill_catalog.name_conflict_cancel": "Agora não",
   "workspace.skill_catalog.name_conflict_description": "“{{name}}” utiliza o mesmo nome de pasta que uma competência instalada. Para evitar substituir conteúdo existente, resolva primeiro o conflito em As minhas competências instaladas.",
   "workspace.skill_catalog.name_conflict_title": "Não é possível instalar a competência recomendada",
+  "workspace.skill_catalog.org": "Organização",
   "workspace.skill_catalog.recommended": "Recommended",
   "workspace.skill_catalog.universal": "All industries",
   "workspace.skill_catalog.version": "Version",
