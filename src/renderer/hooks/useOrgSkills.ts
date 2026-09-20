@@ -42,7 +42,10 @@ export function useOrgSkills(enabled: boolean) {
     try {
       // [enterprise] 目录响应携带 installedSlugs（原解构注释保留）
       // const { skills: list } = await ipcApi.request('enterprise.skills.list')
-      const { skills: list, installedSlugs: installed } = await ipcApi.request('enterprise.skills.list')
+      // force: 用户主动刷新必须穿透主进程目录 TTL 缓存（管理台启停后立即生效）
+      const { skills: list, installedSlugs: installed } = await ipcApi.request('enterprise.skills.list', {
+        force: true
+      })
       setSkills(list)
       setInstalledSlugs(new Set(installed))
       // [enterprise] C2：并行查询停用列表（查询失败不影响目录展示）

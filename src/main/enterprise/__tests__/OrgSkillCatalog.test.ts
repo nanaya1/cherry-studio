@@ -211,6 +211,30 @@ describe('OrgSkillCatalog C1/C2/C4', () => {
     expect(items.map((i) => i.slug)).toEqual(['a'])
   })
 
+  // [enterprise] 管理台启停后客户端「刷新」必须穿透 TTL 缓存，否则 5 分钟内看不到变更
+  it('C2 list(force)：TTL 内强制刷新重新拉取并更新缓存', async () => {
+    apiMock.listSkills.mockResolvedValue({ skills: [makeItem('a', 'h1')] })
+    await catalog.list()
+
+    apiMock.listSkills.mockResolvedValue({ skills: [makeItem('a', 'h2')] })
+    const items = await catalog.list(true)
+    expect(apiMock.listSkills).toHaveBeenCalledTimes(2)
+    expect(items[0].contentHash).toBe('h2')
+
+    // 强刷后缓存被新数据替换，后续普通调用命中新缓存
+    await catalog.list()
+    expect(apiMock.listSkills).toHaveBeenCalledTimes(2)
+  })
+
+  it('C2 list(force)：强刷失败仍有旧缓存 → 降级返回旧目录', async () => {
+    apiMock.listSkills.mockResolvedValueOnce({ skills: [makeItem('a', 'h1')] })
+    await catalog.list()
+
+    apiMock.listSkills.mockRejectedValueOnce(new Error('down'))
+    const items = await catalog.list(true)
+    expect(items.map((i) => i.slug)).toEqual(['a'])
+  })
+
   it('C4 reportDeleted：调用 lifecycle deleted 上报 + 清 state', async () => {
     await catalog.reportDeleted('a')
     expect(apiMock.reportLifecycle).toHaveBeenCalledWith('a', 'deleted', expect.anything())

@@ -11,9 +11,10 @@ export const enterpriseHandlers: IpcHandlersFor<typeof enterpriseRequestSchemas>
     return { ok: true }
   },
   // [enterprise] installedSlugs：随目录返回已装状态（对话框据此标记「已安装」）
-  'enterprise.skills.list': async () => {
+  // force：UI 手动刷新穿透目录 TTL 缓存
+  'enterprise.skills.list': async ({ force }) => {
     const plugin = application.get('EnterprisePlugin')
-    return { skills: await plugin.skills.list(), installedSlugs: plugin.skills.installedSlugs() }
+    return { skills: await plugin.skills.list(force === true), installedSlugs: plugin.skills.installedSlugs() }
   },
   'enterprise.skills.install': async ({ slug }) => {
     await application.get('EnterprisePlugin').skills.install(slug)

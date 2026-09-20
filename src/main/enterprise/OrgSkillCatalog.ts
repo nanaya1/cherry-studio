@@ -29,9 +29,10 @@ export class OrgSkillCatalog {
 
   constructor(private readonly auth: import('./OrgAuthManager').OrgAuthManager) {}
 
-  async list(): Promise<OrgSkillCatalogItem[]> {
-    // [enterprise] C2：走 5 分钟 TTL 缓存；失败时若有过期缓存则降级使用（可用性优先）
-    if (this.catalogCache && Date.now() - this.catalogCache.at < CATALOG_TTL_MS) {
+  async list(force = false): Promise<OrgSkillCatalogItem[]> {
+    // [enterprise] C2：走 5 分钟 TTL 缓存；失败时若有过期缓存则降级使用（可用性优先）。
+    // force=true（UI 手动刷新）穿透缓存强制拉取——否则管理台启停后 5 分钟内客户端看不到变更
+    if (!force && this.catalogCache && Date.now() - this.catalogCache.at < CATALOG_TTL_MS) {
       return this.catalogCache.items
     }
     try {
