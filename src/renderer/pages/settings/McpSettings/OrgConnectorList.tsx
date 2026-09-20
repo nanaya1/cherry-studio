@@ -1,13 +1,14 @@
-import { Badge, Button } from '@cherrystudio/ui'
-import CollapsibleSearchBar from '@renderer/components/CollapsibleSearchBar'
-import { useOrgConnectors } from '@renderer/hooks/useOrgConnectors'
-import { useMcpServers } from '@renderer/hooks/useMcpServer'
-import { toast } from '@renderer/services/toast'
-import { cn } from '@renderer/utils/style'
 import { Check, Download, LoaderCircle, Plug } from 'lucide-react'
 import type { FC, ReactNode } from 'react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+
+import { Badge, Button } from '@cherrystudio/ui'
+import CollapsibleSearchBar from '@renderer/components/CollapsibleSearchBar'
+import { useMcpServers } from '@renderer/hooks/useMcpServer'
+import { useOrgConnectors } from '@renderer/hooks/useOrgConnectors'
+import { toast } from '@renderer/services/toast'
+import { cn } from '@renderer/utils/style'
 
 // [enterprise] T0 组织连接器目录：企业下发的直连型 SSE MCP，一键安装为本地 MCP 服务器
 interface OrgConnectorListProps {
@@ -49,7 +50,7 @@ const OrgConnectorList: FC<OrgConnectorListProps> = ({ variant = 'catalog', tool
     <div className="mb-5">
       <div className="mb-3 flex w-full min-w-0 flex-wrap items-center justify-between gap-3">
         {toolbarStart}
-        <div className="flex min-w-0 items-center gap-2">
+        <div className={cn('flex min-w-0 items-center gap-2', !toolbarStart && 'ml-auto')}>
           <CollapsibleSearchBar
             onSearch={setSearchText}
             placeholder={t('settings.mcp.search.placeholder')}
@@ -95,7 +96,10 @@ const OrgConnectorList: FC<OrgConnectorListProps> = ({ variant = 'catalog', tool
                   <p className="mt-3 line-clamp-2 text-muted-foreground text-sm leading-5">{connector.description}</p>
                   {/* stdio 连接器无 baseUrl：显示命令预览（与 MCP 详情页同款格式） */}
                   <p className="mt-1 truncate font-mono text-[11px] text-foreground-tertiary">
-                    {connector.baseUrl || [connector.config.command as string, ...((connector.config.args as string[] | undefined) ?? [])].filter(Boolean).join(' ')}
+                    {connector.baseUrl ||
+                      [connector.config.command as string, ...((connector.config.args as string[] | undefined) ?? [])]
+                        .filter(Boolean)
+                        .join(' ')}
                   </p>
                 </div>
                 <div className="absolute top-3.5 right-3 flex shrink-0 items-center justify-end gap-1">

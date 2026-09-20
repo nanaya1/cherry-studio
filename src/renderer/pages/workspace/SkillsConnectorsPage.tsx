@@ -1,3 +1,8 @@
+import { ArrowLeft, Blocks, Download, Plug } from 'lucide-react'
+import type { ReactNode } from 'react'
+import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
+
 import { Button, Tabs, TabsContent, TabsList, TabsTrigger } from '@cherrystudio/ui'
 import {
   OrgSkillCatalogView,
@@ -8,20 +13,20 @@ import {
 } from '@renderer/components/resourceCatalog/catalog'
 import { ResourceCatalogSearchInput } from '@renderer/components/resourceCatalog/ResourceCatalogSearchInput'
 import { useResourceCatalogController } from '@renderer/hooks/resourceCatalog'
-import { ArrowLeft, Blocks, Download, Plug } from 'lucide-react'
-import type { ReactNode } from 'react'
-import { useState } from 'react'
-import { useTranslation } from 'react-i18next'
 
 interface SkillsConnectorsPageProps {
   connectorView: ReactNode
 }
 
-// [enterprise] skillView 增加 'org'：组织技能升级为首页二级 tab（原二态注释保留）
-// type SkillView = 'recommended' | 'installed'
-type SkillView = 'recommended' | 'installed' | 'org'
+// [enterprise] skillView 曾增加 'org'，现组织技能由 OrgSubTab 管理
+// type SkillView = 'recommended' | 'installed' | 'org'
+type SkillView = 'recommended' | 'installed'
 // [enterprise] 二级 tab：推荐（原技能市场内容）/ 组织（企业下发技能）
 type OrgSubTab = 'recommended' | 'org'
+
+// [enterprise] 与连接器目录二级 tab 保持一致
+const secondaryTabClassName =
+  'h-10 flex-none rounded-none border-x-0 border-t-0 border-b-2 border-transparent bg-transparent px-1.5 font-medium text-muted-foreground shadow-none hover:bg-transparent hover:text-foreground data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none dark:data-[state=active]:border-foreground dark:data-[state=active]:bg-transparent'
 
 export default function SkillsConnectorsPage({ connectorView }: SkillsConnectorsPageProps) {
   const { t } = useTranslation()
@@ -93,28 +98,27 @@ export default function SkillsConnectorsPage({ connectorView }: SkillsConnectors
       <TabsContent value="skill" className="flex min-h-0 flex-1 flex-col">
         {skillView === 'recommended' ? (
           // [enterprise] 推荐一级视图内分「推荐 / 组织」二级 tab；组织页为卡片式目录
-          <Tabs value={orgSubTab} onValueChange={(value) => setOrgSubTab(value as OrgSubTab)} className="flex min-h-0 flex-1 flex-col">
-            {/* [enterprise] 二级 tab 改为筛选 chip 风格：选中=浅灰药丸(bg-muted≈#F2F2F2)+近黑文字，未选中=灰字（原深色实心样式保留在下行注释） */}
-            {/* <TabsList className="mx-6 shrink-0 justify-start gap-1 bg-transparent p-0"> */}
-            <TabsList className="mx-6 h-auto shrink-0 justify-start gap-1 bg-transparent p-0">
+          <Tabs
+            value={orgSubTab}
+            onValueChange={(value) => setOrgSubTab(value as OrgSubTab)}
+            className="flex min-h-0 flex-1 flex-col">
+            {/* [enterprise] 原筛选 chip 风格保留，现统一为连接器目录的下划线二级 tab */}
+            {/* <TabsList className="mx-6 h-auto shrink-0 justify-start gap-1 bg-transparent p-0"> */}
+            <TabsList className="mx-6 h-11 shrink-0 justify-start gap-6 rounded-none bg-transparent p-0">
               {/* <TabsTrigger
                 value="recommended"
-                className="gap-1.5 border-0 px-2.5 py-1.5 text-muted-foreground shadow-none data-[state=active]:bg-foreground data-[state=active]:text-background">
+                className="h-7 gap-1.5 rounded-full border-0 px-3 py-0 text-muted-foreground shadow-none hover:text-foreground data-[state=active]:bg-muted data-[state=active]:text-foreground data-[state=active]:shadow-none dark:data-[state=active]:text-foreground">
                 {t('workspace.skill_catalog.recommended')}
               </TabsTrigger> */}
-              <TabsTrigger
-                value="recommended"
-                className="h-7 gap-1.5 rounded-full border-0 px-3 py-0 text-muted-foreground shadow-none hover:text-foreground data-[state=active]:bg-muted data-[state=active]:text-foreground data-[state=active]:shadow-none dark:data-[state=active]:text-foreground">
+              <TabsTrigger value="recommended" className={secondaryTabClassName}>
                 {t('workspace.skill_catalog.recommended')}
               </TabsTrigger>
               {/* <TabsTrigger
                 value="org"
-                className="gap-1.5 border-0 px-2.5 py-1.5 text-muted-foreground shadow-none data-[state=active]:bg-foreground data-[state=active]:text-background">
+                className="h-7 gap-1.5 rounded-full border-0 px-3 py-0 text-muted-foreground shadow-none hover:text-foreground data-[state=active]:bg-muted data-[state=active]:text-foreground data-[state=active]:shadow-none dark:data-[state=active]:text-foreground">
                 {t('workspace.skill_catalog.org')}
               </TabsTrigger> */}
-              <TabsTrigger
-                value="org"
-                className="h-7 gap-1.5 rounded-full border-0 px-3 py-0 text-muted-foreground shadow-none hover:text-foreground data-[state=active]:bg-muted data-[state=active]:text-foreground data-[state=active]:shadow-none dark:data-[state=active]:text-foreground">
+              <TabsTrigger value="org" className={secondaryTabClassName}>
                 {t('workspace.skill_catalog.org')}
               </TabsTrigger>
             </TabsList>

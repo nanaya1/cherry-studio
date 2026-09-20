@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest'
-
 import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
@@ -82,7 +81,8 @@ vi.mock('react-i18next', () => ({
         'workspace.resources.connectorsDescription': 'Manage existing connectors.',
         'workspace.skill_catalog.all_skills': 'All skills',
         'workspace.skill_catalog.my_installed': 'My installed',
-        'workspace.skill_catalog.recommended': 'Recommended skills'
+        'workspace.skill_catalog.recommended': 'Recommended skills',
+        'workspace.skill_catalog.org': 'Organization'
       })[key] ?? key
   })
 }))
@@ -100,7 +100,13 @@ describe('SkillsConnectorsPage', () => {
     render(<SkillsConnectorsPage connectorView={<div>connector catalog</div>} />)
 
     expect(screen.getByRole('tab', { name: 'Skills' })).toBeVisible()
+    expect(screen.getByRole('tab', { name: 'Recommended skills' })).toHaveClass('border-b-2')
+    expect(screen.getByRole('tab', { name: 'Organization' })).toHaveClass('border-b-2')
     expect(screen.getByText('recommended skills:')).toBeVisible()
+
+    await user.click(screen.getByRole('tab', { name: 'Organization' }))
+    expect(screen.getByText('org skills')).toBeVisible()
+    await user.click(screen.getByRole('tab', { name: 'Recommended skills' }))
     expect(screen.getByText('skill dialogs:')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /My installed/ })).toHaveTextContent('2')
 
