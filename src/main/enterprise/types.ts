@@ -15,8 +15,10 @@ export interface OrgConnectorCatalogItem {
   slug: string
   name: string
   description: string
-  type: 'sse'
+  /** 目录 v2 与管理台快速创建对齐：stdio/sse/streamableHttp（旧服务端恒为 sse） */
+  type: 'stdio' | 'sse' | 'streamableHttp'
   baseUrl: string
+  /** 完整客户端 MCP DTO（服务端已白名单化并拒绝密钥字段）；旧服务端为 {} */
   config: Record<string, unknown>
 }
 

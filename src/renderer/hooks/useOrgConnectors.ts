@@ -10,7 +10,8 @@ export interface OrgConnectorItem {
   slug: string
   name: string
   description: string
-  type: 'sse'
+  // 目录 v2 与管理台快速创建对齐：stdio/sse/streamableHttp（旧服务端恒为 sse）
+  type: 'stdio' | 'sse' | 'streamableHttp'
   baseUrl: string
   config: Record<string, unknown>
 }

@@ -93,7 +93,10 @@ const OrgConnectorList: FC<OrgConnectorListProps> = ({ variant = 'catalog', tool
                     </Badge>
                   </div>
                   <p className="mt-3 line-clamp-2 text-muted-foreground text-sm leading-5">{connector.description}</p>
-                  <p className="mt-1 truncate font-mono text-[11px] text-foreground-tertiary">{connector.baseUrl}</p>
+                  {/* stdio 连接器无 baseUrl：显示命令预览（与 MCP 详情页同款格式） */}
+                  <p className="mt-1 truncate font-mono text-[11px] text-foreground-tertiary">
+                    {connector.baseUrl || [connector.config.command as string, ...((connector.config.args as string[] | undefined) ?? [])].filter(Boolean).join(' ')}
+                  </p>
                 </div>
                 <div className="absolute top-3.5 right-3 flex shrink-0 items-center justify-end gap-1">
                   {installed ? (

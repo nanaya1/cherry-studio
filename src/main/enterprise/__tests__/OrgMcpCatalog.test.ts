@@ -51,8 +51,22 @@ vi.mock('@main/enterprise/OrgStateStore', async (importOriginal) => {
 
 import { OrgMcpCatalog } from '@main/enterprise/OrgMcpCatalog'
 
-function makeConnector(slug: string, baseUrl: string) {
-  return { slug, name: slug, description: `${slug} desc`, type: 'sse' as const, baseUrl, config: {} }
+function makeConnector(
+  slug: string,
+  baseUrl: string,
+  overrides: Partial<{
+    type: 'stdio' | 'sse' | 'streamableHttp'
+    config: Record<string, unknown>
+  }> = {}
+) {
+  return {
+    slug,
+    name: slug,
+    description: `${slug} desc`,
+    type: overrides.type ?? ('sse' as const),
+    baseUrl,
+    config: overrides.config ?? {}
+  }
 }
 
 describe('OrgMcpCatalog C6 compareAndSync', () => {
@@ -71,15 +85,156 @@ describe('OrgMcpCatalog C6 compareAndSync', () => {
     vi.restoreAllMocks()
   })
 
-  it('目录新增连接器 → 本地自动安装（isActive=false）', async () => {
+  it('migrateLegacyCopies 将旧 org MCP 改为 manual 且保留其他配置', () => {
+    mcpServiceMock.list.mockReturnValue({
+      items: [
+        { id: 'mcp-org', installSource: 'org', isActive: true },
+        { id: 'mcp-manual', installSource: 'manual', isActive: false }
+      ],
+      total: 2,
+      page: 1
+    })
+
+    expect(catalog.migrateLegacyCopies()).toBe(1)
+    expect(mcpServiceMock.update).toHaveBeenCalledTimes(1)
+    expect(mcpServiceMock.update).toHaveBeenCalledWith('mcp-org', { installSource: 'manual' })
+  })
+
+  it('手动安装连接器后按普通本地 MCP 管理', async () => {
     apiMock.listConnectors.mockResolvedValue({ connectors: [makeConnector('weather', 'http://w.example/sse')] })
 
-    const result = await catalog.compareAndSync()
+    await catalog.install('weather')
+
     expect(mcpServiceMock.create).toHaveBeenCalledTimes(1)
     expect(mcpServiceMock.create).toHaveBeenCalledWith(
-      expect.objectContaining({ name: 'weather', baseUrl: 'http://w.example/sse', isActive: false, installSource: 'org' })
+      expect.objectContaining({
+        name: 'weather',
+        baseUrl: 'http://w.example/sse',
+        isActive: false,
+        installSource: 'manual'
+      })
     )
-    expect(result.installed).toEqual(['weather'])
+    expect(stateStoreMock.upsertConnector).not.toHaveBeenCalled()
+  })
+
+  it('stdio 目录配置完整写入本地 MCP', async () => {
+    apiMock.listConnectors.mockResolvedValue({
+      connectors: [
+        makeConnector('filesystem', '', {
+          type: 'stdio',
+          config: {
+            type: 'stdio',
+            command: 'npx',
+            args: ['-y', '@modelcontextprotocol/server-filesystem'],
+            env: { ROOT: '/workspace' },
+            registryUrl: 'https://registry.npmmirror.com',
+            longRunning: true,
+            timeout: 45
+          }
+        })
+      ]
+    })
+
+    await catalog.install('filesystem')
+
+    expect(mcpServiceMock.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'filesystem',
+        type: 'stdio',
+        command: 'npx',
+        args: ['-y', '@modelcontextprotocol/server-filesystem'],
+        env: { ROOT: '/workspace' },
+        registryUrl: 'https://registry.npmmirror.com',
+        longRunning: true,
+        timeout: 45,
+        isActive: false,
+        installSource: 'manual'
+      })
+    )
+  })
+
+  it('streamableHttp 目录配置保留 URL 与请求头', async () => {
+    apiMock.listConnectors.mockResolvedValue({
+      connectors: [
+        makeConnector('remote', 'https://mcp.example/mcp', {
+          type: 'streamableHttp',
+          config: {
+            type: 'streamableHttp',
+            baseUrl: 'https://mcp.example/mcp',
+            headers: { 'X-Trace': 'org' }
+          }
+        })
+      ]
+    })
+
+    await catalog.install('remote')
+
+    expect(mcpServiceMock.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'streamableHttp',
+        baseUrl: 'https://mcp.example/mcp',
+        headers: { 'X-Trace': 'org' },
+        isActive: false
+      })
+    )
+  })
+
+  it('同 URL 但完整配置变化 → 更新本地 MCP', async () => {
+    const item = makeConnector('remote', 'https://mcp.example/mcp', {
+      type: 'streamableHttp',
+      config: {
+        type: 'streamableHttp',
+        baseUrl: 'https://mcp.example/mcp',
+        headers: { 'X-Trace': 'new' },
+        timeout: 90
+      }
+    })
+    apiMock.listConnectors.mockResolvedValue({ connectors: [item] })
+    stateStoreMock.snapshotConnectors.mockReturnValue({
+      remote: { mcpId: 'mcp-1', baseUrl: 'https://mcp.example/mcp' }
+    })
+    mcpServiceMock.getByIdSafe.mockReturnValue({
+      id: 'mcp-1',
+      name: 'remote',
+      description: 'remote desc',
+      type: 'streamableHttp',
+      baseUrl: 'https://mcp.example/mcp',
+      headers: { 'X-Trace': 'old' },
+      timeout: 60,
+      isActive: false,
+      installSource: 'manual'
+    })
+
+    const result = await catalog.compareAndSync()
+
+    expect(mcpServiceMock.update).toHaveBeenCalledWith(
+      'mcp-1',
+      expect.objectContaining({ headers: { 'X-Trace': 'new' }, timeout: 90 })
+    )
+    expect(result.updated).toEqual(['remote'])
+  })
+
+  it('配置无变化时不同步，且不把用户已启用的连接器打回停用', async () => {
+    apiMock.listConnectors.mockResolvedValue({
+      connectors: [makeConnector('remote', 'https://mcp.example/mcp', { type: 'streamableHttp' })]
+    })
+    stateStoreMock.snapshotConnectors.mockReturnValue({
+      remote: { mcpId: 'mcp-1', baseUrl: 'https://mcp.example/mcp' }
+    })
+    mcpServiceMock.getByIdSafe.mockReturnValue({
+      id: 'mcp-1',
+      name: 'remote',
+      description: 'remote desc',
+      type: 'streamableHttp',
+      baseUrl: 'https://mcp.example/mcp',
+      isActive: true, // 用户手动启用过
+      installSource: 'manual'
+    })
+
+    const result = await catalog.compareAndSync()
+
+    expect(mcpServiceMock.update).not.toHaveBeenCalled()
+    expect(result.updated).toEqual([])
   })
 
   it('本地已有且 baseUrl 未变 → 跳过', async () => {
@@ -101,9 +256,15 @@ describe('OrgMcpCatalog C6 compareAndSync', () => {
     })
 
     const result = await catalog.compareAndSync()
-    expect(mcpServiceMock.update).toHaveBeenCalledWith('mcp-1', expect.objectContaining({ baseUrl: 'http://w2.example/sse' }))
+    expect(mcpServiceMock.update).toHaveBeenCalledWith(
+      'mcp-1',
+      expect.objectContaining({ baseUrl: 'http://w2.example/sse' })
+    )
     expect(result.updated).toEqual(['weather'])
-    expect(stateStoreMock.upsertConnector).toHaveBeenCalledWith('weather', { mcpId: 'mcp-1', baseUrl: 'http://w2.example/sse' })
+    expect(stateStoreMock.upsertConnector).toHaveBeenCalledWith('weather', {
+      mcpId: 'mcp-1',
+      baseUrl: 'http://w2.example/sse'
+    })
   })
 
   it('目录缺失 → 本地禁用（isActive=false），不删除', async () => {
@@ -111,7 +272,7 @@ describe('OrgMcpCatalog C6 compareAndSync', () => {
     stateStoreMock.snapshotConnectors.mockReturnValue({
       gone: { mcpId: 'mcp-9', baseUrl: 'http://g.example/sse' }
     })
-    mcpServiceMock.getByIdSafe.mockReturnValue({ id: 'mcp-9', baseUrl: 'http://g.example/sse', isActive: true } as never)
+    mcpServiceMock.getByIdSafe.mockReturnValue({ id: 'mcp-9', baseUrl: 'http://g.example/sse', isActive: true })
 
     const result = await catalog.compareAndSync()
     expect(mcpServiceMock.delete).not.toHaveBeenCalled()
@@ -200,11 +361,12 @@ describe('OrgMcpCatalog C6 compareAndSync', () => {
     expect(stateStoreMock.removeConnector).toHaveBeenCalledWith('gone')
   })
 
-  it('手动 install → 清除该 slug 的墓碑（用户重装意图生效）', async () => {
+  it('手动 install 不读写组织墓碑', async () => {
     apiMock.listConnectors.mockResolvedValue({ connectors: [makeConnector('weather', 'http://w.example/sse')] })
 
     await catalog.install('weather')
-    expect(stateStoreMock.clearConnectorDeleted).toHaveBeenCalledWith('weather')
+    expect(stateStoreMock.clearConnectorDeleted).not.toHaveBeenCalled()
+    expect(stateStoreMock.upsertConnector).not.toHaveBeenCalled()
     expect(mcpServiceMock.create).toHaveBeenCalledTimes(1)
   })
 })

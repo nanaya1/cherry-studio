@@ -25,7 +25,8 @@ const orgConnectorItemSchema = z.strictObject({
   slug: z.string(),
   name: z.string(),
   description: z.string(),
-  type: z.literal('sse'),
+  // 目录 v2 与管理台快速创建对齐：stdio/sse/streamableHttp（旧服务端恒为 sse）
+  type: z.enum(['stdio', 'sse', 'streamableHttp']),
   baseUrl: z.string(),
   config: z.record(z.string(), z.unknown())
 })
