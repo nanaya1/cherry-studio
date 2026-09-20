@@ -146,12 +146,34 @@ export class OrgSkillCatalog {
 
       // tarball 结构：<slug>/SKILL.md
       const skillDir = join(extractDir, slug)
-      // [enterprise] 以 org 来源安装；同 folderName 且同来源时允许覆盖更新
+      // [enterprise] 以 org 来源安装；同 folderName 且同来源时允许覆盖更新。
+      // 显示名修复：SKILL.md frontmatter 的 name 通常是 slug 形态（org-code-review），
+      // 必须把服务端目录的 name/description 作为 displayName 传入，否则「我安装的」
+      // 列表显示的是 slug 而不是企业命名（与技能市场 catalog 链路同一机制）。
       // SkillService 未进服务注册表，用导出单例 + 断言访问（installSkillDir 为私有）
       const { skillService } = await import('@main/ai/skills/SkillService')
       const installed = await (skillService as unknown as {
-        installSkillDir: (dir: string, source: string, sourceUrl: string | null) => Promise<{ id?: string; folderName?: string }>
-      }).installSkillDir(skillDir, 'org', `org-skill:${slug}`)
+        installSkillDir: (
+          dir: string,
+          source: string,
+          sourceUrl: string | null,
+          provenance?: {
+            catalogDisplayMetadata?: {
+              displayName: string
+              displayNameEn: string
+              description: string
+              descriptionEn: string
+            }
+          }
+        ) => Promise<{ id?: string; folderName?: string }>
+      }).installSkillDir(skillDir, 'org', `org-skill:${slug}`, {
+        catalogDisplayMetadata: {
+          displayName: item.name,
+          displayNameEn: '',
+          description: item.description,
+          descriptionEn: ''
+        }
+      })
 
       // [enterprise] C5：state 记录安装快照（version/contentHash/skillId/folderName）
       orgStateStore.upsert(slug, {

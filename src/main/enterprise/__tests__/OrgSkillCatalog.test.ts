@@ -261,12 +261,43 @@ describe('OrgSkillCatalog C1/C2/C4', () => {
     ;(catalog as unknown as { tarExtract: unknown }).tarExtract = tar
 
     await catalog.install('new-skill')
-    expect(installSkillDir).toHaveBeenCalledWith(expect.stringContaining('new-skill'), 'org', 'org-skill:new-skill')
+    expect(installSkillDir).toHaveBeenCalledWith(
+      expect.stringContaining('new-skill'),
+      'org',
+      'org-skill:new-skill',
+      expect.anything()
+    )
     expect(stateStoreMock.upsert).toHaveBeenCalledWith(
       'new-skill',
       expect.objectContaining({ contentHash: 'hash-new', skillId: 'sk-1', folderName: 'new-skill' })
     )
     expect(apiMock.reportLifecycle).toHaveBeenCalledWith('new-skill', 'install', { version: '1.0.0' })
+  })
+
+  // [enterprise] 显示名修复：服务端目录 name（如「企业代码评审规范」）必须作为 displayName
+  // 传入安装链路，否则「我安装的」列表回退到 SKILL.md frontmatter 的 name（slug 形态）
+  it('install：服务端目录 name/description 作为 catalogDisplayMetadata 传入安装', async () => {
+    apiMock.listSkills.mockResolvedValue({
+      skills: [{ ...makeItem('org-code-review', 'hash-x'), name: '企业代码评审规范', description: '评审描述' }]
+    })
+
+    const installSkillDir = vi.fn().mockResolvedValue({ id: 'sk-2', folderName: 'org-code-review' })
+    skillServiceMock.installSkillDir = installSkillDir
+    ;(catalog as unknown as { downloadWithHash: unknown }).downloadWithHash = vi.fn().mockResolvedValue(undefined)
+    ;(catalog as unknown as { tarExtract: unknown }).tarExtract = vi.fn().mockResolvedValue({ stdout: '', stderr: '' })
+
+    await catalog.install('org-code-review')
+    expect(installSkillDir).toHaveBeenCalledWith(
+      expect.anything(),
+      'org',
+      'org-skill:org-code-review',
+      expect.objectContaining({
+        catalogDisplayMetadata: expect.objectContaining({
+          displayName: '企业代码评审规范',
+          description: '评审描述'
+        })
+      })
+    )
   })
 
   it('[enterprise] installedSlugs：返回 state 中已装的 slug 列表', () => {
