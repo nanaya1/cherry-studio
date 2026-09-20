@@ -77,6 +77,22 @@ describe('OrgSkillCatalog C1/C2/C4', () => {
     vi.restoreAllMocks()
   })
 
+  it('目录仅接受组织服务端技能图标路径并转换为绝对 URL', async () => {
+    apiMock.listSkills.mockResolvedValue({
+      skills: [
+        { ...makeItem('safe', 'h1'), iconUrl: '/api/skill-icons/safe/icon.png?v=h1' },
+        { ...makeItem('external', 'h2'), iconUrl: 'https://evil.example/icon.png' },
+        { ...makeItem('legacy', 'h3') }
+      ]
+    })
+
+    const skills = await catalog.list(true)
+
+    expect(skills[0].iconUrl).toBe('http://127.0.0.1:3000/api/skill-icons/safe/icon.png?v=h1')
+    expect(skills[1].iconUrl).toBeNull()
+    expect(skills[2].iconUrl).toBeNull()
+  })
+
   it('C1 startupScan：hash 一致 → 跳过更新', async () => {
     apiMock.listSkills.mockResolvedValue({ skills: [makeItem('a', 'hash-a')] })
     stateStoreMock.snapshot.mockReturnValue({

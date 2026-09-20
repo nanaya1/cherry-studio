@@ -9,6 +9,7 @@ export interface OrgSkillCatalogItem {
   version: string
   contentHash: string
   downloadUrl: string
+  iconUrl?: string | null
 }
 
 export interface OrgConnectorCatalogItem {

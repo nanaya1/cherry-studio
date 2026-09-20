@@ -165,6 +165,25 @@ describe('OrgMcpCatalog C6 compareAndSync', () => {
     expect(stateStoreMock.upsertConnector).not.toHaveBeenCalled()
   })
 
+  it('手动安装时把目录图标写入本地 MCP', async () => {
+    apiMock.listConnectors.mockResolvedValue({
+      connectors: [
+        makeConnector('weather', 'http://w.example/sse', {
+          config: { logoUrl: 'https://enterprise.example/api/connector-icons/weather.png' }
+        })
+      ]
+    })
+
+    await catalog.install('weather')
+
+    expect(mcpServiceMock.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'weather',
+        logoUrl: 'https://enterprise.example/api/connector-icons/weather.png'
+      })
+    )
+  })
+
   it('stdio 目录配置完整写入本地 MCP', async () => {
     apiMock.listConnectors.mockResolvedValue({
       connectors: [

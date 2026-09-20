@@ -14,6 +14,7 @@ export interface OrgSkillItem {
   version: string
   contentHash: string
   downloadUrl: string
+  iconUrl?: string | null
 }
 
 function orgSkillErrorMessage(error: unknown): string {

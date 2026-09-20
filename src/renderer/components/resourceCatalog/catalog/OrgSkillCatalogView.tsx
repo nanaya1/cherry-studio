@@ -27,6 +27,7 @@ export function OrgSkillCatalogView() {
   const { skills, loading, error, install, installing, refetch, disabledSlugs, installedSlugs, remove } =
     useOrgSkills(isSignedIn)
   const [removing, setRemoving] = useState<Set<string>>(() => new Set())
+  const [failedIcons, setFailedIcons] = useState<Set<string>>(() => new Set())
 
   const visibleSkills = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase()
@@ -161,9 +162,19 @@ export function OrgSkillCatalogView() {
                 )}
                 <div className="flex min-w-0 items-center gap-2.5 pr-8">
                   <span
-                    className="grid size-9 shrink-0 place-items-center rounded-full font-semibold text-sm"
+                    className="grid size-9 shrink-0 place-items-center overflow-hidden rounded-full font-semibold text-sm"
                     style={{ backgroundColor: bg, color: fg }}>
-                    {Array.from(skill.name)[0] ?? '?'}
+                    {skill.iconUrl && !failedIcons.has(skill.slug) ? (
+                      <img
+                        src={skill.iconUrl}
+                        alt=""
+                        className="size-full object-cover"
+                        draggable={false}
+                        onError={() => setFailedIcons((current) => new Set(current).add(skill.slug))}
+                      />
+                    ) : (
+                      Array.from(skill.name.trim())[0]?.toLocaleUpperCase() ?? '?'
+                    )}
                   </span>
                   <div className="min-w-0 flex-1">
                     <h2 className="truncate font-semibold text-sm">{skill.name}</h2>

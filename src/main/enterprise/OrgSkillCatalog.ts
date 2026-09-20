@@ -11,6 +11,7 @@ import { join } from 'node:path'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { loggerService } from '@logger'
+import { ORG_SERVER_BASE_URL } from './OrgApiClient'
 import { orgStateStore } from './OrgStateStore'
 import type { OrgSkillCatalogItem } from './types'
 
@@ -37,8 +38,16 @@ export class OrgSkillCatalog {
     }
     try {
       const { skills } = await this.auth.apiClient.listSkills()
-      this.catalogCache = { at: Date.now(), items: skills }
-      return skills
+      const resolved = skills.map((skill) => {
+        let iconUrl: string | null = null
+        if (skill.iconUrl?.startsWith('/api/skill-icons/')) {
+          const parsed = new URL(skill.iconUrl, ORG_SERVER_BASE_URL)
+          if (parsed.origin === new URL(ORG_SERVER_BASE_URL).origin) iconUrl = parsed.toString()
+        }
+        return { ...skill, iconUrl }
+      })
+      this.catalogCache = { at: Date.now(), items: resolved }
+      return resolved
     } catch (error) {
       if (this.catalogCache) {
         logger.warn('org skill catalog fetch failed, using stale cache', { error: String(error) })

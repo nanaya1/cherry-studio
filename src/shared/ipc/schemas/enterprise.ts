@@ -18,7 +18,8 @@ const orgSkillItemSchema = z.strictObject({
   description: z.string(),
   version: z.string(),
   contentHash: z.string(),
-  downloadUrl: z.string()
+  downloadUrl: z.string(),
+  iconUrl: z.string().nullable().optional()
 })
 
 const orgConnectorItemSchema = z.strictObject({

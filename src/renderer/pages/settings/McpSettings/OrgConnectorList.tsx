@@ -1,4 +1,4 @@
-import { Check, Download, LoaderCircle, Plug } from 'lucide-react'
+import { Check, Download, LoaderCircle } from 'lucide-react'
 import type { FC, ReactNode } from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -10,6 +10,8 @@ import { useMcpServers } from '@renderer/hooks/useMcpServer'
 import { useOrgConnectors } from '@renderer/hooks/useOrgConnectors'
 import { toast } from '@renderer/services/toast'
 import { cn } from '@renderer/utils/style'
+
+import { getConnectorFallbackStyle, getConnectorInitial } from './connectorAvatar'
 
 // [enterprise] T0 组织连接器目录：企业下发的直连型 SSE MCP，一键安装为本地 MCP 服务器
 interface OrgConnectorListProps {
@@ -80,6 +82,7 @@ const OrgConnectorList: FC<OrgConnectorListProps> = ({ variant = 'catalog', tool
         <div className="grid @[1120px]/mcp-discover:grid-cols-4 @[560px]/mcp-discover:grid-cols-2 @[840px]/mcp-discover:grid-cols-3 grid-cols-1 gap-3">
           {filteredConnectors.map((connector) => {
             const installed = isInstalled(connector.name)
+            const logoUrl = typeof connector.config.logoUrl === 'string' ? connector.config.logoUrl : ''
             return (
               <div
                 key={connector.slug}
@@ -90,8 +93,16 @@ const OrgConnectorList: FC<OrgConnectorListProps> = ({ variant = 'catalog', tool
                 )}>
                 <div className="min-w-0 flex-1">
                   <div className="flex min-w-0 items-center gap-2.5 pr-16">
-                    <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted">
-                      <Plug className="size-4 text-muted-foreground" />
+                    <div
+                      className={cn(
+                        'flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full font-semibold text-sm',
+                        !logoUrl && getConnectorFallbackStyle(connector.name)
+                      )}>
+                      {logoUrl ? (
+                        <img src={logoUrl} alt="" className="size-full object-cover" draggable={false} />
+                      ) : (
+                        getConnectorInitial(connector.name)
+                      )}
                     </div>
                     <h3 className="min-w-0 truncate font-semibold text-base leading-5">{connector.name}</h3>
                     {/* 组织 Tab 已明确资源来源，不再重复显示组织标签。
