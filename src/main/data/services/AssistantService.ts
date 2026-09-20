@@ -13,6 +13,7 @@ import { notifyDataApiDataChange } from '@data/dataApiDataChange'
 import { assistantTable } from '@data/db/schemas/assistant'
 import { assistantKnowledgeBaseTable, assistantMcpServerTable } from '@data/db/schemas/assistantRelations'
 import { pinTable } from '@data/db/schemas/pin'
+import { assistantRemoteKnowledgeBaseTable } from '@data/db/schemas/remoteKnowledge'
 import type { DbOrTx, DbType } from '@data/db/types'
 import { loggerService } from '@logger'
 import { DataApiError, DataApiErrorFactory, ErrorCode } from '@shared/data/api/errors'
@@ -27,6 +28,7 @@ import type {
 import type { EntitySearchItem } from '@shared/data/api/schemas/search'
 import { type Assistant, DEFAULT_ASSISTANT_SETTINGS } from '@shared/data/types/assistant'
 import type { UniqueModelId } from '@shared/data/types/model'
+import { isRemoteKnowledgeBaseId } from '@shared/data/types/remoteKnowledge'
 
 import { groupService } from './GroupService'
 import { modelService } from './ModelService'
@@ -52,6 +54,19 @@ function createEmptyRelations(): AssistantRelationIds {
     mcpServerIds: [],
     knowledgeBaseIds: []
   }
+}
+
+function splitKnowledgeBaseIds(ids: readonly string[]): { localIds: string[]; remoteIds: string[] } {
+  const uniqueIds = [...new Set(ids)]
+  return {
+    localIds: uniqueIds.filter((id) => !isRemoteKnowledgeBaseId(id)),
+    remoteIds: uniqueIds.filter(isRemoteKnowledgeBaseId)
+  }
+}
+
+function normalizeKnowledgeBaseIds(ids: readonly string[]): string[] {
+  const { localIds, remoteIds } = splitKnowledgeBaseIds(ids)
+  return [...localIds, ...remoteIds]
 }
 
 function rowToAssistant(
@@ -205,7 +220,24 @@ export class AssistantDataService {
       })
       .from(assistantKnowledgeBaseTable)
       .where(inArray(assistantKnowledgeBaseTable.assistantId, assistantIds))
-      .orderBy(asc(assistantKnowledgeBaseTable.assistantId), asc(assistantKnowledgeBaseTable.createdAt))
+      .orderBy(
+        asc(assistantKnowledgeBaseTable.assistantId),
+        asc(assistantKnowledgeBaseTable.createdAt),
+        asc(assistantKnowledgeBaseTable.knowledgeBaseId)
+      )
+      .all()
+    const remoteKnowledgeBaseRows = db
+      .select({
+        assistantId: assistantRemoteKnowledgeBaseTable.assistantId,
+        remoteBaseId: assistantRemoteKnowledgeBaseTable.remoteBaseId
+      })
+      .from(assistantRemoteKnowledgeBaseTable)
+      .where(inArray(assistantRemoteKnowledgeBaseTable.assistantId, assistantIds))
+      .orderBy(
+        asc(assistantRemoteKnowledgeBaseTable.assistantId),
+        asc(assistantRemoteKnowledgeBaseTable.createdAt),
+        asc(assistantRemoteKnowledgeBaseTable.remoteBaseId)
+      )
       .all()
 
     for (const row of mcpServerRows) {
@@ -213,6 +245,9 @@ export class AssistantDataService {
     }
     for (const row of knowledgeBaseRows) {
       relationMap.get(row.assistantId)?.knowledgeBaseIds.push(row.knowledgeBaseId)
+    }
+    for (const row of remoteKnowledgeBaseRows) {
+      relationMap.get(row.assistantId)?.knowledgeBaseIds.push(row.remoteBaseId)
     }
 
     return relationMap
@@ -421,7 +456,7 @@ export class AssistantDataService {
       row,
       {
         mcpServerIds: dto.mcpServerIds ?? [],
-        knowledgeBaseIds: dto.knowledgeBaseIds ?? []
+        knowledgeBaseIds: normalizeKnowledgeBaseIds(dto.knowledgeBaseIds ?? [])
       },
       modelName
     )
@@ -531,7 +566,8 @@ export class AssistantDataService {
 
     const nextRelations: AssistantRelationIds = {
       mcpServerIds: mcpServerIds ?? current.mcpServerIds,
-      knowledgeBaseIds: knowledgeBaseIds ?? current.knowledgeBaseIds
+      knowledgeBaseIds:
+        knowledgeBaseIds !== undefined ? normalizeKnowledgeBaseIds(knowledgeBaseIds) : current.knowledgeBaseIds
     }
 
     const aliveFilter = and(eq(assistantTable.id, id), isNull(assistantTable.deletedAt))
@@ -784,16 +820,17 @@ export class AssistantDataService {
     }
 
     if (dto.knowledgeBaseIds !== undefined) {
+      const { localIds, remoteIds } = splitKnowledgeBaseIds(dto.knowledgeBaseIds)
       const existing = tx
         .select({ knowledgeBaseId: assistantKnowledgeBaseTable.knowledgeBaseId })
         .from(assistantKnowledgeBaseTable)
         .where(eq(assistantKnowledgeBaseTable.assistantId, assistantId))
         .all()
       const existingIds = new Set(existing.map((r) => r.knowledgeBaseId))
-      const desiredIds = new Set(dto.knowledgeBaseIds)
+      const desiredIds = new Set(localIds)
 
       const removeIds = existing.filter((r) => !desiredIds.has(r.knowledgeBaseId)).map((r) => r.knowledgeBaseId)
-      const toAdd = dto.knowledgeBaseIds.filter((id) => !existingIds.has(id))
+      const toAdd = localIds.filter((id) => !existingIds.has(id))
 
       if (removeIds.length > 0) {
         tx.delete(assistantKnowledgeBaseTable)
@@ -808,6 +845,34 @@ export class AssistantDataService {
       if (toAdd.length > 0) {
         tx.insert(assistantKnowledgeBaseTable)
           .values(toAdd.map((knowledgeBaseId) => ({ assistantId, knowledgeBaseId })))
+          .run()
+      }
+
+      const existingRemote = tx
+        .select({ remoteBaseId: assistantRemoteKnowledgeBaseTable.remoteBaseId })
+        .from(assistantRemoteKnowledgeBaseTable)
+        .where(eq(assistantRemoteKnowledgeBaseTable.assistantId, assistantId))
+        .all()
+      const existingRemoteIds = new Set(existingRemote.map((row) => row.remoteBaseId))
+      const desiredRemoteIds = new Set(remoteIds)
+      const removeRemoteIds = existingRemote
+        .filter((row) => !desiredRemoteIds.has(row.remoteBaseId))
+        .map((row) => row.remoteBaseId)
+      const remoteToAdd = remoteIds.filter((id) => !existingRemoteIds.has(id))
+
+      if (removeRemoteIds.length > 0) {
+        tx.delete(assistantRemoteKnowledgeBaseTable)
+          .where(
+            and(
+              eq(assistantRemoteKnowledgeBaseTable.assistantId, assistantId),
+              inArray(assistantRemoteKnowledgeBaseTable.remoteBaseId, removeRemoteIds)
+            )
+          )
+          .run()
+      }
+      if (remoteToAdd.length > 0) {
+        tx.insert(assistantRemoteKnowledgeBaseTable)
+          .values(remoteToAdd.map((remoteBaseId) => ({ assistantId, remoteBaseId })))
           .run()
       }
     }

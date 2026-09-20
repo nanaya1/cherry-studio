@@ -11,6 +11,7 @@ import { knowledgeBaseTable } from '@data/db/schemas/knowledge'
 // MEA 定制：syncActiveMcpsToBuiltinAssistantTx 需要
 import { mcpServerTable } from '@data/db/schemas/mcpServer'
 import { pinTable } from '@data/db/schemas/pin'
+import { agentRemoteKnowledgeBaseTable } from '@data/db/schemas/remoteKnowledge'
 import { defaultHandlersFor, withSqliteErrors } from '@data/db/sqliteErrors'
 import type { DbOrTx } from '@data/db/types'
 import { agentSessionService } from '@data/services/AgentSessionService'
@@ -40,6 +41,7 @@ import type { EntitySearchItem } from '@shared/data/api/schemas/search'
 import type { ListOptions } from '@shared/data/api/types'
 import type { AgentType } from '@shared/data/types/agent'
 import type { UniqueModelId } from '@shared/data/types/model'
+import { isRemoteKnowledgeBaseId } from '@shared/data/types/remoteKnowledge'
 import { isGatewayRoutableModel } from '@shared/utils/model'
 
 const logger = loggerService.withContext('AgentService')
@@ -235,6 +237,14 @@ function fetchMcpsForAgents(tx: DbOrTx, agentIds: string[]): Map<string, string[
  * Returns a Map<agentId, string[]> with deterministic reads; callers treat the IDs as a set.
  * Accepts both a database instance and a transaction (DbOrTx).
  */
+function splitKnowledgeBaseIds(ids: readonly string[]): { localIds: string[]; remoteIds: string[] } {
+  const uniqueIds = [...new Set(ids)]
+  return {
+    localIds: uniqueIds.filter((id) => !isRemoteKnowledgeBaseId(id)),
+    remoteIds: uniqueIds.filter(isRemoteKnowledgeBaseId)
+  }
+}
+
 function fetchKnowledgeBasesForAgents(tx: DbOrTx, agentIds: string[]): Map<string, string[]> {
   if (agentIds.length === 0) return new Map()
   const rows = tx
@@ -247,6 +257,16 @@ function fetchKnowledgeBasesForAgents(tx: DbOrTx, agentIds: string[]): Map<strin
       asc(agentKnowledgeBaseTable.knowledgeBaseId)
     )
     .all()
+  const remoteRows = tx
+    .select({ agentId: agentRemoteKnowledgeBaseTable.agentId, remoteBaseId: agentRemoteKnowledgeBaseTable.remoteBaseId })
+    .from(agentRemoteKnowledgeBaseTable)
+    .where(inArray(agentRemoteKnowledgeBaseTable.agentId, agentIds))
+    .orderBy(
+      asc(agentRemoteKnowledgeBaseTable.agentId),
+      asc(agentRemoteKnowledgeBaseTable.createdAt),
+      asc(agentRemoteKnowledgeBaseTable.remoteBaseId)
+    )
+    .all()
   const map = new Map<string, string[]>()
   for (const row of rows) {
     const list = map.get(row.agentId)
@@ -254,6 +274,14 @@ function fetchKnowledgeBasesForAgents(tx: DbOrTx, agentIds: string[]): Map<strin
       list.push(row.knowledgeBaseId)
     } else {
       map.set(row.agentId, [row.knowledgeBaseId])
+    }
+  }
+  for (const row of remoteRows) {
+    const list = map.get(row.agentId)
+    if (list) {
+      list.push(row.remoteBaseId)
+    } else {
+      map.set(row.agentId, [row.remoteBaseId])
     }
   }
   return map
@@ -305,7 +333,10 @@ export class AgentService {
       )
     }
     const mcps = req.mcps ?? []
-    const knowledgeBaseIds = req.knowledgeBaseIds ?? []
+    const { localIds: localKnowledgeBaseIds, remoteIds: remoteKnowledgeBaseIds } = splitKnowledgeBaseIds(
+      req.knowledgeBaseIds ?? []
+    )
+    const knowledgeBaseIds = [...localKnowledgeBaseIds, ...remoteKnowledgeBaseIds]
     const globalSkillService = getDataService('AgentGlobalSkillService')
     const skillIds = Array.from(new Set(req.skillIds ?? []))
 
@@ -352,9 +383,14 @@ export class AgentService {
               .run()
           }
           // Insert junction rows for knowledge base associations
-          if (knowledgeBaseIds.length > 0) {
+          if (localKnowledgeBaseIds.length > 0) {
             tx.insert(agentKnowledgeBaseTable)
-              .values(knowledgeBaseIds.map((knowledgeBaseId) => ({ agentId: id, knowledgeBaseId })))
+              .values(localKnowledgeBaseIds.map((knowledgeBaseId) => ({ agentId: id, knowledgeBaseId })))
+              .run()
+          }
+          if (remoteKnowledgeBaseIds.length > 0) {
+            tx.insert(agentRemoteKnowledgeBaseTable)
+              .values(remoteKnowledgeBaseIds.map((remoteBaseId) => ({ agentId: id, remoteBaseId })))
               .run()
           }
           // Enable the selected global skills for the new agent. DB-only: workspace
@@ -691,6 +727,8 @@ export class AgentService {
     // Handle mcps + knowledgeBaseIds separately — they live in junction tables, not the agent row.
     const newMcps = updates.mcps
     const newKnowledgeBaseIds = updates.knowledgeBaseIds
+    const splitNewKnowledgeBaseIds =
+      newKnowledgeBaseIds !== undefined ? splitKnowledgeBaseIds(newKnowledgeBaseIds) : undefined
     const newSkillUpdates = updates.skillUpdates
 
     // Same two-step validation as createAgent: pre-check each id outside the write
@@ -781,11 +819,17 @@ export class AgentService {
             }
           }
           // Replace knowledge base associations if provided
-          if (newKnowledgeBaseIds !== undefined) {
+          if (splitNewKnowledgeBaseIds !== undefined) {
             tx.delete(agentKnowledgeBaseTable).where(eq(agentKnowledgeBaseTable.agentId, id)).run()
-            if (newKnowledgeBaseIds.length > 0) {
+            tx.delete(agentRemoteKnowledgeBaseTable).where(eq(agentRemoteKnowledgeBaseTable.agentId, id)).run()
+            if (splitNewKnowledgeBaseIds.localIds.length > 0) {
               tx.insert(agentKnowledgeBaseTable)
-                .values(newKnowledgeBaseIds.map((knowledgeBaseId) => ({ agentId: id, knowledgeBaseId })))
+                .values(splitNewKnowledgeBaseIds.localIds.map((knowledgeBaseId) => ({ agentId: id, knowledgeBaseId })))
+                .run()
+            }
+            if (splitNewKnowledgeBaseIds.remoteIds.length > 0) {
+              tx.insert(agentRemoteKnowledgeBaseTable)
+                .values(splitNewKnowledgeBaseIds.remoteIds.map((remoteBaseId) => ({ agentId: id, remoteBaseId })))
                 .run()
             }
           }
@@ -1092,16 +1136,16 @@ export class AgentService {
   }
 
   private assertKnowledgeBasesExistTx(tx: DbOrTx, knowledgeBaseIds: readonly string[]): void {
-    const uniqueIds = [...new Set(knowledgeBaseIds)]
-    if (uniqueIds.length === 0) return
+    const { localIds } = splitKnowledgeBaseIds(knowledgeBaseIds)
+    if (localIds.length === 0) return
 
     const existing = tx
       .select({ id: knowledgeBaseTable.id })
       .from(knowledgeBaseTable)
-      .where(inArray(knowledgeBaseTable.id, uniqueIds))
+      .where(inArray(knowledgeBaseTable.id, localIds))
       .all()
     const existingIds = new Set(existing.map((row) => row.id))
-    const missingId = uniqueIds.find((id) => !existingIds.has(id))
+    const missingId = localIds.find((id) => !existingIds.has(id))
     if (missingId) throw DataApiErrorFactory.notFound('KnowledgeBase', missingId)
   }
 
