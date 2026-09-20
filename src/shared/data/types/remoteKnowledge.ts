@@ -126,3 +126,50 @@ export const RemoteWireErrorSchema = z.object({
   })
 })
 export type RemoteWireError = z.infer<typeof RemoteWireErrorSchema>
+
+// ============================================================================
+// Service config DTOs (settings UI → service → DB)
+// ============================================================================
+
+/**
+ * Draft config for creating a service or testing an unsaved one. `apiKey` is
+ * plaintext exactly once, at this boundary — the service encrypts it before
+ * persistence and never returns it. Update reuses this shape with every field
+ * optional; an omitted apiKey keeps the stored one.
+ */
+export const RemoteServiceDraftSchema = z.strictObject({
+  name: z.string().trim().min(1).max(200),
+  baseUrl: z.string().url(),
+  authType: RemoteAuthTypeSchema,
+  apiKey: z.string().optional(),
+  headers: z.record(z.string(), z.string()).optional(),
+  timeoutMs: z.int().min(1000).max(300_000).optional(),
+  enabled: z.boolean().optional()
+})
+export type RemoteServiceDraft = z.infer<typeof RemoteServiceDraftSchema>
+
+export const CreateRemoteKnowledgeServiceSchema = RemoteServiceDraftSchema
+export type CreateRemoteKnowledgeServiceDto = RemoteServiceDraft
+
+export const UpdateRemoteKnowledgeServiceSchema = RemoteServiceDraftSchema.partial()
+export type UpdateRemoteKnowledgeServiceDto = z.infer<typeof UpdateRemoteKnowledgeServiceSchema>
+
+/** One remote base discovered from a service, with the composite id filled in. */
+export const RemoteKnowledgeBaseInfoSchema = z.object({
+  /** Full `remote:{serviceId}:{remoteBaseId}` identifier. */
+  id: z.string(),
+  serviceId: z.string(),
+  serviceName: z.string(),
+  remoteBaseId: z.string(),
+  name: z.string().min(1),
+  description: z.string().optional()
+})
+export type RemoteKnowledgeBaseInfo = z.infer<typeof RemoteKnowledgeBaseInfoSchema>
+
+/** Connectivity-test result. Expected failures come back as data, not throws. */
+export const RemoteTestConnectionResultSchema = z.object({
+  ok: z.boolean(),
+  latencyMs: z.int().nonnegative().optional(),
+  error: z.string().optional()
+})
+export type RemoteTestConnectionResult = z.infer<typeof RemoteTestConnectionResultSchema>

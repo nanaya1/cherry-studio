@@ -1,14 +1,13 @@
 import { net } from 'electron'
 import { loggerService } from '@logger'
-import * as z from 'zod'
+import type * as z from 'zod'
 
-import {
+import type {
   RemoteReadRequestSchema,
   RemoteSearchRequestSchema,
-  RemoteWireChunk,
-  RemoteWireChunkSchema,
-  RemoteWireErrorSchema
+  RemoteWireChunk
 } from '@shared/data/types/remoteKnowledge'
+import { RemoteWireChunkSchema, RemoteWireErrorSchema } from '@shared/data/types/remoteKnowledge'
 
 const logger = loggerService.withContext('RemoteKnowledgeClient')
 
@@ -68,7 +67,7 @@ export class RemoteKnowledgeClient {
     const body = (await this.request('/v1/knowledge/bases', { method: 'GET' })) as
       | { bases?: unknown }
       | undefined
-    const bases = Array.isArray(body?.bases) ? body!.bases : []
+    const bases = Array.isArray(body?.bases) ? body.bases : []
     return bases
       .filter((b): b is Record<string, unknown> => !!b && typeof b === 'object' && !Array.isArray(b))
       .map((b) => ({
@@ -90,7 +89,7 @@ export class RemoteKnowledgeClient {
       headers: { 'Content-Type': 'application/json' }
     })) as { chunks?: unknown } | undefined
 
-    const raw = Array.isArray(body?.chunks) ? body!.chunks : []
+    const raw = Array.isArray(body?.chunks) ? body.chunks : []
     const prepared = raw
       .filter((c): c is Record<string, unknown> => !!c && typeof c === 'object' && !Array.isArray(c))
       .map((c) => ({ ...c, score: clampScore(c.score) }))
@@ -132,7 +131,7 @@ export class RemoteKnowledgeClient {
     init: { method?: string; body?: string; headers?: Record<string, string> }
   ): Promise<unknown> {
     const url = `${this.baseUrl}${path}`
-    const headers: Record<string, string> = { ...(this.headers ?? {}), ...(init.headers ?? {}) }
+    const headers: Record<string, string> = { ...this.headers, ...init.headers }
     if (this.authType === 'bearer' && this.apiKey) {
       headers['Authorization'] = `Bearer ${this.apiKey}`
     } else if (this.authType === 'api_key' && this.apiKey) {
