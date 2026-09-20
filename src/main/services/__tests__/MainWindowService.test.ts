@@ -438,6 +438,17 @@ describe('MainWindowService', () => {
       expect(shell.openExternal).not.toHaveBeenCalled()
     })
 
+    it('opens Xuelang OAuth authorization in the external browser regardless of the website preference', async () => {
+      prefValues['app.browser.open_links_in_browser'] = true
+      await (svc as any).onInit()
+      const created = windowManagerMock.onWindowCreated.mock.calls[0][0]
+      ;(svc as any).setupWebContentsHandlers(win)
+      created({ type: WindowType.Main, window: win })
+      const popup = win.webContents.setWindowOpenHandler.mock.calls.at(-1)![0]
+      expect(popup({ url: 'https://api.xuelanglm.com/oauth2/auth?client_id=x' })).toEqual({ action: 'deny' })
+      expect(shell.openExternal).toHaveBeenCalledWith('https://api.xuelanglm.com/oauth2/auth?client_id=x')
+    })
+
     it('opens an encoded shared-browser route when enabled, even with Agent control off', async () => {
       prefValues['app.browser.open_links_in_browser'] = true
       const url = 'http://192.168.1.2:8080/page?q=a&lang=zh#part'

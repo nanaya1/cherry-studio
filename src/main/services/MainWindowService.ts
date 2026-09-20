@@ -25,6 +25,7 @@ import { getWindowsBackgroundMaterial, replaceDevtoolsFont } from '@main/utils/w
 import { IpcChannel } from '@shared/IpcChannel'
 import type { MainWindowInitData } from '@shared/types/mainWindow'
 import { normalizeBrowserEntryUrl, normalizeBrowserUrl } from '@shared/utils/browserUrl'
+import { XUELANG_API_HOST } from '@shared/utils/constants'
 import { HTML_ARTIFACT_PREVIEW_DATA_URL_PREFIX, HTML_ARTIFACT_PREVIEW_PARTITION } from '@shared/utils/htmlArtifact'
 import { getWebviewPartition, getWebviewSecurityProfile, WebviewSecurityProfile } from '@shared/utils/webviewSecurity'
 import { MIN_WINDOW_HEIGHT, MIN_WINDOW_WIDTH } from '@shared/utils/window'
@@ -34,6 +35,12 @@ import { isSafeExternalUrl } from '../utils/externalUrlSafety'
 import { contextMenu } from './ContextMenu'
 
 const logger = loggerService.withContext('MainWindowService')
+
+// Xuelang OAuth uses a meacowork:// deep-link callback, which only fires when the
+// authorization page runs in the OS browser — never via open-url from this app.
+const XUELANG_OAUTH_URL_PREFIX = `${XUELANG_API_HOST}/oauth2/auth`
+
+const forceExternalOpen = (url: string): boolean => url.startsWith(XUELANG_OAUTH_URL_PREFIX)
 
 // Create nativeImage for Linux window icon (required for Wayland)
 const linuxIcon = isLinux ? nativeImage.createFromPath(iconPath) : undefined
@@ -648,7 +655,9 @@ export class MainWindowService extends BaseService {
           shell.openPath(filePath).catch((err) => logger.error('Failed to open file:', err))
         }
       } else if (isSafeExternalUrl(details.url)) {
-        void this.openWebsite(details.url).catch((error) => logger.warn('Failed to open website', { error }))
+        void this.openWebsite(details.url, forceExternalOpen(details.url)).catch((error) =>
+          logger.warn('Failed to open website', { error })
+        )
       } else {
         logger.warn(`Blocked shell.openExternal for untrusted URL scheme: ${details.url}`)
       }
