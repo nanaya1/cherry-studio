@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { loggerService } from '@logger'
 import { ipcApi } from '@renderer/ipc'
@@ -29,12 +29,15 @@ export function useOrgSkills(enabled: boolean) {
   const [installedSlugs, setInstalledSlugs] = useState<Set<string>>(() => new Set())
   // [enterprise] C2：本地已安装但企业已停用/下架的 slug（提示"可删除"，不注入新会话）
   const [disabledSlugs, setDisabledSlugs] = useState<string[]>([])
+  const requestRef = useRef(0)
   const invalidate = useInvalidateSkills()
 
   const refetch = useCallback(async () => {
+    const requestId = ++requestRef.current
     if (!enabled) {
       setSkills([])
       setError(null)
+      setLoading(false)
       return
     }
     setLoading(true)
@@ -46,22 +49,25 @@ export function useOrgSkills(enabled: boolean) {
       const { skills: list, installedSlugs: installed } = await ipcApi.request('enterprise.skills.list', {
         force: true
       })
+      if (requestId !== requestRef.current) return
       setSkills(list)
       setInstalledSlugs(new Set(installed))
       // [enterprise] C2：并行查询停用列表（查询失败不影响目录展示）
       try {
         const { disabled } = await ipcApi.request('enterprise.skills.listDisabled')
+        if (requestId !== requestRef.current) return
         setDisabledSlugs(disabled)
       } catch {
-        setDisabledSlugs([])
+        if (requestId === requestRef.current) setDisabledSlugs([])
       }
     } catch (cause) {
+      if (requestId !== requestRef.current) return
       const message = orgSkillErrorMessage(cause)
       logger.warn('Failed to list org skills', { error: message })
       setSkills([])
       setError(message)
     } finally {
-      setLoading(false)
+      if (requestId === requestRef.current) setLoading(false)
     }
   }, [enabled])
 

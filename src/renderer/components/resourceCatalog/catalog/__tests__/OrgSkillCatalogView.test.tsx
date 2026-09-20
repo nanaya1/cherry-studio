@@ -10,11 +10,15 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
-  useOrgSkills: vi.fn()
+  useOrgSkills: vi.fn(),
+  useOrgAccountSession: vi.fn(() => ({ status: { phase: 'signed-in' } }))
 }))
 
 vi.mock('@renderer/hooks/useOrgSkills', () => ({
   useOrgSkills: mocks.useOrgSkills
+}))
+vi.mock('@renderer/hooks/useOrgAccountSession', () => ({
+  useOrgAccountSession: mocks.useOrgAccountSession
 }))
 
 vi.mock('react-i18next', () => ({
@@ -38,9 +42,32 @@ afterEach(cleanup)
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mocks.useOrgAccountSession.mockReturnValue({ status: { phase: 'signed-in' } })
 })
 
 describe('OrgSkillCatalogView', () => {
+  it('only enables org skill requests while signed in', () => {
+    mocks.useOrgSkills.mockReturnValue({
+      skills: [],
+      loading: false,
+      error: null,
+      install: vi.fn(),
+      installing: new Set(),
+      refetch: vi.fn(),
+      disabledSlugs: [],
+      installedSlugs: new Set<string>(),
+      remove: vi.fn()
+    })
+    mocks.useOrgAccountSession.mockReturnValue({ status: { phase: 'signed-out' } })
+
+    const { rerender } = render(<OrgSkillCatalogView />)
+    expect(mocks.useOrgSkills).toHaveBeenLastCalledWith(false)
+
+    mocks.useOrgAccountSession.mockReturnValue({ status: { phase: 'signed-in' } })
+    rerender(<OrgSkillCatalogView />)
+    expect(mocks.useOrgSkills).toHaveBeenLastCalledWith(true)
+  })
+
   it('renders org skills as cards with install buttons', () => {
     mocks.useOrgSkills.mockReturnValue({
       skills: [orgSkill('a', '技能A'), orgSkill('b', '技能B')],

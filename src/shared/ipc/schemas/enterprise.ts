@@ -38,8 +38,8 @@ export const enterpriseRequestSchemas = {
   }),
   'enterprise.session.logout': defineRoute({ input: z.void(), output: z.strictObject({ ok: z.boolean() }) }),
   'enterprise.skills.list': defineRoute({
-    // force: UI 手动刷新时穿透主进程目录 TTL 缓存（否则管理台启停 5 分钟内看不到变更）
-    input: z.strictObject({ force: z.boolean().optional() }),
+    // force: UI 手动刷新时穿透主进程目录 TTL 缓存；默认空对象兼容旧窗口的无参调用
+    input: z.strictObject({ force: z.boolean().optional() }).default({}),
     // [enterprise] installedSlugs：本地已安装的 org 技能 slug（对话框标记「已安装」状态）
     output: z.strictObject({ skills: z.array(orgSkillItemSchema), installedSlugs: z.array(z.string()) })
   }),

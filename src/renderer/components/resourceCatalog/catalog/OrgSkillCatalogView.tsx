@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { ResourceCatalogSearchInput } from '@renderer/components/resourceCatalog/ResourceCatalogSearchInput'
+import { useOrgAccountSession } from '@renderer/hooks/useOrgAccountSession'
 import { useOrgSkills, type OrgSkillItem } from '@renderer/hooks/useOrgSkills'
 import { toast } from '@renderer/services/toast'
 
@@ -20,8 +21,11 @@ const FALLBACK_COLORS = [
 export function OrgSkillCatalogView() {
   const { t } = useTranslation()
   const [query, setQuery] = useState('')
+  const { status } = useOrgAccountSession()
+  // [enterprise] 登出时停止目录请求；重登事件会把 enabled 切回 true 并自动重新拉取
+  const isSignedIn = status?.phase === 'signed-in'
   const { skills, loading, error, install, installing, refetch, disabledSlugs, installedSlugs, remove } =
-    useOrgSkills(true)
+    useOrgSkills(isSignedIn)
   const [removing, setRemoving] = useState<Set<string>>(() => new Set())
 
   const visibleSkills = useMemo(() => {
