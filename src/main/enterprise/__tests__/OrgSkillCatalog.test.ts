@@ -268,6 +268,44 @@ describe('OrgSkillCatalog C1/C2/C4', () => {
     expect(catalog.installedSlugs()).toEqual(['kept'])
   })
 
+  // [enterprise] C4 闭环：已删技能重新安装后墓碑必须清除，否则 installedSlugs 永远排除它，
+  // 组织 tab 永远显示可点的「安装」按钮、每次点击都重装成功（用户报障场景）。
+  it('C4 install：已删除（有墓碑）的技能重新安装 → 清墓碑且 installedSlugs 重新纳入', async () => {
+    // 内存版 state 假件，让 installedSlugs() 反射真实增删语义
+    const states: Record<string, Record<string, unknown>> = {}
+    const tombstones: Record<string, string> = {}
+    stateStoreMock.upsert.mockImplementation((slug: string, s: Record<string, unknown>) => {
+      states[slug] = s
+    })
+    stateStoreMock.remove.mockImplementation((slug: string) => {
+      delete states[slug]
+    })
+    stateStoreMock.snapshot.mockImplementation(() => states)
+    stateStoreMock.markDeleted.mockImplementation((slug: string, h: string) => {
+      tombstones[slug] = h
+    })
+    stateStoreMock.clearDeleted.mockImplementation((slug: string) => {
+      delete tombstones[slug]
+    })
+    stateStoreMock.deletedHash.mockImplementation((slug: string) => tombstones[slug])
+
+    // 模拟用户曾删除：留下墓碑（state 已被卸载链路移除）
+    tombstones['reborn'] = 'hash-old'
+    expect(catalog.installedSlugs()).toEqual([])
+
+    apiMock.listSkills.mockResolvedValue({ skills: [makeItem('reborn', 'hash-r')] })
+    const installSkillDir = vi.fn().mockResolvedValue({ id: 'sk-9', folderName: 'reborn' })
+    skillServiceMock.installSkillDir = installSkillDir
+    ;(catalog as unknown as { downloadWithHash: unknown }).downloadWithHash = vi.fn().mockResolvedValue(undefined)
+    ;(catalog as unknown as { tarExtract: unknown }).tarExtract = vi.fn().mockResolvedValue({ stdout: '', stderr: '' })
+
+    await catalog.install('reborn')
+
+    // 契约：重新安装 = 用户意图变更 → 墓碑必须清除，installedSlugs 必须重新纳入
+    expect(stateStoreMock.clearDeleted).toHaveBeenCalledWith('reborn')
+    expect(catalog.installedSlugs()).toContain('reborn')
+  })
+
   it('C4 reportDeleted：上报后写墓碑（记录删除时 hash）并清安装记录', async () => {
     apiMock.reportLifecycle.mockResolvedValue(undefined)
 

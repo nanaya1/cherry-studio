@@ -160,6 +160,10 @@ export class OrgSkillCatalog {
         folderName: installed.folderName ?? slug
       })
 
+      // [enterprise] C4 闭环：重新安装 = 用户删除意图失效（语义与 startupScan 的「hash 变化清墓碑」一致），
+      // 不清墓碑则 installedSlugs 永远排除该技能 → 组织 tab 永远显示可点的「安装」
+      orgStateStore.clearDeleted(slug)
+
       await this.auth.apiClient.reportLifecycle(slug, 'install', { version: item.version })
       logger.info('org skill installed', { slug, version: item.version, id: (installed as { id?: string }).id })
     } catch (error) {
