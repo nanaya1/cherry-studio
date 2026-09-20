@@ -79,8 +79,9 @@ const OrgConnectorList: FC<OrgConnectorListProps> = ({ variant = 'catalog', tool
               <div
                 key={connector.slug}
                 className={cn(
-                  'group relative flex min-h-28 min-w-0 flex-col rounded-lg border border-border-subtle bg-card p-3.5 transition-[background-color,border-color,box-shadow] hover:border-border-strong hover:bg-background-subtle hover:shadow-sm focus-visible:border-ring focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50',
-                  installed && 'bg-muted/25'
+                  'group relative flex min-h-28 min-w-0 flex-col rounded-lg border border-border-subtle bg-card p-3.5 transition-[background-color,border-color,box-shadow] hover:border-border-strong hover:bg-background-subtle hover:shadow-sm focus-visible:border-ring focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50'
+                  // 已安装状态由右上角勾选表达，不再覆盖卡片背景色。
+                  // installed && 'bg-muted/25'
                 )}>
                 <div className="min-w-0 flex-1">
                   <div className="flex min-w-0 items-center gap-2.5 pr-16">
@@ -95,7 +96,9 @@ const OrgConnectorList: FC<OrgConnectorListProps> = ({ variant = 'catalog', tool
                       {t('workspace.skillsConnectors.sources.org')}
                     </Badge> */}
                   </div>
-                  <p className="mt-3 line-clamp-2 text-muted-foreground text-sm leading-5">{connector.description}</p>
+                  <p className="mt-3 line-clamp-2 text-muted-foreground text-sm leading-5">
+                    {connector.description.trim() || t('settings.mcp.noDescriptionAvailable')}
+                  </p>
                   {/* 停用命令预览，使组织卡片与其他目录 Tab 的信息层级一致。
                   <p className="mt-1 truncate font-mono text-[11px] text-foreground-tertiary">
                     {connector.baseUrl ||
@@ -106,9 +109,12 @@ const OrgConnectorList: FC<OrgConnectorListProps> = ({ variant = 'catalog', tool
                 </div>
                 <div className="absolute top-3.5 right-3 flex shrink-0 items-center justify-end gap-1">
                   {installed ? (
-                    <div className="inline-flex h-7 items-center gap-1.5 rounded-lg px-2 text-muted-foreground text-xs">
-                      <Check size={13} className="text-success" />
-                      {t('settings.skills.installed')}
+                    <div
+                      className="inline-flex size-7 items-center justify-center rounded-md"
+                      aria-label={t('settings.skills.installed')}>
+                      <Check size={14} className="text-success" />
+                      {/* 已安装状态仅显示图标，避免重复文本占用卡片标题空间。
+                      {t('settings.skills.installed')} */}
                     </div>
                   ) : (
                     <Button
