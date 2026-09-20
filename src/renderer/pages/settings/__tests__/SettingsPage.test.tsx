@@ -80,6 +80,7 @@ vi.mock('react-i18next', () => ({
         'settings.model': '默认模型',
         'settings.prompts.title': '提示词',
         'settings.quickAssistant.title': '快捷助手',
+        'settings.remoteKnowledge.title': '远端知识服务',
         'settings.scheduledTasks.title': '定时任务',
         'settings.screenshot.title': '截图',
         'settings.shortcuts.title': '快捷键',
@@ -132,6 +133,15 @@ describe('SettingsPage', () => {
     expect(navigateMock).toHaveBeenCalledWith({ to: '/settings/general' })
     fireEvent.click(localModelsItem)
     expect(navigateMock).toHaveBeenCalledWith({ to: '/settings/local-models' })
+  })
+
+  it('exposes remote knowledge as a tools destination', () => {
+    render(<SettingsPage />)
+
+    const remoteKnowledgeItem = screen.getByRole('button', { name: '远端知识服务' })
+    fireEvent.click(remoteKnowledgeItem)
+
+    expect(navigateMock).toHaveBeenCalledWith({ to: '/settings/remote-knowledge' })
   })
 
   it('exposes device connections as its own settings destination in developer mode', () => {

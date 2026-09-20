@@ -47,6 +47,7 @@ import { Route as SettingsOcrRouteImport } from './routes/settings/ocr'
 import { Route as SettingsPromptsRouteImport } from './routes/settings/prompts'
 import { Route as SettingsProviderRouteImport } from './routes/settings/provider'
 import { Route as SettingsQuickAssistantRouteImport } from './routes/settings/quick-assistant'
+import { Route as SettingsRemoteKnowledgeRouteImport } from './routes/settings/remote-knowledge'
 import { Route as SettingsScheduledTasksRouteImport } from './routes/settings/scheduled-tasks'
 import { Route as SettingsScreenshotRouteImport } from './routes/settings/screenshot'
 import { Route as SettingsSearchRouteImport } from './routes/settings/search'
@@ -264,6 +265,11 @@ const SettingsQuickAssistantRoute = SettingsQuickAssistantRouteImport.update({
   path: '/quick-assistant',
   getParentRoute: () => SettingsRoute,
 } as any)
+const SettingsRemoteKnowledgeRoute = SettingsRemoteKnowledgeRouteImport.update({
+  id: '/remote-knowledge',
+  path: '/remote-knowledge',
+  getParentRoute: () => SettingsRoute,
+} as any)
 const SettingsScheduledTasksRoute = SettingsScheduledTasksRouteImport.update({
   id: '/scheduled-tasks',
   path: '/scheduled-tasks',
@@ -432,6 +438,7 @@ export interface FileRoutesByFullPath {
   '/settings/prompts': typeof SettingsPromptsRoute
   '/settings/provider': typeof SettingsProviderRoute
   '/settings/quick-assistant': typeof SettingsQuickAssistantRoute
+  '/settings/remote-knowledge': typeof SettingsRemoteKnowledgeRoute
   '/settings/scheduled-tasks': typeof SettingsScheduledTasksRouteWithChildren
   '/settings/screenshot': typeof SettingsScreenshotRoute
   '/settings/search': typeof SettingsSearchRoute
@@ -494,6 +501,7 @@ export interface FileRoutesByTo {
   '/settings/prompts': typeof SettingsPromptsRoute
   '/settings/provider': typeof SettingsProviderRoute
   '/settings/quick-assistant': typeof SettingsQuickAssistantRoute
+  '/settings/remote-knowledge': typeof SettingsRemoteKnowledgeRoute
   '/settings/screenshot': typeof SettingsScreenshotRoute
   '/settings/search': typeof SettingsSearchRoute
   '/settings/selection-assistant': typeof SettingsSelectionAssistantRoute
@@ -559,6 +567,7 @@ export interface FileRoutesById {
   '/settings/prompts': typeof SettingsPromptsRoute
   '/settings/provider': typeof SettingsProviderRoute
   '/settings/quick-assistant': typeof SettingsQuickAssistantRoute
+  '/settings/remote-knowledge': typeof SettingsRemoteKnowledgeRoute
   '/settings/scheduled-tasks': typeof SettingsScheduledTasksRouteWithChildren
   '/settings/screenshot': typeof SettingsScreenshotRoute
   '/settings/search': typeof SettingsSearchRoute
@@ -626,6 +635,7 @@ export interface FileRouteTypes {
     | '/settings/prompts'
     | '/settings/provider'
     | '/settings/quick-assistant'
+    | '/settings/remote-knowledge'
     | '/settings/scheduled-tasks'
     | '/settings/screenshot'
     | '/settings/search'
@@ -688,6 +698,7 @@ export interface FileRouteTypes {
     | '/settings/prompts'
     | '/settings/provider'
     | '/settings/quick-assistant'
+    | '/settings/remote-knowledge'
     | '/settings/screenshot'
     | '/settings/search'
     | '/settings/selection-assistant'
@@ -752,6 +763,7 @@ export interface FileRouteTypes {
     | '/settings/prompts'
     | '/settings/provider'
     | '/settings/quick-assistant'
+    | '/settings/remote-knowledge'
     | '/settings/scheduled-tasks'
     | '/settings/screenshot'
     | '/settings/search'
@@ -1051,6 +1063,13 @@ declare module '@tanstack/react-router' {
       path: '/quick-assistant'
       fullPath: '/settings/quick-assistant'
       preLoaderRoute: typeof SettingsQuickAssistantRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/settings/remote-knowledge': {
+      id: '/settings/remote-knowledge'
+      path: '/remote-knowledge'
+      fullPath: '/settings/remote-knowledge'
+      preLoaderRoute: typeof SettingsRemoteKnowledgeRouteImport
       parentRoute: typeof SettingsRoute
     }
     '/settings/scheduled-tasks': {
@@ -1354,6 +1373,7 @@ interface SettingsRouteChildren {
   SettingsPromptsRoute: typeof SettingsPromptsRoute
   SettingsProviderRoute: typeof SettingsProviderRoute
   SettingsQuickAssistantRoute: typeof SettingsQuickAssistantRoute
+  SettingsRemoteKnowledgeRoute: typeof SettingsRemoteKnowledgeRoute
   SettingsScheduledTasksRoute: typeof SettingsScheduledTasksRouteWithChildren
   SettingsScreenshotRoute: typeof SettingsScreenshotRoute
   SettingsSearchRoute: typeof SettingsSearchRoute
@@ -1386,6 +1406,7 @@ const SettingsRouteChildren: SettingsRouteChildren = {
   SettingsPromptsRoute: SettingsPromptsRoute,
   SettingsProviderRoute: SettingsProviderRoute,
   SettingsQuickAssistantRoute: SettingsQuickAssistantRoute,
+  SettingsRemoteKnowledgeRoute: SettingsRemoteKnowledgeRoute,
   SettingsScheduledTasksRoute: SettingsScheduledTasksRouteWithChildren,
   SettingsScreenshotRoute: SettingsScreenshotRoute,
   SettingsSearchRoute: SettingsSearchRoute,

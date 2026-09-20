@@ -5,6 +5,7 @@ import {
   Cloud,
   Command,
   Crop,
+  Database,
   FileBox,
   FileCode,
   Globe,
@@ -69,6 +70,12 @@ export const settingsMenu: readonly SettingsMenuEntry[] = [
     route: '/settings/mcp',
     titleKey: 'agent.settings.toolsMcp.mcp.tab',
     icon: createElement(McpLogo, { width: 16, height: 16, className: 'text-foreground' }),
+    groupKey: 'settings.menuGroups.capabilities'
+  },
+  {
+    route: '/settings/remote-knowledge',
+    titleKey: 'settings.remoteKnowledge.title',
+    icon: createElement(Database),
     groupKey: 'settings.menuGroups.capabilities'
   },
   {
