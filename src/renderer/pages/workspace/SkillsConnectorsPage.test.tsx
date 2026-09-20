@@ -28,6 +28,8 @@ vi.mock('@renderer/components/resourceCatalog/catalog', () => ({
       </button>
     </div>
   ),
+  // 页面「组织」二级 tab 引用了该导出，整体 mock 必须提供（缺了会整树渲染崩溃）
+  OrgSkillCatalogView: () => <div>org skills</div>,
   SkillCatalogDialogs: ({ controller }: { controller: MockSkillController }) => (
     <div>
       skill dialogs: {controller.dialogs.skillMarketplaceOpen ? 'marketplace' : ''}

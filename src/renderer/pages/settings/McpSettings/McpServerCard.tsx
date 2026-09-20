@@ -247,6 +247,14 @@ const McpServerCard: FC<McpServerCardProps> = ({ server, onEdit, variant = 'sett
               )}
             </div>
             <h3 className="min-w-0 truncate font-semibold text-base leading-5">{server.name}</h3>
+            {/* [enterprise] 组织来源 tag：与 OrgConnectorList 目录卡片同款样式 */}
+            {server.installSource === 'org' ? (
+              <Badge
+                variant="outline"
+                className="h-5 shrink-0 rounded-md border-primary/30 bg-primary/10 px-1.5 text-[11px] text-primary leading-none">
+                {t('workspace.skillsConnectors.sources.org')}
+              </Badge>
+            ) : null}
             <ActiveDot $state={server.isActive ? runtimeStatus.state : 'disabled'} />
           </div>
 
@@ -311,6 +319,14 @@ const McpServerCard: FC<McpServerCardProps> = ({ server, onEdit, variant = 'sett
         <MutedCell>{version || '—'}</MutedCell>
 
         <div className="flex w-24 shrink-0 justify-end">
+          {/* [enterprise] 组织来源 tag（与目录卡片同款） */}
+          {server.installSource === 'org' ? (
+            <Badge
+              variant="outline"
+              className="mr-2 h-5 shrink-0 rounded-md border-primary/30 bg-primary/10 px-1.5 text-[11px] text-primary leading-none">
+              {t('workspace.skillsConnectors.sources.org')}
+            </Badge>
+          ) : null}
           <MetaBadge className={getTypeBadgeClass()}>{typeLabel}</MetaBadge>
         </div>
 

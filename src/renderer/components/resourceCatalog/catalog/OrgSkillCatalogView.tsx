@@ -1,5 +1,5 @@
 import { Button, EmptyState, Spinner, Tooltip } from '@cherrystudio/ui'
-import { Building2, Check, Loader2, Trash2 } from 'lucide-react'
+import { Check, Download, LoaderCircle, Trash2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -118,23 +118,26 @@ export function OrgSkillCatalogView() {
                     placement="top"
                     asChild
                     content={<div className="max-w-56">{t('library.org_skill.disabled_badge')}</div>}>
-                    <Button
+                    {/* 按钮形态与推荐技能卡片操作按钮对齐（裸 button + hover 边框底色），仅图标换成删除 */}
+                    <button
                       type="button"
-                      variant="ghost"
-                      size="icon-sm"
                       disabled={isRemoving}
                       aria-label={t('library.org_skill.remove')}
                       onClick={() => void handleRemove(skill)}
-                      className="absolute top-2 right-2 z-10 text-muted-foreground hover:text-error">
-                      {isRemoving ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
-                    </Button>
+                      className="absolute top-3 right-3 z-10 grid size-7 place-items-center rounded-md border border-transparent text-muted-foreground transition-colors hover:border-border hover:bg-muted hover:text-foreground disabled:cursor-default">
+                      {isRemoving ? (
+                        <LoaderCircle className="size-3.5 animate-spin" />
+                      ) : (
+                        <Trash2 className="size-3.5" />
+                      )}
+                    </button>
                   </Tooltip>
                 ) : (
-                  <Button
+                  // 按钮样式与 RecommendedSkillCatalogView 卡片安装按钮完全一致（下载图标 + 已装 ✓ 禁用态）
+                  <button
                     type="button"
-                    variant="ghost"
-                    size="icon-sm"
                     disabled={isInstalled || busy}
+                    onClick={() => void handleInstall(skill)}
                     aria-label={
                       isInstalled
                         ? t('library.org_skill.installed')
@@ -142,16 +145,15 @@ export function OrgSkillCatalogView() {
                           ? t('library.org_skill.installing')
                           : t('library.org_skill.install')
                     }
-                    onClick={() => void handleInstall(skill)}
-                    className="absolute top-2 right-2 z-10 text-muted-foreground hover:text-foreground disabled:cursor-default">
+                    className="absolute top-3 right-3 z-10 grid size-7 place-items-center rounded-md border border-transparent text-muted-foreground transition-colors hover:border-border hover:bg-muted hover:text-foreground disabled:cursor-default">
                     {busy ? (
-                      <Loader2 className="size-3.5 animate-spin" />
+                      <LoaderCircle className="size-3.5 animate-spin" />
                     ) : isInstalled ? (
                       <Check className="size-3.5 text-success" />
                     ) : (
-                      <Building2 className="size-3.5" />
+                      <Download className="size-3.5" />
                     )}
-                  </Button>
+                  </button>
                 )}
                 <div className="flex min-w-0 items-center gap-2.5 pr-8">
                   <span
