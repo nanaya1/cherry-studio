@@ -525,6 +525,10 @@ vi.mock('@renderer/hooks/useKnowledgeBase', () => ({
   useKnowledgeBases: () => ({ bases: mocks.knowledgeBases, isLoading: mocks.knowledgeBasesLoading })
 }))
 
+vi.mock('@renderer/hooks/useRemoteKnowledge', () => ({
+  useRemoteKnowledgeBases: () => ({ bases: [], isLoading: false })
+}))
+
 vi.mock('@renderer/hooks/useSkills', () => ({
   useAvailableSkills: () => ({
     skills: mocks.availableSkills,

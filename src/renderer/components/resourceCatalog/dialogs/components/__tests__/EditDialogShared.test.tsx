@@ -7,12 +7,14 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type * as CherryStudioUi from '@cherrystudio/ui'
 import { Form } from '@cherrystudio/ui'
 
-const { mockLoggerWarn, mockUseKnowledgeBases, mockIpcRequest, mockToastSuccess } = vi.hoisted(() => ({
-  mockLoggerWarn: vi.fn(),
-  mockUseKnowledgeBases: vi.fn(),
-  mockIpcRequest: vi.fn(),
-  mockToastSuccess: vi.fn()
-}))
+const { mockLoggerWarn, mockUseKnowledgeBases, mockUseRemoteKnowledgeBases, mockIpcRequest, mockToastSuccess } =
+  vi.hoisted(() => ({
+    mockLoggerWarn: vi.fn(),
+    mockUseKnowledgeBases: vi.fn(),
+    mockUseRemoteKnowledgeBases: vi.fn(),
+    mockIpcRequest: vi.fn(),
+    mockToastSuccess: vi.fn()
+  }))
 
 vi.mock('@cherrystudio/ui', async (importOriginal) => await importOriginal<typeof CherryStudioUi>())
 
@@ -68,6 +70,10 @@ vi.mock('@renderer/hooks/useKnowledgeBase', () => ({
   useKnowledgeBases: mockUseKnowledgeBases
 }))
 
+vi.mock('@renderer/hooks/useRemoteKnowledge', () => ({
+  useRemoteKnowledgeBases: mockUseRemoteKnowledgeBases
+}))
+
 vi.mock('@renderer/ipc', () => ({
   ipcApi: { request: mockIpcRequest }
 }))
@@ -85,6 +91,7 @@ describe('EditDialogShared', () => {
 
   beforeEach(() => {
     mockUseKnowledgeBases.mockReturnValue({ bases: [], isLoading: false })
+    mockUseRemoteKnowledgeBases.mockReturnValue({ bases: [], isLoading: false })
     mockIpcRequest.mockReset()
     mockToastSuccess.mockReset()
     writeText.mockResolvedValue(undefined)
@@ -185,6 +192,49 @@ describe('EditDialogShared', () => {
     render(<Harness />)
 
     expect(mockUseKnowledgeBases).toHaveBeenCalledWith({ revalidateOnFocus: true })
+  })
+
+  it('shows remote knowledge bases as selectable linked resources', async () => {
+    const remoteId = 'remote:service-1:docs'
+    mockUseRemoteKnowledgeBases.mockReturnValue({
+      bases: [
+        {
+          id: remoteId,
+          serviceId: 'service-1',
+          serviceName: 'Remote Service',
+          remoteBaseId: 'docs',
+          name: 'Remote Docs'
+        }
+      ],
+      isLoading: false
+    })
+
+    function Harness() {
+      const form = useForm<ResourceCreateWizardFormValues>({
+        defaultValues: {
+          avatar: '💬',
+          name: '',
+          description: '',
+          agentType: 'claude-code',
+          permissionMode: 'default',
+          modelId: null,
+          prompt: '',
+          knowledgeBaseIds: [remoteId],
+          skillIds: []
+        }
+      })
+
+      return (
+        <Form {...form}>
+          <KnowledgeStep form={form} portalContainer={null} />
+        </Form>
+      )
+    }
+
+    render(<Harness />)
+
+    expect(screen.getByText('Remote Docs')).toBeInTheDocument()
+    expect(screen.queryByText(`${remoteId.slice(0, 8)} unavailable`)).not.toBeInTheDocument()
   })
 
   it('closes and disables the knowledge picker when submission starts', async () => {

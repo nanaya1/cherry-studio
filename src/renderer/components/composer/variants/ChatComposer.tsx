@@ -44,6 +44,8 @@ import { useAssistant } from '@renderer/hooks/useAssistant'
 import { useKnowledgeBases } from '@renderer/hooks/useKnowledgeBase'
 import { useModelById, useModels } from '@renderer/hooks/useModel'
 import { useProviders } from '@renderer/hooks/useProvider'
+import { useRemoteKnowledgeBases } from '@renderer/hooks/useRemoteKnowledge'
+import { mergeSelectableKnowledgeBases } from '@renderer/hooks/useSelectableKnowledgeBases'
 import { useTopicMutations } from '@renderer/hooks/useTopic'
 import { useTopicAwaitingApproval, useTopicStreamStatus } from '@renderer/hooks/useTopicStreamStatus'
 import { EVENT_NAMES, EventEmitter } from '@renderer/services/EventService'
@@ -628,9 +630,18 @@ const ChatComposerInner = ({
     Boolean(editingMessageForCurrentTopic) ||
     rootPanelVisible ||
     knowledgeBasePanelVisible
-  const { bases: allKnowledgeBases, isLoading: isKnowledgeBasesLoading } = useKnowledgeBases({
+  // 停用原本地单源取数：composer 知识库 scope 需并入远端库（Task 12）。
+  // 远端列表不随 knowledgeBasesDataEnabled 门控（轻量 IPC + SWR 全局缓存，
+  // 门控会让草稿恢复/面板打开的旧闭包拿到空列表）。
+  // const { bases: allKnowledgeBases, isLoading: isKnowledgeBasesLoading } = useKnowledgeBases({
+  //   enabled: knowledgeBasesDataEnabled
+  // })
+  const { bases: localKnowledgeBases, isLoading: isLocalKnowledgeBasesLoading } = useKnowledgeBases({
     enabled: knowledgeBasesDataEnabled
   })
+  const { bases: remoteKnowledgeBases, isLoading: isRemoteKnowledgeBasesLoading } = useRemoteKnowledgeBases()
+  const allKnowledgeBases = mergeSelectableKnowledgeBases(localKnowledgeBases, remoteKnowledgeBases)
+  const isKnowledgeBasesLoading = isLocalKnowledgeBasesLoading || isRemoteKnowledgeBasesLoading
   const filesRef = useLatest(files)
   const selectedKnowledgeBasesRef = useLatest(selectedKnowledgeBases)
   const mentionedModelsRef = useLatest(mentionedModels)
