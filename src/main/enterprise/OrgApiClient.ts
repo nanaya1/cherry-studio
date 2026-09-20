@@ -3,6 +3,7 @@
  * 薄封装：base URL 常量 + 统一 Authorization 头 + json 解析。
  */
 import { loggerService } from '@logger'
+
 import type { OrgConnectorCatalogItem, OrgSession, OrgSkillCatalogItem } from './types'
 
 const logger = loggerService.withContext('OrgApiClient')
@@ -52,12 +53,34 @@ export class OrgApiClient {
     })
   }
 
+  /**
+   * [enterprise] 公共目录读请求：所有人看到同一套公共资源，未登录也能访问。
+   * 有会话时附带 Authorization（服务端可用于埋点），无会话时匿名请求。
+   */
+  private async publicRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
+    const session = await this.getValidSession().catch(() => null)
+    const res = await fetch(`${ORG_SERVER_BASE_URL}${path}`, {
+      ...init,
+      headers: {
+        'content-type': 'application/json',
+        ...(session ? { authorization: `Bearer ${session.accessToken}` } : {}),
+        ...init.headers
+      }
+    })
+    if (!res.ok) {
+      const body = await res.text().catch(() => '')
+      logger.warn('org public request failed', { path, status: res.status, body: body.slice(0, 200) })
+      throw new Error(`企业服务请求失败 (${res.status})`)
+    }
+    return (await res.json()) as T
+  }
+
   listSkills() {
-    return this.request<{ skills: OrgSkillCatalogItem[] }>('/api/skills')
+    return this.publicRequest<{ skills: OrgSkillCatalogItem[] }>('/api/skills')
   }
 
   listConnectors() {
-    return this.request<{ connectors: OrgConnectorCatalogItem[] }>('/api/connectors')
+    return this.publicRequest<{ connectors: OrgConnectorCatalogItem[] }>('/api/connectors')
   }
 
   /**
@@ -102,10 +125,20 @@ export class OrgApiClient {
   }
 
   reportLifecycle(skillSlug: string, event: string, detail: Record<string, unknown> = {}) {
-    // 上报失败不阻塞主流程
+    // 上报失败不阻塞主流程。不在此处预取会话：会话获取与 401 刷新重试完全由 request() 驱动，
+    // 预取会多消耗一次 getValidSession 并干扰 request() 的「token 未变化则不重试」判断。
+    // 匿名（未登录）时 request() 抛「未登录企业服务」，这里等价于跳过上报。
     return this.request('/api/skills/lifecycle', {
       method: 'POST',
       body: JSON.stringify({ skillSlug, event, detail })
-    }).catch((error) => logger.warn('lifecycle report failed', { skillSlug, event, error: String(error) }))
+    }).catch((error) => {
+      const message = error instanceof Error ? error.message : String(error)
+      if (message === '未登录企业服务') {
+        logger.info('lifecycle report skipped: signed out', { skillSlug, event })
+        return undefined
+      }
+      logger.warn('lifecycle report failed', { skillSlug, event, error: message })
+      return undefined
+    })
   }
 }

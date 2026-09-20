@@ -36,9 +36,7 @@ export interface OrgSession {
 export type OrgAuthPhase = 'signed-out' | 'authorizing' | 'signed-in'
 
 /** [enterprise] OAuth 回调 URL 解析：meacowork://auth/callback?code=..&state=.. */
-export function parseOrgAuthCallback(
-  url: URL
-): { code: string; state: string } | null {
+export function parseOrgAuthCallback(url: URL): { code: string; state: string } | null {
   if (url.protocol !== 'meacowork:' || url.hostname.toLowerCase() !== 'auth') return null
   const params = new URLSearchParams(url.search)
   const code = params.get('code')

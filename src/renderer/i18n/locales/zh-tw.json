@@ -2060,7 +2060,7 @@
   "library.no_match": "無相符結果",
   "library.org_skill.description": "Skills distributed by your organization administrator. Install them to use in the local skill library.",
   "library.org_skill.disabled_badge": "企業已停用 · 可刪除",
-  "library.org_skill.empty_description": "Your organization has not distributed any skills, or you are not signed in to the enterprise service.",
+  "library.org_skill.empty_description": "企業尚未下發技能。",
   "library.org_skill.empty_title": "No organization skills",
   "library.org_skill.install": "Install",
   "library.org_skill.install_success": "Organization skill \"{{name}}\" installed",

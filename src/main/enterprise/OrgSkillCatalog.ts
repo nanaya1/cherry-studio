@@ -1,17 +1,21 @@
+import { execFile } from 'node:child_process'
+import { createHash } from 'node:crypto'
 /**
  * [enterprise] T0 企业扩展 - 技能目录：企业下发 → hash 校验 → 复用 SkillService 安装
  * 生命周期事件上报（install/exec）走 OrgApiClient。
  * C1/C2/C4 扩展：启动扫描自动更新、停用拦截（TTL 缓存）、删除上报、状态记录（OrgStateStore）。
  */
 import { createReadStream } from 'node:fs'
-import { createHash } from 'node:crypto'
 import { mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
+
+import { agentGlobalSkillService } from '@data/services/AgentGlobalSkillService'
 import { loggerService } from '@logger'
+
 import { ORG_SERVER_BASE_URL } from './OrgApiClient'
+import type { OrgAuthManager } from './OrgAuthManager'
 import { orgStateStore } from './OrgStateStore'
 import type { OrgSkillCatalogItem } from './types'
 
@@ -28,7 +32,7 @@ export class OrgSkillCatalog {
   // [enterprise] 测试可注入点（生产恒为 promisify(execFile)）
   protected tarExtract: typeof execFileAsync = execFileAsync
 
-  constructor(private readonly auth: import('./OrgAuthManager').OrgAuthManager) {}
+  constructor(private readonly auth: OrgAuthManager) {}
 
   async list(force = false): Promise<OrgSkillCatalogItem[]> {
     // [enterprise] C2：走 5 分钟 TTL 缓存；失败时若有过期缓存则降级使用（可用性优先）。
@@ -132,9 +136,19 @@ export class OrgSkillCatalog {
     await this.downloadAndInstall(slug)
   }
 
-  /** [enterprise] 已安装的 org 技能 slug 列表（供目录对话框标记「已安装」状态）；删除墓碑（C4）不算已安装 */
+  /** [enterprise] 将旧托管技能就地转成 local；ID、文件和 Agent 关联不变。 */
+  migrateLegacyCopies(): number {
+    const legacy = agentGlobalSkillService.listAll().filter((skill) => skill.source === 'org')
+    for (const skill of legacy) agentGlobalSkillService.update(skill.id, { source: 'local' })
+    return legacy.length
+  }
+
+  /** [enterprise] copy 模式按本地资源来源标识判断安装状态，不依赖组织托管 state。 */
   installedSlugs(): string[] {
-    return Object.keys(orgStateStore.snapshot()).filter((slug) => orgStateStore.deletedHash(slug) === undefined)
+    return agentGlobalSkillService
+      .listAll()
+      .map((skill) => skill.sourceUrl?.match(/^org-skill:(.+)$/)?.[1])
+      .filter((slug): slug is string => Boolean(slug))
   }
 
   /**
@@ -155,27 +169,29 @@ export class OrgSkillCatalog {
 
       // tarball 结构：<slug>/SKILL.md
       const skillDir = join(extractDir, slug)
-      // [enterprise] 以 org 来源安装；同 folderName 且同来源时允许覆盖更新。
+      // [enterprise] copy 模式：组织仅提供下载目录，安装后作为普通本地技能管理。
       // 显示名修复：SKILL.md frontmatter 的 name 通常是 slug 形态（org-code-review），
       // 必须把服务端目录的 name/description 作为 displayName 传入，否则「我安装的」
       // 列表显示的是 slug 而不是企业命名（与技能市场 catalog 链路同一机制）。
       // SkillService 未进服务注册表，用导出单例 + 断言访问（installSkillDir 为私有）
       const { skillService } = await import('@main/ai/skills/SkillService')
-      const installed = await (skillService as unknown as {
-        installSkillDir: (
-          dir: string,
-          source: string,
-          sourceUrl: string | null,
-          provenance?: {
-            catalogDisplayMetadata?: {
-              displayName: string
-              displayNameEn: string
-              description: string
-              descriptionEn: string
+      const installed = await (
+        skillService as unknown as {
+          installSkillDir: (
+            dir: string,
+            source: string,
+            sourceUrl: string | null,
+            provenance?: {
+              catalogDisplayMetadata?: {
+                displayName: string
+                displayNameEn: string
+                description: string
+                descriptionEn: string
+              }
             }
-          }
-        ) => Promise<{ id?: string; folderName?: string }>
-      }).installSkillDir(skillDir, 'org', `org-skill:${slug}`, {
+          ) => Promise<{ id?: string; folderName?: string }>
+        }
+      ).installSkillDir(skillDir, 'local', `org-skill:${slug}`, {
         catalogDisplayMetadata: {
           displayName: item.name,
           displayNameEn: '',
@@ -184,17 +200,14 @@ export class OrgSkillCatalog {
         }
       })
 
-      // [enterprise] C5：state 记录安装快照（version/contentHash/skillId/folderName）
-      orgStateStore.upsert(slug, {
-        version: item.version,
-        contentHash: item.contentHash,
-        skillId: String(installed.id ?? ''),
-        folderName: installed.folderName ?? slug
-      })
-
-      // [enterprise] C4 闭环：重新安装 = 用户删除意图失效（语义与 startupScan 的「hash 变化清墓碑」一致），
-      // 不清墓碑则 installedSlugs 永远排除该技能 → 组织 tab 永远显示可点的「安装」
-      orgStateStore.clearDeleted(slug)
+      // [enterprise] copy 模式不再写托管快照或墓碑；本地技能表即安装状态来源。
+      // orgStateStore.upsert(slug, {
+      //   version: item.version,
+      //   contentHash: item.contentHash,
+      //   skillId: String(installed.id ?? ''),
+      //   folderName: installed.folderName ?? slug
+      // })
+      // orgStateStore.clearDeleted(slug)
 
       await this.auth.apiClient.reportLifecycle(slug, 'install', { version: item.version })
       logger.info('org skill installed', { slug, version: item.version, id: (installed as { id?: string }).id })
@@ -229,11 +242,12 @@ export class OrgSkillCatalog {
 
   /** 下载 + sha256 边下边校验，不匹配即抛错（复用 OrgApiClient 逻辑太绕，这里独立实现） */
   private async downloadWithHash(item: OrgSkillCatalogItem, destPath: string): Promise<void> {
-    const session = await this.auth.getValidSession()
-    if (!session) throw new Error('未登录企业服务')
+    // [enterprise] 公共目录：未登录也能下载公共技能包；已登录附带 token 供服务端埋点。
+    // getValidSession 内部刷新失败会登出并返回 null，catch 兜底避免下载被刷新异常阻塞。
+    const session = await this.auth.getValidSession().catch(() => null)
 
     const res = await fetch(`${this.baseUrl()}${item.downloadUrl}`, {
-      headers: { authorization: `Bearer ${session.accessToken}` }
+      headers: session ? { authorization: `Bearer ${session.accessToken}` } : {}
     })
     if (!res.ok || !res.body) throw new Error(`技能包下载失败 (${res.status})`)
 

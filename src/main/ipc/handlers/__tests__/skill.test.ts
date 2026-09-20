@@ -212,22 +212,24 @@ describe('skillHandlers', () => {
     )
   })
 
-  // [enterprise] C4：卸载 org 技能时必须清 state（否则组织 tab 永远显示「已安装」）。
-  // 回归背景：曾用 getOptional 取 EnterprisePlugin，非 conditional 服务按容器契约抛错
-  // 被 catch 吞掉 → org-state.json 残留孤儿记录。
-  it('uninstall of an org skill reports deleted via getExisting (not getOptional)', async () => {
+  // copy 模式下，安装后的技能与本地上传一致；卸载不再进入组织生命周期。
+  it('uninstall of a copied organization skill only removes the local skill', async () => {
     orgSnapshotMock.mockReturnValue({
-      'org-code-review': { version: '2.0.0', contentHash: 'h', skillId: 's-org', folderName: 'org-code-review', enabled: true }
+      'org-code-review': {
+        version: '2.0.0',
+        contentHash: 'h',
+        skillId: 's-org',
+        folderName: 'org-code-review',
+        enabled: true
+      }
     })
-    appGetExistingMock.mockReturnValue({ skills: { reportDeleted: reportDeletedMock } })
-    reportDeletedMock.mockResolvedValue(undefined)
     uninstallMock.mockResolvedValue(undefined)
 
     await skillHandlers['skill.uninstall']({ skillId: 's-org' }, ctx)
 
-    expect(appGetExistingMock).toHaveBeenCalledWith('EnterprisePlugin')
-    expect(appGetOptionalMock).not.toHaveBeenCalledWith('EnterprisePlugin')
-    expect(reportDeletedMock).toHaveBeenCalledWith('org-code-review')
+    expect(appGetExistingMock).not.toHaveBeenCalled()
+    expect(appGetOptionalMock).not.toHaveBeenCalled()
+    expect(reportDeletedMock).not.toHaveBeenCalled()
     expect(uninstallMock).toHaveBeenCalledWith('s-org')
   })
 
@@ -242,7 +244,7 @@ describe('skillHandlers', () => {
     expect(uninstallMock).toHaveBeenCalledWith('s-local')
   })
 
-  it('uninstall still completes locally when the enterprise plugin is not ready', async () => {
+  it('uninstall does not depend on the enterprise plugin', async () => {
     orgSnapshotMock.mockReturnValue({
       'org-pdf': { version: '1.0.0', contentHash: 'h', skillId: 's-pdf', folderName: 'pdf', enabled: true }
     })
@@ -251,7 +253,7 @@ describe('skillHandlers', () => {
 
     await skillHandlers['skill.uninstall']({ skillId: 's-pdf' }, ctx)
 
-    expect(appGetExistingMock).toHaveBeenCalledWith('EnterprisePlugin')
+    expect(appGetExistingMock).not.toHaveBeenCalled()
     expect(reportDeletedMock).not.toHaveBeenCalled()
     expect(uninstallMock).toHaveBeenCalledWith('s-pdf')
   })

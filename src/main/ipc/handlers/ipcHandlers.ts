@@ -9,12 +9,12 @@ import { binaryHandlers } from './binary'
 import { browserHandlers } from './browser'
 import { channelHandlers } from './channel'
 import { cherryCloudHandlers } from './cherryCloud'
-import { enterpriseHandlers } from './enterprise' // [enterprise] T0 企业扩展
 import { cherryinHandlers } from './cherryin'
 import { citationHandlers } from './citation'
 import { codeCliHandlers } from './codeCli'
 import { deepSeekHarnessHandlers } from './deepSeekHarness'
 import { diagnosticsHandlers } from './diagnostics'
+import { enterpriseHandlers } from './enterprise' // [enterprise] T0 企业扩展
 import { exportHandlers } from './export'
 import { externalAppHandlers } from './externalApp'
 import { fileHandlers } from './file'

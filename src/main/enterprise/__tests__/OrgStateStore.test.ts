@@ -184,7 +184,7 @@ describe('OrgStateStore', () => {
 
     // 模拟路径注册表未初始化：此时调用 getPath 应抛错（与启动时一致）
     applicationMock.getPath.mockImplementation(() => {
-      throw new Error("application.getPath called before application.initPathRegistry() ran")
+      throw new Error('application.getPath called before application.initPathRegistry() ran')
     })
 
     const { orgStateStore } = await import('@main/enterprise/OrgStateStore')

@@ -1,7 +1,7 @@
 import { shell } from 'electron'
 
 import { loggerService } from '@logger'
-import { application } from '@application'
+// import { application } from '@application' // [enterprise] copy 模式不再调用旧托管上报函数
 import { skillService } from '@main/ai/skills/SkillService'
 import type { skillRequestSchemas } from '@shared/ipc/schemas/skill'
 import type { IpcHandlersFor } from '@shared/ipc/types'
@@ -9,27 +9,19 @@ import type { SkillResult } from '@shared/types/skill'
 
 const logger = loggerService.withContext('skillHandlers')
 
-/**
- * [enterprise] C4：若 skillId 对应 org 来源技能（state 里有记录且 skillId 匹配），
- * 先上报 deleted 生命周期事件并清 state。上报失败仅告警，绝不阻塞本地卸载。
- * EnterprisePlugin 未就绪/未启用时静默跳过。
- */
-async function reportOrgSkillDeletedIfManaged(skillId: string): Promise<void> {
-  try {
-    const { orgStateStore } = await import('@main/enterprise/OrgStateStore')
-    const entry = Object.entries(orgStateStore.snapshot()).find(([, s]) => s.skillId === skillId)
-    if (!entry) return // 非 org 技能，走原逻辑
-    // [enterprise] 回归修复：getOptional 对非 conditional 服务（EnterprisePlugin 是普通
-    // @Injectable）按容器契约直接抛错，被 catch 吞掉后 state 永不清除 → 组织 tab 永远「已安装」。
-    // 改用 getExisting（只在已创建时解析，永不抛错）。原实现保留在下行注释。
-    // const plugin = application.getOptional('EnterprisePlugin')
-    const plugin = application.getExisting('EnterprisePlugin')
-    if (!plugin) return // enterprise 插件未注册（测试/未启用环境）
-    await plugin.skills.reportDeleted(entry[0])
-  } catch (error) {
-    logger.warn('[enterprise] org skill deleted report skipped', { skillId, error: String(error) })
-  }
-}
+// [enterprise] copy 模式不再按组织来源处理卸载，保留旧托管上报逻辑便于回滚。
+// async function reportOrgSkillDeletedIfManaged(skillId: string): Promise<void> {
+//   try {
+//     const { orgStateStore } = await import('@main/enterprise/OrgStateStore')
+//     const entry = Object.entries(orgStateStore.snapshot()).find(([, s]) => s.skillId === skillId)
+//     if (!entry) return
+//     const plugin = application.getExisting('EnterprisePlugin')
+//     if (!plugin) return
+//     await plugin.skills.reportDeleted(entry[0])
+//   } catch (error) {
+//     logger.warn('[enterprise] org skill deleted report skipped', { skillId, error: String(error) })
+//   }
+// }
 
 /**
  * Skill handlers delegating to the `skillService` direct-import singleton. Legacy routes keep
@@ -48,13 +40,13 @@ async function toSkillResult<T>(op: () => Promise<T>, failMessage: string): Prom
 export const skillHandlers: IpcHandlersFor<typeof skillRequestSchemas> = {
   'skill.install': ({ installSource }) =>
     toSkillResult(() => skillService.install({ installSource }), 'Failed to install skill'),
-  // [enterprise] C4：卸载前判断是否 org 技能 → 上报 deleted 事件（失败不阻塞本地卸载）
-  'skill.uninstall': ({ skillId }) =>
-    toSkillResult(async () => {
-      await reportOrgSkillDeletedIfManaged(skillId)
-      // 原逻辑：skillService.uninstall(skillId)（未改动，仅外包 enterprise 上报）
-      return skillService.uninstall(skillId)
-    }, 'Failed to uninstall skill'),
+  // [enterprise] copy 模式：组织安装后等同本地技能，卸载不再进入组织生命周期。
+  // 'skill.uninstall': ({ skillId }) =>
+  //   toSkillResult(async () => {
+  //     await reportOrgSkillDeletedIfManaged(skillId)
+  //     return skillService.uninstall(skillId)
+  //   }, 'Failed to uninstall skill'),
+  'skill.uninstall': ({ skillId }) => toSkillResult(() => skillService.uninstall(skillId), 'Failed to uninstall skill'),
   'skill.install_from_zip': ({ zipFilePath }) =>
     toSkillResult(() => skillService.installFromZip({ zipFilePath }), 'Failed to install skill from ZIP'),
   'skill.install_from_directory': ({ directoryPath }) =>

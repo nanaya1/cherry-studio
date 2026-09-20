@@ -1,24 +1,20 @@
 /**
  * [enterprise] OrgSkillCatalogView 单元测试
- * 组织技能卡片视图：网格卡片渲染、安装按钮、已装状态、搜索过滤、未登录提示。
+ * 组织技能卡片视图：网格卡片渲染、安装按钮、已装状态、搜索过滤。
+ * [enterprise] 公共目录改造：目录不再依赖登录态，始终启用请求（enabled=true）。
  */
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest'
-
 import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
-  useOrgSkills: vi.fn(),
-  useOrgAccountSession: vi.fn(() => ({ status: { phase: 'signed-in' } }))
+  useOrgSkills: vi.fn()
 }))
 
 vi.mock('@renderer/hooks/useOrgSkills', () => ({
   useOrgSkills: mocks.useOrgSkills
-}))
-vi.mock('@renderer/hooks/useOrgAccountSession', () => ({
-  useOrgAccountSession: mocks.useOrgAccountSession
 }))
 
 vi.mock('react-i18next', () => ({
@@ -42,11 +38,11 @@ afterEach(cleanup)
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mocks.useOrgAccountSession.mockReturnValue({ status: { phase: 'signed-in' } })
 })
 
 describe('OrgSkillCatalogView', () => {
-  it('only enables org skill requests while signed in', () => {
+  // [enterprise] 公共目录：目录请求不随登录态关闭（未登录也可浏览/安装公共资源）
+  it('always enables org skill requests regardless of session', () => {
     mocks.useOrgSkills.mockReturnValue({
       skills: [],
       loading: false,
@@ -58,14 +54,9 @@ describe('OrgSkillCatalogView', () => {
       installedSlugs: new Set<string>(),
       remove: vi.fn()
     })
-    mocks.useOrgAccountSession.mockReturnValue({ status: { phase: 'signed-out' } })
 
-    const { rerender } = render(<OrgSkillCatalogView />)
-    expect(mocks.useOrgSkills).toHaveBeenLastCalledWith(false)
-
-    mocks.useOrgAccountSession.mockReturnValue({ status: { phase: 'signed-in' } })
-    rerender(<OrgSkillCatalogView />)
-    expect(mocks.useOrgSkills).toHaveBeenLastCalledWith(true)
+    render(<OrgSkillCatalogView />)
+    expect(mocks.useOrgSkills).toHaveBeenCalledWith(true)
   })
 
   it('renders org skills as cards with install buttons', () => {

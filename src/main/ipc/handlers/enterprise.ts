@@ -21,23 +21,26 @@ export const enterpriseHandlers: IpcHandlersFor<typeof enterpriseRequestSchemas>
     return { ok: true }
   },
   'enterprise.skills.reportExec': async ({ slug, detail }) => {
-    application.get('EnterprisePlugin').skills.reportExec(slug, detail)
+    void application.get('EnterprisePlugin').skills.reportExec(slug, detail)
     return { ok: true }
   },
-  // [enterprise] C2 停用拦截：返回当前已停用/已下架的 org 技能 slug
-  'enterprise.skills.listDisabled': async () => ({
-    disabled: await application.get('EnterprisePlugin').skills.listDisabled()
-  }),
-  // [enterprise] C4 删除上报：用户卸载 org 技能时上报 deleted（幂等 record）并清 state
-  'enterprise.skills.reportDeleted': async ({ slug }) => {
-    await application.get('EnterprisePlugin').skills.reportDeleted(slug)
-    return { ok: true }
-  },
-  // [enterprise] C3 组织可用性查询（登出标记 / 重登恢复）
-  'enterprise.status.orgUnavailable': async () => {
-    const { orgStateStore } = await import('@main/enterprise/OrgStateStore')
-    return { unavailable: orgStateStore.snapshotUnavailable() }
-  },
+  // [enterprise] copy 模式：已安装副本不受目录停用影响。
+  // 'enterprise.skills.listDisabled': async () => ({
+  //   disabled: await application.get('EnterprisePlugin').skills.listDisabled()
+  // }),
+  'enterprise.skills.listDisabled': async () => ({ disabled: [] }),
+  // [enterprise] copy 模式保留旧路由兼容已打开窗口，但不再上报或写删除墓碑。
+  // 'enterprise.skills.reportDeleted': async ({ slug }) => {
+  //   await application.get('EnterprisePlugin').skills.reportDeleted(slug)
+  //   return { ok: true }
+  // },
+  'enterprise.skills.reportDeleted': async () => ({ ok: true }),
+  // [enterprise] copy 模式：登出不影响已安装副本，旧 unavailable 状态不再生效。
+  // 'enterprise.status.orgUnavailable': async () => {
+  //   const { orgStateStore } = await import('@main/enterprise/OrgStateStore')
+  //   return { unavailable: orgStateStore.snapshotUnavailable() }
+  // },
+  'enterprise.status.orgUnavailable': async () => ({ unavailable: false }),
   'enterprise.connectors.list': async () => ({
     connectors: await application.get('EnterprisePlugin').connectors.list()
   }),

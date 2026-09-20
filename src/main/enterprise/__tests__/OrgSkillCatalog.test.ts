@@ -8,7 +8,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { authMock, apiMock, skillServiceMock, stateStoreMock } = vi.hoisted(() => ({
+const { authMock, apiMock, skillServiceMock, stateStoreMock, agentGlobalSkillServiceMock } = vi.hoisted(() => ({
   authMock: {},
   apiMock: {
     listSkills: vi.fn(),
@@ -18,6 +18,10 @@ const { authMock, apiMock, skillServiceMock, stateStoreMock } = vi.hoisted(() =>
     installSkillDir: vi.fn(),
     list: vi.fn(),
     uninstall: vi.fn()
+  },
+  agentGlobalSkillServiceMock: {
+    listAll: vi.fn().mockReturnValue([]),
+    update: vi.fn()
   },
   stateStoreMock: {
     upsert: vi.fn(),
@@ -41,6 +45,10 @@ vi.mock('@logger', () => ({
 
 vi.mock('@main/ai/skills/SkillService', () => ({
   skillService: skillServiceMock
+}))
+
+vi.mock('@data/services/AgentGlobalSkillService', () => ({
+  agentGlobalSkillService: agentGlobalSkillServiceMock
 }))
 
 vi.mock('@main/enterprise/OrgStateStore', () => ({
@@ -69,6 +77,7 @@ describe('OrgSkillCatalog C1/C2/C4', () => {
     // 重置默认实现（resetAllMocks 会清掉 mockReturnValue）
     apiMock.reportLifecycle.mockResolvedValue(undefined)
     stateStoreMock.snapshot.mockReturnValue({})
+    agentGlobalSkillServiceMock.listAll.mockReturnValue([])
     catalog = new OrgSkillCatalog(authMock as never)
     ;(catalog as unknown as { auth: { apiClient: unknown } }).auth = { apiClient: apiMock }
   })
@@ -99,7 +108,9 @@ describe('OrgSkillCatalog C1/C2/C4', () => {
       a: { version: '1.0.0', contentHash: 'hash-a', skillId: 's1', folderName: 'a', enabled: true }
     })
 
-    const result = await (catalog as unknown as { startupScan: () => Promise<{ updated: string[]; disabled: string[] }> }).startupScan()
+    const result = await (
+      catalog as unknown as { startupScan: () => Promise<{ updated: string[]; disabled: string[] }> }
+    ).startupScan()
     expect(result.updated).toEqual([])
     expect(result.disabled).toEqual([])
   })
@@ -113,7 +124,9 @@ describe('OrgSkillCatalog C1/C2/C4', () => {
     const downloadAndInstall = vi.fn().mockResolvedValue(undefined)
     ;(catalog as unknown as { downloadAndInstall: unknown }).downloadAndInstall = downloadAndInstall
 
-    const result = await (catalog as unknown as { startupScan: () => Promise<{ updated: string[]; disabled: string[] }> }).startupScan()
+    const result = await (
+      catalog as unknown as { startupScan: () => Promise<{ updated: string[]; disabled: string[] }> }
+    ).startupScan()
     expect(downloadAndInstall).toHaveBeenCalledWith('a', expect.objectContaining({ slug: 'a', contentHash: 'hash-a2' }))
     expect(result.updated).toEqual(['a'])
   })
@@ -125,7 +138,9 @@ describe('OrgSkillCatalog C1/C2/C4', () => {
     const downloadAndInstall = vi.fn().mockResolvedValue(undefined)
     ;(catalog as unknown as { downloadAndInstall: unknown }).downloadAndInstall = downloadAndInstall
 
-    const result = await (catalog as unknown as { startupScan: () => Promise<{ updated: string[]; disabled: string[] }> }).startupScan()
+    const result = await (
+      catalog as unknown as { startupScan: () => Promise<{ updated: string[]; disabled: string[] }> }
+    ).startupScan()
     expect(downloadAndInstall).toHaveBeenCalledWith('b', expect.anything())
     expect(result.updated).toEqual(['b'])
   })
@@ -145,13 +160,17 @@ describe('OrgSkillCatalog C1/C2/C4', () => {
     })
     ;(catalog as unknown as { downloadAndInstall: unknown }).downloadAndInstall = downloadAndInstall
 
-    const result = await (catalog as unknown as { startupScan: () => Promise<{ updated: string[]; disabled: string[] }> }).startupScan()
+    const result = await (
+      catalog as unknown as { startupScan: () => Promise<{ updated: string[]; disabled: string[] }> }
+    ).startupScan()
     expect(result.updated).toEqual(['b'])
   })
 
   it('C1 startupScan：目录不可达 → 返回空结果不抛错', async () => {
     apiMock.listSkills.mockRejectedValue(new Error('network down'))
-    const result = await (catalog as unknown as { startupScan: () => Promise<{ updated: string[]; disabled: string[] }> }).startupScan()
+    const result = await (
+      catalog as unknown as { startupScan: () => Promise<{ updated: string[]; disabled: string[] }> }
+    ).startupScan()
     expect(result.updated).toEqual([])
     expect(result.disabled).toEqual([])
   })
@@ -162,7 +181,9 @@ describe('OrgSkillCatalog C1/C2/C4', () => {
       old: { version: '1', contentHash: 'h', skillId: 's-old', folderName: 'old', enabled: true }
     })
 
-    const result = await (catalog as unknown as { startupScan: () => Promise<{ updated: string[]; disabled: string[] }> }).startupScan()
+    const result = await (
+      catalog as unknown as { startupScan: () => Promise<{ updated: string[]; disabled: string[] }> }
+    ).startupScan()
     expect(result.disabled).toEqual(['old'])
     expect(skillServiceMock.uninstall).not.toHaveBeenCalled() // 保留本地文件，只拦截
     expect(stateStoreMock.setEnabled).toHaveBeenCalledWith('old', false)
@@ -174,7 +195,9 @@ describe('OrgSkillCatalog C1/C2/C4', () => {
       a: { version: '1', contentHash: 'hash-a', skillId: 's1', folderName: 'a', enabled: false }
     })
 
-    const result = await (catalog as unknown as { startupScan: () => Promise<{ updated: string[]; disabled: string[] }> }).startupScan()
+    const result = await (
+      catalog as unknown as { startupScan: () => Promise<{ updated: string[]; disabled: string[] }> }
+    ).startupScan()
     expect(stateStoreMock.setEnabled).toHaveBeenCalledWith('a', true)
     expect(result.disabled).toEqual([])
   })
@@ -263,7 +286,7 @@ describe('OrgSkillCatalog C1/C2/C4', () => {
     expect(stateStoreMock.remove).toHaveBeenCalledWith('a')
   })
 
-  it('C1 install 成功后写入 state（slug → contentHash/skillId/folderName）', async () => {
+  it('copy install 成功后不写组织托管 state', async () => {
     apiMock.listSkills.mockResolvedValue({ skills: [makeItem('new-skill', 'hash-new')] })
 
     const installSkillDir = vi.fn().mockResolvedValue({ id: 'sk-1', folderName: 'new-skill' })
@@ -279,14 +302,12 @@ describe('OrgSkillCatalog C1/C2/C4', () => {
     await catalog.install('new-skill')
     expect(installSkillDir).toHaveBeenCalledWith(
       expect.stringContaining('new-skill'),
-      'org',
+      'local',
       'org-skill:new-skill',
       expect.anything()
     )
-    expect(stateStoreMock.upsert).toHaveBeenCalledWith(
-      'new-skill',
-      expect.objectContaining({ contentHash: 'hash-new', skillId: 'sk-1', folderName: 'new-skill' })
-    )
+    expect(stateStoreMock.upsert).not.toHaveBeenCalled()
+    expect(stateStoreMock.clearDeleted).not.toHaveBeenCalled()
     expect(apiMock.reportLifecycle).toHaveBeenCalledWith('new-skill', 'install', { version: '1.0.0' })
   })
 
@@ -305,7 +326,7 @@ describe('OrgSkillCatalog C1/C2/C4', () => {
     await catalog.install('org-code-review')
     expect(installSkillDir).toHaveBeenCalledWith(
       expect.anything(),
-      'org',
+      'local',
       'org-skill:org-code-review',
       expect.objectContaining({
         catalogDisplayMetadata: expect.objectContaining({
@@ -316,65 +337,94 @@ describe('OrgSkillCatalog C1/C2/C4', () => {
     )
   })
 
-  it('[enterprise] installedSlugs：返回 state 中已装的 slug 列表', () => {
-    stateStoreMock.snapshot.mockReturnValue({
-      'installed-a': { version: '1.0.0', contentHash: 'h1', skillId: 'id-1', folderName: 'installed-a', enabled: true },
-      'installed-b': { version: '2.0.0', contentHash: 'h2', skillId: 'id-2', folderName: 'installed-b', enabled: false }
-    })
+  it('[enterprise] installedSlugs：按本地技能 sourceUrl 返回已安装 slug', () => {
+    agentGlobalSkillServiceMock.listAll.mockReturnValue([
+      { sourceUrl: 'org-skill:installed-a' },
+      { sourceUrl: 'file:///local/skill' },
+      { sourceUrl: 'org-skill:installed-b' }
+    ])
     expect(catalog.installedSlugs()).toEqual(['installed-a', 'installed-b'])
   })
 
-  it('[enterprise] installedSlugs：无安装记录时返回空数组', () => {
-    stateStoreMock.snapshot.mockReturnValue({})
+  it('[enterprise] installedSlugs：无本地组织来源副本时返回空数组', () => {
+    agentGlobalSkillServiceMock.listAll.mockReturnValue([])
     expect(catalog.installedSlugs()).toEqual([])
   })
 
-  // [enterprise] C4 墓碑：删除后 installedSlugs 不得再包含该 slug（否则组织 tab 永远「已安装」）
-  it('C4 installedSlugs：排除已删除（墓碑）的 slug', () => {
-    stateStoreMock.snapshot.mockReturnValue({
-      kept: { version: '1', contentHash: 'hk', skillId: 's1', folderName: 'kept', enabled: true },
-      gone: { version: '1', contentHash: 'hg', skillId: 's2', folderName: 'gone', enabled: true }
-    })
-    stateStoreMock.deletedHash.mockImplementation((slug: string) => (slug === 'gone' ? 'hg' : undefined))
-    expect(catalog.installedSlugs()).toEqual(['kept'])
+  it('migrateLegacyCopies 将旧 org 技能改为 local 且保留来源 URL', () => {
+    agentGlobalSkillServiceMock.listAll.mockReturnValue([
+      { id: 's-org', source: 'org', sourceUrl: 'org-skill:review' },
+      { id: 's-local', source: 'local', sourceUrl: 'file:///skill' }
+    ])
+
+    expect(catalog.migrateLegacyCopies()).toBe(1)
+    expect(agentGlobalSkillServiceMock.update).toHaveBeenCalledTimes(1)
+    expect(agentGlobalSkillServiceMock.update).toHaveBeenCalledWith('s-org', { source: 'local' })
   })
 
-  // [enterprise] C4 闭环：已删技能重新安装后墓碑必须清除，否则 installedSlugs 永远排除它，
-  // 组织 tab 永远显示可点的「安装」按钮、每次点击都重装成功（用户报障场景）。
-  it('C4 install：已删除（有墓碑）的技能重新安装 → 清墓碑且 installedSlugs 重新纳入', async () => {
-    // 内存版 state 假件，让 installedSlugs() 反射真实增删语义
-    const states: Record<string, Record<string, unknown>> = {}
-    const tombstones: Record<string, string> = {}
-    stateStoreMock.upsert.mockImplementation((slug: string, s: Record<string, unknown>) => {
-      states[slug] = s
-    })
-    stateStoreMock.remove.mockImplementation((slug: string) => {
-      delete states[slug]
-    })
-    stateStoreMock.snapshot.mockImplementation(() => states)
-    stateStoreMock.markDeleted.mockImplementation((slug: string, h: string) => {
-      tombstones[slug] = h
-    })
-    stateStoreMock.clearDeleted.mockImplementation((slug: string) => {
-      delete tombstones[slug]
-    })
-    stateStoreMock.deletedHash.mockImplementation((slug: string) => tombstones[slug])
+  // [enterprise] 公共目录：匿名（未登录）也能浏览、下载并安装公共技能。
+  // 上报跳过与否由 OrgApiClient（真实现）负责；catalog 编排层只保证安装链路无登录依赖。
+  it('匿名安装公共技能：不依赖登录即可完成本地安装', async () => {
+    apiMock.listSkills.mockResolvedValue({ skills: [makeItem('public-skill', 'hash-pub')] })
 
-    // 模拟用户曾删除：留下墓碑（state 已被卸载链路移除）
-    tombstones['reborn'] = 'hash-old'
-    expect(catalog.installedSlugs()).toEqual([])
-
-    apiMock.listSkills.mockResolvedValue({ skills: [makeItem('reborn', 'hash-r')] })
-    const installSkillDir = vi.fn().mockResolvedValue({ id: 'sk-9', folderName: 'reborn' })
+    const installSkillDir = vi.fn().mockResolvedValue({ id: 'sk-pub', folderName: 'public-skill' })
     skillServiceMock.installSkillDir = installSkillDir
-    ;(catalog as unknown as { downloadWithHash: unknown }).downloadWithHash = vi.fn().mockResolvedValue(undefined)
+    const downloadWithHash = vi.fn().mockResolvedValue(undefined)
+    ;(catalog as unknown as { downloadWithHash: unknown }).downloadWithHash = downloadWithHash
     ;(catalog as unknown as { tarExtract: unknown }).tarExtract = vi.fn().mockResolvedValue({ stdout: '', stderr: '' })
+    // 匿名安装场景：auth 无会话（getValidSession 返回 null）
+    ;(catalog as unknown as { auth: Record<string, unknown> }).auth = {
+      apiClient: apiMock,
+      getValidSession: vi.fn().mockResolvedValue(null)
+    }
 
-    await catalog.install('reborn')
+    await expect(catalog.install('public-skill')).resolves.toBeUndefined()
+    expect(installSkillDir).toHaveBeenCalledWith(
+      expect.anything(),
+      'local',
+      'org-skill:public-skill',
+      expect.anything()
+    )
+    // catalog 仍尝试 best-effort 上报；匿名时跳过由 OrgApiClient 兜底（见 OrgApiClient 测试）
+    expect(apiMock.reportLifecycle).toHaveBeenCalledWith('public-skill', 'install', { version: '1.0.0' })
+  })
 
-    // 契约：重新安装 = 用户意图变更 → 墓碑必须清除，installedSlugs 必须重新纳入
-    expect(stateStoreMock.clearDeleted).toHaveBeenCalledWith('reborn')
-    expect(catalog.installedSlugs()).toContain('reborn')
+  it('匿名时 downloadWithHash 不要求会话即可下载', async () => {
+    ;(catalog as unknown as { auth: Record<string, unknown> }).auth = {
+      apiClient: apiMock,
+      getValidSession: vi.fn().mockResolvedValue(null)
+    }
+    const tarball = await import('node:zlib').then((z) => z.gzipSync(Buffer.from('x')))
+    // 构造一个真实可读的 body 流，hash 校验目标值由实际内容决定——此处只关心"不再抛未登录"
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array(tarball))
+        controller.close()
+      }
+    })
+    const hash = (await import('node:crypto')).createHash('sha256').update(tarball).digest('hex')
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response(stream, { status: 200, headers: { 'content-type': 'application/gzip' } }))
+    )
+
+    await expect(
+      (catalog as unknown as { downloadWithHash: (i: unknown, d: string) => Promise<void> }).downloadWithHash(
+        { ...makeItem('pub', hash) },
+        '/tmp/pub.tar.gz'
+      )
+    ).resolves.toBeUndefined()
+    vi.unstubAllGlobals()
+  })
+
+  it('copy 模式忽略旧托管 state 与墓碑', () => {
+    stateStoreMock.snapshot.mockReturnValue({
+      stale: { version: '1', contentHash: 'h', skillId: 's1', folderName: 'stale', enabled: true }
+    })
+    stateStoreMock.deletedHash.mockReturnValue('h')
+    agentGlobalSkillServiceMock.listAll.mockReturnValue([{ sourceUrl: 'org-skill:actual' }])
+
+    expect(catalog.installedSlugs()).toEqual(['actual'])
   })
 
   it('C4 reportDeleted：上报后写墓碑（记录删除时 hash）并清安装记录', async () => {
@@ -410,7 +460,9 @@ describe('OrgSkillCatalog C1/C2/C4', () => {
     const downloadAndInstall = vi.fn().mockResolvedValue(undefined)
     ;(catalog as unknown as { downloadAndInstall: unknown }).downloadAndInstall = downloadAndInstall
 
-    const result = await (catalog as unknown as { startupScan: () => Promise<{ updated: string[]; disabled: string[] }> }).startupScan()
+    const result = await (
+      catalog as unknown as { startupScan: () => Promise<{ updated: string[]; disabled: string[] }> }
+    ).startupScan()
     expect(downloadAndInstall).not.toHaveBeenCalled()
     expect(result.updated).toEqual([])
   })
@@ -424,7 +476,9 @@ describe('OrgSkillCatalog C1/C2/C4', () => {
     const downloadAndInstall = vi.fn().mockResolvedValue(undefined)
     ;(catalog as unknown as { downloadAndInstall: unknown }).downloadAndInstall = downloadAndInstall
 
-    const result = await (catalog as unknown as { startupScan: () => Promise<{ updated: string[]; disabled: string[] }> }).startupScan()
+    const result = await (
+      catalog as unknown as { startupScan: () => Promise<{ updated: string[]; disabled: string[] }> }
+    ).startupScan()
     expect(stateStoreMock.clearDeleted).toHaveBeenCalledWith('a')
     expect(downloadAndInstall).toHaveBeenCalledWith('a', expect.objectContaining({ contentHash: 'hash-new' }))
     expect(result.updated).toEqual(['a'])
@@ -439,7 +493,9 @@ describe('OrgSkillCatalog C1/C2/C4', () => {
     const downloadAndInstall = vi.fn().mockResolvedValue(undefined)
     ;(catalog as unknown as { downloadAndInstall: unknown }).downloadAndInstall = downloadAndInstall
 
-    const result = await (catalog as unknown as { startupScan: () => Promise<{ updated: string[]; disabled: string[] }> }).startupScan()
+    const result = await (
+      catalog as unknown as { startupScan: () => Promise<{ updated: string[]; disabled: string[] }> }
+    ).startupScan()
     expect(stateStoreMock.clearDeleted).not.toHaveBeenCalled()
     expect(downloadAndInstall).toHaveBeenCalledWith('fresh', expect.anything())
     expect(result.updated).toEqual(['fresh'])

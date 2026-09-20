@@ -127,7 +127,8 @@ export class OrgMcpCatalog {
             .filter(([key]) => key !== 'isActive')
             .filter(([key, value]) => JSON.stringify(current[key as keyof typeof current]) !== JSON.stringify(value))
           if (drift.length > 0) {
-            mcpServerService.update(state.mcpId, Object.fromEntries(drift) as Partial<CreateMcpServerDto>)
+            // mcpServerService.update(state.mcpId, Object.fromEntries(drift) as Partial<CreateMcpServerDto>)
+            mcpServerService.update(state.mcpId, Object.fromEntries(drift))
             orgStateStore.upsertConnector(slug, { mcpId: state.mcpId, baseUrl: item.baseUrl })
             updated.push(slug)
           }

@@ -4,12 +4,15 @@
  * （由 ProtocolService case 'auth' 分发到 handleAuthCallback）。
  */
 import { createHash, randomBytes } from 'node:crypto'
+
 import { shell } from 'electron'
+
 import { application } from '@application'
 import { loggerService } from '@logger'
+
 import { OrgApiClient } from './OrgApiClient'
 import { OrgCredentialStore, type OrgSession } from './OrgCredentialStore'
-import { orgStateStore } from './OrgStateStore'
+// import { orgStateStore } from './OrgStateStore' // [enterprise] copy 模式不再按登录态管理已安装资源
 import type { OrgAuthPhase } from './types'
 
 const logger = loggerService.withContext('OrgAuthManager')
@@ -136,8 +139,8 @@ export class OrgAuthManager {
       }
       this.credentialStore.save(this.session)
       this.pending = null
-      // [enterprise] C3：重新登录成功 → 恢复 org 资源可用标记
-      orgStateStore.markAvailable()
+      // [enterprise] copy 模式：已安装资源属于本地，登录只恢复组织目录访问。
+      // orgStateStore.markAvailable()
       logger.info('org login succeeded', { phone: this.session.phone, role: this.session.role })
       this.emitStatus()
     } catch (error) {
@@ -153,8 +156,8 @@ export class OrgAuthManager {
     this.session = null
     this.pending = null
     this.credentialStore.clear()
-    // [enterprise] C3：登出 → org 技能/连接器标记"组织不可用"（保留本地文件，重登恢复）
-    orgStateStore.markUnavailable()
+    // [enterprise] copy 模式：登出仅结束目录访问，已安装的本地副本继续可用。
+    // orgStateStore.markUnavailable()
     logger.info('org logout')
     this.emitStatus()
   }
