@@ -39,7 +39,7 @@ vi.mock('@renderer/hooks/useMcpServer', async (importOriginal) => ({
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => mocks.navigate,
   useParams: () => ({ serverId: currentServer.id }),
-  getRouteApi: () => ({ useSearch: () => currentSearch })
+  useMatches: () => [{ routeId: '/settings/mcp/settings/$serverId', search: currentSearch }]
 }))
 
 vi.mock('@renderer/services/popup', () => ({

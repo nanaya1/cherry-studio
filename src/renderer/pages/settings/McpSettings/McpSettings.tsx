@@ -1,8 +1,8 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import type { McpError } from '@modelcontextprotocol/sdk/types.js'
-import { getRouteApi, useNavigate, useParams } from '@tanstack/react-router'
+import { useMatches, useNavigate, useParams } from '@tanstack/react-router'
 import { ArrowLeft, SaveIcon } from 'lucide-react'
-import React, { useCallback, useEffect, useEffectEvent, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 
@@ -20,7 +20,6 @@ import { ipcApi } from '@renderer/ipc'
 import McpDescription from '@renderer/pages/settings/McpSettings/McpDescription'
 import { popup } from '@renderer/services/popup'
 import { toast } from '@renderer/services/toast'
-import type { AppRouter } from '@renderer/types/router'
 import type { McpTool } from '@renderer/types/tool'
 import { formatMcpError } from '@renderer/utils/error'
 import { cn } from '@renderer/utils/style'
@@ -51,7 +50,6 @@ import { useMcpServerTrust } from './useMcpServerTrust'
 import { toUpdateMcpServerDto } from './utils'
 
 const logger = loggerService.withContext('McpSettings')
-const mcpSettingsRouteApi = getRouteApi('/settings/mcp/settings/$serverId')
 
 type TabKey = 'settings' | 'description' | 'logs' | 'tools' | 'prompts' | 'resources'
 type McpTabItem = {
@@ -74,7 +72,13 @@ interface McpSettingsContentProps {
 
 const McpSettingsContent: React.FC<McpSettingsContentProps> = ({ server, updateMcpServer, onClose }) => {
   const { t } = useTranslation()
-  const search = mcpSettingsRouteApi.useSearch<AppRouter>()
+  // 本组件也会以弹窗形式嵌入 catalog 变体，此时该路由不在激活匹配链中，
+  // 严格 routeApi.useSearch 会抛 Invariant 崩溃，故从匹配链安全读取 search。
+  const matches = useMatches()
+  const search = useMemo(() => {
+    const match = matches.find((m) => m.routeId === '/settings/mcp/settings/$serverId')
+    return match?.search ?? {}
+  }, [matches])
   const serverId = server.id
   const [initialFormValues] = useState(() => toMcpFormDefaultValues(server))
 
