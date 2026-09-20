@@ -531,9 +531,16 @@ async function resolveRequestWebToolRoutes(
  */
 function resolveHasAnyKnowledgeBase(): boolean {
   try {
-    return application.get('KnowledgeService').hasAnyBase()
+    if (application.get('KnowledgeService').hasAnyBase()) return true
   } catch (error) {
-    logger.warn('Failed to check for knowledge bases during tool resolution; treating as present', { error })
+    logger.warn('Failed to check for local knowledge bases during tool resolution; treating as present', { error })
+    return true
+  }
+
+  try {
+    return application.get('RemoteKnowledgeService').hasAnyEnabledService()
+  } catch (error) {
+    logger.warn('Failed to check for remote knowledge services during tool resolution; treating as present', { error })
     return true
   }
 }
