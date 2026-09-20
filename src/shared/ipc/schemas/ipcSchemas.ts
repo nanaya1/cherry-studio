@@ -30,6 +30,7 @@ import { printRequestSchemas } from './print'
 import { profileRequestSchemas } from './profile'
 import { providerRequestSchemas } from './provider'
 import { type QuickAssistantEventSchemas, quickAssistantRequestSchemas } from './quickAssistant'
+import { remoteKnowledgeRequestSchemas } from './remoteKnowledge'
 import { type ScreenshotEventSchemas, screenshotRequestSchemas } from './screenshot'
 import { type SelectionEventSchemas, selectionRequestSchemas } from './selection'
 import { skillRequestSchemas } from './skill'
@@ -80,6 +81,7 @@ export const ipcRequestSchemas = {
   ...profileRequestSchemas,
   ...providerRequestSchemas,
   ...quickAssistantRequestSchemas,
+  ...remoteKnowledgeRequestSchemas,
   ...screenshotRequestSchemas,
   ...selectionRequestSchemas,
   ...skillRequestSchemas,

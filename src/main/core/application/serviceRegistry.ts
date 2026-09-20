@@ -32,6 +32,7 @@ import { BrowserSessionService } from '@main/features/browser'
 import { FileProcessingService, TesseractRuntimeService } from '@main/features/fileProcessing'
 import { KnowledgeService, KnowledgeVectorStoreService } from '@main/features/knowledge'
 import { MiniAppRuntimeService } from '@main/features/miniApp/runtime/MiniAppRuntimeService'
+import { RemoteKnowledgeService } from '@main/features/remoteKnowledge/RemoteKnowledgeService'
 import { IpcApiService } from '@main/ipc/IpcApiService'
 import { AnalyticsService } from '@main/services/AnalyticsService'
 import { AppMenuService } from '@main/services/AppMenuService'
@@ -169,6 +170,7 @@ export const services = {
   LocalModelService,
   KnowledgeService,
   KnowledgeVectorStoreService,
+  RemoteKnowledgeService,
   MiniAppRuntimeService,
   ApiGatewayService,
   AppUpdaterService,
