@@ -271,6 +271,8 @@ export class OrgSkillCatalog {
 
   private baseUrl() {
     // 与 OrgAuthManager 保持一致（T0 联调固定值）
-    return 'http://127.0.0.1:3000'
+    // 停用原写死联调地址，统一引用 ORG_SERVER_BASE_URL（构建期可通过 MAIN_VITE_ORG_SERVER_BASE_URL 覆盖）
+    // return 'http://127.0.0.1:3000'
+    return ORG_SERVER_BASE_URL
   }
 }

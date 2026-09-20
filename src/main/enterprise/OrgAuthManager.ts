@@ -10,7 +10,7 @@ import { shell } from 'electron'
 import { application } from '@application'
 import { loggerService } from '@logger'
 
-import { OrgApiClient } from './OrgApiClient'
+import { OrgApiClient, ORG_SERVER_BASE_URL } from './OrgApiClient'
 import { OrgCredentialStore, type OrgSession } from './OrgCredentialStore'
 // import { orgStateStore } from './OrgStateStore' // [enterprise] copy 模式不再按登录态管理已安装资源
 import type { OrgAuthPhase } from './types'
@@ -18,7 +18,10 @@ import type { OrgAuthPhase } from './types'
 const logger = loggerService.withContext('OrgAuthManager')
 
 // T0 联调固定地址；M 里程碑移入配置
-const ORG_BASE_URL = 'http://127.0.0.1:3000'
+// 停用原写死联调地址，统一引用 ORG_SERVER_BASE_URL（构建期可通过 MAIN_VITE_ORG_SERVER_BASE_URL 覆盖；
+// 该地址承载企业版登录授权 /authorize /api/token 与技能、连接器目录，详见 OrgApiClient.ts）
+// const ORG_BASE_URL = 'http://127.0.0.1:3000'
+const ORG_BASE_URL = ORG_SERVER_BASE_URL
 const CLIENT_ID = 'cherry-desktop'
 const REDIRECT_URI = 'meacowork://auth/callback'
 

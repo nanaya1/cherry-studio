@@ -9,7 +9,22 @@ import type { OrgConnectorCatalogItem, OrgSession, OrgSkillCatalogItem } from '.
 const logger = loggerService.withContext('OrgApiClient')
 
 // T0 本地联调固定地址；后续由管理端下发/设置项配置
-export const ORG_SERVER_BASE_URL = 'http://127.0.0.1:3000'
+// 停用原写死联调地址，改为构建期可配置（shell 或 .env.production 设置 MAIN_VITE_ORG_SERVER_BASE_URL，未配置时回退默认值）
+// export const ORG_SERVER_BASE_URL = 'http://127.0.0.1:3000'
+/**
+ * 企业服务地址（区别于雪浪网关 XUELANG_API_ORIGIN / Cherry Cloud MAIN_VITE_CHERRY_CLOUD_API_ORIGIN）。
+ * 覆盖：企业版登录授权（/authorize、/api/token、刷新）、技能目录与下载（/api/skills）、连接器目录（/api/connectors）。
+ */
+function resolveOrgServerBaseUrl(): string {
+  const configured = import.meta.env.MAIN_VITE_ORG_SERVER_BASE_URL?.trim()
+  if (!configured) return 'http://127.0.0.1:3000'
+  try {
+    return new URL(configured).origin
+  } catch {
+    throw new Error(`MAIN_VITE_ORG_SERVER_BASE_URL 不是合法 URL: ${configured}`)
+  }
+}
+export const ORG_SERVER_BASE_URL = resolveOrgServerBaseUrl()
 
 export class OrgApiClient {
   // [enterprise] 修复 401：改为异步取「有效期内的会话」（过期自动刷新）。
