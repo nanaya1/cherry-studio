@@ -75,7 +75,7 @@ const McpServersList: FC<McpServersListProps> = ({ variant = 'settings', showTit
   const matches = useMatches()
   const search = useMemo(() => {
     const match = matches.find((m) => m.routeId === '/settings/mcp/servers')
-    return (match?.search ?? {}) as { protocolInstallRequestId?: string }
+    return match?.search ?? {}
   }, [matches])
   const [isAddModalVisible, setIsAddModalVisible] = useState(false)
   const [isAddMenuOpen, setIsAddMenuOpen] = useState(false)

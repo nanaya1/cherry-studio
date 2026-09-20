@@ -1,6 +1,7 @@
 import { CircleXIcon, ExternalLink, Plug } from 'lucide-react'
 import type React from 'react'
-import { FC, useCallback, useEffect, useState } from 'react'
+import type { FC } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import type { FallbackProps } from 'react-error-boundary'
 import { useTranslation } from 'react-i18next'
 

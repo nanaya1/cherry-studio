@@ -1,9 +1,9 @@
-import { ProtocolMcpInstallRequest, ProtocolMcpServerInstall } from '@shared/data/types/mcpProtocolInstall'
-import { McpServer } from '@shared/data/types/mcpServer'
 import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import type { ProtocolMcpInstallRequest, ProtocolMcpServerInstall } from '@shared/data/types/mcpProtocolInstall'
+import type { McpServer } from '@shared/data/types/mcpServer'
 
 import McpServersList from '../McpServersList'
 
@@ -40,7 +40,9 @@ vi.mock('@renderer/ipc', () => ({
 
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => mocks.navigate,
-  useMatches: () => [{ routeId: '/settings/mcp/servers', search: { protocolInstallRequestId: mocks.protocolInstallRequestId } }],
+  useMatches: () => [
+    { routeId: '/settings/mcp/servers', search: { protocolInstallRequestId: mocks.protocolInstallRequestId } }
+  ],
   // 停用原 routeApi mock（组件已改用 useMatches；保留以兼容旧实现回滚）：
   getRouteApi: () => ({
     useSearch: () => ({ protocolInstallRequestId: mocks.protocolInstallRequestId })
@@ -175,7 +177,7 @@ describe('McpServersList protocol install', () => {
         type: 'stdio',
         command: 'npx',
         isActive: false
-      } as McpServer
+      }
     ]
 
     render(<McpServersList variant="catalog" showTitle={false} />)

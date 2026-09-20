@@ -1,5 +1,6 @@
 import { GripVertical, RotateCcw, ChevronDown } from 'lucide-react'
-import { ComponentProps, ReactNode, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import type { ComponentProps, ReactNode } from 'react'
+import { useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button, Popover, PopoverAnchor, PopoverContent, ReorderableList, Switch, Tooltip } from '@cherrystudio/ui'
