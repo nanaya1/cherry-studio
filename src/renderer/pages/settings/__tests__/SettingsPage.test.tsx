@@ -68,6 +68,7 @@ vi.mock('react-i18next', () => ({
         'deviceConnections.title': '设备互联',
         'selection.name': '划词助手',
         'settings.appearance.title': '外观',
+        'settings.browser.title': '浏览器',
         'settings.channels.title': '频道',
         'settings.dependencies.title': '环境依赖',
         'settings.dependencies.localModels.title': '本地模型',
@@ -182,8 +183,17 @@ describe('SettingsPage', () => {
     const menuItems = screen.getAllByTestId('menu-item')
     const toolsStart = menuItems.indexOf(promptsItem)
 
-    expect(menuItems.slice(toolsStart, toolsStart + 4)).toEqual([
+    // 停用原四项断言：远端知识服务与浏览器也是合法工具入口。
+    // expect(menuItems.slice(toolsStart, toolsStart + 4)).toEqual([
+    //   promptsItem,
+    //   screen.getByRole('button', { name: '搜索' }),
+    //   screen.getByRole('button', { name: '文档处理' }),
+    //   screen.getByRole('button', { name: 'OCR' })
+    // ])
+    expect(menuItems[toolsStart - 1]).toBe(screen.getByRole('button', { name: '远端知识服务' }))
+    expect(menuItems.slice(toolsStart, toolsStart + 5)).toEqual([
       promptsItem,
+      screen.getByRole('button', { name: '浏览器' }),
       screen.getByRole('button', { name: '搜索' }),
       screen.getByRole('button', { name: '文档处理' }),
       screen.getByRole('button', { name: 'OCR' })
