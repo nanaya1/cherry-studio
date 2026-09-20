@@ -1,4 +1,4 @@
-import { Building2, ChevronDown, FolderSearch, Import, Plus, Search, Trash2 } from 'lucide-react'
+import { ChevronDown, FolderSearch, Import, Plus, Search, Trash2 } from 'lucide-react'
 import { type KeyboardEvent, lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -102,13 +102,13 @@ export function SkillCatalogHeaderActions({
           className="w-64 max-w-[32vw] max-lg:w-40"
         />
       ) : null}
-      {/* [enterprise] 组织技能提升为顶层可见按钮（原先仅在部分入口的下拉里，不易发现） */}
-      {gridProps.onOpenOrgSkills ? (
+      {/* [enterprise] 组织技能入口已迁移至技能首页「组织」二级 tab，顶层按钮停用（原块注释保留，回滚即取消注释） */}
+      {/* {gridProps.onOpenOrgSkills ? (
         <Button variant="outline" size="sm" className="h-8 shrink-0" onClick={gridProps.onOpenOrgSkills}>
           <Building2 className="size-3.5" />
           <span>{t('library.skill_add.org_skills')}</span>
         </Button>
-      ) : null}
+      ) : null} */}
       {showAdd ? (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

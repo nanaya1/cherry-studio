@@ -249,16 +249,12 @@ describe('SkillCatalogView', () => {
     })
   })
 
-  it('[enterprise] shows the org skills entry as a top-level button when the handler exists', async () => {
-    const user = userEvent.setup()
+  it('[enterprise] no longer shows the org skills button even when the handler exists', async () => {
     const testController = controller()
-    const onOpenOrgSkills = vi.fn()
-    ;(testController.gridProps as Record<string, unknown>).onOpenOrgSkills = onOpenOrgSkills
+    ;(testController.gridProps as Record<string, unknown>).onOpenOrgSkills = vi.fn()
     render(<SkillCatalogView controller={testController as never} />)
 
-    const orgButton = screen.getByRole('button', { name: 'Organization skills' })
-    await user.click(orgButton)
-    expect(onOpenOrgSkills).toHaveBeenCalledTimes(1)
+    expect(screen.queryByRole('button', { name: 'Organization skills' })).not.toBeInTheDocument()
   })
 
   it('[enterprise] keeps the org item out of the add dropdown when the handler exists', async () => {
@@ -273,11 +269,5 @@ describe('SkillCatalogView', () => {
     const items = within(menu).getAllByRole('menuitem')
     expect(items.some((item) => /Organization skills/.test(item.textContent ?? ''))).toBe(false)
     expect(within(menu).getByRole('menuitem', { name: 'library.skill_add.online_search' })).toBeVisible()
-  })
-
-  it('[enterprise] hides the org skills button when no handler is available', () => {
-    render(<SkillCatalogView controller={controller() as never} />)
-
-    expect(screen.queryByRole('button', { name: 'Organization skills' })).not.toBeInTheDocument()
   })
 })
