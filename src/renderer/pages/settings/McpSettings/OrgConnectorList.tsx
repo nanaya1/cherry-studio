@@ -1,6 +1,6 @@
 import { Check, Download, LoaderCircle, Plug } from 'lucide-react'
 import type { FC, ReactNode } from 'react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 // import { Badge } from '@cherrystudio/ui'
@@ -20,10 +20,14 @@ interface OrgConnectorListProps {
 const OrgConnectorList: FC<OrgConnectorListProps> = ({ variant = 'catalog', toolbarStart }) => {
   const { t } = useTranslation()
   const { connectors, loading, error, install, installing, refetch } = useOrgConnectors(variant === 'catalog')
-  const { mcpServers } = useMcpServers()
+  const { mcpServers, refetch: refetchMcpServers } = useMcpServers()
   const [searchText, setSearchText] = useState('')
 
   const isCatalog = variant === 'catalog'
+
+  useEffect(() => {
+    if (!loading && !error) void refetchMcpServers()
+  }, [error, loading, refetchMcpServers])
 
   const filteredConnectors = useMemo(() => {
     const keyword = searchText.trim().toLowerCase()
@@ -39,6 +43,7 @@ const OrgConnectorList: FC<OrgConnectorListProps> = ({ variant = 'catalog', tool
   const handleInstall = async (slug: string) => {
     try {
       await install(slug)
+      await refetchMcpServers()
       toast.success(t('settings.mcp.addSuccess'))
     } catch (e) {
       toast.error(e instanceof Error ? e.message : t('settings.mcp.addError'))
@@ -122,6 +127,7 @@ const OrgConnectorList: FC<OrgConnectorListProps> = ({ variant = 'catalog', tool
                       variant="ghost"
                       size="icon-sm"
                       disabled={installing.has(connector.slug)}
+                      aria-label={t('settings.mcp.install')}
                       className="size-7 rounded-md text-muted-foreground shadow-none hover:bg-muted hover:text-foreground hover:shadow-none"
                       onClick={() => void handleInstall(connector.slug)}>
                       {installing.has(connector.slug) ? (

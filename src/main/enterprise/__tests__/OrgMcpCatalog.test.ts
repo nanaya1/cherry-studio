@@ -75,6 +75,7 @@ describe('OrgMcpCatalog C6 compareAndSync', () => {
   beforeEach(() => {
     vi.resetAllMocks()
     stateStoreMock.snapshotConnectors.mockReturnValue({})
+    mcpServiceMock.list.mockReturnValue({ items: [], total: 0, page: 1 })
     mcpServiceMock.create.mockReturnValue({ id: 'mcp-new' })
     mcpServiceMock.getByIdSafe.mockReturnValue(null)
     catalog = new OrgMcpCatalog(authMock as never)
@@ -100,6 +101,52 @@ describe('OrgMcpCatalog C6 compareAndSync', () => {
     expect(mcpServiceMock.update).toHaveBeenCalledWith('mcp-org', { installSource: 'manual' })
   })
 
+  it('目录加载时为历史 copy 模式连接器回填组织 tag', async () => {
+    const connector = makeConnector('weather', 'http://w.example/sse')
+    apiMock.listConnectors.mockResolvedValue({ connectors: [connector] })
+    mcpServiceMock.list.mockReturnValue({
+      items: [
+        {
+          id: 'mcp-copy',
+          name: 'weather',
+          type: 'sse',
+          baseUrl: 'http://w.example/sse',
+          installSource: 'manual',
+          isActive: false
+        }
+      ],
+      total: 1,
+      page: 1
+    })
+
+    await catalog.list()
+
+    expect(mcpServiceMock.update).toHaveBeenCalledWith('mcp-copy', { tags: ['org'] })
+  })
+
+  it('目录加载时不把同名但配置不同的本地连接器标记为组织来源', async () => {
+    const connector = makeConnector('weather', 'http://org.example/sse')
+    apiMock.listConnectors.mockResolvedValue({ connectors: [connector] })
+    mcpServiceMock.list.mockReturnValue({
+      items: [
+        {
+          id: 'mcp-local',
+          name: 'weather',
+          type: 'sse',
+          baseUrl: 'http://local.example/sse',
+          installSource: 'manual',
+          isActive: false
+        }
+      ],
+      total: 1,
+      page: 1
+    })
+
+    await catalog.list()
+
+    expect(mcpServiceMock.update).not.toHaveBeenCalled()
+  })
+
   it('手动安装连接器后按普通本地 MCP 管理', async () => {
     apiMock.listConnectors.mockResolvedValue({ connectors: [makeConnector('weather', 'http://w.example/sse')] })
 
@@ -111,7 +158,8 @@ describe('OrgMcpCatalog C6 compareAndSync', () => {
         name: 'weather',
         baseUrl: 'http://w.example/sse',
         isActive: false,
-        installSource: 'manual'
+        installSource: 'manual',
+        tags: ['org']
       })
     )
     expect(stateStoreMock.upsertConnector).not.toHaveBeenCalled()
@@ -228,7 +276,8 @@ describe('OrgMcpCatalog C6 compareAndSync', () => {
       type: 'streamableHttp',
       baseUrl: 'https://mcp.example/mcp',
       isActive: true, // 用户手动启用过
-      installSource: 'manual'
+      installSource: 'manual',
+      tags: ['org']
     })
 
     const result = await catalog.compareAndSync()

@@ -1,3 +1,7 @@
+import { Building2, ChevronDown, FolderSearch, Import, Plus, Search, Trash2 } from 'lucide-react'
+import { type KeyboardEvent, lazy, Suspense, useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+
 import {
   Alert,
   Avatar,
@@ -19,9 +23,6 @@ import type { useResourceCatalogController } from '@renderer/hooks/resourceCatal
 import { ipcApi } from '@renderer/ipc'
 import type { ResourceItem } from '@renderer/types/resourceCatalog'
 import { cn } from '@renderer/utils/style'
-import { Building2, ChevronDown, FolderSearch, Import, Plus, Search, Trash2 } from 'lucide-react'
-import { type KeyboardEvent, lazy, Suspense, useEffect, useMemo, useState } from 'react'
-import { useTranslation } from 'react-i18next'
 
 import { ResourceCatalogSearchInput } from '../ResourceCatalogSearchInput'
 import { SkillGlobalToggle } from './ResourceCards'
@@ -54,10 +55,17 @@ const FALLBACK_STYLES = [
   'bg-error-subtle text-error-subtle-foreground'
 ]
 
-export function getSkillSourceFilter(source: string): Exclude<SkillSourceFilter, 'all'> | null {
+export function isOrgSkill(source: string, sourceUrl?: string | null): boolean {
+  return ORG_SKILL_SOURCES.has(source) || sourceUrl?.startsWith('org-skill:') === true
+}
+
+export function getSkillSourceFilter(
+  source: string,
+  sourceUrl?: string | null
+): Exclude<SkillSourceFilter, 'all'> | null {
   if (source === 'builtin') return 'builtin'
   if (source === 'marketplace') return 'marketplace'
-  if (ORG_SKILL_SOURCES.has(source)) return 'org' // [enterprise] org → 组织分组
+  if (isOrgSkill(source, sourceUrl)) return 'org' // [enterprise] org → 组织分组
   if (CUSTOM_SKILL_SOURCES.has(source)) return 'custom'
   return null
 }
@@ -191,9 +199,15 @@ export function SkillCatalogView({
 
   const counts = useMemo(() => {
     // [enterprise] T0 增加 org 计数
-    const next: Record<SkillSourceFilter, number> = { all: resources.length, builtin: 0, marketplace: 0, custom: 0, org: 0 }
+    const next: Record<SkillSourceFilter, number> = {
+      all: resources.length,
+      builtin: 0,
+      marketplace: 0,
+      custom: 0,
+      org: 0
+    }
     for (const resource of resources) {
-      const group = getSkillSourceFilter(resource.raw.source)
+      const group = getSkillSourceFilter(resource.raw.source, resource.raw.sourceUrl)
       if (group) next[group] += 1
     }
     return next
@@ -203,7 +217,9 @@ export function SkillCatalogView({
     () =>
       secondary || sourceFilter === 'all'
         ? resources
-        : resources.filter((resource) => getSkillSourceFilter(resource.raw.source) === sourceFilter),
+        : resources.filter(
+            (resource) => getSkillSourceFilter(resource.raw.source, resource.raw.sourceUrl) === sourceFilter
+          ),
     [resources, secondary, sourceFilter]
   )
 
@@ -328,8 +344,8 @@ function SkillCard({
   const initial = getSkillInitial(resource.name)
   const fallbackStyle = getSkillFallbackStyle(resource.name)
   const isBuiltin = resource.raw.source === 'builtin'
-  // [enterprise] T0 组织技能显示来源徽章
-  const isOrg = resource.raw.source === 'org'
+  // [enterprise] copy 模式保留 sourceUrl 标记，同时兼容旧 source='org' 数据。
+  const isOrg = isOrgSkill(resource.raw.source, resource.raw.sourceUrl)
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return

@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest'
-
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type * as ReactModule from 'react'
@@ -109,6 +108,7 @@ vi.mock('react-i18next', () => ({
         'workspace.skillsConnectors.sources.builtin': 'Built-in',
         'workspace.skillsConnectors.sources.custom': 'Custom (Upload)',
         'workspace.skillsConnectors.sources.marketplace': 'Marketplace (Online)',
+        'workspace.skillsConnectors.sources.org': 'Organization',
         'library.skill_add.add': 'Add skill',
         'library.skill_add.org_skills': 'Organization skills'
       })[key] ?? key
@@ -117,7 +117,7 @@ vi.mock('react-i18next', () => ({
 
 import { getSkillInitial, getSkillSourceFilter, SkillCatalogView } from '../SkillCatalogView'
 
-function skill(id: string, name: string, source: string, iconFileName?: string) {
+function skill(id: string, name: string, source: string, iconFileName?: string, sourceUrl?: string) {
   return {
     id,
     type: 'skill',
@@ -126,7 +126,7 @@ function skill(id: string, name: string, source: string, iconFileName?: string) 
     avatar: '',
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
-    raw: { id, name, source, iconFileName, version: '1.0.0', isGlobalEnabled: true }
+    raw: { id, name, source, sourceUrl, iconFileName, version: '1.0.0', isGlobalEnabled: true }
   }
 }
 
@@ -180,6 +180,10 @@ describe('SkillCatalogView helpers', () => {
     expect(getSkillSourceFilter(source)).toBe(expected)
   })
 
+  it('[enterprise] maps a copied organization skill to the organization source', () => {
+    expect(getSkillSourceFilter('local', 'org-skill:review')).toBe('org')
+  })
+
   it('uses the first visible uppercased character as the image fallback', () => {
     expect(getSkillInitial('  frontend-design')).toBe('F')
     expect(getSkillInitial('  中文技能')).toBe('中')
@@ -210,6 +214,17 @@ describe('SkillCatalogView', () => {
     expect(screen.getByLabelText('System skill')).toBeVisible()
     expect(screen.queryByLabelText('Builtin skill')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Marketplace skill')).not.toBeInTheDocument()
+  })
+
+  it('[enterprise] shows an organization tag for a copied organization skill', () => {
+    const testController = controller()
+    const orgSkill = skill('org-copy', 'Organization skill', 'local', undefined, 'org-skill:review')
+    testController.gridProps.resources = [orgSkill]
+    testController.gridProps.allResources = [orgSkill]
+
+    render(<SkillCatalogView controller={testController as never} />)
+
+    expect(within(screen.getByLabelText('Organization skill')).getByText('Organization')).toBeVisible()
   })
 
   it('toggles a skill globally without opening its details', async () => {

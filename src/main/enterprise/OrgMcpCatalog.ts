@@ -34,7 +34,8 @@ function toCreateDto(item: OrgConnectorCatalogItem): CreateMcpServerDto {
     // stdio 无 baseUrl：不写空串，避免与本地行的 undefined 形成每次同步的假 drift
     ...(item.baseUrl ? { baseUrl: item.baseUrl } : {}),
     isActive: false, // 安装与启用分离：默认不启用，用户确认后手动开
-    installSource: 'manual'
+    installSource: 'manual',
+    tags: Array.from(new Set([...(fromConfig.tags ?? []), 'org']))
   }
 }
 
@@ -43,7 +44,27 @@ export class OrgMcpCatalog {
 
   async list(): Promise<OrgConnectorCatalogItem[]> {
     const { connectors } = await this.auth.apiClient.listConnectors()
+    this.backfillCopyTags(connectors)
     return connectors
+  }
+
+  private backfillCopyTags(catalog: OrgConnectorCatalogItem[]): void {
+    const local = mcpServerService.list({}).items
+    for (const server of local) {
+      if (server.installSource !== 'manual' || server.tags?.includes('org')) continue
+      const matched = catalog.some((item) => {
+        if (server.name !== item.name || server.type !== item.type) return false
+        if (item.type === 'stdio') {
+          const expected = toCreateDto(item)
+          return (
+            server.command === expected.command &&
+            JSON.stringify(server.args ?? []) === JSON.stringify(expected.args ?? [])
+          )
+        }
+        return server.baseUrl === item.baseUrl
+      })
+      if (matched) mcpServerService.update(server.id, { tags: [...(server.tags ?? []), 'org'] })
+    }
   }
 
   /**
@@ -106,10 +127,7 @@ export class OrgMcpCatalog {
             .filter(([key]) => key !== 'isActive')
             .filter(([key, value]) => JSON.stringify(current[key as keyof typeof current]) !== JSON.stringify(value))
           if (drift.length > 0) {
-            mcpServerService.update(
-              state.mcpId,
-              Object.fromEntries(drift) as Partial<CreateMcpServerDto>
-            )
+            mcpServerService.update(state.mcpId, Object.fromEntries(drift) as Partial<CreateMcpServerDto>)
             orgStateStore.upsertConnector(slug, { mcpId: state.mcpId, baseUrl: item.baseUrl })
             updated.push(slug)
           }
