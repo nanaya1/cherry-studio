@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { ipcApi, useIpcOn } from '@renderer/ipc'
 import { toast } from '@renderer/services/toast'
@@ -10,6 +11,7 @@ type OrgSessionAction = 'login' | 'logout'
 
 // [enterprise] T0 企业登录会话 hook（参考 useCherryAccountSession 简化版）
 export function useOrgAccountSession(enabled = true) {
+  const { t } = useTranslation()
   const [status, setStatus] = useState<EnterpriseStatus | null>(null)
   const [loadState, setLoadState] = useState<OrgStatusLoadState>('loading')
   const [pendingAction, setPendingAction] = useState<OrgSessionAction | null>(null)
@@ -66,12 +68,19 @@ export function useOrgAccountSession(enabled = true) {
         }
       } catch {
         if (requestId !== requestRef.current) return
-        toast.error(action === 'login' ? '企业服务登录失败' : '退出登录失败')
+        // 原硬编码：'企业服务登录失败' / '退出登录失败'
+        toast.error(
+          t(
+            action === 'login'
+              ? 'settings.provider.org_service.login_failed'
+              : 'settings.provider.org_service.logout_failed'
+          )
+        )
       } finally {
         setPendingAction((current) => (current === action ? null : current))
       }
     },
-    [applyStatus]
+    [applyStatus, t]
   )
 
   return {

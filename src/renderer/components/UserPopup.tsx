@@ -20,6 +20,8 @@ import {
 } from '@cherrystudio/ui'
 import { usePreference } from '@data/hooks/usePreference'
 import useAvatar from '@renderer/hooks/useAvatar'
+// [enterprise] T0 企业登录入口
+import { useOrgAccountSession } from '@renderer/hooks/useOrgAccountSession'
 import { ipcApi } from '@renderer/ipc'
 import { createPopup, type PopupInjectedProps } from '@renderer/services/popup'
 import { toast } from '@renderer/services/toast'
@@ -27,8 +29,6 @@ import { checkEntityImageSize, prepareEntityImageBytes } from '@renderer/utils/i
 import { isEmoji } from '@renderer/utils/naming'
 
 import { EmojiPicker } from './EmojiPicker'
-// [enterprise] T0 企业登录入口
-import { useOrgAccountSession } from '@renderer/hooks/useOrgAccountSession'
 
 type Props = PopupInjectedProps<Record<string, never>>
 
@@ -265,12 +265,14 @@ const PopupContainer: React.FC<Props> = ({ open, resolve }) => {
                   loading={isOrgLoggingOut}
                   onClick={() => void handleOrgLogout()}
                   variant="outline">
-                  退出企业服务
+                  {/* 原硬编码：退出企业服务 */}
+                  {t('settings.provider.org_service.logout')}
                 </Button>
                 {orgStatus.phone ? (
                   <div role="status" className="max-w-full truncate text-foreground-tertiary text-xs leading-tight">
                     {orgStatus.phone}
-                    {orgStatus.role === 'super_admin' ? ' · 管理员' : ''}
+                    {/* 原硬编码： · 管理员 */}
+                    {orgStatus.role === 'super_admin' ? t('settings.provider.org_service.admin_suffix') : ''}
                   </div>
                 ) : null}
               </ColFlex>
@@ -281,11 +283,19 @@ const PopupContainer: React.FC<Props> = ({ open, resolve }) => {
                   <div
                     role="status"
                     className="rounded-lg border border-border-subtle bg-secondary px-3 py-2 text-center text-foreground-tertiary text-xs leading-tight">
-                    企业技能与连接器暂不可用（已退出登录），重新登录后自动恢复
+                    {/* 原硬编码：企业技能与连接器暂不可用（已退出登录），重新登录后自动恢复 */}
+                    {t('library.org_skill.unavailable_notice')}
                   </div>
                 ) : null}
-                <Button className="w-full" loading={isOrgLoggingIn} onClick={() => void handleOrgLogin()} variant="emphasis">
-                  {isOrgLoggingIn || orgStatus.phase === 'authorizing' ? '等待浏览器授权…' : '企业服务登录'}
+                <Button
+                  className="w-full"
+                  loading={isOrgLoggingIn}
+                  onClick={() => void handleOrgLogin()}
+                  variant="emphasis">
+                  {/* 原硬编码：等待浏览器授权… / 企业服务登录 */}
+                  {isOrgLoggingIn || orgStatus.phase === 'authorizing'
+                    ? t('settings.provider.org_service.signing_in')
+                    : t('settings.provider.org_service.login')}
                 </Button>
               </ColFlex>
             )}
