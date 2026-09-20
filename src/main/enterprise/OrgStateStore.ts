@@ -38,7 +38,10 @@ const fileSchema = z.object({
   unavailable: z.boolean().default(false),
   // [enterprise] C4 删除墓碑：slug → 删除时的 contentHash。
   // startupScan C1 据此防复活：同 hash 不重装（用户删过），hash 变化（企业推新版）清墓碑重装。
-  deletedSkills: z.record(z.string(), z.string()).default({})
+  deletedSkills: z.record(z.string(), z.string()).default({}),
+  // [enterprise] C4 连接器删除墓碑：slug → 删除时的 baseUrl。
+  // compareAndSync 据此防复活：同 baseUrl 不自动重装（用户删过），企业推新 baseUrl 视为重新下发清墓碑。
+  deletedConnectors: z.record(z.string(), z.string()).default({})
 })
 
 function stateFile(): string {
@@ -157,6 +160,26 @@ export class OrgStateStore {
   removeConnector(slug: string): void {
     this.ensureLoaded()
     delete this.data!.connectors[slug]
+    this.persist()
+  }
+
+  // [enterprise] C4 连接器墓碑：记录 slug 删除时的 baseUrl 并持久化（幂等，重复标记以后一次为准）
+  markConnectorDeleted(slug: string, baseUrl: string): void {
+    this.ensureLoaded()
+    this.data!.deletedConnectors[slug] = baseUrl
+    this.persist()
+  }
+
+  // [enterprise] C4 连接器墓碑查询：返回删除时记录的 baseUrl（无墓碑返回 undefined）
+  deletedConnectorBaseUrl(slug: string): string | undefined {
+    this.ensureLoaded()
+    return this.data!.deletedConnectors[slug]
+  }
+
+  // [enterprise] C4 清除连接器墓碑（企业推新 baseUrl 或用户手动重装时调用）
+  clearConnectorDeleted(slug: string): void {
+    this.ensureLoaded()
+    delete this.data!.deletedConnectors[slug]
     this.persist()
   }
 

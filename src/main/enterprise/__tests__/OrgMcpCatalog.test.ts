@@ -28,7 +28,11 @@ const { authMock, apiMock, mcpServiceMock, stateStoreMock } = vi.hoisted(() => (
     // 连接器状态与技能共用一份 store 的 connectors 字段——简化为方法级 mock
     upsertConnector: vi.fn(),
     removeConnector: vi.fn(),
-    snapshotConnectors: vi.fn().mockReturnValue({})
+    snapshotConnectors: vi.fn().mockReturnValue({}),
+    // [enterprise] C4 连接器墓碑
+    markConnectorDeleted: vi.fn(),
+    deletedConnectorBaseUrl: vi.fn().mockReturnValue(undefined),
+    clearConnectorDeleted: vi.fn()
   }
 }))
 
@@ -148,5 +152,59 @@ describe('OrgMcpCatalog C6 compareAndSync', () => {
 
     const result = await catalog.compareAndSync()
     expect(result.installed).toEqual(['good'])
+  })
+
+  // [enterprise] C4 连接器墓碑：用户删除后若经历「企业下架清映射」→「重新上架」，
+  // compareAndSync 会因「远端有、本地无 state」自动重装。墓碑（slug → 删除时 baseUrl）
+  // 拦住同 baseUrl 的自动安装；手动 install 视为用户意图反转，清墓碑。
+  it('目录重装遇同 baseUrl 墓碑 → 跳过自动安装', async () => {
+    apiMock.listConnectors.mockResolvedValue({ connectors: [makeConnector('weather', 'http://w.example/sse')] })
+    stateStoreMock.snapshotConnectors.mockReturnValue({})
+    stateStoreMock.deletedConnectorBaseUrl.mockImplementation((slug: string) =>
+      slug === 'weather' ? 'http://w.example/sse' : undefined
+    )
+
+    const result = await catalog.compareAndSync()
+    expect(mcpServiceMock.create).not.toHaveBeenCalled()
+    expect(result.installed).toEqual([])
+  })
+
+  it('墓碑存在但企业推送了新 baseUrl → 视为重新下发，清墓碑重装', async () => {
+    apiMock.listConnectors.mockResolvedValue({ connectors: [makeConnector('weather', 'http://w2.example/sse')] })
+    stateStoreMock.snapshotConnectors.mockReturnValue({})
+    stateStoreMock.deletedConnectorBaseUrl.mockReturnValue('http://w.example/sse')
+
+    await catalog.compareAndSync()
+    expect(stateStoreMock.clearConnectorDeleted).toHaveBeenCalledWith('weather')
+    expect(mcpServiceMock.create).toHaveBeenCalledTimes(1)
+  })
+
+  it('自动安装新连接器不应误清墓碑（墓碑只属于同 slug 的旧 baseUrl）', async () => {
+    apiMock.listConnectors.mockResolvedValue({ connectors: [makeConnector('fresh', 'http://f.example/sse')] })
+    stateStoreMock.snapshotConnectors.mockReturnValue({})
+    stateStoreMock.deletedConnectorBaseUrl.mockReturnValue(undefined)
+
+    await catalog.compareAndSync()
+    expect(stateStoreMock.clearConnectorDeleted).not.toHaveBeenCalled()
+  })
+
+  it('目录缺失且本地已被用户删除 → 清映射同时写墓碑（唯一复活入口）', async () => {
+    apiMock.listConnectors.mockResolvedValue({ connectors: [] })
+    stateStoreMock.snapshotConnectors.mockReturnValue({
+      gone: { mcpId: 'mcp-x', baseUrl: 'http://g.example/sse' }
+    })
+    mcpServiceMock.getByIdSafe.mockReturnValue(null)
+
+    await catalog.compareAndSync()
+    expect(stateStoreMock.markConnectorDeleted).toHaveBeenCalledWith('gone', 'http://g.example/sse')
+    expect(stateStoreMock.removeConnector).toHaveBeenCalledWith('gone')
+  })
+
+  it('手动 install → 清除该 slug 的墓碑（用户重装意图生效）', async () => {
+    apiMock.listConnectors.mockResolvedValue({ connectors: [makeConnector('weather', 'http://w.example/sse')] })
+
+    await catalog.install('weather')
+    expect(stateStoreMock.clearConnectorDeleted).toHaveBeenCalledWith('weather')
+    expect(mcpServiceMock.create).toHaveBeenCalledTimes(1)
   })
 })

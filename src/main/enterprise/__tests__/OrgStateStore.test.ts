@@ -144,6 +144,37 @@ describe('OrgStateStore', () => {
     expect(store.deletedHash('demo')).toBe('h2')
   })
 
+  // [enterprise] C4 连接器墓碑：与技能墓碑同构（slug → 删除时 baseUrl），
+  // 防止「用户删除 → 企业临时下架清映射 → 重新上架自动重装」的复活路径。
+  it('markConnectorDeleted 写入连接器墓碑并持久化', () => {
+    const store = new OrgStateStore()
+    store.upsertConnector('weather', { mcpId: 'mcp-1', baseUrl: 'http://w.example/sse' })
+    store.markConnectorDeleted('weather', 'http://w.example/sse')
+
+    expect(store.deletedConnectorBaseUrl('weather')).toBe('http://w.example/sse')
+    const reloaded = new OrgStateStore()
+    expect(reloaded.deletedConnectorBaseUrl('weather')).toBe('http://w.example/sse')
+    // 墓碑后原映射仍在（compareAndSync 语义由 OrgMcpCatalog 过滤，store 不管）
+    expect(reloaded.getConnector('weather')?.mcpId).toBe('mcp-1')
+  })
+
+  it('clearConnectorDeleted 移除连接器墓碑且持久化', () => {
+    const store = new OrgStateStore()
+    store.markConnectorDeleted('weather', 'http://w.example/sse')
+    store.clearConnectorDeleted('weather')
+
+    expect(store.deletedConnectorBaseUrl('weather')).toBeUndefined()
+    const reloaded = new OrgStateStore()
+    expect(reloaded.deletedConnectorBaseUrl('weather')).toBeUndefined()
+  })
+
+  it('markConnectorDeleted 幂等：重复标记以后一次 baseUrl 为准', () => {
+    const store = new OrgStateStore()
+    store.markConnectorDeleted('weather', 'http://w1.example/sse')
+    store.markConnectorDeleted('weather', 'http://w2.example/sse')
+    expect(store.deletedConnectorBaseUrl('weather')).toBe('http://w2.example/sse')
+  })
+
   // 回归：orgStateStore 是模块顶层单例，模块加载早于 application.initPathRegistry()。
   // 若构造函数里立即 getPath() 会抛错 → 静默重置为空 → startupScan C1 误判"本地无记录"全部重装。
   // 单例必须惰性初始化（首次访问时才读文件），getPath 只发生在真正需要时。

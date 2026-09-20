@@ -46,6 +46,16 @@ export class OrgMcpCatalog {
       const state = local[slug]
       try {
         if (!state) {
+          // [enterprise] C4 墓碑防复活：用户删除过的连接器（同 baseUrl）不自动重装；
+          // 企业推送了新 baseUrl 视为重新下发，清墓碑正常安装。
+          const tombstoneBaseUrl = orgStateStore.deletedConnectorBaseUrl(slug)
+          if (tombstoneBaseUrl !== undefined) {
+            if (tombstoneBaseUrl === item.baseUrl) {
+              logger.info('compareAndSync skip tombstoned connector', { slug, baseUrl: item.baseUrl })
+              continue
+            }
+            orgStateStore.clearConnectorDeleted(slug)
+          }
           this.installLocal(item)
           orgStateStore.upsertConnector(slug, { mcpId: this.lastCreatedId, baseUrl: item.baseUrl })
           installed.push(slug)
@@ -67,7 +77,9 @@ export class OrgMcpCatalog {
         if (current?.isActive) {
           mcpServerService.update(state.mcpId, { isActive: false } as never)
         } else if (!current) {
-          // [enterprise] 本地已被用户手动删除 → 仅清 state 映射
+          // [enterprise] 本地已被用户手动删除 → 写墓碑（记删除时 baseUrl）+ 清 state 映射。
+          // 此前只清映射，之后企业「下架 → 重新上架」会把连接器复活安装回来。
+          orgStateStore.markConnectorDeleted(slug, state.baseUrl)
           orgStateStore.removeConnector(slug)
         }
         disabled.push(slug)
@@ -104,7 +116,9 @@ export class OrgMcpCatalog {
     const item = catalog.find((c) => c.slug === slug)
     if (!item) throw new Error(`企业连接器不存在: ${slug}`)
 
-    // [enterprise] C6：手动安装同样记录 state，纳入 compareAndSync 管理
+    // [enterprise] C6：手动安装同样记录 state，纳入 compareAndSync 管理。
+    // C4：手动安装视为用户删除意图反转，清墓碑（与技能重装清墓碑语义一致）。
+    orgStateStore.clearConnectorDeleted(slug)
     this.installLocal(item)
     orgStateStore.upsertConnector(slug, { mcpId: this.lastCreatedId, baseUrl: item.baseUrl })
   }
