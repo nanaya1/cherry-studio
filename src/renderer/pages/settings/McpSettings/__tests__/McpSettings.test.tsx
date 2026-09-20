@@ -28,6 +28,8 @@ const mocks = vi.hoisted(() => ({
 
 let currentServer: McpServer
 let currentSearch: { autoEnable?: 'true' }
+// 模拟该路由是否在激活匹配链中（Dialog 形态嵌入 /app/skills-connectors 时不在）
+let routeInMatchChain = true
 
 // Keep the real useMcpServerMutations so the delete tests exercise the actual
 // remove flow (IPC channel + cache invalidation), not a stand-in.
@@ -39,7 +41,14 @@ vi.mock('@renderer/hooks/useMcpServer', async (importOriginal) => ({
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => mocks.navigate,
   useParams: () => ({ serverId: currentServer.id }),
-  getRouteApi: () => ({ useSearch: () => currentSearch })
+  // 真实行为：routeApi.useSearch 在路由不在激活匹配链时抛 invariant（Dialog 嵌入非 settings 路由场景）
+  getRouteApi:
+      () =>
+      ({ useSearch: () => {
+        if (!routeInMatchChain) throw new Error('Invariant: Could not find an active match')
+        return currentSearch
+      } }),
+  useMatches: () => (routeInMatchChain ? [{ routeId: '/settings/mcp/settings/$serverId', search: currentSearch }] : [])
 }))
 
 vi.mock('@renderer/services/popup', () => ({
@@ -392,5 +401,24 @@ describe('McpSettings', () => {
     await waitFor(() => expect(mocks.navigate).toHaveBeenCalledWith({ to: '/settings/mcp' }))
     expect(mocks.toastSuccess).toHaveBeenCalled()
     expect(mocks.toastError).not.toHaveBeenCalled()
+  })
+
+  // [enterprise] Dialog 形态嵌入 /app/skills-connectors（我的 MCP 卡片点击）时，
+  // '/settings/mcp/settings/$serverId' 不在激活匹配链，routeApi.useSearch 抛 invariant
+  // 整页崩溃。修复后应从 useMatches 安全取 search（取不到视为无 autoEnable）。
+  it('renders inside a non-settings route (no active match) without crashing', () => {
+    routeInMatchChain = false
+    currentSearch = {}
+    currentServer = {
+      id: 'catalog-server-id',
+      name: 'Server A',
+      type: 'stdio',
+      command: 'server-a',
+      isActive: false
+    }
+
+    render(<McpSettings serverId="catalog-server-id" onClose={vi.fn()} />)
+
+    expect(screen.getByRole('textbox', { name: 'Server name' })).toHaveValue('Server A')
   })
 })

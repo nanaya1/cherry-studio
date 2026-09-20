@@ -1,8 +1,8 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import type { McpError } from '@modelcontextprotocol/sdk/types.js'
-import { getRouteApi, useNavigate, useParams } from '@tanstack/react-router'
+import { useMatches, useNavigate, useParams } from '@tanstack/react-router'
 import { ArrowLeft, SaveIcon } from 'lucide-react'
-import React, { useCallback, useEffect, useEffectEvent, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 
@@ -20,7 +20,8 @@ import { ipcApi } from '@renderer/ipc'
 import McpDescription from '@renderer/pages/settings/McpSettings/McpDescription'
 import { popup } from '@renderer/services/popup'
 import { toast } from '@renderer/services/toast'
-import type { AppRouter } from '@renderer/types/router'
+// 停用原路由 API 类型导入（随 routeApi.useSearch 一起停用；恢复时取消注释）：
+// import type { AppRouter } from '@renderer/types/router'
 import type { McpTool } from '@renderer/types/tool'
 import { formatMcpError } from '@renderer/utils/error'
 import { cn } from '@renderer/utils/style'
@@ -51,7 +52,8 @@ import { useMcpServerTrust } from './useMcpServerTrust'
 import { toUpdateMcpServerDto } from './utils'
 
 const logger = loggerService.withContext('McpSettings')
-const mcpSettingsRouteApi = getRouteApi('/settings/mcp/settings/$serverId')
+// 停用原路由 API 实例（配合 McpSettingsContent 的 useMatches 方案；恢复时取消注释）：
+// const mcpSettingsRouteApi = getRouteApi('/settings/mcp/settings/$serverId')
 
 type TabKey = 'settings' | 'description' | 'logs' | 'tools' | 'prompts' | 'resources'
 type McpTabItem = {
@@ -74,7 +76,18 @@ interface McpSettingsContentProps {
 
 const McpSettingsContent: React.FC<McpSettingsContentProps> = ({ server, updateMcpServer, onClose }) => {
   const { t } = useTranslation()
-  const search = mcpSettingsRouteApi.useSearch<AppRouter>()
+  // 停用原路由 API 读取（MEA 定制注释保留；与 McpServersList 同款修复）：本组件除
+  // /settings/mcp/settings/$serverId 路由页外，还作为 Dialog 嵌入 /app/skills-connectors
+  // 的「我的 MCP」卡片弹窗（McpServersList 传入 serverId prop）。该路由下
+  // '/settings/mcp/settings/$serverId' 不在激活匹配链，routeApi.useSearch 会抛
+  // "Invariant failed: Could not find an active match" 导致整页崩溃。
+  // const search = mcpSettingsRouteApi.useSearch<AppRouter>()
+  // 改用 useMatches 从当前匹配链中安全取出该路由的 search（非 settings 场景为 {}）。
+  const matches = useMatches()
+  const search = useMemo(() => {
+    const match = matches.find((m) => m.routeId === '/settings/mcp/settings/$serverId')
+    return (match?.search ?? {}) as { autoEnable?: string }
+  }, [matches])
   const serverId = server.id
   const [initialFormValues] = useState(() => toMcpFormDefaultValues(server))
 
