@@ -3,7 +3,8 @@ import type { FC, ReactNode } from 'react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { Badge, Button } from '@cherrystudio/ui'
+// import { Badge } from '@cherrystudio/ui'
+import { Button } from '@cherrystudio/ui'
 import CollapsibleSearchBar from '@renderer/components/CollapsibleSearchBar'
 import { useMcpServers } from '@renderer/hooks/useMcpServer'
 import { useOrgConnectors } from '@renderer/hooks/useOrgConnectors'
@@ -78,7 +79,7 @@ const OrgConnectorList: FC<OrgConnectorListProps> = ({ variant = 'catalog', tool
               <div
                 key={connector.slug}
                 className={cn(
-                  'group relative flex min-h-28 min-w-0 flex-col rounded-lg border border-border-subtle bg-card p-3.5 transition-[background-color,border-color,box-shadow] hover:border-border-strong hover:bg-background-subtle hover:shadow-sm',
+                  'group relative flex min-h-28 min-w-0 flex-col rounded-lg border border-border-subtle bg-card p-3.5 transition-[background-color,border-color,box-shadow] hover:border-border-strong hover:bg-background-subtle hover:shadow-sm focus-visible:border-ring focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50',
                   installed && 'bg-muted/25'
                 )}>
                 <div className="min-w-0 flex-1">
@@ -87,20 +88,21 @@ const OrgConnectorList: FC<OrgConnectorListProps> = ({ variant = 'catalog', tool
                       <Plug className="size-4 text-muted-foreground" />
                     </div>
                     <h3 className="min-w-0 truncate font-semibold text-base leading-5">{connector.name}</h3>
+                    {/* 组织 Tab 已明确资源来源，不再重复显示组织标签。
                     <Badge
                       variant="outline"
                       className="h-5 shrink-0 rounded-md border-primary/30 bg-primary/10 px-1.5 text-[11px] text-primary leading-none">
                       {t('workspace.skillsConnectors.sources.org')}
-                    </Badge>
+                    </Badge> */}
                   </div>
                   <p className="mt-3 line-clamp-2 text-muted-foreground text-sm leading-5">{connector.description}</p>
-                  {/* stdio 连接器无 baseUrl：显示命令预览（与 MCP 详情页同款格式） */}
+                  {/* 停用命令预览，使组织卡片与其他目录 Tab 的信息层级一致。
                   <p className="mt-1 truncate font-mono text-[11px] text-foreground-tertiary">
                     {connector.baseUrl ||
                       [connector.config.command as string, ...((connector.config.args as string[] | undefined) ?? [])]
                         .filter(Boolean)
                         .join(' ')}
-                  </p>
+                  </p> */}
                 </div>
                 <div className="absolute top-3.5 right-3 flex shrink-0 items-center justify-end gap-1">
                   {installed ? (
