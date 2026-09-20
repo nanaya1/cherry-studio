@@ -1,9 +1,9 @@
-import { Button, EmptyState, Spinner, Tooltip } from '@cherrystudio/ui'
 import { Check, Download, LoaderCircle, Trash2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { ResourceCatalogSearchInput } from '@renderer/components/resourceCatalog/ResourceCatalogSearchInput'
+import { Button, EmptyState, Spinner, Tooltip } from '@cherrystudio/ui'
+// import { ResourceCatalogSearchInput } from '@renderer/components/resourceCatalog/ResourceCatalogSearchInput'
 import { useOrgAccountSession } from '@renderer/hooks/useOrgAccountSession'
 import { useOrgSkills, type OrgSkillItem } from '@renderer/hooks/useOrgSkills'
 import { toast } from '@renderer/services/toast'
@@ -18,24 +18,29 @@ const FALLBACK_COLORS = [
   ['#edf3f4', '#526a70']
 ] as const
 
-export function OrgSkillCatalogView() {
+interface OrgSkillCatalogViewProps {
+  search?: string
+}
+
+export function OrgSkillCatalogView({ search = '' }: OrgSkillCatalogViewProps) {
   const { t } = useTranslation()
-  const [query, setQuery] = useState('')
+  // const [query, setQuery] = useState('')
   const { status } = useOrgAccountSession()
   // [enterprise] 登出时停止目录请求；重登事件会把 enabled 切回 true 并自动重新拉取
   const isSignedIn = status?.phase === 'signed-in'
   const { skills, loading, error, install, installing, refetch, disabledSlugs, installedSlugs, remove } =
     useOrgSkills(isSignedIn)
   const [removing, setRemoving] = useState<Set<string>>(() => new Set())
-  const [failedIcons, setFailedIcons] = useState<Set<string>>(() => new Set())
 
   const visibleSkills = useMemo(() => {
-    const normalized = query.trim().toLocaleLowerCase()
+    // const normalized = query.trim().toLocaleLowerCase()
+    const normalized = search.trim().toLocaleLowerCase()
     if (!normalized) return skills
     return skills.filter((skill) =>
       [skill.name, skill.description, skill.slug].some((value) => value?.toLocaleLowerCase().includes(normalized))
     )
-  }, [query, skills])
+    // }, [query, skills])
+  }, [search, skills])
 
   const handleInstall = async (skill: OrgSkillItem) => {
     if (installing.has(skill.slug) || installedSlugs.has(skill.slug)) return
@@ -86,12 +91,13 @@ export function OrgSkillCatalogView() {
   return (
     <div className="mx-auto flex h-full w-full flex-col px-6 py-4">
       <div className="mb-3 flex shrink-0 items-center gap-2">
-        <ResourceCatalogSearchInput
+        {/* 组织技能统一使用页面顶部搜索框。 */}
+        {/* <ResourceCatalogSearchInput
           value={query}
           onValueChange={setQuery}
           placeholder={t('library.org_skill.search_placeholder')}
           className="w-64 max-w-[32vw] max-lg:w-40"
-        />
+        /> */}
         <span className="text-foreground-tertiary text-xs tabular-nums">
           {visibleSkills.length} / {skills.length}
         </span>
@@ -162,19 +168,9 @@ export function OrgSkillCatalogView() {
                 )}
                 <div className="flex min-w-0 items-center gap-2.5 pr-8">
                   <span
-                    className="grid size-9 shrink-0 place-items-center overflow-hidden rounded-full font-semibold text-sm"
+                    className="grid size-9 shrink-0 place-items-center rounded-full font-semibold text-sm"
                     style={{ backgroundColor: bg, color: fg }}>
-                    {skill.iconUrl && !failedIcons.has(skill.slug) ? (
-                      <img
-                        src={skill.iconUrl}
-                        alt=""
-                        className="size-full object-cover"
-                        draggable={false}
-                        onError={() => setFailedIcons((current) => new Set(current).add(skill.slug))}
-                      />
-                    ) : (
-                      Array.from(skill.name.trim())[0]?.toLocaleUpperCase() ?? '?'
-                    )}
+                    {Array.from(skill.name)[0] ?? '?'}
                   </span>
                   <div className="min-w-0 flex-1">
                     <h2 className="truncate font-semibold text-sm">{skill.name}</h2>

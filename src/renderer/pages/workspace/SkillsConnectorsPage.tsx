@@ -123,10 +123,14 @@ export default function SkillsConnectorsPage({ connectorView }: SkillsConnectors
               </TabsTrigger>
             </TabsList>
             <TabsContent value="recommended" className="flex min-h-0 flex-1 flex-col">
-              <RecommendedSkillCatalogView search={recommendedSearch} onViewInstalled={() => setSkillView('installed')} />
+              <RecommendedSkillCatalogView
+                search={recommendedSearch}
+                onViewInstalled={() => setSkillView('installed')}
+              />
             </TabsContent>
             <TabsContent value="org" className="flex min-h-0 flex-1 flex-col">
-              <OrgSkillCatalogView />
+              {/* <OrgSkillCatalogView /> */}
+              <OrgSkillCatalogView search={recommendedSearch} />
             </TabsContent>
           </Tabs>
         ) : (

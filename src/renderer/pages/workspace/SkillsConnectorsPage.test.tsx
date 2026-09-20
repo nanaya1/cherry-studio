@@ -28,7 +28,7 @@ vi.mock('@renderer/components/resourceCatalog/catalog', () => ({
     </div>
   ),
   // 页面「组织」二级 tab 引用了该导出，整体 mock 必须提供（缺了会整树渲染崩溃）
-  OrgSkillCatalogView: () => <div>org skills</div>,
+  OrgSkillCatalogView: ({ search }: { search: string }) => <div>org skills: {search}</div>,
   SkillCatalogDialogs: ({ controller }: { controller: MockSkillController }) => (
     <div>
       skill dialogs: {controller.dialogs.skillMarketplaceOpen ? 'marketplace' : ''}
@@ -104,8 +104,9 @@ describe('SkillsConnectorsPage', () => {
     expect(screen.getByRole('tab', { name: 'Organization' })).toHaveClass('border-b-2')
     expect(screen.getByText('recommended skills:')).toBeVisible()
 
+    await user.type(screen.getByPlaceholderText('library.toolbar.search_placeholder'), '周报')
     await user.click(screen.getByRole('tab', { name: 'Organization' }))
-    expect(screen.getByText('org skills')).toBeVisible()
+    expect(screen.getByText('org skills: 周报')).toBeVisible()
     await user.click(screen.getByRole('tab', { name: 'Recommended skills' }))
     expect(screen.getByText('skill dialogs:')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /My installed/ })).toHaveTextContent('2')
@@ -123,7 +124,7 @@ describe('SkillsConnectorsPage', () => {
     expect(screen.queryByRole('tab', { name: 'Skills' })).not.toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'All skills' }))
-    expect(screen.getByText('recommended skills:')).toBeVisible()
+    expect(screen.getByText('recommended skills: 周报')).toBeVisible()
 
     await user.click(screen.getByRole('tab', { name: 'Connectors' }))
     expect(screen.getByText('connector catalog')).toBeVisible()

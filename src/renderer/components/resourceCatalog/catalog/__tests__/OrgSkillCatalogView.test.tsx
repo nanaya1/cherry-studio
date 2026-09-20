@@ -162,8 +162,7 @@ describe('OrgSkillCatalogView', () => {
     expect(screen.getByRole('button', { name: 'common.refresh' })).toBeVisible()
   })
 
-  it('filters cards by the search query', async () => {
-    const user = userEvent.setup()
+  it('filters cards with the page-level search and does not render a local search input', () => {
     mocks.useOrgSkills.mockReturnValue({
       skills: [orgSkill('a', '周报'), orgSkill('b', '代码评审')],
       loading: false,
@@ -175,10 +174,9 @@ describe('OrgSkillCatalogView', () => {
       installedSlugs: new Set<string>(),
       remove: vi.fn()
     })
-    render(<OrgSkillCatalogView />)
+    render(<OrgSkillCatalogView search="周报" />)
 
-    await user.type(screen.getByPlaceholderText('library.org_skill.search_placeholder'), '周报')
-
+    expect(screen.queryByPlaceholderText('library.org_skill.search_placeholder')).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { name: '周报' })).toBeVisible()
     expect(screen.queryByRole('heading', { name: '代码评审' })).not.toBeInTheDocument()
   })
