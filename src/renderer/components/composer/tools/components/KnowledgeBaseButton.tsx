@@ -18,7 +18,7 @@ import {
 import { useKnowledgeBases } from '@renderer/hooks/useKnowledgeBase'
 import { useRemoteKnowledgeBases } from '@renderer/hooks/useRemoteKnowledge'
 // Task 12：本地+远端知识库聚合投影（选择器合并展示）
-import { mergeSelectableKnowledgeBases } from '@renderer/hooks/useSelectableKnowledgeBases'
+import { useSelectableKnowledgeBases } from '@renderer/hooks/useSelectableKnowledgeBases'
 import { openRoute } from '@renderer/services/mainWindowNavigation'
 import type { KnowledgeBase } from '@shared/data/types/knowledge'
 
@@ -79,7 +79,7 @@ const useKnowledgeBaseToolController = ({
     enabled: knowledgeBasesEnabled
   })
   const { bases: remoteBases, isLoading: isRemoteBasesLoading } = useRemoteKnowledgeBases()
-  const knowledgeBases = mergeSelectableKnowledgeBases(localKnowledgeBases, remoteBases)
+  const knowledgeBases = useSelectableKnowledgeBases(localKnowledgeBases, remoteBases)
   const isKnowledgeBasesLoading = isLocalKnowledgeBasesLoading || isRemoteBasesLoading
   const onSelectRef = useRef(onSelect)
   const selectedBasesRef = useRef<KnowledgeBase[]>(selectedBases ?? [])

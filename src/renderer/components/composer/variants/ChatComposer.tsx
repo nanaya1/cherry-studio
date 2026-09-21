@@ -45,7 +45,7 @@ import { useKnowledgeBases } from '@renderer/hooks/useKnowledgeBase'
 import { useModelById, useModels } from '@renderer/hooks/useModel'
 import { useProviders } from '@renderer/hooks/useProvider'
 import { useRemoteKnowledgeBases } from '@renderer/hooks/useRemoteKnowledge'
-import { mergeSelectableKnowledgeBases } from '@renderer/hooks/useSelectableKnowledgeBases'
+import { useSelectableKnowledgeBases } from '@renderer/hooks/useSelectableKnowledgeBases'
 import { useTopicMutations } from '@renderer/hooks/useTopic'
 import { useTopicAwaitingApproval, useTopicStreamStatus } from '@renderer/hooks/useTopicStreamStatus'
 import { EVENT_NAMES, EventEmitter } from '@renderer/services/EventService'
@@ -640,7 +640,7 @@ const ChatComposerInner = ({
     enabled: knowledgeBasesDataEnabled
   })
   const { bases: remoteKnowledgeBases, isLoading: isRemoteKnowledgeBasesLoading } = useRemoteKnowledgeBases()
-  const allKnowledgeBases = mergeSelectableKnowledgeBases(localKnowledgeBases, remoteKnowledgeBases)
+  const allKnowledgeBases = useSelectableKnowledgeBases(localKnowledgeBases, remoteKnowledgeBases)
   const isKnowledgeBasesLoading = isLocalKnowledgeBasesLoading || isRemoteKnowledgeBasesLoading
   const filesRef = useLatest(files)
   const selectedKnowledgeBasesRef = useLatest(selectedKnowledgeBases)

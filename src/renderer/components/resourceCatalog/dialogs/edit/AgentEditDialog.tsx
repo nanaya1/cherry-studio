@@ -28,7 +28,7 @@ import { useKnowledgeBases } from '@renderer/hooks/useKnowledgeBase'
 import { useModelById } from '@renderer/hooks/useModel'
 import { usePromptProcessor } from '@renderer/hooks/usePromptProcessor'
 import { useRemoteKnowledgeBases } from '@renderer/hooks/useRemoteKnowledge'
-import { mergeSelectableKnowledgeBases } from '@renderer/hooks/useSelectableKnowledgeBases'
+import { useSelectableKnowledgeBases } from '@renderer/hooks/useSelectableKnowledgeBases'
 import { useInstalledSkills, useReconcileSkillsOnOpen } from '@renderer/hooks/useSkills'
 import { openSettingsTab } from '@renderer/services/mainWindowNavigation'
 import { toast } from '@renderer/services/toast'
@@ -294,7 +294,7 @@ function AgentEditDialogContent({
   // const { bases: knowledgeBases, isLoading: knowledgeBasesLoading } = useKnowledgeBases()
   const { bases: localKnowledgeBases, isLoading: isLocalKnowledgeBasesLoading } = useKnowledgeBases()
   const { bases: remoteKnowledgeBases, isLoading: isRemoteKnowledgeBasesLoading } = useRemoteKnowledgeBases()
-  const knowledgeBases = mergeSelectableKnowledgeBases(localKnowledgeBases, remoteKnowledgeBases)
+  const knowledgeBases = useSelectableKnowledgeBases(localKnowledgeBases, remoteKnowledgeBases)
   const knowledgeBasesLoading = isLocalKnowledgeBasesLoading || isRemoteKnowledgeBasesLoading
   const availableKnowledgeBaseIds = useMemo(() => new Set(knowledgeBases.map((base) => base.id)), [knowledgeBases])
   const {

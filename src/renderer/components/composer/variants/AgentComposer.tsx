@@ -54,7 +54,7 @@ import { useCommandHandler } from '@renderer/hooks/command'
 import { useIsActiveTab } from '@renderer/hooks/tab'
 import { useKnowledgeBases } from '@renderer/hooks/useKnowledgeBase'
 import { useRemoteKnowledgeBases } from '@renderer/hooks/useRemoteKnowledge'
-import { mergeSelectableKnowledgeBases } from '@renderer/hooks/useSelectableKnowledgeBases'
+import { useSelectableKnowledgeBases } from '@renderer/hooks/useSelectableKnowledgeBases'
 import { useAvailableSkills } from '@renderer/hooks/useSkills'
 import { useTimer } from '@renderer/hooks/useTimer'
 import { useTopicStreamStatus } from '@renderer/hooks/useTopicStreamStatus'
@@ -932,7 +932,7 @@ const AgentComposerInner = ({
     enabled: knowledgeBasesDataEnabled
   })
   const { bases: remoteKnowledgeBases, isLoading: isRemoteKnowledgeBasesLoading } = useRemoteKnowledgeBases()
-  const allKnowledgeBases = mergeSelectableKnowledgeBases(localKnowledgeBases, remoteKnowledgeBases)
+  const allKnowledgeBases = useSelectableKnowledgeBases(localKnowledgeBases, remoteKnowledgeBases)
   const isKnowledgeBasesLoading = isLocalKnowledgeBasesLoading || isRemoteKnowledgeBasesLoading
 
   const { canAddImageFile, supportedExts } = useComposerFileCapabilities(model)

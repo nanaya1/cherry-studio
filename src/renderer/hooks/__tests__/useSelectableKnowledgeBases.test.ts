@@ -1,9 +1,14 @@
+import { renderHook } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
 import type { KnowledgeBaseListItem } from '@shared/data/api/schemas/knowledges'
 import type { RemoteKnowledgeBaseInfo } from '@shared/data/types/remoteKnowledge'
 
-import { mergeSelectableKnowledgeBases, projectRemoteKnowledgeBase } from '../useSelectableKnowledgeBases'
+import {
+  mergeSelectableKnowledgeBases,
+  projectRemoteKnowledgeBase,
+  useSelectableKnowledgeBases
+} from '../useSelectableKnowledgeBases'
 
 const remoteBase: RemoteKnowledgeBaseInfo = {
   id: 'remote:service-1:docs',
@@ -48,6 +53,34 @@ describe('projectRemoteKnowledgeBase', () => {
     expect(projected.embeddingModelId).toBeNull()
     expect(projected.dimensions).toBeNull()
     expect(projected.chunkOverlap).toBeLessThan(projected.chunkSize)
+  })
+})
+
+describe('useSelectableKnowledgeBases', () => {
+  it('keeps the merged reference stable while both source references are unchanged', () => {
+    const localBases = [localBase]
+    const remoteBases = [remoteBase]
+    const { result, rerender } = renderHook(({ local, remote }) => useSelectableKnowledgeBases(local, remote), {
+      initialProps: { local: localBases, remote: remoteBases }
+    })
+    const initial = result.current
+
+    rerender({ local: localBases, remote: remoteBases })
+
+    expect(result.current).toBe(initial)
+  })
+
+  it('rebuilds the merged result when either source reference changes', () => {
+    const localBases = [localBase]
+    const remoteBases = [remoteBase]
+    const { result, rerender } = renderHook(({ local, remote }) => useSelectableKnowledgeBases(local, remote), {
+      initialProps: { local: localBases, remote: remoteBases }
+    })
+    const initial = result.current
+
+    rerender({ local: [...localBases], remote: remoteBases })
+
+    expect(result.current).not.toBe(initial)
   })
 })
 

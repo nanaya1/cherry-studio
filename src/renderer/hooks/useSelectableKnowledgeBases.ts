@@ -1,3 +1,5 @@
+import { useMemo } from 'react'
+
 import type { KnowledgeBaseListItem } from '@shared/data/api/schemas/knowledges'
 import {
   DEFAULT_KNOWLEDGE_BASE_CHUNK_OVERLAP,
@@ -58,4 +60,16 @@ export function mergeSelectableKnowledgeBases(
   remoteBases: readonly RemoteKnowledgeBaseInfo[]
 ): KnowledgeBaseListItem[] {
   return [...localBases, ...remoteBases.map(projectRemoteKnowledgeBase)]
+}
+
+/**
+ * React-facing merge that preserves the result reference until either source
+ * changes. Consumers feed the result into effects and context updates, so an
+ * unconditional array allocation can create a render -> effect -> state loop.
+ */
+export function useSelectableKnowledgeBases(
+  localBases: readonly KnowledgeBaseListItem[],
+  remoteBases: readonly RemoteKnowledgeBaseInfo[]
+): KnowledgeBaseListItem[] {
+  return useMemo(() => mergeSelectableKnowledgeBases(localBases, remoteBases), [localBases, remoteBases])
 }

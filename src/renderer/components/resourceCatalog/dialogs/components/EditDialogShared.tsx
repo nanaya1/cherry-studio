@@ -36,7 +36,7 @@ import { ModelSelector, type ModelSelectorFilter } from '@renderer/components/Mo
 import { useKnowledgeBases } from '@renderer/hooks/useKnowledgeBase'
 import { useModelById } from '@renderer/hooks/useModel'
 import { useRemoteKnowledgeBases } from '@renderer/hooks/useRemoteKnowledge'
-import { mergeSelectableKnowledgeBases } from '@renderer/hooks/useSelectableKnowledgeBases'
+import { useSelectableKnowledgeBases } from '@renderer/hooks/useSelectableKnowledgeBases'
 import { toast } from '@renderer/services/toast'
 import { isUniqueModelId, type Model, parseUniqueModelId, type UniqueModelId } from '@shared/data/types/model'
 
@@ -296,7 +296,7 @@ export function KnowledgeBaseField<TValues extends KnowledgeBaseFieldValues>({
   // const { bases, isLoading } = useKnowledgeBases({ revalidateOnFocus: true })
   const { bases: localBases, isLoading: isLocalLoading } = useKnowledgeBases({ revalidateOnFocus: true })
   const { bases: remoteBases, isLoading: isRemoteLoading } = useRemoteKnowledgeBases()
-  const bases = mergeSelectableKnowledgeBases(localBases, remoteBases)
+  const bases = useSelectableKnowledgeBases(localBases, remoteBases)
   const isLoading = isLocalLoading || isRemoteLoading
   const fieldName = 'knowledgeBaseIds' as Path<TValues>
   const watchedValue = useWatch({ control: form.control, name: fieldName })
