@@ -5006,7 +5006,7 @@
   "settings.remoteKnowledge.testConnection.failed": "连接失败",
   "settings.remoteKnowledge.testConnection.ok": "连接成功，耗时 {{latency}} 毫秒",
   "settings.remoteKnowledge.timeout": "超时时间（毫秒）",
-  "settings.remoteKnowledge.title": "远端知识服务",
+  "settings.remoteKnowledge.title": "远端服务",
   "settings.scheduledTasks.agentCreate": "通过 Agent 创建",
   "settings.scheduledTasks.allAgents": "全部 Agent",
   "settings.scheduledTasks.allStatuses": "全部状态",

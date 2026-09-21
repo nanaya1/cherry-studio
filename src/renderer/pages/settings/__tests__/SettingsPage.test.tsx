@@ -81,7 +81,7 @@ vi.mock('react-i18next', () => ({
         'settings.model': '默认模型',
         'settings.prompts.title': '提示词',
         'settings.quickAssistant.title': '快捷助手',
-        'settings.remoteKnowledge.title': '远端知识服务',
+        'settings.remoteKnowledge.title': '远端服务',
         'settings.scheduledTasks.title': '定时任务',
         'settings.screenshot.title': '截图',
         'settings.shortcuts.title': '快捷键',
@@ -136,10 +136,10 @@ describe('SettingsPage', () => {
     expect(navigateMock).toHaveBeenCalledWith({ to: '/settings/local-models' })
   })
 
-  it('exposes remote knowledge as a tools destination', () => {
+  it('exposes remote knowledge as its own ungrouped settings destination', () => {
     render(<SettingsPage />)
 
-    const remoteKnowledgeItem = screen.getByRole('button', { name: '远端知识服务' })
+    const remoteKnowledgeItem = screen.getByRole('button', { name: '远端服务' })
     fireEvent.click(remoteKnowledgeItem)
 
     expect(navigateMock).toHaveBeenCalledWith({ to: '/settings/remote-knowledge' })
@@ -190,7 +190,8 @@ describe('SettingsPage', () => {
     //   screen.getByRole('button', { name: '文档处理' }),
     //   screen.getByRole('button', { name: 'OCR' })
     // ])
-    expect(menuItems[toolsStart - 1]).toBe(screen.getByRole('button', { name: '远端知识服务' }))
+    // MEA：远端服务已提升为无分组入口，紧邻工具组之前而非组内。
+    expect(menuItems[toolsStart - 1]).toBe(screen.getByRole('button', { name: '远端服务' }))
     expect(menuItems.slice(toolsStart, toolsStart + 5)).toEqual([
       promptsItem,
       screen.getByRole('button', { name: '浏览器' }),

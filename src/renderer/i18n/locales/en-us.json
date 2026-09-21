@@ -5006,7 +5006,7 @@
   "settings.remoteKnowledge.testConnection.failed": "Connection failed",
   "settings.remoteKnowledge.testConnection.ok": "Connected in {{latency}} ms",
   "settings.remoteKnowledge.timeout": "Timeout (ms)",
-  "settings.remoteKnowledge.title": "Remote Knowledge",
+  "settings.remoteKnowledge.title": "Remote Services",
   "settings.scheduledTasks.agentCreate": "Create with Agent",
   "settings.scheduledTasks.allAgents": "All Agents",
   "settings.scheduledTasks.allStatuses": "All statuses",
