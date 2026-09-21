@@ -1,3 +1,7 @@
+import { Check, Download, List, LoaderCircle, TriangleAlert } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+
 import {
   Button,
   ConfirmDialog,
@@ -14,16 +18,14 @@ import { useMutation, useQuery } from '@renderer/data/hooks/useDataApi'
 import { useInvalidateSkills } from '@renderer/hooks/useSkills'
 import { toast } from '@renderer/services/toast'
 import type { SkillCatalogItem } from '@shared/data/api/schemas/skillCatalog'
-import { Check, Download, List, LoaderCircle, TriangleAlert } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useTranslation } from 'react-i18next'
 
 interface RecommendedSkillCatalogViewProps {
   search: string
   onViewInstalled: () => void
 }
 
-function SkillDimensionTags({ items }: { items: SkillCatalogItem['professionalDimensions'] }) {
+// [enterprise] 导出供组织技能卡片复用（溢出测量 +N 逻辑与推荐视图保持一致）
+export function SkillDimensionTags({ items }: { items: SkillCatalogItem['professionalDimensions'] }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const measureRef = useRef<HTMLDivElement>(null)
   const [visibleCount, setVisibleCount] = useState(items.length)

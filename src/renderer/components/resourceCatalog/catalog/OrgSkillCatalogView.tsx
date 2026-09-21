@@ -3,12 +3,14 @@ import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button, EmptyState, Spinner, Tooltip } from '@cherrystudio/ui'
-// import { ResourceCatalogSearchInput } from '@renderer/components/resourceCatalog/ResourceCatalogSearchInput'
-import { useOrgSkills, type OrgSkillItem } from '@renderer/hooks/useOrgSkills'
+import { useOrgSkills, type OrgSkillFacet, type OrgSkillItem } from '@renderer/hooks/useOrgSkills'
 import { toast } from '@renderer/services/toast'
+
+import { SkillDimensionTags } from './RecommendedSkillCatalogView'
 
 // [enterprise] 组织技能卡片视图（技能首页「组织」二级 tab）
 // 卡片形态对齐 RecommendedSkillCatalogView：网格 + 右上角操作按钮 + 已装 ✓ 状态。
+// [enterprise] 分类/标签对齐推荐视图分工：categories 做筛选 tab（全部/待分类/并集），tags 做卡片标签行。
 const FALLBACK_COLORS = [
   ['#eaf6ed', '#39734b'],
   ['#eaf1fa', '#496c94'],
@@ -16,6 +18,9 @@ const FALLBACK_COLORS = [
   ['#f3edf8', '#76578b'],
   ['#edf3f4', '#526a70']
 ] as const
+
+// 分类筛选值：'all' / 'uncategorized'（待分类）/ 具体分类 code
+type CategoryFilter = 'all' | 'uncategorized' | string
 
 interface OrgSkillCatalogViewProps {
   search?: string
@@ -30,16 +35,40 @@ export function OrgSkillCatalogView({ search = '' }: OrgSkillCatalogViewProps) {
     useOrgSkills(true)
   const [removing, setRemoving] = useState<Set<string>>(() => new Set())
   const [failedIcons, setFailedIcons] = useState<Set<string>>(() => new Set())
+  // [enterprise] 分类筛选（'all' | 'uncategorized' | 分类 code）
+  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('all')
+
+  // [enterprise] 遍历技能收集分类并集（按 code 去重，保持首次出现顺序），「全部/待分类」固定
+  const categoryFacets = useMemo(() => {
+    const byCode = new Map<string, OrgSkillFacet>()
+    for (const skill of skills) {
+      for (const category of skill.categories ?? []) {
+        if (!byCode.has(category.code)) byCode.set(category.code, category)
+      }
+    }
+    return Array.from(byCode.values())
+  }, [skills])
 
   const visibleSkills = useMemo(() => {
-    // const normalized = query.trim().toLocaleLowerCase()
     const normalized = search.trim().toLocaleLowerCase()
-    if (!normalized) return skills
-    return skills.filter((skill) =>
-      [skill.name, skill.description, skill.slug].some((value) => value?.toLocaleLowerCase().includes(normalized))
-    )
-    // }, [query, skills])
-  }, [search, skills])
+    return skills.filter((skill) => {
+      const matchesCategory =
+        categoryFilter === 'all' ||
+        (categoryFilter === 'uncategorized'
+          ? (skill.categories?.length ?? 0) === 0
+          : skill.categories?.some((item) => item.code === categoryFilter))
+      if (!matchesCategory) return false
+      if (!normalized) return true
+      // 搜索范围与推荐视图一致：名称/描述/slug + 分类/标签名
+      return [
+        skill.name,
+        skill.description,
+        skill.slug,
+        ...(skill.categories ?? []).map((item) => item.name),
+        ...(skill.tags ?? []).map((item) => item.name)
+      ].some((value) => value?.toLocaleLowerCase().includes(normalized))
+    })
+  }, [skills, categoryFilter, search])
 
   const handleInstall = async (skill: OrgSkillItem) => {
     if (installing.has(skill.slug) || installedSlugs.has(skill.slug)) return
@@ -89,6 +118,46 @@ export function OrgSkillCatalogView({ search = '' }: OrgSkillCatalogViewProps) {
 
   return (
     <div className="mx-auto flex h-full w-full flex-col px-6 py-4">
+      {/* [enterprise] 分类筛选 tab：全部 / 待分类 固定，其余为分类并集（对齐推荐视图 tab 栏形态） */}
+      {skills.length > 0 ? (
+        <div className="mb-4 flex gap-1 overflow-x-auto">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setCategoryFilter('all')}
+            className={
+              categoryFilter === 'all' ? 'h-7 bg-muted px-2.5 text-xs' : 'h-7 px-2.5 text-muted-foreground text-xs'
+            }>
+            {t('workspace.skill_catalog.all')}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setCategoryFilter('uncategorized')}
+            aria-pressed={categoryFilter === 'uncategorized'}
+            className={
+              categoryFilter === 'uncategorized'
+                ? 'h-7 bg-muted px-2.5 text-xs'
+                : 'h-7 px-2.5 text-muted-foreground text-xs'
+            }>
+            {t('workspace.skill_catalog.uncategorized')}
+          </Button>
+          {categoryFacets.map((item) => (
+            <Button
+              key={item.code}
+              variant="ghost"
+              size="sm"
+              onClick={() => setCategoryFilter(item.code)}
+              className={
+                categoryFilter === item.code
+                  ? 'h-7 bg-muted px-2.5 text-xs'
+                  : 'h-7 px-2.5 text-muted-foreground text-xs'
+              }>
+              {item.name}
+            </Button>
+          ))}
+        </div>
+      ) : null}
       {skills.length === 0 ? (
         <EmptyState
           preset="no-resource"
@@ -170,7 +239,12 @@ export function OrgSkillCatalogView({ search = '' }: OrgSkillCatalogViewProps) {
                   </span>
                   <div className="min-w-0 flex-1">
                     <h2 className="truncate font-semibold text-sm">{skill.name}</h2>
-                    <span className="text-foreground-tertiary text-xs">v{skill.version}</span>
+                    {/* [enterprise] 卡片标签行只显示 tags（categories 仅用于筛选 tab，对齐推荐视图分工） */}
+                    {(skill.tags?.length ?? 0) > 0 ? (
+                      <SkillDimensionTags items={skill.tags} />
+                    ) : (
+                      <span className="text-foreground-tertiary text-xs">v{skill.version}</span>
+                    )}
                   </div>
                 </div>
                 <p className="mt-3 line-clamp-2 min-h-10 text-muted-foreground text-xs leading-5">

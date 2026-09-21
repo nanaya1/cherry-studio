@@ -17,13 +17,31 @@ import { loggerService } from '@logger'
 import { ORG_SERVER_BASE_URL } from './OrgApiClient'
 import type { OrgAuthManager } from './OrgAuthManager'
 import { orgStateStore } from './OrgStateStore'
-import type { OrgSkillCatalogItem } from './types'
+import type { OrgSkillCatalogItem, OrgSkillFacet, RawOrgSkillFacet } from './types'
 
 const execFileAsync = promisify(execFile)
 const logger = loggerService.withContext('OrgSkillCatalog')
 
 /** C2 目录缓存 TTL：企业停用技能后最多 5 分钟生效到"不注入新会话" */
 const CATALOG_TTL_MS = 5 * 60 * 1000
+
+/**
+ * [enterprise] 归一化服务端 tags/categories：线上为纯字符串数组（["规范"]），
+ * 管理台文档样例为对象数组（{code,name,…}）。字符串形态用值本身兼任 code/name，
+ * 去重键才稳定；无法提取名称的项丢弃。
+ */
+function normalizeFacets(raw: RawOrgSkillFacet[] | undefined): OrgSkillFacet[] {
+  if (!Array.isArray(raw)) return []
+  const facets: OrgSkillFacet[] = []
+  for (const item of raw) {
+    if (typeof item === 'string') {
+      if (item.trim()) facets.push({ code: item, name: item })
+    } else if (item && typeof item.name === 'string' && item.name.trim()) {
+      facets.push({ code: typeof item.code === 'string' && item.code ? item.code : item.name, name: item.name })
+    }
+  }
+  return facets
+}
 
 export class OrgSkillCatalog {
   // [enterprise] C2 目录缓存：{ at, items, failed }
@@ -48,7 +66,10 @@ export class OrgSkillCatalog {
           const parsed = new URL(skill.iconUrl, ORG_SERVER_BASE_URL)
           if (parsed.origin === new URL(ORG_SERVER_BASE_URL).origin) iconUrl = parsed.toString()
         }
-        return { ...skill, iconUrl }
+        // [enterprise] tags/categories 双形态归一化（见 normalizeFacets），渲染层恒拿到 {code,name}
+        const categories = normalizeFacets(skill.categories)
+        const tags = normalizeFacets(skill.tags)
+        return { ...skill, iconUrl, categories, tags }
       })
       this.catalogCache = { at: Date.now(), items: resolved }
       return resolved

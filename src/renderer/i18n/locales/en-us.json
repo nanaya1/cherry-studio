@@ -5543,6 +5543,7 @@
   "workspace.skill_catalog.name_conflict_title": "Recommended skill cannot be installed",
   "workspace.skill_catalog.org": "Organization",
   "workspace.skill_catalog.recommended": "Recommended",
+  "workspace.skill_catalog.uncategorized": "Uncategorized",
   "workspace.skill_catalog.universal": "All industries",
   "workspace.skill_catalog.version": "Version",
   "workspace.skillsConnectors.mySkills": "My Skills",

@@ -5543,6 +5543,7 @@
   "workspace.skill_catalog.name_conflict_title": "Не удалось установить рекомендованный навык",
   "workspace.skill_catalog.org": "Организация",
   "workspace.skill_catalog.recommended": "Recommended",
+  "workspace.skill_catalog.uncategorized": "Без категории",
   "workspace.skill_catalog.universal": "All industries",
   "workspace.skill_catalog.version": "Version",
   "workspace.skillsConnectors.mySkills": "Мои навыки",

@@ -5543,6 +5543,7 @@
   "workspace.skill_catalog.name_conflict_title": "Không thể cài đặt kỹ năng được đề xuất",
   "workspace.skill_catalog.org": "Tổ chức",
   "workspace.skill_catalog.recommended": "Recommended",
+  "workspace.skill_catalog.uncategorized": "Chưa phân loại",
   "workspace.skill_catalog.universal": "All industries",
   "workspace.skill_catalog.version": "Version",
   "workspace.skillsConnectors.mySkills": "Kỹ năng của tôi",

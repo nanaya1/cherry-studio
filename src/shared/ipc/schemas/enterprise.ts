@@ -12,6 +12,13 @@ export const enterpriseStatusSchema = z.strictObject({
 
 export type EnterpriseStatus = z.infer<typeof enterpriseStatusSchema>
 
+// [enterprise] 分类/标签 facet：只透传展示所需字段，忽略服务端其余字段（id/sort_order/enabled 等）
+// 注意：IpcRouter 只运行时校验 input，output 是编译期契约；字符串→facet 的归一化在 OrgSkillCatalog 完成
+const orgSkillFacetSchema = z.strictObject({
+  code: z.string(),
+  name: z.string()
+})
+
 const orgSkillItemSchema = z.strictObject({
   slug: z.string(),
   name: z.string(),
@@ -19,7 +26,9 @@ const orgSkillItemSchema = z.strictObject({
   version: z.string(),
   contentHash: z.string(),
   downloadUrl: z.string(),
-  iconUrl: z.string().nullable().optional()
+  iconUrl: z.string().nullable().optional(),
+  categories: z.array(orgSkillFacetSchema).optional(),
+  tags: z.array(orgSkillFacetSchema).optional()
 })
 
 const orgConnectorItemSchema = z.strictObject({

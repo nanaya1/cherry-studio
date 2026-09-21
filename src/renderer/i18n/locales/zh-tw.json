@@ -5543,6 +5543,7 @@
   "workspace.skill_catalog.name_conflict_title": "無法安裝推薦技能",
   "workspace.skill_catalog.org": "組織",
   "workspace.skill_catalog.recommended": "Recommended",
+  "workspace.skill_catalog.uncategorized": "待分類",
   "workspace.skill_catalog.universal": "All industries",
   "workspace.skill_catalog.version": "版本",
   "workspace.skillsConnectors.mySkills": "我的技能",

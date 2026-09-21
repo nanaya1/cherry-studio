@@ -5543,6 +5543,7 @@
   "workspace.skill_catalog.name_conflict_title": "Abilitatea recomandată nu poate fi instalată",
   "workspace.skill_catalog.org": "Organizație",
   "workspace.skill_catalog.recommended": "Recommended",
+  "workspace.skill_catalog.uncategorized": "Fără categorie",
   "workspace.skill_catalog.universal": "All industries",
   "workspace.skill_catalog.version": "Version",
   "workspace.skillsConnectors.mySkills": "Abilitățile mele",

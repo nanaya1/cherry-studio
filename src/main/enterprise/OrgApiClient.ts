@@ -4,7 +4,7 @@
  */
 import { loggerService } from '@logger'
 
-import type { OrgConnectorCatalogItem, OrgSession, OrgSkillCatalogItem } from './types'
+import type { OrgConnectorCatalogItem, OrgSession, OrgSkillCatalogItem, RawOrgSkillFacet } from './types'
 
 const logger = loggerService.withContext('OrgApiClient')
 
@@ -90,8 +90,16 @@ export class OrgApiClient {
     return (await res.json()) as T
   }
 
+  // [enterprise] tags/categories 服务端有字符串数组与对象数组两种形态，归一化在 OrgSkillCatalog.list
   listSkills() {
-    return this.publicRequest<{ skills: OrgSkillCatalogItem[] }>('/api/skills')
+    return this.publicRequest<{
+      skills: Array<
+        Omit<OrgSkillCatalogItem, 'categories' | 'tags'> & {
+          categories?: RawOrgSkillFacet[]
+          tags?: RawOrgSkillFacet[]
+        }
+      >
+    }>('/api/skills')
   }
 
   listConnectors() {

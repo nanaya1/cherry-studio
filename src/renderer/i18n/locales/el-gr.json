@@ -5543,6 +5543,7 @@
   "workspace.skill_catalog.name_conflict_title": "Δεν είναι δυνατή η εγκατάσταση της προτεινόμενης δεξιότητας",
   "workspace.skill_catalog.org": "Οργανισμός",
   "workspace.skill_catalog.recommended": "Recommended",
+  "workspace.skill_catalog.uncategorized": "Χωρίς κατηγορία",
   "workspace.skill_catalog.universal": "All industries",
   "workspace.skill_catalog.version": "Version",
   "workspace.skillsConnectors.mySkills": "Οι δεξιότητές μου",

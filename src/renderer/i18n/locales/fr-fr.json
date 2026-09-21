@@ -5543,6 +5543,7 @@
   "workspace.skill_catalog.name_conflict_title": "Impossible d’installer la compétence recommandée",
   "workspace.skill_catalog.org": "Organisation",
   "workspace.skill_catalog.recommended": "Recommended",
+  "workspace.skill_catalog.uncategorized": "Non classé",
   "workspace.skill_catalog.universal": "All industries",
   "workspace.skill_catalog.version": "Version",
   "workspace.skillsConnectors.mySkills": "Mes compétences",

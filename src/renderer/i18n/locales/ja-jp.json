@@ -5543,6 +5543,7 @@
   "workspace.skill_catalog.name_conflict_title": "おすすめスキルをインストールできません",
   "workspace.skill_catalog.org": "組織",
   "workspace.skill_catalog.recommended": "Recommended",
+  "workspace.skill_catalog.uncategorized": "未分類",
   "workspace.skill_catalog.universal": "All industries",
   "workspace.skill_catalog.version": "Version",
   "workspace.skillsConnectors.mySkills": "マイスキル",

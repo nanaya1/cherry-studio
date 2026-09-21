@@ -102,6 +102,45 @@ describe('OrgSkillCatalog C1/C2/C4', () => {
     expect(skills[2].iconUrl).toBeNull()
   })
 
+  // [enterprise] tags/categories 归一化：线上字符串数组 + 文档对象数组双形态 → 统一 {code,name}
+  it('目录归一化 tags/categories：字符串与对象双形态统一为 {code,name}', async () => {
+    apiMock.listSkills.mockResolvedValue({
+      skills: [
+        {
+          ...makeItem('a', 'h1'),
+          // 线上实测形态：纯字符串数组
+          tags: ['规范', '设计', ''],
+          // 管理台文档样例形态：对象数组（可能带 id/sort_order 等多余字段）
+          categories: [
+            { code: 'c1', name: '通用行业', sort_order: 0 },
+            { name: '无code分类' },
+            { code: 'c2', name: '' }
+          ]
+        }
+      ]
+    })
+
+    const [skill] = await catalog.list(true)
+
+    expect(skill.tags).toEqual([
+      { code: '规范', name: '规范' },
+      { code: '设计', name: '设计' }
+    ])
+    expect(skill.categories).toEqual([
+      { code: 'c1', name: '通用行业' },
+      { code: '无code分类', name: '无code分类' }
+    ])
+  })
+
+  it('目录归一化：tags/categories 缺失或非数组时回退空数组', async () => {
+    apiMock.listSkills.mockResolvedValue({ skills: [makeItem('a', 'h1')] })
+
+    const [skill] = await catalog.list(true)
+
+    expect(skill.tags).toEqual([])
+    expect(skill.categories).toEqual([])
+  })
+
   it('C1 startupScan：hash 一致 → 跳过更新', async () => {
     apiMock.listSkills.mockResolvedValue({ skills: [makeItem('a', 'hash-a')] })
     stateStoreMock.snapshot.mockReturnValue({

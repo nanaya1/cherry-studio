@@ -1,12 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { loggerService } from '@logger'
-import { ipcApi } from '@renderer/ipc'
 import { useInvalidateSkills } from '@renderer/hooks/useSkills'
+import { ipcApi } from '@renderer/ipc'
 
 const logger = loggerService.withContext('useOrgSkills')
 
 // [enterprise] T0 企业技能目录 hook：登录态下拉取企业下发的技能列表 + 安装
+export interface OrgSkillFacet {
+  code: string
+  name: string
+}
+
 export interface OrgSkillItem {
   slug: string
   name: string
@@ -15,6 +20,8 @@ export interface OrgSkillItem {
   contentHash: string
   downloadUrl: string
   iconUrl?: string | null
+  categories?: OrgSkillFacet[]
+  tags?: OrgSkillFacet[]
 }
 
 function orgSkillErrorMessage(error: unknown): string {
@@ -102,23 +109,26 @@ export function useOrgSkills(enabled: boolean) {
   )
 
   // [enterprise] C4：删除（卸载）企业技能并上报 deleted 事件
-  const remove = useCallback(async (slug: string): Promise<boolean> => {
-    try {
-      await ipcApi.request('enterprise.skills.reportDeleted', { slug })
-      // [enterprise] 卸载成功即时移除「已安装」标记
-      setInstalledSlugs((current) => {
-        const next = new Set(current)
-        next.delete(slug)
-        return next
-      })
-      await invalidate()
-      return true
-    } catch (cause) {
-      const message = orgSkillErrorMessage(cause)
-      logger.error('Failed to remove org skill', { slug, error: message })
-      throw new Error(message)
-    }
-  }, [invalidate])
+  const remove = useCallback(
+    async (slug: string): Promise<boolean> => {
+      try {
+        await ipcApi.request('enterprise.skills.reportDeleted', { slug })
+        // [enterprise] 卸载成功即时移除「已安装」标记
+        setInstalledSlugs((current) => {
+          const next = new Set(current)
+          next.delete(slug)
+          return next
+        })
+        await invalidate()
+        return true
+      } catch (cause) {
+        const message = orgSkillErrorMessage(cause)
+        logger.error('Failed to remove org skill', { slug, error: message })
+        throw new Error(message)
+      }
+    },
+    [invalidate]
+  )
 
   return { skills, loading, error, install, installing, refetch, disabledSlugs, installedSlugs, remove }
 }
