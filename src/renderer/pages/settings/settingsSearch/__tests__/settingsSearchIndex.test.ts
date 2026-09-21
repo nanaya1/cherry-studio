@@ -3,7 +3,7 @@ import { resolve } from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
-import { settingsMenu } from '@renderer/components/settingsMenu'
+import { MEA_HIDDEN_SETTINGS_ROUTES, settingsMenu } from '@renderer/components/settingsMenu'
 import enUS from '@renderer/i18n/locales/en-us.json'
 import zhCN from '@renderer/i18n/locales/zh-cn.json'
 
@@ -55,9 +55,16 @@ const anchorExists = (domId: string) =>
   literalAnchorIds.has(domId) || [...dynamicAnchorPrefixes].some((prefix) => domId.startsWith(`${prefix}-`))
 
 describe('settings search index', () => {
-  it('exposes one searchable section per menu entry, in menu order', () => {
-    expect(settingsSearchSections.map((s) => s.route)).toEqual(settingsMenu.map((m) => m.route))
-    expect(settingsSearchSections.map((s) => s.sectionTitleKey)).toEqual(settingsMenu.map((m) => m.titleKey))
+  it('exposes one searchable section per visible menu entry, in menu order', () => {
+    const visibleMenu = settingsMenu.filter((m) => !MEA_HIDDEN_SETTINGS_ROUTES.includes(m.route))
+    expect(settingsSearchSections.map((s) => s.route)).toEqual(visibleMenu.map((m) => m.route))
+    expect(settingsSearchSections.map((s) => s.sectionTitleKey)).toEqual(visibleMenu.map((m) => m.titleKey))
+  })
+
+  it('keeps MEA-hidden settings routes out of the search index entirely', () => {
+    for (const route of MEA_HIDDEN_SETTINGS_ROUTES) {
+      expect(settingsSearchSections.some((s) => s.route === route), `${route} must not be searchable`).toBe(false)
+    }
   })
 
   it('has every menu title resolvable in zh-cn and en-us', () => {
