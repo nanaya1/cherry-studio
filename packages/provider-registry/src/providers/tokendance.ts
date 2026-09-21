@@ -35,7 +35,8 @@ export default defineProvider({
   metadata: {
     website: {
       apiKey: 'https://tokendance.space/keys',
-      docs: 'https://tokendance.space/docs/cherry-studio',
+      // 「文档」入口暂时隐藏：目标路径使用 Cherry Studio 品牌。恢复时取消下方注释。
+      // docs: 'https://tokendance.space/docs/cherry-studio',
       models: 'https://tokendance.space/models',
       official: 'https://tokendance.space'
     }

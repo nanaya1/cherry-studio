@@ -1417,6 +1417,30 @@ describe('BackupManager direct v2 data compatibility', () => {
     expect(fs.remove).toHaveBeenCalledWith('/mock/userData/restore-staging/operation-id')
   })
 
+  it('rejects a backup from a newer MEA Cowork version before staging any resources', async () => {
+    vi.mocked(fs.readJson).mockResolvedValue({ version: 8, appName: 'Cherry Studio' })
+
+    await expect((backupManager as any).restoreDirect('/extract')).rejects.toThrow(
+      'This backup was created by a newer version of MEA Cowork'
+    )
+
+    expect(fs.copy).not.toHaveBeenCalled()
+    expect(mockWriteRestoreJournal).not.toHaveBeenCalled()
+    expect(mockRelaunch).not.toHaveBeenCalled()
+  })
+
+  it('rejects a database ahead of this MEA Cowork version', async () => {
+    arrangeDirectRestore()
+    vi.spyOn(backupManager as any, 'isChainBundledPrefix').mockReturnValue(false)
+
+    await expect((backupManager as any).restoreDirect('/extract')).rejects.toThrow(
+      'This backup was created by a newer version of MEA Cowork (database is ahead of this version)'
+    )
+
+    expect(mockWriteRestoreJournal).not.toHaveBeenCalled()
+    expect(mockRelaunch).not.toHaveBeenCalled()
+  })
+
   it('rejects a v1 version 6 archive before staging any resources', async () => {
     vi.mocked(fs.readJson).mockResolvedValue({ version: 6, appName: 'Cherry Studio' })
 

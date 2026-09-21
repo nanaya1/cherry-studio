@@ -191,7 +191,7 @@ artifactBuildCompleted: scripts/artifact-build-completed.js
 releaseInfo:
   releaseNotes: |
     <!--LANG:en-->
-    Cherry Studio 2.0.14 - New Features, Fixes, and Performance
+    MEA Cowork 2.0.14 - New Features, Fixes, and Performance
 
     ✨ New Features
     - [Agent] Agent sessions now label self-started replies — “Goal round N” for DSH goal continuations, or “Continued after background work” — so users understand why a new message appears.
@@ -199,7 +199,7 @@ releaseInfo:
     - [Cherry Cloud] Cloud sessions are now bound to the current computer, preserving free-grant history across credential resets.
 
     🐛 Bug Fixes
-    - [Startup] Fixed Cherry Studio failing to start after an upgrade when the built-in Support Agent still needs to be created.
+    - [Startup] Fixed MEA Cowork failing to start after an upgrade when the built-in Support Agent still needs to be created.
     - [Local Models] Windows cleanup now tolerates transient DLL release failures after an inference utility process exits.
     - [Knowledge Base] Fixed tables from PDFs imported through Mistral OCR being dropped; table contents are now indexed as Markdown tables.
     - [Pi] Fix OpenCode Go/Zen requests failing with MissingSessionID by preserving the agent session header.
@@ -218,7 +218,7 @@ releaseInfo:
     - [Knowledge] Knowledge page management dialogs and item detail panels are now loaded on demand instead of with the page.
 
     <!--LANG:zh-CN-->
-    Cherry Studio 2.0.14 - 新功能、修复与性能优化
+    MEA Cowork 2.0.14 - 新功能、修复与性能优化
 
     ✨ 新功能
     - [智能体] 智能体会话现在为自动发起的回复添加标签——DSH 目标推进显示”目标推进 · 第 N 轮”，后台工作后继续显示”后台工作后继续”——让用户了解为什么出现了新消息。
@@ -226,7 +226,7 @@ releaseInfo:
     - [樱桃云] 云会话现已绑定当前设备，在凭证重置后保留免费额度历史。
 
     🐛 问题修复
-    - [启动] 修复升级后需要首次创建内置产品反馈 Agent 时 Cherry Studio 无法启动的问题。
+    - [启动] 修复升级后需要首次创建内置产品反馈 Agent 时 MEA Cowork 无法启动的问题。
     - [本地模型] 修复 Windows 下 inference utility process 退出后 DLL 短暂占用导致模型清理偶发失败的问题。
     - [知识库] 修复通过 Mistral OCR 导入的 PDF 表格丢失问题；表格内容现在以 Markdown 表格形式索引。请重新索引已有条目以获取表格内容。
     - [Pi] 修复 OpenCode Go/Zen 请求因 MissingSessionID 失败的问题，现已保留智能体会话头部。

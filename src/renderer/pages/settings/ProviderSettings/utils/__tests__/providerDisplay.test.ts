@@ -11,7 +11,7 @@ vi.mock('@shared/utils/provider', () => ({
     p.authMethods !== undefined && p.authMethods.length > 0 && !p.authMethods.includes('api-key')
 }))
 
-const { isProviderPresetInstanceSource } = await import('../providerDisplay')
+const { getVisibleProviderWebsite, isProviderPresetInstanceSource } = await import('../providerDisplay')
 
 const presetSource = (overrides: Partial<Provider> = {}): Provider =>
   ({
@@ -25,6 +25,17 @@ const presetSource = (overrides: Partial<Provider> = {}): Provider =>
     },
     ...overrides
   }) as Provider
+
+describe('getVisibleProviderWebsite', () => {
+  it('hides Cherry-related destinations while preserving provider-owned websites', () => {
+    expect(getVisibleProviderWebsite('https://open.cherryin.ai/pricing')).toBeUndefined()
+    expect(getVisibleProviderWebsite('https://docs.cherry-ai.com/providers/ppio')).toBeUndefined()
+    expect(getVisibleProviderWebsite('https://tokendance.space/docs/cherry-studio')).toBeUndefined()
+    expect(getVisibleProviderWebsite('https://ppio.com/model-api/product/llm-api')).toBe(
+      'https://ppio.com/model-api/product/llm-api'
+    )
+  })
+})
 
 describe('isProviderPresetInstanceSource', () => {
   it('accepts a canonical URL-based preset with a configured primary endpoint', () => {
