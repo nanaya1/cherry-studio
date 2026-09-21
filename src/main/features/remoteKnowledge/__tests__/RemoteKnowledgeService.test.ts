@@ -16,7 +16,7 @@ vi.mock('electron', async (importOriginal) => {
 })
 
 import { setupTestDatabase } from '@test-helpers/db'
-import { BaseService } from '@main/core/lifecycle'
+
 import { agentTable } from '@data/db/schemas/agent'
 import { assistantTable } from '@data/db/schemas/assistant'
 import {
@@ -24,11 +24,9 @@ import {
   assistantRemoteKnowledgeBaseTable,
   remoteKnowledgeServiceTable
 } from '@data/db/schemas/remoteKnowledge'
+import { BaseService } from '@main/core/lifecycle'
 import { DEFAULT_ASSISTANT_SETTINGS } from '@shared/data/types/assistant'
-import {
-  buildRemoteKnowledgeBaseId,
-  type RemoteServiceDraft
-} from '@shared/data/types/remoteKnowledge'
+import { buildRemoteKnowledgeBaseId, type RemoteServiceDraft } from '@shared/data/types/remoteKnowledge'
 
 import { RemoteKnowledgeService } from '../RemoteKnowledgeService'
 
@@ -45,7 +43,6 @@ const draft = (overrides: Partial<RemoteServiceDraft> = {}): RemoteServiceDraft 
   enabled: true,
   ...overrides
 })
-
 
 describe('RemoteKnowledgeService', () => {
   const dbh = setupTestDatabase()
@@ -191,9 +188,7 @@ describe('RemoteKnowledgeService', () => {
         { agentId: 'agent-1', remoteBaseId: remoteId },
         { agentId: 'agent-1', remoteBaseId: otherServiceId }
       ])
-      await dbh.db
-        .insert(assistantRemoteKnowledgeBaseTable)
-        .values({ assistantId: 'asst-1', remoteBaseId: remoteId })
+      await dbh.db.insert(assistantRemoteKnowledgeBaseTable).values({ assistantId: 'asst-1', remoteBaseId: remoteId })
 
       service.delete(created.id)
 
@@ -247,9 +242,17 @@ describe('RemoteKnowledgeService', () => {
     it('maps remote bases to composite ids for one service', async () => {
       const created = service.create(draft())
       netFetchMock.mockResolvedValue(
-        new Response(JSON.stringify({ bases: [{ id: 'b1', name: 'Base One' }, { id: 'b2', name: 'B2', description: 'd' }] }), {
-          status: 200
-        })
+        new Response(
+          JSON.stringify({
+            bases: [
+              { id: 'b1', name: 'Base One', document_count: 2 },
+              { id: 'b2', name: 'B2', description: 'd' }
+            ]
+          }),
+          {
+            status: 200
+          }
+        )
       )
 
       const bases = await service.listRemoteBases(created.id)
@@ -257,7 +260,8 @@ describe('RemoteKnowledgeService', () => {
         buildRemoteKnowledgeBaseId(created.id, 'b1'),
         buildRemoteKnowledgeBaseId(created.id, 'b2')
       ])
-      expect(bases[0].serviceName).toBe('Corp KB')
+      expect(bases[0]).toMatchObject({ serviceName: 'Corp KB', documentCount: 2 })
+      expect(bases[1].documentCount).toBeUndefined()
     })
 
     it('aggregates across all enabled services when serviceId is omitted', async () => {

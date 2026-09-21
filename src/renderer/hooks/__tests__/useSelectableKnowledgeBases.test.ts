@@ -15,7 +15,8 @@ const remoteBase: RemoteKnowledgeBaseInfo = {
   serviceId: 'service-1',
   serviceName: 'Remote Service',
   remoteBaseId: 'docs',
-  name: 'Remote Docs'
+  name: 'Remote Docs',
+  documentCount: 2
 }
 
 const localBase = {
@@ -42,9 +43,16 @@ describe('projectRemoteKnowledgeBase', () => {
       name: 'Remote Docs',
       status: 'completed',
       error: null,
-      itemCount: 0,
+      itemCount: 2,
       documentCount: 0
     })
+  })
+
+  it('falls back to zero when an older remote service omits document_count', () => {
+    const projected = projectRemoteKnowledgeBase({ ...remoteBase, documentCount: undefined })
+
+    expect(projected.documentCount).toBe(0)
+    expect(projected.itemCount).toBe(0)
   })
 
   it('keeps the BM25-only invariant pairing (embeddingModelId and dimensions both null)', () => {

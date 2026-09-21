@@ -1,7 +1,7 @@
 import { net } from 'electron'
-import { loggerService } from '@logger'
 import type * as z from 'zod'
 
+import { loggerService } from '@logger'
 import type {
   RemoteReadRequestSchema,
   RemoteSearchRequestSchema,
@@ -63,17 +63,18 @@ export class RemoteKnowledgeClient {
   }
 
   /** GET /v1/knowledge/bases — returns the service's retrievable bases. */
-  async listBases(): Promise<Array<{ id: string; name: string; description?: string }>> {
-    const body = (await this.request('/v1/knowledge/bases', { method: 'GET' })) as
-      | { bases?: unknown }
-      | undefined
+  async listBases(): Promise<Array<{ id: string; name: string; description?: string; documentCount?: number }>> {
+    const body = (await this.request('/v1/knowledge/bases', { method: 'GET' })) as { bases?: unknown } | undefined
     const bases = Array.isArray(body?.bases) ? body.bases : []
     return bases
       .filter((b): b is Record<string, unknown> => !!b && typeof b === 'object' && !Array.isArray(b))
       .map((b) => ({
         id: String(b.id),
         name: String(b.name),
-        ...(typeof b.description === 'string' ? { description: b.description } : {})
+        ...(typeof b.description === 'string' ? { description: b.description } : {}),
+        ...(Number.isSafeInteger(b.document_count) && Number(b.document_count) >= 0
+          ? { documentCount: Number(b.document_count) }
+          : {})
       }))
   }
 

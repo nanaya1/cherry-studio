@@ -89,11 +89,21 @@ export class RemoteKnowledgeService extends BaseService {
   }
 
   list(): RemoteKnowledgeServiceInfo[] {
-    return this.db.select().from(remoteKnowledgeServiceTable).orderBy(asc(remoteKnowledgeServiceTable.createdAt)).all().map(rowToServiceInfo)
+    return this.db
+      .select()
+      .from(remoteKnowledgeServiceTable)
+      .orderBy(asc(remoteKnowledgeServiceTable.createdAt))
+      .all()
+      .map(rowToServiceInfo)
   }
 
   getById(id: string): RemoteKnowledgeServiceInfo {
-    const [row] = this.db.select().from(remoteKnowledgeServiceTable).where(eq(remoteKnowledgeServiceTable.id, id)).limit(1).all()
+    const [row] = this.db
+      .select()
+      .from(remoteKnowledgeServiceTable)
+      .where(eq(remoteKnowledgeServiceTable.id, id))
+      .limit(1)
+      .all()
     if (!row) {
       throw DataApiErrorFactory.notFound('RemoteKnowledgeService', id)
     }
@@ -106,29 +116,25 @@ export class RemoteKnowledgeService extends BaseService {
     const parsed = RemoteServiceDraftSchema.safeParse(dto)
     if (!parsed.success) {
       throw DataApiErrorFactory.validation(
-        Object.fromEntries(
-          parsed.error.issues.map((issue) => [issue.path.join('.') || '_root', [issue.message]])
-        )
+        Object.fromEntries(parsed.error.issues.map((issue) => [issue.path.join('.') || '_root', [issue.message]]))
       )
     }
 
-    const [row] = application
-      .get('DbService')
-      .withWriteTx((tx) =>
-        tx
-          .insert(remoteKnowledgeServiceTable)
-          .values({
-            name: dto.name,
-            baseUrl: dto.baseUrl,
-            authType: dto.authType,
-            ...(dto.apiKey ? { apiKeyEncrypted: encryptApiKey(dto.apiKey) } : {}),
-            headers: dto.headers,
-            timeoutMs: dto.timeoutMs ?? 30_000,
-            enabled: dto.enabled ?? true
-          })
-          .returning()
-          .all()
-      )
+    const [row] = application.get('DbService').withWriteTx((tx) =>
+      tx
+        .insert(remoteKnowledgeServiceTable)
+        .values({
+          name: dto.name,
+          baseUrl: dto.baseUrl,
+          authType: dto.authType,
+          ...(dto.apiKey ? { apiKeyEncrypted: encryptApiKey(dto.apiKey) } : {}),
+          headers: dto.headers,
+          timeoutMs: dto.timeoutMs ?? 30_000,
+          enabled: dto.enabled ?? true
+        })
+        .returning()
+        .all()
+    )
 
     logger.info('Created remote knowledge service', { id: row.id, name: row.name })
     return rowToServiceInfo(row)
@@ -181,9 +187,7 @@ export class RemoteKnowledgeService extends BaseService {
       const bindingFilter = like(agentRemoteKnowledgeBaseTable.remoteBaseId, `remote:${id}:%`)
       tx.delete(agentRemoteKnowledgeBaseTable).where(bindingFilter).run()
       tx.delete(assistantRemoteKnowledgeBaseTable)
-        .where(
-          like(assistantRemoteKnowledgeBaseTable.remoteBaseId, `remote:${id}:%`)
-        )
+        .where(like(assistantRemoteKnowledgeBaseTable.remoteBaseId, `remote:${id}:%`))
         .run()
     })
 
@@ -254,9 +258,9 @@ export class RemoteKnowledgeService extends BaseService {
    * warning — kb_list must not lose local results over one dead remote.
    */
   async listRemoteBases(serviceId?: string): Promise<RemoteKnowledgeBaseInfo[]> {
-    const services = (
-      serviceId ? [this.getById(serviceId)] : this.list().filter((s) => s.enabled)
-    ).filter((info) => info.enabled)
+    const services = (serviceId ? [this.getById(serviceId)] : this.list().filter((s) => s.enabled)).filter(
+      (info) => info.enabled
+    )
 
     const results = await Promise.all(
       services.map(async (info): Promise<RemoteKnowledgeBaseInfo[]> => {
@@ -269,7 +273,8 @@ export class RemoteKnowledgeService extends BaseService {
             serviceName: info.name,
             remoteBaseId: b.id,
             name: b.name,
-            ...(b.description !== undefined ? { description: b.description } : {})
+            ...(b.description !== undefined ? { description: b.description } : {}),
+            ...(b.documentCount !== undefined ? { documentCount: b.documentCount } : {})
           }))
         } catch (error) {
           logger.warn('Remote knowledge base discovery failed; skipping service', {
@@ -295,7 +300,12 @@ export class RemoteKnowledgeService extends BaseService {
   // ── internals ──
 
   private getRawRow(id: string): RemoteKnowledgeServiceRow {
-    const [row] = this.db.select().from(remoteKnowledgeServiceTable).where(eq(remoteKnowledgeServiceTable.id, id)).limit(1).all()
+    const [row] = this.db
+      .select()
+      .from(remoteKnowledgeServiceTable)
+      .where(eq(remoteKnowledgeServiceTable.id, id))
+      .limit(1)
+      .all()
     if (!row) {
       throw DataApiErrorFactory.notFound('RemoteKnowledgeService', id)
     }

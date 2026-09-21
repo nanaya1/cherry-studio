@@ -85,7 +85,7 @@ Content-Type: application/json
 ```json
 {
   "bases": [
-    { "id": "kb-001", "name": "产品手册", "description": "V2 系列" }
+    { "id": "kb-001", "name": "产品手册", "description": "V2 系列", "document_count": 128 }
   ]
 }
 ```
@@ -98,6 +98,7 @@ Content-Type: application/json
 | `bases[].id` | string | 是 | 知识库原生 ID。**客户端不解释此值，仅回传**；客户端后续调用会将其拼接为 `remote:{serviceId}:{id}` 的方式记录，并把原生 `id` 原样传回本端点 |
 | `bases[].name` | string | 是 | 知识库展示名称 |
 | `bases[].description` | string | 否 | 知识库描述，不传可省略 |
+| `bases[].document_count` | integer | 否 | 当前知识库的文档数量，必须为非负整数；省略时客户端按未知数量处理，兼容未提供统计信息的服务 |
 
 **要求**：
 - **仅返回该凭据有权检索的库**。权限收窄是服务端职责，客户端不做二次过滤。

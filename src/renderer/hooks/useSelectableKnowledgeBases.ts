@@ -43,7 +43,7 @@ export function projectRemoteKnowledgeBase(base: RemoteKnowledgeBaseInfo): Knowl
     chunkStrategy: DEFAULT_KNOWLEDGE_CHUNK_STRATEGY,
     chunkSeparator: DEFAULT_KNOWLEDGE_CHUNK_SEPARATOR,
     documentCount: 0,
-    itemCount: 0,
+    itemCount: base.documentCount ?? 0,
     createdAt: '',
     updatedAt: ''
   }

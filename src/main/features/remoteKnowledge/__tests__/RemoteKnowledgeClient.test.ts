@@ -86,9 +86,7 @@ describe('RemoteKnowledgeClient', () => {
     expect(headers.get('Authorization')).toBe('Bearer secret')
 
     // collision: auth header wins over a custom Authorization
-    client = new RemoteKnowledgeClient(
-      makeConfig({ headers: { Authorization: 'Bearer custom-override' } })
-    )
+    client = new RemoteKnowledgeClient(makeConfig({ headers: { Authorization: 'Bearer custom-override' } }))
     await client.search({ query: 'q', base_ids: ['b1'], top_k: 8 })
     headers = new Headers(fetchMock.mock.calls[1][1]?.headers)
     expect(headers.get('Authorization')).toBe('Bearer secret')
@@ -120,9 +118,7 @@ describe('RemoteKnowledgeClient', () => {
   })
 
   it('rejects a 401 with the wire error code in the message', async () => {
-    fetchMock.mockResolvedValue(
-      jsonResponse({ error: { code: 'unauthorized', message: 'token expired' } }, 401)
-    )
+    fetchMock.mockResolvedValue(jsonResponse({ error: { code: 'unauthorized', message: 'token expired' } }, 401))
     await expect(client.search({ query: 'q', base_ids: ['b1'], top_k: 8 })).rejects.toThrow(/unauthorized/)
   })
 
@@ -142,11 +138,7 @@ describe('RemoteKnowledgeClient', () => {
     fetchMock.mockImplementation((_url, init) => {
       capturedSignal = init?.signal
       return new Promise<Response>((_resolve, reject) => {
-        init?.signal?.addEventListener(
-          'abort',
-          () => reject((init.signal as AbortSignal)?.reason),
-          { once: true }
-        )
+        init?.signal?.addEventListener('abort', () => reject((init.signal as AbortSignal)?.reason), { once: true })
       })
     })
 
@@ -174,12 +166,36 @@ describe('RemoteKnowledgeClient', () => {
   })
 
   it('lists bases via GET /v1/knowledge/bases', async () => {
-    fetchMock.mockResolvedValue(jsonResponse({ bases: [{ id: 'kb-1', name: 'n', description: 'd' }] }))
+    fetchMock.mockResolvedValue(
+      jsonResponse({ bases: [{ id: 'kb-1', name: 'n', description: 'd', document_count: 2 }] })
+    )
     const bases = await client.listBases()
-    expect(bases).toEqual([{ id: 'kb-1', name: 'n', description: 'd' }])
+    expect(bases).toEqual([{ id: 'kb-1', name: 'n', description: 'd', documentCount: 2 }])
     const [url, init] = fetchMock.mock.calls[0]
     expect(url).toBe('https://kb.example.com/v1/knowledge/bases')
     expect(init?.method).toBe('GET')
+  })
+
+  it('ignores invalid document counts from older or non-conforming services', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse({
+        bases: [
+          { id: 'zero', name: 'Zero', document_count: 0 },
+          { id: 'negative', name: 'Negative', document_count: -1 },
+          { id: 'decimal', name: 'Decimal', document_count: 1.5 },
+          { id: 'string', name: 'String', document_count: '2' },
+          { id: 'unsafe', name: 'Unsafe', document_count: Number.MAX_SAFE_INTEGER + 1 }
+        ]
+      })
+    )
+
+    await expect(client.listBases()).resolves.toEqual([
+      { id: 'zero', name: 'Zero', documentCount: 0 },
+      { id: 'negative', name: 'Negative' },
+      { id: 'decimal', name: 'Decimal' },
+      { id: 'string', name: 'String' },
+      { id: 'unsafe', name: 'Unsafe' }
+    ])
   })
 
   it('normalizes a baseUrl with a trailing slash', async () => {
