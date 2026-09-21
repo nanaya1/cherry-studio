@@ -4984,6 +4984,8 @@
   "settings.remoteKnowledge.add": "Thêm dịch vụ",
   "settings.remoteKnowledge.apiKey.keepExisting": "Để trống để giữ khóa hiện tại",
   "settings.remoteKnowledge.apiKey.placeholder": "Nhập khóa API",
+  "settings.remoteKnowledge.apiSpec.title": "Đặc tả API dịch vụ kiến thức từ xa",
+  "settings.remoteKnowledge.apiSpec.viewDocs": "Xem tài liệu",
   "settings.remoteKnowledge.authType": "Xác thực",
   "settings.remoteKnowledge.authType.api_key": "Tiêu đề API Key",
   "settings.remoteKnowledge.authType.bearer": "Token Bearer",

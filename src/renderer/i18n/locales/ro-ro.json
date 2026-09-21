@@ -4984,6 +4984,8 @@
   "settings.remoteKnowledge.add": "Adaugă serviciu",
   "settings.remoteKnowledge.apiKey.keepExisting": "Lăsați necompletat pentru a păstra cheia curentă",
   "settings.remoteKnowledge.apiKey.placeholder": "Introduceți cheia API",
+  "settings.remoteKnowledge.apiSpec.title": "Specificația API pentru serviciile de cunoștințe la distanță",
+  "settings.remoteKnowledge.apiSpec.viewDocs": "Vezi documentația",
   "settings.remoteKnowledge.authType": "Autentificare",
   "settings.remoteKnowledge.authType.api_key": "Antet API Key",
   "settings.remoteKnowledge.authType.bearer": "Token Bearer",

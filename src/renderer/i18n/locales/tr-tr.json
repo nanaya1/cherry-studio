@@ -4984,6 +4984,8 @@
   "settings.remoteKnowledge.add": "Servis Ekle",
   "settings.remoteKnowledge.apiKey.keepExisting": "Mevcut anahtarı korumak için boş bırakın",
   "settings.remoteKnowledge.apiKey.placeholder": "API anahtarını girin",
+  "settings.remoteKnowledge.apiSpec.title": "Uzak bilgi servisi API belirtimi",
+  "settings.remoteKnowledge.apiSpec.viewDocs": "Belgeleri görüntüle",
   "settings.remoteKnowledge.authType": "Kimlik Doğrulama",
   "settings.remoteKnowledge.authType.api_key": "API Key Başlığı",
   "settings.remoteKnowledge.authType.bearer": "Bearer Token",

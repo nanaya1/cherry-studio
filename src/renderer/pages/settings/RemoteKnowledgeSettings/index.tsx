@@ -13,6 +13,7 @@ import {
 import { useRemoteKnowledgeServices } from '@renderer/hooks/useRemoteKnowledge'
 import type { CreateRemoteKnowledgeServiceDto, RemoteKnowledgeServiceInfo } from '@shared/data/types/remoteKnowledge'
 
+import { ApiSpecDialog, ViewApiSpecButton } from './ApiSpecDialog'
 import { ServiceForm } from './ServiceForm'
 import { ServiceListItem } from './ServiceListItem'
 
@@ -21,6 +22,7 @@ export function RemoteKnowledgeSettings() {
   const { services, error, isLoading, pendingAction, createService, updateService, deleteService, testConnection } =
     useRemoteKnowledgeServices()
   const [formOpen, setFormOpen] = useState(false)
+  const [specOpen, setSpecOpen] = useState(false)
   const [editingService, setEditingService] = useState<RemoteKnowledgeServiceInfo>()
   const [deleteTarget, setDeleteTarget] = useState<RemoteKnowledgeServiceInfo>()
 
@@ -64,10 +66,13 @@ export function RemoteKnowledgeSettings() {
               </SettingTitle>
               <p className="mt-1.5 mb-0 text-xs text-muted-foreground">{t('settings.remoteKnowledge.description')}</p>
             </div>
-            <Button size="sm" variant="outline" onClick={openCreate}>
-              <Plus className="size-4" />
-              {t('settings.remoteKnowledge.add')}
-            </Button>
+            <div className="flex items-center gap-2">
+              <ViewApiSpecButton onClick={() => setSpecOpen(true)} />
+              <Button size="sm" variant="outline" onClick={openCreate}>
+                <Plus className="size-4" />
+                {t('settings.remoteKnowledge.add')}
+              </Button>
+            </div>
           </div>
           <SettingDivider className="m-0 mt-2" />
           {error && <p className="my-3 text-xs text-destructive">{error.message}</p>}
@@ -103,6 +108,7 @@ export function RemoteKnowledgeSettings() {
         onTest={testConnection}
         onSave={handleSave}
       />
+      <ApiSpecDialog open={specOpen} onOpenChange={setSpecOpen} />
       <ConfirmDialog
         open={deleteTarget !== undefined}
         onOpenChange={(open) => !open && pendingAction === null && setDeleteTarget(undefined)}

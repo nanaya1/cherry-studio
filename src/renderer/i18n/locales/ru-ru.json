@@ -4984,6 +4984,8 @@
   "settings.remoteKnowledge.add": "Добавить службу",
   "settings.remoteKnowledge.apiKey.keepExisting": "Оставьте пустым, чтобы сохранить текущий ключ",
   "settings.remoteKnowledge.apiKey.placeholder": "Введите API-ключ",
+  "settings.remoteKnowledge.apiSpec.title": "Спецификация API служб удалённых знаний",
+  "settings.remoteKnowledge.apiSpec.viewDocs": "Документация",
   "settings.remoteKnowledge.authType": "Аутентификация",
   "settings.remoteKnowledge.authType.api_key": "Заголовок API Key",
   "settings.remoteKnowledge.authType.bearer": "Токен Bearer",

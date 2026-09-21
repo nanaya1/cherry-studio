@@ -4984,6 +4984,8 @@
   "settings.remoteKnowledge.add": "新增服務",
   "settings.remoteKnowledge.apiKey.keepExisting": "留空以保留目前的金鑰",
   "settings.remoteKnowledge.apiKey.placeholder": "輸入 API 金鑰",
+  "settings.remoteKnowledge.apiSpec.title": "遠端知識庫服務對接介接規範",
+  "settings.remoteKnowledge.apiSpec.viewDocs": "檢視文件",
   "settings.remoteKnowledge.authType": "驗證方式",
   "settings.remoteKnowledge.authType.api_key": "API Key 標頭",
   "settings.remoteKnowledge.authType.bearer": "Bearer 權杖",

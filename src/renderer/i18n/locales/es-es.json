@@ -4984,6 +4984,8 @@
   "settings.remoteKnowledge.add": "Añadir servicio",
   "settings.remoteKnowledge.apiKey.keepExisting": "Deje en blanco para conservar la clave actual",
   "settings.remoteKnowledge.apiKey.placeholder": "Introduzca la clave API",
+  "settings.remoteKnowledge.apiSpec.title": "Especificación de la API de servicios de conocimiento remoto",
+  "settings.remoteKnowledge.apiSpec.viewDocs": "Ver documentación",
   "settings.remoteKnowledge.authType": "Autenticación",
   "settings.remoteKnowledge.authType.api_key": "Encabezado API Key",
   "settings.remoteKnowledge.authType.bearer": "Token Bearer",

@@ -4984,6 +4984,8 @@
   "settings.remoteKnowledge.add": "Προσθήκη υπηρεσίας",
   "settings.remoteKnowledge.apiKey.keepExisting": "Αφήστε κενό για να διατηρηθεί το τρέχον κλειδί",
   "settings.remoteKnowledge.apiKey.placeholder": "Εισάγετε κλειδί API",
+  "settings.remoteKnowledge.apiSpec.title": "Προδιαγραφές API υπηρεσιών απομακρυσμένης γνώσης",
+  "settings.remoteKnowledge.apiSpec.viewDocs": "Προβολή τεκμηρίωσης",
   "settings.remoteKnowledge.authType": "Πιστοποίηση",
   "settings.remoteKnowledge.authType.api_key": "Κεφαλίδα API Key",
   "settings.remoteKnowledge.authType.bearer": "Bearer Token",

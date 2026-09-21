@@ -4984,6 +4984,8 @@
   "settings.remoteKnowledge.add": "サービスを追加",
   "settings.remoteKnowledge.apiKey.keepExisting": "空欄の場合は現在のキーを保持します",
   "settings.remoteKnowledge.apiKey.placeholder": "API キーを入力",
+  "settings.remoteKnowledge.apiSpec.title": "リモートナレッジサービス連携API仕様",
+  "settings.remoteKnowledge.apiSpec.viewDocs": "ドキュメントを見る",
   "settings.remoteKnowledge.authType": "認証方式",
   "settings.remoteKnowledge.authType.api_key": "API Key ヘッダー",
   "settings.remoteKnowledge.authType.bearer": "Bearer トークン",

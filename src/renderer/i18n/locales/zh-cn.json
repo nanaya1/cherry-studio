@@ -4984,6 +4984,8 @@
   "settings.remoteKnowledge.add": "添加服务",
   "settings.remoteKnowledge.apiKey.keepExisting": "留空则保留现有密钥",
   "settings.remoteKnowledge.apiKey.placeholder": "输入 API Key",
+  "settings.remoteKnowledge.apiSpec.title": "远端知识库服务对接接口规范",
+  "settings.remoteKnowledge.apiSpec.viewDocs": "查看文档",
   "settings.remoteKnowledge.authType": "认证方式",
   "settings.remoteKnowledge.authType.api_key": "API Key 请求头",
   "settings.remoteKnowledge.authType.bearer": "Bearer Token",
