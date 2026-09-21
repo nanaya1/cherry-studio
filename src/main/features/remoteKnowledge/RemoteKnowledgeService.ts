@@ -181,7 +181,9 @@ export class RemoteKnowledgeService extends BaseService {
       const bindingFilter = like(agentRemoteKnowledgeBaseTable.remoteBaseId, `remote:${id}:%`)
       tx.delete(agentRemoteKnowledgeBaseTable).where(bindingFilter).run()
       tx.delete(assistantRemoteKnowledgeBaseTable)
-        .where(like(assistantRemoteKnowledgeBaseTable.remoteBaseId, `remote:${id}:%`))
+        .where(
+          like(assistantRemoteKnowledgeBaseTable.remoteBaseId, `remote:${id}:%`)
+        )
         .run()
     })
 
