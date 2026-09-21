@@ -5000,6 +5000,7 @@
   "settings.remoteKnowledge.headers": "En-têtes personnalisés",
   "settings.remoteKnowledge.headers.help": "Saisissez un en-tête par ligne au format Clé : Valeur",
   "settings.remoteKnowledge.name": "Nom",
+  "settings.remoteKnowledge.tag": "Distant",
   "settings.remoteKnowledge.testAndSave": "Tester et enregistrer",
   "settings.remoteKnowledge.testConnection": "Tester la connexion",
   "settings.remoteKnowledge.testConnection.failed": "Échec de la connexion",

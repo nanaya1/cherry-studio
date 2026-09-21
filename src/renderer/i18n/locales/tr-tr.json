@@ -5000,6 +5000,7 @@
   "settings.remoteKnowledge.headers": "Özel Başlıklar",
   "settings.remoteKnowledge.headers.help": "Her satıra bir başlık girin: Anahtar: Değer",
   "settings.remoteKnowledge.name": "Ad",
+  "settings.remoteKnowledge.tag": "Uzak",
   "settings.remoteKnowledge.testAndSave": "Test et ve kaydet",
   "settings.remoteKnowledge.testConnection": "Bağlantıyı test et",
   "settings.remoteKnowledge.testConnection.failed": "Bağlantı başarısız",

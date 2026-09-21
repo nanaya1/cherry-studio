@@ -5000,6 +5000,7 @@
   "settings.remoteKnowledge.headers": "自定义请求头",
   "settings.remoteKnowledge.headers.help": "每行一个请求头，格式为 Key: Value",
   "settings.remoteKnowledge.name": "名称",
+  "settings.remoteKnowledge.tag": "远端",
   "settings.remoteKnowledge.testAndSave": "测试并保存",
   "settings.remoteKnowledge.testConnection": "测试连接",
   "settings.remoteKnowledge.testConnection.failed": "连接失败",

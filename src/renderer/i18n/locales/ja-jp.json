@@ -5000,6 +5000,7 @@
   "settings.remoteKnowledge.headers": "カスタムヘッダー",
   "settings.remoteKnowledge.headers.help": "1 行に1 つずつ「キー: 値」の形式で入力してください",
   "settings.remoteKnowledge.name": "名前",
+  "settings.remoteKnowledge.tag": "リモート",
   "settings.remoteKnowledge.testAndSave": "テストして保存",
   "settings.remoteKnowledge.testConnection": "接続テスト",
   "settings.remoteKnowledge.testConnection.failed": "接続に失敗しました",

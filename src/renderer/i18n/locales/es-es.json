@@ -5000,6 +5000,7 @@
   "settings.remoteKnowledge.headers": "Encabezados personalizados",
   "settings.remoteKnowledge.headers.help": "Introduzca un encabezado por línea como Clave: Valor",
   "settings.remoteKnowledge.name": "Nombre",
+  "settings.remoteKnowledge.tag": "Remoto",
   "settings.remoteKnowledge.testAndSave": "Probar y guardar",
   "settings.remoteKnowledge.testConnection": "Probar conexión",
   "settings.remoteKnowledge.testConnection.failed": "Error de conexión",

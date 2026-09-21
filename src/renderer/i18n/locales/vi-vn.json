@@ -5000,6 +5000,7 @@
   "settings.remoteKnowledge.headers": "Tiêu đề tùy chỉnh",
   "settings.remoteKnowledge.headers.help": "Nhập mỗi tiêu đề một dòng theo dạng Khóa: Giá trị",
   "settings.remoteKnowledge.name": "Tên",
+  "settings.remoteKnowledge.tag": "Từ xa",
   "settings.remoteKnowledge.testAndSave": "Kiểm tra và lưu",
   "settings.remoteKnowledge.testConnection": "Kiểm tra kết nối",
   "settings.remoteKnowledge.testConnection.failed": "Kết nối thất bại",

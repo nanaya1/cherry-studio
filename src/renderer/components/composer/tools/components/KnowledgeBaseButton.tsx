@@ -21,6 +21,7 @@ import { useRemoteKnowledgeBases } from '@renderer/hooks/useRemoteKnowledge'
 import { useSelectableKnowledgeBases } from '@renderer/hooks/useSelectableKnowledgeBases'
 import { openRoute } from '@renderer/services/mainWindowNavigation'
 import type { KnowledgeBase } from '@shared/data/types/knowledge'
+import { isRemoteKnowledgeBaseId } from '@shared/data/types/remoteKnowledge'
 
 interface Props {
   launcher: ToolLauncherApi
@@ -140,7 +141,18 @@ const useKnowledgeBaseToolController = ({
     void language
     return configuredBases.map((base) => ({
       id: `knowledge-base:${base.id}`,
-      label: base.name,
+      label: isRemoteKnowledgeBaseId(base.id) ? (
+        <>
+          <span className="min-w-0 truncate">{base.name}</span>
+          <span
+            className="shrink-0 rounded-[3px] border border-border-subtle bg-muted px-1 text-[10px] text-muted-foreground leading-4"
+            data-knowledge-base-remote-tag="">
+            {tRef.current('settings.remoteKnowledge.tag')}
+          </span>
+        </>
+      ) : (
+        base.name
+      ),
       description: tRef.current('library.config.knowledge.doc_count', { count: base.itemCount ?? 0 }),
       filterText: [base.name, base.id].join(' '),
       icon: <FileSearch />,

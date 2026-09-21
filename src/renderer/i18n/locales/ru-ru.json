@@ -5000,6 +5000,7 @@
   "settings.remoteKnowledge.headers": "Пользовательские заголовки",
   "settings.remoteKnowledge.headers.help": "Введите по одному заголовку в строке в формате Ключ: Значение",
   "settings.remoteKnowledge.name": "Название",
+  "settings.remoteKnowledge.tag": "Удалённая",
   "settings.remoteKnowledge.testAndSave": "Проверить и сохранить",
   "settings.remoteKnowledge.testConnection": "Проверить соединение",
   "settings.remoteKnowledge.testConnection.failed": "Не удалось подключиться",

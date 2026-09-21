@@ -70,7 +70,8 @@ vi.mock('react-i18next', () => ({
         'chat.input.knowledge_base': 'Knowledge Base',
         'chat.save.knowledge.empty.no_knowledge_base': 'No knowledge base',
         'common.selectedItems': `${options?.count ?? 0} selected`,
-        'library.config.knowledge.doc_count': `${options?.count ?? 0} docs${mocks.translationSuffix}`
+        'library.config.knowledge.doc_count': `${options?.count ?? 0} docs${mocks.translationSuffix}`,
+        'settings.remoteKnowledge.tag': 'Remote'
       }
 
       return translations[key] ?? key
@@ -223,7 +224,13 @@ describe('KnowledgeBaseToolRuntime', () => {
     knowledgeLauncher.action?.({ quickPanel, source: 'popover' } as never)
 
     const remoteItem = quickPanel.open.mock.calls[0][0].list[0]
-    expect(remoteItem).toMatchObject({ id: `knowledge-base:${remoteId}`, label: 'Remote Docs' })
+    expect(remoteItem).toMatchObject({ id: `knowledge-base:${remoteId}` })
+    const [remoteName, remoteTag] = remoteItem.label.props.children
+    expect(remoteName.props.children).toBe('Remote Docs')
+    expect(remoteTag.props).toMatchObject({
+      children: 'Remote',
+      'data-knowledge-base-remote-tag': ''
+    })
     remoteItem.action({ context: { close: vi.fn() }, item: { ...remoteItem, isSelected: true } })
 
     expect(onSelect).toHaveBeenCalledWith([expect.objectContaining({ id: remoteId, name: 'Remote Docs' })])

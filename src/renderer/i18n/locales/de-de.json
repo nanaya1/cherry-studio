@@ -5000,6 +5000,7 @@
   "settings.remoteKnowledge.headers": "Benutzerdefinierte Header",
   "settings.remoteKnowledge.headers.help": "Geben Sie einen Header pro Zeile als Schlüssel: Wert ein",
   "settings.remoteKnowledge.name": "Name",
+  "settings.remoteKnowledge.tag": "Remote",
   "settings.remoteKnowledge.testAndSave": "Testen und speichern",
   "settings.remoteKnowledge.testConnection": "Verbindung testen",
   "settings.remoteKnowledge.testConnection.failed": "Verbindung fehlgeschlagen",

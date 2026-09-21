@@ -5000,6 +5000,7 @@
   "settings.remoteKnowledge.headers": "Custom Headers",
   "settings.remoteKnowledge.headers.help": "Enter one header per line as Key: Value",
   "settings.remoteKnowledge.name": "Name",
+  "settings.remoteKnowledge.tag": "Remote",
   "settings.remoteKnowledge.testAndSave": "Test and Save",
   "settings.remoteKnowledge.testConnection": "Test Connection",
   "settings.remoteKnowledge.testConnection.failed": "Connection failed",

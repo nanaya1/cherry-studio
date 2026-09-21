@@ -5000,6 +5000,7 @@
   "settings.remoteKnowledge.headers": "自訂標頭",
   "settings.remoteKnowledge.headers.help": "每行輸入一個標頭，格式為 Key: Value",
   "settings.remoteKnowledge.name": "名稱",
+  "settings.remoteKnowledge.tag": "遠端",
   "settings.remoteKnowledge.testAndSave": "測試並儲存",
   "settings.remoteKnowledge.testConnection": "測試連線",
   "settings.remoteKnowledge.testConnection.failed": "連線失敗",

@@ -5000,6 +5000,7 @@
   "settings.remoteKnowledge.headers": "Antete personalizate",
   "settings.remoteKnowledge.headers.help": "Introduceți un antet pe linie în format Cheie: Valoare",
   "settings.remoteKnowledge.name": "Nume",
+  "settings.remoteKnowledge.tag": "La distanță",
   "settings.remoteKnowledge.testAndSave": "Testează și salvează",
   "settings.remoteKnowledge.testConnection": "Testează conexiunea",
   "settings.remoteKnowledge.testConnection.failed": "Conexiunea a eșuat",

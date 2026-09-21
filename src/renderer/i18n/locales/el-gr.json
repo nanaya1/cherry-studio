@@ -5000,6 +5000,7 @@
   "settings.remoteKnowledge.headers": "Προσαρμοσμένες κεφαλίδες",
   "settings.remoteKnowledge.headers.help": "Εισάγετε μία κεφαλίδα ανά γραμμή ως Κλειδί: Τιμή",
   "settings.remoteKnowledge.name": "Όνομα",
+  "settings.remoteKnowledge.tag": "Απομακρυσμένο",
   "settings.remoteKnowledge.testAndSave": "Δοκιμή και αποθήκευση",
   "settings.remoteKnowledge.testConnection": "Δοκιμή σύνδεσης",
   "settings.remoteKnowledge.testConnection.failed": "Η σύνδεση απέτυχε",
