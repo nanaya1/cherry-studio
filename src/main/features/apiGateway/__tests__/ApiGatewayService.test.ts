@@ -32,7 +32,8 @@ const {
   mockPreferenceSetMultiple: vi.fn<(updates: Record<string, unknown>) => Promise<void>>(),
   captured: {
     prefHandler: undefined as ((enabled: boolean | null) => void) | undefined,
-    enabledPreference: false,
+    // Mirrors the preference value: true/false = explicit user intent, null = unset (automatic mode).
+    enabledPreference: false as boolean | null,
     hostPreference: '127.0.0.1',
     portPreference: 23333
   }
