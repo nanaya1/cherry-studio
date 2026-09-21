@@ -13,6 +13,7 @@ import { knowledgeBaseTable } from '@data/db/schemas/knowledge'
 import { mcpServerTable } from '@data/db/schemas/mcpServer'
 import { pinTable } from '@data/db/schemas/pin'
 import { promptBindingTable, promptTable } from '@data/db/schemas/prompt'
+import { assistantRemoteKnowledgeBaseTable } from '@data/db/schemas/remoteKnowledge'
 import { topicTable } from '@data/db/schemas/topic'
 import { userModelTable } from '@data/db/schemas/userModel'
 import { userProviderTable } from '@data/db/schemas/userProvider'
@@ -604,6 +605,23 @@ describe('AssistantDataService', () => {
       expect(mcpRows[0].assistantId).toBe(result.id)
     })
 
+    it('should split mixed local and remote knowledge bindings and deduplicate each table', async () => {
+      await seedKnowledgeBase()
+      const remoteId = 'remote:missing-service:remote-base'
+
+      const result = assistantDataService.create({
+        name: 'mixed-knowledge',
+        knowledgeBaseIds: [remoteId, 'kb-1', remoteId, 'kb-1']
+      })
+
+      expect(result.knowledgeBaseIds).toEqual(['kb-1', remoteId])
+      expect(await dbh.db.select().from(assistantKnowledgeBaseTable)).toHaveLength(1)
+      expect(await dbh.db.select().from(assistantRemoteKnowledgeBaseTable)).toEqual([
+        expect.objectContaining({ assistantId: result.id, remoteBaseId: remoteId })
+      ])
+      expect(assistantDataService.getById(result.id).knowledgeBaseIds).toEqual(['kb-1', remoteId])
+    })
+
     it('should throw validation error when name is empty', async () => {
       let err: unknown
       try {
@@ -1019,6 +1037,22 @@ describe('AssistantDataService', () => {
       const [row] = await dbh.db.select().from(assistantTable)
       expect(row.name).toBe('original')
       expect(row.modelId).toBe('openai::gpt-4')
+    })
+
+    it('should replace both local and remote knowledge bindings on update', async () => {
+      await seedAssistantRow({ id: 'ast-1', name: 'original' })
+      await seedKnowledgeBase()
+      const firstRemoteId = 'remote:missing-service:first'
+      const nextRemoteId = 'remote:missing-service:next'
+
+      assistantDataService.update('ast-1', { knowledgeBaseIds: ['kb-1', firstRemoteId] })
+      const result = assistantDataService.update('ast-1', { knowledgeBaseIds: [nextRemoteId, nextRemoteId] })
+
+      expect(result.knowledgeBaseIds).toEqual([nextRemoteId])
+      expect(await dbh.db.select().from(assistantKnowledgeBaseTable)).toHaveLength(0)
+      expect(await dbh.db.select().from(assistantRemoteKnowledgeBaseTable)).toEqual([
+        expect.objectContaining({ assistantId: 'ast-1', remoteBaseId: nextRemoteId })
+      ])
     })
 
     it('should preserve groupId after a column-only update', async () => {

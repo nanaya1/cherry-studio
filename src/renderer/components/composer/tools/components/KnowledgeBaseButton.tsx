@@ -16,8 +16,12 @@ import {
   useQuickPanel
 } from '@renderer/components/QuickPanel'
 import { useKnowledgeBases } from '@renderer/hooks/useKnowledgeBase'
+import { useRemoteKnowledgeBases } from '@renderer/hooks/useRemoteKnowledge'
+// Task 12：本地+远端知识库聚合投影（选择器合并展示）
+import { useSelectableKnowledgeBases } from '@renderer/hooks/useSelectableKnowledgeBases'
 import { openRoute } from '@renderer/services/mainWindowNavigation'
 import type { KnowledgeBase } from '@shared/data/types/knowledge'
+import { isRemoteKnowledgeBaseId } from '@shared/data/types/remoteKnowledge'
 
 interface Props {
   launcher: ToolLauncherApi
@@ -66,9 +70,18 @@ const useKnowledgeBaseToolController = ({
     isQuickPanelVisible &&
     (quickPanelSymbol === ComposerPanelSymbol.Root || quickPanelSymbol === ComposerPanelSymbol.KnowledgeBase)
   const knowledgeBasesEnabled = dataRequested || panelNeedsData || (selectedBases?.length ?? 0) > 0
-  const { bases: knowledgeBases, isLoading: isKnowledgeBasesLoading } = useKnowledgeBases({
+  // 停用原本地单源取数：下方聚合本地+远端（Task 12 远端知识库选择器）。
+  // 远端列表不随 knowledgeBasesEnabled 门控：list_bases 是轻量 IPC + SWR 全局缓存，
+  // 按需门控会让「打开面板」动作的旧闭包拿到空列表（与本地 enabled 门控语义不同）。
+  // const { bases: knowledgeBases, isLoading: isKnowledgeBasesLoading } = useKnowledgeBases({
+  //   enabled: knowledgeBasesEnabled
+  // })
+  const { bases: localKnowledgeBases, isLoading: isLocalKnowledgeBasesLoading } = useKnowledgeBases({
     enabled: knowledgeBasesEnabled
   })
+  const { bases: remoteBases, isLoading: isRemoteBasesLoading } = useRemoteKnowledgeBases()
+  const knowledgeBases = useSelectableKnowledgeBases(localKnowledgeBases, remoteBases)
+  const isKnowledgeBasesLoading = isLocalKnowledgeBasesLoading || isRemoteBasesLoading
   const onSelectRef = useRef(onSelect)
   const selectedBasesRef = useRef<KnowledgeBase[]>(selectedBases ?? [])
   const configuredBasesRef = useRef<KnowledgeBase[]>([])
@@ -128,7 +141,18 @@ const useKnowledgeBaseToolController = ({
     void language
     return configuredBases.map((base) => ({
       id: `knowledge-base:${base.id}`,
-      label: base.name,
+      label: isRemoteKnowledgeBaseId(base.id) ? (
+        <>
+          <span className="min-w-0 truncate">{base.name}</span>
+          <span
+            className="shrink-0 rounded-[3px] border border-border-subtle bg-muted px-1 text-[10px] text-muted-foreground leading-4"
+            data-knowledge-base-remote-tag="">
+            {tRef.current('settings.remoteKnowledge.tag')}
+          </span>
+        </>
+      ) : (
+        base.name
+      ),
       description: tRef.current('library.config.knowledge.doc_count', { count: base.itemCount ?? 0 }),
       filterText: [base.name, base.id].join(' '),
       icon: <FileSearch />,

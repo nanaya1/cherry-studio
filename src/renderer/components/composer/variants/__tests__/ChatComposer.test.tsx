@@ -518,6 +518,10 @@ vi.mock('@renderer/hooks/useKnowledgeBase', () => ({
   }
 }))
 
+vi.mock('@renderer/hooks/useRemoteKnowledge', () => ({
+  useRemoteKnowledgeBases: () => ({ bases: [], isLoading: false })
+}))
+
 vi.mock('@renderer/hooks/useModel', () => ({
   useDefaultModel: () => ({ setDefaultModel: mocks.setDefaultModel }),
   useModelById: (modelId?: string) => ({ model: modelId ? { ...model, id: modelId, contextWindow: 100 } : undefined }),

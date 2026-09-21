@@ -42,7 +42,7 @@ import { MockMainPreferenceServiceUtils } from '@test-mocks/main/PreferenceServi
 const { AppService } = await import('../AppService')
 
 const autostartDir = '/mock/sys.appdata.autostart'
-const desktopFile = path.join(autostartDir, 'cherry-studio.desktop')
+const desktopFile = path.join(autostartDir, 'meacowork.desktop')
 const linuxFiles = new Set<string>()
 const activeServices: BaseService[] = []
 

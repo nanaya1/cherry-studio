@@ -26,6 +26,7 @@ import * as z from 'zod'
 import { application } from '@application'
 import { loggerService } from '@logger'
 import { citeId, newCitePrefix } from '@main/ai/utils/citationIds'
+import { RemoteKnowledgeClient } from '@main/features/remoteKnowledge/RemoteKnowledgeClient'
 import type {
   KbGrepOutput,
   KbListInput,
@@ -46,6 +47,12 @@ import type {
   KnowledgeSearchResult
 } from '@shared/data/types/knowledge'
 import { KnowledgeAddItemInputSchema } from '@shared/data/types/knowledge'
+import {
+  isRemoteKnowledgeBaseId,
+  parseRemoteKnowledgeBaseId,
+  type RemoteKnowledgeBaseInfo,
+  type RemoteWireChunk
+} from '@shared/data/types/remoteKnowledge'
 
 const logger = loggerService.withContext('KnowledgeLookup')
 
@@ -57,6 +64,14 @@ const NOTE_SNIPPET_MAX_CHARS = 80
  * Drizzle/SQLite read — no vector store.)
  */
 const KB_LIST_ROOT_ITEMS_CONCURRENCY = 8
+const REMOTE_SEARCH_TOP_K = 8
+
+const REMOTE_OUTLINE_UNSUPPORTED =
+  'Remote knowledge bases do not support outline mode. Use kb_search to find content, then kb_read with the returned conceptId.'
+const REMOTE_GREP_UNSUPPORTED =
+  'Remote knowledge bases do not support grep mode. Omit pattern to read the document, or use kb_search for semantic lookup.'
+const REMOTE_MANAGE_UNSUPPORTED =
+  'Remote knowledge bases are read-only in this client. Add, delete, and refresh operations must be performed in the remote service.'
 
 /**
  * `DataApiError.details.resource` value KnowledgeBaseService.getById stamps on a missing-base
@@ -183,13 +198,15 @@ export async function searchKnowledge(
   const perBase = await Promise.all(
     targetIds.map(async (baseId) => {
       try {
-        const results = await knowledgeService.search(baseId, query)
+        const results = isRemoteKnowledgeBaseId(baseId)
+          ? await searchRemoteKnowledge(baseId, query)
+          : await knowledgeService.search(baseId, query)
         // Tag each hit with the base it came from: the flatMap below loses the closure, and
         // `conceptId` alone is only unique within one base.
         return { ok: true as const, results: results.map((result) => ({ result, baseId })) }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
-        logger.warn('KnowledgeService.search failed', { baseId, query, error: message })
+        logger.warn('Knowledge base search failed', { baseId, query, error: message })
         return { ok: false as const, error: message }
       }
     })
@@ -231,6 +248,39 @@ export async function searchKnowledge(
   }))
 }
 
+async function searchRemoteKnowledge(baseId: string, query: string): Promise<KnowledgeSearchResult[]> {
+  const parsed = parseRemoteKnowledgeBaseId(baseId)
+  if (!parsed) throw new Error(`Invalid remote knowledge base id: ${baseId}`)
+
+  const config = application.get('RemoteKnowledgeService').resolveClientConfig(parsed.serviceId)
+  const chunks = await new RemoteKnowledgeClient(config).search({
+    query,
+    base_ids: [parsed.remoteBaseId],
+    top_k: REMOTE_SEARCH_TOP_K
+  })
+  return chunks.map(mapRemoteChunkToSearchResult)
+}
+
+function mapRemoteChunkToSearchResult(chunk: RemoteWireChunk, index: number): KnowledgeSearchResult {
+  return {
+    pageContent: chunk.content,
+    score: chunk.score,
+    scoreKind: 'ranking',
+    rank: index + 1,
+    metadata: {
+      itemId: chunk.chunk_id,
+      source: chunk.source?.url ?? chunk.source?.path ?? chunk.title,
+      chunkIndex: 0,
+      tokenCount: 0,
+      itemType: 'file'
+    },
+    itemId: chunk.chunk_id,
+    chunkId: chunk.chunk_id,
+    conceptId: chunk.document_id,
+    title: chunk.title
+  }
+}
+
 export function knowledgeSearchModelOutput(
   output: KnowledgeSearchResultOrError
 ): { type: 'text'; value: string } | { type: 'json'; value: KbSearchOutput } {
@@ -264,6 +314,29 @@ async function readConcept(
     return { error: `Knowledge base "${baseId}" is not available to this assistant.` }
   }
   try {
+    if (isRemoteKnowledgeBaseId(baseId)) {
+      const parsed = parseRemoteKnowledgeBaseId(baseId)
+      if (!parsed) return { error: `Invalid remote knowledge base id: ${baseId}` }
+      const config = application.get('RemoteKnowledgeService').resolveClientConfig(parsed.serviceId)
+      const result = await new RemoteKnowledgeClient(config).read({
+        base_id: parsed.remoteBaseId,
+        document_id: conceptId
+      })
+      const totalChars = result.total_chars ?? result.content.length
+      return {
+        id: citeId(newCitePrefix(), 0),
+        baseId,
+        conceptId: result.document_id,
+        title: result.title,
+        type: 'file',
+        totalChars,
+        charStart: 0,
+        charEnd: result.content.length,
+        content: result.content,
+        truncated: result.truncated ?? result.content.length < totalChars
+      }
+    }
+
     const result = await application.get('KnowledgeService').readConcept(baseId, conceptId, range)
     return {
       // One slice, one source — index 0 yields the call's only cite id.
@@ -322,6 +395,8 @@ async function grepConcept(
     logger.warn('kb_read (grep mode) targeted a base outside the assistant scope', { baseId, allowedIds })
     return { error: `Knowledge base "${baseId}" is not available to this assistant.` }
   }
+  if (isRemoteKnowledgeBaseId(baseId)) return { error: REMOTE_GREP_UNSUPPORTED }
+
   try {
     const result = await application.get('KnowledgeService').grepConcept(baseId, conceptId, options)
     return {
@@ -419,6 +494,8 @@ function readTree(
     logger.warn('kb_list (outline mode) targeted a base outside the assistant scope', { baseId, allowedIds })
     return { error: `Knowledge base "${baseId}" is not available to this assistant.` }
   }
+  if (isRemoteKnowledgeBaseId(baseId)) return { error: REMOTE_OUTLINE_UNSUPPORTED }
+
   try {
     const tree = application.get('KnowledgeService').getOrganizationTree(baseId, options)
     return {
@@ -491,6 +568,8 @@ export async function manageKnowledge(
     logger.warn('kb_manage targeted a base outside the assistant scope', { baseId: input.baseId, allowedIds })
     return { error: `Knowledge base "${input.baseId}" is not available to this assistant.` }
   }
+  if (isRemoteKnowledgeBaseId(input.baseId)) return { error: REMOTE_MANAGE_UNSUPPORTED }
+
   try {
     const service = application.get('KnowledgeService')
     switch (input.action) {
@@ -621,28 +700,32 @@ async function listKnowledgeBases(
   input: KbListInput,
   allowedIds: readonly string[]
 ): Promise<KnowledgeListResultOrError> {
+  const localAllowedIds = allowedIds.filter((id) => !isRemoteKnowledgeBaseId(id))
+  const hasRemoteOnlyScope = allowedIds.length > 0 && localAllowedIds.length === 0
+
+  let localItems: KbListOutputItem[] = []
+  let localTotal = 0
+  let nextCursor: string | undefined
   try {
-    const knowledgeService = application.get('KnowledgeService')
-    const page = knowledgeService.listBasesForDiscovery({
-      limit: input.limit ?? KB_LIST_DEFAULT_LIMIT,
-      ...(input.cursor ? { cursor: input.cursor } : {}),
-      ...(input.query ? { query: input.query } : {}),
-      ...(input.groupId ? { groupId: input.groupId } : {}),
-      scope: toKnowledgeBaseDiscoveryScope(allowedIds)
-    })
+    if (!hasRemoteOnlyScope) {
+      const knowledgeService = application.get('KnowledgeService')
+      const page = knowledgeService.listBasesForDiscovery({
+        limit: input.limit ?? KB_LIST_DEFAULT_LIMIT,
+        ...(input.cursor ? { cursor: input.cursor } : {}),
+        ...(input.query ? { query: input.query } : {}),
+        ...(input.groupId ? { groupId: input.groupId } : {}),
+        scope: toKnowledgeBaseDiscoveryScope(localAllowedIds)
+      })
 
-    // Build each base's summary with bounded concurrency (see KB_LIST_ROOT_ITEMS_CONCURRENCY).
-    // `throwOnTimeout: true` keeps p-queue's add() return type as the value (not `T | void`), so the
-    // ordered map stays typed; map preserves order and no task is given a timeout.
-    const queue = new PQueue({ concurrency: KB_LIST_ROOT_ITEMS_CONCURRENCY })
-    const items: KbListOutputItem[] = await Promise.all(
-      page.items.map((base) => queue.add(() => buildOutputItem(base, knowledgeService), { throwOnTimeout: true }))
-    )
-
-    return {
-      items,
-      total: page.total,
-      ...(page.nextCursor ? { nextCursor: page.nextCursor } : {})
+      // Build each base's summary with bounded concurrency (see KB_LIST_ROOT_ITEMS_CONCURRENCY).
+      // `throwOnTimeout: true` keeps p-queue's add() return type as the value (not `T | void`), so the
+      // ordered map stays typed; map preserves order and no task is given a timeout.
+      const queue = new PQueue({ concurrency: KB_LIST_ROOT_ITEMS_CONCURRENCY })
+      localItems = await Promise.all(
+        page.items.map((base) => queue.add(() => buildOutputItem(base, knowledgeService), { throwOnTimeout: true }))
+      )
+      localTotal = page.total
+      nextCursor = page.nextCursor
     }
   } catch (error) {
     // `listBasesForDiscovery()` (or the service lookup) threw — surface a fixed note instead of leaking the raw
@@ -651,6 +734,43 @@ async function listKnowledgeBases(
     logger.warn('KnowledgeService.listBasesForDiscovery failed', { error: message })
     return { error: message }
   }
+
+  const remoteItems = input.cursor ? [] : await listRemoteKnowledgeBases(input, allowedIds)
+  return {
+    items: [...localItems, ...remoteItems],
+    total: localTotal + remoteItems.length,
+    ...(nextCursor ? { nextCursor } : {})
+  }
+}
+
+async function listRemoteKnowledgeBases(
+  input: KbListInput,
+  allowedIds: readonly string[]
+): Promise<KbListOutputItem[]> {
+  try {
+    const bases = await application.get('RemoteKnowledgeService').listRemoteBases()
+    const scoped = allowedIds.length > 0 ? bases.filter((base) => allowedIds.includes(base.id)) : bases
+    return scoped.filter((base) => remoteBaseMatchesFilters(base, input)).map((base) => ({
+      id: base.id,
+      name: base.name,
+      groupId: null,
+      status: 'completed',
+      itemsUnavailable: true,
+      sampleSources: []
+    }))
+  } catch (error) {
+    logger.warn('RemoteKnowledgeService.listRemoteBases failed; returning local bases only', {
+      error: error instanceof Error ? error.message : String(error)
+    })
+    return []
+  }
+}
+
+function remoteBaseMatchesFilters(base: RemoteKnowledgeBaseInfo, input: KbListInput): boolean {
+  if (input.groupId) return false
+  if (!input.query) return true
+  const query = input.query.trim().toLocaleLowerCase()
+  return base.name.toLocaleLowerCase().includes(query) || base.serviceName.toLocaleLowerCase().includes(query)
 }
 
 function toKnowledgeBaseDiscoveryScope(allowedIds: readonly string[]) {

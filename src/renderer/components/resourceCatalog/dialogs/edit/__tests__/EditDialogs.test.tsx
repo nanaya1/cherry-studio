@@ -282,6 +282,10 @@ vi.mock('@renderer/data/hooks/useDataApi', () => ({
   useQuery: useQueryMock
 }))
 
+vi.mock('@renderer/hooks/useRemoteKnowledge', () => ({
+  useRemoteKnowledgeBases: () => ({ bases: [], isLoading: false })
+}))
+
 vi.mock('@renderer/hooks/useMcpRuntimeStatus', () => ({
   useMcpRuntimeStatusMap: () => mcpStatusState.current
 }))

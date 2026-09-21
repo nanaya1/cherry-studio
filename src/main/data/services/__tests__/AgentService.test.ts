@@ -17,6 +17,7 @@ import { agentKnowledgeBaseTable, agentMcpServerTable } from '@data/db/schemas/a
 import { knowledgeBaseTable } from '@data/db/schemas/knowledge'
 import { mcpServerTable } from '@data/db/schemas/mcpServer'
 import { promptBindingTable, promptTable } from '@data/db/schemas/prompt'
+import { agentRemoteKnowledgeBaseTable } from '@data/db/schemas/remoteKnowledge'
 import { userModelTable } from '@data/db/schemas/userModel'
 import { userProviderTable } from '@data/db/schemas/userProvider'
 // Importing the singleton loads AgentGlobalSkillService so it self-registers in the
@@ -902,6 +903,25 @@ describe('AgentService', () => {
       expect([...(reloaded?.knowledgeBaseIds ?? [])].sort()).toEqual(['kb_a', 'kb_b'])
     })
 
+    it('splits mixed local and dangling remote bindings on create and deduplicates them', async () => {
+      await insertKnowledgeBase('kb_a')
+      const remoteId = 'remote:missing-service:remote-base'
+
+      const created = createAgentForTest({
+        type: 'claude-code',
+        name: 'KB Mixed Create',
+        model: TEST_MODEL_ID,
+        knowledgeBaseIds: [remoteId, 'kb_a', remoteId, 'kb_a']
+      })
+
+      expect(created.knowledgeBaseIds).toEqual(['kb_a', remoteId])
+      expect(await dbh.db.select().from(agentKnowledgeBaseTable)).toHaveLength(1)
+      expect(await dbh.db.select().from(agentRemoteKnowledgeBaseTable)).toEqual([
+        expect.objectContaining({ agentId: created.id, remoteBaseId: remoteId })
+      ])
+      expect(agentService.getAgent(created.id)?.knowledgeBaseIds).toEqual(['kb_a', remoteId])
+    })
+
     it('replaces knowledgeBaseIds when update provides a new array', async () => {
       await insertKnowledgeBase('kb_a')
       await insertKnowledgeBase('kb_b')
@@ -959,6 +979,26 @@ describe('AgentService', () => {
         details: { resource: 'KnowledgeBase', id: 'kb_b' }
       })
       expect(agentService.getAgent(created.id)?.knowledgeBaseIds).toEqual(['kb_a'])
+    })
+
+    it('replaces both local and remote bindings with a dangling remote id on update', async () => {
+      await insertKnowledgeBase('kb_a')
+      const firstRemoteId = 'remote:missing-service:first'
+      const nextRemoteId = 'remote:missing-service:next'
+      const created = createAgentForTest({
+        type: 'claude-code',
+        name: 'KB Mixed Replace',
+        model: TEST_MODEL_ID,
+        knowledgeBaseIds: ['kb_a', firstRemoteId]
+      })
+
+      const updated = agentService.updateAgent(created.id, { knowledgeBaseIds: [nextRemoteId, nextRemoteId] })
+
+      expect(updated?.knowledgeBaseIds).toEqual([nextRemoteId])
+      expect(await dbh.db.select().from(agentKnowledgeBaseTable)).toHaveLength(0)
+      expect(await dbh.db.select().from(agentRemoteKnowledgeBaseTable)).toEqual([
+        expect.objectContaining({ agentId: created.id, remoteBaseId: nextRemoteId })
+      ])
     })
 
     // Load-bearing: the `if (newKnowledgeBaseIds !== undefined)` guard in updateAgent —

@@ -5,6 +5,7 @@ import {
   Cloud,
   Command,
   Crop,
+  Database,
   FileBox,
   FileCode,
   Globe,
@@ -65,12 +66,25 @@ export const settingsMenu: readonly SettingsMenuEntry[] = [
     icon: createElement(FileBox)
   },
   { route: '/settings/api-gateway', titleKey: 'apiGateway.title', icon: createElement(GatewayIcon) },
+  // MEA：远端服务从「工具」分组提升为设置侧栏顶部无分组入口（改名「远端服务」）。
+  {
+    route: '/settings/remote-knowledge',
+    titleKey: 'settings.remoteKnowledge.title',
+    icon: createElement(Database)
+  },
   {
     route: '/settings/mcp',
     titleKey: 'agent.settings.toolsMcp.mcp.tab',
     icon: createElement(McpLogo, { width: 16, height: 16, className: 'text-foreground' }),
     groupKey: 'settings.menuGroups.capabilities'
   },
+  // 停用原「工具」分组下的远端知识服务入口（已提升至上方无分组区）。
+  // {
+  //   route: '/settings/remote-knowledge',
+  //   titleKey: 'settings.remoteKnowledge.title',
+  //   icon: createElement(Database),
+  //   groupKey: 'settings.menuGroups.capabilities'
+  // },
   {
     route: '/settings/skills',
     titleKey: 'settings.skills.title',

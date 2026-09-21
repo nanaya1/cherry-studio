@@ -27,6 +27,8 @@ import { useCloseBeforeAction } from '@renderer/hooks/useCloseBeforeAction'
 import { useKnowledgeBases } from '@renderer/hooks/useKnowledgeBase'
 import { useModelById } from '@renderer/hooks/useModel'
 import { usePromptProcessor } from '@renderer/hooks/usePromptProcessor'
+import { useRemoteKnowledgeBases } from '@renderer/hooks/useRemoteKnowledge'
+import { useSelectableKnowledgeBases } from '@renderer/hooks/useSelectableKnowledgeBases'
 import { useInstalledSkills, useReconcileSkillsOnOpen } from '@renderer/hooks/useSkills'
 import { openSettingsTab } from '@renderer/services/mainWindowNavigation'
 import { toast } from '@renderer/services/toast'
@@ -287,7 +289,13 @@ function AgentEditDialogContent({
     [form]
   )
   const { updateAgent } = useAgentMutationsById(resource.id)
-  const { bases: knowledgeBases, isLoading: knowledgeBasesLoading } = useKnowledgeBases()
+  // 停用原本地单源列表：绑定收敛需把远端库也算作「目录中存在」（Task 12），
+  // 否则 Agent 绑定了远端库时打开弹窗即被本 effect 静默清除。
+  // const { bases: knowledgeBases, isLoading: knowledgeBasesLoading } = useKnowledgeBases()
+  const { bases: localKnowledgeBases, isLoading: isLocalKnowledgeBasesLoading } = useKnowledgeBases()
+  const { bases: remoteKnowledgeBases, isLoading: isRemoteKnowledgeBasesLoading } = useRemoteKnowledgeBases()
+  const knowledgeBases = useSelectableKnowledgeBases(localKnowledgeBases, remoteKnowledgeBases)
+  const knowledgeBasesLoading = isLocalKnowledgeBasesLoading || isRemoteKnowledgeBasesLoading
   const availableKnowledgeBaseIds = useMemo(() => new Set(knowledgeBases.map((base) => base.id)), [knowledgeBases])
   const {
     skills,

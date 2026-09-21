@@ -23,10 +23,13 @@ import type { AppProviderSettingsMap } from '../../../../types'
 import type { CallOverrides } from '../../../../types/requests'
 import type { AgentOptions } from '../../loop/types'
 
-const { preferenceGetMock, resolveProviderAiSdkConfigMock } = vi.hoisted(() => ({
-  preferenceGetMock: vi.fn(),
-  resolveProviderAiSdkConfigMock: vi.fn()
-}))
+const { localHasAnyBaseMock, preferenceGetMock, remoteHasAnyEnabledServiceMock, resolveProviderAiSdkConfigMock } =
+  vi.hoisted(() => ({
+    localHasAnyBaseMock: vi.fn(),
+    preferenceGetMock: vi.fn(),
+    remoteHasAnyEnabledServiceMock: vi.fn(),
+    resolveProviderAiSdkConfigMock: vi.fn()
+  }))
 
 vi.mock('../../../../provider/config', () => ({
   resolveProviderAiSdkConfig: resolveProviderAiSdkConfigMock
@@ -37,7 +40,8 @@ vi.mock('@application', () => ({
     getPath: (_namespace: string, filename: string) =>
       path.join(process.cwd(), 'packages/provider-registry/data', filename),
     get: (name: string) => {
-      if (name === 'KnowledgeService') return { hasAnyBase: () => true }
+      if (name === 'KnowledgeService') return { hasAnyBase: localHasAnyBaseMock }
+      if (name === 'RemoteKnowledgeService') return { hasAnyEnabledService: remoteHasAnyEnabledServiceMock }
       if (name === 'PreferenceService') return { get: preferenceGetMock }
       // No connected MCP server in these tests, so nothing declares the resources capability.
       if (name === 'McpRuntimeService') return { getConnectedServerCapabilities: () => undefined }
@@ -61,6 +65,8 @@ const {
 } = await import('../buildAgentParams')
 
 beforeEach(() => {
+  localHasAnyBaseMock.mockReturnValue(true)
+  remoteHasAnyEnabledServiceMock.mockReturnValue(false)
   preferenceGetMock.mockReturnValue(null)
 })
 
@@ -1946,22 +1952,63 @@ describe('resolveTools knowledge-base wiring', () => {
   const kbGatedEntry: ToolEntry = {
     name: KB_GATED_TOOL_NAME,
     namespace: 'test',
-    description: 'test-only tool gated on knowledgeBaseIds',
+    description: 'test-only tool gated on knowledge availability and request scope',
     defer: 'never',
     tool: {} as Tool,
-    applies: (scope) => (scope.knowledgeBaseIds?.length ?? 0) > 0
+    applies: (scope) => scope.hasAnyKnowledgeBase === true && (scope.knowledgeBaseIds?.length ?? 0) > 0
   }
 
   afterEach(() => {
     registry.deregister(KB_GATED_TOOL_NAME)
   })
 
-  it('exposes a kb-gated tool when the effective knowledgeBaseIds is non-empty', async () => {
+  it('exposes a kb-gated tool when only an enabled remote service is available', async () => {
+    localHasAnyBaseMock.mockReturnValue(false)
+    remoteHasAnyEnabledServiceMock.mockReturnValue(true)
     registry.register(kbGatedEntry)
 
-    const { tools } = await resolveTools({ conversation: CONVERSATION }, undefined, makeModel(), false, ['kb-1'])
+    const { tools } = await resolveTools({ conversation: CONVERSATION }, undefined, makeModel(), false, ['remote:s:b'])
 
     expect(tools?.[KB_GATED_TOOL_NAME]).toBeDefined()
+  })
+
+  it('hides a kb-gated tool when neither local nor remote knowledge is available', async () => {
+    localHasAnyBaseMock.mockReturnValue(false)
+    remoteHasAnyEnabledServiceMock.mockReturnValue(false)
+    registry.register(kbGatedEntry)
+
+    const { tools } = await resolveTools({ conversation: CONVERSATION }, undefined, makeModel(), false, ['remote:s:b'])
+
+    expect(tools?.[KB_GATED_TOOL_NAME]).toBeUndefined()
+  })
+
+  it('fails open when either knowledge availability check throws', async () => {
+    localHasAnyBaseMock.mockImplementation(() => {
+      throw new Error('local unavailable')
+    })
+    registry.register(kbGatedEntry)
+
+    const localFailure = await resolveTools(
+      { conversation: CONVERSATION },
+      undefined,
+      makeModel(),
+      false,
+      ['remote:s:b']
+    )
+    expect(localFailure.tools?.[KB_GATED_TOOL_NAME]).toBeDefined()
+
+    localHasAnyBaseMock.mockReturnValue(false)
+    remoteHasAnyEnabledServiceMock.mockImplementation(() => {
+      throw new Error('remote unavailable')
+    })
+    const remoteFailure = await resolveTools(
+      { conversation: CONVERSATION },
+      undefined,
+      makeModel(),
+      false,
+      ['remote:s:b']
+    )
+    expect(remoteFailure.tools?.[KB_GATED_TOOL_NAME]).toBeDefined()
   })
 
   it('hides a kb-gated tool when the effective knowledgeBaseIds is empty', async () => {
