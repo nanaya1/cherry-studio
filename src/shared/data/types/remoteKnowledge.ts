@@ -36,7 +36,9 @@ export function buildRemoteKnowledgeBaseId(serviceId: string, remoteBaseId: stri
  * Splits only on the first colon after the prefix; both segments must be
  * non-empty. The prefix must be exactly lowercase `remote:`.
  */
-export function parseRemoteKnowledgeBaseId(id: string): { serviceId: string; remoteBaseId: string } | null {
+export function parseRemoteKnowledgeBaseId(
+  id: string
+): { serviceId: string; remoteBaseId: string } | null {
   const prefix = REMOTE_KNOWLEDGE_BASE_ID_PREFIX
   if (!id.startsWith(prefix)) return null
   const rest = id.slice(prefix.length)
