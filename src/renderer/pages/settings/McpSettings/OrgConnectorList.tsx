@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next'
 
 // import { Badge } from '@cherrystudio/ui'
 import { Button } from '@cherrystudio/ui'
-import CollapsibleSearchBar from '@renderer/components/CollapsibleSearchBar'
+// import CollapsibleSearchBar from '@renderer/components/CollapsibleSearchBar'
 import { useMcpServers } from '@renderer/hooks/useMcpServer'
 import { useOrgConnectors } from '@renderer/hooks/useOrgConnectors'
 import { toast } from '@renderer/services/toast'
@@ -19,11 +19,14 @@ interface OrgConnectorListProps {
   toolbarStart?: ReactNode
 }
 
-const OrgConnectorList: FC<OrgConnectorListProps> = ({ variant = 'catalog', toolbarStart }) => {
+// const OrgConnectorList: FC<OrgConnectorListProps> = ({ variant = 'catalog', toolbarStart }) => {
+const OrgConnectorList: FC<OrgConnectorListProps> = ({ variant = 'catalog' }) => {
   const { t } = useTranslation()
-  const { connectors, loading, error, install, installing, refetch } = useOrgConnectors(variant === 'catalog')
+  // const { connectors, loading, error, install, installing, refetch } = useOrgConnectors(variant === 'catalog')
+  const { connectors, loading, error, install, installing } = useOrgConnectors(variant === 'catalog')
   const { mcpServers, refetch: refetchMcpServers } = useMcpServers()
-  const [searchText, setSearchText] = useState('')
+  // const [searchText, setSearchText] = useState('')
+  const [searchText] = useState('')
 
   const isCatalog = variant === 'catalog'
 
@@ -56,7 +59,7 @@ const OrgConnectorList: FC<OrgConnectorListProps> = ({ variant = 'catalog', tool
 
   return (
     <div className="mb-5">
-      <div className="mb-3 flex w-full min-w-0 flex-wrap items-center justify-between gap-3">
+      {/* <div className="mb-3 flex w-full min-w-0 flex-wrap items-center justify-between gap-3">
         {toolbarStart}
         <div className={cn('flex min-w-0 items-center gap-2', !toolbarStart && 'ml-auto')}>
           <CollapsibleSearchBar
@@ -70,7 +73,7 @@ const OrgConnectorList: FC<OrgConnectorListProps> = ({ variant = 'catalog', tool
             {t('common.refresh')}
           </Button>
         </div>
-      </div>
+      </div> */}
 
       {loading && connectors.length === 0 ? (
         <div className="py-10 text-center text-muted-foreground text-sm">{t('common.loading')}</div>
