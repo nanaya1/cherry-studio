@@ -8,7 +8,7 @@ import { MenuDivider, MenuItem, MenuList, PageHeader } from '@cherrystudio/ui'
 import '@renderer/components/icons/GatewayIcon'
 import { usePreference } from '@data/hooks/usePreference'
 import Scrollbar from '@renderer/components/Scrollbar'
-import { settingsMenu } from '@renderer/components/settingsMenu'
+import { MEA_HIDDEN_SETTINGS_ROUTES, settingsMenu } from '@renderer/components/settingsMenu'
 import useMacTransparentWindow from '@renderer/hooks/useMacTransparentWindow'
 import SettingsFocusScroll from '@renderer/pages/settings/settingsSearch/SettingsFocusScroll'
 import SettingsFocusUrl from '@renderer/pages/settings/settingsSearch/SettingsFocusUrl'
@@ -35,7 +35,7 @@ const SettingsPage: FC = () => {
   //   (item) => item.route !== '/settings/device-connections' || enableDeveloperMode
   // )
   const visibleSettingsMenu = settingsMenu.filter((item) => {
-    if (item.route === '/settings/mcp' || item.route === '/settings/skills') return false
+    if (MEA_HIDDEN_SETTINGS_ROUTES.includes(item.route)) return false
     return item.route !== '/settings/device-connections' || enableDeveloperMode
   })
   // Anchor-lookup scope for SettingsFocusScroll (this tab's content column)

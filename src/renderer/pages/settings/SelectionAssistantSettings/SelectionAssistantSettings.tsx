@@ -111,7 +111,8 @@ const SelectionAssistantSettings: FC = () => {
           </div> */}
         </SettingTitle>
         <SettingDivider />
-        <SettingRow>
+        {/* 恢复上游 93bcb803e4 的搜索锚点：9/17 sync 重放 MEA 提交时被裸 <SettingRow> 冲掉，设置搜索定位依赖此 id */}
+        <SettingRow id="setting-selection-assistant-enable-selection-assistant" className="scroll-mt-6">
           <SettingLabel>
             <SettingRowTitle>{t('selection.settings.enable.title')}</SettingRowTitle>
             {!isSupportedOS && <SettingDescription>{t('selection.settings.enable.description')}</SettingDescription>}

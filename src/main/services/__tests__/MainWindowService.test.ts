@@ -595,6 +595,47 @@ describe('MainWindowService', () => {
       expect(event.preventDefault).toHaveBeenCalledTimes(1)
     })
 
+    it('allows the Agent browser to attach before its entry URL is assigned', () => {
+      ;(svc as any).setupWebviewSecurityProfiles(win)
+      const listener = win.webContents.on.mock.calls.find(([event]) => event === 'will-attach-webview')?.[1]
+      if (!listener) throw new Error('will-attach-webview listener was not registered')
+      const event = { preventDefault: vi.fn() }
+      const webPreferences = {}
+
+      listener(event, webPreferences, {
+        partition: getWebviewPartition(WebviewSecurityProfile.AgentBrowser),
+        src: ''
+      })
+
+      expect(event.preventDefault).not.toHaveBeenCalled()
+      expect(webPreferences).toMatchObject({
+        contextIsolation: true,
+        enableBlinkFeatures: 'WebMCP',
+        nodeIntegration: false,
+        preload: '/mock/feature.webview.preload_file',
+        sandbox: true,
+        webSecurity: true
+      })
+    })
+
+    it('rejects unsupported Agent browser entry protocols', () => {
+      ;(svc as any).setupWebviewSecurityProfiles(win)
+      const listener = win.webContents.on.mock.calls.find(([event]) => event === 'will-attach-webview')?.[1]
+      if (!listener) throw new Error('will-attach-webview listener was not registered')
+      const event = { preventDefault: vi.fn() }
+
+      listener(
+        event,
+        {},
+        {
+          partition: getWebviewPartition(WebviewSecurityProfile.AgentBrowser),
+          src: 'file:///tmp/index.html'
+        }
+      )
+
+      expect(event.preventDefault).toHaveBeenCalledOnce()
+    })
+
     it('rejects WebViews that do not declare a known security profile', () => {
       ;(svc as any).setupWebviewSecurityProfiles(win)
       const listener = win.webContents.on.mock.calls.find(([event]) => event === 'will-attach-webview')?.[1]

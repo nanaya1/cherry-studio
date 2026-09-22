@@ -441,6 +441,8 @@ export class MainWindowService extends BaseService {
 
       if (
         (securityProfile === WebviewSecurityProfile.AgentBrowser &&
+          // params.src !== 'about:blank' &&
+          params.src !== '' &&
           params.src !== 'about:blank' &&
           !this.isBrowserEntryUrl(params.src)) ||
         (securityProfile === WebviewSecurityProfile.HtmlArtifactPreview &&

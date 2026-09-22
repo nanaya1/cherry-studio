@@ -183,15 +183,13 @@ describe('SettingsPage', () => {
     const menuItems = screen.getAllByTestId('menu-item')
     const toolsStart = menuItems.indexOf(promptsItem)
 
-    // 停用原四项断言：远端知识服务与浏览器也是合法工具入口。
+    // 停用原四项断言：浏览器也是合法工具入口。
     // expect(menuItems.slice(toolsStart, toolsStart + 4)).toEqual([
     //   promptsItem,
     //   screen.getByRole('button', { name: '搜索' }),
     //   screen.getByRole('button', { name: '文档处理' }),
     //   screen.getByRole('button', { name: 'OCR' })
     // ])
-    // MEA：远端服务已提升为无分组入口，紧邻工具组之前而非组内。
-    expect(menuItems[toolsStart - 1]).toBe(screen.getByRole('button', { name: '远端服务' }))
     expect(menuItems.slice(toolsStart, toolsStart + 5)).toEqual([
       promptsItem,
       screen.getByRole('button', { name: '浏览器' }),
