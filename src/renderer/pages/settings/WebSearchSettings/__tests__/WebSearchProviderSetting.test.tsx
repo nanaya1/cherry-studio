@@ -138,6 +138,15 @@ describe('WebSearchProviderSetting', () => {
     ipcRequestMock.mockResolvedValue({ results: [] })
   })
 
+  it('opens the API key website through the app browser flow', () => {
+    render(<WebSearchProviderSetting {...createProps()} />)
+
+    const clickResult = fireEvent.click(screen.getByRole('link', { name: 'settings.provider.get_api_key' }))
+
+    expect(clickResult).toBe(false)
+    expect(ipcRequestMock).toHaveBeenCalledWith('system.shell.open_website', 'https://app.tavily.com/home')
+  })
+
   it('persists the current draft when the API key list button is clicked', async () => {
     const props = createProps()
     render(<WebSearchProviderSetting {...props} />)
