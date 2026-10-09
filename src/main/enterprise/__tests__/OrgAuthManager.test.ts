@@ -83,5 +83,9 @@ describe('OrgAuthManager C3 组织可用性标记', () => {
       expect.stringContaining('/xlyApi/business/user/userInfo'),
       expect.objectContaining({ headers: { authorization: 'Bearer official-token' } })
     )
+    expect(mgr.getStatus()).toMatchObject({
+      phase: 'signed-in',
+      displayName: 'test999'
+    })
   })
 })

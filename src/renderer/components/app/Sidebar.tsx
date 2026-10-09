@@ -16,6 +16,7 @@ import { useTabs } from '@renderer/hooks/tab'
 import { useAssistantsApi } from '@renderer/hooks/useAssistant'
 import useAvatar from '@renderer/hooks/useAvatar'
 import { useConversationNavigation } from '@renderer/hooks/useConversationNavigation'
+import { useOrgAccountSession } from '@renderer/hooks/useOrgAccountSession'
 import { useMiniApps } from '@renderer/hooks/useMiniApps'
 import { useSidebarFavorites } from '@renderer/hooks/useSidebarFavorites'
 import { mapApiTopicToRendererTopic } from '@renderer/hooks/useTopic'
@@ -74,6 +75,7 @@ export default function Sidebar({
 }) {
   const { t } = useTranslation()
   const [userName] = usePreference('app.user.name')
+  const [avatarPreference] = usePreference('app.user.avatar')
   const {
     favorites,
     appFavorites,
@@ -138,16 +140,23 @@ export default function Sidebar({
 
   // User avatar
   const avatar = useAvatar()
+  const { status: orgStatus } = useOrgAccountSession()
+  const signedInDisplayName = orgStatus?.phase === 'signed-in' ? orgStatus.displayName?.trim() : undefined
+  const sidebarDisplayName =
+    signedInDisplayName || userName || t('chat.user', { defaultValue: t('export.user', { defaultValue: 'User' }) })
   const sidebarUser = useMemo<SidebarUser>(
     () => ({
-      name: userName || t('chat.user', { defaultValue: t('export.user', { defaultValue: 'User' }) }),
-      description: t('workspace.localUser'),
-      avatar: avatar || undefined,
+      name: sidebarDisplayName,
+      description: signedInDisplayName ? undefined : t('workspace.localUser'),
+      avatar:
+        signedInDisplayName && !avatarPreference
+          ? signedInDisplayName.slice(0, 1).toUpperCase()
+          : avatar || undefined,
       onClick: () => UserPopup.show(),
       settingsLabel: t('settings.title'),
       onSettingsClick: () => openSettingsTab()
     }),
-    [avatar, t, userName]
+    [avatar, avatarPreference, sidebarDisplayName, signedInDisplayName, t]
   )
   const sidebarLogo = useMemo(() => <img src={AppLogo} alt="" className="h-full w-full object-cover" />, [])
 

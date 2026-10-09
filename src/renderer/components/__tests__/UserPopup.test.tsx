@@ -35,6 +35,11 @@ vi.mock('@cherrystudio/ui', () => {
     AvatarImage: ({ src, ...props }: { src?: string; [key: string]: unknown }) => (
       <img data-testid="avatar-image" src={src} alt="" {...props} />
     ),
+    AvatarFallback: ({ children, ...props }: { children?: ReactNode; [key: string]: unknown }) => (
+      <span data-testid="avatar-fallback" {...props}>
+        {children}
+      </span>
+    ),
     Button: ({ children, loading, ...props }: { children?: ReactNode; loading?: boolean; [key: string]: unknown }) => (
       <button type="button" aria-busy={loading || undefined} disabled={loading || undefined} {...props}>
         {children}
@@ -186,9 +191,20 @@ describe('UserPopup', () => {
     MockUsePreferenceUtils.resetMocks()
     mocks.appEdition = 'cn'
     mocks.statusListener = null
-    mocks.ipcRequest.mockImplementation(async (route: string) =>
-      route === 'cherry_cloud.status.get' ? { phase: 'signed-out', displayName: null } : undefined
-    )
+    mocks.ipcRequest.mockImplementation(async (route: string) => {
+      if (route === 'cherry_cloud.status.get') return { phase: 'signed-out', displayName: null }
+      if (route === 'enterprise.status.get') {
+        return {
+          phase: 'signed-out',
+          authMode: 'official-direct',
+          displayName: null,
+          phone: null,
+          role: null
+        }
+      }
+      if (route === 'enterprise.status.orgUnavailable') return { unavailable: false }
+      return undefined
+    })
   })
 
   afterEach(() => {
@@ -202,6 +218,28 @@ describe('UserPopup', () => {
     }
     vi.advanceTimersByTime(POPUP_EXIT_MS)
     vi.useRealTimers()
+  })
+
+  it('shows the signed-in account name and its initial instead of the local profile placeholder', async () => {
+    mocks.ipcRequest.mockImplementation(async (route: string) => {
+      if (route === 'enterprise.status.get') {
+        return {
+          phase: 'signed-in',
+          authMode: 'official-direct',
+          displayName: '测试用户',
+          phone: '13900000000',
+          role: ''
+        }
+      }
+      if (route === 'enterprise.status.orgUnavailable') return { unavailable: false }
+      return undefined
+    })
+
+    showUserPopup()
+
+    expect(await screen.findByDisplayValue('测试用户')).toBeDisabled()
+    expect(screen.getByTestId('avatar-fallback')).toHaveTextContent('测')
+    expect(screen.queryByPlaceholderText('settings.general.user_name.placeholder')).not.toBeInTheDocument()
   })
 
   it('renders image avatars with object-cover cropping', async () => {

@@ -17,7 +17,7 @@ const logger = loggerService.withContext('OrgAuthManager')
 
 const ORG_BASE_URL = ORG_SERVER_BASE_URL
 const OFFICIAL_LOGIN_URL = import.meta.env.MAIN_VITE_OFFICIAL_LOGIN_URL?.trim() || 'https://mro.xuelangyun.com/login'
-const REDIRECT_URI = 'meacowork://auth/sso/callback'
+// const REDIRECT_URI = 'meacowork://auth/sso/callback' // [enterprise] 官网登录地址不再拼接 redirect_uri
 
 interface PendingAuth {
   createdAt: number
@@ -52,6 +52,7 @@ export class OrgAuthManager {
     return {
       phase: this.getPhase(),
       authMode: ORG_AUTH_MODE,
+      displayName: this.session?.displayName ?? null,
       phone: this.session?.phone ?? null,
       role: this.session?.role ?? null
     }
@@ -107,14 +108,15 @@ export class OrgAuthManager {
           accessToken: string
           refreshToken: string
           expiresIn: number
-          user: { id: string; phone: string; role: string; officialUserId?: string }
+          user: { id: string; displayName?: string | null; phone: string | null; role: string; officialUserId?: string }
         }
 
         this.session = {
           authMode: 'management-exchange',
           userId: data.user.id,
           officialUserId: data.user.officialUserId ?? '',
-          phone: data.user.phone,
+          displayName: data.user.displayName?.trim() || null,
+          phone: data.user.phone ?? '',
           role: data.user.role,
           accessToken: data.accessToken,
           refreshToken: data.refreshToken,
@@ -144,6 +146,7 @@ export class OrgAuthManager {
       code?: number
       data?: {
         userId?: number | string
+        userCode?: string | null
         userNickname?: string | null
         userPhone?: string | null
       } | null
@@ -155,6 +158,7 @@ export class OrgAuthManager {
       authMode: 'official-direct',
       userId: String(body.data.userId),
       officialUserId: String(body.data.userId),
+      displayName: body.data.userNickname?.trim() || body.data.userCode?.trim() || null,
       phone: body.data.userPhone ?? '',
       role: '',
       accessToken: token,

@@ -43,6 +43,7 @@ export interface OrgSession {
   authMode: OrgAuthMode
   userId: string
   officialUserId: string
+  displayName: string | null
   phone: string
   role: string
   accessToken: string

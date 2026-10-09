@@ -5,6 +5,7 @@ import type { CommandContextMenuExtraItem } from '@renderer/components/command'
 import type * as PlatformModule from '@renderer/utils/platform'
 import type { SidebarAppId } from '@renderer/utils/sidebar'
 import type { SidebarFavoriteItem } from '@shared/data/preference/preferenceTypes'
+import type { EnterpriseStatus } from '@shared/ipc/schemas/enterprise'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -81,7 +82,14 @@ const mocks = vi.hoisted(() => ({
   visibleMiniApps: null as FakeMiniApp[] | null,
   pinnedMiniApps: [] as FakeMiniApp[],
   sidebarProps: [] as unknown[],
-  platformState: { isMac: false }
+  platformState: { isMac: false },
+  orgStatus: {
+    phase: 'signed-out',
+    authMode: 'official-direct',
+    displayName: null,
+    phone: null,
+    role: null
+  } as EnterpriseStatus
 }))
 
 vi.mock('@data/hooks/useCache', () => ({
@@ -137,6 +145,10 @@ vi.mock('@renderer/hooks/useAssistant', () => ({
 
 vi.mock('@renderer/hooks/useAvatar', () => ({
   default: () => undefined
+}))
+
+vi.mock('@renderer/hooks/useOrgAccountSession', () => ({
+  useOrgAccountSession: () => ({ status: mocks.orgStatus })
 }))
 
 vi.mock('@renderer/hooks/resourceViewSources', () => ({
@@ -421,6 +433,13 @@ afterEach(() => {
   mocks.sidebarWidth = 50
   mocks.sidebarProps = []
   mocks.platformState.isMac = false
+  mocks.orgStatus = {
+    phase: 'signed-out',
+    authMode: 'official-direct',
+    displayName: null,
+    phone: null,
+    role: null
+  }
   vi.useRealTimers()
   document.documentElement.style.removeProperty('--sidebar-width')
 })
@@ -562,6 +581,20 @@ describe('app Sidebar', () => {
     expect(props.user).toMatchObject({ name: 'JD', description: 'Local user' })
     expect(props.actions).toEqual(expect.any(Function))
     expect(mocks.showUserPopup).not.toHaveBeenCalled()
+  })
+
+  it('shows the signed-in account name without the local-user subtitle', () => {
+    mocks.orgStatus = {
+      phase: 'signed-in',
+      authMode: 'official-direct',
+      displayName: '测试用户',
+      phone: '13900000000',
+      role: ''
+    }
+
+    render(<Sidebar />)
+
+    expect(getSidebarProps().user).toMatchObject({ name: '测试用户', description: undefined, avatar: '测' })
   })
 
   it('moves search and sidebar collapse actions into the macOS sidebar title bar', () => {

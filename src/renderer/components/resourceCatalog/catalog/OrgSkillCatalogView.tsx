@@ -241,7 +241,7 @@ export function OrgSkillCatalogView({ search = '' }: OrgSkillCatalogViewProps) {
                     <h2 className="truncate font-semibold text-sm">{skill.name}</h2>
                     {/* [enterprise] 卡片标签行只显示 tags（categories 仅用于筛选 tab，对齐推荐视图分工） */}
                     {(skill.tags?.length ?? 0) > 0 ? (
-                      <SkillDimensionTags items={skill.tags} />
+                      <SkillDimensionTags items={skill.tags ?? []} />
                     ) : (
                       <span className="text-foreground-tertiary text-xs">v{skill.version}</span>
                     )}

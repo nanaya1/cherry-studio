@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 
 import {
   Avatar,
+  AvatarFallback,
   AvatarImage,
   Button,
   Center,
@@ -36,6 +37,7 @@ type AvatarPopoverView = 'menu' | 'emoji'
 
 const PopupContainer: React.FC<Props> = ({ open, resolve }) => {
   const [userName, setUserName] = usePreference('app.user.name')
+  const [avatarPreference] = usePreference('app.user.avatar')
 
   const [avatarPopoverOpen, setAvatarPopoverOpen] = useState(false)
   const [avatarPopoverView, setAvatarPopoverView] = useState<AvatarPopoverView>('menu')
@@ -67,6 +69,7 @@ const PopupContainer: React.FC<Props> = ({ open, resolve }) => {
     // [enterprise] C3：登出后 org 资源标记"组织不可用"，重登自动恢复
     orgUnavailable
   } = useOrgAccountSession(open)
+  const signedInDisplayName = orgStatus?.phase === 'signed-in' ? orgStatus.displayName?.trim() : undefined
 
   const onOpenChange = (nextOpen: boolean) => {
     if (!nextOpen) {
@@ -141,7 +144,13 @@ const PopupContainer: React.FC<Props> = ({ open, resolve }) => {
                   variant="ghost"
                   aria-label={t('common.avatar')}
                   className="size-20 rounded-[25%] p-0 text-foreground shadow-none transition-opacity hover:bg-transparent hover:text-foreground hover:opacity-80 focus-visible:bg-transparent focus-visible:opacity-80">
-                  {isEmoji(avatar) ? (
+                  {signedInDisplayName && !avatarPreference ? (
+                    <Avatar className="size-20 rounded-[25%]">
+                      <AvatarFallback className="bg-linear-to-br from-blue-400 to-indigo-500 text-2xl text-white">
+                        {signedInDisplayName.slice(0, 1).toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                  ) : isEmoji(avatar) ? (
                     <EmojiAvatar size={80} fontSize={40}>
                       {avatar}
                     </EmojiAvatar>
@@ -193,10 +202,11 @@ const PopupContainer: React.FC<Props> = ({ open, resolve }) => {
         </Center>
         <RowFlex className="items-center gap-2.5 p-5">
           <Input
-            placeholder={t('settings.general.user_name.placeholder')}
-            value={userName}
-            onChange={(e) => setUserName(e.target.value.trim())}
-            className="w-full flex-1 text-center"
+            placeholder={signedInDisplayName ? undefined : t('settings.general.user_name.placeholder')}
+            value={signedInDisplayName || userName}
+            onChange={signedInDisplayName ? undefined : (e) => setUserName(e.target.value.trim())}
+            disabled={Boolean(signedInDisplayName)}
+            className="w-full flex-1 text-center disabled:cursor-default disabled:opacity-100"
             maxLength={30}
           />
         </RowFlex>

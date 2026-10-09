@@ -23,6 +23,7 @@ export const orgSessionSchema = z.object({
   authMode: z.enum(['management-exchange', 'official-direct']).default('management-exchange'),
   userId: z.string(),
   officialUserId: z.string(),
+  displayName: z.string().nullable().default(null),
   phone: z.string(),
   role: z.string(),
   accessToken: z.string(),
