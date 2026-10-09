@@ -14,7 +14,7 @@ import { promisify } from 'node:util'
 import { agentGlobalSkillService } from '@data/services/AgentGlobalSkillService'
 import { loggerService } from '@logger'
 
-import { ORG_SERVER_BASE_URL } from './OrgApiClient'
+import { getOrgApiBaseUrl } from './OrgApiClient'
 import type { OrgAuthManager } from './OrgAuthManager'
 import { orgStateStore } from './OrgStateStore'
 import type { OrgSkillCatalogItem, OrgSkillFacet, RawOrgSkillFacet } from './types'
@@ -63,8 +63,8 @@ export class OrgSkillCatalog {
       const resolved = skills.map((skill) => {
         let iconUrl: string | null = null
         if (skill.iconUrl?.startsWith('/api/skill-icons/')) {
-          const parsed = new URL(skill.iconUrl, ORG_SERVER_BASE_URL)
-          if (parsed.origin === new URL(ORG_SERVER_BASE_URL).origin) iconUrl = parsed.toString()
+          const parsed = new URL(skill.iconUrl, getOrgApiBaseUrl())
+          if (parsed.origin === new URL(getOrgApiBaseUrl()).origin) iconUrl = parsed.toString()
         }
         // [enterprise] tags/categories 双形态归一化（见 normalizeFacets），渲染层恒拿到 {code,name}
         const categories = normalizeFacets(skill.categories)
@@ -291,9 +291,6 @@ export class OrgSkillCatalog {
   }
 
   private baseUrl() {
-    // 与 OrgAuthManager 保持一致（T0 联调固定值）
-    // 停用原写死联调地址，统一引用 ORG_SERVER_BASE_URL（构建期可通过 MAIN_VITE_ORG_SERVER_BASE_URL 覆盖）
-    // return 'http://127.0.0.1:3000'
-    return ORG_SERVER_BASE_URL
+    return getOrgApiBaseUrl()
   }
 }

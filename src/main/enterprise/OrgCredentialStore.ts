@@ -5,7 +5,7 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
-import { z } from 'zod'
+import * as z from 'zod'
 
 import { application } from '@application'
 import { loggerService } from '@logger'
@@ -20,7 +20,9 @@ function credFile(): string {
 }
 
 export const orgSessionSchema = z.object({
+  authMode: z.enum(['management-exchange', 'official-direct']).default('management-exchange'),
   userId: z.string(),
+  officialUserId: z.string(),
   phone: z.string(),
   role: z.string(),
   accessToken: z.string(),
@@ -42,7 +44,7 @@ export class OrgCredentialStore {
         logger.warn('org session file corrupted, ignoring')
         return null
       }
-      return parsed.data.session
+      return { ...parsed.data.session, authMode: parsed.data.session.authMode ?? 'management-exchange' }
     } catch (error) {
       logger.warn('failed to read org session file', { error: String(error) })
       return null

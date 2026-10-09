@@ -1,33 +1,25 @@
 /**
  * [enterprise] T0 企业扩展 - 登录管理器
- * 参考 CherryCloudService：系统浏览器授权 + PKCE，回调改走 meacowork://auth 深链
+ * 官网 SSO：系统浏览器登录 + 官网 token 回调，回调改走 meacowork://auth 深链
  * （由 ProtocolService case 'auth' 分发到 handleAuthCallback）。
  */
-import { createHash, randomBytes } from 'node:crypto'
-
 import { shell } from 'electron'
 
 import { application } from '@application'
 import { loggerService } from '@logger'
 
-import { OrgApiClient, ORG_SERVER_BASE_URL } from './OrgApiClient'
+import { OrgApiClient, ORG_AUTH_MODE, OFFICIAL_API_BASE_URL, ORG_SERVER_BASE_URL } from './OrgApiClient'
 import { OrgCredentialStore, type OrgSession } from './OrgCredentialStore'
 // import { orgStateStore } from './OrgStateStore' // [enterprise] copy 模式不再按登录态管理已安装资源
-import type { OrgAuthPhase } from './types'
+import { parseOrgAuthCallback, type OrgAuthPhase } from './types'
 
 const logger = loggerService.withContext('OrgAuthManager')
 
-// T0 联调固定地址；M 里程碑移入配置
-// 停用原写死联调地址，统一引用 ORG_SERVER_BASE_URL（构建期可通过 MAIN_VITE_ORG_SERVER_BASE_URL 覆盖；
-// 该地址承载企业版登录授权 /authorize /api/token 与技能、连接器目录，详见 OrgApiClient.ts）
-// const ORG_BASE_URL = 'http://127.0.0.1:3000'
 const ORG_BASE_URL = ORG_SERVER_BASE_URL
-const CLIENT_ID = 'cherry-desktop'
-const REDIRECT_URI = 'meacowork://auth/callback'
+const OFFICIAL_LOGIN_URL = import.meta.env.MAIN_VITE_OFFICIAL_LOGIN_URL?.trim() || 'https://mro.xuelangyun.com/login'
+const REDIRECT_URI = 'meacowork://auth/sso/callback'
 
 interface PendingAuth {
-  state: string
-  codeVerifier: string
   createdAt: number
 }
 
@@ -59,28 +51,19 @@ export class OrgAuthManager {
   getStatus() {
     return {
       phase: this.getPhase(),
+      authMode: ORG_AUTH_MODE,
       phone: this.session?.phone ?? null,
       role: this.session?.role ?? null
     }
   }
 
-  /** 开始登录：生成 PKCE + 跳系统浏览器 */
+  /** 开始登录：打开官网登录页，官网完成后回调自定义协议地址 */
   async startLogin(): Promise<{ authorizationUrl: string }> {
-    const state = randomBytes(16).toString('base64url')
-    const codeVerifier = randomBytes(32).toString('base64url')
-    const codeChallenge = createHash('sha256').update(codeVerifier).digest('base64url')
-
-    this.pending = { state, codeVerifier, createdAt: Date.now() }
+    this.pending = { createdAt: Date.now() }
     this.emitStatus()
 
-    const params = new URLSearchParams({
-      client_id: CLIENT_ID,
-      redirect_uri: REDIRECT_URI,
-      state,
-      code_challenge: codeChallenge,
-      code_challenge_method: 'S256'
-    })
-    const authorizationUrl = `${ORG_BASE_URL}/authorize?${params}`
+    // const params = new URLSearchParams({ redirect_uri: REDIRECT_URI })
+    const authorizationUrl = OFFICIAL_LOGIN_URL
 
     // 摘要日志，不落 verifier
     logger.info('starting org login, opening system browser')
@@ -90,19 +73,16 @@ export class OrgAuthManager {
 
   /** ProtocolService case 'auth' 转发进来 */
   async handleAuthCallback(url: URL): Promise<void> {
-    const params = new URLSearchParams(url.search)
-    const code = params.get('code')
-    const state = params.get('state')
-    if (!code || !state) {
-      logger.warn('org auth callback missing code/state')
+    const callback = parseOrgAuthCallback(url)
+    if (!callback) {
+      logger.warn('org auth callback rejected')
       return
     }
+    const { token } = callback
 
     const pending = this.pending
-    if (!pending || pending.state !== state) {
-      logger.warn('org auth callback state mismatch or expired')
-      this.pending = null
-      this.emitStatus()
+    if (!pending) {
+      logger.warn('org auth callback without pending login')
       return
     }
     if (Date.now() - pending.createdAt > PENDING_TTL_MS) {
@@ -113,32 +93,33 @@ export class OrgAuthManager {
     }
 
     try {
-      const res = await fetch(`${ORG_BASE_URL}/api/token`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-          grant_type: 'authorization_code',
-          code,
-          code_verifier: pending.codeVerifier,
-          client_id: CLIENT_ID,
-          redirect_uri: REDIRECT_URI
+      if (ORG_AUTH_MODE === 'official-direct') {
+        this.session = await this.exchangeOfficialToken(token)
+      } else {
+        if (!ORG_BASE_URL) throw new Error('management server URL is not configured')
+        const res = await fetch(`${ORG_BASE_URL}/api/auth/exchange`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ officialToken: token })
         })
-      })
-      if (!res.ok) throw new Error(`token exchange failed (${res.status})`)
-      const data = (await res.json()) as {
-        access_token: string
-        refresh_token: string
-        expires_in: number
-        user: { id: string; phone: string; role: string }
-      }
+        if (!res.ok) throw new Error(`org auth exchange failed (${res.status})`)
+        const data = (await res.json()) as {
+          accessToken: string
+          refreshToken: string
+          expiresIn: number
+          user: { id: string; phone: string; role: string; officialUserId?: string }
+        }
 
-      this.session = {
-        userId: data.user.id,
-        phone: data.user.phone,
-        role: data.user.role,
-        accessToken: data.access_token,
-        refreshToken: data.refresh_token,
-        expiresAt: Date.now() + data.expires_in * 1000
+        this.session = {
+          authMode: 'management-exchange',
+          userId: data.user.id,
+          officialUserId: data.user.officialUserId ?? '',
+          phone: data.user.phone,
+          role: data.user.role,
+          accessToken: data.accessToken,
+          refreshToken: data.refreshToken,
+          expiresAt: Date.now() + data.expiresIn * 1000
+        }
       }
       this.credentialStore.save(this.session)
       this.pending = null
@@ -151,6 +132,34 @@ export class OrgAuthManager {
       this.pending = null
       this.emitStatus()
       throw error
+    }
+  }
+
+  private async exchangeOfficialToken(token: string): Promise<OrgSession> {
+    const res = await fetch(`${OFFICIAL_API_BASE_URL}/xlyApi/business/user/userInfo`, {
+      headers: { authorization: `Bearer ${token}` }
+    })
+    if (!res.ok) throw new Error(`official userInfo failed (${res.status})`)
+    const body = (await res.json()) as {
+      code?: number
+      data?: {
+        userId?: number | string
+        userNickname?: string | null
+        userPhone?: string | null
+      } | null
+    }
+    if (body.code !== 200 || body.data?.userId === undefined || body.data?.userId === null) {
+      throw new Error('official userInfo invalid')
+    }
+    return {
+      authMode: 'official-direct',
+      userId: String(body.data.userId),
+      officialUserId: String(body.data.userId),
+      phone: body.data.userPhone ?? '',
+      role: '',
+      accessToken: token,
+      refreshToken: '',
+      expiresAt: Number.MAX_SAFE_INTEGER
     }
   }
 
@@ -168,7 +177,7 @@ export class OrgAuthManager {
   /** 供 HTTP 客户端取有效 access token；过期自动刷新 */
   async getValidSession(): Promise<OrgSession | null> {
     if (!this.session) return null
-    if (Date.now() < this.session.expiresAt - TOKEN_EXPIRY_MARGIN_MS) return this.session
+    if (this.session.authMode === 'official-direct' || Date.now() < this.session.expiresAt - TOKEN_EXPIRY_MARGIN_MS) return this.session
     await this.refreshSession()
     return this.session
   }
@@ -184,6 +193,8 @@ export class OrgAuthManager {
   private async doRefresh(): Promise<void> {
     const current = this.session
     if (!current) return
+    if (current.authMode === 'official-direct') return
+    if (!ORG_BASE_URL) throw new Error('management server URL is not configured')
     try {
       const res = await fetch(`${ORG_BASE_URL}/api/auth/token/refresh`, {
         method: 'POST',
@@ -191,12 +202,13 @@ export class OrgAuthManager {
         body: JSON.stringify({ refreshToken: current.refreshToken })
       })
       if (!res.ok) throw new Error(`refresh failed (${res.status})`)
-      const data = (await res.json()) as { accessToken: string; refreshToken: string }
+      const data = (await res.json()) as { accessToken: string; refreshToken: string; expiresIn: number }
       // 轮换语义：服务端已作废旧 refresh，必须一并替换
       this.session = {
         ...current,
         accessToken: data.accessToken,
-        refreshToken: data.refreshToken
+        refreshToken: data.refreshToken,
+        expiresAt: Date.now() + data.expiresIn * 1000
       }
       this.credentialStore.save(this.session)
     } catch (error) {

@@ -37,8 +37,12 @@ export interface OrgConnectorCatalogItem {
   config: Record<string, unknown>
 }
 
+export type OrgAuthMode = 'management-exchange' | 'official-direct'
+
 export interface OrgSession {
+  authMode: OrgAuthMode
   userId: string
+  officialUserId: string
   phone: string
   role: string
   accessToken: string
@@ -49,12 +53,17 @@ export interface OrgSession {
 
 export type OrgAuthPhase = 'signed-out' | 'authorizing' | 'signed-in'
 
-/** [enterprise] OAuth 回调 URL 解析：meacowork://auth/callback?code=..&state=.. */
-export function parseOrgAuthCallback(url: URL): { code: string; state: string } | null {
-  if (url.protocol !== 'meacowork:' || url.hostname.toLowerCase() !== 'auth') return null
+/** [enterprise] 官网 SSO 回调 URL 解析：meacowork://auth/sso/callback?token=.. */
+export function parseOrgAuthCallback(url: URL): { token: string } | null {
+  if (
+    url.protocol !== 'meacowork:' ||
+    url.hostname.toLowerCase() !== 'auth' ||
+    url.pathname !== '/sso/callback'
+  ) {
+    return null
+  }
   const params = new URLSearchParams(url.search)
-  const code = params.get('code')
-  const state = params.get('state')
-  if (!code || !state) return null
-  return { code, state }
+  const token = params.get('token')
+  if (!token) return null
+  return { token }
 }

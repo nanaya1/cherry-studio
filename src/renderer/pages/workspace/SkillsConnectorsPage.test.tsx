@@ -5,6 +5,10 @@ import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+const { orgSessionMock } = vi.hoisted(() => ({
+  orgSessionMock: { authMode: 'management-exchange' as 'management-exchange' | 'official-direct' }
+}))
+
 type MockSkillController = {
   gridProps: {
     onOpenSkillMarketplace: () => void
@@ -54,6 +58,10 @@ vi.mock('@renderer/components/resourceCatalog/catalog', () => ({
   )
 }))
 
+vi.mock('@renderer/hooks/useOrgAccountSession', () => ({
+  useOrgAccountSession: () => ({ status: { authMode: orgSessionMock.authMode } })
+}))
+
 vi.mock('@renderer/hooks/resourceCatalog', () => ({
   useResourceCatalogController: () => {
     const [skillMarketplaceOpen, setSkillMarketplaceOpen] = useState(false)
@@ -92,9 +100,18 @@ import SkillsConnectorsPage from './SkillsConnectorsPage'
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
+  orgSessionMock.authMode = 'management-exchange'
 })
 
 describe('SkillsConnectorsPage', () => {
+  it('hides the public skill tab when no management server is configured', () => {
+    orgSessionMock.authMode = 'official-direct'
+    render(<SkillsConnectorsPage connectorView={<div>connector catalog</div>} />)
+
+    expect(screen.getByRole('tab', { name: 'Recommended skills' })).toBeVisible()
+    expect(screen.queryByRole('tab', { name: 'Organization' })).not.toBeInTheDocument()
+  })
+
   it('shows recommended skills by default and preserves access to installed skills', async () => {
     const user = userEvent.setup()
     render(<SkillsConnectorsPage connectorView={<div>connector catalog</div>} />)

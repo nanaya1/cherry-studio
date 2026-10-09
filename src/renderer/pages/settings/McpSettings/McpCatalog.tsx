@@ -14,6 +14,7 @@ import {
   TabsTrigger
 } from '@cherrystudio/ui'
 import { useMcpServers } from '@renderer/hooks/useMcpServer'
+import { useOrgAccountSession } from '@renderer/hooks/useOrgAccountSession'
 import { cn } from '@renderer/utils/style'
 
 import BuiltinMcpServerList from './BuiltinMcpServerList'
@@ -36,6 +37,8 @@ const primaryTabClassName =
 export default function McpCatalog() {
   const { t } = useTranslation()
   const { mcpServers } = useMcpServers()
+  const { status: accountStatus } = useOrgAccountSession()
+  const showPublicCatalog = accountStatus?.authMode === 'management-exchange'
   const [activeTab, setActiveTab] = useState<CatalogTab>('discover')
   const [discoverTab, setDiscoverTab] = useState<DiscoverTab>('builtin')
   const [selectedProvider, setSelectedProvider] = useState<ProviderConfig | null>(null)
@@ -86,9 +89,11 @@ export default function McpCatalog() {
             {t('settings.mcp.discover')}
           </TabsTrigger>
           {/* [enterprise] 组织连接器从发现页三级 tab 上移至二级 */}
-          <TabsTrigger value="org" className={primaryTabClassName}>
-            {t('workspace.skillsConnectors.sources.org')}
-          </TabsTrigger>
+          {showPublicCatalog ? (
+            <TabsTrigger value="org" className={primaryTabClassName}>
+              {t('workspace.skillsConnectors.sources.org')}
+            </TabsTrigger>
+          ) : null}
           <TabsTrigger value="providers" className={primaryTabClassName}>
             {t('settings.mcp.providers')}
           </TabsTrigger>
@@ -111,11 +116,13 @@ export default function McpCatalog() {
       </TabsContent>
 
       {/* [enterprise] 组织连接器目录升级为二级 tab 内容 */}
-      <TabsContent value="org" className="min-h-0 flex-1">
-        <Scrollbar className="@container/mcp-discover h-full px-6 py-5">
-          <OrgConnectorList variant="catalog" />
-        </Scrollbar>
-      </TabsContent>
+      {showPublicCatalog ? (
+        <TabsContent value="org" className="min-h-0 flex-1">
+          <Scrollbar className="@container/mcp-discover h-full px-6 py-5">
+            <OrgConnectorList variant="catalog" />
+          </Scrollbar>
+        </TabsContent>
+      ) : null}
 
       <TabsContent value="providers" className="min-h-0 flex-1">
         <Scrollbar className="@container/mcp-providers h-full px-6 py-5">

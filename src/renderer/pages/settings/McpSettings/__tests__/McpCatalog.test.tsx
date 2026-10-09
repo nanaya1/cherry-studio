@@ -5,6 +5,14 @@ import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+const { orgSessionMock } = vi.hoisted(() => ({
+  orgSessionMock: { authMode: 'management-exchange' as 'management-exchange' | 'official-direct' }
+}))
+
+vi.mock('@renderer/hooks/useOrgAccountSession', () => ({
+  useOrgAccountSession: () => ({ status: { authMode: orgSessionMock.authMode } })
+}))
+
 vi.mock('@renderer/hooks/useMcpServer', () => ({
   useMcpServers: () => ({ mcpServers: [{ id: 'installed-server' }] })
 }))
@@ -85,9 +93,20 @@ vi.mock('react-i18next', () => ({
 
 import McpCatalog from '../McpCatalog'
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  orgSessionMock.authMode = 'management-exchange'
+})
 
 describe('McpCatalog', () => {
+  it('hides the public connector tab when no management server is configured', () => {
+    orgSessionMock.authMode = 'official-direct'
+    render(<McpCatalog />)
+
+    expect(screen.getByRole('tab', { name: 'Discover' })).toBeVisible()
+    expect(screen.queryByRole('tab', { name: 'Organization' })).not.toBeInTheDocument()
+  })
+
   it('presents discovery, provider, and installed MCP views from the settings sources', async () => {
     const user = userEvent.setup()
     render(<McpCatalog />)

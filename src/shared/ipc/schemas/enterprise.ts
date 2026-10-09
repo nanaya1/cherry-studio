@@ -6,6 +6,7 @@ import { defineRoute } from '../define'
 
 export const enterpriseStatusSchema = z.strictObject({
   phase: z.enum(['signed-out', 'authorizing', 'signed-in']),
+  authMode: z.enum(['management-exchange', 'official-direct']),
   phone: z.string().nullable(),
   role: z.string().nullable()
 })

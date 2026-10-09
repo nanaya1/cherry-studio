@@ -13,6 +13,7 @@ import {
 } from '@renderer/components/resourceCatalog/catalog'
 import { ResourceCatalogSearchInput } from '@renderer/components/resourceCatalog/ResourceCatalogSearchInput'
 import { useResourceCatalogController } from '@renderer/hooks/resourceCatalog'
+import { useOrgAccountSession } from '@renderer/hooks/useOrgAccountSession'
 
 interface SkillsConnectorsPageProps {
   connectorView: ReactNode
@@ -33,6 +34,8 @@ export default function SkillsConnectorsPage({ connectorView }: SkillsConnectors
   const [activeTab, setActiveTab] = useState('skill')
   const [skillView, setSkillView] = useState<SkillView>('recommended')
   const [recommendedSearch, setRecommendedSearch] = useState('')
+  const { status: accountStatus } = useOrgAccountSession()
+  const showPublicCatalog = accountStatus?.authMode === 'management-exchange'
   // [enterprise] 「推荐」一级视图内的二级 tab 状态
   const [orgSubTab, setOrgSubTab] = useState<OrgSubTab>('recommended')
   const skillController = useResourceCatalogController('skill', { clientSideSkillSearch: true })
@@ -118,9 +121,11 @@ export default function SkillsConnectorsPage({ connectorView }: SkillsConnectors
                 className="h-7 gap-1.5 rounded-full border-0 px-3 py-0 text-muted-foreground shadow-none hover:text-foreground data-[state=active]:bg-muted data-[state=active]:text-foreground data-[state=active]:shadow-none dark:data-[state=active]:text-foreground">
                 {t('workspace.skill_catalog.org')}
               </TabsTrigger> */}
-              <TabsTrigger value="org" className={secondaryTabClassName}>
-                {t('workspace.skill_catalog.org')}
-              </TabsTrigger>
+              {showPublicCatalog ? (
+                <TabsTrigger value="org" className={secondaryTabClassName}>
+                  {t('workspace.skill_catalog.org')}
+                </TabsTrigger>
+              ) : null}
             </TabsList>
             <TabsContent value="recommended" className="flex min-h-0 flex-1 flex-col">
               <RecommendedSkillCatalogView
@@ -128,10 +133,12 @@ export default function SkillsConnectorsPage({ connectorView }: SkillsConnectors
                 onViewInstalled={() => setSkillView('installed')}
               />
             </TabsContent>
-            <TabsContent value="org" className="flex min-h-0 flex-1 flex-col">
-              {/* <OrgSkillCatalogView /> */}
-              <OrgSkillCatalogView search={recommendedSearch} />
-            </TabsContent>
+            {showPublicCatalog ? (
+              <TabsContent value="org" className="flex min-h-0 flex-1 flex-col">
+                {/* <OrgSkillCatalogView /> */}
+                <OrgSkillCatalogView search={recommendedSearch} />
+              </TabsContent>
+            ) : null}
           </Tabs>
         ) : (
           <SkillCatalogView controller={skillController} secondary showDialogs={false} />

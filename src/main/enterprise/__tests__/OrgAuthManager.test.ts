@@ -65,25 +65,23 @@ describe('OrgAuthManager C3 组织可用性标记', () => {
       ok: true,
       json: () =>
         Promise.resolve({
-          access_token: 'at',
-          refresh_token: 'rt',
-          expires_in: 900,
-          user: { id: 'u1', phone: '13900000000', role: 'normal_user' }
+          code: 200,
+          data: { userId: 1000272, userPhone: '13900000000', userNickname: 'test999' }
         })
     })
     globalThis.fetch = fetchMock as never
 
     // 注入 pending（模拟 startLogin 后收到回调）
-    ;(mgr as unknown as { pending: unknown }).pending = {
-      state: 'st',
-      codeVerifier: 'cv',
-      createdAt: Date.now()
-    }
+    ;(mgr as unknown as { pending: unknown }).pending = { createdAt: Date.now() }
 
-    const url = new URL('meacowork://auth/callback?code=c1&state=st')
+    const url = new URL('meacowork://auth/sso/callback?token=official-token')
     await mgr.handleAuthCallback(url)
 
     expect(stateStoreMock.markAvailable).not.toHaveBeenCalled()
     expect(stateStoreMock.markUnavailable).not.toHaveBeenCalled()
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/xlyApi/business/user/userInfo'),
+      expect.objectContaining({ headers: { authorization: 'Bearer official-token' } })
+    )
   })
 })

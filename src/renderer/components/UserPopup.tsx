@@ -255,7 +255,7 @@ const PopupContainer: React.FC<Props> = ({ open, resolve }) => {
           </RowFlex>
         ) : null}
         */}
-        {/* [enterprise] T0 企业服务登录入口（樱桃云入口同款布局） */}
+        {/* [enterprise] 官网账户登录入口（樱桃云入口同款布局） */}
         {orgLoadState === 'ready' && orgStatus ? (
           <RowFlex className="border-border-subtle border-t px-5 py-4">
             {orgStatus.phase === 'signed-in' ? (
@@ -265,7 +265,7 @@ const PopupContainer: React.FC<Props> = ({ open, resolve }) => {
                   loading={isOrgLoggingOut}
                   onClick={() => void handleOrgLogout()}
                   variant="outline">
-                  {/* 原硬编码：退出企业服务 */}
+                  {/* 原硬编码：退出登录 */}
                   {t('settings.provider.org_service.logout')}
                 </Button>
                 {orgStatus.phone ? (
@@ -292,7 +292,7 @@ const PopupContainer: React.FC<Props> = ({ open, resolve }) => {
                   loading={isOrgLoggingIn}
                   onClick={() => void handleOrgLogin()}
                   variant="emphasis">
-                  {/* 原硬编码：等待浏览器授权… / 企业服务登录 */}
+                  {/* 原硬编码：等待浏览器授权… / 登录 */}
                   {isOrgLoggingIn || orgStatus.phase === 'authorizing'
                     ? t('settings.provider.org_service.signing_in')
                     : t('settings.provider.org_service.login')}
