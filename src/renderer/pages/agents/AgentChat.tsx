@@ -457,6 +457,8 @@ const AgentChat = ({
               selectModelLabel={t('button.select_model')}
               selectWorkspaceLabel={t('agent.session.workspace_selector.placeholder')}
               shouldAutoSelectCreatedAgent
+              // MEA: 任务会话固定当前智能体，不显示智能体切换/编辑入口。
+              showAgentControl={false}
               agentTriggerMode={isEmptyConversation ? 'selector' : 'edit'}
               canChangeModel
               onAgentChange={handleSessionAgentChange}

@@ -25,6 +25,8 @@ export type ResourceCatalogViewProps = {
   toolbarLeading?: ReactNode
   /** `settings` swaps the full-bleed toolbar for a settings page header (title + add button + search row). */
   variant?: 'library' | 'settings'
+  /** Hide resource management actions while keeping the catalog readable. */
+  showManagementActions?: boolean
   title?: ReactNode
   description?: ReactNode
   toolbarFooter?: ReactNode
@@ -40,6 +42,7 @@ export function ResourceCatalogView({
   resourceType,
   toolbarLeading,
   variant = 'library',
+  showManagementActions = true,
   title,
   description,
   toolbarFooter,
@@ -106,6 +109,7 @@ export function ResourceCatalogView({
             onOpenSystemSkills={resourceType === 'skill' ? gridProps.onOpenSystemSkills : undefined}
             toolbarLeading={toolbarLeading}
             variant={variant}
+            showManagementActions={showManagementActions}
             title={title}
             description={description}
           />

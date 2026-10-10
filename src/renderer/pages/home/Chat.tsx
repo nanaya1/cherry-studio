@@ -293,6 +293,8 @@ const Chat: FC<Props> = (props) => {
                   selectModelLabel={assistantContext.isModelPending ? t('common.loading') : t('button.select_model')}
                   useMentionedModelSelector
                   shouldAutoSelectCreatedAssistant={false}
+                  // MEA: 会话由当前标签固定助手，不显示助手切换/编辑入口。
+                  showAssistantControl={false}
                   assistantTriggerAction={topicDisplayMode === 'assistant' ? 'edit' : 'select'}
                   onDialogCloseAutoFocus={handleRestoreComposerFocus}
                   onAssistantChange={handleAssistantChange}

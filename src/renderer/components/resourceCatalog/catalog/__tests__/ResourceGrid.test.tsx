@@ -632,6 +632,26 @@ describe('ResourceGrid assistant add actions', () => {
     expect(screen.queryByRole('button', { name: '助手库' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: '导入助手' })).toBeInTheDocument()
   })
+
+  it('keeps the MEA resource center readable without management actions', () => {
+    const onEdit = vi.fn()
+    renderResourceGrid({
+      resources: [createAssistantResource()],
+      groups: [{ id: 'group-1', name: 'Group 1', count: 1 }],
+      allGroups: [{ id: 'group-1', name: 'Group 1', order: 0 } as any],
+      onEdit,
+      showManagementActions: false
+    })
+
+    expect(screen.queryByRole('button', { name: '新建助手' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '助手库' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '导入助手' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '分组' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'common.more' })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Assistant' }))
+    expect(onEdit).toHaveBeenCalledTimes(1)
+  })
 })
 
 describe('ResourceGrid skill add actions', () => {

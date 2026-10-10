@@ -87,6 +87,7 @@ interface Props {
   allGroups: Group[]
   toolbarLeading?: ReactNode
   variant?: 'library' | 'settings'
+  showManagementActions?: boolean
   /** Settings variant only: page heading rendered above the search row. */
   title?: ReactNode
   description?: ReactNode
@@ -235,6 +236,7 @@ export const ResourceGrid: FC<Props> = ({
   allGroups,
   toolbarLeading,
   variant = 'library',
+  showManagementActions = true,
   title,
   description,
   toolbarFooter,
@@ -267,7 +269,7 @@ export const ResourceGrid: FC<Props> = ({
         .map((resource) => resource.id),
     [resources]
   )
-  const showGroupToolbar = activeResourceType === 'assistant'
+  const showGroupToolbar = showManagementActions && activeResourceType === 'assistant'
   useEffect(() => {
     let cancelled = false
     if (skillIconIds.length === 0) {
@@ -373,30 +375,29 @@ export const ResourceGrid: FC<Props> = ({
     }
   }, [activeGroupId, deleteGroup, deleting, deletingGroup, onGroupFilter, t])
 
-  const addActions =
-    activeResourceType === 'assistant' ? (
-      <AssistantAddActions
-        onNew={() => onCreate('assistant')}
-        onImport={onImportAssistant}
-        onOpenLibrary={onOpenAssistantLibrary}
-      />
-    ) : activeResourceType === 'skill' ? (
-      <SkillAddActions
-        onCreateWithAgent={onCreateSkillWithAgent}
-        onSearchMarketplace={onOpenSkillMarketplace}
-        onSearchSystem={onOpenSystemSkills}
-        onImportLocal={() => onCreate('skill')}
-      />
-    ) : (
-      <Button
-        variant="default"
-        size={isSettings ? 'default' : 'sm'}
-        onClick={() => onCreate(activeResourceType)}
-        className="shrink-0">
-        <Plus size={isSettings ? 16 : 12} className="lucide-custom" />
-        <span>{t('library.create_menu.create', { type: t(RESOURCE_TYPE_META[activeResourceType].labelKey) })}</span>
-      </Button>
-    )
+  const addActions = !showManagementActions ? null : activeResourceType === 'assistant' ? (
+    <AssistantAddActions
+      onNew={() => onCreate('assistant')}
+      onImport={onImportAssistant}
+      onOpenLibrary={onOpenAssistantLibrary}
+    />
+  ) : activeResourceType === 'skill' ? (
+    <SkillAddActions
+      onCreateWithAgent={onCreateSkillWithAgent}
+      onSearchMarketplace={onOpenSkillMarketplace}
+      onSearchSystem={onOpenSystemSkills}
+      onImportLocal={() => onCreate('skill')}
+    />
+  ) : (
+    <Button
+      variant="default"
+      size={isSettings ? 'default' : 'sm'}
+      onClick={() => onCreate(activeResourceType)}
+      className="shrink-0">
+      <Plus size={isSettings ? 16 : 12} className="lucide-custom" />
+      <span>{t('library.create_menu.create', { type: t(RESOURCE_TYPE_META[activeResourceType].labelKey) })}</span>
+    </Button>
+  )
 
   const searchInput = (
     <ResourceCatalogSearchInput
@@ -594,6 +595,7 @@ export const ResourceGrid: FC<Props> = ({
             resources={resources}
             skillIconUrls={skillIconUrls}
             variant={variant}
+            showManagementActions={showManagementActions}
             allGroups={allGroups}
             onDelete={onDelete}
             onDuplicate={onDuplicate}
@@ -641,6 +643,7 @@ interface VirtualizedResourceGridProps {
   resources: ResourceItem[]
   skillIconUrls: Record<string, string>
   variant: 'library' | 'settings'
+  showManagementActions?: boolean
   allGroups: Group[]
   onDelete: (r: ResourceItem) => void
   onDuplicate: (r: ResourceItem) => void
@@ -655,6 +658,7 @@ function VirtualizedResourceGrid({
   resources,
   skillIconUrls,
   variant,
+  showManagementActions,
   allGroups,
   onDelete,
   onDuplicate,
@@ -702,6 +706,7 @@ function VirtualizedResourceGrid({
                 skillIconUrl={resource.type === 'skill' ? skillIconUrls[resource.id] : undefined}
                 variant={variant}
                 columnCount={columnCount}
+                showManagementActions={showManagementActions}
                 allGroups={allGroups}
                 onDelete={onDelete}
                 onDuplicate={onDuplicate}

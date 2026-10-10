@@ -30,6 +30,7 @@ interface ResourceCardProps {
   skillIconUrl?: string
   variant?: 'library' | 'settings'
   columnCount?: number
+  showManagementActions?: boolean
   allGroups: Group[]
   onDelete: (resource: ResourceItem) => void
   onDuplicate: (resource: ResourceItem) => void
@@ -70,6 +71,7 @@ export function ResourceCard({
   skillIconUrl,
   variant = 'library',
   columnCount = 1,
+  showManagementActions = true,
   allGroups,
   onDelete,
   onDuplicate,
@@ -83,7 +85,7 @@ export function ResourceCard({
   const isSkillGrid = isSettings && r.type === 'skill' && columnCount === 2
   const showTypeIcon = r.type === 'skill'
   const TypeIcon = cfg.icon
-  const showOverflowMenu = hasOverflowActions(r)
+  const showOverflowMenu = showManagementActions && hasOverflowActions(r)
   const visibleGroup = r.type === 'assistant' ? r.groupName : undefined
   const skillVersion = r.type === 'skill' ? r.raw.version?.trim() : undefined
 
@@ -188,7 +190,7 @@ export function ResourceCard({
                 allGroups={allGroups}
                 triggerClassName="text-muted-foreground opacity-0 hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100 data-[state=open]:opacity-100"
               />
-            ) : (
+            ) : showManagementActions ? (
               <Button
                 variant="ghost"
                 size="icon-sm"
@@ -197,7 +199,7 @@ export function ResourceCard({
                 className="text-muted-foreground hover:bg-error-subtle hover:text-error-subtle-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100">
                 <Trash2 size={12} className="lucide-custom" />
               </Button>
-            )}
+            ) : null}
           </div>
         </div>
       </div>

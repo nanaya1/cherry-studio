@@ -38,10 +38,14 @@ describe('ResourceCenterPage', () => {
 
     expect(screen.getByRole('heading', { name: 'Resource Center' })).toBeVisible()
     expect(screen.getByText('assistant catalog')).toBeVisible()
-    expect(resourceCatalogViewMock).toHaveBeenCalledWith(expect.objectContaining({ resourceType: 'assistant' }))
+    expect(resourceCatalogViewMock).toHaveBeenCalledWith(
+      expect.objectContaining({ resourceType: 'assistant', showManagementActions: false })
+    )
 
     await user.click(screen.getByRole('tab', { name: 'Agents' }))
     expect(screen.getByText('agent catalog')).toBeVisible()
-    expect(resourceCatalogViewMock).toHaveBeenCalledWith(expect.objectContaining({ resourceType: 'agent' }))
+    expect(resourceCatalogViewMock).toHaveBeenCalledWith(
+      expect.objectContaining({ resourceType: 'agent', showManagementActions: false })
+    )
   })
 })
