@@ -398,6 +398,7 @@ const ChatComposerRoot = ({
   onSend,
   chatTarget,
   sendDisabled,
+  showAssistantControl,
   compactWhenSingleLine = false,
   useMentionedModelSelector,
   onDraftAssistantChange,
@@ -457,6 +458,7 @@ const ChatComposerRoot = ({
             onSend={onSend}
             chatTarget={chatTarget}
             sendDisabled={sendDisabled}
+            showAssistantControl={showAssistantControl}
             compactWhenSingleLine={compactWhenSingleLine}
             useMentionedModelSelector={useMentionedModelSelector}
             onDraftAssistantChange={onDraftAssistantChange}

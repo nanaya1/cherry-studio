@@ -26,7 +26,7 @@ vi.mock('@renderer/components/ModelSelector', () => ({
 }))
 
 vi.mock('@renderer/components/resourceCatalog/selectors', () => ({
-  AssistantSelector: ({ trigger }: { trigger: ReactNode }) => trigger
+  AssistantSelector: ({ trigger }: { trigger: ReactNode }) => <div data-testid="assistant-selector">{trigger}</div>
 }))
 
 vi.mock('@renderer/components/composer/variants/SelectedModelsTrigger', () => ({
@@ -34,6 +34,32 @@ vi.mock('@renderer/components/composer/variants/SelectedModelsTrigger', () => ({
 }))
 
 describe('ChatConversationControls', () => {
+  it('hides only the assistant selector when the MEA control is disabled', () => {
+    render(
+      <ChatConversationControls
+        assistantId="assistant"
+        assistantName="Assistant"
+        providers={[]}
+        mentionedModels={[]}
+        mentionedModelSelectorValue={[]}
+        lockedMentionedModels={[]}
+        mentionedModelMultiSelectMode={false}
+        selectModelLabel="Select model"
+        shouldAutoSelectCreatedAssistant={false}
+        showAssistantControl={false}
+        side="top"
+        onAssistantChange={vi.fn()}
+        onModelSelect={vi.fn()}
+        onMentionedModelsSelect={vi.fn()}
+        onMentionedModelMultiSelectModeChange={vi.fn()}
+        onMentionedModelSelectorRestore={vi.fn()}
+      />
+    )
+
+    expect(screen.queryByTestId('assistant-selector')).not.toBeInTheDocument()
+    expect(screen.getByText('Select model')).toBeInTheDocument()
+  })
+
   it('shows the model and provider in the model selector trigger', () => {
     const provider = {
       id: 'minimax',

@@ -816,6 +816,21 @@ describe('ChatComposer', () => {
     globalThis.ResizeObserver = originalResizeObserver
   })
 
+  it('threads the MEA assistant visibility control through the home composer', () => {
+    render(
+      <ChatPlacementComposer
+        placement="home"
+        topic={topic}
+        showAssistantControl={false}
+        onDraftAssistantChange={vi.fn()}
+        onSend={vi.fn()}
+      />
+    )
+
+    expect(screen.queryByTestId('assistant-selector')).not.toBeInTheDocument()
+    expect(screen.getByTestId('model-selector')).toBeInTheDocument()
+  })
+
   it('puts the tool menu at the far right of the left toolbar in the modern layout', () => {
     render(<ChatComposer topic={topic} onSend={vi.fn()} />)
 
