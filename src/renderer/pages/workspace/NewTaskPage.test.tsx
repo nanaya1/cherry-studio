@@ -366,6 +366,13 @@ afterEach(() => {
 })
 
 describe('NewTaskPage', () => {
+  it('keeps the MEA assistant and agent selectors hidden', () => {
+    render(<NewTaskPage />)
+
+    expect(mocks.chatProps?.showAssistantControl).toBe(false)
+    expect(mocks.agentProps?.showAgentControl).toBe(false)
+  })
+
   it('keeps the chat slash panel open while the inactive agent composer is mounted', async () => {
     mocks.renderQuickPanelHarness = true
     const user = userEvent.setup()

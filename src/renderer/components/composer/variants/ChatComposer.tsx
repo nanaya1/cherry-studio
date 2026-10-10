@@ -176,6 +176,7 @@ export interface ChatComposerProps {
   ) => boolean | void | Promise<boolean | void>
   chatTarget?: ComposerChatTarget
   sendDisabled?: boolean
+  showAssistantControl?: boolean
   useMentionedModelSelector?: boolean
   onDraftAssistantChange?: (assistantId: string | null) => void | Promise<void>
   onNewTopic?: (payload?: AddNewTopicPayload) => void | Promise<void>
@@ -496,6 +497,7 @@ const ChatComposerInner = ({
   onSend,
   chatTarget,
   sendDisabled = false,
+  showAssistantControl,
   compactWhenSingleLine = false,
   useMentionedModelSelector,
   onDraftAssistantChange,
@@ -1820,6 +1822,7 @@ const ChatComposerInner = ({
     mentionedModelMultiSelectMode,
     useMentionedModelSelector,
     shouldAutoSelectCreatedAssistant: Boolean(onDraftAssistantChange),
+    showAssistantControl,
     selectModelLabel: runtimeModelPending ? t('common.loading') : t('button.select_model'),
     topBarPortalAvailable,
     topBarPortalIconOnly,

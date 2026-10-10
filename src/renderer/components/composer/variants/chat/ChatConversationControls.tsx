@@ -35,6 +35,7 @@ export interface ChatConversationControlsProps {
   selectModelLabel: string
   useMentionedModelSelector?: boolean
   shouldAutoSelectCreatedAssistant: boolean
+  showAssistantControl?: boolean
   assistantTriggerAction?: 'select' | 'edit'
   side: 'top' | 'bottom'
   iconOnly?: boolean
@@ -60,6 +61,7 @@ export function ChatConversationControls({
   selectModelLabel,
   useMentionedModelSelector,
   shouldAutoSelectCreatedAssistant,
+  showAssistantControl = true,
   assistantTriggerAction = 'select',
   side,
   iconOnly = false,
@@ -131,21 +133,23 @@ export function ChatConversationControls({
 
   return (
     <>
-      {assistantTriggerAction === 'edit' ? (
-        assistantTrigger
-      ) : (
-        <AssistantSelector
-          multi={false}
-          value={assistantId}
-          onChange={onAssistantChange}
-          autoSelectOnCreate={shouldAutoSelectCreatedAssistant}
-          side={side}
-          align="start"
-          mountStrategy="lazy-keep"
-          onDialogCloseAutoFocus={onDialogCloseAutoFocus}
-          trigger={assistantTrigger}
-        />
-      )}
+      {showAssistantControl ? (
+        assistantTriggerAction === 'edit' ? (
+          assistantTrigger
+        ) : (
+          <AssistantSelector
+            multi={false}
+            value={assistantId}
+            onChange={onAssistantChange}
+            autoSelectOnCreate={shouldAutoSelectCreatedAssistant}
+            side={side}
+            align="start"
+            mountStrategy="lazy-keep"
+            onDialogCloseAutoFocus={onDialogCloseAutoFocus}
+            trigger={assistantTrigger}
+          />
+        )
+      ) : null}
       {useMentionedModelSelector && isMentionedModelSelectorLocked ? (
         <SelectedModelsTrigger
           className={mentionedModelTriggerClassName}

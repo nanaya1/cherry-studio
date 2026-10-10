@@ -327,6 +327,7 @@ type Props = {
   onCreateEmptySession?: () => void | Promise<unknown>
   onAgentChange?: (agentId: string | null) => void | Promise<void>
   agentChanging?: boolean
+  showAgentControl?: boolean
   canChangeAgent?: boolean
   workspaceId?: string | null
   onWorkspaceChange?: (workspaceId: string | null) => void | Promise<void>
@@ -356,6 +357,7 @@ const AgentComposerRoot = ({
   onCreateEmptySession,
   onAgentChange,
   agentChanging,
+  showAgentControl,
   canChangeAgent = false,
   workspaceId,
   onWorkspaceChange,
@@ -490,6 +492,7 @@ const AgentComposerRoot = ({
         onCreateEmptySession={onCreateEmptySession}
         onAgentChange={onAgentChange}
         agentChanging={agentChanging}
+        showAgentControl={showAgentControl}
         canChangeAgent={canChangeAgent}
         onWorkspaceChange={onWorkspaceChange}
         workspaceChanging={workspaceChanging}
@@ -532,6 +535,7 @@ interface InnerProps {
   onCreateEmptySession?: Props['onCreateEmptySession']
   onAgentChange?: Props['onAgentChange']
   agentChanging?: boolean
+  showAgentControl?: boolean
   canChangeAgent: boolean
   onWorkspaceChange?: Props['onWorkspaceChange']
   workspaceChanging?: boolean
@@ -751,6 +755,7 @@ const AgentComposerInner = ({
   onCreateEmptySession,
   onAgentChange,
   agentChanging,
+  showAgentControl,
   canChangeAgent,
   onWorkspaceChange,
   workspaceChanging,
@@ -1747,6 +1752,7 @@ const AgentComposerInner = ({
     selectModelLabel: t('button.select_model'),
     selectWorkspaceLabel: t('agent.session.workspace_selector.placeholder'),
     agentChanging,
+    showAgentControl,
     agentTriggerMode: canChangeAgent ? 'selector' : 'edit',
     shouldAutoSelectCreatedAgent: true,
     topBarPortalAvailable,

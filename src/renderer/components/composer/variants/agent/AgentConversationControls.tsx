@@ -44,6 +44,7 @@ export interface AgentConversationControlsProps {
   selectWorkspaceLabel: string
   agentChanging?: boolean
   shouldAutoSelectCreatedAgent: boolean
+  showAgentControl?: boolean
   side: 'top' | 'bottom'
   iconOnly?: boolean
   agentTriggerMode: 'selector' | 'edit'
@@ -363,7 +364,7 @@ function WorkspaceControl({
 export function AgentConversationControls(props: AgentConversationControlsProps) {
   return (
     <>
-      <AgentControl {...props} />
+      {props.showAgentControl !== false ? <AgentControl {...props} /> : null}
       <ModelControl {...props} />
       <WorkspaceControl {...props} />
     </>

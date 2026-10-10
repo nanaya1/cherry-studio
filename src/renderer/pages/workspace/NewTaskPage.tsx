@@ -503,8 +503,9 @@ export default function NewTaskPage() {
                     assistantId={chatAssistantId ?? undefined}
                     resolvedContext={chatContext}
                     resolvedProviders={providers}
-                    // MEA: showAssistantControl={false} / modelControlInSendAccessory / hideBelowControls
-                    // v2.1.4 的 home composer 已固定使用首页控制布局，无需重复传入旧展示参数。
+                    // MEA: 新建任务固定使用默认助手，不显示助手选择框。
+                    showAssistantControl={false}
+                    // MEA: modelControlInSendAccessory / hideBelowControls；v2.1.4 的 home composer 已固定使用首页控制布局。
                     onDraftAssistantChange={handleChatAssistantChange}
                     onSend={handleChatSend}
                     // MEA: onDraftCleared={handleDraftCleared}；v2.1.4 已移除该回调，发送成功后在 handler 内跳转。
@@ -582,8 +583,9 @@ export default function NewTaskPage() {
                     stop={async () => undefined}
                     onAgentChange={handleAgentChange}
                     agentChanging={agentLoading}
-                    // MEA: showAgentControl={false} / modelControlInSendAccessory /
-                    // toolShortcutsBeforeContextControls；v2.1.4 AgentHomeComposer 已固定首页控制布局。
+                    // MEA: 新建任务固定使用内置智能体，不显示智能体选择框。
+                    showAgentControl={false}
+                    // MEA: modelControlInSendAccessory / toolShortcutsBeforeContextControls；v2.1.4 已固定首页控制布局。
                     workspaceId={agentWorkspaceId}
                     onWorkspaceChange={handleWorkspaceChange}
                     isStreaming={false}
