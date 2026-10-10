@@ -1668,6 +1668,23 @@ describe('ChatComposer', () => {
     expect(mocks.surfaceProps?.sendBlockedReason).toBeUndefined()
   })
 
+  it('moves only the model selector into the send accessory for the MEA new-task layout', () => {
+    render(
+      <ChatHomeComposer
+        topic={topic}
+        onSend={vi.fn()}
+        showAssistantControl={false}
+        modelControlInSendAccessory
+        hideBelowControls
+      />
+    )
+
+    expect(screen.getByTestId('composer-below-controls')).toBeEmptyDOMElement()
+    const sendAccessory = screen.getByTestId('composer-send-accessory')
+    expect(sendAccessory).toHaveTextContent('Model A')
+    expect(sendAccessory).not.toHaveTextContent('Assistant 1')
+  })
+
   it('keeps the active assistant trigger visible in classic layout', () => {
     mocks.topicLayout = 'classic'
 

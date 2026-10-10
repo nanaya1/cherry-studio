@@ -68,6 +68,9 @@ interface ComposerToolbarShortcutsProps {
   onCustomizeOpenChange: (open: boolean) => void
   /** True only after model resolution has completed without an available model. */
   isModelUnavailable?: boolean
+  onlyPinnedIds?: readonly string[]
+  hiddenPinnedIds?: readonly string[]
+  showPinnedLabels?: boolean
   inputAdapter?: QuickPanelInputAdapter
   unifiedPanelControl?: ComposerUnifiedPanelControl
 }
@@ -129,6 +132,9 @@ export const ComposerToolbarShortcuts = ({
   customizeOpen,
   onCustomizeOpenChange,
   isModelUnavailable,
+  onlyPinnedIds,
+  hiddenPinnedIds,
+  showPinnedLabels = false,
   inputAdapter,
   unifiedPanelControl
 }: ComposerToolbarShortcutsProps) => {
@@ -242,7 +248,15 @@ export const ComposerToolbarShortcuts = ({
     () => pinnedIds.map((id) => ({ id, candidate: candidateById.get(id) })),
     [candidateById, pinnedIds]
   )
-  const visiblePinnedRows = useMemo(() => pinnedRows.filter((row) => row.candidate), [pinnedRows])
+  const onlyPinnedIdSet = useMemo(() => (onlyPinnedIds ? new Set(onlyPinnedIds) : null), [onlyPinnedIds])
+  const hiddenPinnedIdSet = useMemo(() => new Set(hiddenPinnedIds), [hiddenPinnedIds])
+  const visiblePinnedRows = useMemo(
+    () =>
+      pinnedRows.filter(
+        (row) => row.candidate && !hiddenPinnedIdSet.has(row.id) && (!onlyPinnedIdSet || onlyPinnedIdSet.has(row.id))
+      ),
+    [hiddenPinnedIdSet, onlyPinnedIdSet, pinnedRows]
+  )
   const pinnedIdSet = useMemo(() => new Set(pinnedIds), [pinnedIds])
   const candidateIds = useMemo(() => candidates.map((candidate) => candidate.id), [candidates])
   const leadingCandidateIds = useMemo(
@@ -346,9 +360,11 @@ export const ComposerToolbarShortcuts = ({
                 <Button
                   type="button"
                   variant="ghost"
-                  size="icon-sm"
+                  size={showPinnedLabels ? 'sm' : 'icon-sm'}
                   className={cn(
-                    COMPOSER_SEND_ACCESSORY_BUTTON_CLASS,
+                    showPinnedLabels
+                      ? 'h-8 shrink-0 gap-1.5 rounded-lg border border-transparent bg-transparent px-2.5 text-xs font-medium text-foreground shadow-none hover:bg-accent active:bg-accent disabled:bg-transparent disabled:text-foreground-disabled [&_svg]:text-muted-foreground hover:[&_svg]:text-foreground'
+                      : COMPOSER_SEND_ACCESSORY_BUTTON_CLASS,
                     'disabled:pointer-events-none',
                     !shortcut.resolved && 'disabled:opacity-100',
                     shortcut.active && 'bg-accent'
@@ -364,6 +380,7 @@ export const ComposerToolbarShortcuts = ({
                   <span data-slot="composer-toolbar-icon" className={TOOLBAR_ICON_CLASS}>
                     {shortcut.icon}
                   </span>
+                  {showPinnedLabels ? <span className="max-w-40 truncate">{shortcut.label}</span> : null}
                 </Button>
               </Tooltip>
             )

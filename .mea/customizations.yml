@@ -1,0 +1,125 @@
+version: 1
+product: MEACowork
+policy:
+  baseline_branch: meacowork
+  upstream_branch: upstream/main
+  merge_strategy: semantic-three-way
+  marker_format: "MEA:<customization-id>"
+  require_tests: true
+  preserve_original_code_by_comment: true
+customizations:
+  - id: product-identity
+    title: MEA application identity and protocol
+    owner: main
+    behavior: Keep MEACowork productName, com.meacowork.desktop appId, meacowork:// protocol, API gateway port 24333, and OpenClaw port 19790.
+    touchpoints:
+      - package.json
+      - electron-builder.yml
+      - src/main/services/protocol/ProtocolService.ts
+      - src/main/services/OpenClawService.ts
+      - src/shared/data/preference/preferenceSchemas.ts
+    tests:
+      - src/main/services/protocol/__tests__/ProtocolService.test.ts
+      - src/main/services/__tests__/OpenClawService.test.ts
+      - src/main/features/apiGateway/routes/__tests__/routes.integration.test.ts
+
+  - id: oauth-branding
+    title: MEA OAuth callback and repository identity
+    owner: main
+    behavior: Keep the meacowork:// OAuth callback and DCR client_uri pointing to https://github.com/nanaya1/cherry-studio.
+    touchpoints:
+      - src/main/services/oauth/CherryInOAuthConfig.ts
+      - src/main/ai/mcp/oauth/provider.ts
+      - src/main/services/MainWindowService.ts
+    tests:
+      - src/main/services/oauth/__tests__/GatewayOAuthConfigs.test.ts
+      - src/main/services/oauth/runtime/__tests__/DeepLinkCallbackTransport.test.ts
+
+  - id: provider-branding
+    title: Xuelang provider branding and catalog
+    owner: provider
+    behavior: Keep Xuelang provider identity, icons, generated catalog data, and MEA adapter family.
+    touchpoints:
+      - packages/provider-registry/src/providers/xuelang.ts
+      - packages/provider-registry/data/providers.json
+      - packages/ui/src/components/icons/providers/xuelang
+      - packages/ui/icons/providers/light/xuelang.svg
+    tests:
+      - packages/provider-registry/src/__tests__/xuelang-catalog.test.ts
+
+  - id: hidden-settings
+    title: Hide legacy MCP and Skills settings everywhere
+    owner: renderer
+    behavior: Hide /settings/mcp and /settings/skills from every consumer, including navigation and settings search; all consumers must share MEA_HIDDEN_SETTINGS_ROUTES.
+    touchpoints:
+      - src/renderer/components/settingsMenu.ts
+      - src/renderer/pages/settings/SettingsPage.tsx
+      - src/renderer/pages/settings/settingsSearch/aggregate.ts
+    tests:
+      - src/renderer/pages/settings/settingsSearch/__tests__/settingsSearchIndex.test.ts
+
+  - id: new-task-composer-layout
+    title: Preserve MEA new-task composer controls
+    owner: renderer
+    behavior: Chat hides the assistant selector, places the model selector beside Send, and hides the empty lower row. Agent hides the agent selector, places the model selector beside Send, and places the labeled permission selector before Workspace.
+    markers:
+      - MEA:new-task-composer-layout
+    touchpoints:
+      - src/renderer/pages/workspace/NewTaskPage.tsx
+      - src/renderer/components/composer/variants/ChatComposer.tsx
+      - src/renderer/components/composer/variants/AgentComposer.tsx
+      - src/renderer/components/composer/variants/chat/ChatConversationControls.tsx
+      - src/renderer/components/composer/variants/agent/AgentConversationControls.tsx
+      - src/renderer/components/composer/variants/shared/ComposerToolbarShortcuts.tsx
+    tests:
+      - src/renderer/pages/workspace/NewTaskPage.test.tsx
+      - src/renderer/components/composer/variants/__tests__/ChatComposer.test.tsx
+      - src/renderer/components/composer/variants/__tests__/AgentComposer.test.tsx
+
+  - id: navigation-layout
+    title: Preserve MEA sidebar and top-navigation behavior
+    owner: renderer
+    behavior: Treat meacowork as the sole product baseline for left sidebar and top navigation; keep detail-page sidebar rules and MEA session/topic resource-list placement.
+    touchpoints:
+      - src/renderer/components/app/Sidebar.tsx
+      - src/renderer/components/Sidebar/Sidebar.tsx
+      - src/renderer/utils/detailPage.ts
+      - src/renderer/pages/home/HomePage.tsx
+      - src/renderer/pages/agents/AgentPage.tsx
+      - src/renderer/components/chat/resourceList
+    tests:
+      - src/renderer/components/app/__tests__/Sidebar.test.tsx
+      - src/renderer/pages/home/Tabs/components/__tests__/Topics.test.tsx
+      - src/renderer/pages/agents/components/__tests__/Sessions.test.tsx
+
+  - id: resource-protection
+    title: Protect MEA builtin resources and resource-center behavior
+    owner: renderer
+    behavior: Keep builtin assistant deletion protection, Bot fallback icons, non-leading pinned topics, and the MEA read-only resource-center entry behavior.
+    touchpoints:
+      - src/renderer/components/resourceCatalog/catalog/RecommendedSkillCatalogView.tsx
+      - src/renderer/components/ResourceViewSourceProvider.tsx
+      - src/renderer/pages/workspace/SkillsConnectorsPage.tsx
+    tests:
+      - src/renderer/components/resourceCatalog/catalog/__tests__/RecommendedSkillCatalogView.test.tsx
+      - src/renderer/components/__tests__/ResourceViewSourceProvider.test.tsx
+
+  - id: builtin-mcp-names
+    title: Preserve unprefixed builtin MCP names
+    owner: shared
+    behavior: BuiltinMcpServerNames values must not regain the @cherry/ prefix.
+    touchpoints:
+      - src/shared/utils/mcp.ts
+      - src/shared/data/presets/mcpServers.ts
+    tests:
+      - src/shared/data/presets/__tests__/mcpServers.test.ts
+
+  - id: mea-i18n
+    title: Preserve MEA-only translations and product wording
+    owner: i18n
+    behavior: Preserve MEA-only flat locale keys and MEACowork/Xuelang user-facing wording during locale union merges.
+    touchpoints:
+      - src/main/i18n/locales
+      - src/renderer/i18n/locales
+    tests:
+      - scripts/__tests__/i18n-check-values.test.ts

@@ -503,9 +503,11 @@ export default function NewTaskPage() {
                     assistantId={chatAssistantId ?? undefined}
                     resolvedContext={chatContext}
                     resolvedProviders={providers}
-                    // MEA: 新建任务固定使用默认助手，不显示助手选择框。
+                    // MEA:new-task-composer-layout 固定默认助手，模型选择器靠近发送按钮。
                     showAssistantControl={false}
-                    // MEA: modelControlInSendAccessory / hideBelowControls；v2.1.4 的 home composer 已固定使用首页控制布局。
+                    // MEA:new-task-composer-layout 隐藏空的下方控制行。
+                    modelControlInSendAccessory
+                    hideBelowControls
                     onDraftAssistantChange={handleChatAssistantChange}
                     onSend={handleChatSend}
                     // MEA: onDraftCleared={handleDraftCleared}；v2.1.4 已移除该回调，发送成功后在 handler 内跳转。
@@ -583,9 +585,11 @@ export default function NewTaskPage() {
                     stop={async () => undefined}
                     onAgentChange={handleAgentChange}
                     agentChanging={agentLoading}
-                    // MEA: 新建任务固定使用内置智能体，不显示智能体选择框。
+                    // MEA:new-task-composer-layout 固定内置智能体，不显示智能体选择框。
                     showAgentControl={false}
-                    // MEA: modelControlInSendAccessory / toolShortcutsBeforeContextControls；v2.1.4 已固定首页控制布局。
+                    // MEA:new-task-composer-layout 模型靠近发送按钮，权限置于工作区之前。
+                    modelControlInSendAccessory
+                    toolShortcutsBeforeContextControls
                     workspaceId={agentWorkspaceId}
                     onWorkspaceChange={handleWorkspaceChange}
                     isStreaming={false}

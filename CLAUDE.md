@@ -224,6 +224,8 @@ The v2 refactor has landed. v1 data reaches v2 only through the migrators in `sr
 
 This repo is maintained as **MEA Cowork**, a customized fork of Cherry Studio (upstream `CherryHQ/cherry-studio`, fork repo `nanaya1/cherry-studio`) that periodically syncs from upstream. This section is fork-specific and **must be preserved verbatim when merging upstream changes**.
 
+`.mea/customizations.yml` is the versioned source of truth for MEA behavior that must survive upstream merges. WorkBuddy memory and commit history are supporting evidence, not substitutes for this contract. Every MEA behavior change must add or update its customization entry in the same change, including production touchpoints and focused regression tests. New non-obvious branches use a stable `// MEA:<customization-id> ...` marker.
+
 ### Branded Identity vs Compatibility Identity
 
 The rebranding follows one principle: **swap everything user-visible; keep external-identity/storage compatibility items at their Cherry Studio values**. When touching branding strings, first decide which category applies:
@@ -243,7 +245,11 @@ Note: no `meacowork` organization exists on GitHub; the public repo URL is `http
 ### Upstream Sync
 
 - Syncing happens in an isolated worktree `../cherry-studio-sync-wt` on branch `sync/upstream-YYYY-MM-DD`; never edit release branches directly. Two-step merge: first merge the previous sync branch to reuse resolutions, then merge upstream/main incrementally.
-- After merging, always run the full `pnpm run typecheck` (node + web — web-only misses main-process errors) plus the relevant vitest suites (renderer: home/agents/history/resourceList; main: apiGateway/seeders).
+- Before resolving a sync, record the pre-merge MEA SHA and upstream SHA, then run `pnpm mea:impact -- --base <pre-merge-mea-sha>`. Every reported customization is a mandatory review item even when Git reports no textual conflict.
+- `meacowork` is the product-behavior baseline and upstream is the structural baseline. If both changed the same feature, perform a semantic three-way merge: latest upstream implementation plus the MEA behavior delta. Never resolve such a file by taking either whole side.
+- Git may auto-merge non-conflicting text, and scripts may validate/report customizations; never blindly replay old MEA files over an upstream refactor.
+- After merging, run `pnpm mea:check`, every focused test listed for affected customizations, and the full `pnpm run typecheck` (node + web — web-only misses main-process errors). If upstream moves a touchpoint or adds a consumer, update `.mea/customizations.yml` in the same sync.
+- For hidden routes, registries, enums, caches, IPC APIs, generated catalogs, and aggregate lists, audit every consumer. Preserving only the declaration is not sufficient.
 - `release/2.0.x` and the customization mainline are **two independent release lines**; fixes do not flow between them automatically. Before packaging/releasing, verify each key customization exists on the target branch (`git branch -a --contains <sha>`).
 - The prek/pre-commit hooks may rewrite dead-code-related sections; the maintainer keeps them disabled locally (`.git/hooks.disabled`). Commits use `git commit -S --signoff`.
 

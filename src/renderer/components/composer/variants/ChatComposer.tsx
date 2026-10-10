@@ -177,6 +177,8 @@ export interface ChatComposerProps {
   chatTarget?: ComposerChatTarget
   sendDisabled?: boolean
   showAssistantControl?: boolean
+  modelControlInSendAccessory?: boolean
+  hideBelowControls?: boolean
   useMentionedModelSelector?: boolean
   onDraftAssistantChange?: (assistantId: string | null) => void | Promise<void>
   onNewTopic?: (payload?: AddNewTopicPayload) => void | Promise<void>
@@ -399,6 +401,8 @@ const ChatComposerRoot = ({
   chatTarget,
   sendDisabled,
   showAssistantControl,
+  modelControlInSendAccessory,
+  hideBelowControls,
   compactWhenSingleLine = false,
   useMentionedModelSelector,
   onDraftAssistantChange,
@@ -459,6 +463,8 @@ const ChatComposerRoot = ({
             chatTarget={chatTarget}
             sendDisabled={sendDisabled}
             showAssistantControl={showAssistantControl}
+            modelControlInSendAccessory={modelControlInSendAccessory}
+            hideBelowControls={hideBelowControls}
             compactWhenSingleLine={compactWhenSingleLine}
             useMentionedModelSelector={useMentionedModelSelector}
             onDraftAssistantChange={onDraftAssistantChange}
@@ -500,6 +506,8 @@ const ChatComposerInner = ({
   chatTarget,
   sendDisabled = false,
   showAssistantControl,
+  modelControlInSendAccessory,
+  hideBelowControls,
   compactWhenSingleLine = false,
   useMentionedModelSelector,
   onDraftAssistantChange,
@@ -1811,7 +1819,7 @@ const ChatComposerInner = ({
 
   if (isMultiSelectMode) return null
 
-  const controlSlots = renderControls({
+  const controlProps: ChatComposerControlProps = {
     assistantId: selectedAssistantId,
     assistantName,
     assistantEmoji: displayAssistant?.emoji,
@@ -1833,10 +1841,20 @@ const ChatComposerInner = ({
     onModelSelect: handleModelSelect,
     onMentionedModelsSelect: handleMentionedModelsSelect,
     onMentionedModelMultiSelectModeChange: handleMentionedModelMultiSelectModeChange,
-    onMentionedModelSelectorRestore: handleMentionedModelSelectorRestore
-  })
+    onMentionedModelSelectorRestore: handleMentionedModelSelectorRestore,
+    showModelControl: !modelControlInSendAccessory
+  }
+  const controlSlots = renderControls(controlProps)
+  if (hideBelowControls) controlSlots.renderBelowControls = undefined
   const sendAccessory: ComposerSurfaceProps['sendAccessory'] = (
     <>
+      {modelControlInSendAccessory
+        ? renderChatComposerContextControls(
+            { ...controlProps, showAssistantControl: false, showModelControl: true },
+            undefined,
+            { side: 'top', iconOnly: false }
+          )
+        : null}
       {speedControlModel ? (
         <ModelSpeedControl
           model={speedControlModel}

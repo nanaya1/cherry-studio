@@ -366,11 +366,15 @@ afterEach(() => {
 })
 
 describe('NewTaskPage', () => {
-  it('keeps the MEA assistant and agent selectors hidden', () => {
+  it('keeps the MEA new-task composer layout switches enabled', () => {
     render(<NewTaskPage />)
 
     expect(mocks.chatProps?.showAssistantControl).toBe(false)
+    expect(mocks.chatProps?.modelControlInSendAccessory).toBe(true)
+    expect(mocks.chatProps?.hideBelowControls).toBe(true)
     expect(mocks.agentProps?.showAgentControl).toBe(false)
+    expect(mocks.agentProps?.modelControlInSendAccessory).toBe(true)
+    expect(mocks.agentProps?.toolShortcutsBeforeContextControls).toBe(true)
   })
 
   it('keeps the chat slash panel open while the inactive agent composer is mounted', async () => {

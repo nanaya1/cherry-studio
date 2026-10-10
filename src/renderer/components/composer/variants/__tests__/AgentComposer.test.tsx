@@ -5250,6 +5250,38 @@ describe('AgentComposer', () => {
     expect(belowText.indexOf('Claude Sonnet 4.5')).toBeLessThan(belowText.indexOf('Workspace 1'))
   })
 
+  it('restores the MEA model and permission selector positions in draft home mode', () => {
+    mocks.sessionLayout = 'time'
+    mocks.pinnedToolIds = ['permission-mode', 'skills']
+
+    render(
+      <AgentHomeComposer
+        agentId="agent-1"
+        sessionId="session-1"
+        sendMessage={mocks.sendMessage}
+        stop={mocks.stop}
+        isStreaming={false}
+        showAgentControl={false}
+        modelControlInSendAccessory
+        toolShortcutsBeforeContextControls
+      />
+    )
+
+    const leftControls = screen.getByTestId('composer-left-controls')
+    expect(within(leftControls).queryByRole('button', { name: 'agent.settings.permissionMode.title' })).not.toBeInTheDocument()
+
+    const belowControls = screen.getByTestId('composer-below-controls')
+    const permissionButton = within(belowControls).getByRole('button', { name: 'agent.settings.permissionMode.title' })
+    const workspaceButton = within(belowControls).getByText('Workspace 1').closest('button')!
+    expect(belowControls).not.toHaveTextContent('Agent')
+    expect(belowControls).not.toHaveTextContent('Claude Sonnet 4.5')
+    expect(permissionButton.compareDocumentPosition(workspaceButton)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
+
+    const sendAccessory = screen.getByTestId('composer-send-accessory')
+    expect(sendAccessory).toHaveTextContent('Claude Sonnet 4.5')
+    expect(sendAccessory).not.toHaveTextContent('Workspace 1')
+  })
+
   it('keeps missing-agent input local while selecting an agent', () => {
     const onAgentChange = vi.fn()
 
