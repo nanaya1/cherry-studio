@@ -4,6 +4,7 @@ import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import zhCN from '@renderer/i18n/locales/zh-cn.json'
+import { ipcApi } from '@renderer/ipc'
 
 import SettingsPage from '../SettingsPage'
 
@@ -11,6 +12,8 @@ const { isMacTransparentWindowMock, navigateMock } = vi.hoisted(() => ({
   isMacTransparentWindowMock: vi.fn(),
   navigateMock: vi.fn()
 }))
+
+vi.mock('@renderer/ipc', () => ({ ipcApi: { request: vi.fn().mockResolvedValue(undefined) } }))
 
 vi.mock('@cherrystudio/ui', () => ({
   MenuDivider: () => <hr data-testid="menu-divider" />,
@@ -52,7 +55,14 @@ vi.mock('@renderer/hooks/useMacTransparentWindow', () => ({
 }))
 
 vi.mock('@tanstack/react-router', () => ({
-  Outlet: () => null,
+  Outlet: () => (
+    <>
+      <a href="https://open.cherryin.ai" target="_blank" rel="noreferrer">
+        <span>Provider website</span>
+      </a>
+      <a href="#provider">Internal settings</a>
+    </>
+  ),
   useLocation: () => ({ pathname: '/settings/provider' }),
   useNavigate: () => navigateMock,
   useRouter: () => ({ history: { canGoBack: () => false, back: vi.fn() } }),
@@ -68,7 +78,6 @@ vi.mock('react-i18next', () => ({
         'deviceConnections.title': '设备互联',
         'selection.name': '划词助手',
         'settings.appearance.title': '外观',
-        'settings.browser.title': '浏览器',
         'settings.channels.title': '频道',
         'settings.dependencies.title': '环境依赖',
         'settings.dependencies.localModels.title': '本地模型',
@@ -81,11 +90,10 @@ vi.mock('react-i18next', () => ({
         'settings.model': '默认模型',
         'settings.prompts.title': '提示词',
         'settings.quickAssistant.title': '快捷助手',
-        'settings.remoteKnowledge.title': '远端服务',
         'settings.scheduledTasks.title': '定时任务',
         'settings.screenshot.title': '截图',
         'settings.shortcuts.title': '快捷键',
-        'settings.tool.websearch.title': '搜索',
+        'settings.skills.title': '技能',
         'settings.system.title': '系统',
         'settings.tool.file_processing.features.image_to_text.title': 'OCR',
         'settings.tool.file_processing.features.document_to_markdown.title': '文档处理'
@@ -98,6 +106,30 @@ describe('SettingsPage', () => {
     MockUsePreferenceUtils.resetMocks()
     isMacTransparentWindowMock.mockReturnValue(false)
     navigateMock.mockReset()
+    vi.mocked(ipcApi.request).mockClear()
+  })
+
+  it.each(['click', 'auxclick'])(
+    'opens settings websites externally on %s even when internal browsing is enabled',
+    (type) => {
+      MockUsePreferenceUtils.setPreferenceValue('app.browser.open_links_in_browser', true)
+      render(<SettingsPage />)
+      const event = new MouseEvent(type, { bubbles: true, cancelable: true, button: type === 'auxclick' ? 1 : 0 })
+      fireEvent(screen.getByText('Provider website'), event)
+      expect(event.defaultPrevented).toBe(true)
+      expect(ipcApi.request).toHaveBeenCalledWith('system.shell.open_external_website', 'https://open.cherryin.ai/')
+    }
+  )
+
+  it('leaves internal settings navigation and right-click menus alone', () => {
+    render(<SettingsPage />)
+    const internalClick = new MouseEvent('click', { bubbles: true, cancelable: true })
+    fireEvent(screen.getByText('Internal settings'), internalClick)
+    const rightClick = new MouseEvent('auxclick', { bubbles: true, cancelable: true, button: 2 })
+    fireEvent(screen.getByText('Provider website'), rightClick)
+    expect(internalClick.defaultPrevented).toBe(false)
+    expect(rightClick.defaultPrevented).toBe(false)
+    expect(ipcApi.request).not.toHaveBeenCalled()
   })
 
   it('mounts the full-width search field from the header icon only on demand', () => {
@@ -136,17 +168,8 @@ describe('SettingsPage', () => {
     expect(navigateMock).toHaveBeenCalledWith({ to: '/settings/local-models' })
   })
 
-  it('exposes remote knowledge as its own ungrouped settings destination', () => {
-    render(<SettingsPage />)
-
-    const remoteKnowledgeItem = screen.getByRole('button', { name: '远端服务' })
-    fireEvent.click(remoteKnowledgeItem)
-
-    expect(navigateMock).toHaveBeenCalledWith({ to: '/settings/remote-knowledge' })
-  })
-
-  it('exposes device connections as its own settings destination in developer mode', () => {
-    MockUsePreferenceUtils.setPreferenceValue('app.developer_mode.enabled', true)
+  it('exposes device connections as its own settings destination without developer mode', () => {
+    MockUsePreferenceUtils.setPreferenceValue('app.developer_mode.enabled', false)
     render(<SettingsPage />)
 
     const deviceConnectionsItem = screen.getByRole('button', { name: '设备互联' })
@@ -155,7 +178,7 @@ describe('SettingsPage', () => {
     expect(navigateMock).toHaveBeenCalledWith({ to: '/settings/device-connections' })
   })
 
-  it('keeps prompts first in tools and dependencies in the system group', () => {
+  it('keeps document processing and OCR together in tools and dependencies in the system group', () => {
     render(<SettingsPage />)
 
     expect(screen.getByText('工具')).toBeInTheDocument()
@@ -172,31 +195,34 @@ describe('SettingsPage', () => {
     expect(navigateMock).toHaveBeenCalledWith({ to: '/settings/dependencies' })
   })
 
-  it('hides MCP and Skills entries from the tools menu', () => {
+  // 上游原契约：MCP、技能、提示词依次显示在设置侧栏。
+  // MEA 将 MCP 与技能收敛到统一资源入口，因此设置侧栏只保留提示词。
+  // it('places Skills below MCP and prompt management directly below Skills', () => {
+  //   render(<SettingsPage />)
+  //
+  //   const mcpItem = screen.getByText('MCP').closest('button')
+  //   const skillsItem = screen.getByRole('button', { name: '技能' })
+  //
+  //   expect(mcpItem).not.toBeNull()
+  //   expect(mcpItem?.nextElementSibling).toBe(skillsItem)
+  //   fireEvent.click(skillsItem)
+  //   expect(navigateMock).toHaveBeenCalledWith({ to: '/settings/skills' })
+  //
+  //   const promptsItem = screen.getByRole('button', { name: '提示词' })
+  //   expect(skillsItem.nextElementSibling).toBe(promptsItem)
+  //   fireEvent.click(promptsItem)
+  //   expect(navigateMock).toHaveBeenCalledWith({ to: '/settings/prompts' })
+  // })
+
+  it('hides MCP and Skills while keeping prompt management available', () => {
     render(<SettingsPage />)
 
-    expect(screen.getByText('工具')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'MCP' })).not.toBeInTheDocument()
+    expect(screen.queryByText('MCP')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '技能' })).not.toBeInTheDocument()
 
     const promptsItem = screen.getByRole('button', { name: '提示词' })
-    const menuItems = screen.getAllByTestId('menu-item')
-    const toolsStart = menuItems.indexOf(promptsItem)
-
-    // 停用原四项断言：浏览器也是合法工具入口。
-    // expect(menuItems.slice(toolsStart, toolsStart + 4)).toEqual([
-    //   promptsItem,
-    //   screen.getByRole('button', { name: '搜索' }),
-    //   screen.getByRole('button', { name: '文档处理' }),
-    //   screen.getByRole('button', { name: 'OCR' })
-    // ])
-    expect(menuItems.slice(toolsStart, toolsStart + 5)).toEqual([
-      promptsItem,
-      screen.getByRole('button', { name: '浏览器' }),
-      screen.getByRole('button', { name: '搜索' }),
-      screen.getByRole('button', { name: '文档处理' }),
-      screen.getByRole('button', { name: 'OCR' })
-    ])
+    fireEvent.click(promptsItem)
+    expect(navigateMock).toHaveBeenCalledWith({ to: '/settings/prompts' })
   })
 
   it('merges quick access into efficiency and places both assistants last', () => {
@@ -205,7 +231,7 @@ describe('SettingsPage', () => {
     expect(screen.getByText('效率')).toBeInTheDocument()
     expect(screen.queryByText('快捷入口')).not.toBeInTheDocument()
 
-    const efficiencyItems = ['频道', '定时任务', '快捷键', '快捷助手', '划词助手', '截图'].map((name) =>
+    const efficiencyItems = ['频道', '设备互联', '定时任务', '快捷键', '快捷助手', '划词助手', '截图'].map((name) =>
       screen.getByRole('button', { name })
     )
     const menuItems = screen.getAllByTestId('menu-item')

@@ -103,14 +103,18 @@ describe('DeepLinkCallbackTransport', () => {
     })
   })
 
-  it('sends an error result to the initiator without any apiKeys field', () => {
+  it('sends an error result and its stable code to the initiator without any apiKeys field', () => {
     const transport = new DeepLinkCallbackTransport({ redirectUri: REDIRECT_URI })
 
-    transport.sendConsumedResult('state', 'settings-window', { error: 'boom' })
+    transport.sendConsumedResult('state', 'settings-window', {
+      error: 'subscription missing',
+      code: 'NO_ACTIVE_SUBSCRIPTION'
+    })
 
     expect(ipcApiServiceMock.send).toHaveBeenCalledWith('settings-window', 'oauth.deep_link_result', {
       state: 'state',
-      error: 'boom'
+      error: 'subscription missing',
+      code: 'NO_ACTIVE_SUBSCRIPTION'
     })
   })
 })

@@ -12,6 +12,7 @@ import type * as RecycleBinFeedback from '@renderer/services/recycleBinFeedback'
 import { toast } from '@renderer/services/toast'
 import { DataApiErrorFactory } from '@shared/data/api/errors'
 import type { AgentSessionEntity } from '@shared/data/api/schemas/agentSessions'
+import { createSidebarShortcutId, type SidebarShortcutTarget } from '@shared/data/preference/preferenceTypes'
 import { aiErrorCodes } from '@shared/ipc/errors/ai'
 import { IpcError } from '@shared/ipc/errors/IpcError'
 import { trashErrorCodes } from '@shared/ipc/errors/trash'
@@ -95,6 +96,7 @@ vi.mock('@cherrystudio/ui', () => ({
       {children}
     </button>
   ),
+  EmojiIcon: ({ emoji }: { emoji: string }) => <span>{emoji}</span>,
   MenuItem: ({ icon, label, onClick }: { icon?: ReactNode; label: ReactNode; onClick?: () => void }) => (
     <button type="button" onClick={onClick}>
       {icon}
@@ -136,7 +138,7 @@ vi.mock('@data/hooks/usePreference', () => ({
       (value: unknown) => {
         preferenceMocks.values.set(key, value)
         preferenceMocks.setPreference(key, value)
-        // Mutations through useSidebarFavorites call `.catch` on the returned
+        // Sidebar shortcut mutations call `.catch` on the returned
         // promise; resolve so those toggle paths do not throw.
         return Promise.resolve()
       }
@@ -144,14 +146,20 @@ vi.mock('@data/hooks/usePreference', () => ({
   }
 }))
 
+vi.mock('@renderer/data/PreferenceService', () => ({
+  preferenceService: {
+    get: vi.fn(async (key: string) => preferenceMocks.values.get(key)),
+    set: vi.fn(async (key: string, value: unknown) => {
+      preferenceMocks.values.set(key, value)
+      preferenceMocks.setPreference(key, value)
+    })
+  }
+}))
+
 vi.mock('@logger', () => ({
   loggerService: {
     withContext: () => loggerMocks
   }
-}))
-
-vi.mock('@renderer/components/EmojiIcon', () => ({
-  default: ({ emoji }: { emoji: string }) => <span>{emoji}</span>
 }))
 
 vi.mock('@renderer/components/Avatar/ModelAvatar', () => ({
@@ -469,6 +477,16 @@ vi.mock('@renderer/utils/error', () => ({
 }))
 
 describe('classic layout entity resource list actions', () => {
+  const sidebarShortcut = (providerId: string, resourceId: string, fallbackLabel?: string) => {
+    const target: SidebarShortcutTarget = { kind: 'resource', locator: { providerId, resourceId } }
+    return {
+      type: 'shortcut' as const,
+      id: createSidebarShortcutId(target),
+      target,
+      ...(fallbackLabel ? { fallbackLabel } : {})
+    }
+  }
+
   beforeEach(() => {
     MockUseCacheUtils.resetMocks()
     agentDataMocks.agents = [
@@ -546,52 +564,6 @@ describe('classic layout entity resource list actions', () => {
     )
   })
 
-  it('permanently deletes an Assistant through confirmation without offering an archive undo', async () => {
-    render(
-      <TestAssistantResourceList
-        activeAssistantId="assistant-1"
-        activeTopicId="topic-1"
-        onSelectTopic={vi.fn()}
-        onCreateTopic={vi.fn()}
-      />
-    )
-    fireEvent.click(screen.getAllByRole('button', { name: 'common.delete_permanently' })[0])
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('settings.data.trash.permanent_delete.success'))
-    expect(conversationOwnerPopupMocks.show).toHaveBeenCalledWith(
-      expect.objectContaining({ type: 'assistant', permanent: true })
-    )
-    expect(assistantDataMocks.deleteAssistant).toHaveBeenCalledExactlyOnceWith('assistant-1', {
-      deleteTopics: false,
-      permanent: true
-    })
-    expect(recycleBinFeedbackMocks.showRecycleBinUndo).not.toHaveBeenCalled()
-    expect(tabsContextMocks.closeConversationTabs).not.toHaveBeenCalled()
-  })
-
-  it('permanently deletes an Agent through its dedicated command without offering an archive undo', async () => {
-    render(
-      <AgentResourceList
-        activeAgentId="agent-1"
-        activeSessionId="session-1"
-        agentSessionsSource={createAgentSessionsSource()}
-        onSelectSession={vi.fn()}
-        onCreateSession={vi.fn()}
-        onShowMissingAgentSelection={vi.fn()}
-      />
-    )
-    fireEvent.click(screen.getAllByRole('button', { name: 'common.delete_permanently' })[0])
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('settings.data.trash.permanent_delete.success'))
-    expect(conversationOwnerPopupMocks.show).toHaveBeenCalledWith(
-      expect.objectContaining({ type: 'agent', permanent: true })
-    )
-    expect(agentDataMocks.ipcRequest).toHaveBeenCalledExactlyOnceWith('ai.agent.delete_permanently', {
-      agentId: 'agent-1',
-      deleteSessions: false
-    })
-    expect(recycleBinFeedbackMocks.showRecycleBinUndo).not.toHaveBeenCalled()
-    expect(tabsContextMocks.closeConversationTabs).not.toHaveBeenCalled()
-  })
-
   it('uses archive-assistant actions for the classic layout assistant context and more menus', async () => {
     const onCreateTopic = vi.fn()
     const onActiveAssistantDeleted = vi.fn()
@@ -607,7 +579,9 @@ describe('classic layout entity resource list actions', () => {
     )
 
     expect(screen.getByTestId('assistant-1-context-menu')).toHaveTextContent('common.archive')
+    expect(screen.getByTestId('assistant-1-context-menu')).not.toHaveTextContent('common.delete_permanently')
     expect(screen.getByTestId('assistant-1-more-menu')).toHaveTextContent('common.archive')
+    expect(screen.getByTestId('assistant-1-more-menu')).not.toHaveTextContent('common.delete_permanently')
     expect(screen.getByTestId('assistant-1-context-menu')).toHaveTextContent('assistants.clear.menu_title')
     expect(screen.getByTestId('assistant-1-more-menu')).toHaveTextContent('assistants.clear.menu_title')
 
@@ -615,8 +589,7 @@ describe('classic layout entity resource list actions', () => {
 
     await waitFor(() =>
       expect(assistantDataMocks.deleteAssistant).toHaveBeenCalledWith('assistant-1', {
-        deleteTopics: false,
-        permanent: false
+        deleteTopics: false
       })
     )
     expect(onActiveAssistantDeleted).not.toHaveBeenCalled()
@@ -660,8 +633,7 @@ describe('classic layout entity resource list actions', () => {
 
     await waitFor(() =>
       expect(assistantDataMocks.deleteAssistant).toHaveBeenCalledWith('assistant-1', {
-        deleteTopics: true,
-        permanent: false
+        deleteTopics: true
       })
     )
     expect(tabsContextMocks.closeConversationTabs).toHaveBeenCalledWith('assistants', ['topic-1', 'topic-not-loaded'])
@@ -1330,7 +1302,9 @@ describe('classic layout entity resource list actions', () => {
     )
 
     expect(screen.getByTestId('agent-1-context-menu')).toHaveTextContent('common.archive')
+    expect(screen.getByTestId('agent-1-context-menu')).not.toHaveTextContent('common.delete_permanently')
     expect(screen.getByTestId('agent-1-more-menu')).toHaveTextContent('common.archive')
+    expect(screen.getByTestId('agent-1-more-menu')).not.toHaveTextContent('common.delete_permanently')
     expect(screen.getByTestId('agent-1-context-menu')).not.toHaveTextContent('agent.session.agent.delete.trigger')
     expect(screen.getByTestId('agent-1-more-menu')).not.toHaveTextContent('agent.session.agent.delete.trigger')
 
@@ -1675,7 +1649,7 @@ describe('classic layout entity resource list actions', () => {
     expect(screen.queryByText('agent.session.group.collapse_all')).not.toBeInTheDocument()
   })
 
-  it('offers toggling an agent into the sidebar from the classic rail context menu', () => {
+  it('offers toggling an agent into the sidebar from the classic rail context menu', async () => {
     render(
       <AgentResourceList
         activeAgentId="agent-1"
@@ -1692,13 +1666,15 @@ describe('classic layout entity resource list actions', () => {
 
     fireEvent.click(within(menu).getByRole('button', { name: 'launchpad.pin_to_sidebar' }))
 
-    expect(preferenceMocks.setPreference).toHaveBeenCalledWith('ui.sidebar.favorites', [
-      { type: 'agent', id: 'agent-1' }
-    ])
+    await waitFor(() =>
+      expect(preferenceMocks.setPreference).toHaveBeenCalledWith('ui.sidebar_shortcut', [
+        sidebarShortcut('core.agent', 'agent-1', 'Agent 1')
+      ])
+    )
   })
 
-  it('toggles an already-pinned agent out of the sidebar from the classic rail context menu', () => {
-    preferenceMocks.values.set('ui.sidebar.favorites', [{ type: 'agent', id: 'agent-1' }])
+  it('toggles an already-pinned agent out of the sidebar from the classic rail context menu', async () => {
+    preferenceMocks.values.set('ui.sidebar_shortcut', [sidebarShortcut('core.agent', 'agent-1')])
 
     render(
       <AgentResourceList
@@ -1715,10 +1691,10 @@ describe('classic layout entity resource list actions', () => {
 
     fireEvent.click(within(menu).getByRole('button', { name: 'launchpad.unpin_from_sidebar' }))
 
-    expect(preferenceMocks.setPreference).toHaveBeenCalledWith('ui.sidebar.favorites', [])
+    await waitFor(() => expect(preferenceMocks.setPreference).toHaveBeenCalledWith('ui.sidebar_shortcut', []))
   })
 
-  it('offers toggling an assistant into the sidebar from the classic rail context menu', () => {
+  it('offers toggling an assistant into the sidebar from the classic rail context menu', async () => {
     render(
       <TestAssistantResourceList activeAssistantId="assistant-1" onSelectTopic={vi.fn()} onCreateTopic={vi.fn()} />
     )
@@ -1728,13 +1704,15 @@ describe('classic layout entity resource list actions', () => {
 
     fireEvent.click(within(menu).getByRole('button', { name: 'launchpad.pin_to_sidebar' }))
 
-    expect(preferenceMocks.setPreference).toHaveBeenCalledWith('ui.sidebar.favorites', [
-      { type: 'assistant', id: 'assistant-1' }
-    ])
+    await waitFor(() =>
+      expect(preferenceMocks.setPreference).toHaveBeenCalledWith('ui.sidebar_shortcut', [
+        sidebarShortcut('core.assistant', 'assistant-1', 'Assistant 1')
+      ])
+    )
   })
 
-  it('toggles an already-pinned assistant out of the sidebar from the classic rail context menu', () => {
-    preferenceMocks.values.set('ui.sidebar.favorites', [{ type: 'assistant', id: 'assistant-1' }])
+  it('toggles an already-pinned assistant out of the sidebar from the classic rail context menu', async () => {
+    preferenceMocks.values.set('ui.sidebar_shortcut', [sidebarShortcut('core.assistant', 'assistant-1')])
 
     render(
       <TestAssistantResourceList activeAssistantId="assistant-1" onSelectTopic={vi.fn()} onCreateTopic={vi.fn()} />
@@ -1745,6 +1723,6 @@ describe('classic layout entity resource list actions', () => {
 
     fireEvent.click(within(menu).getByRole('button', { name: 'launchpad.unpin_from_sidebar' }))
 
-    expect(preferenceMocks.setPreference).toHaveBeenCalledWith('ui.sidebar.favorites', [])
+    await waitFor(() => expect(preferenceMocks.setPreference).toHaveBeenCalledWith('ui.sidebar_shortcut', []))
   })
 })

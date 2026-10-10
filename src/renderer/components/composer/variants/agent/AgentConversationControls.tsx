@@ -44,8 +44,6 @@ export interface AgentConversationControlsProps {
   selectWorkspaceLabel: string
   agentChanging?: boolean
   shouldAutoSelectCreatedAgent: boolean
-  showAgentControl?: boolean
-  showModelControl?: boolean
   side: 'top' | 'bottom'
   iconOnly?: boolean
   agentTriggerMode: 'selector' | 'edit'
@@ -82,6 +80,7 @@ function AgentControl({
 >) {
   const baseTriggerClassName = side === 'bottom' ? COMPOSER_BELOW_SELECTOR_BUTTON_CLASS : COMPOSER_SELECTOR_BUTTON_CLASS
   const triggerClassName = cn(baseTriggerClassName, iconOnly && COMPOSER_ICON_ONLY_SELECTOR_BUTTON_CLASS)
+  const labelClassName = cn('truncate', iconOnly && COMPOSER_ICON_ONLY_LABEL_CLASS)
   const chevronClassName = cn('text-muted-foreground', iconOnly && 'hidden')
   const [agentEditDialogTarget, setAgentEditDialogTarget] = useState<ResourceEditDialogTarget | null>(null)
 
@@ -97,22 +96,18 @@ function AgentControl({
           : undefined
       }>
       {agent ? (
-        <>
-          {iconOnly ? <Bot size={20} aria-hidden /> : null}
-          <AgentLabel
-            agent={agent}
-            hideIcon
-            classNames={{
-              name: cn('max-w-40 text-xs', iconOnly && COMPOSER_ICON_ONLY_LABEL_CLASS)
-            }}
-          />
-        </>
+        <AgentLabel
+          agent={agent}
+          avatarSize={20}
+          classNames={{
+            name: cn('max-w-40 text-xs', iconOnly && COMPOSER_ICON_ONLY_LABEL_CLASS),
+            container: 'gap-1.5'
+          }}
+        />
       ) : (
         <>
           {iconOnly ? <Bot size={20} aria-hidden /> : null}
-          <span className={cn('max-w-40 truncate text-muted-foreground', iconOnly && COMPOSER_ICON_ONLY_LABEL_CLASS)}>
-            {selectAgentLabel}
-          </span>
+          <span className={cn('max-w-40 text-muted-foreground', labelClassName)}>{selectAgentLabel}</span>
         </>
       )}
       {agentTriggerMode === 'selector' ? <ChevronDown size={14} className={chevronClassName} /> : null}
@@ -154,7 +149,7 @@ function AgentControl({
   )
 }
 
-export function AgentModelControl({
+function ModelControl({
   model,
   selectModelLabel,
   canChangeModel,
@@ -368,8 +363,8 @@ function WorkspaceControl({
 export function AgentConversationControls(props: AgentConversationControlsProps) {
   return (
     <>
-      {props.showAgentControl !== false ? <AgentControl {...props} /> : null}
-      {props.showModelControl !== false ? <AgentModelControl {...props} /> : null}
+      <AgentControl {...props} />
+      <ModelControl {...props} />
       <WorkspaceControl {...props} />
     </>
   )

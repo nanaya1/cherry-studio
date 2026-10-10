@@ -41,7 +41,6 @@ const SEARCH_SOURCES = Object.keys(SOURCE_LABELS) as SkillSearchSource[]
 const DEFAULT_SEARCH_SOURCE: SkillSearchSource = 'skills.sh'
 const SEARCH_DEBOUNCE_MS = 300
 const SKILL_SEARCH_RESULT_ROW_ESTIMATE_PX = 64
-const INSTALLING_CLOSE_WARNING_KEY = 'skill-marketplace-installing-close-blocked'
 
 export function SkillMarketplaceDialog({ open, onOpenChange }: Props) {
   const { t } = useTranslation()
@@ -164,16 +163,10 @@ export function SkillMarketplaceDialog({ open, onOpenChange }: Props) {
 
   const close = useCallback(
     (nextOpen: boolean) => {
-      if (!nextOpen && isInstalling()) {
-        toast.warning({
-          description: t('library.skill_marketplace.installing_close_blocked'),
-          key: INSTALLING_CLOSE_WARNING_KEY
-        })
-        return
-      }
+      if (!nextOpen && isInstalling()) return
       onOpenChange(nextOpen)
     },
-    [isInstalling, onOpenChange, t]
+    [isInstalling, onOpenChange]
   )
 
   return (

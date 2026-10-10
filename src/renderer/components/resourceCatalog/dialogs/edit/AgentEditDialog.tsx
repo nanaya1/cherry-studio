@@ -10,7 +10,11 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
   InputNumber,
+  SegmentedControl,
   Switch,
   TabsContent,
   Textarea
@@ -21,6 +25,7 @@ import { AgentRuntimeSummary } from '@renderer/components/AgentRuntimeOption'
 import type { ModelSelectorFilter } from '@renderer/components/ModelSelector'
 import { PermissionModeSelect } from '@renderer/components/PermissionModeOption'
 import PromptEditorField from '@renderer/components/PromptEditorField'
+import { AgentLanguageField } from '@renderer/components/resourceCatalog/dialogs/components/AgentLanguageField'
 import { SkillCatalogPicker } from '@renderer/components/resourceCatalog/dialogs/skill'
 import { useAgentMutationsById } from '@renderer/hooks/resourceCatalog'
 import { useCloseBeforeAction } from '@renderer/hooks/useCloseBeforeAction'
@@ -34,6 +39,7 @@ import { openSettingsTab } from '@renderer/services/mainWindowNavigation'
 import { toast } from '@renderer/services/toast'
 import type { AgentDetail } from '@renderer/types/resourceCatalog'
 import { getPermissionModeCards } from '@renderer/utils/agent'
+import { type AgentLanguageMode, resolveAgentLanguagePreview } from '@renderer/utils/agent/agentLanguage'
 import {
   type AgentFormState,
   applyAgentFormPatch,
@@ -41,6 +47,7 @@ import {
   diffAgentSaveIntent,
   RESOURCE_PROMPT_POLISH_SYSTEM_PROMPT
 } from '@renderer/utils/resourceCatalog'
+import { MAX_HEARTBEAT_INTERVAL_MINUTES, MIN_HEARTBEAT_INTERVAL_MINUTES } from '@shared/ai/agentHeartbeat'
 import { AGENT_RUNTIME_CAPABILITIES, type AgentRuntimeCapabilities } from '@shared/ai/agentRuntimeCapabilities'
 import { BROWSER_TOOL_GROUP } from '@shared/ai/browserTools'
 import {
@@ -55,6 +62,7 @@ import type { UniqueModelId } from '@shared/data/types/model'
 import type { InstalledSkill } from '@shared/types/skill'
 
 import { type CatalogItem, CatalogToggleGrid } from '../components/CatalogPicker'
+import { EmojiAvatarPicker } from '../components/DialogFormFields'
 import {
   CompactModelField,
   EDIT_DIALOG_PROMPT_MAX_HEIGHT,
@@ -74,6 +82,7 @@ import {
 import { McpServerCatalogGrid } from '../components/McpServerCatalogGrid'
 import { PromptBindingTab } from '../components/PromptBindingTab'
 import { PromptPolishActions } from '../components/PromptPolishActions'
+import { HeartbeatEditorDialog } from './HeartbeatEditorDialog'
 
 export type AgentEditDialogProps = EditDialogBaseProps & {
   resource: AgentDetail | null
@@ -96,6 +105,8 @@ type AgentEditFormValues = {
   envVarsText: string
   heartbeatEnabled: boolean
   heartbeatInterval: number
+  languageMode: AgentLanguageMode
+  languageCustom: string
 }
 
 type ToolTab = 'tools.builtin' | 'tools.knowledge' | 'tools.mcp' | 'tools.skills'
@@ -150,7 +161,9 @@ function defaultValuesForAgent(resource: AgentDetail): AgentEditFormValues {
     permissionMode: form.permissionMode,
     envVarsText: form.envVarsText,
     heartbeatEnabled: form.heartbeatEnabled,
-    heartbeatInterval: form.heartbeatInterval
+    heartbeatInterval: form.heartbeatInterval,
+    languageMode: form.languageMode,
+    languageCustom: form.languageCustom
   }
 }
 
@@ -180,7 +193,9 @@ function buildAgentFormState(baseline: AgentFormState, values: AgentEditFormValu
     permissionMode: values.permissionMode,
     envVarsText: values.envVarsText,
     heartbeatEnabled: values.heartbeatEnabled,
-    heartbeatInterval: values.heartbeatInterval
+    heartbeatInterval: values.heartbeatInterval,
+    languageMode: values.languageMode,
+    languageCustom: values.languageCustom
   }
 }
 
@@ -214,6 +229,10 @@ function advanceAgentFormBaseline(
     if (hasOwn(configuration, 'env_vars')) next.envVarsText = submitted.envVarsText
     if (hasOwn(configuration, 'heartbeat_enabled')) next.heartbeatEnabled = submitted.heartbeatEnabled
     if (hasOwn(configuration, 'heartbeat_interval')) next.heartbeatInterval = submitted.heartbeatInterval
+    if (hasOwn(configuration, 'language')) {
+      next.languageMode = submitted.languageMode
+      next.languageCustom = submitted.languageCustom
+    }
   }
 
   return next
@@ -230,6 +249,8 @@ function syncAgentFormState(form: UseFormReturn<AgentEditFormValues>, next: Agen
   form.setValue('permissionMode', next.permissionMode, { shouldDirty: true })
   form.setValue('heartbeatEnabled', next.heartbeatEnabled, { shouldDirty: true })
   form.setValue('heartbeatInterval', next.heartbeatInterval, { shouldDirty: true })
+  form.setValue('languageMode', next.languageMode, { shouldDirty: true })
+  form.setValue('languageCustom', next.languageCustom, { shouldDirty: true })
 }
 
 export function AgentEditDialog({
@@ -265,6 +286,7 @@ function AgentEditDialogContent({
   const { t } = useTranslation()
   const caps = AGENT_RUNTIME_CAPABILITIES[resource.type]
   const [activeTab, setActiveTab] = useState(initialTab ?? 'basic')
+  const [emojiPickerOpen, setEmojiPickerOpen] = useState(false)
   const [dialogContentElement, setDialogContentElement] = useState<HTMLDivElement | null>(null)
   const [modelLabels, setModelLabels] = useState<ModelLabels>(() => modelLabelsForAgent(resource))
   const [formBaseline, setFormBaseline] = useState<AgentFormState>(() => buildInitialAgentFormState(resource))
@@ -289,13 +311,10 @@ function AgentEditDialogContent({
     [form]
   )
   const { updateAgent } = useAgentMutationsById(resource.id)
-  // 停用原本地单源列表：绑定收敛需把远端库也算作「目录中存在」（Task 12），
-  // 否则 Agent 绑定了远端库时打开弹窗即被本 effect 静默清除。
-  // const { bases: knowledgeBases, isLoading: knowledgeBasesLoading } = useKnowledgeBases()
-  const { bases: localKnowledgeBases, isLoading: isLocalKnowledgeBasesLoading } = useKnowledgeBases()
-  const { bases: remoteKnowledgeBases, isLoading: isRemoteKnowledgeBasesLoading } = useRemoteKnowledgeBases()
+  const { bases: localKnowledgeBases, isLoading: localKnowledgeBasesLoading } = useKnowledgeBases()
+  const { bases: remoteKnowledgeBases, isLoading: remoteKnowledgeBasesLoading } = useRemoteKnowledgeBases()
   const knowledgeBases = useSelectableKnowledgeBases(localKnowledgeBases, remoteKnowledgeBases)
-  const knowledgeBasesLoading = isLocalKnowledgeBasesLoading || isRemoteKnowledgeBasesLoading
+  const knowledgeBasesLoading = localKnowledgeBasesLoading || remoteKnowledgeBasesLoading
   const availableKnowledgeBaseIds = useMemo(() => new Set(knowledgeBases.map((base) => base.id)), [knowledgeBases])
   const {
     skills,
@@ -355,6 +374,7 @@ function AgentEditDialogContent({
     form.reset(defaultValues)
     form.clearErrors()
     setActiveTab(initialTab ?? 'basic')
+    setEmojiPickerOpen(false)
     setModelLabels(modelLabelsForAgent(resource))
     replaceFormBaseline(buildInitialAgentFormState(resource))
     setBaselineSkillAgentId(null)
@@ -528,9 +548,16 @@ function AgentEditDialogContent({
             modelLabels={modelLabels}
             setModelLabels={setModelLabels}
             patchAgentForm={patchAgentForm}
+            emojiPickerOpen={emojiPickerOpen}
+            setEmojiPickerOpen={setEmojiPickerOpen}
             onSettingsNavigate={closeBeforeAction}
             caps={caps}
             agentType={resource.type}
+            agentId={resource.id}
+            beforeHeartbeatOpen={async () => {
+              await flush()
+              return failedSaveKeyRef.current === null
+            }}
           />
         </TabsContent>
         <TabsContent
@@ -577,9 +604,13 @@ function AgentBasicFields({
   modelLabels,
   setModelLabels,
   patchAgentForm,
+  emojiPickerOpen,
+  setEmojiPickerOpen,
   onSettingsNavigate,
   caps,
-  agentType
+  agentType,
+  agentId,
+  beforeHeartbeatOpen
 }: {
   form: UseFormReturn<AgentEditFormValues>
   modelFilter?: ModelSelectorFilter
@@ -588,22 +619,25 @@ function AgentBasicFields({
   modelLabels: ModelLabels
   setModelLabels: (labels: ModelLabels) => void
   patchAgentForm: (patch: Partial<AgentFormState>) => void
+  emojiPickerOpen: boolean
+  setEmojiPickerOpen: (open: boolean) => void
   onSettingsNavigate?: (navigate: () => void) => void
   caps: AgentRuntimeCapabilities
   agentType: AgentType
+  agentId: string
+  beforeHeartbeatOpen: () => Promise<boolean>
 }) {
   const { t } = useTranslation()
   const heartbeatEnabled = form.watch('heartbeatEnabled')
+  const [heartbeatOpen, setHeartbeatOpen] = useState(false)
 
   return (
     <div className="divide-y divide-border-subtle border-border-subtle border-b [&>*:first-child]:pt-0">
-      <TextInputField
+      <AgentAvatarNameField
         form={form}
-        name="name"
-        label={t('common.name')}
-        placeholder={t('library.config.agent.field.name.placeholder')}
-        required
-        layout="row"
+        emojiPickerOpen={emojiPickerOpen}
+        setEmojiPickerOpen={setEmojiPickerOpen}
+        portalContainer={portalContainer}
       />
       <TextInputField
         form={form}
@@ -672,14 +706,89 @@ function AgentBasicFields({
         patchAgentForm={patchAgentForm}
         permissionModeCards={getPermissionModeCards(agentType)}
       />
+      <AgentLanguageOverrideField form={form} />
       {caps.heartbeat ? (
-        <HeartbeatSettingsField
-          form={form}
-          enabled={heartbeatEnabled}
-          onEnabledChange={(checked) => patchAgentForm({ heartbeatEnabled: checked })}
-        />
+        <div>
+          <HeartbeatSettingsField
+            form={form}
+            enabled={heartbeatEnabled}
+            onEnabledChange={(checked) => patchAgentForm({ heartbeatEnabled: checked })}
+          />
+          <div className="flex justify-end pb-4">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={async () => {
+                if (await beforeHeartbeatOpen()) setHeartbeatOpen(true)
+              }}>
+              {t('agent.heartbeat.edit')}
+            </Button>
+          </div>
+          {heartbeatOpen ? (
+            <HeartbeatEditorDialog agentId={agentId} enabled={heartbeatEnabled} onOpenChange={setHeartbeatOpen} />
+          ) : null}
+        </div>
       ) : null}
     </div>
+  )
+}
+
+function AgentAvatarNameField({
+  form,
+  emojiPickerOpen,
+  setEmojiPickerOpen,
+  portalContainer
+}: {
+  form: UseFormReturn<AgentEditFormValues>
+  emojiPickerOpen: boolean
+  setEmojiPickerOpen: (open: boolean) => void
+  portalContainer: HTMLElement | null
+}) {
+  const { t } = useTranslation()
+
+  return (
+    <FormField
+      control={form.control}
+      name="name"
+      rules={{ validate: (value) => value.trim().length > 0 || t('common.required_field') }}
+      render={({ field }) => (
+        <FormItem className={editDialogFormRowClassName}>
+          <FormLabel className={editDialogFormRowLabelClassName}>
+            {t('library.config.dialogs.create.avatar_name_label')}
+          </FormLabel>
+          <InputGroup>
+            <FormField
+              control={form.control}
+              name="avatar"
+              render={({ field: avatarField }) => (
+                <InputGroupAddon className="py-0">
+                  <EmojiAvatarPicker
+                    value={avatarField.value}
+                    fallback="🤖"
+                    open={emojiPickerOpen}
+                    onOpenChange={setEmojiPickerOpen}
+                    onChange={avatarField.onChange}
+                    ariaLabel={t('library.config.dialogs.create.avatar_aria')}
+                    portalContainer={portalContainer}
+                    avatarClassName="border-0"
+                    avatarFontSize={18}
+                  />
+                </InputGroupAddon>
+              )}
+            />
+            <FormControl>
+              <InputGroupInput
+                {...field}
+                className="pl-1!"
+                placeholder={t('library.config.agent.field.name.placeholder')}
+              />
+            </FormControl>
+          </InputGroup>
+          <FormMessage className="col-start-2" />
+        </FormItem>
+      )}
+    />
   )
 }
 
@@ -738,6 +847,60 @@ function PermissionModeField({
   )
 }
 
+function AgentLanguageOverrideField({ form }: { form: UseFormReturn<AgentEditFormValues> }) {
+  const { t } = useTranslation()
+  const [globalLanguage] = usePreference('agent.language')
+  const languageMode = useWatch({ control: form.control, name: 'languageMode' })
+  const languageCustom = useWatch({ control: form.control, name: 'languageCustom' })
+  const preview = resolveAgentLanguagePreview(languageMode, languageCustom, globalLanguage)
+
+  return (
+    <FormField
+      control={form.control}
+      name="languageMode"
+      render={({ field }) => (
+        <FormItem className={editDialogFormRowClassName}>
+          <FormLabel className={editDialogFormRowLabelClassName}>
+            {t('library.config.agent.field.language.label')}
+          </FormLabel>
+          <div className="flex flex-col gap-2">
+            <SegmentedControl
+              size="sm"
+              value={field.value}
+              onValueChange={(value) => field.onChange(value)}
+              aria-label={t('library.config.agent.field.language.label')}
+              options={[
+                { value: 'inherit', label: t('library.config.agent.field.language.mode.inherit') },
+                { value: 'off', label: t('library.config.agent.field.language.mode.off') },
+                { value: 'custom', label: t('library.config.agent.field.language.mode.custom') }
+              ]}
+            />
+            {field.value === 'custom' ? (
+              <AgentLanguageField
+                value={languageCustom.trim() ? languageCustom : null}
+                onChange={(next) => {
+                  if (next === null) field.onChange('inherit')
+                  else form.setValue('languageCustom', next, { shouldDirty: true })
+                }}
+                nullOptionLabel={t('library.config.agent.field.language.mode.inherit')}
+                customPlaceholder={t('settings.agent.language.custom_placeholder')}
+                comboLabel={t('settings.agent.language.combo_label')}
+                inputLabel={t('settings.agent.language.custom_label')}
+              />
+            ) : null}
+            <span className="text-muted-foreground text-xs">
+              {preview
+                ? t('library.config.agent.field.language.effective_value', { language: preview })
+                : t('library.config.agent.field.language.effective_follow')}
+            </span>
+          </div>
+          <FormMessage className="col-start-2" />
+        </FormItem>
+      )}
+    />
+  )
+}
+
 function HeartbeatSettingsField({
   form,
   enabled,
@@ -778,8 +941,8 @@ function HeartbeatSettingsField({
               </FormLabel>
               <FormControl>
                 <InputNumber
-                  min={1}
-                  max={1440}
+                  min={MIN_HEARTBEAT_INTERVAL_MINUTES}
+                  max={MAX_HEARTBEAT_INTERVAL_MINUTES}
                   step={1}
                   className="h-9 w-full"
                   value={field.value || null}

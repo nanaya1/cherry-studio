@@ -1,11 +1,10 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest'
-
-import type { useQuickPanel as UseQuickPanel } from '@renderer/components/QuickPanel'
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import type { useQuickPanel as UseQuickPanel } from '@renderer/components/QuickPanel'
 import type { SubWindowInitData } from '@shared/types/subWindow'
 
 type ShellTab = {
@@ -17,6 +16,7 @@ type ShellTab = {
 
 const defaultTabs: ShellTab[] = [{ id: 'home', type: 'route', url: '/home', title: 'Home' }]
 const openTab = vi.fn()
+const commandHandlers = new Map<string, () => void>()
 const ipcListeners = new Map<string, (value: boolean) => void>()
 let ipcRequest: ReturnType<typeof vi.fn> = vi.fn()
 let resolveInitialFullscreen: ((value: boolean) => void) | undefined
@@ -46,6 +46,11 @@ async function renderSubWindowAppShell({
   })
   vi.doMock('@renderer/hooks/useWindowInitData', () => ({
     useWindowInitData: () => init
+  }))
+  vi.doMock('@renderer/hooks/command', () => ({
+    useCommandHandler: (command: string, handler: () => void) => {
+      commandHandlers.set(command, handler)
+    }
   }))
   vi.doMock('@renderer/hooks/tab', () => ({
     useTabs: () => ({
@@ -111,6 +116,7 @@ afterEach(() => {
   cleanup()
   vi.clearAllMocks()
   vi.resetModules()
+  commandHandlers.clear()
   ipcListeners.clear()
   ipcRequest = vi.fn()
   resolveInitialFullscreen = undefined
@@ -177,5 +183,13 @@ describe('SubWindowAppShell', () => {
     })
 
     expect(screen.getByTestId('sub-window-title-bar')).toHaveAttribute('data-fullscreen', 'true')
+  })
+
+  it('closes the window from the tab-close shortcut, since a sub-window draws no tab bar', async () => {
+    await renderSubWindowAppShell()
+
+    commandHandlers.get('tab.close')?.()
+
+    expect(ipcRequest).toHaveBeenCalledWith('window.close')
   })
 })

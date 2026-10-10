@@ -6,6 +6,7 @@ import { ResourceDeleteConfirmDialog } from '@renderer/components/resourceCatalo
 import { useResourceCatalogController } from '@renderer/hooks/resourceCatalog'
 import type { ResourceItem, ResourceType } from '@renderer/types/resourceCatalog'
 import { cn } from '@renderer/utils/style'
+import type { InstalledSkill } from '@shared/data/types/agent'
 
 import { ResourceGrid } from './ResourceGrid'
 
@@ -18,12 +19,12 @@ type ResourceCatalogViewType = Extract<ResourceType, 'assistant' | 'agent' | 'sk
 export type ResourceCatalogViewProps = {
   className?: string
   onOpenAssistantChat?: (assistantId: string) => void
+  onOpenSkill?: (skill: InstalledSkill) => void
+  onLaunchSkill?: (skill: InstalledSkill) => Promise<void>
   resourceType: ResourceCatalogViewType
   toolbarLeading?: ReactNode
   /** `settings` swaps the full-bleed toolbar for a settings page header (title + add button + search row). */
   variant?: 'library' | 'settings'
-  /** Hide resource management actions while keeping the catalog readable. */
-  showManagementActions?: boolean
   title?: ReactNode
   description?: ReactNode
   toolbarFooter?: ReactNode
@@ -34,10 +35,11 @@ export type ResourceCatalogViewProps = {
 export function ResourceCatalogView({
   className,
   onOpenAssistantChat,
+  onOpenSkill,
+  onLaunchSkill,
   resourceType,
   toolbarLeading,
   variant = 'library',
-  showManagementActions = true,
   title,
   description,
   toolbarFooter,
@@ -45,9 +47,11 @@ export function ResourceCatalogView({
   filterResource
 }: ResourceCatalogViewProps) {
   const { t } = useTranslation()
-  const { resourceError, refetch, gridProps, dialogs } = useResourceCatalogController(resourceType)
+  const { resourceError, refetch, gridProps, dialogs } = useResourceCatalogController(resourceType, {
+    onOpenSkill,
+    onLaunchSkill
+  })
   const hasActiveDialog = Boolean(
-    dialogs.selectedSkill ||
     dialogs.assistantImportOpen ||
     (resourceType === 'assistant' && dialogs.assistantLibraryOpen) ||
     dialogs.skillImportOpen ||
@@ -102,7 +106,6 @@ export function ResourceCatalogView({
             onOpenSystemSkills={resourceType === 'skill' ? gridProps.onOpenSystemSkills : undefined}
             toolbarLeading={toolbarLeading}
             variant={variant}
-            showManagementActions={showManagementActions}
             title={title}
             description={description}
           />

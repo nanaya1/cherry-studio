@@ -22,6 +22,11 @@ import { getEffectiveAgentLanguage } from '@main/ai/utils/agentLanguage'
 import { resolveKnowledgeBaseScope } from '@main/ai/utils/knowledgeScope'
 import { encodeReasoningInvocation, resolveReasoningInvocation } from '@main/ai/utils/reasoningSerializers'
 import { createAiUsagePricingSnapshot } from '@main/ai/utils/usageCapture'
+import {
+  createAgentProxyEnvironmentFingerprint,
+  isAgentProxyEnvironmentKey,
+  mergeAgentLoopbackProxyBypass
+} from '@main/services/proxy/agentProxyEnvironment'
 import { getProxyEnvironment } from '@main/services/proxy/proxyEnv'
 import type { AgentEntity } from '@shared/data/api/schemas/agents'
 import type { AgentSessionEntity } from '@shared/data/api/schemas/agentSessions'
@@ -31,7 +36,12 @@ import { ENDPOINT_TYPE, parseUniqueModelId } from '@shared/data/types/model'
 import type { Provider } from '@shared/data/types/provider'
 import type { ReasoningEffortOption } from '@shared/types/aiSdk'
 import { formatApiHost, withoutTrailingApiVersion } from '@shared/utils/api'
-import { formatGatewayModelId, gatewayClientOrigin } from '@shared/utils/apiGateway'
+import {
+  DEFAULT_API_GATEWAY_HOST,
+  DEFAULT_API_GATEWAY_PORT,
+  formatGatewayModelId,
+  gatewayClientOrigin
+} from '@shared/utils/apiGateway'
 import { isVisionModel, supportsDynamicallyLoadedTools } from '@shared/utils/model'
 import {
   isExternalCliProvider,
@@ -44,11 +54,6 @@ import { resolveEffectiveEndpoint } from '../../provider/endpoint'
 import { getExtraHeaders, getProviderAppHeaders } from '../../utils/provider'
 import { gatewayCredentialsFingerprint, requiresAgentGateway, resolveApiGatewayRuntime } from '../agentApiGateway'
 import type { AgentSessionUsageCapture } from '../types'
-import {
-  createAgentProxyEnvironmentFingerprint,
-  isAgentProxyEnvironmentKey,
-  mergeAgentLoopbackProxyBypass
-} from './agentProxyEnvironment'
 import type { WarmQueryRequest } from './ClaudeCodeWarmQueryManager'
 import { isAnthropicOfficialHost, with1mSuffix } from './contextWindowSuffix'
 import { createClaudeCodeQueryOptions } from './queryOptions'
@@ -712,8 +717,8 @@ function deriveRouteFacts(
   if (shouldUseGateway) {
     const apiGatewayService = application.get('ApiGatewayService')
     const config = apiGatewayService.getCurrentConfig()
-    const host = config.host || '127.0.0.1'
-    const port = config.port || 24333
+    const host = config.host || DEFAULT_API_GATEWAY_HOST
+    const port = config.port || DEFAULT_API_GATEWAY_PORT
     return {
       branch: 'gateway',
       baseUrl: gatewayClientOrigin(host, port),
@@ -806,8 +811,16 @@ async function resolveClaudeCodeRuntimeRoute(
     }
     case 'direct': {
       const resolvedApiKey = providerService.resolveApiKey(primaryProvider.id)
+      // Keyless local servers (registry authOptional) carry no credential; the
+      // SDK still needs a non-empty token. Ollama-endpoint custom providers
+      // keep their established stand-in.
       const runtimeApiKey =
-        resolvedApiKey.value || (isOllamaProvider(primaryProvider) ? OLLAMA_PLACEHOLDER_AUTH_TOKEN : '')
+        resolvedApiKey.value ||
+        (primaryProvider.authOptional === true
+          ? (primaryProvider.presetProviderId ?? primaryProvider.id)
+          : isOllamaProvider(primaryProvider)
+            ? OLLAMA_PLACEHOLDER_AUTH_TOKEN
+            : '')
       return {
         ...facts,
         apiKey: runtimeApiKey,

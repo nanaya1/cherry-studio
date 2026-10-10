@@ -140,7 +140,13 @@ export function buildAgentSources(
     },
     ...Array.from(agentById.values())
       .sort((left, right) => getAgentSourceRank(left.id, agentRankById) - getAgentSourceRank(right.id, agentRankById))
-      .map((agent) => ({ id: agent.id, label: agent.name, icon: <Bot size={15} /> })),
+      .map((agent) => {
+        return {
+          id: agent.id,
+          label: agent.name,
+          icon: <Bot size={15} />
+        }
+      }),
     ...(hasUnknownAgent
       ? [
           {

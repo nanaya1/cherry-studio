@@ -113,7 +113,13 @@ describe('knowledgeLookup remote routing', () => {
 
   it('keeps local results when the remote service fails, and reports an error when all targets fail', async () => {
     mocks.localSearch.mockResolvedValue([
-      { pageContent: 'local survives', score: 0.8, conceptId: 'local-doc', title: 'Local', metadata: { itemType: 'file' } }
+      {
+        pageContent: 'local survives',
+        score: 0.8,
+        conceptId: 'local-doc',
+        title: 'Local',
+        metadata: { itemType: 'file' }
+      }
     ])
     mocks.resolveClientConfig.mockImplementation(() => {
       throw new Error('remote service disabled')
@@ -190,10 +196,7 @@ describe('knowledgeLookup remote routing', () => {
     const outline = await listOrOutlineKnowledge({ baseId: remoteId, limit: 20 }, [remoteId])
     expect(outline).toEqual({ error: expect.stringMatching(/remote|远端|outline|大纲/i) })
 
-    const grep = await readOrGrepConcept(
-      { baseId: remoteId, conceptId: 'doc-1', pattern: 'needle' },
-      [remoteId]
-    )
+    const grep = await readOrGrepConcept({ baseId: remoteId, conceptId: 'doc-1', pattern: 'needle' }, [remoteId])
     expect(grep).toEqual({ error: expect.stringMatching(/remote|远端|grep/i) })
 
     const managed = await manageKnowledge({ baseId: remoteId, action: 'refresh', conceptIds: ['doc-1'] }, [remoteId])

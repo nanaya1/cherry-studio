@@ -1,28 +1,13 @@
 import { application } from '@application'
-import { OAuthServiceError, OAuthSignInCancelledError } from '@main/services/oauth/errors'
+import { OAuthServiceError } from '@main/services/oauth/errors'
 import { authorizeTokenDanceApiKey } from '@main/services/tokenDanceOAuth'
 import { isClaudeCodeProviderId } from '@shared/data/presets/claudeCode'
 import { IpcError } from '@shared/ipc/errors/IpcError'
-import { oauthErrorCodes } from '@shared/ipc/errors/oauth'
 import type { oauthRequestSchemas } from '@shared/ipc/schemas/oauth'
 import type { IpcHandlersFor } from '@shared/ipc/types'
 
-const runtime = () => application.get('OAuthRuntimeService')
+import { mapOAuthSignInCancellation, runOAuthSignIn } from './oauthSignIn'
 
-async function mapSignInCancellation<T>(request: Promise<T>): Promise<T> {
-  try {
-    return await request
-  } catch (error) {
-    if (error instanceof OAuthSignInCancelledError) {
-      throw new IpcError(oauthErrorCodes.SIGN_IN_CANCELLED, error.message)
-    }
-    throw error
-  }
-}
-
-// OAuthServiceError carries a gateway error code (e.g. MANAGED_KEY_UNAVAILABLE)
-// but IpcError.from would collapse it to INTERNAL, so the renderer could not map
-// it to a human-readable message. Re-throw as IpcError to keep the code intact.
 async function mapOAuthServiceError<T>(request: Promise<T>): Promise<T> {
   try {
     return await request
@@ -34,15 +19,20 @@ async function mapOAuthServiceError<T>(request: Promise<T>): Promise<T> {
   }
 }
 
+const runtime = () => application.get('OAuthRuntimeService')
+
 export const oauthHandlers: IpcHandlersFor<typeof oauthRequestSchemas> = {
-  'oauth.sign_in': ({ providerId, requestId }) => mapSignInCancellation(runtime().signIn(providerId, requestId)),
-  'oauth.sign_in.attach': ({ providerId, requestId }) =>
-    mapSignInCancellation(runtime().joinActiveSignIn(providerId, requestId)),
-  'oauth.cancel_sign_in': ({ providerId, requestId }) => runtime().cancelSignIn(providerId, requestId),
+  'oauth.sign_in': async ({ providerId, requestId }, ctx) => {
+    const { accountId } = await runOAuthSignIn(ctx.senderId, providerId, requestId)
+    return { accountId }
+  },
+  'oauth.sign_in.attach': ({ providerId, requestId }, ctx) =>
+    mapOAuthSignInCancellation(runtime().joinActiveSignIn(ctx.senderId, providerId, requestId)),
+  'oauth.cancel_sign_in': ({ providerId, requestId }, ctx) =>
+    runtime().cancelSignIn(ctx.senderId, providerId, requestId),
   'oauth.has_token': ({ providerId }) => runtime().hasToken(providerId),
   'oauth.get_account': ({ providerId }) => runtime().getAccount(providerId),
   'oauth.logout': ({ providerId }) => runtime().logout(providerId),
-  'oauth.provision_api_keys': ({ providerId }) => mapOAuthServiceError(runtime().provisionApiKeys(providerId)),
   'oauth.tokendance.authorize_api_key': () => authorizeTokenDanceApiKey(),
   // External-CLI login probe. `claude-code` is the only provider whose
   // `authMethods` includes `'external-cli'` today; reject anything else rather
@@ -54,10 +44,7 @@ export const oauthHandlers: IpcHandlersFor<typeof oauthRequestSchemas> = {
     }
     return application.get('CodeCliService').checkClaudeLogin()
   },
-  // `ctx.senderId` is the deep-link flow's initiator: the result is later pushed
-  // point-to-point to exactly this window (carrying API keys), so a source-trust
-  // caller with no window (`senderId === null`) is rejected inside the runtime.
-  // Per-provider host validation lives in the provider definition's createClient.
+  'oauth.provision_api_keys': ({ providerId }) => mapOAuthServiceError(runtime().provisionApiKeys(providerId)),
   'oauth.start_deep_link_flow': ({ providerId, oauthServer, apiHost }, ctx) =>
     runtime().startDeepLinkFlow(ctx.senderId, providerId, { oauthServer, apiHost: apiHost ?? oauthServer })
 }

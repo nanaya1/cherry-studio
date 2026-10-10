@@ -1,4 +1,4 @@
-import { GripVertical, RotateCcw, ChevronDown } from 'lucide-react'
+import { GripVertical, RotateCcw } from 'lucide-react'
 import type { ComponentProps, ReactNode } from 'react'
 import { useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -15,10 +15,7 @@ import type { QuickPanelInputAdapter } from '@renderer/components/QuickPanel'
 import { toast } from '@renderer/services/toast'
 import { cn } from '@renderer/utils/style'
 
-import {
-  COMPOSER_BELOW_SELECTOR_BUTTON_CLASS,
-  COMPOSER_SEND_ACCESSORY_BUTTON_CLASS
-} from './ComposerControlScaffolding'
+import { COMPOSER_SEND_ACCESSORY_BUTTON_CLASS } from './ComposerControlScaffolding'
 
 /** Variant-provided shortcut that is not backed by a launcher (e.g. agent skills). */
 export interface ComposerToolbarCustomTool {
@@ -38,7 +35,6 @@ export interface ComposerToolbarCustomTool {
 interface ShortcutCandidate {
   id: string
   label: ReactNode | string
-  description?: ReactNode | string
   icon: ReactNode
   customizePlacement?: 'leading'
   active: boolean
@@ -72,9 +68,6 @@ interface ComposerToolbarShortcutsProps {
   onCustomizeOpenChange: (open: boolean) => void
   /** True only after model resolution has completed without an available model. */
   isModelUnavailable?: boolean
-  onlyPinnedIds?: readonly string[]
-  hiddenPinnedIds?: readonly string[]
-  showPinnedLabels?: boolean
   inputAdapter?: QuickPanelInputAdapter
   unifiedPanelControl?: ComposerUnifiedPanelControl
 }
@@ -92,7 +85,8 @@ interface CustomizeOrderState {
 
 const CUSTOMIZE_ROW_CLASS = 'flex h-8 items-center gap-1.5 rounded-md px-1.5 hover:bg-accent/60'
 const CUSTOMIZE_ROW_ICON_CLASS =
-  'flex size-5 shrink-0 items-center justify-center text-muted-foreground [&_svg]:!size-[16px]'
+  'flex size-5 shrink-0 items-center justify-center text-muted-foreground [&>svg]:!size-[16px]'
+const TOOLBAR_ICON_CLASS = 'flex size-[18px] shrink-0 items-center justify-center [&>svg]:!size-[18px]'
 
 const haveSameOrder = (left: readonly string[], right: readonly string[]) =>
   left.length === right.length && left.every((id, index) => id === right[index])
@@ -135,9 +129,6 @@ export const ComposerToolbarShortcuts = ({
   customizeOpen,
   onCustomizeOpenChange,
   isModelUnavailable,
-  onlyPinnedIds,
-  hiddenPinnedIds,
-  showPinnedLabels = false,
   inputAdapter,
   unifiedPanelControl
 }: ComposerToolbarShortcutsProps) => {
@@ -191,7 +182,6 @@ export const ComposerToolbarShortcuts = ({
       return {
         id: launcher.id,
         label,
-        description: launcher.description,
         icon: launcher.icon,
         active: Boolean(launcher.active),
         disabled: Boolean(launcher.disabled) || (opensPanel && panelUnavailable),
@@ -252,15 +242,7 @@ export const ComposerToolbarShortcuts = ({
     () => pinnedIds.map((id) => ({ id, candidate: candidateById.get(id) })),
     [candidateById, pinnedIds]
   )
-  const onlyPinnedIdSet = useMemo(() => (onlyPinnedIds ? new Set(onlyPinnedIds) : null), [onlyPinnedIds])
-  const hiddenPinnedIdSet = useMemo(() => new Set(hiddenPinnedIds), [hiddenPinnedIds])
-  const visiblePinnedRows = useMemo(
-    () =>
-      pinnedRows.filter(
-        (row) => row.candidate && !hiddenPinnedIdSet.has(row.id) && (!onlyPinnedIdSet || onlyPinnedIdSet.has(row.id))
-      ),
-    [hiddenPinnedIdSet, onlyPinnedIdSet, pinnedRows]
-  )
+  const visiblePinnedRows = useMemo(() => pinnedRows.filter((row) => row.candidate), [pinnedRows])
   const pinnedIdSet = useMemo(() => new Set(pinnedIds), [pinnedIds])
   const candidateIds = useMemo(() => candidates.map((candidate) => candidate.id), [candidates])
   const leadingCandidateIds = useMemo(
@@ -364,14 +346,9 @@ export const ComposerToolbarShortcuts = ({
                 <Button
                   type="button"
                   variant="ghost"
-                  size={showPinnedLabels ? 'sm' : 'icon-sm'}
+                  size="icon-sm"
                   className={cn(
-                    showPinnedLabels
-                      ? cn(
-                          COMPOSER_BELOW_SELECTOR_BUTTON_CLASS,
-                          '[&_svg]:text-muted-foreground! hover:[&_svg]:text-foreground!'
-                        )
-                      : COMPOSER_SEND_ACCESSORY_BUTTON_CLASS,
+                    COMPOSER_SEND_ACCESSORY_BUTTON_CLASS,
                     'disabled:pointer-events-none',
                     !shortcut.resolved && 'disabled:opacity-100',
                     shortcut.active && 'bg-accent'
@@ -384,13 +361,9 @@ export const ComposerToolbarShortcuts = ({
                   disabled={!blockedByMissingModel && shortcut.disabled}
                   data-active={shortcut.active || undefined}
                   onClick={blockedByMissingModel ? showModelRequiredToast : shortcut.select}>
-                  {shortcut.icon}
-                  {showPinnedLabels ? (
-                    <>
-                      <span className="max-w-40 truncate">{shortcut.description ?? shortcut.label}</span>
-                      <ChevronDown size={14} aria-hidden className="text-muted-foreground" />
-                    </>
-                  ) : null}
+                  <span data-slot="composer-toolbar-icon" className={TOOLBAR_ICON_CLASS}>
+                    {shortcut.icon}
+                  </span>
                 </Button>
               </Tooltip>
             )

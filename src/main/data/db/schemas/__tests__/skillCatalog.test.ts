@@ -1,3 +1,7 @@
+import { setupTestDatabase } from '@test-helpers/db'
+import { eq } from 'drizzle-orm'
+import { describe, expect, it } from 'vitest'
+
 import { agentGlobalSkillTable } from '@data/db/schemas/agentGlobalSkill'
 import {
   skillCatalogIndustryTable,
@@ -10,9 +14,6 @@ import {
   skillProfessionalDimensionTable,
   skillProfessionalDimensionTranslationTable
 } from '@data/db/schemas/skillCatalog'
-import { setupTestDatabase } from '@test-helpers/db'
-import { eq } from 'drizzle-orm'
-import { describe, expect, it } from 'vitest'
 
 const DIGEST = `sha256:${'a'.repeat(64)}`
 

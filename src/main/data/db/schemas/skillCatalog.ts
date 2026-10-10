@@ -8,6 +8,9 @@
  * `agent_global_skill`, which records what the user has actually installed.
  */
 
+import { sql } from 'drizzle-orm'
+import { check, index, integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core'
+
 import type {
   CatalogSkillStatus,
   IndustryScope,
@@ -16,8 +19,6 @@ import type {
   SnapshotSource,
   SyncStateStatus
 } from '@shared/types/skillCatalog'
-import { sql } from 'drizzle-orm'
-import { check, index, integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 
 import { createUpdateTimestamps } from './_columnHelpers'
 

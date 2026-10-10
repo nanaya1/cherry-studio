@@ -145,8 +145,7 @@ describe('CherryInOAuthService', () => {
       'https://open.cherryin.ai/oauth2/revoke',
       expect.objectContaining({
         method: 'POST',
-        body:
-          'token=oauth-access&token_type_hint=access_token&client_id=2a348c87-bae1-4756-a62f-b2e97200fd6d'
+        body: 'token=oauth-access&token_type_hint=access_token&client_id=2a348c87-bae1-4756-a62f-b2e97200fd6d'
       })
     )
     expect(runtimeMocks.logout).toHaveBeenCalledWith('cherryin')

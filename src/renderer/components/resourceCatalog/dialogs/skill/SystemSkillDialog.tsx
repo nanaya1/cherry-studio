@@ -7,7 +7,6 @@ import { ResourceCatalogSearchInput } from '@renderer/components/resourceCatalog
 import { useSystemSkills } from '@renderer/hooks/useSkills'
 import { toast } from '@renderer/services/toast'
 import type { SystemSkillCandidate } from '@shared/types/skill'
-import { getSystemSkillDescription, getSystemSkillDisplayName } from '@shared/utils/skillDisplay'
 
 type BaseProps = {
   open: boolean
@@ -21,8 +20,7 @@ type Props = BaseProps &
   )
 
 export function SystemSkillDialog({ mode, open, onOpenChange, onEnabled, selectedSkillIds }: Props) {
-  const { t, i18n } = useTranslation()
-  const locale = i18n.resolvedLanguage ?? i18n.language
+  const { t } = useTranslation()
   const [query, setQuery] = useState('')
   const { skills, loading, error, importSkill, importing } = useSystemSkills(open)
   const visibleSkills = useMemo(() => {
@@ -30,28 +28,25 @@ export function SystemSkillDialog({ mode, open, onOpenChange, onEnabled, selecte
     if (!normalizedQuery) return skills
 
     return skills.filter((skill) =>
-      [skill.displayName, skill.displayNameEn, skill.name, skill.description, skill.descriptionEn].some((value) =>
-        value?.toLowerCase().includes(normalizedQuery)
-      )
+      [skill.name, skill.description].some((value) => value?.toLowerCase().includes(normalizedQuery))
     )
   }, [query, skills])
 
   const handleImport = useCallback(
     async (skill: SystemSkillCandidate) => {
       const installed = await importSkill(skill)
-      if (installed)
-        toast.success(t('library.system_skill.import_success', { name: getSystemSkillDisplayName(skill, locale) }))
+      if (installed) toast.success(t('library.system_skill.import_success', { name: skill.name }))
     },
-    [importSkill, locale, t]
+    [importSkill, t]
   )
 
   const handleEnable = useCallback(
     (skill: SystemSkillCandidate) => {
       if (mode !== 'agent-create' || !skill.registeredSkillId) return
       onEnabled(skill.registeredSkillId)
-      toast.success(t('library.system_skill.enable_success', { name: getSystemSkillDisplayName(skill, locale) }))
+      toast.success(t('library.system_skill.enable_success', { name: skill.name }))
     },
-    [locale, mode, onEnabled, t]
+    [mode, onEnabled, t]
   )
 
   return (
@@ -127,10 +122,8 @@ function SystemSkillRow({
   onImport: () => void
   onEnable: () => void
 }) {
-  const { t, i18n } = useTranslation()
-  const locale = i18n.resolvedLanguage ?? i18n.language
+  const { t } = useTranslation()
   const placementNames = Array.from(new Set(skill.placements.map((placement) => placement.sourceName))).join(', ')
-  const description = getSystemSkillDescription(skill, locale)
   const imported = skill.status === 'registered'
   const enabled = mode === 'agent-create' && selected
   const disabled = importing || skill.status === 'conflict' || (mode === 'manage' ? imported : enabled)
@@ -155,12 +148,12 @@ function SystemSkillRow({
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className="truncate font-medium text-[13px] text-foreground">
-            {getSystemSkillDisplayName(skill, i18n.resolvedLanguage ?? i18n.language)}
-          </span>
-          <span className="shrink-0 text-foreground-tertiary text-xs">{placementNames}</span>
+          <span className="truncate text-[13px] font-medium text-foreground">{skill.name}</span>
+          <span className="shrink-0 text-xs text-foreground-tertiary">{placementNames}</span>
         </div>
-        {description ? <p className="mt-0.5 truncate text-muted-foreground text-xs">{description}</p> : null}
+        {skill.description ? (
+          <p className="mt-0.5 truncate text-xs text-muted-foreground">{skill.description}</p>
+        ) : null}
         <p className="mt-1 truncate font-mono text-[11px] text-foreground-tertiary">{skill.directoryPath}</p>
       </div>
       <Button variant="outline" size="sm" disabled={disabled} onClick={onClick} className="shrink-0">

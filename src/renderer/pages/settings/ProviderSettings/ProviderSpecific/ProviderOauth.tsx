@@ -8,6 +8,7 @@ import OauthButton from '@renderer/components/Oauth/OauthButton'
 import { useProvider } from '@renderer/hooks/useProvider'
 import { getProviderLabelKey } from '@renderer/i18n/label'
 import { oauthCardClasses } from '@renderer/pages/settings/ProviderSettings/primitives/ProviderSettingsPrimitives'
+import { getVisibleProviderWebsite } from '@renderer/pages/settings/ProviderSettings/utils/providerDisplay'
 import { providerBills, providerCharge } from '@renderer/services/oauth'
 import { hasApiKeys } from '@shared/utils/provider'
 
@@ -28,7 +29,8 @@ const ProviderOauth: FC<Props> = ({ providerId }) => {
 
   if (!provider) return null
 
-  const officialWebsite = provider.websites?.official
+  // const officialWebsite = provider.websites?.official
+  const officialWebsite = getVisibleProviderWebsite(provider.websites?.official)
   const providerWebsite = officialWebsite?.replace(/^https?:\/\//, '').replace(/\/.*$/, '') || provider.name
 
   const serviceDescription = (

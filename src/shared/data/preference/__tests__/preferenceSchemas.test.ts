@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { PreferenceSchemas } from '../preferenceSchemas'
 import { DefaultPreferences } from '../preferenceSchemas'
+import { createSidebarShortcutId, type SidebarShortcutTarget } from '../preferenceTypes'
 
 describe('DefaultPreferences', () => {
   it('leaves the client ID empty until runtime generates a UUID', () => {
@@ -32,7 +33,7 @@ describe('DefaultPreferences', () => {
     expect(DefaultPreferences.default['chat.web_search.default_search_keywords_provider']).toBe(searchKeywordsDefault)
   })
 
-  it('groups conversations and agent sessions by time and working directory for new users', () => {
+  it('groups conversations and agent sessions by the assistant and agent defaults for new users', () => {
     const topicDisplayDefault: PreferenceSchemas['default']['topic.tab.display_mode'] = 'time'
     const agentSessionDisplayDefault: PreferenceSchemas['default']['agent.session.display_mode'] = 'workdir'
 
@@ -40,21 +41,31 @@ describe('DefaultPreferences', () => {
     expect(DefaultPreferences.default['agent.session.display_mode']).toBe(agentSessionDisplayDefault)
   })
 
-  it('hides assistant and agent entity icons by default for new users', () => {
-    expect(DefaultPreferences.default['assistant.icon_type']).toBe('none')
-    expect(DefaultPreferences.default['agent.icon_type']).toBe('none')
-  })
-
-  it('defaults sidebar favorites to Agent before Chat for new users', () => {
-    const sidebarFavoritesDefault: PreferenceSchemas['default']['ui.sidebar.favorites'] = [
-      { id: 'agents', type: 'app' },
-      { id: 'assistants', type: 'app' },
-      { id: 'translate', type: 'app' },
-      { id: 'paintings', type: 'app' },
-      { id: 'knowledge', type: 'app' }
+  it('preserves the legacy favorites shape independently of resource shortcut defaults', () => {
+    const legacyFavorites: PreferenceSchemas['default']['ui.sidebar.favorites'] = [
+      { type: 'app', id: 'agents' },
+      { type: 'app', id: 'assistants' },
+      { type: 'app', id: 'translate' },
+      { type: 'app', id: 'paintings' },
+      { type: 'app', id: 'knowledge' }
     ]
+    expect(DefaultPreferences.default['ui.sidebar.favorites']).toEqual(legacyFavorites)
 
-    expect(DefaultPreferences.default['ui.sidebar.favorites']).toEqual(sidebarFavoritesDefault)
+    const sidebarShortcutsDefault: PreferenceSchemas['default']['ui.sidebar_shortcut'] = [
+      'agents',
+      'assistants',
+      'translate',
+      'paintings',
+      'knowledge'
+    ].map((resourceId) => {
+      const target: SidebarShortcutTarget = {
+        kind: 'resource',
+        locator: { providerId: 'core.app', resourceId }
+      }
+      return { type: 'shortcut', id: createSidebarShortcutId(target), target }
+    })
+
+    expect(DefaultPreferences.default['ui.sidebar_shortcut']).toEqual(sidebarShortcutsDefault)
   })
 
   it('pins permission mode on the agent composer toolbar for new users', () => {

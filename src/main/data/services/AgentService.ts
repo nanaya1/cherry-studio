@@ -8,7 +8,7 @@ import { agentChannelTable } from '@data/db/schemas/agentChannel'
 import { agentSessionTable } from '@data/db/schemas/agentSession'
 import { agentKnowledgeBaseTable, agentMcpServerTable } from '@data/db/schemas/assistantRelations'
 import { knowledgeBaseTable } from '@data/db/schemas/knowledge'
-// MEA 定制：syncActiveMcpsToBuiltinAssistantTx 需要
+// MEA 定制：syncActiveMcpsToBuiltinAssistantTx 需要。
 import { mcpServerTable } from '@data/db/schemas/mcpServer'
 import { pinTable } from '@data/db/schemas/pin'
 import { agentRemoteKnowledgeBaseTable } from '@data/db/schemas/remoteKnowledge'
@@ -83,6 +83,8 @@ interface EnsureBuiltinAgentInput {
 export interface EnsureBuiltinAgentResult {
   agent: AgentEntity
   created: boolean
+  /** A soft-deleted builtin row was restored (deletedAt cleared) by this call. */
+  restored: boolean
 }
 
 function getAgentDescription(id: string, description: string, configuration: unknown): string {
@@ -120,7 +122,7 @@ function getBuiltinRole(configuration: unknown): unknown {
   return (configuration as { builtin_role?: unknown }).builtin_role
 }
 
-// MEA 定制：MCP 自动绑定内置助手所需的排除清单（excluded_mcp_server_ids）
+// MEA 定制：MCP 自动绑定内置助手所需的排除清单。
 function getExcludedMcpServerIds(configuration: unknown): Set<string> {
   if (!configuration || typeof configuration !== 'object') return new Set()
   const ids = (configuration as { excluded_mcp_server_ids?: unknown }).excluded_mcp_server_ids
@@ -137,6 +139,21 @@ function removeUntrustedSupportRole(id: string, configuration: unknown): Record<
   }
   delete next.builtin_role
   return next
+}
+
+/**
+ * Split knowledge-base ids into local rows (validated against `knowledge_base`)
+ * and remote `remote:*` bindings (stored verbatim, no local FK). Deduplicated so
+ * repeated ids collapse to a single relation row. Remote ids never enter the
+ * local existence check, which is what prevents dangling remote bindings from
+ * failing agent create/update.
+ */
+function splitKnowledgeBaseIds(ids: readonly string[]): { localIds: string[]; remoteIds: string[] } {
+  const uniqueIds = [...new Set(ids)]
+  return {
+    localIds: uniqueIds.filter((id) => !isRemoteKnowledgeBaseId(id)),
+    remoteIds: uniqueIds.filter(isRemoteKnowledgeBaseId)
+  }
 }
 
 /**
@@ -237,14 +254,6 @@ function fetchMcpsForAgents(tx: DbOrTx, agentIds: string[]): Map<string, string[
  * Returns a Map<agentId, string[]> with deterministic reads; callers treat the IDs as a set.
  * Accepts both a database instance and a transaction (DbOrTx).
  */
-function splitKnowledgeBaseIds(ids: readonly string[]): { localIds: string[]; remoteIds: string[] } {
-  const uniqueIds = [...new Set(ids)]
-  return {
-    localIds: uniqueIds.filter((id) => !isRemoteKnowledgeBaseId(id)),
-    remoteIds: uniqueIds.filter(isRemoteKnowledgeBaseId)
-  }
-}
-
 function fetchKnowledgeBasesForAgents(tx: DbOrTx, agentIds: string[]): Map<string, string[]> {
   if (agentIds.length === 0) return new Map()
   const rows = tx
@@ -257,16 +266,6 @@ function fetchKnowledgeBasesForAgents(tx: DbOrTx, agentIds: string[]): Map<strin
       asc(agentKnowledgeBaseTable.knowledgeBaseId)
     )
     .all()
-  const remoteRows = tx
-    .select({ agentId: agentRemoteKnowledgeBaseTable.agentId, remoteBaseId: agentRemoteKnowledgeBaseTable.remoteBaseId })
-    .from(agentRemoteKnowledgeBaseTable)
-    .where(inArray(agentRemoteKnowledgeBaseTable.agentId, agentIds))
-    .orderBy(
-      asc(agentRemoteKnowledgeBaseTable.agentId),
-      asc(agentRemoteKnowledgeBaseTable.createdAt),
-      asc(agentRemoteKnowledgeBaseTable.remoteBaseId)
-    )
-    .all()
   const map = new Map<string, string[]>()
   for (const row of rows) {
     const list = map.get(row.agentId)
@@ -276,6 +275,21 @@ function fetchKnowledgeBasesForAgents(tx: DbOrTx, agentIds: string[]): Map<strin
       map.set(row.agentId, [row.knowledgeBaseId])
     }
   }
+  // Merge remote bindings (stored verbatim as the full `remote:*` id). Local rows
+  // are emitted first, then remote rows, so ordering stays deterministic.
+  const remoteRows = tx
+    .select({
+      agentId: agentRemoteKnowledgeBaseTable.agentId,
+      remoteBaseId: agentRemoteKnowledgeBaseTable.remoteBaseId
+    })
+    .from(agentRemoteKnowledgeBaseTable)
+    .where(inArray(agentRemoteKnowledgeBaseTable.agentId, agentIds))
+    .orderBy(
+      asc(agentRemoteKnowledgeBaseTable.agentId),
+      asc(agentRemoteKnowledgeBaseTable.createdAt),
+      asc(agentRemoteKnowledgeBaseTable.remoteBaseId)
+    )
+    .all()
   for (const row of remoteRows) {
     const list = map.get(row.agentId)
     if (list) {
@@ -333,10 +347,10 @@ export class AgentService {
       )
     }
     const mcps = req.mcps ?? []
-    const { localIds: localKnowledgeBaseIds, remoteIds: remoteKnowledgeBaseIds } = splitKnowledgeBaseIds(
-      req.knowledgeBaseIds ?? []
-    )
-    const knowledgeBaseIds = [...localKnowledgeBaseIds, ...remoteKnowledgeBaseIds]
+    const knowledgeBaseIds = req.knowledgeBaseIds ?? []
+    // Split remote `remote:*` bindings out so they land in the remote table and
+    // skip the local `knowledge_base` existence check.
+    const { localIds, remoteIds } = splitKnowledgeBaseIds(knowledgeBaseIds)
     const globalSkillService = getDataService('AgentGlobalSkillService')
     const skillIds = Array.from(new Set(req.skillIds ?? []))
 
@@ -368,13 +382,13 @@ export class AgentService {
         throw DataApiErrorFactory.notFound('Skill', skillId)
       }
     }
-    this.assertKnowledgeBasesExistTx(application.get('DbService').getDb(), knowledgeBaseIds)
+    this.assertKnowledgeBasesExistTx(application.get('DbService').getDb(), localIds)
 
     const row = withSqliteErrors(
       () =>
         application.get('DbService').withWriteTx((tx) => {
           getDataService('AgentGlobalSkillService').assertSkillsExistTx(tx, skillIds, 'create agent')
-          this.assertKnowledgeBasesExistTx(tx, knowledgeBaseIds)
+          this.assertKnowledgeBasesExistTx(tx, localIds)
           const result = this.createAgentTx(tx, id, insertData, 'first')
           // Insert junction rows for MCP associations
           if (mcps.length > 0) {
@@ -382,15 +396,17 @@ export class AgentService {
               .values(mcps.map((mcpId) => ({ agentId: id, mcpServerId: mcpId })))
               .run()
           }
-          // Insert junction rows for knowledge base associations
-          if (localKnowledgeBaseIds.length > 0) {
+          // Insert junction rows for local knowledge base associations
+          if (localIds.length > 0) {
             tx.insert(agentKnowledgeBaseTable)
-              .values(localKnowledgeBaseIds.map((knowledgeBaseId) => ({ agentId: id, knowledgeBaseId })))
+              .values(localIds.map((knowledgeBaseId) => ({ agentId: id, knowledgeBaseId })))
               .run()
           }
-          if (remoteKnowledgeBaseIds.length > 0) {
+          // Insert junction rows for remote `remote:*` knowledge base bindings.
+          // These reference no local row, so they are stored verbatim.
+          if (remoteIds.length > 0) {
             tx.insert(agentRemoteKnowledgeBaseTable)
-              .values(remoteKnowledgeBaseIds.map((remoteBaseId) => ({ agentId: id, remoteBaseId })))
+              .values(remoteIds.map((remoteBaseId) => ({ agentId: id, remoteBaseId })))
               .run()
           }
           // Enable the selected global skills for the new agent. DB-only: workspace
@@ -515,9 +531,19 @@ export class AgentService {
    * converge on one active system Agent.
    */
   ensureBuiltinAgentTx(tx: DbOrTx, input: EnsureBuiltinAgentInput): EnsureBuiltinAgentResult {
+    let restored = false
     if (input.builtinRole === BUILTIN_AGENT_ROLE.SUPPORT) {
       this.clearUntrustedBuiltinSupportRolesTx(tx)
+      // Detect the restore before claiming: claimBuiltinSupportIdentityTx
+      // clears deletedAt but does not report whether it did.
+      const [preClaim] = tx
+        .select({ deletedAt: agentsTable.deletedAt })
+        .from(agentsTable)
+        .where(eq(agentsTable.id, CHERRY_SUPPORT_AGENT_ID))
+        .limit(1)
+        .all()
       this.claimBuiltinSupportIdentityTx(tx, { restoreDeleted: true })
+      restored = preClaim?.deletedAt != null
     }
     const existing = this.findBuiltinAgentByRoleTx(tx, input.builtinRole)
 
@@ -529,7 +555,8 @@ export class AgentService {
         : null
       return {
         agent: rowToAgent(existing, modelName, mcps, knowledgeBaseIds),
-        created: false
+        created: false,
+        restored
       }
     }
 
@@ -558,12 +585,14 @@ export class AgentService {
 
     return {
       agent: rowToAgent(created.agent, created.modelName, [], []),
-      created: true
+      created: true,
+      restored: false
     }
   }
 
-  /** Publish an Agent creation only after the caller-owned transaction commits. */
+  /** Publish an Agent creation/restore only after the caller-owned transaction commits. */
   emitAgentCreated(agent: AgentEntity): void {
+    notifyDataApiDataChange([{ endpoint: '/agents', kind: 'membership', entityIds: [agent.id] }])
     this._onAgentCreated.fire({ agentId: agent.id, agent })
   }
 
@@ -571,7 +600,9 @@ export class AgentService {
   ensureBuiltinAgent(input: EnsureBuiltinAgentInput): AgentEntity {
     const result = application.get('DbService').withWriteTx((tx) => this.ensureBuiltinAgentTx(tx, input))
 
-    if (result.created) {
+    // A restored builtin re-fires the creation event: post-commit
+    // provisioning subscribers (heartbeat schedule sync) must cover both.
+    if (result.created || result.restored) {
       this.emitAgentCreated(result.agent)
     }
     return result.agent
@@ -605,7 +636,10 @@ export class AgentService {
     return rowToAgent(agent, modelName, mcpsMap.get(id) ?? [], knowledgeBasesMap.get(id) ?? [])
   }
 
-  listAgents(options: ListOptions & { inTrash?: boolean } = {}): { agents: AgentEntity[]; total: number } {
+  listAgents(options: ListOptions & { ids?: string[]; inTrash?: boolean } = {}): {
+    agents: AgentEntity[]
+    total: number
+  } {
     const database = application.get('DbService').getDb()
 
     // AND-compose deletedAt-null + optional server-side search. The localized builtin
@@ -613,6 +647,7 @@ export class AgentService {
     const conditions: SQL[] = [
       options.inTrash === true ? isNotNull(agentsTable.deletedAt) : isNull(agentsTable.deletedAt)
     ]
+    if (options.ids) conditions.push(inArray(agentsTable.id, options.ids))
     if (options.search) {
       conditions.push(buildAgentSearchPredicate(options.search))
     }
@@ -727,8 +762,12 @@ export class AgentService {
     // Handle mcps + knowledgeBaseIds separately — they live in junction tables, not the agent row.
     const newMcps = updates.mcps
     const newKnowledgeBaseIds = updates.knowledgeBaseIds
+    // Pre-split remote `remote:*` bindings so the local existence check and the
+    // two junction tables stay in sync on update.
     const splitNewKnowledgeBaseIds =
       newKnowledgeBaseIds !== undefined ? splitKnowledgeBaseIds(newKnowledgeBaseIds) : undefined
+    const newLocalKnowledgeBaseIds = splitNewKnowledgeBaseIds?.localIds
+    const newRemoteKnowledgeBaseIds = splitNewKnowledgeBaseIds?.remoteIds
     const newSkillUpdates = updates.skillUpdates
 
     // Same two-step validation as createAgent: pre-check each id outside the write
@@ -743,8 +782,8 @@ export class AgentService {
         }
       }
     }
-    if (newKnowledgeBaseIds !== undefined) {
-      this.assertKnowledgeBasesExistTx(application.get('DbService').getDb(), newKnowledgeBaseIds)
+    if (newLocalKnowledgeBaseIds !== undefined) {
+      this.assertKnowledgeBasesExistTx(application.get('DbService').getDb(), newLocalKnowledgeBaseIds)
     }
 
     withSqliteErrors(
@@ -805,8 +844,8 @@ export class AgentService {
             updateData.configuration = nextConfiguration
           }
 
-          if (newKnowledgeBaseIds !== undefined) {
-            this.assertKnowledgeBasesExistTx(tx, newKnowledgeBaseIds)
+          if (newLocalKnowledgeBaseIds !== undefined) {
+            this.assertKnowledgeBasesExistTx(tx, newLocalKnowledgeBaseIds)
           }
           this.updateAgentTx(tx, id, updateData)
           // Replace MCP associations if provided
@@ -818,18 +857,20 @@ export class AgentService {
                 .run()
             }
           }
-          // Replace knowledge base associations if provided
-          if (splitNewKnowledgeBaseIds !== undefined) {
+          // Replace knowledge base associations if provided. Local ids go to the
+          // local junction table; remote `remote:*` ids go to the remote table.
+          // Both are cleared first so the replace stays consistent.
+          if (newKnowledgeBaseIds !== undefined) {
             tx.delete(agentKnowledgeBaseTable).where(eq(agentKnowledgeBaseTable.agentId, id)).run()
             tx.delete(agentRemoteKnowledgeBaseTable).where(eq(agentRemoteKnowledgeBaseTable.agentId, id)).run()
-            if (splitNewKnowledgeBaseIds.localIds.length > 0) {
+            if (newLocalKnowledgeBaseIds && newLocalKnowledgeBaseIds.length > 0) {
               tx.insert(agentKnowledgeBaseTable)
-                .values(splitNewKnowledgeBaseIds.localIds.map((knowledgeBaseId) => ({ agentId: id, knowledgeBaseId })))
+                .values(newLocalKnowledgeBaseIds.map((knowledgeBaseId) => ({ agentId: id, knowledgeBaseId })))
                 .run()
             }
-            if (splitNewKnowledgeBaseIds.remoteIds.length > 0) {
+            if (newRemoteKnowledgeBaseIds && newRemoteKnowledgeBaseIds.length > 0) {
               tx.insert(agentRemoteKnowledgeBaseTable)
-                .values(splitNewKnowledgeBaseIds.remoteIds.map((remoteBaseId) => ({ agentId: id, remoteBaseId })))
+                .values(newRemoteKnowledgeBaseIds.map((remoteBaseId) => ({ agentId: id, remoteBaseId })))
                 .run()
             }
           }
@@ -1136,16 +1177,16 @@ export class AgentService {
   }
 
   private assertKnowledgeBasesExistTx(tx: DbOrTx, knowledgeBaseIds: readonly string[]): void {
-    const { localIds } = splitKnowledgeBaseIds(knowledgeBaseIds)
-    if (localIds.length === 0) return
+    const uniqueIds = [...new Set(knowledgeBaseIds)]
+    if (uniqueIds.length === 0) return
 
     const existing = tx
       .select({ id: knowledgeBaseTable.id })
       .from(knowledgeBaseTable)
-      .where(inArray(knowledgeBaseTable.id, localIds))
+      .where(inArray(knowledgeBaseTable.id, uniqueIds))
       .all()
     const existingIds = new Set(existing.map((row) => row.id))
-    const missingId = localIds.find((id) => !existingIds.has(id))
+    const missingId = uniqueIds.find((id) => !existingIds.has(id))
     if (missingId) throw DataApiErrorFactory.notFound('KnowledgeBase', missingId)
   }
 
@@ -1172,7 +1213,7 @@ export class AgentService {
     return affectedIds
   }
 
-  // MEA 定制：把激活的 MCP 服务器自动绑定到内置默认助手（用户显式排除的除外）
+  // MEA 定制：把激活的 MCP 服务器自动绑定到内置默认助手（用户显式排除的除外）。
   syncActiveMcpsToBuiltinAssistantTx(tx: DbOrTx, mcpServerIds?: readonly string[]): string[] {
     const assistant = this.findBuiltinAgentByRoleTx(tx, BUILTIN_AGENT_ROLE.ASSISTANT)
     if (!assistant) return []

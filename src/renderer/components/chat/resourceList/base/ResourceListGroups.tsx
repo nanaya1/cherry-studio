@@ -34,12 +34,10 @@ const EMPTY_GROUP_HEADER_ITEMS: ResourceListItemBase[] = []
 /**
  * The chevron slot: an action button's 24px footprint so the chevron lands on the hover actions'
  * rhythm when the title is long, with a pulled-in left margin that keeps it the same 6px from a
- * short title as the section-header chevron. Non-empty groups keep their chevron pinned visible
- * (it is the only affordance that folds them); empty groups reveal it on hover like before.
+ * short title as the section-header chevron.
  */
-const GROUP_HEADER_CHEVRON_SLOT_CLASS = '-ml-1.5 shrink-0 items-center justify-center text-muted-foreground'
-const GROUP_HEADER_CHEVRON_SLOT_EMPTY_CLASS =
-  'hidden group-hover/resource-list-group:flex group-has-[:focus-visible]/resource-list-group:flex group-has-data-[state=open]/resource-list-group:flex'
+const GROUP_HEADER_CHEVRON_SLOT_CLASS =
+  '-ml-1.5 hidden size-6 shrink-0 items-center justify-center text-muted-foreground group-hover/resource-list-group:flex group-has-[:focus-visible]/resource-list-group:flex group-has-data-[state=open]/resource-list-group:flex no-hover:flex'
 
 function stopEventPropagation(event: { stopPropagation: () => void }) {
   event.stopPropagation()
@@ -130,7 +128,7 @@ export function SectionHeader({ section, className, ref, style, ...props }: Sect
           <ChevronRight
             aria-hidden="true"
             size={14}
-            className="hidden shrink-0 text-muted-foreground transition-transform duration-150 group-hover/resource-list-section:block group-has-[:focus-visible]/resource-list-section:block"
+            className="hidden shrink-0 text-muted-foreground transition-transform duration-150 group-hover/resource-list-section:block group-has-[:focus-visible]/resource-list-section:block no-hover:block"
             style={{ transform: collapsed ? 'none' : 'rotate(90deg)' }}
           />
         </button>
@@ -142,7 +140,7 @@ export function SectionHeader({ section, className, ref, style, ...props }: Sect
               '-mr-1 ml-auto flex shrink-0 items-center transition-opacity',
               sectionHeaderActionAlwaysVisible
                 ? 'pointer-events-auto opacity-100'
-                : 'pointer-events-none opacity-0 group-hover/resource-list-section:pointer-events-auto group-hover/resource-list-section:opacity-100 has-[:focus-visible]:pointer-events-auto has-[:focus-visible]:opacity-100'
+                : 'pointer-events-none opacity-0 group-hover/resource-list-section:pointer-events-auto group-hover/resource-list-section:opacity-100 has-[:focus-visible]:pointer-events-auto has-[:focus-visible]:opacity-100 no-hover:pointer-events-auto no-hover:opacity-100'
             )}>
             {sectionHeaderAction}
           </div>
@@ -284,11 +282,7 @@ export function GroupHeader({ group, className, ref, style, onContextMenu, ...pr
             type="button"
             aria-expanded={!collapsed}
             aria-label={collapsed ? t('common.expand') : t('common.collapse')}
-            className={cn(
-              GROUP_HEADER_CHEVRON_SLOT_CLASS,
-              groupItems.length === 0 && GROUP_HEADER_CHEVRON_SLOT_EMPTY_CLASS,
-              'size-6 outline-none'
-            )}
+            className={cn(GROUP_HEADER_CHEVRON_SLOT_CLASS, 'outline-none')}
             onClick={handleChevronClick}>
             {chevron}
           </button>
@@ -318,13 +312,7 @@ export function GroupHeader({ group, className, ref, style, onContextMenu, ...pr
           <span ref={labelOverflow.ref} className={groupHeaderLabelClassName}>
             {group.label}
           </span>
-          <span
-            aria-hidden="true"
-            className={cn(
-              GROUP_HEADER_CHEVRON_SLOT_CLASS,
-              groupItems.length === 0 && GROUP_HEADER_CHEVRON_SLOT_EMPTY_CLASS,
-              'size-6'
-            )}>
+          <span aria-hidden="true" className={GROUP_HEADER_CHEVRON_SLOT_CLASS}>
             {chevron}
           </span>
         </button>
@@ -345,7 +333,7 @@ export function GroupHeader({ group, className, ref, style, onContextMenu, ...pr
           className={cn(
             '-ml-1.5 pointer-events-none grid shrink-0 grid-cols-[0fr] opacity-0 transition-[grid-template-columns,opacity] duration-150 motion-reduce:transition-none',
             !hasLeadingSlot && '-mr-1',
-            'group-hover/resource-list-group:pointer-events-auto group-hover/resource-list-group:grid-cols-[1fr] group-hover/resource-list-group:opacity-100 has-data-[state=open]:pointer-events-auto has-data-[state=open]:grid-cols-[1fr] has-data-[state=open]:opacity-100 group-has-[:focus-visible]/resource-list-group:pointer-events-auto group-has-[:focus-visible]/resource-list-group:grid-cols-[1fr] group-has-[:focus-visible]/resource-list-group:opacity-100'
+            'group-hover/resource-list-group:pointer-events-auto group-hover/resource-list-group:grid-cols-[1fr] group-hover/resource-list-group:opacity-100 has-data-[state=open]:pointer-events-auto has-data-[state=open]:grid-cols-[1fr] has-data-[state=open]:opacity-100 group-has-[:focus-visible]/resource-list-group:pointer-events-auto group-has-[:focus-visible]/resource-list-group:grid-cols-[1fr] group-has-[:focus-visible]/resource-list-group:opacity-100 no-hover:pointer-events-auto no-hover:grid-cols-[1fr] no-hover:opacity-100'
           )}
           onClick={stopEventPropagation}
           onContextMenu={stopEventPropagation}

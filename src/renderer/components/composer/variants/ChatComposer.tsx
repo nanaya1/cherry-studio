@@ -11,7 +11,7 @@ import {
   ConversationTopBarPortal,
   useConversationTopBarPortalLayout
 } from '@renderer/components/chat/shell/ConversationTopBarPortal'
-import { useActiveComposerOverride } from '@renderer/components/composer/ComposerContext'
+import { useActiveComposerOverride, useComposerLayerActive } from '@renderer/components/composer/ComposerContext'
 import ComposerSurface, { type ComposerSurfaceActions } from '@renderer/components/composer/ComposerSurface'
 import {
   ComposerPinnedToolsProvider,
@@ -34,7 +34,7 @@ import {
   resolveSupportedServiceTier
 } from '@renderer/components/ModelSpeedControl'
 import { type QuickPanelListItem, useOptionalQuickPanel } from '@renderer/components/QuickPanel'
-// import { ResourceEditDialogEventHost } from '@renderer/components/resourceCatalog/dialogs/ResourceEditDialogEventHost'
+import { ResourceEditDialogEventHost } from '@renderer/components/resourceCatalog/dialogs/ResourceEditDialogEventHost'
 import { useCache } from '@renderer/data/hooks/useCache'
 import { usePreference } from '@renderer/data/hooks/usePreference'
 import { useChatWrite } from '@renderer/hooks/chat/ChatWriteContext'
@@ -44,8 +44,6 @@ import { useAssistant } from '@renderer/hooks/useAssistant'
 import { useKnowledgeBases } from '@renderer/hooks/useKnowledgeBase'
 import { useModelById, useModels } from '@renderer/hooks/useModel'
 import { useProviders } from '@renderer/hooks/useProvider'
-import { useRemoteKnowledgeBases } from '@renderer/hooks/useRemoteKnowledge'
-import { useSelectableKnowledgeBases } from '@renderer/hooks/useSelectableKnowledgeBases'
 import { useTopicMutations } from '@renderer/hooks/useTopic'
 import { useTopicAwaitingApproval, useTopicStreamStatus } from '@renderer/hooks/useTopicStreamStatus'
 import { EVENT_NAMES, EventEmitter } from '@renderer/services/EventService'
@@ -81,7 +79,11 @@ import { type FollowupQueueItem, useFollowupQueue } from '../useFollowupQueue'
 import { useInputHistory } from '../useInputHistory'
 import { ChatConversationControls, type ChatConversationControlsProps } from './chat/ChatConversationControls'
 import { type ChatComposerDraftCache, readChatDraftCache, writeChatDraftCache } from './chat/chatDraftCache'
-import { createEditableMessageDraft, getEditableKnowledgeBases } from './chat/messageEditingDraft'
+import {
+  createEditableMessageDraft,
+  getEditableKnowledgeBases,
+  replaceEditedMessageParts
+} from './chat/messageEditingDraft'
 import { useChatMentionedModels } from './chat/useChatMentionedModels'
 import {
   chatComposerTokenId,
@@ -175,13 +177,9 @@ export interface ChatComposerProps {
   chatTarget?: ComposerChatTarget
   sendDisabled?: boolean
   useMentionedModelSelector?: boolean
-  showAssistantControl?: boolean
-  modelControlInSendAccessory?: boolean
-  hideBelowControls?: boolean
   onDraftAssistantChange?: (assistantId: string | null) => void | Promise<void>
   onNewTopic?: (payload?: AddNewTopicPayload) => void | Promise<void>
   onCreateEmptyTopic?: (payload?: AddNewTopicPayload) => void | Promise<void>
-  onDraftCleared?: () => void
 }
 
 interface SavedComposerDraft {
@@ -201,28 +199,6 @@ interface InputHistoryToolSnapshot extends Pick<SavedComposerDraft, 'files' | 's
 }
 
 type ComposerFilePart = Extract<CherryMessagePart, { type: 'file' }>
-
-const isComposerEditableMessagePart = (part: CherryMessagePart) => part.type === 'text' || part.type === 'file'
-
-// Composer edits as a single text field: the draft joins all text parts (`\n\n`) and
-// rebuilds files from tokens. Saving replaces the first editable part with the rebuilt
-// draft and drops trailing editable parts — non-editable `reasoning`/`dynamic-tool` blocks
-// stay in place and `data-translation` is removed. Interleaved shapes such as
-// [text "before", tool, text "after"] are blocked by `canEditAssistantMessageParts` and
-// never reach this path, so no reordering occurs on save.
-const replaceComposerEditableMessageParts = (
-  originalParts: CherryMessagePart[],
-  editedParts: CherryMessagePart[]
-): CherryMessagePart[] => {
-  const firstEditablePartIndex = originalParts.findIndex(isComposerEditableMessagePart)
-  if (firstEditablePartIndex === -1) return editedParts
-
-  return originalParts.flatMap((part, index) => {
-    if (part.type === 'data-translation') return []
-    if (!isComposerEditableMessagePart(part)) return [part]
-    return index === firstEditablePartIndex ? editedParts : []
-  })
-}
 
 type ChatComposerControlProps = Omit<ChatConversationControlsProps, 'side'> & {
   topBarPortalAvailable: boolean
@@ -423,13 +399,9 @@ const ChatComposerRoot = ({
   sendDisabled,
   compactWhenSingleLine = false,
   useMentionedModelSelector,
-  showAssistantControl,
-  modelControlInSendAccessory,
-  hideBelowControls,
   onDraftAssistantChange,
   onNewTopic,
   onCreateEmptyTopic,
-  onDraftCleared,
   renderControls,
   forceNarrowLayout = false,
   deferQuickPanel = false
@@ -486,13 +458,9 @@ const ChatComposerRoot = ({
             sendDisabled={sendDisabled}
             compactWhenSingleLine={compactWhenSingleLine}
             useMentionedModelSelector={useMentionedModelSelector}
-            showAssistantControl={showAssistantControl}
-            modelControlInSendAccessory={modelControlInSendAccessory}
-            hideBelowControls={hideBelowControls}
             onDraftAssistantChange={onDraftAssistantChange}
             onNewTopic={onNewTopic}
             onCreateEmptyTopic={onCreateEmptyTopic}
-            onDraftCleared={onDraftCleared}
             renderControls={renderControls}
             forceNarrowLayout={forceNarrowLayout}
             deferQuickPanel={deferQuickPanel}
@@ -530,13 +498,9 @@ const ChatComposerInner = ({
   sendDisabled = false,
   compactWhenSingleLine = false,
   useMentionedModelSelector,
-  showAssistantControl,
-  modelControlInSendAccessory,
-  hideBelowControls,
   onDraftAssistantChange,
   onNewTopic,
   onCreateEmptyTopic,
-  onDraftCleared,
   renderControls,
   forceNarrowLayout = false,
   deferQuickPanel = false
@@ -581,6 +545,7 @@ const ChatComposerInner = ({
   const { railGutterPx } = useChatLayoutMode()
   const { available: topBarPortalAvailable, iconOnly: topBarPortalIconOnly } = useConversationTopBarPortalLayout()
   const composerOverridden = useActiveComposerOverride() !== null
+  const layerActive = useComposerLayerActive()
   const [searching, setSearching] = useCache('chat.web_search.searching')
   const [isMultiSelectMode] = useCache('chat.multi_select_mode')
   const { t } = useTranslation()
@@ -630,18 +595,9 @@ const ChatComposerInner = ({
     Boolean(editingMessageForCurrentTopic) ||
     rootPanelVisible ||
     knowledgeBasePanelVisible
-  // 停用原本地单源取数：composer 知识库 scope 需并入远端库（Task 12）。
-  // 远端列表不随 knowledgeBasesDataEnabled 门控（轻量 IPC + SWR 全局缓存，
-  // 门控会让草稿恢复/面板打开的旧闭包拿到空列表）。
-  // const { bases: allKnowledgeBases, isLoading: isKnowledgeBasesLoading } = useKnowledgeBases({
-  //   enabled: knowledgeBasesDataEnabled
-  // })
-  const { bases: localKnowledgeBases, isLoading: isLocalKnowledgeBasesLoading } = useKnowledgeBases({
+  const { bases: allKnowledgeBases, isLoading: isKnowledgeBasesLoading } = useKnowledgeBases({
     enabled: knowledgeBasesDataEnabled
   })
-  const { bases: remoteKnowledgeBases, isLoading: isRemoteKnowledgeBasesLoading } = useRemoteKnowledgeBases()
-  const allKnowledgeBases = useSelectableKnowledgeBases(localKnowledgeBases, remoteKnowledgeBases)
-  const isKnowledgeBasesLoading = isLocalKnowledgeBasesLoading || isRemoteKnowledgeBasesLoading
   const filesRef = useLatest(files)
   const selectedKnowledgeBasesRef = useLatest(selectedKnowledgeBases)
   const mentionedModelsRef = useLatest(mentionedModels)
@@ -1196,7 +1152,7 @@ const ChatComposerInner = ({
   }, [editingMessageId])
 
   const restoreEditableMessageDraft = useEffectEvent((nextEditingMessage: NonNullable<typeof editingMessage>) => {
-    const editableDraft = createEditableMessageDraft(nextEditingMessage.parts)
+    const editableDraft = createEditableMessageDraft(nextEditingMessage.parts, nextEditingMessage.message.id)
     const originalFilePartsByTokenId = new Map<string, ComposerFilePart>()
     const originalFileParts = nextEditingMessage.parts.filter(
       (part): part is ComposerFilePart => part.type === 'file' && !!part.url
@@ -1422,12 +1378,13 @@ const ChatComposerInner = ({
   )
 
   useEffect(() => {
+    if (!layerActive) return
     return EventEmitter.on(EVENT_NAMES.FOCUS_CHAT_COMPOSER, (payload) => {
       const topicId = typeof payload === 'object' && payload ? (payload as { topicId?: string }).topicId : undefined
       if (topicId !== streamScopeKey) return
       actionsRef.current.focus('end')
     })
-  }, [actionsRef, streamScopeKey])
+  }, [actionsRef, layerActive, streamScopeKey])
 
   useEffect(() => {
     Object.assign(actionsRef.current, { addNewTopic })
@@ -1533,8 +1490,7 @@ const ChatComposerInner = ({
     // from a stale index.
     resetHistoryIndex()
     inputHistoryToolsRef.current = null
-    onDraftCleared?.()
-  }, [onDraftCleared, resetHistoryIndex, setFiles, setText])
+  }, [resetHistoryIndex, setFiles, setText])
 
   // Queue mode: while a turn streams, follow-ups go here instead of sending; the head auto-drains
   // (normal send) when the topic goes idle, and the dock steers/edits/removes individual items.
@@ -1633,7 +1589,7 @@ const ChatComposerInner = ({
       const knowledgeBaseIds = selectedKnowledgeBasesInScope
         .filter((base) => tokenIds.has(chatComposerTokenId.knowledge(base)))
         .map((base) => base.id)
-      return withKnowledgeScopePart(messageParts, knowledgeBaseIds)
+      return { draft: normalizedDraft, parts: withKnowledgeScopePart(messageParts, knowledgeBaseIds) }
     },
     [files, selectedKnowledgeBasesInScope]
   )
@@ -1659,12 +1615,17 @@ const ChatComposerInner = ({
       editSaveInFlightSessionIdRef.current = editingSessionId
       setSavingEditingSessionId(editingSessionId)
       try {
-        const editedParts = await buildEditedMessageParts(draft)
-        if (!editedParts) return
+        const edited = await buildEditedMessageParts(draft)
+        if (!edited) return
 
         const savedParts = isAssistantReply
-          ? replaceComposerEditableMessageParts(editingMessageForCurrentTopic.parts, editedParts)
-          : editedParts
+          ? replaceEditedMessageParts(
+              editingMessageForCurrentTopic.parts,
+              editingMessageForCurrentTopic.message.id,
+              edited.draft,
+              edited.parts
+            )
+          : edited.parts
         if (isAssistantReply || !resend) {
           await chatWrite.editMessage(editingMessageForCurrentTopic.message.id, savedParts)
         } else {
@@ -1846,9 +1807,10 @@ const ChatComposerInner = ({
 
   if (isMultiSelectMode) return null
 
-  const controlProps: ChatComposerControlProps = {
+  const controlSlots = renderControls({
     assistantId: selectedAssistantId,
     assistantName,
+    assistantEmoji: displayAssistant?.emoji,
     model: runtimeModel,
     modelPending: runtimeModelPending,
     providers,
@@ -1858,8 +1820,6 @@ const ChatComposerInner = ({
     mentionedModelMultiSelectMode,
     useMentionedModelSelector,
     shouldAutoSelectCreatedAssistant: Boolean(onDraftAssistantChange),
-    showAssistantControl,
-    showModelControl: !modelControlInSendAccessory,
     selectModelLabel: runtimeModelPending ? t('common.loading') : t('button.select_model'),
     topBarPortalAvailable,
     topBarPortalIconOnly,
@@ -1869,18 +1829,9 @@ const ChatComposerInner = ({
     onMentionedModelsSelect: handleMentionedModelsSelect,
     onMentionedModelMultiSelectModeChange: handleMentionedModelMultiSelectModeChange,
     onMentionedModelSelectorRestore: handleMentionedModelSelectorRestore
-  }
-  const controlSlots = renderControls(controlProps)
-  if (hideBelowControls) controlSlots.renderBelowControls = undefined
+  })
   const sendAccessory: ComposerSurfaceProps['sendAccessory'] = (
     <>
-      {modelControlInSendAccessory
-        ? renderChatComposerContextControls(
-            { ...controlProps, showAssistantControl: false, showModelControl: true },
-            undefined,
-            { side: 'top', iconOnly: false }
-          )
-        : null}
       {speedControlModel ? (
         <ModelSpeedControl
           model={speedControlModel}
@@ -1906,7 +1857,7 @@ const ChatComposerInner = ({
       {displayAssistant && runtimeModel && (
         <ComposerToolRuntimeHost scope={scope} assistant={displayAssistant} model={runtimeModel} />
       )}
-      {/* 停用 composer 级编辑弹窗宿主：已上移到窗口级（MainApp/SubWindowApp），避免多宿主重复响应同一事件 */}
+      <ResourceEditDialogEventHost />
       <ComposerPinnedToolsProvider value={pinnedToolIds}>
         <ComposerSurface
           showAiDisclaimer

@@ -2,12 +2,12 @@ import { Bot, ChevronDown } from 'lucide-react'
 import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { Button } from '@cherrystudio/ui'
+import { Button, EmojiIcon } from '@cherrystudio/ui'
 import ModelAvatar from '@renderer/components/Avatar/ModelAvatar'
 import { getProviderDisplayName, ModelSelector, type ModelSelectorFilter } from '@renderer/components/ModelSelector'
 import { openResourceEditDialog } from '@renderer/components/resourceCatalog/dialogs/ResourceEditDialogEventHost'
 import { AssistantSelector } from '@renderer/components/resourceCatalog/selectors'
-import { getProviderDisplayNameById } from '@renderer/utils/naming'
+import { getLeadingEmoji, getProviderDisplayNameById } from '@renderer/utils/naming'
 import { cn } from '@renderer/utils/style'
 import type { Model } from '@shared/data/types/model'
 import type { Provider } from '@shared/data/types/provider'
@@ -24,6 +24,7 @@ import {
 export interface ChatConversationControlsProps {
   assistantId: string | null
   assistantName: string
+  assistantEmoji?: string
   model?: Model
   modelPending?: boolean
   providers: Provider[]
@@ -34,8 +35,6 @@ export interface ChatConversationControlsProps {
   selectModelLabel: string
   useMentionedModelSelector?: boolean
   shouldAutoSelectCreatedAssistant: boolean
-  showAssistantControl?: boolean
-  showModelControl?: boolean
   assistantTriggerAction?: 'select' | 'edit'
   side: 'top' | 'bottom'
   iconOnly?: boolean
@@ -50,6 +49,7 @@ export interface ChatConversationControlsProps {
 export function ChatConversationControls({
   assistantId,
   assistantName,
+  assistantEmoji,
   model,
   modelPending,
   providers,
@@ -60,8 +60,6 @@ export function ChatConversationControls({
   selectModelLabel,
   useMentionedModelSelector,
   shouldAutoSelectCreatedAssistant,
-  showAssistantControl = true,
-  showModelControl = true,
   assistantTriggerAction = 'select',
   side,
   iconOnly = false,
@@ -74,9 +72,10 @@ export function ChatConversationControls({
 }: ChatConversationControlsProps) {
   const { t } = useTranslation()
   const chatModelFilter = useCallback<ModelSelectorFilter>((candidate) => !isNonChatModel(candidate), [])
+  const assistantIcon = assistantEmoji || getLeadingEmoji(assistantName)
   const triggerClassName = side === 'bottom' ? COMPOSER_BELOW_SELECTOR_BUTTON_CLASS : COMPOSER_SELECTOR_BUTTON_CLASS
-  const assistantTriggerClassName = cn(triggerClassName, iconOnly && COMPOSER_ICON_ONLY_SELECTOR_BUTTON_CLASS)
-  const assistantLabelClassName = cn('max-w-40 truncate', iconOnly && COMPOSER_ICON_ONLY_LABEL_CLASS)
+  const compactTriggerClassName = cn(triggerClassName, iconOnly && COMPOSER_ICON_ONLY_SELECTOR_BUTTON_CLASS)
+  const labelClassName = cn('truncate', iconOnly && COMPOSER_ICON_ONLY_LABEL_CLASS)
   const modelTriggerClassName = cn(triggerClassName, iconOnly && model && COMPOSER_ICON_ONLY_SELECTOR_BUTTON_CLASS)
   const modelLabelClassName = cn('truncate', iconOnly && model && COMPOSER_ICON_ONLY_LABEL_CLASS)
   const isMentionedModelSelectorLocked = lockedMentionedModels.length > 1
@@ -118,12 +117,12 @@ export function ChatConversationControls({
     <Button
       variant="ghost"
       size="sm"
-      className={assistantTriggerClassName}
+      className={compactTriggerClassName}
       disabled={assistantTriggerAction === 'edit' && !assistantId}
       aria-label={assistantTriggerAction === 'edit' ? `${t('assistants.edit.title')}: ${assistantName}` : undefined}
       onClick={assistantTriggerAction === 'edit' ? handleAssistantEdit : undefined}>
-      {iconOnly ? <Bot size={16} aria-hidden /> : null}
-      <span className={assistantLabelClassName}>{assistantName}</span>
+      {assistantIcon ? <EmojiIcon emoji={assistantIcon} size={20} /> : iconOnly ? <Bot size={16} aria-hidden /> : null}
+      <span className={cn('max-w-40', labelClassName)}>{assistantName}</span>
       {assistantTriggerAction === 'edit' ? null : (
         <ChevronDown size={14} aria-hidden className={cn('text-muted-foreground', iconOnly && 'hidden')} />
       )}
@@ -132,92 +131,88 @@ export function ChatConversationControls({
 
   return (
     <>
-      {showAssistantControl
-        ? assistantTriggerAction === 'edit'
-          ? assistantTrigger
-          : (
-              <AssistantSelector
-                multi={false}
-                value={assistantId}
-                onChange={onAssistantChange}
-                autoSelectOnCreate={shouldAutoSelectCreatedAssistant}
-                side={side}
-                align="start"
-                mountStrategy="lazy-keep"
-                onDialogCloseAutoFocus={onDialogCloseAutoFocus}
-                trigger={assistantTrigger}
+      {assistantTriggerAction === 'edit' ? (
+        assistantTrigger
+      ) : (
+        <AssistantSelector
+          multi={false}
+          value={assistantId}
+          onChange={onAssistantChange}
+          autoSelectOnCreate={shouldAutoSelectCreatedAssistant}
+          side={side}
+          align="start"
+          mountStrategy="lazy-keep"
+          onDialogCloseAutoFocus={onDialogCloseAutoFocus}
+          trigger={assistantTrigger}
+        />
+      )}
+      {useMentionedModelSelector && isMentionedModelSelectorLocked ? (
+        <SelectedModelsTrigger
+          className={mentionedModelTriggerClassName}
+          disabled
+          iconOnly={iconOnly}
+          models={selectedMentionedModels}
+          assistantModel={model}
+          providers={providers}
+          fallbackLabel={selectModelLabel}
+          suppressSelectionPopover
+          onModelsChange={() => undefined}
+          onRestore={() => undefined}
+        />
+      ) : useMentionedModelSelector ? (
+        <ModelSelector
+          multiple
+          value={mentionedModelSelectorValue}
+          onSelect={handleMentionedModelSelect}
+          open={mentionedModelSelectorOpen}
+          onOpenChange={setMentionedModelSelectorOpen}
+          multiSelectMode={mentionedModelMultiSelectMode}
+          onMultiSelectModeChange={handleMentionedModelMultiSelectModeChange}
+          filter={chatModelFilter}
+          shortcut="chat.model.select"
+          side={side}
+          align="start"
+          mountStrategy="lazy-keep"
+          trigger={
+            <SelectedModelsTrigger
+              className={mentionedModelTriggerClassName}
+              disabled={modelPending}
+              iconOnly={iconOnly}
+              models={selectedMentionedModels}
+              assistantModel={model}
+              providers={providers}
+              fallbackLabel={selectModelLabel}
+              suppressSelectionPopover={mentionedModelSelectorOpen}
+              onModelsChange={handleMentionedModelSelect}
+              onRestore={onMentionedModelSelectorRestore}
+            />
+          }
+        />
+      ) : (
+        <ModelSelector
+          multiple={false}
+          value={model}
+          onSelect={onModelSelect}
+          filter={chatModelFilter}
+          shortcut="chat.model.select"
+          side={side}
+          align="start"
+          mountStrategy="lazy-keep"
+          trigger={
+            <Button variant="ghost" size="sm" className={modelTriggerClassName} disabled={modelPending}>
+              {model ? <ModelAvatar model={model} size={20} /> : null}
+              <span className={cn('max-w-52', modelLabelClassName)} title={modelLabel}>
+                {modelLabel}
+              </span>
+              <ChevronDown
+                size={14}
+                aria-hidden
+                className={cn('text-muted-foreground', iconOnly && model && 'hidden')}
               />
-            )
-        : null}
-      {showModelControl ? (
-        useMentionedModelSelector && isMentionedModelSelectorLocked ? (
-          <SelectedModelsTrigger
-            className={mentionedModelTriggerClassName}
-            disabled
-            iconOnly={iconOnly}
-            models={selectedMentionedModels}
-            assistantModel={model}
-            providers={providers}
-            fallbackLabel={selectModelLabel}
-            suppressSelectionPopover
-            onModelsChange={() => undefined}
-            onRestore={() => undefined}
-          />
-        ) : useMentionedModelSelector ? (
-          <ModelSelector
-            multiple
-            value={mentionedModelSelectorValue}
-            onSelect={handleMentionedModelSelect}
-            open={mentionedModelSelectorOpen}
-            onOpenChange={setMentionedModelSelectorOpen}
-            multiSelectMode={mentionedModelMultiSelectMode}
-            onMultiSelectModeChange={handleMentionedModelMultiSelectModeChange}
-            filter={chatModelFilter}
-            shortcut="chat.model.select"
-            side={side}
-            align="start"
-            mountStrategy="lazy-keep"
-            trigger={
-              <SelectedModelsTrigger
-                className={mentionedModelTriggerClassName}
-                disabled={modelPending}
-                iconOnly={iconOnly}
-                models={selectedMentionedModels}
-                assistantModel={model}
-                providers={providers}
-                fallbackLabel={selectModelLabel}
-                suppressSelectionPopover={mentionedModelSelectorOpen}
-                onModelsChange={handleMentionedModelSelect}
-                onRestore={onMentionedModelSelectorRestore}
-              />
-            }
-          />
-        ) : (
-          <ModelSelector
-            multiple={false}
-            value={model}
-            onSelect={onModelSelect}
-            filter={chatModelFilter}
-            shortcut="chat.model.select"
-            side={side}
-            align="start"
-            mountStrategy="lazy-keep"
-            trigger={
-              <Button variant="ghost" size="sm" className={modelTriggerClassName} disabled={modelPending}>
-                {model ? <ModelAvatar model={model} size={20} /> : null}
-                <span className={cn('max-w-52', modelLabelClassName)} title={modelLabel}>
-                  {modelLabel}
-                </span>
-                <ChevronDown
-                  size={14}
-                  aria-hidden
-                  className={cn('text-muted-foreground', iconOnly && model && 'hidden')}
-                />
-              </Button>
-            }
-          />
-        )
-      ) : null}
+            </Button>
+          }
+        />
+      )}
     </>
   )
 }

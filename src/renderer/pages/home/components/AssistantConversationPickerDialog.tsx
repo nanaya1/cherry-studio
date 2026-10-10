@@ -80,11 +80,7 @@ export function AssistantConversationPickerDialog({
       presets.map((preset) => ({
         id: `catalog:${preset.id}`,
         name: preset.name,
-        icon: (
-          <span className="flex size-6 items-center justify-center rounded-full bg-sidebar-accent">
-            <Bot size={14} />
-          </span>
-        ),
+        icon: <Bot size={20} />,
         searchText: [preset.description, preset.prompt].filter(Boolean).join(' '),
         selection: { type: 'catalog' as const, preset }
       })),
@@ -191,14 +187,12 @@ export function AssistantConversationPickerDialog({
           activeTab === 'catalog'
             ? undefined
             : {
+                // With a name to show, the row previews the assistant it would create — same avatar the
+                // wizard starts from — instead of spelling the query back out in a sentence.
                 row: (query) =>
                   query
                     ? {
-                        icon: (
-                          <span className="flex size-6 items-center justify-center rounded-full bg-sidebar-accent">
-                            <Bot size={14} />
-                          </span>
-                        ),
+                        icon: <Bot size={20} />,
                         title: query,
                         tag: t('selector.assistant.create_tag')
                       }

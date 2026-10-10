@@ -5,6 +5,9 @@ vi.mock('@shared/utils/systemProviderId', () => ({
   SystemProviderIds: { cherryin: 'cherryin', xuelang: 'xuelang' }
 }))
 
+import { net } from 'electron'
+
+import { OAuthServiceError } from '../../errors'
 import { createGatewayOAuthProvider } from '../providers/cherryin'
 
 // The gateway OAuth definition is one factory serving every gateway provider —
@@ -19,7 +22,15 @@ describe('createGatewayOAuthProvider', () => {
 
     expect(def.providerId).toBe('cherryin')
     expect(def.clientId).toBe('2a348c87-bae1-4756-a62f-b2e97200fd6d')
-    expect(def.transport).toEqual({ type: 'deep-link', config: { redirectUri: 'meacowork://oauth/callback' } })
+    expect(def.transport).toEqual({
+      type: 'loopback',
+      config: {
+        hosts: ['127.0.0.1'],
+        port: 29873,
+        path: '/oauth/callback',
+        redirectUri: 'http://127.0.0.1:29873/oauth/callback'
+      }
+    })
 
     // PkceOAuthClient keeps its config private; the authorize URL it builds is
     // the observable contract (minus the per-request PKCE/state randomness).
@@ -28,7 +39,7 @@ describe('createGatewayOAuthProvider', () => {
     ).createAuthorizationRequest()
     expect(request.authUrl.startsWith('https://open.cherryin.ai/oauth2/auth?')).toBe(true)
     expect(request.authUrl).toContain('client_id=2a348c87-bae1-4756-a62f-b2e97200fd6d')
-    expect(request.authUrl).toContain('redirect_uri=meacowork%3A%2F%2Foauth%2Fcallback')
+    expect(request.authUrl).toContain('redirect_uri=http%3A%2F%2F127.0.0.1%3A29873%2Foauth%2Fcallback')
   })
 
   it('builds the xuelang definition pointing at the xuelang host', () => {
@@ -36,6 +47,7 @@ describe('createGatewayOAuthProvider', () => {
 
     expect(def.providerId).toBe('xuelang')
     expect(def.clientId).toBe('2a348c87-bae1-4756-a62f-b2e97200fd6d')
+    expect(def.transport).toEqual({ type: 'deep-link', config: { redirectUri: 'meacowork://oauth/callback' } })
 
     const request = (
       def.createClient({}) as { createAuthorizationRequest: () => { authUrl: string } }
@@ -46,7 +58,9 @@ describe('createGatewayOAuthProvider', () => {
 
   it('keeps production xuelang isolated from local configuration', () => {
     const def = createGatewayOAuthProvider('xuelang')
-    const request = (def.createClient({}) as { createAuthorizationRequest: () => { authUrl: string } }).createAuthorizationRequest()
+    const request = (
+      def.createClient({}) as { createAuthorizationRequest: () => { authUrl: string } }
+    ).createAuthorizationRequest()
     expect(request.authUrl).toContain('https://api.xuelanglm.com/oauth2/auth?')
     expect(request.authUrl).not.toContain('localhost')
   })
@@ -65,5 +79,20 @@ describe('createGatewayOAuthProvider', () => {
   it('rejects hosts outside the provider allowlist for CherryIN', () => {
     const def = createGatewayOAuthProvider('cherryin')
     expect(() => def.createClient({ oauthServer: 'https://api.xuelanglm.com' })).toThrow(/Unauthorized API host/)
+  })
+
+  it('preserves gateway API error codes for renderer i18n mapping', async () => {
+    vi.mocked(net.fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ code: 'NO_ACTIVE_SUBSCRIPTION' }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json' }
+      })
+    )
+    const def = createGatewayOAuthProvider('xuelang')
+
+    const error = await def.provisionApiKeys?.('access-token', {}).catch((caught: unknown) => caught)
+
+    expect(error).toBeInstanceOf(OAuthServiceError)
+    expect(error).toHaveProperty('code', 'NO_ACTIVE_SUBSCRIPTION')
   })
 })

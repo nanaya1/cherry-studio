@@ -1,5 +1,6 @@
 import { useVirtualizer } from '@tanstack/react-virtual'
 import {
+  Bot,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -45,6 +46,7 @@ import CollapsibleSearchBar from '@renderer/components/CollapsibleSearchBar'
 import { CreateGroupDialog } from '@renderer/components/CreateGroupDialog'
 import { SettingDescription, SettingTitle } from '@renderer/components/SettingsPrimitives'
 import { useGroupMutations } from '@renderer/hooks/useGroups'
+import { ipcApi } from '@renderer/ipc'
 import { toast } from '@renderer/services/toast'
 import type { GroupItem, ResourceItem, ResourceType } from '@renderer/types/resourceCatalog'
 import { RESOURCE_TYPE_META } from '@renderer/utils/resourceCatalog'
@@ -75,6 +77,8 @@ interface Props {
   onOpenAssistantLibrary?: () => void
   onOpenSkillMarketplace: () => void
   onOpenSystemSkills?: () => void
+  onCreateSkillWithAgent?: () => void
+  onLaunchSkill?: (resource: ResourceItem) => void
   groups: GroupItem[]
   activeGroupId: string | null
   onGroupFilter: (groupId: string | null) => void
@@ -83,7 +87,6 @@ interface Props {
   allGroups: Group[]
   toolbarLeading?: ReactNode
   variant?: 'library' | 'settings'
-  showManagementActions?: boolean
   /** Settings variant only: page heading rendered above the search row. */
   title?: ReactNode
   description?: ReactNode
@@ -159,12 +162,18 @@ function AssistantAddActions({ onNew, onImport, onOpenLibrary }: AssistantAddAct
 }
 
 interface SkillAddActionsProps {
+  onCreateWithAgent?: () => void
   onSearchMarketplace: () => void
   onSearchSystem?: () => void
   onImportLocal: () => void
 }
 
-function SkillAddActions({ onSearchMarketplace, onSearchSystem, onImportLocal }: SkillAddActionsProps) {
+function SkillAddActions({
+  onCreateWithAgent,
+  onSearchMarketplace,
+  onSearchSystem,
+  onImportLocal
+}: SkillAddActionsProps) {
   const { t } = useTranslation()
 
   return (
@@ -177,6 +186,12 @@ function SkillAddActions({ onSearchMarketplace, onSearchSystem, onImportLocal }:
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-40">
+        {onCreateWithAgent ? (
+          <DropdownMenuItem onSelect={onCreateWithAgent} className="gap-2">
+            <Bot size={13} />
+            <span>{t('library.skill_add.create_with_agent')}</span>
+          </DropdownMenuItem>
+        ) : null}
         <DropdownMenuItem onSelect={onSearchMarketplace} className="gap-2">
           <Search size={13} />
           <span>{t('library.skill_add.online_search')}</span>
@@ -211,6 +226,8 @@ export const ResourceGrid: FC<Props> = ({
   onOpenAssistantLibrary,
   onOpenSkillMarketplace,
   onOpenSystemSkills,
+  onCreateSkillWithAgent,
+  onLaunchSkill,
   groups,
   activeGroupId,
   onGroupFilter,
@@ -218,7 +235,6 @@ export const ResourceGrid: FC<Props> = ({
   allGroups,
   toolbarLeading,
   variant = 'library',
-  showManagementActions = true,
   title,
   description,
   toolbarFooter,
@@ -243,7 +259,36 @@ export const ResourceGrid: FC<Props> = ({
   const [renaming, setRenaming] = useState(false)
   const [deletingGroup, setDeletingGroup] = useState<GroupItem | null>(null)
   const [deleting, setDeleting] = useState(false)
-  const showGroupToolbar = showManagementActions && activeResourceType === 'assistant'
+  const [skillIconUrls, setSkillIconUrls] = useState<Record<string, string>>({})
+  const skillIconIds = useMemo(
+    () =>
+      resources
+        .filter((resource) => resource.type === 'skill' && Boolean(resource.raw.iconFileName))
+        .map((resource) => resource.id),
+    [resources]
+  )
+  const showGroupToolbar = activeResourceType === 'assistant'
+  useEffect(() => {
+    let cancelled = false
+    if (skillIconIds.length === 0) {
+      setSkillIconUrls({})
+      return
+    }
+
+    ipcApi
+      .request('skill.icons.resolve', { skillIds: skillIconIds })
+      .then((urls) => {
+        if (!cancelled) setSkillIconUrls(urls)
+      })
+      .catch((error) => {
+        if (!cancelled) setSkillIconUrls({})
+        logger.warn('Failed to resolve skill icons', { error })
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [skillIconIds])
+
   const unusedGroups = useMemo(() => {
     const usedIds = new Set(groups.map((group) => group.id))
     return allGroups
@@ -329,7 +374,7 @@ export const ResourceGrid: FC<Props> = ({
   }, [activeGroupId, deleteGroup, deleting, deletingGroup, onGroupFilter, t])
 
   const addActions =
-    !showManagementActions ? null : activeResourceType === 'assistant' ? (
+    activeResourceType === 'assistant' ? (
       <AssistantAddActions
         onNew={() => onCreate('assistant')}
         onImport={onImportAssistant}
@@ -337,6 +382,7 @@ export const ResourceGrid: FC<Props> = ({
       />
     ) : activeResourceType === 'skill' ? (
       <SkillAddActions
+        onCreateWithAgent={onCreateSkillWithAgent}
         onSearchMarketplace={onOpenSkillMarketplace}
         onSearchSystem={onOpenSystemSkills}
         onImportLocal={() => onCreate('skill')}
@@ -363,7 +409,7 @@ export const ResourceGrid: FC<Props> = ({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className={cn('flex shrink-0 flex-col', !isSettings && 'border-border-subtle border-b')}>
+      <div className={cn('flex shrink-0 flex-col', !isSettings && 'border-b border-border-subtle')}>
         {isSettings ? (
           <div className="flex min-w-0 items-center justify-between gap-4">
             <div className="min-w-0">
@@ -399,7 +445,7 @@ export const ResourceGrid: FC<Props> = ({
         )}
 
         {toolbarFooter || (isSettings && allowColumnToggle) ? (
-          <div className="mt-3 flex shrink-0 items-center justify-between gap-3 border-border-subtle border-b">
+          <div className="mt-3 flex shrink-0 items-center justify-between gap-3 border-b border-border-subtle">
             {toolbarFooter}
             {isSettings && allowColumnToggle && (
               <Button
@@ -434,7 +480,7 @@ export const ResourceGrid: FC<Props> = ({
                       className={`flex h-6 min-h-0 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-xs shadow-none ${
                         activeGroupId === group.id
                           ? 'border-border-selected bg-secondary text-secondary-foreground hover:text-secondary-foreground'
-                          : 'border-border-subtle text-muted-foreground hover:border-border-strong hover:bg-accent hover:text-foreground'
+                          : 'text-muted-foreground hover:border-border-strong border-border-subtle hover:bg-accent hover:text-foreground'
                       }`}>
                       <span>{group.name}</span>
                       <span className="text-foreground-tertiary text-xs tabular-nums">{group.count}</span>
@@ -460,7 +506,7 @@ export const ResourceGrid: FC<Props> = ({
                   aria-label={t('library.toolbar.all_groups')}
                   title={t('library.toolbar.all_groups')}
                   onClick={() => setShowAllGroups((value) => !value)}
-                  className="size-6 shrink-0 rounded-full text-muted-foreground hover:bg-accent hover:text-foreground">
+                  className="text-muted-foreground size-6 shrink-0 rounded-full hover:bg-accent hover:text-foreground">
                   {showAllGroups ? <ChevronLeft size={13} /> : <ChevronRight size={13} />}
                 </Button>
               )}
@@ -468,7 +514,7 @@ export const ResourceGrid: FC<Props> = ({
               <Button
                 variant="ghost"
                 onClick={() => setCreateGroupDialogOpen(true)}
-                className="flex h-6 min-h-0 shrink-0 items-center gap-1 rounded-full border border-border-subtle border-dashed px-2 text-muted-foreground text-xs shadow-none hover:border-border-strong hover:bg-accent hover:text-foreground">
+                className="text-muted-foreground hover:border-border-strong flex h-6 min-h-0 shrink-0 items-center gap-1 rounded-full border border-dashed border-border-subtle px-2 text-xs shadow-none hover:bg-accent hover:text-foreground">
                 <Plus size={11} /> {t('library.toolbar.group_button')}
               </Button>
             </div>
@@ -546,13 +592,14 @@ export const ResourceGrid: FC<Props> = ({
             scrollRef={scrollRef}
             columnCount={columnCount}
             resources={resources}
+            skillIconUrls={skillIconUrls}
             variant={variant}
-            showManagementActions={showManagementActions}
             allGroups={allGroups}
             onDelete={onDelete}
             onDuplicate={onDuplicate}
             onEdit={onEdit}
             onExport={onExport}
+            onLaunchSkill={onLaunchSkill}
           />
         )}
       </Scrollbar>
@@ -592,26 +639,28 @@ interface VirtualizedResourceGridProps {
   scrollRef: RefObject<HTMLDivElement | null>
   columnCount: number
   resources: ResourceItem[]
+  skillIconUrls: Record<string, string>
   variant: 'library' | 'settings'
-  showManagementActions?: boolean
   allGroups: Group[]
   onDelete: (r: ResourceItem) => void
   onDuplicate: (r: ResourceItem) => void
   onEdit: (r: ResourceItem) => void
   onExport: (r: ResourceItem) => void
+  onLaunchSkill?: (r: ResourceItem) => void
 }
 
 function VirtualizedResourceGrid({
   scrollRef,
   columnCount,
   resources,
+  skillIconUrls,
   variant,
-  showManagementActions,
   allGroups,
   onDelete,
   onDuplicate,
   onEdit,
-  onExport
+  onExport,
+  onLaunchSkill
 }: VirtualizedResourceGridProps) {
   const rows = useMemo(() => {
     const nextRows: ResourceItem[][] = []
@@ -650,13 +699,15 @@ function VirtualizedResourceGrid({
               <ResourceCard
                 key={resource.id}
                 resource={resource}
+                skillIconUrl={resource.type === 'skill' ? skillIconUrls[resource.id] : undefined}
                 variant={variant}
-                showManagementActions={showManagementActions}
+                columnCount={columnCount}
                 allGroups={allGroups}
                 onDelete={onDelete}
                 onDuplicate={onDuplicate}
                 onEdit={onEdit}
                 onExport={onExport}
+                onLaunchSkill={onLaunchSkill}
               />
             ))}
           </div>

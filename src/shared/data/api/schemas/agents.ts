@@ -16,7 +16,7 @@ import { ReasoningEffortOptionSchema } from '@shared/types/aiSdk'
 import type { OffsetPaginationResponse } from '../types'
 import type { OrderEndpoints } from './_endpointHelpers'
 import { AgentSessionWorkspaceSourceSchema } from './agentWorkspaces'
-import { TriggerSchema } from './jobs'
+import { type JobSnapshot, TriggerSchema } from './jobs'
 
 // ============================================================================
 // Field atoms (shared validators reused across entity and DTO schemas)
@@ -64,8 +64,6 @@ export const AgentConfigurationSchema = z
     heartbeat_enabled: z.boolean().optional(),
     heartbeat_interval: z.number().optional(),
     builtin_role: z.enum([BUILTIN_AGENT_ROLE.ASSISTANT, BUILTIN_AGENT_ROLE.SUPPORT]).optional(),
-    /** Read-only exclusions maintained by Main when the default agent's MCP selection changes. */
-    excluded_mcp_server_ids: z.array(z.string()).optional(),
     language: AgentLanguageSchema.nullable().optional()
   })
   // .loose() (passthrough) is intentional: the configuration object is stored as a JSON blob
@@ -263,6 +261,7 @@ export const AGENTS_MAX_LIMIT = 500
  *   builtin Cherry Assistant fallback when its stored description is blank.
  */
 export const ListAgentsQuerySchema = z.strictObject({
+  ids: z.array(z.string().min(1)).min(1).max(AGENTS_MAX_LIMIT).optional(),
   /** `true` lists only trashed agents; omitted/false lists active agents. */
   inTrash: z.boolean().optional(),
   /** Free-text match against name OR description, including builtin fallback text (case-insensitive LIKE). */
@@ -318,6 +317,13 @@ export type AgentSchemas = {
   }
 
   /** List tasks for an agent (mutations live on IpcApi `ai.agent.task.*`) */
+  '/agents/:agentId/heartbeat': {
+    GET: {
+      params: { agentId: string }
+      response: { scheduleEnabled: boolean; latestRun: JobSnapshot | null }
+    }
+  }
+
   '/agents/:agentId/tasks': {
     GET: {
       params: { agentId: string }

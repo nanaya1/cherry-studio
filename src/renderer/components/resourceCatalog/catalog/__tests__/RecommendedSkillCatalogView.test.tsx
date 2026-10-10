@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest'
-
-import { toast } from '@renderer/services/toast'
-import type { SkillCatalogResponse } from '@shared/data/api/schemas/skillCatalog'
 import { MockUseDataApiUtils } from '@test-mocks/renderer/useDataApi'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+import { toast } from '@renderer/services/toast'
+import type { SkillCatalogResponse } from '@shared/data/api/schemas/skillCatalog'
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({

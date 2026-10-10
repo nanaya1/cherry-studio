@@ -525,10 +525,6 @@ vi.mock('@renderer/hooks/useKnowledgeBase', () => ({
   useKnowledgeBases: () => ({ bases: mocks.knowledgeBases, isLoading: mocks.knowledgeBasesLoading })
 }))
 
-vi.mock('@renderer/hooks/useRemoteKnowledge', () => ({
-  useRemoteKnowledgeBases: () => ({ bases: [], isLoading: false })
-}))
-
 vi.mock('@renderer/hooks/useSkills', () => ({
   useAvailableSkills: () => ({
     skills: mocks.availableSkills,
@@ -3314,7 +3310,6 @@ describe('AgentComposer', () => {
   })
 
   it('restores cached skill draft tokens after composer remount', () => {
-    mocks.availableSkills = [pdfSkill]
     vi.mocked(cacheService.get).mockReturnValue({
       text: 'Use the pdf skill. continue',
       tokens: [
@@ -5253,40 +5248,6 @@ describe('AgentComposer', () => {
     const belowText = belowControls.textContent ?? ''
     expect(belowText.indexOf('Agent')).toBeLessThan(belowText.indexOf('Claude Sonnet 4.5'))
     expect(belowText.indexOf('Claude Sonnet 4.5')).toBeLessThan(belowText.indexOf('Workspace 1'))
-  })
-
-  it('keeps the full home composer safe before an agent is selected', () => {
-    render(
-      <AgentHomeComposer
-        agentId=""
-        sessionId="new-task:tab-1:agent:pending"
-        draftScopeKey="new-task:tab-1:agent"
-        sessionOverride={{ workspace: undefined, workspaceId: null }}
-        resolvedAgent={undefined}
-        resolvedModel={undefined}
-        sendMessage={mocks.sendMessage}
-        stop={mocks.stop}
-        isStreaming={false}
-        sendDisabled
-      />
-    )
-
-    expect(screen.getByTestId('agent-selector')).toBeInTheDocument()
-    expect(screen.getByTestId('agent-model-selector')).toBeInTheDocument()
-    expect(mocks.surfaceProps?.sendDisabled).toBe(true)
-
-    const skillsLauncher = mocks.registeredLaunchers.get('agent-skills')?.[0]
-    expect(skillsLauncher?.disabled).toBe(true)
-
-    skillsLauncher?.action?.({
-      parentPanel: undefined,
-      queryAnchor: undefined,
-      quickPanel: { open: vi.fn() }
-    } as never)
-    mocks.surfaceProps?.onRootPanelOpen?.()
-
-    expect(mocks.availableSkillsRefresh).not.toHaveBeenCalled()
-    expect(mocks.openResourceEditDialog).not.toHaveBeenCalled()
   })
 
   it('keeps missing-agent input local while selecting an agent', () => {

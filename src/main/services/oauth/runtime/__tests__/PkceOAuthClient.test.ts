@@ -1,18 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-
-const netMocks = vi.hoisted(() => ({
-  fetch: vi.fn()
-}))
-
-vi.mock('electron', async (importOriginal) => {
-  const actual = (await importOriginal()) as { net: Electron.Net }
-  return {
-    ...actual,
-    net: { ...actual.net, fetch: netMocks.fetch }
-  }
-})
-
 import { net } from 'electron'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { OAuthHttpError, PkceOAuthClient } from '../PkceOAuthClient'
 
@@ -80,7 +67,9 @@ describe('PkceOAuthClient.exchangeCode', () => {
   })
 
   it('enforces the gateway token response contract', async () => {
-    vi.mocked(net.fetch).mockResolvedValue(okJson({ access_token: 'access', refresh_token: 'refresh', token_type: 'Bearer', expires_in: 900 }))
+    vi.mocked(net.fetch).mockResolvedValue(
+      okJson({ access_token: 'access', refresh_token: 'refresh', token_type: 'Bearer', expires_in: 900 })
+    )
 
     const client = new PkceOAuthClient({ ...CONFIG, requireGatewayTokenResponse: true })
     await expect(client.exchangeCode('the-code', 'the-verifier')).resolves.toMatchObject({
@@ -95,7 +84,9 @@ describe('PkceOAuthClient.exchangeCode', () => {
     vi.mocked(net.fetch).mockResolvedValue(okJson({ access_token: 'access', expires_in: 900 }))
 
     const client = new PkceOAuthClient({ ...CONFIG, requireGatewayTokenResponse: true })
-    await expect(client.exchangeCode('the-code', 'the-verifier')).rejects.toMatchObject({ code: 'INVALID_TOKEN_RESPONSE' })
+    await expect(client.exchangeCode('the-code', 'the-verifier')).rejects.toMatchObject({
+      code: 'INVALID_TOKEN_RESPONSE'
+    })
   })
 
   it('throws OAuthHttpError carrying status and body on a non-2xx response', async () => {

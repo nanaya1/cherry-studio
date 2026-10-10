@@ -16,7 +16,9 @@ import { getMcpTypeLabelKey } from '@renderer/i18n/label'
 import { ipcApi } from '@renderer/ipc'
 import { popup } from '@renderer/services/popup'
 import { toast } from '@renderer/services/toast'
-import { formatMcpError, formatErrorMessage } from '@renderer/utils/error'
+import { openExternalWebsite } from '@renderer/services/website'
+import { formatMcpError } from '@renderer/utils/error'
+import { formatErrorMessage } from '@renderer/utils/error'
 import { cn } from '@renderer/utils/style'
 import type { UpdateMcpServerDto } from '@shared/data/api/schemas/mcpServers'
 import type { McpServer } from '@shared/data/types/mcpServer'
@@ -135,7 +137,7 @@ const McpServerCard: FC<McpServerCardProps> = ({ server, onEdit, variant = 'sett
       event.stopPropagation()
 
       if (server.providerUrl) {
-        window.open(server.providerUrl, '_blank')
+        void openExternalWebsite(server.providerUrl)
       }
     },
     [server.providerUrl]
@@ -353,7 +355,7 @@ const CardContainer = ({
     className={cn(
       variant === 'catalog'
         ? 'flex min-h-28 w-full min-w-0 cursor-pointer flex-col rounded-lg border border-border-subtle bg-card p-3.5 text-sm transition-[background-color,border-color,box-shadow] hover:border-border-strong hover:bg-background-subtle hover:shadow-sm focus-visible:border-ring focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50'
-        : 'flex min-h-12 w-full min-w-0 cursor-pointer items-center gap-3 border-border-subtle border-b px-0 py-1.5 text-sm transition-colors',
+        : 'flex min-h-12 w-full min-w-0 cursor-pointer items-center gap-3 border-b border-border-subtle px-0 py-1.5 text-sm transition-colors',
       className
     )}
     {...props}

@@ -2,6 +2,7 @@ import type { FC } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button, Input, RowFlex } from '@cherrystudio/ui'
+// import { InfoTooltip } from '@cherrystudio/ui'
 import { usePreference } from '@data/hooks/usePreference'
 import { loggerService } from '@logger'
 import {
@@ -13,6 +14,7 @@ import {
 } from '@renderer/components/SettingsPrimitives'
 import { useTheme } from '@renderer/hooks/useTheme'
 import { toast } from '@renderer/services/toast'
+// import { openExternalWebsite } from '@renderer/services/website'
 
 const logger = loggerService.withContext('SiyuanSettings')
 
@@ -41,9 +43,9 @@ const SiyuanSettings: FC = () => {
     void setSiyuanRootPath(e.target.value)
   }
 
-  // 「点击问号 → 文档」入口暂时隐藏：跳转到 docs.cherry-ai.com，属 Cherry 厂商云。
+  // Cherry 官方文档入口在 MEA 中停用，保留原逻辑便于恢复。
   // const handleSiyuanHelpClick = () => {
-  //   void ipcApi.request('system.shell.open_website', 'https://docs.cherry-ai.com/advanced-basic/siyuan')
+  //   void openExternalWebsite('https://docs.cherry-ai.com/advanced-basic/siyuan')
   // }
 
   const handleCheckConnection = async () => {
@@ -98,8 +100,7 @@ const SiyuanSettings: FC = () => {
       <SettingRow id="setting-data-siyuan-token" className="scroll-mt-6">
         <SettingRowTitle style={{ display: 'flex', alignItems: 'center' }}>
           <span>{t('settings.data.siyuan.token.label')}</span>
-          {/* 「点击问号 → docs.cherry-ai.com」入口暂时隐藏。 */}
-          {/*
+          {/* Cherry 官方文档入口在 MEA 中停用，保留原控件便于恢复。
           <InfoTooltip
             content={t('settings.data.siyuan.token.help')}
             placement="left"

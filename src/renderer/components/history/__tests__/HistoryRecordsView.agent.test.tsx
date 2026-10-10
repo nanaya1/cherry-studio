@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import type * as CherryStudioUI from '@cherrystudio/ui'
 import { cacheService } from '@renderer/data/CacheService'
 import { dataApiService } from '@renderer/data/DataApiService'
 import type * as UseCacheModule from '@renderer/data/hooks/useCache'
@@ -47,9 +48,12 @@ vi.mock('@renderer/services/recycleBinFeedback', async (importOriginal) => ({
   ...recycleBinFeedbackMocks
 }))
 
-vi.mock('@cherrystudio/ui', async () => {
+vi.mock('@cherrystudio/ui', async (importOriginal) => {
   const { MockCherrystudioUI } = await import('@test-mocks/renderer/CherrystudioUI')
-  return MockCherrystudioUI
+  return {
+    ...(await importOriginal<typeof CherryStudioUI>()),
+    ...MockCherrystudioUI
+  }
 })
 
 vi.mock('@renderer/data/CacheService', async () => {
@@ -291,7 +295,7 @@ vi.mock('react-i18next', () => {
         'recycle_bin.move.confirm_title': 'Move to Recycle Bin?',
         'recycle_bin.already_moved': 'Already in Recycle Bin',
         'recycle_bin.move_failed': 'Could not move to Recycle Bin',
-        'history.records.bulkDelete': 'Batch Delete',
+        'history.records.bulkArchive': 'Batch Archive',
         'history.records.bulkDeleteSessions.description': 'Delete {{count}} selected task(s)?',
         'history.records.bulkDeleteSessions.title': 'Delete selected tasks',
         'history.records.agentTitle': 'Agent history',
@@ -339,7 +343,7 @@ function flushCommandMenuAction() {
 
 async function clickBulkDelete() {
   await act(async () => {
-    fireEvent.click(screen.getByRole('button', { name: /Batch Delete/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Batch Archive/ }))
     await flushAnimationFrame()
   })
 }
@@ -547,8 +551,7 @@ describe('HistoryRecordsView agent mode', () => {
     expect(screen.getAllByText('Alpha agent').length).toBeGreaterThanOrEqual(1)
     const alphaRow = screen.getByText('Alpha session').closest('[role="row"]') as HTMLElement
     const alphaCells = within(alphaRow).getAllByRole('cell')
-    // MEA customization: agent emoji display is hidden; the avatar renders a Bot fallback icon.
-    expect(within(alphaCells[1]).queryByText('A')).not.toBeInTheDocument()
+    expect(within(alphaCells[1]).getAllByText('A').length).toBeGreaterThan(0)
     expect(within(alphaCells[1]).getByText('Alpha agent')).toBeInTheDocument()
     expect(within(alphaCells[2]).queryByText('A')).not.toBeInTheDocument()
     const headerCells = screen.getAllByRole('columnheader')
@@ -578,7 +581,7 @@ describe('HistoryRecordsView agent mode', () => {
     const searchInput = screen.getByRole('searchbox', { name: 'Search tasks...' })
     const sourceFilter = screen.getByRole('button', { name: 'history.records.filter.selectAgent' })
     const statusFilter = screen.getByRole('button', { name: 'Status' })
-    const bulkDeleteButton = screen.getByRole('button', { name: 'Batch Delete' })
+    const bulkDeleteButton = screen.getByRole('button', { name: 'Batch Archive' })
 
     expect(searchInput.compareDocumentPosition(sourceFilter)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
     expect(sourceFilter.compareDocumentPosition(statusFilter)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
@@ -944,7 +947,7 @@ describe('HistoryRecordsView agent mode', () => {
     const alphaRow = screen.getByText('Alpha session').closest('[role="row"]') as HTMLElement
     fireEvent.click(within(alphaRow).getByRole('checkbox'))
 
-    expect(screen.getByRole('button', { name: 'Batch Delete' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Batch Archive' })).toBeDisabled()
     expect(hookMocks.deleteSession).not.toHaveBeenCalled()
   })
 
@@ -991,7 +994,7 @@ describe('HistoryRecordsView agent mode', () => {
     expect(alphaCheckbox).toHaveAttribute('aria-checked', 'true')
     expect(betaCheckbox).toHaveAttribute('aria-checked', 'false')
     expect(gammaCheckbox).toHaveAttribute('aria-checked', 'true')
-    expect(screen.getByRole('button', { name: /Batch Delete/ })).toHaveTextContent('Batch Delete (2)')
+    expect(screen.getByRole('button', { name: /Batch Archive/ })).toHaveTextContent('Batch Archive (2)')
   })
 
   it('renders an empty state when there are no sessions', () => {

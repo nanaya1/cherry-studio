@@ -12,8 +12,8 @@ import type {
 } from '@shared/data/types/remoteKnowledge'
 
 const logger = loggerService.withContext('useRemoteKnowledge')
-const SERVICE_LIST_KEY = 'remoteKnowledge.list'
-const BASE_LIST_KEY = 'remoteKnowledge.list_bases'
+const SERVICE_LIST_KEY = 'remote_knowledge.service.list'
+const BASE_LIST_KEY = 'remote_knowledge.base.list'
 const EMPTY_SERVICES: readonly RemoteKnowledgeServiceInfo[] = Object.freeze([])
 const EMPTY_BASES: readonly RemoteKnowledgeBaseInfo[] = Object.freeze([])
 
@@ -29,7 +29,7 @@ export function useRemoteKnowledgeServices() {
   const { mutate: globalMutate } = useSWRConfig()
   const { data, error, isLoading, isValidating, mutate } = useSWR<RemoteKnowledgeServiceInfo[], Error>(
     SERVICE_LIST_KEY,
-    () => ipcApi.request('remoteKnowledge.list'),
+    () => ipcApi.request('remote_knowledge.service.list'),
     { revalidateOnFocus: false, shouldRetryOnError: false, keepPreviousData: true }
   )
   const [pendingAction, setPendingAction] = useState<string | null>(null)
@@ -44,7 +44,7 @@ export function useRemoteKnowledgeServices() {
     async (draft: CreateRemoteKnowledgeServiceDto): Promise<RemoteKnowledgeServiceInfo> => {
       setPendingAction('create')
       try {
-        const created = await ipcApi.request('remoteKnowledge.create', { draft })
+        const created = await ipcApi.request('remote_knowledge.service.create', { draft })
         await refreshBestEffort(refresh)
         await refreshBestEffort(refreshBases)
         return created
@@ -59,7 +59,7 @@ export function useRemoteKnowledgeServices() {
     async (id: string, patch: UpdateRemoteKnowledgeServiceDto): Promise<RemoteKnowledgeServiceInfo> => {
       setPendingAction(id)
       try {
-        const updated = await ipcApi.request('remoteKnowledge.update', { id, patch })
+        const updated = await ipcApi.request('remote_knowledge.service.update', { id, patch })
         await refreshBestEffort(refresh)
         await refreshBestEffort(refreshBases)
         return updated
@@ -74,7 +74,7 @@ export function useRemoteKnowledgeServices() {
     async (id: string): Promise<void> => {
       setPendingAction(id)
       try {
-        await ipcApi.request('remoteKnowledge.delete', { id })
+        await ipcApi.request('remote_knowledge.service.delete', { id })
       } finally {
         await refreshBestEffort(refresh)
         await refreshBestEffort(refreshBases)
@@ -90,7 +90,7 @@ export function useRemoteKnowledgeServices() {
     ): Promise<RemoteTestConnectionResult> => {
       setPendingAction('test')
       try {
-        return await ipcApi.request('remoteKnowledge.test_connection', input)
+        return await ipcApi.request('remote_knowledge.service.test_connection', input)
       } finally {
         setPendingAction(null)
       }
@@ -116,7 +116,7 @@ export function useRemoteKnowledgeBases(serviceId?: string, enabled = true) {
   const input = serviceId ? { id: serviceId } : {}
   const { data, error, isLoading, isValidating, mutate } = useSWR<RemoteKnowledgeBaseInfo[], Error>(
     enabled ? [BASE_LIST_KEY, serviceId ?? null] : null,
-    () => ipcApi.request('remoteKnowledge.list_bases', input),
+    () => ipcApi.request('remote_knowledge.base.list', input),
     { revalidateOnFocus: false, shouldRetryOnError: false, keepPreviousData: true }
   )
 

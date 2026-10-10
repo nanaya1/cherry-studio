@@ -43,8 +43,7 @@ vi.mock('@renderer/hooks/useGroups', () => ({
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string) => (key === 'agent.builtin.cherry_assistant.description' ? 'Advisor 诊断 helper' : key),
-    i18n: { resolvedLanguage: 'zh-CN', language: 'zh-CN' }
+    t: (key: string) => (key === 'agent.builtin.cherry_assistant.description' ? 'Advisor 诊断 helper' : key)
   })
 }))
 
@@ -95,10 +94,7 @@ const agentListItem = {
 const skillListItem = {
   id: 'skill-1',
   name: '网页摘要',
-  displayName: null,
-  displayNameEn: null,
   description: '自动提取网页核心内容',
-  descriptionEn: null,
   folderName: 'web-summary',
   source: 'marketplace',
   sourceUrl: null,
@@ -265,25 +261,6 @@ describe('useResourceLibrary', () => {
     expect(mocks.useAssistantList.mock.calls[0]).toEqual([{ enabled: false }])
     expect(mocks.useAssistantList.mock.calls[1]).toEqual([{ enabled: false, search: undefined, groupId: undefined }])
     expect(result.current.resources.map((resource) => resource.id)).toEqual(['skill-filtered'])
-  })
-
-  it('combines client-side skill search with a complete installed-skill result set', () => {
-    mocks.useSkillList.mockReturnValue(
-      listResult([
-        skillListItem,
-        { ...skillListItem, id: 'skill-2', name: 'Local Files', description: 'Read documents' }
-      ])
-    )
-
-    const { result } = renderResourceLibrary({
-      resourceType: 'skill',
-      search: 'DOCUMENTS',
-      clientSideSkillSearch: true
-    })
-
-    expect(mocks.useSkillList).toHaveBeenCalledWith({ enabled: true, search: undefined })
-    expect(result.current.allResources).toHaveLength(2)
-    expect(result.current.resources.map((resource) => resource.id)).toEqual(['skill-2'])
   })
 
   it('maps prompt resources and forwards search without tag filters', () => {

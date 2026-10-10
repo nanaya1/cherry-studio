@@ -33,16 +33,17 @@ export interface TopicMenuActionOptions {
   onClearMessages: TopicMenuHandler
   onCopyImage?: TopicMenuHandler
   onDelete: TopicDeleteHandler
-  onDeletePermanently?: TopicDeleteHandler
   onExportImage?: TopicMenuHandler
   assistantMoveTargets?: readonly TopicMoveAssistantTarget[]
   onMoveToAssistant?: TopicMoveToAssistantHandler
   onOpenInNewTab?: TopicMenuHandler
   onOpenInNewWindow?: TopicMenuHandler
   onPinTopic: TopicMenuHandler
+  onToggleSidebar?: TopicMenuHandler
   onSetPanePosition?: (position: TopicTabPosition) => void | Promise<void>
   onStartRename: TopicMenuHandler
   panePosition?: TopicTabPosition
+  sidebarPinned?: boolean
   t: TFunction
   topic: Topic
   topicsLength: number
@@ -59,15 +60,16 @@ export function createTopicActionContext({
   onClearMessages,
   onCopyImage,
   onDelete,
-  onDeletePermanently,
   onExportImage,
   onMoveToAssistant,
   onOpenInNewTab,
   onOpenInNewWindow,
   onPinTopic,
+  onToggleSidebar,
   onSetPanePosition,
   onStartRename,
   panePosition,
+  sidebarPinned,
   t,
   topic,
   topicsLength
@@ -83,7 +85,6 @@ export function createTopicActionContext({
     onCopyMarkdown: copyTopicAsMarkdown,
     onCopyPlainText: copyTopicAsPlainText,
     onDelete,
-    onDeletePermanently,
     onExportImage: onExportImage ?? ((topic) => void EventEmitter.emit(EVENT_NAMES.EXPORT_TOPIC_IMAGE, topic)),
     onExportJoplin: async (topic) => {
       const { exportMarkdownToJoplin } = await import('@renderer/services/ExportService')
@@ -129,6 +130,7 @@ export function createTopicActionContext({
     onOpenInNewTab,
     onOpenInNewWindow,
     onPinTopic,
+    onToggleSidebar,
     onSetPanePosition,
     onSaveToKnowledge: async (topic) => {
       try {
@@ -147,6 +149,7 @@ export function createTopicActionContext({
     },
     onStartRename,
     panePosition,
+    sidebarPinned,
     t,
     topic,
     topicsLength
@@ -214,15 +217,16 @@ export function useTopicMenuActions(options: TopicMenuActionOptions) {
     onClearMessages,
     onCopyImage,
     onDelete,
-    onDeletePermanently,
     onExportImage,
     onMoveToAssistant,
     onOpenInNewTab,
     onOpenInNewWindow,
     onPinTopic,
+    onToggleSidebar,
     onSetPanePosition,
     onStartRename,
     panePosition,
+    sidebarPinned,
     t,
     topic,
     topicsLength
@@ -240,15 +244,16 @@ export function useTopicMenuActions(options: TopicMenuActionOptions) {
         onClearMessages,
         onCopyImage,
         onDelete,
-        onDeletePermanently,
         onExportImage,
         onMoveToAssistant,
         onOpenInNewTab,
         onOpenInNewWindow,
         onPinTopic,
+        onToggleSidebar,
         onSetPanePosition,
         onStartRename,
         panePosition,
+        sidebarPinned,
         t,
         topic,
         topicsLength
@@ -264,15 +269,16 @@ export function useTopicMenuActions(options: TopicMenuActionOptions) {
       onClearMessages,
       onCopyImage,
       onDelete,
-      onDeletePermanently,
       onExportImage,
       onMoveToAssistant,
       onOpenInNewTab,
       onOpenInNewWindow,
       onPinTopic,
+      onToggleSidebar,
       onSetPanePosition,
       onStartRename,
       panePosition,
+      sidebarPinned,
       t,
       topic,
       topicsLength

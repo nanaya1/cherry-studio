@@ -11,7 +11,6 @@ const {
   mainWindowServiceMock,
   mcpServerServiceMock,
   openSettingsInMainWindowMock,
-  oauthRuntimeServiceMock,
   platformMock,
   windowManagerMock
 } = vi.hoisted(() => {
@@ -40,9 +39,6 @@ const {
     createMany: vi.fn()
   }
   const openSettingsInMainWindowMock = vi.fn()
-  const oauthRuntimeServiceMock = {
-    handleDeepLinkCallback: vi.fn()
-  }
   const platformMock = {
     isLinux: false,
     isPortable: false,
@@ -61,7 +57,6 @@ const {
     mainWindowServiceMock,
     mcpServerServiceMock,
     openSettingsInMainWindowMock,
-    oauthRuntimeServiceMock,
     platformMock,
     windowManagerMock
   }
@@ -84,7 +79,6 @@ vi.mock('@application', () => ({
     get: (name: string) => {
       if (name === 'IpcApiService') return ipcApiServiceMock
       if (name === 'MainWindowService') return mainWindowServiceMock
-      if (name === 'OAuthRuntimeService') return oauthRuntimeServiceMock
       if (name === 'WindowManager') return windowManagerMock
       throw new Error(`unexpected service: ${name}`)
     },
@@ -151,7 +145,6 @@ describe('ProtocolService', () => {
     platformMock.isLinux = false
     platformMock.isPortable = false
     platformMock.isWin = false
-    oauthRuntimeServiceMock.handleDeepLinkCallback.mockResolvedValue(undefined)
     service = new ProtocolService()
   })
 
@@ -171,7 +164,7 @@ describe('ProtocolService', () => {
 
   it('registers the packaged protocol handler without dev arguments', async () => {
     setDefaultApp(false)
-    process.argv = ['Cherry Studio.exe']
+    process.argv = ['MEA Cowork.exe']
 
     await (service as any).onInit()
 
@@ -183,14 +176,14 @@ describe('ProtocolService', () => {
     setDefaultApp(false)
     platformMock.isPortable = true
     platformMock.isWin = true
-    vi.stubEnv('PORTABLE_EXECUTABLE_FILE', 'D:\\Apps\\Cherry Studio Portable.exe')
+    vi.stubEnv('PORTABLE_EXECUTABLE_FILE', 'D:\\Apps\\MEA Cowork Portable.exe')
 
     await (service as any).onInit()
 
     expect(appMock.setAsDefaultProtocolClient).toHaveBeenCalledTimes(1)
     expect(appMock.setAsDefaultProtocolClient).toHaveBeenCalledWith(
-      'cherrystudio',
-      'D:\\Apps\\Cherry Studio Portable.exe',
+      'meacowork',
+      'D:\\Apps\\MEA Cowork Portable.exe',
       []
     )
   })
@@ -257,9 +250,7 @@ describe('ProtocolService', () => {
       service.onMainRendererReady('main-1')
 
       expect(handlersMock.parseMcpInstallProtocolUrl).toHaveBeenCalledTimes(1)
-      expect(handlersMock.parseMcpInstallProtocolUrl.mock.calls[0][0].href).toBe(
-        'meacowork://mcp/install?servers=abc'
-      )
+      expect(handlersMock.parseMcpInstallProtocolUrl.mock.calls[0][0].href).toBe('meacowork://mcp/install?servers=abc')
     })
 
     it('handles a hot-start URL immediately', async () => {
@@ -423,13 +414,22 @@ describe('ProtocolService', () => {
       await markProtocolHandlingReady()
       const handler = getSecondInstanceHandler()
 
-      handler({}, ['/path/to/electron', '.', 'meacowork://oauth/callback?code=abc'])
+      handler({}, ['/path/to/electron', '.', 'meacowork://navigate/agents'])
 
       expect(mainWindowServiceMock.showMainWindow).not.toHaveBeenCalled()
-      expect(oauthRuntimeServiceMock.handleDeepLinkCallback).toHaveBeenCalledTimes(1)
-      const url = oauthRuntimeServiceMock.handleDeepLinkCallback.mock.calls[0][0] as URL
-      expect(url.href).toBe('meacowork://oauth/callback?code=abc')
+      expect(handlersMock.handleNavigateProtocolUrl).toHaveBeenCalledWith(new URL('meacowork://navigate/agents'))
       expect(ipcApiServiceMock.broadcast).not.toHaveBeenCalled()
+    })
+
+    it('discards retired OAuth callbacks without broadcasting their authorization codes', async () => {
+      await (service as any).onInit()
+      await markProtocolHandlingReady()
+      const handler = getSecondInstanceHandler()
+
+      handler({}, ['/path/to/electron', '.', 'meacowork://oauth/callback?code=private-code&state=old-state'])
+
+      expect(ipcApiServiceMock.broadcast).not.toHaveBeenCalled()
+      expect(mainWindowServiceMock.showMainWindow).not.toHaveBeenCalled()
     })
 
     it('surfaces the main window when argv has no protocol URL', async () => {

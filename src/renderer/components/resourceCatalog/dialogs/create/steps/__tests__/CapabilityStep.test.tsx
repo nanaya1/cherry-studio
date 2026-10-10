@@ -42,7 +42,7 @@ const { importSkillDialogState, installedSkillsState, marketplaceDialogState, sy
 )
 
 vi.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string) => key, i18n: { resolvedLanguage: 'en-US', language: 'en-US' } })
+  useTranslation: () => ({ t: (key: string) => key })
 }))
 
 vi.mock('@renderer/hooks/useSkills', () => ({

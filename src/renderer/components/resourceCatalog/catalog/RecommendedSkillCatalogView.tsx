@@ -1,3 +1,7 @@
+import { Check, Download, List, LoaderCircle, TriangleAlert } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+
 import {
   Button,
   ConfirmDialog,
@@ -14,9 +18,6 @@ import { useMutation, useQuery } from '@renderer/data/hooks/useDataApi'
 import { useInvalidateSkills } from '@renderer/hooks/useSkills'
 import { toast } from '@renderer/services/toast'
 import type { SkillCatalogItem } from '@shared/data/api/schemas/skillCatalog'
-import { Check, Download, List, LoaderCircle, TriangleAlert } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useTranslation } from 'react-i18next'
 
 interface RecommendedSkillCatalogViewProps {
   search: string

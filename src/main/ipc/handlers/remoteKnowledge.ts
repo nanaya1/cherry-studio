@@ -9,13 +9,14 @@ import type { IpcHandlersFor } from '@shared/ipc/types'
  * they ignore `IpcContext` (contrast window.ts).
  */
 export const remoteKnowledgeHandlers: IpcHandlersFor<typeof remoteKnowledgeRequestSchemas> = {
-  'remoteKnowledge.list': async () => application.get('RemoteKnowledgeService').list(),
-  'remoteKnowledge.create': async ({ draft }) => application.get('RemoteKnowledgeService').create(draft),
-  'remoteKnowledge.update': async ({ id, patch }) => application.get('RemoteKnowledgeService').update(id, patch),
-  'remoteKnowledge.delete': async ({ id }) => {
+  'remote_knowledge.service.list': async () => application.get('RemoteKnowledgeService').list(),
+  'remote_knowledge.service.create': async ({ draft }) => application.get('RemoteKnowledgeService').create(draft),
+  'remote_knowledge.service.update': async ({ id, patch }) =>
+    application.get('RemoteKnowledgeService').update(id, patch),
+  'remote_knowledge.service.delete': async ({ id }) => {
     application.get('RemoteKnowledgeService').delete(id)
   },
-  'remoteKnowledge.test_connection': async ({ id, config }) =>
+  'remote_knowledge.service.test_connection': async ({ id, config }) =>
     application.get('RemoteKnowledgeService').testConnection({ id, config }),
-  'remoteKnowledge.list_bases': async ({ id }) => application.get('RemoteKnowledgeService').listRemoteBases(id)
+  'remote_knowledge.base.list': async ({ id }) => application.get('RemoteKnowledgeService').listRemoteBases(id)
 }

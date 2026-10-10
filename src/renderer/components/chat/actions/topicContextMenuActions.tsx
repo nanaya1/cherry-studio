@@ -14,13 +14,13 @@ import {
   PinIcon,
   PinOffIcon,
   Sparkles,
-  Trash2,
   UploadIcon
 } from 'lucide-react'
 import type { ReactNode } from 'react'
 
 import { createActionRegistry } from '@renderer/components/chat/actions/actionRegistry'
 import type { ResolvedAction } from '@renderer/components/chat/actions/actionTypes'
+import SidebarShortcutIcon from '@renderer/components/icons/SidebarShortcutIcon'
 import { OpenInNewWindowIcon } from '@renderer/components/icons/WindowIcons'
 import type { Topic } from '@renderer/types/topic'
 import type { TopicTabPosition } from '@shared/data/preference/preferenceTypes'
@@ -61,7 +61,6 @@ export interface TopicActionContext {
   onCopyMarkdown: TopicMenuHandler
   onCopyPlainText: TopicMenuHandler
   onDelete: TopicDeleteHandler
-  onDeletePermanently?: TopicDeleteHandler
   onExportImage: TopicMenuHandler
   onExportJoplin: TopicMenuHandler
   onExportMarkdown: TopicMenuHandler
@@ -76,11 +75,13 @@ export interface TopicActionContext {
   onOpenInNewTab?: TopicMenuHandler
   onOpenInNewWindow?: TopicMenuHandler
   onPinTopic: TopicMenuHandler
+  onToggleSidebar?: TopicMenuHandler
   onSaveToKnowledge: TopicMenuHandler
   onSaveToNotes: TopicMenuHandler
   onSetPanePosition?: (position: TopicTabPosition) => void | Promise<void>
   onStartRename: TopicMenuHandler
   panePosition?: TopicTabPosition
+  sidebarPinned?: boolean
   t: TFunction
   topic: Topic
   topicsLength: number
@@ -135,6 +136,12 @@ topicActionRegistry.registerCommand({
 topicActionRegistry.registerCommand({
   id: 'topic.pin',
   run: ({ onPinTopic, topic }) => onPinTopic(topic)
+})
+
+topicActionRegistry.registerCommand({
+  id: 'topic.toggle-sidebar',
+  availability: ({ onToggleSidebar }) => ({ visible: !!onToggleSidebar, enabled: !!onToggleSidebar }),
+  run: ({ onToggleSidebar, topic }) => onToggleSidebar?.(topic)
 })
 
 topicActionRegistry.registerCommand({
@@ -261,11 +268,6 @@ topicActionRegistry.registerCommand({
   run: ({ onDelete, topic }) => onDelete(topic)
 })
 
-topicActionRegistry.registerCommand({
-  id: 'topic.delete-permanently',
-  run: ({ onDeletePermanently, topic }) => onDeletePermanently?.(topic)
-})
-
 topicActionRegistry.registerAction({
   id: 'topic.auto-rename',
   commandId: 'topic.auto-rename',
@@ -292,6 +294,15 @@ topicActionRegistry.registerAction({
   label: ({ t, topic }) => (topic.pinned ? t('chat.topics.unpin') : t('chat.topics.pin')),
   icon: ({ topic }) => (topic.pinned ? <PinOffIcon size={14} /> : <PinIcon size={14} />),
   order: 30,
+  surface: 'menu'
+})
+
+topicActionRegistry.registerAction({
+  id: 'topic.toggle-sidebar',
+  commandId: 'topic.toggle-sidebar',
+  label: ({ sidebarPinned, t }) => (sidebarPinned ? t('launchpad.unpin_from_sidebar') : t('launchpad.pin_to_sidebar')),
+  icon: ({ sidebarPinned }) => <SidebarShortcutIcon pinned={sidebarPinned} size={14} />,
+  order: 32,
   surface: 'menu'
 })
 
@@ -525,29 +536,6 @@ topicActionRegistry.registerAction({
     visible: !topic.pinned,
     enabled: !isArchiveBlocked,
     reason: isArchiveBlocked ? t('recycle_bin.move.blocked_generation') : undefined
-  })
-})
-
-topicActionRegistry.registerAction({
-  id: 'topic.delete-permanently',
-  commandId: 'topic.delete-permanently',
-  label: ({ t }) => t('common.delete_permanently'),
-  icon: () => <Trash2 size={14} />,
-  group: 'danger',
-  order: 100,
-  surface: 'menu',
-  danger: true,
-  availability: ({ isArchiveBlocked, t, topic, onDeletePermanently }) => ({
-    visible: !topic.pinned && !!onDeletePermanently,
-    enabled: !isArchiveBlocked,
-    reason: isArchiveBlocked ? t('chat.topics.delete.blocked_generation') : undefined
-  }),
-  confirm: ({ t, topic }) => ({
-    title: t('settings.data.trash.permanent_delete.confirm_title'),
-    description: `${topic.name}\n${t('settings.data.trash.permanent_delete.confirm_content')}`,
-    confirmText: t('common.delete_permanently'),
-    cancelText: t('common.cancel'),
-    destructive: true
   })
 })
 

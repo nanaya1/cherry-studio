@@ -1,4 +1,4 @@
-import { GripVertical, MoreHorizontal, Plus, Trash2, Bot } from 'lucide-react'
+import { Bot, GripVertical, MoreHorizontal, Plus, Trash2 } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -92,14 +92,14 @@ export function PromptSettings() {
         label: assistant.name,
         group: t('common.assistant_other'),
         target: { type: 'assistant' as const, id: assistant.id },
-        icon: <Bot size={16} />
+        icon: <Bot size={20} />
       })),
       ...agentData.map((agent) => ({
         value: `agent:${agent.id}`,
         label: agent.name,
         group: t('common.agent_other'),
         target: { type: 'agent' as const, id: agent.id },
-        icon: <Bot size={16} />
+        icon: <Bot size={20} />
       }))
     ],
     [agentData, assistantData, t]

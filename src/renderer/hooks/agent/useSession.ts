@@ -369,13 +369,9 @@ export const useSessions = (
   const restoreSession = useCallback(
     async (id: string): Promise<AgentSessionEntity> => {
       const session = await ipcApi.request('ai.agent.session.restore', { sessionId: id })
-      // Seed the restored entity into the by-id cache. The delete flow leaves a stale
-      // NOT_FOUND error there (the by-id query revalidated while the session was trashed);
-      // with no mounted hook, plain invalidation can't clear it and the next click would
-      // trip the page-level NOT_FOUND recovery into a blank re-entry. A cache write both
-      // drops that error (SWR clears `error` on populate) and paints the entity instantly.
-      await writeCache(`/agent-sessions/${id}`, session)
       try {
+        // Inactive detail queries cannot revalidate a cached NOT_FOUND after undo.
+        await writeCache(`/agent-sessions/${id}`, session)
         await invalidate(['/agent-sessions', `/agent-sessions/${id}`, '/agents/*'])
       } catch (error) {
         logger.warn('Failed to refresh after restoring Agent Session', error as Error, { sessionId: id })

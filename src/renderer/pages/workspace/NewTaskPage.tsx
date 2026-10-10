@@ -1,3 +1,17 @@
+import { useNavigate, useSearch } from '@tanstack/react-router'
+import { Bot, MessageSquare } from 'lucide-react'
+import {
+  type ComponentProps,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState
+} from 'react'
+import { useTranslation } from 'react-i18next'
+
 import { Alert, Button, Tabs, TabsContent, TabsList, TabsTrigger } from '@cherrystudio/ui'
 import { loggerService } from '@logger'
 import {
@@ -40,19 +54,6 @@ import {
 import { getSkillDescription, getSkillDisplayName } from '@shared/data/api/schemas/skills'
 import { CHERRYAI_DEFAULT_UNIQUE_MODEL_ID } from '@shared/data/presets/cherryai'
 import type { UniqueModelId } from '@shared/data/types/model'
-import { useNavigate, useSearch } from '@tanstack/react-router'
-import { Bot, MessageSquare } from 'lucide-react'
-import {
-  type ComponentProps,
-  type ReactNode,
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState
-} from 'react'
-import { useTranslation } from 'react-i18next'
 
 const logger = loggerService.withContext('NewTaskPage')
 
@@ -146,20 +147,20 @@ export default function NewTaskPage() {
   )
   const isLaunchSkillUnavailable = Boolean(
     hasPendingSkillLaunch &&
-      !installedSkillsLoading &&
-      !installedSkillsRefreshing &&
-      !installedSkillsError &&
-      !launchSkill
+    !installedSkillsLoading &&
+    !installedSkillsRefreshing &&
+    !installedSkillsError &&
+    !launchSkill
   )
   const isSkillBindingLoading = Boolean(
     hasPendingSkillLaunch &&
-      (installedSkillsLoading ||
-        installedSkillsRefreshing ||
-        (agentId && (agentLoading || agentSkillsLoading || agentSkillsRefreshing)))
+    (installedSkillsLoading ||
+      installedSkillsRefreshing ||
+      (agentId && (agentLoading || agentSkillsLoading || agentSkillsRefreshing)))
   )
   const isSkillBound = Boolean(
     launchSkill?.isGlobalEnabled &&
-      agentSkills.some((candidate) => candidate.id === launchSkill.id && candidate.isEnabled)
+    agentSkills.some((candidate) => candidate.id === launchSkill.id && candidate.isEnabled)
   )
   const requiresSkillBinding = Boolean(
     hasPendingSkillLaunch && launchSkill && agentId && (!isSkillBindingLoading || skillBindingPending) && !isSkillBound
@@ -279,7 +280,8 @@ export default function NewTaskPage() {
   const agentSelectionInitializedRef = useRef(false)
   const chatPlaceholderRef = useRef<{ target: string; topicId: string } | null>(null)
   const agentPlaceholderRef = useRef<{ target: string; session: AgentSessionEntity } | null>(null)
-  const pendingNavigationRef = useRef<{ type: 'chat'; id: string } | { type: 'agent'; id: string } | null>(null)
+  // MEA v2.1.3 used pendingNavigationRef with Composer.onDraftCleared; v2.1.4 removed that callback.
+  // Navigation now happens after the reserved messages and resource caches are synchronized.
 
   useEffect(() => {
     if (!isAssistantListResolved || chatSelectionInitializedRef.current) return
@@ -319,17 +321,6 @@ export default function NewTaskPage() {
     []
   )
 
-  const handleDraftCleared = useCallback(() => {
-    const destination = pendingNavigationRef.current
-    if (!destination) return
-    pendingNavigationRef.current = null
-    if (destination.type === 'chat') {
-      void navigate({ to: '/app/chat', search: { topicId: destination.id }, replace: true })
-      return
-    }
-    void navigate({ to: '/app/agents', search: { sessionId: destination.id }, replace: true })
-  }, [navigate])
-
   const handleChatSend = useCallback(
     async (text: string, options?: Parameters<ComponentProps<typeof ChatPlacementComposer>['onSend']>[1]) => {
       if (chatInFlightRef.current) return false
@@ -361,7 +352,6 @@ export default function NewTaskPage() {
           chatInFlightRef.current = false
           return false
         }
-        pendingNavigationRef.current = { type: 'chat', id: topicId }
         try {
           const seed = await waitForChatSeed(topicId)
           await seed(ack.reservedMessages ?? [], { preserveActiveNode: ack.preserveActiveNode })
@@ -369,6 +359,7 @@ export default function NewTaskPage() {
         } catch (error) {
           logger.error('Failed to synchronize started chat task', error as Error)
         }
+        void navigate({ to: '/app/chat', search: { topicId }, replace: true })
         return true
       } catch (error) {
         if (!isCurrent()) return false
@@ -378,7 +369,7 @@ export default function NewTaskPage() {
         return false
       }
     },
-    [chatAssistantId, invalidateCache, reuseOrCreateTopic, t, waitForChatSeed]
+    [chatAssistantId, invalidateCache, navigate, reuseOrCreateTopic, t, waitForChatSeed]
   )
 
   const workspaceSource = useMemo<AgentSessionWorkspaceSource>(
@@ -419,7 +410,6 @@ export default function NewTaskPage() {
           agentInFlightRef.current = false
           return false
         }
-        pendingNavigationRef.current = { type: 'agent', id: session.id }
         try {
           const seed = await waitForAgentSeed(session.id)
           await seed(ack.reservedMessages ?? [])
@@ -427,6 +417,7 @@ export default function NewTaskPage() {
         } catch (error) {
           logger.error('Failed to synchronize started agent task', error as Error)
         }
+        void navigate({ to: '/app/agents', search: { sessionId: session.id }, replace: true })
         return true
       } catch (error) {
         if (!isCurrent()) return false
@@ -440,6 +431,7 @@ export default function NewTaskPage() {
       agentId,
       closeConversationTabs,
       invalidateCache,
+      navigate,
       reuseOrCreateSession,
       t,
       waitForAgentSeed,
@@ -453,7 +445,6 @@ export default function NewTaskPage() {
       if (chatInFlightRef.current) return
       chatEpochRef.current += 1
       chatPlaceholderRef.current = null
-      pendingNavigationRef.current = null
       setChatAssistantId(nextAssistantId)
       setLastUsedAssistantId(nextAssistantId)
     },
@@ -464,7 +455,6 @@ export default function NewTaskPage() {
     agentSelectionInitializedRef.current = true
     agentEpochRef.current += 1
     agentPlaceholderRef.current = null
-    pendingNavigationRef.current = null
     skillBindingRequestRef.current += 1
     setAgentId(nextAgentId)
   }, [])
@@ -472,7 +462,6 @@ export default function NewTaskPage() {
     if (agentInFlightRef.current) return
     agentEpochRef.current += 1
     agentPlaceholderRef.current = null
-    pendingNavigationRef.current = null
     setAgentWorkspaceId(workspaceId)
   }, [])
   const agentWorkspace = selectedWorkspace
@@ -514,12 +503,11 @@ export default function NewTaskPage() {
                     assistantId={chatAssistantId ?? undefined}
                     resolvedContext={chatContext}
                     resolvedProviders={providers}
-                    showAssistantControl={false}
-                    modelControlInSendAccessory
-                    hideBelowControls
+                    // MEA: showAssistantControl={false} / modelControlInSendAccessory / hideBelowControls
+                    // v2.1.4 的 home composer 已固定使用首页控制布局，无需重复传入旧展示参数。
                     onDraftAssistantChange={handleChatAssistantChange}
                     onSend={handleChatSend}
-                    onDraftCleared={handleDraftCleared}
+                    // MEA: onDraftCleared={handleDraftCleared}；v2.1.4 已移除该回调，发送成功后在 handler 内跳转。
                   />
                 </NewTaskQuickPanelFill>
               </QuickPanelProvider>
@@ -585,7 +573,7 @@ export default function NewTaskPage() {
                   <AgentHomeComposer
                     agentId={agentId ?? ''}
                     sessionId={temporaryAgentSessionId}
-                    draftScopeKey={agentDraftScopeKey}
+                    // MEA: draftScopeKey={agentDraftScopeKey}；v2.1.4 已按临时 sessionId 隔离草稿。
                     sessionOverride={{ workspace: agentWorkspace, workspaceId: agentWorkspaceId }}
                     resolvedAgent={agent}
                     resolvedModel={agentModel}
@@ -594,9 +582,8 @@ export default function NewTaskPage() {
                     stop={async () => undefined}
                     onAgentChange={handleAgentChange}
                     agentChanging={agentLoading}
-                    showAgentControl={false}
-                    modelControlInSendAccessory
-                    toolShortcutsBeforeContextControls
+                    // MEA: showAgentControl={false} / modelControlInSendAccessory /
+                    // toolShortcutsBeforeContextControls；v2.1.4 AgentHomeComposer 已固定首页控制布局。
                     workspaceId={agentWorkspaceId}
                     onWorkspaceChange={handleWorkspaceChange}
                     isStreaming={false}
@@ -611,7 +598,7 @@ export default function NewTaskPage() {
                           !canUseLaunchSkill))
                     }
                     launchOptions={canUseLaunchSkill ? skillLaunchOptions : undefined}
-                    onDraftCleared={handleDraftCleared}
+                    // MEA: onDraftCleared={handleDraftCleared}；v2.1.4 已移除该回调，发送成功后在 handler 内跳转。
                   />
                 </NewTaskQuickPanelFill>
               </QuickPanelProvider>

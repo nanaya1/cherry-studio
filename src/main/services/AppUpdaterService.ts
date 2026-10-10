@@ -1,11 +1,8 @@
 import type { ProgressInfo, UpdateInfo } from 'builder-util-runtime'
 import { CancellationToken } from 'builder-util-runtime'
 import { app } from 'electron'
-// 停用：release-history 拉取已禁用，net/AppUpdater 仅存在于注释块中（恢复时取消注释）
-// import { net } from 'electron'
 import type { Logger, NsisUpdater, UpdateCheckResult } from 'electron-updater'
-// import { AppUpdater } from 'electron-updater'
-import { autoUpdater } from 'electron-updater'
+import { AppUpdater, autoUpdater } from 'electron-updater'
 
 import { application } from '@application'
 import { loggerService } from '@logger'
@@ -19,19 +16,15 @@ import { generateUserAgent, getClientId } from '@main/utils/systemInfo'
 import type { RetryPolicy } from '@shared/data/api/schemas/jobs'
 import { UpgradeChannel } from '@shared/data/preference/preferenceTypes'
 import type { AppEdition } from '@shared/types/appEdition'
-import {
-  hasMultiLanguageReleaseNotes,
-  localizeReleaseNotes,
-  mergeReleaseHistory,
-  type ReleaseNotesEntry
-} from '@shared/utils/releaseNotes'
+import { APP_NAME } from '@shared/utils/constants'
+import { hasMultiLanguageReleaseNotes, localizeReleaseNotes, type ReleaseNotesEntry } from '@shared/utils/releaseNotes'
 
 const logger = loggerService.withContext('AppUpdaterService')
 
 type ReleaseRegion = 'cn' | 'global'
 
-// Cherry 厂商云 release-history 源暂时停用，恢复时取消下方注释。
-// const RELEASE_HISTORY_URL = 'https://releases.cherry-ai.com/release-history.json'
+// Cherry 官方 release-history 源已停用，保留常量注释便于恢复历史实现。
+// export const RELEASE_HISTORY_URL = 'https://releases.cherry-ai.com/release-history.json'
 // const RELEASE_HISTORY_TIMEOUT_MS = 10_000
 // const RELEASE_HISTORY_MAX_BYTES = 1024 * 1024
 
@@ -44,7 +37,7 @@ function getUpdateHeaders({ region, edition }: { region: ReleaseRegion; edition:
     'User-Agent': generateUserAgent(),
     'Cache-Control': 'no-cache',
     'Client-Id': getClientId(),
-    'App-Name': 'Cherry Studio',
+    'App-Name': APP_NAME,
     'App-Version': `v${app.getVersion()}`,
     OS: process.platform,
     'X-Edition': edition,
@@ -52,8 +45,19 @@ function getUpdateHeaders({ region, edition }: { region: ReleaseRegion; edition:
   }
 }
 
-// ReleaseNotesUpdater（仅用于拉取 latest release notes）随 Cherry 厂商云 release-history 源停用暂时移除，
-// 恢复时从 git 历史找回（含 AppUpdater import 与 parseReleaseHistory / net）。
+class ReleaseNotesUpdater extends AppUpdater {
+  constructor() {
+    super(undefined)
+  }
+
+  protected doDownloadUpdate(): Promise<string[]> {
+    return Promise.reject(new Error('Release-notes updater cannot download updates'))
+  }
+
+  quitAndInstall(): never {
+    throw new Error('Release-notes updater cannot install updates')
+  }
+}
 
 // Auto update-check scheduling. The cadence lives in the main process (this
 // service), not the renderer, so it survives window close and runs exactly
@@ -207,46 +211,34 @@ export class AppUpdaterService extends BaseService {
     autoUpdater.disableDifferentialDownload = true
   }
 
-  private async fetchReleaseHistory(): Promise<ReleaseNotesEntry[] | null> {
-    // Mea Cowork：暂时不向 releases.cherry-ai.com 拉取 release-history。恢复时取消下方注释并保留 URL。
-    logger.info('Release history fetch is disabled (Cherry vendor cloud is hidden)')
-    return null
-    /*
-    try {
-      const { updateHeaders } = await this.getUpdateRequest()
-      const response = await net.fetch(RELEASE_HISTORY_URL, {
-        headers: updateHeaders,
-        redirect: 'follow',
-        signal: AbortSignal.timeout(RELEASE_HISTORY_TIMEOUT_MS)
-      })
+  // Cherry 官方 release-history 不再参与更新流程；自动更新仍使用 MEA 的 update feed。
+  // private async fetchReleaseHistory(): Promise<ReleaseNotesEntry[] | null> {
+  //   return null
+  // }
 
-      if (!response.ok) {
-        throw new Error(`Release history request failed with HTTP ${response.status}`)
-      }
-
-      const contentLength = Number(response.headers.get('content-length'))
-      if (Number.isFinite(contentLength) && contentLength > RELEASE_HISTORY_MAX_BYTES) {
-        throw new Error('Release history response exceeds the size limit')
-      }
-
-      const source = await response.text()
-      if (Buffer.byteLength(source, 'utf8') > RELEASE_HISTORY_MAX_BYTES) {
-        throw new Error('Release history response exceeds the size limit')
-      }
-
-      return parseReleaseHistory(source)
-    } catch (error) {
-      logger.warn('Failed to fetch release history', error as Error)
-      return null
-    }
-    */
+  public async queryUpdateAvailability(): Promise<
+    | { status: 'unsupported' }
+    | { status: 'current'; currentVersion: string }
+    | { status: 'available'; currentVersion: string; version: string }
+  > {
+    if (this.isPortable()) return { status: 'unsupported' }
+    const { currentVersion, updateChannel, updateHeaders } = await this.getUpdateRequest()
+    const updater = new ReleaseNotesUpdater()
+    updater.logger = logger as Logger
+    updater.forceDevUpdateConfig = !app.isPackaged
+    updater.autoDownload = false
+    updater.autoInstallOnAppQuit = false
+    updater.requestHeaders = updateHeaders
+    updater.channel = updateChannel
+    updater.allowDowngrade = false
+    const result = await updater.checkForUpdates()
+    if (!result) throw new Error('Update query did not produce a result')
+    return result.isUpdateAvailable
+      ? { status: 'available', currentVersion, version: result.updateInfo.version }
+      : { status: 'current', currentVersion }
   }
 
   public async getLatestReleaseNotes(): Promise<ReleaseNotesEntry | null> {
-    // Mea Cowork：暂时不向 Cherry 厂商源请求最新发布说明（避免触发 electron-updater 拉 latest.yml）。
-    logger.info('Latest release notes fetch is disabled (Cherry vendor cloud is hidden)')
-    return null
-    /*
     try {
       const { updateChannel, updateHeaders } = await this.getUpdateRequest()
       const updater = new ReleaseNotesUpdater()
@@ -273,17 +265,11 @@ export class AppUpdaterService extends BaseService {
       logger.warn('Failed to fetch latest release notes', error as Error)
       return null
     }
-    */
   }
 
   public async getReleaseHistory(): Promise<ReleaseNotesEntry[] | null> {
-    const [history, latestRelease] = await Promise.all([this.fetchReleaseHistory(), this.getLatestReleaseNotes()])
-
-    if (!history) {
-      return latestRelease ? [latestRelease] : null
-    }
-
-    return latestRelease ? mergeReleaseHistory([latestRelease], history) : history
+    const latestRelease = await this.getLatestReleaseNotes()
+    return latestRelease ? [latestRelease] : null
   }
 
   public cancelDownload() {

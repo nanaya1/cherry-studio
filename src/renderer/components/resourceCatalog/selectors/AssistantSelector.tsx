@@ -15,7 +15,6 @@ import type { ResourceEditDialogTarget } from '@renderer/types/resourceCatalog'
 import { buildCreateAssistantDto } from '@renderer/utils/resourceCatalog'
 import type { Assistant } from '@shared/data/types/assistant'
 import { isNonChatModel } from '@shared/utils/model'
-import { Bot } from 'lucide-react'
 
 import {
   ResourceSelectorShell,
@@ -262,7 +261,6 @@ export function AssistantSelector(props: AssistantSelectorProps) {
     mountStrategy,
     onOpen: refetchPins,
     items,
-    fallbackIcon: <Bot size={15} />,
     groups: selectorGroups,
     loading: isLoading || isGroupsLoading || isPinnedLoading,
     pinnedIds,

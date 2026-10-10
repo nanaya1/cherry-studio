@@ -29,16 +29,18 @@ import type { TopicTabPosition } from '@shared/data/preference/preferenceTypes'
 interface SessionItemProps {
   active?: boolean
   channelType?: string
-  onDelete: (id: string, permanent?: boolean) => void | Promise<void>
+  onDelete: (id: string) => void | Promise<void>
   onOpenInNewTab?: (session: AgentSessionEntity) => void
   onOpenInNewWindow?: (session: AgentSessionEntity) => void
   onOpenRenameDialog: (session: AgentSessionEntity) => void
   onPress: (id: string) => void
   onSetPanePosition?: (position: TopicTabPosition) => void | Promise<void>
   onTogglePin?: (id: string) => void | Promise<unknown>
+  onToggleSidebar?: (session: AgentSessionEntity) => void
   panePosition?: TopicTabPosition
   pinned?: boolean
   reserveLeadingIconSlot?: boolean
+  sidebarPinned?: boolean
   session: AgentSessionEntity
   sessionMenuActions: SessionItemMenuActions
 }
@@ -73,8 +75,10 @@ const SessionItem = ({
   onSetPanePosition,
   panePosition,
   onTogglePin,
+  onToggleSidebar,
   pinned = false,
   reserveLeadingIconSlot = true,
+  sidebarPinned = false,
   session,
   sessionMenuActions
 }: SessionItemProps) => {
@@ -128,10 +132,12 @@ const SessionItem = ({
   const startInlineEdit = useCallback(() => actions.startRename(session.id), [actions, session.id])
   const startMenuEdit = useCallback(() => onOpenRenameDialog(session), [onOpenRenameDialog, session])
   const handleDelete = useCallback(() => onDelete(session.id), [onDelete, session.id])
-  const handleDeletePermanently = useCallback(() => onDelete(session.id, true), [onDelete, session.id])
   const handleTogglePin = useCallback(() => {
     void onTogglePin?.(session.id)
   }, [onTogglePin, session.id])
+  const handleToggleSidebar = useCallback(() => {
+    onToggleSidebar?.(session)
+  }, [onToggleSidebar, session])
   const handleOpenInNewTab = useCallback(() => {
     onOpenInNewTab?.(session)
   }, [onOpenInNewTab, session])
@@ -149,7 +155,6 @@ const SessionItem = ({
       onCopyMarkdown: () => sessionMenuActions.onCopyMarkdown(session),
       onCopyPlainText: () => sessionMenuActions.onCopyPlainText(session),
       onDelete: handleDelete,
-      onDeletePermanently: handleDeletePermanently,
       isBusy: isStreamPending || showAwaitingApprovalBadge,
       onExportImage: () => sessionMenuActions.onExportImage(session),
       onExportJoplin: () => sessionMenuActions.onExportJoplin(session),
@@ -166,28 +171,32 @@ const SessionItem = ({
       onSaveToNotes: () => sessionMenuActions.onSaveToNotes(session),
       onSetPanePosition,
       onTogglePin: onTogglePin ? handleTogglePin : undefined,
+      onToggleSidebar: onToggleSidebar ? handleToggleSidebar : undefined,
       panePosition,
       pinned,
+      sidebarPinned,
       sessionName,
       startEdit: startMenuEdit,
       t
     }),
     [
       handleDelete,
-      handleDeletePermanently,
       isStreamPending,
       showAwaitingApprovalBadge,
       handleOpenInNewTab,
       handleOpenInNewWindow,
       handleTogglePin,
+      handleToggleSidebar,
       active,
       isRenaming,
       onOpenInNewTab,
       onOpenInNewWindow,
       onSetPanePosition,
       onTogglePin,
+      onToggleSidebar,
       panePosition,
       pinned,
+      sidebarPinned,
       session,
       sessionMenuActions,
       sessionName,

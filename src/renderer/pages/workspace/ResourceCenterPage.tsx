@@ -1,6 +1,7 @@
+import { useTranslation } from 'react-i18next'
+
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@cherrystudio/ui'
 import { ResourceCatalogView } from '@renderer/components/resourceCatalog/catalog'
-import { useTranslation } from 'react-i18next'
 
 export default function ResourceCenterPage() {
   const { t } = useTranslation()
@@ -16,10 +17,12 @@ export default function ResourceCenterPage() {
       </header>
 
       <TabsContent value="assistant" className="min-h-0 flex-1">
-        <ResourceCatalogView resourceType="assistant" showManagementActions={false} />
+        {/* MEA: 原 showManagementActions={false}；v2.1.4 资源目录已将管理动作收进统一菜单。 */}
+        <ResourceCatalogView resourceType="assistant" />
       </TabsContent>
       <TabsContent value="agent" className="min-h-0 flex-1">
-        <ResourceCatalogView resourceType="agent" showManagementActions={false} />
+        {/* MEA: 原 showManagementActions={false}；v2.1.4 资源目录已将管理动作收进统一菜单。 */}
+        <ResourceCatalogView resourceType="agent" />
       </TabsContent>
     </Tabs>
   )

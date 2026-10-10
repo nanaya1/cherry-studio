@@ -1,20 +1,17 @@
-import { Button, MenuItem, MenuList, Popover, PopoverContent, PopoverTrigger, Tooltip } from '@cherrystudio/ui'
-import { loggerService } from '@logger'
-import type { SidebarVisibleLayout } from '@renderer/components/Sidebar'
-import { useOpenReleaseNotes } from '@renderer/hooks/useOpenReleaseNotes'
-// 「GitHub 点赞」入口暂时隐藏：跳转 CherryHQ 官方仓库，ipcApi 仅其使用，import 随之注释。恢复时一并恢复。
-// import { ipcApi } from '@renderer/ipc'
-// import { CircleQuestionMark, Github, MessageSquareText, Sparkles } from 'lucide-react'
-import { CircleQuestionMark, MessageSquareText, Sparkles } from 'lucide-react'
+import { CircleQuestionMark, Sparkles, Stethoscope } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-// const GITHUB_REPOSITORY_URL = 'https://github.com/CherryHQ/cherry-studio'
+import { Button, MenuItem, MenuList, Popover, PopoverContent, PopoverTrigger, Tooltip } from '@cherrystudio/ui'
+import { loggerService } from '@logger'
+import { DoctorPopup } from '@renderer/components/doctor'
+import type { SidebarVisibleLayout } from '@renderer/components/Sidebar'
+import { useOpenReleaseNotes } from '@renderer/hooks/useOpenReleaseNotes'
+
 const logger = loggerService.withContext('HelpMenu')
 
 export function HelpMenu({
   layout,
-  onFeedbackClick,
   onOverlayOpenChange
 }: {
   layout: SidebarVisibleLayout
@@ -27,6 +24,7 @@ export function HelpMenu({
   const firstActionRef = useRef<HTMLButtonElement>(null)
   const menuOpenRef = useRef(false)
   const onOverlayOpenChangeRef = useRef(onOverlayOpenChange)
+  const pendingActionRef = useRef<(() => void | Promise<void>) | null>(null)
 
   useEffect(() => {
     onOverlayOpenChangeRef.current = onOverlayOpenChange
@@ -48,34 +46,11 @@ export function HelpMenu({
   }
 
   const runAfterClose = (action: () => void | Promise<void>) => {
+    pendingActionRef.current = action
     handleMenuOpenChange(false)
-    window.setTimeout(() => {
-      void Promise.resolve()
-        .then(action)
-        .catch((error) => logger.error('Failed to run help menu action', error as Error))
-    }, 0)
   }
 
-  // 「使用指南」入口暂时隐藏，跳转目标属 Cherry 厂商云。
-  // 恢复时取消下方函数注释并保留 MenuItem（见 git 历史）。
-  // const openDocs = () => {
-  //   const language = i18n.resolvedLanguage ?? i18n.language
-  //   const url =
-  //     language === 'zh-CN' || language === 'zh-TW'
-  //       ? 'https://docs.cherryai.com.cn/'
-  //       : 'https://docs.cherryai.com.cn/docs/en-us'
-  //   openSmartMiniApp({
-  //     appId: 'cherrystudio-guide',
-  //     name: t('help.guide'),
-  //     url,
-  //     logo: AppLogo
-  //   })
-  // }
-
-  // 「GitHub 点赞」入口暂时隐藏：跳转 CherryHQ 官方仓库。恢复时取消下方注释。
-  // const openGitHubRepository = () => {
-  //   return ipcApi.request('system.shell.open_website', GITHUB_REPOSITORY_URL)
-  // }
+  // Cherry 官方文档与反馈入口在 MEA Cowork 中保持下线，原逻辑保留在 git 历史中。
 
   const trigger =
     layout === 'icon' ? (
@@ -114,6 +89,15 @@ export function HelpMenu({
           side="right"
           sideOffset={8}
           className="w-52 rounded-xl p-1.5"
+          onCloseAutoFocus={(event) => {
+            const action = pendingActionRef.current
+            if (!action) return
+            pendingActionRef.current = null
+            event.preventDefault()
+            void Promise.resolve()
+              .then(action)
+              .catch((error) => logger.error('Failed to run help menu action', error as Error))
+          }}
           onOpenAutoFocus={(event) => {
             event.preventDefault()
             firstActionRef.current?.focus()
@@ -122,37 +106,23 @@ export function HelpMenu({
             <MenuItem
               size="sm"
               className="h-8"
+              ref={firstActionRef}
               icon={<Sparkles size={16} />}
               label={t('help.whats_new')}
               onClick={() => runAfterClose(openReleaseNotes)}
             />
-            {/* 「使用指南」入口暂时隐藏：跳转到 docs.cherryai.com.cn，属 Cherry 厂商云。 */}
-            {/*
+            {/* Cherry 官方文档与反馈入口在 MEA Cowork 中保持下线。 */}
             <MenuItem
               size="sm"
               className="h-8"
-              icon={<BookOpen size={16} />}
-              label={t('help.guide')}
-              onClick={() => runAfterClose(openDocs)}
+              icon={<Stethoscope size={16} />}
+              label={t('settings.doctor.entry.title')}
+              onClick={() =>
+                runAfterClose(async () => {
+                  await DoctorPopup.show({ initialPanel: 'checks' })
+                })
+              }
             />
-            */}
-            <MenuItem
-              size="sm"
-              className="h-8"
-              icon={<MessageSquareText size={16} />}
-              label={t('help.feedback')}
-              onClick={() => runAfterClose(onFeedbackClick)}
-            />
-            {/* 「GitHub 点赞」入口暂时隐藏：跳转 CherryHQ 官方仓库。恢复时取消下方注释。 */}
-            {/*
-            <MenuItem
-              size="sm"
-              className="h-8"
-              icon={<Github size={16} />}
-              label={t('help.star')}
-              onClick={() => runAfterClose(openGitHubRepository)}
-            />
-            */}
           </MenuList>
         </PopoverContent>
       </Popover>

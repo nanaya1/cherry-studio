@@ -1,6 +1,8 @@
-import { buildCreateSessionSeed, buildCreateSessionSeedIndex } from '@renderer/components/chat/resourceList/Sessions'
-import type { SessionListItem } from '@renderer/utils/chat/sessionListHelpers'
 import { describe, expect, it } from 'vitest'
+
+import type { SessionListItem } from '@renderer/utils/chat/sessionListHelpers'
+
+import { buildCreateSessionSeed, buildCreateSessionSeedIndex } from '../Sessions'
 
 const workspace = (path: string) => ({
   id: `workspace-${path}`,

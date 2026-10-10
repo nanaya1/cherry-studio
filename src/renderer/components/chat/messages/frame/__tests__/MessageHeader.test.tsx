@@ -22,7 +22,9 @@ vi.mock('@cherrystudio/ui', () => ({
   AvatarFallback: ({ children, className }: { children?: ReactNode; className?: string }) => (
     <div className={className}>{children}</div>
   ),
-  AvatarImage: ({ className, src }: { className?: string; src?: string }) => <img alt="" className={className} src={src} />,
+  AvatarImage: ({ className, src }: { className?: string; src?: string }) => (
+    <img alt="" className={className} src={src} />
+  ),
   Badge: ({ asChild, children }: { asChild?: boolean; children?: ReactNode }) =>
     asChild ? <>{children}</> : <span>{children}</span>,
   Checkbox: ({

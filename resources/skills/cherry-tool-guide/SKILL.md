@@ -1,16 +1,16 @@
 ---
 name: cherry-tool-guide
-description: MEA Cowork first-party tool and bundled-shell routing for general agents. For straightforward local work in shell-capable sessions, run JS/TS with `bun <file>` and one-off JS tools with `bun x`; run Python with `uv run [--with <pkg>] python` and one-off Python CLIs with `uvx`; search with `rg`. Load this guide before changing project dependencies, deciding whether a tool should be ephemeral or reusable, reading or converting local Office/PDF files, coordinating or delegating across Agent Sessions, or using Cherry-owned web/browser, knowledge, persistent memory, schedules/notifications, IM channels, image generation, artifact reporting, managed CLI, skill, or MCP-server-registration capabilities—even if the user names no tool. Consult it before shell/file workarounds; live tool schemas are authoritative.
-version: 1.5.0
+description: MEA Cowork first-party tool and bundled-shell routing for general agents. For straightforward local work in shell-capable sessions, run JS/TS with `bun <file>` and one-off JS tools with `bun x`; run Python with `uv run [--with <pkg>] python` and one-off Python CLIs with `uvx`; search with `rg`. Load this guide before changing project dependencies, deciding whether a tool should be ephemeral or reusable, reading or converting local Office/PDF files, coordinating or delegating across Agent Sessions, or using MEA Cowork-owned web/browser, knowledge, persistent memory, schedules/notifications, IM channels, image generation, artifact reporting, managed CLI, skill, or MCP-server-registration capabilities—even if the user names no tool. Consult it before shell/file workarounds; live tool schemas are authoritative.
+version: 1.6.0
 ---
 
-# Cherry Tool Guide
+# MEA Cowork Tool Guide
 
 MEA Cowork injects first-party tools into your session over four MCP servers
 (`mcp__cherry-tools__*`, `mcp__agent-memory__*`, `mcp__skills__*`, `mcp__mcp-manager__*`)
 and gives shell-capable general agents bundled runtimes for local execution. The MCP
 tools act on the running app — the user's knowledge bases, IM channels, schedules,
-managed CLIs, skill library, and MCP server registry — through boundaries only Cherry
+managed CLIs, skill library, and MCP server registry — through boundaries only MEA Cowork
 owns. Shell and file tools cannot reach those app boundaries correctly; use the bundled
 runtimes only for the local execution cases routed below.
 
@@ -31,7 +31,7 @@ parameter names, enums, and required fields. Read it before every call.
   which). If a tool is not in your live tool list, its capability is unavailable *in
   this session* — say so honestly and stop; never pretend a call succeeded or fabricate
   a result.
-- **Don't reach around Cherry's mutation boundaries.** Knowledge bases, IM channels,
+- **Don't reach around MEA Cowork's mutation boundaries.** Knowledge bases, IM channels,
   schedules, managed CLIs, skills, and registered MCP servers are mutated only through
   these tools. Do not shell out to `npm install`, `git clone`, `crontab`, or hand-edit
   knowledge or MCP settings files to accomplish these — the tool does bookkeeping (registration, scoping, approval, sync)
@@ -58,8 +58,8 @@ parameter names, enums, and required fields. Read it before every call.
 | Read or convert a local document | `mcp__cherry-tools__to_markdown` → read the returned temporary Markdown path as needed | [documents.md](references/documents.md) |
 | Recall a past fact, correction, or preference | `mcp__agent-memory__memory` (`search`) before re-asking | [memory.md](references/memory.md) |
 | Save durable knowledge vs. a one-off event | `mcp__agent-memory__memory` (`update` vs. `append`) | [memory.md](references/memory.md) |
-| Schedule a recurring / future task | `mcp__cherry-tools__cron` (Cherry scheduling only) | [autonomy.md](references/autonomy.md) |
-| Proactively message the user or send a file | `mcp__cherry-tools__notify` | [autonomy.md](references/autonomy.md) |
+| Schedule a recurring / future task | `mcp__cherry-tools__cron` (MEA Cowork scheduling only) | [autonomy.md](references/autonomy.md) |
+| Proactively message the user or send a file | `mcp__cherry-tools__notify` (needs configured recipients) | [autonomy.md](references/autonomy.md) |
 | Inspect / connect / repair IM channels, rename agent | `mcp__cherry-tools__config` | [autonomy.md](references/autonomy.md) |
 | Find, create, message, or inspect work across Agent Sessions | `mcp__cherry-tools__session_list` / `session_search` / `session_create` / `session_send` / `session_deliveries` | [sessions.md](references/sessions.md) |
 | Generate an image | `mcp__cherry-tools__generate_image` (needs a painting model) | [outputs.md](references/outputs.md) |
@@ -78,7 +78,6 @@ Two different situations, don't confuse them:
   agent). Explain what's missing and what the user can do; don't work around it with
   shell/file tools. The reference for that domain says exactly when it can be absent.
 - **The tool is listed but reports a missing dependency** → e.g.
-  `mcp__cherry-tools__notify` with no connected channel, or
   `mcp__cherry-tools__generate_image` with no painting model. It stays listed and
   returns a note; relay the note and point the user at configuration — don't retry
   blindly or fake success.
@@ -93,5 +92,5 @@ Not covered here: SDK-native `Read`/`Edit`/`Bash` and orchestration tools; *call
 tools of a third-party (user-configured) MCP server — only registering one is in scope,
 see [mcp.md](references/mcp.md); the AI-SDK chat `read_file` attachment reader (a
 chat-path tool, not exposed on this MCP surface); and the role-specific
-`mcp__assistant__*` navigation/diagnosis tools, which belong to the Cherry Assistant and
+`mcp__assistant__*` navigation/diagnosis tools, which belong to the MEA Cowork Assistant and
 its own guide.

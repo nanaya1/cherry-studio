@@ -54,6 +54,7 @@ import { clampThresholdPercent } from '@shared/utils/contextSettings'
 import { isNonChatModel } from '@shared/utils/model'
 
 import {
+  AvatarField,
   CompactModelField,
   EDIT_DIALOG_PROMPT_MAX_HEIGHT,
   EDIT_DIALOG_PROMPT_MIN_HEIGHT,
@@ -98,6 +99,7 @@ type AssistantEditFormValues = {
   maxToolCalls: number
   enableMaxToolCalls: boolean
   customParameters: AssistantFormState['customParameters']
+  enableBrowser: boolean
   mcpMode: AssistantFormState['mcpMode']
   contextOverrideEnabled: boolean
   contextCompressEnabled: boolean
@@ -111,13 +113,13 @@ type AssistantEditFormValues = {
 
 type CustomParameter = AssistantFormState['customParameters'][number]
 type CustomParameterType = CustomParameter['type']
-type AssistantToolTab = 'tools.mcp' | 'tools.knowledge'
+type AssistantToolTab = 'tools.builtin' | 'tools.mcp' | 'tools.knowledge'
 
 const logger = loggerService.withContext('AssistantEditDialog')
 const UI_DEFAULT_MAX_TOKENS = 4096
 
 function isAssistantToolTab(value: string): value is AssistantToolTab {
-  return value === 'tools.mcp' || value === 'tools.knowledge'
+  return value === 'tools.builtin' || value === 'tools.mcp' || value === 'tools.knowledge'
 }
 
 function defaultValuesForAssistant(resource: AssistantEditDialogResource): AssistantEditFormValues {
@@ -139,6 +141,7 @@ function defaultValuesForAssistant(resource: AssistantEditDialogResource): Assis
     maxToolCalls: form.maxToolCalls,
     enableMaxToolCalls: form.enableMaxToolCalls,
     customParameters: form.customParameters.map((parameter) => ({ ...parameter })),
+    enableBrowser: form.enableBrowser,
     mcpMode: form.mcpMode,
     contextOverrideEnabled: form.contextOverrideEnabled,
     contextCompressEnabled: form.contextCompressEnabled,
@@ -179,6 +182,7 @@ function buildAssistantFormState(baseline: AssistantFormState, values: Assistant
     maxToolCalls: values.maxToolCalls,
     enableMaxToolCalls: values.enableMaxToolCalls,
     customParameters: values.customParameters,
+    enableBrowser: values.enableBrowser,
     mcpMode: values.mcpMode,
     contextOverrideEnabled: values.contextOverrideEnabled,
     contextCompressEnabled: values.contextCompressEnabled,
@@ -223,6 +227,7 @@ function AssistantEditDialogContent({
 }: EditDialogBaseProps & { resource: AssistantEditDialogResource }) {
   const { t } = useTranslation()
   const [activeTab, setActiveTab] = useState(initialTab ?? 'basic')
+  const [emojiPickerOpen, setEmojiPickerOpen] = useState(false)
   const [createGroupDialogOpen, setCreateGroupDialogOpen] = useState(false)
   const [dialogContentElement, setDialogContentElement] = useState<HTMLDivElement | null>(null)
   const [modelLabels, setModelLabels] = useState<ModelLabels>(() => modelLabelsForAssistant(resource))
@@ -246,6 +251,7 @@ function AssistantEditDialogContent({
         id: 'tools',
         label: t('library.config.dialogs.edit.tools_tab'),
         children: [
+          { id: 'tools.builtin', label: t('settings.skills.tabs.builtin') },
           { id: 'tools.knowledge', label: t('library.config.dialogs.edit.knowledge_tab') },
           { id: 'tools.mcp', label: t('library.config.agent.section.tools.tab.mcp') }
         ]
@@ -271,6 +277,7 @@ function AssistantEditDialogContent({
     form.reset(defaultValues)
     form.clearErrors()
     setActiveTab(initialTab ?? 'basic')
+    setEmojiPickerOpen(false)
     setCreateGroupDialogOpen(false)
     setModelLabels(modelLabelsForAssistant(resource))
     // A fresh open is a fresh editing session — a stale failure from a prior
@@ -380,6 +387,8 @@ function AssistantEditDialogContent({
             groups={groups}
             groupsLoading={isGroupsLoading}
             groupsError={groupsError}
+            emojiPickerOpen={emojiPickerOpen}
+            setEmojiPickerOpen={setEmojiPickerOpen}
             onCreateGroup={() => setCreateGroupDialogOpen(true)}
             onSettingsNavigate={closeBeforeAction}
           />
@@ -405,7 +414,24 @@ function AssistantEditDialogContent({
         </TabsContent>
         {isAssistantToolTab(activeTab) ? (
           <TabsContent value={activeTab} forceMount className="m-0">
-            {activeTab === 'tools.mcp' ? (
+            {activeTab === 'tools.builtin' ? (
+              <FormField
+                control={form.control}
+                name="enableBrowser"
+                render={({ field }) => (
+                  <FormItem className="flex items-center justify-between gap-3">
+                    <span>{t('settings.browser.title')}</span>
+                    <FormControl>
+                      <Switch
+                        aria-label={t('settings.browser.title')}
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                      />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+            ) : activeTab === 'tools.mcp' ? (
               <AssistantToolsFields form={form} portalContainer={dialogContentElement} />
             ) : (
               <div className="grid gap-4">
@@ -444,6 +470,8 @@ function AssistantBasicFields({
   groups,
   groupsLoading,
   groupsError,
+  emojiPickerOpen,
+  setEmojiPickerOpen,
   onCreateGroup,
   onSettingsNavigate
 }: {
@@ -456,6 +484,8 @@ function AssistantBasicFields({
   groups: ReturnType<typeof useGroups>['groups']
   groupsLoading: ReturnType<typeof useGroups>['isLoading']
   groupsError: ReturnType<typeof useGroups>['error']
+  emojiPickerOpen: boolean
+  setEmojiPickerOpen: (open: boolean) => void
   onCreateGroup: () => void
   onSettingsNavigate?: (navigate: () => void) => void
 }) {
@@ -473,6 +503,15 @@ function AssistantBasicFields({
 
   return (
     <div className="divide-y divide-border-subtle border-border-subtle border-b [&>*:first-child]:pt-0">
+      <AvatarField
+        form={form}
+        emojiPickerOpen={emojiPickerOpen}
+        setEmojiPickerOpen={setEmojiPickerOpen}
+        fallback="💬"
+        portalContainer={portalContainer}
+        size="sm"
+        layout="row"
+      />
       <TextInputField
         form={form}
         name="name"

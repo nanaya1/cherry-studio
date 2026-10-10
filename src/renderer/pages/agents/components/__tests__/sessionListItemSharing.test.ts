@@ -1,6 +1,8 @@
-import { reconcileSessionListItems } from '@renderer/components/chat/resourceList/sessionListItemSharing'
-import type { AgentSessionEntity } from '@shared/data/api/schemas/agentSessions'
 import { describe, expect, it } from 'vitest'
+
+import type { AgentSessionEntity } from '@shared/data/api/schemas/agentSessions'
+
+import { reconcileSessionListItems } from '../sessionListItemSharing'
 
 function createSession(id: string, overrides: Partial<AgentSessionEntity> = {}): AgentSessionEntity {
   return {

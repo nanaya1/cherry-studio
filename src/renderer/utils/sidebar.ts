@@ -1,5 +1,19 @@
-import type { SidebarFavorite, SidebarFavoriteItem } from '@shared/data/preference/preferenceTypes'
+import type { SidebarFavorite, SidebarFavoriteItem, SidebarShortcutItem } from '@shared/data/preference/preferenceTypes'
 import { CONVERSATION_ROUTES, conversationRouteUrl } from '@shared/utils/conversationRoute'
+
+export {
+  addSidebarShortcut,
+  createSidebarShortcutTarget,
+  getVisibleSidebarAppIds,
+  getVisibleSidebarShortcutItems,
+  isSidebarShortcutItem,
+  isSidebarShortcutPinned,
+  isSidebarShortcutTarget,
+  normalizeSidebarShortcutItems,
+  removeSidebarShortcut,
+  reorderSidebarShortcuts,
+  SIDEBAR_SHORTCUT_PROVIDER_IDS
+} from './sidebarShortcuts'
 
 /**
  * Context passed to sidebar navigation handlers. Carries per-call state the
@@ -279,10 +293,21 @@ export function getOrderedVisibleSidebarFavorites(
  * (or only mini apps are), so the caller can fall back to its default tab.
  */
 export function getSidebarDefaultLandingUrl(
-  favorites: readonly SidebarFavoriteItem[] | undefined,
+  favorites: readonly (SidebarFavoriteItem | SidebarShortcutItem)[] | undefined,
   defaultPaintingProvider: string
 ): string {
-  const firstApp = getOrderedVisibleSidebarFavorites(favorites)[0]
+  const firstShortcutApp = favorites?.find(
+    (item): item is SidebarShortcutItem =>
+      item.type === 'shortcut' &&
+      item.target.locator.providerId === 'core.app' &&
+      isSidebarAppId(item.target.locator.resourceId)
+  )
+  if (firstShortcutApp) {
+    return getSidebarMenuPath(firstShortcutApp.target.locator.resourceId as SidebarAppId, defaultPaintingProvider)
+  }
+
+  const legacyFavorites = favorites?.filter((item): item is SidebarFavoriteItem => item.type !== 'shortcut')
+  const firstApp = getOrderedVisibleSidebarFavorites(legacyFavorites)[0]
   return firstApp ? getSidebarMenuPath(firstApp, defaultPaintingProvider) : ''
 }
 

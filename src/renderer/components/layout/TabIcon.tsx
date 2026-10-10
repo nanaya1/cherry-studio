@@ -1,7 +1,7 @@
 import { Globe } from 'lucide-react'
 import type { FC } from 'react'
 
-import { Avatar, AvatarFallback, AvatarImage } from '@cherrystudio/ui'
+import { Avatar, AvatarFallback, AvatarImage, EmojiIcon } from '@cherrystudio/ui'
 import { getMiniAppsLogoRef, useMiniAppLogo } from '@renderer/components/icons/miniAppsLogo'
 import { MINI_APP_ROUTE_PREFIX } from '@renderer/utils/miniAppKeepAlive'
 import { cn } from '@renderer/utils/style'
@@ -11,7 +11,8 @@ import type { Tab } from '../../hooks/tab'
 import { getTabIcon } from './tabIcons'
 
 /**
- * Renders a tab's icon: a mini-app logo, an image url, or the route's default lucide glyph.
+ * Renders a tab's icon: a per-entity emoji (`emoji:<glyph>`), a mini-app logo,
+ * an image url, or — when no icon is set — the route's default lucide glyph.
  * Shared by the main tab strip (AppShellTabBar) and the sub-window title bar.
  */
 export const TabIcon: FC<{ tab: Tab; size: number; className?: string }> = ({ tab, size, className }) => {
@@ -30,9 +31,9 @@ export const TabIcon: FC<{ tab: Tab; size: number; className?: string }> = ({ ta
     )
   }
   if (tab.icon) {
+    // Per-entity emoji (chat assistant / agent avatar), stored as `emoji:<glyph>`.
     if (tab.icon.startsWith(TAB_ICON_EMOJI_PREFIX)) {
-      const Icon = getTabIcon(tab)
-      return <Icon size={size} strokeWidth={1.6} className={className} />
+      return <EmojiIcon emoji={tab.icon.slice(TAB_ICON_EMOJI_PREFIX.length)} size={size} className={className} />
     }
     if (getMiniAppsLogoRef(tab.icon)) {
       return Logo ? (

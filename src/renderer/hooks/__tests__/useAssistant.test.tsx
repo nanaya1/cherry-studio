@@ -1,9 +1,9 @@
-import { mockUseQuery } from '@test-mocks/renderer/useDataApi'
+import { mockUseMutation, mockUseQuery, mockUseWriteCache } from '@test-mocks/renderer/useDataApi'
 import { MockUsePreferenceUtils } from '@test-mocks/renderer/usePreference'
-import { renderHook } from '@testing-library/react'
+import { act, renderHook } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { useAssistant, useAssistants } from '../useAssistant'
+import { useAssistant, useAssistantMutations, useAssistants } from '../useAssistant'
 
 function queryResult(data?: unknown, options: { isLoading?: boolean } = {}) {
   return {
@@ -48,6 +48,29 @@ describe('useAssistants', () => {
 
     expect(result.current.assistants).toEqual([])
     expect(result.current.hasLoaded).toBe(false)
+  })
+})
+
+describe('useAssistantMutations', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('writes a restored assistant to its by-id cache key', async () => {
+    const restored = { id: 'assistant-restored', name: 'Restored Assistant' }
+    const restoreTrigger = vi.fn().mockResolvedValue(restored)
+    const writeCache = vi.fn().mockResolvedValue(undefined)
+    mockUseMutation
+      .mockReturnValueOnce({ trigger: vi.fn(), isLoading: false, error: undefined })
+      .mockReturnValueOnce({ trigger: vi.fn(), isLoading: false, error: undefined })
+      .mockReturnValueOnce({ trigger: restoreTrigger, isLoading: false, error: undefined })
+    mockUseWriteCache.mockReturnValueOnce(writeCache)
+
+    const { result } = renderHook(() => useAssistantMutations())
+    await act(() => result.current.restoreAssistant(restored.id))
+
+    expect(restoreTrigger).toHaveBeenCalledWith({ params: { id: restored.id } })
+    expect(writeCache).toHaveBeenCalledWith(`/assistants/${restored.id}`, restored)
   })
 })
 

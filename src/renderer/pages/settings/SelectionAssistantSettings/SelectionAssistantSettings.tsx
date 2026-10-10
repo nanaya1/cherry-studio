@@ -1,3 +1,10 @@
+import { Link } from '@tanstack/react-router'
+import { CircleCheck, CircleHelp, CircleX, Edit2, TriangleAlert } from 'lucide-react'
+import type React from 'react'
+import type { FC } from 'react'
+import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+
 import { Button, RadioGroup, RadioGroupItem, Slider, Switch, Tooltip } from '@cherrystudio/ui'
 import { usePreference } from '@data/hooks/usePreference'
 import SelectionToolbarView from '@renderer/components/selection/SelectionToolbarView'
@@ -13,15 +20,10 @@ import {
 import { useTheme } from '@renderer/hooks/useTheme'
 import { getSelectionDescriptionLabelKey } from '@renderer/i18n/label'
 import { ipcApi } from '@renderer/ipc'
+// import { openExternalWebsite } from '@renderer/services/website'
 import { isLinux, isMac, isWin } from '@renderer/utils/platform'
 import { cn } from '@renderer/utils/style'
 import type { SelectionFilterMode, SelectionTriggerMode } from '@shared/data/preference/preferenceTypes'
-import { Link } from '@tanstack/react-router'
-import { CircleCheck, CircleHelp, CircleX, Edit2, TriangleAlert } from 'lucide-react'
-import type React from 'react'
-import type { FC } from 'react'
-import { useEffect, useState } from 'react'
-import { useTranslation } from 'react-i18next'
 
 import MacProcessTrustHintModal from './components/MacProcessTrustHintModal'
 import SelectionActionsList from './components/SelectionActionsList'
@@ -97,21 +99,19 @@ const SelectionAssistantSettings: FC = () => {
     <SettingsContentColumn theme={theme}>
       <SettingGroup theme={theme}>
         <SettingTitle>
-          <span className="font-semibold text-[15px]">{t('selection.name')}</span>
-          {/* 隐藏 FAQ & 反馈入口（原跳转 Cherry Studio GitHub issues），MEA 版不展示；恢复 = 取消注释 */}
-          {/* <div className="flex items-center">
+          <span className="text-[15px] font-semibold">{t('selection.name')}</span>
+          {/* Cherry 官方 FAQ/反馈入口在 MEA 中停用，保留原按钮便于恢复。
+          <div className="flex items-center">
             <button
               type="button"
-              className="cursor-pointer border-0 bg-transparent p-0 font-normal text-link text-xs hover:underline"
-              onClick={() =>
-                ipcApi.request('system.shell.open_website', 'https://github.com/CherryHQ/cherry-studio/issues/6505')
-              }>
+              className="cursor-pointer border-0 bg-transparent p-0 text-xs font-normal text-link hover:underline"
+              onClick={() => openExternalWebsite('https://github.com/CherryHQ/cherry-studio/issues/6505')}>
               {'FAQ & ' + t('settings.about.feedback.button')}
             </button>
-          </div> */}
+          </div>
+          */}
         </SettingTitle>
         <SettingDivider />
-        {/* 恢复上游 93bcb803e4 的搜索锚点：9/17 sync 重放 MEA 提交时被裸 <SettingRow> 冲掉，设置搜索定位依赖此 id */}
         <SettingRow id="setting-selection-assistant-enable-selection-assistant" className="scroll-mt-6">
           <SettingLabel>
             <SettingRowTitle>{t('selection.settings.enable.title')}</SettingRowTitle>
@@ -376,7 +376,7 @@ const QuestionIcon = ({ className, ...props }: React.ComponentProps<typeof Circl
   <CircleHelp className={cn('cursor-pointer text-muted-foreground', className)} {...props} />
 )
 const ChecklistItem = ({ className, ...props }: React.ComponentPropsWithoutRef<'div'>) => (
-  <div className={cn('mb-0.5 flex items-center text-foreground-tertiary text-xs', className)} {...props} />
+  <div className={cn('mb-0.5 flex items-center text-xs text-foreground-tertiary', className)} {...props} />
 )
 
 export default SelectionAssistantSettings

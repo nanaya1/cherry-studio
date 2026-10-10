@@ -92,7 +92,7 @@ describe('toMcpFormDefaultValues', () => {
   it('normalizes the legacy online-package built-in transport without guessing other missing types', () => {
     const server = {
       id: '7676dffa-53d7-4c35-abbb-e30cd9b27169',
-      name: 'mcp-auto-install',
+      name: '@cherry/mcp-auto-install',
       type: 'inMemory',
       command: 'npx',
       isActive: false
@@ -104,11 +104,11 @@ describe('toMcpFormDefaultValues', () => {
 
 describe('resolveMcpConfigTransportType', () => {
   it('exposes stdio configuration for the online-package built-in server', () => {
-    expect(resolveMcpConfigTransportType('inMemory', 'mcp-auto-install')).toBe('stdio')
+    expect(resolveMcpConfigTransportType('inMemory', '@cherry/mcp-auto-install')).toBe('stdio')
   })
 
   it('keeps other built-in servers on the in-memory configuration', () => {
-    expect(resolveMcpConfigTransportType('inMemory', 'memory')).toBe('inMemory')
+    expect(resolveMcpConfigTransportType('inMemory', '@cherry/memory')).toBe('inMemory')
   })
 })
 
@@ -116,7 +116,7 @@ describe('resolveMcpConfigInstallSource', () => {
   it('preserves the built-in identity of a legacy auto-install server', () => {
     expect(
       resolveMcpConfigInstallSource({
-        name: 'mcp-auto-install',
+        name: '@cherry/mcp-auto-install',
         type: 'inMemory'
       })
     ).toBe('builtin')
@@ -136,7 +136,7 @@ describe('buildMcpSchema', () => {
   it('requires the command used by the online-package built-in server', () => {
     const result = buildMcpSchema((key) => key).safeParse(
       stdioFormValues({
-        name: 'mcp-auto-install',
+        name: '@cherry/mcp-auto-install',
         serverType: 'inMemory',
         command: ''
       })

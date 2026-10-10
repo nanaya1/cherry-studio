@@ -20,7 +20,6 @@ export interface RestoredAgentComposerDraftCache extends AgentComposerDraftCache
 interface AgentDraftCacheScope {
   workspaceKey: string
   agentId: string
-  allowAgentChange?: boolean
 }
 
 const EMPTY_DRAFT_CACHE: AgentComposerDraftCache = {
@@ -89,7 +88,7 @@ export function readAgentDraftCache(
   }
 
   const cachedAgentId = typeof cached.agentId === 'string' ? cached.agentId : ''
-  if (!scope.allowAgentChange && cachedAgentId && cachedAgentId !== scope.agentId) {
+  if (cachedAgentId && cachedAgentId !== scope.agentId) {
     return {
       ...EMPTY_DRAFT_CACHE,
       workspaceKey: scope.workspaceKey,
@@ -104,10 +103,8 @@ export function readAgentDraftCache(
   })
   const cachedWorkspaceKey = typeof cached.workspaceKey === 'string' ? cached.workspaceKey : ''
   const workspaceMatches = cachedWorkspaceKey === '' || cachedWorkspaceKey === scope.workspaceKey
-  const agentMatches = cachedAgentId === scope.agentId
   const shouldValidateSkills =
-    (cached.shouldValidateSkills === true || !workspaceMatches || !agentMatches) &&
-    getCachedSkillTokens(draft.tokens).length > 0
+    (cached.shouldValidateSkills === true || !workspaceMatches) && getCachedSkillTokens(draft.tokens).length > 0
 
   return {
     ...draft,

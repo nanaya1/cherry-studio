@@ -1,5 +1,6 @@
-import { CatalogLocaleSchema, IndustryScopeSchema } from '@shared/types/skillCatalog'
 import * as z from 'zod'
+
+import { CatalogLocaleSchema, IndustryScopeSchema } from '@shared/types/skillCatalog'
 
 export const SkillCatalogQuerySchema = z.strictObject({
   locale: CatalogLocaleSchema.default('zh-CN')

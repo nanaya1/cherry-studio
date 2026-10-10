@@ -1,5 +1,6 @@
 import type * as DndKitUtilities from '@dnd-kit/utilities'
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { Activity, type ComponentProps, type ReactNode } from 'react'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -12,6 +13,7 @@ import { toast } from '@renderer/services/toast'
 import type { TopicStreamStatus } from '@shared/ai/transport'
 import type { AgentSessionEntity } from '@shared/data/api/schemas/agentSessions'
 import { AGENT_WORKSPACE_TYPE, type AgentWorkspaceEntity } from '@shared/data/api/schemas/agentWorkspaces'
+import { createSidebarShortcutId, type SidebarShortcutTarget } from '@shared/data/preference/preferenceTypes'
 import { aiErrorCodes } from '@shared/ipc/errors/ai'
 import { IpcError } from '@shared/ipc/errors/IpcError'
 
@@ -270,6 +272,11 @@ const preferenceMocks = vi.hoisted(() => ({
   setPreference: vi.fn()
 }))
 
+const sidebarShortcut = (providerId: string, resourceId: string) => {
+  const target: SidebarShortcutTarget = { kind: 'resource', locator: { providerId, resourceId } }
+  return { type: 'shortcut' as const, id: createSidebarShortcutId(target), target }
+}
+
 const cacheMocks = vi.hoisted(() => ({
   state: { activeSessionId: 'session-a' },
   values: new Map<string, unknown>(),
@@ -281,7 +288,7 @@ const fileNavigationMocks = vi.hoisted(() => ({
   request: null as null | ((transition: () => void) => void)
 }))
 
-vi.mock('@renderer/components/chat/panes/AgentFileNavigationContext', () => ({
+vi.mock('../AgentRightPane', () => ({
   useOptionalAgentFileNavigation: () => fileNavigationMocks.request
 }))
 
@@ -428,7 +435,17 @@ vi.mock('@renderer/data/hooks/usePreference', () => ({
   ]
 }))
 
-vi.mock('@renderer/components/chat/messages/AgentSessionImageCaptureHost', () => {
+vi.mock('@renderer/data/PreferenceService', () => ({
+  preferenceService: {
+    get: vi.fn(async (key: string) => preferenceMocks.values.get(key)),
+    set: vi.fn(async (key: string, value: unknown) => {
+      preferenceMocks.values.set(key, value)
+      preferenceMocks.setPreference(key, value)
+    })
+  }
+}))
+
+vi.mock('@renderer/pages/agents/messages/AgentSessionImageCaptureHost', () => {
   const React = require('react')
   return {
     default: (props: { modelFallback?: unknown; session: AgentSessionEntity }) => {
@@ -704,7 +721,7 @@ import {
   SESSION_WORKDIR_SECTION_ID
 } from '@renderer/utils/chat/sessionListHelpers'
 
-import Sessions from '@renderer/components/chat/resourceList/Sessions'
+import Sessions from '../Sessions'
 
 const CURRENT_SESSION_ISO = new Date().toISOString()
 // Time groups only label themselves when the list spans more than one bucket, so fixtures that
@@ -1138,6 +1155,15 @@ describe('Sessions', () => {
     expect(onShowMissingAgentSelection).not.toHaveBeenCalled()
   })
 
+  it('preserves the MEA frame contract and allows the embedded header to be hidden', () => {
+    render(<SessionsForTest className="mea-session-layout" showHeader={false} />)
+
+    const frame = screen.getByTestId('resource-list-session')
+    expect(frame).toHaveClass('mea-session-layout')
+    expect(frame).not.toHaveClass('border-r-[0.5px]')
+    expect(screen.queryByLabelText('Display mode')).not.toBeInTheDocument()
+  })
+
   it('uses only the redesigned search control in right panel mode', () => {
     setupSessions()
 
@@ -1214,8 +1240,9 @@ describe('Sessions', () => {
     expect(screen.getByRole('button', { name: 'Today' })).toHaveAttribute('aria-expanded', 'true')
   })
 
-  it('shows fifty sessions in left-panel time groups and loads five more per expansion', () => {
-    preferenceMocks.values.set('agent.session.display_mode', 'time')
+  it.each(['time', 'agent', 'workdir'])('expands all sessions in %s groups with one click', async (displayMode) => {
+    const user = userEvent.setup()
+    preferenceMocks.values.set('agent.session.display_mode', displayMode)
     setupSessions({
       sessions: [
         ...Array.from({ length: 56 }, (_, index) =>
@@ -1232,18 +1259,15 @@ describe('Sessions', () => {
 
     render(<SessionsForTest />)
 
-    expect(screen.getByText('Today')).toBeInTheDocument()
-    expect(screen.getByText('Session 50')).toBeInTheDocument()
-    expect(screen.queryByText('Session 51')).not.toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Expand display' }))
-
-    expect(screen.getByText('Session 55')).toBeInTheDocument()
+    expect(screen.getByText('Session 1')).toBeInTheDocument()
+    expect(screen.getByText(displayMode === 'time' ? 'Session 50' : 'Session 5')).toBeInTheDocument()
+    expect(screen.queryByText(displayMode === 'time' ? 'Session 51' : 'Session 6')).not.toBeInTheDocument()
     expect(screen.queryByText('Session 56')).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Expand display' }))
+    await user.click(screen.getByRole('button', { name: 'Expand display' }))
 
     expect(screen.getByText('Session 56')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Expand display' })).not.toBeInTheDocument()
   })
 
   it('creates a first-agent session from the header when there are agents but no sessions', async () => {
@@ -2119,6 +2143,23 @@ describe('Sessions', () => {
         { showSuccessToast: false }
       )
     )
+  })
+
+  it('adds a session shortcut without changing its task pin', async () => {
+    preferenceMocks.values.set('ui.sidebar_shortcut', [])
+    render(<SessionsForTest />)
+
+    fireEvent.contextMenu(screen.getByText('Alpha session'))
+    const alphaMenu = screen.getByText('Alpha session').closest('[data-testid="context-menu"]')
+    const menuContent = alphaMenu?.querySelector('[data-testid="context-menu-content"]')
+    fireEvent.click(within(menuContent as HTMLElement).getByRole('menuitem', { name: 'Add to sidebar' }))
+
+    await vi.waitFor(() =>
+      expect(preferenceMocks.values.get('ui.sidebar_shortcut')).toEqual([
+        { ...sidebarShortcut('core.agent-session', 'session-a'), fallbackLabel: 'Alpha session' }
+      ])
+    )
+    expect(sessionDataMocks.togglePin).not.toHaveBeenCalled()
   })
 
   it('closes the rename dialog without updating when its session is deleted', async () => {
@@ -3637,7 +3678,7 @@ describe('Sessions', () => {
 
   it('pins an agent to the sidebar from the agent group menu', async () => {
     preferenceMocks.values.set('agent.session.display_mode', 'agent')
-    preferenceMocks.values.set('ui.sidebar.favorites', [])
+    preferenceMocks.values.set('ui.sidebar_shortcut', [])
     agentDataMocks.useAgents.mockReturnValue({
       agents: [{ id: 'agent-a', model: 'model-a', name: 'Alpha agent' }],
       isLoading: false,
@@ -3660,15 +3701,15 @@ describe('Sessions', () => {
     fireEvent.click(pinMenuItem as HTMLElement)
 
     await vi.waitFor(() =>
-      expect(preferenceMocks.setPreference).toHaveBeenCalledWith('ui.sidebar.favorites', [
-        { type: 'agent', id: 'agent-a' }
+      expect(preferenceMocks.values.get('ui.sidebar_shortcut')).toEqual([
+        { ...sidebarShortcut('core.agent', 'agent-a'), fallbackLabel: 'Alpha agent' }
       ])
     )
   })
 
   it('unpins an already pinned agent from the agent group menu', async () => {
     preferenceMocks.values.set('agent.session.display_mode', 'agent')
-    preferenceMocks.values.set('ui.sidebar.favorites', [{ type: 'agent', id: 'agent-a' }])
+    preferenceMocks.values.set('ui.sidebar_shortcut', [sidebarShortcut('core.agent', 'agent-a')])
     agentDataMocks.useAgents.mockReturnValue({
       agents: [{ id: 'agent-a', model: 'model-a', name: 'Alpha agent' }],
       isLoading: false,
@@ -3690,7 +3731,7 @@ describe('Sessions', () => {
 
     fireEvent.click(unpinMenuItem as HTMLElement)
 
-    await vi.waitFor(() => expect(preferenceMocks.setPreference).toHaveBeenCalledWith('ui.sidebar.favorites', []))
+    await vi.waitFor(() => expect(preferenceMocks.values.get('ui.sidebar_shortcut')).toEqual([]))
   })
 
   it('deletes an agent without its sessions by default and keeps the active session', async () => {
@@ -3718,6 +3759,9 @@ describe('Sessions', () => {
     expect(agentGroup).not.toBeNull()
     fireEvent.pointerDown(within(agentGroup as HTMLElement).getByRole('button', { name: 'More' }))
     expect(screen.queryByRole('menuitem', { name: 'Delete all sessions' })).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('menuitem', { name: /Delete Permanently|common.delete_permanently/ })
+    ).not.toBeInTheDocument()
     const deleteAgentMenuItem = screen
       .getAllByRole('menuitem', { name: 'Archive' })
       .find((button) => button.getAttribute('data-slot') === 'dropdown-menu-item')

@@ -1,6 +1,7 @@
 import { type ChildProcess, spawn } from 'node:child_process'
-import { setTimeout as delay } from 'node:timers/promises'
 import path from 'node:path'
+import { setTimeout as delay } from 'node:timers/promises'
+
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 // Real HTTP integration: the client's `net.fetch` is the Electron bridge over

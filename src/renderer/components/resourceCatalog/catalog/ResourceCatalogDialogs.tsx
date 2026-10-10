@@ -1,5 +1,4 @@
 import { ResourceCreateWizard } from '@renderer/components/resourceCatalog/dialogs/create'
-import { SkillDetailDialog } from '@renderer/components/resourceCatalog/dialogs/detail'
 import { ResourceEditDialogHost } from '@renderer/components/resourceCatalog/dialogs/edit'
 import { ImportAssistantDialog } from '@renderer/components/resourceCatalog/dialogs/import'
 import {
@@ -8,10 +7,8 @@ import {
   SystemSkillDialog
 } from '@renderer/components/resourceCatalog/dialogs/skill'
 import type { useResourceCatalogController } from '@renderer/hooks/resourceCatalog'
-import type { ResourceItem, ResourceType } from '@renderer/types/resourceCatalog'
-import { getSkillDescription, getSkillDisplayName } from '@shared/data/api/schemas/skills'
+import type { ResourceType } from '@renderer/types/resourceCatalog'
 import { isNonChatModel } from '@shared/utils/model'
-import { useTranslation } from 'react-i18next'
 
 import { AssistantLibraryDialog } from './AssistantLibraryDialog'
 
@@ -28,33 +25,8 @@ export function ResourceCatalogDialogs({
   onRefetch,
   resourceType
 }: ResourceCatalogDialogsProps) {
-  const { i18n } = useTranslation()
-  const locale = i18n.resolvedLanguage ?? i18n.language
   return (
     <>
-      <SkillDetailDialog
-        skill={dialogs.selectedSkill}
-        open={Boolean(dialogs.selectedSkill)}
-        onOpenChange={(open) => {
-          if (!open) dialogs.setSelectedSkill(null)
-        }}
-        onDelete={() => {
-          const skill = dialogs.selectedSkill
-          if (!skill) return
-          const resource: Extract<ResourceItem, { type: 'skill' }> = {
-            type: 'skill',
-            id: skill.id,
-            name: getSkillDisplayName(skill, locale),
-            description: getSkillDescription(skill, locale) ?? '',
-            avatar: '',
-            createdAt: skill.createdAt,
-            updatedAt: skill.updatedAt,
-            raw: skill
-          }
-          dialogs.setSelectedSkill(null)
-          dialogs.setDeleteConfirm(resource)
-        }}
-      />
       <ImportAssistantDialog
         open={dialogs.assistantImportOpen}
         onOpenChange={dialogs.setAssistantImportOpen}

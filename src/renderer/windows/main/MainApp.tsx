@@ -1,8 +1,13 @@
-import { useEffect, useMemo } from 'react'
+import { lazy, Suspense, useEffect, useMemo } from 'react'
 
-import { useMultiplePreferences } from '@data/hooks/usePreference'
+import { usePreference } from '@data/hooks/usePreference'
 import { loggerService } from '@logger'
 import AppLogo from '@renderer/assets/images/logo.png'
+import {
+  CORE_SIDEBAR_SHORTCUT_PROVIDERS,
+  SidebarShortcutRegistry,
+  SidebarShortcutRegistryProvider
+} from '@renderer/components/app/sidebarShortcuts'
 import { CodeStyleProvider } from '@renderer/components/CodeStyleProvider'
 import { CommandContextKeyProvider, CommandProvider } from '@renderer/components/command'
 import { ConversationNotificationRuntime } from '@renderer/components/ConversationNotificationRuntime'
@@ -11,7 +16,6 @@ import { AppShell } from '@renderer/components/layout/AppShell'
 import { TabsProvider } from '@renderer/components/layout/TabsProvider'
 import { MandatoryGateProvider } from '@renderer/components/MandatoryGateProvider'
 import { PopupHost } from '@renderer/components/PopupHost'
-import { ResourceEditDialogEventHost } from '@renderer/components/resourceCatalog/dialogs/ResourceEditDialogEventHost'
 import { ThemeProvider } from '@renderer/components/ThemeProvider'
 import ToastHost from '@renderer/components/ToastHost'
 import { WindowFatalFallback } from '@renderer/components/WindowFatalFallback'
@@ -20,8 +24,9 @@ import { useIsPrivacyUpdateRequired } from '@renderer/hooks/useIsPrivacyUpdateRe
 import { useStorageMonitorNotification } from '@renderer/hooks/useStorageMonitorNotification'
 import { useWindowRuntime } from '@renderer/hooks/useWindowRuntime'
 import { registerImageModeChooser } from '@renderer/services/imageExportModeChooser'
+// MEA 侧栏使用固定工作区入口，不从 Cherry 快捷项推导启动页。
+// import { getSidebarDefaultLandingUrl } from '@renderer/utils/sidebar'
 import type { Tab } from '@shared/data/cache/cacheValueTypes'
-import { LATEST_PRIVACY_POLICY_VERSION } from '@shared/utils/constants'
 
 import { useAppUpdateHandler } from './hooks/useAppUpdateHandler'
 import { useAutoBackupEvents } from './hooks/useAutoBackupEvents'
@@ -29,11 +34,7 @@ import { useTopicNamingErrorNotification } from './hooks/useTopicNamingErrorNoti
 import { PrivacyPolicyUpdateGate } from './privacy/PrivacyPolicyUpdateGate'
 
 const logger = loggerService.withContext('MainApp')
-const PESSIMISTIC_PREFERENCE_OPTIONS = { optimistic: false } as const
-const ONBOARDING_PREFERENCE_KEYS = {
-  providerSetupStatus: 'app.onboarding.provider_setup.status',
-  policyVersion: 'app.privacy.policy_version'
-} as const
+const OnboardingPage = lazy(() => import('./onboarding/OnboardingPage'))
 
 // MainWindowRuntime removes the HTML boot spinner as soon as it mounts, so a suspended first-run
 // screen needs its own stand-in or the window goes blank. Mirrors main/index.html's `#spinner`.
@@ -91,31 +92,20 @@ function MainWindowRuntime(): null {
 }
 
 export function MainWindowContent(): React.ReactElement {
-  const [{ providerSetupStatus }, updateOnboardingPreferences] = useMultiplePreferences(
-    ONBOARDING_PREFERENCE_KEYS,
-    PESSIMISTIC_PREFERENCE_OPTIONS
-  )
+  const [providerSetupStatus] = usePreference('app.onboarding.provider_setup.status')
+  // MEA 初始页固定为新建任务，侧栏收藏只影响 MEA 侧栏自身。
+  // const [sidebarShortcuts] = usePreference('ui.sidebar_shortcut')
+  // const [defaultPaintingProvider] = usePreference('feature.paintings.default_provider')
+  const sidebarShortcutRegistry = useMemo(() => new SidebarShortcutRegistry(CORE_SIDEBAR_SHORTCUT_PROVIDERS), [])
   const privacyUpdateRequired = useIsPrivacyUpdateRequired()
+  // Onboarding collects privacy consent itself, so the gate only owns the window afterwards.
   const privacyGateOpen = providerSetupStatus !== 'pending' && privacyUpdateRequired
 
-  useEffect(() => {
-    if (providerSetupStatus !== 'pending') return
-
-    void updateOnboardingPreferences({
-      providerSetupStatus: 'skipped',
-      policyVersion: LATEST_PRIVACY_POLICY_VERSION
-    }).catch((error) => {
-      logger.error('Failed to skip provider setup:', error as Error)
-    })
-  }, [providerSetupStatus, updateOnboardingPreferences])
-
-  // Fresh-session landing tab: the New Task page. Only used when there is no
-  // persisted session to restore (first launch / nothing was open) — an existing
-  // session resumes from TabsProvider's persisted cache instead.
   const initialDefaultTab = useMemo<Tab>(
     () => ({
       id: 'home',
       type: 'route',
+      // url: getSidebarDefaultLandingUrl(sidebarShortcuts, defaultPaintingProvider) || '/app/launchpad',
       url: '/app/new-task',
       title: '',
       lastAccessTime: Date.now(),
@@ -126,16 +116,22 @@ export function MainWindowContent(): React.ReactElement {
 
   return (
     <TabsProvider initialDefaultTab={initialDefaultTab}>
-      <MandatoryGateProvider open={privacyGateOpen}>
-        {providerSetupStatus === 'pending' ? <BootFallback /> : <AppShell />}
-        <MainWindowRuntime />
-        <ConversationNotificationRuntime />
-        {/* 窗口级编辑弹窗宿主：任意 Tab（含全局搜索）请求打开编辑弹窗时在此承载，弹窗不随某个 Tab/弹层卸载 */}
-        <ResourceEditDialogEventHost />
-        <PopupHost />
-        <ToastHost />
-        {providerSetupStatus === 'pending' ? null : <PrivacyPolicyUpdateGate />}
-      </MandatoryGateProvider>
+      <SidebarShortcutRegistryProvider registry={sidebarShortcutRegistry}>
+        <MandatoryGateProvider open={privacyGateOpen}>
+          {providerSetupStatus === 'pending' ? (
+            <Suspense fallback={<BootFallback />}>
+              <OnboardingPage />
+            </Suspense>
+          ) : (
+            <AppShell />
+          )}
+          <MainWindowRuntime />
+          <ConversationNotificationRuntime />
+          <PopupHost />
+          <ToastHost />
+          {providerSetupStatus === 'pending' ? null : <PrivacyPolicyUpdateGate />}
+        </MandatoryGateProvider>
+      </SidebarShortcutRegistryProvider>
     </TabsProvider>
   )
 }

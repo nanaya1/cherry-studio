@@ -15,7 +15,6 @@ import type { AgentDetail, ResourceEditDialogTarget } from '@renderer/types/reso
 import { getAgentAvatarFromConfiguration, getAgentDescriptionForDisplay } from '@renderer/utils/agent'
 import { buildCreateAgentCommand } from '@renderer/utils/resourceCatalog'
 import { AGENTS_MAX_LIMIT } from '@shared/data/api/schemas/agents'
-import { Bot } from 'lucide-react'
 
 import { ResourceSelectorShell, type ResourceSelectorShellItem } from './ResourceSelectorShell'
 
@@ -217,7 +216,6 @@ export function AgentSelector(props: AgentSelectorProps) {
     mountStrategy,
     onOpen: refetchPins,
     items,
-    fallbackIcon: <Bot size={15} />,
     pinnedIds,
     emptyState: { preset: 'no-agent' as const },
     onTogglePin: handleTogglePin,

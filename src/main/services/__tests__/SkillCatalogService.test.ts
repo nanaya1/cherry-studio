@@ -1,8 +1,9 @@
+import { setupTestDatabase } from '@test-helpers/db'
+import { beforeEach, describe, expect, it } from 'vitest'
+
 import { agentGlobalSkillTable } from '@data/db/schemas/agentGlobalSkill'
 import { skillCatalogTable, skillCatalogTranslationTable } from '@data/db/schemas/skillCatalog'
 import { SkillCatalogService } from '@main/services/SkillCatalogService'
-import { setupTestDatabase } from '@test-helpers/db'
-import { beforeEach, describe, expect, it } from 'vitest'
 
 const DIGEST = `sha256:${'a'.repeat(64)}`
 

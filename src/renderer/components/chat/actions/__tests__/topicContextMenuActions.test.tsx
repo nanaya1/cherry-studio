@@ -80,20 +80,9 @@ describe('topic context menu actions', () => {
     expect(onDelete).toHaveBeenCalledWith(topic)
   })
 
-  it('requires destructive confirmation for permanent deletion and blocks it during generation', async () => {
-    const onDeletePermanently = vi.fn()
-    const context = createTopicActionFixture({ onDeletePermanently })
-    const action = resolveTopicMenuActions(context).find((action) => action.id === 'topic.delete-permanently')!
-    expect(action).toMatchObject({
-      danger: true,
-      label: 'common.delete_permanently',
-      confirm: { destructive: true, confirmText: 'common.delete_permanently' }
-    })
-    await expect(executeTopicMenuAction(action, { ...context, isArchiveBlocked: true })).resolves.toBe(false)
-    expect(onDeletePermanently).not.toHaveBeenCalled()
-    await executeTopicMenuAction(action, context)
-    expect(onDeletePermanently).toHaveBeenCalledWith(topic)
-    expect(context.onDelete).not.toHaveBeenCalled()
+  it('does not offer permanent deletion in the conversation menu', () => {
+    const actions = resolveTopicMenuActions(createTopicActionFixture())
+    expect(actions.map((action) => action.id)).not.toContain('topic.delete-permanently')
   })
 
   it('keeps Delete visible but disabled while the Topic has unsettled generation work', async () => {
@@ -128,6 +117,19 @@ describe('topic context menu actions', () => {
 
     const exportAction = actions.find((action) => action.id === 'topic.export')
     expect(exportAction?.children.map((action) => action.id)).not.toContain('topic.export.image')
+  })
+
+  it('keeps ordinary pinning separate from sidebar shortcuts', async () => {
+    const onToggleSidebar = vi.fn()
+    const context = createTopicActionFixture({ onToggleSidebar, sidebarPinned: true })
+    const actions = resolveTopicMenuActions(context)
+    const sidebarAction = actions.find((action) => action.id === 'topic.toggle-sidebar')
+
+    expect(actions.find((action) => action.id === 'topic.pin')?.label).toBe('chat.topics.pin')
+    expect(sidebarAction?.label).toBe('launchpad.unpin_from_sidebar')
+
+    await executeTopicMenuAction(sidebarAction!, context)
+    expect(onToggleSidebar).toHaveBeenCalledWith(topic)
   })
 
   it('runs a move-to-assistant submenu action', async () => {

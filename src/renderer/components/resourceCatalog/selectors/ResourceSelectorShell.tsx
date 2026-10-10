@@ -225,7 +225,9 @@ function ResourceSelectorOptionRowComponent<T extends ResourceSelectorShellItem>
   renderEditAction,
   renderPinAction
 }: ResourceSelectorOptionRowProps<T>) {
-  const leading = fallbackIcon ? (
+  const leading = item.emoji ? (
+    <span className="flex size-5 shrink-0 items-center justify-center text-base leading-none">{item.emoji}</span>
+  ) : fallbackIcon ? (
     <span className="flex size-5 shrink-0 items-center justify-center">{fallbackIcon}</span>
   ) : null
 

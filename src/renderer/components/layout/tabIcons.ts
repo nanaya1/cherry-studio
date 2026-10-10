@@ -12,8 +12,7 @@ import {
   Rocket,
   ScanSearch,
   Settings,
-  Sparkles,
-  Wrench
+  Sparkles
 } from 'lucide-react'
 
 import type { Tab } from '@renderer/hooks/tab'
@@ -26,7 +25,6 @@ export const ROUTE_ICONS: Record<string, IconComponent> = {
   '/app/chat': MessageCircle,
   '/app/browser': Globe,
   '/app/agents': MousePointerClick,
-  '/app/toolbox': Wrench,
   '/app/paintings': Palette,
   '/app/translate': Languages,
   '/app/mini-app': LayoutGrid,

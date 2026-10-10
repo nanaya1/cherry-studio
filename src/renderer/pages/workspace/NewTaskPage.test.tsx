@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest'
-
-import { QuickPanelProvider } from '@renderer/components/QuickPanel'
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ComponentProps, ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+import { QuickPanelProvider } from '@renderer/components/QuickPanel'
 
 type SkillFixture = {
   id: string
@@ -308,7 +308,10 @@ vi.mock('@tanstack/react-router', () => ({
 }))
 
 vi.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string) => key })
+  useTranslation: () => ({
+    t: (key: string) => key,
+    i18n: { language: 'zh-CN', resolvedLanguage: 'zh-CN' }
+  })
 }))
 
 import NewTaskPage from './NewTaskPage'
@@ -317,10 +320,8 @@ type ChatOnSend = (text: string, options?: Record<string, unknown>) => Promise<b
 type AgentOnSend = (message?: { text: string }, options?: Record<string, unknown>) => Promise<boolean>
 
 const getChatOnSend = () => mocks.chatProps?.onSend as ChatOnSend
-const getChatOnDraftCleared = () => mocks.chatProps?.onDraftCleared as () => void
 const getChatOnAssistantChange = () => mocks.chatProps?.onDraftAssistantChange as (id: string | null) => void
 const getAgentOnSend = () => mocks.agentProps?.sendMessage as AgentOnSend
-const getAgentOnDraftCleared = () => mocks.agentProps?.onDraftCleared as () => void
 const getAgentOnChange = () => mocks.agentProps?.onAgentChange as (id: string | null) => void
 const getAgentOnWorkspaceChange = () => mocks.agentProps?.onWorkspaceChange as (id: string | null) => void
 
@@ -384,23 +385,23 @@ describe('NewTaskPage', () => {
   it('caps both new-task quick panels to the height available above their composers', async () => {
     mocks.renderQuickPanelHarness = true
     const user = userEvent.setup()
-    const getRectSpy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function rectFor(
-      this: HTMLElement
-    ) {
-      const top = this.dataset.composerDockLayer !== undefined ? 100 : 0
-      const bottom = this.dataset.testid === 'quick-panel' ? 400 : top
-      return {
-        x: 0,
-        y: top,
-        top,
-        right: 0,
-        bottom,
-        left: 0,
-        width: 0,
-        height: bottom - top,
-        toJSON: () => ({})
-      }
-    })
+    const getRectSpy = vi
+      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockImplementation(function rectFor(this: HTMLElement) {
+        const top = this.dataset.composerDockLayer !== undefined ? 100 : 0
+        const bottom = this.dataset.testid === 'quick-panel' ? 400 : top
+        return {
+          x: 0,
+          y: top,
+          top,
+          right: 0,
+          bottom,
+          left: 0,
+          width: 0,
+          height: bottom - top,
+          toJSON: () => ({})
+        }
+      })
 
     try {
       render(<NewTaskPage />)
@@ -475,13 +476,14 @@ describe('NewTaskPage', () => {
 
     const composer = screen.getByLabelText('agent-composer')
     expect(mocks.chatProps?.scopeKey).toBe('new-task:tab-1:chat')
-    expect(mocks.agentProps?.draftScopeKey).toBe('new-task:tab-1:agent')
+    // v2.1.4 uses the temporary session id as the agent draft boundary.
+    expect(mocks.agentProps?.sessionId).toBe('new-task:tab-1:agent:pending')
     await waitFor(() => expect(mocks.agentProps?.agentId).toBe('craftsman-agent'))
 
     await selectAgent()
 
     expect(screen.getByLabelText('agent-composer')).toBe(composer)
-    expect(mocks.agentProps?.draftScopeKey).toBe('new-task:tab-1:agent')
+    expect(mocks.agentProps?.sessionId).toBe('new-task:tab-1:agent:pending')
     expect(mocks.agentProps?.sendDisabled).toBe(false)
     expect(screen.getByLabelText('chat-composer')).toBeInTheDocument()
   })
@@ -554,7 +556,7 @@ describe('NewTaskPage', () => {
     expect(mocks.agentProps?.launchOptions).toBeUndefined()
   })
 
-  it('replaces the current tab only after the chat composer clears a successful send', async () => {
+  it('replaces the current tab after a successful chat send is synchronized', async () => {
     render(<NewTaskPage />)
 
     const send = getChatOnSend()('hello')
@@ -570,10 +572,6 @@ describe('NewTaskPage', () => {
       reasoningEffort: undefined,
       serviceTier: undefined
     })
-    expect(mocks.navigate).not.toHaveBeenCalled()
-
-    getChatOnDraftCleared()()
-
     expect(mocks.navigate).toHaveBeenCalledWith({
       to: '/app/chat',
       search: { topicId: 'topic-1' },
@@ -581,7 +579,7 @@ describe('NewTaskPage', () => {
     })
   })
 
-  it('replaces the current tab only after the agent composer clears a successful send', async () => {
+  it('replaces the current tab after a successful agent send is synchronized', async () => {
     render(<NewTaskPage />)
     await selectAgent()
 
@@ -598,10 +596,6 @@ describe('NewTaskPage', () => {
       reasoningEffort: undefined,
       serviceTier: undefined
     })
-    expect(mocks.navigate).not.toHaveBeenCalled()
-
-    getAgentOnDraftCleared()()
-
     expect(mocks.navigate).toHaveBeenCalledWith({
       to: '/app/agents',
       search: { sessionId: 'session-1' },
@@ -619,8 +613,6 @@ describe('NewTaskPage', () => {
     await expect(getChatOnSend()('second')).resolves.toBe(false)
 
     expect(mocks.streamOpen).toHaveBeenCalledTimes(1)
-    getChatOnDraftCleared()()
-    getChatOnDraftCleared()()
     expect(mocks.navigate).toHaveBeenCalledTimes(1)
   })
 
@@ -636,8 +628,6 @@ describe('NewTaskPage', () => {
     await expect(getAgentOnSend()(undefined, options)).resolves.toBe(false)
 
     expect(mocks.streamOpen).toHaveBeenCalledTimes(1)
-    getAgentOnDraftCleared()()
-    getAgentOnDraftCleared()()
     expect(mocks.navigate).toHaveBeenCalledTimes(1)
   })
 
@@ -710,7 +700,6 @@ describe('NewTaskPage', () => {
 
     await act(async () => resolveSeed?.())
     await expect(send).resolves.toBe(true)
-    getChatOnDraftCleared()()
     expect(mocks.navigate).toHaveBeenCalledWith({
       to: '/app/chat',
       search: { topicId: 'topic-1' },
@@ -799,7 +788,6 @@ describe('NewTaskPage', () => {
 
       await act(async () => resolveSeed?.())
       await expect(send).resolves.toBe(true)
-      getAgentOnDraftCleared()()
       expect(mocks.navigate).toHaveBeenCalledWith({
         to: '/app/agents',
         search: { sessionId: 'session-1' },

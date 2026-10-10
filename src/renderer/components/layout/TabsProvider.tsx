@@ -18,7 +18,6 @@ import {
 import { ipcApi, useIpcOn } from '@renderer/ipc'
 import { TabLruManager } from '@renderer/services/TabLruManager'
 import { getDefaultRouteTitle, isPageTitledRoute, isTopLevelRoute } from '@renderer/utils/routeTitle'
-import { SINGLE_TAB_MODE } from '@renderer/utils/tabMode'
 import type { Tab, TabSavedState } from '@shared/data/cache/cacheValueTypes'
 
 const logger = loggerService.withContext('TabsProvider')
@@ -32,12 +31,12 @@ const DEFAULT_TAB: Tab = {
   isDormant: false
 }
 
-function createEmptyStateFallbackTab(): Tab {
+function createLaunchpadFallbackTab(): Tab {
   return {
     id: uuid(),
     type: 'route',
-    url: EMPTY_STATE_TAB_URL,
-    title: getDefaultRouteTitle(EMPTY_STATE_TAB_URL),
+    url: '/app/launchpad',
+    title: getDefaultRouteTitle('/app/launchpad'),
     lastAccessTime: Date.now(),
     isDormant: false
   }
@@ -56,8 +55,6 @@ const LEGACY_LIBRARY_ROUTE_PATH = '/app/library'
 // so an already-persisted OpenClaw pin is redirected here rather than restoring to a dead route.
 const LEGACY_OPENCLAW_ROUTE_PATH = '/app/openclaw'
 const CODE_ROUTE_PATH = '/app/code'
-// Tab opened when the last one closes — the empty state lands on New Task.
-const EMPTY_STATE_TAB_URL = '/app/new-task'
 
 function routePathOfTab(tab: Tab): string | null {
   if (tab.type !== 'route') return null
@@ -164,22 +161,6 @@ function computeInitialSession(params: {
 
   // Detached windows never persist/restore a session.
   if (!includePinnedTabs) return freshSession
-
-  // Single-tab mode: collapse the persisted session to just the last-active tab
-  // (falling back to the default). Pinned tabs are dropped entirely — the model
-  // has no pinned zone, and keeping extras would resurrect them on next launch.
-  if (SINGLE_TAB_MODE) {
-    const activeNormal = restorableNormalTabs.find((t) => t.id === persistedActiveTabId)
-    const survivor = activeNormal ?? restorableNormalTabs[0] ?? initialDefaultTab
-    if (!survivor) return freshSession
-    // isPinned must go: the survivor lives in the normal list now, and a stale
-    // flag would route updateTab at the (empty) pinned store.
-    return {
-      normalTabs: [{ ...survivor, isPinned: false, isDormant: false }],
-      pinnedTabs: [],
-      activeTabId: survivor.id
-    }
-  }
 
   const pinnedHasActive = !!persistedActiveTabId && pinnedTabs.some((t) => t.id === persistedActiveTabId)
 
@@ -413,26 +394,6 @@ export function TabsProvider({
         return
       }
 
-      // Single-tab mode: never stack a second tab. The "open in new tab" intent
-      // degrades to "open in the current tab" — rewrite its URL in place and stay
-      // on it. The URL write routes through updateTab so pinned/normal store
-      // selection keeps working unchanged.
-      if (SINGLE_TAB_MODE) {
-        const target = projectedTabsRef.current.find((t) => t.id === activeTabId) ?? projectedTabsRef.current[0]
-        if (target) {
-          updateTab(target.id, {
-            url: tab.url,
-            title: tab.title,
-            icon: tab.icon,
-            metadata: tab.metadata,
-            lastAccessTime: Date.now(),
-            isDormant: false
-          })
-          setActiveTabIdState(target.id)
-          return
-        }
-      }
-
       const newTab: Tab = {
         ...tab,
         lastAccessTime: Date.now(),
@@ -459,7 +420,7 @@ export function TabsProvider({
 
       setActiveTabIdState(tab.id)
     },
-    [activeTabId, prepareTabsForCommit, setActiveTab, setPinnedTabs, storesPinned, updateTab]
+    [prepareTabsForCommit, setActiveTab, setPinnedTabs, storesPinned]
   )
 
   const closeTabs = useCallback(
@@ -471,7 +432,7 @@ export function TabsProvider({
       if (closingTabs.length === 0) return
 
       const remainingTabs = tabs.filter((tab) => !closingIdSet.has(tab.id))
-      const fallbackTab = remainingTabs.length === 0 ? createEmptyStateFallbackTab() : null
+      const fallbackTab = remainingTabs.length === 0 ? createLaunchpadFallbackTab() : null
 
       let newActiveId = activeTabId
       if (fallbackTab) {
@@ -683,19 +644,12 @@ export function TabsProvider({
   // Listen for tab attach requests (from Main Process)
   useIpcOn('tab.attached', (tabData) => attachTab(tabData))
 
-  const navigationOwnerActiveTab = useMemo(() => tabs.find((t) => t.id === activeTabId), [tabs, activeTabId])
-  useConversationNavigationOwner({
-    tabs,
-    activeTab: navigationOwnerActiveTab,
-    openTab,
-    setActiveTab,
-    updateTab
-  })
-
   /**
    * Get the currently active tab
    */
   const activeTab = useMemo(() => tabs.find((t) => t.id === activeTabId), [tabs, activeTabId])
+
+  useConversationNavigationOwner({ tabs, activeTab, openTab, setActiveTab, updateTab })
 
   const value: TabsContextValue = {
     // State
