@@ -1,3 +1,4 @@
+import { Bot } from 'lucide-react'
 import { lazy, type ReactElement, Suspense, useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -15,7 +16,6 @@ import type { ResourceEditDialogTarget } from '@renderer/types/resourceCatalog'
 import { buildCreateAssistantDto } from '@renderer/utils/resourceCatalog'
 import type { Assistant } from '@shared/data/types/assistant'
 import { isNonChatModel } from '@shared/utils/model'
-import { Bot } from 'lucide-react'
 
 import {
   ResourceSelectorShell,
@@ -262,6 +262,7 @@ export function AssistantSelector(props: AssistantSelectorProps) {
     mountStrategy,
     onOpen: refetchPins,
     items,
+    // MEA:resource-icons 选择器使用统一 Bot 图标。
     fallbackIcon: <Bot size={15} />,
     groups: selectorGroups,
     loading: isLoading || isGroupsLoading || isPinnedLoading,

@@ -69,9 +69,7 @@ const BASES = [
       {
         document_id: 'doc-limits',
         title: 'Limits',
-        pages: [
-          'Search accepts at most 32 base ids and 50 results per call.\fScores are normalized to [0,1].'
-        ]
+        pages: ['Search accepts at most 32 base ids and 50 results per call.\fScores are normalized to [0,1].']
       },
       {
         document_id: 'doc-auth',

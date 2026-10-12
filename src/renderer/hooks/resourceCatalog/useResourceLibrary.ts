@@ -4,7 +4,6 @@ import { useTranslation } from 'react-i18next'
 import { useGroups } from '@renderer/hooks/useGroups'
 import type { AgentDetail, ResourceItem, ResourceType, SortKey } from '@renderer/types/resourceCatalog'
 import { getAgentAvatarFromConfiguration, getAgentDescriptionForDisplay } from '@renderer/utils/agent'
-import { getSkillDescription, getSkillDisplayName } from '@shared/data/api/schemas/skills'
 import type { InstalledSkill } from '@shared/data/types/agent'
 import type { Assistant } from '@shared/data/types/assistant'
 import type { Prompt } from '@shared/data/types/prompt'
@@ -45,7 +44,7 @@ export function useResourceLibrary({
   sort,
   clientSideSkillSearch = false
 }: UseResourceLibraryOptions): UseResourceLibraryResult {
-  const { t, i18n } = useTranslation()
+  const { t } = useTranslation()
   const assistantGroups = useGroups('assistant')
 
   const trimmedSearch = search.trim() || undefined
@@ -75,6 +74,7 @@ export function useResourceLibrary({
   // Agent search stays server-side so matching spans the full database, not only the
   // current page. The main service resolves the builtin fallback description for this predicate.
   const agents = agentAdapter.useList({ enabled: isAgent, search: isAgent ? trimmedSearch : undefined })
+  const baseSkills = skillAdapter.useList({ enabled: isSkill })
   const skills = skillAdapter.useList({
     enabled: isSkill,
     search: isSkill && !clientSideSkillSearch ? trimmedSearch : undefined
@@ -120,25 +120,21 @@ export function useResourceLibrary({
     [t]
   )
 
-  const buildSkillItem = useCallback(
-    (s: InstalledSkill): ResourceItem => {
-      const locale = i18n.resolvedLanguage ?? i18n.language
-      return {
-        id: s.id,
-        type: 'skill',
-        name: getSkillDisplayName(s, locale),
-        description: getSkillDescription(s, locale) ?? '',
-        // No emoji on InstalledSkill — fall back to the lightning glyph.
-        avatar: '⚡',
-        // Skill metadata tags from SKILL.md live on `sourceTags`; assistant
-        // organization in the resource library uses Group rows instead.
-        createdAt: s.createdAt,
-        updatedAt: s.updatedAt,
-        raw: s
-      }
-    },
-    [i18n]
-  )
+  const buildSkillItem = useCallback((s: InstalledSkill): ResourceItem => {
+    return {
+      id: s.id,
+      type: 'skill',
+      name: s.name,
+      description: s.description ?? '',
+      // No emoji on InstalledSkill — fall back to the lightning glyph.
+      avatar: '⚡',
+      // Skill metadata tags from SKILL.md live on `sourceTags`; assistant
+      // organization in the resource library uses Group rows instead.
+      createdAt: s.createdAt,
+      updatedAt: s.updatedAt,
+      raw: s
+    }
+  }, [])
 
   const buildPromptItem = useCallback((p: Prompt): ResourceItem => {
     return {
@@ -157,14 +153,14 @@ export function useResourceLibrary({
     if (isAssistant) return baseAssistants.data.map(buildAssistantItem)
     if (isAgent) return agents.data.map(buildAgentItem)
     if (isPrompt) return prompts.data.map(buildPromptItem)
-    return skills.data.map(buildSkillItem)
+    return baseSkills.data.map(buildSkillItem)
   }, [
     isAssistant,
     isAgent,
     isPrompt,
     baseAssistants.data,
     agents.data,
-    skills.data,
+    baseSkills.data,
     prompts.data,
     buildAssistantItem,
     buildAgentItem,
@@ -206,25 +202,26 @@ export function useResourceLibrary({
       ? agents.isLoading
       : isPrompt
         ? prompts.isLoading
-        : skills.isLoading
+        : baseSkills.isLoading || skills.isLoading
   const isRefreshing = isAssistant
     ? baseAssistants.isRefreshing || filteredAssistants.isRefreshing
     : isAgent
       ? agents.isRefreshing
       : isPrompt
         ? prompts.isRefreshing
-        : skills.isRefreshing
+        : baseSkills.isRefreshing || skills.isRefreshing
   const error = isAssistant
     ? (baseAssistants.error ?? filteredAssistants.error ?? assistantGroups.error)
     : isAgent
       ? agents.error
       : isPrompt
         ? prompts.error
-        : skills.error
+        : (baseSkills.error ?? skills.error)
 
   const baseAssistantsRefetch = baseAssistants.refetch
   const filteredAssistantsRefetch = filteredAssistants.refetch
   const agentsRefetch = agents.refetch
+  const baseSkillsRefetch = baseSkills.refetch
   const skillsRefetch = skills.refetch
   const promptsRefetch = prompts.refetch
   const groupsRefetch = assistantGroups.refetch
@@ -239,6 +236,7 @@ export function useResourceLibrary({
     } else if (isPrompt) {
       promptsRefetch()
     } else {
+      baseSkillsRefetch()
       skillsRefetch()
     }
   }, [
@@ -248,6 +246,7 @@ export function useResourceLibrary({
     baseAssistantsRefetch,
     filteredAssistantsRefetch,
     agentsRefetch,
+    baseSkillsRefetch,
     skillsRefetch,
     promptsRefetch,
     groupsRefetch

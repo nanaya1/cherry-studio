@@ -25,6 +25,7 @@ import HistoryRecordsView from '@renderer/components/history/HistoryRecordsView'
 import { ConversationResourceView } from '@renderer/components/resourceCatalog/conversation'
 import { usePersistCache } from '@renderer/data/hooks/useCache'
 import { useInvalidateCache } from '@renderer/data/hooks/useDataApi'
+import { resolveTemplate } from '@renderer/data/utils/dataApiPath'
 import { useAgents } from '@renderer/hooks/agent/useAgent'
 import { useActiveSession, useUpdateSession } from '@renderer/hooks/agent/useSession'
 import { useAgentSessionsSource } from '@renderer/hooks/resourceViewSources'
@@ -39,28 +40,36 @@ import type { ResourceListRevealPayload } from '@renderer/services/resourceListR
 import { toast } from '@renderer/services/toast'
 import type { AppRouter } from '@renderer/types/router'
 import { buildAgentFileWorkspaceKey, buildAgentSessionTopicId } from '@renderer/utils/agentSession'
-import { formatErrorMessageWithPrefix } from '@renderer/utils/error'
 import { isDetailPageUrl } from '@renderer/utils/detailPage'
+import { formatErrorMessage, formatErrorMessageWithPrefix } from '@renderer/utils/error'
 import { getDefaultRouteTitle } from '@renderer/utils/routeTitle'
 import { cn } from '@renderer/utils/style'
 import { isDataApiNotFoundError } from '@shared/data/api/errors'
+import type { ConcreteApiPaths } from '@shared/data/api/paths'
 import type { AgentSessionEntity } from '@shared/data/api/schemas/agentSessions'
 import { AGENT_WORKSPACE_TYPE, type AgentSessionWorkspaceSource } from '@shared/data/api/schemas/agentWorkspaces'
 import type { TopicTabPosition } from '@shared/data/preference/preferenceTypes'
+import type { InstalledSkill } from '@shared/data/types/agent'
 
 import AgentChat from './AgentChat'
 import AgentSidePanel from './AgentSidePanel'
 import { AgentCreateDialog } from './components/AgentCreateDialog'
 import type { AgentFileNavigationRequest } from './components/AgentRightPane'
 import { AgentTabRuntime } from './components/AgentTabRuntime'
-import Sessions from '@renderer/components/chat/resourceList/Sessions'
+import Sessions from './components/Sessions'
 import {
   createFeedbackComposerLaunch,
   FEEDBACK_INTENT_GUARD_TTL_MS,
   type FeedbackComposerLaunch,
   getFeedbackIntentGuardCacheKey
 } from './feedbackComposerLaunch'
-import type { CreateAgentSessionDefaults } from '@renderer/types/agent'
+import {
+  createSkillComposerLaunch,
+  getSkillIntentGuardCacheKey,
+  SKILL_INTENT_GUARD_TTL_MS,
+  type SkillComposerLaunch
+} from './skillComposerLaunch'
+import type { CreateAgentSessionDefaults } from './types'
 import { useAgentConversationBootstrap } from './useAgentConversationBootstrap'
 
 const logger = loggerService.withContext('AgentPage')
@@ -98,13 +107,16 @@ const AgentPage = () => {
   const routeSearch = agentsRouteApi.useSearch<AppRouter>()
   const navigate = useNavigate()
   const { t } = useTranslation()
-  const isFeedbackIntent = routeSearch.intent === 'feedback'
   const location = useLocation()
-  // Detail pages hide the in-shell conversation list, so the expand/collapse toggle goes with it.
   const showSidebarControls = !isDetailPageUrl(`${location.pathname}${location.searchStr}`)
+  const isFeedbackIntent = routeSearch.intent === 'feedback'
+  const isSkillIntent = routeSearch.intent === 'skill'
+  const isPreparedIntent = isFeedbackIntent || isSkillIntent
   const currentTabId = useCurrentTabId()
   const routeSessionId = routeSearch.sessionId
+  const forkReturnSessionId = routeSearch.forkReturnSessionId
   const routeAgentId = routeSearch.agentId
+  const routeSkillId = routeSearch.skillId
   const routeActiveSessionId = routeSessionId ?? null
   // Shared full-list source for session UI plus exact latest/reusable lookups.
   const agentSessionsSource = useAgentSessionsSource()
@@ -195,6 +207,7 @@ const AgentPage = () => {
   const [feedbackComposerLaunch, setFeedbackComposerLaunch] = useState<FeedbackComposerLaunch | null>(
     routeFeedbackComposerLaunch
   )
+  const [skillComposerLaunch, setSkillComposerLaunch] = useState<SkillComposerLaunch | null>(null)
   const [selectingMissingAgent, setSelectingMissingAgent] = useState(false)
   const [replacingSessionWorkspace, setReplacingSessionWorkspace] = useState(false)
   const [missingAgentSelection, setMissingAgentSelection] = useState(false)
@@ -204,12 +217,12 @@ const AgentPage = () => {
   const closeConversationTabs = useCloseConversationTabs()
   const { setSessionWorkspace } = useUpdateSession()
   useEffect(() => {
-    if (activeSessionId || agents.length > 0 || isAgentsLoading || isFeedbackIntent || missingAgentSelection) {
+    if (activeSessionId || agents.length > 0 || isAgentsLoading || isPreparedIntent || missingAgentSelection) {
       return
     }
 
     setMissingAgentSelection(true)
-  }, [activeSessionId, agents.length, isAgentsLoading, isFeedbackIntent, missingAgentSelection])
+  }, [activeSessionId, agents.length, isAgentsLoading, isPreparedIntent, missingAgentSelection])
   const initialActiveSession = useMemo(
     () => (activeSessionId ? agentSessions.find((session) => session.id === activeSessionId) : undefined),
     [activeSessionId, agentSessions]
@@ -221,12 +234,35 @@ const AgentPage = () => {
     sessionSource: activeSessionSource,
     setActiveSession,
     selectSession,
-    clearActiveSession
+    clearActiveSession,
+    mutate: refreshActiveSession
   } = useActiveSession({
     activeSessionId,
     setActiveSessionId,
     initialSession: initialActiveSession
   })
+  useEffect(() => {
+    if (!forkReturnSessionId || !routeSessionId || activeSessionId !== routeSessionId) return
+    let cancelled = false
+    // Await the destination query: the pre-navigation check cannot cover concurrent deletion.
+    void refreshActiveSession(() => dataApiService.get(`/agent-sessions/${routeSessionId}`), {
+      revalidate: false
+    }).then(
+      () => {
+        if (!cancelled) void navigate({ to: '/app/agents', search: { sessionId: routeSessionId }, replace: true })
+      },
+      (error) => {
+        if (cancelled) return
+        toast.error(
+          isDataApiNotFoundError(error) ? t('agent_session_fork.source_not_found') : formatErrorMessage(error)
+        )
+        void navigate({ to: '/app/agents', search: { sessionId: forkReturnSessionId }, replace: true })
+      }
+    )
+    return () => {
+      cancelled = true
+    }
+  }, [activeSessionId, forkReturnSessionId, navigate, refreshActiveSession, routeSessionId, t])
   const reenterAgentRoute = useCallback(() => {
     // The bound session is gone. Drop the remembered id too: `ui.agent.last_used_session_id`
     // is never cleared on delete, so without this the bare re-entry re-reads the stale id in
@@ -240,7 +276,7 @@ const AgentPage = () => {
   // this tab was dormant, or a rotted deep link). Recovery is a plain replace-navigation back
   // through the entry interceptor, which resolves the next target — no in-page state surgery.
   useEffect(() => {
-    if (isFeedbackIntent) return
+    if (isPreparedIntent || forkReturnSessionId) return
     if (!routeSessionId || activeSessionId !== routeSessionId) return
     if (activeSession || isActiveSessionLoading) return
     if (!isDataApiNotFoundError(activeSessionError)) return
@@ -249,8 +285,9 @@ const AgentPage = () => {
     activeSession,
     activeSessionError,
     activeSessionId,
+    forkReturnSessionId,
     isActiveSessionLoading,
-    isFeedbackIntent,
+    isPreparedIntent,
     reenterAgentRoute,
     routeSessionId
   ])
@@ -726,19 +763,72 @@ const AgentPage = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `useEffectEvent` reads the latest feedback orchestration without resubscribing.
   }, [currentTabId, isFeedbackIntent, routeSessionId])
 
+  const runSkillIntent = useEffectEvent(async (intentGuardCacheKey: string) => {
+    closeSurface()
+    clearLocate()
+    setMissingAgentSelection(false)
+    try {
+      if (!routeSessionId || !routeSkillId) throw new Error('Skill intent is missing its prepared session or Skill')
+      const skillPath = resolveTemplate('/skills/:skillId', { skillId: routeSkillId }) as ConcreteApiPaths
+      const [skill] = await Promise.all([
+        dataApiService.get(skillPath) as Promise<InstalledSkill>,
+        invalidateCache(['/agents', '/skills', '/agent-sessions', `/agent-sessions/${routeSessionId}`]).catch((err) => {
+          logger.warn('Failed to refresh Agent cache for prepared Skill session', err as Error, {
+            sessionId: routeSessionId,
+            skillId: routeSkillId
+          })
+        })
+      ])
+      setSkillComposerLaunch(
+        createSkillComposerLaunch(routeSessionId, skill, t('settings.skills.launchDraft', { name: skill.name }))
+      )
+    } catch (err) {
+      setSkillComposerLaunch(null)
+      logger.error('Failed to prepare Skill session', err as Error, {
+        sessionId: routeSessionId,
+        skillId: routeSkillId
+      })
+      toast.error(t('settings.skills.intentInvalid'))
+    } finally {
+      try {
+        await navigate({
+          to: '/app/agents',
+          search: routeSessionId ? { sessionId: routeSessionId } : {},
+          replace: true
+        })
+      } finally {
+        cacheService.deleteCasual(intentGuardCacheKey)
+      }
+    }
+  })
+
+  useEffect(() => {
+    if (!isSkillIntent || !currentTabId) return
+    const intentGuardCacheKey = getSkillIntentGuardCacheKey(currentTabId)
+    if (cacheService.hasCasual(intentGuardCacheKey)) return
+    cacheService.setCasual(intentGuardCacheKey, true, SKILL_INTENT_GUARD_TTL_MS)
+    void runSkillIntent(intentGuardCacheKey)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `useEffectEvent` reads the latest Skill orchestration without resubscribing.
+  }, [currentTabId, isSkillIntent, routeSessionId, routeSkillId])
+
   const visibleSessionId = visibleSession?.id
   const feedbackLaunch = feedbackComposerLaunch ?? routeFeedbackComposerLaunch
   const visibleFeedbackComposerLaunch = feedbackLaunch?.sessionId === visibleSessionId ? feedbackLaunch : null
+  const visibleSkillComposerLaunch = skillComposerLaunch?.sessionId === visibleSessionId ? skillComposerLaunch : null
   const composerLaunchOptions = useMemo<AgentComposerLaunchOptions | undefined>(() => {
-    if (!visibleFeedbackComposerLaunch) return undefined
-    const launch = visibleFeedbackComposerLaunch
+    const launch = visibleSkillComposerLaunch ?? visibleFeedbackComposerLaunch
+    if (!launch) return undefined
     return {
       initialDraft: launch.initialDraft,
       onSent: () => {
-        setFeedbackComposerLaunch((current) => (current?.sessionId === launch.sessionId ? null : current))
+        if (visibleSkillComposerLaunch) {
+          setSkillComposerLaunch((current) => (current?.sessionId === launch.sessionId ? null : current))
+        } else {
+          setFeedbackComposerLaunch((current) => (current?.sessionId === launch.sessionId ? null : current))
+        }
       }
     }
-  }, [visibleFeedbackComposerLaunch])
+  }, [visibleFeedbackComposerLaunch, visibleSkillComposerLaunch])
 
   const setActiveSessionAndClearTransient = useCallback(
     (sessionId: string | null, session?: AgentSessionEntity | null) => {
@@ -955,7 +1045,7 @@ const AgentPage = () => {
             onRecordSelect={handleHistoryRecordsSessionSelect}
             onActiveRecordChange={handleHistoryActiveSessionChange}
             toolbarLeading={
-              !isWindowFrame ? (
+              showSidebarControls && !isWindowFrame ? (
                 <ConversationSidebarToggleButton
                   sidebarOpen={shellPaneOpen}
                   onSidebarToggle={toggleShellPane}
@@ -973,6 +1063,7 @@ const AgentPage = () => {
     <>
       <AgentTabRuntime
         title={visibleSession?.name?.trim() || visibleAgent?.name?.trim() || getDefaultRouteTitle('/app/agents')}
+        // Cherry v2.1.4: emoji={visibleAgent?.configuration?.avatar}
         preserveVisuals={preserveTabVisuals}
         activeSessionId={activeSession?.id}
         activeSessionSource={activeSessionSource}

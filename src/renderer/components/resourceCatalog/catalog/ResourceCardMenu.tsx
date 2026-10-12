@@ -1,4 +1,4 @@
-import { Copy, Download, MoreHorizontal, Tag, Trash2 } from 'lucide-react'
+import { Archive, Copy, Download, MoreHorizontal, Tag, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -15,16 +15,6 @@ const logger = loggerService.withContext('ResourceCardMenu')
 
 function canDuplicateResource(resource: ResourceItem) {
   return resource.type === 'assistant'
-}
-
-/**
- * The builtin assistant / default agent mirrors the main-process delete guard:
- * its library card simply offers no delete action instead of a failing one.
- */
-function isProtectedDefaultResource(resource: ResourceItem): boolean {
-  if (resource.type === 'assistant') return resource.raw.builtinRole === 'assistant'
-  if (resource.type === 'agent') return isProtectedBuiltinAgentRole(resource.raw.configuration?.builtin_role)
-  return false
 }
 
 interface ResourceCardMenuProps {
@@ -57,8 +47,7 @@ function useResourceCardMenuItems({
   const canAssignGroup = resource.type === 'assistant'
   const canDuplicate = canDuplicateResource(resource)
   const canExport = resource.type === 'assistant'
-  const canDelete = !isProtectedDefaultResource(resource)
-  const hasActionsBeforeDelete = (canAssignGroup || canDuplicate || canExport) && canDelete
+  const hasActionsBeforeDelete = canAssignGroup || canDuplicate || canExport
 
   useEffect(() => {
     if (bindingPendingRef.current) return
@@ -165,7 +154,21 @@ function useResourceCardMenuItems({
       items.push({ type: 'separator' })
     }
 
-    if (canDelete) {
+    const isOwner = resource.type === 'assistant' || resource.type === 'agent'
+    const protectedAgent =
+      resource.type === 'agent' && isProtectedBuiltinAgentRole(resource.raw.configuration?.builtin_role)
+    if (isOwner)
+      items.push({
+        type: 'item',
+        id: 'archive',
+        label: t(protectedAgent ? 'agent.session.agent.delete.trigger' : 'common.archive'),
+        icon: <Archive size={14} />,
+        onSelect: () => {
+          onDelete(resource)
+          onClose?.()
+        }
+      })
+    if (!isOwner)
       items.push({
         type: 'item',
         id: 'delete',
@@ -177,14 +180,12 @@ function useResourceCardMenuItems({
           onClose?.()
         }
       })
-    }
 
     return items
   }, [
     allGroups,
     bindingPending,
     canAssignGroup,
-    canDelete,
     canDuplicate,
     canExport,
     hasActionsBeforeDelete,

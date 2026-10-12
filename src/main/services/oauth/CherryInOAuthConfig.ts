@@ -1,29 +1,26 @@
-import { XUELANG_API_HOST } from '@shared/utils/constants'
 import * as z from 'zod'
 
-/**
- * Per-provider gateway OAuth configuration. CherryIN and 雪浪工匠 ride the same
- * gateway stack, so every provider shares the PKCE contract (client_id /
- * redirect / scopes) and differs only in the allowed API hosts. Update the
- * xuelang hosts when the production auth server domain lands.
- */
-const XUELANG_PRODUCTION = {
+import { XUELANG_API_HOST } from '@shared/utils/constants'
+
+const CHERRYIN_CONFIG = {
   CLIENT_ID: '2a348c87-bae1-4756-a62f-b2e97200fd6d',
+  ALLOWED_HOSTS: ['https://open.cherryin.ai', 'https://open.cherryin.dev'],
+  REDIRECT_URI: 'http://127.0.0.1:29873/oauth/callback',
+  CALLBACK_PORT: 29873,
+  CALLBACK_PATH: '/oauth/callback',
+  SCOPES: 'openid profile email offline_access balance:read usage:read tokens:read tokens:write'
+} as const
+
+const XUELANG_CONFIG = {
+  CLIENT_ID: CHERRYIN_CONFIG.CLIENT_ID,
   ALLOWED_HOSTS: [XUELANG_API_HOST],
   REDIRECT_URI: 'meacowork://oauth/callback',
-  // 2026-09-14：雪浪服务端暂不签发 id_token，原 openid scope 注释保留并移除。
-  // SCOPES: 'openid profile email offline_access balance:read usage:read tokens:read tokens:write'
   SCOPES: 'profile email offline_access balance:read usage:read tokens:read tokens:write'
 } as const
 
 export const GATEWAY_OAUTH_CONFIGS = {
-  cherryin: {
-    CLIENT_ID: '2a348c87-bae1-4756-a62f-b2e97200fd6d',
-    ALLOWED_HOSTS: ['https://open.cherryin.ai', 'https://open.cherryin.dev'],
-    REDIRECT_URI: 'meacowork://oauth/callback',
-    SCOPES: 'openid profile email offline_access balance:read usage:read tokens:read tokens:write'
-  },
-  xuelang: XUELANG_PRODUCTION
+  cherryin: CHERRYIN_CONFIG,
+  xuelang: XUELANG_CONFIG
 } as const
 
 export type GatewayProviderId = keyof typeof GATEWAY_OAUTH_CONFIGS
@@ -31,18 +28,12 @@ export type GatewayProviderId = keyof typeof GATEWAY_OAUTH_CONFIGS
 export const isGatewayProviderId = (providerId: string): providerId is GatewayProviderId =>
   providerId in GATEWAY_OAUTH_CONFIGS
 
-/** @deprecated Legacy CherryIN-only alias; prefer {@link GATEWAY_OAUTH_CONFIGS}. */
-export const CHERRYIN_CONFIG = GATEWAY_OAUTH_CONFIGS.cherryin
+export { CHERRYIN_CONFIG }
 
 export function validateGatewayApiHost(providerId: GatewayProviderId, apiHost: string): void {
   if (!(GATEWAY_OAUTH_CONFIGS[providerId].ALLOWED_HOSTS as readonly string[]).includes(apiHost)) {
     throw new CherryInOAuthServiceError(`Unauthorized API host: ${apiHost}`)
   }
-}
-
-/** @deprecated CherryIN-only host validation; prefer {@link validateGatewayApiHost}. */
-export function validateCherryInApiHost(apiHost: string): void {
-  validateGatewayApiHost('cherryin', apiHost)
 }
 
 export class CherryInOAuthServiceError extends Error {
@@ -53,6 +44,12 @@ export class CherryInOAuthServiceError extends Error {
   ) {
     super(message)
     this.name = 'CherryInOAuthServiceError'
+  }
+}
+
+export function validateCherryInApiHost(apiHost: string): void {
+  if (!(CHERRYIN_CONFIG.ALLOWED_HOSTS as readonly string[]).includes(apiHost)) {
+    throw new CherryInOAuthServiceError(`Unauthorized API host: ${apiHost}`)
   }
 }
 

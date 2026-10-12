@@ -77,10 +77,9 @@ function rowToAssistant(
   const clean = nullsToUndefined(row)
   return {
     ...clean,
+    builtinRole: row.builtinRole === 'assistant' ? row.builtinRole : null,
     // Preserve the T | null contract: `modelId` is legitimately nullable (R3 exception).
     modelId: row.modelId as UniqueModelId | null,
-    // MEA 定制：内置助手身份归一化（schema 是 'assistant' | null，行数据可能 undefined）
-    builtinRole: row.builtinRole === 'assistant' ? 'assistant' : null,
     groupId: row.groupId,
     mcpServerIds: relations.mcpServerIds,
     knowledgeBaseIds: relations.knowledgeBaseIds,
@@ -327,6 +326,7 @@ export class AssistantDataService {
     const conditions: SQL[] = [
       query.inTrash === true ? isNotNull(assistantTable.deletedAt) : isNull(assistantTable.deletedAt)
     ]
+    if (query.ids) conditions.push(inArray(assistantTable.id, query.ids))
     if (query.id !== undefined) {
       conditions.push(eq(assistantTable.id, query.id))
     }
@@ -669,7 +669,7 @@ export class AssistantDataService {
         .limit(1)
         .all()
       if (!existing) throw DataApiErrorFactory.notFound('Assistant', id)
-      // MEA 定制：内置默认助手（builtinRole === 'assistant'）禁止删除
+      // MEA 定制：内置默认助手禁止删除
       if (existing.builtinRole === 'assistant') {
         throw DataApiErrorFactory.invalidOperation('delete assistant', 'the default assistant cannot be deleted')
       }

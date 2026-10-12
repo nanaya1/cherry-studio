@@ -5,6 +5,7 @@ import { application } from '@application'
 import { loggerService } from '@logger'
 import type { CherryInBalance, CherryInProfile } from '@shared/ipc/schemas/cherryin'
 import { isSensitiveKey, REDACTED, redactSecretText } from '@shared/utils/redaction'
+
 import type { GatewayProviderId } from './CherryInOAuthConfig'
 import {
   CherryInOAuthServiceError,

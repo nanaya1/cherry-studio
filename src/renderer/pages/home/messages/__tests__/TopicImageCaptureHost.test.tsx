@@ -31,7 +31,7 @@ vi.mock('@renderer/hooks/useAssistant', () => ({
   useAssistant: () => ({ assistant: { id: 'assistant-a' } })
 }))
 
-vi.mock('@renderer/components/chat/messages/homeMessageListAdapter', async () => {
+vi.mock('../homeMessageListAdapter', async () => {
   const { useMessageEditing } = (await vi.importActual('@renderer/components/chat/editing/MessageEditingContext')) as {
     useMessageEditing: () => unknown
   }
@@ -44,13 +44,11 @@ vi.mock('@renderer/components/chat/messages/homeMessageListAdapter', async () =>
   }
 })
 
-vi.mock('@renderer/components/chat/messages/topicImageActionBus', () => ({
+vi.mock('../topicImageActionBus', () => ({
   rejectPendingTopicImageActions: vi.fn()
 }))
 
-const { default: TopicImageCaptureHost, getTopicImageCaptureMessages } = await import(
-  '@renderer/components/chat/messages/TopicImageCaptureHost'
-)
+const { default: TopicImageCaptureHost, getTopicImageCaptureMessages } = await import('../TopicImageCaptureHost')
 
 const createMessage = (
   id: string,

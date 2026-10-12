@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest'
-import { cleanup, fireEvent, render } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import type * as CherryStudioUi from '@cherrystudio/ui'
@@ -85,5 +85,17 @@ describe('AssistantPresetPreviewDialog overlay close', () => {
     fireEvent.click(overlay!)
 
     expect(onOpenChange).not.toHaveBeenCalled()
+  })
+})
+
+// Phase-1 (MEA resource-icons): the preset header must use the Bot fallback, not the emoji glyph.
+describe('MEA resource-icons: hide preset emoji in preview header', () => {
+  it('renders the Bot icon, not the emoji glyph, in the preview header', () => {
+    render(
+      <AssistantPresetPreviewDialog preset={preset} open onOpenChange={vi.fn()} onAdd={vi.fn()} onOpenChat={vi.fn()} />
+    )
+
+    // Regression: the emoji fallback (🤖) must not be rendered when no preset emoji is set.
+    expect(screen.queryByText('🤖')).not.toBeInTheDocument()
   })
 })

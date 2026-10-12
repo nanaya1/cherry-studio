@@ -72,11 +72,10 @@ interface McpSettingsContentProps {
 
 const McpSettingsContent: React.FC<McpSettingsContentProps> = ({ server, updateMcpServer, onClose }) => {
   const { t } = useTranslation()
-  // 本组件也会以弹窗形式嵌入 catalog 变体，此时该路由不在激活匹配链中，
-  // 严格 routeApi.useSearch 会抛 Invariant 崩溃，故从匹配链安全读取 search。
+  // MEA: catalog 变体会在弹窗中嵌入本组件，此时 MCP 设置路由不在激活匹配链中。
   const matches = useMatches()
   const search = useMemo(() => {
-    const match = matches.find((m) => m.routeId === '/settings/mcp/settings/$serverId')
+    const match = matches.find((item) => item.routeId === '/settings/mcp/settings/$serverId')
     return match?.search ?? {}
   }, [matches])
   const serverId = server.id

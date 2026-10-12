@@ -1,12 +1,10 @@
 import { Outlet, useLocation, useNavigate } from '@tanstack/react-router'
 import { Search } from 'lucide-react'
-import type { CSSProperties, FC } from 'react'
+import type { CSSProperties, FC, MouseEvent } from 'react'
 import { Fragment, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { MenuDivider, MenuItem, MenuList, PageHeader } from '@cherrystudio/ui'
-import '@renderer/components/icons/GatewayIcon'
-import { usePreference } from '@data/hooks/usePreference'
 import Scrollbar from '@renderer/components/Scrollbar'
 import { MEA_HIDDEN_SETTINGS_ROUTES, settingsMenu } from '@renderer/components/settingsMenu'
 import useMacTransparentWindow from '@renderer/hooks/useMacTransparentWindow'
@@ -21,6 +19,7 @@ import {
   settingsSubmenuListClassName,
   settingsSubmenuSectionTitleClassName
 } from '@renderer/pages/settings/settingsStyles'
+import { openExternalWebsite } from '@renderer/services/website'
 import { cn } from '@renderer/utils/style'
 
 const SettingsPage: FC = () => {
@@ -29,15 +28,6 @@ const SettingsPage: FC = () => {
   const { pathname } = location
   const { t } = useTranslation()
   const isMacTransparentWindow = useMacTransparentWindow()
-  const [enableDeveloperMode] = usePreference('app.developer_mode.enabled')
-  // 停用原仅按开发者模式过滤：MEA 设置侧栏还需隐藏 MCP/Skills（入口由技能连接器页统一承载）。
-  // const visibleSettingsMenu = settingsMenu.filter(
-  //   (item) => item.route !== '/settings/device-connections' || enableDeveloperMode
-  // )
-  const visibleSettingsMenu = settingsMenu.filter((item) => {
-    if (MEA_HIDDEN_SETTINGS_ROUTES.includes(item.route)) return false
-    return item.route !== '/settings/device-connections' || enableDeveloperMode
-  })
   // Anchor-lookup scope for SettingsFocusScroll (this tab's content column)
   const contentRef = useRef<HTMLDivElement>(null)
   // The full-width search field mounts only while a search session is active;
@@ -47,14 +37,26 @@ const SettingsPage: FC = () => {
     setSearchOpen(pathname === '/settings/search')
   }, [pathname])
 
+  const visibleSettingsMenu = settingsMenu.filter((item) => !MEA_HIDDEN_SETTINGS_ROUTES.includes(item.route))
   const isActive = (path: string) => pathname === path || pathname.startsWith(`${path}/`)
   const go = (path: string) => navigate({ to: path })
+
+  const openExternalLink = (event: MouseEvent<HTMLDivElement>) => {
+    if (event.type === 'auxclick' && event.button !== 1) return
+    const anchor = (event.target as Element).closest<HTMLAnchorElement>('a[href]')
+    if (!anchor || !/^https?:\/\//i.test(anchor.getAttribute('href') ?? '')) return
+    event.preventDefault()
+    event.stopPropagation()
+    void openExternalWebsite(anchor.href)
+  }
 
   return (
     <SettingsSearchDomIdsProvider>
       <div
         style={isMacTransparentWindow ? ({ '--settings-group-background': 'transparent' } as CSSProperties) : undefined}
         data-ui="settings.view"
+        onClickCapture={openExternalLink}
+        onAuxClickCapture={openExternalLink}
         className={cn(
           'flex min-h-0 flex-1 flex-col dark:[--settings-group-background:var(--background-subtle)]',
           isMacTransparentWindow ? 'bg-transparent' : 'bg-background'

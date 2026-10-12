@@ -1,3 +1,4 @@
+import { Bot } from 'lucide-react'
 import { lazy, type ReactElement, Suspense, useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -15,7 +16,6 @@ import type { AgentDetail, ResourceEditDialogTarget } from '@renderer/types/reso
 import { getAgentAvatarFromConfiguration, getAgentDescriptionForDisplay } from '@renderer/utils/agent'
 import { buildCreateAgentCommand } from '@renderer/utils/resourceCatalog'
 import { AGENTS_MAX_LIMIT } from '@shared/data/api/schemas/agents'
-import { Bot } from 'lucide-react'
 
 import { ResourceSelectorShell, type ResourceSelectorShellItem } from './ResourceSelectorShell'
 
@@ -217,6 +217,7 @@ export function AgentSelector(props: AgentSelectorProps) {
     mountStrategy,
     onOpen: refetchPins,
     items,
+    // MEA:resource-icons 选择器使用统一 Bot 图标。
     fallbackIcon: <Bot size={15} />,
     pinnedIds,
     emptyState: { preset: 'no-agent' as const },

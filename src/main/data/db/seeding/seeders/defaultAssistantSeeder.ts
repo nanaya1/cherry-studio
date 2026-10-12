@@ -1,10 +1,11 @@
+import { and, eq, inArray, isNull } from 'drizzle-orm'
+import { app } from 'electron'
+
 import { assistantTable } from '@data/db/schemas/assistant'
 import { messageTable } from '@data/db/schemas/message'
 import { topicTable } from '@data/db/schemas/topic'
 import { insertWithOrderKey } from '@data/services/utils/orderKey'
 import { DEFAULT_ASSISTANT_SEED, getDefaultAssistantNameForLocale } from '@shared/data/presets/defaultAssistant'
-import { and, eq, inArray, isNull } from 'drizzle-orm'
-import { app } from 'electron'
 
 import type { DbOrTx, DbType, ISeeder } from '../../types'
 import { hashObject } from '../hashObject'

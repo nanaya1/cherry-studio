@@ -10,13 +10,6 @@ import { KnowledgeBaseToolRuntime } from '../KnowledgeBaseButton'
 
 const mocks = vi.hoisted(() => ({
   knowledgeBases: [] as KnowledgeBase[],
-  remoteKnowledgeBases: [] as Array<{
-    id: string
-    name: string
-    serviceId: string
-    serviceName: string
-    remoteBaseId: string
-  }>,
   language: 'en',
   knowledgeQueryOptions: vi.fn(),
   translationSuffix: '',
@@ -37,13 +30,6 @@ vi.mock('@renderer/hooks/useKnowledgeBase', () => ({
     mocks.knowledgeQueryOptions(options)
     return { bases: mocks.knowledgeBases, isLoading: false }
   }
-}))
-
-vi.mock('@renderer/hooks/useRemoteKnowledge', () => ({
-  useRemoteKnowledgeBases: (_serviceId?: string, enabled = true) => ({
-    bases: enabled ? mocks.remoteKnowledgeBases : [],
-    isLoading: false
-  })
 }))
 
 vi.mock('@renderer/services/mainWindowNavigation', () => ({
@@ -70,8 +56,7 @@ vi.mock('react-i18next', () => ({
         'chat.input.knowledge_base': 'Knowledge Base',
         'chat.save.knowledge.empty.no_knowledge_base': 'No knowledge base',
         'common.selectedItems': `${options?.count ?? 0} selected`,
-        'library.config.knowledge.doc_count': `${options?.count ?? 0} docs${mocks.translationSuffix}`,
-        'settings.remoteKnowledge.tag': 'Remote'
+        'library.config.knowledge.doc_count': `${options?.count ?? 0} docs${mocks.translationSuffix}`
       }
 
       return translations[key] ?? key
@@ -104,7 +89,6 @@ describe('KnowledgeBaseToolRuntime', () => {
       createKnowledgeBase({ id: 'kb-1', name: 'Knowledge One', itemCount: 2 }),
       createKnowledgeBase({ id: 'kb-2', name: 'Knowledge Two', itemCount: 5 })
     ]
-    mocks.remoteKnowledgeBases = []
   })
 
   it('opens a multi-select knowledge panel instead of toggling all configured bases', async () => {
@@ -137,6 +121,10 @@ describe('KnowledgeBaseToolRuntime', () => {
       sources: ['popover', 'root-panel'],
       active: true
     })
+    expect(knowledgeLauncher.rootSearchItems).toEqual([
+      expect.objectContaining({ id: 'knowledge-base:kb-1', label: 'Knowledge One' }),
+      expect.objectContaining({ id: 'knowledge-base:kb-2', label: 'Knowledge Two' })
+    ])
     expect(knowledgeLauncher.suffix).toBeUndefined()
     expect(knowledgeLauncher.showInActiveControls).toBe(false)
 
@@ -189,31 +177,29 @@ describe('KnowledgeBaseToolRuntime', () => {
     ])
 
     panelList[0].action?.({
+      context: { symbol: ComposerPanelSymbol.KnowledgeBase },
       item: { ...panelList[0], isSelected: true }
     })
 
     expect(onSelect).toHaveBeenLastCalledWith([mocks.knowledgeBases[0], mocks.knowledgeBases[1]])
 
     panelList[1].action?.({
+      context: { symbol: ComposerPanelSymbol.KnowledgeBase },
       item: { ...panelList[1], isSelected: false }
     })
 
     expect(onSelect).toHaveBeenLastCalledWith([mocks.knowledgeBases[0]])
   })
 
-  it('shows and selects a configured remote knowledge base', async () => {
-    const remoteId = 'remote:service-1:docs'
-    mocks.remoteKnowledgeBases = [
-      { id: remoteId, serviceId: 'service-1', serviceName: 'Remote Service', remoteBaseId: 'docs', name: 'Remote Docs' }
-    ]
+  it('does not leave an input listener after selecting from root search', async () => {
     const launcher = createLauncherApi()
     const onSelect = vi.fn()
-    const quickPanel = { open: vi.fn() }
+    const subscribeInput = vi.fn(() => vi.fn())
 
     render(
       <KnowledgeBaseToolRuntime
         launcher={launcher}
-        configuredKnowledgeBaseIds={[remoteId]}
+        configuredKnowledgeBaseIds={['kb-1', 'kb-2']}
         selectedBases={[]}
         onSelect={onSelect}
       />
@@ -221,19 +207,17 @@ describe('KnowledgeBaseToolRuntime', () => {
 
     await waitFor(() => expect(launcher.registerLaunchers).toHaveBeenCalled())
     const [knowledgeLauncher] = vi.mocked(launcher.registerLaunchers).mock.calls.at(-1)![0]
-    knowledgeLauncher.action?.({ quickPanel, source: 'popover' } as never)
+    const rootSearchItem = knowledgeLauncher.rootSearchItems?.[0]
+    if (!rootSearchItem) throw new Error('Expected a knowledge-base root search item')
 
-    const remoteItem = quickPanel.open.mock.calls[0][0].list[0]
-    expect(remoteItem).toMatchObject({ id: `knowledge-base:${remoteId}` })
-    const [remoteName, remoteTag] = remoteItem.label.props.children
-    expect(remoteName.props.children).toBe('Remote Docs')
-    expect(remoteTag.props).toMatchObject({
-      children: 'Remote',
-      'data-knowledge-base-remote-tag': ''
-    })
-    remoteItem.action({ context: { close: vi.fn() }, item: { ...remoteItem, isSelected: true } })
+    rootSearchItem.action?.({
+      context: { symbol: ComposerPanelSymbol.Root, close: vi.fn() },
+      inputAdapter: { getText: () => '', subscribeInput },
+      item: rootSearchItem
+    } as never)
 
-    expect(onSelect).toHaveBeenCalledWith([expect.objectContaining({ id: remoteId, name: 'Remote Docs' })])
+    expect(onSelect).toHaveBeenCalledWith([mocks.knowledgeBases[0]])
+    expect(subscribeInput).not.toHaveBeenCalled()
   })
 
   it('shows available knowledge bases when the assistant has no configured knowledge-base ids', async () => {

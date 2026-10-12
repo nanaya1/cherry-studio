@@ -1,4 +1,4 @@
-import { Archive, BrushCleaning, Edit3, PinIcon, PinOffIcon, Plus, Smile, Tags, Trash2 } from 'lucide-react'
+import { Archive, BrushCleaning, Edit3, PinIcon, PinOffIcon, Plus, Smile, Tags } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -9,6 +9,7 @@ import { loggerService } from '@logger'
 import type { ResolvedAction } from '@renderer/components/chat/actions/actionTypes'
 import { deleteConversationOwnerPopup } from '@renderer/components/chat/DeleteConversationOwnerConfirmDialog'
 import NewConversationIcon from '@renderer/components/icons/NewConversationIcon'
+import SidebarShortcutIcon from '@renderer/components/icons/SidebarShortcutIcon'
 import {
   ResourceEditDialogHost,
   type ResourceEditDialogTarget
@@ -20,7 +21,7 @@ import { useCloseConversationTabs } from '@renderer/hooks/tab'
 import { useAssistantMutations, useAssistantsApi } from '@renderer/hooks/useAssistant'
 import { useGroupReorder, useGroups } from '@renderer/hooks/useGroups'
 import { usePins } from '@renderer/hooks/usePins'
-import { useSidebarFavorites } from '@renderer/hooks/useSidebarFavorites'
+import { useSidebarShortcuts } from '@renderer/hooks/useSidebarShortcuts'
 import { mapApiTopicToRendererTopic, useTopicMutations } from '@renderer/hooks/useTopic'
 import {
   restoreRecycleBinItems,
@@ -31,6 +32,7 @@ import {
 import { toast } from '@renderer/services/toast'
 import type { Topic } from '@renderer/types/topic'
 import { formatErrorMessageWithPrefix } from '@renderer/utils/error'
+import { createSidebarShortcutTarget, SIDEBAR_SHORTCUT_PROVIDER_IDS } from '@renderer/utils/sidebar'
 import type { AssistantIconType } from '@shared/data/preference/preferenceTypes'
 import { isTrashTargetNotFoundError, isTrashTopicBusyError } from '@shared/ipc/errors/trash'
 
@@ -51,7 +53,6 @@ const ASSISTANT_ENTITY_TOGGLE_PIN_ACTION_ID = 'assistant-entity.toggle-pin'
 const ASSISTANT_ENTITY_CLEAR_TOPICS_ACTION_ID = 'assistant-entity.clear-topics'
 const ASSISTANT_ENTITY_TOGGLE_GROUPING_ACTION_ID = 'assistant-entity.toggle-grouping'
 const ASSISTANT_ENTITY_ICON_TYPE_ACTION_ID = 'assistant-entity.icon-type'
-const ASSISTANT_ENTITY_DELETE_ACTION_ID = 'assistant-entity.delete'
 const ASSISTANT_ENTITY_ARCHIVE_ACTION_ID = 'assistant-entity.archive'
 const ASSISTANT_ENTITY_TOGGLE_SIDEBAR_ACTION_ID = 'assistant-entity.toggle-sidebar'
 const UNLINKED_ASSISTANT_ENTITY_ID = 'assistant-entity:unlinked'
@@ -141,10 +142,21 @@ export function AssistantResourceList({
   const [editDialogTarget, setEditDialogTarget] = useState<ResourceEditDialogTarget | null>(null)
   const assistantPinnedIdSet = useMemo(() => new Set(assistantPinnedIds), [assistantPinnedIds])
   const assistantIdSet = useMemo(() => new Set(assistants.map((assistant) => assistant.id)), [assistants])
-  const { assistantFavoriteIds: sidebarAssistantFavoriteIds, toggleAssistant, removeAssistant } = useSidebarFavorites()
+  const {
+    shortcuts: sidebarShortcuts,
+    setPinned: setSidebarShortcutPinned,
+    remove: removeSidebarShortcut
+  } = useSidebarShortcuts()
   const sidebarAssistantFavoriteIdSet = useMemo(
-    () => new Set(sidebarAssistantFavoriteIds),
-    [sidebarAssistantFavoriteIds]
+    () =>
+      new Set(
+        sidebarShortcuts.flatMap((shortcut) =>
+          shortcut.target.locator.providerId === SIDEBAR_SHORTCUT_PROVIDER_IDS.ASSISTANT
+            ? [shortcut.target.locator.resourceId]
+            : []
+        )
+      ),
+    [sidebarShortcuts]
   )
   const assistantGroupById = useMemo(
     () => new Map(assistantGroups.map((group) => [group.id, group] as const)),
@@ -422,7 +434,7 @@ export function AssistantResourceList({
   }, [refreshAssistants, refreshTopics])
 
   const handleDeleteAssistant = useCallback(
-    async (assistantId: string, permanent = false) => {
+    async (assistantId: string) => {
       if (deletingAssistantId) return
 
       const assistantName = assistants.find((assistant) => assistant.id === assistantId)?.name ?? t('common.unnamed')
@@ -431,9 +443,9 @@ export function AssistantResourceList({
         try {
           let result
           try {
-            result = await deleteAssistant(assistantId, { deleteTopics, permanent })
+            result = await deleteAssistant(assistantId, { deleteTopics })
           } catch (err) {
-            if (permanent || !isTrashTargetNotFoundError(err)) throw err
+            if (!isTrashTargetNotFoundError(err)) throw err
             await Promise.allSettled([refreshAssistants(), refreshTopics()])
             toast.info(t('recycle_bin.already_moved'))
             return
@@ -469,10 +481,6 @@ export function AssistantResourceList({
               err
             })
           }
-          if (permanent) {
-            toast.success(t('settings.data.trash.permanent_delete.success'))
-            return
-          }
           showRecycleBinUndo({
             itemName: assistantName,
             onUndo: () =>
@@ -492,7 +500,7 @@ export function AssistantResourceList({
           })
         } catch (err) {
           logger.error('Failed to delete assistant from classic-layout rail', { assistantId, err })
-          if (!permanent && isTrashTopicBusyError(err)) {
+          if (isTrashTopicBusyError(err)) {
             toast.info(t('recycle_bin.move.blocked_generation'))
             return
           }
@@ -502,7 +510,7 @@ export function AssistantResourceList({
         }
       }
 
-      await deleteConversationOwnerPopup.show({ type: 'assistant', permanent, action: performDelete })
+      await deleteConversationOwnerPopup.show({ type: 'assistant', action: performDelete })
     },
     [
       activeTopicId,
@@ -544,7 +552,7 @@ export function AssistantResourceList({
         buildResolvedResourceEntityMenuAction({
           id: ASSISTANT_ENTITY_TOGGLE_SIDEBAR_ACTION_ID,
           label: sidebarPinned ? t('launchpad.unpin_from_sidebar') : t('launchpad.pin_to_sidebar'),
-          icon: sidebarPinned ? <PinOffIcon size={14} /> : <PinIcon size={14} />,
+          icon: <SidebarShortcutIcon size={14} pinned={sidebarPinned} />,
           order: 22
         }),
         buildResolvedResourceEntityMenuAction({
@@ -575,15 +583,6 @@ export function AssistantResourceList({
           group: 'danger',
           order: 30,
           availability: { visible: true, enabled: deletingAssistantId === null }
-        }),
-        buildResolvedResourceEntityMenuAction({
-          id: ASSISTANT_ENTITY_DELETE_ACTION_ID,
-          label: t('common.delete_permanently'),
-          icon: <Trash2 size={14} className="lucide-custom text-destructive" />,
-          group: 'danger',
-          order: 40,
-          danger: true,
-          availability: { visible: true, enabled: deletingAssistantId === null }
         })
       ]
     },
@@ -610,8 +609,9 @@ export function AssistantResourceList({
         return
       }
       if (action.id === ASSISTANT_ENTITY_TOGGLE_SIDEBAR_ACTION_ID) {
-        if (sidebarAssistantFavoriteIdSet.has(item.id)) removeAssistant(item.id)
-        else toggleAssistant(item.id)
+        const target = createSidebarShortcutTarget(SIDEBAR_SHORTCUT_PROVIDER_IDS.ASSISTANT, item.id)
+        if (sidebarAssistantFavoriteIdSet.has(item.id)) removeSidebarShortcut(target)
+        else setSidebarShortcutPinned(target, true, item.name)
         return
       }
       if (action.id === ASSISTANT_ENTITY_CLEAR_TOPICS_ACTION_ID) {
@@ -626,8 +626,8 @@ export function AssistantResourceList({
         void setAssistantIconType(action.id.slice(ASSISTANT_ENTITY_ICON_TYPE_ACTION_ID.length + 1) as AssistantIconType)
         return
       }
-      if (action.id === ASSISTANT_ENTITY_DELETE_ACTION_ID || action.id === ASSISTANT_ENTITY_ARCHIVE_ACTION_ID) {
-        void handleDeleteAssistant(item.id, action.id === ASSISTANT_ENTITY_DELETE_ACTION_ID)
+      if (action.id === ASSISTANT_ENTITY_ARCHIVE_ACTION_ID) {
+        void handleDeleteAssistant(item.id)
       }
     },
     [
@@ -636,11 +636,11 @@ export function AssistantResourceList({
       handleToggleAssistantPin,
       isGroupGrouping,
       openAssistantEditor,
-      removeAssistant,
+      removeSidebarShortcut,
       setAssistantIconType,
       setAssistantSortType,
       sidebarAssistantFavoriteIdSet,
-      toggleAssistant
+      setSidebarShortcutPinned
     ]
   )
 

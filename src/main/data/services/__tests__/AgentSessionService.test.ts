@@ -662,7 +662,8 @@ describe('AgentSessionService', () => {
         { endpoint: '/agent-sessions', kind: 'membership', entityIds: [duplicate.id] },
         { endpoint: '/agent-sessions', kind: 'order', dimension: 'lastActivityAt', entityIds: [duplicate.id] },
         { endpoint: '/agent-sessions/:sessionId', entityIds: [duplicate.id] },
-        { endpoint: '/agent-sessions/latest' }
+        { endpoint: '/agent-sessions/latest' },
+        { endpoint: '/agent-workspaces', kind: 'membership' }
       ])
       expect(notifyDataApiDataChangeMock).toHaveBeenNthCalledWith(2, [{ endpoint: '/pins', kind: 'membership' }])
       expect(notifyDataApiDataChangeMock).toHaveBeenCalledTimes(2)
@@ -736,7 +737,8 @@ describe('AgentSessionService', () => {
       { endpoint: '/agent-sessions', kind: 'membership', entityIds: [session.id] },
       { endpoint: '/agent-sessions', kind: 'order', dimension: 'lastActivityAt', entityIds: [session.id] },
       { endpoint: '/agent-sessions/:sessionId', entityIds: [session.id] },
-      { endpoint: '/agent-sessions/latest' }
+      { endpoint: '/agent-sessions/latest' },
+      { endpoint: '/agent-workspaces', kind: 'membership' }
     ])
     expect(session.workspaceId).toBe(workspace.id)
     expect(session.workspace.path).toBe(workspace.path)
@@ -1146,7 +1148,8 @@ describe('AgentSessionService', () => {
       { endpoint: '/agent-sessions', kind: 'membership', entityIds: [session.id] },
       { endpoint: '/agent-sessions', kind: 'order', dimension: 'lastActivityAt', entityIds: [session.id] },
       { endpoint: '/agent-sessions/:sessionId', entityIds: [session.id] },
-      { endpoint: '/agent-sessions/latest' }
+      { endpoint: '/agent-sessions/latest' },
+      { endpoint: '/agent-workspaces', kind: 'membership' }
     ])
     expect(notifyDataApiDataChangeMock).toHaveBeenNthCalledWith(2, [{ endpoint: '/pins', kind: 'membership' }])
     expect(notifyDataApiDataChangeMock).toHaveBeenCalledTimes(2)
@@ -1175,7 +1178,8 @@ describe('AgentSessionService', () => {
       { endpoint: '/agent-tasks', kind: 'projection', entityIds: [task.id] },
       { endpoint: '/agents/:agentId/tasks', kind: 'projection', entityIds: [task.id] },
       { endpoint: '/agent-tasks/:taskId', entityIds: [task.id] },
-      { endpoint: '/agents/:agentId/tasks/:taskId', entityIds: [task.id] }
+      { endpoint: '/agents/:agentId/tasks/:taskId', entityIds: [task.id] },
+      { endpoint: '/agent-workspaces', kind: 'membership' }
     ])
   })
 
@@ -1682,6 +1686,25 @@ describe('AgentSessionService', () => {
     const page2 = agentSessionService.listByCursor({ limit: 2, cursor: page1.nextCursor })
     expect(page2.items.map((item) => item.id)).toEqual([first.id])
     expect(page2.nextCursor).toBeUndefined()
+  })
+
+  it('filters exact ids across pinned and unpinned sections', async () => {
+    const pinned = await createSession('Pinned')
+    const unpinned = await createSession('Unpinned')
+    await createSession('Other')
+    await dbh.db.insert(pinTable).values({
+      id: 'pin-exact-session',
+      entityType: 'session',
+      entityId: pinned.id,
+      orderKey: 'a0',
+      createdAt: 1,
+      updatedAt: 1
+    })
+
+    const result = agentSessionService.listByCursor({ ids: [pinned.id, unpinned.id], limit: 2 })
+
+    expect(result.items.map((session) => session.id)).toEqual([pinned.id, unpinned.id])
+    expect(result.nextCursor).toBeUndefined()
   })
 
   it('returns pinned sessions first ordered by pin.orderKey, then unpinned by orderKey', async () => {

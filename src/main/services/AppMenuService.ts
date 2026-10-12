@@ -1,7 +1,9 @@
+import { app, BrowserWindow, Menu } from 'electron'
+
 import { application } from '@application'
-// 停用：logger 已随官方菜单项一同注释（恢复时取消注释）
 // import { loggerService } from '@logger'
 import { BaseService, Conditional, Injectable, onPlatform, Phase, ServicePhase } from '@main/core/lifecycle'
+import { WindowType } from '@main/core/window/types'
 import { t } from '@main/i18n'
 import { openSettingsInMainWindow } from '@main/services/mainWindowNavigation'
 import type { NativeCommandMenuItem, NativeMenuItem } from '@main/services/menu/adapters/nativeMenuAdapter'
@@ -16,12 +18,8 @@ import {
   resolveCommandKeybinding,
   resolveMenu
 } from '@shared/utils/command'
-import type { BrowserWindow } from 'electron'
-// 「帮助」子菜单（含 shell.openExternal 反馈/更新日志跳转）暂时隐藏，shell import 随之注释。恢复时一并恢复。
-// import { app, Menu, shell } from 'electron'
-import { app, Menu } from 'electron'
+import { doctorSettingsPath } from '@shared/utils/doctor'
 
-// 停用：logger 仅在被注释的官方菜单项代码中使用（恢复菜单时取消注释）
 // const logger = loggerService.withContext('AppMenuService')
 
 const appMenuCommands: CommandId[] = ['app.settings.open', 'app.zoom.in', 'app.zoom.out', 'app.zoom.reset']
@@ -64,10 +62,29 @@ export class AppMenuService extends BaseService {
       }
     }
 
+    const closeRule = findKeybindingRule('app.window.close')
+    if (closeRule) {
+      this.registerDisposable(
+        preferenceService.subscribeChange(closeRule.preferenceKey, () => this.setupApplicationMenu())
+      )
+    }
+    const onWindowFocus = (_event: Electron.Event, window: BrowserWindow) => this.setupApplicationMenu(window)
+    app.on('browser-window-focus', onWindowFocus)
+    this.registerDisposable(() => app.off('browser-window-focus', onWindowFocus))
+
     this.setupApplicationMenu()
   }
 
-  private setupApplicationMenu(): void {
+  private setupApplicationMenu(focusedWindow = BrowserWindow.getFocusedWindow() ?? undefined): void {
+    // WindowManager keys its registry by managed UUID, not Electron's numeric window ID.
+    const windowManager = application.get('WindowManager')
+    const focusedType = focusedWindow
+      ? windowManager.getWindowType(windowManager.getWindowId(focusedWindow) ?? '')
+      : undefined
+    const closeAccelerator =
+      focusedWindow && focusedType !== WindowType.Main && focusedType !== WindowType.SubWindow
+        ? 'CommandOrControl+W'
+        : getShortcutAccelerator('app.window.close')
     const commandItems = this.resolveAppMenuCommandItems({
       'app.settings.open': t('settings.title'),
       'app.zoom.reset': t('appMenu.resetZoom'),
@@ -108,7 +125,16 @@ export class AppMenuService extends BaseService {
       {
         type: 'submenu',
         label: t('appMenu.file'),
-        children: [{ type: 'role', role: 'close', label: t('appMenu.close') }]
+        // The bare Command+W accelerator belongs to the tab bar (tab.close); Shift keeps a
+        // keyboard path to the window, declared on app.window.close for conflict detection.
+        children: [
+          {
+            type: 'role',
+            role: 'close',
+            label: t('appMenu.close'),
+            accelerator: closeAccelerator
+          }
+        ]
       },
       {
         type: 'submenu',
@@ -149,49 +175,60 @@ export class AppMenuService extends BaseService {
           { type: 'role', role: 'front', label: t('appMenu.front') }
         ]
       },
-      // Mea Cowork：「帮助」子菜单整体暂时隐藏——反馈/更新日志跳转 CherryHQ GitHub，官网/文档属 Cherry 厂商云。
-      // 恢复时取消下方注释。
-      /* {
+      {
         type: 'submenu',
         label: t('appMenu.help'),
         children: [
-          // 「官方网站 / 文档」入口暂时隐藏：跳转目标属 Cherry 厂商云。恢复时取消下方注释。
+          // Cherry 官方网站、文档、反馈和发布页不属于 MEA Cowork 的用户入口。
           // {
           //   type: 'custom',
           //   label: t('appMenu.website'),
           //   click: () => {
-          //     void shell.openExternal('https://cherry-ai.com')
+          //     void application
+          //       .get('MainWindowService')
+          //       .openWebsite('https://cherry-ai.com')
+          //       .catch((error) => logger.warn('Failed to open website', { error }))
           //   }
           // },
           // {
           //   type: 'custom',
           //   label: t('appMenu.documentation'),
           //   click: () => {
-          //     void shell.openExternal('https://cherry-ai.com/docs')
+          //     void application
+          //       .get('MainWindowService')
+          //       .openWebsite('https://cherry-ai.com/docs')
+          //       .catch((error) => logger.warn('Failed to open website', { error }))
           //   }
           // },
           {
             type: 'custom',
-            label: t('appMenu.feedback'),
+            label: t('appMenu.doctor'),
             click: () => {
-              void application
-                .get('MainWindowService')
-                .openWebsite('https://github.com/CherryHQ/cherry-studio/issues/new/choose')
-                .catch((error) => logger.warn('Failed to open website', { error }))
-            }
-          },
-          {
-            type: 'custom',
-            label: t('appMenu.releases'),
-            click: () => {
-              void application
-                .get('MainWindowService')
-                .openWebsite('https://github.com/CherryHQ/cherry-studio/releases')
-                .catch((error) => logger.warn('Failed to open website', { error }))
+              openSettingsInMainWindow(doctorSettingsPath('checks'))
             }
           }
+          // {
+          //   type: 'custom',
+          //   label: t('appMenu.feedback'),
+          //   click: () => {
+          //     void application
+          //       .get('MainWindowService')
+          //       .openWebsite('https://github.com/CherryHQ/cherry-studio/issues/new/choose')
+          //       .catch((error) => logger.warn('Failed to open website', { error }))
+          //   }
+          // },
+          // {
+          //   type: 'custom',
+          //   label: t('appMenu.releases'),
+          //   click: () => {
+          //     void application
+          //       .get('MainWindowService')
+          //       .openWebsite('https://github.com/CherryHQ/cherry-studio/releases')
+          //       .catch((error) => logger.warn('Failed to open website', { error }))
+          //   }
+          // }
         ]
-      } */
+      }
     ]
 
     const template = toElectronMenuTemplate(items, {

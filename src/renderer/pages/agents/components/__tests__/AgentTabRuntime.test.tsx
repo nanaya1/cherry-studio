@@ -32,6 +32,7 @@ describe('AgentTabRuntime', () => {
     render(
       <AgentTabRuntime
         title="Session A"
+        emoji="agent-avatar"
         preserveVisuals={false}
         activeSessionId="session-a"
         activeSessionSource="query"
@@ -41,8 +42,7 @@ describe('AgentTabRuntime', () => {
 
     expect(runtimeMocks.useTabSelfVisuals).toHaveBeenCalledWith({
       title: 'Session A',
-      // MEA customization: assistant/agent emoji display is hidden, so no emoji is passed.
-      emoji: undefined,
+      emoji: 'agent-avatar',
       routePrefix: '/app/agents',
       preserveVisuals: false
     })

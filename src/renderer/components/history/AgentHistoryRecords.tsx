@@ -1,9 +1,9 @@
+import { Bot } from 'lucide-react'
 import { type ReactElement, type ReactNode, useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import type { ResolvedAction } from '@renderer/components/chat/actions/actionTypes'
 import type { SessionActionContext } from '@renderer/components/chat/actions/sessionItemActions'
-import { Bot } from 'lucide-react'
 import { AgentSelector } from '@renderer/components/resourceCatalog/selectors'
 import { dataApiService } from '@renderer/data/DataApiService'
 import { useAgents } from '@renderer/hooks/agent/useAgent'
@@ -276,7 +276,7 @@ const AgentHistoryRecords = ({
       getUpdatedAt: (session: SessionListItem) => session.lastActivityAt,
       getSourceLabel: (session: SessionListItem) =>
         (session.agentId ? agentById.get(session.agentId)?.name : undefined) ?? unknownAgentLabel,
-      renderAvatar: () => <Bot size={14} />,
+      renderAvatar: () => <Bot size={14} className="text-foreground" />,
       rowHeight: 32,
       getSelectLabel: (session: SessionListItem) => `${t('common.select')} ${session.name || t('common.unnamed')}`,
       getRowActions: (session: SessionListItem, openRename: (id: string, name: string) => void) => {
@@ -323,7 +323,7 @@ const AgentHistoryRecords = ({
           hasValue={!!selectedId}
           clearLabel={t('common.clear')}
           onClear={() => onSelect(null)}
-          icon={selectedId ? (source?.icon ?? <Bot size={14} />) : undefined}
+          icon={selectedId ? source?.icon ? source.icon : <Bot size={14} className="text-foreground" /> : undefined}
           selector={(trigger) => (
             <AgentSelector
               value={selectedId}
@@ -347,7 +347,7 @@ const AgentHistoryRecords = ({
       loadingDescription: t('history.records.loading.sessionsDescription'),
       pinLabel: t('selector.common.pin'),
       unpinLabel: t('selector.common.unpin'),
-      deleteLabel: t('common.delete'),
+      deleteLabel: t('common.archive'),
       renameDialogTitle: t('agent.session.edit.title')
     }
   }

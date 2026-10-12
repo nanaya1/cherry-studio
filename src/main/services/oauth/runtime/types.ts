@@ -93,6 +93,7 @@ export interface OAuthRuntimeProviderDefinition {
     | { type: 'deep-link'; config: DeepLinkCallbackConfig }
   createClient(context?: OAuthRuntimeProviderContext): PkceOAuthClient | Promise<PkceOAuthClient>
   extractAccountId?(accessToken: string): string | null
+  matchesSignInContext?(current: OAuthRuntimeProviderContext, requested: OAuthRuntimeProviderContext): boolean
   /**
    * Post-exchange side effect, run *after* the tokens are persisted so a failure
    * here never discards a valid token (CherryIN fetches the user's API keys).

@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
 import { CHERRYAI_DEFAULT_MODEL_ID, CHERRYAI_PROVIDER_ID } from '@shared/data/presets/cherryai'
-import { ANTIGRAVITY_MODEL_PATH_SEPARATOR, formatGatewayModelId, gatewayClientOrigin } from '@shared/utils/apiGateway'
+import {
+  ANTIGRAVITY_MODEL_PATH_SEPARATOR,
+  DEFAULT_API_GATEWAY_HOST,
+  DEFAULT_API_GATEWAY_PORT,
+  formatGatewayModelId,
+  gatewayClientOrigin
+} from '@shared/utils/apiGateway'
 
 /** The gateway proxy's parse side (proxyStream.ts): split on the FIRST ':'. */
 function parseByFirstColon(gatewayModelId: string): { providerId: string; modelId: string } {
@@ -54,6 +60,10 @@ describe('formatGatewayModelId', () => {
 })
 
 describe('gatewayClientOrigin', () => {
+  it('keeps the MEA gateway default on loopback port 24333', () => {
+    expect(gatewayClientOrigin(DEFAULT_API_GATEWAY_HOST, DEFAULT_API_GATEWAY_PORT)).toBe('http://127.0.0.1:24333')
+  })
+
   it('maps wildcard binds to a reachable loopback address', () => {
     // A bind host is not a connect target: a CLI subprocess handed 0.0.0.0 has no host to dial.
     expect(gatewayClientOrigin('0.0.0.0', 24333)).toBe('http://127.0.0.1:24333')

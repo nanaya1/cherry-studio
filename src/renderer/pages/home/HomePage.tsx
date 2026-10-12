@@ -1,4 +1,4 @@
-import { getRouteApi, useNavigate, useLocation } from '@tanstack/react-router'
+import { getRouteApi, useLocation, useNavigate } from '@tanstack/react-router'
 import type { FC, HTMLAttributes } from 'react'
 import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -41,8 +41,8 @@ import { toast } from '@renderer/services/toast'
 import type { AppRouter } from '@renderer/types/router'
 import type { Topic } from '@renderer/types/topic'
 import { getTopicAssistantDisplayGroupId } from '@renderer/utils/chat/topicsHelpers'
-import { formatErrorMessageWithPrefix } from '@renderer/utils/error'
 import { isDetailPageUrl } from '@renderer/utils/detailPage'
+import { formatErrorMessageWithPrefix } from '@renderer/utils/error'
 import { getDefaultRouteTitle } from '@renderer/utils/routeTitle'
 import { cn } from '@renderer/utils/style'
 import { isDataApiNotFoundError } from '@shared/data/api/errors'
@@ -54,7 +54,7 @@ import {
 } from './components/AssistantConversationPickerDialog'
 import { HomeTabRuntime } from './components/HomeTabRuntime'
 import { TopicRightPane } from './components/TopicRightPane'
-import { Topics } from '@renderer/components/chat/resourceList/Topics'
+import { Topics } from './Tabs/components/Topics'
 import HomeTabs from './Tabs/HomeTabs'
 import type { AddNewTopicPayload } from './types'
 
@@ -91,6 +91,8 @@ const HomePage: FC = () => {
 
   const routeSearch = chatRouteApi.useSearch<AppRouter>()
   const navigate = useNavigate()
+  const location = useLocation()
+  const showSidebarControls = !isDetailPageUrl(`${location.pathname}${location.searchStr}`)
   const routeTopicId = routeSearch.topicId
   const routeAssistantId = routeSearch.assistantId
   const handleManualPaneOpen = useCallback(() => {
@@ -111,10 +113,6 @@ const HomePage: FC = () => {
     setPersistedPaneOpen: setShowSidebar,
     onManualPaneOpen: handleManualPaneOpen
   })
-
-  const location = useLocation()
-  // Detail pages hide the in-shell conversation list, so the expand/collapse toggle goes with it.
-  const showSidebarControls = !isDetailPageUrl(`${location.pathname}${location.searchStr}`)
   const topicListPosition: ChatPanePosition =
     !isWindowFrame && isClassicTopicLayout && panePosition === 'right' ? 'right' : 'left'
   const [topicPaneOpen, setTopicPaneOpen] = useClassicLayoutRightPaneOpen('chat', {
@@ -206,9 +204,13 @@ const HomePage: FC = () => {
     setActiveTopicId
   })
   const reenterChatRoute = useCallback(() => {
+    const staleTopicId = activeTopicId ?? routeTopicId
+    if (staleTopicId) {
+      cacheService.setPersist('ui.chat.last_used_topic_id', (current) => (current === staleTopicId ? null : current))
+    }
     clearActiveTopic()
     void navigate({ to: '/app/chat', search: {}, replace: true })
-  }, [clearActiveTopic, navigate])
+  }, [activeTopicId, routeTopicId, clearActiveTopic, navigate])
   // The URL-bound topic no longer exists: its by-id query settled with NOT_FOUND (deleted while
   // this tab was dormant, or a rotted deep link). Recovery is a plain replace-navigation back
   // through the entry interceptor, which resolves the next target — no in-page state surgery.
@@ -585,7 +587,14 @@ const HomePage: FC = () => {
             )
           }
         : null,
-    [activeResourceKind, shellPaneOpen, handleOpenAssistantChatFromLibrary, isWindowFrame, showSidebarControls, toggleShellPane]
+    [
+      activeResourceKind,
+      shellPaneOpen,
+      handleOpenAssistantChatFromLibrary,
+      isWindowFrame,
+      showSidebarControls,
+      toggleShellPane
+    ]
   )
   const historyRecordsCenter = historyRecordsActive
     ? {
@@ -727,6 +736,7 @@ const HomePage: FC = () => {
       revealRequest={topicRevealRequest}>
       <HomeTabRuntime
         title={tabTitle}
+        // Cherry v2.1.4: emoji={visibleAssistant?.emoji}
         preserveVisuals={preserveTabVisuals}
         activeTopicId={activeTopic?.id}
         activeTopicSource={activeTopicSource}

@@ -1,3 +1,7 @@
+import { ChevronDown, FolderSearch, Import, Plus, Search, Trash2 } from 'lucide-react'
+import { type KeyboardEvent, lazy, Suspense, useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+
 import {
   Alert,
   Avatar,
@@ -19,9 +23,6 @@ import type { useResourceCatalogController } from '@renderer/hooks/resourceCatal
 import { ipcApi } from '@renderer/ipc'
 import type { ResourceItem } from '@renderer/types/resourceCatalog'
 import { cn } from '@renderer/utils/style'
-import { ChevronDown, FolderSearch, Import, Plus, Search, Trash2 } from 'lucide-react'
-import { type KeyboardEvent, lazy, Suspense, useEffect, useMemo, useState } from 'react'
-import { useTranslation } from 'react-i18next'
 
 import { ResourceCatalogSearchInput } from '../ResourceCatalogSearchInput'
 import { SkillGlobalToggle } from './ResourceCards'
@@ -146,12 +147,12 @@ export function SkillCatalogView({
   const resources = gridProps.resources.filter((resource): resource is SkillResource => resource.type === 'skill')
   const iconSkillIds = useMemo(
     () =>
-      gridProps.allResources
+      gridProps.resources
         .filter(
           (resource): resource is SkillResource => resource.type === 'skill' && Boolean(resource.raw.iconFileName)
         )
         .map((resource) => resource.id),
-    [gridProps.allResources]
+    [gridProps.resources]
   )
 
   useEffect(() => {
@@ -233,7 +234,7 @@ export function SkillCatalogView({
                 <div className="flex items-baseline gap-2">
                   <h2 className="font-semibold text-xl">{t('workspace.skillsConnectors.mySkills')}</h2>
                   <span className="text-foreground-tertiary text-xs">
-                    {gridProps.allResources.length} {t('settings.skills.installed')}
+                    {gridProps.resources.length} {t('settings.skills.installed')}
                   </span>
                 </div>
                 <div className="mt-4 flex w-full flex-wrap items-center justify-between gap-3">
@@ -355,7 +356,7 @@ function SkillCard({
           className="text-muted-foreground opacity-0 hover:bg-error-subtle hover:text-error-subtle-foreground focus-visible:opacity-100 group-hover:opacity-100">
           <Trash2 className="size-3.5" />
         </Button>
-        <SkillGlobalToggle resource={resource} size="xs" />
+        <SkillGlobalToggle resource={resource} />
       </div>
     </div>
   )

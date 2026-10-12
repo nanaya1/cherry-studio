@@ -23,9 +23,9 @@ const {
   knowledgeBasesState,
   mcpStatusState,
   openSettingsTabMock,
-  openRouteMock,
   promptCatalogState,
   promptProcessorMock,
+  remoteKnowledgeBasesState,
   settingsNavigateMock,
   skillCatalogPickerMock,
   updateAgentMock,
@@ -67,7 +67,6 @@ const {
   },
   mcpStatusState: { current: {} },
   openSettingsTabMock: vi.fn(),
-  openRouteMock: vi.fn(),
   promptCatalogState: {
     current: {
       all: [
@@ -93,6 +92,9 @@ const {
     }
   },
   promptProcessorMock: vi.fn(({ prompt }: { prompt: string }) => prompt),
+  remoteKnowledgeBasesState: {
+    current: [] as Array<{ id: string; name: string; documentCount?: number }>
+  },
   settingsNavigateMock: vi.fn(),
   skillCatalogPickerMock: vi.fn(),
   updateAgentMock: vi.fn(),
@@ -282,12 +284,18 @@ vi.mock('@renderer/data/hooks/useDataApi', () => ({
   useQuery: useQueryMock
 }))
 
-vi.mock('@renderer/hooks/useRemoteKnowledge', () => ({
-  useRemoteKnowledgeBases: () => ({ bases: [], isLoading: false })
-}))
-
 vi.mock('@renderer/hooks/useMcpRuntimeStatus', () => ({
   useMcpRuntimeStatusMap: () => mcpStatusState.current
+}))
+
+vi.mock('@renderer/hooks/useRemoteKnowledge', () => ({
+  useRemoteKnowledgeBases: () => ({
+    bases: remoteKnowledgeBasesState.current,
+    isLoading: false,
+    isRefreshing: false,
+    error: undefined,
+    refresh: vi.fn()
+  })
 }))
 
 vi.mock('@renderer/ipc', () => ({
@@ -311,8 +319,7 @@ vi.mock('@renderer/utils/aiGeneration', () => ({
 }))
 
 vi.mock('@renderer/services/mainWindowNavigation', () => ({
-  openSettingsTab: openSettingsTabMock,
-  openRoute: openRouteMock
+  openSettingsTab: openSettingsTabMock
 }))
 
 vi.mock('react-i18next', async (importOriginal) => {
@@ -458,6 +465,7 @@ vi.mock('react-i18next', async (importOriginal) => {
           'library.config.prompt.vars.time': 'Time',
           'library.config.prompt.vars.username': 'Username',
           'library.config.dialogs.create.avatar_aria': 'Pick avatar',
+          'library.config.dialogs.create.avatar_name_label': 'Avatar and name',
           'library.config.dialogs.edit.agent_description': 'Edit the essentials for this agent.',
           'library.config.dialogs.edit.agent_title': 'Edit Agent',
           'library.config.dialogs.edit.assistant_description': 'Edit the essentials for this assistant.',
@@ -624,6 +632,7 @@ beforeEach(() => {
     'mcp-1': { state: 'connected', lastCheckedAt: 1 }
   }
   promptCatalogState.current.bound = []
+  remoteKnowledgeBasesState.current = []
   boundPromptsRefetchMock.mockResolvedValue(undefined)
   bindPromptMock.mockResolvedValue(undefined)
   createPromptMock.mockResolvedValue(promptCatalogState.current.all[0])
@@ -1131,7 +1140,7 @@ describe('edit dialogs', () => {
         }}
       />
     )
-    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Locally renamed' } })
+    fireEvent.change(screen.getByLabelText('Avatar and name'), { target: { value: 'Locally renamed' } })
 
     await waitFor(() =>
       expect(updateAgentMock).toHaveBeenCalledWith({
@@ -1151,7 +1160,7 @@ describe('edit dialogs', () => {
     const onOpenChange = vi.fn()
     render(<AgentEditDialog open resource={AGENT} onOpenChange={onOpenChange} />)
 
-    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'First edit' } })
+    fireEvent.change(screen.getByLabelText('Avatar and name'), { target: { value: 'First edit' } })
     await waitFor(() => expect(updateAgentMock).toHaveBeenCalledTimes(1))
 
     fireEvent.change(screen.getByLabelText('Description'), { target: { value: 'Second edit' } })
@@ -1179,7 +1188,7 @@ describe('edit dialogs', () => {
     const props = { open: true, resource: AGENT, onOpenChange: vi.fn() }
     const { rerender } = render(<AgentEditDialog {...props} />)
 
-    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'First edit' } })
+    fireEvent.change(screen.getByLabelText('Avatar and name'), { target: { value: 'First edit' } })
     await waitFor(() => expect(updateAgentMock).toHaveBeenCalledTimes(1))
 
     installedSkillsState.current = {
@@ -1274,7 +1283,7 @@ describe('edit dialogs', () => {
             items: [
               {
                 id: 'mcp-command-only',
-                name: 'mcp-auto-install',
+                name: '@cherry/mcp-auto-install',
                 description: 'Installs MCP servers automatically',
                 baseUrl: 'https://mcp.example.com',
                 command: 'npx',
@@ -1295,11 +1304,11 @@ describe('edit dialogs', () => {
 
     selectTab('MCP')
 
-    expect(await screen.findByText('mcp-auto-install')).toBeInTheDocument()
+    expect(await screen.findByText('@cherry/mcp-auto-install')).toBeInTheDocument()
     expect(screen.queryByText('Installs MCP servers automatically')).not.toBeInTheDocument()
     expect(screen.queryByText('https://mcp.example.com')).not.toBeInTheDocument()
     expect(screen.queryByText('npx')).not.toBeInTheDocument()
-    expect(screen.getByRole('switch', { name: 'mcp-auto-install' })).toBeInTheDocument()
+    expect(screen.getByRole('switch', { name: '@cherry/mcp-auto-install' })).toBeInTheDocument()
     expect(screen.getByText('Connected')).toBeInTheDocument()
   })
 
@@ -1703,6 +1712,24 @@ describe('edit dialogs', () => {
     expect(updateAgentMock).not.toHaveBeenCalled()
   })
 
+  it('preserves remote knowledge bindings when a local binding is removed', async () => {
+    remoteKnowledgeBasesState.current = [{ id: 'remote:service-1:base-1', name: 'Remote Knowledge', documentCount: 2 }]
+    const boundAgent = { ...AGENT, knowledgeBaseIds: ['kb-1', 'remote:service-1:base-1'] }
+
+    render(<AgentEditDialog open resource={boundAgent} onOpenChange={vi.fn()} initialTab="tools.knowledge" />)
+
+    expect(screen.getByText('Remote Knowledge')).toBeInTheDocument()
+    const localKnowledgeRow = screen.getByText('Knowledge One').parentElement?.parentElement
+    expect(localKnowledgeRow).not.toBeNull()
+    fireEvent.click(within(localKnowledgeRow!).getByRole('button', { name: 'Remove knowledge base' }))
+
+    await waitFor(() =>
+      expect(updateAgentMock).toHaveBeenLastCalledWith({
+        body: expect.objectContaining({ knowledgeBaseIds: ['remote:service-1:base-1'] })
+      })
+    )
+  })
+
   it('preserves a knowledge-base re-selection made while its removal is saving', async () => {
     let resolveFirstSave: (() => void) | undefined
     updateAgentMock.mockImplementationOnce(
@@ -1908,11 +1935,11 @@ describe('edit dialogs', () => {
     expect(screen.getByText('MCP One')).toBeInTheDocument()
     expect(screen.getByText('Connected')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'MCP services Settings' }))
-    expect(openRouteMock).toHaveBeenCalledWith('/app/skills-connectors')
+    expect(openSettingsTabMock).toHaveBeenCalledWith('/settings/mcp/servers')
     expect(onAssistantOpenChange).not.toHaveBeenCalled()
 
     cleanup()
-    openRouteMock.mockClear()
+    openSettingsTabMock.mockClear()
     const onAgentOpenChange = vi.fn()
 
     render(<AgentEditDialog open resource={AGENT} onOpenChange={onAgentOpenChange} />)
@@ -1923,7 +1950,7 @@ describe('edit dialogs', () => {
     expect(screen.getByText('MCP One')).toBeInTheDocument()
     expect(screen.getByText('Connected')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'MCP services Settings' }))
-    expect(openRouteMock).toHaveBeenCalledWith('/app/skills-connectors')
+    expect(openSettingsTabMock).toHaveBeenCalledWith('/settings/mcp/servers')
     expect(onAgentOpenChange).not.toHaveBeenCalled()
   })
 
@@ -1989,23 +2016,45 @@ describe('edit dialogs', () => {
     frames.restore()
   })
 
-  it('hides avatar controls in assistant and agent edit dialogs', () => {
-    const view = render(<AssistantEditDialog open resource={ASSISTANT} onOpenChange={vi.fn()} />)
+  // MEA:resource-icons 原头像弹层测试保留供回滚。
+  // it('keeps popover content inside the dialog container', async () => {
+  //   render(<AssistantEditDialog open resource={ASSISTANT} onOpenChange={vi.fn()} />)
+  //   const dialog = screen.getByRole('dialog')
+  //   fireEvent.click(screen.getByLabelText('Pick avatar'))
+  //   expect(dialog).toContainElement(screen.getByRole('button', { name: 'Choose emoji' }))
+  // })
+  // MEA:resource-icons 防止编辑入口重新暴露 Emoji，或名称保存覆盖原头像。
+  it.each(['assistant', 'agent'] as const)('隐藏 %s 的头像编辑并仅保存名称变更', async (kind) => {
+    const user = userEvent.setup()
+    if (kind === 'assistant') {
+      render(<AssistantEditDialog open resource={ASSISTANT} onOpenChange={vi.fn()} />)
+    } else {
+      render(<AgentEditDialog open resource={AGENT} onOpenChange={vi.fn()} />)
+    }
 
-    expect(screen.queryByLabelText('Pick avatar')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Pick avatar' })).not.toBeInTheDocument()
+    expect(screen.queryByText('Avatar')).not.toBeInTheDocument()
+    expect(
+      screen.queryByText(kind === 'assistant' ? ASSISTANT.emoji : (AGENT.configuration?.avatar as string))
+    ).not.toBeInTheDocument()
+    const name = screen.getByLabelText(kind === 'assistant' ? 'Name' : 'Avatar and name')
+    await user.clear(name)
+    await user.type(name, 'Renamed resource')
 
-    view.rerender(<AgentEditDialog open resource={AGENT} onOpenChange={vi.fn()} />)
-    expect(screen.queryByLabelText('Pick avatar')).not.toBeInTheDocument()
+    const update = kind === 'assistant' ? updateAssistantMock : updateAgentMock
+    await waitFor(() =>
+      expect(update).toHaveBeenCalledWith(expect.objectContaining({ body: { name: 'Renamed resource' } }))
+    )
   })
 
   it('keeps edited values while switching tabs before save', async () => {
     render(<AgentEditDialog open resource={AGENT} onOpenChange={vi.fn()} />)
 
-    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Draft Agent' } })
+    fireEvent.change(screen.getByLabelText('Avatar and name'), { target: { value: 'Draft Agent' } })
     selectTab('System Prompt')
     selectTab('Basic')
 
-    expect(screen.getByLabelText('Name')).toHaveValue('Draft Agent')
+    expect(screen.getByLabelText('Avatar and name')).toHaveValue('Draft Agent')
   })
 
   it('shows the immutable runtime guidance without requiring hover or focus', () => {
@@ -2202,7 +2251,7 @@ describe('edit dialogs', () => {
     const onOpenChange = vi.fn()
     render(<AgentEditDialog open resource={AGENT} onOpenChange={onOpenChange} />)
 
-    const nameInput = screen.getByLabelText('Name')
+    const nameInput = screen.getByLabelText('Avatar and name')
     fireEvent.change(nameInput, { target: { value: 'Closing Agent' } })
     fireEvent.click(screen.getByRole('button', { name: 'Close' }))
 
@@ -2225,7 +2274,7 @@ describe('edit dialogs', () => {
     const onOpenChange = vi.fn()
     render(<AgentEditDialog open resource={AGENT} onOpenChange={onOpenChange} />)
 
-    const nameInput = screen.getByLabelText('Name')
+    const nameInput = screen.getByLabelText('Avatar and name')
     fireEvent.change(nameInput, { target: { value: 'Closing Agent' } })
     fireEvent.click(screen.getByRole('button', { name: 'Close' }))
 

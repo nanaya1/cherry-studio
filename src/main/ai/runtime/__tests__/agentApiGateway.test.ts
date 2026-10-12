@@ -27,11 +27,7 @@ vi.mock('@application', () => ({
   }
 }))
 
-import {
-  ApiGatewayNotRunningError,
-  gatewayCredentialsFingerprint,
-  resolveApiGatewayRuntime
-} from '../agentApiGateway'
+import { ApiGatewayNotRunningError, gatewayCredentialsFingerprint, resolveApiGatewayRuntime } from '../agentApiGateway'
 
 describe('gatewayCredentialsFingerprint', () => {
   beforeEach(() => {

@@ -7,12 +7,16 @@ import { createHash } from 'node:crypto'
 
 import { application } from '@application'
 import { CHERRY_CLOUD_PROVIDER_ID } from '@shared/data/presets/cherryai'
-import { API_GATEWAY_REQUIRED_I18N_KEY } from '@shared/types/apiGateway'
-import { gatewayClientOrigin } from '@shared/utils/apiGateway'
+import { API_GATEWAY_REQUIRED_I18N_KEY, type ApiGatewayConfig } from '@shared/types/apiGateway'
+import { DEFAULT_API_GATEWAY_HOST, DEFAULT_API_GATEWAY_PORT, gatewayClientOrigin } from '@shared/utils/apiGateway'
 
 /** Whether Agent traffic for this provider must pass through Cherry's local API Gateway. */
 export function requiresAgentGateway(providerId: string): boolean {
   return providerId === CHERRY_CLOUD_PROVIDER_ID
+}
+
+export function getApiGatewayClientOrigin(config: Pick<ApiGatewayConfig, 'host' | 'port'>): string {
+  return gatewayClientOrigin(config.host || DEFAULT_API_GATEWAY_HOST, config.port || DEFAULT_API_GATEWAY_PORT)
 }
 
 /**
@@ -22,7 +26,7 @@ export function requiresAgentGateway(providerId: string): boolean {
 export function gatewayCredentialsFingerprint(): string {
   const apiGatewayService = application.get('ApiGatewayService')
   const config = apiGatewayService.getCurrentConfig()
-  const baseUrl = `http://${config.host || '127.0.0.1'}:${config.port || 24333}`
+  const baseUrl = getApiGatewayClientOrigin(config)
   return createHash('sha256')
     .update(
       JSON.stringify(
@@ -60,19 +64,19 @@ export async function resolveApiGatewayRuntime(sessionId: string): Promise<{
 }> {
   const apiGatewayService = application.get('ApiGatewayService')
   const config = apiGatewayService.getCurrentConfig()
-  // Only an explicit opt-out requires consent. Automatic mode starts the local bridge on demand,
-  // while a gateway that is temporarily down still converges without prompting again.
-  if (config.enabled === false) throw new ApiGatewayNotRunningError()
-  // `ensureRunning()` goes through the same reconciler and never persists an intent, so automatic
-  // mode remains automatic rather than being promoted to always-on.
+  // Ask for consent on the PERSISTED intent, never on `isRunning()`: the gateway is also briefly
+  // down while binding at boot, mid-restart, or after a failed activation, and prompting the user
+  // to enable a service they already enabled would be nonsense.
+  if (!config.enabled) throw new ApiGatewayNotRunningError()
+  // Consent already given, so converging is not an implicit start. `ensureRunning()` goes through
+  // the same reconciler (serializing behind an in-flight transition) and throws the real bind
+  // error; unlike `start()` it cannot re-persist an intent, so it can never re-enable the gateway.
   if (!apiGatewayService.isRunning()) await apiGatewayService.ensureRunning()
   // Only after the checks above: this persists a freshly generated key on first use, and a failing
   // route must not leave that side effect behind.
   const apiKey = await apiGatewayService.ensureValidApiKey()
-  const host = config.host || '127.0.0.1'
-  const port = config.port || 24333
   return {
-    baseUrl: gatewayClientOrigin(host, port),
+    baseUrl: getApiGatewayClientOrigin(config),
     apiKey,
     usageHeaders: apiGatewayService.getAgentSessionUsageHeaders(sessionId),
     internalRequestToken: apiGatewayService.getInternalRequestToken()

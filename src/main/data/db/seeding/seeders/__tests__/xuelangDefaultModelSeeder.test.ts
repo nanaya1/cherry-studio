@@ -1,3 +1,7 @@
+import { setupTestDatabase } from '@test-helpers/db'
+import { and, asc, eq } from 'drizzle-orm'
+import { describe, expect, it } from 'vitest'
+
 import { agentTable } from '@data/db/schemas/agent'
 import { assistantTable } from '@data/db/schemas/assistant'
 import { preferenceTable } from '@data/db/schemas/preference'
@@ -20,9 +24,6 @@ import {
   XUELANG_PROVIDER_NAME
 } from '@shared/data/presets/xuelang'
 import { DEFAULT_ASSISTANT_SETTINGS } from '@shared/data/types/assistant'
-import { setupTestDatabase } from '@test-helpers/db'
-import { and, asc, eq } from 'drizzle-orm'
-import { describe, expect, it } from 'vitest'
 
 describe('XuelangDefaultModelSeeder', () => {
   const dbh = setupTestDatabase()

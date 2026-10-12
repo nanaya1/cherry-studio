@@ -525,10 +525,6 @@ vi.mock('@renderer/hooks/useKnowledgeBase', () => ({
   useKnowledgeBases: () => ({ bases: mocks.knowledgeBases, isLoading: mocks.knowledgeBasesLoading })
 }))
 
-vi.mock('@renderer/hooks/useRemoteKnowledge', () => ({
-  useRemoteKnowledgeBases: () => ({ bases: [], isLoading: false })
-}))
-
 vi.mock('@renderer/hooks/useSkills', () => ({
   useAvailableSkills: () => ({
     skills: mocks.availableSkills,
@@ -3314,7 +3310,6 @@ describe('AgentComposer', () => {
   })
 
   it('restores cached skill draft tokens after composer remount', () => {
-    mocks.availableSkills = [pdfSkill]
     vi.mocked(cacheService.get).mockReturnValue({
       text: 'Use the pdf skill. continue',
       tokens: [
@@ -5255,38 +5250,36 @@ describe('AgentComposer', () => {
     expect(belowText.indexOf('Claude Sonnet 4.5')).toBeLessThan(belowText.indexOf('Workspace 1'))
   })
 
-  it('keeps the full home composer safe before an agent is selected', () => {
+  it('restores the MEA model and permission selector positions in draft home mode', () => {
+    mocks.sessionLayout = 'time'
+    mocks.pinnedToolIds = ['permission-mode', 'skills']
+
     render(
       <AgentHomeComposer
-        agentId=""
-        sessionId="new-task:tab-1:agent:pending"
-        draftScopeKey="new-task:tab-1:agent"
-        sessionOverride={{ workspace: undefined, workspaceId: null }}
-        resolvedAgent={undefined}
-        resolvedModel={undefined}
+        agentId="agent-1"
+        sessionId="session-1"
         sendMessage={mocks.sendMessage}
         stop={mocks.stop}
         isStreaming={false}
-        sendDisabled
+        showAgentControl={false}
+        modelControlInSendAccessory
+        toolShortcutsBeforeContextControls
       />
     )
 
-    expect(screen.getByTestId('agent-selector')).toBeInTheDocument()
-    expect(screen.getByTestId('agent-model-selector')).toBeInTheDocument()
-    expect(mocks.surfaceProps?.sendDisabled).toBe(true)
+    const leftControls = screen.getByTestId('composer-left-controls')
+    expect(within(leftControls).queryByRole('button', { name: 'agent.settings.permissionMode.title' })).not.toBeInTheDocument()
 
-    const skillsLauncher = mocks.registeredLaunchers.get('agent-skills')?.[0]
-    expect(skillsLauncher?.disabled).toBe(true)
+    const belowControls = screen.getByTestId('composer-below-controls')
+    const permissionButton = within(belowControls).getByRole('button', { name: 'agent.settings.permissionMode.title' })
+    const workspaceButton = within(belowControls).getByText('Workspace 1').closest('button')!
+    expect(belowControls).not.toHaveTextContent('Agent')
+    expect(belowControls).not.toHaveTextContent('Claude Sonnet 4.5')
+    expect(permissionButton.compareDocumentPosition(workspaceButton)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
 
-    skillsLauncher?.action?.({
-      parentPanel: undefined,
-      queryAnchor: undefined,
-      quickPanel: { open: vi.fn() }
-    } as never)
-    mocks.surfaceProps?.onRootPanelOpen?.()
-
-    expect(mocks.availableSkillsRefresh).not.toHaveBeenCalled()
-    expect(mocks.openResourceEditDialog).not.toHaveBeenCalled()
+    const sendAccessory = screen.getByTestId('composer-send-accessory')
+    expect(sendAccessory).toHaveTextContent('Claude Sonnet 4.5')
+    expect(sendAccessory).not.toHaveTextContent('Workspace 1')
   })
 
   it('keeps missing-agent input local while selecting an agent', () => {

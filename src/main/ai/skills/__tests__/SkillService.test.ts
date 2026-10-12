@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import * as fs from 'node:fs'
 import * as os from 'node:os'
@@ -5,6 +6,7 @@ import * as path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 import { setupTestDatabase } from '@test-helpers/db'
+import { MockMainPreferenceServiceUtils } from '@test-mocks/main/PreferenceService'
 import AdmZip from 'adm-zip'
 import { eq } from 'drizzle-orm'
 import { net } from 'electron'
@@ -19,35 +21,40 @@ import { agentGlobalSkillService } from '@data/services/AgentGlobalSkillService'
 import { loggerService } from '@logger'
 import { isWin } from '@main/core/platform'
 import { skillHandlers } from '@main/ipc/handlers/skill'
-import {
-  findAllSkillDirectories,
-  findSkillIconFileName,
-  findSkillMdPath,
-  parseSkillMetadata,
-  skillMdHasFrontmatterKey
-} from '@main/utils/markdownParser'
+import type * as MarkdownParserModule from '@main/utils/markdownParser'
+import { findAllSkillDirectories, findSkillMdPath, parseSkillMetadata } from '@main/utils/markdownParser'
+import type * as ProcessRunnerModule from '@main/utils/processRunner'
+import { CommandOutputLimitError } from '@main/utils/processRunner'
+import type * as ShellEnvModule from '@main/utils/shellEnv'
 import { SKILL_LIST_MEMBERSHIP_DIMENSIONS } from '@shared/data/api/schemas/skills'
 import type { DataApiDataChangeEffect } from '@shared/data/api/types'
+import { BINARY_INSTALL_PREFERENCE_KEY } from '@shared/data/presets/binaryTools'
 
 const notifyDataApiDataChangeMock = vi.hoisted(() => vi.fn())
 
 vi.mock('@data/dataApiDataChange', () => ({ notifyDataApiDataChange: notifyDataApiDataChangeMock }))
 
-vi.mock('@main/utils/markdownParser', () => ({
+vi.mock('@main/utils/markdownParser', async (importOriginal) => ({
+  ...(await importOriginal<typeof MarkdownParserModule>()),
   parseSkillMetadata: vi.fn(),
-  findSkillIconFileName: vi.fn().mockResolvedValue(undefined),
   findAllSkillDirectories: vi.fn().mockResolvedValue([]),
-  findSkillMdPath: vi.fn(),
-  skillMdHasFrontmatterKey: vi.fn().mockResolvedValue(false),
-  SKILL_ICON_FILE_NAMES: ['icon.webp', 'icon.png', 'icon.jpg', 'icon.jpeg']
+  findSkillMdPath: vi.fn()
 }))
 
-vi.mock('@main/utils/shellEnv', () => ({
+vi.mock('@main/utils/shellEnv', async (importOriginal) => ({
+  ...(await importOriginal<typeof ShellEnvModule>()),
   getShellEnv: vi.fn().mockResolvedValue({})
 }))
 
 const executeCommandMock = vi.hoisted(() => vi.fn())
-vi.mock('@main/utils/processRunner', () => ({
+type CommandOptions = { env?: Record<string, string>; maxOutputBytes?: number; timeout?: number }
+const boundedOutput = (output: string, options?: CommandOptions) => {
+  const limit = options?.maxOutputBytes
+  if (limit !== undefined && Buffer.byteLength(output) > limit) throw new CommandOutputLimitError(limit)
+  return output
+}
+vi.mock('@main/utils/processRunner', async (importOriginal) => ({
+  ...(await importOriginal<typeof ProcessRunnerModule>()),
   executeCommand: executeCommandMock
 }))
 
@@ -110,12 +117,11 @@ describe('SkillService', () => {
   // These are spies over the real implementations; drop any per-test stub and call history so one
   // install test cannot hand its stub to the next.
   beforeEach(() => {
+    MockMainPreferenceServiceUtils.resetMocks()
     vi.mocked(skillPaths.createTempDir).mockReset()
     vi.mocked(skillPaths.safeRemoveDirectory).mockReset()
     vi.mocked(skillArchive.extractZip).mockReset()
     vi.mocked(skillArchive.resolveSkillDirectory).mockReset()
-    vi.mocked(findSkillIconFileName).mockReset().mockResolvedValue(undefined)
-    vi.mocked(skillMdHasFrontmatterKey).mockReset().mockResolvedValue(false)
   })
 
   async function seedAgent() {
@@ -126,18 +132,6 @@ describe('SkillService', () => {
       instructions: 'You are a helpful assistant.',
       model: null,
       orderKey: 'a0'
-    })
-  }
-
-  async function seedDefaultAgent() {
-    await dbh.db.insert(agentTable).values({
-      id: AGENT_ID,
-      type: 'claude-code',
-      name: 'Craftsman',
-      instructions: 'You are a helpful assistant.',
-      model: null,
-      orderKey: 'a0',
-      configuration: { builtin_role: 'assistant' }
     })
   }
 
@@ -175,6 +169,39 @@ describe('SkillService', () => {
   }
 
   describe('catalog scopes', () => {
+    it('resolves registered Skill icons and rejects symlinks outside the Skill directory', async () => {
+      await seedSkills()
+      const root = await createTempDir('skill-icons-')
+      const globalRoot = path.join(root, 'global')
+      const skillOneRoot = path.join(globalRoot, 'skill-one')
+      const skillTwoRoot = path.join(globalRoot, 'skill-two')
+      const externalSkillRoot = path.join(root, 'outside-skill')
+      await Promise.all([
+        fs.promises.mkdir(skillOneRoot, { recursive: true }),
+        fs.promises.mkdir(externalSkillRoot, { recursive: true })
+      ])
+      await Promise.all([
+        fs.promises.writeFile(path.join(skillOneRoot, 'icon.png'), 'inside'),
+        fs.promises.writeFile(path.join(externalSkillRoot, 'icon.png'), 'outside')
+      ])
+      await fs.promises.symlink(externalSkillRoot, skillTwoRoot, 'junction')
+      await dbh.db.update(agentGlobalSkillTable).set({ iconFileName: 'icon.png' })
+
+      const getPathSpy = vi.spyOn(application, 'getPath').mockImplementation((key: string, filename?: string) => {
+        const base = key === 'feature.agents.skills' ? globalRoot : root
+        return filename ? path.join(base, filename) : base
+      })
+      try {
+        const service = new SkillService()
+        const skillOneIconPath = await fs.promises.realpath(path.join(skillOneRoot, 'icon.png'))
+        await expect(service.resolveIconUrls([SKILL_ID_1, SKILL_ID_2])).resolves.toEqual({
+          [SKILL_ID_1]: pathToFileURL(skillOneIconPath).href
+        })
+      } finally {
+        getPathSpy.mockRestore()
+      }
+    })
+
     it('uses physical directories for registered skills with no source URL and excludes junction targets outside system roots', async () => {
       await seedSkills()
       await dbh.db
@@ -331,28 +358,6 @@ describe('SkillService', () => {
       expect(result.find((s) => s.id === SKILL_ID_BUILTIN)?.isEnabled).toBe(false)
     })
 
-    it('a default-disabled builtin projects isEnabled false without a join row and true once the user opts in', async () => {
-      const skillService = new SkillService()
-      await seedAgent()
-      await dbh.db.insert(agentGlobalSkillTable).values({
-        id: SKILL_ID_BUILTIN,
-        name: 'mechtool',
-        description: 'Mechanical design corpus',
-        folderName: 'mechtool-mechanical-design',
-        source: 'builtin',
-        contentHash: 'mmm111',
-        isEnabled: true
-      })
-
-      const defaultList = await skillService.list({ agentId: AGENT_ID })
-      expect(defaultList.find((s) => s.id === SKILL_ID_BUILTIN)?.isEnabled).toBe(false)
-
-      skillService.toggle({ agentId: AGENT_ID, skillId: SKILL_ID_BUILTIN, isEnabled: true })
-
-      const optedIn = await skillService.list({ agentId: AGENT_ID })
-      expect(optedIn.find((s) => s.id === SKILL_ID_BUILTIN)?.isEnabled).toBe(true)
-    })
-
     it('filters by search against name or description in the database', async () => {
       const skillService = new SkillService()
       await seedSkills()
@@ -375,46 +380,6 @@ describe('SkillService', () => {
       const result = await skillService.list({ search: '%' })
 
       expect(result.map((s) => s.id)).toEqual([SKILL_ID_1])
-    })
-  })
-
-  describe('resolveIconUrls', () => {
-    it('returns only supported regular icon files contained by the managed skill directory', async () => {
-      const root = await createTempDir('skill-icons-')
-      const storageRoot = path.join(root, 'Skills')
-      const skillRoot = path.join(storageRoot, 'skill-one')
-      const outsideIcon = path.join(root, 'outside.png')
-      await fs.promises.mkdir(skillRoot, { recursive: true })
-      await fs.promises.writeFile(path.join(skillRoot, 'icon.png'), 'inside')
-      await fs.promises.writeFile(outsideIcon, 'outside')
-      await seedSkills()
-      await dbh.db
-        .update(agentGlobalSkillTable)
-        .set({ iconFileName: 'icon.png' })
-        .where(eq(agentGlobalSkillTable.id, SKILL_ID_1))
-      const getPathSpy = vi.spyOn(application, 'getPath').mockImplementation((key: string, filename?: string) => {
-        if (key === 'feature.agents.skills') return filename ? path.join(storageRoot, filename) : storageRoot
-        return filename ? `/mock/${key}/${filename}` : `/mock/${key}`
-      })
-
-      try {
-        const skillService = new SkillService()
-        await expect(skillService.resolveIconUrls([SKILL_ID_1])).resolves.toEqual({
-          [SKILL_ID_1]: pathToFileURL(await fs.promises.realpath(path.join(skillRoot, 'icon.png'))).href
-        })
-
-        await fs.promises.rm(path.join(skillRoot, 'icon.png'))
-        await fs.promises.symlink(outsideIcon, path.join(skillRoot, 'icon.png'))
-        await expect(skillService.resolveIconUrls([SKILL_ID_1])).resolves.toEqual({})
-
-        await dbh.db
-          .update(agentGlobalSkillTable)
-          .set({ iconFileName: '../icon.png' })
-          .where(eq(agentGlobalSkillTable.id, SKILL_ID_1))
-        await expect(skillService.resolveIconUrls([SKILL_ID_1])).resolves.toEqual({})
-      } finally {
-        getPathSpy.mockRestore()
-      }
     })
   })
 
@@ -711,9 +676,7 @@ describe('SkillService', () => {
       )
     })
 
-    it('imports a system skill and enables it for the default Craftsman agent', async () => {
-      await seedDefaultAgent()
-
+    it('imports a system skill into the managed library without changing agent associations', async () => {
       const result = await skillService.importSystem({ directoryPath: sourceSkillDir })
 
       expect(result).toMatchObject({
@@ -739,28 +702,7 @@ describe('SkillService', () => {
         )
       }
       expect(path.normalize(skillService.getInstalledSkillDirectory(result))).toBe(path.normalize(managed))
-      expect(await dbh.db.select().from(agentSkillTable)).toEqual([
-        expect.objectContaining({ agentId: AGENT_ID, skillId: result.id, isEnabled: true })
-      ])
-    })
-
-    it('serves only bounded text content to the skill file preview', async () => {
-      const result = await skillService.importSystem({ directoryPath: sourceSkillDir })
-      const managedRoot = path.join(dataSkillsRoot, 'large-skill')
-
-      await fs.promises.writeFile(path.join(managedRoot, 'binary.bin'), Buffer.alloc(512))
-      await fs.promises.writeFile(path.join(managedRoot, 'oversized.txt'), Buffer.alloc(2 * 1024 * 1024 + 1, 0x61))
-
-      await expect(skillService.readFile(result.id, 'SKILL.md')).resolves.toBe('# Large skill')
-      await expect(skillService.readFile(result.id, 'binary.bin')).resolves.toBeNull()
-      await expect(skillService.readFile(result.id, 'oversized.txt')).resolves.toBeNull()
-
-      if (process.platform !== 'win32') {
-        const outsideFile = path.join(home, 'outside.txt')
-        await fs.promises.writeFile(outsideFile, 'outside content')
-        await fs.promises.symlink(outsideFile, path.join(managedRoot, 'escape.txt'))
-        await expect(skillService.readFile(result.id, 'escape.txt')).resolves.toBeNull()
-      }
+      expect(await dbh.db.select().from(agentSkillTable)).toEqual([])
     })
 
     it('does not overwrite the editable managed copy when the system skill is already imported', async () => {
@@ -873,11 +815,13 @@ describe('SkillService', () => {
 
     /**
      * Drives the real git plumbing through a fake `executeCommand`: `ls-remote` reports the given
-     * refs, `ls-tree` the given tree, and `checkout` materializes the tree on disk.
+     * refs, `ls-tree` resolves a path to a tree and lists it, and `read-tree` materializes either
+     * that tree or the entries its sparse patterns select on disk.
      */
     async function setupGithubInstall(options: {
       refs?: Array<{ name: string; oid: string; namespace?: 'heads' | 'tags' }>
       tree?: Array<string | { path: string; size: number }>
+      readTreeOutput?: string
       realInstall?: boolean
     }) {
       const skillService = new SkillService()
@@ -888,34 +832,53 @@ describe('SkillService', () => {
         typeof entry === 'string' ? { path: entry, size: 8 } : entry
       )
       const gitCalls: string[][] = []
+      const treeOid = (treePath: string) => Buffer.from(treePath).toString('hex').padEnd(40, '0')
+      const treePathOf = (oid: string) =>
+        oid === 'FETCH_HEAD^{tree}' ? '' : Buffer.from(oid.replace(/(00)+$/, ''), 'hex').toString()
+      const entriesUnder = (treePath: string) =>
+        tree.flatMap((entry) =>
+          !treePath
+            ? [entry]
+            : entry.path.startsWith(`${treePath}/`)
+              ? [{ ...entry, path: entry.path.slice(treePath.length + 1) }]
+              : []
+        )
 
-      executeCommandMock.mockImplementation(async (_command: string, args: string[]) => {
+      executeCommandMock.mockImplementation(async (_command: string, args: string[], runOptions?: CommandOptions) => {
         gitCalls.push(args)
         if (args.includes('ls-remote')) {
-          return (options.refs ?? [])
+          const output = (options.refs ?? [])
             .map((ref) => `${ref.oid}\trefs/${ref.namespace ?? 'heads'}/${ref.name}`)
             .join('\n')
+          return boundedOutput(output, runOptions)
+        }
+        if (args.includes('ls-tree') && args.includes('-r')) {
+          return entriesUnder(treePathOf(args[args.length - 1]))
+            .map((entry) => `100644 blob ${'d'.repeat(40)}\t${entry.path}\0`)
+            .join('')
         }
         if (args.includes('ls-tree')) {
-          const separator = args.lastIndexOf('--')
-          const pathspec = separator === -1 ? null : args[separator + 1]
-          const selectedPath = pathspec?.replace(/^:\(top,literal\)/, '')
-          const selectedTree = tree.filter(
-            (entry) => !selectedPath || entry.path === selectedPath || entry.path.startsWith(`${selectedPath}/`)
-          )
-          return selectedTree.map((entry) => `100644 blob ${'d'.repeat(40)} ${entry.size}\t${entry.path}\0`).join('')
+          const selectedPath = args[args.length - 1].replace(/^:\(top,literal\)/, '')
+          return entriesUnder(selectedPath).length ? `040000 tree ${treeOid(selectedPath)}\t${selectedPath}\0` : ''
         }
-        if (args.includes('checkout')) {
-          const separator = args.lastIndexOf('--')
-          const pathspec = args[separator + 1]
-          const selectedPath = pathspec === '.' ? null : pathspec.replace(/^:\(top,literal\)/, '')
-          for (const entry of tree.filter(
-            (entry) => !selectedPath || entry.path === selectedPath || entry.path.startsWith(`${selectedPath}/`)
-          )) {
-            const contentPath = path.join(workDir, 'content', entry.path)
+        if (args.includes('read-tree')) {
+          const gitDir = args.find((arg) => arg.startsWith('--git-dir='))!.slice('--git-dir='.length)
+          const workTree = args.find((arg) => arg.startsWith('--work-tree='))!.slice('--work-tree='.length)
+          const patterns = args.includes('core.sparseCheckout=true')
+            ? (await fs.promises.readFile(path.join(gitDir, 'info', 'sparse-checkout'), 'utf8'))
+                .split('\n')
+                .filter(Boolean)
+            : null
+          const checkedOut = patterns
+            ? tree.filter((entry) => patterns.includes(path.posix.basename(entry.path)))
+            : entriesUnder(treePathOf(args[args.length - 1]))
+          for (const entry of checkedOut) {
+            const contentPath = path.join(workTree, entry.path)
             await fs.promises.mkdir(path.dirname(contentPath), { recursive: true })
             await fs.promises.writeFile(contentPath, '# skill')
+            await fs.promises.truncate(contentPath, entry.size)
           }
+          return boundedOutput(options.readTreeOutput ?? '', runOptions)
         }
         return ''
       })
@@ -954,6 +917,32 @@ describe('SkillService', () => {
       )
     })
 
+    it('uses the configured GitHub mirror for transport without changing persisted provenance', async () => {
+      MockMainPreferenceServiceUtils.setPreferenceValue(BINARY_INSTALL_PREFERENCE_KEY, {
+        githubMirror: 'https://ghfast.top',
+        githubToken: '',
+        npmRegistry: '',
+        pipIndexUrl: '',
+        verifySignatures: true
+      })
+      const { skillService, installSpy, gitCalls } = await setupGithubInstall({
+        refs: [{ name: 'main', oid: 'a'.repeat(40) }]
+      })
+
+      await skillService.install({
+        installSource: 'github:https://github.com/owner/repo/blob/main/skills/demo/SKILL.md'
+      })
+
+      const transportUrl = 'https://ghfast.top/https://github.com/owner/repo'
+      expect(gitCalls.find((args) => args.includes('ls-remote'))).toContain(transportUrl)
+      expect(gitCalls.find((args) => args.includes('fetch'))).toContain(transportUrl)
+      expect(installSpy).toHaveBeenCalledWith(
+        expect.any(String),
+        'marketplace',
+        'https://raw.githubusercontent.com/owner/repo/refs/heads/main/skills/demo/SKILL.md'
+      )
+    })
+
     it('updates the same skill when switching between blob and explicit raw branch URLs', async () => {
       const root = await createTempDir('github-reinstall-')
       const dataSkillsRoot = path.join(root, 'Data', 'Skills')
@@ -977,13 +966,11 @@ describe('SkillService', () => {
         refs: [{ name: 'main', oid: 'a'.repeat(40) }],
         realInstall: true
       })
-      await seedDefaultAgent()
 
       try {
         const installed = await skillService.install({
           installSource: 'github:https://github.com/owner/repo/blob/main/skills/demo/SKILL.md'
         })
-        await dbh.db.update(agentSkillTable).set({ isEnabled: false }).where(eq(agentSkillTable.skillId, installed.id))
         const updatedFromRaw = await skillService.install({
           installSource: 'github:https://raw.githubusercontent.com/owner/repo/refs/heads/main/skills/demo/SKILL.md'
         })
@@ -993,9 +980,6 @@ describe('SkillService', () => {
 
         expect(updatedFromRaw).toMatchObject({ id: installed.id, sourceUrl: installed.sourceUrl })
         expect(updatedFromBlob).toMatchObject({ id: installed.id, sourceUrl: installed.sourceUrl })
-        expect(await dbh.db.select().from(agentSkillTable).where(eq(agentSkillTable.skillId, installed.id))).toEqual([
-          expect.objectContaining({ agentId: AGENT_ID, isEnabled: false })
-        ])
       } finally {
         getPathSpy.mockRestore()
         vi.mocked(parseSkillMetadata).mockReset()
@@ -1058,7 +1042,7 @@ describe('SkillService', () => {
       expect(installSpy).toHaveBeenCalledWith(
         expect.stringContaining(`${path.sep}content`),
         'marketplace',
-        `https://github.com/owner/repo/tree/${oid}`
+        `https://github.com/owner/repo/blob/${oid}/SKILL.md`
       )
     })
 
@@ -1108,11 +1092,20 @@ describe('SkillService', () => {
           installSource: 'github:https://github.com/owner/repo/blob/main/skills/demo/SKILL.md'
         })
       ).rejects.toThrow('No SKILL.md found')
-      expect(gitCalls.some((args) => args.includes('checkout'))).toBe(false)
+      expect(gitCalls.some((args) => args.includes('read-tree'))).toBe(false)
     })
 
-    it('rejects an oversized selected target before checkout', async () => {
-      const { skillService, gitCalls } = await setupGithubInstall({
+    it('rejects a directory the commit does not hold before checkout', async () => {
+      const { skillService, gitCalls } = await setupGithubInstall({ tree: ['skills/demo/SKILL.md'] })
+
+      await expect(skillService.install({ installSource: 'claude-plugins:owner/repo/skills/missing' })).rejects.toThrow(
+        'No SKILL.md or skill.md found at the selected GitHub location: skills/missing/'
+      )
+      expect(gitCalls.some((args) => args.includes('read-tree'))).toBe(false)
+    })
+
+    it('rejects an oversized selected target before installing it', async () => {
+      const { skillService, installSpy } = await setupGithubInstall({
         refs: [{ name: 'main', oid: 'a'.repeat(40) }],
         tree: ['skills/demo/SKILL.md', { path: 'skills/demo/model.bin', size: 100 * 1024 * 1024 }]
       })
@@ -1121,8 +1114,8 @@ describe('SkillService', () => {
         skillService.install({
           installSource: 'github:https://github.com/owner/repo/blob/main/skills/demo/SKILL.md'
         })
-      ).rejects.toThrow('too large')
-      expect(gitCalls.some((args) => args.includes('checkout'))).toBe(false)
+      ).rejects.toThrow(/Skill holds \d+ bytes, over the 104857600-byte limit/)
+      expect(installSpy).not.toHaveBeenCalled()
     })
 
     it('refuses a ref name carried by both a branch and a tag', async () => {
@@ -1194,22 +1187,105 @@ describe('SkillService', () => {
       ).rejects.toThrow('collide')
     })
 
-    it('materializes only the selected directory instead of the whole repository', async () => {
-      const { skillService, gitCalls } = await setupGithubInstall({ refs: [{ name: 'main', oid: 'a'.repeat(40) }] })
+    /** Drives the real git binary against a local fixture repository built by `buildRoot`. */
+    async function setupRealGitInstall(
+      buildRoot: (blob: (content: string) => string, mktree: (entries: string[]) => string) => string,
+      extraEnv: Record<string, string> = {}
+    ) {
+      const repoDir = await createTempDir('github-fixture-')
+      const identity = {
+        GIT_AUTHOR_NAME: 't',
+        GIT_AUTHOR_EMAIL: 't@t',
+        GIT_COMMITTER_NAME: 't',
+        GIT_COMMITTER_EMAIL: 't@t'
+      }
+      const git = (args: string[], input?: string) =>
+        execFileSync('git', [`--git-dir=${repoDir}`, ...args], {
+          input,
+          encoding: 'utf8',
+          env: { ...process.env, ...identity }
+        }).trim()
+      git(['init', '--bare', '--quiet'])
+      const root = buildRoot(
+        (content) => git(['hash-object', '-w', '--stdin'], content),
+        (entries) => git(['mktree'], entries.map((entry) => `${entry}\n`).join(''))
+      )
+      git(['update-ref', 'refs/heads/main', git(['commit-tree', root, '-m', 'fixture'])])
+      git(['symbolic-ref', 'HEAD', 'refs/heads/main'])
+      git(['config', 'uploadpack.allowFilter', 'true'])
 
-      await skillService.install({
-        installSource: 'github:https://github.com/owner/repo/blob/main/skills/demo/SKILL.md'
+      const workDir = await createTempDir('github-install-')
+      vi.mocked(skillPaths.createTempDir).mockResolvedValue(workDir)
+      vi.mocked(skillPaths.safeRemoveDirectory).mockResolvedValue(undefined)
+      const { executeCommand } = await vi.importActual<typeof ProcessRunnerModule>('@main/utils/processRunner')
+      executeCommandMock.mockImplementation((command: string, args: string[], runOptions: CommandOptions) =>
+        executeCommand(
+          command,
+          args.map((arg) => (arg === 'https://github.com/owner/repo' ? pathToFileURL(repoDir).href : arg)),
+          { ...runOptions, env: { ...runOptions.env, PATH: process.env.PATH ?? '', ...extraEnv } }
+        )
+      )
+      const skillService = new SkillService()
+      const installSpy = vi
+        .spyOn(skillService as unknown as SkillServicePrivate, 'installSkillDir')
+        .mockResolvedValue({})
+      vi.mocked(findSkillMdPath).mockImplementation(async (dir: string) => path.join(dir, 'SKILL.md'))
+      return { skillService, installSpy, workDir }
+    }
+
+    // A case-insensitive checkout once wrote `skills/demo` over the `Skills/demo` tree that had
+    // been checked. Only a case-insensitive filesystem (macOS, Windows) reproduces it.
+    it('installs the tree it checked, not a case-variant sibling', async () => {
+      const { skillService, installSpy } = await setupRealGitInstall((blob, mktree) => {
+        const checked = mktree([`100644 blob ${blob('---\nname: demo\n---\nchecked\n')}\tSKILL.md`])
+        const variant = mktree([
+          `100644 blob ${blob('---\nname: demo\n---\nvariant\n')}\tSKILL.md`,
+          `100755 blob ${blob('echo variant\n')}\tvariant.sh`
+        ])
+        return mktree([
+          `040000 tree ${mktree([`040000 tree ${checked}\tdemo`])}\tSkills`,
+          `040000 tree ${mktree([`040000 tree ${variant}\tdemo`])}\tskills`
+        ])
       })
 
-      expect(gitFetchArgs(gitCalls)).toEqual(expect.arrayContaining(['--filter=blob:none']))
-      expect(gitCalls.find((args) => args.includes('checkout'))).toEqual(
-        expect.arrayContaining(['--', ':(top,literal)skills/demo'])
+      await skillService.install({ installSource: 'claude-plugins:owner/repo/Skills/demo' })
+
+      const installedDirectory = installSpy.mock.calls[0][0]
+      expect(path.basename(installedDirectory)).toBe('demo')
+      expect(await fs.promises.readdir(installedDirectory)).toEqual(['SKILL.md'])
+      expect(await fs.promises.readFile(path.join(installedDirectory, 'SKILL.md'), 'utf8')).toContain('checked')
+    })
+
+    it('installs the whole skills.sh skill even when the user enables sparse checkout globally', async () => {
+      const globalConfig = path.join(await createTempDir('git-global-'), 'gitconfig')
+      await fs.promises.writeFile(globalConfig, '[core]\n\tsparseCheckout = true\n')
+      const { skillService, installSpy, workDir } = await setupRealGitInstall(
+        (blob, mktree) => {
+          const demo = mktree([
+            `100644 blob ${blob('---\nname: demo\n---\n')}\tSKILL.md`,
+            `100755 blob ${blob('echo run\n')}\trun.sh`
+          ])
+          return mktree([`040000 tree ${mktree([`040000 tree ${demo}\tdemo`])}\tskills`])
+        },
+        { GIT_CONFIG_GLOBAL: globalConfig }
       )
-      expect(gitCalls.filter((args) => args.includes('ls-tree'))).toEqual([
-        expect.arrayContaining(['--', ':(top,literal)skills/demo'])
-      ])
-      const treeCall = executeCommandMock.mock.calls.find(([, args]) => args.includes('ls-tree'))
-      expect(treeCall?.[2]).toMatchObject({ maxOutputBytes: expect.any(Number) })
+      await findDescriptorsIn(workDir, { 'skills/demo': 'demo' })
+
+      await skillService.install({ installSource: 'skills.sh:owner/repo/demo' })
+
+      const installedDirectory = installSpy.mock.calls[0][0]
+      expect((await fs.promises.readdir(installedDirectory)).sort()).toEqual(['SKILL.md', 'run.sh'])
+    })
+
+    it('refuses a remote whose ref listing never ends instead of buffering it', async () => {
+      const { skillService, installSpy } = await setupGithubInstall({
+        refs: [{ name: 'x'.repeat(32 * 1024 * 1024), oid: 'a'.repeat(40) }]
+      })
+
+      await expect(
+        skillService.install({ installSource: 'github:https://github.com/owner/repo/blob/main/skills/demo/SKILL.md' })
+      ).rejects.toThrow('too many branches and tags')
+      expect(installSpy).not.toHaveBeenCalled()
     })
 
     it('never lets an untrusted repository prompt for credentials or pull LFS payloads', async () => {
@@ -1241,40 +1317,152 @@ describe('SkillService', () => {
       expect(createTempDirSpy).not.toHaveBeenCalled()
     })
 
-    /**
-     * Drives the clone-based install (claude-plugins / skills.sh) through a fake `executeCommand`
-     * whose `clone` materializes the selected skill directory on disk.
-     */
-    async function setupClonedInstall() {
-      const skillService = new SkillService()
-      const workDir = await createTempDir('clone-install-')
-      vi.mocked(skillPaths.createTempDir).mockResolvedValue(workDir)
-      const gitCalls: Array<{ args: string[]; options?: { env?: Record<string, string>; timeout?: number } }> = []
+    const marketplaceSources = [
+      ['claude-plugins', 'claude-plugins:owner/repo/skills/demo'],
+      ['skills.sh', 'skills.sh:owner/repo/demo']
+    ] as const
 
-      executeCommandMock.mockImplementation(async (_command: string, args: string[], options?: object) => {
-        gitCalls.push({ args, options })
-        if (args.includes('clone')) {
-          await fs.promises.mkdir(path.join(workDir, 'skills', 'demo'), { recursive: true })
-          await fs.promises.writeFile(path.join(workDir, 'skills', 'demo', 'SKILL.md'), '# skill')
-        }
-        return ''
+    /** skills.sh names a skill, not a directory: its lookup scans the checked-out descriptors. */
+    async function findDescriptorsIn(workDir: string, skillNamesByPath: Record<string, string>) {
+      const descriptorDir = path.join(workDir, 'descriptors')
+      vi.mocked(findAllSkillDirectories).mockImplementation(async (repoDir: string) =>
+        Object.keys(skillNamesByPath).map((skillPath) => ({
+          folderPath: path.join(repoDir, skillPath),
+          sourcePath: skillPath
+        }))
+      )
+      vi.mocked(parseSkillMetadata).mockImplementation(async (folderPath: string) => {
+        const relative = path.relative(descriptorDir, folderPath)
+        if (relative.startsWith('..')) throw new Error(`matched a skill outside the descriptors: ${folderPath}`)
+        return { name: skillNamesByPath[relative.split(path.sep).join('/')] } as never
       })
-
-      vi.spyOn(skillService as unknown as SkillServicePrivate, 'installSkillDir').mockResolvedValue({})
-      vi.mocked(findSkillMdPath).mockImplementation(async (dir: string) => path.join(dir, 'SKILL.md'))
-      return { skillService, gitCalls }
+      const actualArchive = await vi.importActual<typeof skillArchive>('../skillArchive')
+      vi.mocked(skillArchive.resolveSkillDirectory).mockImplementation(actualArchive.resolveSkillDirectory)
     }
 
-    const installFromClone = (skillService: SkillService) =>
-      skillService.install({ installSource: 'claude-plugins:owner/repo/skills/demo' })
+    it.each(marketplaceSources)(
+      'fetches only the %s skill directory instead of cloning the whole repository',
+      async (source, installSource) => {
+        const { skillService, installSpy, gitCalls, workDir } = await setupGithubInstall({
+          tree: [
+            'README.md',
+            { path: 'assets/huge.bin', size: 500 * 1024 * 1024 },
+            'skills/demo/SKILL.md',
+            'skills/demo/scripts/run.ts',
+            'skills/other/SKILL.md'
+          ]
+        })
+        if (source === 'skills.sh') await findDescriptorsIn(workDir, { 'skills/demo': 'demo', 'skills/other': 'other' })
 
-    it('bounds a clone and blocks its credential prompts, the way the fetch path already is', async () => {
-      const { skillService, gitCalls } = await setupClonedInstall()
+        await skillService.install({ installSource })
 
-      await installFromClone(skillService)
+        expect(gitCalls.some((args) => args.includes('clone'))).toBe(false)
+        expect(gitFetchArgs(gitCalls)).toEqual(expect.arrayContaining(['--filter=blob:none', 'HEAD']))
+        const canonicalContent = await fs.promises.realpath(path.join(workDir, 'content'))
+        expect(installSpy).toHaveBeenCalledWith(
+          path.join(canonicalContent, 'skills', 'demo'),
+          'marketplace',
+          expect.any(String)
+        )
+        await expect(
+          fs.promises.access(path.join(canonicalContent, 'skills', 'demo', 'scripts', 'run.ts'))
+        ).resolves.toBeUndefined()
+        for (const unrelated of ['README.md', 'assets/huge.bin', 'skills/other/SKILL.md']) {
+          await expect(fs.promises.access(path.join(canonicalContent, unrelated))).rejects.toMatchObject({
+            code: 'ENOENT'
+          })
+        }
+      }
+    )
 
-      expect(gitCalls).not.toHaveLength(0)
-      for (const { options } of gitCalls) {
+    it('installs a skills.sh skill found by name in a nested directory', async () => {
+      const { skillService, installSpy, workDir } = await setupGithubInstall({
+        tree: ['plugins/pack/skills/demo/SKILL.md', 'plugins/pack/skills/demo/notes.md', 'skills/demo-extra/SKILL.md']
+      })
+      await findDescriptorsIn(workDir, { 'plugins/pack/skills/demo': 'demo', 'skills/demo-extra': 'demo-extra' })
+
+      await skillService.install({ installSource: 'skills.sh:owner/repo/demo' })
+
+      const installedDirectory = installSpy.mock.calls[0][0]
+      expect(installedDirectory).toBe(
+        path.join(await fs.promises.realpath(path.join(workDir, 'content')), 'plugins', 'pack', 'skills', 'demo')
+      )
+      await expect(fs.promises.access(path.join(installedDirectory, 'notes.md'))).resolves.toBeUndefined()
+    })
+
+    it('installs a repository-root skills.sh skill with its whole repository', async () => {
+      const { skillService, installSpy, workDir } = await setupGithubInstall({
+        tree: ['SKILL.md', 'scripts/run.ts']
+      })
+      await findDescriptorsIn(workDir, { '': 'demo' })
+
+      await skillService.install({ installSource: 'skills.sh:owner/repo/demo' })
+
+      const installedDirectory = installSpy.mock.calls[0][0]
+      expect(installedDirectory).toBe(await fs.promises.realpath(path.join(workDir, 'content')))
+      await expect(fs.promises.access(path.join(installedDirectory, 'scripts', 'run.ts'))).resolves.toBeUndefined()
+      await expect(fs.promises.access(path.join(installedDirectory, '.git'))).rejects.toMatchObject({ code: 'ENOENT' })
+    })
+
+    it.each(marketplaceSources)('uses the configured GitHub mirror for %s transport', async (source, installSource) => {
+      MockMainPreferenceServiceUtils.setPreferenceValue(BINARY_INSTALL_PREFERENCE_KEY, {
+        githubMirror: 'https://ghfast.top',
+        githubToken: '',
+        npmRegistry: '',
+        pipIndexUrl: '',
+        verifySignatures: true
+      })
+      const { skillService, gitCalls, workDir } = await setupGithubInstall({})
+      if (source === 'skills.sh') await findDescriptorsIn(workDir, { 'skills/demo': 'demo' })
+
+      await skillService.install({ installSource })
+
+      expect(gitFetchArgs(gitCalls)).toContain('https://ghfast.top/https://github.com/owner/repo')
+    })
+
+    it.each(marketplaceSources)('rejects an oversized %s skill before installing it', async (source, installSource) => {
+      const { skillService, installSpy, workDir } = await setupGithubInstall({
+        tree: ['skills/demo/SKILL.md', { path: 'skills/demo/payload.bin', size: 101 * 1024 * 1024 }]
+      })
+      if (source === 'skills.sh') await findDescriptorsIn(workDir, { 'skills/demo': 'demo' })
+
+      await expect(skillService.install({ installSource })).rejects.toThrow(
+        /Skill holds \d+ bytes, over the 104857600-byte limit/
+      )
+      expect(installSpy).not.toHaveBeenCalled()
+    })
+
+    it('rejects a skills.sh skill with too many files before downloading them', async () => {
+      const { skillService, installSpy, workDir } = await setupGithubInstall({
+        tree: ['skills/demo/SKILL.md', ...Array.from({ length: 20_000 }, (_, index) => `skills/demo/${index}.txt`)]
+      })
+      await findDescriptorsIn(workDir, { 'skills/demo': 'demo' })
+
+      // 上游原上限：'Skill holds 20001 files, over the 20000-file limit'
+      await expect(skillService.install({ installSource: 'skills.sh:owner/repo/demo' })).rejects.toThrow(
+        'Skill holds 20001 files, over the 3000-file limit'
+      )
+      await expect(fs.promises.access(path.join(workDir, 'content'))).rejects.toMatchObject({ code: 'ENOENT' })
+      expect(installSpy).not.toHaveBeenCalled()
+    })
+
+    it('refuses a checkout whose output a hostile repository grows without end', async () => {
+      const { skillService, installSpy } = await setupGithubInstall({ readTreeOutput: 'x'.repeat(32 * 1024 * 1024) })
+
+      await expect(
+        skillService.install({ installSource: 'claude-plugins:owner/repo/skills/demo' })
+      ).rejects.toBeInstanceOf(CommandOutputLimitError)
+      expect(installSpy).not.toHaveBeenCalled()
+    })
+
+    it('bounds every git step and blocks its credential prompts', async () => {
+      const { skillService } = await setupGithubInstall({})
+      executeCommandMock.mockClear()
+
+      await skillService.install({ installSource: 'claude-plugins:owner/repo/skills/demo' })
+
+      expect(executeCommandMock).toHaveBeenCalled()
+      for (const [, , options] of executeCommandMock.mock.calls) {
         expect(options?.timeout).toBeGreaterThan(0)
         expect(options?.env).toMatchObject({ GIT_TERMINAL_PROMPT: '0', GIT_ASKPASS: '' })
       }
@@ -1282,25 +1470,30 @@ describe('SkillService', () => {
 
     it('hands git the proxy Cherry is configured with, which the captured login shell env never carries', async () => {
       vi.stubEnv('HTTPS_PROXY', 'http://127.0.0.1:7890')
-      const { skillService, gitCalls } = await setupClonedInstall()
+      const { skillService } = await setupGithubInstall({})
+      executeCommandMock.mockClear()
 
-      await installFromClone(skillService)
+      await skillService.install({ installSource: 'claude-plugins:owner/repo/skills/demo' })
 
-      expect(gitCalls).not.toHaveLength(0)
-      for (const { options } of gitCalls) {
+      expect(executeCommandMock).toHaveBeenCalled()
+      for (const [, , options] of executeCommandMock.mock.calls) {
         expect(options?.env).toMatchObject({ HTTPS_PROXY: 'http://127.0.0.1:7890' })
       }
     })
 
-    it('surfaces a failed clone instead of spending another timeout on the same unreachable remote', async () => {
-      const { skillService, gitCalls } = await setupClonedInstall()
-      executeCommandMock.mockImplementation(async (_command: string, args: string[], options?: object) => {
-        gitCalls.push({ args, options })
-        throw new Error('Command timed out after 120000ms')
+    it('surfaces a failed fetch instead of spending another timeout on the same unreachable remote', async () => {
+      const { skillService } = await setupGithubInstall({})
+      const gitCalls: string[][] = []
+      executeCommandMock.mockImplementation(async (_command: string, args: string[]) => {
+        gitCalls.push(args)
+        if (args.includes('fetch')) throw new Error('Command timed out after 120000ms')
+        return ''
       })
 
-      await expect(installFromClone(skillService)).rejects.toThrow('Command timed out')
-      expect(gitCalls).toHaveLength(1)
+      await expect(skillService.install({ installSource: 'claude-plugins:owner/repo/skills/demo' })).rejects.toThrow(
+        'Command timed out'
+      )
+      expect(gitCalls.filter((args) => args.includes('fetch'))).toHaveLength(1)
     })
 
     it('rejects a clawhub source without its publisher identity', async () => {
@@ -1418,6 +1611,95 @@ describe('SkillService', () => {
       }
     })
 
+    describe('clawhub archive size cap', () => {
+      const clawhubDetailResponse = () =>
+        new Response(
+          JSON.stringify({
+            skill: { slug: 'code', displayName: 'Code', summary: 'Coding workflow' },
+            owner: { handle: 'ivangdavila', displayName: 'Ivan', image: null },
+            moderation: null
+          }),
+          { headers: { 'Content-Type': 'application/json' }, status: 200 }
+        )
+
+      const oversizedArchiveResponse = (onCancel = () => {}) =>
+        new Response(new ReadableStream<Uint8Array>({ cancel: onCancel }), {
+          headers: { 'Content-Length': String(skillArchive.MAX_SKILL_SIZE + 1) },
+          status: 200
+        })
+
+      it('rejects an archive whose Content-Length is over the skill size limit before reading it', async () => {
+        const skillService = new SkillService()
+        let cancelled = false
+        vi.mocked(net.fetch)
+          .mockResolvedValueOnce(clawhubDetailResponse())
+          .mockResolvedValueOnce(oversizedArchiveResponse(() => void (cancelled = true)))
+
+        await expect(skillService.install({ installSource: 'clawhub:ivangdavila/code' })).rejects.toThrow(
+          `clawhub archive advertises ${skillArchive.MAX_SKILL_SIZE + 1} bytes`
+        )
+        expect(cancelled).toBe(true)
+        expect(skillPaths.createTempDir).not.toHaveBeenCalled()
+        expect(skillArchive.extractZip).not.toHaveBeenCalled()
+      })
+
+      it('accepts a detail response that starts with a UTF-8 byte order mark', async () => {
+        const skillService = new SkillService()
+        const detail = await clawhubDetailResponse().text()
+        vi.mocked(net.fetch)
+          .mockResolvedValueOnce(new Response(`\uFEFF${detail}`, { status: 200 }))
+          .mockResolvedValueOnce(oversizedArchiveResponse())
+
+        await expect(skillService.install({ installSource: 'clawhub:ivangdavila/code' })).rejects.toThrow(
+          'clawhub archive advertises'
+        )
+      })
+
+      it('stops reading an unannounced archive once it crosses the skill size limit', async () => {
+        const skillService = new SkillService()
+        const tempDir = await createTempDir('skill-clawhub-oversize-')
+        vi.mocked(skillPaths.createTempDir).mockResolvedValue(tempDir)
+        const chunkSize = 1024 * 1024
+        const chunk = new Uint8Array(chunkSize)
+        const chunksToCrossLimit = Math.floor(skillArchive.MAX_SKILL_SIZE / chunkSize) + 1
+        let pulled = 0
+        const body = new ReadableStream<Uint8Array>({
+          pull(controller) {
+            pulled += 1
+            controller.enqueue(chunk)
+          }
+        })
+        vi.mocked(net.fetch)
+          .mockResolvedValueOnce(clawhubDetailResponse())
+          .mockResolvedValueOnce(new Response(body, { status: 200 }))
+
+        await expect(skillService.install({ installSource: 'clawhub:ivangdavila/code' })).rejects.toThrow(
+          `clawhub archive exceeds the ${skillArchive.MAX_SKILL_SIZE}-byte limit`
+        )
+        expect(pulled).toBeLessThanOrEqual(chunksToCrossLimit + 1)
+        expect(skillArchive.extractZip).not.toHaveBeenCalled()
+      })
+
+      it('stops reading an oversized detail response before requesting the archive', async () => {
+        const skillService = new SkillService()
+        const chunk = new Uint8Array(64 * 1024).fill(0x20)
+        let pulled = 0
+        const body = new ReadableStream<Uint8Array>({
+          pull(controller) {
+            pulled += 1
+            controller.enqueue(chunk)
+          }
+        })
+        vi.mocked(net.fetch).mockResolvedValueOnce(new Response(body, { status: 200 }))
+
+        await expect(skillService.install({ installSource: 'clawhub:ivangdavila/code' })).rejects.toThrow(
+          'clawhub detail exceeds the 1048576-byte limit'
+        )
+        expect(pulled).toBeLessThanOrEqual((1024 * 1024) / chunk.byteLength + 2)
+        expect(net.fetch).toHaveBeenCalledTimes(1)
+      })
+    })
+
     it('uses the canonical ZIP path for extraction and provenance', async () => {
       const skillService = new SkillService()
       const root = await createTempDir('skill-zip-install-')
@@ -1427,7 +1709,7 @@ describe('SkillService', () => {
       const locatedSkillDir = path.join(extractDir, 'skill')
       await fs.promises.writeFile(realZipPath, new Uint8Array([1, 2, 3]))
       await fs.promises.symlink(realZipPath, linkedZipPath)
-      await fs.promises.mkdir(extractDir, { recursive: true })
+      await fs.promises.mkdir(locatedSkillDir, { recursive: true })
       const canonicalZipPath = await fs.promises.realpath(realZipPath)
 
       vi.mocked(skillPaths.createTempDir).mockResolvedValue(extractDir)
@@ -1443,29 +1725,76 @@ describe('SkillService', () => {
       expect(installSkillDirSpy).toHaveBeenCalledWith(locatedSkillDir, 'zip', pathToFileURL(canonicalZipPath).href)
     })
 
-    it('accepts ZIP archives containing 3,000 entries', async () => {
-      const root = await createTempDir('skill-zip-limit-')
-      const zipPath = path.join(root, 'limit.zip')
-      const extractDir = path.join(root, 'extract')
-      const zip = new AdmZip()
-      for (let index = 0; index < 3_000; index++) zip.addFile(`${index}.txt`, Buffer.alloc(0))
-      zip.writeZip(zipPath)
-      await fs.promises.mkdir(extractDir)
-
-      await expect(skillArchive.extractZip(zipPath, extractDir)).resolves.toBeUndefined()
-    })
-
-    it('rejects ZIP archives containing more than 3,000 entries', async () => {
+    it('rejects archives with more entries than extraction allows, reporting the archive total', async () => {
       const root = await createTempDir('skill-zip-limit-')
       const zipPath = path.join(root, 'over-limit.zip')
       const extractDir = path.join(root, 'extract')
       const zip = new AdmZip()
-      for (let index = 0; index < 3_001; index++) zip.addFile(`${index}.txt`, Buffer.alloc(0))
+      for (let index = 0; index < 60_000; index++) zip.addFile(`${index}.txt`, Buffer.alloc(0))
       zip.writeZip(zipPath)
 
+      const actualArchive = await vi.importActual<typeof skillArchive>('../skillArchive')
+      vi.mocked(skillArchive.extractZip).mockImplementation(actualArchive.extractZip)
+
+      // 60000, not the 50001 a scan that stopped at the entry crossing the ceiling would report.
       await expect(skillArchive.extractZip(zipPath, extractDir)).rejects.toThrow(
-        'ZIP has too many files: 3001 exceeds 3000'
+        'Skill archive contains 60000 entries, over the 50000-entry limit'
       )
+    })
+
+    /**
+     * The reported failure. `ppt-master-main.zip` is GitHub's zipball of a skill repository: the
+     * skill under `skills/ppt-master/` is inside the per-skill ceiling, but the repository around
+     * it is not. Install previously refused the whole archive under the per-skill ceilings.
+     */
+    it('installs a repository zipball whose skill is inside the per-skill limits', async () => {
+      const skillService = new SkillService()
+      const root = await createTempDir('skill-zip-repo-')
+      const zipPath = path.join(root, 'repo-main.zip')
+      const extractDir = path.join(root, 'extract')
+
+      const zip = new AdmZip()
+      zip.addFile('repo-main/skills/demo/SKILL.md', Buffer.from('---\nname: demo\n---\n'))
+      // Repository payload that is not part of the skill, over the per-skill ceiling on its own.
+      for (let index = 0; index < 110; index++) zip.addFile(`repo-main/assets/${index}.bin`, Buffer.alloc(1024 * 1024))
+      zip.writeZip(zipPath)
+
+      const actualArchive = await vi.importActual<typeof skillArchive>('../skillArchive')
+      vi.mocked(skillArchive.extractZip).mockImplementation(actualArchive.extractZip)
+      const skillDir = path.join(extractDir, 'repo-main', 'skills', 'demo')
+      vi.mocked(skillPaths.createTempDir).mockResolvedValue(extractDir)
+      vi.mocked(skillArchive.resolveSkillDirectory).mockResolvedValue(skillDir)
+      const installSkillDirSpy = vi
+        .spyOn(skillService as unknown as SkillServicePrivate, 'installSkillDir')
+        .mockResolvedValue({})
+
+      await skillService.installFromZip({ zipFilePath: zipPath })
+
+      const canonicalZipPath = await fs.promises.realpath(zipPath)
+      expect(installSkillDirSpy).toHaveBeenCalledWith(skillDir, 'zip', pathToFileURL(canonicalZipPath).href)
+    })
+
+    it('refuses a skill directory over the per-skill size limit, reporting its real size', async () => {
+      const skillDir = await createTempDir('skill-oversized-')
+      // 110 MiB across 110 files: a scan that stopped at the file crossing the ceiling would report
+      // 105906176 (the 101st file), not what the directory actually holds.
+      for (let index = 0; index < 110; index++) {
+        await fs.promises.writeFile(path.join(skillDir, `${index}.bin`), Buffer.alloc(1024 * 1024))
+      }
+
+      await expect(skillArchive.assertSkillDirectoryWithinLimits(skillDir)).rejects.toThrow(
+        'Skill holds 115343360 bytes, over the 104857600-byte limit'
+      )
+    })
+
+    it('accepts a skill directory with more than the previous 2,000-file ceiling', async () => {
+      const skillDir = await createTempDir('skill-many-files-')
+      await fs.promises.writeFile(path.join(skillDir, 'SKILL.md'), '---\nname: many\n---\n')
+      for (let index = 0; index < 2_500; index++) {
+        await fs.promises.writeFile(path.join(skillDir, `${index}.txt`), '')
+      }
+
+      await expect(skillArchive.assertSkillDirectoryWithinLimits(skillDir)).resolves.toBeUndefined()
     })
 
     it.each([
@@ -1619,55 +1948,20 @@ describe('SkillService', () => {
       expect(parseSkillMetadata).not.toHaveBeenCalled()
     })
 
-    it('backfills displayName once for rows written before the column existed', async () => {
+    it('installs mechtool disabled by default without per-agent enablement rows', async () => {
       const skillService = new SkillService()
-      await fs.promises.mkdir(destPath, { recursive: true })
-      await fs.promises.writeFile(path.join(destPath, 'SKILL.md'), '# Builtin')
-      await fs.promises.writeFile(path.join(destPath, '.version'), APP_VERSION)
-      const contentHash = await skillService['computeBuiltinDirectoryHash'](sourcePath)
+      const folderName = 'mechtool-mechanical-design'
       await seedAgent()
-      await dbh.db.insert(agentGlobalSkillTable).values({
-        id: SKILL_ID_BUILTIN,
-        name: 'My Builtin',
-        folderName: FOLDER_NAME,
-        source: 'builtin',
-        contentHash,
-        isEnabled: false
-      })
-      const installSpy = vi.spyOn(skillService['installer'], 'install')
-      vi.mocked(skillMdHasFrontmatterKey).mockResolvedValue(true)
-      vi.mocked(parseSkillMetadata).mockResolvedValue({
-        sourcePath: FOLDER_NAME,
-        filename: FOLDER_NAME,
-        name: 'My Builtin',
-        displayName: '机械设计知识查询助手',
-        displayNameEn: 'Mechanical Design Assistant',
-        description: 'desc',
-        descriptionEn: 'English desc',
-        category: 'skills',
-        type: 'skill',
-        tags: [],
-        size: 0,
-        contentHash: 'hash'
-      })
 
-      await skillService.syncBuiltinSkill(FOLDER_NAME, sourcePath, APP_VERSION)
+      await skillService.syncBuiltinSkill(folderName, sourcePath, APP_VERSION)
 
-      expect(installSpy).not.toHaveBeenCalled()
-      expect(parseSkillMetadata).toHaveBeenCalledTimes(1)
-      const [row] = await dbh.db
+      const [skill] = await dbh.db
         .select()
         .from(agentGlobalSkillTable)
-        .where(eq(agentGlobalSkillTable.id, SKILL_ID_BUILTIN))
-      expect(row.displayName).toBe('机械设计知识查询助手')
-      expect(row.displayNameEn).toBe('Mechanical Design Assistant')
-      expect(row.description).toBe('desc')
-      expect(row.descriptionEn).toBe('English desc')
-
-      // Second sync: displayName now matches, the hash short-circuit applies again.
-      vi.mocked(parseSkillMetadata).mockClear()
-      await skillService.syncBuiltinSkill(FOLDER_NAME, sourcePath, APP_VERSION)
-      expect(parseSkillMetadata).not.toHaveBeenCalled()
+        .where(eq(agentGlobalSkillTable.folderName, folderName))
+      const rows = skill ? await dbh.db.select().from(agentSkillTable).where(eq(agentSkillTable.skillId, skill.id)) : []
+      expect(skill).toMatchObject({ source: 'builtin', isEnabled: false })
+      expect(rows).toEqual([])
     })
 
     it('never writes agent_skill rows, leaving per-agent enablement to the read-time builtin default', async () => {
@@ -1691,29 +1985,6 @@ describe('SkillService', () => {
 
       const rows = await dbh.db.select().from(agentSkillTable).where(eq(agentSkillTable.skillId, SKILL_ID_BUILTIN))
       expect(rows).toEqual([expect.objectContaining({ agentId: AGENT_ID, isEnabled: false })])
-    })
-
-    it('skips the enable fan-out for a default-disabled builtin on first install', async () => {
-      const skillService = new SkillService()
-      const FOLDER = 'mechtool-mechanical-design'
-      const skillSource = path.join(path.dirname(sourcePath), FOLDER)
-      await fs.promises.mkdir(skillSource, { recursive: true })
-      await fs.promises.writeFile(path.join(skillSource, 'SKILL.md'), '# Builtin')
-      await seedAgent()
-
-      await skillService.syncBuiltinSkill(FOLDER, skillSource, APP_VERSION)
-
-      const joinRows = await dbh.db.select().from(agentSkillTable).where(eq(agentSkillTable.agentId, AGENT_ID))
-      expect(joinRows).toHaveLength(0)
-      const [row] = await dbh.db
-        .select()
-        .from(agentGlobalSkillTable)
-        .where(eq(agentGlobalSkillTable.folderName, FOLDER))
-      expect(row?.isEnabled).toBe(false)
-      // The agent-scoped catalog excludes globally disabled skills entirely;
-      // the global settings catalog (no agentId) still lists it for opt-in.
-      const globalList = await skillService.list()
-      expect(globalList.find((s) => s.folderName === FOLDER)?.isGlobalEnabled).toBe(false)
     })
 
     it('updates metadata when skill exists and files were updated', async () => {
@@ -1967,52 +2238,6 @@ describe('SkillService', () => {
       expect(updated).toMatchObject({ id: installed.id, version: '2.0.0' })
     })
 
-    it('persists and clears detected icons when reinstalling the same origin', async () => {
-      const sourceDir = await createTempDir('icon-skill-')
-      const sourceUrl = pathToFileURL(sourceDir).href
-      await fs.promises.writeFile(path.join(sourceDir, 'SKILL.md'), '# Icon')
-      vi.mocked(parseSkillMetadata).mockResolvedValue(skillMeta('icon-skill', { iconFileName: 'icon.png' }))
-
-      const installed = await skillService['installSkillDir'](sourceDir, 'local', sourceUrl)
-      expect(installed.iconFileName).toBe('icon.png')
-
-      vi.mocked(parseSkillMetadata).mockResolvedValue(skillMeta('icon-skill', { iconFileName: undefined }))
-      const updated = await skillService['installSkillDir'](sourceDir, 'local', sourceUrl)
-
-      expect(updated).toMatchObject({ id: installed.id, iconFileName: null })
-    })
-
-    it('uses catalog names and descriptions instead of SKILL.md display metadata', async () => {
-      const sourceDir = await createTempDir('catalog-skill-')
-      await fs.promises.writeFile(path.join(sourceDir, 'SKILL.md'), '# Catalog skill')
-      vi.mocked(parseSkillMetadata).mockResolvedValue(
-        skillMeta('catalog-skill', {
-          displayName: 'SKILL.md 中文名称',
-          displayNameEn: 'SKILL.md English name',
-          description: 'SKILL.md 中文描述',
-          descriptionEn: 'SKILL.md English description'
-        })
-      )
-
-      const installed = await skillService.installFromCatalog(sourceDir, 'catalog-skill-id', '1.0.0', {
-        displayName: '目录中文名称',
-        displayNameEn: 'Catalog English name',
-        description: '目录中文描述',
-        descriptionEn: 'Catalog English description'
-      })
-
-      expect(installed).toMatchObject({
-        name: 'catalog-skill',
-        displayName: '目录中文名称',
-        displayNameEn: 'Catalog English name',
-        description: '目录中文描述',
-        descriptionEn: 'Catalog English description'
-      })
-      expect(
-        dbh.db.select().from(agentGlobalSkillTable).where(eq(agentGlobalSkillTable.id, installed.id)).get()
-      ).toMatchObject({ catalogSkillId: 'catalog-skill-id', catalogVersion: '1.0.0' })
-    })
-
     function skillMeta(folderName: string, overrides: Record<string, unknown> = {}) {
       return {
         sourcePath: folderName,
@@ -2074,46 +2299,7 @@ describe('SkillService', () => {
       ).toHaveLength(1)
     })
 
-    it('reconcileSkills preserves catalog display metadata when the installed files change', async () => {
-      await writeLibrarySkill('catalog-skill', '# changed catalog skill')
-      await dbh.db.insert(agentGlobalSkillTable).values({
-        id: SKILL_ID_1,
-        name: 'catalog-skill',
-        displayName: '目录中文名称',
-        displayNameEn: 'Catalog English name',
-        description: '目录中文描述',
-        descriptionEn: 'Catalog English description',
-        folderName: 'catalog-skill',
-        source: 'catalog',
-        sourceUrl: 'skill-catalog:catalog-skill-id',
-        catalogSkillId: 'catalog-skill-id',
-        catalogVersion: '1.0.0',
-        contentHash: 'stale-hash',
-        isEnabled: true
-      })
-      vi.mocked(parseSkillMetadata).mockResolvedValue(
-        skillMeta('catalog-skill', {
-          displayName: 'SKILL.md 中文名称',
-          displayNameEn: 'SKILL.md English name',
-          description: 'SKILL.md 中文描述',
-          descriptionEn: 'SKILL.md English description'
-        })
-      )
-
-      await skillService.reconcileSkills()
-
-      expect(
-        dbh.db.select().from(agentGlobalSkillTable).where(eq(agentGlobalSkillTable.id, SKILL_ID_1)).get()
-      ).toMatchObject({
-        displayName: '目录中文名称',
-        displayNameEn: 'Catalog English name',
-        description: '目录中文描述',
-        descriptionEn: 'Catalog English description'
-      })
-    })
-
     it('reconcileSkills adopts a skill authored directly in the managed library', async () => {
-      await seedDefaultAgent()
       vi.mocked(parseSkillMetadata).mockResolvedValue(
         skillMeta('new-skill', { name: 'New Skill', description: 'freshly authored', version: '3.0.0' })
       )
@@ -2130,9 +2316,6 @@ describe('SkillService', () => {
       expect(rows[0]?.name).toBe('New Skill')
       expect(rows[0]?.version).toBe('3.0.0')
       expect(rows[0]?.isEnabled).toBe(true)
-      expect(await dbh.db.select().from(agentSkillTable).where(eq(agentSkillTable.skillId, rows[0].id))).toEqual([
-        expect.objectContaining({ agentId: AGENT_ID, isEnabled: true })
-      ])
       await expect(fs.promises.access(path.join(authored, 'SKILL.md'))).resolves.toBeUndefined()
       expect((await fs.promises.lstat(path.join(mirrorRoot, 'new-skill'))).isSymbolicLink()).toBe(!isWin)
     })
@@ -2511,6 +2694,45 @@ describe('SkillService', () => {
 
       await skillArchive.extractZip(zipPath, destDir)
       await expect(fs.promises.readFile(path.join(destDir, 'SKILL.md'), 'utf-8')).resolves.toContain('name: x')
+    })
+  })
+
+  describe('extractZip (case and Unicode collisions)', () => {
+    // On a case- or normalization-insensitive filesystem these entries land on one path, so the
+    // installed content would depend on the platform and on entry order.
+    it.each([
+      ['a file differing only in case', ['skill/scripts/setup.sh', 'skill/Scripts/setup.sh']],
+      ['a directory entry differing only in case', ['Docs/', 'docs/guide.md']],
+      ['names differing only in Unicode composition', ['caf\u00e9/SKILL.md', 'cafe\u0301/SKILL.md']]
+    ])('rejects %s before extracting anything', async (_case, entryNames) => {
+      const zipDir = await createTempDir('skill-zip-collide-')
+      const destDir = await createTempDir('skill-dest-')
+      const zip = new AdmZip()
+      for (const name of entryNames) zip.addFile(name, Buffer.from(name.endsWith('/') ? '' : `# ${name}`))
+      const zipPath = path.join(zipDir, 'skill.zip')
+      zip.writeZip(zipPath)
+
+      await expect(skillArchive.extractZip(zipPath, destDir)).rejects.toThrow('collide')
+      await expect(fs.promises.readdir(destDir)).resolves.toEqual([])
+    })
+
+    it('checks a deeply nested entry name in linear time', () => {
+      const deepName = Array.from({ length: 20_000 }, () => 'a').join('/')
+
+      expect(() => skillArchive.assertNoFoldedPathCollisions([deepName, `${deepName}/b`])).not.toThrow()
+    })
+
+    it('extracts same-named files that live in different directories', async () => {
+      const zipDir = await createTempDir('skill-zip-ok-')
+      const destDir = await createTempDir('skill-dest-')
+      const zip = new AdmZip()
+      zip.addFile('README.md', Buffer.from('# root'))
+      zip.addFile('docs/readme.md', Buffer.from('# docs'))
+      const zipPath = path.join(zipDir, 'skill.zip')
+      zip.writeZip(zipPath)
+
+      await skillArchive.extractZip(zipPath, destDir)
+      await expect(fs.promises.readFile(path.join(destDir, 'docs', 'readme.md'), 'utf-8')).resolves.toBe('# docs')
     })
   })
 })

@@ -1,9 +1,9 @@
-import { agentTable } from '@data/db/schemas/agent'
-import { agentMcpServerTable } from '@data/db/schemas/assistantRelations'
 import { setupTestDatabase } from '@test-helpers/db'
 import { eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
 
+import { agentTable } from '@data/db/schemas/agent'
+import { agentMcpServerTable } from '@data/db/schemas/assistantRelations'
 import { mcpServerTable } from '@data/db/schemas/mcpServer'
 import { McpServerService, mcpServerService } from '@data/services/McpServerService'
 import { generateOrderKeyBetween } from '@data/services/utils/orderKey'

@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest'
-
 import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -8,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 const resourceCatalogViewMock = vi.fn()
 
 vi.mock('@renderer/components/resourceCatalog/catalog', () => ({
-  ResourceCatalogView: (props: { resourceType: string; showManagementActions?: boolean }) => {
+  ResourceCatalogView: (props: { resourceType: string }) => {
     resourceCatalogViewMock(props)
     return <div>{`${props.resourceType} catalog`}</div>
   }

@@ -22,27 +22,26 @@ import { defineRoute } from '../define'
  * `@shared/data/types/remoteKnowledge` so a DTO-shape drift is a compile error here.
  */
 export const remoteKnowledgeRequestSchemas = {
-  'remoteKnowledge.list': defineRoute({
+  'remote_knowledge.service.list': defineRoute({
     input: z.void(),
     output: z.array(RemoteKnowledgeServiceInfoSchema)
   }),
-  'remoteKnowledge.create': defineRoute({
+  'remote_knowledge.service.create': defineRoute({
     input: z.strictObject({ draft: CreateRemoteKnowledgeServiceSchema }),
     output: RemoteKnowledgeServiceInfoSchema
   }),
-  'remoteKnowledge.update': defineRoute({
+  'remote_knowledge.service.update': defineRoute({
     input: z.strictObject({ id: z.string().trim().min(1), patch: UpdateRemoteKnowledgeServiceSchema }),
     output: RemoteKnowledgeServiceInfoSchema
   }),
-  'remoteKnowledge.delete': defineRoute({
+  'remote_knowledge.service.delete': defineRoute({
     input: z.strictObject({ id: z.string().trim().min(1) }),
     output: z.void()
   }),
-  // Probe a saved service (by id) or an unsaved draft (by config). Failures come
   // Probe a saved service (by id) or an unsaved draft (by config) — exactly one of
   // the two. Failures come back as {ok:false, error} data — never thrown — so the
   // UI renders them inline.
-  'remoteKnowledge.test_connection': defineRoute({
+  'remote_knowledge.service.test_connection': defineRoute({
     input: z
       .strictObject({
         id: z.string().trim().min(1).optional(),
@@ -54,7 +53,7 @@ export const remoteKnowledgeRequestSchemas = {
     output: RemoteTestConnectionResultSchema
   }),
   // Enumerate bases exposed by one service, or all enabled services when id omitted.
-  'remoteKnowledge.list_bases': defineRoute({
+  'remote_knowledge.base.list': defineRoute({
     input: z.strictObject({ id: z.string().trim().min(1).optional() }),
     output: z.array(RemoteKnowledgeBaseInfoSchema)
   })

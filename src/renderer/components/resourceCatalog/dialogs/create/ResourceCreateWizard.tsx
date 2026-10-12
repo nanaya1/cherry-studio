@@ -354,6 +354,7 @@ export function ResourceCreateWizard({
                   <BasicInfoStep
                     form={form}
                     portalContainer={dialogContentElement}
+                    // MEA:resource-icons fallbackAvatar={getResourceCreateDefaultAvatar(kind)}
                     modelFilter={activeModelFilter}
                     isModelDisabled={isModelDisabled}
                     runtimeSelectable={kind === 'agent'}

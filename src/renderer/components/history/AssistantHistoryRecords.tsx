@@ -181,6 +181,8 @@ const AssistantHistoryRecords = ({
       assistants.map((assistant) => ({
         id: assistant.id,
         label: assistant.name || t('common.unnamed'),
+        // MEA 隐藏 assistant Emoji；恢复时可重新启用原 emoji 分支。
+        // icon: assistant.emoji ? <span className="text-sm leading-none">{assistant.emoji}</span> : <Bot size={14} />
         icon: <Bot size={14} />
       })),
     [assistants, t]
@@ -226,7 +228,7 @@ const AssistantHistoryRecords = ({
         logger.error('Failed to delete topic from history records', { topicId: topic.id, err })
         if (isTrashTargetNotFoundError(err)) toast.info(t('recycle_bin.already_moved'))
         else if (isTrashTopicBusyError(err)) toast.info(t('recycle_bin.move.blocked_generation'))
-        else toast.error(err instanceof Error ? err.message : t('chat.topics.manage.delete.error'))
+        else toast.error(err instanceof Error ? err.message : t('recycle_bin.move_failed'))
         return
       }
 
@@ -507,6 +509,7 @@ const AssistantHistoryRecords = ({
               source?.icon ? (
                 source.icon
               ) : (
+                // MEA 隐藏 assistant Emoji；恢复时可重新启用 assistant.emoji 分支。
                 <Bot size={14} />
               )
             ) : undefined
@@ -536,7 +539,7 @@ const AssistantHistoryRecords = ({
       loadingDescription: t('history.records.loading.description'),
       pinLabel: t('chat.topics.pin'),
       unpinLabel: t('chat.topics.unpin'),
-      deleteLabel: t('common.delete'),
+      deleteLabel: t('common.archive'),
       renameDialogTitle: t('chat.topics.edit.title')
     }
   }

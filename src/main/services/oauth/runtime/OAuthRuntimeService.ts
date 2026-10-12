@@ -4,6 +4,7 @@ import { providerService } from '@data/services/ProviderService'
 import { loggerService } from '@logger'
 import { BaseService, Injectable, Phase, ServicePhase } from '@main/core/lifecycle'
 import type { WindowId } from '@shared/ipc/types'
+import type { SystemProviderIds } from '@shared/utils/systemProviderId'
 
 import { describeOAuthError, OAuthServiceError, OAuthSignInCancelledError, OAuthTransientError } from '../errors'
 import { DeepLinkCallbackTransport } from './DeepLinkCallbackTransport'
@@ -11,6 +12,7 @@ import { LoopbackCallbackTransport } from './LoopbackCallbackTransport'
 import { ProviderAuthConfigOAuthTokenStore } from './OAuthTokenStore'
 import { OAuthHttpError } from './PkceOAuthClient'
 import { oauthProviderDefinitions } from './providerDefinitions'
+import type { CherryInOAuthContext, CherryInSignInResult } from './providers/cherryin'
 import type {
   OAuthAccount,
   OAuthRuntimeProviderContext,
@@ -32,11 +34,19 @@ type RefreshResult = { status: 'ok'; accessToken: string } | { status: 'terminal
 
 type ActiveSignIn = {
   operation: {
+    initiatorWindowId: WindowId
     controller: AbortController
     phase: 'discovery' | 'callback' | 'exchange' | 'persist'
-    requestIds: Set<string>
+    requestIdsByWindow: Map<WindowId, Set<string>>
+    context?: OAuthRuntimeProviderContext
   }
   promise: Promise<OAuthAccount>
+}
+
+type OAuthFetchOptions<TContext extends OAuthRuntimeProviderContext = OAuthRuntimeProviderContext> = {
+  context?: TContext
+  notSignedInMessage?: string
+  onUnauthorized?: (response: Response) => void | Promise<void>
 }
 
 /**
@@ -168,9 +178,10 @@ export class OAuthRuntimeService extends BaseService {
     transport: LoopbackCallbackTransport,
     operation: ActiveSignIn['operation']
   ): Promise<OAuthAccount> => {
+    const context = operation.context ?? {}
     const signal = AbortSignal.any([operation.controller.signal, AbortSignal.timeout(SIGN_IN_TIMEOUT_MS)])
     try {
-      const client = await definition.createClient({ signal })
+      const client = await definition.createClient({ ...context, signal })
       if (operation.controller.signal.aborted) {
         throw new OAuthSignInCancelledError(definition.providerId)
       }
@@ -178,7 +189,10 @@ export class OAuthRuntimeService extends BaseService {
 
       operation.phase = 'callback'
       const codePromise = transport.waitForAuthorizationCode(state, signal)
-      await shell.openExternal(authUrl)
+      void codePromise.catch(() => undefined)
+      await transport.ready
+      if (signal.aborted) throw new OAuthSignInCancelledError(definition.providerId)
+      await Promise.race([shell.openExternal(authUrl), codePromise.then(() => undefined)])
       const code = await codePromise
 
       operation.phase = 'exchange'
@@ -191,10 +205,10 @@ export class OAuthRuntimeService extends BaseService {
       // token and force a full re-auth.
       operation.phase = 'persist'
       await this.persistTokens(definition, tokenData)
-      await definition.afterPersistTokens?.(tokenData, {})
+      const result = await definition.afterPersistTokens?.(tokenData, context)
       providerService.update(definition.providerId, { isEnabled: true })
       this.logger.info(`${definition.providerId} sign-in succeeded`)
-      return this.getAccount(definition.providerId)
+      return { ...(await this.getAccount(definition.providerId)), ...result }
     } catch (error) {
       if (this.isSignInCancellable(operation.phase) && operation.controller.signal.aborted) {
         this.logger.info(`${definition.providerId} sign-in cancelled`)
@@ -207,14 +221,40 @@ export class OAuthRuntimeService extends BaseService {
     }
   }
 
-  public signIn = (providerId: string, requestId: string): Promise<OAuthAccount> => {
+  public signIn(
+    initiatorWindowId: WindowId | null,
+    providerId: typeof SystemProviderIds.cherryin,
+    requestId: string,
+    context?: CherryInOAuthContext
+  ): Promise<CherryInSignInResult>
+  public signIn(
+    initiatorWindowId: WindowId | null,
+    providerId: string,
+    requestId: string,
+    context?: OAuthRuntimeProviderContext
+  ): Promise<OAuthAccount>
+  public signIn(
+    initiatorWindowId: WindowId | null,
+    providerId: string,
+    requestId: string,
+    context: OAuthRuntimeProviderContext = {}
+  ): Promise<OAuthAccount> {
+    if (!initiatorWindowId) {
+      return Promise.reject(new OAuthServiceError('OAuth flow initiator is not a managed window'))
+    }
     if (this.stopping) {
       return Promise.reject(new OAuthServiceError('OAuth runtime is stopping'))
     }
 
     const existing = this.activeSignIns.get(providerId)
     if (existing) {
-      existing.operation.requestIds.add(requestId)
+      if (existing.operation.initiatorWindowId !== initiatorWindowId) {
+        return Promise.reject(new OAuthServiceError('A sign-in from another window is already in progress'))
+      }
+      if (this.getDefinition(providerId).matchesSignInContext?.(existing.operation.context ?? {}, context) === false) {
+        return Promise.reject(new OAuthServiceError('A sign-in for another server is already in progress'))
+      }
+      existing.operation.requestIdsByWindow.get(initiatorWindowId)?.add(requestId)
       return existing.promise
     }
 
@@ -228,13 +268,16 @@ export class OAuthRuntimeService extends BaseService {
       }
 
       const operation: ActiveSignIn['operation'] = {
+        initiatorWindowId,
         controller: new AbortController(),
         phase: 'discovery',
-        requestIds: new Set([requestId])
+        requestIdsByWindow: new Map([[initiatorWindowId, new Set([requestId])]]),
+        context
       }
       const activeSignIn: ActiveSignIn = {
         operation,
         promise: this.runSignIn(definition, transport, operation).finally(() => {
+          operation.controller.abort()
           if (this.activeSignIns.get(providerId) !== activeSignIn) return
           this.activeSignIns.delete(providerId)
           transport.close()
@@ -248,22 +291,28 @@ export class OAuthRuntimeService extends BaseService {
   }
 
   public joinActiveSignIn = async (
+    senderId: WindowId | null,
     providerId: string,
     requestId: string
   ): Promise<{ status: 'not-found' } | { status: 'completed'; account: OAuthAccount }> => {
+    if (!senderId) throw new OAuthServiceError('OAuth flow observer is not a managed window')
     this.getDefinition(providerId)
     const activeSignIn = this.activeSignIns.get(providerId)
     if (!activeSignIn) return { status: 'not-found' }
-    activeSignIn.operation.requestIds.add(requestId)
-    return { status: 'completed', account: await activeSignIn.promise }
+    const requestIds = activeSignIn.operation.requestIdsByWindow.get(senderId) ?? new Set<string>()
+    requestIds.add(requestId)
+    activeSignIn.operation.requestIdsByWindow.set(senderId, requestIds)
+    const { accountId } = await activeSignIn.promise
+    return { status: 'completed', account: { accountId } }
   }
 
-  public cancelSignIn = async (providerId: string, requestId: string): Promise<void> => {
+  public cancelSignIn = async (senderId: WindowId | null, providerId: string, requestId: string): Promise<void> => {
+    if (!senderId) throw new OAuthServiceError('OAuth flow caller is not a managed window')
     this.getDefinition(providerId)
     const activeSignIn = this.activeSignIns.get(providerId)
     if (
       !activeSignIn ||
-      !activeSignIn.operation.requestIds.has(requestId) ||
+      !activeSignIn.operation.requestIdsByWindow.get(senderId)?.has(requestId) ||
       !this.isSignInCancellable(activeSignIn.operation.phase)
     ) {
       return
@@ -295,8 +344,6 @@ export class OAuthRuntimeService extends BaseService {
   public handleDeepLinkCallback = async (url: URL): Promise<void> => {
     for (const [providerId, transport] of this.deepLinkTransports.entries()) {
       const definition = this.getDefinition(providerId)
-      if (definition.transport.type !== 'deep-link') continue
-
       const state = url.searchParams.get('state')
       const initiatorWindowId = state ? transport.getInitiatorWindowId(state) : null
 
@@ -306,9 +353,6 @@ export class OAuthRuntimeService extends BaseService {
 
         const client = await definition.createClient(callback.context)
         const tokenData = await client.exchangeCode(callback.code, callback.codeVerifier)
-        // Persist before the side-effect fetch (CherryIN's API-key pull): the
-        // auth code is spent, so a transient key-fetch failure must not throw
-        // away a valid token and force the user through the whole flow again.
         await this.persistTokens(definition, tokenData)
         const sideEffectResult = await definition.afterPersistTokens?.(tokenData, callback.context)
         providerService.update(providerId, { isEnabled: true })
@@ -319,9 +363,10 @@ export class OAuthRuntimeService extends BaseService {
         return
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
+        const code = error instanceof OAuthServiceError ? error.code : undefined
         this.logger.error(`${providerId} deep-link callback failed`, describeOAuthError(error))
         if (state && initiatorWindowId) {
-          transport.sendConsumedResult(state, initiatorWindowId, { error: message })
+          transport.sendConsumedResult(state, initiatorWindowId, { error: message, ...(code ? { code } : {}) })
           return
         }
         throw error instanceof OAuthServiceError ? error : new OAuthServiceError(message, error)
@@ -353,10 +398,7 @@ export class OAuthRuntimeService extends BaseService {
     this.logger.info(`Cleared ${providerId} OAuth tokens`)
   }
 
-  public provisionApiKeys = async (
-    providerId: string,
-    context: OAuthRuntimeProviderContext = {}
-  ): Promise<string> => {
+  public provisionApiKeys = async (providerId: string, context: OAuthRuntimeProviderContext = {}): Promise<string> => {
     const definition = this.getDefinition(providerId)
     if (!definition.provisionApiKeys) {
       throw new OAuthServiceError(`OAuth provider does not support API key provisioning: ${providerId}`)
@@ -370,10 +412,18 @@ export class OAuthRuntimeService extends BaseService {
     return definition.provisionApiKeys(credentials.accessToken, context)
   }
 
-  public getValidAccessToken = async (
+  public getValidAccessToken(
+    providerId: typeof SystemProviderIds.cherryin,
+    context?: CherryInOAuthContext
+  ): Promise<OAuthTokenCredentials | null>
+  public getValidAccessToken(
+    providerId: string,
+    context?: OAuthRuntimeProviderContext
+  ): Promise<OAuthTokenCredentials | null>
+  public async getValidAccessToken(
     providerId: string,
     context: OAuthRuntimeProviderContext = {}
-  ): Promise<OAuthTokenCredentials | null> => {
+  ): Promise<OAuthTokenCredentials | null> {
     const definition = this.getDefinition(providerId)
     const config = await this.tokenStore.get(providerId)
     if (!config?.accessToken) return null
@@ -426,16 +476,24 @@ export class OAuthRuntimeService extends BaseService {
    * `apiHost`); `options.onUnauthorized` runs when the request is still 401 after
    * the retry, for the caller's diagnostic logging.
    */
-  public authenticatedFetch = async (
+  public authenticatedFetch(
+    providerId: typeof SystemProviderIds.cherryin,
+    buildRequest: (creds: OAuthTokenCredentials) => { input: RequestInfo | URL; init: RequestInit },
+    doFetch: (input: RequestInfo | URL, init: RequestInit) => Promise<Response>,
+    options?: OAuthFetchOptions<CherryInOAuthContext>
+  ): Promise<Response>
+  public authenticatedFetch(
     providerId: string,
     buildRequest: (creds: OAuthTokenCredentials) => { input: RequestInfo | URL; init: RequestInit },
     doFetch: (input: RequestInfo | URL, init: RequestInit) => Promise<Response>,
-    options: {
-      context?: OAuthRuntimeProviderContext
-      notSignedInMessage?: string
-      onUnauthorized?: (response: Response) => void | Promise<void>
-    } = {}
-  ): Promise<Response> => {
+    options?: OAuthFetchOptions
+  ): Promise<Response>
+  public async authenticatedFetch(
+    providerId: string,
+    buildRequest: (creds: OAuthTokenCredentials) => { input: RequestInfo | URL; init: RequestInit },
+    doFetch: (input: RequestInfo | URL, init: RequestInit) => Promise<Response>,
+    options: OAuthFetchOptions = {}
+  ): Promise<Response> {
     this.getDefinition(providerId)
     const { context, notSignedInMessage, onUnauthorized } = options
     const creds = await this.getValidAccessToken(providerId, context)

@@ -26,13 +26,9 @@ import {
 import { useApiGateway } from '@renderer/hooks/useApiGateway'
 import { useTheme } from '@renderer/hooks/useTheme'
 import { toast } from '@renderer/services/toast'
+import { openExternalWebsite } from '@renderer/services/website'
 import { cn } from '@renderer/utils/style'
-import { gatewayClientOrigin } from '@shared/utils/apiGateway'
-
-const API_SERVER_DEFAULTS = {
-  HOST: '127.0.0.1',
-  PORT: 24333
-}
+import { DEFAULT_API_GATEWAY_HOST, DEFAULT_API_GATEWAY_PORT, gatewayClientOrigin } from '@shared/utils/apiGateway'
 
 const PORT_MIN = 1000
 const PORT_MAX = 65535
@@ -55,9 +51,9 @@ const ApiGatewaySettings: FC = () => {
 
   // 0.0.0.0 is a bind address, not a reachable one — render the loopback URL instead
   // (LAN URLs live in Device Connections settings).
-  const configuredHost = apiGatewayConfig.host || API_SERVER_DEFAULTS.HOST
-  const serverHost = configuredHost === '0.0.0.0' ? API_SERVER_DEFAULTS.HOST : configuredHost
-  const serverPort = apiGatewayConfig.port || API_SERVER_DEFAULTS.PORT
+  const configuredHost = apiGatewayConfig.host || DEFAULT_API_GATEWAY_HOST
+  const serverHost = configuredHost === '0.0.0.0' ? DEFAULT_API_GATEWAY_HOST : configuredHost
+  const serverPort = apiGatewayConfig.port || DEFAULT_API_GATEWAY_PORT
   const serverUrl = gatewayClientOrigin(serverHost, serverPort)
   const apiKey = apiGatewayConfig.apiKey || ''
   const authorizationHeader = `Authorization: Bearer ${apiKey || 'your-api-key'}`
@@ -103,7 +99,7 @@ const ApiGatewaySettings: FC = () => {
     if (apiGatewayRunning) {
       // The ElysiaJS `@elysia/openapi` plugin serves the docs UI at `/openapi`
       // (the Express `/api-docs` path was removed in the gateway migration).
-      window.open(`${serverUrl}/openapi`, '_blank')
+      void openExternalWebsite(`${serverUrl}/openapi`)
     }
   }
 

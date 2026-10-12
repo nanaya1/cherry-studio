@@ -212,7 +212,40 @@
         { "id": "knowledge", "type": "app" }
       ],
       "status": "classified",
-      "description": "Left sidebar favorites, an ordered list of tagged items: built-in apps ({type:'app'}) and mini apps ({type:'mini_app'})"
+      "description": "Legacy sidebar favorites, preserved as the source for shortcut migration"
+    },
+    {
+      "targetKey": "ui.sidebar_shortcut",
+      "type": "PreferenceTypes.SidebarShortcutItem[]",
+      "defaultValue": [
+        {
+          "id": "sidebar-shortcut:core.app:agents",
+          "target": { "kind": "resource", "locator": { "providerId": "core.app", "resourceId": "agents" } },
+          "type": "shortcut"
+        },
+        {
+          "id": "sidebar-shortcut:core.app:assistants",
+          "target": { "kind": "resource", "locator": { "providerId": "core.app", "resourceId": "assistants" } },
+          "type": "shortcut"
+        },
+        {
+          "id": "sidebar-shortcut:core.app:translate",
+          "target": { "kind": "resource", "locator": { "providerId": "core.app", "resourceId": "translate" } },
+          "type": "shortcut"
+        },
+        {
+          "id": "sidebar-shortcut:core.app:paintings",
+          "target": { "kind": "resource", "locator": { "providerId": "core.app", "resourceId": "paintings" } },
+          "type": "shortcut"
+        },
+        {
+          "id": "sidebar-shortcut:core.app:knowledge",
+          "target": { "kind": "resource", "locator": { "providerId": "core.app", "resourceId": "knowledge" } },
+          "type": "shortcut"
+        }
+      ],
+      "status": "classified",
+      "description": "Left sidebar shortcuts, an ordered list of generic resource targets with provider-owned activation"
     },
     {
       "targetKey": "ui.launchpad.app_order",
@@ -315,7 +348,8 @@
     {
       "targetKey": "agent.icon_type",
       "type": "PreferenceTypes.AssistantIconType",
-      "defaultValue": "emoji",
+      "defaultValue": "none",
+      "meaOriginalDefaultValue": "emoji",
       "status": "classified",
       "description": "Agent rail entity icon style (emoji/model/none), independent of the assistant icon type"
     },
@@ -507,6 +541,20 @@
       },
       "status": "classified",
       "description": "Command shortcut: app.window.show (unified command system)"
+    },
+    {
+      "targetKey": "shortcut.app.window.close",
+      "type": "PreferenceTypes.PreferenceShortcutType",
+      "defaultValue": {
+        "binding": [
+          "CommandOrControl",
+          "Shift",
+          "W"
+        ],
+        "enabled": true
+      },
+      "status": "classified",
+      "description": "Command shortcut: app.window.close (unified command system)"
     },
     {
       "targetKey": "shortcut.app.zoom.in",
@@ -711,6 +759,19 @@
       "description": "Command shortcut: topic.sidebar.toggle (unified command system)"
     },
     {
+      "targetKey": "shortcut.tab.close",
+      "type": "PreferenceTypes.PreferenceShortcutType",
+      "defaultValue": {
+        "binding": [
+          "CommandOrControl",
+          "W"
+        ],
+        "enabled": true
+      },
+      "status": "classified",
+      "description": "Command shortcut: tab.close (unified command system)"
+    },
+    {
       "targetKey": "shortcut.tab.next",
       "type": "PreferenceTypes.PreferenceShortcutType",
       "defaultValue": {
@@ -764,6 +825,13 @@
       "defaultValue": "VALUE: null",
       "status": "classified",
       "description": "The composer shortcut that inserts a line break. No stored default: resolved at read time to Shift+Enter, or Enter when the send shortcut already takes Shift+Enter. Send / newline / inject shortcuts are mutually exclusive."
+    },
+    {
+      "targetKey": "chat.save.knowledge.last_base_id",
+      "type": "string",
+      "defaultValue": null,
+      "status": "classified",
+      "description": "Knowledge base id last used by the save-conversation-to-knowledge dialog; preselected on the next open when it still exists and is usable."
     },
     {
       "targetKey": "feature.screenshot.enabled",

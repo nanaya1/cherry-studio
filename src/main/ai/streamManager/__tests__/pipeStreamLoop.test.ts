@@ -1,10 +1,11 @@
+import type * as AiModule from 'ai'
 import type { UIMessageChunk } from 'ai'
 import { describe, expect, it, vi } from 'vitest'
 
 import { pipeStreamLoop } from '../pipeStreamLoop'
 
 vi.mock('ai', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('ai')>()
+  const actual = await importOriginal<typeof AiModule>()
   return {
     ...actual,
     readUIMessageStream: () =>

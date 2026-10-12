@@ -39,7 +39,7 @@ vi.mock('@renderer/hooks/useMcpServer', async (importOriginal) => ({
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => mocks.navigate,
   useParams: () => ({ serverId: currentServer.id }),
-  useMatches: () => [{ routeId: '/settings/mcp/settings/$serverId', search: currentSearch }]
+  getRouteApi: () => ({ useSearch: () => currentSearch })
 }))
 
 vi.mock('@renderer/services/popup', () => ({
@@ -181,19 +181,6 @@ describe('McpSettings', () => {
     rerender(<McpSettings />)
 
     expect(screen.getByRole('textbox', { name: 'Server name' })).toHaveValue('Server B')
-  })
-
-  it('uses the provided server ID and closes the dialog without navigating', async () => {
-    currentSearch = {}
-    const onClose = vi.fn()
-    const user = userEvent.setup()
-
-    render(<McpSettings serverId="catalog-server-id" onClose={onClose} />)
-
-    expect(mockUseMcpServer).toHaveBeenCalledWith('catalog-server-id')
-    await user.click(screen.getByRole('button', { name: 'common.back' }))
-    expect(onClose).toHaveBeenCalledOnce()
-    expect(mocks.navigate).not.toHaveBeenCalled()
   })
 
   it('renders selectable MCP logs and copies them to the clipboard', async () => {

@@ -87,6 +87,8 @@ class PreferencesGenerator {
           targetKey: def.targetKey,
           type: def.type,
           defaultValue: def.defaultValue,
+          // MEA:resource-icons 将旧默认值保留到生成的回滚注释。
+          meaOriginalDefaultValue: def.meaOriginalDefaultValue,
           source: 'target-key-definitions',
           sourceCategory: def.source || 'complex',
           originalKey: def.source || 'complex',
@@ -408,6 +410,12 @@ export const DefaultPreferences: PreferenceSchemas = {`
       if (value.type) {
         // 叶子节点 - 实际的配置项，直接使用targetKey
         const defaultVal = this.formatDefaultValue(value.defaultValue)
+        // MEA:resource-icons JSON 源保留旧值，生成结果保留原默认行供回滚。
+        const originalDefault = value.originalItem.meaOriginalDefaultValue
+        if (originalDefault !== undefined) {
+          code += `${indent}// MEA:resource-icons 恢复隐藏资源头像的默认值。\n`
+          code += `${indent}// '${key}': ${this.formatDefaultValue(originalDefault)}${isLast ? '' : ','}\n`
+        }
         code += `${indent}'${key}': ${defaultVal}${isLast ? '' : ','}\n`
       } else {
         // 中间节点 - 嵌套对象

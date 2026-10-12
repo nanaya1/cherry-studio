@@ -31,7 +31,7 @@ vi.mock('@renderer/hooks/agent/useSession', () => ({
   })
 }))
 
-vi.mock('@renderer/components/chat/messages/agentMessageListAdapter', () => ({
+vi.mock('../../messages/agentMessageListAdapter', () => ({
   useAgentMessageListProviderValue: useAgentMessageListProviderValueMock
 }))
 

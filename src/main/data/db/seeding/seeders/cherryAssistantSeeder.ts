@@ -1,9 +1,10 @@
+import { eq } from 'drizzle-orm'
+import { v4 as uuidv4 } from 'uuid'
+
 import { agentTable } from '@data/db/schemas/agent'
 import { agentGlobalSkillService } from '@data/services/AgentGlobalSkillService'
 import { agentService } from '@data/services/AgentService'
 import type { AgentConfiguration } from '@shared/data/api/schemas/agents'
-import { eq } from 'drizzle-orm'
-import { v4 as uuidv4 } from 'uuid'
 
 import type { DbType, ISeeder } from '../../types'
 

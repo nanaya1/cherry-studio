@@ -3,6 +3,9 @@ import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
+import { asc, eq } from 'drizzle-orm'
+import { app } from 'electron'
+
 import { application } from '@application'
 import { agentGlobalSkillTable } from '@data/db/schemas/agentGlobalSkill'
 import {
@@ -17,8 +20,8 @@ import {
   skillProfessionalDimensionTranslationTable
 } from '@data/db/schemas/skillCatalog'
 import { loggerService } from '@logger'
-import { skillService } from '@main/ai/skills/SkillService'
 import { normalizeFolderKey } from '@main/ai/skills/skillPaths'
+import { skillService } from '@main/ai/skills/SkillService'
 import { BaseService, DependsOn, Injectable, Phase, ServicePhase } from '@main/core/lifecycle'
 import type { SkillCatalogFacet, SkillCatalogItem, SkillCatalogResponse } from '@shared/data/api/schemas/skillCatalog'
 import {
@@ -28,8 +31,6 @@ import {
   type SkillCatalogSnapshot,
   validateSkillCatalog
 } from '@shared/types/skillCatalog'
-import { asc, eq } from 'drizzle-orm'
-import { app } from 'electron'
 
 const logger = loggerService.withContext('SkillCatalogService')
 const ACTIVE_STATE_ID = 'active'

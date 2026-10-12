@@ -1,3 +1,5 @@
+import { and, eq } from 'drizzle-orm'
+
 import { agentTable } from '@data/db/schemas/agent'
 import { assistantTable } from '@data/db/schemas/assistant'
 import { preferenceTable } from '@data/db/schemas/preference'
@@ -6,8 +8,11 @@ import { userProviderTable } from '@data/db/schemas/userProvider'
 import { providerService } from '@data/services/ProviderService'
 import { applyMoves } from '@data/services/utils/orderKey'
 import { CHERRYAI_DEFAULT_UNIQUE_MODEL_ID, CHERRYAI_PROVIDER_ID } from '@shared/data/presets/cherryai'
-import { XUELANG_DEFAULT_UNIQUE_MODEL_ID, XUELANG_PROVIDER_ID, XUELANG_PROVIDER_NAME } from '@shared/data/presets/xuelang'
-import { and, eq } from 'drizzle-orm'
+import {
+  XUELANG_DEFAULT_UNIQUE_MODEL_ID,
+  XUELANG_PROVIDER_ID,
+  XUELANG_PROVIDER_NAME
+} from '@shared/data/presets/xuelang'
 
 import type { DbType, ISeeder } from '../../types'
 import { hashObject } from '../hashObject'

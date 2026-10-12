@@ -7,11 +7,11 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import type * as CherryStudioUi from '@cherrystudio/ui'
 
 const mocks = vi.hoisted(() => ({
-  ipcRequest: vi.fn(),
   language: 'en-US',
   openFeedback: vi.fn(),
   openReleaseNotes: vi.fn(),
-  openSmartMiniApp: vi.fn()
+  openSmartMiniApp: vi.fn(),
+  showDoctor: vi.fn()
 }))
 
 vi.mock('@cherrystudio/ui', async (importOriginal) => importOriginal<typeof CherryStudioUi>())
@@ -28,14 +28,18 @@ vi.mock('@renderer/hooks/useMiniAppPopup', () => ({
   useMiniAppPopup: () => ({ openSmartMiniApp: mocks.openSmartMiniApp })
 }))
 
-vi.mock('@renderer/ipc', () => ({
-  ipcApi: { request: mocks.ipcRequest }
+vi.mock('@renderer/components/doctor', () => ({
+  DoctorPopup: { show: (...args: unknown[]) => mocks.showDoctor(...args) }
 }))
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     i18n: { language: mocks.language, resolvedLanguage: mocks.language },
-    t: (key: string) => key
+    t: (key: string) => {
+      if (key === 'help.star') return 'Star us on GitHub'
+      if (key === 'settings.doctor.entry.title') return 'System diagnostics'
+      return key
+    }
   })
 }))
 
@@ -81,14 +85,15 @@ describe('HelpMenu', () => {
     }
   })
 
-  it('shows compact 32px actions and opens release notes', async () => {
+  it('shows only MEA-safe compact actions and opens release notes', async () => {
     render(<HelpMenu layout="icon" onFeedbackClick={mocks.openFeedback} />)
     const user = await openMenu()
 
-    // 「使用指南」（docs.cherryai.com.cn，Cherry 厂商云）与「GitHub 点赞」（CherryHQ 仓库）入口暂时隐藏，剩 2 个动作。
-    const actions = ['help.whats_new', 'help.feedback'].map((name) => screen.getByRole('button', { name }))
+    const actions = ['help.whats_new', 'System diagnostics'].map((name) => screen.getByRole('button', { name }))
     expect(actions).toHaveLength(2)
     actions.forEach((action) => expect(action).toHaveClass('h-8'))
+    expect(screen.queryByRole('button', { name: 'help.guide' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'help.feedback' })).not.toBeInTheDocument()
 
     await user.click(actions[0])
     await waitFor(() => expect(mocks.openReleaseNotes).toHaveBeenCalledOnce())
@@ -106,36 +111,24 @@ describe('HelpMenu', () => {
     expect(onOverlayOpenChange).toHaveBeenLastCalledWith(false)
   })
 
-  it.each([
-    ['zh-CN', 'https://docs.cherryai.com.cn/'],
-    ['zh-TW', 'https://docs.cherryai.com.cn/'],
-    ['en-US', 'https://docs.cherryai.com.cn/docs/en-us']
-  ])('hides the Cherry-vendor guide entry for %s', async (language) => {
-    // 「使用指南」跳转 docs.cherryai.com.cn（Cherry 厂商云），入口已隐藏；原 URL 断言见 git 历史。
-    mocks.language = language
+  it('keeps Cherry documentation and feedback actions offline', async () => {
     render(<HelpMenu layout="full" onFeedbackClick={mocks.openFeedback} />)
     await openMenu()
 
     expect(screen.queryByRole('button', { name: 'help.guide' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'help.feedback' })).not.toBeInTheDocument()
     expect(mocks.openSmartMiniApp).not.toHaveBeenCalled()
+    expect(mocks.openFeedback).not.toHaveBeenCalled()
   })
 
-  it('requests the feedback dialog from the secondary menu action', async () => {
-    render(<HelpMenu layout="full" onFeedbackClick={mocks.openFeedback} />)
+  it('opens system diagnostics checks in place of the GitHub Star action', async () => {
+    render(<HelpMenu layout="icon" onFeedbackClick={mocks.openFeedback} />)
     const user = await openMenu()
 
-    await user.click(screen.getByRole('button', { name: 'help.feedback' }))
+    expect(screen.queryByRole('button', { name: 'Star us on GitHub' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'System diagnostics' }))
 
-    await waitFor(() => expect(mocks.openFeedback).toHaveBeenCalledOnce())
-  })
-
-  it('hides the GitHub Star entry while it is disabled', async () => {
-    // 「GitHub 点赞」跳转 https://github.com/CherryHQ/cherry-studio（CherryHQ 官方仓库），入口已隐藏；原 URL 断言见 git 历史。
-    render(<HelpMenu layout="icon" onFeedbackClick={mocks.openFeedback} />)
-    await openMenu()
-
-    expect(screen.queryByRole('button', { name: 'help.star' })).not.toBeInTheDocument()
-    expect(mocks.ipcRequest).not.toHaveBeenCalledWith('system.shell.open_website', expect.anything())
+    await waitFor(() => expect(mocks.showDoctor).toHaveBeenCalledWith({ initialPanel: 'checks' }))
   })
 
   it('supports keyboard activation from the focused first action', async () => {

@@ -144,13 +144,25 @@ export class PkceOAuthClient {
     const tokenData = OAuthTokenResponseSchema.parse(await response.json())
     if (this.config.requireGatewayTokenResponse) {
       if (!tokenData.refresh_token) {
-        throw new OAuthServiceError('Gateway token response is missing refresh_token', undefined, 'INVALID_TOKEN_RESPONSE')
+        throw new OAuthServiceError(
+          'Gateway token response is missing refresh_token',
+          undefined,
+          'INVALID_TOKEN_RESPONSE'
+        )
       }
       if (tokenData.token_type && tokenData.token_type !== 'Bearer') {
-        throw new OAuthServiceError('Gateway token response has an unsupported token_type', undefined, 'INVALID_TOKEN_RESPONSE')
+        throw new OAuthServiceError(
+          'Gateway token response has an unsupported token_type',
+          undefined,
+          'INVALID_TOKEN_RESPONSE'
+        )
       }
       if (tokenData.expires_in === undefined || tokenData.expires_in <= 0) {
-        throw new OAuthServiceError('Gateway token response has an invalid expires_in', undefined, 'INVALID_TOKEN_RESPONSE')
+        throw new OAuthServiceError(
+          'Gateway token response has an invalid expires_in',
+          undefined,
+          'INVALID_TOKEN_RESPONSE'
+        )
       }
     }
     return tokenData

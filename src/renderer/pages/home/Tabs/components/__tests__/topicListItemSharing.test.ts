@@ -1,9 +1,8 @@
-import {
-  EMPTY_TOPIC_LIST_ITEM_RECONCILIATION,
-  reconcileTopicListItems
-} from '@renderer/components/chat/resourceList/topicListItemSharing'
-import type { Topic as ApiTopic } from '@shared/data/types/topic'
 import { describe, expect, it } from 'vitest'
+
+import type { Topic as ApiTopic } from '@shared/data/types/topic'
+
+import { EMPTY_TOPIC_LIST_ITEM_RECONCILIATION, reconcileTopicListItems } from '../topicListItemSharing'
 
 const createTopic = (overrides: Partial<ApiTopic> = {}): ApiTopic => ({
   id: 'topic-1',

@@ -1,14 +1,15 @@
 import '@testing-library/jest-dom/vitest'
-
-// fireEvent / waitFor 随 GitHub 反馈入口点击断言一起停用，恢复时改回。
-// import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { useState } from 'react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+import { POPUP_EXIT_MS } from '@renderer/services/popup'
 
 const mocks = vi.hoisted(() => ({
   ipcRequest: vi.fn(),
   loggerError: vi.fn(),
+  openRoute: vi.fn(),
+  showDoctor: vi.fn(),
   toastError: vi.fn()
 }))
 
@@ -22,6 +23,10 @@ vi.mock('@renderer/ipc', () => ({
   }
 }))
 
+vi.mock('@renderer/services/mainWindowNavigation', () => ({
+  openRoute: (...args: unknown[]) => mocks.openRoute(...args)
+}))
+
 vi.mock('@renderer/services/toast', () => ({
   toast: { error: (...args: unknown[]) => mocks.toastError(...args) }
 }))
@@ -32,11 +37,11 @@ vi.mock('react-i18next', () => ({
   })
 }))
 
-vi.mock('@renderer/components/feedback/DiagnosticUploadDialog', () => ({
-  default: ({ open }: { open: boolean }) => (open ? <div role="dialog">diagnostic-upload-dialog</div> : null)
+vi.mock('@renderer/components/doctor', () => ({
+  DoctorPopup: { show: (...args: unknown[]) => mocks.showDoctor(...args) }
 }))
 
-import { FEEDBACK_GITHUB_URL, FeedbackDialog } from '../FeedbackDialog'
+import { FEEDBACK_GITHUB_URL, FeedbackDialog, getFeedbackAgentRoute } from '../FeedbackDialog'
 
 function ControlledFeedbackDialog() {
   const [open, setOpen] = useState(true)
@@ -49,34 +54,82 @@ describe('FeedbackDialog', () => {
     mocks.ipcRequest.mockResolvedValue({ sessionId: 'feedback-session' })
   })
 
-  it('shows an empty dialog while both entries are hidden', () => {
-    // 「发送诊断报告」（→ api.cherry-ai.com）与「GitHub 反馈」（→ CherryHQ issues）入口均已暂时隐藏，
-    // 对话框只剩标题骨架；恢复时改回入口断言（见 git 历史）。
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('shows diagnostics, Cherry Support, and GitHub in the requested order', () => {
     render(<FeedbackDialog open onOpenChange={vi.fn()} />)
 
-    expect(screen.getByText('settings.about.feedback.dialog.title')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /settings.about.feedback.github.title/ })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /settings.about.feedback.diagnostics.title/ })).not.toBeInTheDocument()
-    expect(screen.queryByText('settings.about.feedback.recommended')).not.toBeInTheDocument()
+    const diagnostics = screen.getByRole('button', { name: /settings.about.feedback.diagnostics.title/ })
+    const agent = screen.getByRole('button', { name: /settings.about.feedback.agent.title/ })
+    const github = screen.getByRole('button', { name: /settings.about.feedback.github.title/ })
+    const recommended = within(diagnostics).getByText('settings.about.feedback.recommended')
+
+    expect(diagnostics.compareDocumentPosition(agent)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
+    expect(agent.compareDocumentPosition(github)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
+    expect(recommended).toBeVisible()
   })
 
-  it('uses the shared large dialog size', () => {
+  it('creates an isolated feedback session before opening the Agent route', async () => {
+    render(<ControlledFeedbackDialog />)
+
+    fireEvent.click(screen.getByRole('button', { name: /settings.about.feedback.agent.title/ }))
+
+    await waitFor(() => expect(mocks.ipcRequest).toHaveBeenCalledWith('ai.agent.support_session.create'))
+    await waitFor(() => expect(mocks.openRoute).toHaveBeenCalledWith(getFeedbackAgentRoute('feedback-session')))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  })
+
+  it('closes before opening the shared problem-report panel', async () => {
+    vi.useFakeTimers()
+    render(<ControlledFeedbackDialog />)
+
+    fireEvent.click(screen.getByRole('button', { name: /settings.about.feedback.diagnostics.title/ }))
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(mocks.showDoctor).not.toHaveBeenCalled()
+
+    await vi.advanceTimersByTimeAsync(POPUP_EXIT_MS)
+
+    expect(mocks.showDoctor).toHaveBeenCalledWith({ initialPanel: 'report' })
+  })
+
+  it('reports feedback-session creation failures without opening an empty Agent route', async () => {
+    mocks.ipcRequest.mockRejectedValue(new Error('restore failed'))
     render(<FeedbackDialog open onOpenChange={vi.fn()} />)
 
-    expect(screen.getByTestId('dialog-content')).toHaveAttribute('data-size', 'lg')
+    fireEvent.click(screen.getByRole('button', { name: /settings.about.feedback.agent.title/ }))
+
+    await waitFor(() => expect(mocks.toastError).toHaveBeenCalledWith('settings.about.feedback.agent_error'))
+    expect(mocks.openRoute).not.toHaveBeenCalled()
   })
 
-  it('does not render the diagnostic upload dialog while the entry is hidden', () => {
-    render(<ControlledFeedbackDialog />)
+  it('opens the GitHub issue chooser', async () => {
+    render(<FeedbackDialog open onOpenChange={vi.fn()} />)
 
-    expect(screen.queryByText('diagnostic-upload-dialog')).not.toBeInTheDocument()
-    expect(mocks.ipcRequest).not.toHaveBeenCalledWith('diagnostics.bundle.upload', expect.anything())
+    fireEvent.click(screen.getByRole('button', { name: /settings.about.feedback.github.title/ }))
+
+    await waitFor(() =>
+      expect(mocks.ipcRequest).toHaveBeenCalledWith('system.shell.open_external_website', FEEDBACK_GITHUB_URL)
+    )
   })
 
-  it('never opens the GitHub issue chooser while the entry is hidden', async () => {
-    // 「GitHub 反馈」入口暂时隐藏，任何交互都不应触发 open_website（原点击断言见 git 历史）。
+  it('closes before reporting GitHub issue chooser failures', async () => {
+    mocks.ipcRequest.mockImplementation((route: string) => {
+      if (route === 'system.shell.open_external_website') {
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+        return Promise.reject(new Error('open failed'))
+      }
+      return Promise.resolve({ sessionId: 'feedback-session' })
+    })
     render(<ControlledFeedbackDialog />)
 
-    expect(mocks.ipcRequest).not.toHaveBeenCalledWith('system.shell.open_website', FEEDBACK_GITHUB_URL)
+    fireEvent.click(screen.getByRole('button', { name: /settings.about.feedback.github.title/ }))
+
+    await waitFor(() =>
+      expect(mocks.loggerError).toHaveBeenCalledWith('Failed to open GitHub issue chooser', expect.any(Error))
+    )
+    expect(mocks.toastError).toHaveBeenCalledWith('settings.about.feedback.github.error')
   })
 })

@@ -13,11 +13,23 @@ import { ResourceCardMenu } from '../ResourceCardMenu'
 import { ResourceCard } from '../ResourceCards'
 import { ResourceGrid } from '../ResourceGrid'
 
-const { deleteGroupMock, updateGroupMock, updateAssistantMock, updateSkillGlobalEnabledMock } = vi.hoisted(() => ({
-  deleteGroupMock: vi.fn(),
-  updateGroupMock: vi.fn(),
-  updateAssistantMock: vi.fn(),
-  updateSkillGlobalEnabledMock: vi.fn()
+const { deleteGroupMock, ipcRequestMock, updateGroupMock, updateAssistantMock, updateSkillGlobalEnabledMock } =
+  vi.hoisted(() => ({
+    deleteGroupMock: vi.fn(),
+    ipcRequestMock: vi.fn(),
+    updateGroupMock: vi.fn(),
+    updateAssistantMock: vi.fn(),
+    updateSkillGlobalEnabledMock: vi.fn()
+  }))
+
+vi.mock('@renderer/ipc', () => ({ ipcApi: { request: ipcRequestMock } }))
+vi.mock('@tanstack/react-virtual', () => ({
+  useVirtualizer: ({ count }: { count: number }) => ({
+    getTotalSize: () => count * 104,
+    getVirtualItems: () =>
+      Array.from({ length: count }, (_, index) => ({ index, key: index, size: 104, start: index * 104 })),
+    measureElement: vi.fn()
+  })
 }))
 
 vi.mock('react-i18next', () => ({
@@ -42,6 +54,7 @@ vi.mock('react-i18next', () => ({
           'library.assistant_catalog.go_to_chat': '去对话',
           'library.create_menu.create': '新建助手',
           'library.skill_add.add': '添加技能',
+          'library.skill_add.create_with_agent': '通过 Agent 创建',
           'library.skill_add.local_import': '本地导入',
           'library.skill_add.online_search': '在线搜索',
           'library.skill_add.system_search': '系统搜索',
@@ -50,6 +63,8 @@ vi.mock('react-i18next', () => ({
           'library.type.assistant': '助手',
           'library.type.skill': '技能',
           'settings.skills.globalToggle': '全局启用技能',
+          'settings.skills.source.local': '本地',
+          'settings.skills.tryNow': '立即试用',
           'settings.skills.toggleFailed': '更新技能全局状态失败'
         }) satisfies Record<string, string>
       )[key] ?? key
@@ -410,9 +425,7 @@ function createAssistantResource(overrides: Partial<Extract<ResourceItem, { type
   }
 }
 
-function createAgentResource(
-  overrides: Partial<Extract<ResourceItem, { type: 'agent' }>> = {}
-): ResourceItem {
+function createAgentResource(): ResourceItem {
   return {
     id: 'agent-1',
     type: 'agent',
@@ -421,12 +434,15 @@ function createAgentResource(
     avatar: 'A',
     createdAt: '2026-05-06T00:00:00.000Z',
     updatedAt: '2026-05-06T00:00:00.000Z',
-    raw: {} as Extract<ResourceItem, { type: 'agent' }>['raw'],
-    ...overrides
+    raw: {} as Extract<ResourceItem, { type: 'agent' }>['raw']
   }
 }
 
-function createSkillResource(version: string | null = null, isGlobalEnabled = true): ResourceItem {
+function createSkillResource(
+  version: string | null = null,
+  isGlobalEnabled = true,
+  rawOverrides: Partial<Extract<ResourceItem, { type: 'skill' }>['raw']> = {}
+): ResourceItem {
   return {
     id: 'skill-1',
     type: 'skill',
@@ -435,7 +451,10 @@ function createSkillResource(version: string | null = null, isGlobalEnabled = tr
     avatar: 'S',
     createdAt: '2026-05-06T00:00:00.000Z',
     updatedAt: '2026-05-06T00:00:00.000Z',
-    raw: { version, isGlobalEnabled } as Extract<ResourceItem, { type: 'skill' }>['raw']
+    raw: { version, isGlobalEnabled, source: 'local', ...rawOverrides } as Extract<
+      ResourceItem,
+      { type: 'skill' }
+    >['raw']
   }
 }
 
@@ -613,6 +632,26 @@ describe('ResourceGrid assistant add actions', () => {
     expect(screen.queryByRole('button', { name: '助手库' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: '导入助手' })).toBeInTheDocument()
   })
+
+  it('keeps the MEA resource center readable without management actions', () => {
+    const onEdit = vi.fn()
+    renderResourceGrid({
+      resources: [createAssistantResource()],
+      groups: [{ id: 'group-1', name: 'Group 1', count: 1 }],
+      allGroups: [{ id: 'group-1', name: 'Group 1', order: 0 } as any],
+      onEdit,
+      showManagementActions: false
+    })
+
+    expect(screen.queryByRole('button', { name: '新建助手' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '助手库' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '导入助手' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '分组' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'common.more' })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Assistant' }))
+    expect(onEdit).toHaveBeenCalledTimes(1)
+  })
 })
 
 describe('ResourceGrid skill add actions', () => {
@@ -657,6 +696,17 @@ describe('ResourceGrid skill add actions', () => {
     fireEvent.click(screen.getByRole('button', { name: '添加技能' }))
 
     expect(screen.queryByRole('menuitem', { name: '系统搜索' })).not.toBeInTheDocument()
+  })
+
+  it('offers Agent creation when the builtin creator is available', async () => {
+    const user = userEvent.setup()
+    const onCreateSkillWithAgent = vi.fn()
+
+    renderResourceGrid({ activeResourceType: 'skill', onCreateSkillWithAgent })
+    await user.click(screen.getByRole('button', { name: '添加技能' }))
+    await user.click(screen.getByRole('menuitem', { name: '通过 Agent 创建' }))
+
+    expect(onCreateSkillWithAgent).toHaveBeenCalledOnce()
   })
 })
 
@@ -823,6 +873,43 @@ describe('ResourceGrid group toolbar management', () => {
 })
 
 describe('ResourceGrid card actions', () => {
+  it.each([
+    [createAssistantResource(), 'lucide-message-circle'],
+    [createAgentResource(), 'lucide-bot']
+  ])('preserves the MEA type icon instead of the %s avatar', (resource, iconClass) => {
+    const { container } = render(<ResourceCard resource={{ ...resource, avatar: '🤖' }} {...getResourceCardProps()} />)
+
+    expect(screen.queryByText('🤖')).not.toBeInTheDocument()
+    // MEA cards use a conversation glyph for assistants and a Bot glyph for agents.
+    expect(container.querySelector(`svg.${iconClass}`)).toBeInTheDocument()
+  })
+
+  it('preserves prompt avatar text', () => {
+    render(<ResourceCard resource={createPromptResource()} {...getResourceCardProps()} />)
+
+    expect(screen.getByText('Aa')).toBeInTheDocument()
+  })
+
+  it('resolves and renders custom Skill icons in the active grid', async () => {
+    ipcRequestMock.mockResolvedValueOnce({ 'skill-1': 'file:///skills/skill-1/icon.png' })
+
+    const { container } = renderResourceGrid({
+      activeResourceType: 'skill',
+      resources: [createSkillResource(null, true, { iconFileName: 'icon.png' })]
+    })
+
+    expect(ipcRequestMock).toHaveBeenCalledWith('skill.icons.resolve', { skillIds: ['skill-1'] })
+    await waitFor(() =>
+      expect(container.querySelector('img')).toHaveAttribute('src', 'file:///skills/skill-1/icon.png')
+    )
+  })
+
+  it('does not expose a sidebar shortcut action on Skill settings cards', () => {
+    render(<ResourceCard resource={createSkillResource()} variant="settings" {...getResourceCardProps()} />)
+
+    expect(screen.queryByRole('button', { name: 'launchpad.pin_to_sidebar' })).not.toBeInTheDocument()
+  })
+
   it('toggles a Skill globally from its settings card without opening the card', async () => {
     const user = userEvent.setup()
     const onEdit = vi.fn()
@@ -854,24 +941,42 @@ describe('ResourceGrid card actions', () => {
     expect(screen.queryByText('1.2.3')).not.toBeInTheDocument()
   })
 
-  it('shows the overflow menu only for assistant cards', () => {
-    render(<ResourceCard resource={createAssistantResource()} {...getResourceCardProps()} />)
+  it('keeps Try Now and More visible on every settings Skill card', async () => {
+    const user = userEvent.setup()
+    const skill = createSkillResource()
+    const onLaunchSkill = vi.fn()
+    const onDelete = vi.fn()
+
+    render(<ResourceCard resource={skill} variant="settings" {...getResourceCardProps({ onDelete, onLaunchSkill })} />)
+
+    expect(screen.getByText('本地')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '立即试用' }))
+    expect(onLaunchSkill).toHaveBeenCalledExactlyOnceWith(skill)
 
     expect(screen.getByRole('button', { name: /common.more/ })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '删除' })).not.toBeInTheDocument()
   })
 
-  it('hides the overflow menu on assistant cards when management actions are disabled', () => {
-    render(
-      <ResourceCard resource={createAssistantResource()} showManagementActions={false} {...getResourceCardProps()} />
-    )
+  it.each([createAssistantResource, createAgentResource])(
+    'offers only archiving for owner cards',
+    async (createResource) => {
+      const user = userEvent.setup()
+      const resource = createResource()
+      const onDelete = vi.fn()
+      render(<ResourceCard resource={resource} {...getResourceCardProps({ onDelete })} />)
 
-    expect(screen.queryByRole('button', { name: /common.more/ })).not.toBeInTheDocument()
-  })
+      await user.click(screen.getByRole('button', { name: /common.more/ }))
+      expect(screen.getByRole('menuitem', { name: 'common.archive' })).toBeInTheDocument()
+      expect(screen.queryByRole('menuitem', { name: 'common.delete_permanently' })).not.toBeInTheDocument()
+      await user.click(screen.getByRole('menuitem', { name: 'common.archive' }))
+      await waitFor(() => expect(onDelete).toHaveBeenCalledExactlyOnceWith(resource))
+      expect(screen.queryByRole('button', { name: '删除' })).not.toBeInTheDocument()
+    }
+  )
 
   it('shows a direct delete action when delete is the only card action', async () => {
     const user = userEvent.setup()
-    const resource = createAgentResource()
+    const resource = createPromptResource()
     const onDelete = vi.fn()
 
     render(<ResourceCard resource={resource} {...getResourceCardProps({ onDelete })} />)
@@ -1118,15 +1223,17 @@ describe('ResourceCardMenu group binding', () => {
     expect(screen.queryByTestId('menu-divider')).not.toBeInTheDocument()
   })
 
-  it('keeps the divider when assistant resources have actions before delete', async () => {
+  it('offers archive without permanent deletion for assistant resources', async () => {
     const user = userEvent.setup()
+    const resource = createAssistantResource()
+    const onDelete = vi.fn()
 
     render(
       <ResourceCardMenu
-        resource={createAssistantResource()}
+        resource={resource}
         onClose={vi.fn()}
         onDuplicate={vi.fn()}
-        onDelete={vi.fn()}
+        onDelete={onDelete}
         onExport={vi.fn()}
         allGroups={[]}
       />
@@ -1135,36 +1242,8 @@ describe('ResourceCardMenu group binding', () => {
     await user.click(screen.getByRole('button', { name: /common.more/ }))
     expect(screen.queryByRole('button', { name: /common.edit/ })).not.toBeInTheDocument()
     expect(screen.getByTestId('menu-divider')).toBeInTheDocument()
-    expect(screen.getByRole('menuitem', { name: '删除' })).toBeInTheDocument()
-  })
-
-  it('hides delete for the default assistant and default agent cards and menus', async () => {
-    const user = userEvent.setup()
-    const onDelete = vi.fn()
-
-    // Assistant card: the builtin default keeps its overflow menu (group/duplicate/export)
-    // but the menu offers no delete entry.
-    const defaultAssistant = createAssistantResource({
-      raw: { builtinRole: 'assistant' } as Extract<ResourceItem, { type: 'assistant' }>['raw']
-    })
-
-    const { rerender } = render(
-      <ResourceCard resource={defaultAssistant} {...getResourceCardProps({ onDelete })} />
-    )
-    expect(screen.getByText('common.default')).toBeInTheDocument()
-
-    await user.click(screen.getByRole('button', { name: /common.more/ }))
-    expect(screen.queryByRole('menuitem', { name: '删除' })).not.toBeInTheDocument()
-
-    // Agent card: the builtin default loses the direct delete button entirely.
-    const defaultAgent = createAgentResource({
-      raw: {
-        configuration: { builtin_role: 'assistant' }
-      } as Extract<ResourceItem, { type: 'agent' }>['raw']
-    })
-
-    rerender(<ResourceCard resource={defaultAgent} {...getResourceCardProps({ onDelete })} />)
-    expect(screen.getByText('common.default')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: '删除' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('menuitem', { name: 'common.delete_permanently' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('menuitem', { name: 'common.archive' }))
+    await waitFor(() => expect(onDelete).toHaveBeenLastCalledWith(resource))
   })
 })

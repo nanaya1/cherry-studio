@@ -2,10 +2,13 @@ import type { TFunction } from 'i18next'
 import { Bot, Check } from 'lucide-react'
 import type { ReactNode } from 'react'
 
+// import { EmojiIcon } from '@cherrystudio/ui'
 import ModelAvatar from '@renderer/components/Avatar/ModelAvatar'
 import type { ActionDescriptor, ResolvedAction } from '@renderer/components/chat/actions/actionTypes'
+// import { getAgentAvatarFromConfiguration } from '@renderer/utils/agent'
 import type { AgentConfiguration } from '@shared/data/api/schemas/agents'
 import type { AssistantIconType } from '@shared/data/preference/preferenceTypes'
+// import { DEFAULT_ASSISTANT_EMOJI } from '@shared/data/presets/defaultAssistant'
 import { isUniqueModelId, parseUniqueModelId } from '@shared/data/types/model'
 
 import { buildResolvedResourceEntityMenuAction } from './resourceEntityActions'
@@ -30,13 +33,21 @@ function buildModelAvatarModel(uniqueModelId: unknown, modelName: string | null 
 }
 
 const RESOURCE_ICON_SIZE = 24
+const RESOURCE_GLYPH_SIZE = 14
 
-function renderFallbackAssistantIcon(size: number) {
+function renderFallbackAssistantIcon(
+  // emoji: string | null | undefined,
+  _emoji: string | null | undefined,
+  size: number,
+  glyphSize: number
+) {
+  // MEA 隐藏 assistant Emoji，统一使用 Bot fallback；恢复时可重新启用 EmojiIcon 分支。
+  // return emoji ? <EmojiIcon emoji={emoji} size={size} /> : ...
   return (
     <span
       className="flex items-center justify-center rounded-full bg-background-subtle"
       style={{ width: size, height: size }}>
-      <Bot size={Math.round(size * 0.58)} />
+      <Bot size={glyphSize} />
     </span>
   )
 }
@@ -48,7 +59,8 @@ export function renderAssistantEntityIcon(
   iconType: AssistantIconType,
   assistant: { emoji?: string | null; modelId?: string | null; modelName?: string | null },
   fallbackModelId?: string | null,
-  size: number = RESOURCE_ICON_SIZE
+  size: number = RESOURCE_ICON_SIZE,
+  fallbackGlyphSize: number = RESOURCE_GLYPH_SIZE
 ) {
   if (iconType === 'none') return undefined
 
@@ -57,7 +69,7 @@ export function renderAssistantEntityIcon(
     return <ModelAvatar model={modelAvatarModel} size={size} className="border border-border-subtle" />
   }
 
-  return renderFallbackAssistantIcon(size)
+  return renderFallbackAssistantIcon(assistant.emoji, size, fallbackGlyphSize)
 }
 
 /**
@@ -74,7 +86,9 @@ export function renderAgentEntityIcon(
   const modelAvatarModel = buildModelAvatarModel(agent?.model ?? fallbackModelId, agent?.modelName)
   if (iconType === 'model' && modelAvatarModel) return <ModelAvatar model={modelAvatarModel} size={size} />
 
-  return renderFallbackAssistantIcon(size)
+  // MEA 隐藏 agent Emoji，统一使用 Bot fallback；恢复时可重新启用原 EmojiIcon。
+  // return <EmojiIcon emoji={getAgentAvatarFromConfiguration(agent?.configuration) || DEFAULT_ASSISTANT_EMOJI} size={size} />
+  return renderFallbackAssistantIcon(undefined, size, RESOURCE_GLYPH_SIZE)
 }
 
 export function buildResolvedIconTypeActions(

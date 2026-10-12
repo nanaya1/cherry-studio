@@ -16,9 +16,9 @@ import { useTabs } from '@renderer/hooks/tab'
 // 保留注释以便恢复 upstream 门控时取消注释：
 // import { getSidebarApp, tabBelongsToApp } from '@renderer/utils/sidebar'
 import type { SidebarAppId } from '@renderer/utils/sidebar'
+import type { Tab } from '@shared/data/cache/cacheValueTypes'
 // MEA: 宽松门控依赖 isSettingsPath（见 shouldLoadResourceViewSource 注释）；upstream 无此依赖
 import { isSettingsPath } from '@shared/data/types/settingsPath'
-import type { Tab } from '@shared/data/cache/cacheValueTypes'
 
 const EMPTY_PIN_IDS = new Map<string, string>()
 const EMPTY_TOPICS: ReturnType<typeof useRawAssistantTopicsSource>['topics'] = []

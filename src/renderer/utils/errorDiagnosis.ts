@@ -16,7 +16,7 @@ export type { DiagnosisResult, DiagnosisStep } from '@shared/data/types/uiParts'
 
 export interface DiagnosisContext {
   errorSource?: string
-  providerName?: string
+  providerId?: string
   modelId?: string
 }
 
@@ -54,31 +54,31 @@ function buildContextHint(errorInfo: Record<string, unknown>, context?: Diagnosi
     msg.includes('not available in your territory') ||
     (msg.includes('territory') && (status === 403 || msg.includes('unsupported')))
   ) {
-    const provider = errorInfo.provider || context?.providerName || 'the provider'
+    const provider = errorInfo.provider || context?.providerId || 'the provider'
     return `## Context\n${provider} is blocking the request because the user's IP region is not supported. This is NOT an API-key issue. Suggest configuring an HTTP/SOCKS proxy in system settings, or switching to a provider available in the user's region. DO NOT suggest changing the API key.\n`
   }
 
   // Auth / API key issues (401). 403 is handled below — mirrors `classifyError`, which keeps
   // a refused request out of the invalid-key bucket.
   if (status === 401 || msg.includes('api_key') || msg.includes('unauthorized')) {
-    const provider = errorInfo.provider || context?.providerName || 'the provider'
-    return `## Context\nThe user is calling ${provider} API and got an authentication error. MEA Cowork lets users configure API keys per provider in provider settings.\n`
+    const provider = errorInfo.provider || context?.providerId || 'the provider'
+    return `## Context\nThe user is calling ${provider} API and got an authentication error. Cherry Studio lets users configure API keys per provider in provider settings.\n`
   }
 
   // Explicit billing signals win over the HTTP 429 rate-limit default.
   if (status === 402 || isQuotaErrorMessage(msg)) {
-    const provider = errorInfo.provider || context?.providerName || 'the provider'
+    const provider = errorInfo.provider || context?.providerId || 'the provider'
     return `## Context\nThe user's quota or account balance is exhausted on ${provider}. Suggest checking billing on the provider's website, topping up, or switching to a different provider. DO NOT suggest waiting or retrying - this is not a transient issue.\n`
   }
 
   // 403 sits below region/quota, matching `classifyError`'s `permission` ordering.
   if (status === 403 || msg.includes('forbidden')) {
-    const provider = errorInfo.provider || context?.providerName || 'the provider'
+    const provider = errorInfo.provider || context?.providerId || 'the provider'
     return `## Context\n${provider} refused this request with HTTP 403. The API key was NOT rejected as invalid, so this is usually an account plan, key permission, or resource-access restriction rather than a wrong key. Read the provider's own error text in the error data before concluding. DO NOT tell the user their API key is invalid or suggest regenerating it unless the provider's error text says so.\n`
   }
 
   if (status === 429 || msg.includes('rate_limit') || msg.includes('rate limit') || msg.includes('too many requests')) {
-    const provider = errorInfo.provider || context?.providerName || 'the provider'
+    const provider = errorInfo.provider || context?.providerId || 'the provider'
     return `## Context\nThe user is hitting a rate limit on ${provider} due to too many requests in a short window. This is NOT a billing or quota issue - the user has not run out of credit. Suggest waiting briefly before retrying, slowing down request frequency, or switching to a model with a higher rate limit. DO NOT mention billing, recharging, top-up, or running out of quota.\n`
   }
 
@@ -115,6 +115,10 @@ function buildContextHint(errorInfo: Record<string, unknown>, context?: Diagnosi
     return `## Context\nThe prompt exceeds the model's context window. Suggest clearing chat history, removing large attachments, or switching to a model with a larger context window. DO NOT suggest checking the API key.\n`
   }
 
+  if (status === 413 || msg.includes('payload too large') || msg.includes('request entity too large')) {
+    return `## Context\nThe request payload is too large for an intermediate proxy or provider. Suggest starting a new topic, removing large attachments, or summarize conversation history before retrying. DO NOT suggest changing the API key or billing.\n`
+  }
+
   // Network / proxy. Mirrors the Chromium `net::ERR_*` transport tokens the shared
   // classifier recognizes, so classified failures keep the transport context hint
   // instead of falling back to the generic AI diagnosis context.
@@ -136,7 +140,7 @@ function buildContextHint(errorInfo: Record<string, unknown>, context?: Diagnosi
     isProxyErrorMessage(msg) ||
     msg.includes('certificate')
   ) {
-    return `## Context\nNetwork or proxy error. MEA Cowork supports HTTP/SOCKS proxy configuration in system settings. The user may be behind a firewall or using a custom API endpoint.\n`
+    return `## Context\nNetwork or proxy error. Cherry Studio supports HTTP/SOCKS proxy configuration in system settings. The user may be behind a firewall or using a custom API endpoint.\n`
   }
 
   // Knowledge base
@@ -145,7 +149,7 @@ function buildContextHint(errorInfo: Record<string, unknown>, context?: Diagnosi
   }
 
   // Generic
-  return `## Context\nMEA Cowork is an AI chat app connecting to LLM providers (OpenAI, Anthropic, Google, Ollama, etc.) with API keys. Error occurred during ${source || 'chat'}.\n`
+  return `## Context\nCherry Studio is an AI chat app connecting to LLM providers (OpenAI, Anthropic, Google, Ollama, etc.) with API keys. Error occurred during ${source || 'chat'}.\n`
 }
 
 function parseResponse(raw: string): DiagnosisResult {
@@ -190,7 +194,7 @@ export async function diagnoseError(
 
   if (context?.errorSource) errorInfo.source = context.errorSource
 
-  const provider = context?.providerName ?? errorBag.provider ?? errorBag.providerId
+  const provider = context?.providerId ?? errorBag.provider ?? errorBag.providerId
   if (typeof provider === 'string' && provider) errorInfo.provider = provider
 
   const modelId = context?.modelId ?? errorBag.modelId
@@ -235,7 +239,7 @@ export async function diagnoseError(
   // Build context hint based on error source
   const contextHint = buildContextHint(errorInfo, context)
 
-  const prompt = `You are an error diagnosis assistant for MEA Cowork, an AI chat desktop app.
+  const prompt = `You are an error diagnosis assistant for Cherry Studio, an AI chat desktop app.
 Analyze the error and return a JSON diagnosis in ${language}.
 
 ${contextHint}
@@ -284,7 +288,7 @@ The examples above demonstrate structure only. Write all four diagnosis fields i
  * Returns a one-line summary in the user's language, or empty string on failure.
  */
 export async function classifyErrorByAI(error: SerializedError, language: string): Promise<string> {
-  const prompt = `You are an error diagnosis assistant for MEA Cowork. Summarize this error in one sentence (max 30 words) in ${language}. Return ONLY the summary text, no JSON, no markdown, no quotes.`
+  const prompt = `You are an error diagnosis assistant for Cherry Studio. Summarize this error in one sentence (max 30 words) in ${language}. Return ONLY the summary text, no JSON, no markdown, no quotes.`
   const content = `Error: ${error.name}: ${error.message}`
 
   try {

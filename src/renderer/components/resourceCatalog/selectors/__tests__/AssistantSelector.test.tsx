@@ -612,3 +612,16 @@ describe('AssistantSelector', () => {
     await waitFor(() => expect(screen.getByPlaceholderText('Search assistants')).toBeInTheDocument())
   })
 })
+
+// Phase-1 (MEA resource-icons): assistant selector rows must not render the assistant emoji.
+describe('MEA resource-icons: hide assistant emoji in selector rows', () => {
+  it('renders the Bot fallback icon, not the assistant emoji, in the leading slot', () => {
+    renderSelector()
+    openPopover()
+
+    // Regression: the seeded assistant emoji (A) must not appear in the row.
+    const option = screen.getByRole('option', { name: /Alpha Assistant/ })
+    expect(option.querySelector('svg.lucide-bot')).toBeInTheDocument()
+    expect(screen.queryByText('A')).not.toBeInTheDocument()
+  })
+})

@@ -1,5 +1,6 @@
 import {
   Activity,
+  Archive,
   Bell,
   CalendarClock,
   Cloud,
@@ -147,6 +148,12 @@ export const settingsMenu: readonly SettingsMenuEntry[] = [
     route: '/settings/data',
     titleKey: 'settings.data.title',
     icon: createElement(HardDrive),
+    groupKey: 'settings.menuGroups.personal'
+  },
+  {
+    route: '/settings/archive',
+    titleKey: 'settings.data.trash.title',
+    icon: createElement(Archive),
     groupKey: 'settings.menuGroups.personal'
   },
   {

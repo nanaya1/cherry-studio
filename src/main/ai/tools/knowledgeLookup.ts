@@ -750,14 +750,16 @@ async function listRemoteKnowledgeBases(
   try {
     const bases = await application.get('RemoteKnowledgeService').listRemoteBases()
     const scoped = allowedIds.length > 0 ? bases.filter((base) => allowedIds.includes(base.id)) : bases
-    return scoped.filter((base) => remoteBaseMatchesFilters(base, input)).map((base) => ({
-      id: base.id,
-      name: base.name,
-      groupId: null,
-      status: 'completed',
-      itemsUnavailable: true,
-      sampleSources: []
-    }))
+    return scoped
+      .filter((base) => remoteBaseMatchesFilters(base, input))
+      .map((base) => ({
+        id: base.id,
+        name: base.name,
+        groupId: null,
+        status: 'completed',
+        itemsUnavailable: true,
+        sampleSources: []
+      }))
   } catch (error) {
     logger.warn('RemoteKnowledgeService.listRemoteBases failed; returning local bases only', {
       error: error instanceof Error ? error.message : String(error)

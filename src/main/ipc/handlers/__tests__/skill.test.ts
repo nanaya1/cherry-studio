@@ -12,7 +12,9 @@ const {
   importSystemMock,
   openPathMock,
   reconcileMock,
-  resolveIconUrlsMock
+  reconcileSkillMock,
+  checkRemoteUpdateMock,
+  applyRemoteUpdateMock
 } = vi.hoisted(() => ({
   installMock: vi.fn(),
   uninstallMock: vi.fn(),
@@ -25,7 +27,9 @@ const {
   importSystemMock: vi.fn(),
   openPathMock: vi.fn(),
   reconcileMock: vi.fn(),
-  resolveIconUrlsMock: vi.fn()
+  reconcileSkillMock: vi.fn(),
+  checkRemoteUpdateMock: vi.fn(),
+  applyRemoteUpdateMock: vi.fn()
 }))
 
 vi.mock('electron', () => ({
@@ -33,6 +37,14 @@ vi.mock('electron', () => ({
 }))
 
 vi.mock('@main/ai/skills/SkillService', () => ({
+  SkillRemoteUpdateError: class SkillRemoteUpdateError extends Error {
+    constructor(
+      readonly code: string,
+      message: string
+    ) {
+      super(message)
+    }
+  },
   skillService: {
     install: installMock,
     uninstall: uninstallMock,
@@ -44,7 +56,9 @@ vi.mock('@main/ai/skills/SkillService', () => ({
     getInstalledSkillDirectory: getInstalledSkillDirectoryMock,
     importSystem: importSystemMock,
     reconcileSkills: reconcileMock,
-    resolveIconUrls: resolveIconUrlsMock
+    reconcileSkill: reconcileSkillMock,
+    checkRemoteUpdate: checkRemoteUpdateMock,
+    applyRemoteUpdate: applyRemoteUpdateMock
   }
 }))
 
@@ -123,13 +137,27 @@ describe('skillHandlers', () => {
     expect(reconcileMock).toHaveBeenCalledWith()
   })
 
-  it('resolves skill icons from ids without accepting renderer paths', async () => {
-    resolveIconUrlsMock.mockResolvedValue({ s1: 'file:///managed/icon.png' })
+  it('scopes reconcile to one Skill when skillId is present', async () => {
+    reconcileSkillMock.mockResolvedValue(undefined)
 
-    await expect(skillHandlers['skill.icons.resolve']({ skillIds: ['s1'] }, ctx)).resolves.toEqual({
-      s1: 'file:///managed/icon.png'
+    await expect(skillHandlers['skill.reconcile']({ skillId: 's1' }, ctx)).resolves.toBeUndefined()
+    expect(reconcileSkillMock).toHaveBeenCalledExactlyOnceWith('s1')
+    expect(reconcileMock).not.toHaveBeenCalled()
+  })
+
+  it('forwards remote checks and applies while preserving stable domain error codes', async () => {
+    checkRemoteUpdateMock.mockResolvedValue({ state: 'up_to_date', localChanges: false, remoteVersion: '1.0.0' })
+    await expect(skillHandlers['skill.remote.check']({ skillId: 's1' }, ctx)).resolves.toEqual({
+      state: 'up_to_date',
+      localChanges: false,
+      remoteVersion: '1.0.0'
     })
-    expect(resolveIconUrlsMock).toHaveBeenCalledWith(['s1'])
+
+    const { SkillRemoteUpdateError } = await import('@main/ai/skills/SkillService')
+    applyRemoteUpdateMock.mockRejectedValue(new SkillRemoteUpdateError('SKILL_REMOTE_STALE', 'stale'))
+    await expect(
+      skillHandlers['skill.remote.apply']({ skillId: 's1', revision: 'revision', overwriteLocalChanges: false }, ctx)
+    ).rejects.toMatchObject({ code: 'SKILL_REMOTE_STALE', message: 'stale' })
   })
 
   it('opens the registered skill directory without accepting a renderer-supplied path', async () => {
@@ -143,6 +171,34 @@ describe('skillHandlers', () => {
     expect(getByIdMock).toHaveBeenCalledWith('s1')
     expect(getInstalledSkillDirectoryMock).toHaveBeenCalledWith(skill)
     expect(openPathMock).toHaveBeenCalledWith('/managed/skills/safe-skill')
+  })
+
+  it('resolves the managed directory and marks only builtin Skills as read-only', async () => {
+    getByIdMock
+      .mockResolvedValueOnce({ id: 'local', folderName: 'local-skill', source: 'local' })
+      .mockResolvedValueOnce({ id: 'builtin', folderName: 'builtin-skill', source: 'builtin' })
+    getInstalledSkillDirectoryMock
+      .mockReturnValueOnce('/managed/skills/local-skill')
+      .mockReturnValueOnce('/managed/skills/builtin-skill')
+
+    await expect(skillHandlers['skill.folder.resolve']({ skillId: 'local' }, ctx)).resolves.toEqual({
+      rootPath: '/managed/skills/local-skill',
+      access: 'read_write'
+    })
+    await expect(skillHandlers['skill.folder.resolve']({ skillId: 'builtin' }, ctx)).resolves.toEqual({
+      rootPath: '/managed/skills/builtin-skill',
+      access: 'read_only',
+      readOnlyReason: 'builtin'
+    })
+  })
+
+  it('does not resolve a folder when the Skill is no longer installed', async () => {
+    getByIdMock.mockResolvedValue(null)
+
+    await expect(skillHandlers['skill.folder.resolve']({ skillId: 'missing' }, ctx)).rejects.toThrow(
+      'Skill not found: missing'
+    )
+    expect(getInstalledSkillDirectoryMock).not.toHaveBeenCalled()
   })
 
   it('does not open a path when the skill is no longer installed', async () => {

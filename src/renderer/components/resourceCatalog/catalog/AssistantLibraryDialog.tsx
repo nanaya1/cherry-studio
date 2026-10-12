@@ -1,5 +1,5 @@
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { Check, Plus, Search, X, Bot } from 'lucide-react'
+import { Bot, Check, Plus, Search, X } from 'lucide-react'
 import { type KeyboardEvent, memo, type RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -401,6 +401,8 @@ const AssistantLibraryPresetRow = memo(function AssistantLibraryPresetRow({
       onKeyDown={activateOnKeyDown}
       className="group flex cursor-pointer items-center gap-3 rounded-lg border border-border-subtle bg-card px-3.5 py-2.5 transition-[border-color,background-color] hover:border-border-strong hover:bg-accent">
       <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-secondary text-base">
+        {/* MEA:resource-icons 预设列表使用统一 Bot。 */}
+        {/* {preset.emoji || '🤖'} */}
         <Bot size={18} />
       </div>
       <div className="min-w-0 flex-1">

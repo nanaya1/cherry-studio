@@ -2,10 +2,22 @@ import { useEffect, useState } from 'react'
 import { type UseFormReturn, useWatch } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 
-import { FormControl, FormField, FormItem, FormLabel, FormMessage } from '@cherrystudio/ui'
+import {
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+  InputGroup,
+  // MEA:resource-icons
+  // InputGroupAddon,
+  InputGroupInput
+} from '@cherrystudio/ui'
 import { AgentRuntimeTiles } from '@renderer/components/AgentRuntimeOption'
 import type { ModelSelectorFilter } from '@renderer/components/ModelSelector'
 import { PermissionModeSelect } from '@renderer/components/PermissionModeOption'
+// MEA:resource-icons
+// import { EmojiAvatarPicker } from '@renderer/components/resourceCatalog/dialogs/components/DialogFormFields'
 import {
   CompactModelField,
   type ModelLabels,
@@ -37,6 +49,7 @@ type ModelFieldProps = {
 type BasicInfoStepProps = {
   form: UseFormReturn<ResourceCreateWizardFormValues>
   portalContainer: HTMLElement | null
+  // MEA:resource-icons fallbackAvatar: string
   modelFilter?: ModelSelectorFilter
   isModelDisabled?: ModelSelectorFilter
   /** Agent create flows expose a runtime selector that drives the model filter (D8). */
@@ -136,21 +149,27 @@ function AgentRuntimeModelFields({
 }
 
 /**
- * Step 1 (shared by assistant + agent): name, model, description.
+ * Step 1 (shared by assistant + agent): avatar, name, model, description.
  * Reuses the edit-dialog field components verbatim — field names match. Owns its
- * own model-label state so selecting a model re-renders only this step, never
- * the dialog shell (keeps DialogContent's ref stable).
+ * own emoji-picker and model-label state so selecting a model/avatar re-renders
+ * only this step, never the dialog shell (keeps DialogContent's ref stable).
  */
 export function BasicInfoStep({
   form,
   portalContainer,
+  // MEA:resource-icons 隐藏头像编辑，表单原值继续保留。
+  // fallbackAvatar,
   modelFilter,
   isModelDisabled,
   runtimeSelectable = false,
   onSettingsNavigate
 }: BasicInfoStepProps) {
   const { t } = useTranslation()
+  // MEA:resource-icons
+  // const [emojiPickerOpen, setEmojiPickerOpen] = useState(false)
   const [modelLabels, setModelLabels] = useState<ModelLabels>(EMPTY_MODEL_LABELS)
+  // MEA:resource-icons
+  // const avatar = useWatch({ control: form.control, name: 'avatar' })
 
   useEffect(() => {
     form.setFocus('name')
@@ -158,13 +177,40 @@ export function BasicInfoStep({
 
   return (
     <div className="flex flex-col gap-4">
-      <TextInputField
-        form={form}
+      <FormField
+        control={form.control}
         name="name"
-        label={t('common.name')}
-        labelClassName="font-medium"
-        placeholder={t('library.config.dialogs.create.name_placeholder')}
-        required
+        rules={{ validate: (value) => value.trim().length > 0 || t('common.required_field') }}
+        render={({ field }) => (
+          <FormItem>
+            <FormLabel className="font-medium">{t('library.config.dialogs.create.avatar_name_label')}</FormLabel>
+            <InputGroup>
+              {/* MEA:resource-icons 隐藏 Emoji 编辑，保留名称输入。
+              <InputGroupAddon className="py-0">
+                <EmojiAvatarPicker
+                  value={avatar}
+                  fallback={fallbackAvatar}
+                  open={emojiPickerOpen}
+                  onOpenChange={setEmojiPickerOpen}
+                  onChange={(value) => form.setValue('avatar', value, { shouldDirty: true })}
+                  ariaLabel={t('library.config.dialogs.create.avatar_aria')}
+                  portalContainer={portalContainer}
+                  avatarClassName="border-0"
+                  avatarFontSize={18}
+                />
+              </InputGroupAddon>
+              */}
+              <FormControl>
+                <InputGroupInput
+                  {...field}
+                  className="pl-1!"
+                  placeholder={t('library.config.dialogs.create.name_placeholder')}
+                />
+              </FormControl>
+            </InputGroup>
+            <FormMessage />
+          </FormItem>
+        )}
       />
 
       {runtimeSelectable ? (

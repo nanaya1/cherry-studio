@@ -3,6 +3,7 @@ import type { FC } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button, Input, RowFlex, Switch } from '@cherrystudio/ui'
+// import { InfoTooltip } from '@cherrystudio/ui'
 import { usePreference } from '@data/hooks/usePreference'
 import { loggerService } from '@logger'
 import {
@@ -15,6 +16,7 @@ import {
 } from '@renderer/components/SettingsPrimitives'
 import { useTheme } from '@renderer/hooks/useTheme'
 import { toast } from '@renderer/services/toast'
+// import { openExternalWebsite } from '@renderer/services/website'
 import { formatErrorMessage } from '@renderer/utils/error'
 
 const logger = loggerService.withContext('NotionSettings')
@@ -71,17 +73,16 @@ const NotionSettings: FC = () => {
     void setNotionExportReasoning(checked)
   }
 
-  // 「点击问号 → 文档」入口暂时隐藏：跳转到 docs.cherry-ai.com，属 Cherry 厂商云。
+  // Cherry 官方文档入口在 MEA 中停用，保留原逻辑便于恢复。
   // const handleNotionTitleClick = () => {
-  //   void ipcApi.request('system.shell.open_website', 'https://docs.cherry-ai.com/advanced-basic/notion')
+  //   void openExternalWebsite('https://docs.cherry-ai.com/advanced-basic/notion')
   // }
 
   return (
     <SettingGroup theme={theme}>
       <SettingTitle style={{ justifyContent: 'flex-start', gap: 10 }}>
         {t('settings.data.notion.title')}
-        {/* 「点击问号 → docs.cherry-ai.com」入口暂时隐藏。 */}
-        {/*
+        {/* Cherry 官方文档入口在 MEA 中停用，保留原控件便于恢复。
         <InfoTooltip
           content={t('settings.data.notion.help')}
           placement="right"

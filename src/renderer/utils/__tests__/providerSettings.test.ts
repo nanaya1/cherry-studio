@@ -1,8 +1,9 @@
+import { describe, expect, it } from 'vitest'
+
 import { CHERRYAI_PROVIDER_ID } from '@shared/data/presets/cherryai'
 import { LOCAL_EMBEDDING_PROVIDER_ID } from '@shared/data/presets/localEmbedding'
 import { XUELANG_PROVIDER_ID } from '@shared/data/presets/xuelang'
 import type { Provider } from '@shared/data/types/provider'
-import { describe, expect, it } from 'vitest'
 
 import { isProviderSettingsListVisibleProvider } from '../providerSettings'
 

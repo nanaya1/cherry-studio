@@ -19,36 +19,36 @@ describe('remoteKnowledgeRequestSchemas', () => {
   it('declares exactly the six configuration routes', () => {
     expect(Object.keys(remoteKnowledgeRequestSchemas).sort()).toEqual(
       [
-        'remoteKnowledge.create',
-        'remoteKnowledge.delete',
-        'remoteKnowledge.list',
-        'remoteKnowledge.list_bases',
-        'remoteKnowledge.test_connection',
-        'remoteKnowledge.update'
+        'remote_knowledge.service.create',
+        'remote_knowledge.service.delete',
+        'remote_knowledge.service.list',
+        'remote_knowledge.base.list',
+        'remote_knowledge.service.test_connection',
+        'remote_knowledge.service.update'
       ].sort()
     )
   })
 
   it('parses create with a bearer draft', () => {
-    const route = remoteKnowledgeRequestSchemas['remoteKnowledge.create']
+    const route = remoteKnowledgeRequestSchemas['remote_knowledge.service.create']
     expect(route.input.parse({ draft }).constructor).toBeDefined()
     expect(() => route.input.parse({ draft: { ...draft, baseUrl: 'not-a-url' } })).toThrow()
   })
 
   it('parses update with id and partial patch', () => {
-    const route = remoteKnowledgeRequestSchemas['remoteKnowledge.update']
+    const route = remoteKnowledgeRequestSchemas['remote_knowledge.service.update']
     expect(route.input.parse({ id: 'svc-1', patch: { name: 'Renamed' } })).toBeDefined()
   })
 
   it('test_connection rejects payloads with both id and config (XOR contract)', () => {
-    const route = remoteKnowledgeRequestSchemas['remoteKnowledge.test_connection']
+    const route = remoteKnowledgeRequestSchemas['remote_knowledge.service.test_connection']
     expect(() => route.input.parse({ id: 'svc-1', config: draft })).toThrow()
     expect(route.input.parse({ id: 'svc-1' })).toBeDefined()
     expect(route.input.parse({ config: draft })).toBeDefined()
   })
 
   it('list_bases accepts an omitted service id (aggregate listing)', () => {
-    const route = remoteKnowledgeRequestSchemas['remoteKnowledge.list_bases']
+    const route = remoteKnowledgeRequestSchemas['remote_knowledge.base.list']
     expect(route.input.parse({})).toBeDefined()
     expect(route.input.parse({ id: 'svc-1' })).toBeDefined()
   })

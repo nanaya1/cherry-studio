@@ -18,7 +18,7 @@
 
 import { useCallback, useRef } from 'react'
 
-import { useInvalidateCache, useMutation, useQuery } from '@data/hooks/useDataApi'
+import { useInvalidateCache, useMutation, useQuery, useWriteCache } from '@data/hooks/useDataApi'
 import { usePreference } from '@data/hooks/usePreference'
 import { loggerService } from '@logger'
 import { useModelById } from '@renderer/hooks/useModel'
@@ -90,6 +90,7 @@ export function useAssistantApiById(id: string | undefined) {
  */
 export function useAssistantMutations() {
   const invalidate = useInvalidateCache()
+  const writeCache = useWriteCache()
   const { trigger: createTrigger, isLoading: isCreating } = useMutation('POST', '/assistants', {
     refresh: ASSISTANTS_REFRESH_KEYS
   })
@@ -138,11 +139,15 @@ export function useAssistantMutations() {
     [invalidate]
   )
 
-  const restoreAssistant = useCallback(async (id: string): Promise<Assistant> => {
-    const restored = await restoreTriggerRef.current({ params: { id } })
-    logger.info('Restored assistant', { id })
-    return restored
-  }, [])
+  const restoreAssistant = useCallback(
+    async (id: string): Promise<Assistant> => {
+      const restored = await restoreTriggerRef.current({ params: { id } })
+      await writeCache(`/assistants/${id}`, restored)
+      logger.info('Restored assistant', { id })
+      return restored
+    },
+    [writeCache]
+  )
 
   return {
     createAssistant,

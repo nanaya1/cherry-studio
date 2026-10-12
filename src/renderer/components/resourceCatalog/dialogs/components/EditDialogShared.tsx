@@ -31,8 +31,6 @@ import {
 import { cn } from '@cherrystudio/ui/lib/utils'
 import { loggerService } from '@logger'
 import { ModelSelector, type ModelSelectorFilter } from '@renderer/components/ModelSelector'
-// 停用原单源 hook：下方 KnowledgeBaseField 改为本地+远端聚合（Task 12 远端知识库绑定）
-// import { useKnowledgeBases } from '@renderer/hooks/useKnowledgeBase'
 import { useKnowledgeBases } from '@renderer/hooks/useKnowledgeBase'
 import { useModelById } from '@renderer/hooks/useModel'
 import { useRemoteKnowledgeBases } from '@renderer/hooks/useRemoteKnowledge'
@@ -41,6 +39,8 @@ import { toast } from '@renderer/services/toast'
 import { isUniqueModelId, type Model, parseUniqueModelId, type UniqueModelId } from '@shared/data/types/model'
 
 import { AddCatalogPopover, type CatalogItem } from './CatalogPicker'
+// MEA:resource-icons
+// import { DialogModelFrame, DialogModelTrigger, EmojiAvatarPicker } from './DialogFormFields'
 import { DialogModelFrame, DialogModelTrigger } from './DialogFormFields'
 
 // Vertical submenu / nav item preset — kept in sync with the settings sidebar's
@@ -291,13 +291,10 @@ export function KnowledgeBaseField<TValues extends KnowledgeBaseFieldValues>({
   onOpenKnowledgePage?: () => void
 }) {
   const { t } = useTranslation()
-  // 停用原本地单源取数：绑定弹窗需同时展示/识别远端知识库（Task 12）。
-  // 远端列表不门控（编辑弹窗打开时绑定收敛 effect 立即需要远端 id 集合）。
-  // const { bases, isLoading } = useKnowledgeBases({ revalidateOnFocus: true })
-  const { bases: localBases, isLoading: isLocalLoading } = useKnowledgeBases({ revalidateOnFocus: true })
-  const { bases: remoteBases, isLoading: isRemoteLoading } = useRemoteKnowledgeBases()
+  const { bases: localBases, isLoading: isLocalBasesLoading } = useKnowledgeBases({ revalidateOnFocus: true })
+  const { bases: remoteBases, isLoading: isRemoteBasesLoading } = useRemoteKnowledgeBases()
   const bases = useSelectableKnowledgeBases(localBases, remoteBases)
-  const isLoading = isLocalLoading || isRemoteLoading
+  const isLoading = isLocalBasesLoading || isRemoteBasesLoading
   const fieldName = 'knowledgeBaseIds' as Path<TValues>
   const watchedValue = useWatch({ control: form.control, name: fieldName })
   const value = useMemo(() => (watchedValue ?? []) as string[], [watchedValue])
@@ -582,6 +579,53 @@ export function EditDialogShell<TValues extends FieldValues>({
   )
 }
 
+// MEA:resource-icons 原组件保留供回滚。
+// export function AvatarField({
+//   form,
+//   emojiPickerOpen,
+//   setEmojiPickerOpen,
+//   fallback,
+//   portalContainer,
+//   size,
+//   layout = 'stacked'
+// }: {
+//   form: UseFormReturn<any>
+//   emojiPickerOpen: boolean
+//   setEmojiPickerOpen: (open: boolean) => void
+//   fallback: string
+//   portalContainer: HTMLElement | null
+//   size?: 'sm' | 'md'
+//   layout?: 'stacked' | 'row'
+// }) {
+//   const { t } = useTranslation()
+//   const avatar = form.watch('avatar')
+//
+//   return (
+//     <FormField
+//       control={form.control}
+//       name="avatar"
+//       render={({ field }) => (
+//         <FormItem className={layout === 'row' ? editDialogFormRowClassName : undefined}>
+//           <FormLabel className={layout === 'row' ? editDialogFormRowLabelClassName : 'font-normal'}>
+//             {t('common.avatar')}
+//           </FormLabel>
+//           <EmojiAvatarPicker
+//             value={avatar}
+//             fallback={fallback}
+//             open={emojiPickerOpen}
+//             onOpenChange={setEmojiPickerOpen}
+//             onChange={field.onChange}
+//             ariaLabel={t('library.config.dialogs.create.avatar_aria')}
+//             portalContainer={portalContainer}
+//             size={size}
+//           />
+//           <FormMessage className={layout === 'row' ? 'col-start-2' : undefined} />
+//         </FormItem>
+//       )}
+//     />
+//   )
+// }
+//
 export function TextInputField({
   form,
   name,
@@ -741,7 +785,7 @@ export function CompactModelField({
                     )}
                     chevronClassName={
                       allowClear && value
-                        ? 'group-hover/model-field:opacity-0 group-focus-within/model-field:opacity-0'
+                        ? 'group-hover/model-field:opacity-0 group-focus-within/model-field:opacity-0 no-hover:opacity-0'
                         : undefined
                     }
                   />
@@ -761,7 +805,7 @@ export function CompactModelField({
                     }
                     setModelLabels({ ...modelLabels, [name]: null })
                   }}
-                  className="-translate-y-1/2 pointer-events-none absolute top-1/2 right-1.5 flex size-5 min-h-0 shrink-0 items-center justify-center rounded-full bg-transparent p-0 text-muted-foreground opacity-0 shadow-none transition-[background-color,color,opacity] hover:bg-muted hover:text-foreground focus-visible:pointer-events-auto focus-visible:bg-muted focus-visible:text-foreground focus-visible:opacity-100 active:bg-muted group-focus-within/model-field:pointer-events-auto group-focus-within/model-field:opacity-100 group-hover/model-field:pointer-events-auto group-hover/model-field:opacity-100">
+                  className="-translate-y-1/2 pointer-events-none absolute top-1/2 right-1.5 flex size-5 min-h-0 shrink-0 items-center justify-center rounded-full bg-transparent p-0 text-muted-foreground opacity-0 shadow-none transition-[background-color,color,opacity] hover:bg-muted hover:text-foreground focus-visible:pointer-events-auto focus-visible:bg-muted focus-visible:text-foreground focus-visible:opacity-100 active:bg-muted group-focus-within/model-field:pointer-events-auto group-focus-within/model-field:opacity-100 group-hover/model-field:pointer-events-auto group-hover/model-field:opacity-100 no-hover:pointer-events-auto no-hover:opacity-100">
                   <X size={12} />
                 </Button>
               ) : null}

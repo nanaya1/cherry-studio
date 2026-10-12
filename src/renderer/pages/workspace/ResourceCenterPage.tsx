@@ -1,6 +1,7 @@
+import { useTranslation } from 'react-i18next'
+
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@cherrystudio/ui'
 import { ResourceCatalogView } from '@renderer/components/resourceCatalog/catalog'
-import { useTranslation } from 'react-i18next'
 
 export default function ResourceCenterPage() {
   const { t } = useTranslation()

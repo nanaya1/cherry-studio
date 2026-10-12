@@ -225,6 +225,12 @@ function ResourceSelectorOptionRowComponent<T extends ResourceSelectorShellItem>
   renderEditAction,
   renderPinAction
 }: ResourceSelectorOptionRowProps<T>) {
+  // MEA:resource-icons 隐藏实体 Emoji，使用调用方提供的统一图标。
+  // const leading = item.emoji ? (
+  //   <span className="flex size-5 shrink-0 items-center justify-center text-base leading-none">{item.emoji}</span>
+  // ) : fallbackIcon ? (
+  //   <span className="flex size-5 shrink-0 items-center justify-center">{fallbackIcon}</span>
+  // ) : null
   const leading = fallbackIcon ? (
     <span className="flex size-5 shrink-0 items-center justify-center">{fallbackIcon}</span>
   ) : null

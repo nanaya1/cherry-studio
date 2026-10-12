@@ -1061,7 +1061,8 @@
         {
           "originalKey": "assistantIconType",
           "type": "PreferenceTypes.AssistantIconType",
-          "defaultValue": "emoji",
+          "defaultValue": "none",
+          "meaOriginalDefaultValue": "emoji",
           "status": "classified",
           "category": "preferences",
           "targetKey": "assistant.icon_type"
@@ -2435,7 +2436,7 @@
             },
             {
               "category": "preferences",
-              "defaultValue": 23333,
+              "defaultValue": 24333,
               "originalKey": "port",
               "status": "classified",
               "targetKey": "feature.api_gateway.port",

@@ -4,16 +4,16 @@
 <div class="split">
   <div class="mockup">
     <div class="mockup-header">普通会话模式</div>
-    <div class="mockup-body" style="padding:18px;display:grid;gap:12px">
-      <div style="display:flex;gap:8px;justify-content:center">
+    <div class="mockup-body" style="padding: 18px; display: grid; gap: 12px">
+      <div style="display: flex; gap: 8px; justify-content: center">
         <button class="mock-button">普通会话</button>
-        <button class="mock-button" style="opacity:.55">智能体任务</button>
+        <button class="mock-button" style="opacity: 0.55">智能体任务</button>
       </div>
-      <div style="padding:16px;border:1px solid var(--border);border-radius:12px;min-height:120px">
+      <div style="padding: 16px; border: 1px solid var(--border); border-radius: 12px; min-height: 120px">
         输入消息，或拖入附件…
       </div>
-      <div style="display:flex;justify-content:space-between;gap:8px;align-items:center">
-        <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <div style="display: flex; justify-content: space-between; gap: 8px; align-items: center">
+        <div style="display: flex; gap: 6px; flex-wrap: wrap">
           <button class="mock-button">＋ 附件</button>
           <button class="mock-button">默认助手⌄</button>
           <button class="mock-button">模型⌄</button>
@@ -26,28 +26,28 @@
 
   <div class="mockup">
     <div class="mockup-header">智能体任务模式</div>
-    <div class="mockup-body" style="padding:18px;display:grid;gap:12px">
-      <div style="display:flex;gap:8px;justify-content:center">
-        <button class="mock-button" style="opacity:.55">普通会话</button>
+    <div class="mockup-body" style="padding: 18px; display: grid; gap: 12px">
+      <div style="display: flex; gap: 8px; justify-content: center">
+        <button class="mock-button" style="opacity: 0.55">普通会话</button>
         <button class="mock-button">智能体任务</button>
       </div>
-      <div style="padding:16px;border:1px solid var(--border);border-radius:12px;min-height:120px">
+      <div style="padding: 16px; border: 1px solid var(--border); border-radius: 12px; min-height: 120px">
         描述要交给智能体完成的任务…
       </div>
-      <div style="display:flex;justify-content:space-between;gap:8px;align-items:center">
-        <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <div style="display: flex; justify-content: space-between; gap: 8px; align-items: center">
+        <div style="display: flex; gap: 6px; flex-wrap: wrap">
           <button class="mock-button">＋ 附件</button>
           <button class="mock-button">选择智能体⌄</button>
           <button class="mock-button">Workspace⌄</button>
           <button class="mock-button">工具…</button>
         </div>
-        <button class="mock-button" style="opacity:.55">发送 ↑</button>
+        <button class="mock-button" style="opacity: 0.55">发送 ↑</button>
       </div>
     </div>
   </div>
 </div>
 
-<div class="section" style="margin-top:22px">
+<div class="section" style="margin-top: 22px">
   <h3>交互约束</h3>
   <ul>
     <li>切换“普通会话 / 智能体任务”时，各自草稿独立保留，不互相覆盖。</li>
@@ -59,7 +59,7 @@
   </ul>
 </div>
 
-<div class="section" style="padding:16px;border:1px solid var(--border);border-radius:10px">
+<div class="section" style="padding: 16px; border: 1px solid var(--border); border-radius: 10px">
   <div class="label">预计改动范围</div>
   <h3>最小、可追溯的前端改动</h3>
   <ul>
@@ -88,7 +88,7 @@
   </ol>
 </div>
 
-<div style="margin-top:24px;padding:18px;border:2px solid var(--accent);border-radius:12px;text-align:center">
+<div style="margin-top: 24px; padding: 18px; border: 2px solid var(--accent); border-radius: 12px; text-align: center">
   <div class="label">最终设计</div>
   <h3>只新增草稿到会话的桥接层</h3>
   <p>页面、Composer、数据源和 Main 流处理均优先复用；不存在的仅为“首发延迟创建 + 当前 Tab 接管”能力。</p>

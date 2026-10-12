@@ -353,10 +353,6 @@ vi.mock('../SelectedModelsTrigger', () => ({
   )
 }))
 
-vi.mock('@renderer/components/EmojiIcon', () => ({
-  default: ({ emoji }: { emoji: string }) => <span>{emoji}</span>
-}))
-
 vi.mock('@renderer/components/ModelSelector', () => ({
   getProviderDisplayName: (provider: Provider) => provider.name,
   ModelSelector: (props: any) => {
@@ -516,10 +512,6 @@ vi.mock('@renderer/hooks/useKnowledgeBase', () => ({
     mocks.knowledgeBaseHookArgs.push(args)
     return { bases: mocks.knowledgeBases, isLoading: mocks.knowledgeBasesLoading }
   }
-}))
-
-vi.mock('@renderer/hooks/useRemoteKnowledge', () => ({
-  useRemoteKnowledgeBases: () => ({ bases: [], isLoading: false })
 }))
 
 vi.mock('@renderer/hooks/useModel', () => ({
@@ -822,6 +814,21 @@ describe('ChatComposer', () => {
 
   afterEach(() => {
     globalThis.ResizeObserver = originalResizeObserver
+  })
+
+  it('threads the MEA assistant visibility control through the home composer', () => {
+    render(
+      <ChatPlacementComposer
+        placement="home"
+        topic={topic}
+        showAssistantControl={false}
+        onDraftAssistantChange={vi.fn()}
+        onSend={vi.fn()}
+      />
+    )
+
+    expect(screen.queryByTestId('assistant-selector')).not.toBeInTheDocument()
+    expect(screen.getByTestId('model-selector')).toBeInTheDocument()
   })
 
   it('puts the tool menu at the far right of the left toolbar in the modern layout', () => {
@@ -1659,6 +1666,23 @@ describe('ChatComposer', () => {
     expect(screen.getByTestId('composer-below-controls')).not.toHaveTextContent('Default Assistant')
     expect(screen.getByTestId('assistant-selector')).toHaveAttribute('data-value', '')
     expect(mocks.surfaceProps?.sendBlockedReason).toBeUndefined()
+  })
+
+  it('moves only the model selector into the send accessory for the MEA new-task layout', () => {
+    render(
+      <ChatHomeComposer
+        topic={topic}
+        onSend={vi.fn()}
+        showAssistantControl={false}
+        modelControlInSendAccessory
+        hideBelowControls
+      />
+    )
+
+    expect(screen.getByTestId('composer-below-controls')).toBeEmptyDOMElement()
+    const sendAccessory = screen.getByTestId('composer-send-accessory')
+    expect(sendAccessory).toHaveTextContent('Model A')
+    expect(sendAccessory).not.toHaveTextContent('Assistant 1')
   })
 
   it('keeps the active assistant trigger visible in classic layout', () => {
@@ -4618,7 +4642,7 @@ describe('ChatComposer', () => {
     await waitFor(() => expect(mocks.surfaceProps?.editingState).toBeUndefined())
   })
 
-  it('does not save an assistant reply whose editable parts are separated by a tool call', async () => {
+  it('saves an assistant reply split by a tool call without moving the tool', async () => {
     const editMessage = vi.fn().mockResolvedValue(undefined)
     const forkAndResend = vi.fn().mockResolvedValue(undefined)
     mocks.chatWrite = { pause: vi.fn(), editMessage, resend: vi.fn(), forkAndResend }
@@ -4643,12 +4667,29 @@ describe('ChatComposer', () => {
     )
 
     await waitFor(() => expect(mocks.surfaceProps?.editingState?.messageId).toBe(message.id))
-    await mocks.surfaceProps?.onSendDraft({ text: 'edited reply', tokens: [] })
 
-    expect(editMessage).not.toHaveBeenCalled()
+    // The prefill anchors the tool between the two texts; the editor hands that anchor back on save.
+    const restoredDraft = mocks.replaceDraft.mock.lastCall?.[0]
+    expect(restoredDraft.tokens).toEqual([
+      expect.objectContaining({
+        kind: 'messagePart',
+        id: `message-part:${message.id}:1`,
+        textOffset: 'before tool\n'.length
+      })
+    ])
+
+    await mocks.surfaceProps?.onSendDraft({
+      text: 'edited before\n\nedited after',
+      tokens: [{ ...restoredDraft.tokens[0], textOffset: 'edited before\n'.length }]
+    })
+
+    expect(editMessage).toHaveBeenCalledWith(message.id, [
+      { type: 'text', text: 'edited before' },
+      originalParts[1],
+      { type: 'text', text: 'edited after' }
+    ])
     expect(forkAndResend).not.toHaveBeenCalled()
-    expect(mocks.surfaceProps?.editingState?.messageId).toBe(message.id)
-    expect(toast.error).toHaveBeenCalledWith('message.error.operation_unavailable')
+    await waitFor(() => expect(mocks.surfaceProps?.editingState).toBeUndefined())
   })
 
   it('saves an assistant reply whose text has provider metadata', async () => {

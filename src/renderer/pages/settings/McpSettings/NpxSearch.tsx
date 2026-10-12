@@ -4,7 +4,7 @@ import { type FC, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Badge, Button, Center, Flex, Input, RowFlex, Spinner } from '@cherrystudio/ui'
-import AppLogo from '@renderer/assets/images/logo.png'
+import logo from '@renderer/assets/images/cherry-text-logo.svg'
 import { useMcpServers } from '@renderer/hooks/useMcpServer'
 import { toast } from '@renderer/services/toast'
 import { getMcpConfigSampleFromReadme } from '@renderer/utils/mcp'
@@ -101,9 +101,8 @@ const NpxSearch: FC = () => {
     <div className="flex min-w-0 flex-1 flex-col gap-2">
       <Center>
         <div className="mb-6.25 flex w-full max-w-125 flex-col px-4">
-          <Center className="mb-3.75 gap-2.5">
-            <img src={AppLogo} alt="" className="size-10 object-contain" />
-            <span className="font-semibold text-foreground text-xl">MEA Cowork</span>
+          <Center className="mb-3.75">
+            <img src={logo} alt="npm" width={120} />
           </Center>
           <div className="w-full">
             <Input

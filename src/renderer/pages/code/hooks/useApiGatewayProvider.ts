@@ -1,15 +1,11 @@
 import { useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { preferenceService } from '@data/PreferenceService'
 import { useApiGateway } from '@renderer/hooks/useApiGateway'
 import { ENDPOINT_TYPE } from '@shared/data/types/model'
 import { DEFAULT_PROVIDER_SETTINGS, type Provider } from '@shared/data/types/provider'
 import { CLI_API_GATEWAY_PROVIDER_ID } from '@shared/types/codeCli'
-import { gatewayClientOrigin } from '@shared/utils/apiGateway'
-
-const DEFAULT_GATEWAY_HOST = '127.0.0.1'
-const DEFAULT_GATEWAY_PORT = 24333
+import { DEFAULT_API_GATEWAY_HOST, DEFAULT_API_GATEWAY_PORT, gatewayClientOrigin } from '@shared/utils/apiGateway'
 
 /**
  * The synthetic "Cherry Gateway" entry for the code-CLI provider list, plus the
@@ -38,8 +34,8 @@ export interface ApiGatewayProviderBundle {
 export function useApiGatewayProvider(): ApiGatewayProviderBundle | null {
   const { t } = useTranslation()
   const { apiGatewayConfig, apiGatewayRunning, startApiGateway } = useApiGateway()
-  const host = apiGatewayConfig.host || DEFAULT_GATEWAY_HOST
-  const port = apiGatewayConfig.port || DEFAULT_GATEWAY_PORT
+  const host = apiGatewayConfig.host || DEFAULT_API_GATEWAY_HOST
+  const port = apiGatewayConfig.port || DEFAULT_API_GATEWAY_PORT
   const apiKey = apiGatewayConfig.apiKey
 
   const ensureRunning = useCallback(async (): Promise<void> => {
@@ -56,7 +52,7 @@ export function useApiGatewayProvider(): ApiGatewayProviderBundle | null {
   }, [apiGatewayRunning, startApiGateway])
 
   const getApiKey = useCallback(async (): Promise<string> => {
-    const key = await preferenceService.get('feature.api_gateway.api_key')
+    const key = await window.api.preference.get('feature.api_gateway.api_key')
     if (!key) {
       throw new Error('API gateway did not provide a key')
     }

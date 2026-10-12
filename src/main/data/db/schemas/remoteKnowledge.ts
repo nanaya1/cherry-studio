@@ -3,9 +3,9 @@ import { check, integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlit
 
 import type { RemoteAuthType } from '@shared/data/types/remoteKnowledge'
 
+import { createUpdateTimestamps, uuidPrimaryKey } from './_columnHelpers'
 import { agentTable } from './agent'
 import { assistantTable } from './assistant'
-import { createUpdateTimestamps, uuidPrimaryKey } from './_columnHelpers'
 
 /**
  * A configured external knowledge service (provider-side retrieval). The API
