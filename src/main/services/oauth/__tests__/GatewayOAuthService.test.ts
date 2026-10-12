@@ -45,7 +45,7 @@ describe('CherryInOAuthService (gateway providers)', () => {
       status: 200,
       statusText: 'OK',
       json: async () => ({ success: true, data: { quota: 500000, used_quota: 0 } })
-    } as Response)
+    })
     service = new CherryInOAuthService()
   })
 
@@ -55,7 +55,7 @@ describe('CherryInOAuthService (gateway providers)', () => {
       status: 200,
       statusText: 'OK',
       json: async () => ({ success: true, data: { available_balance: 12.5, quota: 500000, used_quota: 0 } })
-    } as Response)
+    })
 
     const result = await service.getBalance('https://api.xuelanglm.com', 'xuelang')
 
@@ -77,7 +77,7 @@ describe('CherryInOAuthService (gateway providers)', () => {
 
   it('includes the xuelang client id when revoking the session', async () => {
     runtimeMocks.getValidAccessToken.mockResolvedValue({ accessToken: 'xuelang-token' })
-    netMocks.fetch.mockResolvedValue({ ok: true, status: 200, statusText: 'OK' } as Response)
+    netMocks.fetch.mockResolvedValue({ ok: true, status: 200, statusText: 'OK' })
 
     await service.logout('https://api.xuelanglm.com', 'xuelang')
 

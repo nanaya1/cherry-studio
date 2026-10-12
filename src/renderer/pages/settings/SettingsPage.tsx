@@ -8,7 +8,7 @@ import { MenuDivider, MenuItem, MenuList, PageHeader } from '@cherrystudio/ui'
 import '@renderer/components/icons/GatewayIcon'
 import { usePreference } from '@data/hooks/usePreference'
 import Scrollbar from '@renderer/components/Scrollbar'
-import { settingsMenu } from '@renderer/components/settingsMenu'
+import { MEA_HIDDEN_SETTINGS_ROUTES, settingsMenu } from '@renderer/components/settingsMenu'
 import useMacTransparentWindow from '@renderer/hooks/useMacTransparentWindow'
 import SettingsFocusScroll from '@renderer/pages/settings/settingsSearch/SettingsFocusScroll'
 import SettingsFocusUrl from '@renderer/pages/settings/settingsSearch/SettingsFocusUrl'
@@ -30,9 +30,14 @@ const SettingsPage: FC = () => {
   const { t } = useTranslation()
   const isMacTransparentWindow = useMacTransparentWindow()
   const [enableDeveloperMode] = usePreference('app.developer_mode.enabled')
-  const visibleSettingsMenu = settingsMenu.filter(
-    (item) => item.route !== '/settings/device-connections' || enableDeveloperMode
-  )
+  // 停用原仅按开发者模式过滤：MEA 设置侧栏还需隐藏 MCP/Skills（入口由技能连接器页统一承载）。
+  // const visibleSettingsMenu = settingsMenu.filter(
+  //   (item) => item.route !== '/settings/device-connections' || enableDeveloperMode
+  // )
+  const visibleSettingsMenu = settingsMenu.filter((item) => {
+    if (MEA_HIDDEN_SETTINGS_ROUTES.includes(item.route)) return false
+    return item.route !== '/settings/device-connections' || enableDeveloperMode
+  })
   // Anchor-lookup scope for SettingsFocusScroll (this tab's content column)
   const contentRef = useRef<HTMLDivElement>(null)
   // The full-width search field mounts only while a search session is active;

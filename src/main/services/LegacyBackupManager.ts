@@ -1032,7 +1032,7 @@ class BackupManager {
       const chain = this.validateStagedDatabase(workDatabase)
       if (!this.isChainBundledPrefix(chain)) {
         throw new Error(
-          `${BACKUP_NEWER_VERSION_ERROR_CODE}: This backup was created by a newer version of Cherry Studio (database is ahead of this version) and cannot be restored here. Please update Cherry Studio and try again. Backup appVersion: ${metadata.appVersion ?? 'unknown'}, current: ${app.getVersion()}.`
+          `${BACKUP_NEWER_VERSION_ERROR_CODE}: This backup was created by a newer version of MEA Cowork (database is ahead of this version) and cannot be restored here. Please update MEA Cowork and try again. Backup appVersion: ${metadata.appVersion ?? 'unknown'}, current: ${app.getVersion()}.`
         )
       }
       onProgress({ stage: 'restoring_database', progress: 65, total: 100 })
@@ -1134,7 +1134,7 @@ class BackupManager {
     }
     if (typeof raw.version === 'number' && raw.version > DIRECT_BACKUP_VERSION) {
       throw new Error(
-        `${BACKUP_NEWER_VERSION_ERROR_CODE}: This backup was created by a newer version of Cherry Studio (backup version ${String(raw.version)}) and cannot be restored on this version (supports ${DIRECT_BACKUP_VERSION}). Please update Cherry Studio and try again.`
+        `${BACKUP_NEWER_VERSION_ERROR_CODE}: This backup was created by a newer version of MEA Cowork (backup version ${String(raw.version)}) and cannot be restored on this version (supports ${DIRECT_BACKUP_VERSION}). Please update MEA Cowork and try again.`
       )
     }
     if (raw.version !== DIRECT_BACKUP_VERSION) {

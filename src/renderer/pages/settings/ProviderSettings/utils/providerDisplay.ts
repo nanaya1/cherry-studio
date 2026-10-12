@@ -32,6 +32,13 @@ export function isProviderPresetInstanceSource(provider: Provider): boolean {
   )
 }
 
+const CHERRY_WEBSITE_PATTERN =
+  /(?:cherry-ai\.com|cherryai\.com\.cn|cherryin\.ai|github\.com\/CherryHQ|\/cherry-studio(?:\/|$))/i
+
+export function getVisibleProviderWebsite(url?: string): string | undefined {
+  return url && !CHERRY_WEBSITE_PATTERN.test(url) ? url : undefined
+}
+
 export function getFancyProviderName(provider: Provider): string {
   if (isCanonicalPresetProvider(provider)) {
     const presetProviderId = provider.presetProviderId

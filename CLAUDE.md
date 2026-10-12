@@ -220,6 +220,41 @@ The v2 refactor has landed. v1 data reaches v2 only through the migrators in `sr
 
 `scripts/data-classify/` is the code generation pipeline for the v2 data layer; `classification.json` is the single source of truth (see its README). Four files are **auto-generated — NEVER edit them by hand**: `src/shared/data/preference/preferenceSchemas.ts`, `src/shared/data/bootConfig/bootConfigSchemas.ts`, and `PreferencesMappings.ts` + `BootConfigMappings.ts` in `src/main/data/migration/v2/migrators/mappings/`. To change them, edit `classification.json` or `target-key-definitions.json` (both in `data/`), then run `cd scripts/data-classify && npm run generate`.
 
+## MEA Cowork Customization Rules (MUST FOLLOW)
+
+This repo is maintained as **MEA Cowork**, a customized fork of Cherry Studio (upstream `CherryHQ/cherry-studio`, fork repo `nanaya1/cherry-studio`) that periodically syncs from upstream. This section is fork-specific and **must be preserved verbatim when merging upstream changes**.
+
+### Branded Identity vs Compatibility Identity
+
+The rebranding follows one principle: **swap everything user-visible; keep external-identity/storage compatibility items at their Cherry Studio values**. When touching branding strings, first decide which category applies:
+
+| Rebranded (user-visible) | Compatibility (do NOT change) |
+| --- | --- |
+| `appId: com.meacowork.desktop`, `productName: MEA Cowork`, deep-link scheme `meacowork://` | Data dir `~/.cherrystudio`, database file `cherrystudio.sqlite`, `cherry.*` path namespaces, `cherry-media` scheme |
+| OAuth DCR `client_name: "MEA Cowork"`, `client_uri: https://github.com/nanaya1/cherry-studio` (original value kept as a comment in `src/main/ai/mcp/oauth/provider.ts`) | Updater/analytics request headers, NSIS GUID, Windows/Linux executable names |
+
+Note: no `meacowork` organization exists on GitHub; the public repo URL is `https://github.com/nanaya1/cherry-studio` — never write `github.com/meacowork`.
+
+### Comment-out Editing (Highest Priority)
+
+- To disable/bypass existing logic, **comment it out** and add the new logic right after, with a one-line note; never delete original code (applies to both customization points and upstream code).
+- Rollback = uncomment. Exceptions: newly created files in the current task are exempt; delete only when the user explicitly asks, and state what was deleted.
+
+### Upstream Sync
+
+- Syncing happens in an isolated worktree `../cherry-studio-sync-wt` on branch `sync/upstream-YYYY-MM-DD`; never edit release branches directly. Two-step merge: first merge the previous sync branch to reuse resolutions, then merge upstream/main incrementally.
+- After merging, always run the full `pnpm run typecheck` (node + web — web-only misses main-process errors) plus the relevant vitest suites (renderer: home/agents/history/resourceList; main: apiGateway/seeders).
+- `release/2.0.x` and the customization mainline are **two independent release lines**; fixes do not flow between them automatically. Before packaging/releasing, verify each key customization exists on the target branch (`git branch -a --contains <sha>`).
+- The prek/pre-commit hooks may rewrite dead-code-related sections; the maintainer keeps them disabled locally (`.git/hooks.disabled`). Commits use `git commit -S --signoff`.
+
+### Customization Hotspots (must survive merges)
+
+- `electron-builder.yml`: appId / productName / `meacowork://` scheme; api_gateway port 24333, OpenClaw 19790.
+- Xuelang provider icons (`packages/ui` icons catalog + 4 provider files); Cherry login hidden (`ENABLE_CHERRY_ACCOUNT_LOGIN=false`).
+- Component relocation: upstream keeps them in `pages/{home,agents}/…/components/`, this repo moved them to `components/chat/resourceList/`. Merge approach: take the upstream version as the base and re-apply customization props (e.g. Bot-icon hiding) — do not keep the old file as-is.
+- i18n carries ~113 MEA-only keys; locale JSON files are always flat and key-sorted (both renderer and main locales) — never nested.
+- When hiding a settings page/route, audit **all consumers** of that data (sidebar, settings search index, …) and wire them into `MEA_HIDDEN_SETTINGS_ROUTES` in `settingsMenu.ts`.
+
 ## Local Instructions
 
 If `CLAUDE.local.md` exists in the repository root (gitignored, may be absent), read it in full before acting on anything in this file — it holds the developer's private instructions and **OVERRIDES this file wherever they conflict**. Tools that auto-load it (e.g. Claude Code) need not re-read it.

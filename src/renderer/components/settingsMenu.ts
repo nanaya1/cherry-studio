@@ -50,6 +50,14 @@ export interface SettingsMenuEntry {
   groupKey?: string
 }
 
+// MEA：设置侧栏与搜索索引共用隐藏清单，避免搜索重新暴露已隐藏入口。
+// export const MEA_HIDDEN_SETTINGS_ROUTES: readonly string[] = ['/settings/mcp', '/settings/skills']
+export const MEA_HIDDEN_SETTINGS_ROUTES: readonly string[] = [
+  '/settings/mcp',
+  '/settings/skills',
+  '/settings/scheduled-tasks'
+]
+
 /**
  * Single source of truth for the settings sidebar menu.
  * Array order = menu render order = search tie-break order.

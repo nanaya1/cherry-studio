@@ -1,4 +1,4 @@
-import { settingsMenu } from '@renderer/components/settingsMenu'
+import { MEA_HIDDEN_SETTINGS_ROUTES, settingsMenu } from '@renderer/components/settingsMenu'
 
 import type { SettingsSearchSection, SettingsSearchSectionModule } from './types'
 
@@ -22,8 +22,11 @@ for (const [, mod] of Object.entries(globModules).sort(([a], [b]) => a.localeCom
  * engine's tie-break source of truth. Modules targeting routes outside the
  * menu are ignored — extend the menu array first.
  */
-export const settingsSearchSections: SettingsSearchSection[] = settingsMenu.map((item) => ({
-  route: item.route,
-  sectionTitleKey: item.titleKey,
-  entries: leavesByRoute.get(item.route) ?? []
-}))
+export const settingsSearchSections: SettingsSearchSection[] = settingsMenu
+  // MEA：被隐藏的设置条目（如 MCP/Skills）同步从搜索索引剔除，否则侧栏藏了、搜索仍可达。
+  .filter((item) => !MEA_HIDDEN_SETTINGS_ROUTES.includes(item.route))
+  .map((item) => ({
+    route: item.route,
+    sectionTitleKey: item.titleKey,
+    entries: leavesByRoute.get(item.route) ?? []
+  }))

@@ -28,7 +28,10 @@ export class McpOAuthClientProvider implements OAuthClientProvider {
       callbackPath: options.callbackPath || '/oauth/callback',
       configDir: options.configDir || configDir,
       clientName: options.clientName || 'MEA Cowork',
-      clientUri: options.clientUri || 'https://github.com/CherryHQ/cherry-studio'
+      // 换牌定制：client_uri 指向 MEA Cowork 定制仓库（public，RFC 7591 中仅用于授权页展示，
+      // 不参与 OAuth 校验）。停用原 Cherry Studio 仓库地址，回滚 = 取消下行注释。
+      // clientUri: options.clientUri || 'https://github.com/CherryHQ/cherry-studio'
+      clientUri: options.clientUri || 'https://github.com/nanaya1/cherry-studio'
     }
     this.storage = new JsonFileStorage(this.config.serverUrlHash, this.config.configDir)
   }

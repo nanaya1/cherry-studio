@@ -1,7 +1,21 @@
 /** Covers known broken translations and prevents false positives from stranding valid text. */
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+
 import { describe, expect, it } from 'vitest'
 
 import { checkTranslationValues, validate, validateSource } from '../i18n-check-values'
+
+const repoRoot = join(import.meta.dirname, '..', '..')
+const shippedBrandSurfaces = [
+  'src/main/i18n/locales',
+  'src/main/services/tokenDanceOAuth.ts',
+  'src/renderer/i18n/locales',
+  'resources/cherry-studio/release-history.json',
+  'resources/skills/cherry-browser/SKILL.md',
+  'resources/builtin-agents/cherry-assistant/product-manifest.json',
+  'electron-builder.yml'
+]
 
 describe('validate rejects broken translations', () => {
   it('rejects a translation that drops an interpolation variable', () => {
@@ -55,9 +69,7 @@ describe('validate rejects broken translations', () => {
 
   it('rejects a translated product name', () => {
     expect(validate('Restart MEA Cowork', 'Перезапустите MEA Cowork', ['MEA Cowork'])).toBeNull()
-    expect(validate('Restart MEA Cowork', 'Перезапустите MEA Коворк', ['MEA Cowork'])).toMatch(
-      /MEA Cowork/
-    )
+    expect(validate('Restart MEA Cowork', 'Перезапустите MEA Коворк', ['MEA Cowork'])).toMatch(/MEA Cowork/)
   })
 
   it('rejects a protected term dropped from a source spelling variant', () => {
@@ -68,6 +80,39 @@ describe('validate rejects broken translations', () => {
 
   it('rejects an empty translation of a real sentence', () => {
     expect(validate('Delete this topic permanently', '   ')).toMatch(/empty/)
+  })
+})
+
+describe('shipped product branding', () => {
+  it('uses MEA Cowork instead of the upstream product name on user-visible surfaces', () => {
+    const offenders: string[] = []
+
+    for (const relativePath of shippedBrandSurfaces) {
+      const absolutePath = join(repoRoot, relativePath)
+      const files = relativePath.endsWith('/locales')
+        ? [
+            'de-de',
+            'el-gr',
+            'en-us',
+            'es-es',
+            'fr-fr',
+            'ja-jp',
+            'pt-pt',
+            'ro-ro',
+            'ru-ru',
+            'tr-tr',
+            'vi-vn',
+            'zh-cn',
+            'zh-tw'
+          ].map((locale) => join(absolutePath, `${locale}.json`))
+        : [absolutePath]
+
+      for (const file of files) {
+        if (/Cherry ?Studio/.test(readFileSync(file, 'utf8'))) offenders.push(file.replace(`${repoRoot}/`, ''))
+      }
+    }
+
+    expect(offenders).toEqual([])
   })
 })
 

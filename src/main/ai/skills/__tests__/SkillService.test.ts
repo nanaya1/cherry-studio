@@ -1649,7 +1649,7 @@ describe('SkillService', () => {
         tags: [],
         size: 0,
         contentHash: 'hash'
-      } as Awaited<ReturnType<typeof parseSkillMetadata>>)
+      })
 
       await skillService.syncBuiltinSkill(FOLDER_NAME, sourcePath, APP_VERSION)
 
