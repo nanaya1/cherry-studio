@@ -514,9 +514,11 @@ export default function NewTaskPage() {
                     assistantId={chatAssistantId ?? undefined}
                     resolvedContext={chatContext}
                     resolvedProviders={providers}
-                    showAssistantControl={false}
+                    // showAssistantControl={false}
+                    showAssistantControl={true}
                     modelControlInSendAccessory
-                    hideBelowControls
+                    // hideBelowControls
+                    hideBelowControls={false}
                     onDraftAssistantChange={handleChatAssistantChange}
                     onSend={handleChatSend}
                     onDraftCleared={handleDraftCleared}
@@ -594,7 +596,8 @@ export default function NewTaskPage() {
                     stop={async () => undefined}
                     onAgentChange={handleAgentChange}
                     agentChanging={agentLoading}
-                    showAgentControl={false}
+                    // showAgentControl={false}
+                    showAgentControl={true}
                     modelControlInSendAccessory
                     toolShortcutsBeforeContextControls
                     workspaceId={agentWorkspaceId}

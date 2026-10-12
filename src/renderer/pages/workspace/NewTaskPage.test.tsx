@@ -365,6 +365,17 @@ afterEach(() => {
 })
 
 describe('NewTaskPage', () => {
+  it('enables assistant and agent selection for new tasks', async () => {
+    render(<NewTaskPage />)
+
+    expect(mocks.chatProps?.showAssistantControl).toBe(true)
+    expect(mocks.chatProps?.hideBelowControls).toBe(false)
+    expect(mocks.agentProps?.showAgentControl).toBe(true)
+    act(() => getChatOnAssistantChange()('assistant-1'))
+    expect(mocks.chatProps?.assistantId).toBe('assistant-1')
+    await selectAgent()
+  })
+
   it('keeps the chat slash panel open while the inactive agent composer is mounted', async () => {
     mocks.renderQuickPanelHarness = true
     const user = userEvent.setup()
