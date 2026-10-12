@@ -599,7 +599,9 @@ export interface PreferenceSchemas {
 export const DefaultPreferences: PreferenceSchemas = {
   default: {
     'agent.commit_attribution.enabled': true,
-    'agent.icon_type': 'emoji',
+    // MEA:resource-icons 恢复隐藏资源头像的默认值。
+    // 'agent.icon_type': 'emoji',
+    'agent.icon_type': 'none',
     'agent.input.toolbar.pinned_tools': ['composer:new-session', 'skills', 'permission-mode'],
     'agent.language': null,
     'agent.session.display_mode': 'workdir',
@@ -636,7 +638,9 @@ export const DefaultPreferences: PreferenceSchemas = {
     'app.user.id': '',
     'app.user.name': '',
     'app.zoom_factor': 1,
-    'assistant.icon_type': 'emoji',
+    // MEA:resource-icons 恢复隐藏资源头像的默认值。
+    // 'assistant.icon_type': 'emoji',
+    'assistant.icon_type': 'none',
     'assistant.tab.sort_type': 'list',
     'chat.code.collapsible': false,
     'chat.code.editor.autocompletion': true,

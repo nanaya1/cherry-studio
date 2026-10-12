@@ -1822,7 +1822,8 @@ const ChatComposerInner = ({
   const controlProps: ChatComposerControlProps = {
     assistantId: selectedAssistantId,
     assistantName,
-    assistantEmoji: displayAssistant?.emoji,
+    // MEA:resource-icons 停用助手头像传递。
+    // assistantEmoji: displayAssistant?.emoji,
     model: runtimeModel,
     modelPending: runtimeModelPending,
     providers,

@@ -95,14 +95,61 @@ customizations:
   - id: resource-protection
     title: Protect MEA builtin resources and resource-center behavior
     owner: renderer
-    behavior: Keep builtin assistant deletion protection, Bot fallback icons, non-leading pinned topics, and the MEA read-only resource-center entry behavior.
+    behavior: Keep builtin assistant deletion protection, Bot fallback icons, non-leading pinned topics, and the MEA read-only resource-center entry behavior. Resource-center assistant cards use MessageCircle and agent cards use Bot instead of resource Emoji; Skill custom images and prompt avatars remain available.
+    markers:
+      - MEA:resource-protection
     touchpoints:
+      - src/renderer/components/resourceCatalog/catalog/ResourceCards.tsx
       - src/renderer/components/resourceCatalog/catalog/RecommendedSkillCatalogView.tsx
       - src/renderer/components/ResourceViewSourceProvider.tsx
       - src/renderer/pages/workspace/SkillsConnectorsPage.tsx
     tests:
+      - src/renderer/components/resourceCatalog/catalog/__tests__/ResourceGrid.test.tsx
       - src/renderer/components/resourceCatalog/catalog/__tests__/RecommendedSkillCatalogView.test.tsx
       - src/renderer/components/__tests__/ResourceViewSourceProvider.test.tsx
+
+  - id: resource-icons
+    title: 恢复统一资源图标并隐藏头像编辑
+    owner: renderer
+    behavior: assistant.icon_type 和 agent.icon_type 默认 none；资源卡片使用助手 MessageCircle 与 Agent Bot，选择器及预设使用统一 Bot，普通会话控件隐藏头像且紧凑模式显示 Bot，实体 Emoji 标签回退路由图标。创建和编辑入口隐藏 Emoji 选择，保留名称、头像 schema、原始数据与保存链路；Skill 图片、Prompt 头像及小程序图标保持可用。停用逻辑与旧默认值保留为注释，生成源保留旧值以生成回滚注释。
+    markers:
+      - MEA:resource-icons
+    touchpoints:
+      - scripts/data-classify/data/classification.json
+      - scripts/data-classify/data/target-key-definitions.json
+      - scripts/data-classify/scripts/generate-preferences.js
+      - src/shared/data/preference/preferenceSchemas.ts
+      - src/renderer/components/composer/variants/ChatComposer.tsx
+      - src/renderer/components/composer/variants/chat/ChatConversationControls.tsx
+      - src/renderer/components/composer/variants/agent/AgentConversationControls.tsx
+      - src/renderer/components/layout/TabIcon.tsx
+      - src/renderer/pages/home/Chat.tsx
+      - src/renderer/components/resourceCatalog/catalog/ResourceCards.tsx
+      - src/renderer/components/resourceCatalog/catalog/AssistantLibraryDialog.tsx
+      - src/renderer/components/resourceCatalog/selectors/AgentSelector.tsx
+      - src/renderer/components/resourceCatalog/selectors/AssistantSelector.tsx
+      - src/renderer/components/resourceCatalog/selectors/ResourceSelectorShell.tsx
+      - src/renderer/components/resourceCatalog/dialogs/components/DialogFormFields.tsx
+      - src/renderer/components/resourceCatalog/dialogs/components/EditDialogShared.tsx
+      - src/renderer/components/resourceCatalog/dialogs/create/ResourceCreateWizard.tsx
+      - src/renderer/components/resourceCatalog/dialogs/create/steps/BasicInfoStep.tsx
+      - src/renderer/components/resourceCatalog/dialogs/detail/AssistantPresetPreviewDialog.tsx
+      - src/renderer/components/resourceCatalog/dialogs/edit/AgentEditDialog.tsx
+      - src/renderer/components/resourceCatalog/dialogs/edit/AssistantEditDialog.tsx
+    tests:
+      - src/shared/data/preference/__tests__/preferenceSchemas.test.ts
+      - src/renderer/components/composer/variants/chat/__tests__/ChatConversationControls.resourceIcons.test.tsx
+      - src/renderer/components/composer/variants/agent/__tests__/AgentConversationControls.resourceIcons.test.tsx
+      - src/renderer/components/layout/__tests__/TabIcon.resourceIcons.test.tsx
+      - src/renderer/components/resourceCatalog/catalog/__tests__/ResourceGrid.test.tsx
+      - src/renderer/components/resourceCatalog/catalog/__tests__/AssistantLibraryDialog.test.tsx
+      - src/renderer/components/resourceCatalog/selectors/__tests__/AgentSelector.test.tsx
+      - src/renderer/components/resourceCatalog/selectors/__tests__/AssistantSelector.test.tsx
+      - src/renderer/components/resourceCatalog/selectors/__tests__/ResourceSelectorShell.test.tsx
+      - src/renderer/components/resourceCatalog/dialogs/create/steps/__tests__/BasicInfoStep.test.tsx
+      - src/renderer/components/resourceCatalog/dialogs/create/__tests__/ResourceCreateWizard.test.tsx
+      - src/renderer/components/resourceCatalog/dialogs/edit/__tests__/EditDialogs.test.tsx
+      - src/renderer/components/resourceCatalog/dialogs/detail/__tests__/AssistantPresetPreviewDialog.test.tsx
 
   - id: builtin-mcp-names
     title: Preserve unprefixed builtin MCP names

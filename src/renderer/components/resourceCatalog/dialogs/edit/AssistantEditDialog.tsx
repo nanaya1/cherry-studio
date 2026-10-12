@@ -54,7 +54,8 @@ import { clampThresholdPercent } from '@shared/utils/contextSettings'
 import { isNonChatModel } from '@shared/utils/model'
 
 import {
-  AvatarField,
+  // MEA:resource-icons
+  // AvatarField,
   CompactModelField,
   EDIT_DIALOG_PROMPT_MAX_HEIGHT,
   EDIT_DIALOG_PROMPT_MIN_HEIGHT,
@@ -227,7 +228,8 @@ function AssistantEditDialogContent({
 }: EditDialogBaseProps & { resource: AssistantEditDialogResource }) {
   const { t } = useTranslation()
   const [activeTab, setActiveTab] = useState(initialTab ?? 'basic')
-  const [emojiPickerOpen, setEmojiPickerOpen] = useState(false)
+  // MEA:resource-icons
+  // const [emojiPickerOpen, setEmojiPickerOpen] = useState(false)
   const [createGroupDialogOpen, setCreateGroupDialogOpen] = useState(false)
   const [dialogContentElement, setDialogContentElement] = useState<HTMLDivElement | null>(null)
   const [modelLabels, setModelLabels] = useState<ModelLabels>(() => modelLabelsForAssistant(resource))
@@ -277,7 +279,8 @@ function AssistantEditDialogContent({
     form.reset(defaultValues)
     form.clearErrors()
     setActiveTab(initialTab ?? 'basic')
-    setEmojiPickerOpen(false)
+    // MEA:resource-icons
+    // setEmojiPickerOpen(false)
     setCreateGroupDialogOpen(false)
     setModelLabels(modelLabelsForAssistant(resource))
     // A fresh open is a fresh editing session — a stale failure from a prior
@@ -387,8 +390,8 @@ function AssistantEditDialogContent({
             groups={groups}
             groupsLoading={isGroupsLoading}
             groupsError={groupsError}
-            emojiPickerOpen={emojiPickerOpen}
-            setEmojiPickerOpen={setEmojiPickerOpen}
+            // MEA:resource-icons emojiPickerOpen={emojiPickerOpen}
+            // MEA:resource-icons setEmojiPickerOpen={setEmojiPickerOpen}
             onCreateGroup={() => setCreateGroupDialogOpen(true)}
             onSettingsNavigate={closeBeforeAction}
           />
@@ -470,8 +473,10 @@ function AssistantBasicFields({
   groups,
   groupsLoading,
   groupsError,
-  emojiPickerOpen,
-  setEmojiPickerOpen,
+  // MEA:resource-icons
+  // emojiPickerOpen,
+  // MEA:resource-icons
+  // setEmojiPickerOpen,
   onCreateGroup,
   onSettingsNavigate
 }: {
@@ -484,8 +489,10 @@ function AssistantBasicFields({
   groups: ReturnType<typeof useGroups>['groups']
   groupsLoading: ReturnType<typeof useGroups>['isLoading']
   groupsError: ReturnType<typeof useGroups>['error']
-  emojiPickerOpen: boolean
-  setEmojiPickerOpen: (open: boolean) => void
+  // MEA:resource-icons
+  // emojiPickerOpen: boolean
+  // MEA:resource-icons
+  // setEmojiPickerOpen: (open: boolean) => void
   onCreateGroup: () => void
   onSettingsNavigate?: (navigate: () => void) => void
 }) {
@@ -503,6 +510,7 @@ function AssistantBasicFields({
 
   return (
     <div className="divide-y divide-border-subtle border-border-subtle border-b [&>*:first-child]:pt-0">
+      {/* MEA:resource-icons 隐藏独立头像字段，保留表单原值。
       <AvatarField
         form={form}
         emojiPickerOpen={emojiPickerOpen}
@@ -512,6 +520,7 @@ function AssistantBasicFields({
         size="sm"
         layout="row"
       />
+      */}
       <TextInputField
         form={form}
         name="name"

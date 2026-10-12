@@ -83,7 +83,9 @@ export function ResourceCard({
   const cfg = RESOURCE_TYPE_META[r.type]
   const isSettings = variant === 'settings'
   const isSkillGrid = isSettings && r.type === 'skill' && columnCount === 2
-  const showTypeIcon = r.type === 'skill'
+  // const showTypeIcon = r.type === 'skill'
+  // MEA:resource-protection MEA:resource-icons 助手和 Agent 使用统一类型图标。
+  const showTypeIcon = r.type === 'assistant' || r.type === 'agent' || r.type === 'skill'
   const TypeIcon = cfg.icon
   const showOverflowMenu = showManagementActions && hasOverflowActions(r)
   const visibleGroup = r.type === 'assistant' ? r.groupName : undefined

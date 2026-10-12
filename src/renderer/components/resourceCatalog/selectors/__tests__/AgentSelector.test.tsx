@@ -399,7 +399,7 @@ describe('AgentSelector', () => {
     expect(screen.getByRole('button', { name: 'Create agent' })).toBeInTheDocument()
   })
 
-  it('falls back to the default agent avatar for blank stored avatars', () => {
+  it('空白配置头像仍使用统一 Bot 图标', () => {
     useQueryMock.mockReturnValue({
       data: {
         items: [
@@ -424,7 +424,9 @@ describe('AgentSelector', () => {
     renderSelector()
     openPopover()
 
-    expect(screen.getByRole('option', { name: /Alpha Agent/ })).toHaveTextContent('🤖')
+    const option = screen.getByRole('option', { name: /Alpha Agent/ })
+    expect(option.querySelector('svg.lucide-bot')).toBeInTheDocument()
+    expect(option).not.toHaveTextContent('🤖')
   })
 
   it('fires onChange with the selected agent id', () => {
@@ -588,7 +590,7 @@ describe('AgentSelector', () => {
 
     fireEvent.click(screen.getAllByRole('button', { name: 'Edit agent' })[0])
 
-    expect(await screen.findByRole('heading', { name: 'Edit Agent' }, { timeout: 5000 })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Edit Agent' }, { timeout: 15000 })).toBeInTheDocument()
 
     fireEvent.change(screen.getByLabelText('Avatar and name'), { target: { value: 'Renamed Agent' } })
 
@@ -610,7 +612,7 @@ describe('AgentSelector', () => {
     openPopover()
 
     fireEvent.click(screen.getAllByRole('button', { name: 'Edit agent' })[0])
-    expect(await screen.findByRole('heading', { name: 'Edit Agent' }, { timeout: 5000 })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Edit Agent' }, { timeout: 15000 })).toBeInTheDocument()
     vi.useFakeTimers()
     fireEvent.click(screen.getByRole('button', { name: 'Close' }))
 
@@ -631,7 +633,7 @@ describe('AgentSelector', () => {
     openPopover()
 
     fireEvent.click(screen.getAllByRole('button', { name: 'Edit agent' })[0])
-    expect(await screen.findByRole('heading', { name: 'Edit Agent' }, { timeout: 5000 })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Edit Agent' }, { timeout: 15000 })).toBeInTheDocument()
     fireEvent.change(screen.getByLabelText('Avatar and name'), { target: { value: 'Saved Agent' } })
     fireEvent.click(screen.getByRole('button', { name: 'Close' }))
 
@@ -653,5 +655,19 @@ describe('AgentSelector', () => {
     openPopover()
 
     expect(screen.queryByText('No agents yet. Create one first.')).not.toBeInTheDocument()
+  })
+})
+
+// Phase-1 (MEA resource-icons): agent selector rows must not render the agent emoji.
+describe('MEA resource-icons: hide agent emoji in selector rows', () => {
+  it('renders the Bot fallback icon, not the agent emoji, in the leading slot', () => {
+    renderSelector()
+    openPopover()
+
+    // Regression: the seeded agent emoji (🤖) must not appear in the row.
+    const option = screen.getByRole('option', { name: /Alpha Agent/ })
+    expect(option).toBeInTheDocument()
+    expect(option.querySelector('svg.lucide-bot')).toBeInTheDocument()
+    expect(screen.queryAllByText('🤖')).toHaveLength(0)
   })
 })

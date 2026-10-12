@@ -98,14 +98,23 @@ function AgentControl({
           : undefined
       }>
       {agent ? (
-        <AgentLabel
-          agent={agent}
-          avatarSize={20}
-          classNames={{
-            name: cn('max-w-40 text-xs', iconOnly && COMPOSER_ICON_ONLY_LABEL_CLASS),
-            container: 'gap-1.5'
-          }}
-        />
+        <>
+          {/* MEA:resource-icons 隐藏配置头像，紧凑模式使用统一 Bot。 */}
+          {/* <AgentLabel
+            agent={agent}
+            avatarSize={20}
+            classNames={{
+              name: cn('max-w-40 text-xs', iconOnly && COMPOSER_ICON_ONLY_LABEL_CLASS),
+              container: 'gap-1.5'
+            }}
+          /> */}
+          {iconOnly ? <Bot size={20} aria-hidden /> : null}
+          <AgentLabel
+            agent={agent}
+            hideIcon
+            classNames={{ name: cn('max-w-40 text-xs', iconOnly && COMPOSER_ICON_ONLY_LABEL_CLASS) }}
+          />
+        </>
       ) : (
         <>
           {iconOnly ? <Bot size={20} aria-hidden /> : null}

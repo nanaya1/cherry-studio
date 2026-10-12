@@ -9,13 +9,15 @@ import {
   FormLabel,
   FormMessage,
   InputGroup,
-  InputGroupAddon,
+  // MEA:resource-icons
+  // InputGroupAddon,
   InputGroupInput
 } from '@cherrystudio/ui'
 import { AgentRuntimeTiles } from '@renderer/components/AgentRuntimeOption'
 import type { ModelSelectorFilter } from '@renderer/components/ModelSelector'
 import { PermissionModeSelect } from '@renderer/components/PermissionModeOption'
-import { EmojiAvatarPicker } from '@renderer/components/resourceCatalog/dialogs/components/DialogFormFields'
+// MEA:resource-icons
+// import { EmojiAvatarPicker } from '@renderer/components/resourceCatalog/dialogs/components/DialogFormFields'
 import {
   CompactModelField,
   type ModelLabels,
@@ -47,7 +49,7 @@ type ModelFieldProps = {
 type BasicInfoStepProps = {
   form: UseFormReturn<ResourceCreateWizardFormValues>
   portalContainer: HTMLElement | null
-  fallbackAvatar: string
+  // MEA:resource-icons fallbackAvatar: string
   modelFilter?: ModelSelectorFilter
   isModelDisabled?: ModelSelectorFilter
   /** Agent create flows expose a runtime selector that drives the model filter (D8). */
@@ -155,16 +157,19 @@ function AgentRuntimeModelFields({
 export function BasicInfoStep({
   form,
   portalContainer,
-  fallbackAvatar,
+  // MEA:resource-icons 隐藏头像编辑，表单原值继续保留。
+  // fallbackAvatar,
   modelFilter,
   isModelDisabled,
   runtimeSelectable = false,
   onSettingsNavigate
 }: BasicInfoStepProps) {
   const { t } = useTranslation()
-  const [emojiPickerOpen, setEmojiPickerOpen] = useState(false)
+  // MEA:resource-icons
+  // const [emojiPickerOpen, setEmojiPickerOpen] = useState(false)
   const [modelLabels, setModelLabels] = useState<ModelLabels>(EMPTY_MODEL_LABELS)
-  const avatar = useWatch({ control: form.control, name: 'avatar' })
+  // MEA:resource-icons
+  // const avatar = useWatch({ control: form.control, name: 'avatar' })
 
   useEffect(() => {
     form.setFocus('name')
@@ -180,6 +185,7 @@ export function BasicInfoStep({
           <FormItem>
             <FormLabel className="font-medium">{t('library.config.dialogs.create.avatar_name_label')}</FormLabel>
             <InputGroup>
+              {/* MEA:resource-icons 隐藏 Emoji 编辑，保留名称输入。
               <InputGroupAddon className="py-0">
                 <EmojiAvatarPicker
                   value={avatar}
@@ -193,6 +199,7 @@ export function BasicInfoStep({
                   avatarFontSize={18}
                 />
               </InputGroupAddon>
+              */}
               <FormControl>
                 <InputGroupInput
                   {...field}

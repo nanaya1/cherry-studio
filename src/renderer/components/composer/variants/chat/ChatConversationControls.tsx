@@ -2,12 +2,16 @@ import { Bot, ChevronDown } from 'lucide-react'
 import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { Button, EmojiIcon } from '@cherrystudio/ui'
+// MEA:resource-icons 保留原头像导入以便恢复。
+// import { Button, EmojiIcon } from '@cherrystudio/ui'
+import { Button } from '@cherrystudio/ui'
 import ModelAvatar from '@renderer/components/Avatar/ModelAvatar'
 import { getProviderDisplayName, ModelSelector, type ModelSelectorFilter } from '@renderer/components/ModelSelector'
 import { openResourceEditDialog } from '@renderer/components/resourceCatalog/dialogs/ResourceEditDialogEventHost'
 import { AssistantSelector } from '@renderer/components/resourceCatalog/selectors'
-import { getLeadingEmoji, getProviderDisplayNameById } from '@renderer/utils/naming'
+// MEA:resource-icons 不再从名称提取头像。
+// import { getLeadingEmoji, getProviderDisplayNameById } from '@renderer/utils/naming'
+import { getProviderDisplayNameById } from '@renderer/utils/naming'
 import { cn } from '@renderer/utils/style'
 import type { Model } from '@shared/data/types/model'
 import type { Provider } from '@shared/data/types/provider'
@@ -24,7 +28,8 @@ import {
 export interface ChatConversationControlsProps {
   assistantId: string | null
   assistantName: string
-  assistantEmoji?: string
+  // MEA:resource-icons 停用助手头像参数。
+  // assistantEmoji?: string
   model?: Model
   modelPending?: boolean
   providers: Provider[]
@@ -51,7 +56,8 @@ export interface ChatConversationControlsProps {
 export function ChatConversationControls({
   assistantId,
   assistantName,
-  assistantEmoji,
+  // MEA:resource-icons 停用头像读取。
+  // assistantEmoji,
   model,
   modelPending,
   providers,
@@ -76,7 +82,8 @@ export function ChatConversationControls({
 }: ChatConversationControlsProps) {
   const { t } = useTranslation()
   const chatModelFilter = useCallback<ModelSelectorFilter>((candidate) => !isNonChatModel(candidate), [])
-  const assistantIcon = assistantEmoji || getLeadingEmoji(assistantName)
+  // MEA:resource-icons 名称内 Emoji 保留为文本，不提升为头像。
+  // const assistantIcon = assistantEmoji || getLeadingEmoji(assistantName)
   const triggerClassName = side === 'bottom' ? COMPOSER_BELOW_SELECTOR_BUTTON_CLASS : COMPOSER_SELECTOR_BUTTON_CLASS
   const compactTriggerClassName = cn(triggerClassName, iconOnly && COMPOSER_ICON_ONLY_SELECTOR_BUTTON_CLASS)
   const labelClassName = cn('truncate', iconOnly && COMPOSER_ICON_ONLY_LABEL_CLASS)
@@ -125,7 +132,9 @@ export function ChatConversationControls({
       disabled={assistantTriggerAction === 'edit' && !assistantId}
       aria-label={assistantTriggerAction === 'edit' ? `${t('assistants.edit.title')}: ${assistantName}` : undefined}
       onClick={assistantTriggerAction === 'edit' ? handleAssistantEdit : undefined}>
-      {assistantIcon ? <EmojiIcon emoji={assistantIcon} size={20} /> : iconOnly ? <Bot size={16} aria-hidden /> : null}
+      {/* MEA:resource-icons 紧凑模式使用统一 Bot。 */}
+      {/* {assistantIcon ? <EmojiIcon emoji={assistantIcon} size={20} /> : iconOnly ? <Bot size={16} aria-hidden /> : null} */}
+      {iconOnly ? <Bot size={16} aria-hidden /> : null}
       <span className={cn('max-w-40', labelClassName)}>{assistantName}</span>
       {assistantTriggerAction === 'edit' ? null : (
         <ChevronDown size={14} aria-hidden className={cn('text-muted-foreground', iconOnly && 'hidden')} />

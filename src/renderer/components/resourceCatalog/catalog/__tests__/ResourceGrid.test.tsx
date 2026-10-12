@@ -873,6 +873,23 @@ describe('ResourceGrid group toolbar management', () => {
 })
 
 describe('ResourceGrid card actions', () => {
+  it.each([
+    [createAssistantResource(), 'lucide-message-circle'],
+    [createAgentResource(), 'lucide-bot']
+  ])('preserves the MEA type icon instead of the %s avatar', (resource, iconClass) => {
+    const { container } = render(<ResourceCard resource={{ ...resource, avatar: '🤖' }} {...getResourceCardProps()} />)
+
+    expect(screen.queryByText('🤖')).not.toBeInTheDocument()
+    // MEA cards use a conversation glyph for assistants and a Bot glyph for agents.
+    expect(container.querySelector(`svg.${iconClass}`)).toBeInTheDocument()
+  })
+
+  it('preserves prompt avatar text', () => {
+    render(<ResourceCard resource={createPromptResource()} {...getResourceCardProps()} />)
+
+    expect(screen.getByText('Aa')).toBeInTheDocument()
+  })
+
   it('resolves and renders custom Skill icons in the active grid', async () => {
     ipcRequestMock.mockResolvedValueOnce({ 'skill-1': 'file:///skills/skill-1/icon.png' })
 

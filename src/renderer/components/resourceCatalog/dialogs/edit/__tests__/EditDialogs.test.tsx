@@ -2016,13 +2016,35 @@ describe('edit dialogs', () => {
     frames.restore()
   })
 
-  it('keeps popover content inside the dialog container', async () => {
-    render(<AssistantEditDialog open resource={ASSISTANT} onOpenChange={vi.fn()} />)
+  // MEA:resource-icons 原头像弹层测试保留供回滚。
+  // it('keeps popover content inside the dialog container', async () => {
+  //   render(<AssistantEditDialog open resource={ASSISTANT} onOpenChange={vi.fn()} />)
+  //   const dialog = screen.getByRole('dialog')
+  //   fireEvent.click(screen.getByLabelText('Pick avatar'))
+  //   expect(dialog).toContainElement(screen.getByRole('button', { name: 'Choose emoji' }))
+  // })
+  // MEA:resource-icons 防止编辑入口重新暴露 Emoji，或名称保存覆盖原头像。
+  it.each(['assistant', 'agent'] as const)('隐藏 %s 的头像编辑并仅保存名称变更', async (kind) => {
+    const user = userEvent.setup()
+    if (kind === 'assistant') {
+      render(<AssistantEditDialog open resource={ASSISTANT} onOpenChange={vi.fn()} />)
+    } else {
+      render(<AgentEditDialog open resource={AGENT} onOpenChange={vi.fn()} />)
+    }
 
-    const dialog = screen.getByRole('dialog')
-    fireEvent.click(screen.getByLabelText('Pick avatar'))
+    expect(screen.queryByRole('button', { name: 'Pick avatar' })).not.toBeInTheDocument()
+    expect(screen.queryByText('Avatar')).not.toBeInTheDocument()
+    expect(
+      screen.queryByText(kind === 'assistant' ? ASSISTANT.emoji : (AGENT.configuration?.avatar as string))
+    ).not.toBeInTheDocument()
+    const name = screen.getByLabelText(kind === 'assistant' ? 'Name' : 'Avatar and name')
+    await user.clear(name)
+    await user.type(name, 'Renamed resource')
 
-    expect(dialog).toContainElement(screen.getByRole('button', { name: 'Choose emoji' }))
+    const update = kind === 'assistant' ? updateAssistantMock : updateAgentMock
+    await waitFor(() =>
+      expect(update).toHaveBeenCalledWith(expect.objectContaining({ body: { name: 'Renamed resource' } }))
+    )
   })
 
   it('keeps edited values while switching tabs before save', async () => {

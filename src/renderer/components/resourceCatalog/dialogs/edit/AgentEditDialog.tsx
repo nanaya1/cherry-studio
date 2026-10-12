@@ -11,7 +11,8 @@ import {
   FormLabel,
   FormMessage,
   InputGroup,
-  InputGroupAddon,
+  // MEA:resource-icons
+  // InputGroupAddon,
   InputGroupInput,
   InputNumber,
   SegmentedControl,
@@ -62,7 +63,8 @@ import type { UniqueModelId } from '@shared/data/types/model'
 import type { InstalledSkill } from '@shared/types/skill'
 
 import { type CatalogItem, CatalogToggleGrid } from '../components/CatalogPicker'
-import { EmojiAvatarPicker } from '../components/DialogFormFields'
+// MEA:resource-icons
+// import { EmojiAvatarPicker } from '../components/DialogFormFields'
 import {
   CompactModelField,
   EDIT_DIALOG_PROMPT_MAX_HEIGHT,
@@ -286,7 +288,8 @@ function AgentEditDialogContent({
   const { t } = useTranslation()
   const caps = AGENT_RUNTIME_CAPABILITIES[resource.type]
   const [activeTab, setActiveTab] = useState(initialTab ?? 'basic')
-  const [emojiPickerOpen, setEmojiPickerOpen] = useState(false)
+  // MEA:resource-icons
+  // const [emojiPickerOpen, setEmojiPickerOpen] = useState(false)
   const [dialogContentElement, setDialogContentElement] = useState<HTMLDivElement | null>(null)
   const [modelLabels, setModelLabels] = useState<ModelLabels>(() => modelLabelsForAgent(resource))
   const [formBaseline, setFormBaseline] = useState<AgentFormState>(() => buildInitialAgentFormState(resource))
@@ -374,7 +377,8 @@ function AgentEditDialogContent({
     form.reset(defaultValues)
     form.clearErrors()
     setActiveTab(initialTab ?? 'basic')
-    setEmojiPickerOpen(false)
+    // MEA:resource-icons
+    // setEmojiPickerOpen(false)
     setModelLabels(modelLabelsForAgent(resource))
     replaceFormBaseline(buildInitialAgentFormState(resource))
     setBaselineSkillAgentId(null)
@@ -548,8 +552,8 @@ function AgentEditDialogContent({
             modelLabels={modelLabels}
             setModelLabels={setModelLabels}
             patchAgentForm={patchAgentForm}
-            emojiPickerOpen={emojiPickerOpen}
-            setEmojiPickerOpen={setEmojiPickerOpen}
+            // MEA:resource-icons emojiPickerOpen={emojiPickerOpen}
+            // MEA:resource-icons setEmojiPickerOpen={setEmojiPickerOpen}
             onSettingsNavigate={closeBeforeAction}
             caps={caps}
             agentType={resource.type}
@@ -604,8 +608,10 @@ function AgentBasicFields({
   modelLabels,
   setModelLabels,
   patchAgentForm,
-  emojiPickerOpen,
-  setEmojiPickerOpen,
+  // MEA:resource-icons
+  // emojiPickerOpen,
+  // MEA:resource-icons
+  // setEmojiPickerOpen,
   onSettingsNavigate,
   caps,
   agentType,
@@ -619,8 +625,10 @@ function AgentBasicFields({
   modelLabels: ModelLabels
   setModelLabels: (labels: ModelLabels) => void
   patchAgentForm: (patch: Partial<AgentFormState>) => void
-  emojiPickerOpen: boolean
-  setEmojiPickerOpen: (open: boolean) => void
+  // MEA:resource-icons
+  // emojiPickerOpen: boolean
+  // MEA:resource-icons
+  // setEmojiPickerOpen: (open: boolean) => void
   onSettingsNavigate?: (navigate: () => void) => void
   caps: AgentRuntimeCapabilities
   agentType: AgentType
@@ -635,8 +643,8 @@ function AgentBasicFields({
     <div className="divide-y divide-border-subtle border-border-subtle border-b [&>*:first-child]:pt-0">
       <AgentAvatarNameField
         form={form}
-        emojiPickerOpen={emojiPickerOpen}
-        setEmojiPickerOpen={setEmojiPickerOpen}
+        // MEA:resource-icons emojiPickerOpen={emojiPickerOpen}
+        // MEA:resource-icons setEmojiPickerOpen={setEmojiPickerOpen}
         portalContainer={portalContainer}
       />
       <TextInputField
@@ -735,14 +743,19 @@ function AgentBasicFields({
 }
 
 function AgentAvatarNameField({
-  form,
-  emojiPickerOpen,
-  setEmojiPickerOpen,
-  portalContainer
+  form
+  // MEA:resource-icons
+  // emojiPickerOpen,
+  // MEA:resource-icons
+  // setEmojiPickerOpen,
+  // MEA:resource-icons
+  // portalContainer
 }: {
   form: UseFormReturn<AgentEditFormValues>
-  emojiPickerOpen: boolean
-  setEmojiPickerOpen: (open: boolean) => void
+  // MEA:resource-icons
+  // emojiPickerOpen: boolean
+  // MEA:resource-icons
+  // setEmojiPickerOpen: (open: boolean) => void
   portalContainer: HTMLElement | null
 }) {
   const { t } = useTranslation()
@@ -758,6 +771,7 @@ function AgentAvatarNameField({
             {t('library.config.dialogs.create.avatar_name_label')}
           </FormLabel>
           <InputGroup>
+            {/* MEA:resource-icons 隐藏 Emoji 编辑，保留名称输入。
             <FormField
               control={form.control}
               name="avatar"
@@ -777,6 +791,7 @@ function AgentAvatarNameField({
                 </InputGroupAddon>
               )}
             />
+            */}
             <FormControl>
               <InputGroupInput
                 {...field}

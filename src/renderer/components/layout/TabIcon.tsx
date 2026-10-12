@@ -1,7 +1,9 @@
 import { Globe } from 'lucide-react'
 import type { FC } from 'react'
 
-import { Avatar, AvatarFallback, AvatarImage, EmojiIcon } from '@cherrystudio/ui'
+// MEA:resource-icons 保留原 Emoji 导入，标签使用路由图标。
+// import { Avatar, AvatarFallback, AvatarImage, EmojiIcon } from '@cherrystudio/ui'
+import { Avatar, AvatarFallback, AvatarImage } from '@cherrystudio/ui'
 import { getMiniAppsLogoRef, useMiniAppLogo } from '@renderer/components/icons/miniAppsLogo'
 import { MINI_APP_ROUTE_PREFIX } from '@renderer/utils/miniAppKeepAlive'
 import { cn } from '@renderer/utils/style'
@@ -33,7 +35,10 @@ export const TabIcon: FC<{ tab: Tab; size: number; className?: string }> = ({ ta
   if (tab.icon) {
     // Per-entity emoji (chat assistant / agent avatar), stored as `emoji:<glyph>`.
     if (tab.icon.startsWith(TAB_ICON_EMOJI_PREFIX)) {
-      return <EmojiIcon emoji={tab.icon.slice(TAB_ICON_EMOJI_PREFIX.length)} size={size} className={className} />
+      // MEA:resource-icons 隐藏实体 Emoji，保留路由默认图标。
+      // return <EmojiIcon emoji={tab.icon.slice(TAB_ICON_EMOJI_PREFIX.length)} size={size} className={className} />
+      const Icon = getTabIcon(tab)
+      return <Icon size={size} strokeWidth={1.6} className={className} />
     }
     if (getMiniAppsLogoRef(tab.icon)) {
       return Logo ? (

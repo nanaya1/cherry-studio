@@ -241,3 +241,14 @@ describe('AssistantLibraryDialog', () => {
     expect(screen.getAllByText('library.assistant_catalog.add')).toHaveLength(2)
   })
 })
+
+// Phase-1 (MEA resource-icons): catalog preset rows must use the Bot fallback, not the emoji glyph.
+describe('MEA resource-icons: hide preset emoji in catalog rows', () => {
+  it('renders the Bot fallback, not the emoji glyph, for preset rows', async () => {
+    render(<AssistantLibraryDialog open onOpenChange={vi.fn()} />)
+    await waitFor(() => expect(screen.getByText('Web Generator')).toBeInTheDocument())
+
+    // Regression: preset rows must not render the emoji glyph (🤖 fallback).
+    expect(screen.queryAllByText('🤖')).toHaveLength(0)
+  })
+})

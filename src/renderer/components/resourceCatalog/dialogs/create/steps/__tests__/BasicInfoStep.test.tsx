@@ -1,4 +1,6 @@
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
+// MEA:resource-icons 原头像布局测试依赖保留供回滚。
+// import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
@@ -69,7 +71,13 @@ function Harness({
 
   return (
     <Form {...form}>
-      <BasicInfoStep form={form} portalContainer={null} fallbackAvatar="💬" runtimeSelectable={runtimeSelectable} />
+      <BasicInfoStep
+        form={form}
+        portalContainer={null}
+        // MEA:resource-icons fallbackAvatar="💬"
+        runtimeSelectable={runtimeSelectable}
+      />
+      <output aria-label="保留的头像">{form.watch('avatar')}</output>
       <output data-testid="permission-mode">{form.watch('permissionMode')}</output>
     </Form>
   )
@@ -97,17 +105,27 @@ describe('BasicInfoStep', () => {
     )
   })
 
-  it('integrates the avatar picker into the name field', () => {
-    render(<Harness />)
+  // MEA:resource-icons 原头像布局测试保留供回滚。
+  // it('integrates the avatar picker into the name field', () => {
+  //   render(<Harness />)
+  //   expect(screen.getByText('library.config.dialogs.create.avatar_name_label')).toBeVisible()
+  //   const avatarButton = screen.getByRole('button', { name: 'library.config.dialogs.create.avatar_aria' })
+  //   const inputGroup = avatarButton.closest('[data-slot="input-group"]')
+  //   expect(inputGroup).not.toBeNull()
+  //   expect(
+  //     within(inputGroup as HTMLElement).getByPlaceholderText('library.config.dialogs.create.name_placeholder')
+  //   ).toBeVisible()
+  // })
+  // MEA:resource-icons 防止创建入口重新暴露 Emoji，或编辑名称时丢失头像值。
+  it.each([false, true])('隐藏创建头像选择器并保留名称编辑和头像值（智能体：%s）', async (runtimeSelectable) => {
+    const user = userEvent.setup()
+    render(<Harness runtimeSelectable={runtimeSelectable} />)
 
-    expect(screen.getByText('library.config.dialogs.create.avatar_name_label')).toBeVisible()
-    const avatarButton = screen.getByRole('button', { name: 'library.config.dialogs.create.avatar_aria' })
-    const inputGroup = avatarButton.closest('[data-slot="input-group"]')
-
-    expect(inputGroup).not.toBeNull()
-    expect(
-      within(inputGroup as HTMLElement).getByPlaceholderText('library.config.dialogs.create.name_placeholder')
-    ).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'library.config.dialogs.create.avatar_aria' })).not.toBeInTheDocument()
+    const name = screen.getByPlaceholderText('library.config.dialogs.create.name_placeholder')
+    await user.type(name, 'MEA resource')
+    expect(name).toHaveValue('MEA resource')
+    expect(screen.getByLabelText('保留的头像')).toHaveTextContent('💬')
   })
 
   it('offers Claude and Pi for creation without exposing DeepSeek Harness', () => {

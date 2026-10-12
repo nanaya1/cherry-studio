@@ -5,6 +5,11 @@ import { DefaultPreferences } from '../preferenceSchemas'
 import { createSidebarShortcutId, type SidebarShortcutTarget } from '../preferenceTypes'
 
 describe('DefaultPreferences', () => {
+  // MEA:resource-icons 防止新用户的助手和 Agent 列表重新默认显示头像。
+  it.each(['assistant.icon_type', 'agent.icon_type'] as const)('%s 默认隐藏资源头像', (key) => {
+    expect(DefaultPreferences.default[key]).toBe('none')
+  })
+
   it('leaves the client ID empty until runtime generates a UUID', () => {
     expect(DefaultPreferences.default['app.user.id']).toBe('')
   })

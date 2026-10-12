@@ -1,4 +1,5 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { Bot } from 'lucide-react'
 import { useState } from 'react'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
@@ -892,5 +893,33 @@ describe('ResourceSelectorShell', () => {
       expect(screen.queryByRole('option', { name: /Beta/ })).toBeInTheDocument()
       expect(screen.queryByRole('option', { name: /Gamma/ })).toBeInTheDocument()
     })
+  })
+})
+
+// Phase-1 (MEA resource-icons): selector rows must not render the per-entity emoji.
+describe('MEA resource-icons: hide per-entity emoji in selector rows', () => {
+  it('renders the fallback icon, not the item emoji, in the leading slot', () => {
+    render(
+      <ResourceSelectorShell
+        trigger={<button type="button">Open</button>}
+        // MEA:resource-icons — items still carry an emoji, but it must not be rendered.
+        items={[{ id: '1', name: '🤖 Alpha', emoji: '🤖' }]}
+        fallbackIcon={<Bot size={15} />}
+        pinnedIds={[]}
+        onTogglePin={vi.fn()}
+        onCreateNew={vi.fn()}
+        onEditItem={vi.fn()}
+        labels={LABELS}
+        value={null}
+        onChange={vi.fn()}
+      />
+    )
+    openPopover()
+
+    // Regression: the per-entity emoji glyph must not appear in the row.
+    const option = screen.getByRole('option', { name: /🤖 Alpha/ })
+    expect(option.querySelector('svg.lucide-bot')).toBeInTheDocument()
+    expect(screen.getByText('🤖 Alpha')).toBeInTheDocument()
+    expect(screen.queryByText('🤖')).not.toBeInTheDocument()
   })
 })
