@@ -21,6 +21,7 @@ import {
 import type { OcrRecognitionResult } from '@shared/ipc/schemas/screenshot'
 import type { WindowId } from '@shared/ipc/types'
 import type { DetectedWindow, ScreenshotInitData, ScreenshotResultData } from '@shared/types/screenshot'
+import { APP_FILE_NAME_PREFIX } from '@shared/utils/constants'
 
 import { captureAllMonitors, listMonitors } from './screenCapture'
 import { type CaptureResult, type MonitorInfo, type RawWindowInfo, ScreenCapturePermissionError } from './types'
@@ -608,7 +609,8 @@ export class ScreenshotOverlayService extends BaseService {
     try {
       const saveOptions: Electron.SaveDialogOptions = {
         // Local time, not an epoch: the name is what the user scans in a file list.
-        defaultPath: `cherry_screenshot_${dayjs().format('YYYYMMDD_HHmmss')}.png`,
+        // defaultPath: `cherry_screenshot_${dayjs().format('YYYYMMDD_HHmmss')}.png`,
+        defaultPath: `${APP_FILE_NAME_PREFIX}_screenshot_${dayjs().format('YYYYMMDD_HHmmss')}.png`,
         filters: [{ name: t('dialog.png_image'), extensions: ['png'] }]
       }
 

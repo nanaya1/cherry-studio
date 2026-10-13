@@ -1,12 +1,13 @@
 import { getRouteApi, useNavigate } from '@tanstack/react-router'
-import { BookOpen, CloudUpload, FileText, FolderCog, FolderInput, Import, Server, Trash2 } from 'lucide-react'
+// import { BookOpen, CloudUpload, FileText, FolderCog, FolderInput, Import, Server, Trash2 } from 'lucide-react'
+import { FileText, FolderCog, FolderInput, Import, Trash2 } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { type FC, lazy, Suspense } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { MenuDivider, MenuItem, MenuList, PageHeader, RowFlex } from '@cherrystudio/ui'
-import { NutstoreIcon } from '@renderer/components/icons/NutstoreIcons'
-import { JoplinIcon, SiyuanIcon } from '@renderer/components/icons/SvgIcon'
+// import { NutstoreIcon } from '@renderer/components/icons/NutstoreIcons'
+// import { JoplinIcon, SiyuanIcon } from '@renderer/components/icons/SvgIcon'
 import Scrollbar from '@renderer/components/Scrollbar'
 import { SettingsContentColumn } from '@renderer/components/SettingsPrimitives'
 import { useTheme } from '@renderer/hooks/useTheme'
@@ -60,9 +61,9 @@ const DataSettings: FC = () => {
     { key: 'trash', title: t('settings.data.trash.title'), icon: <Trash2 size={16} /> },
     { key: 'divider_1', isDivider: true, text: t('settings.data.divider.cloud_storage') },
     { key: 'local_backup', title: t('settings.data.local.title'), icon: <FolderCog size={16} /> },
-    { key: 'webdav', title: t('settings.data.webdav.title'), icon: <CloudUpload size={16} /> },
-    { key: 'nutstore', title: t('settings.data.nutstore.title'), icon: <NutstoreIcon /> },
-    { key: 's3', title: t('settings.data.s3.title.label'), icon: <Server size={16} /> },
+    // { key: 'webdav', title: t('settings.data.webdav.title'), icon: <CloudUpload size={16} /> },
+    // { key: 'nutstore', title: t('settings.data.nutstore.title'), icon: <NutstoreIcon /> },
+    // { key: 's3', title: t('settings.data.s3.title.label'), icon: <Server size={16} /> },
     { key: 'divider_2', isDivider: true, text: t('settings.data.divider.import_settings') },
     {
       key: 'import_settings',
@@ -80,12 +81,12 @@ const DataSettings: FC = () => {
       title: t('settings.data.markdown_export.title'),
       icon: <FileText size={16} />
     },
-    { key: 'divider_note_export', isDivider: true, text: t('settings.data.divider.note_export') },
-    { key: 'notion', title: t('settings.data.notion.title'), icon: <i className="iconfont icon-notion" /> },
-    { key: 'yuque', title: t('settings.data.yuque.title'), icon: <BookOpen size={16} /> },
-    { key: 'joplin', title: t('settings.data.joplin.title'), icon: <JoplinIcon /> },
-    { key: 'obsidian', title: t('settings.data.obsidian.title'), icon: <i className="iconfont icon-obsidian" /> },
-    { key: 'siyuan', title: t('settings.data.siyuan.title'), icon: <SiyuanIcon /> }
+    // { key: 'divider_note_export', isDivider: true, text: t('settings.data.divider.note_export') },
+    // { key: 'notion', title: t('settings.data.notion.title'), icon: <i className="iconfont icon-notion" /> },
+    // { key: 'yuque', title: t('settings.data.yuque.title'), icon: <BookOpen size={16} /> },
+    // { key: 'joplin', title: t('settings.data.joplin.title'), icon: <JoplinIcon /> },
+    // { key: 'obsidian', title: t('settings.data.obsidian.title'), icon: <i className="iconfont icon-obsidian" /> },
+    // { key: 'siyuan', title: t('settings.data.siyuan.title'), icon: <SiyuanIcon /> }
   ]
 
   return (

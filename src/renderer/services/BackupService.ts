@@ -16,6 +16,7 @@ import { toast } from '@renderer/services/toast'
 import { getBackupErrorTitleKey, getLocalizedBackupErrorMessage } from '@renderer/utils/backup'
 import { uuid } from '@renderer/utils/uuid'
 import type { AutoBackupType } from '@shared/types/backup'
+import { BACKUP_FILE_NAME_PREFIX } from '@shared/utils/constants'
 
 import { notificationService } from './notification'
 
@@ -61,7 +62,8 @@ const setLocalBackupSyncState = (patch: Partial<RemoteSyncState>) => setBackupSy
 type ManualBackupOptions = { customFileName?: string }
 
 export async function backup(skipBackupFile = false) {
-  const filename = `cherry-studio.${dayjs().format('YYYYMMDDHHmm')}.zip`
+  // const filename = `cherry-studio.${dayjs().format('YYYYMMDDHHmm')}.zip`
+  const filename = `${BACKUP_FILE_NAME_PREFIX}.${dayjs().format('YYYYMMDDHHmm')}.zip`
   const selectFolder = await window.api.file.selectFolder()
   if (selectFolder) {
     // Use the direct compatibility archive with the selected full or slim resource set.

@@ -24,6 +24,7 @@ import { IpcError } from '@shared/ipc/errors/IpcError'
 import type { DiagnosticRange } from '@shared/ipc/schemas/diagnostics'
 import type { InputFor, OutputFor, WindowId } from '@shared/ipc/types'
 import { type AbsoluteFilePath, AbsoluteFilePathSchema } from '@shared/types/file'
+import { APP_FILE_NAME_PREFIX } from '@shared/utils/constants'
 import { normalizeDiagnosticDescription } from '@shared/utils/diagnostics'
 
 import {
@@ -288,7 +289,8 @@ async function writeBundleZip(
 
   const { ZipArchive } = await import('archiver')
   const stagingPath = AbsoluteFilePathSchema.parse(
-    path.join(path.dirname(destination), `.cherry-studio-diagnostics-${randomUUID()}.tmp`)
+    // path.join(path.dirname(destination), `.cherry-studio-diagnostics-${randomUUID()}.tmp`)
+    path.join(path.dirname(destination), `.${APP_FILE_NAME_PREFIX}-diagnostics-${randomUUID()}.tmp`)
   )
   const output = createAtomicWriteStream(stagingPath)
   const archive = new ZipArchive({ zlib: { level: 1 } })
@@ -488,7 +490,8 @@ export class DiagnosticBundleService {
     if (!parent) throw new Error('Diagnostic bundle export window is no longer available')
 
     const dialogOpenedAt = new Date()
-    const suggestedFileName = `cherry-studio-diagnostics-${formatTimestamp(dialogOpenedAt)}.zip`
+    // const suggestedFileName = `cherry-studio-diagnostics-${formatTimestamp(dialogOpenedAt)}.zip`
+    const suggestedFileName = `${APP_FILE_NAME_PREFIX}-diagnostics-${formatTimestamp(dialogOpenedAt)}.zip`
     const { canceled, filePath } = await dialog.showSaveDialog(parent, {
       defaultPath: suggestedFileName,
       filters: [{ name: t('dialog.diagnostic_bundle.zip_filter'), extensions: ['zip'] }],
@@ -547,7 +550,8 @@ export class DiagnosticBundleService {
     const description = normalizeDiagnosticDescription(input.description.trim())
     const createdAt = new Date()
     const bundleId = randomUUID()
-    const fileName = `cherry-studio-diagnostics-${formatTimestamp(createdAt)}-${bundleId}.zip`
+    // const fileName = `cherry-studio-diagnostics-${formatTimestamp(createdAt)}-${bundleId}.zip`
+    const fileName = `${APP_FILE_NAME_PREFIX}-diagnostics-${formatTimestamp(createdAt)}-${bundleId}.zip`
     let tempRoot: AbsoluteFilePath
     try {
       tempRoot = AbsoluteFilePathSchema.parse(await mkdtemp(application.getPath('app.temp', 'diagnostic-upload-')))
