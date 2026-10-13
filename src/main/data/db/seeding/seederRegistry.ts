@@ -3,6 +3,7 @@ import { BuiltinMcpServerSeeder } from './seeders/builtinMcpServerSeeder'
 import { CherryAiDefaultModelSeeder } from './seeders/cherryaiDefaultModelSeeder'
 import { CherryAssistantSeeder } from './seeders/cherryAssistantSeeder'
 import { CherrySupportSeeder } from './seeders/cherrySupportSeeder'
+import { CloudBackupPathUpgradeSeeder } from './seeders/cloudBackupPathUpgradeSeeder'
 import { DefaultAssistantSeeder } from './seeders/defaultAssistantSeeder'
 import { LegacyFileCleanupPolicySeeder } from './seeders/legacyFileCleanupPolicySeeder'
 import { LocalModelSeeder } from './seeders/LocalModelSeeder'
@@ -27,6 +28,7 @@ export const seeders: ISeeder[] = [
   new CherryAssistantSeeder(),
   new CherrySupportSeeder(),
   new DefaultAssistantSeeder(),
+  new CloudBackupPathUpgradeSeeder(),
   new LongTextPastePreferenceUpgradeSeeder(),
   new WebSearchPreferenceUpgradeSeeder(),
   new PreferenceSeeder(),
