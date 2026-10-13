@@ -50,9 +50,13 @@ export interface SettingsMenuEntry {
   groupKey?: string
 }
 
-// MEA：设置侧栏隐藏的条目（入口由技能连接器页统一承载）。侧栏菜单（SettingsPage）
-// 与设置搜索索引（settingsSearch/aggregate.ts）共用此清单，新增隐藏消费方时务必接入。
-export const MEA_HIDDEN_SETTINGS_ROUTES: readonly string[] = ['/settings/mcp', '/settings/skills']
+// MEA：设置侧栏与搜索索引共用隐藏清单，避免搜索重新暴露已隐藏入口。
+// export const MEA_HIDDEN_SETTINGS_ROUTES: readonly string[] = ['/settings/mcp', '/settings/skills']
+export const MEA_HIDDEN_SETTINGS_ROUTES: readonly string[] = [
+  '/settings/mcp',
+  '/settings/skills',
+  '/settings/scheduled-tasks'
+]
 
 /**
  * Single source of truth for the settings sidebar menu.
