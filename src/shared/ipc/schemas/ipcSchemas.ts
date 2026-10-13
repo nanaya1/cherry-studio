@@ -13,6 +13,8 @@ import { codeCliRequestSchemas } from './codeCli'
 import { deepSeekHarnessRequestSchemas } from './deepSeekHarness'
 import { diagnosticsRequestSchemas } from './diagnostics'
 import { doctorRequestSchemas } from './doctor'
+// [enterprise] T0 企业扩展 IPC 契约
+import { type EnterpriseEventSchemas, enterpriseRequestSchemas } from './enterprise'
 import { exportRequestSchemas } from './export'
 import { externalAppRequestSchemas } from './externalApp'
 import { type FileEventSchemas, fileRequestSchemas } from './file'
@@ -61,6 +63,7 @@ export const ipcRequestSchemas = {
   ...channelRequestSchemas,
   ...cherryinRequestSchemas,
   ...cherryCloudRequestSchemas,
+  ...enterpriseRequestSchemas, // [enterprise]
   ...citationRequestSchemas,
   ...codeCliRequestSchemas,
   ...deepSeekHarnessRequestSchemas,
@@ -115,6 +118,7 @@ export type IpcEventSchemas = AiEventSchemas &
   BrowserEventSchemas &
   ChannelEventSchemas &
   CherryCloudEventSchemas &
+  EnterpriseEventSchemas & // [enterprise]
   FileEventSchemas &
   McpEventSchemas &
   MiniAppEventSchemas &

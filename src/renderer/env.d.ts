@@ -4,6 +4,7 @@ import type { AppEdition } from '@shared/types/appEdition'
 
 declare global {
   const __APP_EDITION__: AppEdition
+  const __XUELANG_API_ORIGIN__: string
   const __APP_RELEASE_NOTES__: string
   const __APP_RELEASE_VERSION__: string
   const __APP_RELEASE_HISTORY__: ReadonlyArray<{

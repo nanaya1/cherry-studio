@@ -231,6 +231,13 @@
       "when": 1791452123867,
       "tag": "0032_upstream_v2_1_4_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "6",
+      "when": 1791860904634,
+      "tag": "0033_nostalgic_christian_walker",
+      "breakpoints": true
     }
   ],
   "version": "7"

@@ -1,0 +1,190 @@
+/**
+ * [enterprise] T0 企业扩展 - 企业服务 HTTP 客户端
+ * 薄封装：base URL 常量 + 统一 Authorization 头 + json 解析。
+ */
+import { loggerService } from '@logger'
+
+import type { OrgConnectorCatalogItem, OrgSession, OrgSkillCatalogItem, RawOrgSkillFacet } from './types'
+
+const logger = loggerService.withContext('OrgApiClient')
+
+/**
+ * 管理端地址（区别于雪浪网关 XUELANG_API_ORIGIN / Cherry Cloud MAIN_VITE_CHERRY_CLOUD_API_ORIGIN）。
+ * 有值时启用管理端 Exchange；无值时启用官网直连模式。
+ */
+function resolveOrgServerBaseUrl(): string | null {
+  const configured = import.meta.env.MAIN_VITE_ORG_SERVER_BASE_URL?.trim()
+  if (!configured) return null
+  try {
+    return new URL(configured).origin
+  } catch {
+    throw new Error(`MAIN_VITE_ORG_SERVER_BASE_URL 不是合法 URL: ${configured}`)
+  }
+}
+
+function resolveOfficialApiBaseUrl(): string {
+  const configured = import.meta.env.MAIN_VITE_OFFICIAL_API_BASE_URL?.trim()
+  if (configured) {
+    try {
+      return new URL(configured).origin
+    } catch {
+      throw new Error(`MAIN_VITE_OFFICIAL_API_BASE_URL 不是合法 URL: ${configured}`)
+    }
+  }
+
+  const loginUrl = import.meta.env.MAIN_VITE_OFFICIAL_LOGIN_URL?.trim() || 'https://mro.xuelangyun.com/login'
+  try {
+    return new URL(loginUrl).origin
+  } catch {
+    throw new Error(`MAIN_VITE_OFFICIAL_LOGIN_URL 不是合法 URL: ${loginUrl}`)
+  }
+}
+
+export type OrgAuthMode = 'management-exchange' | 'official-direct'
+export const ORG_SERVER_BASE_URL = resolveOrgServerBaseUrl()
+export const ORG_AUTH_MODE: OrgAuthMode = ORG_SERVER_BASE_URL ? 'management-exchange' : 'official-direct'
+export const OFFICIAL_API_BASE_URL = resolveOfficialApiBaseUrl()
+
+export function getOrgApiBaseUrl(): string {
+  return ORG_SERVER_BASE_URL ?? OFFICIAL_API_BASE_URL
+}
+
+export class OrgApiClient {
+  // [enterprise] 修复 401：改为异步取「有效期内的会话」（过期自动刷新）。
+  // 原同步裸取：constructor(private readonly getSession: () => OrgSession | null) {}
+  constructor(private readonly getValidSession: () => Promise<OrgSession | null>) {}
+
+  private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
+    const session = await this.getValidSession()
+    if (!session) throw new Error('未登录')
+    const res = await this.send(path, session.accessToken, init)
+    // [enterprise] 修复 401：access token 被服务端提前吊销时兜底——刷新一次重试一次
+    if (res.status === 401) {
+      const refreshed = await this.getValidSession()
+      if (!refreshed || refreshed.accessToken === session.accessToken) {
+        throw new Error(`账户服务请求失败 (${res.status})`)
+      }
+      const retry = await this.send(path, refreshed.accessToken, init)
+      if (!retry.ok) {
+        const body = await retry.text().catch(() => '')
+        logger.warn('org api request failed', { path, status: retry.status, body: body.slice(0, 200) })
+        throw new Error(`账户服务请求失败 (${retry.status})`)
+      }
+      return (await retry.json()) as T
+    }
+    if (!res.ok) {
+      const body = await res.text().catch(() => '')
+      logger.warn('org api request failed', { path, status: res.status, body: body.slice(0, 200) })
+      throw new Error(`账户服务请求失败 (${res.status})`)
+    }
+    return (await res.json()) as T
+  }
+
+  private async send(path: string, accessToken: string, init: RequestInit): Promise<Response> {
+    return fetch(`${getOrgApiBaseUrl()}${path}`, {
+      ...init,
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${accessToken}`,
+        ...init.headers
+      }
+    })
+  }
+
+  /**
+   * [enterprise] 公共目录读请求：所有人看到同一套公共资源，未登录也能访问。
+   * 有会话时附带 Authorization（服务端可用于埋点），无会话时匿名请求。
+   */
+  private async publicRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
+    const session = await this.getValidSession().catch(() => null)
+    const res = await fetch(`${getOrgApiBaseUrl()}${path}`, {
+      ...init,
+      headers: {
+        'content-type': 'application/json',
+        ...(session ? { authorization: `Bearer ${session.accessToken}` } : {}),
+        ...init.headers
+      }
+    })
+    if (!res.ok) {
+      const body = await res.text().catch(() => '')
+      logger.warn('org public request failed', { path, status: res.status, body: body.slice(0, 200) })
+      throw new Error(`账户服务请求失败 (${res.status})`)
+    }
+    return (await res.json()) as T
+  }
+
+  // [enterprise] tags/categories 服务端有字符串数组与对象数组两种形态，归一化在 OrgSkillCatalog.list
+  listSkills() {
+    return this.publicRequest<{
+      skills: Array<
+        Omit<OrgSkillCatalogItem, 'categories' | 'tags'> & {
+          categories?: RawOrgSkillFacet[]
+          tags?: RawOrgSkillFacet[]
+        }
+      >
+    }>('/api/skills')
+  }
+
+  listConnectors() {
+    return this.publicRequest<{ connectors: OrgConnectorCatalogItem[] }>('/api/connectors')
+  }
+
+  /**
+   * 下载技能包到指定目录。返回本地 tar.gz 路径。
+   * hash 校验由调用方（OrgSkillCatalog）完成后解包。
+   */
+  async downloadSkill(slug: string, destPath: string, expectedHash: string): Promise<void> {
+    const { createWriteStream } = await import('node:fs')
+    const { createHash } = await import('node:crypto')
+
+    // [enterprise] 修复 401：与 request() 一致改走异步 getValidSession（原裸 getSession 注释保留）
+    // const session = this.getSession()
+    const session = await this.getValidSession()
+    if (!session) throw new Error('未登录')
+    const res = await fetch(`${getOrgApiBaseUrl()}/api/skills/${slug}/download`, {
+      headers: { authorization: `Bearer ${session.accessToken}` }
+    })
+    if (!res.ok || !res.body) throw new Error(`技能包下载失败 (${res.status})`)
+
+    const hash = createHash('sha256')
+    const file = createWriteStream(destPath)
+    // 边写边算 hash，落盘完成后与目录声明的 contentHash 比对
+    const reader = res.body.getReader()
+    const chunks: Buffer[] = []
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      const buf = Buffer.from(value)
+      chunks.push(buf)
+      hash.update(buf)
+    }
+    await new Promise<void>((resolve, reject) => {
+      file.on('finish', () => resolve())
+      file.on('error', reject)
+      for (const chunk of chunks) file.write(chunk)
+      file.end()
+    })
+    const actual = hash.digest('hex')
+    if (actual !== expectedHash) {
+      throw new Error(`技能包校验失败：期望 ${expectedHash.slice(0, 12)}…，实际 ${actual.slice(0, 12)}…`)
+    }
+  }
+
+  reportLifecycle(skillSlug: string, event: string, detail: Record<string, unknown> = {}) {
+    // 上报失败不阻塞主流程。不在此处预取会话：会话获取与 401 刷新重试完全由 request() 驱动，
+    // 预取会多消耗一次 getValidSession 并干扰 request() 的「token 未变化则不重试」判断。
+    // 匿名（未登录）时 request() 抛「未登录」，这里等价于跳过上报。
+    return this.request('/api/skills/lifecycle', {
+      method: 'POST',
+      body: JSON.stringify({ skillSlug, event, detail })
+    }).catch((error) => {
+      const message = error instanceof Error ? error.message : String(error)
+      if (message === '未登录') {
+        logger.info('lifecycle report skipped: signed out', { skillSlug, event })
+        return undefined
+      }
+      logger.warn('lifecycle report failed', { skillSlug, event, error: message })
+      return undefined
+    })
+  }
+}

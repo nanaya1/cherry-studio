@@ -1,3 +1,7 @@
+import { FolderCog } from 'lucide-react'
+import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
+
 import {
   Button,
   Dialog,
@@ -10,18 +14,21 @@ import {
   TabsTrigger
 } from '@cherrystudio/ui'
 import { useMcpServers } from '@renderer/hooks/useMcpServer'
+import { useOrgAccountSession } from '@renderer/hooks/useOrgAccountSession'
 import { cn } from '@renderer/utils/style'
-import { FolderCog } from 'lucide-react'
-import { useState } from 'react'
-import { useTranslation } from 'react-i18next'
 
 import BuiltinMcpServerList from './BuiltinMcpServerList'
 import McpMarketList from './McpMarketList'
 import McpProviderSettings from './McpProviderSettings'
 import McpServersList from './McpServersList'
+// [enterprise] T0 组织连接器目录
+import OrgConnectorList from './OrgConnectorList'
 import { getMcpProviderLogo, getProviderDisplayName, type ProviderConfig, providers } from './providers/config'
 
-type CatalogTab = 'discover' | 'providers' | 'mine'
+// [enterprise] 组织连接器由发现页三级 tab 上移为目录二级 tab
+// type CatalogTab = 'discover' | 'providers' | 'mine'
+type CatalogTab = 'discover' | 'org' | 'providers' | 'mine'
+// type DiscoverTab = 'builtin' | 'marketplace' | 'org'
 type DiscoverTab = 'builtin' | 'marketplace'
 
 const primaryTabClassName =
@@ -30,6 +37,8 @@ const primaryTabClassName =
 export default function McpCatalog() {
   const { t } = useTranslation()
   const { mcpServers } = useMcpServers()
+  const { status: accountStatus } = useOrgAccountSession()
+  const showPublicCatalog = accountStatus?.authMode === 'management-exchange'
   const [activeTab, setActiveTab] = useState<CatalogTab>('discover')
   const [discoverTab, setDiscoverTab] = useState<DiscoverTab>('builtin')
   const [selectedProvider, setSelectedProvider] = useState<ProviderConfig | null>(null)
@@ -59,6 +68,16 @@ export default function McpCatalog() {
         onClick={() => setDiscoverTab('marketplace')}>
         {t('settings.mcp.marketplaces')}
       </Button>
+      {/* [enterprise] 组织连接器入口已上移至目录二级 tab
+      <Button
+        role="tab"
+        aria-selected={discoverTab === 'org'}
+        variant={discoverTab === 'org' ? 'secondary' : 'ghost'}
+        size="sm"
+        className="h-8 rounded-md px-3 font-normal"
+        onClick={() => setDiscoverTab('org')}>
+        {t('workspace.skillsConnectors.sources.org')}
+      </Button> */}
     </div>
   )
 
@@ -69,6 +88,12 @@ export default function McpCatalog() {
           <TabsTrigger value="discover" className={primaryTabClassName}>
             {t('settings.mcp.discover')}
           </TabsTrigger>
+          {/* [enterprise] 组织连接器从发现页三级 tab 上移至二级 */}
+          {showPublicCatalog ? (
+            <TabsTrigger value="org" className={primaryTabClassName}>
+              {t('workspace.skillsConnectors.sources.org')}
+            </TabsTrigger>
+          ) : null}
           <TabsTrigger value="providers" className={primaryTabClassName}>
             {t('settings.mcp.providers')}
           </TabsTrigger>
@@ -83,10 +108,21 @@ export default function McpCatalog() {
           {discoverTab === 'builtin' ? (
             <BuiltinMcpServerList variant="catalog" toolbarStart={discoverTabs} />
           ) : (
+            // [enterprise] 原组织连接器分支已上移至独立二级 tab
+            // <OrgConnectorList variant="catalog" toolbarStart={discoverTabs} />
             <McpMarketList variant="catalog" toolbarStart={discoverTabs} />
           )}
         </Scrollbar>
       </TabsContent>
+
+      {/* [enterprise] 组织连接器目录升级为二级 tab 内容 */}
+      {showPublicCatalog ? (
+        <TabsContent value="org" className="min-h-0 flex-1">
+          <Scrollbar className="@container/mcp-discover h-full px-6 py-5">
+            <OrgConnectorList variant="catalog" />
+          </Scrollbar>
+        </TabsContent>
+      ) : null}
 
       <TabsContent value="providers" className="min-h-0 flex-1">
         <Scrollbar className="@container/mcp-providers h-full px-6 py-5">

@@ -10,6 +10,20 @@ import type { SkillResult } from '@shared/types/skill'
 
 const logger = loggerService.withContext('skillHandlers')
 
+// [enterprise] copy 模式不再按组织来源处理卸载，保留旧托管上报逻辑便于回滚。
+// async function reportOrgSkillDeletedIfManaged(skillId: string): Promise<void> {
+//   try {
+//     const { orgStateStore } = await import('@main/enterprise/OrgStateStore')
+//     const entry = Object.entries(orgStateStore.snapshot()).find(([, s]) => s.skillId === skillId)
+//     if (!entry) return
+//     const plugin = application.getExisting('EnterprisePlugin')
+//     if (!plugin) return
+//     await plugin.skills.reportDeleted(entry[0])
+//   } catch (error) {
+//     logger.warn('[enterprise] org skill deleted report skipped', { skillId, error: String(error) })
+//   }
+// }
+
 /**
  * Skill handlers delegating to the `skillService` direct-import singleton. Legacy routes keep
  * their `SkillResult` envelope until their callers migrate; new routes return data directly so
@@ -27,6 +41,12 @@ async function toSkillResult<T>(op: () => Promise<T>, failMessage: string): Prom
 export const skillHandlers: IpcHandlersFor<typeof skillRequestSchemas> = {
   'skill.install': ({ installSource }) =>
     toSkillResult(() => skillService.install({ installSource }), 'Failed to install skill'),
+  // [enterprise] copy 模式：组织安装后等同本地技能，卸载不再进入组织生命周期。
+  // 'skill.uninstall': ({ skillId }) =>
+  //   toSkillResult(async () => {
+  //     await reportOrgSkillDeletedIfManaged(skillId)
+  //     return skillService.uninstall(skillId)
+  //   }, 'Failed to uninstall skill'),
   'skill.uninstall': ({ skillId }) => toSkillResult(() => skillService.uninstall(skillId), 'Failed to uninstall skill'),
   'skill.install_from_zip': ({ zipFilePath }) =>
     toSkillResult(() => skillService.installFromZip({ zipFilePath }), 'Failed to install skill from ZIP'),

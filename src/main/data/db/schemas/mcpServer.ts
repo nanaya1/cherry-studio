@@ -58,7 +58,9 @@ export const mcpServerTable = sqliteTable(
     ),
     check(
       'mcp_server_install_source_check',
-      sql`${t.installSource} IS NULL OR ${t.installSource} IN ('builtin', 'manual', 'ai_assisted', 'protocol', 'unknown')`
+      // [enterprise] 追加 'org'（企业下发连接器，OrgMcpCatalog.installLocal 用）。原 5 值枚举保留在下行注释。
+      // sql`${t.installSource} IS NULL OR ${t.installSource} IN ('builtin', 'manual', 'ai_assisted', 'protocol', 'unknown')`
+      sql`${t.installSource} IS NULL OR ${t.installSource} IN ('builtin', 'manual', 'ai_assisted', 'protocol', 'unknown', 'org')`
     )
   ]
 )

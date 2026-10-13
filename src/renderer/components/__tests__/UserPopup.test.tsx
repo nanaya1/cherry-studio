@@ -35,6 +35,11 @@ vi.mock('@cherrystudio/ui', () => {
     AvatarImage: ({ src, ...props }: { src?: string; [key: string]: unknown }) => (
       <img data-testid="avatar-image" src={src} alt="" {...props} />
     ),
+    AvatarFallback: ({ children, ...props }: { children?: ReactNode; [key: string]: unknown }) => (
+      <span data-testid="avatar-fallback" {...props}>
+        {children}
+      </span>
+    ),
     Button: ({ children, loading, ...props }: { children?: ReactNode; loading?: boolean; [key: string]: unknown }) => (
       <button type="button" aria-busy={loading || undefined} disabled={loading || undefined} {...props}>
         {children}
@@ -186,9 +191,20 @@ describe('UserPopup', () => {
     MockUsePreferenceUtils.resetMocks()
     mocks.appEdition = 'cn'
     mocks.statusListener = null
-    mocks.ipcRequest.mockImplementation(async (route: string) =>
-      route === 'cherry_cloud.status.get' ? { phase: 'signed-out', displayName: null } : undefined
-    )
+    mocks.ipcRequest.mockImplementation(async (route: string) => {
+      if (route === 'cherry_cloud.status.get') return { phase: 'signed-out', displayName: null }
+      if (route === 'enterprise.status.get') {
+        return {
+          phase: 'signed-out',
+          authMode: 'official-direct',
+          displayName: null,
+          phone: null,
+          role: null
+        }
+      }
+      if (route === 'enterprise.status.orgUnavailable') return { unavailable: false }
+      return undefined
+    })
   })
 
   afterEach(() => {
@@ -202,6 +218,28 @@ describe('UserPopup', () => {
     }
     vi.advanceTimersByTime(POPUP_EXIT_MS)
     vi.useRealTimers()
+  })
+
+  it('shows the signed-in account name and its initial instead of the local profile placeholder', async () => {
+    mocks.ipcRequest.mockImplementation(async (route: string) => {
+      if (route === 'enterprise.status.get') {
+        return {
+          phase: 'signed-in',
+          authMode: 'official-direct',
+          displayName: '测试用户',
+          phone: '13900000000',
+          role: ''
+        }
+      }
+      if (route === 'enterprise.status.orgUnavailable') return { unavailable: false }
+      return undefined
+    })
+
+    showUserPopup()
+
+    expect(await screen.findByDisplayValue('测试用户')).toBeDisabled()
+    expect(screen.getByTestId('avatar-fallback')).toHaveTextContent('测')
+    expect(screen.queryByPlaceholderText('settings.general.user_name.placeholder')).not.toBeInTheDocument()
   })
 
   it('renders image avatars with object-cover cropping', async () => {
@@ -306,67 +344,77 @@ describe('UserPopup', () => {
     })
   })
 
-  it('starts and cancels Cherry Studio browser authorization', async () => {
+  it('starts enterprise browser authorization', async () => {
     const user = userEvent.setup()
     mocks.ipcRequest.mockImplementation(async (route: string) => {
-      if (route === 'cherry_cloud.status.get') return { phase: 'signed-out', displayName: null }
-      if (route === 'cherry_cloud.login.start') return { phase: 'authorizing', displayName: null }
-      if (route === 'cherry_cloud.login.cancel') return { phase: 'signed-out', displayName: null }
+      if (route === 'enterprise.status.get')
+        return { phase: 'signed-out', authMode: 'official-direct', displayName: null, phone: null, role: null }
+      if (route === 'enterprise.login.start')
+        return { phase: 'authorizing', authMode: 'official-direct', displayName: null, phone: null, role: null }
+      if (route === 'enterprise.status.orgUnavailable') return { unavailable: false }
       return undefined
     })
     showUserPopup()
 
-    const loginButton = await screen.findByRole('button', { name: 'settings.provider.cherry_cloud.login' })
+    const loginButton = await screen.findByRole('button', { name: 'settings.provider.org_service.login' })
     await user.click(loginButton)
 
-    expect(mocks.ipcRequest).toHaveBeenCalledWith('cherry_cloud.login.start')
-    expect(screen.getByRole('button', { name: 'settings.provider.cherry_cloud.signing_in' })).toHaveAttribute(
-      'aria-busy',
-      'true'
-    )
-
-    await user.click(screen.getByRole('button', { name: 'common.cancel' }))
-
-    expect(mocks.ipcRequest).toHaveBeenCalledWith('cherry_cloud.login.cancel')
-    expect(await screen.findByRole('button', { name: 'settings.provider.cherry_cloud.login' })).toBeEnabled()
+    expect(mocks.ipcRequest).toHaveBeenCalledWith('enterprise.login.start')
+    // Returns to the login action once the start request resolves (status unchanged → signed-out).
+    expect(await screen.findByRole('button', { name: 'settings.provider.org_service.login' })).toBeEnabled()
   })
 
-  it('hides the Cherry Cloud login action in the global edition', async () => {
+  it('shows the enterprise login action regardless of edition', async () => {
     mocks.appEdition = 'global'
-    showUserPopup()
-
-    await waitFor(() => expect(mocks.ipcRequest).toHaveBeenCalledWith('cherry_cloud.status.get'))
-
-    expect(screen.queryByRole('button', { name: 'settings.provider.cherry_cloud.login' })).not.toBeInTheDocument()
-  })
-
-  it('revokes the current Cherry Cloud session and returns to the login action', async () => {
-    const user = userEvent.setup()
     mocks.ipcRequest.mockImplementation(async (route: string) => {
-      if (route === 'cherry_cloud.status.get') return { phase: 'signed-in', displayName: 'Sora' }
-      if (route === 'cherry_cloud.session.revoke') return { phase: 'signed-out', displayName: null }
+      if (route === 'enterprise.status.get')
+        return { phase: 'signed-out', authMode: 'official-direct', displayName: null, phone: null, role: null }
+      if (route === 'enterprise.status.orgUnavailable') return { unavailable: false }
       return undefined
     })
     showUserPopup()
 
-    const logoutButton = await screen.findByRole('button', { name: 'settings.provider.cherry_cloud.logout' })
-    expect(screen.getByRole('status')).toHaveTextContent('Sora')
-    expect(screen.getByRole('status')).not.toHaveTextContent('settings.provider.cherry_cloud.logged_in')
+    await waitFor(() => expect(mocks.ipcRequest).toHaveBeenCalledWith('enterprise.status.get'))
+
+    expect(screen.getByRole('button', { name: 'settings.provider.org_service.login' })).toBeInTheDocument()
+  })
+
+  it('revokes the current enterprise session and returns to the login action', async () => {
+    const user = userEvent.setup()
+    let loggedOut = false
+    mocks.ipcRequest.mockImplementation(async (route: string) => {
+      if (route === 'enterprise.status.get') {
+        return loggedOut
+          ? { phase: 'signed-out', authMode: 'official-direct', displayName: null, phone: null, role: null }
+          : { phase: 'signed-in', authMode: 'official-direct', displayName: 'Sora', phone: '13900000000', role: '' }
+      }
+      if (route === 'enterprise.session.logout') {
+        loggedOut = true
+        return { phase: 'signed-out', authMode: 'official-direct', displayName: null, phone: null, role: null }
+      }
+      if (route === 'enterprise.status.orgUnavailable') return { unavailable: false }
+      return undefined
+    })
+    showUserPopup()
+
+    const logoutButton = await screen.findByRole('button', { name: 'settings.provider.org_service.logout' })
+    expect(screen.getByRole('status')).toHaveTextContent('13900000000')
     expect(logoutButton).toHaveAttribute('variant', 'outline')
     await user.click(logoutButton)
 
-    expect(mocks.ipcRequest).toHaveBeenCalledWith('cherry_cloud.session.revoke')
-    expect(await screen.findByRole('button', { name: 'settings.provider.cherry_cloud.login' })).toBeEnabled()
+    expect(mocks.ipcRequest).toHaveBeenCalledWith('enterprise.session.logout')
+    expect(await screen.findByRole('button', { name: 'settings.provider.org_service.login' })).toBeEnabled()
   })
 
-  it('offers a retry when the Cloud account status cannot be loaded', async () => {
+  it('offers a retry when the enterprise account status cannot be loaded', async () => {
     let statusAttempts = 0
     mocks.ipcRequest.mockImplementation(async (route: string) => {
-      if (route === 'cherry_cloud.status.get') {
+      if (route === 'enterprise.status.get') {
         statusAttempts += 1
         if (statusAttempts === 1) throw new Error('service unavailable')
-        return { phase: 'signed-in', displayName: 'Sora' }
+        return { phase: 'signed-in', authMode: 'official-direct', displayName: 'Sora', phone: '13900000000', role: '' }
       }
+      if (route === 'enterprise.status.orgUnavailable') return { unavailable: false }
       return undefined
     })
     showUserPopup()
@@ -374,7 +422,7 @@ describe('UserPopup', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('error.http.503')
     await userEvent.click(screen.getByRole('button', { name: 'common.retry' }))
 
-    expect(await screen.findByRole('status')).toHaveTextContent('Sora')
+    expect(await screen.findByRole('status')).toHaveTextContent('13900000000')
     expect(statusAttempts).toBe(2)
   })
 })

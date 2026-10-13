@@ -49,6 +49,22 @@ describe('McpServerCard', () => {
     expect(screen.queryByRole('button', { name: 'launchpad.pin_to_sidebar' })).not.toBeInTheDocument()
   })
 
+  it('[enterprise] shows an organization tag for a copied organization connector', () => {
+    const server: McpServer = {
+      id: 'server-1',
+      name: 'Organization connector',
+      type: 'sse',
+      baseUrl: 'https://enterprise.example/sse',
+      isActive: false,
+      installSource: 'manual',
+      tags: ['org']
+    }
+
+    render(<McpServerCard server={server} onEdit={vi.fn()} variant="catalog" />)
+
+    expect(screen.getByText('workspace.skillsConnectors.sources.org')).toBeVisible()
+  })
+
   it('deletes a server whose card crashed through the mcp.server.remove IPC channel', async () => {
     mocks.request.mockResolvedValue(undefined)
     mocks.invalidate.mockResolvedValue(undefined)

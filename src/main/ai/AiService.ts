@@ -1418,15 +1418,14 @@ export class AiService extends BaseService {
           })
         }
       } else {
-        // Latency is the probe's measured output — thinking tokens would pollute it
-        // for reasoning-capable models whose provider default enables reasoning.
+        // 沿用供应商默认推理设置，兼容不支持禁用推理的模型。
         probe = this.generateText({
           ...probeRequest,
           // A health check has no topic; each probe is its own conversation.
           conversation: { id: `check:${randomUUID()}` },
           system: 'test',
-          prompt: 'hi',
-          reasoningEffort: 'none'
+          prompt: 'hi'
+          // reasoningEffort: 'none'
         })
       }
 

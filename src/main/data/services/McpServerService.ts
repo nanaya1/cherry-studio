@@ -53,6 +53,12 @@ export class McpServerService {
     return rowToMcpServer(row)
   }
 
+  /** [enterprise] C6 同 getById 但不存在时返回 null 而非抛错（企业同步场景：本地可能已被用户删除） */
+  getByIdSafe(id: string): McpServer | null {
+    const [row] = this.db.select().from(mcpServerTable).where(eq(mcpServerTable.id, id)).limit(1).all()
+    return row ? rowToMcpServer(row) : null
+  }
+
   /**
    * List MCP servers with optional filters
    */

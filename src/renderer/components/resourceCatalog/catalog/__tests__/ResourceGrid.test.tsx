@@ -57,6 +57,7 @@ vi.mock('react-i18next', () => ({
           'library.skill_add.create_with_agent': '通过 Agent 创建',
           'library.skill_add.local_import': '本地导入',
           'library.skill_add.online_search': '在线搜索',
+          'library.skill_add.org_skills': '企业技能目录',
           'library.skill_add.system_search': '系统搜索',
           'library.toolbar.all_groups': '全部分组',
           'library.toolbar.group_button': '分组',
@@ -707,6 +708,28 @@ describe('ResourceGrid skill add actions', () => {
     await user.click(screen.getByRole('menuitem', { name: '通过 Agent 创建' }))
 
     expect(onCreateSkillWithAgent).toHaveBeenCalledOnce()
+  })
+
+  it('[enterprise] shows the org skills entry as a top-level visible button', async () => {
+    const user = userEvent.setup()
+    const onOpenOrgSkills = vi.fn()
+
+    renderResourceGrid({ activeResourceType: 'skill', onOpenOrgSkills })
+
+    // 顶层直接可见，不需要打开下拉
+    const orgButton = screen.getByRole('button', { name: '企业技能目录' })
+    await user.click(orgButton)
+
+    expect(onOpenOrgSkills).toHaveBeenCalledTimes(1)
+  })
+
+  it('[enterprise] hides the org skills button and dropdown item when handler is unavailable', () => {
+    renderResourceGrid({ activeResourceType: 'skill' })
+
+    expect(screen.queryByRole('button', { name: '企业技能目录' })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '添加技能' }))
+    expect(screen.queryByRole('menuitem', { name: '企业技能目录' })).not.toBeInTheDocument()
   })
 })
 

@@ -1,4 +1,5 @@
 export { ImportSkillDialog } from './ImportSkillDialog'
+export { OrgSkillDialog } from './OrgSkillDialog'
 export { SkillCatalogPicker } from './SkillCatalogPicker'
 export { SkillMarketplaceDialog } from './SkillMarketplaceDialog'
 export { SystemSkillDialog } from './SystemSkillDialog'

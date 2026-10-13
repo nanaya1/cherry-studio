@@ -1,5 +1,6 @@
-import { CircleXIcon, ExternalLink, Plug } from 'lucide-react'
+import { CircleXIcon, ExternalLink } from 'lucide-react'
 import type React from 'react'
+// import { FC, useCallback, useEffect, useState } from 'react'
 import type { FC } from 'react'
 import { useCallback, useEffect, useState } from 'react'
 import type { FallbackProps } from 'react-error-boundary'
@@ -23,6 +24,7 @@ import { cn } from '@renderer/utils/style'
 import type { UpdateMcpServerDto } from '@shared/data/api/schemas/mcpServers'
 import type { McpServer } from '@shared/data/types/mcpServer'
 
+import { getConnectorFallbackStyle, getConnectorInitial } from './connectorAvatar'
 import { isQVerisApiKeyMissing, QVerisApiKeyGuide } from './QVerisApiKeyGuide'
 import { useMcpServerTrust } from './useMcpServerTrust'
 
@@ -174,6 +176,7 @@ const McpServerCard: FC<McpServerCardProps> = ({ server, onEdit, variant = 'sett
 
   const isLoading = loading
   const isCatalog = variant === 'catalog'
+  const isOrg = server.installSource === 'org' || server.tags?.includes('org') === true
 
   const Fallback = useCallback(
     (props: FallbackProps) => {
@@ -242,14 +245,26 @@ const McpServerCard: FC<McpServerCardProps> = ({ server, onEdit, variant = 'sett
           aria-label={server.name}
           data-slot="mcp-server-row">
           <div className="flex min-w-0 items-center gap-2.5 pr-16">
-            <div className="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted">
+            <div
+              className={cn(
+                'flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full font-semibold text-sm',
+                !server.logoUrl && getConnectorFallbackStyle(server.name)
+              )}>
               {server.logoUrl ? (
                 <img src={server.logoUrl} alt="" className="size-full object-cover" draggable={false} />
               ) : (
-                <Plug className="size-4 text-muted-foreground" />
+                getConnectorInitial(server.name)
               )}
             </div>
             <h3 className="min-w-0 truncate font-semibold text-base leading-5">{server.name}</h3>
+            {/* [enterprise] 组织来源 tag：与 OrgConnectorList 目录卡片同款样式 */}
+            {isOrg ? (
+              <Badge
+                variant="outline"
+                className="h-5 shrink-0 rounded-md border-primary/30 bg-primary/10 px-1.5 text-[11px] text-primary leading-none">
+                {t('workspace.skillsConnectors.sources.org')}
+              </Badge>
+            ) : null}
             <ActiveDot $state={server.isActive ? runtimeStatus.state : 'disabled'} />
           </div>
 
@@ -314,6 +329,14 @@ const McpServerCard: FC<McpServerCardProps> = ({ server, onEdit, variant = 'sett
         <MutedCell>{version || '—'}</MutedCell>
 
         <div className="flex w-24 shrink-0 justify-end">
+          {/* [enterprise] 组织来源 tag（与目录卡片同款） */}
+          {isOrg ? (
+            <Badge
+              variant="outline"
+              className="mr-2 h-5 shrink-0 rounded-md border-primary/30 bg-primary/10 px-1.5 text-[11px] text-primary leading-none">
+              {t('workspace.skillsConnectors.sources.org')}
+            </Badge>
+          ) : null}
           <MetaBadge className={getTypeBadgeClass()}>{typeLabel}</MetaBadge>
         </div>
 

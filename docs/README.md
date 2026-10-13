@@ -137,6 +137,12 @@
 |----------|-------------|
 | [Performance Diagnostics](./references/diagnostics/README.md) | Opt-in main-process performance instrumentation gated by CS_DIAGNOSTICS, with signals and CPU profile capture |
 
+### Enterprise
+
+| Document | Description |
+|----------|-------------|
+| [企业组织资源功能交接](./references/enterprise/README.md) | 企业组织账号、公共技能与连接器目录、全量复制安装模式的功能交接说明 |
+
 ### File
 
 | Document | Description |

@@ -1,4 +1,5 @@
 import { arrayMove } from '@dnd-kit/sortable'
+import { CalendarClock, Plus, Puzzle, Shapes, Wrench } from 'lucide-react'
 import type { Ref } from 'react'
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -17,6 +18,7 @@ import { useAssistantsApi } from '@renderer/hooks/useAssistant'
 import useAvatar from '@renderer/hooks/useAvatar'
 import { useConversationNavigation } from '@renderer/hooks/useConversationNavigation'
 import { useMiniApps } from '@renderer/hooks/useMiniApps'
+import { useOrgAccountSession } from '@renderer/hooks/useOrgAccountSession'
 import { useSidebarFavorites } from '@renderer/hooks/useSidebarFavorites'
 import { mapApiTopicToRendererTopic } from '@renderer/hooks/useTopic'
 import { openSettingsTab } from '@renderer/services/mainWindowNavigation'
@@ -35,7 +37,6 @@ import {
 } from '@renderer/utils/sidebar'
 import { cn } from '@renderer/utils/style'
 import { APP_NAME } from '@shared/utils/constants'
-import { CalendarClock, Plus, Puzzle, Shapes, Wrench } from 'lucide-react'
 
 import { GlobalSearchButton, SidebarCollapseButton, SidebarShellActions } from '../layout/ShellTabBarActions'
 import type { ResolvedSidebarEntry } from '../Sidebar'
@@ -74,6 +75,7 @@ export default function Sidebar({
 }) {
   const { t } = useTranslation()
   const [userName] = usePreference('app.user.name')
+  const [avatarPreference] = usePreference('app.user.avatar')
   const {
     favorites,
     appFavorites,
@@ -138,16 +140,21 @@ export default function Sidebar({
 
   // User avatar
   const avatar = useAvatar()
+  const { status: orgStatus } = useOrgAccountSession()
+  const signedInDisplayName = orgStatus?.phase === 'signed-in' ? orgStatus.displayName?.trim() : undefined
+  const sidebarDisplayName =
+    signedInDisplayName || userName || t('chat.user', { defaultValue: t('export.user', { defaultValue: 'User' }) })
   const sidebarUser = useMemo<SidebarUser>(
     () => ({
-      name: userName || t('chat.user', { defaultValue: t('export.user', { defaultValue: 'User' }) }),
-      description: t('workspace.localUser'),
-      avatar: avatar || undefined,
+      name: sidebarDisplayName,
+      description: signedInDisplayName ? undefined : t('workspace.localUser'),
+      avatar:
+        signedInDisplayName && !avatarPreference ? signedInDisplayName.slice(0, 1).toUpperCase() : avatar || undefined,
       onClick: () => UserPopup.show(),
       settingsLabel: t('settings.title'),
       onSettingsClick: () => openSettingsTab()
     }),
-    [avatar, t, userName]
+    [avatar, avatarPreference, sidebarDisplayName, signedInDisplayName, t]
   )
   const sidebarLogo = useMemo(() => <img src={AppLogo} alt="" className="h-full w-full object-cover" />, [])
 

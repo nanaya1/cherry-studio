@@ -1,7 +1,7 @@
 import { useNavigate } from '@tanstack/react-router'
 import { isEmpty } from 'es-toolkit/compat'
 import { Activity, ArrowRight, ExternalLink, List, Loader2 } from 'lucide-react'
-import type { FC, ReactNode } from 'react'
+import type { FC, MouseEvent, ReactNode } from 'react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -29,6 +29,7 @@ import {
 } from '@renderer/components/SettingsPrimitives'
 import { useTheme } from '@renderer/hooks/useTheme'
 import type { WebSearchBasicAuthPatch } from '@renderer/hooks/useWebSearch'
+import { ipcApi } from '@renderer/ipc'
 import { formatApiKeys, splitApiKeyString, withoutTrailingSlash } from '@renderer/utils/api'
 import {
   getWebSearchProviderApiKeyWebsite,
@@ -289,6 +290,13 @@ export const WebSearchProviderSetting: FC<Props> = ({
     void navigate({ to: '/settings/provider', search: { id: provider.id } })
   }
 
+  const openApiKeyWebsite = (event: MouseEvent<HTMLAnchorElement>) => {
+    event.preventDefault()
+    if (apiKeyWebsite) {
+      void ipcApi.request('system.shell.open_website', apiKeyWebsite)
+    }
+  }
+
   const checkProvider = async () => {
     const saved = await persist(commitDirtyDrafts, 'Failed to save web search provider before check')
     if (saved.ok) {
@@ -359,7 +367,11 @@ export const WebSearchProviderSetting: FC<Props> = ({
             <div className="flex min-w-0 items-baseline gap-2">
               <SettingRowTitle className="font-medium">{t('settings.provider.api_key.label')}</SettingRowTitle>
               {apiKeyWebsite && (
-                <SettingHelpLink className="text-xs leading-5" target="_blank" href={apiKeyWebsite}>
+                <SettingHelpLink
+                  className="text-xs leading-5"
+                  target="_blank"
+                  href={apiKeyWebsite}
+                  onClick={openApiKeyWebsite}>
                   {t('settings.provider.get_api_key')}
                 </SettingHelpLink>
               )}

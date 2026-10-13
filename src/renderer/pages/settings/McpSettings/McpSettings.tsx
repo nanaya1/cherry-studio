@@ -20,6 +20,8 @@ import { ipcApi } from '@renderer/ipc'
 import McpDescription from '@renderer/pages/settings/McpSettings/McpDescription'
 import { popup } from '@renderer/services/popup'
 import { toast } from '@renderer/services/toast'
+// 停用原路由 API 类型导入（随 routeApi.useSearch 一起停用；恢复时取消注释）：
+// import type { AppRouter } from '@renderer/types/router'
 import type { McpTool } from '@renderer/types/tool'
 import { formatMcpError } from '@renderer/utils/error'
 import { cn } from '@renderer/utils/style'
@@ -50,6 +52,8 @@ import { useMcpServerTrust } from './useMcpServerTrust'
 import { toUpdateMcpServerDto } from './utils'
 
 const logger = loggerService.withContext('McpSettings')
+// 停用原路由 API 实例（配合 McpSettingsContent 的 useMatches 方案；恢复时取消注释）：
+// const mcpSettingsRouteApi = getRouteApi('/settings/mcp/settings/$serverId')
 
 type TabKey = 'settings' | 'description' | 'logs' | 'tools' | 'prompts' | 'resources'
 type McpTabItem = {
@@ -73,6 +77,11 @@ interface McpSettingsContentProps {
 const McpSettingsContent: React.FC<McpSettingsContentProps> = ({ server, updateMcpServer, onClose }) => {
   const { t } = useTranslation()
   // MEA: catalog 变体会在弹窗中嵌入本组件，此时 MCP 设置路由不在激活匹配链中。
+  // 停用原路由 API 读取（与 McpServersList 同款修复）：本组件除
+  // /settings/mcp/settings/$serverId 路由页外，还作为 Dialog 嵌入 /app/skills-connectors
+  // 的「我的 MCP」卡片弹窗（McpServersList 传入 serverId prop）。该路由下
+  // '/settings/mcp/settings/$serverId' 不在激活匹配链，routeApi.useSearch 会抛
+  // "Invariant failed: Could not find an active match" 导致整页崩溃。
   const matches = useMatches()
   const search = useMemo(() => {
     const match = matches.find((item) => item.routeId === '/settings/mcp/settings/$serverId')

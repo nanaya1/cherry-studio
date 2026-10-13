@@ -1,10 +1,13 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest'
-
 import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+
+const { orgSessionMock } = vi.hoisted(() => ({
+  orgSessionMock: { authMode: 'management-exchange' }
+}))
 
 type MockSkillController = {
   gridProps: {
@@ -28,6 +31,8 @@ vi.mock('@renderer/components/resourceCatalog/catalog', () => ({
       </button>
     </div>
   ),
+  // 页面「组织」二级 tab 引用了该导出，整体 mock 必须提供（缺了会整树渲染崩溃）
+  OrgSkillCatalogView: ({ search }: { search: string }) => <div>org skills: {search}</div>,
   SkillCatalogDialogs: ({ controller }: { controller: MockSkillController }) => (
     <div>
       skill dialogs: {controller.dialogs.skillMarketplaceOpen ? 'marketplace' : ''}
@@ -51,6 +56,10 @@ vi.mock('@renderer/components/resourceCatalog/catalog', () => ({
   SkillCatalogView: ({ showDialogs }: { showDialogs?: boolean }) => (
     <div>installed skills: {showDialogs === false ? 'shared dialogs' : 'own dialogs'}</div>
   )
+}))
+
+vi.mock('@renderer/hooks/useOrgAccountSession', () => ({
+  useOrgAccountSession: () => ({ status: { authMode: orgSessionMock.authMode } })
 }))
 
 vi.mock('@renderer/hooks/resourceCatalog', () => ({
@@ -80,7 +89,8 @@ vi.mock('react-i18next', () => ({
         'workspace.resources.connectorsDescription': 'Manage existing connectors.',
         'workspace.skill_catalog.all_skills': 'All skills',
         'workspace.skill_catalog.my_installed': 'My installed',
-        'workspace.skill_catalog.recommended': 'Recommended skills'
+        'workspace.skill_catalog.recommended': 'Recommended skills',
+        'workspace.skill_catalog.org': 'Organization'
       })[key] ?? key
   })
 }))
@@ -90,15 +100,31 @@ import SkillsConnectorsPage from './SkillsConnectorsPage'
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
+  orgSessionMock.authMode = 'management-exchange'
 })
 
 describe('SkillsConnectorsPage', () => {
+  it('hides the public skill tab when no management server is configured', () => {
+    orgSessionMock.authMode = 'official-direct'
+    render(<SkillsConnectorsPage connectorView={<div>connector catalog</div>} />)
+
+    expect(screen.getByRole('tab', { name: 'Recommended skills' })).toBeVisible()
+    expect(screen.queryByRole('tab', { name: 'Organization' })).not.toBeInTheDocument()
+  })
+
   it('shows recommended skills by default and preserves access to installed skills', async () => {
     const user = userEvent.setup()
     render(<SkillsConnectorsPage connectorView={<div>connector catalog</div>} />)
 
     expect(screen.getByRole('tab', { name: 'Skills' })).toBeVisible()
+    expect(screen.getByRole('tab', { name: 'Recommended skills' })).toHaveClass('border-b-2')
+    expect(screen.getByRole('tab', { name: 'Organization' })).toHaveClass('border-b-2')
     expect(screen.getByText('recommended skills:')).toBeVisible()
+
+    await user.type(screen.getByPlaceholderText('library.toolbar.search_placeholder'), '周报')
+    await user.click(screen.getByRole('tab', { name: 'Organization' }))
+    expect(screen.getByText('org skills: 周报')).toBeVisible()
+    await user.click(screen.getByRole('tab', { name: 'Recommended skills' }))
     expect(screen.getByText('skill dialogs:')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /My installed/ })).toHaveTextContent('2')
 
@@ -115,7 +141,7 @@ describe('SkillsConnectorsPage', () => {
     expect(screen.queryByRole('tab', { name: 'Skills' })).not.toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'All skills' }))
-    expect(screen.getByText('recommended skills:')).toBeVisible()
+    expect(screen.getByText('recommended skills: 周报')).toBeVisible()
 
     await user.click(screen.getByRole('tab', { name: 'Connectors' }))
     expect(screen.getByText('connector catalog')).toBeVisible()

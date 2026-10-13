@@ -15,6 +15,7 @@ export const REFERENCE_DOMAINS: readonly string[] = [
   'components',
   'data',
   'diagnostics',
+  'enterprise',
   'file',
   'i18n',
   'ipc',

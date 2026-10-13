@@ -15,6 +15,7 @@ import { codeCliHandlers } from './codeCli'
 import { deepSeekHarnessHandlers } from './deepSeekHarness'
 import { diagnosticsHandlers } from './diagnostics'
 import { doctorHandlers } from './doctor'
+import { enterpriseHandlers } from './enterprise' // [enterprise] T0 企业扩展
 import { exportHandlers } from './export'
 import { externalAppHandlers } from './externalApp'
 import { fileHandlers } from './file'
@@ -65,6 +66,7 @@ export const ipcHandlers: IpcHandlersFor<IpcRequestSchemas> = {
   ...channelHandlers,
   ...cherryinHandlers,
   ...cherryCloudHandlers,
+  ...enterpriseHandlers, // [enterprise]
   ...citationHandlers,
   ...codeCliHandlers,
   ...deepSeekHarnessHandlers,

@@ -24,7 +24,8 @@ interface RecommendedSkillCatalogViewProps {
   onViewInstalled: () => void
 }
 
-function SkillDimensionTags({ items }: { items: SkillCatalogItem['professionalDimensions'] }) {
+// [enterprise] 导出供组织技能卡片复用（溢出测量 +N 逻辑与推荐视图保持一致）
+export function SkillDimensionTags({ items }: { items: SkillCatalogItem['professionalDimensions'] }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const measureRef = useRef<HTMLDivElement>(null)
   const [visibleCount, setVisibleCount] = useState(items.length)

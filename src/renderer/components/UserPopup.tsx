@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 
 import {
   Avatar,
+  AvatarFallback,
   AvatarImage,
   Button,
   Center,
@@ -20,6 +21,8 @@ import {
 } from '@cherrystudio/ui'
 import { usePreference } from '@data/hooks/usePreference'
 import useAvatar from '@renderer/hooks/useAvatar'
+// [enterprise] T0 企业登录入口
+import { useOrgAccountSession } from '@renderer/hooks/useOrgAccountSession'
 import { ipcApi } from '@renderer/ipc'
 import { createPopup, type PopupInjectedProps } from '@renderer/services/popup'
 import { toast } from '@renderer/services/toast'
@@ -37,6 +40,7 @@ const PopupContainer: React.FC<Props> = ({ open, resolve }) => {
   // The stored name is always trimmed; the draft keeps the raw text so a space can be typed
   // mid-name, and stays unset until typed so the input follows the preference until then.
   const [userNameDraft, setUserNameDraft] = useState<string>()
+  const [avatarPreference] = usePreference('app.user.avatar')
 
   const [avatarPopoverOpen, setAvatarPopoverOpen] = useState(false)
   const [avatarPopoverView, setAvatarPopoverView] = useState<AvatarPopoverView>('menu')
@@ -56,6 +60,20 @@ const PopupContainer: React.FC<Props> = ({ open, resolve }) => {
   //   isRevokingSession,
   //   isAuthorizing
   // } = useCherryAccountSession(open)
+
+  // [enterprise] T0 企业服务登录状态（登录走系统浏览器，回调经 meacowork://auth 深链）
+  const {
+    status: orgStatus,
+    loadState: orgLoadState,
+    reload: loadOrgStatus,
+    login: handleOrgLogin,
+    logout: handleOrgLogout,
+    isLoggingIn: isOrgLoggingIn,
+    isLoggingOut: isOrgLoggingOut,
+    // [enterprise] C3：登出后 org 资源标记"组织不可用"，重登自动恢复
+    orgUnavailable
+  } = useOrgAccountSession(open)
+  const signedInDisplayName = orgStatus?.phase === 'signed-in' ? orgStatus.displayName?.trim() : undefined
 
   const onOpenChange = (nextOpen: boolean) => {
     if (!nextOpen) {
@@ -130,7 +148,13 @@ const PopupContainer: React.FC<Props> = ({ open, resolve }) => {
                   variant="ghost"
                   aria-label={t('common.avatar')}
                   className="size-20 rounded-[25%] p-0 text-foreground shadow-none transition-opacity hover:bg-transparent hover:text-foreground hover:opacity-80 focus-visible:bg-transparent focus-visible:opacity-80">
-                  {isEmoji(avatar) ? (
+                  {signedInDisplayName && !avatarPreference ? (
+                    <Avatar className="size-20 rounded-[25%]">
+                      <AvatarFallback className="bg-linear-to-br from-blue-400 to-indigo-500 text-2xl text-white">
+                        {signedInDisplayName.slice(0, 1).toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                  ) : isEmoji(avatar) ? (
                     <EmojiAvatar size={80} fontSize={40}>
                       {avatar}
                     </EmojiAvatar>
@@ -182,13 +206,18 @@ const PopupContainer: React.FC<Props> = ({ open, resolve }) => {
         </Center>
         <RowFlex className="items-center gap-2.5 p-5">
           <Input
-            placeholder={t('settings.general.user_name.placeholder')}
-            value={userNameDraft ?? userName}
-            onChange={(e) => {
-              setUserNameDraft(e.target.value)
-              void setUserName(e.target.value.trim())
-            }}
-            className="w-full flex-1 text-center"
+            placeholder={signedInDisplayName ? undefined : t('settings.general.user_name.placeholder')}
+            value={signedInDisplayName || (userNameDraft ?? userName)}
+            onChange={
+              signedInDisplayName
+                ? undefined
+                : (e) => {
+                    setUserNameDraft(e.target.value)
+                    void setUserName(e.target.value.trim())
+                  }
+            }
+            disabled={Boolean(signedInDisplayName)}
+            className="w-full flex-1 text-center disabled:cursor-default disabled:opacity-100"
             maxLength={30}
           />
         </RowFlex>
@@ -247,6 +276,65 @@ const PopupContainer: React.FC<Props> = ({ open, resolve }) => {
           </RowFlex>
         ) : null}
         */}
+        {/* [enterprise] 官网账户登录入口（樱桃云入口同款布局） */}
+        {orgLoadState !== 'loading' ? (
+          <RowFlex className="border-border-subtle border-t px-5 py-4">
+            {orgLoadState === 'error' ? (
+              <ColFlex className="w-full gap-2">
+                <div
+                  role="alert"
+                  className="rounded-lg border border-error-border bg-error-subtle px-3 py-2 text-center text-error-subtle-foreground text-xs">
+                  {t('error.http.503')}
+                </div>
+                <Button className="w-full" onClick={() => void loadOrgStatus()} variant="outline">
+                  {t('common.retry')}
+                </Button>
+              </ColFlex>
+            ) : orgStatus ? (
+              orgStatus.phase === 'signed-in' ? (
+                <ColFlex className="w-full items-center gap-1.5">
+                  <Button
+                    className="w-full"
+                    loading={isOrgLoggingOut}
+                    onClick={() => void handleOrgLogout()}
+                    variant="outline">
+                    {/* 原硬编码：退出登录 */}
+                    {t('settings.provider.org_service.logout')}
+                  </Button>
+                  {orgStatus.phone ? (
+                    <div role="status" className="max-w-full truncate text-foreground-tertiary text-xs leading-tight">
+                      {orgStatus.phone}
+                      {/* 原硬编码： · 管理员 */}
+                      {orgStatus.role === 'super_admin' ? t('settings.provider.org_service.admin_suffix') : ''}
+                    </div>
+                  ) : null}
+                </ColFlex>
+              ) : (
+                <ColFlex className="w-full gap-2">
+                  {/* [enterprise] C3：登出后企业技能/连接器标记"组织不可用"（本地保留，重登恢复） */}
+                  {orgUnavailable ? (
+                    <div
+                      role="status"
+                      className="rounded-lg border border-border-subtle bg-secondary px-3 py-2 text-center text-foreground-tertiary text-xs leading-tight">
+                      {/* 原硬编码：企业技能与连接器暂不可用（已退出登录），重新登录后自动恢复 */}
+                      {t('library.org_skill.unavailable_notice')}
+                    </div>
+                  ) : null}
+                  <Button
+                    className="w-full"
+                    loading={isOrgLoggingIn}
+                    onClick={() => void handleOrgLogin()}
+                    variant="emphasis">
+                    {/* 原硬编码：等待浏览器授权… / 登录 */}
+                    {isOrgLoggingIn || orgStatus.phase === 'authorizing'
+                      ? t('settings.provider.org_service.signing_in')
+                      : t('settings.provider.org_service.login')}
+                  </Button>
+                </ColFlex>
+              )
+            ) : null}
+          </RowFlex>
+        ) : null}
       </DialogContent>
     </Dialog>
   )

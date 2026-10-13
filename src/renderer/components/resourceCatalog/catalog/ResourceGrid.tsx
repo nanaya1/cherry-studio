@@ -1,6 +1,7 @@
 import { useVirtualizer } from '@tanstack/react-virtual'
 import {
   Bot,
+  Building2,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -79,6 +80,8 @@ interface Props {
   onOpenSystemSkills?: () => void
   onCreateSkillWithAgent?: () => void
   onLaunchSkill?: (resource: ResourceItem) => void
+  /** [enterprise] T0 企业技能目录入口 */
+  onOpenOrgSkills?: () => void
   groups: GroupItem[]
   activeGroupId: string | null
   onGroupFilter: (groupId: string | null) => void
@@ -166,6 +169,8 @@ interface SkillAddActionsProps {
   onCreateWithAgent?: () => void
   onSearchMarketplace: () => void
   onSearchSystem?: () => void
+  /** [enterprise] T0 企业技能目录入口；未提供时隐藏菜单项 */
+  onOpenOrgSkills?: () => void
   onImportLocal: () => void
 }
 
@@ -173,9 +178,60 @@ function SkillAddActions({
   onCreateWithAgent,
   onSearchMarketplace,
   onSearchSystem,
+  onOpenOrgSkills,
   onImportLocal
 }: SkillAddActionsProps) {
   const { t } = useTranslation()
+
+  // [enterprise] 企业技能目录提升为顶层可见按钮（原先是下拉首项，不易发现）
+  if (onOpenOrgSkills) {
+    return (
+      <>
+        <Button variant="outline" size="sm" onClick={onOpenOrgSkills} className="shrink-0">
+          <Building2 size={12} />
+          <span>{t('library.skill_add.org_skills')}</span>
+        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="default" size="sm" className="shrink-0">
+              <Plus size={12} className="lucide-custom" />
+              <span>{t('library.skill_add.add')}</span>
+              <ChevronDown size={12} className="text-primary-foreground" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="min-w-40">
+            {/* [enterprise] 已提升为顶层按钮，原下拉项注释保留，回滚即取消注释
+            <DropdownMenuItem onSelect={onOpenOrgSkills} className="gap-2">
+              <Building2 size={13} />
+              <span>{t('library.skill_add.org_skills')}</span>
+            </DropdownMenuItem>
+            */}
+            {/* [MEA] 企业技能目录提升为顶层按钮后，仍保留「通过 Agent 创建」入口 */}
+            {onCreateWithAgent ? (
+              <DropdownMenuItem onSelect={onCreateWithAgent} className="gap-2">
+                <Bot size={13} />
+                <span>{t('library.skill_add.create_with_agent')}</span>
+              </DropdownMenuItem>
+            ) : null}
+            <DropdownMenuItem onSelect={onSearchMarketplace} className="gap-2">
+              <Search size={13} />
+              <span>{t('library.skill_add.online_search')}</span>
+            </DropdownMenuItem>
+            {onSearchSystem ? (
+              <DropdownMenuItem onSelect={onSearchSystem} className="gap-2">
+                <FolderSearch size={13} />
+                <span>{t('library.skill_add.system_search')}</span>
+              </DropdownMenuItem>
+            ) : null}
+            <DropdownMenuItem onSelect={onImportLocal} className="gap-2">
+              <Import size={13} />
+              <span>{t('library.skill_add.local_import')}</span>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </>
+    )
+  }
 
   return (
     <DropdownMenu>
@@ -229,6 +285,7 @@ export const ResourceGrid: FC<Props> = ({
   onOpenSystemSkills,
   onCreateSkillWithAgent,
   onLaunchSkill,
+  onOpenOrgSkills,
   groups,
   activeGroupId,
   onGroupFilter,
@@ -386,6 +443,7 @@ export const ResourceGrid: FC<Props> = ({
       onCreateWithAgent={onCreateSkillWithAgent}
       onSearchMarketplace={onOpenSkillMarketplace}
       onSearchSystem={onOpenSystemSkills}
+      onOpenOrgSkills={onOpenOrgSkills}
       onImportLocal={() => onCreate('skill')}
     />
   ) : (

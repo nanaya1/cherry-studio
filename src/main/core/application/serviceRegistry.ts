@@ -27,6 +27,8 @@ import { PowerService } from '@main/core/power/PowerService'
 import { SchedulerService } from '@main/core/scheduler/SchedulerService'
 import { UtilityProcessManager } from '@main/core/utilityProcess/UtilityProcessManager'
 import { WindowManager } from '@main/core/window/WindowManager'
+// [enterprise] T0 企业扩展插件
+import { EnterprisePlugin } from '@main/enterprise/EnterprisePlugin'
 import { ApiGatewayService } from '@main/features/apiGateway/ApiGatewayService'
 import { BrowserSessionService } from '@main/features/browser'
 import { FileProcessingService, TesseractRuntimeService } from '@main/features/fileProcessing'
@@ -123,6 +125,8 @@ export const services = {
   ConversationNavigationService,
   CitationPreviewService,
   CherryCloudService,
+  // [enterprise] T0 企业扩展插件
+  EnterprisePlugin,
   DeepSeekHarnessService,
   HermesDashboardService,
   LanTransferService,

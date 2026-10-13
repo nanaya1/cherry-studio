@@ -22,6 +22,8 @@ const {
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
+    // ResourceCatalogDialogs 读取 i18n.resolvedLanguage/language，mock 需一并提供
+    i18n: { resolvedLanguage: 'en', language: 'en' },
     t: (key: string) =>
       (
         ({
@@ -77,6 +79,7 @@ vi.mock('@renderer/components/resourceCatalog/dialogs/skill', () => {
   dialogImplementationsLoadedMock('skill')
   return {
     ImportSkillDialog: () => null,
+    OrgSkillDialog: () => null,
     SkillMarketplaceDialog: () => null,
     SystemSkillDialog: (props: { mode: 'manage' | 'agent-create' }) => {
       systemSkillDialogMock(props)
@@ -127,6 +130,7 @@ function createController(resourceError?: Error) {
       onOpenAssistantLibrary: vi.fn(),
       onOpenSkillMarketplace: vi.fn(),
       onOpenSystemSkills: vi.fn(),
+      onOpenOrgSkills: vi.fn(),
       onSearchChange: vi.fn(),
       onGroupFilter: vi.fn(),
       resources: [],
@@ -149,6 +153,8 @@ function createController(resourceError?: Error) {
       setSkillImportOpen: vi.fn(),
       setSkillMarketplaceOpen: vi.fn(),
       setSystemSkillOpen: vi.fn(),
+      setOrgSkillOpen: vi.fn(),
+      orgSkillOpen: false,
       skillImportOpen: false,
       skillMarketplaceOpen: false,
       systemSkillOpen: false

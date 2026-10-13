@@ -66,7 +66,34 @@ export function resolveRendererEdition(value: string | undefined): AppEdition {
   throw new Error(`Unsupported renderer edition: ${edition}`)
 }
 
+const DEFAULT_XUELANG_API_ORIGIN = 'https://api.xuelanglm.com'
+
+/**
+ * Resolve the Xuelang gateway origin for a custom deployment build.
+ * Set `XUELANG_API_ORIGIN` in the shell/CI environment (like `CHERRY_EDITION`);
+ * invalid values fail the build instead of silently pointing at the wrong server.
+ *
+ * 雪浪工匠网关地址（区别于企业服务 MAIN_VITE_ORG_SERVER_BASE_URL / Cherry Cloud
+ * MAIN_VITE_CHERRY_CLOUD_API_ORIGIN）。覆盖：CherryIN/雪浪 OAuth 授权、令牌与余额
+ * API、设置页的授权服务器/充值入口（主进程 + 渲染进程共用，故走 define 注入）。
+ */
+export function resolveXuelangApiOrigin(value: string | undefined): string {
+  const raw = value?.trim()
+  if (!raw) return DEFAULT_XUELANG_API_ORIGIN
+  let url: URL
+  try {
+    url = new URL(raw)
+  } catch {
+    throw new Error(`XUELANG_API_ORIGIN is not a valid URL: ${raw}`)
+  }
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') {
+    throw new Error(`XUELANG_API_ORIGIN must use http(s), got: ${raw}`)
+  }
+  return url.origin
+}
+
 const rendererEdition = resolveRendererEdition(process.env.CHERRY_EDITION)
+const xuelangApiOrigin = resolveXuelangApiOrigin(process.env.XUELANG_API_ORIGIN)
 const sentryBuildContext = getSentryBuildContext(pkg.name, pkg.version, rendererEdition)
 const { sourceMapUploadEnabled } = resolveSentryBuildSettings(process.env)
 const sentrySourceMap = sourceMapUploadEnabled ? ('hidden' as const) : isDev
@@ -152,7 +179,10 @@ export const mainResolveAlias = {
 
 export default defineConfig({
   main: {
-    define: { __APP_EDITION__: JSON.stringify(rendererEdition) },
+    define: {
+      __APP_EDITION__: JSON.stringify(rendererEdition),
+      __XUELANG_API_ORIGIN__: JSON.stringify(xuelangApiOrigin)
+    },
     plugins: [
       chunkExportGuardPlugin(),
       miniAppThemeAssetPlugin(),
@@ -217,6 +247,7 @@ export default defineConfig({
   renderer: {
     define: {
       __APP_EDITION__: JSON.stringify(rendererEdition),
+      __XUELANG_API_ORIGIN__: JSON.stringify(xuelangApiOrigin),
       __APP_RELEASE_HISTORY__: JSON.stringify(bundledReleaseHistory),
       __APP_RELEASE_NOTES__: JSON.stringify(bundledReleaseNotes),
       __APP_RELEASE_VERSION__: JSON.stringify(pkg.version)
