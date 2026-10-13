@@ -1847,7 +1847,7 @@ describe('AiService tool approval', () => {
     )
   })
 
-  it('disables reasoning on the text-generation probe', async () => {
+  it('uses the provider default reasoning effort for the text-generation probe', async () => {
     const service = createService()
     const generateSpy = vi.spyOn(service, 'generateText').mockResolvedValue({ text: 'ok' })
     mockModelGetByKey.mockReturnValue({
@@ -1866,10 +1866,11 @@ describe('AiService tool approval', () => {
     expect(generateSpy).toHaveBeenCalledWith(
       expect.objectContaining({
         system: 'test',
-        prompt: 'hi',
-        reasoningEffort: 'none'
+        prompt: 'hi'
+        // reasoningEffort: 'none'
       })
     )
+    expect(generateSpy.mock.calls[0][0]).not.toHaveProperty('reasoningEffort')
   })
 
   it('checks embedding models with the normal embedding path', async () => {
