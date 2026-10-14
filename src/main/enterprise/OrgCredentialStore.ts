@@ -20,7 +20,8 @@ function credFile(): string {
 }
 
 export const orgSessionSchema = z.object({
-  authMode: z.enum(['management-exchange', 'official-direct']).default('management-exchange'),
+  authMode: z.enum(['management-exchange', 'management-oauth', 'official-direct']).default('management-exchange'),
+  authOrigin: z.string().default(''),
   userId: z.string(),
   officialUserId: z.string(),
   displayName: z.string().nullable().default(null),

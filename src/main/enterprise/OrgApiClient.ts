@@ -40,9 +40,16 @@ function resolveOfficialApiBaseUrl(): string {
   }
 }
 
-export type OrgAuthMode = 'management-exchange' | 'official-direct'
+export type OrgAuthMode = 'management-exchange' | 'management-oauth' | 'official-direct'
 export const ORG_SERVER_BASE_URL = resolveOrgServerBaseUrl()
-export const ORG_AUTH_MODE: OrgAuthMode = ORG_SERVER_BASE_URL ? 'management-exchange' : 'official-direct'
+export const OFFICIAL_LOGIN_CONFIGURED = Boolean(import.meta.env.MAIN_VITE_OFFICIAL_LOGIN_URL?.trim())
+export const ORG_AUTH_MODE: OrgAuthMode = OFFICIAL_LOGIN_CONFIGURED
+  ? ORG_SERVER_BASE_URL
+    ? 'management-exchange'
+    : 'official-direct'
+  : ORG_SERVER_BASE_URL
+    ? 'management-oauth'
+    : 'official-direct'
 export const OFFICIAL_API_BASE_URL = resolveOfficialApiBaseUrl()
 
 export function getOrgApiBaseUrl(): string {

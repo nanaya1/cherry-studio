@@ -35,7 +35,8 @@ export default function SkillsConnectorsPage({ connectorView }: SkillsConnectors
   const [skillView, setSkillView] = useState<SkillView>('recommended')
   const [recommendedSearch, setRecommendedSearch] = useState('')
   const { status: accountStatus } = useOrgAccountSession()
-  const showPublicCatalog = accountStatus?.authMode === 'management-exchange'
+  const showPublicCatalog =
+    accountStatus?.authMode === 'management-exchange' || accountStatus?.authMode === 'management-oauth'
   // [enterprise] 「推荐」一级视图内的二级 tab 状态
   const [orgSubTab, setOrgSubTab] = useState<OrgSubTab>('recommended')
   const skillController = useResourceCatalogController('skill', { clientSideSkillSearch: true })

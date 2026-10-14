@@ -3,6 +3,8 @@
  * 官网 SSO：系统浏览器登录 + 官网 token 回调，回调改走 meacowork://auth 深链
  * （由 ProtocolService case 'auth' 分发到 handleAuthCallback）。
  */
+import { createHash, randomBytes } from 'node:crypto'
+
 import { shell } from 'electron'
 
 import { application } from '@application'
@@ -17,9 +19,14 @@ const logger = loggerService.withContext('OrgAuthManager')
 
 const ORG_BASE_URL = ORG_SERVER_BASE_URL
 const OFFICIAL_LOGIN_URL = import.meta.env.MAIN_VITE_OFFICIAL_LOGIN_URL?.trim() || 'https://mro.xuelangyun.com/login'
-// const REDIRECT_URI = 'meacowork://auth/sso/callback' // [enterprise] 官网登录地址不再拼接 redirect_uri
+const CLIENT_ID = 'cherry-desktop'
+const REDIRECT_URI = 'meacowork://auth/callback'
+// const REDIRECT_URI = 'meacowork://auth/sso/callback' // [enterprise] 官网 SSO 使用固定 token 回调
+const AUTH_ORIGIN = ORG_SERVER_BASE_URL ?? OFFICIAL_API_BASE_URL
 
 interface PendingAuth {
+  state?: string
+  codeVerifier?: string
   createdAt: number
 }
 
@@ -40,7 +47,14 @@ export class OrgAuthManager {
 
   constructor() {
     // 启动时恢复持久化会话（冷启动恢复）
-    this.session = this.credentialStore.load()
+    // this.session = this.credentialStore.load() // [enterprise] 配置切换后不可复用另一认证模式的 token
+    const storedSession = this.credentialStore.load()
+    if (storedSession?.authMode === ORG_AUTH_MODE && storedSession.authOrigin === AUTH_ORIGIN) {
+      this.session = storedSession
+    } else if (storedSession) {
+      this.credentialStore.clear()
+      logger.info('discarded org session from a different auth configuration')
+    }
   }
 
   getPhase(): OrgAuthPhase {
@@ -58,18 +72,50 @@ export class OrgAuthManager {
     }
   }
 
-  /** 开始登录：打开官网登录页，官网完成后回调自定义协议地址 */
+  /** 开始登录：管理端使用 PKCE OAuth，未配置管理端时回退官网 SSO。 */
   async startLogin(): Promise<{ authorizationUrl: string }> {
-    this.pending = { createdAt: Date.now() }
+    let authorizationUrl = OFFICIAL_LOGIN_URL
+    let pending: PendingAuth
+    if (ORG_AUTH_MODE === 'management-oauth') {
+      const state = randomBytes(16).toString('base64url')
+      const codeVerifier = randomBytes(32).toString('base64url')
+      const codeChallenge = createHash('sha256').update(codeVerifier).digest('base64url')
+      const params = new URLSearchParams({
+        response_type: 'code',
+        client_id: CLIENT_ID,
+        redirect_uri: REDIRECT_URI,
+        state,
+        code_challenge: codeChallenge,
+        code_challenge_method: 'S256'
+      })
+      pending = { state, codeVerifier, createdAt: Date.now() }
+      authorizationUrl = `${ORG_BASE_URL}/authorize?${params}`
+    } else {
+      pending = { createdAt: Date.now() }
+    }
+    this.pending = pending
     this.emitStatus()
 
-    // const params = new URLSearchParams({ redirect_uri: REDIRECT_URI })
-    const authorizationUrl = OFFICIAL_LOGIN_URL
+    // const authorizationUrl = OFFICIAL_LOGIN_URL // [enterprise] 管理端 OAuth 恢复后仅作为未配置时的回退
 
     // 摘要日志，不落 verifier
-    logger.info('starting org login, opening system browser')
-    await shell.openExternal(authorizationUrl)
-    return { authorizationUrl }
+    const authorizationOrigin = new URL(authorizationUrl).origin
+    logger.info('starting org login, opening system browser', { authMode: ORG_AUTH_MODE, authorizationOrigin })
+    try {
+      await shell.openExternal(authorizationUrl)
+      return { authorizationUrl }
+    } catch (error) {
+      if (this.pending === pending) {
+        this.pending = null
+        this.emitStatus()
+      }
+      logger.error('failed to open org login in system browser', {
+        authMode: ORG_AUTH_MODE,
+        authorizationOrigin,
+        error: error instanceof Error ? error.name : 'UnknownError'
+      })
+      throw error
+    }
   }
 
   /** ProtocolService case 'auth' 转发进来 */
@@ -79,7 +125,13 @@ export class OrgAuthManager {
       logger.warn('org auth callback rejected')
       return
     }
-    const { token } = callback
+    if (
+      ((ORG_AUTH_MODE === 'official-direct' || ORG_AUTH_MODE === 'management-exchange') && !('token' in callback)) ||
+      (ORG_AUTH_MODE === 'management-oauth' && !('code' in callback))
+    ) {
+      logger.warn('org auth callback does not match the current auth mode')
+      return
+    }
 
     const pending = this.pending
     if (!pending) {
@@ -95,24 +147,32 @@ export class OrgAuthManager {
 
     try {
       if (ORG_AUTH_MODE === 'official-direct') {
-        this.session = await this.exchangeOfficialToken(token)
-      } else {
+        if (!('token' in callback)) throw new Error('official auth callback is invalid')
+        this.session = await this.exchangeOfficialToken(callback.token)
+      } else if (ORG_AUTH_MODE === 'management-exchange') {
         if (!ORG_BASE_URL) throw new Error('management server URL is not configured')
+        if (!('token' in callback)) throw new Error('official auth callback is invalid')
         const res = await fetch(`${ORG_BASE_URL}/api/auth/exchange`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ officialToken: token })
+          body: JSON.stringify({ officialToken: callback.token })
         })
         if (!res.ok) throw new Error(`org auth exchange failed (${res.status})`)
         const data = (await res.json()) as {
           accessToken: string
           refreshToken: string
           expiresIn: number
-          user: { id: string; displayName?: string | null; phone: string | null; role: string; officialUserId?: string }
+          user: {
+            id: string
+            displayName?: string | null
+            phone: string | null
+            role: string
+            officialUserId?: string
+          }
         }
-
         this.session = {
           authMode: 'management-exchange',
+          authOrigin: AUTH_ORIGIN,
           userId: data.user.id,
           officialUserId: data.user.officialUserId ?? '',
           displayName: data.user.displayName?.trim() || null,
@@ -121,6 +181,54 @@ export class OrgAuthManager {
           accessToken: data.accessToken,
           refreshToken: data.refreshToken,
           expiresAt: Date.now() + data.expiresIn * 1000
+        }
+      } else {
+        if (!ORG_BASE_URL) throw new Error('management server URL is not configured')
+        if (!('code' in callback) || !pending.state || !pending.codeVerifier || callback.state !== pending.state) {
+          logger.warn('org auth callback state mismatch or expired')
+          return
+        }
+
+        // const res = await fetch(`${ORG_BASE_URL}/api/auth/exchange`, {
+        //   method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ officialToken: token })
+        // })
+        const res = await fetch(`${ORG_BASE_URL}/api/token`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({
+            grant_type: 'authorization_code',
+            code: callback.code,
+            code_verifier: pending.codeVerifier,
+            client_id: CLIENT_ID,
+            redirect_uri: REDIRECT_URI
+          })
+        })
+        if (!res.ok) throw new Error(`token exchange failed (${res.status})`)
+        const data = (await res.json()) as {
+          access_token: string
+          refresh_token: string
+          expires_in: number
+          user: {
+            id: string
+            username?: string | null
+            phone: string | null
+            role: string
+            officialUserId?: string
+          }
+        }
+
+        this.session = {
+          authMode: 'management-oauth',
+          authOrigin: AUTH_ORIGIN,
+          userId: data.user.id,
+          officialUserId: data.user.officialUserId ?? '',
+          // displayName: data.user.displayName?.trim() || null
+          displayName: data.user.username?.trim() || null,
+          phone: data.user.phone ?? '',
+          role: data.user.role,
+          accessToken: data.access_token,
+          refreshToken: data.refresh_token,
+          expiresAt: Date.now() + data.expires_in * 1000
         }
       }
       this.credentialStore.save(this.session)
@@ -156,6 +264,7 @@ export class OrgAuthManager {
     }
     return {
       authMode: 'official-direct',
+      authOrigin: AUTH_ORIGIN,
       userId: String(body.data.userId),
       officialUserId: String(body.data.userId),
       displayName: body.data.userNickname?.trim() || body.data.userCode?.trim() || null,

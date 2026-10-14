@@ -37,10 +37,11 @@ export interface OrgConnectorCatalogItem {
   config: Record<string, unknown>
 }
 
-export type OrgAuthMode = 'management-exchange' | 'official-direct'
+export type OrgAuthMode = 'management-exchange' | 'management-oauth' | 'official-direct'
 
 export interface OrgSession {
   authMode: OrgAuthMode
+  authOrigin: string
   userId: string
   officialUserId: string
   displayName: string | null
@@ -54,13 +55,21 @@ export interface OrgSession {
 
 export type OrgAuthPhase = 'signed-out' | 'authorizing' | 'signed-in'
 
-/** [enterprise] 官网 SSO 回调 URL 解析：meacowork://auth/sso/callback?token=.. */
-export function parseOrgAuthCallback(url: URL): { token: string } | null {
-  if (url.protocol !== 'meacowork:' || url.hostname.toLowerCase() !== 'auth' || url.pathname !== '/sso/callback') {
-    return null
-  }
+export type OrgAuthCallback = { token: string } | { code: string; state: string }
+
+/** [enterprise] 解析官网 SSO token 或管理端 OAuth code 回调。 */
+export function parseOrgAuthCallback(url: URL): OrgAuthCallback | null {
+  if (url.protocol !== 'meacowork:' || url.hostname.toLowerCase() !== 'auth') return null
+
   const params = new URLSearchParams(url.search)
-  const token = params.get('token')
-  if (!token) return null
-  return { token }
+  if (url.pathname === '/sso/callback') {
+    const token = params.get('token')
+    return token ? { token } : null
+  }
+  if (url.pathname === '/callback') {
+    const code = params.get('code')
+    const state = params.get('state')
+    return code && state ? { code, state } : null
+  }
+  return null
 }

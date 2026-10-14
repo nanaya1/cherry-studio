@@ -112,6 +112,13 @@ describe('SkillsConnectorsPage', () => {
     expect(screen.queryByRole('tab', { name: 'Organization' })).not.toBeInTheDocument()
   })
 
+  it('shows the organization skill tab in management OAuth mode', () => {
+    orgSessionMock.authMode = 'management-oauth'
+    render(<SkillsConnectorsPage connectorView={<div>connector catalog</div>} />)
+
+    expect(screen.getByRole('tab', { name: 'Organization' })).toBeVisible()
+  })
+
   it('shows recommended skills by default and preserves access to installed skills', async () => {
     const user = userEvent.setup()
     render(<SkillsConnectorsPage connectorView={<div>connector catalog</div>} />)

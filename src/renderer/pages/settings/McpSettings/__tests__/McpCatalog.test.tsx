@@ -107,6 +107,13 @@ describe('McpCatalog', () => {
     expect(screen.queryByRole('tab', { name: 'Organization' })).not.toBeInTheDocument()
   })
 
+  it('shows the organization connector tab in management OAuth mode', () => {
+    orgSessionMock.authMode = 'management-oauth'
+    render(<McpCatalog />)
+
+    expect(screen.getByRole('tab', { name: 'Organization' })).toBeVisible()
+  })
+
   it('presents discovery, provider, and installed MCP views from the settings sources', async () => {
     const user = userEvent.setup()
     render(<McpCatalog />)
