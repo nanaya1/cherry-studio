@@ -78,6 +78,7 @@ export enum IpcChannel {
   // backup
   Backup_Backup = 'backup:backup',
   Backup_Restore = 'backup:restore',
+  Backup_SafeImport = 'backup:safeImport',
   Backup_BackupToWebdav = 'backup:backupToWebdav',
   Backup_RestoreFromWebdav = 'backup:restoreFromWebdav',
   Backup_ListWebdavFiles = 'backup:listWebdavFiles',

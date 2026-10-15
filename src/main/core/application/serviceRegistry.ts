@@ -23,6 +23,7 @@ import {
 import { AiStreamManager } from '@main/ai/streamManager'
 import { JobManager } from '@main/core/job/JobManager'
 import type { ServiceConstructor } from '@main/core/lifecycle'
+import { ProfileCacheLifecycleService, type ProfileLaunchMode } from '@main/core/profiles'
 import { PowerService } from '@main/core/power/PowerService'
 import { SchedulerService } from '@main/core/scheduler/SchedulerService'
 import { UtilityProcessManager } from '@main/core/utilityProcess/UtilityProcessManager'
@@ -81,6 +82,12 @@ import { TrayService } from '@main/services/TrayService'
 import { WebSearchService } from '@main/services/webSearch'
 import { WebviewService } from '@main/services/webview'
 
+import {
+  bootstrapServiceList,
+  getServiceListForProfileMode as selectServiceListForProfileMode,
+  serviceNameList
+} from './serviceRegistryGroups'
+
 /**
  * Centralized service registry.
  * Add services here for both runtime registration and type-safe resolution.
@@ -109,6 +116,7 @@ export const services = {
   MainNetworkDevtoolsService,
   WindowManager,
   UtilityProcessManager,
+  ProfileCacheLifecycleService,
   DbService,
   CacheService,
   DataApiService,
@@ -197,4 +205,8 @@ export type ServiceRegistry = {
 }
 
 /** Service list for Application.registerAll() */
-export const serviceList = Object.values(services) as ServiceConstructor[]
+export const businessServiceList = Object.values(services) as ServiceConstructor[]
+export { bootstrapServiceList, serviceNameList }
+export const getServiceListForProfileMode = (mode: ProfileLaunchMode): ServiceConstructor[] =>
+  selectServiceListForProfileMode(mode, businessServiceList)
+export const serviceList = businessServiceList

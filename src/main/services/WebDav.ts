@@ -43,6 +43,27 @@ export default class WebDav {
     this.deleteFile = this.deleteFile.bind(this)
   }
 
+  private resolveRemoteFilePath(filename: string): string {
+    if (
+      !filename ||
+      filename.includes('..') ||
+      /[\\/]/.test(filename) ||
+      [...filename].some((character) => character.charCodeAt(0) <= 0x1f || character.charCodeAt(0) === 0x7f) ||
+      path.posix.basename(filename) !== filename ||
+      path.win32.basename(filename) !== filename
+    ) {
+      throw new Error('Remote backup file name must be a strict basename without traversal or control characters')
+    }
+
+    const namespace = path.posix.normalize(this.webdavPath)
+    const candidate = path.posix.join(namespace, filename)
+    const namespacePrefix = namespace.endsWith('/') ? namespace : `${namespace}/`
+    if (candidate !== namespace && !candidate.startsWith(namespacePrefix)) {
+      throw new Error('WebDAV backup path escaped its configured namespace')
+    }
+    return candidate
+  }
+
   public putFileContents = async (
     filename: string,
     data: string | BufferLike | Stream.Readable,
@@ -64,7 +85,7 @@ export default class WebDav {
       throw error
     }
 
-    const remoteFilePath = path.posix.join(this.webdavPath, filename)
+    const remoteFilePath = this.resolveRemoteFilePath(filename)
     // webdav 5.x ignores contentLength for streams, but still honors per-request headers.
     const requestOptions =
       typeof options?.contentLength === 'number'
@@ -87,7 +108,7 @@ export default class WebDav {
       throw new Error('WebDAV client not initialized')
     }
 
-    const remoteFilePath = path.posix.join(this.webdavPath, filename)
+    const remoteFilePath = this.resolveRemoteFilePath(filename)
 
     try {
       return await this.instance.getFileContents(remoteFilePath, options)
@@ -102,7 +123,7 @@ export default class WebDav {
       throw new Error('WebDAV client not initialized')
     }
 
-    return this.instance.createReadStream(path.posix.join(this.webdavPath, filename), options)
+    return this.instance.createReadStream(this.resolveRemoteFilePath(filename), options)
   }
 
   public getDirectoryContents = async (signal?: AbortSignal) => {
@@ -149,7 +170,7 @@ export default class WebDav {
       throw new Error('WebDAV client not initialized')
     }
 
-    const remoteFilePath = path.posix.join(this.webdavPath, filename)
+    const remoteFilePath = this.resolveRemoteFilePath(filename)
 
     try {
       return await this.instance.deleteFile(remoteFilePath, { signal })

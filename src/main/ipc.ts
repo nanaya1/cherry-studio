@@ -83,6 +83,7 @@ export async function registerIpc() {
   // backup
   handleGuarded(IpcChannel.Backup_Backup, backupManager.backup.bind(backupManager))
   handleGuarded(IpcChannel.Backup_Restore, backupManager.restore.bind(backupManager))
+  handleGuarded(IpcChannel.Backup_SafeImport, backupManager.safeImport.bind(backupManager))
   handleGuarded(IpcChannel.Backup_BackupToWebdav, async (event, config) => {
     const { result, cleanupError } = await backupManager.backupToWebdav(event, config)
     return { result, cleanupFailed: cleanupError !== null }

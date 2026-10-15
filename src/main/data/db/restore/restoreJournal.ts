@@ -69,6 +69,12 @@ const RestoreDbSchema = z.strictObject({
   chain: z.array(AppliedMigrationSchema).min(1)
 })
 
+const RestoreProfileSchema = z.strictObject({
+  profileId: z.union([z.literal('signed-out'), z.string().regex(/^[a-f0-9]{32}$/)]),
+  identityDigest: z.string().regex(/^[a-f0-9]{64}$/),
+  kind: z.enum(['local', 'authenticated'])
+})
+
 const FileResourceSchema = z.strictObject({
   kind: z.enum(['blob-add', 'dir-add', 'note-add', 'note-overwrite', 'overwrite']),
   stagingPath: z.string().min(1),
@@ -83,6 +89,8 @@ const commonFields = {
   restoreId: z.string().min(1),
   /** ISO-8601 timestamp, diagnostic only — the gate never reads it. */
   createdAt: z.string().min(1),
+  mode: z.enum(['in-place', 'safe-import']),
+  profile: RestoreProfileSchema,
   db: RestoreDbSchema,
   fileResources: z.array(FileResourceSchema)
 }

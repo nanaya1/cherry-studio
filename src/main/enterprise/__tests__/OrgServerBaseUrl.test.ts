@@ -10,6 +10,7 @@ import { shell } from 'electron'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('electron', () => ({
+  app: { isPackaged: true, getPath: vi.fn(() => '/tmp') },
   shell: { openExternal: vi.fn().mockResolvedValue(undefined) }
 }))
 
@@ -26,7 +27,8 @@ vi.mock('@logger', () => ({
 const credentialStoreMocks = vi.hoisted(() => ({
   load: vi.fn().mockReturnValue(null),
   save: vi.fn(),
-  clear: vi.fn()
+  clear: vi.fn(),
+  discardQuarantined: vi.fn()
 }))
 
 vi.mock('@main/enterprise/OrgCredentialStore', () => ({
@@ -34,6 +36,7 @@ vi.mock('@main/enterprise/OrgCredentialStore', () => ({
     load = credentialStoreMocks.load
     save = credentialStoreMocks.save
     clear = credentialStoreMocks.clear
+    discardQuarantined = credentialStoreMocks.discardQuarantined
   }
 }))
 
@@ -108,20 +111,40 @@ describe('ORG_SERVER_BASE_URL', () => {
     expect(shell.openExternal).toHaveBeenLastCalledWith(result.authorizationUrl)
   })
 
+  function managementFetch(tokenBody: Record<string, unknown>) {
+    return vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      void init
+      const url = input instanceof Request ? input.url : String(input)
+      if (url.includes('/api/currentuser')) {
+        return {
+          ok: true,
+          json: async () => ({
+            server_instance_id: 'https://org.example.com',
+            user: {
+              id: 7,
+              group_id: 2,
+              role: 'member',
+              status: 'active',
+              username: 'User One',
+              officialUserId: 'official-1'
+            }
+          })
+        }
+      }
+      return { ok: true, json: async () => tokenBody }
+    })
+  }
+
   it('exchanges the management OAuth code with the PKCE verifier', async () => {
     vi.stubEnv('MAIN_VITE_ORG_SERVER_BASE_URL', 'https://org.example.com')
     vi.stubEnv('MAIN_VITE_OFFICIAL_LOGIN_URL', '')
     vi.resetModules()
     const { OrgAuthManager } = await import('@main/enterprise/OrgAuthManager')
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      json: () =>
-        Promise.resolve({
-          access_token: 'access-token',
-          refresh_token: 'refresh-token',
-          expires_in: 3600,
-          user: { id: 'user-1', username: 'User One', phone: '13900000000', role: 'member' }
-        })
+    const fetchMock = managementFetch({
+      access_token: 'access-token',
+      refresh_token: 'refresh-token',
+      expires_in: 3600,
+      user: { id: 7 }
     })
     globalThis.fetch = fetchMock as never
     const manager = new OrgAuthManager()
@@ -130,14 +153,15 @@ describe('ORG_SERVER_BASE_URL', () => {
 
     await manager.handleAuthCallback(new URL(`meacowork://auth/callback?code=auth-code&state=${state}`))
 
-    expect(fetchMock).toHaveBeenCalledOnce()
+    expect(fetchMock).toHaveBeenCalledTimes(2)
     const [tokenUrl, init] = fetchMock.mock.calls[0]
+    expect(init).toBeDefined()
     expect(tokenUrl).toBe('https://org.example.com/api/token')
     expect(init).toMatchObject({
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded' }
     })
-    const body = init.body as URLSearchParams
+    const body = init!.body as URLSearchParams
     expect(body.get('grant_type')).toBe('authorization_code')
     expect(body.get('code')).toBe('auth-code')
     const codeVerifier = body.get('code_verifier')
@@ -147,7 +171,7 @@ describe('ORG_SERVER_BASE_URL', () => {
     )
     expect(body.get('client_id')).toBe('cherry-desktop')
     expect(body.get('redirect_uri')).toBe('meacowork://auth/callback')
-    expect(manager.getStatus()).toMatchObject({ phase: 'signed-in', displayName: 'User One' })
+    expect(manager.getStatus()).toMatchObject({ phase: 'signed-in' })
   })
 
   it('ignores an official callback while a management OAuth login is pending', async () => {
@@ -180,7 +204,8 @@ describe('ORG_SERVER_BASE_URL', () => {
     vi.resetModules()
     const { OrgAuthManager } = await import('@main/enterprise/OrgAuthManager')
 
-    const manager = new OrgAuthManager()
+    const manager = new OrgAuthManager({ credentialStore: credentialStoreMocks as never })
+    await manager.initialize()
 
     expect(manager.getStatus().phase).toBe('signed-out')
     expect(credentialStoreMocks.clear).toHaveBeenCalledOnce()
@@ -191,15 +216,11 @@ describe('ORG_SERVER_BASE_URL', () => {
     vi.stubEnv('MAIN_VITE_OFFICIAL_LOGIN_URL', '')
     vi.resetModules()
     const { OrgAuthManager } = await import('@main/enterprise/OrgAuthManager')
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      json: () =>
-        Promise.resolve({
-          access_token: 'access-token',
-          refresh_token: 'refresh-token',
-          expires_in: 3600,
-          user: { id: 'user-1', phone: null, role: 'member' }
-        })
+    const fetchMock = managementFetch({
+      access_token: 'access-token',
+      refresh_token: 'refresh-token',
+      expires_in: 3600,
+      user: { id: 7 }
     })
     globalThis.fetch = fetchMock as never
     const manager = new OrgAuthManager()
@@ -209,7 +230,7 @@ describe('ORG_SERVER_BASE_URL', () => {
     await manager.handleAuthCallback(new URL('meacowork://auth/callback?code=forged-code&state=forged-state'))
     await manager.handleAuthCallback(new URL(`meacowork://auth/callback?code=auth-code&state=${state}`))
 
-    expect(fetchMock).toHaveBeenCalledOnce()
+    expect(fetchMock).toHaveBeenCalledTimes(2)
     expect(manager.getStatus().phase).toBe('signed-in')
   })
 
@@ -231,7 +252,8 @@ describe('ORG_SERVER_BASE_URL', () => {
     vi.resetModules()
     const { OrgAuthManager } = await import('@main/enterprise/OrgAuthManager')
 
-    const manager = new OrgAuthManager()
+    const manager = new OrgAuthManager({ credentialStore: credentialStoreMocks as never })
+    await manager.initialize()
 
     expect(manager.getStatus().phase).toBe('signed-out')
     expect(credentialStoreMocks.clear).toHaveBeenCalledOnce()
@@ -242,15 +264,11 @@ describe('ORG_SERVER_BASE_URL', () => {
     vi.stubEnv('MAIN_VITE_OFFICIAL_LOGIN_URL', 'https://official.example.com/login')
     vi.resetModules()
     const { OrgAuthManager } = await import('@main/enterprise/OrgAuthManager')
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      json: () =>
-        Promise.resolve({
-          accessToken: 'management-access',
-          refreshToken: 'management-refresh',
-          expiresIn: 3600,
-          user: { id: 'user-1', officialUserId: 'official-1', displayName: 'User One', phone: null, role: 'member' }
-        })
+    const fetchMock = managementFetch({
+      accessToken: 'management-access',
+      refreshToken: 'management-refresh',
+      expiresIn: 3600,
+      user: { id: 7 }
     })
     globalThis.fetch = fetchMock as never
     const manager = new OrgAuthManager()
@@ -266,8 +284,7 @@ describe('ORG_SERVER_BASE_URL', () => {
     })
     expect(manager.getStatus()).toMatchObject({
       phase: 'signed-in',
-      authMode: 'management-exchange',
-      displayName: 'User One'
+      authMode: 'management-exchange'
     })
   })
 
@@ -291,15 +308,11 @@ describe('ORG_SERVER_BASE_URL', () => {
     vi.mocked(shell.openExternal)
       .mockImplementationOnce(() => new Promise((_, reject) => (rejectFirstOpen = reject)))
       .mockResolvedValueOnce(undefined)
-    globalThis.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: () =>
-        Promise.resolve({
-          access_token: 'access-token',
-          refresh_token: 'refresh-token',
-          expires_in: 3600,
-          user: { id: 'user-1', phone: null, role: 'member' }
-        })
+    globalThis.fetch = managementFetch({
+      access_token: 'access-token',
+      refresh_token: 'refresh-token',
+      expires_in: 3600,
+      user: { id: 7 }
     }) as never
     vi.resetModules()
     const { OrgAuthManager } = await import('@main/enterprise/OrgAuthManager')
@@ -313,7 +326,7 @@ describe('ORG_SERVER_BASE_URL', () => {
     const secondState = new URL(secondLogin.authorizationUrl).searchParams.get('state')
     expect(manager.getStatus().phase).toBe('authorizing')
     await manager.handleAuthCallback(new URL(`meacowork://auth/callback?code=auth-code&state=${secondState}`))
-    expect(globalThis.fetch).toHaveBeenCalledOnce()
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2)
   })
 
   it('falls back to the official login URL when the management URL is unset', async () => {

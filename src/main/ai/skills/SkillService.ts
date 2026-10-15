@@ -8,6 +8,7 @@ import { Mutex } from 'async-mutex'
 import { application } from '@application'
 import { agentGlobalSkillService } from '@data/services/AgentGlobalSkillService'
 import { loggerService } from '@logger'
+import { orgStateStore } from '@main/enterprise/OrgStateStore'
 import { isWin } from '@main/core/platform'
 import { runPathMutationExclusive } from '@main/services/file'
 import { isOutsidePath, isPathInside } from '@main/utils/file'
@@ -112,11 +113,22 @@ export class SkillService {
    * and `isEnabled` reflects the per-agent state of the remaining skills.
    */
   async getById(id: string): Promise<InstalledSkill | null> {
-    return agentGlobalSkillService.getById(id)
+    const skill = agentGlobalSkillService.getById(id)
+    return skill && this.isOrgSkillAllowed(skill) ? skill : null
   }
 
   async list(query: ListSkillsQuery = {}): Promise<InstalledSkill[]> {
-    return agentGlobalSkillService.list(query)
+    return agentGlobalSkillService.list(query).filter((skill) => this.isOrgSkillAllowed(skill))
+  }
+
+  private isOrgSkillAllowed(skill: Pick<InstalledSkill, 'sourceUrl'>): boolean {
+    let lease: { issuerId: string; groupId: string | null; generation: number } | null = null
+    try {
+      lease = application.get('EnterprisePlugin').auth.acquireLease()
+    } catch {
+      // Enterprise resources fail closed; ordinary local and builtin skills remain available.
+    }
+    return orgStateStore.isSkillAllowed(skill.sourceUrl, lease)
   }
 
   /** Enable or disable a skill for a specific agent. */

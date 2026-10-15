@@ -5,8 +5,11 @@ import { defineRoute } from '../define'
 // [enterprise] T0 企业扩展 IPC 契约。参考 cherryCloud.ts 模式。
 
 export const enterpriseStatusSchema = z.strictObject({
-  phase: z.enum(['signed-out', 'authorizing', 'signed-in']),
-  authMode: z.enum(['management-exchange', 'management-oauth', 'official-direct']),
+  phase: z.enum(['signed-out', 'authorizing', 'signed-in', 'switching']),
+  generation: z.number().int().nonnegative(),
+  groupId: z.string().nullable(),
+  // authMode: z.enum(['management-exchange', 'management-oauth', 'official-direct']),
+  authMode: z.enum(['management-exchange', 'management-oauth', 'management-cookie', 'official-direct']),
   displayName: z.string().nullable(),
   phone: z.string().nullable(),
   role: z.string().nullable()
@@ -49,7 +52,13 @@ export const enterpriseRequestSchemas = {
     input: z.void(),
     output: z.strictObject({ authorizationUrl: z.string() })
   }),
-  'enterprise.session.logout': defineRoute({ input: z.void(), output: z.strictObject({ ok: z.boolean() }) }),
+  'enterprise.session.logout': defineRoute({
+    input: z.void(),
+    output: z.strictObject({
+      state: z.enum(['switching', 'signed-out']),
+      revocationWarning: z.string().nullable()
+    })
+  }),
   'enterprise.skills.list': defineRoute({
     // force: UI 手动刷新时穿透主进程目录 TTL 缓存；默认空对象兼容旧窗口的无参调用
     input: z.strictObject({ force: z.boolean().optional() }).default({}),

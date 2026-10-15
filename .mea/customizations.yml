@@ -8,6 +8,39 @@ policy:
   require_tests: true
   preserve_original_code_by_comment: true
 customizations:
+  - id: profile-online-login
+    title: Require online management identity before profile business startup
+    owner: main
+    behavior: In profile isolation mode, local records are legacy staging only. Verify authenticated candidates online against modern currentuser before starting business services; route failed verification to recovery and persist signed-out selection before login.
+    markers:
+      - MEA:profile-online-login
+    touchpoints:
+      - src/main/main.ts
+      - src/main/core/preboot/profileIsolationRuntime.ts
+      - src/main/core/profiles/ProfileStartupVerifier.ts
+      - src/main/core/profiles/ProfilePrebootCoordinator.ts
+      - src/main/core/profiles/ProfileSessionService.ts
+      - src/main/core/profiles/ProfileRecoveryActions.ts
+      - src/main/core/profiles/ProfileBootstrapWindow.ts
+      - src/main/enterprise/orgCurrentUserTransport.ts
+      - src/main/enterprise/PasswordProfileLogin.ts
+      - src/main/enterprise/passwordLoginRuntime.ts
+      - src/main/enterprise/ProfileAuthBroker.ts
+      - src/main/enterprise/OrgApiClient.ts
+      - src/main/enterprise/OrgAuthManager.ts
+      - src/preload/profileBootstrap.ts
+    tests:
+      - src/main/core/profiles/__tests__/ProfileStartupVerifier.test.ts
+      - src/main/core/profiles/__tests__/ProfilePrebootCoordinator.test.ts
+      - src/main/core/profiles/__tests__/ProfileSessionService.test.ts
+      - src/main/core/profiles/__tests__/ProfileRecoveryActions.test.ts
+      - src/main/core/profiles/__tests__/ProfileBootstrapWindow.test.ts
+      - src/main/core/preboot/__tests__/profileStartupVerification.test.ts
+      - src/main/enterprise/__tests__/orgCurrentUserTransport.test.ts
+      - src/main/enterprise/__tests__/PasswordProfileLogin.test.ts
+      - src/main/enterprise/__tests__/passwordLoginRuntime.test.ts
+      - src/main/enterprise/__tests__/OrgApiClient.test.ts
+
   - id: product-identity
     title: MEA application identity and protocol
     owner: main

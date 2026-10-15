@@ -165,6 +165,7 @@ function chainOf(dbPath: string): Array<{ folderMillis: number; hash: string }> 
 }
 
 interface JournalOverrides {
+  mode?: RestoreJournal['mode']
   state?: RestoreJournal['state']
   step?: Extract<RestoreJournal, { state: 'promoting' }>['step']
   fingerprint?: string
@@ -177,6 +178,12 @@ async function buildJournal(overrides: JournalOverrides = {}): Promise<RestoreJo
     version: 1 as const,
     restoreId: RID,
     createdAt: '2026-07-09T12:00:00.000Z',
+    mode: overrides.mode ?? ('in-place' as const),
+    profile: {
+      profileId: '1'.repeat(32),
+      identityDigest: 'a'.repeat(64),
+      kind: 'authenticated' as const
+    },
     db: {
       promote: workRel,
       aside: asideRel,
@@ -308,6 +315,18 @@ describe('runRestorePromotion', () => {
 
     expect(journalState()).toBe('staged')
     expect(existsSync(stagingDir())).toBe(true)
+  })
+
+  it('expires a safe import when the target gains business data before preboot promotion', async () => {
+    makeDb(livePath(), 'old')
+    makeDb(workPath(), 'new')
+    writeRestoreJournal(await buildJournal({ mode: 'safe-import' }))
+
+    await runRestorePromotion()
+
+    expect(journalState()).toBe('expired')
+    expect(readMarker(livePath())).toBe('old')
+    expect(existsSync(workPath())).toBe(false)
   })
 
   it('promotes a valid staged restore end to end (DB swap + manifest + terminal journal)', async () => {

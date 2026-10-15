@@ -21,14 +21,17 @@ describe('enterpriseHandlers copy mode', () => {
     expect(applicationGetMock).not.toHaveBeenCalled()
   })
 
-  it('does not expose managed disable or unavailable state', async () => {
+  it('exposes fail-closed skill disable state while keeping copy-mode unavailable compatibility', async () => {
+    const listDisabled = vi.fn().mockResolvedValue(['org-review'])
+    applicationGetMock.mockReturnValue({ skills: { listDisabled } })
+
     await expect(enterpriseHandlers['enterprise.skills.listDisabled'](undefined, ctx)).resolves.toEqual({
-      disabled: []
+      disabled: ['org-review']
     })
     await expect(enterpriseHandlers['enterprise.status.orgUnavailable'](undefined, ctx)).resolves.toEqual({
       unavailable: false
     })
 
-    expect(applicationGetMock).not.toHaveBeenCalled()
+    expect(listDisabled).toHaveBeenCalledOnce()
   })
 })

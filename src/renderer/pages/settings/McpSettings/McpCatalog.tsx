@@ -38,8 +38,10 @@ export default function McpCatalog() {
   const { t } = useTranslation()
   const { mcpServers } = useMcpServers()
   const { status: accountStatus } = useOrgAccountSession()
+  // 原条件仅检查部署模式，未登录也会显示组织目录并触发 401。
   const showPublicCatalog =
-    accountStatus?.authMode === 'management-exchange' || accountStatus?.authMode === 'management-oauth'
+    accountStatus?.phase === 'signed-in' &&
+    (accountStatus.authMode === 'management-exchange' || accountStatus.authMode === 'management-oauth')
   const [activeTab, setActiveTab] = useState<CatalogTab>('discover')
   const [discoverTab, setDiscoverTab] = useState<DiscoverTab>('builtin')
   const [selectedProvider, setSelectedProvider] = useState<ProviderConfig | null>(null)

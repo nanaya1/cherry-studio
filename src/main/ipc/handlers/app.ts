@@ -5,8 +5,11 @@ import { app, BrowserWindow } from 'electron'
 import { application } from '@application'
 import { loggerService } from '@logger'
 import { isWin } from '@main/core/platform'
+import { getProfileLaunchContext } from '@main/core/profiles'
 import { cacheCleanupService } from '@main/services/cacheCleanup'
 import { requestDataReset, requestV1Remigration } from '@main/services/dataReset'
+import { requestDataRootRelocation } from '@main/services/dataRootRelocation'
+import { requestDeviceDataReset } from '@main/services/profileDataReset'
 import { inspectUserDataRelocationTarget, requestUserDataRelocation } from '@main/services/userDataRelocation'
 import { handleZoomFactor } from '@main/utils/zoom'
 import { IpcError } from '@shared/ipc/errors/IpcError'
@@ -37,6 +40,18 @@ export const appHandlers: IpcHandlersFor<typeof appRequestSchemas> = {
     if (!app.isPackaged) {
       throw new IpcError('USER_DATA_RELOCATION_UNAVAILABLE', 'userData relocation is available only in packaged builds')
     }
+    const context = getProfileLaunchContext()
+    if (context) {
+      if (!copy) {
+        throw new IpcError(
+          'DATA_ROOT_RELOCATION_COPY_REQUIRED',
+          'profile dataRoot relocation requires copying the verified dataRoot'
+        )
+      }
+      requestDataRootRelocation(context, path)
+      return
+    }
+    // Legacy userData relocation remains available when profile isolation has no launch context.
     requestUserDataRelocation(path, copy)
   },
   'app.cache_cleanup.inspect': async ({ groups }) => cacheCleanupService.inspect(groups),
@@ -47,6 +62,11 @@ export const appHandlers: IpcHandlersFor<typeof appRequestSchemas> = {
     return application.get('PreferenceService').get('app.zoom_factor')
   },
   'app.data_reset.request': async () => requestDataReset(),
+  'app.data_reset.device.request': async () => {
+    const context = getProfileLaunchContext()
+    if (!context) throw new IpcError('PROFILE_CONTEXT_REQUIRED', 'device reset requires an active profile')
+    await requestDeviceDataReset(context)
+  },
   'app.migration_v2.rerun': async () => requestV1Remigration(),
   'app.updater.check_for_update': async () => {
     await application.get('AppUpdaterService').checkForUpdates()

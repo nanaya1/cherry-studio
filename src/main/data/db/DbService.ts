@@ -9,6 +9,7 @@ import { loggerService } from '@logger'
 import { DIAGNOSTICS_ENABLED, SLOW_THRESHOLD_MS } from '@main/core/diagnostics'
 import { BaseService, ErrorHandling, Injectable, Priority, ServicePhase } from '@main/core/lifecycle'
 import { Phase } from '@main/core/lifecycle'
+import { profileSwitchFence } from '@main/core/profiles'
 
 import { applyMigrations } from './applyMigrations'
 import { checkpointTruncateAssert } from './restore/checkpoint'
@@ -186,6 +187,7 @@ export class DbService extends BaseService {
    * @throws {Error} If database is not initialized
    */
   public getDb(): DbType {
+    profileSwitchFence.assertWritable()
     if (!this.isReady) {
       throw new Error('Database is not initialized, please call init() first!')
     }
@@ -242,6 +244,7 @@ export class DbService extends BaseService {
    * ```
    */
   public withWriteTx<T>(fn: (tx: DbOrTx) => T): T {
+    profileSwitchFence.assertWritable()
     if (!this.isReady) {
       throw new Error('Database is not initialized, please call init() first!')
     }
@@ -274,6 +277,20 @@ export class DbService extends BaseService {
       throw new Error('Database is not initialized, please call init() first!')
     }
     checkpointTruncateAssert(this.sqlite)
+  }
+
+  /**
+   * Persist every committed WAL frame before releasing the process-wide SQLite
+   * connection. Errors intentionally propagate so profile switching cannot
+   * commit the active pointer after an unclean database teardown.
+   */
+  public checkpointAndClose(): void {
+    checkpointTruncateAssert(this.sqlite)
+    this.sqlite.close()
+  }
+
+  protected override onDestroy(): void {
+    this.checkpointAndClose()
   }
 
   /**

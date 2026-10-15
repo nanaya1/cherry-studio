@@ -13,32 +13,50 @@
 
 import '@main/data/bootConfig'
 import { application } from '@application'
-import { serviceList } from '@main/core/application/serviceRegistry'
+import { getServiceListForProfileMode, serviceList } from '@main/core/application/serviceRegistry'
 // Preboot phase — order matters. See core/preboot/README.md.
 import { runBackupRestoreGate } from '@main/core/preboot/backupRestoreGate'
 import { configureChromiumFlags } from '@main/core/preboot/chromiumFlags'
 import { initCrashTelemetry } from '@main/core/preboot/crashTelemetry'
+import {
+  initializeLockedProfileIsolation,
+  lockCurrentProfileDataRoot,
+  markProfileBootSuccessful,
+  migrateProfileSensitiveData,
+  resolveCurrentProfileDataRoot,
+  shouldUseProfileIsolation,
+  verifyBusinessCandidate
+} from '@main/core/preboot/profileIsolationRuntime'
 import { requireSingleInstance } from '@main/core/preboot/singleInstance'
 import { resolveUserDataLocation } from '@main/core/preboot/userDataLocation'
 import { runV2MigrationGate } from '@main/core/preboot/v2MigrationGate'
+import {
+  createProfileBootstrapWindow,
+  setProfileLaunchContext,
+  profileBusinessAccessGate,
+  type ProfileLaunchContext
+} from '@main/core/profiles'
 import { MINI_APP_SCHEME_DECLARATION } from '@main/features/miniApp/runtime/protocol'
 import { runDataReset } from '@main/services/dataReset'
+import { runDataRootRelocation } from '@main/services/dataRootRelocation'
 import { CHERRY_MEDIA_SCHEME_DECLARATION } from '@main/services/mediaProtocol'
+import { runProfileDataResetPreboot } from '@main/services/profileDataReset'
 import { initSentry } from '@main/services/sentry'
 import { runUserDataRelocation } from '@main/services/userDataRelocation'
 import { getApplicationId } from '@main/utils/appEdition'
 
-// should be the first to resolveUserDataLocation()
+const profileIsolationEnabled = shouldUseProfileIsolation()
+let profileLaunchContext: ProfileLaunchContext | undefined
+
+// Resolve the configured dataRoot before either legacy or profile-aware locking.
+// The legacy startup path is retained while profile isolation is gated by BootConfig.
 resolveUserDataLocation()
-requireSingleInstance()
-configureChromiumFlags()
-initCrashTelemetry()
-initSentry()
+if (!profileIsolationEnabled) requireSingleInstance()
 // Privileged schemes must be declared before the app is ready, and only ONCE per
 // process — startApp() itself awaits app.whenReady(), so this cannot move in there.
 protocol.registerSchemesAsPrivileged([CHERRY_MEDIA_SCHEME_DECLARATION, MINI_APP_SCHEME_DECLARATION])
-// Freeze the path registry — bootstrap() asserts this completed.
-application.initPathRegistry()
+// Legacy path-registry freeze retained for launches outside profile isolation.
+if (!profileIsolationEnabled) application.initPathRegistry()
 
 import { electronApp } from '@electron-toolkit/utils'
 import { app, protocol } from 'electron'
@@ -51,9 +69,72 @@ import { versionService } from './services/VersionService'
 const logger = loggerService.withContext('MainEntry')
 
 const startApp = async () => {
+  if (profileIsolationEnabled) {
+    const legacyUserData = app.getPath('userData')
+    const dataRoot = resolveCurrentProfileDataRoot(legacyUserData)
+    if (!lockCurrentProfileDataRoot(dataRoot)) {
+      application.quit()
+      return
+    }
+    const dataRootRelocationResult = await runDataRootRelocation()
+    if (dataRootRelocationResult === 'handled') {
+      application.relaunch()
+      return
+    }
+    const profileResetResult = await runProfileDataResetPreboot(dataRoot)
+    if (profileResetResult === 'handled') {
+      application.relaunch()
+      return
+    }
+    profileLaunchContext = await initializeLockedProfileIsolation(legacyUserData, dataRoot)
+    setProfileLaunchContext(profileLaunchContext)
+    if (!profileLaunchContext) {
+      application.quit()
+      return
+    }
+    if (profileLaunchContext.mode !== 'business') {
+      configureChromiumFlags()
+      initCrashTelemetry()
+      initSentry()
+      await app.whenReady()
+      createProfileBootstrapWindow(profileLaunchContext)
+      return
+    }
+
+    // [startup-verify] A non-empty active pointer only yields a *candidate*.
+    // Verify it online before any business service registers; else recover.
+    configureChromiumFlags()
+    initCrashTelemetry()
+    initSentry()
+    await app.whenReady()
+    const verification = await verifyBusinessCandidate(profileLaunchContext)
+    if (verification.kind !== 'verified') {
+      logger.warn('business candidate failed startup verification; routing to recovery window', {
+        reason: verification.reason
+      })
+      setProfileLaunchContext(verification.failureContext)
+      createProfileBootstrapWindow(verification.failureContext)
+      return
+    }
+    profileBusinessAccessGate.recordVerificationSuccess()
+  }
+
+  // MEA:profile-online-login Profile launches configure Electron before online verification waits for ready.
+  if (!profileIsolationEnabled) {
+    configureChromiumFlags()
+    initCrashTelemetry()
+    initSentry()
+  }
+
+  // Import legacy device-level sensitive data before reset, backup, migration,
+  // or services open the selected profile. Authenticated profiles never auto-import.
+  if (profileLaunchContext) await migrateProfileSensitiveData(profileLaunchContext)
+
   // Reset before backup, migration, or services open user data.
   runDataReset()
 
+  // Legacy userData relocation is retained for launches outside profile-aware
+  // dataRoot relocation and for existing pending requests.
   // userData relocation: a pending/failed relocation makes this a dedicated
   // relocation launch (execute or explain, then relaunch) before any service
   // opens files under the source tree. See services/userDataRelocation/README.md.
@@ -63,7 +144,7 @@ const startApp = async () => {
   // Backup-restore gate: swap in a staged restored DB (if any) before the v2
   // migration gate reads the DB. Never throws; on any failure the old DB
   // stays live and the app starts normally.
-  await runBackupRestoreGate()
+  await runBackupRestoreGate(profileLaunchContext)
 
   // 'handled' = migration window took over OR fatal error already quit the app.
   const migrationResult = await runV2MigrationGate()
@@ -76,12 +157,13 @@ const startApp = async () => {
   electronApp.setAppUserModelId(getApplicationId())
 
   // Start lifecycle (BeforeReady runs parallel with app.whenReady)
-  application.registerAll(serviceList)
+  application.registerAll(profileLaunchContext ? getServiceListForProfileMode(profileLaunchContext.mode) : serviceList)
   const bootstrapPromise = application.bootstrap()
 
   await app.whenReady()
   // Wait for lifecycle bootstrap (all core services are now ready)
-  await bootstrapPromise
+  const bootstrapSuccessful = await bootstrapPromise
+  if (!bootstrapSuccessful) return
 
   // Record current version for upgrade-path tracking
   versionService.recordCurrentVersion()
@@ -90,6 +172,7 @@ const startApp = async () => {
   // bootstrap and IPC readiness. TODO(v2): decompose into per-service
   // ipcHandle/ipcOn inside lifecycle services.
   await registerIpc()
+  if (profileLaunchContext) await markProfileBootSuccessful(profileLaunchContext)
 }
 
 // Top-level safety net: bootstrap() handles known fatal errors internally

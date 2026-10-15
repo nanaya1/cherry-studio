@@ -12,10 +12,12 @@ import {
   type ServiceConstructor,
   ServiceContainer,
   ServiceInitError,
-  SHUTDOWN_TIMEOUT_MS
+  SHUTDOWN_TIMEOUT_MS,
+  type TeardownSummary
 } from '@main/core/lifecycle'
 import { buildPathRegistry, type PathKey, type PathMap, shouldAutoEnsure } from '@main/core/paths/pathRegistry'
 import { isDev, isLinux, isMac, isPortable, isWin } from '@main/core/platform'
+import { profileSwitchFence, type SwitchFenceState } from '@main/core/profiles'
 import { handleGuarded } from '@main/core/security/guardedIpc'
 import { bootConfigService } from '@main/data/bootConfig'
 import { IpcChannel } from '@shared/IpcChannel'
@@ -23,6 +25,12 @@ import { IpcChannel } from '@shared/IpcChannel'
 import type { ServiceRegistry } from './serviceRegistry'
 
 const logger = loggerService.withContext('Lifecycle')
+
+export interface ShutdownResult {
+  clean: boolean
+  stop: TeardownSummary
+  destroy: TeardownSummary
+}
 
 /** Hold with opaque ID for cross-process identification */
 interface QuitPreventionHold extends Disposable {
@@ -160,10 +168,10 @@ export class Application {
    * `initPathRegistry()` fails fast with a clear error pointing at the
    * fix location.
    */
-  public async bootstrap(): Promise<void> {
+  public async bootstrap(): Promise<boolean> {
     if (this.isBootstrapped) {
       logger.warn('Already bootstrapped')
-      return
+      return true
     }
 
     // Path registry must be initialized by preboot — see initPathRegistry()
@@ -228,7 +236,7 @@ export class Application {
     } catch (error) {
       if (error instanceof ServiceInitError) {
         await this.handleFatalServiceError(error)
-        return
+        return false
       }
       throw error
     }
@@ -236,6 +244,7 @@ export class Application {
     const totalDuration = performance.now() - bootstrapStart
     logger.info(`Bootstrap complete (${totalDuration.toFixed(3)}ms)`)
     logger.debug(`\n${this.lifecycleManager.getBootstrapSummary(totalDuration, regSummary.excluded)}`)
+    return true
   }
 
   /**
@@ -267,25 +276,63 @@ export class Application {
       logger.warn('bootConfig flush error:', e as Error)
     }
 
-    // Stop all lifecycle-managed services (reverse init order)
-    const stopSummary = await this.lifecycleManager.stopAll()
-
-    // Destroy all lifecycle-managed services
-    const destroySummary = await this.lifecycleManager.destroyAll()
+    const result = await this.teardownServices()
 
     // Kept per pass rather than concatenated: a service that times out in stop
     // is then skipped in destroy, so a flat list would carry its name twice with
     // no way to tell which pass each entry came from.
     const elapsed = `${(performance.now() - start).toFixed(3)}ms`
-    const unclean = [stopSummary, destroySummary].some((s) => s.timedOut.length > 0 || s.failed.length > 0)
-    if (unclean) {
-      logger.warn(`Shutdown complete, but not cleanly (${elapsed})`, { stop: stopSummary, destroy: destroySummary })
+    if (!result.clean) {
+      logger.warn(`Shutdown complete, but not cleanly (${elapsed})`, { stop: result.stop, destroy: result.destroy })
     } else {
       logger.info(`Shutdown complete (${elapsed})`)
     }
 
     // Close logger LAST — after this point, no more logging
     loggerService.finish()
+  }
+
+  /**
+   * Quiesce and tear down all profile-bound services for a profile switch.
+   * Unlike ordinary shutdown, this keeps logging available and returns every
+   * failed/timed-out service so the coordinator can refuse the pointer commit.
+   */
+  private returningToLogin = false
+  private completedProfileTeardown?: ShutdownResult
+
+  public async prepareProfileLogout(): Promise<ShutdownResult> {
+    this.returningToLogin = true
+    return this.prepareProfileSwitch()
+  }
+
+  public finishProfileLogout(): void {
+    this.returningToLogin = false
+  }
+
+  public async prepareProfileSwitch(): Promise<ShutdownResult> {
+    if (this.completedProfileTeardown?.clean) return this.completedProfileTeardown
+    if (this.isShuttingDown) {
+      throw new Error('Application is already shutting down')
+    }
+    this.isShuttingDown = true
+    this._isQuitting = true
+
+    try {
+      bootConfigService.flush()
+    } catch (e) {
+      logger.warn('bootConfig flush error:', e as Error)
+    }
+
+    const result = await this.teardownServices()
+    this.completedProfileTeardown = result
+    return result
+  }
+
+  private async teardownServices(): Promise<ShutdownResult> {
+    const stop = await this.lifecycleManager.stopAll()
+    const destroy = await this.lifecycleManager.destroyAll()
+    const clean = [stop, destroy].every((summary) => summary.timedOut.length === 0 && summary.failed.length === 0)
+    return { clean, stop, destroy }
   }
 
   /**
@@ -316,6 +363,13 @@ export class Application {
     }
 
     logger.info(`User chose to restart after ${error.serviceName} initialization failure`)
+    const teardown = await this.teardownServices()
+    if (!teardown.clean) {
+      logger.warn('Partial startup teardown completed with failures before relaunch', {
+        stop: teardown.stop,
+        destroy: teardown.destroy
+      })
+    }
     this.relaunch()
   }
 
@@ -516,7 +570,7 @@ export class Application {
   private setupElectronHandlers(): void {
     // Non-macOS: quit through standard before-quit → will-quit flow when all windows close
     app.on('window-all-closed', () => {
-      if (!isMac) {
+      if (!isMac && !this.returningToLogin) {
         this.quit()
       }
     })
@@ -583,6 +637,18 @@ export class Application {
    */
   public isReady(): boolean {
     return this.isBootstrapped
+  }
+
+  public get profileSwitchFenceState(): SwitchFenceState {
+    return profileSwitchFence.state
+  }
+
+  public assertWritable(): void {
+    profileSwitchFence.assertWritable()
+  }
+
+  public assertTaskStartAllowed(): void {
+    profileSwitchFence.assertTaskStartAllowed()
   }
 
   /**

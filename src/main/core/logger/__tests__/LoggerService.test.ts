@@ -60,6 +60,22 @@ describe('LoggerService file output', () => {
     flags.dev = false
   })
 
+  it('rebinds existing contextual loggers from profile A to profile B and closes old transports', async () => {
+    const { loggerService } = await loadLogger()
+    const contextual = loggerService.withContext('ProfileLogTest')
+    const oldLogger = loggerService.getBaseLogger()
+    const oldEnd = vi.spyOn(oldLogger, 'end')
+
+    const profileBLogs = `${tmpLogsDir}/profile-b`
+    loggerService.rebind(profileBLogs)
+
+    expect(loggerService.getLogsDir()).toBe(profileBLogs)
+    expect(contextual.getLogsDir()).toBe(profileBLogs)
+    expect(contextual.getBaseLogger()).toBe(loggerService.getBaseLogger())
+    expect(contextual.getBaseLogger()).not.toBe(oldLogger)
+    expect(oldEnd).toHaveBeenCalledOnce()
+  })
+
   it('keeps module/process when the call carries data arguments', async () => {
     const { loggerService, lines, readLine } = await loadLogger()
     const error = Object.assign(new Error('io fail'), { code: 'EFAKE' })

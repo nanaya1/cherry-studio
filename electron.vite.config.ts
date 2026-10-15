@@ -194,7 +194,8 @@ export default defineConfig({
       externalizeDeps: {
         include: mainExternalModules
       },
-      lib: { entry: resolve(__dirname, 'src/main/main.ts') },
+      // lib: { entry: resolve(__dirname, 'src/main/main.ts') },
+      lib: { entry: { main: resolve(__dirname, 'src/main/entry.ts') } },
       rolldownOptions: {
         output: {
           manualChunks: (id) => {
@@ -232,6 +233,7 @@ export default defineConfig({
         // preload requires explicit entry point configuration for multiple scripts
         input: {
           preload: resolve(__dirname, 'src/preload/preload.ts'),
+          profileBootstrap: resolve(__dirname, 'src/preload/profileBootstrap.ts'),
           simplest: resolve(__dirname, 'src/preload/simplest.ts'), // Minimal preload
           webview: resolve(__dirname, 'src/preload/webview.ts'), // Site `<webview>` guests
           miniAppBridge: resolve(__dirname, 'src/preload/miniAppBridge.ts') // Local mini app guests (`window.cherry`)
@@ -302,6 +304,7 @@ export default defineConfig({
       rolldownOptions: {
         input: {
           index: resolve(__dirname, 'src/renderer/windows/main/index.html'),
+          profileBootstrap: resolve(__dirname, 'src/renderer/windows/profileBootstrap/index.html'),
           quickAssistant: resolve(__dirname, 'src/renderer/windows/quickAssistant/index.html'),
           selectionToolbar: resolve(__dirname, 'src/renderer/windows/selection/toolbar/index.html'),
           selectionAction: resolve(__dirname, 'src/renderer/windows/selection/action/index.html'),

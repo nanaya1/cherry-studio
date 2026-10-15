@@ -32,6 +32,13 @@ beforeEach(() => {
 
 const ctx = { senderId: null }
 
+describe('profileHandlers.claim', () => {
+  it('does not expose local-data claim after the authenticated business profile has opened', () => {
+    expect(Object.keys(profileHandlers)).not.toContain('profile.claim.preview')
+    expect(Object.keys(profileHandlers)).not.toContain('profile.claim.confirm')
+  })
+})
+
 describe('profileHandlers.set_avatar', () => {
   it('creates a file_entry from bytes and stores a file: ref in the preference', async () => {
     const data = new Uint8Array([9, 9, 9])

@@ -13,6 +13,7 @@ import { promisify } from 'node:util'
 
 import { agentGlobalSkillService } from '@data/services/AgentGlobalSkillService'
 import { loggerService } from '@logger'
+import { profileSwitchFence } from '@main/core/profiles'
 
 import { getOrgApiBaseUrl } from './OrgApiClient'
 import type { OrgAuthManager } from './OrgAuthManager'
@@ -23,7 +24,7 @@ const execFileAsync = promisify(execFile)
 const logger = loggerService.withContext('OrgSkillCatalog')
 
 /** C2 目录缓存 TTL：企业停用技能后最多 5 分钟生效到"不注入新会话" */
-const CATALOG_TTL_MS = 5 * 60 * 1000
+// const CATALOG_TTL_MS = 5 * 60 * 1000 // 分组目录不可跨请求复用旧授权结果
 
 /**
  * [enterprise] 归一化服务端 tags/categories：线上为纯字符串数组（["规范"]），
@@ -44,8 +45,8 @@ function normalizeFacets(raw: RawOrgSkillFacet[] | undefined): OrgSkillFacet[] {
 }
 
 export class OrgSkillCatalog {
-  // [enterprise] C2 目录缓存：{ at, items, failed }
-  private catalogCache: { at: number; items: OrgSkillCatalogItem[] } | null = null
+  // 原 5 分钟目录缓存已停用：服务端可在 userId 不变时调整 group_id，复用缓存会短暂泄露旧分组目录。
+  // private catalogCache: { at: number; items: OrgSkillCatalogItem[] } | null = null
 
   // [enterprise] 测试可注入点（生产恒为 promisify(execFile)）
   protected tarExtract: typeof execFileAsync = execFileAsync
@@ -53,46 +54,42 @@ export class OrgSkillCatalog {
   constructor(private readonly auth: OrgAuthManager) {}
 
   async list(force = false): Promise<OrgSkillCatalogItem[]> {
-    // [enterprise] C2：走 5 分钟 TTL 缓存；失败时若有过期缓存则降级使用（可用性优先）。
-    // force=true（UI 手动刷新）穿透缓存强制拉取——否则管理台启停后 5 分钟内客户端看不到变更
-    if (!force && this.catalogCache && Date.now() - this.catalogCache.at < CATALOG_TTL_MS) {
-      return this.catalogCache.items
-    }
-    try {
-      const { skills } = await this.auth.apiClient.listSkills()
-      const resolved = skills.map((skill) => {
-        let iconUrl: string | null = null
-        if (skill.iconUrl?.startsWith('/api/skill-icons/')) {
-          const parsed = new URL(skill.iconUrl, getOrgApiBaseUrl())
-          if (parsed.origin === new URL(getOrgApiBaseUrl()).origin) iconUrl = parsed.toString()
-        }
-        // [enterprise] tags/categories 双形态归一化（见 normalizeFacets），渲染层恒拿到 {code,name}
-        const categories = normalizeFacets(skill.categories)
-        const tags = normalizeFacets(skill.tags)
-        return { ...skill, iconUrl, categories, tags }
-      })
-      this.catalogCache = { at: Date.now(), items: resolved }
-      return resolved
-    } catch (error) {
-      if (this.catalogCache) {
-        logger.warn('org skill catalog fetch failed, using stale cache', { error: String(error) })
-        return this.catalogCache.items
+    void force
+    // 原 TTL/stale-cache 逻辑停用：分组由服务端根据 token 实时解析，目录每次都必须重新鉴权裁剪。
+    // if (!force && this.catalogCache && Date.now() - this.catalogCache.at < CATALOG_TTL_MS) return this.catalogCache.items
+    await this.auth.revalidateAuthority()
+    const lease = this.auth.acquireLease()
+    const { skills } = await this.auth.apiClient.listSkills()
+    this.auth.assertLease(lease)
+    return skills.map((skill) => {
+      let iconUrl: string | null = null
+      if (skill.iconUrl?.startsWith('/api/skill-icons/')) {
+        const parsed = new URL(skill.iconUrl, getOrgApiBaseUrl())
+        if (parsed.origin === new URL(getOrgApiBaseUrl()).origin) iconUrl = parsed.toString()
       }
-      throw error
-    }
+      // [enterprise] tags/categories 双形态归一化（见 normalizeFacets），渲染层恒拿到 {code,name}
+      const categories = normalizeFacets(skill.categories)
+      const tags = normalizeFacets(skill.tags)
+      return { ...skill, iconUrl, categories, tags }
+    })
   }
 
   /**
    * [enterprise] C2 停用拦截查询：返回当前已停用/已下架的 org 技能 slug 列表。
    * 渲染层在构建新会话技能注入时调用，命中者不注入。
-   * 目录不可达时抛错由调用方决定放行策略（fail-open）。
+   * 目录不可达时默认禁用已有企业技能，避免离线复用旧组权限。
    */
   async listDisabled(): Promise<string[]> {
-    const catalog = await this.list()
-    const active = new Set(catalog.map((s) => s.slug))
-    return Object.entries(orgStateStore.snapshot())
-      .filter(([slug, state]) => !active.has(slug) || !state.enabled)
-      .map(([slug]) => slug)
+    const local = orgStateStore.snapshot()
+    try {
+      const catalog = await this.list()
+      const active = new Set(catalog.map((s) => s.slug))
+      return Object.entries(local)
+        .filter(([slug, state]) => !active.has(slug) || !state.enabled)
+        .map(([slug]) => slug)
+    } catch {
+      return Object.keys(local)
+    }
   }
 
   /**
@@ -111,6 +108,7 @@ export class OrgSkillCatalog {
       return { updated, disabled }
     }
 
+    const lease = this.auth.acquireLease()
     const remote = new Map(catalog.map((s) => [s.slug, s]))
     const local = orgStateStore.snapshot()
 
@@ -126,7 +124,7 @@ export class OrgSkillCatalog {
       }
       if (state && state.contentHash === item.contentHash) continue
       try {
-        await this.downloadAndInstall(slug, item)
+        await this.downloadAndInstall(slug, item, lease)
         updated.push(slug)
       } catch (error) {
         logger.warn('startupScan auto-update failed', { slug, error: String(error) })
@@ -135,6 +133,8 @@ export class OrgSkillCatalog {
 
     // C2：本地有 & 远端没有 → 标记停用（保留文件，提示"可删除"）
     for (const slug of Object.keys(local)) {
+      this.auth.assertLease(lease)
+      profileSwitchFence.assertWritable()
       if (!remote.has(slug)) {
         orgStateStore.setEnabled(slug, false)
         disabled.push(slug)
@@ -153,8 +153,9 @@ export class OrgSkillCatalog {
 
   /** 安装企业技能：下载（服务端校验）→ 解包 → SkillService.installSkillDir(source='org') → 上报 */
   async install(slug: string): Promise<void> {
-    // [enterprise] C1：install 复用 downloadAndInstall（含 state 记录 + install 上报）
-    await this.downloadAndInstall(slug)
+    profileSwitchFence.assertWritable()
+    const lease = this.auth.acquireLease()
+    await this.downloadAndInstall(slug, undefined, lease)
   }
 
   /** [enterprise] 将旧托管技能就地转成 local；ID、文件和 Agent 关联不变。 */
@@ -175,7 +176,11 @@ export class OrgSkillCatalog {
   /**
    * [enterprise] C1 下载 + 安装 + state 记录 + install 上报（install 与 startupScan 共用）。
    */
-  private async downloadAndInstall(slug: string, knownItem?: OrgSkillCatalogItem): Promise<void> {
+  private async downloadAndInstall(
+    slug: string,
+    knownItem?: OrgSkillCatalogItem,
+    lease = this.auth.acquireLease()
+  ): Promise<void> {
     const item = knownItem ?? (await this.list()).find((s) => s.slug === slug)
     if (!item) throw new Error(`企业技能不存在: ${slug}`)
 
@@ -195,6 +200,8 @@ export class OrgSkillCatalog {
       // 必须把服务端目录的 name/description 作为 displayName 传入，否则「我安装的」
       // 列表显示的是 slug 而不是企业命名（与技能市场 catalog 链路同一机制）。
       // SkillService 未进服务注册表，用导出单例 + 断言访问（installSkillDir 为私有）
+      this.auth.assertLease(lease)
+      profileSwitchFence.assertWritable()
       const { skillService } = await import('@main/ai/skills/SkillService')
       const installed = await (
         skillService as unknown as {
@@ -221,6 +228,13 @@ export class OrgSkillCatalog {
         }
       })
 
+      orgStateStore.recordSkillEntitlement(slug, {
+        issuerId: lease.issuerId,
+        groupId: lease.groupId,
+        resourceId: slug,
+        entitlement: 'active',
+        generation: lease.generation
+      })
       // [enterprise] copy 模式不再写托管快照或墓碑；本地技能表即安装状态来源。
       // orgStateStore.upsert(slug, {
       //   version: item.version,
@@ -263,12 +277,18 @@ export class OrgSkillCatalog {
 
   /** 下载 + sha256 边下边校验，不匹配即抛错（复用 OrgApiClient 逻辑太绕，这里独立实现） */
   private async downloadWithHash(item: OrgSkillCatalogItem, destPath: string): Promise<void> {
-    // [enterprise] 公共目录：未登录也能下载公共技能包；已登录附带 token 供服务端埋点。
-    // getValidSession 内部刷新失败会登出并返回 null，catch 兜底避免下载被刷新异常阻塞。
-    const session = await this.auth.getValidSession().catch(() => null)
+    // 原匿名下载停用：下载端点与目录读取使用同一分组鉴权，必须携带有效会话。
+    // const session = await this.auth.getValidSession().catch(() => null)
+    const session = await this.auth.getValidSession()
+    if (!session) throw new Error('未登录')
 
-    const res = await fetch(`${this.baseUrl()}${item.downloadUrl}`, {
-      headers: session ? { authorization: `Bearer ${session.accessToken}` } : {}
+    const baseUrl = new URL(this.baseUrl())
+    const downloadUrl = new URL(item.downloadUrl, baseUrl)
+    if (downloadUrl.origin !== baseUrl.origin || !downloadUrl.pathname.startsWith('/api/library-items/')) {
+      throw new Error('技能包下载地址无效')
+    }
+    const res = await fetch(downloadUrl, {
+      headers: { authorization: `Bearer ${session.accessToken}` }
     })
     if (!res.ok || !res.body) throw new Error(`技能包下载失败 (${res.status})`)
 

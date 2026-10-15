@@ -1,5 +1,5 @@
 import { ipcMain } from 'electron'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 /**
  * IpcAdapter source-trust gate tests.
@@ -10,6 +10,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
  * covered in core/security/__tests__/validateSender.test.ts — here we verify the
  * wiring: rejection short-circuits, trusted requests pass through.
  */
+import { profileSwitchFence, setProfileLaunchContext, profileBusinessAccessGate } from '@main/core/profiles'
 import { IpcChannel } from '@shared/IpcChannel'
 
 import type { ApiServer } from '../../ApiServer'
@@ -51,6 +52,7 @@ describe('IpcAdapter', () => {
   let requestHandler: IpcHandler
 
   beforeEach(() => {
+    profileSwitchFence.resetForTesting()
     vi.mocked(ipcMain.handle).mockClear()
     handleRequest = vi.fn(async (request) => ({
       id: request.id,
@@ -65,12 +67,64 @@ describe('IpcAdapter', () => {
     requestHandler = handlerFor(IpcChannel.DataApi_Request)
   })
 
+  afterEach(() => {
+    setProfileLaunchContext(undefined)
+  })
+
+  function isolatedBusiness() {
+    setProfileLaunchContext({
+      mode: 'business',
+      kind: 'authenticated',
+      profileId: 'account',
+      identityDigest: 'digest',
+      dataRoot: '/data',
+      profileRoot: '/data/profiles/account'
+    })
+  }
+
+  it.each(['GET', 'POST'])('blocks %s before startup verification grants access', async (method) => {
+    isolatedBusiness()
+    const response = await requestHandler(trustedEvent, { id: 'blocked', method, path: '/topics' })
+    expect(response.status).toBe(403)
+    expect(handleRequest).not.toHaveBeenCalled()
+  })
+
+  it('allows requests after startup verification succeeds', async () => {
+    isolatedBusiness()
+    profileBusinessAccessGate.recordVerificationSuccess()
+    const response = await requestHandler(trustedEvent, { id: 'verified', method: 'GET', path: '/topics' })
+    expect(response.status).toBe(200)
+    expect(response.data).toEqual({ ok: true })
+  })
+
+  it('does not return data if verification fails while a read is in flight', async () => {
+    isolatedBusiness()
+    profileBusinessAccessGate.recordVerificationSuccess()
+    handleRequest.mockImplementation(async () => {
+      profileBusinessAccessGate.recordVerificationFailure('offline')
+      return { id: 'late', status: 200, data: { private: 'data' } }
+    })
+    const response = await requestHandler(trustedEvent, { id: 'late', method: 'GET', path: '/topics' })
+    expect(response.status).toBe(403)
+    expect(response.data).toBeUndefined()
+  })
+
   it('passes a trusted request through to ApiServer', async () => {
     const request = { id: 'req-1', method: 'GET', path: '/topics' }
     const response = await requestHandler(trustedEvent, request)
 
     expect(handleRequest).toHaveBeenCalledWith(request)
     expect(response).toMatchObject({ id: 'req-1', status: 200, data: { ok: true } })
+  })
+
+  it.each(['POST', 'PUT', 'PATCH', 'DELETE'])('rejects %s mutations while profile switching', async (method) => {
+    profileSwitchFence.beginSwitch('550e8400-e29b-41d4-a716-446655440000')
+
+    const response = await requestHandler(trustedEvent, { id: 'req-write', method, path: '/topics' })
+
+    expect(response.status).toBe(400)
+    expect(response.error).toMatchObject({ code: 'INVALID_OPERATION' })
+    expect(handleRequest).not.toHaveBeenCalled()
   })
 
   it('rejects untrusted request senders with 403 before ApiServer is reached', async () => {

@@ -20,7 +20,7 @@ export function useOrgAccountSession(enabled = true) {
   const requestRef = useRef(0)
 
   const applyStatus = useCallback((next: EnterpriseStatus) => {
-    setStatus(next)
+    setStatus((current) => (current && next.generation < current.generation ? current : next))
     setLoadState('ready')
     // [enterprise] C3：登录态变化时同步查询不可用标记（登出置位 / 重登恢复）
     ipcApi
@@ -63,8 +63,9 @@ export function useOrgAccountSession(enabled = true) {
           // 登录返回 authorizationUrl；状态由主进程在回调完成后广播
           await ipcApi.request('enterprise.login.start')
         } else {
-          await ipcApi.request('enterprise.session.logout')
-          applyStatus(await ipcApi.request('enterprise.status.get'))
+          const result = await ipcApi.request('enterprise.session.logout')
+          if (result.state !== 'switching') applyStatus(await ipcApi.request('enterprise.status.get'))
+          if (result.revocationWarning) toast.warning(result.revocationWarning)
         }
       } catch {
         if (requestId !== requestRef.current) return

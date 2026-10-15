@@ -20,6 +20,7 @@ import { agentSkillTable } from '@data/db/schemas/agentSkill'
 import { agentGlobalSkillService } from '@data/services/AgentGlobalSkillService'
 import { loggerService } from '@logger'
 import { isWin } from '@main/core/platform'
+import { orgStateStore } from '@main/enterprise/OrgStateStore'
 import { skillHandlers } from '@main/ipc/handlers/skill'
 import type * as MarkdownParserModule from '@main/utils/markdownParser'
 import { findAllSkillDirectories, findSkillMdPath, parseSkillMetadata } from '@main/utils/markdownParser'
@@ -260,6 +261,21 @@ describe('SkillService', () => {
       expect(result).toHaveLength(3)
       expect(result.every((s) => s.isEnabled === false)).toBe(true)
       expect(result.map((s) => s.name)).toContain('skill-one')
+    })
+
+    it('filters a disabled enterprise skill from both list and getById', async () => {
+      const skillService = new SkillService()
+      await seedSkills()
+      await dbh.db
+        .update(agentGlobalSkillTable)
+        .set({ sourceUrl: 'org-skill:skill-one' })
+        .where(eq(agentGlobalSkillTable.id, SKILL_ID_1))
+      const allowed = vi.spyOn(orgStateStore, 'isSkillAllowed').mockImplementation((sourceUrl) => sourceUrl !== 'org-skill:skill-one')
+
+      await expect(skillService.list()).resolves.not.toEqual(expect.arrayContaining([expect.objectContaining({ id: SKILL_ID_1 })]))
+      await expect(skillService.getById(SKILL_ID_1)).resolves.toBeNull()
+
+      allowed.mockRestore()
     })
 
     it('returns source metadata tags and does not expose user tags', async () => {

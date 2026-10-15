@@ -1,11 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { decryptStringMock, existsSyncMock, netFetchMock, readFileMock } = vi.hoisted(() => ({
+const { decryptStringMock, existsSyncMock, getPathMock, netFetchMock, readFileMock } = vi.hoisted(() => ({
   decryptStringMock: vi.fn(),
   existsSyncMock: vi.fn(),
+  getPathMock: vi.fn(() => '/profile-a/token.enc'),
   netFetchMock: vi.fn(),
   readFileMock: vi.fn()
 }))
+
+vi.mock('@application', () => ({ application: { getPath: getPathMock } }))
 
 vi.mock('electron', () => ({
   net: { fetch: netFetchMock },
@@ -55,11 +58,26 @@ describe('CopilotService headers', () => {
     decryptStringMock.mockReset().mockReturnValue('github-access-token')
     existsSyncMock.mockReset().mockReturnValue(false)
     readFileMock.mockReset().mockResolvedValue(Buffer.from('encrypted-token'))
+    getPathMock.mockReset().mockReturnValue('/profile-a/token.enc')
+    copilotService.resetProfileCache()
   })
 
   afterEach(() => {
     vi.useRealTimers()
     vi.restoreAllMocks()
+  })
+
+  it('binds the token path to the active profile lifecycle without probing legacy files', async () => {
+    netFetchMock.mockResolvedValue(fetchResponse({ token: 'copilot-token' }))
+
+    await copilotService.getToken(IPC_EVENT)
+    expect(readFileMock).toHaveBeenLastCalledWith('/profile-a/token.enc')
+    expect(existsSyncMock).not.toHaveBeenCalled()
+
+    getPathMock.mockReturnValue('/profile-b/token.enc')
+    copilotService.resetProfileCache()
+    await copilotService.getToken(IPC_EVENT)
+    expect(readFileMock).toHaveBeenLastCalledWith('/profile-b/token.enc')
   })
 
   it('preserves the device-code JSON contract while merging custom headers without leaks', async () => {

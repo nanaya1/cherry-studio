@@ -9,7 +9,9 @@ const {
   inspectTargetMock,
   requestDataResetMock,
   requestV1RemigrationMock,
-  requestRelocationMock
+  requestRelocationMock,
+  requestDataRootRelocationMock,
+  getProfileLaunchContextMock
 } = vi.hoisted(() => ({
   appGetMock: vi.fn(),
   appGetPathMock: vi.fn(),
@@ -19,7 +21,9 @@ const {
   inspectTargetMock: vi.fn(),
   requestDataResetMock: vi.fn(),
   requestV1RemigrationMock: vi.fn(),
-  requestRelocationMock: vi.fn()
+  requestRelocationMock: vi.fn(),
+  requestDataRootRelocationMock: vi.fn(),
+  getProfileLaunchContextMock: vi.fn()
 }))
 
 vi.mock('@application', () => ({
@@ -28,6 +32,15 @@ vi.mock('@application', () => ({
     getPath: appGetPathMock,
     relaunch: appRelaunchMock
   }
+}))
+vi.mock('@main/core/profiles', () => ({
+  getProfileLaunchContext: getProfileLaunchContextMock
+}))
+vi.mock('@main/services/dataRootRelocation', () => ({
+  requestDataRootRelocation: requestDataRootRelocationMock
+}))
+vi.mock('@main/services/profileDataReset', () => ({
+  requestDeviceDataReset: vi.fn()
 }))
 vi.mock('@main/services/dataReset', () => ({
   requestDataReset: requestDataResetMock,
@@ -64,6 +77,7 @@ beforeEach(() => {
   ;(app as { isPackaged: boolean }).isPackaged = true
   appGetPathMock.mockReturnValue('/mock/path')
   inspectTargetMock.mockReturnValue({ valid: true, targetEmpty: true })
+  getProfileLaunchContextMock.mockReturnValue(undefined)
   appGetMock.mockImplementation((name: string) => {
     if (name === 'AppUpdaterService') return appUpdaterService
     if (name === 'PreferenceService') return preferenceService
@@ -86,6 +100,32 @@ describe('appHandlers', () => {
 
     expect(requestRelocationMock).toHaveBeenCalledWith('/new/data', true)
     expect(result).toBeUndefined()
+  })
+
+  it('routes profile-isolated copy requests to dataRoot relocation using the trusted context', async () => {
+    const context = {
+      mode: 'business',
+      profileId: 'a'.repeat(32),
+      identityDigest: 'a'.repeat(64),
+      kind: 'authenticated',
+      dataRoot: '/profiles-root',
+      profileRoot: `/profiles-root/profiles/${'a'.repeat(32)}`
+    }
+    getProfileLaunchContextMock.mockReturnValue(context)
+
+    await appHandlers['app.user_data_relocation.request']({ path: '/new/root', copy: true }, ctx)
+
+    expect(requestDataRootRelocationMock).toHaveBeenCalledWith(context, '/new/root')
+    expect(requestRelocationMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects switch-only relocation in profile isolation', async () => {
+    getProfileLaunchContextMock.mockReturnValue({ mode: 'business' })
+
+    await expect(
+      appHandlers['app.user_data_relocation.request']({ path: '/new/root', copy: false }, ctx)
+    ).rejects.toMatchObject({ code: 'DATA_ROOT_RELOCATION_COPY_REQUIRED' })
+    expect(requestDataRootRelocationMock).not.toHaveBeenCalled()
   })
 
   it('rejects relocation requests from unpackaged development runs', async () => {

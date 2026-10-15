@@ -6,10 +6,7 @@ import type { IpcHandlersFor } from '@shared/ipc/types'
 export const enterpriseHandlers: IpcHandlersFor<typeof enterpriseRequestSchemas> = {
   'enterprise.status.get': async () => application.get('EnterprisePlugin').auth.getStatus(),
   'enterprise.login.start': async () => application.get('EnterprisePlugin').auth.startLogin(),
-  'enterprise.session.logout': async () => {
-    application.get('EnterprisePlugin').auth.logout()
-    return { ok: true }
-  },
+  'enterprise.session.logout': async () => application.get('EnterprisePlugin').auth.logout(),
   // [enterprise] installedSlugs：随目录返回已装状态（对话框据此标记「已安装」）
   // force：UI 手动刷新穿透目录 TTL 缓存
   'enterprise.skills.list': async ({ force }) => {
@@ -24,11 +21,10 @@ export const enterpriseHandlers: IpcHandlersFor<typeof enterpriseRequestSchemas>
     void application.get('EnterprisePlugin').skills.reportExec(slug, detail)
     return { ok: true }
   },
-  // [enterprise] copy 模式：已安装副本不受目录停用影响。
-  // 'enterprise.skills.listDisabled': async () => ({
-  //   disabled: await application.get('EnterprisePlugin').skills.listDisabled()
-  // }),
-  'enterprise.skills.listDisabled': async () => ({ disabled: [] }),
+  // copy 模式保留本地副本，但执行前仍按当前分组和离线策略 fail closed。
+  'enterprise.skills.listDisabled': async () => ({
+    disabled: await application.get('EnterprisePlugin').skills.listDisabled()
+  }),
   // [enterprise] copy 模式保留旧路由兼容已打开窗口，但不再上报或写删除墓碑。
   // 'enterprise.skills.reportDeleted': async ({ slug }) => {
   //   await application.get('EnterprisePlugin').skills.reportDeleted(slug)

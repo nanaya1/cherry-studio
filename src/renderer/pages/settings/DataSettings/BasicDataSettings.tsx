@@ -282,6 +282,14 @@ const BasicDataSettings: React.FC = () => {
     })
   }
 
+  const handleDeviceDataReset = async () => {
+    try {
+      await ipcApi.request('app.data_reset.device.request')
+    } catch (error) {
+      toast.error(t('settings.data.data_reset.error'))
+    }
+  }
+
   const handleDataReset = async () => {
     const confirmed = await popup.confirm({
       title: t('settings.data.data_reset.confirm_title'),
@@ -428,6 +436,9 @@ const BasicDataSettings: React.FC = () => {
         <SettingRow id="setting-data-data-reset" className="scroll-mt-6">
           <SettingRowTitle>{t('settings.data.data_reset.title')}</SettingRowTitle>
           <RowFlex className="gap-1.25">
+            <Button onClick={handleDeviceDataReset} variant="outline">
+              {t('settings.data.data_reset.device_button')}
+            </Button>
             <Button onClick={handleDataReset} variant="destructive">
               {t('settings.data.data_reset.button')}
             </Button>

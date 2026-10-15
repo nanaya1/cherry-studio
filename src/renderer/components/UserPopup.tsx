@@ -25,6 +25,7 @@ import useAvatar from '@renderer/hooks/useAvatar'
 import { useOrgAccountSession } from '@renderer/hooks/useOrgAccountSession'
 import { ipcApi } from '@renderer/ipc'
 import { createPopup, type PopupInjectedProps } from '@renderer/services/popup'
+// Stopped with the late profile-claim dialog: import { popup } from '@renderer/services/popup'
 import { toast } from '@renderer/services/toast'
 import { checkEntityImageSize, prepareEntityImageBytes } from '@renderer/utils/image'
 import { isEmoji } from '@renderer/utils/naming'
@@ -44,6 +45,8 @@ const PopupContainer: React.FC<Props> = ({ open, resolve }) => {
 
   const [avatarPopoverOpen, setAvatarPopoverOpen] = useState(false)
   const [avatarPopoverView, setAvatarPopoverView] = useState<AvatarPopoverView>('menu')
+  // Stopped: local profile claim now runs during login before authenticated userData opens.
+  // const [isClaimingLocalData, setIsClaimingLocalData] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { t } = useTranslation()
   const avatar = useAvatar()
@@ -105,6 +108,9 @@ const PopupContainer: React.FC<Props> = ({ open, resolve }) => {
       toast.error(error.message)
     }
   }
+
+  // Stopped: this handler ran after DbService opened the authenticated target, so every claim was target-not-empty.
+  // Login now prompts and copies local data before target credentials and business bootstrap.
 
   const handleUploadAvatar = async (file: File) => {
     const sizeError = checkEntityImageSize(file)
@@ -293,6 +299,7 @@ const PopupContainer: React.FC<Props> = ({ open, resolve }) => {
             ) : orgStatus ? (
               orgStatus.phase === 'signed-in' ? (
                 <ColFlex className="w-full items-center gap-1.5">
+                  {/* Stopped: claim is offered during local-to-authenticated login before this renderer starts. */}
                   <Button
                     className="w-full"
                     loading={isOrgLoggingOut}

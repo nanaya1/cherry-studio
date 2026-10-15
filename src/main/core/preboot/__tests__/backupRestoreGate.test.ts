@@ -13,29 +13,51 @@ const runRestorePromotionMock = vi.fn<() => Promise<void>>()
 const markRestoreFailedAfterCrashMock = vi.fn<() => void>()
 const isLiveDbStrandedMock = vi.fn<() => boolean>()
 const cleanupTerminalRestoreArtifactsMock = vi.fn<() => void>()
+const verifyRestoreProfileIdentityMock = vi.fn<() => boolean>()
 
 vi.mock('@data/db/restore/restorePromotion', () => ({
   runRestorePromotion: () => runRestorePromotionMock(),
   markRestoreFailedAfterCrash: () => markRestoreFailedAfterCrashMock(),
   isLiveDbStranded: () => isLiveDbStrandedMock(),
-  cleanupTerminalRestoreArtifacts: () => cleanupTerminalRestoreArtifactsMock()
+  cleanupTerminalRestoreArtifacts: () => cleanupTerminalRestoreArtifactsMock(),
+  verifyRestoreProfileIdentity: () => verifyRestoreProfileIdentityMock()
 }))
 
 import { runBackupRestoreGate } from '../backupRestoreGate'
+
+const context = {
+  mode: 'business' as const,
+  profileId: '1'.repeat(32),
+  identityDigest: 'a'.repeat(64),
+  kind: 'authenticated' as const,
+  dataRoot: '/data/root',
+  profileRoot: `/data/root/profiles/${'1'.repeat(32)}`
+}
 
 beforeEach(() => {
   runRestorePromotionMock.mockReset()
   markRestoreFailedAfterCrashMock.mockReset()
   isLiveDbStrandedMock.mockReset()
   cleanupTerminalRestoreArtifactsMock.mockReset()
+  verifyRestoreProfileIdentityMock.mockReset()
+  verifyRestoreProfileIdentityMock.mockReturnValue(true)
   isLiveDbStrandedMock.mockReturnValue(false)
 })
 
 describe('runBackupRestoreGate', () => {
-  it('delegates to the promotion logic and skips the crash net on success', async () => {
+  it('runs the legacy promotion path without requiring a profile launch context', async () => {
     runRestorePromotionMock.mockResolvedValue(undefined)
 
     await expect(runBackupRestoreGate()).resolves.toBeUndefined()
+
+    expect(verifyRestoreProfileIdentityMock).not.toHaveBeenCalled()
+    expect(runRestorePromotionMock).toHaveBeenCalledOnce()
+  })
+
+  it('delegates to the promotion logic and skips the crash net on success', async () => {
+    runRestorePromotionMock.mockResolvedValue(undefined)
+
+    await expect(runBackupRestoreGate(context)).resolves.toBeUndefined()
 
     expect(runRestorePromotionMock).toHaveBeenCalledOnce()
     expect(markRestoreFailedAfterCrashMock).not.toHaveBeenCalled()
@@ -43,10 +65,19 @@ describe('runBackupRestoreGate', () => {
     expect(cleanupTerminalRestoreArtifactsMock).toHaveBeenCalledOnce()
   })
 
+  it('refuses promotion when the restore marker belongs to another profile', async () => {
+    verifyRestoreProfileIdentityMock.mockReturnValue(false)
+
+    await expect(runBackupRestoreGate(context)).resolves.toBeUndefined()
+
+    expect(runRestorePromotionMock).not.toHaveBeenCalled()
+    expect(cleanupTerminalRestoreArtifactsMock).toHaveBeenCalledOnce()
+  })
+
   it('swallows a substance crash and invokes the crash net', async () => {
     runRestorePromotionMock.mockRejectedValue(new Error('boom'))
 
-    await expect(runBackupRestoreGate()).resolves.toBeUndefined()
+    await expect(runBackupRestoreGate(context)).resolves.toBeUndefined()
 
     expect(markRestoreFailedAfterCrashMock).toHaveBeenCalledOnce()
     expect(cleanupTerminalRestoreArtifactsMock).toHaveBeenCalledOnce()
@@ -58,7 +89,7 @@ describe('runBackupRestoreGate', () => {
       throw new Error('disk full')
     })
 
-    await expect(runBackupRestoreGate()).resolves.toBeUndefined()
+    await expect(runBackupRestoreGate(context)).resolves.toBeUndefined()
     expect(cleanupTerminalRestoreArtifactsMock).toHaveBeenCalledOnce()
   })
 
@@ -68,7 +99,7 @@ describe('runBackupRestoreGate', () => {
 
     // Booting on would create a fresh empty database while the user's data
     // sits in the aside — the one case worse than the fail-fast dialog.
-    await expect(runBackupRestoreGate()).rejects.toThrow(/empty database/)
+    await expect(runBackupRestoreGate(context)).rejects.toThrow(/empty database/)
     expect(cleanupTerminalRestoreArtifactsMock).not.toHaveBeenCalled()
   })
 
@@ -79,7 +110,7 @@ describe('runBackupRestoreGate', () => {
     })
     isLiveDbStrandedMock.mockReturnValue(true)
 
-    await expect(runBackupRestoreGate()).rejects.toThrow(/empty database/)
+    await expect(runBackupRestoreGate(context)).rejects.toThrow(/empty database/)
     expect(cleanupTerminalRestoreArtifactsMock).not.toHaveBeenCalled()
   })
 })

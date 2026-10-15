@@ -151,49 +151,7 @@ export class LoggerService {
       }
     }
 
-    // Configure transports based on environment
-    const transports: winston.transport[] = []
-
-    // Daily rotate file transport for general logs
-    transports.push(
-      new DailyRotateFile({
-        filename: path.join(this.logsDir, 'app.%DATE%.log'),
-        datePattern: 'YYYY-MM-DD',
-        maxSize: '10m',
-        maxFiles: `${MAX_LOG_RETENTION_DAYS}d`
-      })
-    )
-
-    // Daily rotate file transport for error logs
-    transports.push(
-      new DailyRotateFile({
-        level: 'warn',
-        filename: path.join(this.logsDir, 'app-error.%DATE%.log'),
-        datePattern: 'YYYY-MM-DD',
-        maxSize: '10m',
-        maxFiles: `${MAX_LOG_RETENTION_DAYS}d`
-      })
-    )
-
-    // Configure Winston logger
-    this.logger = winston.createLogger({
-      // Development: all levels, Production: info and above
-      level: DEFAULT_LEVEL,
-      format: winston.format.combine(
-        winston.format.timestamp({
-          format: 'YYYY-MM-DD HH:mm:ss'
-        }),
-        winston.format.errors({ stack: true }),
-        winston.format.json()
-      ),
-      exitOnError: false,
-      transports
-    })
-
-    // Handle transport events
-    this.logger.on('error', (error) => {
-      console.error('LoggerService fatal error:', error)
-    })
+    this.logger = this.createLogger(this.logsDir)
 
     //register ipc handler, for renderer process to log to main process
     this.registerIpcHandler()
@@ -207,13 +165,45 @@ export class LoggerService {
    */
   public withContext(module: string, context?: Record<string, any>): LoggerService {
     const newLogger = Object.create(this)
-
-    // Copy all properties from the base logger
-    newLogger.logger = this.logger
     newLogger.module = module
     newLogger.context = { ...this.context, ...context }
-
     return newLogger
+  }
+
+  public rebind(logsDir: string): void {
+    const previous = this.logger
+    this.logsDir = logsDir
+    this.logger = this.createLogger(logsDir)
+    previous.end()
+  }
+
+  private createLogger(logsDir: string): winston.Logger {
+    const logger = winston.createLogger({
+      level: DEFAULT_LEVEL,
+      format: winston.format.combine(
+        winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
+        winston.format.errors({ stack: true }),
+        winston.format.json()
+      ),
+      exitOnError: false,
+      transports: [
+        new DailyRotateFile({
+          filename: path.join(logsDir, 'app.%DATE%.log'),
+          datePattern: 'YYYY-MM-DD',
+          maxSize: '10m',
+          maxFiles: `${MAX_LOG_RETENTION_DAYS}d`
+        }),
+        new DailyRotateFile({
+          level: 'warn',
+          filename: path.join(logsDir, 'app-error.%DATE%.log'),
+          datePattern: 'YYYY-MM-DD',
+          maxSize: '10m',
+          maxFiles: `${MAX_LOG_RETENTION_DAYS}d`
+        })
+      ]
+    })
+    logger.on('error', (error) => console.error('LoggerService fatal error:', error))
+    return logger
   }
 
   /**

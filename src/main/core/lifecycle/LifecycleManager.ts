@@ -181,18 +181,19 @@ export class LifecycleManager extends EventEmitter {
         this.servicePhase.set(serviceName, phase)
       }
       const results = await Promise.allSettled(layer.map((serviceName) => this.initializeService(serviceName)))
+      for (const [index, result] of results.entries()) {
+        if (result.status === 'fulfilled' && result.value) {
+          this.initializationOrder.push(layer[index])
+        }
+      }
       for (const result of results) {
         if (result.status === 'rejected') {
-          // Re-throw to preserve fail-fast semantics.
+          // Re-throw to preserve fail-fast semantics. Successfully initialized
+          // services in this and earlier layers remain recorded for partial teardown.
           // Graceful services won't reject (handleError doesn't throw for them).
           throw result.reason
         }
       }
-    }
-
-    // Track overall initialization order
-    for (const layer of layers) {
-      this.initializationOrder.push(...layer)
     }
 
     const phaseDuration = performance.now() - phaseStart
@@ -244,7 +245,7 @@ export class LifecycleManager extends EventEmitter {
   public async stopAll(): Promise<TeardownSummary> {
     const summary: TeardownSummary = { timedOut: [], failed: [] }
 
-    if (!this.initialized) {
+    if (!this.initialized && this.initializationOrder.length === 0) {
       logger.warn('Services not initialized')
       return summary
     }
@@ -296,9 +297,9 @@ export class LifecycleManager extends EventEmitter {
   /**
    * Initialize a single service
    */
-  private async initializeService(serviceName: string): Promise<void> {
+  private async initializeService(serviceName: string): Promise<boolean> {
     const metadata = this.container.getMetadata(serviceName)
-    if (!metadata) return
+    if (!metadata) return false
 
     try {
       this.emitLifecycleEvent(LifecycleEvents.SERVICE_INITIALIZING, serviceName, LifecycleState.Initializing)
@@ -308,7 +309,7 @@ export class LifecycleManager extends EventEmitter {
         ? this.container.getOptional(serviceName)
         : this.container.get(serviceName)
 
-      if (!instance) return
+      if (!instance) return false
 
       // Call initialization with timing
       const start = performance.now()
@@ -326,9 +327,11 @@ export class LifecycleManager extends EventEmitter {
       logger.debug(`Service '${serviceName}' initialized (${duration.toFixed(3)}ms)`)
 
       this.emitLifecycleEvent(LifecycleEvents.SERVICE_READY, serviceName, LifecycleState.Ready)
+      return true
     } catch (error) {
       this.emitLifecycleEvent(LifecycleEvents.SERVICE_ERROR, serviceName, LifecycleState.Stopped, error as Error)
       this.handleError(serviceName, error as Error, metadata.errorStrategy)
+      return false
     }
   }
 

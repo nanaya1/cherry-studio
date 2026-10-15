@@ -40,7 +40,13 @@ function stagedJournal(): RestoreJournal {
     version: 1,
     restoreId: 'restore-0001',
     createdAt: '2026-07-09T12:00:00.000Z',
+    mode: 'in-place',
     state: 'staged',
+    profile: {
+      profileId: '1'.repeat(32),
+      identityDigest: 'a'.repeat(64),
+      kind: 'authenticated'
+    },
     db: {
       promote: 'restore-staging/restore-0001/work.sqlite',
       aside: 'cherrystudio.sqlite.pre-restore-restore-0001',
@@ -99,6 +105,14 @@ describe('restoreJournal', () => {
 
     it("returns 'corrupt' for an unknown state", () => {
       writeFileSync(journalPath(), JSON.stringify({ ...stagedJournal(), state: 'imported' }))
+
+      expect(readRestoreJournal().kind).toBe('corrupt')
+    })
+
+    it("returns 'corrupt' when profile identity is missing", () => {
+      const withoutProfile: Partial<RestoreJournal> = { ...stagedJournal() }
+      delete withoutProfile.profile
+      writeFileSync(journalPath(), JSON.stringify(withoutProfile))
 
       expect(readRestoreJournal().kind).toBe('corrupt')
     })

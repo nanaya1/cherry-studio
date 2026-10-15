@@ -158,6 +158,16 @@ describe('BasicDataSettings', () => {
     })
   })
 
+  it('sends the parameterless device-reset request and leaves advanced confirmation to main', async () => {
+    await renderSettings()
+
+    fireEvent.click(screen.getByRole('button', { name: 'settings.data.data_reset.device_button' }))
+
+    await waitFor(() => {
+      expect(requestMock).toHaveBeenCalledExactlyOnceWith('app.data_reset.device.request')
+    })
+  })
+
   it('shows the localized error toast when the data-reset request rejects', async () => {
     vi.mocked(popup.confirm).mockResolvedValueOnce(true)
     await renderSettings()

@@ -17,6 +17,9 @@ import { ImageBytesSchema } from './entityImage'
  * - `{ kind: 'emoji', emoji }` — an emoji glyph, stored verbatim; slot cleared.
  * - `{ kind: 'default' }` — reset to the bundled default (`''`); slot cleared.
  */
+// Stopped: claim preview/confirm no longer crosses the running renderer IPC boundary.
+// The authenticated profile must receive local data before its business userData is opened.
+
 export const profileRequestSchemas = {
   'profile.set_avatar': defineRoute({
     input: z.discriminatedUnion('kind', [
@@ -26,4 +29,5 @@ export const profileRequestSchemas = {
     ]),
     output: z.void()
   })
+  // Stopped: profile.claim.preview/profile.claim.confirm moved to the main-process login transition.
 }

@@ -64,6 +64,7 @@ const api = {
   },
   backup: {
     restore: (path: string) => ipcRenderer.invoke(IpcChannel.Backup_Restore, path),
+    safeImport: (path: string) => ipcRenderer.invoke(IpcChannel.Backup_SafeImport, path),
     // Direct backup methods (copy IndexedDB/LocalStorage directories directly)
     backup: (fileName: string, destinationPath: string, skipBackupFile?: boolean) =>
       ipcRenderer.invoke(IpcChannel.Backup_Backup, fileName, destinationPath, skipBackupFile),

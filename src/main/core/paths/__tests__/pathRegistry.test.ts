@@ -73,13 +73,44 @@ describe('buildPathRegistry', () => {
     expect(registry['feature.agents.pi.sessions']).toBe(path.join(piRoot, 'sessions'))
   })
 
-  it('keeps the provider registry override under userData Runtime', () => {
+  it('keeps provider registry overrides profile-scoped and bundled data shared read-only', () => {
     const registry = buildPathRegistry()
 
     expect(registry['feature.provider_registry.override']).toBe(
       path.join('/mock/userData', 'Runtime', 'provider-registry-override')
     )
+    expect(registry['feature.provider_registry.data']).not.toContain('/mock/userData')
     expect(shouldAutoEnsure('feature.provider_registry.override')).toBe(true)
+    expect(shouldAutoEnsure('feature.provider_registry.data')).toBe(false)
+  })
+
+  it('keeps MCP, Copilot, and enterprise sensitive state inside the current profile userData', () => {
+    const registry = buildPathRegistry()
+    const sensitivePaths = [
+      registry['feature.mcp.oauth'],
+      registry['feature.mcp.memory_file'],
+      registry['feature.mcp.registry_file'],
+      registry['feature.mcp.auto_install_settings_file'],
+      registry['feature.copilot.token_file'],
+      registry['feature.enterprise.state_file'],
+      registry['feature.enterprise.credentials_file']
+    ]
+
+    for (const sensitivePath of sensitivePaths) {
+      expect(path.relative('/mock/userData', sensitivePath)).not.toMatch(/^\.\.(?:\/|$)/)
+    }
+    expect(registry['feature.mcp']).not.toContain('/mock/userData')
+  })
+
+  it('resolves sensitive paths independently for A, B, and local profile userData roots', () => {
+    const roots = ['/profiles/a/userData', '/profiles/b/userData', '/profiles/local/userData']
+    const oauthPaths = roots.map((root) => {
+      getPathMock.mockImplementation((key: string) => (key === 'userData' ? root : `/mock/${key}`))
+      return buildPathRegistry()['feature.mcp.oauth']
+    })
+
+    expect(new Set(oauthPaths).size).toBe(3)
+    expect(oauthPaths).toEqual(roots.map((root) => path.join(root, 'Sensitive', 'Mcp', 'oauth')))
   })
 
   it('keeps the isolated mise tree under the userData toolchain', () => {

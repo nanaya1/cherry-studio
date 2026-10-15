@@ -6,6 +6,7 @@ import { mcpServerService } from '@data/services/McpServerService'
  * C6 扩展：compareAndSync（新增安装 / 期望配置变更更新 / 目录缺失禁用），本地映射记于 OrgStateStore。
  */
 import { loggerService } from '@logger'
+import { profileSwitchFence } from '@main/core/profiles'
 import type { CreateMcpServerDto } from '@shared/data/api/schemas/mcpServers'
 import { UpdateMcpServerSchema } from '@shared/data/api/schemas/mcpServers'
 
@@ -43,12 +44,15 @@ export class OrgMcpCatalog {
   constructor(private readonly auth: OrgAuthManager) {}
 
   async list(): Promise<OrgConnectorCatalogItem[]> {
+    await this.auth.revalidateAuthority()
+    const lease = this.auth.acquireLease()
     const { connectors } = await this.auth.apiClient.listConnectors()
-    this.backfillCopyTags(connectors)
+    this.auth.assertLease(lease)
+    this.backfillCopyTags(connectors, lease)
     return connectors
   }
 
-  private backfillCopyTags(catalog: OrgConnectorCatalogItem[]): void {
+  private backfillCopyTags(catalog: OrgConnectorCatalogItem[], lease: ReturnType<OrgAuthManager['acquireLease']>): void {
     const local = mcpServerService.list({}).items
     for (const server of local) {
       if (server.installSource !== 'manual' || server.tags?.includes('org')) continue
@@ -63,7 +67,11 @@ export class OrgMcpCatalog {
         }
         return server.baseUrl === item.baseUrl
       })
-      if (matched) mcpServerService.update(server.id, { tags: [...(server.tags ?? []), 'org'] })
+      if (matched) {
+        this.auth.assertLease(lease)
+        profileSwitchFence.assertWritable()
+        mcpServerService.update(server.id, { tags: [...(server.tags ?? []), 'org'] })
+      }
     }
   }
 
@@ -83,10 +91,16 @@ export class OrgMcpCatalog {
     try {
       catalog = await this.list()
     } catch (error) {
-      logger.warn('compareAndSync skipped: catalog unreachable', { error: String(error) })
+      logger.warn('compareAndSync disabling enterprise connectors: catalog unreachable', { error: String(error) })
+      for (const [slug, state] of Object.entries(orgStateStore.snapshotConnectors())) {
+        const current = mcpServerService.getByIdSafe(state.mcpId)
+        if (current?.isActive) mcpServerService.update(state.mcpId, { isActive: false })
+        disabled.push(slug)
+      }
       return { installed, updated, disabled }
     }
 
+    const lease = this.auth.acquireLease()
     const remote = new Map(catalog.map((c) => [c.slug, c]))
     const local = orgStateStore.snapshotConnectors()
 
@@ -95,6 +109,8 @@ export class OrgMcpCatalog {
       const state = local[slug]
       const expected = toCreateDto(item)
       try {
+        this.auth.assertLease(lease)
+        profileSwitchFence.assertWritable()
         if (!state) {
           // [enterprise] C4 墓碑防复活：用户删除过的连接器（同 baseUrl）不自动重装；
           // 企业推送了新 baseUrl 视为重新下发，清墓碑正常安装。
@@ -142,6 +158,8 @@ export class OrgMcpCatalog {
     for (const [slug, state] of Object.entries(local)) {
       if (remote.has(slug)) continue
       try {
+        this.auth.assertLease(lease)
+        profileSwitchFence.assertWritable()
         const current = mcpServerService.getByIdSafe(state.mcpId)
         if (current?.isActive) {
           mcpServerService.update(state.mcpId, { isActive: false })
@@ -194,13 +212,24 @@ export class OrgMcpCatalog {
 
   /** 安装连接器为企业 MCP 服务器（直连 SSE，本地直连使用，不经服务端代理） */
   async install(slug: string): Promise<void> {
+    profileSwitchFence.assertWritable()
+    const lease = this.auth.acquireLease()
     const catalog = await this.list()
     const item = catalog.find((c) => c.slug === slug)
     if (!item) throw new Error(`企业连接器不存在: ${slug}`)
+    this.auth.assertLease(lease)
+    profileSwitchFence.assertWritable()
 
     // [enterprise] copy 模式：安装后归用户本地所有，不再纳入组织同步与墓碑管理。
     // orgStateStore.clearConnectorDeleted(slug)
     this.installLocal(item)
-    // orgStateStore.upsertConnector(slug, { mcpId: this.lastCreatedId, baseUrl: item.baseUrl })
+    orgStateStore.recordConnectorEntitlement(slug, {
+      issuerId: lease.issuerId,
+      groupId: lease.groupId,
+      resourceId: slug,
+      entitlement: 'active',
+      generation: lease.generation,
+      localResourceId: this.lastCreatedId
+    })
   }
 }

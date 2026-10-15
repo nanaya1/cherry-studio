@@ -7,7 +7,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   BACKUP_ACTIVE_WRITERS_ERROR_CODE,
   BACKUP_BACKGROUND_TASKS_ERROR_CODE,
-  BACKUP_DISK_FULL_ERROR_CODE
+  BACKUP_DISK_FULL_ERROR_CODE,
+  type WebDavConfig
 } from '@shared/types/backup'
 
 // Mock path module to normalize all paths to POSIX format for cross-platform consistency
@@ -80,7 +81,10 @@ const {
   mockZipExtract,
   mockZipClose,
   mockZipEntries,
-  MockStreamZipAsync
+  MockStreamZipAsync,
+  mockGetProfileLaunchContext,
+  mockSanitizeSafeImportDatabase,
+  mockAssertSafeImportTargetEmpty
 } = vi.hoisted(() => {
   const mockAgentIngressHold = { dispose: vi.fn() }
   const mockJobHold = { dispose: vi.fn() }
@@ -144,7 +148,10 @@ const {
     mockZipEntries,
     MockStreamZipAsync: vi.fn(function () {
       return { entries: mockZipEntries, extract: mockZipExtract, close: mockZipClose }
-    })
+    }),
+    mockGetProfileLaunchContext: vi.fn(),
+    mockSanitizeSafeImportDatabase: vi.fn(),
+    mockAssertSafeImportTargetEmpty: vi.fn()
   }
 })
 
@@ -155,6 +162,18 @@ vi.mock('node:crypto', async () => {
 
 vi.mock('@main/data/db/restore/hashDbFile', () => ({
   hashDbFile: mockHashDbFile
+}))
+
+vi.mock('@main/core/profiles', () => ({
+  getProfileLaunchContext: mockGetProfileLaunchContext
+}))
+
+vi.mock('../SafeImportSanitizer', () => ({
+  sanitizeSafeImportDatabase: mockSanitizeSafeImportDatabase
+}))
+
+vi.mock('../SafeImportTarget', () => ({
+  assertSafeImportTargetEmpty: mockAssertSafeImportTargetEmpty
 }))
 
 vi.mock('@main/data/db/restore/restoreJournal', () => ({
@@ -353,15 +372,32 @@ const createStats = (type: 'directory' | 'file' | 'symlink', size = 0) => ({
   isSymbolicLink: () => type === 'symlink'
 })
 
+const PROFILE_ID = '1'.repeat(32)
+const IDENTITY_DIGEST = 'a'.repeat(64)
+const AUTHENTICATED_PROFILE_CONTEXT = {
+  mode: 'business',
+  profileId: PROFILE_ID,
+  identityDigest: IDENTITY_DIGEST,
+  kind: 'authenticated',
+  dataRoot: '/mock/dataRoot',
+  profileRoot: `/mock/dataRoot/profiles/${PROFILE_ID}`
+}
+
 describe('BackupManager direct v2 data compatibility', () => {
   let backupManager: BackupManager
   const metadata = {
-    version: 7,
+    version: 8,
     appName: 'Cherry Studio',
     appVersion: '2.0.0',
     timestamp: 1,
     platform: process.platform,
     arch: process.arch,
+    profile: {
+      schema: 1,
+      kind: 'authenticated',
+      profileId: PROFILE_ID,
+      identityDigest: IDENTITY_DIGEST
+    },
     resources: {
       database: true,
       cache: true,
@@ -395,6 +431,7 @@ describe('BackupManager direct v2 data compatibility', () => {
     vi.clearAllMocks()
     backupManager = new BackupManager()
     mockRandomUUID.mockReturnValue('operation-id')
+    mockGetProfileLaunchContext.mockReturnValue(AUTHENTICATED_PROFILE_CONTEXT)
     mockHashDbFile.mockResolvedValue('same-fingerprint')
     mockReadRestoreJournal.mockReturnValue({ kind: 'none' })
     mockReadAppliedChain.mockReturnValue([{ folderMillis: 1, hash: 'migration-hash' }])
@@ -654,7 +691,7 @@ describe('BackupManager direct v2 data compatibility', () => {
     expect(lanChmod).toBeUndefined()
   })
 
-  it('writes a version 7 archive with complete Data, IndexedDB, Local Storage, and cache.json', async () => {
+  it('writes a version 8 archive bound to the active profile identity', async () => {
     let heartbeatHeld = false
     mockAgentJobs.pause.mockImplementationOnce(() => {
       heartbeatHeld = true
@@ -706,8 +743,14 @@ describe('BackupManager direct v2 data compatibility', () => {
     expect(fs.writeJson).toHaveBeenCalledWith(
       '/mock/temp/backup/create-operation-id/metadata.json',
       expect.objectContaining({
-        version: 7,
+        version: 8,
         appName: 'Cherry Studio',
+        profile: {
+          schema: 1,
+          kind: 'authenticated',
+          profileId: PROFILE_ID,
+          identityDigest: IDENTITY_DIGEST
+        },
         resources: {
           database: false,
           cache: true,
@@ -731,19 +774,45 @@ describe('BackupManager direct v2 data compatibility', () => {
     expect(mockHeartbeatHold.dispose).toHaveBeenCalledOnce()
   })
 
-  it('rejects remote backup file names containing path separators', async () => {
-    for (const fileName of ['../outside.zip', '..\\outside.zip']) {
+  it('fails closed when profile isolation has no launch context', async () => {
+    mockGetProfileLaunchContext.mockReturnValue(undefined)
+
+    await expect(backupManager.backup({} as Electron.IpcMainInvokeEvent, 'backup.zip', '/backups')).rejects.toThrow(
+      /profile launch context/i
+    )
+
+    expect(mockCreateAtomicWriteStream).not.toHaveBeenCalled()
+  })
+
+  it('forbids backups from the signed-out profile', async () => {
+    mockGetProfileLaunchContext.mockReturnValue({
+      ...AUTHENTICATED_PROFILE_CONTEXT,
+      mode: 'signed-out',
+      profileId: 'signed-out',
+      kind: 'signed-out'
+    })
+
+    await expect(backupManager.backup({} as Electron.IpcMainInvokeEvent, 'backup.zip', '/backups')).rejects.toThrow(
+      /signed-out/i
+    )
+
+    expect(mockCreateAtomicWriteStream).not.toHaveBeenCalled()
+  })
+
+  it.each(['../outside.zip', '..\\outside.zip', 'backup..zip', 'backup\u0000.zip', 'nested/backup.zip'])(
+    'rejects unsafe remote backup file name %j before staging',
+    async (fileName) => {
       await expect(
         backupManager.backupToWebdav({} as Electron.IpcMainInvokeEvent, {
           webdavHost: 'https://example.com',
           fileName
         })
-      ).rejects.toThrow('Backup file name must not contain path separators')
-    }
+      ).rejects.toThrow(/remote backup file name/i)
 
-    expect(fs.ensureDir).not.toHaveBeenCalled()
-    expect(mockCreateAtomicWriteStream).not.toHaveBeenCalled()
-  })
+      expect(fs.ensureDir).not.toHaveBeenCalled()
+      expect(mockCreateAtomicWriteStream).not.toHaveBeenCalled()
+    }
+  )
 
   it('keeps the existing local backup when archive creation fails', async () => {
     vi.mocked(fs.pathExists).mockImplementation(async (entryPath) => {
@@ -832,7 +901,7 @@ describe('BackupManager direct v2 data compatibility', () => {
     expect(fs.writeJson).toHaveBeenCalledWith(
       '/mock/temp/backup/create-operation-id/metadata.json',
       expect.objectContaining({
-        version: 7,
+        version: 8,
         resources: {
           database: false,
           cache: true,
@@ -1002,6 +1071,7 @@ describe('BackupManager direct v2 data compatibility', () => {
       expect.objectContaining({
         version: 1,
         restoreId: 'operation-id',
+        mode: 'in-place',
         state: 'staged',
         db: {
           promote: 'restore-staging/operation-id/work.sqlite',
@@ -1132,7 +1202,7 @@ describe('BackupManager direct v2 data compatibility', () => {
     })
 
     expect(restoreUnlocked).toHaveBeenCalledWith('/mock/temp/backup/s3-download-operation-id/backup.zip')
-    expect(getFileStream).toHaveBeenCalledWith('backup.zip')
+    expect(getFileStream).toHaveBeenCalledWith(`profiles/${IDENTITY_DIGEST}/backup.zip`)
     expect(events).toEqual(['remove:/mock/temp/backup/s3-download-operation-id', 'relaunch'])
   })
 
@@ -1157,15 +1227,67 @@ describe('BackupManager direct v2 data compatibility', () => {
       maxBackups: 1
     })
 
-    expect(putFileContents).toHaveBeenCalledWith('backup.zip', uploadStream, 6, { signal: undefined })
+    expect(putFileContents).toHaveBeenCalledWith(`profiles/${IDENTITY_DIGEST}/backup.zip`, uploadStream, 6, {
+      signal: undefined
+    })
     expect(fs.promises.readFile).not.toHaveBeenCalled()
   })
 
-  it('preserves S3 object paths relative to the configured root', async () => {
+  it('restores local backups only from the active profile namespace', async () => {
+    const restore = vi.spyOn(backupManager, 'restore').mockResolvedValue(undefined)
+    vi.mocked(fs.existsSync).mockReturnValue(true)
+
+    await backupManager.restoreFromLocalBackup({} as Electron.IpcMainInvokeEvent, 'backup.zip', '/backups')
+
+    expect(restore).toHaveBeenCalledWith(expect.anything(), `/backups/profiles/${IDENTITY_DIGEST}/backup.zip`)
+  })
+
+  it('lists local backups only from the active profile namespace', async () => {
+    vi.mocked(fs.readdir).mockResolvedValue([] as never)
+
+    await backupManager.listLocalBackupFiles({} as Electron.IpcMainInvokeEvent, '/backups')
+
+    expect(fs.readdir).toHaveBeenCalledWith(`/backups/profiles/${IDENTITY_DIGEST}`)
+  })
+
+  it('lists S3 backups only from the active profile namespace', async () => {
+    const listFiles = vi.fn().mockResolvedValue([])
+    vi.spyOn(backupManager as any, 'getS3Storage').mockReturnValue({ listFiles })
+
+    await backupManager.listS3Files({} as Electron.IpcMainInvokeEvent, {
+      endpoint: 'https://s3.example.com',
+      region: 'test',
+      bucket: 'backups',
+      accessKeyId: 'access-key',
+      secretAccessKey: 'secret-key',
+      root: 'root',
+      autoSync: false,
+      syncInterval: 0,
+      maxBackups: 1
+    })
+
+    expect(listFiles).toHaveBeenCalledWith(`profiles/${IDENTITY_DIGEST}/`, undefined)
+  })
+
+  it('lists only strict basename S3 objects from the active namespace', async () => {
     vi.spyOn(backupManager as any, 'getS3Storage').mockReturnValue({
       listFiles: vi.fn().mockResolvedValue([
-        { key: 'backup.zip', lastModified: '2026-08-04T02:00:00.000Z', size: 1 },
-        { key: 'nested/backup.zip', lastModified: '2026-08-04T01:00:00.000Z', size: 2 }
+        {
+          key: `profiles/${IDENTITY_DIGEST}/backup.zip`,
+          lastModified: '2026-08-04T02:00:00.000Z',
+          size: 1
+        },
+        {
+          key: `profiles/${IDENTITY_DIGEST}/nested/backup.zip`,
+          lastModified: '2026-08-04T01:00:00.000Z',
+          size: 2
+        },
+        {
+          key: `profiles/${IDENTITY_DIGEST}/backup..zip`,
+          lastModified: '2026-08-04T00:30:00.000Z',
+          size: 2
+        },
+        { key: `profiles/${'b'.repeat(64)}/foreign.zip`, lastModified: '2026-08-04T03:00:00.000Z', size: 3 }
       ])
     })
 
@@ -1181,11 +1303,48 @@ describe('BackupManager direct v2 data compatibility', () => {
         syncInterval: 0,
         maxBackups: 1
       })
-    ).resolves.toEqual([
-      { fileName: 'backup.zip', modifiedTime: '2026-08-04T02:00:00.000Z', size: 1 },
-      { fileName: 'nested/backup.zip', modifiedTime: '2026-08-04T01:00:00.000Z', size: 2 }
-    ])
+    ).resolves.toEqual([{ fileName: 'backup.zip', modifiedTime: '2026-08-04T02:00:00.000Z', size: 1 }])
   })
+
+  it.each(['../outside.zip', '..\\outside.zip', 'backup..zip', 'backup\u0001.zip', 'nested/backup.zip'])(
+    'rejects unsafe remote file name %j for WebDAV/S3 delete and restore',
+    async (fileName) => {
+      const webdavDelete = vi.fn()
+      const webdavRead = vi.fn()
+      const s3Delete = vi.fn()
+      const s3Read = vi.fn()
+      vi.spyOn(backupManager as any, 'getWebDavInstance').mockReturnValue({
+        deleteFile: webdavDelete,
+        createReadStream: webdavRead
+      })
+      vi.spyOn(backupManager as any, 'getS3Storage').mockReturnValue({ deleteFile: s3Delete, getFileStream: s3Read })
+      const webdavConfig = { webdavHost: 'https://example.com', fileName }
+      const s3Config = {
+        endpoint: 'https://s3.example.com',
+        region: 'test',
+        bucket: 'backups',
+        accessKeyId: 'access-key',
+        secretAccessKey: 'secret-key',
+        fileName,
+        autoSync: false,
+        syncInterval: 0,
+        maxBackups: 1
+      }
+
+      await expect(backupManager.deleteWebdavFile(null, fileName, webdavConfig)).rejects.toThrow(/remote backup file name/i)
+      await expect(backupManager.deleteS3File(null, fileName, s3Config)).rejects.toThrow(/remote backup file name/i)
+      await expect(backupManager.restoreFromWebdav({} as Electron.IpcMainInvokeEvent, webdavConfig)).rejects.toThrow(
+        /remote backup file name/i
+      )
+      await expect(backupManager.restoreFromS3({} as Electron.IpcMainInvokeEvent, s3Config)).rejects.toThrow(
+        /remote backup file name/i
+      )
+      expect(webdavDelete).not.toHaveBeenCalled()
+      expect(webdavRead).not.toHaveBeenCalled()
+      expect(s3Delete).not.toHaveBeenCalled()
+      expect(s3Read).not.toHaveBeenCalled()
+    }
+  )
 
   it('keeps an automatic backup out until manual retention cleanup finishes', async () => {
     const backupPath = '/mock/temp/backup/backup.zip'
@@ -1243,7 +1402,7 @@ describe('BackupManager direct v2 data compatibility', () => {
     )
     const backupDirect = vi.spyOn(backupManager as any, 'backupDirect')
     const restore = backupManager.restore({} as Electron.IpcMainInvokeEvent, '/restore.zip')
-    await vi.waitFor(() => expect(restoreUnlocked).toHaveBeenCalledWith('/restore.zip'))
+    await vi.waitFor(() => expect(restoreUnlocked).toHaveBeenCalledWith('/restore.zip', 'in-place'))
 
     try {
       await expect(
@@ -1261,7 +1420,7 @@ describe('BackupManager direct v2 data compatibility', () => {
     }
   })
 
-  it('limits and cancels WebDAV retention cleanup for the exact current device', async () => {
+  it('limits and cancels WebDAV retention cleanup within the active profile namespace', async () => {
     const backupPath = '/mock/temp/backup/backup.zip'
     const controller = new AbortController()
     let deleteSignal: AbortSignal | undefined
@@ -1293,7 +1452,7 @@ describe('BackupManager direct v2 data compatibility', () => {
       }
     ])
     vi.spyOn(backupManager as any, 'backupDirect').mockResolvedValue(backupPath)
-    vi.spyOn(backupManager as any, 'getWebDavInstance').mockReturnValue({
+    const getWebDavInstance = vi.spyOn(backupManager as any, 'getWebDavInstance').mockReturnValue({
       putFileContents: vi.fn().mockResolvedValue(true),
       getDirectoryContents,
       deleteFile
@@ -1309,9 +1468,13 @@ describe('BackupManager direct v2 data compatibility', () => {
     controller.abort(new DOMException('Stopped.', 'AbortError'))
 
     await expect(backup).resolves.toMatchObject({ result: true, cleanupError: { name: 'AbortError' } })
-    expect(deleteFile).toHaveBeenCalledWith('cherry-studio.20260804000000.test-host.mac.zip', deleteSignal)
+    expect(deleteFile).toHaveBeenCalledWith('cherry-studio.20260804015000.other-test-host.mac.zip', deleteSignal)
     expect(deleteSignal?.aborted).toBe(true)
     expect(getDirectoryContents).toHaveBeenCalledWith(expect.any(AbortSignal))
+    expect(getWebDavInstance).toHaveBeenCalledTimes(3)
+    for (const [config] of getWebDavInstance.mock.calls as Array<[WebDavConfig]>) {
+      expect(config.webdavPath).toBe(`/profiles/${IDENTITY_DIGEST}`)
+    }
   })
 
   it('aborts a stalled WebDAV upload after the idle timeout', async () => {
@@ -1348,7 +1511,90 @@ describe('BackupManager direct v2 data compatibility', () => {
     }
   })
 
-  it('restores complete-Data version 7 archives without reading standalone SQLite or .claude resources', async () => {
+  it('rejects a version 7 archive with unknown identity for authenticated in-place restore', async () => {
+    const legacyMetadata = { ...completeDataMetadata } as Partial<typeof completeDataMetadata>
+    delete legacyMetadata.profile
+    vi.mocked(fs.readJson).mockResolvedValue({ ...legacyMetadata, version: 7 })
+
+    await expect((backupManager as any).restoreDirect('/extract')).rejects.toThrow(/version 7.*identity/i)
+
+    expect(fs.copy).not.toHaveBeenCalled()
+    expect(mockWriteRestoreJournal).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    { field: 'identityDigest', profile: { ...completeDataMetadata.profile, identityDigest: 'b'.repeat(64) } },
+    { field: 'kind', profile: { ...completeDataMetadata.profile, kind: 'local' } }
+  ])('rejects a version 8 archive with mismatched $field before staging', async ({ profile }) => {
+    vi.mocked(fs.readJson).mockResolvedValue({ ...completeDataMetadata, profile })
+
+    await expect((backupManager as any).restoreDirect('/extract')).rejects.toThrow(/profile identity/i)
+
+    expect(fs.copy).not.toHaveBeenCalled()
+    expect(mockWriteRestoreJournal).not.toHaveBeenCalled()
+  })
+
+  it('rejects safe import before extraction when the target business profile is not empty', async () => {
+    mockAssertSafeImportTargetEmpty.mockImplementationOnce(() => {
+      throw new Error('SAFE_IMPORT_TARGET_NOT_EMPTY: Safe import requires an empty business profile.')
+    })
+
+    await expect(backupManager.safeImport({} as Electron.IpcMainInvokeEvent, '/backups/import.zip')).rejects.toThrow(
+      'SAFE_IMPORT_TARGET_NOT_EMPTY'
+    )
+
+    expect(MockStreamZipAsync).not.toHaveBeenCalled()
+    expect(mockWriteRestoreJournal).not.toHaveBeenCalled()
+    expect(mockRelaunch).not.toHaveBeenCalled()
+  })
+
+  it('safe-imports a cross-identity archive after stripping browser, file and database secrets', async () => {
+    arrangeDirectRestore({
+      ...completeDataMetadata,
+      profile: { ...completeDataMetadata.profile, identityDigest: 'b'.repeat(64) }
+    })
+    vi.mocked(fs.lstat).mockImplementation(async (entryPath) => {
+      return createStats(String(entryPath) === '/extract/Data' ? 'directory' : 'file') as never
+    })
+    vi.spyOn(backupManager as any, 'createDataJournalResources').mockResolvedValue([])
+
+    await (backupManager as any).restoreDirect('/extract', 'safe-import')
+
+    expect(mockSanitizeSafeImportDatabase).toHaveBeenCalledWith(
+      '/mock/userData/restore-staging/operation-id/work.sqlite'
+    )
+    expect(mockWriteRestoreJournal).toHaveBeenCalledWith(expect.objectContaining({ mode: 'safe-import', state: 'staged' }))
+    expect((backupManager as any).stageArchiveDirectory).not.toHaveBeenCalledWith(
+      '/extract/IndexedDB',
+      expect.anything()
+    )
+    expect((backupManager as any).stageArchiveDirectory).not.toHaveBeenCalledWith(
+      '/extract/Local Storage',
+      expect.anything()
+    )
+    const dataStageCall = vi
+      .mocked((backupManager as any).stageArchiveDirectory)
+      .mock.calls.find(([source]: [string]) => source === '/extract/Data')
+    expect(dataStageCall?.[3].excludeRelativePath('Credentials/account.json')).toBe(true)
+    expect(dataStageCall?.[3].excludeRelativePath('Files/document.pdf')).toBe(false)
+  })
+
+  it('rejects tampered safe-import metadata before copying or sanitizing', async () => {
+    vi.mocked(fs.readJson).mockResolvedValue({
+      ...completeDataMetadata,
+      profile: { ...completeDataMetadata.profile, identityDigest: '../escape' }
+    })
+
+    await expect((backupManager as any).restoreDirect('/extract', 'safe-import')).rejects.toThrow(
+      /profile metadata is incomplete/i
+    )
+
+    expect(fs.copy).not.toHaveBeenCalled()
+    expect(mockSanitizeSafeImportDatabase).not.toHaveBeenCalled()
+    expect(mockWriteRestoreJournal).not.toHaveBeenCalled()
+  })
+
+  it('restores complete-Data version 8 archives without reading standalone SQLite or .claude resources', async () => {
     arrangeDirectRestore(completeDataMetadata)
     vi.mocked(fs.lstat).mockImplementation(async (entryPath) => {
       return createStats(String(entryPath) === '/extract/Data' ? 'directory' : 'file') as never
@@ -1459,7 +1705,7 @@ describe('BackupManager direct v2 data compatibility', () => {
     )
   })
 
-  it('rejects a version 7 archive that is missing cache.json without committing a journal', async () => {
+  it('rejects a version 8 archive that is missing cache.json without committing a journal', async () => {
     vi.mocked(fs.readJson).mockResolvedValue(metadata)
     vi.mocked(fs.lstat).mockImplementation(async (entryPath) => {
       if (String(entryPath).endsWith('cache.json')) {
@@ -1476,7 +1722,7 @@ describe('BackupManager direct v2 data compatibility', () => {
   })
 
   it('rejects a backup from a newer MEA Cowork version before staging any resources', async () => {
-    vi.mocked(fs.readJson).mockResolvedValue({ version: 8, appName: 'Cherry Studio' })
+    vi.mocked(fs.readJson).mockResolvedValue({ version: 9, appName: 'Cherry Studio' })
 
     await expect((backupManager as any).restoreDirect('/extract')).rejects.toThrow(
       'This backup was created by a newer version of MEA Cowork'
@@ -1503,7 +1749,7 @@ describe('BackupManager direct v2 data compatibility', () => {
     vi.mocked(fs.readJson).mockResolvedValue({ version: 6, appName: 'Cherry Studio' })
 
     await expect((backupManager as any).restoreDirect('/extract')).rejects.toThrow(
-      'Unsupported backup version 6. MEA Cowork can only restore backup version 7.'
+      'Unsupported backup version 6. MEA Cowork can only restore backup versions 7 and 8.'
     )
 
     expect(fs.copy).not.toHaveBeenCalled()
@@ -1511,7 +1757,7 @@ describe('BackupManager direct v2 data compatibility', () => {
     expect(mockRelaunch).not.toHaveBeenCalled()
   })
 
-  it('rejects version 7 metadata with mixed resource layouts', async () => {
+  it('rejects version 8 metadata with mixed resource layouts', async () => {
     vi.mocked(fs.readJson).mockResolvedValue({
       ...completeDataMetadata,
       resources: {
@@ -1522,7 +1768,7 @@ describe('BackupManager direct v2 data compatibility', () => {
     })
 
     await expect((backupManager as any).restoreDirect('/extract')).rejects.toThrow(
-      'Backup version 7 metadata is incomplete'
+      'Backup version 8 metadata is incomplete'
     )
 
     expect(fs.copy).not.toHaveBeenCalled()

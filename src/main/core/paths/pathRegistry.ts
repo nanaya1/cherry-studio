@@ -17,7 +17,7 @@ import { app } from 'electron'
 import { loggerService } from '@logger'
 import { isMac, isWin } from '@main/core/platform'
 
-import { CHERRY_HOME, LOGS_DIR } from './constants'
+import { CHERRY_HOME } from './constants'
 
 const logger = loggerService.withContext('PathRegistry')
 
@@ -49,9 +49,13 @@ export function buildPathRegistry() {
   const appUserDataData = path.join(appUserData, 'Data')
   const appUserDataRuntime = path.join(appUserData, 'Runtime')
   const appUserDataProviderRegistryOverride = path.join(appUserDataRuntime, 'provider-registry-override')
+  const appUserDataSensitive = path.join(appUserData, 'Sensitive')
+  const appUserDataMcpSensitive = path.join(appUserDataSensitive, 'Mcp')
+  const appUserDataEnterprise = path.join(appUserDataSensitive, 'Enterprise')
   const appUserDataToolchain = path.join(appUserData, 'Toolchain')
   const appUserDataToolchainMise = path.join(appUserDataToolchain, 'mise')
   const appSession = app.getPath('sessionData')
+  const appLogs = app.getPath('logs')
   const sysTemp = app.getPath('temp')
   const appTemp = path.join(sysTemp, 'CherryStudio')
   // electron-builder `extraResources` output — distinct from appRootResources
@@ -83,7 +87,7 @@ export function buildPathRegistry() {
     'app.utility_process': path.join(app.getAppPath(), 'out', 'utility-process'), // utility-process entry bundles
     'app.exe_file': app.getPath('exe'),
     'app.install': path.dirname(app.getPath('exe')), // directory containing the executable
-    'app.logs': LOGS_DIR,
+    'app.logs': appLogs,
     'app.crash_dumps': app.getPath('crashDumps'),
     'app.session': appSession,
     'app.session.cache': path.join(appSession, 'Cache'), // Chromium cache Directory
@@ -159,18 +163,23 @@ export function buildPathRegistry() {
     ),
 
     // MCP
+    // Installed MCP packages are identity-neutral and remain device-shared.
     'feature.mcp': path.join(CHERRY_HOME, 'mcp'),
-    'feature.mcp.oauth': path.join(CHERRY_HOME, 'config', 'mcp', 'oauth'),
+    'feature.mcp.oauth': path.join(appUserDataMcpSensitive, 'oauth'),
     'feature.mcp.workspace': path.join(appUserDataData, 'Workspace'),
     // MCP memory server's knowledge-graph JSON for the built-in MCP server
-    'feature.mcp.memory_file': path.join(CHERRY_HOME, 'config', 'memory.json'),
+    'feature.mcp.memory_file': path.join(appUserDataMcpSensitive, 'memory.json'),
     // `@cherry/mcp-auto-install` owns both: its Registry API cache, and the config file it
     // writes to instead of probing the user's other MCP clients
-    'feature.mcp.registry_file': path.join(CHERRY_HOME, 'config', 'mcp-registry.json'),
-    'feature.mcp.auto_install_settings_file': path.join(CHERRY_HOME, 'config', 'mcp-auto-install-settings.json'),
+    'feature.mcp.registry_file': path.join(appUserDataMcpSensitive, 'registry.json'),
+    'feature.mcp.auto_install_settings_file': path.join(appUserDataMcpSensitive, 'auto-install-settings.json'),
 
     // Copilot token
-    'feature.copilot.token_file': path.join(CHERRY_HOME, 'config', '.copilot_token'),
+    'feature.copilot.token_file': path.join(appUserDataSensitive, 'Copilot', 'token.enc'),
+
+    // Enterprise state and credentials
+    'feature.enterprise.state_file': path.join(appUserDataEnterprise, 'org-state.json'),
+    'feature.enterprise.credentials_file': path.join(appUserDataEnterprise, 'org-session.json'),
 
     // Cherry Cloud account credentials (device identity is retained when the session is cleared)
     'feature.cherry_account.credentials_file': path.join(appUserData, 'Credentials', 'cherry-account.json'),
@@ -234,7 +243,7 @@ export function buildPathRegistry() {
     'feature.mini_app.builtin': path.join(appRootResources, 'builtin-mini-apps'),
     // Per-app activity logs, one `<appId>/activity.<day>.log` tree each — under the logs
     // directory, NOT the app's data: "clear data" must not erase what the app did
-    'feature.mini_app.logs': path.join(LOGS_DIR, 'mini-apps'),
+    'feature.mini_app.logs': path.join(appLogs, 'mini-apps'),
 
     // OCR
     'feature.ocr.tesseract': path.join(appUserData, 'tesseract'),

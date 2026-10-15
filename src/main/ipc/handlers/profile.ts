@@ -1,4 +1,8 @@
+// Profile claim moved before authenticated business bootstrap; the running renderer is too late because userData is already open.
+// import path from 'node:path'
+
 import { application } from '@application'
+// import { getProfileLaunchContext, ProfileClaimService, ProfileRegistry } from '@main/core/profiles'
 import { withCreatedImageEntry } from '@main/services/entityImageBinding'
 import { tagStoredFileRef } from '@shared/data/types/file'
 import type { profileRequestSchemas } from '@shared/ipc/schemas/profile'
@@ -23,6 +27,9 @@ import type { IpcHandlersFor } from '@shared/ipc/types'
  * Preference, not a DataApi row + `file_ref` slot, so there is no shared bind
  * shape to factor out — it just composes the `withCreatedImageEntry` primitive.
  */
+// Stopped: running-profile claim opened the authenticated target before copying and always became target-not-empty.
+// Claim orchestration now runs from ProfileSessionService before target credentials and business bootstrap.
+
 export const profileHandlers: IpcHandlersFor<typeof profileRequestSchemas> = {
   'profile.set_avatar': async (input) => {
     const preferences = application.get('PreferenceService')
@@ -38,4 +45,5 @@ export const profileHandlers: IpcHandlersFor<typeof profileRequestSchemas> = {
 
     await preferences.set('app.user.avatar', input.kind === 'emoji' ? input.emoji : '')
   }
+  // Stopped: profile.claim.preview/profile.claim.confirm were only safe before the authenticated profile opened.
 }

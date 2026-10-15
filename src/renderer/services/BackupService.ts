@@ -70,13 +70,17 @@ export async function backup(skipBackupFile = false) {
   }
 }
 
-export async function restore() {
+export async function restore(mode: 'in-place' | 'safe-import' = 'in-place') {
   // notificationService is imported as a module-level singleton
   const file = await window.api.file.open({ filters: [{ name: '备份文件', extensions: ['zip'] }] })
 
   if (file) {
     try {
-      await window.api.backup.restore(file.filePath)
+      if (mode === 'safe-import') {
+        await window.api.backup.safeImport(file.filePath)
+      } else {
+        await window.api.backup.restore(file.filePath)
+      }
 
       void notificationService.send({
         id: uuid(),

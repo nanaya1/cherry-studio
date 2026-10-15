@@ -9,7 +9,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { authMock, apiMock, skillServiceMock, stateStoreMock, agentGlobalSkillServiceMock } = vi.hoisted(() => ({
-  authMock: {},
+  authMock: {
+    revalidateAuthority: vi.fn(),
+    acquireLease: vi.fn(() => ({ generation: 1, issuerId: 'issuer', groupId: 'group', userId: 'user' })),
+    assertLease: vi.fn()
+  },
   apiMock: {
     listSkills: vi.fn(),
     reportLifecycle: vi.fn()
@@ -35,7 +39,8 @@ const { authMock, apiMock, skillServiceMock, stateStoreMock, agentGlobalSkillSer
     // [enterprise] C4 墓碑 API
     markDeleted: vi.fn(),
     clearDeleted: vi.fn(),
-    deletedHash: vi.fn()
+    deletedHash: vi.fn(),
+    recordSkillEntitlement: vi.fn()
   }
 }))
 
@@ -84,7 +89,7 @@ describe('OrgSkillCatalog C1/C2/C4', () => {
     stateStoreMock.snapshot.mockReturnValue({})
     agentGlobalSkillServiceMock.listAll.mockReturnValue([])
     catalog = new OrgSkillCatalog(authMock as never)
-    ;(catalog as unknown as { auth: { apiClient: unknown } }).auth = { apiClient: apiMock }
+    ;(catalog as unknown as { auth: unknown }).auth = { ...authMock, apiClient: apiMock }
   })
 
   afterEach(() => {
@@ -172,7 +177,11 @@ describe('OrgSkillCatalog C1/C2/C4', () => {
     const result = await (
       catalog as unknown as { startupScan: () => Promise<{ updated: string[]; disabled: string[] }> }
     ).startupScan()
-    expect(downloadAndInstall).toHaveBeenCalledWith('a', expect.objectContaining({ slug: 'a', contentHash: 'hash-a2' }))
+    expect(downloadAndInstall).toHaveBeenCalledWith(
+      'a',
+      expect.objectContaining({ slug: 'a', contentHash: 'hash-a2' }),
+      expect.objectContaining({ groupId: 'group' })
+    )
     expect(result.updated).toEqual(['a'])
   })
 
@@ -186,7 +195,11 @@ describe('OrgSkillCatalog C1/C2/C4', () => {
     const result = await (
       catalog as unknown as { startupScan: () => Promise<{ updated: string[]; disabled: string[] }> }
     ).startupScan()
-    expect(downloadAndInstall).toHaveBeenCalledWith('b', expect.anything())
+    expect(downloadAndInstall).toHaveBeenCalledWith(
+      'b',
+      expect.anything(),
+      expect.objectContaining({ groupId: 'group' })
+    )
     expect(result.updated).toEqual(['b'])
   })
 
@@ -266,57 +279,46 @@ describe('OrgSkillCatalog C1/C2/C4', () => {
     expect(disabled.sort()).toEqual(['gone', 'off'])
   })
 
-  it('C2 listDisabled：目录拉取失败且无缓存 → 抛错（fail-open 由调用方决定）', async () => {
+  it('C2 listDisabled：目录拉取失败时默认禁用所有企业技能', async () => {
     apiMock.listSkills.mockRejectedValue(new Error('network down'))
-    await expect(catalog.listDisabled()).rejects.toThrow('network down')
+    stateStoreMock.snapshot.mockReturnValue({
+      localOrg: { version: '1', contentHash: 'hash', skillId: 's1', folderName: 'localOrg', enabled: true }
+    })
+
+    await expect(catalog.listDisabled()).resolves.toEqual(['localOrg'])
   })
 
-  it('C2 list()：TTL 内走缓存不再发请求；过期后重新拉取', async () => {
-    apiMock.listSkills.mockResolvedValue({ skills: [makeItem('a', 'h1')] })
-    await catalog.list()
-    await catalog.list()
-    expect(apiMock.listSkills).toHaveBeenCalledTimes(1) // TTL 内命中缓存
+  // 原 TTL 与 stale-cache 测试停用：服务端可在 userId 不变时调整 group_id，旧缓存不能继续复用。
+  it('C2 list()：连续读取也重新请求服务端以应用实时分组权限', async () => {
+    apiMock.listSkills
+      .mockResolvedValueOnce({ skills: [makeItem('a', 'h1')] })
+      .mockResolvedValueOnce({ skills: [makeItem('b', 'h2')] })
 
-    // 模拟过期
-    ;(catalog as unknown as { catalogCache: { at: number } | null }).catalogCache!.at = Date.now() - 6 * 60 * 1000
-    apiMock.listSkills.mockResolvedValue({ skills: [makeItem('a', 'h2')] })
+    await catalog.list()
     const items = await catalog.list()
+
     expect(apiMock.listSkills).toHaveBeenCalledTimes(2)
-    expect(items[0].contentHash).toBe('h2')
+    expect(items.map((item) => item.slug)).toEqual(['b'])
   })
 
-  it('C2 list()：拉取失败但有过期缓存 → 降级返回旧目录', async () => {
+  it('C2 list()：重新鉴权失败时不回退旧分组目录', async () => {
     apiMock.listSkills.mockResolvedValueOnce({ skills: [makeItem('a', 'h1')] })
     await catalog.list()
-    ;(catalog as unknown as { catalogCache: { at: number } | null }).catalogCache!.at = Date.now() - 6 * 60 * 1000
-
     apiMock.listSkills.mockRejectedValueOnce(new Error('down'))
-    const items = await catalog.list()
-    expect(items.map((i) => i.slug)).toEqual(['a'])
+
+    await expect(catalog.list()).rejects.toThrow('down')
   })
 
-  // [enterprise] 管理台启停后客户端「刷新」必须穿透 TTL 缓存，否则 5 分钟内看不到变更
-  it('C2 list(force)：TTL 内强制刷新重新拉取并更新缓存', async () => {
-    apiMock.listSkills.mockResolvedValue({ skills: [makeItem('a', 'h1')] })
-    await catalog.list()
+  it('C2 list(force)：保留调用兼容性且仍重新请求服务端', async () => {
+    apiMock.listSkills
+      .mockResolvedValueOnce({ skills: [makeItem('a', 'h1')] })
+      .mockResolvedValueOnce({ skills: [makeItem('a', 'h2')] })
 
-    apiMock.listSkills.mockResolvedValue({ skills: [makeItem('a', 'h2')] })
+    await catalog.list()
     const items = await catalog.list(true)
+
     expect(apiMock.listSkills).toHaveBeenCalledTimes(2)
     expect(items[0].contentHash).toBe('h2')
-
-    // 强刷后缓存被新数据替换，后续普通调用命中新缓存
-    await catalog.list()
-    expect(apiMock.listSkills).toHaveBeenCalledTimes(2)
-  })
-
-  it('C2 list(force)：强刷失败仍有旧缓存 → 降级返回旧目录', async () => {
-    apiMock.listSkills.mockResolvedValueOnce({ skills: [makeItem('a', 'h1')] })
-    await catalog.list()
-
-    apiMock.listSkills.mockRejectedValueOnce(new Error('down'))
-    const items = await catalog.list(true)
-    expect(items.map((i) => i.slug)).toEqual(['a'])
   })
 
   it('C4 reportDeleted：调用 lifecycle deleted 上报 + 清 state', async () => {
@@ -407,9 +409,8 @@ describe('OrgSkillCatalog C1/C2/C4', () => {
     expect(agentGlobalSkillServiceMock.update).toHaveBeenCalledWith('s-org', { source: 'local' })
   })
 
-  // [enterprise] 公共目录：匿名（未登录）也能浏览、下载并安装公共技能。
-  // 上报跳过与否由 OrgApiClient（真实现）负责；catalog 编排层只保证安装链路无登录依赖。
-  it('匿名安装公共技能：不依赖登录即可完成本地安装', async () => {
+  // 原匿名安装契约停用：目录与下载均由 modern 根据登录用户分组授权。
+  it('登录用户安装分组技能后生成本地副本', async () => {
     apiMock.listSkills.mockResolvedValue({ skills: [makeItem('public-skill', 'hash-pub')] })
 
     const installSkillDir = vi.fn().mockResolvedValue({ id: 'sk-pub', folderName: 'public-skill' })
@@ -417,10 +418,10 @@ describe('OrgSkillCatalog C1/C2/C4', () => {
     const downloadWithHash = vi.fn().mockResolvedValue(undefined)
     ;(catalog as unknown as { downloadWithHash: unknown }).downloadWithHash = downloadWithHash
     ;(catalog as unknown as { tarExtract: unknown }).tarExtract = vi.fn().mockResolvedValue({ stdout: '', stderr: '' })
-    // 匿名安装场景：auth 无会话（getValidSession 返回 null）
     ;(catalog as unknown as { auth: Record<string, unknown> }).auth = {
+      ...authMock,
       apiClient: apiMock,
-      getValidSession: vi.fn().mockResolvedValue(null)
+      getValidSession: vi.fn().mockResolvedValue({ accessToken: 'group-token' })
     }
 
     await expect(catalog.install('public-skill')).resolves.toBeUndefined()
@@ -430,17 +431,54 @@ describe('OrgSkillCatalog C1/C2/C4', () => {
       'org-skill:public-skill',
       expect.anything()
     )
-    // catalog 仍尝试 best-effort 上报；匿名时跳过由 OrgApiClient 兜底（见 OrgApiClient 测试）
     expect(apiMock.reportLifecycle).toHaveBeenCalledWith('public-skill', 'install', { version: '1.0.0' })
   })
 
-  it('匿名时 downloadWithHash 不要求会话即可下载', async () => {
+  it('未登录时 downloadWithHash 拒绝且不发下载请求', async () => {
     ;(catalog as unknown as { auth: Record<string, unknown> }).auth = {
+      ...authMock,
       apiClient: apiMock,
       getValidSession: vi.fn().mockResolvedValue(null)
     }
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(
+      (catalog as unknown as { downloadWithHash: (i: unknown, d: string) => Promise<void> }).downloadWithHash(
+        makeItem('grouped', 'hash'),
+        '/tmp/grouped.zip'
+      )
+    ).rejects.toThrow('未登录')
+    expect(fetchMock).not.toHaveBeenCalled()
+    vi.unstubAllGlobals()
+  })
+
+  it('downloadWithHash 拒绝服务端返回的跨源下载地址', async () => {
+    ;(catalog as unknown as { auth: Record<string, unknown> }).auth = {
+      ...authMock,
+      apiClient: apiMock,
+      getValidSession: vi.fn().mockResolvedValue({ accessToken: 'group-token' })
+    }
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(
+      (catalog as unknown as { downloadWithHash: (i: unknown, d: string) => Promise<void> }).downloadWithHash(
+        { ...makeItem('grouped', 'hash'), downloadUrl: 'https://evil.example/steal' },
+        '/tmp/grouped.zip'
+      )
+    ).rejects.toThrow('下载地址无效')
+    expect(fetchMock).not.toHaveBeenCalled()
+    vi.unstubAllGlobals()
+  })
+
+  it('登录后 downloadWithHash 携带 Bearer token', async () => {
+    ;(catalog as unknown as { auth: Record<string, unknown> }).auth = {
+      ...authMock,
+      apiClient: apiMock,
+      getValidSession: vi.fn().mockResolvedValue({ accessToken: 'group-token' })
+    }
     const tarball = await import('node:zlib').then((z) => z.gzipSync(Buffer.from('x')))
-    // 构造一个真实可读的 body 流，hash 校验目标值由实际内容决定——此处只关心"不再抛未登录"
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
         controller.enqueue(new Uint8Array(tarball))
@@ -448,17 +486,16 @@ describe('OrgSkillCatalog C1/C2/C4', () => {
       }
     })
     const hash = (await import('node:crypto')).createHash('sha256').update(tarball).digest('hex')
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue(new Response(stream, { status: 200, headers: { 'content-type': 'application/gzip' } }))
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(stream, { status: 200, headers: { 'content-type': 'application/gzip' } })
     )
+    vi.stubGlobal('fetch', fetchMock)
 
-    await expect(
-      (catalog as unknown as { downloadWithHash: (i: unknown, d: string) => Promise<void> }).downloadWithHash(
-        { ...makeItem('pub', hash) },
-        '/tmp/pub.tar.gz'
-      )
-    ).resolves.toBeUndefined()
+    await (catalog as unknown as { downloadWithHash: (i: unknown, d: string) => Promise<void> }).downloadWithHash(
+      { ...makeItem('grouped', hash), downloadUrl: '/api/library-items/1/download?format=binary' },
+      '/tmp/grouped.zip'
+    )
+    expect(fetchMock.mock.calls[0][1].headers.authorization).toBe('Bearer group-token')
     vi.unstubAllGlobals()
   })
 
@@ -525,7 +562,11 @@ describe('OrgSkillCatalog C1/C2/C4', () => {
       catalog as unknown as { startupScan: () => Promise<{ updated: string[]; disabled: string[] }> }
     ).startupScan()
     expect(stateStoreMock.clearDeleted).toHaveBeenCalledWith('a')
-    expect(downloadAndInstall).toHaveBeenCalledWith('a', expect.objectContaining({ contentHash: 'hash-new' }))
+    expect(downloadAndInstall).toHaveBeenCalledWith(
+      'a',
+      expect.objectContaining({ contentHash: 'hash-new' }),
+      expect.objectContaining({ groupId: 'group' })
+    )
     expect(result.updated).toEqual(['a'])
   })
 
@@ -542,7 +583,11 @@ describe('OrgSkillCatalog C1/C2/C4', () => {
       catalog as unknown as { startupScan: () => Promise<{ updated: string[]; disabled: string[] }> }
     ).startupScan()
     expect(stateStoreMock.clearDeleted).not.toHaveBeenCalled()
-    expect(downloadAndInstall).toHaveBeenCalledWith('fresh', expect.anything())
+    expect(downloadAndInstall).toHaveBeenCalledWith(
+      'fresh',
+      expect.anything(),
+      expect.objectContaining({ groupId: 'group' })
+    )
     expect(result.updated).toEqual(['fresh'])
   })
 })

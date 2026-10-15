@@ -2,8 +2,8 @@
  * [enterprise] OrgApiClient 会话刷新链路测试
  * 修复目标：token 过期后请求自动走 getValidSession 刷新；401 兜底重试一次；
  * 未登录仍然快速失败。
- * [enterprise] 公共目录改造后：列表接口匿名可用（无会话直接请求，不再快速失败），
- * 401 重试逻辑仅覆盖仍需登录的写接口（request 链路），由 lifecycle 上报承接受测。
+ * [enterprise] 分组目录改造后：列表接口必须携带登录会话，由服务端按 token 对应用户的 group_id 过滤。
+ * 401 重试逻辑同时覆盖目录读取与写接口（request 链路）。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -27,6 +27,84 @@ const session = (over: Partial<{ accessToken: string }> = {}) => ({
   expiresAt: Date.now() - 1000
 })
 
+describe('OrgApiClient server contract', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', fetchMock)
+  })
+
+  afterEach(() => {
+    fetchMock.mockReset()
+    vi.unstubAllGlobals()
+  })
+
+  it('uses the isolated Cookie transport without a Bearer header', async () => {
+    const cookieFetch = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify({ server_instance_id: 'server', user: { id: 7 } })))
+    const client = new OrgApiClient(
+      vi.fn().mockResolvedValue({ ...session(), authMode: 'management-cookie', accessToken: '' }),
+      cookieFetch
+    )
+    await expect(client.getCurrentUser()).resolves.toMatchObject({ user: { id: 7 } })
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(cookieFetch.mock.calls[0][1]).toMatchObject({ credentials: 'include', redirect: 'error' })
+    expect(cookieFetch.mock.calls[0][1].headers).not.toHaveProperty('authorization')
+  })
+
+  it('loads server identity and user from currentuser without requesting server-identity', async () => {
+    fetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          server_instance_id: 'management-instance-1',
+          user: { id: 'u1', group_id: 'g1', role: 'member', status: 'active' }
+        }),
+        { status: 200 }
+      )
+    )
+    const client = new OrgApiClient(vi.fn().mockResolvedValue(session({ accessToken: 'fresh-token' })))
+
+    await expect(client.getCurrentUser()).resolves.toMatchObject({
+      server_instance_id: 'management-instance-1',
+      user: { id: 'u1' }
+    })
+    expect(fetchMock).toHaveBeenCalledOnce()
+    expect(fetchMock.mock.calls[0][0]).toContain('/api/currentuser')
+    expect(fetchMock.mock.calls[0][0]).not.toContain('/api/server-identity')
+  })
+
+  it.each(['management-oauth', 'management-cookie'])(
+    'revokes a captured %s session after local logout without refreshing',
+    async (authMode) => {
+      fetchMock.mockResolvedValue(new Response(null, { status: 204 }))
+      const cookieFetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 }))
+      const client = new OrgApiClient(async () => null, cookieFetch)
+      await expect(client.revoke('refresh', { ...session(), authMode } as never)).resolves.toBeUndefined()
+      const transport = authMode === 'management-cookie' ? cookieFetch : fetchMock
+      expect(transport.mock.calls[0][0]).toContain('/api/auth/logout')
+      expect(transport.mock.calls[0][1].signal).toBeInstanceOf(AbortSignal)
+      if (authMode === 'management-oauth')
+        expect(transport.mock.calls[0][1].headers.authorization).toBe('Bearer stale-token')
+      else expect(transport.mock.calls[0][1]).toMatchObject({ credentials: 'include', redirect: 'error' })
+    }
+  )
+
+  it('logs out through the modern server endpoint with the refresh token', async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }))
+    const client = new OrgApiClient(vi.fn().mockResolvedValue(session({ accessToken: 'fresh-token' })))
+
+    await expect(client.revoke('refresh-token-1')).resolves.toEqual({ ok: true })
+
+    expect(fetchMock).toHaveBeenCalledOnce()
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toContain('/api/auth/logout')
+    expect(url).not.toContain('/api/auth/revoke')
+    expect(init).toMatchObject({
+      method: 'POST',
+      body: JSON.stringify({ refreshToken: 'refresh-token-1' })
+    })
+  })
+})
+
 describe('OrgApiClient session refresh', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', fetchMock)
@@ -38,7 +116,7 @@ describe('OrgApiClient session refresh', () => {
   })
 
   it('awaits the async session provider so expired tokens get refreshed before the request', async () => {
-    fetchMock.mockResolvedValue(new Response(JSON.stringify({ skills: [] }), { status: 200 }))
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ items: [] }), { status: 200 }))
     const getValidSession = vi.fn().mockResolvedValue(session({ accessToken: 'fresh-token' }))
     const client = new OrgApiClient(getValidSession)
 
@@ -81,9 +159,8 @@ describe('OrgApiClient session refresh', () => {
   })
 })
 
-// [enterprise] 公共目录：技能/连接器列表与技能包下载匿名可用（所有人看到同一套公共资源）；
-// 生命周期上报属于登录写接口，仍要求会话。
-describe('OrgApiClient public catalog access', () => {
+// 原公共目录契约停用：技能/连接器改为认证读取，由服务端按当前用户分组过滤。
+describe('OrgApiClient grouped catalog access', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', fetchMock)
   })
@@ -93,37 +170,135 @@ describe('OrgApiClient public catalog access', () => {
     vi.unstubAllGlobals()
   })
 
-  it('lists skills anonymously without an Authorization header when signed out', async () => {
-    fetchMock.mockResolvedValue(new Response(JSON.stringify({ skills: [] }), { status: 200 }))
+  it('rejects skill listing without issuing a request when signed out', async () => {
     const client = new OrgApiClient(vi.fn().mockResolvedValue(null))
+
+    await expect(client.listSkills()).rejects.toThrow('未登录')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('maps modern skill library items to the desktop catalog contract', async () => {
+    fetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          items: [
+            {
+              id: 7,
+              slug: '7',
+              name: 'demo',
+              description: 'demo skill',
+              version: '2026-10-15T00:00:00.000Z',
+              contentHash: 'hash-7',
+              downloadUrl: '/api/library-items/7/download?format=binary'
+            }
+          ]
+        }),
+        { status: 200 }
+      )
+    )
+    const client = new OrgApiClient(vi.fn().mockResolvedValue(session({ accessToken: 'tok' })))
 
     const result = await client.listSkills()
 
-    expect(result.skills).toEqual([])
-    expect(fetchMock).toHaveBeenCalledTimes(1)
-    const [, init] = fetchMock.mock.calls[0]
-    expect(init.headers.authorization).toBeUndefined()
+    expect(result.skills).toEqual([
+      expect.objectContaining({
+        slug: '7',
+        contentHash: 'hash-7',
+        downloadUrl: '/api/library-items/7/download?format=binary'
+      })
+    ])
+    expect(fetchMock.mock.calls[0][0]).toContain('/api/library-items?page=1&pageSize=100')
+    expect(fetchMock.mock.calls[0][1].headers.authorization).toBe('Bearer tok')
   })
 
-  it('lists connectors anonymously without an Authorization header when signed out', async () => {
-    fetchMock.mockResolvedValue(new Response(JSON.stringify({ connectors: [] }), { status: 200 }))
-    const client = new OrgApiClient(vi.fn().mockResolvedValue(null))
+  it('loads every ready skill page and excludes unavailable items', async () => {
+    const pageOne = Array.from({ length: 100 }, (_, index) => ({
+      id: index + 1,
+      slug: String(index + 1),
+      name: `skill-${index + 1}`,
+      description: '',
+      version: 'v1',
+      contentHash: `hash-${index + 1}`,
+      downloadUrl: `/api/library-items/${index + 1}/download?format=binary`,
+      status: 'ready'
+    }))
+    fetchMock
+      .mockResolvedValueOnce(new Response(JSON.stringify({ items: pageOne, total: 102 }), { status: 200 }))
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            items: [
+              {
+                id: 101,
+                slug: '101',
+                name: 'ready-last',
+                description: '',
+                version: 'v1',
+                contentHash: 'hash-101',
+                downloadUrl: '/api/library-items/101/download?format=binary',
+                status: 'ready'
+              },
+              {
+                id: 102,
+                slug: '102',
+                name: 'failed',
+                description: '',
+                version: 'v1',
+                contentHash: 'hash-102',
+                downloadUrl: '/api/library-items/102/download?format=binary',
+                status: 'failed'
+              }
+            ],
+            total: 102
+          }),
+          { status: 200 }
+        )
+      )
+    const client = new OrgApiClient(vi.fn().mockResolvedValue(session({ accessToken: 'tok' })))
+
+    const result = await client.listSkills()
+
+    expect(result.skills).toHaveLength(101)
+    expect(result.skills.at(-1)?.slug).toBe('101')
+    expect(fetchMock.mock.calls[1][0]).toContain('page=2')
+  })
+
+  it('maps modern MCP servers to the desktop connector contract', async () => {
+    fetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          items: [
+            {
+              id: 3,
+              key: 'filesystem',
+              config: {
+                name: 'Filesystem',
+                description: 'Local files',
+                type: 'stdio',
+                command: 'npx',
+                args: ['-y', '@modelcontextprotocol/server-filesystem']
+              }
+            }
+          ]
+        }),
+        { status: 200 }
+      )
+    )
+    const client = new OrgApiClient(vi.fn().mockResolvedValue(session({ accessToken: 'tok' })))
 
     const result = await client.listConnectors()
 
-    expect(result.connectors).toEqual([])
-    const [, init] = fetchMock.mock.calls[0]
-    expect(init.headers.authorization).toBeUndefined()
-  })
-
-  it('still attaches the session token to public reads when signed in', async () => {
-    fetchMock.mockResolvedValue(new Response(JSON.stringify({ skills: [] }), { status: 200 }))
-    const client = new OrgApiClient(vi.fn().mockResolvedValue(session({ accessToken: 'tok' })))
-
-    await client.listSkills()
-
-    const [, init] = fetchMock.mock.calls[0]
-    expect(init.headers.authorization).toBe('Bearer tok')
+    expect(result.connectors).toEqual([
+      expect.objectContaining({
+        slug: 'filesystem',
+        name: 'Filesystem',
+        description: 'Local files',
+        type: 'stdio',
+        baseUrl: '',
+        config: expect.objectContaining({ command: 'npx' })
+      })
+    ])
+    expect(fetchMock.mock.calls[0][0]).toContain('/api/mcp-servers')
   })
 
   it('skips lifecycle report without a request when signed out (best-effort semantics)', async () => {

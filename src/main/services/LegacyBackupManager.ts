@@ -32,6 +32,7 @@ import type { CreateDirectoryOptions, FileStat } from 'webdav'
 
 import { application } from '@application'
 import { loggerService } from '@logger'
+import { getProfileLaunchContext, type ProfileLaunchContext } from '@main/core/profiles'
 import { WindowType } from '@main/core/window/types'
 import { readAppliedChain } from '@main/data/db/restore/appliedChain'
 import { checkpointTruncateAssert } from '@main/data/db/restore/checkpoint'
@@ -56,10 +57,14 @@ import {
 import { AbsoluteFilePathSchema } from '@shared/types/file'
 
 import S3Storage from './S3Storage'
+import { shouldStripSafeImportPath } from './SafeImportPolicy'
+import { sanitizeSafeImportDatabase } from './SafeImportSanitizer'
+import { assertSafeImportTargetEmpty } from './SafeImportTarget'
 import WebDav from './WebDav'
 
 const logger = loggerService.withContext('BackupManager')
-const DIRECT_BACKUP_VERSION = 7
+const DIRECT_BACKUP_VERSION = 8
+const LEGACY_DIRECT_BACKUP_VERSION = 7
 const QUIESCE_TIMEOUT_MS = 30_000
 const REMOTE_UPLOAD_IDLE_TIMEOUT_MS = 5 * 60_000
 const STALE_TEMP_ARTIFACT_AGE_MS = 24 * 60 * 60 * 1000
@@ -87,6 +92,12 @@ interface DirectBackupMetadata {
   appVersion: string
   platform: string
   arch: string
+  profile?: {
+    schema: 1
+    kind: Exclude<ProfileLaunchContext['kind'], 'signed-out'>
+    profileId: string
+    identityDigest: string
+  }
   resources: {
     database: boolean
     cache: true
@@ -128,6 +139,7 @@ interface BackupWorkflowResult<T> {
 }
 
 type BackupInvocationEvent = Electron.IpcMainInvokeEvent | null
+type RestoreMode = 'in-place' | 'safe-import'
 
 export class BackupOperationBusyError extends Error {
   constructor() {
@@ -212,7 +224,60 @@ class BackupManager {
    * resource. Full backups include all supported resources, while slim
    * backups include only Data/cherrystudio.sqlite and cache.json.
    */
+  private requireBackupProfile(): ProfileLaunchContext & { kind: 'local' | 'authenticated' } {
+    const context = getProfileLaunchContext()
+    if (!context) throw new Error('Backup requires a verified profile launch context')
+    if (context.mode !== 'business' || context.kind === 'signed-out') {
+      throw new Error('Backup is forbidden for the signed-out profile')
+    }
+    return context as ProfileLaunchContext & { kind: 'local' | 'authenticated' }
+  }
+
+  private profileNamespace(context = this.requireBackupProfile()): string {
+    return path.posix.join('profiles', context.identityDigest)
+  }
+
+  private namespacedWebDavConfig(config: WebDavConfig): WebDavConfig {
+    const basePath = config.webdavPath || '/'
+    const webdavPath = path.posix.join(basePath, this.profileNamespace())
+    this.assertPathInsideNamespace(path.posix.normalize(basePath), webdavPath, 'WebDAV')
+    return { ...config, webdavPath }
+  }
+
+  private assertRemoteFileName(fileName: string): string {
+    if (
+      !fileName ||
+      fileName.includes('..') ||
+      /[\\/]/.test(fileName) ||
+      [...fileName].some((character) => character.charCodeAt(0) <= 0x1f || character.charCodeAt(0) === 0x7f) ||
+      path.posix.basename(fileName) !== fileName ||
+      path.win32.basename(fileName) !== fileName
+    ) {
+      throw new Error('Remote backup file name must be a strict basename without traversal or control characters')
+    }
+    return fileName
+  }
+
+  private assertPathInsideNamespace(namespace: string, candidate: string, provider: string): void {
+    const normalizedNamespace = path.posix.normalize(namespace)
+    const normalizedCandidate = path.posix.normalize(candidate)
+    if (
+      normalizedCandidate !== normalizedNamespace &&
+      !normalizedCandidate.startsWith(`${normalizedNamespace.endsWith('/') ? normalizedNamespace : `${normalizedNamespace}/`}`)
+    ) {
+      throw new Error(`${provider} backup path escaped its profile namespace`)
+    }
+  }
+
+  private namespacedRemoteKey(fileName: string): string {
+    const namespace = this.profileNamespace()
+    const key = path.posix.join(namespace, this.assertRemoteFileName(fileName))
+    this.assertPathInsideNamespace(namespace, key, 'S3')
+    return key
+  }
+
   private createDirectBackupMetadata(slimBackup: boolean): DirectBackupMetadata {
+    const profile = this.requireBackupProfile()
     return {
       version: DIRECT_BACKUP_VERSION,
       timestamp: Date.now(),
@@ -220,6 +285,12 @@ class BackupManager {
       appVersion: app.getVersion(),
       platform: process.platform,
       arch: process.arch,
+      profile: {
+        schema: 1,
+        kind: profile.kind,
+        profileId: profile.profileId,
+        identityDigest: profile.identityDigest
+      },
       resources: {
         database: false,
         cache: true,
@@ -255,7 +326,8 @@ class BackupManager {
   }
 
   private createBackupFileName(): string {
-    return `cherry-studio.${dayjs().format('YYYYMMDDHHmmssSSS')}.${getHostname() || 'unknown'}.${getDeviceType() || 'unknown'}.zip`
+    const profile = this.requireBackupProfile()
+    return `cherry-studio.${profile.kind}.${profile.identityDigest}.${dayjs().format('YYYYMMDDHHmmssSSS')}.${getHostname() || 'unknown'}.${getDeviceType() || 'unknown'}.zip`
   }
 
   private createRemoteCleanupSignal(signal?: AbortSignal): AbortSignal {
@@ -274,10 +346,14 @@ class BackupManager {
 
     try {
       signal?.throwIfAborted()
-      const suffix = `.${getHostname() || 'unknown'}.${getDeviceType() || 'unknown'}.zip`
-      const files = (await listFiles(signal)).filter(
-        (file) => file.fileName.startsWith('cherry-studio.') && file.fileName.endsWith(suffix)
-      )
+      // Legacy cleanup selected backups by host/device suffix. Profile namespaces
+      // now provide the ownership boundary, so every archive returned here belongs
+      // to the active identity regardless of which device created it.
+      // const suffix = `.${getHostname() || 'unknown'}.${getDeviceType() || 'unknown'}.zip`
+      // const files = (await listFiles(signal)).filter(
+      //   (file) => file.fileName.startsWith('cherry-studio.') && file.fileName.endsWith(suffix)
+      // )
+      const files = await listFiles(signal)
       for (const file of files.slice(maxBackups)) {
         await this.deleteWithRetry(file.fileName, deleteFile, signal, deleteAttempts)
       }
@@ -313,6 +389,7 @@ class BackupManager {
     signal?: AbortSignal
   ): Promise<string> {
     signal?.throwIfAborted()
+    this.requireBackupProfile()
     this.assertNoActiveDataWriters()
 
     if (path.posix.basename(fileName) !== fileName || path.win32.basename(fileName) !== fileName) {
@@ -703,7 +780,8 @@ class BackupManager {
     return this.runBackupWorkflow(async () => {
       const operationSignal = event === null ? signal : undefined
       operationSignal?.throwIfAborted()
-      const backupDir = localConfig.localBackupDir || this.backupDir
+      const configuredBackupDir = localConfig.localBackupDir || this.backupDir
+      const backupDir = path.join(configuredBackupDir, this.profileNamespace())
       await fs.ensureDir(backupDir)
       const result = await this.backupDirect(
         fileName || this.createBackupFileName(),
@@ -713,8 +791,9 @@ class BackupManager {
       )
       const cleanupError = await this.cleanupOldBackups(
         localConfig.maxBackups ?? 0,
-        (cleanupSignal) => this.listLocalBackupFiles(null, backupDir, cleanupSignal),
-        (oldFileName, cleanupSignal) => this.deleteLocalBackupFile(null, oldFileName, backupDir, cleanupSignal),
+        (cleanupSignal) => this.listLocalBackupFiles(null, configuredBackupDir, cleanupSignal),
+        (oldFileName, cleanupSignal) =>
+          this.deleteLocalBackupFile(null, oldFileName, configuredBackupDir, cleanupSignal),
         operationSignal
       )
       return { result, cleanupError }
@@ -735,14 +814,15 @@ class BackupManager {
   ): Promise<BackupWorkflowResult<boolean>> {
     return this.runBackupWorkflow(async () => {
       const operationSignal = event === null ? signal : undefined
-      const filename = webdavConfig.fileName || this.createBackupFileName()
+      const filename = this.assertRemoteFileName(webdavConfig.fileName || this.createBackupFileName())
+      const namespacedConfig = this.namespacedWebDavConfig(webdavConfig)
       const backupedFilePath = await this.backupDirect(
         filename,
         undefined,
         webdavConfig.skipBackupFile ?? false,
         operationSignal
       )
-      const webdavClient = this.getWebDavInstance(webdavConfig)
+      const webdavClient = this.getWebDavInstance(namespacedConfig)
       const idleTimeout = new IdleTimeoutController(REMOTE_UPLOAD_IDLE_TIMEOUT_MS)
       const uploadSignal = operationSignal ? AbortSignal.any([operationSignal, idleTimeout.signal]) : idleTimeout.signal
       let result: boolean
@@ -781,8 +861,8 @@ class BackupManager {
       const cleanupSignal = this.createRemoteCleanupSignal(operationSignal)
       const cleanupError = await this.cleanupOldBackups(
         webdavConfig.maxBackups ?? 0,
-        (currentSignal) => this.listWebdavFiles(null, webdavConfig, currentSignal),
-        (oldFileName, currentSignal) => this.deleteWebdavFile(null, oldFileName, webdavConfig, currentSignal),
+        (currentSignal) => this.listWebdavFilesWithConfig(namespacedConfig, currentSignal),
+        (oldFileName, currentSignal) => this.deleteWebdavFileWithConfig(oldFileName, namespacedConfig, currentSignal),
         cleanupSignal,
         3
       )
@@ -804,7 +884,7 @@ class BackupManager {
   ): Promise<BackupWorkflowResult<unknown>> {
     return this.runBackupWorkflow(async () => {
       const operationSignal = event === null ? signal : undefined
-      const filename = s3Config.fileName || this.createBackupFileName()
+      const filename = this.assertRemoteFileName(s3Config.fileName || this.createBackupFileName())
 
       logger.debug(`[backupToS3] Starting S3 backup to ${filename}`)
 
@@ -819,9 +899,12 @@ class BackupManager {
       try {
         operationSignal?.throwIfAborted()
         const contentLength = (await fs.stat(backupedFilePath)).size
-        result = await s3Client.putFileContents(filename, fs.createReadStream(backupedFilePath), contentLength, {
-          signal: operationSignal
-        })
+        result = await s3Client.putFileContents(
+          this.namespacedRemoteKey(filename),
+          fs.createReadStream(backupedFilePath),
+          contentLength,
+          { signal: operationSignal }
+        )
         operationSignal?.throwIfAborted()
         logger.info(`S3 backup completed: ${filename}`)
       } finally {
@@ -884,12 +967,21 @@ class BackupManager {
    */
   async restore(_: Electron.IpcMainInvokeEvent, backupPath: string): Promise<void> {
     return this.runBackupWorkflow(async () => {
-      await this.restoreUnlocked(backupPath)
+      await this.restoreUnlocked(backupPath, 'in-place')
       application.relaunch()
     })
   }
 
-  private async restoreUnlocked(backupPath: string): Promise<void> {
+  async safeImport(_: Electron.IpcMainInvokeEvent, backupPath: string): Promise<void> {
+    return this.runBackupWorkflow(async () => {
+      this.requireBackupProfile()
+      assertSafeImportTargetEmpty(application.getPath('app.database.file'))
+      await this.restoreUnlocked(backupPath, 'safe-import')
+      application.relaunch()
+    })
+  }
+
+  private async restoreUnlocked(backupPath: string, mode: RestoreMode = 'in-place'): Promise<void> {
     const onProgress = this.onProgress(IpcChannel.RestoreProgress, true)
     const extractionDir = await this.createOperationDir('extract')
 
@@ -911,7 +1003,7 @@ class BackupManager {
         throw new Error(`Unsupported v1 backup. MEA Cowork can only restore backup version ${DIRECT_BACKUP_VERSION}.`)
       }
 
-      await this.restoreDirect(extractionDir)
+      await this.restoreDirect(extractionDir, mode)
     } catch (error) {
       logger.error('Restore failed:', error as Error)
       const reportedError = await this.withAvailableDiskSpace(error, extractionDir)
@@ -926,7 +1018,7 @@ class BackupManager {
    * validates the live DB fingerprint and migration chain, then swaps the DB
    * and file resources with aside-first rollback semantics.
    */
-  private async restoreDirect(extractionDir: string): Promise<void> {
+  private async restoreDirect(extractionDir: string, mode: RestoreMode = 'in-place'): Promise<void> {
     const onProgress = this.onProgress(IpcChannel.RestoreProgress, true)
     const userDataPath = application.getPath('app.userdata')
     const stagingRoot = application.getPath('feature.backup.restore.staging')
@@ -955,7 +1047,8 @@ class BackupManager {
     await this.ensurePrivateDir(restoreDir)
 
     try {
-      const metadata = await this.readDirectBackupMetadata(extractionDir)
+      const metadata = await this.readDirectBackupMetadata(extractionDir, mode)
+      const isSafeImport = mode === 'safe-import'
       const isSlimBackup = !metadata.resources.indexedDB && !metadata.resources.localStorage
 
       if (metadata.platform && metadata.platform !== process.platform) {
@@ -973,13 +1066,15 @@ class BackupManager {
       const stagedLocalStorage = path.join(restoreDir, 'resources', 'Local Storage')
       const stagedData = path.join(restoreDir, 'resources', 'Data')
 
-      await this.assertArchiveFile(path.join(extractionDir, 'cache.json'), 'cache.json')
-      await fs.copy(path.join(extractionDir, 'cache.json'), stagedCache)
+      if (!isSafeImport) {
+        await this.assertArchiveFile(path.join(extractionDir, 'cache.json'), 'cache.json')
+        await fs.copy(path.join(extractionDir, 'cache.json'), stagedCache)
+      }
 
-      if (metadata.resources.indexedDB) {
+      if (metadata.resources.indexedDB && !isSafeImport) {
         await this.stageArchiveDirectory(path.join(extractionDir, 'IndexedDB'), stagedIndexedDB)
       }
-      if (metadata.resources.localStorage) {
+      if (metadata.resources.localStorage && !isSafeImport) {
         await this.stageArchiveDirectory(path.join(extractionDir, 'Local Storage'), stagedLocalStorage)
       }
 
@@ -988,7 +1083,13 @@ class BackupManager {
         await this.assertArchiveDirectory(dataSource, 'Data')
         const copyOptions: CopyDirOptions = metadata.resources.database
           ? this.createLegacyDataCopyOptions(dataSource, false)
-          : { dereferenceSymlinks: false, sourceRootPath: dataSource }
+          : {
+              dereferenceSymlinks: false,
+              sourceRootPath: dataSource,
+              ...(isSafeImport
+                ? { excludeRelativePath: (relativePath: string) => shouldStripSafeImportPath(relativePath) }
+                : {})
+            }
         await this.stageArchiveDirectory(
           dataSource,
           stagedData,
@@ -1029,6 +1130,7 @@ class BackupManager {
         await this.copyClaudeState(path.join(extractionDir, '.claude'), stagedClaude)
       }
 
+      if (isSafeImport) sanitizeSafeImportDatabase(workDatabase)
       const chain = this.validateStagedDatabase(workDatabase)
       if (!this.isChainBundledPrefix(chain)) {
         throw new Error(
@@ -1038,15 +1140,17 @@ class BackupManager {
       onProgress({ stage: 'restoring_database', progress: 65, total: 100 })
 
       const fileResources: RestoreJournal['fileResources'] = []
-      fileResources.push(
-        await this.createJournalResource({
-          restoreDir,
-          stagingPath: stagedCache,
-          livePath: application.getPath('app.userdata', 'cache.json'),
-          directory: false
-        })
-      )
-      if (metadata.resources.indexedDB) {
+      if (!isSafeImport) {
+        fileResources.push(
+          await this.createJournalResource({
+            restoreDir,
+            stagingPath: stagedCache,
+            livePath: application.getPath('app.userdata', 'cache.json'),
+            directory: false
+          })
+        )
+      }
+      if (metadata.resources.indexedDB && !isSafeImport) {
         fileResources.push(
           await this.createJournalResource({
             restoreDir,
@@ -1056,7 +1160,7 @@ class BackupManager {
           })
         )
       }
-      if (metadata.resources.localStorage) {
+      if (metadata.resources.localStorage && !isSafeImport) {
         fileResources.push(
           await this.createJournalResource({
             restoreDir,
@@ -1116,7 +1220,13 @@ class BackupManager {
           version: 1,
           restoreId,
           createdAt: new Date().toISOString(),
+          mode,
           state: 'staged',
+          profile: {
+            profileId: this.requireBackupProfile().profileId,
+            identityDigest: this.requireBackupProfile().identityDigest,
+            kind: this.requireBackupProfile().kind
+          },
           db: {
             promote: path.relative(userDataPath, workDatabase),
             aside: path.relative(userDataPath, path.join(restoreDir, 'aside', 'cherrystudio.sqlite')),
@@ -1148,7 +1258,10 @@ class BackupManager {
     }
   }
 
-  private async readDirectBackupMetadata(extractionDir: string): Promise<DirectBackupMetadata> {
+  private async readDirectBackupMetadata(
+    extractionDir: string,
+    mode: RestoreMode = 'in-place'
+  ): Promise<DirectBackupMetadata> {
     const raw = (await fs.readJson(path.join(extractionDir, 'metadata.json'))) as Record<string, unknown>
 
     if (!raw || typeof raw !== 'object' || raw.appName !== 'Cherry Studio') {
@@ -1159,10 +1272,35 @@ class BackupManager {
         `${BACKUP_NEWER_VERSION_ERROR_CODE}: This backup was created by a newer version of MEA Cowork (backup version ${String(raw.version)}) and cannot be restored on this version (supports ${DIRECT_BACKUP_VERSION}). Please update MEA Cowork and try again.`
       )
     }
-    if (raw.version !== DIRECT_BACKUP_VERSION) {
+    if (raw.version !== DIRECT_BACKUP_VERSION && raw.version !== LEGACY_DIRECT_BACKUP_VERSION) {
       throw new Error(
-        `Unsupported backup version ${String(raw.version)}. MEA Cowork can only restore backup version ${DIRECT_BACKUP_VERSION}.`
+        `Unsupported backup version ${String(raw.version)}. MEA Cowork can only restore backup versions ${LEGACY_DIRECT_BACKUP_VERSION} and ${DIRECT_BACKUP_VERSION}.`
       )
+    }
+
+    const context = this.requireBackupProfile()
+    if (raw.version === LEGACY_DIRECT_BACKUP_VERSION) {
+      if (context.kind === 'authenticated' && mode !== 'safe-import') {
+        throw new Error('Backup version 7 has unknown profile identity and cannot replace an authenticated profile')
+      }
+    } else {
+      const profile = raw.profile as Record<string, unknown> | undefined
+      const validProfile =
+        profile?.schema === 1 &&
+        (profile.kind === 'local' || profile.kind === 'authenticated') &&
+        typeof profile.profileId === 'string' &&
+        /^(?:signed-out|[a-f0-9]{32})$/.test(profile.profileId) &&
+        typeof profile.identityDigest === 'string' &&
+        /^[a-f0-9]{64}$/.test(profile.identityDigest)
+      if (!validProfile) {
+        throw new Error(`Backup version ${String(raw.version)} profile metadata is incomplete`)
+      }
+      if (
+        mode !== 'safe-import' &&
+        (profile.identityDigest !== context.identityDigest || profile.kind !== context.kind)
+      ) {
+        throw new Error('Backup profile identity does not match the active profile')
+      }
     }
 
     const resources = raw.resources as Record<string, unknown> | undefined
@@ -1434,7 +1572,7 @@ class BackupManager {
    */
   async restoreFromLocalBackup(_: Electron.IpcMainInvokeEvent, fileName: string, localBackupDir: string) {
     try {
-      const backupPath = resolveAndValidatePath(localBackupDir, fileName)
+      const backupPath = resolveAndValidatePath(path.join(localBackupDir, this.profileNamespace()), fileName)
 
       if (!fs.existsSync(backupPath)) {
         throw new Error(`Backup file not found: ${backupPath}`)
@@ -1456,10 +1594,10 @@ class BackupManager {
    */
   async restoreFromWebdav(_: Electron.IpcMainInvokeEvent, webdavConfig: WebDavConfig) {
     return this.runBackupWorkflow(async () => {
-      const filename = webdavConfig.fileName || 'cherry-studio.backup.zip'
-      const webdavClient = this.getWebDavInstance(webdavConfig)
+      const filename = this.assertRemoteFileName(webdavConfig.fileName || 'cherry-studio.backup.zip')
+      const webdavClient = this.getWebDavInstance(this.namespacedWebDavConfig(webdavConfig))
       const downloadDir = await this.createOperationDir('webdav-download')
-      const backupedFilePath = path.join(downloadDir, path.basename(filename))
+      const backupedFilePath = resolveAndValidatePath(downloadDir, filename)
       try {
         await pipeline(webdavClient.createReadStream(filename), fs.createWriteStream(backupedFilePath))
         await this.restoreUnlocked(backupedFilePath)
@@ -1483,15 +1621,18 @@ class BackupManager {
    */
   async restoreFromS3(_: Electron.IpcMainInvokeEvent, s3Config: S3Config) {
     return this.runBackupWorkflow(async () => {
-      const filename = s3Config.fileName || 'cherry-studio.backup.zip'
+      const filename = this.assertRemoteFileName(s3Config.fileName || 'cherry-studio.backup.zip')
 
       logger.debug(`Starting restore from S3: ${filename}`)
 
       const s3Client = this.getS3Storage(s3Config)
       const downloadDir = await this.createOperationDir('s3-download')
-      const backupedFilePath = path.join(downloadDir, path.basename(filename))
+      const backupedFilePath = resolveAndValidatePath(downloadDir, filename)
       try {
-        await pipeline(await s3Client.getFileStream(filename), fs.createWriteStream(backupedFilePath))
+        await pipeline(
+          await s3Client.getFileStream(this.namespacedRemoteKey(filename)),
+          fs.createWriteStream(backupedFilePath)
+        )
 
         logger.info(`S3 restore file downloaded successfully: ${filename}`)
         await this.restoreUnlocked(backupedFilePath)
@@ -1797,12 +1938,24 @@ class BackupManager {
    * @returns Array of backup file info (name, modified time, size), sorted by newest first
    */
   listWebdavFiles = async (_: BackupInvocationEvent, config: WebDavConfig, signal?: AbortSignal) => {
+    return this.listWebdavFilesWithConfig(this.namespacedWebDavConfig(config), signal)
+  }
+
+  private async listWebdavFilesWithConfig(config: WebDavConfig, signal?: AbortSignal) {
     try {
       const client = this.getWebDavInstance(config)
       const files = await client.getDirectoryContents(signal)
 
       return files
-        .filter((file: FileStat) => file.type === 'file' && file.basename.endsWith('.zip'))
+        .filter((file: FileStat) => {
+          if (file.type !== 'file' || !file.basename.endsWith('.zip')) return false
+          try {
+            this.assertRemoteFileName(file.basename)
+            return true
+          } catch {
+            return false
+          }
+        })
         .map((file: FileStat) => ({
           fileName: file.basename,
           modifiedTime: file.lastmod,
@@ -2015,9 +2168,14 @@ class BackupManager {
    * @returns Result from WebDAV operation
    */
   async deleteWebdavFile(_: BackupInvocationEvent, fileName: string, webdavConfig: WebDavConfig, signal?: AbortSignal) {
+    return this.deleteWebdavFileWithConfig(fileName, this.namespacedWebDavConfig(webdavConfig), signal)
+  }
+
+  private async deleteWebdavFileWithConfig(fileName: string, webdavConfig: WebDavConfig, signal?: AbortSignal) {
     try {
+      const safeFileName = this.assertRemoteFileName(fileName)
       const webdavClient = this.getWebDavInstance(webdavConfig)
-      return await webdavClient.deleteFile(fileName, signal)
+      return await webdavClient.deleteFile(safeFileName, signal)
     } catch (error: any) {
       logger.error('Failed to delete WebDAV file:', error)
       if (signal?.aborted) throw signal.reason
@@ -2037,12 +2195,13 @@ class BackupManager {
   async listLocalBackupFiles(_: BackupInvocationEvent, localBackupDir: string, signal?: AbortSignal) {
     try {
       signal?.throwIfAborted()
-      const files = await fs.readdir(localBackupDir)
+      const namespacedBackupDir = path.join(localBackupDir, this.profileNamespace())
+      const files = await fs.readdir(namespacedBackupDir)
       const result: Array<{ fileName: string; modifiedTime: string; size: number }> = []
 
       for (const file of files) {
         signal?.throwIfAborted()
-        const filePath = path.join(localBackupDir, file)
+        const filePath = path.join(namespacedBackupDir, file)
         const stat = await fs.stat(filePath)
 
         if (stat.isFile() && file.endsWith('.zip')) {
@@ -2077,7 +2236,7 @@ class BackupManager {
   ) {
     try {
       signal?.throwIfAborted()
-      const filePath = resolveAndValidatePath(localBackupDir, fileName)
+      const filePath = resolveAndValidatePath(path.join(localBackupDir, this.profileNamespace()), fileName)
 
       if (!fs.existsSync(filePath)) {
         throw new Error(`Backup file not found: ${filePath}`)
@@ -2232,14 +2391,18 @@ class BackupManager {
     try {
       const s3Client = this.getS3Storage(s3Config)
 
-      const objects = await s3Client.listFiles('', signal)
-      const files = objects
-        .filter((obj) => obj.key.endsWith('.zip'))
-        .map((obj) => ({
-          fileName: obj.key,
-          modifiedTime: obj.lastModified || '',
-          size: obj.size
-        }))
+      const namespace = `${this.profileNamespace()}/`
+      const objects = await s3Client.listFiles(namespace, signal)
+      const files = objects.flatMap((obj) => {
+        if (!obj.key.startsWith(namespace) || !obj.key.endsWith('.zip')) return []
+        const fileName = obj.key.slice(namespace.length)
+        try {
+          this.assertRemoteFileName(fileName)
+        } catch {
+          return []
+        }
+        return [{ fileName, modifiedTime: obj.lastModified || '', size: obj.size }]
+      })
 
       return files.sort((a, b) => new Date(b.modifiedTime).getTime() - new Date(a.modifiedTime).getTime())
     } catch (error: any) {
@@ -2259,7 +2422,7 @@ class BackupManager {
   async deleteS3File(_: BackupInvocationEvent, fileName: string, s3Config: S3Config, signal?: AbortSignal) {
     try {
       const s3Client = this.getS3Storage(s3Config)
-      return await s3Client.deleteFile(fileName, signal)
+      return await s3Client.deleteFile(this.namespacedRemoteKey(fileName), signal)
     } catch (error: any) {
       logger.error('Failed to delete S3 file:', error)
       if (signal?.aborted) throw signal.reason

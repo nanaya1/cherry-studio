@@ -1,4 +1,5 @@
 import crypto from 'node:crypto'
+import fs from 'node:fs/promises'
 
 import { MockMainCacheServiceUtils } from '@test-mocks/main/CacheService'
 import { mockMainLoggerService } from '@test-mocks/MainLoggerService'
@@ -7,6 +8,7 @@ import sharp from 'sharp'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { BaseService } from '@main/core/lifecycle'
+import { orgStateStore } from '@main/enterprise/OrgStateStore'
 import type { McpServer } from '@shared/data/types/mcpServer'
 import { BuiltinMcpServerNames } from '@shared/utils/mcp'
 
@@ -636,6 +638,28 @@ describe('McpRuntimeService.callTool cancellation', () => {
       })
     })
   }
+
+  it('blocks an enterprise connector before client startup when its entitlement is stale', async () => {
+    const service = new McpRuntimeService()
+    const allowed = vi.spyOn(orgStateStore, 'isConnectorAllowed').mockReturnValue(false)
+    const connect = vi.spyOn(service as any, 'connectClient')
+
+    await expect((service as any).getOrCreateClient(server)).rejects.toThrow(/entitlement/i)
+
+    expect(connect).not.toHaveBeenCalled()
+    allowed.mockRestore()
+  })
+
+  it('rechecks enterprise connector entitlement before every tool call', async () => {
+    const service = new McpRuntimeService()
+    const allowed = vi.spyOn(orgStateStore, 'isConnectorAllowed').mockReturnValue(false)
+    const getClient = vi.spyOn(service as any, 'getOrCreateClient')
+
+    await expect(service.callTool({ serverId: server.id, name: 'tool', args: {} })).rejects.toThrow(/entitlement/i)
+
+    expect(getClient).not.toHaveBeenCalled()
+    allowed.mockRestore()
+  })
 
   it('aborts the client call and clears the active call when the external signal aborts', async () => {
     const service = new McpRuntimeService()
@@ -1303,6 +1327,30 @@ describe('McpRuntimeService.removeServer vs concurrent connect', () => {
     listServersMock.mockReturnValue({ items: [server], total: 1, page: 1 })
     mcpCatalogMock.clearSharedToolsCache.mockReset()
     mcpSdkMock.state.failStreamable = false
+  })
+
+  it('deletes OAuth credentials only through the current profile path registry', async () => {
+    const profileOAuthRoot = '/profiles/current/userData/Sensitive/Mcp/oauth'
+    const oauthServer = { ...server, baseUrl: 'https://mcp.example.test' }
+    getByIdMock.mockReturnValue(oauthServer)
+    listServersMock.mockReturnValue({ items: [oauthServer], total: 1, page: 1 })
+    const { application } = await import('@application')
+    const pathSpy = vi.spyOn(application, 'getPath').mockImplementation((key: string, filename?: string) => {
+      if (key !== 'feature.mcp.oauth') throw new Error(`unexpected path key: ${key}`)
+      return filename ? `${profileOAuthRoot}/${filename}` : profileOAuthRoot
+    })
+    const unlinkSpy = vi.spyOn(fs, 'unlink').mockResolvedValue(undefined)
+
+    try {
+      await new McpRuntimeService().removeServer('server-1')
+
+      const hash = crypto.createHash('md5').update(oauthServer.baseUrl).digest('hex')
+      expect(pathSpy).toHaveBeenCalledWith('feature.mcp.oauth', `${hash}_oauth.json`)
+      expect(unlinkSpy).toHaveBeenCalledWith(`${profileOAuthRoot}/${hash}_oauth.json`)
+    } finally {
+      pathSpy.mockRestore()
+      unlinkSpy.mockRestore()
+    }
   })
 
   it('rejects a connect attempt made after removeServer instead of resurrecting the server', async () => {

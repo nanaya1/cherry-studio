@@ -3162,6 +3162,34 @@
       ]
     },
     "electronStore": {
+      "ProfileIsolation": [
+        {
+          "originalKey": "profileIsolationEnabled",
+          "type": "boolean",
+          "defaultValue": false,
+          "status": "classified",
+          "category": "bootConfig",
+          "targetKey": "app.profile_isolation_enabled"
+        },
+        {
+          "originalKey": "dataRootPath",
+          "type": "record",
+          "zodType": "z.record(z.string(), z.string())",
+          "defaultValue": {},
+          "status": "classified",
+          "category": "bootConfig",
+          "targetKey": "app.data_root_path"
+        },
+        {
+          "originalKey": "dataRootRelocation",
+          "type": "dataRootRelocation",
+          "zodType": "z.union([z.object({ status: z.literal('pending'), taskId: z.uuid(), from: z.string(), to: z.string() }), z.object({ status: z.literal('cleanup-pending'), taskId: z.uuid(), from: z.string(), to: z.string() }), z.object({ status: z.literal('failed'), taskId: z.uuid(), from: z.string(), to: z.string(), error: z.string(), failedAt: z.string() })]).nullable()",
+          "defaultValue": null,
+          "status": "classified",
+          "category": "bootConfig",
+          "targetKey": "temp.data_root_relocation"
+        }
+      ],
       "Language": [
         {
           "originalKey": "Language",

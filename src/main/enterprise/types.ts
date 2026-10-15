@@ -37,23 +37,43 @@ export interface OrgConnectorCatalogItem {
   config: Record<string, unknown>
 }
 
-export type OrgAuthMode = 'management-exchange' | 'management-oauth' | 'official-direct'
+export type OrgAuthMode = 'management-exchange' | 'management-oauth' | 'management-cookie' | 'official-direct'
 
 export interface OrgSession {
   authMode: OrgAuthMode
+  accountKind: 'management' | 'official'
+  issuerId: string
   authOrigin: string
   userId: string
   officialUserId: string
+  groupId: string | null
   displayName: string | null
   phone: string
   role: string
+  status: string
   accessToken: string
   refreshToken: string
   /** access token 过期时间（epoch ms），提前 60s 视为过期以触发刷新 */
   expiresAt: number
 }
 
-export type OrgAuthPhase = 'signed-out' | 'authorizing' | 'signed-in'
+// 原 /api/server-identity 契约已停用；modern 由 /api/currentuser 一次返回服务实例与当前用户。
+// export interface OrgServerIdentity { server_instance_id: string }
+export interface OrgCurrentUser {
+  server_instance_id: string
+  user: {
+    id: number | string
+    group_id: number | string
+    role: string
+    status: string
+    username?: string | null
+    displayName?: string | null
+    phone?: string | null
+    officialUserId?: string | null
+  }
+}
+
+export type OrgAuthPhase = 'signed-out' | 'authorizing' | 'signed-in' | 'switching'
 
 export type OrgAuthCallback = { token: string } | { code: string; state: string }
 

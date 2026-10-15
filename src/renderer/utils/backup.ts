@@ -5,7 +5,8 @@ import {
   BACKUP_BACKGROUND_TASKS_ERROR_CODE,
   BACKUP_DISK_FULL_ERROR_CODE,
   BACKUP_NEWER_VERSION_ERROR_CODE,
-  BACKUP_OPERATION_BUSY_ERROR_CODE
+  BACKUP_OPERATION_BUSY_ERROR_CODE,
+  SAFE_IMPORT_TARGET_NOT_EMPTY_ERROR_CODE
 } from '@shared/types/backup'
 
 type BackupErrorFallbackKey =
@@ -41,6 +42,7 @@ type BackupMessageKey =
   | 'backup.error.disk_full'
   | 'backup.error.newer_version'
   | 'backup.error.operation_busy'
+  | 'backup.error.safe_import_target_not_empty'
   | 'backup.error.webdav_tls_certificate'
 
 function resolveBackupErrorKey(error: unknown): string | null {
@@ -58,6 +60,9 @@ function resolveBackupErrorKey(error: unknown): string | null {
   }
   if (error.message.includes(BACKUP_ACTIVE_WRITERS_ERROR_CODE)) {
     return 'backup.error.active_data_writers'
+  }
+  if (error.message.includes(SAFE_IMPORT_TARGET_NOT_EMPTY_ERROR_CODE)) {
+    return 'backup.error.safe_import_target_not_empty'
   }
   return null
 }

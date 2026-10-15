@@ -32,7 +32,7 @@ describe('OrgStateStore', () => {
   beforeEach(() => {
     tmp = mkdtempSync(join(tmpdir(), 'org-state-test-'))
     applicationMock.getPath.mockImplementation((key: string) => {
-      if (key === 'feature.agents.skills') return join(tmp, 'Skills')
+      if (key === 'feature.enterprise.state_file') return join(tmp, 'Sensitive', 'Enterprise', 'org-state.json')
       throw new Error(`unexpected getPath key: ${key}`)
     })
   })
@@ -58,7 +58,7 @@ describe('OrgStateStore', () => {
     // 重新加载验证持久化
     const reloaded = new OrgStateStore()
     expect(reloaded.get('demo-skill')?.contentHash).toBe('abc123')
-    expect(existsSync(join(tmp, 'enterprise', 'org-state.json'))).toBe(true)
+    expect(existsSync(join(tmp, 'Sensitive', 'Enterprise', 'org-state.json'))).toBe(true)
   })
 
   it('remove 删除记录且持久化', () => {
@@ -81,7 +81,7 @@ describe('OrgStateStore', () => {
   })
 
   it('损坏的 state 文件安全降级为空', () => {
-    const entDir = join(tmp, 'enterprise')
+    const entDir = join(tmp, 'Sensitive', 'Enterprise')
     mkdirSync(entDir, { recursive: true })
     writeFileSync(join(entDir, 'org-state.json'), '{not json')
     const store = new OrgStateStore()
@@ -100,10 +100,46 @@ describe('OrgStateStore', () => {
     expect(new OrgStateStore().snapshotUnavailable()).toBe(false)
   })
 
+  it('fails closed when group, generation, issuer, or entitlement no longer matches the current lease', () => {
+    const store = new OrgStateStore()
+    store.recordConnectorEntitlement('weather', {
+      issuerId: 'issuer-1',
+      groupId: 'group-a',
+      resourceId: 'weather',
+      entitlement: 'active',
+      generation: 4,
+      localResourceId: 'mcp-1'
+    })
+    store.upsertConnector('weather', { mcpId: 'mcp-1', baseUrl: 'https://weather.example' })
+
+    expect(store.isConnectorAllowed('mcp-1', { issuerId: 'issuer-1', groupId: 'group-a', generation: 4 })).toBe(true)
+    expect(store.isConnectorAllowed('mcp-1', { issuerId: 'issuer-1', groupId: 'group-b', generation: 4 })).toBe(false)
+    expect(store.isConnectorAllowed('mcp-1', { issuerId: 'issuer-1', groupId: 'group-a', generation: 5 })).toBe(false)
+    expect(store.isConnectorAllowed('mcp-1', { issuerId: 'issuer-2', groupId: 'group-a', generation: 4 })).toBe(false)
+
+    store.invalidateEntitlements(5)
+    expect(store.isConnectorAllowed('mcp-1', { issuerId: 'issuer-1', groupId: 'group-a', generation: 5 })).toBe(false)
+  })
+
+  it('filters enterprise skills by their current entitlement while leaving local skills alone', () => {
+    const store = new OrgStateStore()
+    store.recordSkillEntitlement('review', {
+      issuerId: 'issuer-1',
+      groupId: 'group-a',
+      resourceId: 'review',
+      entitlement: 'active',
+      generation: 2
+    })
+
+    expect(store.isSkillAllowed('org-skill:review', { issuerId: 'issuer-1', groupId: 'group-a', generation: 2 })).toBe(true)
+    expect(store.isSkillAllowed('org-skill:review', { issuerId: 'issuer-1', groupId: 'group-b', generation: 2 })).toBe(false)
+    expect(store.isSkillAllowed('https://example.test/local', null)).toBe(true)
+  })
+
   it('文件内容校验：记录字段完整', () => {
     const store = new OrgStateStore()
     store.upsert('demo', { version: '2.0.0', contentHash: 'cafe', skillId: 'id9', folderName: 'Demo' })
-    const raw = JSON.parse(readFileSync(join(tmp, 'enterprise', 'org-state.json'), 'utf8'))
+    const raw = JSON.parse(readFileSync(join(tmp, 'Sensitive', 'Enterprise', 'org-state.json'), 'utf8'))
     expect(raw.skills.demo).toEqual({
       version: '2.0.0',
       contentHash: 'cafe',
@@ -178,6 +214,22 @@ describe('OrgStateStore', () => {
   // 回归：orgStateStore 是模块顶层单例，模块加载早于 application.initPathRegistry()。
   // 若构造函数里立即 getPath() 会抛错 → 静默重置为空 → startupScan C1 误判"本地无记录"全部重装。
   // 单例必须惰性初始化（首次访问时才读文件），getPath 只发生在真正需要时。
+  it('resetProfileCache 后从新的 profile 路径重新加载且不泄漏旧内存', () => {
+    const store = new OrgStateStore()
+    store.upsert('profile-a', { version: '1', contentHash: 'a', skillId: 'a', folderName: 'a' })
+
+    const profileB = mkdtempSync(join(tmpdir(), 'org-state-profile-b-'))
+    applicationMock.getPath.mockReturnValue(join(profileB, 'Sensitive', 'Enterprise', 'org-state.json'))
+    try {
+      store.resetProfileCache()
+      expect(store.get('profile-a')).toBeUndefined()
+      store.upsert('profile-b', { version: '1', contentHash: 'b', skillId: 'b', folderName: 'b' })
+      expect(store.get('profile-b')?.skillId).toBe('b')
+    } finally {
+      rmSync(profileB, { recursive: true, force: true })
+    }
+  })
+
   it('模块单例是惰性初始化：getPath 在首次数据访问时才调用', async () => {
     vi.resetModules()
     applicationMock.getPath.mockClear()
@@ -193,7 +245,9 @@ describe('OrgStateStore', () => {
 
     // 恢复路径后首次数据访问正常工作
     applicationMock.getPath.mockImplementation((key: string) =>
-      key === 'feature.agents.skills' ? join(tmp, 'Skills') : Promise.reject(new Error(`unexpected: ${key}`))
+      key === 'feature.enterprise.state_file'
+        ? join(tmp, 'Sensitive', 'Enterprise', 'org-state.json')
+        : Promise.reject(new Error(`unexpected: ${key}`))
     )
     orgStateStore.upsert('lazy-demo', { version: '1', contentHash: 'h', skillId: 's', folderName: 'd' })
     expect(applicationMock.getPath).toHaveBeenCalled()

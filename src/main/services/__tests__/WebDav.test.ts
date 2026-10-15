@@ -54,6 +54,56 @@ function createPlainHttpServer(): Promise<{ server: http.Server; port: number }>
 const closeServer = (server: https.Server | http.Server) =>
   new Promise<void>((resolve) => server.close(() => resolve()))
 
+describe('WebDav namespace boundary', () => {
+  const createWebDav = () => {
+    const webdav = new WebDav({ webdavHost: 'https://example.com', webdavPath: '/backups/profiles/identity' })
+    const instance = {
+      exists: vi.fn().mockResolvedValue(true),
+      putFileContents: vi.fn().mockResolvedValue(true),
+      getFileContents: vi.fn().mockResolvedValue(Buffer.from('backup')),
+      createReadStream: vi.fn(),
+      deleteFile: vi.fn().mockResolvedValue(true)
+    }
+    webdav.instance = instance as never
+    return { webdav, instance }
+  }
+
+  it.each(['../escape.zip', '..\\escape.zip', 'nested/backup.zip', 'backup..zip', 'backup\u0000.zip'])(
+    'rejects unsafe filename %j for every remote file operation',
+    async (fileName) => {
+      const { webdav, instance } = createWebDav()
+
+      await expect(webdav.putFileContents(fileName, Buffer.from('backup'))).rejects.toThrow(/strict basename/i)
+      await expect(webdav.getFileContents(fileName)).rejects.toThrow(/strict basename/i)
+      expect(() => webdav.createReadStream(fileName)).toThrow(/strict basename/i)
+      await expect(webdav.deleteFile(fileName)).rejects.toThrow(/strict basename/i)
+
+      expect(instance.putFileContents).not.toHaveBeenCalled()
+      expect(instance.getFileContents).not.toHaveBeenCalled()
+      expect(instance.createReadStream).not.toHaveBeenCalled()
+      expect(instance.deleteFile).not.toHaveBeenCalled()
+    }
+  )
+
+  it('joins valid filenames only inside the configured namespace', async () => {
+    const { webdav, instance } = createWebDav()
+
+    await webdav.putFileContents('backup.zip', Buffer.from('backup'))
+    await webdav.getFileContents('backup.zip')
+    webdav.createReadStream('backup.zip')
+    await webdav.deleteFile('backup.zip')
+
+    expect(instance.putFileContents).toHaveBeenCalledWith(
+      '/backups/profiles/identity/backup.zip',
+      expect.any(Buffer),
+      undefined
+    )
+    expect(instance.getFileContents).toHaveBeenCalledWith('/backups/profiles/identity/backup.zip', undefined)
+    expect(instance.createReadStream).toHaveBeenCalledWith('/backups/profiles/identity/backup.zip', undefined)
+    expect(instance.deleteFile).toHaveBeenCalledWith('/backups/profiles/identity/backup.zip', { signal: undefined })
+  })
+})
+
 describe('WebDav TLS verification', () => {
   let servers: Array<https.Server | http.Server>
 

@@ -31,8 +31,7 @@ const CONFIG = {
     GITHUB_DEVICE_CODE: 'https://github.com/login/device/code',
     GITHUB_ACCESS_TOKEN: 'https://github.com/login/oauth/access_token',
     COPILOT_TOKEN: 'https://api.github.com/copilot_internal/v2/token'
-  },
-  TOKEN_FILE_NAME: '.copilot_token'
+  }
 }
 
 const BASE_HEADERS = {
@@ -117,13 +116,10 @@ class CopilotService {
     return (this._tokenFilePath ??= this.getTokenFilePath())
   }
 
-  private getTokenFilePath = (): string => {
-    // Legacy path: token was previously stored directly under userData
-    const oldTokenFilePath = path.join(application.getPath('app.userdata'), CONFIG.TOKEN_FILE_NAME)
-    if (fs.existsSync(oldTokenFilePath)) {
-      return oldTokenFilePath
-    }
-    return application.getPath('feature.copilot.token_file')
+  private getTokenFilePath = (): string => application.getPath('feature.copilot.token_file')
+
+  public resetProfileCache(): void {
+    this._tokenFilePath = undefined
   }
 
   /**

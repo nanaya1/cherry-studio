@@ -6,10 +6,12 @@ import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { POPUP_EXIT_MS, popupService } from '@renderer/services/popup'
+import type * as PopupModule from '@renderer/services/popup'
 import type * as ImageUtils from '@renderer/utils/image'
 
 const mocks = vi.hoisted(() => ({
   appEdition: 'cn' as 'cn' | 'global',
+  confirm: vi.fn(async () => true),
   ipcRequest: vi.fn(
     async (route: string): Promise<unknown> =>
       route === 'cherry_cloud.status.get' ? { phase: 'signed-out', displayName: null } : undefined
@@ -138,7 +140,10 @@ vi.mock('@cherrystudio/ui', () => {
 })
 
 // This suite renders the real popup through the store + host, so opt out of the global mock.
-vi.mock('@renderer/services/popup', async (importOriginal) => await importOriginal())
+vi.mock('@renderer/services/popup', async (importOriginal) => {
+  const actual = await importOriginal<typeof PopupModule>()
+  return { ...actual, popup: { ...actual.popup, confirm: mocks.confirm } }
+})
 
 vi.mock('@renderer/ipc', () => ({
   ipcApi: { request: mocks.ipcRequest },
@@ -240,6 +245,28 @@ describe('UserPopup', () => {
     expect(await screen.findByDisplayValue('测试用户')).toBeDisabled()
     expect(screen.getByTestId('avatar-fallback')).toHaveTextContent('测')
     expect(screen.queryByPlaceholderText('settings.general.user_name.placeholder')).not.toBeInTheDocument()
+  })
+
+  it('does not expose the unsafe late local-data claim action after authenticated bootstrap', async () => {
+    mocks.ipcRequest.mockImplementation(async (route: string) => {
+      if (route === 'enterprise.status.get') {
+        return {
+          phase: 'signed-in',
+          authMode: 'official-direct',
+          displayName: '测试用户',
+          phone: '13900000000',
+          role: ''
+        }
+      }
+      if (route === 'enterprise.status.orgUnavailable') return { unavailable: false }
+      return undefined
+    })
+
+    showUserPopup()
+
+    await screen.findByRole('button', { name: 'settings.provider.org_service.logout' })
+    expect(screen.queryByRole('button', { name: 'Copy local profile data' })).not.toBeInTheDocument()
+    expect(mocks.ipcRequest).not.toHaveBeenCalledWith('profile.claim.preview')
   })
 
   it('renders image avatars with object-cover cropping', async () => {

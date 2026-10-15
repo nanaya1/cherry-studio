@@ -87,6 +87,7 @@ export const appRequestSchemas = {
     output: z.number()
   }),
   'app.data_reset.request': defineRoute({ input: z.void(), output: z.void() }),
+  'app.data_reset.device.request': defineRoute({ input: z.void(), output: z.void() }),
   'app.migration_v2.rerun': defineRoute({ input: z.void(), output: z.void() }),
   'app.updater.check_for_update': defineRoute({ input: z.void(), output: z.void() }),
   'app.updater.release_notes.get': defineRoute({

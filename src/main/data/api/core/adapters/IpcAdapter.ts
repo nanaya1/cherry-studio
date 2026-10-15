@@ -2,8 +2,9 @@ import { ipcMain, type IpcMainInvokeEvent } from 'electron'
 
 import { loggerService } from '@logger'
 import type { Disposable } from '@main/core/lifecycle'
+import { profileSwitchFence, getProfileLaunchContext, profileBusinessAccessGate } from '@main/core/profiles'
 import { validateSender } from '@main/core/security/validateSender'
-import { DataApiError, ErrorCode, toDataApiError } from '@shared/data/api/errors'
+import { DataApiError, DataApiErrorFactory, ErrorCode, toDataApiError } from '@shared/data/api/errors'
 import type { DataRequest, DataResponse } from '@shared/data/api/types'
 import { IpcChannel } from '@shared/IpcChannel'
 
@@ -63,7 +64,19 @@ export class IpcAdapter implements Disposable {
       }
 
       try {
+        this.assertBusinessAccess()
+        if (request.method !== 'GET') {
+          try {
+            profileSwitchFence.assertWritable()
+          } catch (error) {
+            throw DataApiErrorFactory.invalidOperation(
+              `${request.method} ${request.path}`,
+              error instanceof Error ? error.message : String(error)
+            )
+          }
+        }
         const response = await this.apiServer.handleRequest(request)
+        this.assertBusinessAccess()
 
         return response
       } catch (error) {
@@ -92,6 +105,14 @@ export class IpcAdapter implements Disposable {
    * top-level renderer frames pass (see `core/security/validateSender`). Rejections
    * are logged, not throttled — same stance as `IpcApiService.handleRequest`.
    */
+  private assertBusinessAccess(): void {
+    const context = getProfileLaunchContext()
+    if (!context) return
+    if (context.mode !== 'business' || context.kind !== 'authenticated' || !profileBusinessAccessGate.isAllowed()) {
+      throw new DataApiError(ErrorCode.PERMISSION_DENIED, 'Online profile verification is required', 403)
+    }
+  }
+
   private isTrustedSender(event: IpcMainInvokeEvent, context: string): boolean {
     if (validateSender(event)) return true
     logger.warn(`Rejected DataApi ${context} from untrusted sender`, {

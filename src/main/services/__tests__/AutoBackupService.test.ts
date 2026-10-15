@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   broadcastToType: vi.fn(),
   decryptToken: vi.fn(async () => ({ username: 'user', access_token: 'token' })),
   hasWritePermission: vi.fn(async () => true),
+  getProfileLaunchContext: vi.fn(),
   backupToLocalDir: vi
     .fn<
       (
@@ -45,6 +46,7 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('@application', () => ({ application: { get: mocks.applicationGet, getPath: mocks.applicationGetPath } }))
+vi.mock('@main/core/profiles', () => ({ getProfileLaunchContext: mocks.getProfileLaunchContext }))
 
 vi.mock('@logger', () => ({
   loggerService: {
@@ -114,6 +116,14 @@ describe('AutoBackupService', () => {
     vi.clearAllMocks()
     MockMainCacheServiceUtils.resetMocks()
     BaseService.resetInstances()
+    mocks.getProfileLaunchContext.mockReturnValue({
+      mode: 'business',
+      profileId: '1'.repeat(32),
+      identityDigest: 'a'.repeat(64),
+      kind: 'authenticated',
+      dataRoot: '/mock/dataRoot',
+      profileRoot: `/mock/dataRoot/profiles/${'1'.repeat(32)}`
+    })
     preferences = { ...enabledPreferences }
 
     const preferenceService = {
@@ -163,6 +173,16 @@ describe('AutoBackupService', () => {
     await service._doInit()
     await service._doAllReady()
   }
+
+  it('fails closed before contacting a backend when the profile launch context is missing', async () => {
+    mocks.getProfileLaunchContext.mockReturnValue(undefined)
+
+    await vi.advanceTimersByTimeAsync(60_000)
+
+    expect(legacyBackupManager.backupToWebdav).not.toHaveBeenCalled()
+    expect(legacyBackupManager.backupToS3).not.toHaveBeenCalled()
+    expect(legacyBackupManager.backupToLocalDir).not.toHaveBeenCalled()
+  })
 
   it('waits one full interval before the first automatic backup after application startup', async () => {
     await vi.advanceTimersByTimeAsync(59_000)

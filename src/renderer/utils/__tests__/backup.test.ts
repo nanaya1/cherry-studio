@@ -3,7 +3,8 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   BACKUP_ACTIVE_WRITERS_ERROR_CODE,
   BACKUP_BACKGROUND_TASKS_ERROR_CODE,
-  BACKUP_DISK_FULL_ERROR_CODE
+  BACKUP_DISK_FULL_ERROR_CODE,
+  SAFE_IMPORT_TARGET_NOT_EMPTY_ERROR_CODE
 } from '@shared/types/backup'
 
 import { getLocalizedBackupErrorMessage } from '../backup'
@@ -27,6 +28,16 @@ describe('getLocalizedBackupErrorMessage', () => {
     expect(result).toBe('localized:backup.error.active_data_writers')
     expect(result).not.toContain(BACKUP_ACTIVE_WRITERS_ERROR_CODE)
     expect(result).not.toContain('conversation')
+  })
+
+  it('explains that safe import requires an empty business profile after IPC', () => {
+    const error = new Error(
+      `Error invoking remote method 'backup:safeImport': Error: ${SAFE_IMPORT_TARGET_NOT_EMPTY_ERROR_CODE}: target has business data`
+    )
+
+    expect(getLocalizedBackupErrorMessage(error, 'message.restore.failed')).toBe(
+      'localized:backup.error.safe_import_target_not_empty'
+    )
   })
 
   it.each(['message.backup.failed', 'message.restore.failed'] as const)(

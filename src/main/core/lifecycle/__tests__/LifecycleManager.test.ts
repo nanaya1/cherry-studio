@@ -185,6 +185,42 @@ describe('LifecycleManager', () => {
       expect(order).toContain('Required')
     })
 
+    it('should retain successfully initialized services for teardown after a later fail-fast failure', async () => {
+      const teardownOrder: string[] = []
+
+      @Injectable('StartedService')
+      class StartedService extends BaseService {
+        protected override onStop() {
+          teardownOrder.push('stop')
+        }
+        protected override onDestroy() {
+          teardownOrder.push('destroy')
+        }
+      }
+
+      @Injectable('FailingService')
+      @DependsOn(['StartedService'])
+      @ErrorHandling('fail-fast')
+      class FailingService extends BaseService {
+        protected override onInit() {
+          throw new Error('init failed')
+        }
+      }
+
+      const manager = LifecycleManager.getInstance()
+      const container = manager['container']
+      container.register(StartedService)
+      container.register(FailingService)
+
+      await expect(initializeServices(manager)).rejects.toThrow(ServiceInitError)
+      expect(manager.getInitializationOrder()).toEqual(['StartedService'])
+
+      await manager.stopAll()
+      await manager.destroyAll()
+
+      expect(teardownOrder).toEqual(['stop', 'destroy'])
+    })
+
     it('should emit SERVICE_ERROR for failed service', async () => {
       const initError = new Error('init failed')
 

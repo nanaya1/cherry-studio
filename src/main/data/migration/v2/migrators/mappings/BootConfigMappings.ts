@@ -1,6 +1,6 @@
 /**
  * Auto-generated boot config mappings from classification.json
- * Generated at: 2026-09-14T04:01:57.970Z
+ * Generated at: 2026-10-14T20:01:55.715Z
  *
  * This file contains pure mapping relationships without default values.
  * Default values are managed in src/shared/data/bootConfig/bootConfigSchemas.ts
@@ -15,7 +15,20 @@ import type { BootConfigKey } from '@shared/data/bootConfig/bootConfigTypes'
  *
  * ElectronStore没有嵌套，originalKey直接对应configManager.get(key)
  */
-export const BOOT_CONFIG_ELECTRON_STORE_MAPPINGS: ReadonlyArray<{ originalKey: string; targetKey: BootConfigKey }> = [] as const
+export const BOOT_CONFIG_ELECTRON_STORE_MAPPINGS: ReadonlyArray<{ originalKey: string; targetKey: BootConfigKey }> = [
+  {
+    "originalKey": "profileIsolationEnabled",
+    "targetKey": "app.profile_isolation_enabled"
+  },
+  {
+    "originalKey": "dataRootPath",
+    "targetKey": "app.data_root_path"
+  },
+  {
+    "originalKey": "dataRootRelocation",
+    "targetKey": "temp.data_root_relocation"
+  }
+] as const
 
 /**
  * Redux Store映射关系 - 按category分组，支持嵌套路径
@@ -45,10 +58,10 @@ export const BOOT_CONFIG_LOCALSTORAGE_MAPPINGS: ReadonlyArray<{ originalKey: str
 
 /**
  * 映射统计:
- * - ElectronStore项: 0
+ * - ElectronStore项: 3
  * - Redux Store项: 1
  * - Redux分类: settings
  * - DexieSettings项: 0
  * - localStorage项: 0
- * - 总配置项: 1
+ * - 总配置项: 4
  */

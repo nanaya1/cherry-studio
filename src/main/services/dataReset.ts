@@ -8,6 +8,7 @@ import * as z from 'zod'
 import { application } from '@application'
 import { loggerService } from '@logger'
 import { SHUTDOWN_TIMEOUT_MS } from '@main/core/lifecycle'
+import { getProfileLaunchContext } from '@main/core/profiles'
 // Preboot dialogs cannot use PreferenceService-backed translations.
 import { t } from '@main/i18n'
 
@@ -32,6 +33,7 @@ export const USER_DATA_WIPE = [
   'Data',
   'Data.restore',
   'Credentials',
+  'Sensitive',
   'IndexedDB.restore',
   'Local Storage.restore',
   'cache.json',
@@ -70,13 +72,14 @@ export const USER_DATA_KEPT = ['logs', 'Crashpad', 'Runtime', 'Toolchain', 'tess
 const RM_OPTIONS = { recursive: true, force: true, maxRetries: 3, retryDelay: 100 } as const
 
 const dataResetOperationSchema = z.enum(['full_reset', 'v1_remigration'])
+const dataResetScopeSchema = z.enum(['current-profile', 'specified-profile', 'device'])
 type DataResetOperation = z.infer<typeof dataResetOperationSchema>
 
 /**
  * Strict on-disk marker schema. `pending` binds authorization to a canonical
  * path; `completed` prevents a resurrected marker from rearming the wipe.
  */
-const dataResetMarkerSchema = z.discriminatedUnion('status', [
+const legacyDataResetMarkerSchema = z.discriminatedUnion('status', [
   z.strictObject({
     version: z.literal(1),
     status: z.literal('pending'),
@@ -92,6 +95,32 @@ const dataResetMarkerSchema = z.discriminatedUnion('status', [
     operation: dataResetOperationSchema.optional()
   })
 ])
+
+const profileDataResetMarkerSchema = z.discriminatedUnion('status', [
+  z.strictObject({
+    version: z.literal(2),
+    status: z.literal('pending'),
+    requestedAt: z.string(),
+    attempts: z.number().int().nonnegative().optional(),
+    scope: dataResetScopeSchema,
+    profileId: z.union([z.literal('signed-out'), z.string().regex(/^[a-f0-9]{32}$/)]),
+    identityDigest: z.string().regex(/^[a-f0-9]{64}$/),
+    canonicalTarget: z.string(),
+    operation: dataResetOperationSchema.optional()
+  }),
+  z.strictObject({
+    version: z.literal(2),
+    status: z.literal('completed'),
+    completedAt: z.string(),
+    scope: dataResetScopeSchema,
+    profileId: z.union([z.literal('signed-out'), z.string().regex(/^[a-f0-9]{32}$/)]),
+    identityDigest: z.string().regex(/^[a-f0-9]{64}$/),
+    canonicalTarget: z.string(),
+    operation: dataResetOperationSchema.optional()
+  })
+])
+
+const dataResetMarkerSchema = z.union([legacyDataResetMarkerSchema, profileDataResetMarkerSchema])
 type DataResetMarker = z.infer<typeof dataResetMarkerSchema>
 
 /** The marker rename landed, but directory durability is unknown. */
@@ -224,13 +253,28 @@ export async function requestV1Remigration(): Promise<void> {
 
 async function stageDataReset(operation: DataResetOperation, shouldClearChromiumState: boolean): Promise<void> {
   const userDataPath = application.getPath('app.userdata')
-  // Bind authorization to the physical directory the user confirmed.
+  const context = getProfileLaunchContext()
+  if (context?.kind === 'signed-out' || context?.profileId === 'signed-out') {
+    throw new Error('Data reset is not allowed for the signed-out profile')
+  }
+  if (!context || context.mode !== 'business') {
+    throw new Error('Data reset requires an active business profile')
+  }
+  if (path.resolve(context.profileRoot) !== path.resolve(userDataPath)) {
+    throw new Error('Data reset profile root does not match the active userData path')
+  }
+
+  // The legacy v1 marker bound only canonicalPath. Profile isolation replaces it
+  // with a v2 marker bound to scope and the verified launch identity.
   try {
     writeMarker({
-      version: 1,
+      version: 2,
       status: 'pending',
       requestedAt: new Date().toISOString(),
-      canonicalPath: canonicalize(userDataPath),
+      scope: 'current-profile',
+      profileId: context.profileId,
+      identityDigest: context.identityDigest,
+      canonicalTarget: canonicalize(userDataPath),
       operation
     })
   } catch (error) {
@@ -290,11 +334,31 @@ export function runDataReset(): void {
 
     const userData = application.getPath('app.userdata')
 
-    // Refuse redirected or relocated targets.
+    // Refuse redirected, relocated, or identity-mismatched targets.
     const actualCanonical = canonicalize(userData)
-    if (marker.canonicalPath !== actualCanonical) {
+    const recordedCanonical = marker.version === 1 ? marker.canonicalPath : marker.canonicalTarget
+    if (marker.version === 2) {
+      const context = getProfileLaunchContext()
+      if (
+        marker.scope !== 'current-profile' ||
+        !context ||
+        context.mode !== 'business' ||
+        context.kind === 'signed-out' ||
+        context.profileId !== marker.profileId ||
+        context.identityDigest !== marker.identityDigest ||
+        path.resolve(context.profileRoot) !== path.resolve(userData)
+      ) {
+        logger.error('Data reset refused: marker does not match the verified active profile')
+        showDataResetError(
+          'Data Reset Cancelled',
+          'MEA Cowork did not run Data Reset because the pending request does not match the active profile.'
+        )
+        return
+      }
+    }
+    if (recordedCanonical !== actualCanonical) {
       logger.error('Data reset refused: userData resolves to a different physical directory than recorded', {
-        recorded: marker.canonicalPath,
+        recorded: recordedCanonical,
         actual: actualCanonical
       })
       refuseResetForPathMismatch()
@@ -320,7 +384,11 @@ export function runDataReset(): void {
 
     // Record the attempt before deleting anything.
     try {
-      writeMarker({ ...marker, attempts: attempts + 1, canonicalPath: actualCanonical })
+      writeMarker(
+        marker.version === 1
+          ? { ...marker, attempts: attempts + 1, canonicalPath: actualCanonical }
+          : { ...marker, attempts: attempts + 1, canonicalTarget: actualCanonical }
+      )
     } catch (error) {
       logger.error('Data reset halted: the attempt count could not be durably recorded — refusing to boot', {
         error: String(error)
@@ -375,7 +443,20 @@ export function runDataReset(): void {
 
     // Commit terminal state before removing the marker.
     try {
-      writeMarker({ version: 1, status: 'completed', completedAt: new Date().toISOString(), operation })
+      writeMarker(
+        marker.version === 1
+          ? { version: 1, status: 'completed', completedAt: new Date().toISOString(), operation }
+          : {
+              version: 2,
+              status: 'completed',
+              completedAt: new Date().toISOString(),
+              scope: marker.scope,
+              profileId: marker.profileId,
+              identityDigest: marker.identityDigest,
+              canonicalTarget: actualCanonical,
+              operation
+            }
+      )
     } catch (error) {
       logger.error(
         'Data reset wiped successfully but the completion record could not be committed — refusing to boot',

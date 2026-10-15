@@ -9,7 +9,7 @@
  */
 
 import { mockMainLoggerService } from '@test-mocks/MainLoggerService'
-import { app } from 'electron'
+import { app, dialog } from 'electron'
 import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from 'vitest'
 
 import { bootConfigService } from '@main/data/bootConfig'
@@ -19,7 +19,7 @@ import { SERVICE_STOP_TIMEOUT_MS, SHUTDOWN_TIMEOUT_MS } from '../../lifecycle/co
 import { DependsOn, Injectable } from '../../lifecycle/decorators'
 import { LifecycleManager } from '../../lifecycle/LifecycleManager'
 import { ServiceContainer } from '../../lifecycle/ServiceContainer'
-import { Phase } from '../../lifecycle/types'
+import { Phase, ServiceInitError } from '../../lifecycle/types'
 import { Application } from '../Application'
 
 // The `@application` alias resolves to Application.ts, so the global
@@ -59,7 +59,8 @@ describe('Application shutdown', () => {
     // listeners Application registers.
     appOn = vi.fn()
     appExit = vi.fn()
-    Object.assign(app, { on: appOn, exit: appExit, quit: vi.fn() })
+    Object.assign(app, { on: appOn, exit: appExit, quit: vi.fn(), whenReady: vi.fn() })
+    Object.assign(dialog, { showMessageBox: vi.fn() })
 
     exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => undefined) as never)
     vi.spyOn(bootConfigService, 'flush').mockImplementation(() => {})
@@ -203,6 +204,84 @@ describe('Application shutdown', () => {
     await runWillQuit(Application.getInstance())
 
     expect(exitSpy).toHaveBeenCalledWith(1)
+  })
+
+  it('tears down partially initialized services before relaunching after a fatal init failure', async () => {
+    const order: string[] = []
+    const application = Application.getInstance()
+    const manager = application.getLifecycleManager()
+    vi.spyOn(app, 'whenReady').mockResolvedValue(undefined)
+    vi.spyOn(dialog, 'showMessageBox').mockResolvedValue({ response: 1, checkboxChecked: false })
+    vi.spyOn(manager, 'stopAll').mockImplementation(async () => {
+      order.push('stop')
+      return { timedOut: [], failed: [] }
+    })
+    vi.spyOn(manager, 'destroyAll').mockImplementation(async () => {
+      order.push('destroy')
+      return { timedOut: [], failed: [] }
+    })
+    vi.spyOn(application, 'relaunch').mockImplementation(() => {
+      order.push('relaunch')
+    })
+
+    await application['handleFatalServiceError'](new ServiceInitError('DbService', new Error('init failed')))
+
+    expect(order).toEqual(['stop', 'destroy', 'relaunch'])
+  })
+
+  it('reports an unsuccessful bootstrap after a fatal init failure was handled', async () => {
+    const application = Application.getInstance()
+    const manager = application.getLifecycleManager()
+    application.__setPathMapForTesting({} as never)
+    vi.spyOn(app, 'whenReady').mockResolvedValue(undefined)
+    vi.spyOn(dialog, 'showMessageBox').mockResolvedValue({ response: 1, checkboxChecked: false })
+    vi.spyOn(manager, 'startPhase').mockRejectedValueOnce(new ServiceInitError('DbService', new Error('init failed')))
+    vi.spyOn(manager, 'stopAll').mockResolvedValue({ timedOut: [], failed: [] })
+    vi.spyOn(manager, 'destroyAll').mockResolvedValue({ timedOut: [], failed: [] })
+    vi.spyOn(application, 'relaunch').mockImplementation(() => {})
+
+    await expect(application.bootstrap()).resolves.toBe(false)
+  })
+
+  it('returns structured teardown failures for a profile switch without finishing the logger', async () => {
+    const application = Application.getInstance()
+    const manager = application.getLifecycleManager()
+    vi.spyOn(manager, 'stopAll').mockResolvedValue({ timedOut: ['JobManager'], failed: ['McpRuntimeService'] })
+    vi.spyOn(manager, 'destroyAll').mockResolvedValue({ timedOut: [], failed: ['DbService'] })
+
+    const result = await application.prepareProfileSwitch()
+
+    expect(result).toEqual({
+      clean: false,
+      stop: { timedOut: ['JobManager'], failed: ['McpRuntimeService'] },
+      destroy: { timedOut: [], failed: ['DbService'] }
+    })
+    expect(mockMainLoggerService.finish).not.toHaveBeenCalled()
+  })
+
+  it('allows login after logout to reuse the clean teardown without stopping services twice', async () => {
+    const application = Application.getInstance()
+    const manager = application.getLifecycleManager()
+    const stop = vi.spyOn(manager, 'stopAll').mockResolvedValue({ timedOut: [], failed: [] })
+    vi.spyOn(manager, 'destroyAll').mockResolvedValue({ timedOut: [], failed: [] })
+    const result = await application.prepareProfileLogout()
+    application.finishProfileLogout()
+    await expect(application.prepareProfileSwitch()).resolves.toEqual(result)
+    expect(stop).toHaveBeenCalledTimes(1)
+    expect(appExit).not.toHaveBeenCalled()
+  })
+
+  it('returns a clean structured result for profile switch teardown', async () => {
+    const application = Application.getInstance()
+    const manager = application.getLifecycleManager()
+    vi.spyOn(manager, 'stopAll').mockResolvedValue({ timedOut: [], failed: [] })
+    vi.spyOn(manager, 'destroyAll').mockResolvedValue({ timedOut: [], failed: [] })
+
+    await expect(application.prepareProfileSwitch()).resolves.toEqual({
+      clean: true,
+      stop: { timedOut: [], failed: [] },
+      destroy: { timedOut: [], failed: [] }
+    })
   })
 
   it('should keep the flush → stop → destroy → finish order and report a clean exit', async () => {

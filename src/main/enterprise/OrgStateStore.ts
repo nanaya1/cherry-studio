@@ -5,7 +5,7 @@
  * 存储位置与 OrgCredentialStore 同目录（<Skills>/../enterprise/org-state.json）。
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { dirname } from 'node:path'
 
 import * as z from 'zod'
 
@@ -32,8 +32,22 @@ const connectorStateSchema = z.object({
 
 export type OrgConnectorState = z.infer<typeof connectorStateSchema>
 
+const entitlementSchema = z.strictObject({
+  issuerId: z.string(),
+  groupId: z.string().nullable(),
+  resourceId: z.string(),
+  entitlement: z.enum(['active', 'disabled', 'revoked']),
+  generation: z.number().int().nonnegative(),
+  localResourceId: z.string().optional()
+})
+
+export type OrgResourceEntitlement = z.infer<typeof entitlementSchema>
+export type OrgAuthorizationLease = Pick<OrgResourceEntitlement, 'issuerId' | 'groupId' | 'generation'>
+
 const fileSchema = z.object({
   skills: z.record(z.string(), skillStateSchema).default({}),
+  skillEntitlements: z.record(z.string(), entitlementSchema).default({}),
+  connectorEntitlements: z.record(z.string(), entitlementSchema).default({}),
   // [enterprise] C6 连接器本地映射：slug → { mcpId, baseUrl }
   connectors: z.record(z.string(), connectorStateSchema).default({}),
   /** C3 登出时置 true：所有 org 资源标记"组织不可用"，重登恢复 */
@@ -47,8 +61,7 @@ const fileSchema = z.object({
 })
 
 function stateFile(): string {
-  // 与 OrgCredentialStore.credFile 同规则：必须延迟到调用时取路径
-  return join(application.getPath('feature.agents.skills'), '..', 'enterprise', 'org-state.json')
+  return application.getPath('feature.enterprise.state_file')
 }
 
 export class OrgStateStore {
@@ -59,6 +72,10 @@ export class OrgStateStore {
   // startupScan C1 误判「本地无记录」把已删技能全部重装。改为首次数据访问时才读文件。
   private ensureLoaded(): void {
     if (this.data === null) this.data = this.load()
+  }
+
+  resetProfileCache(): void {
+    this.data = null
   }
 
   private load(): z.infer<typeof fileSchema> {
@@ -139,6 +156,61 @@ export class OrgStateStore {
     this.ensureLoaded()
     this.data!.unavailable = true
     this.persist()
+  }
+
+  recordSkillEntitlement(slug: string, entitlement: OrgResourceEntitlement): void {
+    this.ensureLoaded()
+    this.data!.skillEntitlements[slug] = entitlementSchema.parse(entitlement)
+    this.persist()
+  }
+
+  recordConnectorEntitlement(slug: string, entitlement: OrgResourceEntitlement): void {
+    this.ensureLoaded()
+    this.data!.connectorEntitlements[slug] = entitlementSchema.parse(entitlement)
+    this.persist()
+  }
+
+  invalidateEntitlements(generation: number): void {
+    this.ensureLoaded()
+    for (const state of Object.values(this.data!.skillEntitlements)) {
+      if (state.generation < generation) state.entitlement = 'disabled'
+    }
+    for (const state of Object.values(this.data!.connectorEntitlements)) {
+      if (state.generation < generation) state.entitlement = 'disabled'
+    }
+    this.persist()
+  }
+
+  isSkillAllowed(sourceUrl: string | null | undefined, lease: OrgAuthorizationLease | null): boolean {
+    const slug = sourceUrl?.match(/^org-skill:(.+)$/)?.[1]
+    if (!slug) return true
+    this.ensureLoaded()
+    return this.matchesLease(this.data!.skillEntitlements[slug], lease)
+  }
+
+  isConnectorAllowed(mcpId: string, lease: OrgAuthorizationLease | null): boolean {
+    this.ensureLoaded()
+    const entitlement = Object.values(this.data!.connectorEntitlements).find((entry) => entry.localResourceId === mcpId)
+    if (!entitlement) return true
+    return this.matchesLease(entitlement, lease)
+  }
+
+  connectorIdsDeniedBy(lease: OrgAuthorizationLease | null): string[] {
+    this.ensureLoaded()
+    return Object.values(this.data!.connectorEntitlements)
+      .filter((entitlement) => entitlement.localResourceId && !this.matchesLease(entitlement, lease))
+      .map((entitlement) => entitlement.localResourceId!)
+  }
+
+  private matchesLease(entitlement: OrgResourceEntitlement | undefined, lease: OrgAuthorizationLease | null): boolean {
+    return Boolean(
+      entitlement &&
+        lease &&
+        entitlement.entitlement === 'active' &&
+        entitlement.issuerId === lease.issuerId &&
+        entitlement.groupId === lease.groupId &&
+        entitlement.generation === lease.generation
+    )
   }
 
   /** [enterprise] C6 连接器映射写入 */

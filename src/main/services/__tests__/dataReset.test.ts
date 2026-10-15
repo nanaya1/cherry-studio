@@ -13,6 +13,16 @@ const DATABASE_FILE = `${USER_DATA}/Data/cherrystudio.sqlite`
 const CLAUDE_ROOT = `${USER_DATA}/Data/Agents/.claude`
 const VERSION_LOG_FILE = `${USER_DATA}/version.log`
 const REGISTRY_OVERRIDE = `${USER_DATA}/Runtime/provider-registry-override`
+const PROFILE_ID = '0123456789abcdef0123456789abcdef'
+const IDENTITY_DIGEST = 'a'.repeat(64)
+const profileContext = {
+  mode: 'business' as const,
+  profileId: PROFILE_ID,
+  identityDigest: IDENTITY_DIGEST,
+  kind: 'authenticated' as const,
+  dataRoot: '/mock/home/.cherrystudio.profiles-v2',
+  profileRoot: USER_DATA
+}
 
 let applicationMock: ReturnType<typeof createMockApplication>
 const showErrorBoxMock = vi.fn()
@@ -39,7 +49,18 @@ type DataResetMarker =
       operation?: 'full_reset' | 'v1_remigration'
     }
   | {
-      version: 1
+      version: 2
+      status: 'pending'
+      requestedAt: string
+      attempts?: number
+      scope: 'current-profile' | 'specified-profile' | 'device'
+      profileId: string
+      identityDigest: string
+      canonicalTarget: string
+      operation?: 'full_reset' | 'v1_remigration'
+    }
+  | {
+      version: 1 | 2
       status: 'completed'
       completedAt: string
       operation?: 'full_reset' | 'v1_remigration'
@@ -66,6 +87,7 @@ const DEFAULT_LISTING = [
   'cherrystudio.sqlite-shm',
   'Data',
   'Data.restore',
+  'Sensitive',
   'IndexedDB.restore',
   'Local Storage.restore',
   'cache.json',
@@ -107,6 +129,7 @@ const EXPECTED_WIPED = [
   'cherrystudio.sqlite-shm',
   'Data',
   'Data.restore',
+  'Sensitive',
   'IndexedDB.restore',
   'Local Storage.restore',
   'cache.json',
@@ -178,6 +201,10 @@ function stubApplication(userData: string = USER_DATA, opts: { throwOnUserData?:
 
 function stubI18n() {
   vi.doMock('@main/i18n', () => ({ t: (key: string) => key }))
+}
+
+function stubProfileContext(context: typeof profileContext | undefined = profileContext) {
+  vi.doMock('@main/core/profiles', () => ({ getProfileLaunchContext: () => context }))
 }
 
 function stubFs(listing: string[] | Error = DEFAULT_LISTING) {
@@ -309,6 +336,7 @@ function stubAll(marker: DataResetMarker) {
   stubElectron()
   stubApplication()
   stubI18n()
+  stubProfileContext()
   stubFs()
   stubPath()
   if (marker) seedMarker(marker)
@@ -335,7 +363,7 @@ function readStoredMarker(): DataResetMarker {
   return raw ? (JSON.parse(raw) as DataResetMarker) : null
 }
 
-type PendingMarker = Extract<NonNullable<DataResetMarker>, { status: 'pending' }>
+type PendingMarker = Extract<NonNullable<DataResetMarker>, { version: 1; status: 'pending' }>
 type CompletedMarker = Extract<NonNullable<DataResetMarker>, { status: 'completed' }>
 
 function pendingMarker(overrides: Partial<PendingMarker> = {}): PendingMarker {
@@ -344,6 +372,21 @@ function pendingMarker(overrides: Partial<PendingMarker> = {}): PendingMarker {
     status: 'pending',
     requestedAt: '2026-07-20T00:00:00.000Z',
     canonicalPath: USER_DATA,
+    ...overrides
+  }
+}
+
+function profilePendingMarker(
+  overrides: Partial<Extract<NonNullable<DataResetMarker>, { version: 2; status: 'pending' }>> = {}
+): Extract<NonNullable<DataResetMarker>, { version: 2; status: 'pending' }> {
+  return {
+    version: 2,
+    status: 'pending',
+    requestedAt: '2026-07-20T00:00:00.000Z',
+    scope: 'current-profile',
+    profileId: PROFILE_ID,
+    identityDigest: IDENTITY_DIGEST,
+    canonicalTarget: USER_DATA,
     ...overrides
   }
 }
@@ -397,6 +440,25 @@ describe('runDataReset', () => {
     expect(rmSyncMock).not.toHaveBeenCalled()
     expect(fsCtl.commits).toHaveLength(0)
     expect(applicationMock.forceExit).not.toHaveBeenCalled()
+  })
+
+  it('refuses a profile-bound marker when the active identity differs without deleting user data', async () => {
+    stubAll(profilePendingMarker({ identityDigest: 'b'.repeat(64) }))
+
+    await runReset()
+
+    expect(rmSyncMock).not.toHaveBeenCalled()
+    expect(applicationMock.relaunch).not.toHaveBeenCalled()
+    expect(applicationMock.forceExit).toHaveBeenCalledWith(1)
+  })
+
+  it('refuses a current-profile marker that targets a different canonical directory without deleting user data', async () => {
+    stubAll(profilePendingMarker({ canonicalTarget: '/mock/other/profile' }))
+
+    await runReset()
+
+    expect(rmSyncMock).not.toHaveBeenCalled()
+    expect(applicationMock.relaunch).not.toHaveBeenCalled()
   })
 
   it('wipes exactly the whitelist, commits a completed record, removes the marker, and relaunches', async () => {
@@ -834,20 +896,24 @@ describe('requestDataReset', () => {
     expect(applicationMock.relaunch).not.toHaveBeenCalled()
   })
 
-  it('writes the pending marker for the current userData, durably, then gracefully relaunches', async () => {
+  it('writes a profile-bound pending marker for the current profile, durably, then gracefully relaunches', async () => {
     stubAll(null)
 
     await requestReset()
 
     expect(fsCtl.commits[0]).toEqual(
       expect.objectContaining({
-        version: 1,
+        version: 2,
         status: 'pending',
-        canonicalPath: USER_DATA,
+        scope: 'current-profile',
+        profileId: PROFILE_ID,
+        identityDigest: IDENTITY_DIGEST,
+        canonicalTarget: USER_DATA,
         operation: 'full_reset'
       })
     )
     expect(fsCtl.commits[0]).not.toHaveProperty('userDataPath')
+    expect(fsCtl.commits[0]).not.toHaveProperty('canonicalPath')
     expect(fsyncSyncMock).toHaveBeenCalled()
     expect(renameSyncMock.mock.invocationCallOrder[0]).toBeLessThan(
       applicationMock.shutdown.mock.invocationCallOrder[0]
@@ -855,6 +921,22 @@ describe('requestDataReset', () => {
     expect(applicationMock.shutdown.mock.invocationCallOrder[0]).toBeLessThan(
       applicationMock.relaunch.mock.invocationCallOrder[0]
     )
+  })
+
+  it('rejects a business reset from the signed-out profile before staging', async () => {
+    stubAll(null)
+    stubProfileContext({
+      ...profileContext,
+      mode: 'signed-out',
+      profileId: 'signed-out',
+      kind: 'signed-out'
+    } as unknown as typeof profileContext)
+
+    await expect(requestReset()).rejects.toThrow('signed-out')
+
+    expect(fsCtl.commits).toHaveLength(0)
+    expect(defaultSession.clearData).not.toHaveBeenCalled()
+    expect(applicationMock.shutdown).not.toHaveBeenCalled()
   })
 
   it('rejects before staging when the current physical identity cannot be resolved', async () => {
@@ -961,9 +1043,12 @@ describe('requestV1Remigration', () => {
     await requestRemigration()
 
     expect(fsCtl.commits[0]).toMatchObject({
-      version: 1,
+      version: 2,
       status: 'pending',
-      canonicalPath: USER_DATA,
+      scope: 'current-profile',
+      profileId: PROFILE_ID,
+      identityDigest: IDENTITY_DIGEST,
+      canonicalTarget: USER_DATA,
       operation: 'v1_remigration'
     })
     expect(showMessageBoxMock).not.toHaveBeenCalled()

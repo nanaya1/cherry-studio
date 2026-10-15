@@ -37,8 +37,8 @@ const PopupContainer: React.FC<Props> = ({ open, resolve }) => {
     }
   }, [])
 
-  const onOk = async () => {
-    await restore()
+  const onRestore = async (mode: 'in-place' | 'safe-import') => {
+    await restore(mode)
     resolve({})
   }
 
@@ -85,7 +85,10 @@ const PopupContainer: React.FC<Props> = ({ open, resolve }) => {
           <Button variant="outline" disabled={isDisabled} onClick={onCancel}>
             {t('common.cancel')}
           </Button>
-          <Button disabled={isDisabled} onClick={onOk}>
+          <Button variant="outline" disabled={isDisabled} onClick={() => onRestore('safe-import')}>
+            {t('settings.data.divider.import_settings')}
+          </Button>
+          <Button disabled={isDisabled} onClick={() => onRestore('in-place')}>
             {t('restore.confirm.button')}
           </Button>
         </DialogFooter>

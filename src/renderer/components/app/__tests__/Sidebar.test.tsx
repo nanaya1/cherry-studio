@@ -435,6 +435,8 @@ afterEach(() => {
   mocks.platformState.isMac = false
   mocks.orgStatus = {
     phase: 'signed-out',
+    generation: 0,
+    groupId: null,
     authMode: 'official-direct',
     displayName: null,
     phone: null,
@@ -586,6 +588,8 @@ describe('app Sidebar', () => {
   it('shows the signed-in account name without the local-user subtitle', () => {
     mocks.orgStatus = {
       phase: 'signed-in',
+      generation: 1,
+      groupId: null,
       authMode: 'official-direct',
       displayName: '测试用户',
       phone: '13900000000',

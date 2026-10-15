@@ -35,8 +35,10 @@ export default function SkillsConnectorsPage({ connectorView }: SkillsConnectors
   const [skillView, setSkillView] = useState<SkillView>('recommended')
   const [recommendedSearch, setRecommendedSearch] = useState('')
   const { status: accountStatus } = useOrgAccountSession()
+  // 原条件仅检查部署模式，未登录也会显示组织目录并触发 401。
   const showPublicCatalog =
-    accountStatus?.authMode === 'management-exchange' || accountStatus?.authMode === 'management-oauth'
+    accountStatus?.phase === 'signed-in' &&
+    (accountStatus.authMode === 'management-exchange' || accountStatus.authMode === 'management-oauth')
   // [enterprise] 「推荐」一级视图内的二级 tab 状态
   const [orgSubTab, setOrgSubTab] = useState<OrgSubTab>('recommended')
   const skillController = useResourceCatalogController('skill', { clientSideSkillSearch: true })

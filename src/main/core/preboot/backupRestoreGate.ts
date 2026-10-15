@@ -2,9 +2,11 @@ import {
   cleanupTerminalRestoreArtifacts,
   isLiveDbStranded,
   markRestoreFailedAfterCrash,
-  runRestorePromotion
+  runRestorePromotion,
+  verifyRestoreProfileIdentity
 } from '@data/db/restore/restorePromotion'
 import { loggerService } from '@logger'
+import type { ProfileLaunchContext } from '@main/core/profiles'
 
 const logger = loggerService.withContext('BackupRestoreGate')
 
@@ -34,9 +36,11 @@ const logger = loggerService.withContext('BackupRestoreGate')
  * outcome worse than the fail-fast dialog, so the gate refuses to boot and
  * leaves the aside, the journal, and the staging tree as repair artifacts.
  */
-export async function runBackupRestoreGate(): Promise<void> {
+export async function runBackupRestoreGate(context?: ProfileLaunchContext): Promise<void> {
   try {
-    await runRestorePromotion()
+    if (!context || verifyRestoreProfileIdentity(context)) {
+      await runRestorePromotion()
+    }
   } catch (error) {
     logger.error('Restore promotion crashed unexpectedly — attempting last-resort recovery', error as Error)
     try {

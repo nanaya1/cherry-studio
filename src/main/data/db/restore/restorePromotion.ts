@@ -6,6 +6,8 @@ import { readMigrationFiles } from 'drizzle-orm/migrator'
 
 import { application } from '@application'
 import { loggerService } from '@logger'
+import type { ProfileLaunchContext } from '@main/core/profiles'
+import { assertSafeImportTargetEmpty } from '@main/services/SafeImportTarget'
 
 import type { AppliedMigration } from './appliedChain'
 import { checkpointTruncateAssert } from './checkpoint'
@@ -50,6 +52,32 @@ interface PromotionContext {
  * all (see isLiveDbStranded) — because a preboot exception would dead-loop
  * the "Unable to Start" fail-fast path.
  */
+export function verifyRestoreProfileIdentity(context: ProfileLaunchContext): boolean {
+  const read = readRestoreJournal()
+  if (read.kind === 'none') return true
+  if (read.kind !== 'ok') return false
+
+  const journal = read.journal
+  if (journal.state !== 'staged' && journal.state !== 'promoting') return true
+  const matches =
+    journal.profile.profileId === context.profileId &&
+    journal.profile.identityDigest === context.identityDigest &&
+    journal.profile.kind === context.kind
+  if (matches) return true
+
+  writeRestoreJournal({
+    ...journal,
+    state: 'expired',
+    ...(journal.state === 'promoting' ? { step: journal.step } : {})
+  })
+  logger.warn('Restore profile identity does not match the active launch context; expiring restore', {
+    restoreId: journal.restoreId,
+    expectedProfileId: context.profileId,
+    stagedProfileId: journal.profile.profileId
+  })
+  return false
+}
+
 export async function runRestorePromotion(): Promise<void> {
   const read = readRestoreJournal()
   if (read.kind === 'none') {
@@ -201,6 +229,9 @@ async function promoteStaged(journal: StagedJournal): Promise<void> {
   const ctx = buildContext(journal)
 
   try {
+    if (journal.mode === 'safe-import') {
+      assertSafeImportTargetEmpty(ctx.livePath)
+    }
     assertNoAddConflicts(ctx)
     sealWorkSidecars(ctx.workPath)
     if (!(await fingerprintMatches(ctx.livePath, journal.db.fingerprint))) {

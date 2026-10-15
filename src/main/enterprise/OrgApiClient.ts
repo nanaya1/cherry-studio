@@ -4,7 +4,13 @@
  */
 import { loggerService } from '@logger'
 
-import type { OrgConnectorCatalogItem, OrgSession, OrgSkillCatalogItem, RawOrgSkillFacet } from './types'
+import type {
+  OrgConnectorCatalogItem,
+  OrgCurrentUser,
+  OrgSession,
+  OrgSkillCatalogItem,
+  RawOrgSkillFacet
+} from './types'
 
 const logger = loggerService.withContext('OrgApiClient')
 
@@ -40,7 +46,7 @@ function resolveOfficialApiBaseUrl(): string {
   }
 }
 
-export type OrgAuthMode = 'management-exchange' | 'management-oauth' | 'official-direct'
+export type OrgAuthMode = 'management-exchange' | 'management-oauth' | 'management-cookie' | 'official-direct'
 export const ORG_SERVER_BASE_URL = resolveOrgServerBaseUrl()
 export const OFFICIAL_LOGIN_CONFIGURED = Boolean(import.meta.env.MAIN_VITE_OFFICIAL_LOGIN_URL?.trim())
 export const ORG_AUTH_MODE: OrgAuthMode = OFFICIAL_LOGIN_CONFIGURED
@@ -59,11 +65,25 @@ export function getOrgApiBaseUrl(): string {
 export class OrgApiClient {
   // [enterprise] 修复 401：改为异步取「有效期内的会话」（过期自动刷新）。
   // 原同步裸取：constructor(private readonly getSession: () => OrgSession | null) {}
-  constructor(private readonly getValidSession: () => Promise<OrgSession | null>) {}
+  constructor(
+    private readonly getValidSession: () => Promise<OrgSession | null>,
+    private readonly cookieFetch?: (url: string, init: RequestInit) => Promise<Response>
+  ) {}
 
   private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
     const session = await this.getValidSession()
     if (!session) throw new Error('未登录')
+    if (session.authMode === 'management-cookie') {
+      if (!this.cookieFetch) throw new Error('Cookie transport is unavailable')
+      const response = await this.cookieFetch(`${getOrgApiBaseUrl()}${path}`, {
+        ...init,
+        credentials: 'include',
+        redirect: 'error',
+        headers: { 'content-type': 'application/json', ...init.headers }
+      })
+      if (!response.ok) throw new Error(`账户服务请求失败 (${response.status})`)
+      return (await response.json()) as T
+    }
     const res = await this.send(path, session.accessToken, init)
     // [enterprise] 修复 401：access token 被服务端提前吊销时兜底——刷新一次重试一次
     if (res.status === 401) {
@@ -87,6 +107,11 @@ export class OrgApiClient {
     return (await res.json()) as T
   }
 
+  private requireCookieFetch() {
+    if (!this.cookieFetch) throw new Error('Cookie transport is unavailable')
+    return this.cookieFetch
+  }
+
   private async send(path: string, accessToken: string, init: RequestInit): Promise<Response> {
     return fetch(`${getOrgApiBaseUrl()}${path}`, {
       ...init,
@@ -98,42 +123,79 @@ export class OrgApiClient {
     })
   }
 
-  /**
-   * [enterprise] 公共目录读请求：所有人看到同一套公共资源，未登录也能访问。
-   * 有会话时附带 Authorization（服务端可用于埋点），无会话时匿名请求。
-   */
-  private async publicRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
-    const session = await this.getValidSession().catch(() => null)
-    const res = await fetch(`${getOrgApiBaseUrl()}${path}`, {
-      ...init,
-      headers: {
-        'content-type': 'application/json',
-        ...(session ? { authorization: `Bearer ${session.accessToken}` } : {}),
-        ...init.headers
-      }
-    })
-    if (!res.ok) {
-      const body = await res.text().catch(() => '')
-      logger.warn('org public request failed', { path, status: res.status, body: body.slice(0, 200) })
-      throw new Error(`账户服务请求失败 (${res.status})`)
-    }
-    return (await res.json()) as T
+  // modern 未提供 /api/server-identity；server_instance_id 由 /api/currentuser 返回。
+  // getServerIdentity(): Promise<OrgServerIdentity> { return this.request('/api/server-identity') }
+  getCurrentUser(): Promise<OrgCurrentUser> {
+    return this.request('/api/currentuser')
   }
+
+  async revoke(refreshToken: string, logoutSession?: OrgSession): Promise<unknown> {
+    if (logoutSession) {
+      const init = {
+        method: 'POST',
+        body: JSON.stringify({ refreshToken }),
+        signal: AbortSignal.timeout(10_000)
+      }
+      const response =
+        logoutSession.authMode === 'management-cookie'
+          ? await this.requireCookieFetch()(`${getOrgApiBaseUrl()}/api/auth/logout`, {
+              ...init,
+              credentials: 'include',
+              redirect: 'error',
+              headers: { 'content-type': 'application/json' }
+            })
+          : await this.send('/api/auth/logout', logoutSession.accessToken, init)
+      if (!response.ok) throw new Error(`账户服务请求失败 (${response.status})`)
+      return
+    }
+    // modern 未提供 /api/auth/revoke；登出接口负责撤销 refresh 及其关联 access token。
+    // return this.request('/api/auth/revoke', {
+    return this.request('/api/auth/logout', {
+      method: 'POST',
+      body: JSON.stringify({ refreshToken })
+    })
+  }
+
+  // 原 publicRequest 匿名目录读取已停用：modern 服务端必须根据 Bearer token 的实时 group_id 做权限裁剪。
+  // private async publicRequest<T>(path: string, init: RequestInit = {}): Promise<T> { ... }
 
   // [enterprise] tags/categories 服务端有字符串数组与对象数组两种形态，归一化在 OrgSkillCatalog.list
-  listSkills() {
-    return this.publicRequest<{
-      skills: Array<
-        Omit<OrgSkillCatalogItem, 'categories' | 'tags'> & {
-          categories?: RawOrgSkillFacet[]
-          tags?: RawOrgSkillFacet[]
-        }
-      >
-    }>('/api/skills')
+  async listSkills() {
+    type SkillItem = Omit<OrgSkillCatalogItem, 'categories' | 'tags'> & {
+      status?: string
+      categories?: RawOrgSkillFacet[]
+      tags?: RawOrgSkillFacet[]
+    }
+    const skills: SkillItem[] = []
+    const pageSize = 100
+    for (let page = 1; ; page += 1) {
+      const result = await this.request<{ items: SkillItem[]; total?: number }>(
+        `/api/library-items?page=${page}&pageSize=${pageSize}`
+      )
+      skills.push(...result.items.filter((item) => item.status === undefined || item.status === 'ready'))
+      if (result.items.length < pageSize || page * pageSize >= (result.total ?? 0)) break
+    }
+    return { skills }
   }
 
-  listConnectors() {
-    return this.publicRequest<{ connectors: OrgConnectorCatalogItem[] }>('/api/connectors')
+  async listConnectors() {
+    const result = await this.request<{
+      items: Array<{ id: number; key: string; config: Record<string, unknown> }>
+    }>('/api/mcp-servers')
+    return {
+      connectors: result.items.map((item): OrgConnectorCatalogItem => {
+        const config = item.config
+        const type = config.type === 'stdio' || config.type === 'streamableHttp' ? config.type : 'sse'
+        return {
+          slug: item.key || String(item.id),
+          name: typeof config.name === 'string' ? config.name : item.key,
+          description: typeof config.description === 'string' ? config.description : '',
+          type,
+          baseUrl: typeof config.baseUrl === 'string' ? config.baseUrl : '',
+          config
+        }
+      })
+    }
   }
 
   /**
@@ -148,9 +210,12 @@ export class OrgApiClient {
     // const session = this.getSession()
     const session = await this.getValidSession()
     if (!session) throw new Error('未登录')
-    const res = await fetch(`${getOrgApiBaseUrl()}/api/skills/${slug}/download`, {
-      headers: { authorization: `Bearer ${session.accessToken}` }
-    })
+    // const res = await fetch(url, { headers: { authorization: `Bearer ${session.accessToken}` } })
+    const url = `${getOrgApiBaseUrl()}/api/skills/${slug}/download`
+    const res =
+      session.authMode === 'management-cookie'
+        ? await this.requireCookieFetch()(url, { credentials: 'include', redirect: 'error' })
+        : await fetch(url, { headers: { authorization: `Bearer ${session.accessToken}` }, credentials: 'omit' })
     if (!res.ok || !res.body) throw new Error(`技能包下载失败 (${res.status})`)
 
     const hash = createHash('sha256')

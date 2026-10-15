@@ -18,6 +18,7 @@ import { loggerService } from '@logger'
 import { TraceMethod, withSpanFunc } from '@main/ai/observability'
 import { BaseService, DependsOn, Emitter, type Event, Injectable, Phase, ServicePhase } from '@main/core/lifecycle'
 import { WindowType } from '@main/core/window/types'
+import { orgStateStore } from '@main/enterprise/OrgStateStore'
 import { t } from '@main/i18n'
 import { clampImageForModel } from '@main/utils/image'
 import { isMcpToolDisabledBySource } from '@shared/ai/tools/mcpSourcePolicy'
@@ -237,12 +238,34 @@ export class McpRuntimeService extends BaseService {
     await this.waitForPendingClients()
     await this.closeAllClients()
     this.pendingClients.clear()
+    this.pendingProbes.clear()
+    this.pendingRemovals.clear()
+    this.removedServerIds.clear()
     this.clients.clear()
+    this.activeToolCalls.clear()
     this.serverLogs.clear()
   }
 
   private getServerById(serverId: string): McpServer {
     return mcpServerService.getById(serverId)
+  }
+
+  private currentOrgLease(): { issuerId: string; groupId: string | null; generation: number } | null {
+    try {
+      return application.get('EnterprisePlugin').auth.acquireLease()
+    } catch {
+      return null
+    }
+  }
+
+  private assertOrgConnectorAllowed(serverId: string): void {
+    if (!orgStateStore.isConnectorAllowed(serverId, this.currentOrgLease())) {
+      throw new Error('Enterprise connector entitlement is unavailable or stale')
+    }
+  }
+
+  async stopUnauthorizedOrgConnectors(): Promise<void> {
+    await Promise.allSettled(orgStateStore.connectorIdsDeniedBy(this.currentOrgLease()).map((serverId) => this.stopServer(serverId)))
   }
 
   public setServerStatus(serverId: string, state: McpRuntimeState, error?: unknown): void {
@@ -366,6 +389,7 @@ export class McpRuntimeService extends BaseService {
   }
 
   private async getOrCreateClient(server: McpServer): Promise<Client> {
+    this.assertOrgConnectorAllowed(server.id)
     if (this.stopping || this.isStopped || this.isDestroyed) {
       throw new Error('MCP runtime is stopping')
     }
@@ -1095,6 +1119,7 @@ export class McpRuntimeService extends BaseService {
             }
           }
         }
+        this.assertOrgConnectorAllowed(server.id)
         const sourcePolicy = this.getLatestSourcePolicy(server)
         if (isMcpToolDisabledBySource(sourcePolicy, { name })) {
           throw new Error(`MCP tool is disabled: ${name}`)

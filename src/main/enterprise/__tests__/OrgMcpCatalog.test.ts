@@ -5,7 +5,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { authMock, apiMock, mcpServiceMock, stateStoreMock } = vi.hoisted(() => ({
-  authMock: {},
+  authMock: {
+    revalidateAuthority: vi.fn(),
+    acquireLease: vi.fn(() => ({ generation: 1, issuerId: 'issuer', groupId: 'group', userId: 'user' })),
+    assertLease: vi.fn()
+  },
   apiMock: {
     listConnectors: vi.fn()
   },
@@ -32,7 +36,8 @@ const { authMock, apiMock, mcpServiceMock, stateStoreMock } = vi.hoisted(() => (
     // [enterprise] C4 连接器墓碑
     markConnectorDeleted: vi.fn(),
     deletedConnectorBaseUrl: vi.fn().mockReturnValue(undefined),
-    clearConnectorDeleted: vi.fn()
+    clearConnectorDeleted: vi.fn(),
+    recordConnectorEntitlement: vi.fn()
   }
 }))
 
@@ -79,7 +84,7 @@ describe('OrgMcpCatalog C6 compareAndSync', () => {
     mcpServiceMock.create.mockReturnValue({ id: 'mcp-new' })
     mcpServiceMock.getByIdSafe.mockReturnValue(null)
     catalog = new OrgMcpCatalog(authMock as never)
-    ;(catalog as unknown as { auth: { apiClient: unknown } }).auth = { apiClient: apiMock }
+    ;(catalog as unknown as { auth: unknown }).auth = { ...authMock, apiClient: apiMock }
   })
 
   afterEach(() => {
@@ -362,12 +367,19 @@ describe('OrgMcpCatalog C6 compareAndSync', () => {
     expect(stateStoreMock.removeConnector).toHaveBeenCalledWith('gone')
   })
 
-  it('目录拉取失败 → 整体跳过不抛错（连接器禁用拦截 fail-closed 由运行时处理）', async () => {
+  it('目录拉取失败 → 默认禁用已记录的企业连接器', async () => {
     apiMock.listConnectors.mockRejectedValue(new Error('down'))
+    stateStoreMock.snapshotConnectors.mockReturnValue({
+      offline: { mcpId: 'mcp-offline', baseUrl: 'https://offline.example/sse' }
+    })
+    mcpServiceMock.getByIdSafe.mockReturnValue({ id: 'mcp-offline', isActive: true })
+
     const result = await catalog.compareAndSync()
+
     expect(result.installed).toEqual([])
     expect(result.updated).toEqual([])
-    expect(result.disabled).toEqual([])
+    expect(result.disabled).toEqual(['offline'])
+    expect(mcpServiceMock.update).toHaveBeenCalledWith('mcp-offline', { isActive: false })
   })
 
   it('单项失败不阻塞其余项', async () => {

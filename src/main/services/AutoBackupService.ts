@@ -3,6 +3,7 @@ import path from 'node:path'
 import { application } from '@application'
 import { loggerService } from '@logger'
 import { BaseService, DependsOn, Injectable, Phase, ServicePhase } from '@main/core/lifecycle'
+import { getProfileLaunchContext } from '@main/core/profiles'
 import { WindowType } from '@main/core/window/types'
 import { hasWritePermission, isPathInside, untildify } from '@main/utils/legacyFile'
 import type { UnifiedPreferenceKeyType } from '@shared/data/preference/preferenceTypes'
@@ -285,6 +286,10 @@ export class AutoBackupService extends BaseService {
   }
 
   private async runBackup(type: AutoBackupType, signal: AbortSignal): Promise<Error | null> {
+    const profile = getProfileLaunchContext()
+    if (!profile || profile.mode !== 'business' || profile.kind === 'signed-out') {
+      throw new Error('Automatic backup requires a verified business profile launch context')
+    }
     const preferenceService = application.get('PreferenceService')
 
     if (type === 'webdav') {
