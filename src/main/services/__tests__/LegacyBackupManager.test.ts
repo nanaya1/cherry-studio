@@ -1021,6 +1021,39 @@ describe('BackupManager direct v2 data compatibility', () => {
     expect(events.indexOf('remove:/mock/temp/backup/extract-operation-id')).toBeLessThan(events.indexOf('relaunch'))
   })
 
+  it('uses the MEA Cowork fallback filename for WebDAV restore', async () => {
+    mockDownloadedFileWrite()
+    const createReadStream = vi.fn(() => Readable.from(Buffer.from('backup')))
+    vi.spyOn(backupManager as any, 'getWebDavInstance').mockReturnValue({ createReadStream })
+    vi.spyOn(backupManager as any, 'restoreUnlocked').mockResolvedValue(undefined)
+
+    await backupManager.restoreFromWebdav({} as Electron.IpcMainInvokeEvent, {
+      webdavHost: 'https://example.com'
+    })
+
+    expect(createReadStream).toHaveBeenCalledWith('meacowork.backup.zip')
+  })
+
+  it('uses the MEA Cowork fallback filename for S3 restore', async () => {
+    mockDownloadedFileWrite()
+    const getFileStream = vi.fn().mockResolvedValue(Readable.from(Buffer.from('backup')))
+    vi.spyOn(backupManager as any, 'getS3Storage').mockReturnValue({ getFileStream })
+    vi.spyOn(backupManager as any, 'restoreUnlocked').mockResolvedValue(undefined)
+
+    await backupManager.restoreFromS3({} as Electron.IpcMainInvokeEvent, {
+      endpoint: 'https://s3.example.com',
+      region: 'test',
+      bucket: 'backups',
+      accessKeyId: 'access-key',
+      secretAccessKey: 'secret-key',
+      autoSync: false,
+      syncInterval: 0,
+      maxBackups: 1
+    })
+
+    expect(getFileStream).toHaveBeenCalledWith('meacowork.backup.zip')
+  })
+
   it('removes the WebDAV download directory before relaunching', async () => {
     mockDownloadedFileWrite()
     const createReadStream = vi.fn(() => Readable.from(Buffer.from('backup')))
@@ -1203,6 +1236,34 @@ describe('BackupManager direct v2 data compatibility', () => {
     }
   })
 
+  it('generates MEA Cowork archive names for automatic backups', () => {
+    expect((backupManager as any).createBackupFileName()).toMatch(/^meacowork\.\d{17}\.test-host\.mac\.zip$/)
+  })
+
+  it('applies retention only to MEA Cowork archives from the current device', async () => {
+    const oldName = 'cherry-studio.20260804000000.test-host.mac.zip'
+    const newName = 'meacowork.20260804010000.test-host.mac.zip'
+    const files = [
+      { fileName: 'meacowork.20260804020000.test-host.mac.zip' },
+      { fileName: 'meacowork.20260804015000.other-test-host.mac.zip' },
+      { fileName: newName },
+      { fileName: oldName },
+      { fileName: 'unrelated.20260804000000.test-host.mac.zip' }
+    ]
+    const deleted: string[] = []
+    const result = await (backupManager as any).cleanupOldBackups(
+      1,
+      async () => files,
+      async (name: string) => {
+        deleted.push(name)
+      }
+    )
+
+    expect(result).toBeNull()
+    // expect(deleted).toEqual([newName, oldName])
+    expect(deleted).toEqual([newName])
+  })
+
   it('limits and cancels WebDAV retention cleanup for the exact current device', async () => {
     const backupPath = '/mock/temp/backup/backup.zip'
     const controller = new AbortController()
@@ -1217,19 +1278,22 @@ describe('BackupManager direct v2 data compatibility', () => {
     const getDirectoryContents = vi.fn().mockResolvedValue([
       {
         type: 'file',
-        basename: 'cherry-studio.20260804020000.test-host.mac.zip',
+        // basename: 'cherry-studio.20260804020000.test-host.mac.zip',
+        basename: 'meacowork.20260804020000.test-host.mac.zip',
         lastmod: '2026-08-04T02:00:00.000Z',
         size: 1
       },
       {
         type: 'file',
-        basename: 'cherry-studio.20260804015000.other-test-host.mac.zip',
+        // basename: 'cherry-studio.20260804015000.other-test-host.mac.zip',
+        basename: 'meacowork.20260804015000.other-test-host.mac.zip',
         lastmod: '2026-08-04T01:50:00.000Z',
         size: 1
       },
       {
         type: 'file',
-        basename: 'cherry-studio.20260804000000.test-host.mac.zip',
+        // basename: 'cherry-studio.20260804000000.test-host.mac.zip',
+        basename: 'meacowork.20260804000000.test-host.mac.zip',
         lastmod: '2026-08-04T00:00:00.000Z',
         size: 1
       }
@@ -1251,7 +1315,8 @@ describe('BackupManager direct v2 data compatibility', () => {
     controller.abort(new DOMException('Stopped.', 'AbortError'))
 
     await expect(backup).resolves.toMatchObject({ result: true, cleanupError: { name: 'AbortError' } })
-    expect(deleteFile).toHaveBeenCalledWith('cherry-studio.20260804000000.test-host.mac.zip', deleteSignal)
+    // expect(deleteFile).toHaveBeenCalledWith('cherry-studio.20260804000000.test-host.mac.zip', deleteSignal)
+    expect(deleteFile).toHaveBeenCalledWith('meacowork.20260804000000.test-host.mac.zip', deleteSignal)
     expect(deleteSignal?.aborted).toBe(true)
     expect(getDirectoryContents).toHaveBeenCalledWith(expect.any(AbortSignal))
   })

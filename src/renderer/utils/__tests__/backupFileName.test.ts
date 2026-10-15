@@ -44,6 +44,7 @@ describe('createDefaultBackupFileName', () => {
     resolveHostname('macbook')
     resolveDeviceType('desktop')
 
-    await expect(fileName).resolves.toMatch(/^cherry-studio\.\d{14}\.macbook\.desktop\.zip$/)
+    // await expect(fileName).resolves.toMatch(/^cherry-studio\.\d{14}\.macbook\.desktop\.zip$/)
+    await expect(fileName).resolves.toMatch(/^meacowork\.\d{14}\.macbook\.desktop\.zip$/)
   })
 })
