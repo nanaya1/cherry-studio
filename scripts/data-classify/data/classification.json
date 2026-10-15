@@ -3166,7 +3166,7 @@
         {
           "originalKey": "profileIsolationEnabled",
           "type": "boolean",
-          "defaultValue": false,
+          "defaultValue": true,
           "status": "classified",
           "category": "bootConfig",
           "targetKey": "app.profile_isolation_enabled"

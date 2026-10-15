@@ -103,7 +103,8 @@ export type BootConfigSchema = z.infer<typeof bootConfigSchema>
 export const DefaultBootConfig: BootConfigSchema = {
   'app.data_root_path': {  },
   'app.disable_hardware_acceleration': false,
-  'app.profile_isolation_enabled': false,
+  // 'app.profile_isolation_enabled': false,
+  'app.profile_isolation_enabled': true,
   'app.user_data_path': {},
   'temp.data_root_relocation': null,
   'temp.user_data_relocation': null
