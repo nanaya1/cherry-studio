@@ -4981,7 +4981,7 @@
   "settings.quickPanel.scope.global": "全局",
   "settings.quickPanel.select": "选择",
   "settings.quickPanel.title": "输入快捷面板",
-  "settings.scheduledTasks.agentCreate": "通过 Agent 创建",
+  "settings.scheduledTasks.agentCreate": "通过任务创建",
   "settings.scheduledTasks.allAgents": "全部 Agent",
   "settings.scheduledTasks.allStatuses": "全部状态",
   "settings.scheduledTasks.clearFilters": "清除筛选",
