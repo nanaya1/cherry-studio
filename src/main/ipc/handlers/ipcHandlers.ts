@@ -16,6 +16,7 @@ import { deepSeekHarnessHandlers } from './deepSeekHarness'
 import { diagnosticsHandlers } from './diagnostics'
 import { doctorHandlers } from './doctor'
 import { enterpriseHandlers } from './enterprise' // [enterprise] T0 企业扩展
+import { enterpriseKnowledgeHandlers } from './enterpriseKnowledge' // [enterprise] 组织知识库
 import { exportHandlers } from './export'
 import { externalAppHandlers } from './externalApp'
 import { fileHandlers } from './file'
@@ -67,6 +68,7 @@ export const ipcHandlers: IpcHandlersFor<IpcRequestSchemas> = {
   ...cherryinHandlers,
   ...cherryCloudHandlers,
   ...enterpriseHandlers, // [enterprise]
+  ...enterpriseKnowledgeHandlers, // [enterprise] 组织知识库
   ...citationHandlers,
   ...codeCliHandlers,
   ...deepSeekHarnessHandlers,

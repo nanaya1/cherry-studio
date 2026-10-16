@@ -1,4 +1,5 @@
 import { FlaskConical, SlidersHorizontal } from 'lucide-react'
+import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Badge, Button, PageHeader } from '@cherrystudio/ui'
@@ -7,13 +8,14 @@ import type { KnowledgeBase } from '@shared/data/types/knowledge'
 import { statusBadgeClassNames } from './statusStyles'
 
 interface DetailHeaderProps {
+  actions?: ReactNode
   base: KnowledgeBase
   onOpenRagConfig: () => void
   onOpenRecallTest: () => void
   onRebuild: () => void
 }
 
-const DetailHeader = ({ base, onOpenRagConfig, onOpenRecallTest, onRebuild }: DetailHeaderProps) => {
+const DetailHeader = ({ base, actions, onOpenRagConfig, onOpenRecallTest, onRebuild }: DetailHeaderProps) => {
   const { t } = useTranslation()
 
   const statusLabelKey = `knowledge.status.${base.status}` as const
@@ -22,7 +24,7 @@ const DetailHeader = ({ base, onOpenRagConfig, onOpenRecallTest, onRebuild }: De
   return (
     <PageHeader
       title={base.name}
-      className="relative mb-0 h-9 pb-1 after:pointer-events-none after:absolute after:right-3 after:bottom-0 after:left-3 after:border-b after:border-border after:content-['']"
+      className="relative mb-0 h-auto min-h-20 px-6 py-5 [&_h1]:text-xl after:pointer-events-none after:absolute after:right-6 after:bottom-0 after:left-6 after:border-b after:border-border after:content-['']"
       action={
         base.status === 'failed' ? (
           <Button
@@ -37,7 +39,8 @@ const DetailHeader = ({ base, onOpenRagConfig, onOpenRecallTest, onRebuild }: De
             </Badge>
           </Button>
         ) : (
-          <div className="flex shrink-0 items-center gap-1">
+          <div className="flex shrink-0 items-center gap-2">
+            {actions}
             <Button
               type="button"
               variant="ghost"

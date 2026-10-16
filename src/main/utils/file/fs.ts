@@ -26,7 +26,16 @@
  */
 
 import { randomUUID } from 'node:crypto'
-import { createReadStream, createWriteStream as nodeCreateWriteStream } from 'node:fs'
+import {
+  closeSync,
+  createReadStream,
+  createWriteStream as nodeCreateWriteStream,
+  fsyncSync,
+  openSync,
+  renameSync,
+  unlinkSync,
+  writeFileSync
+} from 'node:fs'
 import {
   access,
   constants,
@@ -312,6 +321,51 @@ export async function atomicWriteFile(
 ): Promise<void> {
   const prepared = await prepareAtomicWrite(target, data, options)
   await prepared.commit()
+}
+
+/** 同步原子写入：沿用 atomicWriteFile 的临时文件、权限、fsync 和失败清理合同。 */
+export function atomicWriteFileSync(
+  target: AbsoluteFilePath,
+  data: string | Uint8Array,
+  options?: AtomicWriteModeOptions
+): void {
+  const tmp = tmpNameFor(target)
+  const fd = openSync(tmp, 'wx', options?.mode)
+  try {
+    try {
+      writeFileSync(fd, data)
+      fsyncSync(fd)
+    } finally {
+      closeSync(fd)
+    }
+    renameSync(tmp, target)
+  } catch (error) {
+    try {
+      unlinkSync(tmp)
+    } catch (unlinkErr) {
+      if ((unlinkErr as NodeJS.ErrnoException).code !== 'ENOENT') {
+        logger.warn('atomicWriteFileSync: tmp cleanup failed; tmp file may remain on disk', {
+          tmp,
+          target,
+          err: unlinkErr
+        })
+      }
+    }
+    throw error
+  }
+  try {
+    const dirFd = openSync(path.dirname(target), 'r')
+    try {
+      fsyncSync(dirFd)
+    } finally {
+      closeSync(dirFd)
+    }
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code
+    if (!shouldSilenceFsyncDirError(code)) {
+      logger.warn('fsync(dir) failed after atomic rename; durability not confirmed', { target, code, err })
+    }
+  }
 }
 
 /**

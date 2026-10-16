@@ -988,6 +988,37 @@ describe('JobManager integration', () => {
   })
 
   describe('settled event payload', () => {
+    it('publishes the terminal snapshot to global settled observers', async () => {
+      const observed: JobSettledEvent[] = []
+      const handler: JobHandler<{ label: string }> = {
+        recovery: 'abandon',
+        async execute(ctx) {
+          await ctx.patchMetadata({ phase: 'done' })
+          return { ok: true }
+        }
+      }
+      const { scheduler, jobManager } = await bootstrapManager({
+        handlers: [['settled.global', handler as JobHandler]]
+      })
+      const subscription = jobManager.onJobSettled((event) => observed.push(event))
+
+      const job = jobManager.enqueue('settled.global' as never, { label: 'observed' } as never)
+      await job.finished
+      await drainAllQueues(jobManager)
+
+      expect(observed).toHaveLength(1)
+      expect(observed[0]).toMatchObject({
+        jobId: job.id,
+        type: 'settled.global',
+        status: 'completed',
+        input: { label: 'observed' },
+        metadata: { phase: 'done' }
+      })
+
+      subscription.dispose()
+      await teardownManager(scheduler, jobManager)
+    })
+
     it('delivers input / parentId / final metadata to onSettled and exposes ctx.parentId', async () => {
       const settledEvents: JobSettledEvent<{ label: string }>[] = []
       const ctxParentIds: Array<string | null> = []

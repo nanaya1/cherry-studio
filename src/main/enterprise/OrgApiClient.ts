@@ -62,6 +62,19 @@ export function getOrgApiBaseUrl(): string {
   return ORG_SERVER_BASE_URL ?? OFFICIAL_API_BASE_URL
 }
 
+/**
+ * 组织服务 HTTP 错误：携带服务端 HTTP status，便于上层映射为领域 {@link IpcError} 码（fail closed）。
+ */
+export class OrgApiHttpError extends Error {
+  constructor(
+    public readonly status: number,
+    message: string
+  ) {
+    super(message)
+    this.name = 'OrgApiHttpError'
+  }
+}
+
 export class OrgApiClient {
   // [enterprise] 修复 401：改为异步取「有效期内的会话」（过期自动刷新）。
   // 原同步裸取：constructor(private readonly getSession: () => OrgSession | null) {}
@@ -70,41 +83,135 @@ export class OrgApiClient {
     private readonly cookieFetch?: (url: string, init: RequestInit) => Promise<Response>
   ) {}
 
-  private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  private async shareHttpError(response: Response): Promise<never> {
+    let message = `账户服务请求失败 (${response.status})`
+    try {
+      const body = await response.json()
+      if (typeof body?.detail === 'string') message = body.detail
+      else if (typeof body?.message === 'string') message = body.message
+      // MEA:enterprise-knowledge-page modern 代理以 error 字符串返回知识库校验原因。
+      else if (typeof body?.error === 'string') message = body.error
+    } catch {
+      /* 非 JSON 错误保留状态，不记录响应体。 */
+    }
+    throw new OrgApiHttpError(response.status, message)
+  }
+
+  /** 统一会话传输、client scope 与明确 401 后的一次刷新重试。 */
+  private async sendAuth(path: string, init: RequestInit = {}): Promise<Response> {
+    // const isShare = /^\/api\/kb\/v1\/(shares\/|spaces\/[^/]+\/shares(?:\/|\?|$))/.test(path)
+    // MEA:enterprise-knowledge-page 副本创建和上传同样保留分享错误详情，避免仅显示通用 400。
+    const isShare = /^\/api\/kb\/v1\/(local-share(?:\/|\?|$)|shares\/|spaces\/[^/]+\/shares(?:\/|\?|$))/.test(path)
     const session = await this.getValidSession()
     if (!session) throw new Error('未登录')
+    const target = new URL(`${getOrgApiBaseUrl()}${path}`)
+    // 客户端始终按分组权限访问知识库，管理员会话也不能绕过 client scope。
+    if (target.pathname.startsWith('/api/kb/v1/') || target.pathname === '/api/kb/catalog') {
+      target.searchParams.set('scope', 'client')
+    }
+    const url = target.toString()
+    const isForm = init.body instanceof FormData
+    const jsonHeaders = (): Record<string, string> => ({
+      'content-type': 'application/json',
+      ...(init.headers as Record<string, string> | undefined)
+    })
+
     if (session.authMode === 'management-cookie') {
       if (!this.cookieFetch) throw new Error('Cookie transport is unavailable')
-      const response = await this.cookieFetch(`${getOrgApiBaseUrl()}${path}`, {
+      const response = await this.cookieFetch(url, {
         ...init,
         credentials: 'include',
         redirect: 'error',
-        headers: { 'content-type': 'application/json', ...init.headers }
+        headers: isForm ? init.headers : jsonHeaders()
       })
-      if (!response.ok) throw new Error(`账户服务请求失败 (${response.status})`)
-      return (await response.json()) as T
+      if (!response.ok && isShare) return this.shareHttpError(response)
+      if (!response.ok) throw new OrgApiHttpError(response.status, `账户服务请求失败 (${response.status})`)
+      return response
     }
-    const res = await this.send(path, session.accessToken, init)
+
+    const bearerFetch = (token: string) =>
+      fetch(url, {
+        ...init,
+        headers: {
+          ...(isForm ? init.headers : jsonHeaders()),
+          authorization: `Bearer ${token}`
+        }
+      })
+
+    const res = await bearerFetch(session.accessToken)
     // [enterprise] 修复 401：access token 被服务端提前吊销时兜底——刷新一次重试一次
     if (res.status === 401) {
       const refreshed = await this.getValidSession()
       if (!refreshed || refreshed.accessToken === session.accessToken) {
-        throw new Error(`账户服务请求失败 (${res.status})`)
+        throw new OrgApiHttpError(401, '账户服务请求失败 (401)')
       }
-      const retry = await this.send(path, refreshed.accessToken, init)
+      const retry = await bearerFetch(refreshed.accessToken)
+      if (!retry.ok && isShare) return this.shareHttpError(retry)
       if (!retry.ok) {
         const body = await retry.text().catch(() => '')
         logger.warn('org api request failed', { path, status: retry.status, body: body.slice(0, 200) })
-        throw new Error(`账户服务请求失败 (${retry.status})`)
+        throw new OrgApiHttpError(retry.status, `账户服务请求失败 (${retry.status})`)
       }
-      return (await retry.json()) as T
+      return retry
     }
+    if (!res.ok && isShare) return this.shareHttpError(res)
     if (!res.ok) {
       const body = await res.text().catch(() => '')
       logger.warn('org api request failed', { path, status: res.status, body: body.slice(0, 200) })
-      throw new Error(`账户服务请求失败 (${res.status})`)
+      throw new OrgApiHttpError(res.status, `账户服务请求失败 (${res.status})`)
     }
-    return (await res.json()) as T
+    return res
+  }
+
+  /**
+   * JSON 请求：解析 JSON 响应；空响应体返回 undefined。兼容既有技能/连接器调用。
+   */
+  private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
+    const res = await this.sendAuth(path, init)
+    const text = await res.text()
+    if (!text) return undefined as T
+    return JSON.parse(text) as T
+  }
+
+  /**
+   * multipart 上传（如本地共享逐文件上传）。FormData 不设置 application/json，
+   * boundary 由 fetch 自行决定；解析 JSON 响应，空响应体返回 undefined。
+   */
+  async requestMultipart<T>(path: string, form: FormData): Promise<T> {
+    const res = await this.sendAuth(path, { method: 'POST', body: form })
+    const text = await res.text()
+    if (!text) return undefined as T
+    return JSON.parse(text) as T
+  }
+
+  /** 拉取纯文本响应（如签名 URL 指向的原文预览内容）。主进程内部使用，不向渲染进程暴露 URL。 */
+  async requestText(path: string): Promise<string> {
+    return (await this.requestBytes(path, 10 * 1024 * 1024)).toString('utf8')
+  }
+
+  async requestBytes(path: string, maxBytes: number): Promise<Buffer> {
+    const res = await this.sendAuth(path, { method: 'GET', redirect: 'error', signal: AbortSignal.timeout(30_000) })
+    if (Number(res.headers.get('content-length')) > maxBytes) {
+      await res.body?.cancel()
+      throw new Error('预览文件超过大小限制')
+    }
+    if (!res.body) return Buffer.alloc(0)
+    const reader = res.body.getReader()
+    const chunks: Uint8Array[] = []
+    let size = 0
+    try {
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (done) break
+        size += value.byteLength
+        if (size > maxBytes) throw new Error('预览文件超过大小限制')
+        chunks.push(value)
+      }
+      return Buffer.concat(chunks)
+    } finally {
+      await reader.cancel()
+      reader.releaseLock()
+    }
   }
 
   private requireCookieFetch() {

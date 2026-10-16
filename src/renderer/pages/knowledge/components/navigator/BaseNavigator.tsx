@@ -1,5 +1,5 @@
 import { Plus } from 'lucide-react'
-import type { MouseEvent as ReactMouseEvent } from 'react'
+import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react'
 import { useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -16,10 +16,14 @@ import BaseNavigatorContent from './BaseNavigatorContent'
 import BaseNavigatorResizeHandle from './BaseNavigatorResizeHandle'
 
 interface BaseNavigatorProps {
+  header?: ReactNode
+  content?: ReactNode
+  footer?: ReactNode
   bases: KnowledgeBaseListItem[]
   groups: Group[]
   isLoading: boolean
   width: number
+  sharedBaseIds?: ReadonlySet<string>
   selectedBaseId: string
   onSelectBase: (baseId: string) => void
   onCreateGroup: (baseId: string) => void
@@ -33,10 +37,14 @@ interface BaseNavigatorProps {
 }
 
 const BaseNavigator = ({
+  header,
+  content,
+  footer,
   bases,
   groups,
   isLoading,
   width,
+  sharedBaseIds,
   selectedBaseId,
   onSelectBase,
   onCreateGroup,
@@ -71,35 +79,42 @@ const BaseNavigator = ({
     <div data-ui="knowledge.navigation" style={{ width }} className="relative h-full min-h-0 shrink-0">
       {/* `p-1.5` and the padding-free rows below match the assistant and agent rails'
           `ResourceList.Frame`, so the three sidebars indent identically. */}
-      <aside className="flex size-full min-h-0 flex-col border-r-[0.5px] border-border p-1.5">
-        <div className="flex shrink-0 flex-col gap-2">
-          {/* Same borderless header item the assistant and agent rails use, so the three
+      <aside className="flex size-full min-h-0 flex-col border-r border-border bg-muted/20 px-3 py-5">
+        {header}
+        {content ?? (
+          <>
+            <div className="mb-3 flex shrink-0 flex-col gap-2 rounded-lg border border-border bg-background">
+              {/* Same borderless header item the assistant and agent rails use, so the three
               sidebars read as one family. */}
-          <ResourceList.HeaderItem
-            type="button"
-            icon={<Plus />}
-            label={t('knowledge.add.title')}
-            aria-label={t('knowledge.add.title')}
-            onClick={() => onCreateBase()}
-          />
-        </div>
+              <ResourceList.HeaderItem
+                type="button"
+                icon={<Plus />}
+                label={t('knowledge.add.title')}
+                aria-label={t('knowledge.add.title')}
+                onClick={() => onCreateBase()}
+              />
+            </div>
 
-        <BaseNavigatorContent
-          isLoading={isLoading}
-          sections={knowledgeBaseGroupSections}
-          groups={groups}
-          groupById={groupById}
-          selectedBaseId={selectedBaseId}
-          getGroupLabel={getGroupLabel}
-          onSelectBase={onSelectBase}
-          onMoveBase={onMoveBase}
-          onRenameBase={onRenameBase}
-          onRenameGroup={onRenameGroup}
-          onCreateBaseInGroup={onCreateBase}
-          onCreateGroup={onCreateGroup}
-          onDeleteGroup={onDeleteGroup}
-          onDeleteBase={onDeleteBase}
-        />
+            <BaseNavigatorContent
+              isLoading={isLoading}
+              sections={knowledgeBaseGroupSections}
+              groups={groups}
+              groupById={groupById}
+              sharedBaseIds={sharedBaseIds}
+              selectedBaseId={selectedBaseId}
+              getGroupLabel={getGroupLabel}
+              onSelectBase={onSelectBase}
+              onMoveBase={onMoveBase}
+              onRenameBase={onRenameBase}
+              onRenameGroup={onRenameGroup}
+              onCreateBaseInGroup={onCreateBase}
+              onCreateGroup={onCreateGroup}
+              onDeleteGroup={onDeleteGroup}
+              onDeleteBase={onDeleteBase}
+            />
+          </>
+        )}
+        {footer}
       </aside>
 
       <BaseNavigatorResizeHandle onResizeStart={onResizeStart} />

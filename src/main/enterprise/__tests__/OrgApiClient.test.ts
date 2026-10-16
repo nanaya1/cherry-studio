@@ -8,12 +8,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const fetchMock = vi.fn()
+const { shareWarn } = vi.hoisted(() => ({ shareWarn: vi.fn() }))
 
 vi.mock('electron', () => ({ app: { getPath: () => '/tmp' } }))
 
 // OrgApiClient 只依赖 @logger，stub 掉避免拉起完整 logger 链
 vi.mock('@logger', () => ({
-  loggerService: { withContext: () => ({ warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn() }) }
+  loggerService: { withContext: () => ({ warn: shareWarn, info: vi.fn(), error: vi.fn(), debug: vi.fn() }) }
 }))
 
 import { OrgApiClient } from '@main/enterprise/OrgApiClient'
@@ -35,6 +36,103 @@ describe('OrgApiClient server contract', () => {
   afterEach(() => {
     fetchMock.mockReset()
     vi.unstubAllGlobals()
+  })
+
+  it.each(['bearer', 'cookie', 'refresh'])('分享失败原文透传且 %s 日志不含码或提取码', async (mode) => {
+    shareWarn.mockClear()
+    const errorResponse = () => new Response(JSON.stringify({ detail: '提取码不正确' }), { status: 403 })
+    fetchMock.mockResolvedValueOnce(mode === 'refresh' ? new Response('', { status: 401 }) : errorResponse())
+    if (mode === 'refresh') fetchMock.mockResolvedValueOnce(errorResponse())
+    const getSession = vi
+      .fn()
+      .mockResolvedValueOnce({ ...session(), authMode: mode === 'cookie' ? 'management-cookie' : undefined })
+      .mockResolvedValue(session({ accessToken: 'fresh' }))
+    const client = new OrgApiClient(
+      getSession,
+      vi.fn().mockImplementation(async () => errorResponse())
+    )
+    await expect(
+      client['request']('/api/kb/v1/shares/SecretCode123/receive', {
+        method: 'POST',
+        body: '{"password":"private-pass"}'
+      })
+    ).rejects.toMatchObject({ status: 403, message: '提取码不正确' })
+    expect(JSON.stringify(shareWarn.mock.calls)).not.toMatch(/SecretCode123|private-pass/)
+  })
+
+  it.each(['bearer', 'cookie', 'refresh'])('本地副本上传 400 在 %s 传输中保留代理错误详情', async (mode) => {
+    shareWarn.mockClear()
+    const errorResponse = () => new Response(JSON.stringify({ error: '文件解析结果格式无效' }), { status: 400 })
+    fetchMock.mockResolvedValueOnce(mode === 'refresh' ? new Response('', { status: 401 }) : errorResponse())
+    if (mode === 'refresh') fetchMock.mockResolvedValueOnce(errorResponse())
+    const client = new OrgApiClient(
+      vi
+        .fn()
+        .mockResolvedValueOnce({ ...session(), authMode: mode === 'cookie' ? 'management-cookie' : undefined })
+        .mockResolvedValue(session({ accessToken: 'fresh' })),
+      vi.fn().mockImplementation(async () => errorResponse())
+    )
+    const form = new FormData()
+    form.append('file', new Blob(['正文']), 'dqamst.pdf')
+    form.append('chunks', '[]')
+    await expect(client.requestMultipart('/api/kb/v1/local-share/spaces/copy/files', form)).rejects.toMatchObject({
+      status: 400,
+      message: '文件解析结果格式无效'
+    })
+    expect(shareWarn).not.toHaveBeenCalled()
+  })
+
+  it('multipart 首次与401刷新均带 Bearer 且让 fetch 生成 boundary', async () => {
+    fetchMock.mockResolvedValueOnce(new Response('', { status: 401 })).mockResolvedValueOnce(new Response('{}'))
+    const client = new OrgApiClient(
+      vi
+        .fn()
+        .mockResolvedValueOnce(session())
+        .mockResolvedValueOnce(session({ accessToken: 'fresh' }))
+    )
+    const form = new FormData()
+    form.append('file', new Blob(['正文']), 'a.txt')
+    await client.requestMultipart('/api/kb/v1/local-share/spaces/s/files', form)
+    expect(fetchMock.mock.calls.map(([, init]) => new Headers(init.headers).get('authorization'))).toEqual([
+      'Bearer stale-token',
+      'Bearer fresh'
+    ])
+    for (const [, init] of fetchMock.mock.calls) {
+      expect(new Headers(init.headers).has('content-type')).toBe(false)
+      expect(init.body).toBe(form)
+    }
+  })
+
+  it.each(['json', 'multipart', 'text', 'bytes'] as const)(
+    '管理员 %s 请求统一强制 client scope 并保留查询',
+    async (kind) => {
+      fetchMock.mockResolvedValue(new Response('{}'))
+      const client = new OrgApiClient(vi.fn().mockResolvedValue(session()))
+      const path = '/api/kb/v1/files/f/preview?scope=admin&scope=all&cursor=a%3Ab'
+      if (kind === 'json') await client['request'](path)
+      if (kind === 'multipart') await client.requestMultipart(path, new FormData())
+      if (kind === 'text') await client.requestText(path)
+      if (kind === 'bytes') await client.requestBytes(path, 100)
+      const url = new URL(fetchMock.mock.calls[0][0])
+      expect(url.searchParams.getAll('scope')).toEqual(['client'])
+      expect(url.searchParams.get('cursor')).toBe('a:b')
+    }
+  )
+
+  it.each([true, false])('拒绝超限预览流（声明长度：%s）', async (declared) => {
+    fetchMock.mockResolvedValue(new Response('12345', { headers: declared ? { 'content-length': '5' } : {} }))
+    const client = new OrgApiClient(vi.fn().mockResolvedValue(session()))
+    await expect(client.requestBytes('/api/kb/v1/files/f/preview', 4)).rejects.toThrow('预览文件超过大小限制')
+  })
+
+  it('鉴权读取有限预览字节且禁止重定向', async () => {
+    fetchMock.mockResolvedValue(new Response('原文'))
+    const client = new OrgApiClient(vi.fn().mockResolvedValue(session()))
+    expect((await client.requestBytes('/api/kb/v1/files/f/preview', 20)).toString('utf8')).toBe('原文')
+    expect(fetchMock.mock.calls[0][1]).toMatchObject({
+      redirect: 'error',
+      headers: { authorization: 'Bearer stale-token' }
+    })
   })
 
   it('uses the isolated Cookie transport without a Bearer header', async () => {

@@ -1,5 +1,8 @@
 import { type Dispatch, type SetStateAction, useCallback, useEffect, useMemo, useRef } from 'react'
 
+import { useOrgKnowledge } from '@renderer/hooks/useOrgKnowledge'
+import { projectOrgKnowledgeBase } from '@renderer/hooks/useSelectableKnowledgeBases'
+import { isOrgId } from '@shared/data/types/enterpriseKnowledge'
 import type { KnowledgeBase } from '@shared/data/types/knowledge'
 
 import type { ComposerDraftToken } from '../../tokens'
@@ -35,13 +38,21 @@ interface UseComposerKnowledgeBaseScopeResult {
 /** Owns knowledge-base availability, marker resolution, and selection pruning for one composer scope. */
 export function useComposerKnowledgeBaseScope({
   configuredKnowledgeBaseIds,
-  allKnowledgeBases,
+  allKnowledgeBases: suppliedKnowledgeBases,
   isKnowledgeBasesLoading,
   scopeKey,
   selectedKnowledgeBases,
   setSelectedKnowledgeBases,
   remountsOnScopeChange
 }: UseComposerKnowledgeBaseScopeParams): UseComposerKnowledgeBaseScopeResult {
+  const { catalog } = useOrgKnowledge()
+  const allKnowledgeBases = useMemo(() => {
+    const orgBases = new Map([...catalog.public, ...catalog.shared].map((base) => [base.id, base]))
+    return [
+      ...suppliedKnowledgeBases.filter((base) => !isOrgId(base.id)),
+      ...[...orgBases.values()].map(projectOrgKnowledgeBase)
+    ]
+  }, [catalog, suppliedKnowledgeBases])
   const selectedKnowledgeBasesScopeKeyRef = useRef<string | null>(remountsOnScopeChange ? scopeKey : null)
 
   const configuredKnowledgeBaseIdsKey = (configuredKnowledgeBaseIds ?? []).join(KNOWLEDGE_BASE_IDS_KEY_SEPARATOR)
@@ -64,11 +75,13 @@ export function useComposerKnowledgeBaseScope({
   const filterSelectableKnowledgeBases = useCallback(
     (bases: readonly KnowledgeBase[]) => {
       if (configuredKnowledgeBaseIdSet.size === 0)
-        return bases.filter((base) => isKnowledgeBasesLoading || availableKnowledgeBaseIdSet.has(base.id))
+        return bases.filter(
+          (base) => (isKnowledgeBasesLoading && !isOrgId(base.id)) || availableKnowledgeBaseIdSet.has(base.id)
+        )
       return bases.filter(
         (base) =>
           configuredKnowledgeBaseIdSet.has(base.id) &&
-          (isKnowledgeBasesLoading || availableKnowledgeBaseIdSet.has(base.id))
+          ((isKnowledgeBasesLoading && !isOrgId(base.id)) || availableKnowledgeBaseIdSet.has(base.id))
       )
     },
     [availableKnowledgeBaseIdSet, configuredKnowledgeBaseIdSet, isKnowledgeBasesLoading]

@@ -510,13 +510,15 @@ describe('DataSourcePanel', () => {
 
     expect(screen.getByText('上传第一个数据源')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '文件' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '笔记' })).toBeInTheDocument()
+    // expect(screen.getByRole('button', { name: '笔记' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '笔记' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: '目录' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '链接' })).toBeInTheDocument()
+    // expect(screen.getByRole('button', { name: '链接' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '链接' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '网站' })).not.toBeInTheDocument()
   })
 
-  it('guides users from the empty data source state into file or URL add flows', () => {
+  it('keeps file and directory add flows available while note and URL entries are hidden', () => {
     const onAdd = vi.fn()
 
     const { rerender } = render(
@@ -533,9 +535,11 @@ describe('DataSourcePanel', () => {
     expect(screen.getByText('暂无数据源')).toBeInTheDocument()
     expect(screen.getByText('上传第一个数据源')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '文件' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '笔记' })).toBeInTheDocument()
+    // expect(screen.getByRole('button', { name: '笔记' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '笔记' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: '目录' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '链接' })).toBeInTheDocument()
+    // expect(screen.getByRole('button', { name: '链接' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '链接' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '网站' })).not.toBeInTheDocument()
 
     expect(document.querySelector('input[type="file"]')).toBeNull()
@@ -554,9 +558,11 @@ describe('DataSourcePanel', () => {
         onReindex={vi.fn()}
       />
     )
-    fireEvent.click(screen.getByRole('button', { name: '链接' }))
+    // fireEvent.click(screen.getByRole('button', { name: '链接' }))
+    fireEvent.click(screen.getByRole('button', { name: '目录' }))
 
-    expect(onAdd).toHaveBeenCalledWith('url')
+    // expect(onAdd).toHaveBeenCalledWith('url')
+    expect(onAdd).toHaveBeenCalledWith('directory')
   })
 
   it('sends dropped files through the existing file add flow while preserving the picker entry', () => {
@@ -733,6 +739,8 @@ describe('DataSourcePanel', () => {
     )
 
     fireEvent.mouseEnter(screen.getByRole('button', { name: '添加数据源' }))
+    expect(screen.queryByRole('menuitem', { name: '笔记' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('menuitem', { name: '链接' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('menuitem', { name: '目录' }))
 
     expect(onAdd).toHaveBeenCalledWith('directory')

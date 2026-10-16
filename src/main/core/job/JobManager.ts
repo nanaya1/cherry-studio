@@ -8,6 +8,8 @@ import {
   BaseService,
   DependsOn,
   type Disposable,
+  Emitter,
+  type Event,
   Injectable,
   Phase,
   SERVICE_STOP_TIMEOUT_MS,
@@ -30,7 +32,8 @@ import {
   type JobContext,
   type JobHandle,
   type JobHandler,
-  type JobScheduleRegistrationInput
+  type JobScheduleRegistrationInput,
+  type JobSettledEvent
 } from './types'
 
 const logger = loggerService.withContext('JobManager')
@@ -141,6 +144,8 @@ interface RecoveryResumePoint {
 @ServicePhase(Phase.WhenReady)
 @DependsOn(['SchedulerService'])
 export class JobManager extends BaseService {
+  private readonly jobSettledEmitter = this.registerDisposable(new Emitter<JobSettledEvent>())
+  readonly onJobSettled: Event<JobSettledEvent> = this.jobSettledEmitter.event
   private readonly handlers = new Map<string, JobHandler>()
   private readonly queues = new Map<string, DispatchQueue>()
   private readonly abortControllers = new Map<string, AbortController>()
@@ -1953,21 +1958,22 @@ export class JobManager extends BaseService {
     if (!txFailed) this.publishState(snapshot)
     this.resolveAndDispatch(jobId, snapshot)
 
+    const settledEvent: JobSettledEvent = {
+      jobId,
+      type: snapshot.type,
+      scheduleId: snapshot.scheduleId,
+      parentId: snapshot.parentId,
+      status: snapshot.status as 'completed' | 'failed' | 'cancelled',
+      input: snapshot.input,
+      output: snapshot.output,
+      error: snapshot.error,
+      attempt: snapshot.attempt,
+      metadata: snapshot.metadata
+    }
     const handler = this.handlers.get(snapshot.type)
     if (handler?.onSettled) {
       try {
-        await handler.onSettled({
-          jobId,
-          type: snapshot.type,
-          scheduleId: snapshot.scheduleId,
-          parentId: snapshot.parentId,
-          status: snapshot.status as 'completed' | 'failed' | 'cancelled',
-          input: snapshot.input,
-          output: snapshot.output,
-          error: snapshot.error,
-          attempt: snapshot.attempt,
-          metadata: snapshot.metadata
-        })
+        await handler.onSettled(settledEvent)
       } catch (settledErr) {
         logger.warn('handler.onSettled threw — ignoring', {
           jobId,
@@ -1975,6 +1981,7 @@ export class JobManager extends BaseService {
         })
       }
     }
+    this.jobSettledEmitter.fire(settledEvent)
   }
 
   /** Resolve any waiting `JobHandle.finished` and kick the freed queue slot. */

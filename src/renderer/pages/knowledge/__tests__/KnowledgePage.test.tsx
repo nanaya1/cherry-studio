@@ -1386,9 +1386,8 @@ describe('KnowledgePage', () => {
     expect(screen.getByText('暂无知识库')).toBeInTheDocument()
     expect(screen.getByText('与 AI 一起积累知识')).toBeInTheDocument()
     expect(screen.queryByTestId('detail-header')).not.toBeInTheDocument()
-    // A full-screen page replaces the two-pane shell, so the navigator — and with it
-    // the only other way to create a base — is gone; the CTA has to carry creation.
-    expect(screen.queryByTestId('navigator-width')).not.toBeInTheDocument()
+    // 空本地目录仍需保留公共库与分享库导航。
+    expect(screen.getByTestId('navigator-width')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: '创建知识库' }))
 

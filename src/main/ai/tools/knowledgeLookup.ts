@@ -40,13 +40,14 @@ import type {
 } from '@shared/ai/builtinTools'
 import { KB_LIST_DEFAULT_LIMIT } from '@shared/ai/builtinTools'
 import { ErrorCode, isDataApiError } from '@shared/data/api/errors'
+import { isOrgId } from '@shared/data/types/enterpriseKnowledge'
 import type {
   KnowledgeAddItemInput,
   KnowledgeBase,
   KnowledgeItem,
   KnowledgeSearchResult
 } from '@shared/data/types/knowledge'
-import { KnowledgeAddItemInputSchema } from '@shared/data/types/knowledge'
+import { KnowledgeAddItemInputSchema, KnowledgeItemStatusSchema } from '@shared/data/types/knowledge'
 import {
   isRemoteKnowledgeBaseId,
   parseRemoteKnowledgeBaseId,
@@ -65,6 +66,7 @@ const NOTE_SNIPPET_MAX_CHARS = 80
  */
 const KB_LIST_ROOT_ITEMS_CONCURRENCY = 8
 const REMOTE_SEARCH_TOP_K = 8
+const CONCEPT_READ_MAX_CHARS = 20_000
 
 const REMOTE_OUTLINE_UNSUPPORTED =
   'Remote knowledge bases do not support outline mode. Use kb_search to find content, then kb_read with the returned conceptId.'
@@ -198,9 +200,13 @@ export async function searchKnowledge(
   const perBase = await Promise.all(
     targetIds.map(async (baseId) => {
       try {
-        const results = isRemoteKnowledgeBaseId(baseId)
-          ? await searchRemoteKnowledge(baseId, query)
-          : await knowledgeService.search(baseId, query)
+        // const results = isRemoteKnowledgeBaseId(baseId) ? await searchRemoteKnowledge(baseId, query) : await knowledgeService.search(baseId, query)
+        // [enterprise] 组织库通过账号服务检索，保留 orgkb 来源。
+        const results = isOrgId(baseId)
+          ? await searchOrgKnowledge(baseId, query)
+          : isRemoteKnowledgeBaseId(baseId)
+            ? await searchRemoteKnowledge(baseId, query)
+            : await knowledgeService.search(baseId, query)
         // Tag each hit with the base it came from: the flatMap below loses the closure, and
         // `conceptId` alone is only unique within one base.
         return { ok: true as const, results: results.map((result) => ({ result, baseId })) }
@@ -245,6 +251,25 @@ export async function searchKnowledge(
     // Clamp to the schema's [0, 1] range. This is the ONLY enforcement of that contract: ai@6.0.143
     // does not validate a tool's `outputSchema` on the execute path, and the MCP bridge doesn't either.
     score: Math.max(0, Math.min(1, result.score))
+  }))
+}
+
+async function searchOrgKnowledge(baseId: string, query: string): Promise<KnowledgeSearchResult[]> {
+  const { chunks } = await application.get('EnterprisePlugin').knowledge.search({
+    baseIds: [baseId],
+    query,
+    topK: REMOTE_SEARCH_TOP_K
+  })
+  return chunks.map((chunk, index) => ({
+    pageContent: chunk.content,
+    score: chunk.score,
+    scoreKind: 'ranking',
+    rank: index + 1,
+    metadata: { itemId: chunk.chunkId, source: chunk.title, chunkIndex: 0, tokenCount: 0, itemType: 'file' },
+    itemId: chunk.chunkId,
+    chunkId: chunk.chunkId,
+    conceptId: chunk.documentId,
+    title: chunk.title
   }))
 }
 
@@ -314,6 +339,32 @@ async function readConcept(
     return { error: `Knowledge base "${baseId}" is not available to this assistant.` }
   }
   try {
+    if (isOrgId(baseId)) {
+      // OpenAPI read 仅支持 document/chunk，不支持字符范围；完整正文按 kb_read 合同切片。
+      const result = await application.get('EnterprisePlugin').knowledge.read({ baseId, documentId: conceptId })
+      const totalChars = result.totalChars ?? result.content.length
+      if (result.truncated || totalChars > result.content.length) {
+        return {
+          error:
+            'Organization knowledge service returned incomplete text. Cannot continue character pagination: the read API does not support character ranges. Use kb_search to find the missing content.'
+        }
+      }
+      const start = Math.max(0, Math.min(range.charStart ?? 0, result.content.length))
+      const naturalEnd = Math.min(range.charEnd ?? result.content.length, result.content.length)
+      const end = Math.max(start, Math.min(naturalEnd, start + CONCEPT_READ_MAX_CHARS))
+      return {
+        id: citeId(newCitePrefix(), 0),
+        baseId,
+        conceptId: result.documentId,
+        title: result.title,
+        type: 'file',
+        totalChars,
+        charStart: start,
+        charEnd: end,
+        content: result.content.slice(start, end),
+        truncated: end < naturalEnd
+      }
+    }
     if (isRemoteKnowledgeBaseId(baseId)) {
       const parsed = parseRemoteKnowledgeBaseId(baseId)
       if (!parsed) return { error: `Invalid remote knowledge base id: ${baseId}` }
@@ -395,6 +446,8 @@ async function grepConcept(
     logger.warn('kb_read (grep mode) targeted a base outside the assistant scope', { baseId, allowedIds })
     return { error: `Knowledge base "${baseId}" is not available to this assistant.` }
   }
+  if (isOrgId(baseId))
+    return { error: 'Organization knowledge bases do not support grep mode. Use kb_search or kb_read without pattern.' }
   if (isRemoteKnowledgeBaseId(baseId)) return { error: REMOTE_GREP_UNSUPPORTED }
 
   try {
@@ -485,14 +538,35 @@ function conceptLookupError(
  * throws: an out-of-scope base or a service error returns `{ error }`; a missing
  * base maps to a clear "not found" message. `allowedIds` scopes reachable bases.
  */
-function readTree(
+async function readTree(
   baseId: string,
   options: { maxDepth?: number },
   allowedIds: readonly string[]
-): KnowledgeTreeResultOrError {
+): Promise<KnowledgeTreeResultOrError> {
   if (allowedIds.length > 0 && !allowedIds.includes(baseId)) {
     logger.warn('kb_list (outline mode) targeted a base outside the assistant scope', { baseId, allowedIds })
     return { error: `Knowledge base "${baseId}" is not available to this assistant.` }
+  }
+  if (isOrgId(baseId)) {
+    try {
+      const page = await application.get('EnterprisePlugin').knowledge.listItems(baseId)
+      return {
+        baseId,
+        totalItems: page.total,
+        truncated: page.nextCursor !== null,
+        nodes: page.items.map((item) => ({
+          depth: 0,
+          title: item.title,
+          type: item.type,
+          status: KnowledgeItemStatusSchema.parse(item.status),
+          ...(item.status === 'completed' && item.documentId ? { conceptId: item.documentId } : {})
+        }))
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      logger.warn('Organization knowledge listItems failed', { baseId, error: message })
+      return { error: message }
+    }
   }
   if (isRemoteKnowledgeBaseId(baseId)) return { error: REMOTE_OUTLINE_UNSUPPORTED }
 
@@ -531,7 +605,7 @@ export async function listOrOutlineKnowledge(
   allowedIds: readonly string[]
 ): Promise<KnowledgeListResultOrError> {
   if (input.baseId) {
-    return readTree(input.baseId, { maxDepth: input.maxDepth ?? undefined }, allowedIds)
+    return await readTree(input.baseId, { maxDepth: input.maxDepth ?? undefined }, allowedIds)
   }
   return listKnowledgeBases(input, allowedIds)
 }
@@ -568,6 +642,11 @@ export async function manageKnowledge(
     logger.warn('kb_manage targeted a base outside the assistant scope', { baseId: input.baseId, allowedIds })
     return { error: `Knowledge base "${input.baseId}" is not available to this assistant.` }
   }
+  if (isOrgId(input.baseId))
+    return {
+      error:
+        'Organization knowledge bases are read-only in these tools. Manage them through the organization knowledge service.'
+    }
   if (isRemoteKnowledgeBaseId(input.baseId)) return { error: REMOTE_MANAGE_UNSUPPORTED }
 
   try {
@@ -700,7 +779,9 @@ async function listKnowledgeBases(
   input: KbListInput,
   allowedIds: readonly string[]
 ): Promise<KnowledgeListResultOrError> {
-  const localAllowedIds = allowedIds.filter((id) => !isRemoteKnowledgeBaseId(id))
+  // const localAllowedIds = allowedIds.filter((id) => !isRemoteKnowledgeBaseId(id))
+  // [enterprise] 组织库 ID 不参与本地目录查询。
+  const localAllowedIds = allowedIds.filter((id) => !isRemoteKnowledgeBaseId(id) && !isOrgId(id))
   const hasRemoteOnlyScope = allowedIds.length > 0 && localAllowedIds.length === 0
 
   let localItems: KbListOutputItem[] = []
@@ -736,10 +817,40 @@ async function listKnowledgeBases(
   }
 
   const remoteItems = input.cursor ? [] : await listRemoteKnowledgeBases(input, allowedIds)
+  const orgItems = input.cursor ? [] : await listOrgKnowledgeBases(input, allowedIds)
   return {
-    items: [...localItems, ...remoteItems],
-    total: localTotal + remoteItems.length,
+    // items: [...localItems, ...remoteItems],
+    // total: localTotal + remoteItems.length,
+    items: [...localItems, ...remoteItems, ...orgItems],
+    total: localTotal + remoteItems.length + orgItems.length,
     ...(nextCursor ? { nextCursor } : {})
+  }
+}
+
+async function listOrgKnowledgeBases(input: KbListInput, allowedIds: readonly string[]): Promise<KbListOutputItem[]> {
+  if (input.groupId || (allowedIds.length > 0 && !allowedIds.some(isOrgId))) return []
+  try {
+    const catalog = await application.get('EnterprisePlugin').knowledge.catalog()
+    const bases = new Map([...catalog.public, ...catalog.shared].map((base) => [base.id, base]))
+    const query = input.query?.trim().toLocaleLowerCase()
+    return [...bases.values()]
+      .filter(
+        (base) =>
+          (!allowedIds.length || allowedIds.includes(base.id)) &&
+          (!query || base.name.toLocaleLowerCase().includes(query))
+      )
+      .map((base) => ({
+        id: base.id,
+        name: base.name,
+        groupId: null,
+        status: 'completed',
+        itemCount: base.documentCount,
+        itemsUnavailable: true,
+        sampleSources: []
+      }))
+  } catch (error) {
+    logger.warn('组织知识库目录读取失败', { error: error instanceof Error ? error.message : String(error) })
+    return []
   }
 }
 

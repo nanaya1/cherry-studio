@@ -19,6 +19,7 @@ import {
   useQuickPanel
 } from '@renderer/components/QuickPanel'
 import { useKnowledgeBases } from '@renderer/hooks/useKnowledgeBase'
+import { useOrgKnowledge } from '@renderer/hooks/useOrgKnowledge'
 import { useRemoteKnowledgeBases } from '@renderer/hooks/useRemoteKnowledge'
 // Task 12：本地+远端知识库聚合投影（选择器合并展示）
 import { useSelectableKnowledgeBases } from '@renderer/hooks/useSelectableKnowledgeBases'
@@ -67,8 +68,11 @@ const useKnowledgeBaseToolController = ({
     enabled: knowledgeBasesEnabled
   })
   const { bases: remoteBases, isLoading: isRemoteBasesLoading } = useRemoteKnowledgeBases()
-  const knowledgeBases = useSelectableKnowledgeBases(localKnowledgeBases, remoteBases)
-  const isKnowledgeBasesLoading = isLocalKnowledgeBasesLoading || isRemoteBasesLoading
+  // const knowledgeBases = useSelectableKnowledgeBases(localKnowledgeBases, remoteBases)
+  // const isKnowledgeBasesLoading = isLocalKnowledgeBasesLoading || isRemoteBasesLoading
+  const { catalog, loading: isOrgKnowledgeLoading } = useOrgKnowledge()
+  const knowledgeBases = useSelectableKnowledgeBases(localKnowledgeBases, remoteBases, catalog)
+  const isKnowledgeBasesLoading = isLocalKnowledgeBasesLoading || isRemoteBasesLoading || isOrgKnowledgeLoading
   const onSelectRef = useRef(onSelect)
   const selectedBasesRef = useRef<KnowledgeBase[]>(selectedBases ?? [])
   const configuredBasesRef = useRef<KnowledgeBase[]>([])
@@ -140,7 +144,10 @@ const useKnowledgeBaseToolController = ({
       ) : (
         base.name
       ),
-      description: tRef.current('library.config.knowledge.doc_count', { count: base.itemCount ?? 0 }),
+      description:
+        base.id.startsWith('orgkb:') && base.documentCount === undefined
+          ? undefined
+          : tRef.current('library.config.knowledge.doc_count', { count: base.itemCount }),
       filterText: [base.name, base.id].join(' '),
       icon: <FileSearch />,
       suffix: tRef.current('chat.input.knowledge_base'),

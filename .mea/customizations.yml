@@ -8,6 +8,66 @@ policy:
   require_tests: true
   preserve_original_code_by_comment: true
 customizations:
+  - id: enterprise-knowledge-page
+    title: 企业知识库访问、原文预览、本地分享与手动同步
+    owner: main
+    behavior: 文档标识经显式文件映射或文件元信息校验后用于预览；主进程鉴权限量读取，渲染进程以纯文本、图片或沙箱 PDF 展示。已关联分享直接复用，目录按递归叶子原文件导出；本地副本创建和上传保留服务端错误详情（含 modern error 字符串），不将失败上传视为完整分享。
+    markers:
+      - MEA:enterprise-knowledge-page
+    touchpoints:
+      - src/main/enterprise/OrgKnowledgeService.ts
+      - src/main/enterprise/OrgKnowledgeClient.ts
+      - src/main/enterprise/OrgApiClient.ts
+      - src/shared/data/types/enterpriseKnowledge.ts
+      - src/renderer/pages/knowledge/components/OrgKnowledgeDetail.tsx
+      - src/renderer/windows/main/index.html
+      - src/main/enterprise/EnterprisePlugin.ts
+      - src/main/enterprise/OrgStateStore.ts
+      - src/main/ai/tools/knowledgeLookup.ts
+      - src/main/ipc/handlers/enterpriseKnowledge.ts
+      - src/main/ipc/handlers/ipcHandlers.ts
+      - src/main/utils/file/fs.ts
+      - src/main/utils/file/index.ts
+      - src/shared/ipc/errors/enterpriseKnowledge.ts
+      - src/shared/ipc/schemas/enterpriseKnowledge.ts
+      - src/shared/ipc/schemas/ipcSchemas.ts
+      - src/renderer/hooks/useOrgKnowledge.ts
+      - src/renderer/hooks/useSelectableKnowledgeBases.ts
+      - src/renderer/components/composer/tools/components/KnowledgeBaseButton.tsx
+      - src/renderer/components/composer/variants/shared/useComposerKnowledgeBaseScope.ts
+      - src/renderer/pages/knowledge/KnowledgePage.tsx
+      - src/renderer/pages/knowledge/KnowledgePageProvider.tsx
+      - src/renderer/pages/knowledge/components/KnowledgeInvitations.tsx
+      - src/renderer/pages/knowledge/components/KnowledgeSharingPanel.tsx
+      - src/renderer/pages/knowledge/components/ShareKnowledgeDialog.tsx
+      - src/renderer/pages/knowledge/components/ReceiveKnowledgeShareDialog.tsx
+      - src/renderer/pages/knowledge/components/navigator/BaseNavigator.tsx
+      - src/renderer/pages/knowledge/hooks/useOrgKnowledgeResource.ts
+      - src/renderer/pages/knowledge/sections/KnowledgePageDetailSection.tsx
+      - src/renderer/pages/knowledge/sections/KnowledgePageNavigatorSection.tsx
+      - src/renderer/pages/knowledge/utils/sharing.ts
+    tests:
+      - src/main/enterprise/__tests__/OrgKnowledgeService.test.ts
+      - src/main/enterprise/__tests__/OrgKnowledgeClient.test.ts
+      - src/main/enterprise/__tests__/OrgApiClient.test.ts
+      - src/renderer/pages/knowledge/components/__tests__/OrgKnowledgeDetail.test.tsx
+      - src/main/enterprise/__tests__/OrgStateStore.test.ts
+      - src/main/ai/tools/__tests__/knowledgeLookup.org.test.ts
+      - src/main/ipc/handlers/__tests__/enterpriseKnowledge.test.ts
+      - src/main/utils/file/__tests__/fs.test.ts
+      - src/shared/data/types/__tests__/enterpriseKnowledge.test.ts
+      - src/renderer/hooks/__tests__/useOrgKnowledge.test.ts
+      - src/renderer/hooks/__tests__/useSelectableKnowledgeBases.test.ts
+      - src/renderer/components/composer/tools/components/__tests__/KnowledgeBaseButton.test.tsx
+      - src/renderer/components/composer/variants/shared/__tests__/useComposerKnowledgeBaseScope.test.tsx
+      - src/renderer/pages/knowledge/__tests__/KnowledgePage.test.tsx
+      - src/renderer/pages/knowledge/__tests__/OrgKnowledgeNavigation.test.tsx
+      - src/renderer/pages/knowledge/components/__tests__/KnowledgeSharingPanel.test.tsx
+      - src/renderer/pages/knowledge/components/__tests__/ShareKnowledgeDialog.test.tsx
+      - src/renderer/pages/knowledge/components/__tests__/ReceiveKnowledgeShareDialog.test.tsx
+      - src/renderer/pages/knowledge/hooks/__tests__/useOrgKnowledgeResource.test.ts
+      - src/renderer/pages/knowledge/utils/__tests__/sharing.test.ts
+
   - id: profile-online-login
     title: Require online management identity before profile business startup
     owner: main

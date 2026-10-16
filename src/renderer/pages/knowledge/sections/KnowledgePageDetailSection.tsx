@@ -8,6 +8,11 @@ import { useDeleteKnowledgeItem, useKnowledgeItems, useReindexKnowledgeItem } fr
 import type { KnowledgeItemOf } from '@shared/data/types/knowledge'
 
 import DetailHeader from '../components/DetailHeader'
+import KnowledgeSharingPanel from '../components/KnowledgeSharingPanel'
+// import KnowledgeSyncBadge from '../components/KnowledgeSyncBadge'
+import KnowledgeSyncDialog from '../components/KnowledgeSyncDialog'
+import ShareKnowledgeDialog from '../components/ShareKnowledgeDialog'
+import { useKnowledgeSyncStatus } from '../hooks/useKnowledgeSyncStatus'
 import { useKnowledgePage } from '../KnowledgePageProvider'
 import DataSourcePanel from '../panels/dataSource/DataSourcePanel'
 
@@ -20,6 +25,16 @@ const RecallTestPanel = lazy(() => import('../panels/recallTest/RecallTestPanel'
 
 const KnowledgePageDetailSection = () => {
   const { t } = useTranslation()
+  const { org, orgSession } = useKnowledgePage()
+  // const [sharing, setSharing] = useState(false)
+  const [sharing, setSharing] = useState<false | 'code' | 'people'>(false)
+  const [records, setRecords] = useState(false)
+  const [syncing, setSyncing] = useState(false)
+  useEffect(() => {
+    setSharing(false)
+    setRecords(false)
+    setSyncing(false)
+  }, [orgSession])
   const {
     selectedBase,
     selectedBaseId,
@@ -41,6 +56,14 @@ const KnowledgePageDetailSection = () => {
     handleRecallTestDrawerOpenChange,
     openRestoreBaseDialog
   } = useKnowledgePage()
+
+  const sharedCopy = org.catalog.owned.find((base) => base.localBaseId === selectedBaseId)
+  const sync = useKnowledgeSyncStatus(selectedBaseId, baseNavigationVersion)
+  useEffect(() => {
+    setSharing(false)
+    setRecords(false)
+    setSyncing(false)
+  }, [selectedBaseId])
 
   // Directory drill-down: the stack holds the directory items descended into (empty = base root).
   // The current directory's id becomes the item-list's `groupId`, listing that folder's children.
@@ -79,13 +102,88 @@ const KnowledgePageDetailSection = () => {
       {!selectedItemId && !filePreview ? (
         <DetailHeader
           base={selectedBase}
+          actions={
+            <Button variant="ghost" size="sm" disabled={!sharedCopy} onClick={() => setRecords(true)}>
+              {t('knowledge.org.shares')}
+            </Button>
+          }
           onOpenRagConfig={openRagConfigDrawer}
           onOpenRecallTest={openRecallTestDrawer}
           onRebuild={() => openRestoreBaseDialog(selectedBase)}
         />
       ) : null}
 
-      <div className="min-h-0 flex-1 overflow-hidden">
+      <div className="mx-6 flex flex-wrap items-center gap-2 border-b border-border py-3">
+        {/* <Button variant="ghost" size="sm" onClick={() => setSharing(true)}>
+          {t('knowledge.org.share')}
+        </Button> */}
+        <Button variant="ghost" size="sm" onClick={() => setSharing('code')}>
+          {t('knowledge.org.share_code')}
+        </Button>
+        <Button variant="ghost" size="sm" onClick={() => setSharing('people')}>
+          {t('knowledge.org.invite_people')}
+        </Button>
+        {/* 手动同步入口暂时隐藏，保留现有同步流程。
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={!sync.status || sync.status.state === 'unshared'}
+          onClick={() => setSyncing(true)}>
+          {t('knowledge.sync.title')}
+        </Button>
+        <Button variant="ghost" size="sm" disabled={!sharedCopy} onClick={() => setRecords(true)}>
+          {t('knowledge.org.shares')}
+        </Button>
+        {sync.status ? <KnowledgeSyncBadge status={sync.status} /> : null}
+        */}
+        {sync.error ? (
+          <Button variant="ghost" size="sm" title={sync.error} onClick={() => void sync.refresh()}>
+            {t('knowledge.sync.status_unavailable')}
+          </Button>
+        ) : null}
+      </div>
+      <PageSidePanel
+        open={records && !!sharedCopy}
+        onClose={() => setRecords(false)}
+        title={t('knowledge.org.shares')}
+        closeLabel={t('common.close')}>
+        {records && sharedCopy ? (
+          <KnowledgeSharingPanel
+            key={`${orgSession}-${selectedBaseId}`}
+            baseId={sharedCopy.id}
+            name={selectedBase.name}
+          />
+        ) : null}
+      </PageSidePanel>
+      {syncing ? (
+        <KnowledgeSyncDialog
+          key={`${orgSession}-${selectedBaseId}`}
+          baseId={selectedBaseId}
+          name={selectedBase.name}
+          onClose={() => setSyncing(false)}
+          onSynced={() => {
+            void sync.refresh()
+            void org.refresh()
+          }}
+        />
+      ) : null}
+      {sharing ? (
+        <ShareKnowledgeDialog
+          key={`${orgSession}-${selectedBaseId}-${sharing}`}
+          mode={sharing}
+          baseId={selectedBaseId}
+          name={selectedBase.name}
+          onClose={() => {
+            setSharing(false)
+            void sync.refresh()
+          }}
+          onShared={() => {
+            void org.refresh()
+            void sync.refresh()
+          }}
+        />
+      ) : null}
+      <div className="min-h-0 flex-1 overflow-hidden px-3 pt-3 pb-4">
         {selectedItemId ? (
           <Suspense fallback={null}>
             {selectedItemView === 'content' ? (

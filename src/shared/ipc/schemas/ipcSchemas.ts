@@ -15,6 +15,8 @@ import { diagnosticsRequestSchemas } from './diagnostics'
 import { doctorRequestSchemas } from './doctor'
 // [enterprise] T0 企业扩展 IPC 契约
 import { type EnterpriseEventSchemas, enterpriseRequestSchemas } from './enterprise'
+// [enterprise] 组织知识库 IPC 契约
+import { enterpriseKnowledgeRequestSchemas } from './enterpriseKnowledge'
 import { exportRequestSchemas } from './export'
 import { externalAppRequestSchemas } from './externalApp'
 import { type FileEventSchemas, fileRequestSchemas } from './file'
@@ -64,6 +66,7 @@ export const ipcRequestSchemas = {
   ...cherryinRequestSchemas,
   ...cherryCloudRequestSchemas,
   ...enterpriseRequestSchemas, // [enterprise]
+  ...enterpriseKnowledgeRequestSchemas, // [enterprise] 组织知识库
   ...citationRequestSchemas,
   ...codeCliRequestSchemas,
   ...deepSeekHarnessRequestSchemas,

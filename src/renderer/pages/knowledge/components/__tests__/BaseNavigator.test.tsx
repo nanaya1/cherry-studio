@@ -30,6 +30,7 @@ vi.mock('@cherrystudio/ui', () => {
   const AccordionItemContext = React.createContext<string | null>(null)
 
   return {
+    Badge: ({ children }: { children: ReactNode }) => <span>{children}</span>,
     BlurCancelPointerSensor: class BlurCancelPointerSensor {},
     Accordion: ({
       children,
@@ -553,6 +554,23 @@ describe('BaseNavigator', () => {
   }
 
   // Zero bases normally never reaches the navigator because KnowledgePage owns that empty state.
+  it('marks only associated local knowledge bases as shared', () => {
+    render(
+      <BaseNavigator
+        {...baseProps}
+        bases={[
+          createKnowledgeBase({ id: 'base-1', name: 'Alpha' }),
+          createKnowledgeBase({ id: 'base-2', name: 'Beta' })
+        ]}
+        sharedBaseIds={new Set(['base-1'])}
+      />
+    )
+    const alpha = screen.getByRole('button', { name: 'Alpha' }).parentElement!
+    const beta = screen.getByRole('button', { name: 'Beta' }).parentElement!
+    expect(within(alpha).getByText(/Shared|已分享|knowledge.org.shared_tag/)).toBeInTheDocument()
+    expect(within(beta).queryByText(/Shared|已分享|knowledge.org.shared_tag/)).not.toBeInTheDocument()
+  })
+
   it('shows loading before the base query settles', () => {
     render(<BaseNavigator {...baseProps} bases={[]} isLoading />)
 

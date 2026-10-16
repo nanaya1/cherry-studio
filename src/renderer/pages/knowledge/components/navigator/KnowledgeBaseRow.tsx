@@ -2,7 +2,7 @@ import { ArrowRightLeft, FolderPlus, PencilLine, Trash2 } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { Button, ConfirmDialog } from '@cherrystudio/ui'
+import { Badge, Button, ConfirmDialog } from '@cherrystudio/ui'
 import { cn } from '@cherrystudio/ui/lib/utils'
 import { CommandContextMenu, type CommandContextMenuExtraItem } from '@renderer/components/command'
 import SidebarShortcutIcon from '@renderer/components/icons/SidebarShortcutIcon'
@@ -14,6 +14,7 @@ import type { KnowledgeBaseRowProps } from './types'
 const KnowledgeBaseRow = ({
   base,
   groups,
+  shared,
   selected,
   onSelectBase,
   onMoveBase,
@@ -145,8 +146,8 @@ const KnowledgeBaseRow = ({
       <CommandContextMenu location="webcontents.context" extraItems={contextMenuItems}>
         <div
           className={cn(
-            'group/row flex h-8 w-full items-center gap-1 rounded-md px-2.5 transition-colors',
-            selected ? 'bg-muted text-foreground' : 'hover:bg-muted'
+            'group/row my-1 flex min-h-12 w-full items-center gap-2 rounded-lg px-3 py-2 transition-colors',
+            selected ? 'bg-accent text-foreground ring-1 ring-inset ring-border' : 'hover:bg-muted'
           )}>
           <Button
             type="button"
@@ -155,6 +156,13 @@ const KnowledgeBaseRow = ({
             className="flex min-h-0 min-w-0 flex-1 items-center justify-start rounded-md p-0 text-left shadow-none hover:bg-transparent">
             <div className="min-w-0 truncate text-sm leading-5 font-normal text-foreground">{base.name}</div>
           </Button>
+          {shared ? (
+            <Badge
+              variant="outline"
+              className="h-4 shrink-0 rounded px-1 py-0 text-[10px] leading-none border-emerald-600/25 bg-emerald-50 text-emerald-700 dark:border-emerald-400/30 dark:bg-emerald-400/10 dark:text-emerald-300">
+              {t('knowledge.org.shared_tag')}
+            </Badge>
+          ) : null}
           <KnowledgeRowActionsMenu items={contextMenuItems} />
         </div>
       </CommandContextMenu>

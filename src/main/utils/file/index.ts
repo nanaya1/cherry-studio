@@ -51,6 +51,7 @@ export { createContentHasher, hashContent, parseContentHash } from './contentHas
 export {
   assertPathVersionUnchanged,
   atomicWriteFile,
+  atomicWriteFileSync,
   atomicWriteIfUnchanged,
   type AtomicWriteStream,
   compressImage,

@@ -17,7 +17,8 @@ export const KNOWLEDGE_SUPPORTED_FILE_TYPES = 'PDF, DOCX, DOC, PPTX, PPT, XLSX, 
 
 export const KNOWLEDGE_DATA_SOURCE_TYPES: ReadonlyArray<SourceTabDefinition> = [
   { value: 'file', labelKey: 'knowledge.data_source.add_dialog.sources.file' },
-  { value: 'note', labelKey: 'knowledge.data_source.add_dialog.sources.note' },
-  { value: 'directory', labelKey: 'knowledge.data_source.add_dialog.sources.directory' },
-  { value: 'url', labelKey: 'knowledge.data_source.add_dialog.sources.url' }
+  // 暂时隐藏笔记和链接数据源入口，保留配置以便恢复。
+  // { value: 'note', labelKey: 'knowledge.data_source.add_dialog.sources.note' },
+  { value: 'directory', labelKey: 'knowledge.data_source.add_dialog.sources.directory' }
+  // { value: 'url', labelKey: 'knowledge.data_source.add_dialog.sources.url' }
 ]

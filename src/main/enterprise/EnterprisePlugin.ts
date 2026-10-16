@@ -6,7 +6,7 @@ import { v4 as uuidv4 } from 'uuid'
 
 import { application } from '@application'
 import { loggerService } from '@logger'
-import { BaseService, Injectable, Phase, ServicePhase } from '@main/core/lifecycle'
+import { BaseService, DependsOn, Injectable, Phase, ServicePhase } from '@main/core/lifecycle'
 import {
   confirmProfileClaim,
   createProfileBootstrapWindow,
@@ -27,6 +27,7 @@ import {
 
 import { OrgAuthManager } from './OrgAuthManager'
 import { OrgCredentialStore } from './OrgCredentialStore'
+import { OrgKnowledgeService } from './OrgKnowledgeService'
 import { OrgMcpCatalog } from './OrgMcpCatalog'
 import { OrgSkillCatalog } from './OrgSkillCatalog'
 import { ProfileOnlineMonitor } from './ProfileOnlineMonitor'
@@ -35,10 +36,12 @@ const logger = loggerService.withContext('EnterprisePlugin')
 
 @Injectable('EnterprisePlugin')
 @ServicePhase(Phase.WhenReady)
+@DependsOn(['JobManager'])
 export class EnterprisePlugin extends BaseService {
   readonly auth: OrgAuthManager
   readonly skills: OrgSkillCatalog
   readonly connectors: OrgMcpCatalog
+  readonly knowledge: OrgKnowledgeService
 
   constructor() {
     super()
@@ -123,6 +126,7 @@ export class EnterprisePlugin extends BaseService {
     }
     this.skills = new OrgSkillCatalog(this.auth)
     this.connectors = new OrgMcpCatalog(this.auth)
+    this.knowledge = new OrgKnowledgeService(this.auth)
   }
 
   private async stopBlockedProfile(reason: string): Promise<void> {
@@ -154,6 +158,8 @@ export class EnterprisePlugin extends BaseService {
 
   protected async onInit(): Promise<void> {
     await this.auth.initialize()
+    this.knowledge.initialize(application.get('JobManager'))
+    this.registerDisposable(() => this.knowledge.dispose())
     const context = getProfileLaunchContext()
     if (context?.mode === 'business' && context.kind === 'authenticated') {
       const monitor = new ProfileOnlineMonitor({

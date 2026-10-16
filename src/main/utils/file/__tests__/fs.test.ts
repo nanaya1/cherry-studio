@@ -22,6 +22,7 @@ import type { AbsoluteFilePath } from '@shared/types/file'
 import { hashContent } from '../contentHash'
 import {
   atomicWriteFile,
+  atomicWriteFileSync,
   atomicWriteIfUnchanged,
   copy as fsCopy,
   copyNew as fsCopyNew,
@@ -45,6 +46,34 @@ import {
   stat,
   write as fsWrite
 } from '../fs'
+
+describe('atomicWriteFileSync', () => {
+  let tmp: string
+  beforeEach(async () => {
+    tmp = await mkdtemp(path.join(tmpdir(), 'cherry-atomic-sync-'))
+  })
+  afterEach(async () => {
+    await rm(tmp, { recursive: true, force: true })
+  })
+
+  it('同步替换完整正文并保持私有权限且无临时文件残留', async () => {
+    const target = path.join(tmp, 'state.json') as AbsoluteFilePath
+    await writeFile(target, '旧内容')
+    atomicWriteFileSync(target, '新内容', { mode: 0o600 })
+    expect(await readFile(target, 'utf8')).toBe('新内容')
+    if (process.platform !== 'win32') expect((await fsStatPromise(target)).mode & 0o777).toBe(0o600)
+    expect(await readdir(tmp)).toEqual(['state.json'])
+  })
+
+  it('rename 失败时保留目标并清理临时文件', async () => {
+    const target = path.join(tmp, 'directory') as AbsoluteFilePath
+    await mkdir(target)
+    await writeFile(path.join(target, 'old.json'), '旧内容')
+    expect(() => atomicWriteFileSync(target, '新内容')).toThrow()
+    expect(await readFile(path.join(target, 'old.json'), 'utf8')).toBe('旧内容')
+    expect(await readdir(tmp)).toEqual(['directory'])
+  })
+})
 
 describe('stat', () => {
   let tmp: string

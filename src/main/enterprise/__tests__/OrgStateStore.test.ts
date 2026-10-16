@@ -3,7 +3,17 @@
  * 本地状态持久化：org 技能安装记录（version/contentHash/skillId/folderName/enabled）。
  * 纯文件逻辑，用临时目录跑真实 IO。
  */
-import { mkdtempSync, existsSync, readFileSync, rmSync, mkdirSync, writeFileSync } from 'node:fs'
+import type * as NodeFs from 'node:fs'
+import {
+  mkdtempSync,
+  existsSync,
+  readFileSync,
+  rmSync,
+  mkdirSync,
+  writeFileSync,
+  renameSync,
+  readdirSync
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -12,6 +22,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const { applicationMock } = vi.hoisted(() => {
   const applicationMock = { getPath: vi.fn() }
   return { applicationMock }
+})
+
+vi.mock('node:fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof NodeFs>()
+  return { ...actual, renameSync: vi.fn(actual.renameSync) }
 })
 
 vi.mock('@application', () => ({
@@ -29,7 +44,9 @@ import { OrgStateStore } from '@main/enterprise/OrgStateStore'
 describe('OrgStateStore', () => {
   let tmp: string
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    const actual = await vi.importActual<typeof NodeFs>('node:fs')
+    vi.mocked(renameSync).mockReset().mockImplementation(actual.renameSync)
     tmp = mkdtempSync(join(tmpdir(), 'org-state-test-'))
     applicationMock.getPath.mockImplementation((key: string) => {
       if (key === 'feature.enterprise.state_file') return join(tmp, 'Sensitive', 'Enterprise', 'org-state.json')
@@ -40,6 +57,80 @@ describe('OrgStateStore', () => {
   afterEach(() => {
     rmSync(tmp, { recursive: true, force: true })
     vi.clearAllMocks()
+  })
+
+  it('同步未知上传和旧新 cleanup 映射跨实例保留', () => {
+    const record = {
+      shareId: 's1',
+      completion: 'incomplete',
+      files: [],
+      manifest: {
+        state: 'unknown',
+        lastSyncedAt: null,
+        entries: [{ itemId: 'i', fileId: 'old', fileName: '原名.txt', hash: 'h' }],
+        operations: [
+          {
+            itemId: 'i',
+            fileName: '原名.txt',
+            kind: 'update',
+            remoteFileId: 'orgkb:b2xk',
+            newFileId: 'new',
+            hash: 'new-h',
+            phase: 'cleanup_pending',
+            error: '索引未确认'
+          }
+        ]
+      }
+    }
+    new OrgStateStore().setShareAssociation('key', record as never)
+    expect(new OrgStateStore().getShareAssociation('key')).toEqual(record)
+  })
+
+  it('共享逐文件结果和完成状态跨实例保留', () => {
+    const record = {
+      shareId: 's1',
+      completion: 'incomplete',
+      files: [{ fileName: 'a', status: 'unknown', fileId: null, chunkCount: null, error: 'network' }]
+    }
+    new OrgStateStore().setShareAssociation('key', record as never)
+    expect(new OrgStateStore().getShareAssociation('key')).toEqual(record)
+  })
+
+  it.each(['replace', 'remove'] as const)('原子替换失败时 %s 不丢失旧关联和其他状态', (operation) => {
+    const store = new OrgStateStore()
+    store.upsert('demo', { version: '1', contentHash: 'h', skillId: 's', folderName: 'd' })
+    store.setShareAssociation('key', 'old-share')
+    const filePath = applicationMock.getPath('feature.enterprise.state_file')
+    const previous = readFileSync(filePath, 'utf8')
+    const association = store.getShareAssociation('key')
+    vi.mocked(renameSync).mockImplementationOnce(() => {
+      throw new Error('原子替换失败')
+    })
+
+    expect(() => {
+      if (operation === 'replace') store.setShareAssociation('key', 'new-share')
+      else store.removeShareAssociation('key')
+    }).toThrow('原子替换失败')
+    expect(readFileSync(filePath, 'utf8')).toBe(previous)
+    expect(store.getShareAssociation('key')).toEqual(association)
+    expect(new OrgStateStore().getShareAssociation('key')).toEqual(association)
+    expect(store.get('demo')?.skillId).toBe('s')
+    expect(readdirSync(join(tmp, 'Sensitive', 'Enterprise'))).toEqual(['org-state.json'])
+
+    store.setShareAssociation('other', 'other-share')
+    expect(new OrgStateStore().getShareAssociation('key')).toEqual(association)
+  })
+
+  it('旧字符串关联迁移为未确认且不丢失其他状态', () => {
+    const store = new OrgStateStore()
+    store.upsert('demo', { version: '1', contentHash: 'h', skillId: 's', folderName: 'd' })
+    const path = join(tmp, 'Sensitive', 'Enterprise', 'org-state.json')
+    const raw = JSON.parse(readFileSync(path, 'utf8'))
+    raw.knowledgeShares = { key: 's1' }
+    writeFileSync(path, JSON.stringify(raw))
+    const reloaded = new OrgStateStore()
+    expect(reloaded.getShareAssociation('key')).toEqual({ shareId: 's1', completion: 'unconfirmed', files: [] })
+    expect(reloaded.get('demo')?.skillId).toBe('s')
   })
 
   it('初始状态为空 map（文件不存在）', () => {
@@ -131,8 +222,12 @@ describe('OrgStateStore', () => {
       generation: 2
     })
 
-    expect(store.isSkillAllowed('org-skill:review', { issuerId: 'issuer-1', groupId: 'group-a', generation: 2 })).toBe(true)
-    expect(store.isSkillAllowed('org-skill:review', { issuerId: 'issuer-1', groupId: 'group-b', generation: 2 })).toBe(false)
+    expect(store.isSkillAllowed('org-skill:review', { issuerId: 'issuer-1', groupId: 'group-a', generation: 2 })).toBe(
+      true
+    )
+    expect(store.isSkillAllowed('org-skill:review', { issuerId: 'issuer-1', groupId: 'group-b', generation: 2 })).toBe(
+      false
+    )
     expect(store.isSkillAllowed('https://example.test/local', null)).toBe(true)
   })
 

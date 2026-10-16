@@ -6,6 +6,16 @@ import type { KnowledgeBase } from '@shared/data/types/knowledge'
 
 import { useComposerKnowledgeBaseScope } from '../useComposerKnowledgeBaseScope'
 
+const org = vi.hoisted(() => ({
+  catalog: {
+    public: [] as { id: string; name: string; description: null; documentCount: number }[],
+    shared: [],
+    owned: []
+  },
+  loading: false
+}))
+vi.mock('@renderer/hooks/useOrgKnowledge', () => ({ useOrgKnowledge: () => org }))
+
 const kb = (id: string, name = id): KnowledgeBase => ({ id, name }) as KnowledgeBase
 
 interface HarnessProps {
@@ -35,6 +45,34 @@ function useScopeHarness(props: HarnessProps) {
 const SCOPE_KEY = 'topic-1:agent-1'
 
 describe('useComposerKnowledgeBaseScope', () => {
+  it('解析组织库标记，并在账号目录清空时立即移除旧选择', () => {
+    const base = { id: 'orgkb:b25l', name: '组织库', description: null, documentCount: 2 }
+    org.catalog = { public: [base], shared: [], owned: [] }
+    const { result, rerender } = renderHook(useScopeHarness, {
+      initialProps: {
+        allKnowledgeBases: [],
+        isKnowledgeBasesLoading: true,
+        scopeKey: SCOPE_KEY,
+        initialSelection: [kb(base.id)],
+        remountsOnScopeChange: true
+      }
+    })
+    expect(result.current.resolveKnowledgeBaseMarker(base.id)).toMatchObject({ kind: 'knowledge' })
+    expect(result.current.selectedKnowledgeBasesInScope.map((item) => item.id)).toEqual([base.id])
+    org.catalog = { public: [], shared: [], owned: [] }
+    org.loading = true
+    rerender({
+      allKnowledgeBases: [],
+      isKnowledgeBasesLoading: true,
+      scopeKey: SCOPE_KEY,
+      initialSelection: [kb(base.id)],
+      remountsOnScopeChange: true
+    })
+    expect(result.current.selectedKnowledgeBasesInScope).toEqual([])
+    expect(result.current.selectedKnowledgeBases).toEqual([])
+    org.loading = false
+  })
+
   it('treats an empty configured knowledge-base list as all loaded bases selectable', () => {
     const bases = [kb('kb-1', 'Knowledge One'), kb('kb-2', 'Knowledge Two')]
 

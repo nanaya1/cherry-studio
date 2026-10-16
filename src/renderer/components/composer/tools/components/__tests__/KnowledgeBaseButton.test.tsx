@@ -10,6 +10,11 @@ import { KnowledgeBaseToolRuntime } from '../KnowledgeBaseButton'
 
 const mocks = vi.hoisted(() => ({
   knowledgeBases: [] as KnowledgeBase[],
+  orgCatalog: {
+    public: [] as { id: string; name: string; description: null; documentCount?: number }[],
+    shared: [] as { id: string; name: string; description: null; documentCount?: number }[],
+    owned: []
+  },
   language: 'en',
   knowledgeQueryOptions: vi.fn(),
   translationSuffix: '',
@@ -30,6 +35,10 @@ vi.mock('@renderer/hooks/useKnowledgeBase', () => ({
     mocks.knowledgeQueryOptions(options)
     return { bases: mocks.knowledgeBases, isLoading: false }
   }
+}))
+
+vi.mock('@renderer/hooks/useOrgKnowledge', () => ({
+  useOrgKnowledge: () => ({ catalog: mocks.orgCatalog, loading: false })
 }))
 
 vi.mock('@renderer/services/mainWindowNavigation', () => ({
@@ -83,12 +92,46 @@ describe('KnowledgeBaseToolRuntime', () => {
     mocks.quickPanel.symbol = ''
     mocks.quickPanel.updateList.mockReset()
     mocks.knowledgeQueryOptions.mockReset()
+    mocks.orgCatalog = { public: [], shared: [], owned: [] }
     mocks.language = 'en'
     mocks.translationSuffix = ''
     mocks.knowledgeBases = [
       createKnowledgeBase({ id: 'kb-1', name: 'Knowledge One', itemCount: 2 }),
       createKnowledgeBase({ id: 'kb-2', name: 'Knowledge Two', itemCount: 5 })
     ]
+  })
+
+  it('在知识库面板中提供组织目录的选择项', async () => {
+    mocks.orgCatalog.public = [{ id: 'orgkb:b25l', name: '组织公共库', description: null, documentCount: 3 }]
+    const launcher = createLauncherApi()
+    render(<KnowledgeBaseToolRuntime launcher={launcher} onSelect={vi.fn()} />)
+    await waitFor(() => {
+      const calls = vi.mocked(launcher.registerLaunchers).mock.calls
+      expect(calls.at(-1)?.[0][0].rootSearchItems).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: 'knowledge-base:orgkb:b25l', label: '组织公共库', description: '3 docs' })
+        ])
+      )
+    })
+  })
+
+  it('组织目录未提供文档数时不显示虚假的 0 文档', async () => {
+    mocks.orgCatalog.shared = [{ id: 'orgkb:c2hhcmVk', name: '测试分享', description: null }]
+    const launcher = createLauncherApi()
+    render(<KnowledgeBaseToolRuntime launcher={launcher} onSelect={vi.fn()} />)
+
+    await waitFor(() => {
+      const calls = vi.mocked(launcher.registerLaunchers).mock.calls
+      expect(calls.at(-1)?.[0][0].rootSearchItems).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: 'knowledge-base:orgkb:c2hhcmVk',
+            label: '测试分享',
+            description: undefined
+          })
+        ])
+      )
+    })
   })
 
   it('opens a multi-select knowledge panel instead of toggling all configured bases', async () => {

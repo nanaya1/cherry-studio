@@ -10,6 +10,7 @@ export interface BaseNavigatorContentProps {
   sections: KnowledgePageBaseGroupSection[]
   groups: Group[]
   groupById: ReadonlyMap<string, Group>
+  sharedBaseIds?: ReadonlySet<string>
   selectedBaseId: string
   getGroupLabel: (groupId: string | null) => string
   onSelectBase: (baseId: string) => void
@@ -27,6 +28,7 @@ export interface BaseNavigatorGroupSectionProps {
   group?: Group
   groupLabel: string
   groups: Group[]
+  sharedBaseIds?: ReadonlySet<string>
   selectedBaseId: string
   onSelectBase: (baseId: string) => void
   onMoveBase: (baseId: string, groupId: string | null) => Promise<void> | void
@@ -53,6 +55,7 @@ export interface BaseNavigatorResizeHandleProps {
 export interface KnowledgeBaseRowProps {
   base: KnowledgeBaseListItem
   groups: Group[]
+  shared?: boolean
   selected: boolean
   onSelectBase: (baseId: string) => void
   onMoveBase: (baseId: string, groupId: string | null) => Promise<void> | void

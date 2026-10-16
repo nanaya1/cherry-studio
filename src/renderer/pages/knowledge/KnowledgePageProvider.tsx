@@ -18,10 +18,13 @@ import {
   useRestoreKnowledgeBase,
   useUpdateKnowledgeBase
 } from '@renderer/hooks/useKnowledgeBase'
+import { useOrgKnowledge } from '@renderer/hooks/useOrgKnowledge'
+import { useIpcOn } from '@renderer/ipc'
 import { EVENT_NAMES, EventEmitter } from '@renderer/services/EventService'
 import { toast } from '@renderer/services/toast'
 import { formatErrorMessageWithPrefix } from '@renderer/utils/error'
 import type { KnowledgeBaseListItem } from '@shared/data/api/schemas/knowledges'
+import type { OrgKnowledgeBase } from '@shared/data/types/enterpriseKnowledge'
 import type { Group } from '@shared/data/types/group'
 import type { KnowledgeBase, KnowledgeItemType } from '@shared/data/types/knowledge'
 
@@ -40,6 +43,12 @@ type CreateKnowledgeBase = ReturnType<typeof useCreateKnowledgeBase>['createBase
 type RestoreKnowledgeBase = ReturnType<typeof useRestoreKnowledgeBase>['restoreBase']
 
 interface KnowledgePageContextValue {
+  org: ReturnType<typeof useOrgKnowledge>
+  category: 'local' | 'public' | 'shared'
+  setCategory: (category: 'local' | 'public' | 'shared') => void
+  selectedOrgBase: OrgKnowledgeBase | undefined
+  selectOrgBase: (base: OrgKnowledgeBase) => void
+  orgSession: number
   bases: KnowledgeBaseListItem[]
   groups: Group[]
   isLoading: boolean
@@ -115,6 +124,23 @@ export const KnowledgePageProvider = ({ children, baseId, onBaseIdChange }: Know
   const { t } = useTranslation()
   const { bases, isLoading, error: basesError } = useKnowledgeBases()
   const { groups } = useKnowledgeGroups()
+  const org = useOrgKnowledge()
+  const [category, updateCategory] = useState<'local' | 'public' | 'shared'>('local')
+  const setCategory = useCallback((value: 'local' | 'public' | 'shared') => {
+    updateCategory(value)
+    setOrgBaseId(null)
+  }, [])
+  const [orgBaseId, setOrgBaseId] = useState<string | null>(null)
+  const [orgSession, setOrgSession] = useState(0)
+  useIpcOn('enterprise.status_changed', () => {
+    setOrgBaseId(null)
+    setOrgSession((value) => value + 1)
+  })
+  // MEA:enterprise-knowledge-page owned 副本属于本地管理区，不能混入分享给我的目录。
+  const selectedOrgBase = (category === 'local' ? org.catalog.owned : org.catalog[category]).find(
+    (base) => base.id === orgBaseId
+  )
+  const selectOrgBase = useCallback((base: OrgKnowledgeBase) => setOrgBaseId(base.id), [])
   const { createGroup, isCreating: isCreatingGroup } = useCreateKnowledgeGroup()
   const { createBase, isCreating: isCreatingBase } = useCreateKnowledgeBase()
   const { restoreBase, isRestoring: isRestoringBase } = useRestoreKnowledgeBase()
@@ -212,6 +238,7 @@ export const KnowledgePageProvider = ({ children, baseId, onBaseIdChange }: Know
 
   const selectBase = useCallback(
     (baseId: string) => {
+      setCategory('local')
       resetBaseNavigation()
 
       if (bases.some((base) => base.id === baseId)) {
@@ -225,7 +252,7 @@ export const KnowledgePageProvider = ({ children, baseId, onBaseIdChange }: Know
       onBaseIdChange(baseId)
       setSelectedItemId(null)
     },
-    [bases, resetBaseNavigation, onBaseIdChange]
+    [bases, resetBaseNavigation, onBaseIdChange, setCategory]
   )
 
   useEffect(() => {
@@ -456,6 +483,12 @@ export const KnowledgePageProvider = ({ children, baseId, onBaseIdChange }: Know
 
   const value = useMemo<KnowledgePageContextValue>(
     () => ({
+      org,
+      category,
+      setCategory,
+      selectedOrgBase,
+      selectOrgBase,
+      orgSession,
       bases,
       groups,
       isLoading,
@@ -519,6 +552,12 @@ export const KnowledgePageProvider = ({ children, baseId, onBaseIdChange }: Know
       deleteGroup: handleDeleteGroup
     }),
     [
+      org,
+      category,
+      setCategory,
+      selectedOrgBase,
+      selectOrgBase,
+      orgSession,
       activeTab,
       baseNavigationVersion,
       bases,

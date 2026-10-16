@@ -11,6 +11,7 @@ const BaseNavigatorGroupSection = ({
   group,
   groupLabel,
   groups,
+  sharedBaseIds,
   selectedBaseId,
   onSelectBase,
   onMoveBase,
@@ -47,6 +48,7 @@ const BaseNavigatorGroupSection = ({
               key={base.id}
               base={base}
               groups={groups}
+              shared={sharedBaseIds?.has(base.id)}
               selected={base.id === selectedBaseId}
               onSelectBase={onSelectBase}
               onMoveBase={onMoveBase}
