@@ -1,6 +1,7 @@
-import { lazy, Suspense, useEffect, useMemo } from 'react'
+// import { lazy, Suspense, useEffect, useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 
-import { usePreference } from '@data/hooks/usePreference'
+import { useMultiplePreferences } from '@data/hooks/usePreference'
 import { loggerService } from '@logger'
 import AppLogo from '@renderer/assets/images/logo.png'
 import {
@@ -27,6 +28,7 @@ import { registerImageModeChooser } from '@renderer/services/imageExportModeChoo
 // MEA 侧栏使用固定工作区入口，不从 Cherry 快捷项推导启动页。
 // import { getSidebarDefaultLandingUrl } from '@renderer/utils/sidebar'
 import type { Tab } from '@shared/data/cache/cacheValueTypes'
+import { LATEST_PRIVACY_POLICY_VERSION } from '@shared/utils/constants'
 
 import { useAppUpdateHandler } from './hooks/useAppUpdateHandler'
 import { useAutoBackupEvents } from './hooks/useAutoBackupEvents'
@@ -34,7 +36,13 @@ import { useTopicNamingErrorNotification } from './hooks/useTopicNamingErrorNoti
 import { PrivacyPolicyUpdateGate } from './privacy/PrivacyPolicyUpdateGate'
 
 const logger = loggerService.withContext('MainApp')
-const OnboardingPage = lazy(() => import('./onboarding/OnboardingPage'))
+// MEA 首次启动直接进入工作区，暂不加载服务商引导页。
+// const OnboardingPage = lazy(() => import('./onboarding/OnboardingPage'))
+
+const ONBOARDING_PREFERENCE_KEYS = {
+  providerSetupStatus: 'app.onboarding.provider_setup.status',
+  policyVersion: 'app.privacy.policy_version'
+} as const
 
 // MainWindowRuntime removes the HTML boot spinner as soon as it mounts, so a suspended first-run
 // screen needs its own stand-in or the window goes blank. Mirrors main/index.html's `#spinner`.
@@ -92,7 +100,17 @@ function MainWindowRuntime(): null {
 }
 
 export function MainWindowContent(): React.ReactElement {
-  const [providerSetupStatus] = usePreference('app.onboarding.provider_setup.status')
+  const [{ providerSetupStatus }, updateOnboardingPreferences] = useMultiplePreferences(ONBOARDING_PREFERENCE_KEYS)
+
+  useEffect(() => {
+    if (providerSetupStatus !== 'pending') return
+
+    void updateOnboardingPreferences({
+      providerSetupStatus: 'skipped',
+      policyVersion: LATEST_PRIVACY_POLICY_VERSION
+    })
+  }, [providerSetupStatus, updateOnboardingPreferences])
+
   // MEA 初始页固定为新建任务，侧栏收藏只影响 MEA 侧栏自身。
   // const [sidebarShortcuts] = usePreference('ui.sidebar_shortcut')
   // const [defaultPaintingProvider] = usePreference('feature.paintings.default_provider')
@@ -118,13 +136,15 @@ export function MainWindowContent(): React.ReactElement {
     <TabsProvider initialDefaultTab={initialDefaultTab}>
       <SidebarShortcutRegistryProvider registry={sidebarShortcutRegistry}>
         <MandatoryGateProvider open={privacyGateOpen}>
+          {/* MEA 不展示首次服务商引导，保留原分支供后续恢复。
           {providerSetupStatus === 'pending' ? (
             <Suspense fallback={<BootFallback />}>
               <OnboardingPage />
             </Suspense>
           ) : (
             <AppShell />
-          )}
+          )} */}
+          {providerSetupStatus === 'pending' ? <BootFallback /> : <AppShell />}
           <MainWindowRuntime />
           <ConversationNotificationRuntime />
           <PopupHost />
