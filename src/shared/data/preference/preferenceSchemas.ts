@@ -604,7 +604,9 @@ export const DefaultPreferences: PreferenceSchemas = {
     'agent.icon_type': 'none',
     'agent.input.toolbar.pinned_tools': ['composer:new-session', 'skills', 'permission-mode'],
     'agent.language': null,
-    'agent.session.display_mode': 'agent',
+    // 恢复任务会话按工作目录分组；停用误改的智能体分组默认值。
+    // 'agent.session.display_mode': 'agent',
+    'agent.session.display_mode': 'workdir',
     'agent.session.position': 'left',
     'app.browser.agent_control.enabled': true,
     'app.browser.open_links_in_browser': true,
@@ -867,7 +869,9 @@ export const DefaultPreferences: PreferenceSchemas = {
     'shortcut.topic.sidebar.toggle': { binding: ['CommandOrControl', ']'], enabled: true },
     'topic.naming.enabled': true,
     'topic.naming_prompt': '',
-    'topic.tab.display_mode': 'assistant',
+    // 恢复普通会话按时间分组；停用误改的助手分组默认值。
+    // 'topic.tab.display_mode': 'assistant',
+    'topic.tab.display_mode': 'time',
     'topic.tab.position': 'left',
     'topic.tab.show': true,
     'ui.custom_css': '',
