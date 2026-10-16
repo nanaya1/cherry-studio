@@ -26,6 +26,21 @@ export class SwitchFence {
     this.currentState = { kind: 'needs-recovery', operationId: this.operationId(), reason }
   }
 
+  /**
+   * Reopen the fence after a *successful* clean teardown (or a verified
+   * same-account re-login) so the caller can start the business runtime in the
+   * same process. Only valid while a switch is in progress — it closes the
+   * switch cleanly rather than restoring a torn-down or failed state. A failed
+   * (`teardown-failed`) or `needs-recovery` fence must reach a restart, never be
+   * reopened here.
+   */
+  reopenAfterTeardown(): void {
+    if (this.currentState.kind !== 'switching') {
+      throw new Error(`reopenAfterTeardown requires an in-progress switch, not a ${this.currentState.kind} fence`)
+    }
+    this.currentState = { kind: 'open' }
+  }
+
   assertWritable(): void {
     this.assertOpen('writes')
   }

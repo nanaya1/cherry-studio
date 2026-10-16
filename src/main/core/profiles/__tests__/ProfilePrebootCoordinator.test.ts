@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import {
   computeIdentityDigest,
   ProfileActivePointer,
+  ProfileClaimService,
   ProfileInstallation,
   ProfilePrebootCoordinator,
   ProfileRegistry,
@@ -110,14 +111,50 @@ describe('ProfilePrebootCoordinator', () => {
     )
   })
 
-  it('returns migration-required without choosing a business profile when legacy data exists and no pointer exists', async () => {
+  it('selects signed-out and defers legacy migration until after the first authentication', async () => {
     const dataRoot = await createDataRoot()
-    const context = await new ProfilePrebootCoordinator({ dataRoot, legacyDataExists: async () => true }).initialize()
+    const legacyRoot = path.join(path.dirname(dataRoot), 'legacy')
+    const context = await new ProfilePrebootCoordinator({
+      dataRoot,
+      legacyRoot,
+      legacyDataExists: async () => true
+    }).initialize()
 
-    expect(context).toMatchObject({ mode: 'migration-required', profileId: 'signed-out' })
-    await expect(readFile(path.join(dataRoot, 'control', 'active-profile.json'), 'utf8')).rejects.toMatchObject({
-      code: 'ENOENT'
+    expect(context).toMatchObject({ mode: 'signed-out', profileId: 'signed-out', legacyRoot })
+    await expect(readFile(path.join(dataRoot, 'control', 'active-profile.json'), 'utf8')).resolves.toContain(
+      'signed-out'
+    )
+  })
+
+  it('commits a staged legacy claim for the active authenticated profile before business startup', async () => {
+    const dataRoot = await createDataRoot()
+    const legacyRoot = path.join(path.dirname(dataRoot), 'legacy-staged')
+    const controlRoot = path.join(dataRoot, 'control')
+    await mkdir(path.join(legacyRoot, 'Data'), { recursive: true })
+    await writeFile(path.join(legacyRoot, 'Data', 'app.txt'), 'legacy')
+    await new ProfilePrebootCoordinator({ dataRoot, legacyDataExists: async () => false }).initialize()
+    const registry = new ProfileRegistry(path.join(controlRoot, 'profiles.json'))
+    const authenticated = (await registry.ensureAuthenticated(AUTHENTICATED_IDENTITY)).value
+    expect(authenticated.profileId).toHaveLength(32)
+    const actualTargetUserData = path.join(dataRoot, 'profiles', authenticated.profileId, 'userData')
+    const claim = new ProfileClaimService({
+      localUserData: legacyRoot,
+      targetUserData: actualTargetUserData,
+      journalPath: path.join(controlRoot, 'legacy-claim.json')
     })
+    const preview = await claim.preview()
+    if (preview.status !== 'ready') throw new Error('expected ready preview')
+    await claim.confirm({ previewId: preview.previewId, allow: [] })
+    await new ProfileActivePointer(path.join(controlRoot, 'active-profile.json'), registry).commitPointer(authenticated)
+
+    const context = await new ProfilePrebootCoordinator({
+      dataRoot,
+      legacyRoot,
+      legacyDataExists: async () => true
+    }).initialize()
+
+    expect(context).toMatchObject({ mode: 'business', profileId: authenticated.profileId })
+    await expect(claim.preview()).resolves.toEqual({ status: 'already-claimed' })
   })
 
   it('routes an active local pointer without legacy data to signed-out guidance, never to business', async () => {

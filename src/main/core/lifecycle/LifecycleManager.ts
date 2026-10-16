@@ -128,6 +128,27 @@ export class LifecycleManager extends EventEmitter {
   }
 
   /**
+   * In-place reset of all runtime state, keeping the singleton and its container/
+   * resolver references. Used by Application.prepareProfileRuntime() to rebuild the
+   * business runtime without recreating the manager. NOT the static reset() — that
+   * drops the singleton and must not run on the rebuild path.
+   */
+  public resetRuntimeState(): void {
+    this.initializationOrder = []
+    this.phaseInitializationOrder = new Map()
+    this.initialized = false
+    this.phasesValidated = false
+    this.serviceTiming.clear()
+    this.servicePhase.clear()
+    this.phaseTiming.clear()
+    this.phaseAdjustments = []
+    this.phaseEpoch = 0
+    this.serviceSpans.clear()
+    this.pausedByCascade.clear()
+    this.stoppedByCascade.clear()
+  }
+
+  /**
    * Validate and adjust service phases based on dependencies
    * Should be called before starting any phase
    */

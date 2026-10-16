@@ -186,7 +186,13 @@ export class OrgAuthManager {
       this.switching = true
       if (this.dependencies?.profileSession) {
         const result = await this.dependencies.profileSession.completeAuthentication(completed)
-        if (result.kind !== 'relaunching') throw new Error(`profile switch failed: ${result.kind}`)
+        // relaunching (process restart) and activated (same-process business
+        // start) are both successful transitions; anything else is a failure.
+        if (result.kind !== 'relaunching' && result.kind !== 'activated') {
+          throw new Error(`profile switch failed: ${result.kind}`)
+        }
+        this.switching = false
+        this.emitStatus()
       } else if (this.dependencies) {
         // await this.dependencies.credentialStore.save(completed.session)
         await this.mutateCredentials(() => this.dependencies!.credentialStore.save(completed.session))
@@ -329,7 +335,7 @@ export class OrgAuthManager {
     if (userChanged && this.dependencies?.profileSession) {
       this.switching = true
       const result = await this.dependencies.profileSession.completeAuthentication(completed)
-      if (result.kind !== 'relaunching') {
+      if (result.kind !== 'relaunching' && result.kind !== 'activated') {
         this.switching = false
         throw new Error(`profile switch failed: ${result.kind}`)
       }

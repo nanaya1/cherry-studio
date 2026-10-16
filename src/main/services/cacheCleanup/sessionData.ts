@@ -7,6 +7,7 @@ import { loggerService } from '@logger'
 import type { CacheCleanupGroupResult, CacheCleanupSizeSnapshot } from '@shared/types/cacheCleanupIpc'
 import { HTML_ARTIFACT_PREVIEW_PARTITION } from '@shared/utils/htmlArtifact'
 
+import { getBusinessSession } from '../profileSession'
 import {
   captureStep,
   type CleanupStepResult,
@@ -42,8 +43,10 @@ const COOKIE_RELATIVE_PATHS = [
 
 function getCleanupPaths() {
   return {
-    defaultSession: application.getPath('app.session'),
-    webviewSession: application.getPath('app.session.webview'),
+    // defaultSession: application.getPath('app.session'),
+    defaultSession: getBusinessSession().storagePath ?? application.getPath('app.session'),
+    // webviewSession: application.getPath('app.session.webview'),
+    webviewSession: session.fromPartition('persist:webview').storagePath ?? application.getPath('app.session.webview'),
     trace: application.getPath('feature.trace'),
     legacyTrace: application.getPath('v1.trace')
   }
@@ -70,7 +73,7 @@ function clearSessionNormalCache(ses: Session, item: string): Promise<CleanupSte
 export async function inspectNormalCache(): Promise<CacheCleanupSizeSnapshot> {
   const paths = getCleanupPaths()
   const sessions = [
-    { item: 'default_session', root: paths.defaultSession, value: session.defaultSession },
+    { item: 'default_session', root: paths.defaultSession, value: getBusinessSession() },
     { item: 'webview_session', root: paths.webviewSession, value: session.fromPartition('persist:webview') }
   ]
   const previewSession = {
@@ -127,7 +130,7 @@ export async function clearNormalCache(): Promise<CacheCleanupGroupResult> {
   const paths = getCleanupPaths()
   const [defaultSessionSteps, webviewSessionSteps, previewSessionSteps, traceStep, legacyTraceStep] = await Promise.all(
     [
-      clearSessionNormalCache(session.defaultSession, 'default_session'),
+      clearSessionNormalCache(getBusinessSession(), 'default_session'),
       clearSessionNormalCache(session.fromPartition('persist:webview'), 'webview_session'),
       clearSessionNormalCache(session.fromPartition(HTML_ARTIFACT_PREVIEW_PARTITION), 'html_artifact_preview_session'),
       captureStep('trace', () => application.get('TraceStorageService').cleanLocalData()),
@@ -146,7 +149,7 @@ export async function clearNormalCache(): Promise<CacheCleanupGroupResult> {
 export async function clearSiteData(): Promise<CacheCleanupGroupResult> {
   const steps = await Promise.all([
     captureStep('default_session_cookies', () =>
-      session.defaultSession.clearData({ dataTypes: ['cookies'], avoidClosingConnections: true })
+      getBusinessSession().clearData({ dataTypes: ['cookies'], avoidClosingConnections: true })
     ),
     captureStep('webview_site_data', () =>
       session.fromPartition('persist:webview').clearData({

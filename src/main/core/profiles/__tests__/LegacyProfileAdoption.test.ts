@@ -66,7 +66,14 @@ describe('LegacyProfileAdoption', () => {
     const { legacyRoot, dataRoot } = await fixture()
     const { installation, registry, pointer } = await control(dataRoot)
     const sqliteValidator = vi.fn(async () => undefined)
-    const service = new LegacyProfileAdoption({ legacyRoot, dataRoot, installation, registry, pointer, sqliteValidator })
+    const service = new LegacyProfileAdoption({
+      legacyRoot,
+      dataRoot,
+      installation,
+      registry,
+      pointer,
+      sqliteValidator
+    })
 
     const result = await service.adopt()
 
@@ -106,7 +113,34 @@ describe('LegacyProfileAdoption', () => {
     await expect(new LegacyProfileAdoption({ legacyRoot, dataRoot }).adopt()).rejects.toThrow(/inside|overlap/i)
   })
 
-  it('rejects symlinks without committing a pointer', async () => {
+  it('excludes Claude runtime links nested under legacy agent data', async () => {
+    const { legacyRoot, dataRoot } = await fixture()
+    const claudeRoot = path.join(legacyRoot, 'Data', 'Agents', '.claude')
+    await mkdir(path.join(claudeRoot, 'skills'), { recursive: true })
+    await symlink(path.join(legacyRoot, 'Data'), path.join(claudeRoot, 'skills', 'cad'))
+    const { installation, registry, pointer } = await control(dataRoot)
+
+    const result = await new LegacyProfileAdoption({
+      legacyRoot,
+      dataRoot,
+      installation,
+      registry,
+      pointer,
+      sqliteValidator: async () => undefined
+    }).adopt()
+
+    expect(result.status).toBe('adopted')
+    const target = path.join(dataRoot, 'profiles', result.profile.profileId, 'userData')
+    await expect(access(path.join(target, 'Data', 'Agents', '.claude'))).rejects.toMatchObject({ code: 'ENOENT' })
+    const manifest = JSON.parse(
+      await readFile(path.join(target, 'Runtime', 'LegacyProfileAdoption', 'manifest.json'), 'utf8')
+    ) as LegacyAdoptionManifestV1
+    expect(manifest.quarantine).toContainEqual(
+      expect.objectContaining({ path: 'Data/Agents/.claude', category: 'runtime' })
+    )
+  })
+
+  it('rejects included symlinks without committing a pointer', async () => {
     const { parent, legacyRoot, dataRoot } = await fixture()
     await symlink(path.join(legacyRoot, 'Data'), path.join(legacyRoot, 'linked'))
     const { installation, registry, pointer } = await control(dataRoot)
@@ -140,7 +174,14 @@ describe('LegacyProfileAdoption', () => {
         .mockResolvedValue({ durability: { kind: 'durable' } })
     }
     const sqliteValidator = vi.fn(async () => undefined)
-    const service = new LegacyProfileAdoption({ legacyRoot, dataRoot, installation, registry, pointer, sqliteValidator })
+    const service = new LegacyProfileAdoption({
+      legacyRoot,
+      dataRoot,
+      installation,
+      registry,
+      pointer,
+      sqliteValidator
+    })
 
     await expect(service.adopt()).rejects.toThrow('crash before pointer commit')
     const journal = JSON.parse(await readFile(path.join(dataRoot, 'control', 'adoption-journal.json'), 'utf8')) as {

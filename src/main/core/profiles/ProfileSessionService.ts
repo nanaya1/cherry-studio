@@ -39,11 +39,11 @@ export interface ProfileSessionServiceDependencies {
     currentProfileId: string
     targetProfileId: string
     targetProfileRoot: string
-  }): Promise<(() => Promise<void>) | undefined>
+  }): Promise<{ apply(): Promise<void>; commit(): Promise<void> } | undefined>
   credentialStoreFor(profileRoot: string): ProfileCredentialStore
   coordinator: Pick<ProfileSwitchCoordinator, 'switchProfile'>
   operationId(): string
-  logoutIntent?: Pick<ProfileLogoutIntent, 'begin'>
+  logoutIntent?: Pick<ProfileLogoutIntent, 'begin' | 'complete'>
 }
 
 export class ProfileSessionService {
@@ -72,29 +72,36 @@ export class ProfileSessionService {
     const previousAuthorizationContext = target.value.authorizationContext
     const rollback: { session?: () => Promise<void> } = {}
     try {
-      const result = await this.switchTo(target.value, async () => {
-        await prepareUserData?.()
-        rollback.session = (await authentication.prepareTargetSession?.(profileRoot)) || undefined
-        const saved = await store.save(authentication.session)
-        if (saved?.kind === 'committed-durability-unknown') {
-          throw new Error('Target credential durability is unknown')
+      const result = await this.switchTo(
+        target.value,
+        async () => {
+          await prepareUserData?.apply()
+          rollback.session = (await authentication.prepareTargetSession?.(profileRoot)) || undefined
+          const saved = await store.save(authentication.session)
+          if (saved?.kind === 'committed-durability-unknown') {
+            throw new Error('Target credential durability is unknown')
+          }
+          const authorized = await this.dependencies.registry.updateAuthorizationContext(
+            authentication.identity,
+            authentication.authorizationContext
+          )
+          if (authorized.durability?.kind === 'committed-durability-unknown') {
+            throw new Error('Target authorization durability is unknown')
+          }
+          const bootJournal =
+            this.dependencies.bootJournal ??
+            new ProfileBootJournal(path.join(this.dependencies.dataRoot, 'control', 'boot-journal.json'))
+          const reset = await bootJournal.resetAfterAuthentication()
+          if (reset.kind !== 'committed-confirmed') {
+            throw new Error('Boot recovery reset durability is unknown')
+          }
+          return authorized.value
+        },
+        async () => {
+          await this.logoutIntent().complete()
+          await prepareUserData?.commit()
         }
-        const authorized = await this.dependencies.registry.updateAuthorizationContext(
-          authentication.identity,
-          authentication.authorizationContext
-        )
-        if (authorized.durability?.kind === 'committed-durability-unknown') {
-          throw new Error('Target authorization durability is unknown')
-        }
-        const bootJournal =
-          this.dependencies.bootJournal ??
-          new ProfileBootJournal(path.join(this.dependencies.dataRoot, 'control', 'boot-journal.json'))
-        const reset = await bootJournal.resetAfterAuthentication()
-        if (reset.kind !== 'committed-confirmed') {
-          throw new Error('Boot recovery reset durability is unknown')
-        }
-        return authorized.value
-      })
+      )
       if (result.kind === 'teardown-failed') {
         await rollback.session?.()
         await this.restoreCredential(store, previousSession)
@@ -120,10 +127,7 @@ export class ProfileSessionService {
   }
 
   async beginLogout(): Promise<void> {
-    const intent =
-      this.dependencies.logoutIntent ??
-      new ProfileLogoutIntent(path.join(this.dependencies.dataRoot, 'control', 'logout-intent.json'))
-    await intent.begin(this.dependencies.currentProfileId, this.dependencies.operationId())
+    await this.logoutIntent().begin(this.dependencies.currentProfileId, this.dependencies.operationId())
   }
 
   async logout(): Promise<ProfileSwitchResult> {
@@ -146,6 +150,13 @@ export class ProfileSessionService {
     return this.switchTo(signedOut)
   }
 
+  private logoutIntent(): Pick<ProfileLogoutIntent, 'begin' | 'complete'> {
+    return (
+      this.dependencies.logoutIntent ??
+      new ProfileLogoutIntent(path.join(this.dependencies.dataRoot, 'control', 'logout-intent.json'))
+    )
+  }
+
   private async restoreCredential(
     store: ProfileCredentialStore,
     previous: OrgSession | null | undefined
@@ -166,7 +177,8 @@ export class ProfileSessionService {
 
   private switchTo(
     target: Awaited<ReturnType<ProfileRegistry['requireActivatable']>>,
-    afterTeardown?: () => Promise<Awaited<ReturnType<ProfileRegistry['requireActivatable']>>>
+    afterTeardown?: () => Promise<Awaited<ReturnType<ProfileRegistry['requireActivatable']>>>,
+    afterCommit?: () => Promise<void>
   ): Promise<ProfileSwitchResult> {
     const request = {
       operationId: this.dependencies.operationId(),
@@ -174,8 +186,8 @@ export class ProfileSessionService {
       targetProfileId: target.profileId,
       targetIdentityDigest: target.identityDigest
     }
-    return afterTeardown
-      ? this.dependencies.coordinator.switchProfile(request, target, { afterTeardown })
+    return afterTeardown || afterCommit
+      ? this.dependencies.coordinator.switchProfile(request, target, { afterTeardown, afterCommit })
       : this.dependencies.coordinator.switchProfile(request, target)
   }
 }

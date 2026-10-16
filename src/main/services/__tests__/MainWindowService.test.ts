@@ -161,10 +161,15 @@ vi.mock('electron', () => ({
   BrowserWindow: { fromWebContents: vi.fn() },
   nativeImage: { createFromPath: vi.fn(() => ({})) },
   nativeTheme: { shouldUseDarkColors: false },
-  session: { fromPartition: sessionFromPartitionMock, defaultSession: defaultSessionMock },
+  session: {
+    fromPartition: sessionFromPartitionMock,
+    fromPath: vi.fn(() => defaultSessionMock),
+    defaultSession: defaultSessionMock
+  },
   shell: { openExternal: vi.fn(), openPath: vi.fn() }
 }))
 
+vi.mock('@main/core/profiles', async () => await import('../../core/profiles/ProfileRuntimeContext'))
 vi.mock('@electron-toolkit/utils', () => ({ optimizer: { watchWindowShortcuts: vi.fn() } }))
 vi.mock('@main/utils/appEdition', () => ({ getAppEdition: vi.fn(() => 'global') }))
 
@@ -193,6 +198,7 @@ vi.mock('@main/core/lifecycle', async () => {
 import { app, dialog, session } from 'electron'
 import { shell } from 'electron'
 
+import { setProfileLaunchContext } from '@main/core/profiles/ProfileRuntimeContext'
 import { WindowType } from '@main/core/window/types'
 import { getAppEdition } from '@main/utils/appEdition'
 import type * as ExternalUrlSafety from '@main/utils/externalUrlSafety'
@@ -204,6 +210,30 @@ import { getWebviewPartition, WebviewSecurityProfile } from '@shared/utils/webvi
 import { contextMenu } from '../ContextMenu'
 import { markMainRendererReadyForTabAttach, resetMainRendererTabAttachDelivery } from '../mainWindowNavigation'
 import { MainWindowService } from '../MainWindowService'
+
+it('业务主窗口显式使用账号 sessionData 路径', () => {
+  setProfileLaunchContext({
+    mode: 'business',
+    kind: 'authenticated',
+    profileId: 'a'.repeat(32),
+    identityDigest: 'b'.repeat(64),
+    dataRoot: '/data',
+    profileRoot: '/data/profiles/account'
+  })
+  try {
+    const service = new MainWindowService()
+    service.showMainWindow()
+    expect(session.fromPath).toHaveBeenCalledWith('/data/profiles/account/sessionData')
+    expect(windowManagerMock.open).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        options: expect.objectContaining({ webPreferences: expect.objectContaining({ session: defaultSessionMock }) })
+      })
+    )
+  } finally {
+    setProfileLaunchContext(undefined)
+  }
+})
 
 interface MockBrowserWindow extends EventEmitter {
   isDestroyed: ReturnType<typeof vi.fn>

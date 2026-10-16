@@ -49,6 +49,16 @@ export abstract class BaseService {
     BaseService.instances = new WeakSet<object>()
   }
 
+  /**
+   * Release the singleton guard for a single constructor. Called by _doDestroy
+   * once the service reaches the Destroyed state, so the same process can
+   * re-instantiate it after a profile runtime rebuild. Deliberately per-ctor —
+   * NOT a global WeakSet wipe (that would let a later instance trample others).
+   */
+  public static releaseInstance(ctor: object): void {
+    BaseService.instances.delete(ctor)
+  }
+
   constructor() {
     const ctor = this.constructor
     if (BaseService.instances.has(ctor)) {
@@ -342,6 +352,8 @@ export abstract class BaseService {
     await this.onDestroy()
     this._cleanupDisposables()
     this._state = LifecycleState.Destroyed
+    // Release this ctor's singleton guard so a rebuild can re-instantiate it.
+    BaseService.releaseInstance(this.constructor)
   }
 
   /**

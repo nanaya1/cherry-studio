@@ -9,6 +9,7 @@ import { BaseService, type Disposable, Injectable, Phase, ServicePhase } from '@
 import type { ProxyMode, UnifiedPreferenceKeyType } from '@shared/data/preference/preferenceTypes'
 import { WEBVIEW_SECURITY_PARTITIONS } from '@shared/utils/webviewSecurity'
 
+import { getBusinessSession } from '../profileSession'
 import { NodeProxyController } from './NodeProxyController'
 
 const logger = loggerService.withContext('ProxyService')
@@ -195,7 +196,7 @@ export class ProxyService extends BaseService {
     // `persist:miniapp:*` is deliberately absent: those partitions run a constant deny-all PAC
     // (features/miniApp/runtime/network.ts) that a user proxy change must never overwrite.
     const sessions = [
-      session.defaultSession,
+      getBusinessSession(),
       ...Object.values(WEBVIEW_SECURITY_PARTITIONS).map((partition) => session.fromPartition(partition))
     ]
     // Drain every write even on failure so the next apply cannot race stale session writes.

@@ -20,7 +20,8 @@ const { defaultSession, webviewSession, htmlArtifactPreviewSession } = vi.hoiste
     clearCodeCaches: vi.fn(),
     clearData: vi.fn(),
     clearStorageData: vi.fn(),
-    getCacheSize: vi.fn()
+    getCacheSize: vi.fn(),
+    storagePath: undefined as string | undefined
   })
   return {
     defaultSession: createSession(),
@@ -154,6 +155,7 @@ describe('CacheCleanupService', () => {
     })
 
     for (const mockedSession of [defaultSession, webviewSession, htmlArtifactPreviewSession]) {
+      mockedSession.storagePath = undefined
       mockedSession.getCacheSize.mockResolvedValue(0)
       mockedSession.clearData.mockResolvedValue(undefined)
       mockedSession.clearCodeCaches.mockResolvedValue(undefined)
@@ -167,6 +169,18 @@ describe('CacheCleanupService', () => {
     vi.restoreAllMocks()
     await fs.rm(root, { recursive: true, force: true })
     await fs.rm(logsPath, { recursive: true, force: true })
+  })
+
+  it('measures actual Session storage after the default and business directories diverge', async () => {
+    defaultSession.storagePath = rootPath('BusinessSession')
+    webviewSession.storagePath = rootPath('ExistingWebviewSession')
+    await writeTestFile(rootPath('BusinessSession', 'Code Cache', 'business.bin'), Buffer.alloc(5))
+    await writeTestFile(rootPath('ExistingWebviewSession', 'Code Cache', 'webview.bin'), Buffer.alloc(7))
+    await writeTestFile(rootPath('Session', 'Code Cache', 'unrelated.bin'), Buffer.alloc(100))
+
+    const result = await cacheCleanupService.inspect(['normal_cache'])
+
+    expect(result.results[0]).toMatchObject({ group: 'normal_cache', size: { bytes: 12 } })
   })
 
   it('sums all Electron sessions, disk caches, and traces without counting shared temp data', async () => {

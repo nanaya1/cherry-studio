@@ -40,4 +40,41 @@ describe('SwitchFence', () => {
     expect(fence.state).toMatchObject({ kind: 'needs-recovery', reason: 'pointer durability unknown' })
     expect(() => fence.assertTaskStartAllowed()).toThrow(/recovery/i)
   })
+
+  describe('reopenAfterTeardown', () => {
+    it('reopens the fence only while a switch is in progress', () => {
+      const fence = new SwitchFence()
+      fence.beginSwitch('550e8400-e29b-41d4-a716-446655440000')
+
+      fence.reopenAfterTeardown()
+
+      expect(fence.state).toEqual({ kind: 'open' })
+      expect(() => fence.assertWritable()).not.toThrow()
+    })
+
+    it('refuses to reopen a fence that never started switching', () => {
+      const fence = new SwitchFence()
+
+      expect(() => fence.reopenAfterTeardown()).toThrow(/in-progress switch/)
+      expect(fence.state).toEqual({ kind: 'open' })
+    })
+
+    it('cannot rescue a failed teardown and forces a restart instead', () => {
+      const fence = new SwitchFence()
+      fence.beginSwitch('550e8400-e29b-41d4-a716-446655440000')
+      fence.markTeardownFailed('service teardown failed')
+
+      expect(() => fence.reopenAfterTeardown()).toThrow(/in-progress switch/)
+      expect(fence.state).toMatchObject({ kind: 'teardown-failed' })
+    })
+
+    it('cannot rescue a needs-recovery fence', () => {
+      const fence = new SwitchFence()
+      fence.beginSwitch('550e8400-e29b-41d4-a716-446655440000')
+      fence.markNeedsRecovery('pointer durability unknown')
+
+      expect(() => fence.reopenAfterTeardown()).toThrow(/in-progress switch/)
+      expect(fence.state).toMatchObject({ kind: 'needs-recovery' })
+    })
+  })
 })

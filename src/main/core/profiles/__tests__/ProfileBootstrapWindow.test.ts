@@ -1,14 +1,26 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { showMessageBoxMock, ipcMainHandleMock, ipcMainRemoveHandlerMock, passwordLoginMock } = vi.hoisted(() => ({
+const {
+  showMessageBoxMock,
+  ipcMainHandleMock,
+  ipcMainRemoveHandlerMock,
+  passwordLoginMock,
+  resolveSystemLanguageMock,
+  translateMock
+} = vi.hoisted(() => ({
   passwordLoginMock: vi.fn(),
   showMessageBoxMock: vi.fn(),
   ipcMainHandleMock: vi.fn(),
-  ipcMainRemoveHandlerMock: vi.fn()
+  ipcMainRemoveHandlerMock: vi.fn(),
+  resolveSystemLanguageMock: vi.fn(() => 'zh-CN'),
+  translateMock: vi.fn((key: string, params?: Record<string, string | number>, language?: string) => {
+    void language
+    return params ? `${key}:${JSON.stringify(params)}` : key
+  })
 }))
 
 vi.mock('electron', () => ({
-  app: { on: vi.fn(), removeListener: vi.fn() },
+  app: { getLocale: () => 'zh-CN', on: vi.fn(), removeListener: vi.fn() },
   BrowserWindow: class {
     webContents = { mainFrame: {} }
     webPreferences: unknown = undefined
@@ -25,12 +37,16 @@ vi.mock('electron', () => ({
 }))
 vi.mock('@application', () => ({ application: {} }))
 vi.mock('@main/core/preboot/profileIsolationRuntime', () => ({ adoptLegacyProfile: vi.fn() }))
+vi.mock('@main/i18n', () => ({ resolveSystemLanguage: resolveSystemLanguageMock, t: translateMock }))
 vi.mock('@main/enterprise/OrgAuthManager', () => ({
   OrgAuthManager: class {
     getPhase = () => 'idle'
   }
 }))
-vi.mock('@main/enterprise/OrgApiClient', () => ({ ORG_SERVER_BASE_URL: 'https://example.test', ORG_AUTH_MODE: 'management-cookie' }))
+vi.mock('@main/enterprise/OrgApiClient', () => ({
+  ORG_SERVER_BASE_URL: 'https://example.test',
+  ORG_AUTH_MODE: 'management-cookie'
+}))
 vi.mock('@main/enterprise/passwordLoginRuntime', () => ({
   createPasswordProfileLogin: () => ({ login: passwordLoginMock, cancel: vi.fn() })
 }))
@@ -51,12 +67,54 @@ describe('confirmProfileClaim', () => {
   beforeEach(() => {
     showMessageBoxMock.mockReset()
     ipcMainHandleMock.mockReset()
+    translateMock.mockClear()
   })
 
-  it('supports continuing without copying local data', async () => {
+  it('localizes every migration dialog and interpolates the preview summary', async () => {
+    showMessageBoxMock
+      .mockResolvedValueOnce({ response: 0 })
+      .mockResolvedValueOnce({ response: 1 })
+      .mockResolvedValueOnce({ response: 0 })
+
+    await confirmProfileClaim(preview)
+
+    expect(showMessageBoxMock).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        title: 'dialog.profile_claim.migrate.title',
+        message: 'dialog.profile_claim.migrate.message',
+        detail:
+          'dialog.profile_claim.migrate.detail:{"bytes":1024,"included":"dialog.profile_claim.category.business_data","excluded":"dialog.profile_claim.category.credentials"}',
+        buttons: ['dialog.profile_claim.migrate.confirm', 'dialog.profile_claim.cancel_login']
+      })
+    )
+    expect(showMessageBoxMock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        title: 'dialog.profile_claim.settings.title',
+        message: 'dialog.profile_claim.settings.message',
+        detail: 'dialog.profile_claim.settings.detail',
+        buttons: ['dialog.profile_claim.settings.include', 'dialog.profile_claim.do_not_include']
+      })
+    )
+    expect(showMessageBoxMock).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({
+        title: 'dialog.profile_claim.api_keys.title',
+        message: 'dialog.profile_claim.api_keys.message',
+        detail: 'dialog.profile_claim.api_keys.detail',
+        buttons: ['dialog.profile_claim.do_not_include', 'dialog.profile_claim.api_keys.include']
+      })
+    )
+    expect(resolveSystemLanguageMock).toHaveBeenCalledWith('zh-CN')
+    expect(translateMock).toHaveBeenCalled()
+    expect(translateMock.mock.calls.every(([, , language]) => language === 'zh-CN')).toBe(true)
+  })
+
+  it('cancels the current authentication when the migration prompt is closed', async () => {
     showMessageBoxMock.mockResolvedValueOnce({ response: 1 })
 
-    await expect(confirmProfileClaim(preview)).resolves.toEqual({ copy: false, allow: [] })
+    await expect(confirmProfileClaim(preview)).resolves.toBeNull()
     expect(showMessageBoxMock).toHaveBeenCalledTimes(1)
   })
 
@@ -72,8 +130,8 @@ describe('confirmProfileClaim', () => {
     })
   })
 
-  it('cancels authentication when the user cancels the claim decision', async () => {
-    showMessageBoxMock.mockResolvedValueOnce({ response: 2 })
+  it('cancels authentication when the user chooses cancel', async () => {
+    showMessageBoxMock.mockResolvedValueOnce({ response: 1 })
 
     await expect(confirmProfileClaim(preview)).resolves.toBeNull()
   })
@@ -129,19 +187,21 @@ describe('createProfileBootstrapWindow', () => {
     ).rejects.toThrow('Auth session process failed')
   })
 
-  it('keeps the legacy adoption entry on the migration-required window', () => {
+  it('opens login first when legacy data exists instead of showing the pre-login migration page', () => {
     const context = {
-      mode: 'migration-required' as const,
+      mode: 'signed-out' as const,
       profileId: 'signed-out',
       identityDigest: SIGNED_OUT_DIGEST,
       kind: 'signed-out' as const,
       dataRoot: '/data',
-      profileRoot: '/data/control/recovery-profile'
+      profileRoot: '/data/profiles/signed-out',
+      legacyRoot: '/legacy'
     }
     const window = createProfileBootstrapWindow(context) as any
 
-    const html = decodeURIComponent(window.loadURL.mock.calls[0][0] as string)
-    expect(html).toContain('Copy existing data to local profile')
-    expect(ipcMainHandleMock).toHaveBeenCalledWith('profile-bootstrap:adopt-legacy', expect.any(Function))
+    expect(window.loadFile).toHaveBeenCalledWith(
+      expect.stringContaining('/renderer/windows/profileBootstrap/index.html')
+    )
+    expect(ipcMainHandleMock).not.toHaveBeenCalledWith('profile-bootstrap:adopt-legacy', expect.any(Function))
   })
 })

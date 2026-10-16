@@ -1,8 +1,9 @@
-import { net, session } from 'electron'
+import { net } from 'electron'
 
 import { application } from '@application'
 import { BaseService, Injectable, Phase, ServicePhase } from '@main/core/lifecycle'
 
+import { getBusinessSession } from '../profileSession'
 import { builtinEndpoints } from './endpoints'
 import { httpReach, resolveHost, tlsHandshake } from './probes'
 import type { EndpointDiagnosis, NetworkEndpoint, NetworkLayerResult, ProxyInUse } from './types'
@@ -55,7 +56,7 @@ export class NetworkService extends BaseService {
 
   async effectiveProxy(url: string): Promise<ProxyInUse> {
     const snapshot = await application.get('ProxyService').getAppliedSnapshot()
-    const effective = await session.defaultSession.resolveProxy(url)
+    const effective = await getBusinessSession().resolveProxy(url)
     let mismatch: ProxyInUse['mismatch']
     if (!snapshot.converged) mismatch = 'apply_failed'
     else if (snapshot.mode === 'custom' && !snapshot.hasConfiguredUrl) mismatch = 'custom_without_url'

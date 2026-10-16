@@ -27,6 +27,8 @@ export interface ProfileClaimPreviewItem {
 }
 
 export type ProfileClaimPreview =
+  | { status: 'already-claimed' }
+  | { status: 'staged' }
   | { status: 'unsupported'; reason: 'target-not-empty' }
   | {
       status: 'ready'
@@ -40,6 +42,8 @@ interface ProfileClaimServiceOptions {
   localUserData: string
   targetUserData: string
   journalPath?: string
+  sqliteValidator?: (filePath: string) => Promise<void>
+  rename?: (source: string, target: string) => Promise<void>
 }
 
 interface StoredPreview {
@@ -63,12 +67,15 @@ export class ProfileClaimService {
 
   constructor(private readonly options: ProfileClaimServiceOptions) {
     const journalPath =
-      options.journalPath ?? path.join(path.dirname(options.targetUserData), 'Runtime', 'ProfileClaim', 'claim-journal.json')
+      options.journalPath ??
+      path.join(path.dirname(options.targetUserData), 'Runtime', 'ProfileClaim', 'claim-journal.json')
     this.journal = new ProfileControlStore(journalPath, ProfileClaimJournalV1Schema)
   }
 
   async preview(): Promise<ProfileClaimPreview> {
-    await this.recoverInterruptedCopy()
+    const recovered = await this.recoverInterruptedCopy()
+    if (recovered === 'committed') return { status: 'already-claimed' }
+    if (recovered === 'staged') return { status: 'staged' }
     if (await this.isNonEmptyDirectory(this.options.targetUserData)) {
       return { status: 'unsupported', reason: 'target-not-empty' }
     }
@@ -82,6 +89,13 @@ export class ProfileClaimService {
         ? { action: 'exclude', category }
         : { action: 'include', category }
     })
+    if (this.options.sqliteValidator) {
+      for (const file of plan.files) {
+        if (/\.(?:sqlite|sqlite3|db)$/i.test(file.path)) {
+          await this.options.sqliteValidator(path.join(this.options.localUserData, ...file.path.split('/')))
+        }
+      }
+    }
     this.previewState = { previewId, plan }
     return {
       status: 'ready',
@@ -113,7 +127,8 @@ export class ProfileClaimService {
       .map(async (item) => {
         const one = await scanTransferTree(this.options.localUserData, (relativePath, directory) => {
           const inside = relativePath === item.path || relativePath.startsWith(`${item.path}/`)
-          if (!inside && directory && item.path.startsWith(`${relativePath}/`)) return { action: 'include' as const, category: item.category }
+          if (!inside && directory && item.path.startsWith(`${relativePath}/`))
+            return { action: 'include' as const, category: item.category }
           return inside
             ? { action: 'include' as const, category: item.category }
             : { action: 'exclude' as const, category: 'not-selected' }
@@ -151,16 +166,15 @@ export class ProfileClaimService {
         await rm(stagingRoot, { recursive: true, force: true })
         return { status: 'cancelled' }
       }
-      await rename(stagingRoot, this.options.targetUserData)
+      await (this.options.rename ?? rename)(stagingRoot, this.options.targetUserData)
       await this.writeJournal({
         version: 1,
-        phase: 'committed',
+        phase: 'staged',
         operationId,
         previewId: request.previewId,
         sourceRoot: this.options.localUserData,
         targetRoot: this.options.targetUserData,
-        stagingRoot,
-        committedAt: new Date().toISOString()
+        stagingRoot
       })
       this.previewState = undefined
       return { status: 'claimed' }
@@ -191,6 +205,7 @@ export class ProfileClaimService {
     if (/^Sensitive\/Copilot(?:\/|$)/i.test(relativePath)) return 'copilot'
     if (/^Sensitive(?:\/|$)/i.test(relativePath)) return 'sensitive'
     if (/^Data\/enterprise(?:\/|$)/i.test(relativePath)) return 'enterprise-resource'
+    if (/^Data\/Agents\/\.claude(?:\/|$)/i.test(relativePath)) return 'runtime'
     if (/^(?:Runtime|temp|logs|crashDumps)(?:\/|$)/i.test(relativePath)) return 'runtime'
     if (/^(?:Config|Preferences)(?:\/|$)/i.test(relativePath)) {
       return /api[-_]?key|providers?\.json/i.test(relativePath) ? 'api-key' : 'ordinary-config'
@@ -199,7 +214,9 @@ export class ProfileClaimService {
   }
 
   private summarizeFiles(files: TransferFile[]): ProfileClaimPreviewItem[] {
-    return this.summarize(files.map((file) => ({ path: file.path, size: file.size, category: this.category(file.path) })))
+    return this.summarize(
+      files.map((file) => ({ path: file.path, size: file.size, category: this.category(file.path) }))
+    )
   }
 
   private summarizeExcluded(items: TransferExcluded[]): ProfileClaimPreviewItem[] {
@@ -222,14 +239,38 @@ export class ProfileClaimService {
     return ['credentials', 'session-cookies', 'mcp-oauth', 'copilot', 'api-key'].includes(category)
   }
 
-  private async recoverInterruptedCopy(): Promise<void> {
+  async commit(): Promise<void> {
     const state = await this.journal.read()
-    if (state.kind === 'none') return
-    if (state.kind === 'corrupt') throw new Error(`Profile claim journal is corrupt: ${state.error}`)
-    if (state.value.sourceRoot !== this.options.localUserData || state.value.targetRoot !== this.options.targetUserData) {
+    if (state.kind !== 'ok') throw new Error('Profile claim is not staged')
+    if (
+      state.value.sourceRoot !== this.options.localUserData ||
+      state.value.targetRoot !== this.options.targetUserData
+    ) {
       throw new Error('Profile claim journal does not match source and target')
     }
-    if (state.value.phase === 'copying') await rm(state.value.stagingRoot, { recursive: true, force: true })
+    if (state.value.phase === 'committed') return
+    if (state.value.phase !== 'staged') throw new Error('Profile claim is not staged')
+    await this.writeJournal({ ...state.value, phase: 'committed', committedAt: new Date().toISOString() })
+  }
+
+  private async recoverInterruptedCopy(): Promise<'none' | 'staged' | 'committed'> {
+    const state = await this.journal.read()
+    if (state.kind === 'none') return 'none'
+    if (state.kind === 'corrupt') throw new Error(`Profile claim journal is corrupt: ${state.error}`)
+    if (state.value.sourceRoot !== this.options.localUserData) {
+      throw new Error('Profile claim journal does not match source')
+    }
+    if (state.value.phase === 'committed') return 'committed'
+    if (state.value.targetRoot !== this.options.targetUserData) {
+      throw new Error('Profile claim journal does not match target')
+    }
+    if (state.value.phase === 'staged') return 'staged'
+    await rm(state.value.stagingRoot, { recursive: true, force: true })
+    if (await this.isNonEmptyDirectory(this.options.targetUserData)) {
+      await this.writeJournal({ ...state.value, phase: 'staged' })
+      return 'staged'
+    }
+    return 'none'
   }
 
   private async isNonEmptyDirectory(directory: string): Promise<boolean> {

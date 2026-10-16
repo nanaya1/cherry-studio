@@ -9,11 +9,7 @@ import { ProfileControlStore } from './ProfileControlStore'
 import { ProfileInstallation } from './ProfileInstallation'
 import { createProfilePaths } from './ProfilePaths'
 import { ProfileRegistry } from './ProfileRegistry'
-import {
-  type LegacyAdoptionJournalV1,
-  LegacyAdoptionJournalV1Schema,
-  type ProfileRecordV1
-} from './ProfileSchemas'
+import { type LegacyAdoptionJournalV1, LegacyAdoptionJournalV1Schema, type ProfileRecordV1 } from './ProfileSchemas'
 import { copyTransferPlan, scanTransferTree, type TransferCopyFile, type TransferFile } from './ProfileTreeTransfer'
 
 export interface LegacyAdoptionManifestV1 {
@@ -40,12 +36,14 @@ interface LegacyProfileAdoptionOptions {
 const EXCLUDED_TOP_LEVEL = /^(?:Singleton[^/]*|lock(?:file)?|temp|control|profiles)(?:\/|$)/i
 const SENSITIVE = /^(?:Sensitive|Credentials|Session|Cookies)(?:\/|$)/i
 const ENTERPRISE_SESSION = /(?:^|\/)enterprise\/(?:org-session|session|credentials?)\.json$/i
+const AGENT_RUNTIME = /^Data\/Agents\/\.claude(?:\/|$)/i
 
 export async function validateSqliteIntegrity(filePath: string): Promise<void> {
   const database = new Database(filePath, { readonly: true, fileMustExist: true })
   try {
     const rows = database.pragma('integrity_check') as Array<Record<string, unknown>>
-    if (rows.length !== 1 || Object.values(rows[0])[0] !== 'ok') throw new Error(`SQLite integrity check failed: ${filePath}`)
+    if (rows.length !== 1 || Object.values(rows[0])[0] !== 'ok')
+      throw new Error(`SQLite integrity check failed: ${filePath}`)
   } finally {
     database.close()
   }
@@ -60,7 +58,8 @@ export class LegacyProfileAdoption {
 
   constructor(private readonly options: LegacyProfileAdoptionOptions) {
     this.paths = createProfilePaths(options.dataRoot)
-    this.installation = options.installation ?? new ProfileInstallation(path.join(this.paths.controlRoot, 'installation.json'))
+    this.installation =
+      options.installation ?? new ProfileInstallation(path.join(this.paths.controlRoot, 'installation.json'))
     this.registry = options.registry ?? new ProfileRegistry(path.join(this.paths.controlRoot, 'profiles.json'))
     this.pointer =
       options.pointer ??
@@ -68,10 +67,15 @@ export class LegacyProfileAdoption {
         path.join(this.paths.controlRoot, 'active-profile.json'),
         this.registry as ProfileRegistry
       )
-    this.journal = new ProfileControlStore(path.join(this.paths.controlRoot, 'adoption-journal.json'), LegacyAdoptionJournalV1Schema)
+    this.journal = new ProfileControlStore(
+      path.join(this.paths.controlRoot, 'adoption-journal.json'),
+      LegacyAdoptionJournalV1Schema
+    )
   }
 
-  async adopt(): Promise<{ status: 'adopted'; profile: ProfileRecordV1 } | { status: 'already-adopted'; profile: ProfileRecordV1 }> {
+  async adopt(): Promise<
+    { status: 'adopted'; profile: ProfileRecordV1 } | { status: 'already-adopted'; profile: ProfileRecordV1 }
+  > {
     this.assertDisjointRoots(this.options.legacyRoot, this.options.dataRoot)
     await this.assertNotSymlink(this.options.legacyRoot)
     await this.assertNotSymlink(path.dirname(this.paths.dataRoot))
@@ -93,11 +97,19 @@ export class LegacyProfileAdoption {
     if (await this.exists(targetRoot)) throw new Error('Legacy adoption target must be empty')
     const operationId = randomUUID()
     const stagingRoot = path.join(this.paths.profilesRoot, `.adopt-${operationId}.staging`)
-    await this.writeJournal({ version: 1, phase: 'copying', operationId, legacyRoot: this.options.legacyRoot, stagingRoot })
+    await this.writeJournal({
+      version: 1,
+      phase: 'copying',
+      operationId,
+      legacyRoot: this.options.legacyRoot,
+      stagingRoot
+    })
 
     try {
       const plan = await scanTransferTree(this.options.legacyRoot, (relativePath) => {
-        if (EXCLUDED_TOP_LEVEL.test(relativePath)) return { action: 'exclude', category: 'runtime' }
+        if (EXCLUDED_TOP_LEVEL.test(relativePath) || AGENT_RUNTIME.test(relativePath)) {
+          return { action: 'exclude', category: 'runtime' }
+        }
         if (SENSITIVE.test(relativePath)) return { action: 'exclude', category: 'sensitive' }
         if (ENTERPRISE_SESSION.test(relativePath)) return { action: 'exclude', category: 'enterprise-session' }
         return { action: 'include', category: 'business-data' }
@@ -216,7 +228,9 @@ export class LegacyProfileAdoption {
     for (const file of manifest.files) {
       const target = path.join(userDataRoot, ...file.path.split('/'))
       const metadata = await stat(target)
-      const digest = createHash('sha256').update(await readFile(target)).digest('hex')
+      const digest = createHash('sha256')
+        .update(await readFile(target))
+        .digest('hex')
       if (!metadata.isFile() || metadata.size !== file.size || digest !== file.sha256) {
         throw new Error(`Legacy adoption promoted file verification failed: ${file.path}`)
       }
@@ -264,7 +278,8 @@ export class LegacyProfileAdoption {
     const sourceToTarget = path.relative(source, target)
     const targetToSource = path.relative(target, source)
     const inside = (relative: string) => relative === '' || (!relative.startsWith(`..${path.sep}`) && relative !== '..')
-    if (inside(sourceToTarget) || inside(targetToSource)) throw new Error('Legacy source and profile dataRoot must not overlap or be inside each other')
+    if (inside(sourceToTarget) || inside(targetToSource))
+      throw new Error('Legacy source and profile dataRoot must not overlap or be inside each other')
   }
 
   private async assertDisjointCanonicalRoots(): Promise<void> {

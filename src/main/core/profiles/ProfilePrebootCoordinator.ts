@@ -3,6 +3,7 @@ import path from 'node:path'
 
 import { ProfileActivePointer } from './ProfileActivePointer'
 import { ProfileBootJournal } from './ProfileBootJournal'
+import { ProfileClaimService } from './ProfileClaimService'
 import { ProfileInstallation } from './ProfileInstallation'
 import { ProfileLogoutIntent } from './ProfileLogoutIntent'
 import { createProfilePaths, resolveProfileRoot, validateExistingProfilePath } from './ProfilePaths'
@@ -42,11 +43,14 @@ export interface ProfilePrebootCoordinatorOptions {
 }
 
 export class ProfilePrebootCoordinator {
+  private legacyRoot: string | undefined
+
   constructor(private readonly options: ProfilePrebootCoordinatorOptions) {}
 
   async initialize(): Promise<ProfileLaunchContext> {
     const paths = createProfilePaths(this.options.dataRoot)
     await mkdir(paths.controlRoot, { recursive: true })
+    this.legacyRoot = (await this.options.legacyDataExists()) ? this.options.legacyRoot : undefined
 
     const installation = new ProfileInstallation(path.join(paths.controlRoot, 'installation.json'))
     const registry = new ProfileRegistry(path.join(paths.controlRoot, 'profiles.json'))
@@ -96,7 +100,8 @@ export class ProfilePrebootCoordinator {
       if (switchRecovery.kind === 'mismatch') return this.recoveryContext('profile-switch-mismatch')
       await this.cleanupCommittedSource(switchJournal, pointer, paths)
       if (pointer.kind === 'none') {
-        if (await this.options.legacyDataExists()) return this.bootstrapContext('migration-required')
+        // 旧数据迁移延后到首次认证成功后确认，避免在登录前阻断用户。
+        // if (await this.options.legacyDataExists()) return this.bootstrapContext('migration-required')
         const signedOut = registryState.value.profiles.find((profile) => profile.profileId === 'signed-out')
         if (!signedOut) return this.recoveryContext('corrupt-control-plane')
         await this.validateProfileRoot(paths, signedOut.profileId)
@@ -122,6 +127,16 @@ export class ProfilePrebootCoordinator {
           return this.recoveryContext('corrupt-control-plane')
         }
         return this.context('signed-out', signedOut)
+      }
+
+      if (this.legacyRoot) {
+        const claim = new ProfileClaimService({
+          localUserData: this.legacyRoot,
+          targetUserData: path.join(resolveProfileRoot(paths, pointer.record.profileId), 'userData'),
+          journalPath: path.join(paths.controlRoot, 'legacy-claim.json')
+        })
+        const preview = await claim.preview()
+        if (preview.status === 'staged') await claim.commit()
       }
 
       await bootJournal.beginAttempt(pointer.record.profileId)
@@ -152,7 +167,7 @@ export class ProfilePrebootCoordinator {
       profileRoot: resolveProfileRoot(paths, profile.profileId),
       ...(recoveryReason ? { recoveryReason } : {}),
       ...(pendingSwitch ? { pendingSwitch } : {}),
-      ...(this.options.legacyRoot ? { legacyRoot: this.options.legacyRoot } : {})
+      ...(this.legacyRoot ? { legacyRoot: this.legacyRoot } : {})
     }
   }
 

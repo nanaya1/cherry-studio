@@ -72,6 +72,16 @@ export class Application {
    */
   private ensuredKeys = new Set<PathKey>()
 
+  /**
+   * Process-level handler registration flags. Signal/quit handlers and Electron
+   * handlers must be installed only ONCE per process — a same-process profile
+   * runtime rebuild (prepareProfileRuntime + re-bootstrap) must not stack
+   * duplicate IPC/process listeners. See bootstrap()'s guarded setup calls and
+   * prepareProfileRuntime(), which intentionally leaves these untouched.
+   */
+  private bootstrapSignalHandlersRegistered = false
+  private bootstrapElectronHandlersRegistered = false
+
   private constructor() {
     this.container = ServiceContainer.getInstance()
     this.lifecycleManager = LifecycleManager.getInstance()
@@ -187,10 +197,14 @@ export class Application {
       )
     }
 
-    // Register signal and quit handlers FIRST, before anything else,
-    // so Ctrl+C and app quit are handled even during early bootstrap stages
-    this.setupSignalHandlers()
-    this.setupQuitHandlers()
+    // Register signal and quit handlers FIRST, before anything else, so Ctrl+C
+    // and app quit are handled even during early bootstrap stages. Guarded to run
+    // once per process — a rebuild re-bootstraps and must not re-register IPC.
+    if (!this.bootstrapSignalHandlersRegistered) {
+      this.setupSignalHandlers()
+      this.setupQuitHandlers()
+      this.bootstrapSignalHandlersRegistered = true
+    }
 
     logger.info('Bootstrapping...')
 
@@ -213,8 +227,12 @@ export class Application {
       // 2. BeforeReady phase and app.whenReady() in parallel
       await Promise.all([this.lifecycleManager.startPhase(Phase.BeforeReady), app.whenReady()])
 
-      // Setup Electron event handlers after app is ready
-      this.setupElectronHandlers()
+      // Setup Electron event handlers after app is ready. Same once-only guard as
+      // the signal/quit handlers above — re-bootstrap must not re-register them.
+      if (!this.bootstrapElectronHandlersRegistered) {
+        this.setupElectronHandlers()
+        this.bootstrapElectronHandlersRegistered = true
+      }
 
       // 3. WhenReady phase - services requiring Electron API
       await this.lifecycleManager.startPhase(Phase.WhenReady)
@@ -326,6 +344,63 @@ export class Application {
     const result = await this.teardownServices()
     this.completedProfileTeardown = result
     return result
+  }
+
+  /**
+   * Rebuild the business runtime in-place so the same Electron process can be
+   * re-bootstrapped for a (possibly same) account without a full restart.
+   *
+   * Call contract — valid only in two states:
+   *   1. A completed, CLEAN profile teardown (prepareProfileSwitch()/logout
+   *      finished with clean=true), OR
+   *   2. A fresh process that has never been bootstrapped.
+   * Rejects (throws) otherwise: a non-clean teardown, or live business with no
+   * completed teardown (services still running).
+   *
+   * In place (every singleton reference preserved), it:
+   *   - resets isBootstrapped / isShuttingDown / _isQuitting / returningToLogin
+   *     and clears completedProfileTeardown,
+   *   - drops stale IPC quit holds (and their preventQuit sources),
+   *   - rebuilds pathMap = buildPathRegistry() and clears ensuredKeys (the caller
+   *     MUST set the Electron userData paths for the new profile first),
+   *   - clears ServiceContainer registrations/instances and LifecycleManager
+   *     runtime state via their in-place methods (no static reset()).
+   *
+   * The caller then re-registers services and calls bootstrap() again. bootstrap()
+   * will NOT re-register the process/Electron handlers (they are guarded to run
+   * once per process), so no duplicate IPC is installed.
+   */
+  public prepareProfileRuntime(): void {
+    // Reject a non-clean teardown — rebuilding on a partially torn-down runtime
+    // would orphan services and leave the new account's data inconsistent.
+    if (this.completedProfileTeardown && !this.completedProfileTeardown.clean) {
+      throw new Error('prepareProfileRuntime() rejected: last profile teardown was not clean')
+    }
+    // Reject live business: bootstrapped with no completed teardown means the
+    // previous account's services are still running. A clean teardown (or a
+    // never-bootstrapped process) is the only safe starting point.
+    if (!this.completedProfileTeardown && this.isBootstrapped) {
+      throw new Error('prepareProfileRuntime() rejected: business is still running (no completed teardown)')
+    }
+
+    // Reset bootstrap/shutdown flags so the runtime reads as fresh.
+    this.isBootstrapped = false
+    this.isShuttingDown = false
+    this._isQuitting = false
+    this.returningToLogin = false
+    this.completedProfileTeardown = undefined
+
+    // Drop stale IPC quit holds from the previous runtime.
+    this.ipcQuitHolds.clear()
+    this.quitPreventionHolds.clear()
+
+    // Rebuild the path registry (caller must set Electron userData paths first).
+    this.pathMap = buildPathRegistry()
+    this.ensuredKeys.clear()
+
+    // In-place clear, preserving singletons (no static reset()).
+    this.container.clear()
+    this.lifecycleManager.resetRuntimeState()
   }
 
   private async teardownServices(): Promise<ShutdownResult> {

@@ -297,4 +297,67 @@ describe('ProfileSwitchCoordinator', () => {
     expect(deps.application.forceExit).toHaveBeenCalledWith(1)
     expect(deps.application.relaunch).not.toHaveBeenCalled()
   })
+
+  describe('same-process activation (activateAuthenticated)', () => {
+    it('returns activated (no relaunch) when the hook approves the business start', async () => {
+      const deps = dependencies()
+      const activate = vi.fn(async () => true)
+
+      const result = await new ProfileSwitchCoordinator({ ...deps, activateAuthenticated: activate }).switchProfile(
+        request,
+        deps.targetRecord
+      )
+
+      expect(result).toEqual({ kind: 'activated', record: deps.targetRecord })
+      expect(activate).toHaveBeenCalledWith(deps.targetRecord)
+      expect(deps.application.relaunch).not.toHaveBeenCalled()
+      expect(deps.application.forceExit).not.toHaveBeenCalled()
+    })
+
+    it('falls back to relaunch when the hook declines activation', async () => {
+      const deps = dependencies()
+      const activate = vi.fn(async () => false)
+
+      const result = await new ProfileSwitchCoordinator({ ...deps, activateAuthenticated: activate }).switchProfile(
+        request,
+        deps.targetRecord
+      )
+
+      expect(result).toEqual({ kind: 'relaunching' })
+      expect(activate).toHaveBeenCalledWith(deps.targetRecord)
+      expect(deps.application.relaunch).toHaveBeenCalled()
+      expect(deps.application.forceExit).not.toHaveBeenCalled()
+    })
+
+    it('never activates when commit fails, routing to journal-committed recovery', async () => {
+      const deps = dependencies()
+      deps.journal.commit.mockRejectedValue(new Error('journal commit failed'))
+      const activate = vi.fn(async () => true)
+
+      const result = await new ProfileSwitchCoordinator({ ...deps, activateAuthenticated: activate }).switchProfile(
+        request,
+        deps.targetRecord
+      )
+
+      expect(result).toEqual({ kind: 'needs-recovery', stage: 'journal-committed' })
+      expect(activate).not.toHaveBeenCalled()
+      expect(deps.application.forceExit).toHaveBeenCalledWith(1)
+    })
+
+    it('force-exits into business-startup recovery when activation startup throws', async () => {
+      const deps = dependencies()
+      const activate = vi.fn(async () => {
+        throw new Error('business bootstrap failed')
+      })
+
+      const result = await new ProfileSwitchCoordinator({ ...deps, activateAuthenticated: activate }).switchProfile(
+        request,
+        deps.targetRecord
+      )
+
+      expect(result).toEqual({ kind: 'needs-recovery', stage: 'business-startup' })
+      expect(deps.application.forceExit).toHaveBeenCalledWith(1)
+      expect(deps.application.relaunch).not.toHaveBeenCalled()
+    })
+  })
 })

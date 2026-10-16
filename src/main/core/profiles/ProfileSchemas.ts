@@ -120,6 +120,11 @@ const ProfileClaimCopyingJournalV1Schema = z.strictObject({
   phase: z.literal('copying')
 })
 
+const ProfileClaimStagedJournalV1Schema = z.strictObject({
+  ...ProfileClaimJournalBaseV1Shape,
+  phase: z.literal('staged')
+})
+
 const ProfileClaimCommittedJournalV1Schema = z.strictObject({
   ...ProfileClaimJournalBaseV1Shape,
   phase: z.literal('committed'),
@@ -128,6 +133,7 @@ const ProfileClaimCommittedJournalV1Schema = z.strictObject({
 
 export const ProfileClaimJournalV1Schema = z.discriminatedUnion('phase', [
   ProfileClaimCopyingJournalV1Schema,
+  ProfileClaimStagedJournalV1Schema,
   ProfileClaimCommittedJournalV1Schema
 ])
 

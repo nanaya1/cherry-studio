@@ -12,6 +12,7 @@ import {
   createProfileBootstrapWindow,
   createProfilePaths,
   getProfileLaunchContext,
+  setProfileLaunchContext,
   ProfileActivePointer,
   ProfileClaimService,
   ProfileInstallation,
@@ -65,13 +66,19 @@ export class EnterprisePlugin extends BaseService {
                   journalPath: path.join(paths.controlRoot, `claim-${targetProfileId}.journal.json`)
                 })
                 const preview = await claim.preview()
-                if (preview.status === 'unsupported') return
+                if (preview.status === 'already-claimed' || preview.status === 'unsupported') return
+                if (preview.status === 'staged') {
+                  return { apply: async () => undefined, commit: () => claim.commit() }
+                }
                 const decision = await confirmProfileClaim(preview)
                 if (!decision) throw new Error('Profile claim cancelled')
                 if (!decision.copy) return
-                return async () => {
-                  const result = await claim.confirm({ previewId: preview.previewId, allow: decision.allow })
-                  if (result.status !== 'claimed') throw new Error('Profile claim did not complete')
+                return {
+                  apply: async () => {
+                    const result = await claim.confirm({ previewId: preview.previewId, allow: decision.allow })
+                    if (result.status !== 'claimed') throw new Error('Profile claim did not complete')
+                  },
+                  commit: () => claim.commit()
                 }
               }
             : undefined,
@@ -82,16 +89,20 @@ export class EnterprisePlugin extends BaseService {
           fence: profileSwitchFence,
           application,
           openSignedOut: async (record) => {
-            const window = createProfileBootstrapWindow({
-              mode: 'signed-out',
-              kind: 'signed-out',
+            const signedOutContext = {
+              mode: 'signed-out' as const,
+              kind: 'signed-out' as const,
               profileId: record.profileId,
               identityDigest: record.identityDigest,
               dataRoot: context.dataRoot,
               profileRoot: path.join(paths.profilesRoot, record.profileId)
-            })
+            }
+            // Reflect the login state so the window-close guard knows the business
+            // runtime is no longer active. A later same-process activation swaps
+            // this back to 'business' and suppresses the force-exit.
+            setProfileLaunchContext(signedOutContext)
+            createProfileBootstrapWindow(signedOutContext)
             application.finishProfileLogout()
-            window.once('closed', () => application.forceExit(0))
           }
         }),
         operationId: uuidv4

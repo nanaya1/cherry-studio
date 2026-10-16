@@ -35,6 +35,7 @@ import { MIN_WINDOW_HEIGHT, MIN_WINDOW_WIDTH } from '@shared/utils/window'
 import iconPath from '../../../build/icon.png?asset'
 import { isSafeExternalUrl } from '../utils/externalUrlSafety'
 import { contextMenu } from './ContextMenu'
+import { getBusinessSession } from './profileSession'
 
 const logger = loggerService.withContext('MainWindowService')
 
@@ -70,6 +71,18 @@ export class MainWindowService extends BaseService {
    */
   private suppressInitialLaunchShow = false
   private architectureWarningShown = false
+
+  /**
+   * Stable, account-scoped partition for the business main renderer. Derived from
+   * the active profile root so the same account reuses one session across
+   * same-process relogins, and a different account gets an isolated session. This
+   * is preferred over mutating `app.setPath('sessionData')` after the default
+   * session has been used — the partition is assigned at window creation.
+   */
+  // 原命名 partition 改为显式账号 sessionData 路径，避免 Electron 缓存登录前的存储根。
+  private getMainWindowSession(): Electron.Session {
+    return getBusinessSession()
+  }
 
   constructor() {
     super()
@@ -272,7 +285,8 @@ export class MainWindowService extends BaseService {
         ...(windowsBackgroundMaterial ? { backgroundMaterial: windowsBackgroundMaterial } : {}),
         ...(mainWindowBackgroundColor ? { backgroundColor: mainWindowBackgroundColor } : {}),
         webPreferences: {
-          zoomFactor: preferenceService.get('app.zoom_factor')
+          zoomFactor: preferenceService.get('app.zoom_factor'),
+          session: this.getMainWindowSession()
         }
       }
     })
@@ -305,9 +319,12 @@ export class MainWindowService extends BaseService {
       try {
         const enabled = preferenceService.get('app.spell_check.enabled')
         const languages = preferenceService.get('app.spell_check.languages')
-        session.defaultSession.setSpellCheckerEnabled(enabled)
-        if (enabled && languages.length > 0) {
-          session.defaultSession.setSpellCheckerLanguages(languages)
+        const sessions = [this.getMainWindowSession()]
+        for (const target of sessions) {
+          target.setSpellCheckerEnabled(enabled)
+          if (enabled && languages.length > 0) {
+            target.setSpellCheckerLanguages(languages)
+          }
         }
       } catch (error) {
         logger.error('Failed to apply spell check settings:', error as Error)

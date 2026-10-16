@@ -12,6 +12,8 @@ import { getProfileLaunchContext } from '@main/core/profiles'
 // Preboot dialogs cannot use PreferenceService-backed translations.
 import { t } from '@main/i18n'
 
+import { getBusinessSession } from './profileSession'
+
 const logger = loggerService.withContext('DataReset')
 
 /**
@@ -576,7 +578,7 @@ async function clearChromiumState(): Promise<void> {
   try {
     await Promise.race([
       Promise.all([
-        clearSession('default', session.defaultSession),
+        clearSession('default', getBusinessSession()),
         clearSession('persist:webview', session.fromPartition('persist:webview'))
       ]),
       new Promise<void>((resolve) => {

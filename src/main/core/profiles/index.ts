@@ -83,7 +83,13 @@ export {
 } from './ProfilePrebootCoordinator'
 export { createProfilePaths, resolveProfileRoot, validateExistingProfilePath, type ProfilePaths } from './ProfilePaths'
 export { ProfileRegistry, SIGNED_OUT_DIGEST, type ProfileAuthorizationContext } from './ProfileRegistry'
-export { getProfileLaunchContext, setProfileLaunchContext, profileBusinessAccessGate } from './ProfileRuntimeContext'
+export {
+  getProfileLaunchContext,
+  setProfileLaunchContext,
+  getLastBusinessIdentityDigest,
+  shouldActivateInProcess,
+  profileBusinessAccessGate
+} from './ProfileRuntimeContext'
 export {
   ActiveProfilePointerV1Schema,
   InstallationRecordV1Schema,

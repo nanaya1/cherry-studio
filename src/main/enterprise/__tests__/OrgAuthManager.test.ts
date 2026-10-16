@@ -382,4 +382,39 @@ describe('OrgAuthManager C3 组织可用性标记', () => {
       displayName: 'test999'
     })
   })
+
+  it('treats an activated transition as success instead of a relaunch', async () => {
+    authConfig.mode = 'management-oauth'
+    const profileSession = {
+      beginLogout: vi.fn(),
+      logout: vi.fn(),
+      completeAuthentication: vi.fn().mockResolvedValue({ kind: 'activated', record: {} })
+    }
+    const manager = new OrgAuthManager({
+      credentialStore: { clear: vi.fn() } as never,
+      profileSession: profileSession as never
+    })
+    seedSession(manager)
+    const completed = {
+      session: managementSession,
+      identity: { kind: 'authenticated' },
+      authorizationContext: {},
+      prepareTargetSession: async () => undefined
+    } as never
+    vi.spyOn(
+      manager as unknown as { exchangeAndValidate: (...args: unknown[]) => Promise<typeof completed> },
+      'exchangeAndValidate'
+    ).mockResolvedValue(completed)
+    ;(manager as unknown as { pending: unknown }).pending = {
+      createdAt: Date.now(),
+      generation: manager['generation'],
+      state: 'y'
+    }
+
+    await manager.handleAuthCallback(new URL('meacowork://auth/callback?code=x&state=y'))
+
+    expect(profileSession.completeAuthentication).toHaveBeenCalled()
+    expect(manager['switching']).toBe(false)
+    expect(manager.getStatus().phase).toBe('signed-in')
+  })
 })

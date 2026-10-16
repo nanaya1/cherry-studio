@@ -22,7 +22,20 @@ import { decompress } from './utils/zip'
 
 const logger = loggerService.withContext('IPC')
 
+// Process-level once guard. After a same-process business runtime rebuild
+// (prepareProfileRuntime + re-bootstrap) this is invoked again; the existing
+// handlers persist and must not be re-registered. Every handler here closes over
+// direct-import singletons (backupManager, fileManager, FileService, copilotService,
+// NutstoreService), not lifecycle services, so they remain valid across the rebuild.
+let ipcRegistered = false
+
 export async function registerIpc() {
+  if (ipcRegistered) {
+    logger.debug('registerIpc already ran once in this process; skipping re-registration')
+    return
+  }
+  ipcRegistered = true
+
   void backupManager.cleanupStaleTempArtifacts()
 
   // [v2] Removed: Redux persistor flush is no longer needed after v2 data refactoring

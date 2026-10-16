@@ -47,6 +47,18 @@ export class ServiceContainer {
   }
 
   /**
+   * In-place clear of all registrations and instances, keeping the singleton
+   * instance. Used by Application.prepareProfileRuntime() to rebuild the business
+   * runtime for the same process — distinct from the static reset(), which drops
+   * the singleton and is test-only.
+   */
+  public clear(): void {
+    this.services.clear()
+    this.excluded.clear()
+    this.conditionContext = createConditionContext()
+  }
+
+  /**
    * Set condition context (for testing — inject a mock context)
    * @param ctx - Condition context to use for condition evaluation
    */

@@ -21,11 +21,22 @@ export interface ProfileSwitchCoordinatorDependencies {
   fence: SwitchFence
   application: SwitchApplication
   openSignedOut?(record: ProfileRecordV1): Promise<void>
+  /**
+   * Optional same-process activation hook, invoked only after the journal and
+   * `afterCommit` both succeed for an authenticated target. Return `true` to open
+   * the business runtime in the current process (no relaunch); `false` falls back
+   * to a relaunch. Any throw here is a post-commit startup failure: it must NOT
+   * reach `ProfileSessionService` (which would roll back the now-durable
+   * credentials) — the coordinator force-exits into the `business-startup`
+   * recovery stage instead.
+   */
+  activateAuthenticated?(record: ProfileRecordV1): Promise<boolean>
 }
 
 export type ProfileSwitchResult =
   | { kind: 'relaunching' }
   | { kind: 'signed-out' }
+  | { kind: 'activated'; record: ProfileRecordV1 }
   | { kind: 'teardown-failed'; teardown: ShutdownResult }
   | { kind: 'teardown-failed'; error: string }
   | {
@@ -38,10 +49,12 @@ export type ProfileSwitchResult =
         | 'target-authorization'
         | 'logout-quarantine'
         | 'logout-restore'
+        | 'business-startup'
     }
 
 export interface ProfileSwitchTransition {
   afterTeardown?(): Promise<ProfileRecordV1>
+  afterCommit?(): Promise<void>
 }
 
 export class ProfileSwitchCoordinator {
@@ -116,6 +129,12 @@ export class ProfileSwitchCoordinator {
       return this.needsRecovery('journal-committed')
     }
 
+    try {
+      await transition.afterCommit?.()
+    } catch {
+      return this.needsRecovery('journal-committed')
+    }
+
     if (committedTarget.kind === 'signed-out' && this.dependencies.openSignedOut) {
       try {
         await this.dependencies.openSignedOut(committedTarget)
@@ -125,6 +144,18 @@ export class ProfileSwitchCoordinator {
         throw error
       }
       return { kind: 'signed-out' }
+    }
+
+    // Authenticated target: prefer same-process activation when a hook is wired.
+    if (this.dependencies.activateAuthenticated) {
+      try {
+        const activated = await this.dependencies.activateAuthenticated(committedTarget)
+        if (activated) return { kind: 'activated', record: committedTarget }
+      } catch {
+        // Post-commit startup failure. The credentials are already durable, so a
+        // rollback would be wrong — force-exit into business-startup recovery.
+        return this.needsRecovery('business-startup')
+      }
     }
     this.dependencies.application.relaunch()
     return { kind: 'relaunching' }

@@ -11,14 +11,26 @@ import { ORG_AUTH_MODE, ORG_SERVER_BASE_URL } from '@main/enterprise/OrgApiClien
 import { OrgAuthManager } from '@main/enterprise/OrgAuthManager'
 import { OrgCredentialStore } from '@main/enterprise/OrgCredentialStore'
 import { createPasswordProfileLogin } from '@main/enterprise/passwordLoginRuntime'
+import { resolveSystemLanguage, t } from '@main/i18n'
 
+import { validateSqliteIntegrity } from './LegacyProfileAdoption'
 import { ProfileActivePointer } from './ProfileActivePointer'
-import type { ProfileClaimAllow, ProfileClaimPreview } from './ProfileClaimService'
+import {
+  ProfileClaimService,
+  type ProfileClaimAllow,
+  type ProfileClaimCategory,
+  type ProfileClaimPreview
+} from './ProfileClaimService'
 import { ProfileInstallation } from './ProfileInstallation'
 import { createProfilePaths, validateExistingProfilePath } from './ProfilePaths'
 import type { ProfileLaunchContext } from './ProfilePrebootCoordinator'
 import { ProfileRecoveryActions } from './ProfileRecoveryActions'
 import { ProfileRegistry } from './ProfileRegistry'
+import {
+  getProfileLaunchContext,
+  getLastBusinessIdentityDigest,
+  shouldActivateInProcess
+} from './ProfileRuntimeContext'
 import { ProfileSessionService } from './ProfileSessionService'
 import { ProfileSwitchCoordinator } from './ProfileSwitchCoordinator'
 import { ProfileSwitchJournal } from './ProfileSwitchJournal'
@@ -33,30 +45,69 @@ const CANCEL_SWITCH = 'profile-bootstrap:cancel-switch'
 const SELECT_SIGNED_OUT = 'profile-bootstrap:select-signed-out'
 const EXPORT_DIAGNOSTICS = 'profile-bootstrap:export-diagnostics'
 
+const translateForBootstrap = (key: string, params?: Record<string, string | number>) =>
+  t(key, params, resolveSystemLanguage(app.getLocale()))
+
 export async function confirmProfileClaim(
   preview: Extract<ProfileClaimPreview, { status: 'ready' }>
 ): Promise<{ copy: boolean; allow: ProfileClaimAllow[] } | null> {
-  const included = preview.included.map((item) => item.category).join(', ') || 'none'
-  const excluded = preview.excluded.map((item) => item.category).join(', ') || 'none'
+  const categoryLabel = (category: ProfileClaimCategory) => {
+    switch (category) {
+      case 'api-key':
+        return translateForBootstrap('dialog.profile_claim.category.api_key')
+      case 'business-data':
+        return translateForBootstrap('dialog.profile_claim.category.business_data')
+      case 'copilot':
+        return translateForBootstrap('dialog.profile_claim.category.copilot')
+      case 'credentials':
+        return translateForBootstrap('dialog.profile_claim.category.credentials')
+      case 'enterprise-resource':
+        return translateForBootstrap('dialog.profile_claim.category.enterprise_resource')
+      case 'mcp-oauth':
+        return translateForBootstrap('dialog.profile_claim.category.mcp_oauth')
+      case 'ordinary-config':
+        return translateForBootstrap('dialog.profile_claim.category.ordinary_config')
+      case 'runtime':
+        return translateForBootstrap('dialog.profile_claim.category.runtime')
+      case 'sensitive':
+        return translateForBootstrap('dialog.profile_claim.category.sensitive')
+      case 'session-cookies':
+        return translateForBootstrap('dialog.profile_claim.category.session_cookies')
+    }
+  }
+  const included =
+    preview.included.map((item) => categoryLabel(item.category)).join(', ') || translateForBootstrap('common.none')
+  const excluded =
+    preview.excluded.map((item) => categoryLabel(item.category)).join(', ') || translateForBootstrap('common.none')
   const copy = await dialog.showMessageBox({
     type: 'question',
-    title: 'Copy local profile data',
-    message: 'Copy local business data into this account profile?',
-    detail: `${preview.totalBytes} bytes will be copied. Included: ${included}. Always excluded: ${excluded}. The local profile is kept unchanged.`,
-    buttons: ['Copy and continue', 'Continue without copying', 'Cancel login'],
+    title: translateForBootstrap('dialog.profile_claim.migrate.title'),
+    message: translateForBootstrap('dialog.profile_claim.migrate.message'),
+    detail: translateForBootstrap('dialog.profile_claim.migrate.detail', {
+      bytes: preview.totalBytes,
+      included,
+      excluded
+    }),
+    buttons: [
+      translateForBootstrap('dialog.profile_claim.migrate.confirm'),
+      translateForBootstrap('dialog.profile_claim.cancel_login')
+    ],
     defaultId: 0,
-    cancelId: 2
+    cancelId: 1,
+    noLink: true
   })
-  if (copy.response === 2) return null
-  if (copy.response === 1) return { copy: false, allow: [] }
+  if (copy.response === 1) return null
 
   const allow: ProfileClaimAllow[] = []
   const ordinaryConfig = await dialog.showMessageBox({
     type: 'question',
-    title: 'Include ordinary settings',
-    message: 'Also copy ordinary local settings?',
-    detail: 'Enterprise resources, sessions, cookies and OAuth credentials remain excluded.',
-    buttons: ['Include settings', 'Do not include'],
+    title: translateForBootstrap('dialog.profile_claim.settings.title'),
+    message: translateForBootstrap('dialog.profile_claim.settings.message'),
+    detail: translateForBootstrap('dialog.profile_claim.settings.detail'),
+    buttons: [
+      translateForBootstrap('dialog.profile_claim.settings.include'),
+      translateForBootstrap('dialog.profile_claim.do_not_include')
+    ],
     defaultId: 1,
     cancelId: 1
   })
@@ -64,10 +115,13 @@ export async function confirmProfileClaim(
 
   const apiKeys = await dialog.showMessageBox({
     type: 'warning',
-    title: 'Include API keys',
-    message: 'Also copy locally configured provider API keys?',
-    detail: 'API keys are credentials. Only include them when this account profile belongs to the same user.',
-    buttons: ['Do not include', 'Include API keys'],
+    title: translateForBootstrap('dialog.profile_claim.api_keys.title'),
+    message: translateForBootstrap('dialog.profile_claim.api_keys.message'),
+    detail: translateForBootstrap('dialog.profile_claim.api_keys.detail'),
+    buttons: [
+      translateForBootstrap('dialog.profile_claim.do_not_include'),
+      translateForBootstrap('dialog.profile_claim.api_keys.include')
+    ],
     defaultId: 0,
     cancelId: 0
   })
@@ -106,27 +160,43 @@ export function createProfileBootstrapWindow(context: ProfileLaunchContext): Bro
       if (sso) void window.loadFile(loginPath, { query: { sso: '1' } })
       else void window.loadFile(loginPath)
     }
+    // Cancel login (window closed before any business started) exits the app; a
+    // completed same-process activation flips the launch context to 'business'
+    // and keeps the process alive.
+    window.once('closed', () => {
+      if (getProfileLaunchContext()?.mode !== 'business') application.forceExit(0)
+    })
     return window
   }
   // if (context.mode === 'signed-out' && !context.pendingSwitch) registerSignedOutHandlers(context, window)
   if (context.mode === 'migration-required') registerLegacyAdoptionHandler(context, window)
   if (context.mode === 'recovery' || context.pendingSwitch) registerRecoveryHandlers(context, window)
   const title =
-    context.mode === 'signed-out' && !context.pendingSwitch ? 'Choose how to continue' : 'Profile recovery required'
+    context.mode === 'signed-out' && !context.pendingSwitch
+      ? 'Choose how to continue'
+      : context.mode === 'migration-required'
+        ? translateForBootstrap('dialog.profile_claim.legacy.title')
+        : // : 'Profile recovery required'
+          '需要恢复用户数据空间'
   const detail =
     context.mode === 'migration-required'
-      ? 'Existing application data was detected. Migration is required before it can be opened.'
+      ? translateForBootstrap('dialog.profile_claim.legacy.detail')
       : context.mode === 'recovery'
-        ? 'The profile control state could not be opened safely. No business data was loaded.'
+        ? // ? 'The profile control state could not be opened safely. No business data was loaded.'
+          '无法安全打开用户数据空间。为保护你的数据，尚未加载聊天、知识库等业务数据。'
         : context.pendingSwitch
-          ? 'A prepared profile switch was interrupted. Retry or cancel it before continuing.'
-          : 'No business profile is active. No business data was loaded.'
+          ? // ? 'A prepared profile switch was interrupted. Retry or cancel it before continuing.'
+            '上次账号空间切换意外中断，请重试或取消切换后继续。'
+          : // : 'No business profile is active. No business data was loaded.'
+            '当前没有可用的账号数据空间，尚未加载业务数据。'
   const actions =
     context.mode === 'signed-out' && !context.pendingSwitch
       ? `<form id="password-login"><input id="identifier" autocomplete="username" placeholder="Account" required><input id="password" type="password" autocomplete="current-password" placeholder="Password" required><button type="submit">Sign in</button></form><div class="actions"><button id="enterprise">Enterprise login</button></div><p id="status"></p><script>document.getElementById('password-login').onsubmit=async(e)=>{e.preventDefault();const button=e.target.querySelector('button');button.disabled=true;const password=document.getElementById('password');try{await window.profileBootstrap.passwordLogin({identifier:document.getElementById('identifier').value,password:password.value})}catch(error){document.getElementById('status').textContent=String(error)}finally{password.value='';button.disabled=false}};const api=window.profileBootstrap;const status=document.getElementById('status');document.getElementById('enterprise').onclick=async()=>{status.textContent='Opening enterprise login...';try{await api.enterpriseLogin()}catch(e){status.textContent=String(e)}}</script>`
       : context.mode === 'migration-required'
-        ? `<div class="actions"><button id="adopt">Copy existing data to local profile</button></div><p id="status"></p><script>const status=document.getElementById('status');document.getElementById('adopt').onclick=async()=>{status.textContent='Verifying and copying data...';try{await window.profileBootstrap.adoptLegacy();status.textContent='Restarting...'}catch(e){status.textContent=String(e)}}</script>`
-        : `<div class="actions recovery"><button id="retry">Retry</button><button id="signed-out">Use signed-out</button><button id="diagnostics">Export diagnostics</button>${context.pendingSwitch ? '<button id="cancel-switch">Cancel pending switch</button>' : ''}</div><p id="status"></p><script>const api=window.profileBootstrap;const status=document.getElementById('status');const run=async(label,action)=>{status.textContent=label;try{const result=await action();status.textContent=result?.kind==='cancelled'?'Export cancelled':'Restarting...'}catch(e){status.textContent=String(e)}};document.getElementById('retry').onclick=()=>run('Retrying...',api.retryRecovery);document.getElementById('signed-out').onclick=()=>run('Selecting signed-out profile...',api.selectSignedOut);document.getElementById('diagnostics').onclick=()=>run('Exporting diagnostics...',api.exportDiagnostics);const cancel=document.getElementById('cancel-switch');if(cancel)cancel.onclick=()=>run('Cancelling pending switch...',api.cancelSwitch)</script>`
+        ? `<div class="actions"><button id="adopt">${translateForBootstrap('dialog.profile_claim.legacy.confirm')}</button></div><p id="status"></p><script>const status=document.getElementById('status');document.getElementById('adopt').onclick=async()=>{status.textContent=${JSON.stringify(translateForBootstrap('dialog.profile_claim.legacy.copying'))};try{await window.profileBootstrap.adoptLegacy();status.textContent=${JSON.stringify(translateForBootstrap('dialog.profile_claim.legacy.restarting'))}}catch(e){status.textContent=String(e)}}</script>`
+        : // 原英文恢复页操作保留，使用中文按钮和状态提示。
+          // : `<div class="actions recovery"><button id="retry">Retry</button><button id="signed-out">Use signed-out</button><button id="diagnostics">Export diagnostics</button>${context.pendingSwitch ? '<button id="cancel-switch">Cancel pending switch</button>' : ''}</div><p id="status"></p><script>const api=window.profileBootstrap;const status=document.getElementById('status');const run=async(label,action)=>{status.textContent=label;try{const result=await action();status.textContent=result?.kind==='cancelled'?'Export cancelled':'Restarting...'}catch(e){status.textContent=String(e)}};document.getElementById('retry').onclick=()=>run('Retrying...',api.retryRecovery);document.getElementById('signed-out').onclick=()=>run('Selecting signed-out profile...',api.selectSignedOut);document.getElementById('diagnostics').onclick=()=>run('Exporting diagnostics...',api.exportDiagnostics);const cancel=document.getElementById('cancel-switch');if(cancel)cancel.onclick=()=>run('Cancelling pending switch...',api.cancelSwitch)</script>`
+          `<div class="actions recovery"><button id="retry">重试</button><button id="signed-out">返回登录页</button><button id="diagnostics">导出诊断信息</button>${context.pendingSwitch ? '<button id="cancel-switch">取消待完成的切换</button>' : ''}</div><p id="status"></p><script>const api=window.profileBootstrap;const status=document.getElementById('status');const run=async(label,action)=>{status.textContent=label;try{const result=await action();status.textContent=result?.kind==='cancelled'?'已取消导出':result?.kind==='exported'?'诊断信息已导出':'正在重新启动…'}catch(e){status.textContent='操作失败：'+String(e)}};document.getElementById('retry').onclick=()=>run('正在重试…',api.retryRecovery);document.getElementById('signed-out').onclick=()=>run('正在返回登录页…',api.selectSignedOut);document.getElementById('diagnostics').onclick=()=>run('正在导出诊断信息…',api.exportDiagnostics);const cancel=document.getElementById('cancel-switch');if(cancel)cancel.onclick=()=>run('正在取消切换…',api.cancelSwitch)</script>`
   const html = `<!doctype html><meta charset="utf-8"><title>${title}</title><style>body{margin:0;font:14px system-ui;background:#f5f5f5;color:#202124}main{padding:48px}h1{font-size:22px;margin:0 0 16px}p{line-height:1.6;margin:0;color:#5f6368}.actions{display:flex;gap:12px;margin-top:28px}button{border:1px solid #c7c7c7;background:#fff;padding:10px 16px;border-radius:6px;cursor:pointer}button:last-child{background:#1f1f1f;color:#fff;border-color:#1f1f1f}#status{margin-top:18px}</style><main><h1>${title}</h1><p>${detail}</p>${actions}</main>`
   void window.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
   return window
@@ -162,7 +232,8 @@ function registerRecoveryHandlers(context: ProfileLaunchContext, window: Browser
     relaunch: () => application.relaunch(),
     exportDiagnostics: async () => {
       const result = await dialog.showSaveDialog(window, {
-        title: 'Export profile recovery diagnostics',
+        // title: 'Export profile recovery diagnostics',
+        title: '导出用户空间恢复诊断信息',
         defaultPath: 'profile-recovery-diagnostics.json',
         filters: [{ name: 'JSON', extensions: ['json'] }]
       })
@@ -219,13 +290,52 @@ function registerSignedOutHandlers(context: ProfileLaunchContext, window: Browse
       await validateExistingProfilePath(paths, profileRoot)
       await mkdir(profileRoot, { recursive: true })
     },
+    prepareAuthenticatedUserData: context.legacyRoot
+      ? async ({ targetProfileRoot }) => {
+          const claim = new ProfileClaimService({
+            localUserData: context.legacyRoot!,
+            targetUserData: path.join(targetProfileRoot, 'userData'),
+            journalPath: path.join(paths.controlRoot, 'legacy-claim.json'),
+            sqliteValidator: validateSqliteIntegrity
+          })
+          const preview = await claim.preview()
+          if (preview.status === 'already-claimed') return
+          if (preview.status === 'unsupported') {
+            throw new Error(translateForBootstrap('dialog.profile_claim.error.target_not_empty'))
+          }
+          if (preview.status === 'staged') {
+            return { apply: async () => undefined, commit: () => claim.commit() }
+          }
+          const decision = await confirmProfileClaim(preview)
+          if (!decision) throw new Error(translateForBootstrap('dialog.profile_claim.error.cancelled'))
+          return {
+            apply: async () => {
+              const result = await claim.confirm({ previewId: preview.previewId, allow: decision.allow })
+              if (result.status !== 'claimed')
+                throw new Error(translateForBootstrap('dialog.profile_claim.error.incomplete'))
+            },
+            commit: () => claim.commit()
+          }
+        }
+      : undefined,
     credentialStoreFor: (profileRoot) => new OrgCredentialStore(profileRoot),
     coordinator: new ProfileSwitchCoordinator({
       journal: new ProfileSwitchJournal(path.join(paths.controlRoot, 'switch-journal.json')),
       activePointer,
       // 业务 fence 在登出后保持关闭；登录窗口拥有独立的切换周期。
       fence: loginFence,
-      application
+      application,
+      // Same-process activation: open the business runtime in this process when the
+      // just-authenticated account matches the last business identity (or this is a
+      // cold start). A different account falls through to a relaunch.
+      activateAuthenticated: async (record) => {
+        if (!shouldActivateInProcess(record, getLastBusinessIdentityDigest())) return false
+        const { buildBusinessLaunchContext, startBusinessRuntime } = await import('./businessStartup')
+        const businessContext = buildBusinessLaunchContext(context.dataRoot, record)
+        await startBusinessRuntime(businessContext, { rebuildRuntime: true, onVerifyFailure: 'throw' })
+        if (!window.isDestroyed()) window.close()
+        return true
+      }
     }),
     operationId: uuidv4
   })
@@ -262,6 +372,9 @@ function registerSignedOutHandlers(context: ProfileLaunchContext, window: Browse
     profileSession: session,
     fence: loginFence
   })
+  const handleAuthError = (error: unknown) => {
+    if (!window.isDestroyed()) window.webContents.send('profile-bootstrap:auth-error', String(error))
+  }
   const handleAuthUrl = (value: string) => {
     let url: URL
     try {
@@ -270,7 +383,7 @@ function registerSignedOutHandlers(context: ProfileLaunchContext, window: Browse
       return
     }
     if (url.protocol !== 'meacowork:' || url.hostname.toLowerCase() !== 'auth') return
-    void auth.handleAuthCallback(url)
+    void auth.handleAuthCallback(url).catch(handleAuthError)
   }
   const openUrlHandler = (event: Electron.Event, value: string) => {
     event.preventDefault()

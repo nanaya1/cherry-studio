@@ -1,8 +1,8 @@
-import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { access, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { ProfileClaimService } from '..'
 
@@ -44,9 +44,61 @@ describe('ProfileClaimService', () => {
     if (preview.status !== 'ready') throw new Error('expected ready preview')
     expect(preview.included).toEqual(expect.arrayContaining([expect.objectContaining({ category: 'business-data' })]))
     expect(preview.excluded.map((item) => item.category)).toEqual(
-      expect.arrayContaining(['credentials', 'session-cookies', 'mcp-oauth', 'copilot', 'enterprise-resource', 'api-key'])
+      expect.arrayContaining([
+        'credentials',
+        'session-cookies',
+        'mcp-oauth',
+        'copilot',
+        'enterprise-resource',
+        'api-key'
+      ])
     )
     expect(preview.totalBytes).toBeGreaterThan(0)
+    await expect(access(targetUserData)).rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
+  it('does not prompt again after a successful device legacy claim', async () => {
+    const { localUserData, targetUserData } = await fixture()
+    const journalPath = path.join(path.dirname(targetUserData), 'legacy-claim.json')
+    const service = new ProfileClaimService({ localUserData, targetUserData, journalPath })
+    const preview = await service.preview()
+    if (preview.status !== 'ready') throw new Error('expected ready preview')
+    await service.confirm({ previewId: preview.previewId, allow: [] })
+    await service.commit()
+
+    const nextAccountTarget = path.join(path.dirname(path.dirname(targetUserData)), 'next-account', 'userData')
+    await expect(
+      new ProfileClaimService({ localUserData, targetUserData: nextAccountTarget, journalPath }).preview()
+    ).resolves.toEqual({ status: 'already-claimed' })
+    await expect(access(nextAccountTarget)).rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
+  it('recovers a promoted target when the staged journal write was interrupted', async () => {
+    const { localUserData, targetUserData } = await fixture()
+    const journalPath = path.join(path.dirname(targetUserData), 'claim-journal.json')
+    const renameThenFail = async (source: string, target: string) => {
+      await import('node:fs/promises').then(({ rename }) => rename(source, target))
+      throw new Error('crash after promote')
+    }
+    const interrupted = new ProfileClaimService({ localUserData, targetUserData, journalPath, rename: renameThenFail })
+    const preview = await interrupted.preview()
+    if (preview.status !== 'ready') throw new Error('expected ready preview')
+    await expect(interrupted.confirm({ previewId: preview.previewId, allow: [] })).rejects.toThrow(
+      'crash after promote'
+    )
+
+    await expect(new ProfileClaimService({ localUserData, targetUserData, journalPath }).preview()).resolves.toEqual({
+      status: 'staged'
+    })
+  })
+
+  it('validates SQLite business data before offering migration', async () => {
+    const { localUserData, targetUserData } = await fixture()
+    const sqliteValidator = vi.fn().mockRejectedValue(new Error('SQLite integrity check failed'))
+    const service = new ProfileClaimService({ localUserData, targetUserData, sqliteValidator })
+
+    await expect(service.preview()).rejects.toThrow('SQLite integrity check failed')
+    expect(sqliteValidator).toHaveBeenCalledWith(path.join(localUserData, 'Data', 'app.db'))
     await expect(access(targetUserData)).rejects.toMatchObject({ code: 'ENOENT' })
   })
 
@@ -63,7 +115,27 @@ describe('ProfileClaimService', () => {
     await expect(readFile(path.join(localUserData, 'Data', 'app.db'), 'utf8')).resolves.toBe('business')
     await expect(access(path.join(targetUserData, 'Credentials'))).rejects.toMatchObject({ code: 'ENOENT' })
     await expect(access(path.join(targetUserData, 'Sensitive'))).rejects.toMatchObject({ code: 'ENOENT' })
-    await expect(access(path.join(targetUserData, 'Config', 'providers.json'))).rejects.toMatchObject({ code: 'ENOENT' })
+    await expect(access(path.join(targetUserData, 'Config', 'providers.json'))).rejects.toMatchObject({
+      code: 'ENOENT'
+    })
+  })
+
+  it('excludes Claude agent runtime links from a legacy claim', async () => {
+    const { localUserData, targetUserData } = await fixture()
+    const claudeSkills = path.join(localUserData, 'Data', 'Agents', '.claude', 'skills')
+    await mkdir(claudeSkills, { recursive: true })
+    await symlink(path.join(localUserData, 'Data'), path.join(claudeSkills, 'cad'))
+    const service = new ProfileClaimService({ localUserData, targetUserData })
+
+    const preview = await service.preview()
+
+    expect(preview.status).toBe('ready')
+    if (preview.status !== 'ready') throw new Error('expected ready preview')
+    expect(preview.excluded).toContainEqual(expect.objectContaining({ category: 'runtime' }))
+    await service.confirm({ previewId: preview.previewId, allow: [] })
+    await expect(access(path.join(targetUserData, 'Data', 'Agents', '.claude'))).rejects.toMatchObject({
+      code: 'ENOENT'
+    })
   })
 
   it('allows ordinary config/API key only with the matching explicit option', async () => {
@@ -131,7 +203,9 @@ describe('ProfileClaimService', () => {
     const controller = new AbortController()
     controller.abort()
 
-    await expect(service.confirm({ previewId: preview.previewId, allow: [], signal: controller.signal })).resolves.toEqual({
+    await expect(
+      service.confirm({ previewId: preview.previewId, allow: [], signal: controller.signal })
+    ).resolves.toEqual({
       status: 'cancelled'
     })
     await expect(access(targetUserData)).rejects.toMatchObject({ code: 'ENOENT' })

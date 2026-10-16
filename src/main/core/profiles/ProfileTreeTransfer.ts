@@ -21,9 +21,10 @@ export interface TransferPlan {
   totalBytes: number
 }
 
-export type TransferClassifier = (relativePath: string, directory: boolean) =>
-  | { action: 'include'; category: string }
-  | { action: 'exclude'; category: string }
+export type TransferClassifier = (
+  relativePath: string,
+  directory: boolean
+) => { action: 'include'; category: string } | { action: 'exclude'; category: string }
 
 export type TransferCopyFile = (source: string, target: string) => Promise<void>
 
@@ -32,7 +33,9 @@ function portableRelative(value: string): string {
 }
 
 async function hashFile(filePath: string): Promise<string> {
-  return createHash('sha256').update(await readFile(filePath)).digest('hex')
+  return createHash('sha256')
+    .update(await readFile(filePath))
+    .digest('hex')
 }
 
 async function directorySize(root: string): Promise<number> {
@@ -40,7 +43,7 @@ async function directorySize(root: string): Promise<number> {
   const directory = await opendir(root)
   for await (const entry of directory) {
     const child = path.join(root, entry.name)
-    if (entry.isSymbolicLink()) throw new Error(`Refusing to copy symbolic link: ${child}`)
+    if (entry.isSymbolicLink()) continue
     if (entry.isDirectory()) total += await directorySize(child)
     else if (entry.isFile()) total += (await stat(child)).size
     else throw new Error(`Refusing to copy unsupported filesystem entry: ${child}`)

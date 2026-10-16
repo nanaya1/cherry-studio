@@ -44,10 +44,14 @@ function setup() {
     coordinator: {
       switchProfile: vi.fn(async (_request, _target, transition): Promise<ProfileSwitchResult> => {
         await transition?.afterTeardown?.()
+        await transition?.afterCommit?.()
         return { kind: 'relaunching' }
       })
     },
-    logoutIntent: { begin: vi.fn().mockResolvedValue(undefined) },
+    logoutIntent: {
+      begin: vi.fn().mockResolvedValue(undefined),
+      complete: vi.fn().mockResolvedValue(undefined)
+    },
     operationId: vi.fn(() => '550e8400-e29b-41d4-a716-446655440000')
   }
   return { deps, authenticated, signedOut }
@@ -110,6 +114,42 @@ describe('ProfileSessionService', () => {
     expect(deps.coordinator.switchProfile).toHaveBeenCalled()
   })
 
+  it('completes a pending logout intent only after the authenticated switch commits', async () => {
+    const { deps } = setup()
+    const order: string[] = []
+    deps.coordinator.switchProfile.mockImplementation(async (_request, _target, transition) => {
+      order.push('pointer-and-journal-committed')
+      await transition?.afterCommit?.()
+      return { kind: 'relaunching' }
+    })
+    deps.logoutIntent.complete.mockImplementation(async () => {
+      order.push('logout-intent-completed')
+    })
+
+    await new ProfileSessionService(deps).completeAuthentication({
+      identity: { kind: 'authenticated', accountKind: 'management', issuerId: 'server-1', subjectId: 'u1' },
+      authorizationContext: { groupId: 'g1', role: 'member', status: 'active' },
+      session: { userId: 'u1' }
+    } as never)
+
+    expect(order).toEqual(['pointer-and-journal-committed', 'logout-intent-completed'])
+  })
+
+  it('keeps a pending logout intent when the authenticated switch does not commit', async () => {
+    const { deps } = setup()
+    deps.coordinator.switchProfile.mockResolvedValue({ kind: 'teardown-failed', error: 'busy' })
+
+    await expect(
+      new ProfileSessionService(deps).completeAuthentication({
+        identity: { kind: 'authenticated', accountKind: 'management', issuerId: 'server-1', subjectId: 'u1' },
+        authorizationContext: { groupId: 'g1', role: 'member', status: 'active' },
+        session: { userId: 'u1' }
+      } as never)
+    ).resolves.toEqual({ kind: 'teardown-failed', error: 'busy' })
+
+    expect(deps.logoutIntent.complete).not.toHaveBeenCalled()
+  })
+
   it('prepares target user data before writing credentials and aborts cleanly when preparation fails', async () => {
     const { deps } = setup()
     const order: string[] = []
@@ -118,8 +158,16 @@ describe('ProfileSessionService', () => {
       save: vi.fn(async () => order.push('credentials')),
       clear: vi.fn()
     }
-    deps.prepareAuthenticatedUserData.mockResolvedValue(async () => {
-      order.push('claim')
+    deps.prepareAuthenticatedUserData.mockResolvedValue({
+      apply: async () => {
+        order.push('claim')
+      },
+      commit: async () => {
+        order.push('claim-committed')
+      }
+    })
+    deps.logoutIntent.complete.mockImplementation(async () => {
+      order.push('logout-intent-completed')
     })
     deps.credentialStoreFor.mockReturnValue(targetStore)
     deps.registry.updateAuthorizationContext.mockImplementation(async () => {
@@ -130,6 +178,7 @@ describe('ProfileSessionService', () => {
       order.push('teardown')
       await transition.afterTeardown()
       order.push('switch')
+      await transition.afterCommit?.()
       return { kind: 'relaunching' }
     })
     const authentication = {
@@ -145,7 +194,15 @@ describe('ProfileSessionService', () => {
 
     await new ProfileSessionService(deps).completeAuthentication(authentication as never)
 
-    expect(order).toEqual(['teardown', 'claim', 'credentials', 'authorization', 'switch'])
+    expect(order).toEqual([
+      'teardown',
+      'claim',
+      'credentials',
+      'authorization',
+      'switch',
+      'logout-intent-completed',
+      'claim-committed'
+    ])
 
     deps.prepareAuthenticatedUserData.mockRejectedValueOnce(new Error('profile claim cancelled'))
     targetStore.save.mockClear()

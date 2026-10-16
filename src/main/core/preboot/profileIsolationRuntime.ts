@@ -4,6 +4,7 @@ import path from 'node:path'
 
 // import { app, session } from 'electron'
 import { app } from 'electron'
+import lockfile from 'proper-lockfile'
 
 import { application } from '@application'
 import { CHERRY_HOME } from '@main/core/paths/constants'
@@ -27,8 +28,26 @@ import { bootConfigService } from '@main/data/bootConfig'
 import { OrgCredentialStore } from '@main/enterprise/OrgCredentialStore'
 import { createStartupCurrentUserTransport, type ElectronSessionLike } from '@main/enterprise/orgCurrentUserTransport'
 
-import { applyProfileIsolationPaths, lockProfileDataRoot, resolveProfileDataRoot } from './profileIsolationPreboot'
+import {
+  applyProfileIsolationPaths,
+  lockProfileDataRoot,
+  lockProfileInstance,
+  resolveProfileDataRoot
+} from './profileIsolationPreboot'
 import { getNormalizedExecutablePath } from './userDataLocation'
+
+let lockedDataRoot: string | undefined
+
+function acquireDataRootLock(instanceRoot: string): boolean {
+  try {
+    lockfile.lockSync(instanceRoot, { realpath: false, retries: 0 })
+    lockedDataRoot = instanceRoot
+    return true
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ELOCKED') return false
+    throw error
+  }
+}
 
 export function shouldUseProfileIsolation(): boolean {
   return isProfileIsolationEnabled({
@@ -43,8 +62,12 @@ function electronPrebootApi() {
     setPath: (name: 'userData' | 'sessionData' | 'crashDumps' | 'temp', value: string) => app.setPath(name, value),
     setAppLogsPath: (value: string) => app.setAppLogsPath(value),
     mkdirSync: (value: string, options?: { recursive?: boolean }) => fs.mkdirSync(value, options),
+    acquireDataRootLock,
     requestSingleInstanceLock: () => app.requestSingleInstanceLock(),
-    freezePathRegistry: () => application.initPathRegistry()
+    // Freezing the path registry now rebuilds the runtime in place (no separate
+    // initPathRegistry) so the same call serves cold start and a same-process
+    // business rebuild without double-initializing the registry.
+    freezePathRegistry: () => application.prepareProfileRuntime()
   }
 }
 
@@ -53,13 +76,20 @@ export function resolveCurrentProfileDataRoot(legacyRoot: string): string {
 }
 
 export function lockCurrentProfileDataRoot(dataRoot: string): boolean {
-  return lockProfileDataRoot(dataRoot, electronPrebootApi())
+  const locked = lockProfileDataRoot(dataRoot, electronPrebootApi())
+  if (locked) {
+    app.once('will-quit', () => {
+      if (lockedDataRoot) lockfile.unlockSync(lockedDataRoot, { realpath: false })
+      lockedDataRoot = undefined
+    })
+  }
+  return locked
 }
 
 export async function initializeLockedProfileIsolation(
   legacyRoot: string,
   dataRoot: string
-): Promise<ProfileLaunchContext> {
+): Promise<ProfileLaunchContext | undefined> {
   const coordinator = new ProfilePrebootCoordinator({
     dataRoot,
     legacyRoot,
@@ -71,7 +101,9 @@ export async function initializeLockedProfileIsolation(
     }
   })
   const context = await coordinator.initialize()
-  applyProfileIsolationPaths(context, electronPrebootApi())
+  const electron = electronPrebootApi()
+  applyProfileIsolationPaths(context, electron)
+  if (!lockProfileInstance(electron)) return undefined
   ;(await import('@logger')).loggerService.rebind(path.join(context.profileRoot, 'logs'))
   return context
 }

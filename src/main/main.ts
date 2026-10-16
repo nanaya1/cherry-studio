@@ -13,37 +13,25 @@
 
 import '@main/data/bootConfig'
 import { application } from '@application'
-import { getServiceListForProfileMode, serviceList } from '@main/core/application/serviceRegistry'
 // Preboot phase — order matters. See core/preboot/README.md.
-import { runBackupRestoreGate } from '@main/core/preboot/backupRestoreGate'
 import { configureChromiumFlags } from '@main/core/preboot/chromiumFlags'
 import { initCrashTelemetry } from '@main/core/preboot/crashTelemetry'
 import {
   initializeLockedProfileIsolation,
   lockCurrentProfileDataRoot,
-  markProfileBootSuccessful,
-  migrateProfileSensitiveData,
   resolveCurrentProfileDataRoot,
-  shouldUseProfileIsolation,
-  verifyBusinessCandidate
+  shouldUseProfileIsolation
 } from '@main/core/preboot/profileIsolationRuntime'
 import { requireSingleInstance } from '@main/core/preboot/singleInstance'
 import { resolveUserDataLocation } from '@main/core/preboot/userDataLocation'
-import { runV2MigrationGate } from '@main/core/preboot/v2MigrationGate'
-import {
-  createProfileBootstrapWindow,
-  setProfileLaunchContext,
-  profileBusinessAccessGate,
-  type ProfileLaunchContext
-} from '@main/core/profiles'
+import { createProfileBootstrapWindow, setProfileLaunchContext, type ProfileLaunchContext } from '@main/core/profiles'
+// eslint-disable-next-line barrel/closed -- 启动模块不能经 profiles barrel 提前加载服务注册表。
+import { startBusinessRuntime } from '@main/core/profiles/businessStartup'
 import { MINI_APP_SCHEME_DECLARATION } from '@main/features/miniApp/runtime/protocol'
-import { runDataReset } from '@main/services/dataReset'
 import { runDataRootRelocation } from '@main/services/dataRootRelocation'
 import { CHERRY_MEDIA_SCHEME_DECLARATION } from '@main/services/mediaProtocol'
 import { runProfileDataResetPreboot } from '@main/services/profileDataReset'
 import { initSentry } from '@main/services/sentry'
-import { runUserDataRelocation } from '@main/services/userDataRelocation'
-import { getApplicationId } from '@main/utils/appEdition'
 
 const profileIsolationEnabled = shouldUseProfileIsolation()
 let profileLaunchContext: ProfileLaunchContext | undefined
@@ -58,13 +46,9 @@ protocol.registerSchemesAsPrivileged([CHERRY_MEDIA_SCHEME_DECLARATION, MINI_APP_
 // Legacy path-registry freeze retained for launches outside profile isolation.
 if (!profileIsolationEnabled) application.initPathRegistry()
 
-import { electronApp } from '@electron-toolkit/utils'
 import { app, protocol } from 'electron'
 
 import { loggerService } from '@logger'
-
-import { registerIpc } from './ipc'
-import { versionService } from './services/VersionService'
 
 const logger = loggerService.withContext('MainEntry')
 
@@ -107,16 +91,7 @@ const startApp = async () => {
     initCrashTelemetry()
     initSentry()
     await app.whenReady()
-    const verification = await verifyBusinessCandidate(profileLaunchContext)
-    if (verification.kind !== 'verified') {
-      logger.warn('business candidate failed startup verification; routing to recovery window', {
-        reason: verification.reason
-      })
-      setProfileLaunchContext(verification.failureContext)
-      createProfileBootstrapWindow(verification.failureContext)
-      return
-    }
-    profileBusinessAccessGate.recordVerificationSuccess()
+    // 在线校验与业务服务启动统一由 startBusinessRuntime 执行。
   }
 
   // MEA:profile-online-login Profile launches configure Electron before online verification waits for ready.
@@ -126,53 +101,7 @@ const startApp = async () => {
     initSentry()
   }
 
-  // Import legacy device-level sensitive data before reset, backup, migration,
-  // or services open the selected profile. Authenticated profiles never auto-import.
-  if (profileLaunchContext) await migrateProfileSensitiveData(profileLaunchContext)
-
-  // Reset before backup, migration, or services open user data.
-  runDataReset()
-
-  // Legacy userData relocation is retained for launches outside profile-aware
-  // dataRoot relocation and for existing pending requests.
-  // userData relocation: a pending/failed relocation makes this a dedicated
-  // relocation launch (execute or explain, then relaunch) before any service
-  // opens files under the source tree. See services/userDataRelocation/README.md.
-  const relocationResult = await runUserDataRelocation()
-  if (relocationResult === 'handled') return
-
-  // Backup-restore gate: swap in a staged restored DB (if any) before the v2
-  // migration gate reads the DB. Never throws; on any failure the old DB
-  // stays live and the app starts normally.
-  await runBackupRestoreGate(profileLaunchContext)
-
-  // 'handled' = migration window took over OR fatal error already quit the app.
-  const migrationResult = await runV2MigrationGate()
-  if (migrationResult === 'handled') return
-
-  // Set the Windows AppUserModelID — the identity Windows uses to attribute this
-  // app's notifications, taskbar icon grouping, and Jump Lists (no-op on macOS/Linux).
-  // Must run before any window is created or notification fires, hence after the
-  // migration gate returns and before lifecycle bootstrap.
-  electronApp.setAppUserModelId(getApplicationId())
-
-  // Start lifecycle (BeforeReady runs parallel with app.whenReady)
-  application.registerAll(profileLaunchContext ? getServiceListForProfileMode(profileLaunchContext.mode) : serviceList)
-  const bootstrapPromise = application.bootstrap()
-
-  await app.whenReady()
-  // Wait for lifecycle bootstrap (all core services are now ready)
-  const bootstrapSuccessful = await bootstrapPromise
-  if (!bootstrapSuccessful) return
-
-  // Record current version for upgrade-path tracking
-  versionService.recordCurrentVersion()
-
-  // Legacy monolithic IPC registration — causes timing coupling between
-  // bootstrap and IPC readiness. TODO(v2): decompose into per-service
-  // ipcHandle/ipcOn inside lifecycle services.
-  await registerIpc()
-  if (profileLaunchContext) await markProfileBootSuccessful(profileLaunchContext)
+  await startBusinessRuntime(profileLaunchContext)
 }
 
 // Top-level safety net: bootstrap() handles known fatal errors internally
