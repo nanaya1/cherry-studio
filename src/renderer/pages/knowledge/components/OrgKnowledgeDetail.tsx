@@ -1,25 +1,66 @@
-import { ArrowLeft, BookOpen, Check, CircleAlert, Eye, FileText, LoaderCircle } from 'lucide-react'
-import { useCallback, useState } from 'react'
+// import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, ChevronDown } from 'lucide-react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-// import { Badge } from '@cherrystudio/ui'
-import { Button, Input, PageHeader } from '@cherrystudio/ui'
-import { cn } from '@cherrystudio/ui/lib/utils'
+import { Button, Input } from '@cherrystudio/ui'
 import { loggerService } from '@logger'
-import { CommandContextMenu, type CommandContextMenuExtraItem } from '@renderer/components/command'
+import { CommandPopupMenu } from '@renderer/components/command'
 import { FilePreviewLayout, PdfFilePreview } from '@renderer/components/FilePreview'
 import { ipcApi } from '@renderer/ipc'
-import { formatRelativeTime } from '@renderer/utils/time'
-import type { OrgKnowledgeBase, OrgKnowledgeSearchChunk } from '@shared/data/types/enterpriseKnowledge'
+import type {
+  OrgKnowledgeBase,
+  OrgKnowledgeItem,
+  OrgKnowledgeSearchChunk
+} from '@shared/data/types/enterpriseKnowledge'
+import type { KnowledgeItem, KnowledgeItemOf } from '@shared/data/types/knowledge'
+// import { AbsoluteFilePathSchema } from '@shared/types/file'
+import type { KnowledgeItemType } from '@shared/data/types/knowledge'
 
 import { useOrgKnowledgeResource } from '../hooks/useOrgKnowledgeResource'
-import { KNOWLEDGE_ITEM_ROW_GRID } from '../panels/dataSource/styles'
-import { dataSourceTypeDisplayConfig } from '../panels/dataSource/utils/models'
+// 添加菜单直接复用 DataSourcePanel 的公共入口。
+import DataSourcePanel from '../panels/dataSource/DataSourcePanel'
 import { previewText } from '../utils/sharing'
-import KnowledgeRowActionsMenu from './KnowledgeRowActionsMenu'
+import { KnowledgeItemSourceDialog } from './AddKnowledgeItemDialog'
+import DetailHeader from './DetailHeader'
 import KnowledgeSharingPanel from './KnowledgeSharingPanel'
+import ShareKnowledgeDialog from './ShareKnowledgeDialog'
+
+// 仅两个入口文件接入内存预览，直接按需加载未由 barrel 导出的 Office 组件。
+// eslint-disable-next-line barrel/closed
+const WordFilePreview = lazy(() => import('@renderer/components/FilePreview/plugins/word/WordFilePreview'))
+const SpreadsheetFilePreview = lazy(
+  // eslint-disable-next-line barrel/closed
+  () => import('@renderer/components/FilePreview/plugins/spreadsheet/SpreadsheetFilePreview')
+)
+const PowerPointFilePreview = lazy(
+  // eslint-disable-next-line barrel/closed
+  () => import('@renderer/components/FilePreview/plugins/powerpoint/PowerPointFilePreview')
+)
 
 const logger = loggerService.withContext('OrgKnowledgeDetail')
+
+const toReadOnlyKnowledgeItem = (item: OrgKnowledgeItem): KnowledgeItem =>
+  ({
+    id: item.id,
+    baseId: item.baseId,
+    type: item.type === 'directory' ? 'directory' : item.type === 'url' ? 'url' : 'file',
+    status: (item.status === 'ready' || item.status === 'completed'
+      ? 'completed'
+      : item.status === 'failed'
+        ? 'failed'
+        : 'processing') as KnowledgeItem['status'],
+    error: null,
+    groupId: item.parentId,
+    createdAt: item.createdAt || new Date(0).toISOString(),
+    updatedAt: item.updatedAt || new Date(0).toISOString(),
+    data:
+      item.type === 'url'
+        ? { source: item.title, url: item.title }
+        : item.type === 'directory'
+          ? { source: item.title }
+          : { source: item.title, relativePath: item.title }
+  }) as KnowledgeItem
 
 type DocumentTarget = {
   itemId?: string
@@ -46,7 +87,10 @@ function DocumentView({ baseId, target, onBack }: { baseId: string; target: Docu
       let fileId = target.fileId
       let nextCursor: string | null = null
       if (!fileId && !target.itemId) {
+        const seen = new Set<string | null>()
         do {
+          if (seen.has(nextCursor)) throw new Error(t('common.error'))
+          seen.add(nextCursor)
           const page = await ipcApi.request('enterprise.knowledge.items', { baseId, cursor: nextCursor })
           fileId = page.items.find((item) => item.documentId === target.documentId)?.fileId ?? undefined
           nextCursor = page.nextCursor
@@ -72,7 +116,7 @@ function DocumentView({ baseId, target, onBack }: { baseId: string; target: Docu
         chunkId: target.chunkId
       })
     }
-  }, [baseId, target, mode, cursor])
+  }, [baseId, target, mode, cursor, t])
   const { data, loading, error, refresh } = useOrgKnowledgeResource(load)
   return (
     <section
@@ -180,6 +224,25 @@ function DocumentView({ baseId, target, onBack }: { baseId: string; target: Docu
                   referrerPolicy="no-referrer"
                   src={data.value.url ?? `data:${data.value.mimeType};base64,${data.value.base64}`}
                 />
+              ) : data.value.kind === 'inline' &&
+                data.value.base64 &&
+                data.value.mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ? (
+                // MEA:enterprise-knowledge-page 原文以内存输入交给现有 Office 查看器。
+                <Suspense fallback={<p role="status">{t('common.loading')}</p>}>
+                  <WordFilePreview fileName={data.value.fileName} base64={data.value.base64} />
+                </Suspense>
+              ) : data.value.kind === 'inline' &&
+                data.value.base64 &&
+                data.value.mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ? (
+                <Suspense fallback={<p role="status">{t('common.loading')}</p>}>
+                  <SpreadsheetFilePreview fileName={data.value.fileName} base64={data.value.base64} />
+                </Suspense>
+              ) : data.value.kind === 'inline' &&
+                data.value.base64 &&
+                data.value.mimeType === 'application/vnd.openxmlformats-officedocument.presentationml.presentation' ? (
+                <Suspense fallback={<p role="status">{t('common.loading')}</p>}>
+                  <PowerPointFilePreview fileName={data.value.fileName} base64={data.value.base64} />
+                </Suspense>
               ) : previewText(data.value) === null ? (
                 <p role="status" className="text-muted-foreground">
                   {t('knowledge.org.preview_unavailable')}
@@ -272,20 +335,212 @@ function SearchResults({
   )
 }
 
-export default function OrgKnowledgeDetail({ base, owned }: { base: OrgKnowledgeBase; owned: boolean }) {
-  const {
-    t,
-    i18n: { language }
-  } = useTranslation()
+type OrgKnowledgeDetailProps = {
+  base: OrgKnowledgeBase
+  owned: boolean
+  onUnshared?: () => void
+  onShared?: () => void
+}
+
+// MEA:enterprise-knowledge-page 详情自身限定状态归属，直接 rerender 也隔离目录、预览及操作。
+export default function OrgKnowledgeDetail(props: OrgKnowledgeDetailProps) {
+  return <OrgKnowledgeDetailSession key={props.base.id} {...props} />
+}
+
+// export default function OrgKnowledgeDetail({
+function OrgKnowledgeDetailSession({
+  base,
+  owned,
+  onUnshared,
+  onShared
+}: {
+  base: OrgKnowledgeBase
+  owned: boolean
+  onUnshared?: () => void
+  onShared?: () => void
+}) {
+  const activeSession = useRef(true)
+  useEffect(() => {
+    activeSession.current = true
+    return () => {
+      activeSession.current = false
+    }
+  }, [])
+  // const canCreateShare = owned && Boolean(base.localBaseId) && base.shareCompleted === true
+  const canCreateShare = owned
+  // const [inviting, setInviting] = useState(false)
+  const [sharing, setSharing] = useState<false | 'code' | 'people'>(false)
+  const [addSource, setAddSource] = useState<KnowledgeItemType | null>(null)
+  const [addFilesInput, setAddFiles] = useState<File[]>()
+  const { t } = useTranslation()
   // const [tab, setTab] = useState<'documents' | 'search' | 'members'>('documents')
-  const [tab] = useState<'documents' | 'search' | 'members'>('documents')
+  // const [tab] = useState<'documents' | 'search' | 'members'>('documents')
+  const [tab, setTab] = useState<'documents' | 'search' | 'members'>('documents')
   const [cursor, setCursor] = useState<string | null>(null)
+  const [directoryStack, setDirectoryStack] = useState<OrgKnowledgeItem[]>([])
+  const [directoryItems, setDirectoryItems] = useState<OrgKnowledgeItem[] | null>(null)
+  const [directoryError, setDirectoryError] = useState<string | null>(null)
+  const directoryRequest = useRef(0)
+  useEffect(
+    () => () => {
+      directoryRequest.current += 1
+    },
+    [base.id]
+  )
   const [target, setTarget] = useState<DocumentTarget | null>(null)
+  const [addedBaseId, setAddedBaseId] = useState<string | null>(null)
+  const [additionSubmitted, setAdditionSubmitted] = useState(false)
+  const [additionMessage, setAdditionMessage] = useState<string | null>(null)
+  const [adding, setAdding] = useState(false)
+  const [addError, setAddError] = useState<string | null>(null)
+  // const [uploadOriginal, setUploadOriginal] = useState(true)
+  const addFiles = async () => {
+    setAdding(true)
+    setAddError(null)
+    try {
+      if (!addedBaseId) {
+        /* 原单文件选择入口由共用资料添加弹窗承接。
+        const files = await window.api.file.select({ properties: ['openFile', 'multiSelections'] })
+        // if (!files?.length) return
+        if (!activeSession.current || !files?.length) return
+        const prepared = await ipcApi.request('enterprise.knowledge.prepare_added_files', { baseId: base.id })
+        if (!activeSession.current) return
+        setAddedBaseId(prepared.localBaseId)
+        await ipcApi.request('knowledge.add_items', {
+          baseId: prepared.localBaseId,
+          items: files.map((file) => ({
+            type: 'file' as const,
+            data: { source: file.origin_name || file.name, path: AbsoluteFilePathSchema.parse(file.path) }
+          }))
+        })
+        */
+        const prepared = await ipcApi.request('enterprise.knowledge.prepare_added_files', { baseId: base.id })
+        if (!activeSession.current) return
+        setAddedBaseId(prepared.localBaseId)
+      } else {
+        const result = await ipcApi.request('enterprise.knowledge.upload_added_files', {
+          baseId: base.id,
+          localBaseId: addedBaseId
+          // uploadOriginal：后续追加由主进程读取服务端策略。
+        })
+        if (result.completion !== 'completed') throw new Error(t('knowledge.org.upload_incomplete'))
+        setAdditionMessage(null)
+        setAddedBaseId(null)
+        await refresh()
+      }
+    } catch (cause) {
+      setAddError(cause instanceof Error ? cause.message : String(cause))
+    } finally {
+      setAdding(false)
+    }
+  }
+  const currentDirectory = directoryStack[directoryStack.length - 1] ?? null
+  const currentParentId = currentDirectory?.id ?? null
   const load = useCallback(
     () => ipcApi.request('enterprise.knowledge.items', { baseId: base.id, cursor }),
     [base.id, cursor]
   )
-  const { data, loading, error, refresh } = useOrgKnowledgeResource(load)
+  const { data, loading, error: itemsError, refresh } = useOrgKnowledgeResource(load)
+  useEffect(() => {
+    if (!addedBaseId || !additionSubmitted) return
+    let active = true
+    const poll = async () => {
+      try {
+        const progress = await ipcApi.request('enterprise.knowledge.upload_status', { baseId: addedBaseId })
+        if (!active || !progress) return
+        setAdditionMessage(
+          t(
+            progress.phase === 'counting'
+              ? 'knowledge.org.added_local_notice'
+              : `knowledge.org.upload_${progress.phase}`
+          )
+        )
+        if (progress.phase === 'paused') {
+          setAddError(progress.error)
+          setAdditionSubmitted(false)
+        } else if (progress.phase === 'completed') {
+          setAdditionMessage(null)
+          setAddError(null)
+          setAdditionSubmitted(false)
+          setAddedBaseId(null)
+          await refresh()
+        }
+      } catch (cause) {
+        if (active) setAddError(cause instanceof Error ? cause.message : String(cause))
+      }
+    }
+    const timer = setInterval(() => void poll(), 1500)
+    return () => {
+      active = false
+      clearInterval(timer)
+    }
+  }, [addedBaseId, additionSubmitted, refresh, t])
+  const currentPageItems = data?.items ?? []
+  const visibleItems = useMemo(
+    () => (directoryItems ?? currentPageItems).filter((item) => item.parentId === currentParentId),
+    [currentPageItems, currentParentId, directoryItems]
+  )
+  const readOnlyItems = useMemo(() => visibleItems.map(toReadOnlyKnowledgeItem), [visibleItems])
+  const enterDirectory = useCallback(
+    async (item: OrgKnowledgeItem) => {
+      const request = ++directoryRequest.current
+      setTarget(null)
+      setCursor(null)
+      setDirectoryError(null)
+      setDirectoryItems(null)
+      setDirectoryStack((previous) => [...previous, item])
+      try {
+        const items: OrgKnowledgeItem[] = []
+        const seen = new Set<string | null>()
+        let nextCursor: string | null = null
+        do {
+          if (seen.has(nextCursor)) throw new Error(t('common.error'))
+          seen.add(nextCursor)
+          const page = await ipcApi.request('enterprise.knowledge.items', { baseId: base.id, cursor: nextCursor })
+          if (request !== directoryRequest.current) return
+          items.push(...page.items)
+          nextCursor = page.nextCursor
+        } while (nextCursor)
+        setDirectoryItems(items)
+      } catch (cause) {
+        if (request !== directoryRequest.current) return
+        setDirectoryError(cause instanceof Error ? cause.message : String(cause))
+      }
+    },
+    [base.id, t]
+  )
+  const navigateUp = useCallback(() => {
+    directoryRequest.current += 1
+    setDirectoryError(null)
+    setTarget(null)
+    setCursor(null)
+    setDirectoryStack((previous) => {
+      const next = previous.slice(0, -1)
+      if (next.length === 0) setDirectoryItems(null)
+      return next
+    })
+  }, [])
+  const openRemoteItem = useCallback(
+    (item: KnowledgeItem, mode?: 'preview' | 'chunks') => {
+      const remote = visibleItems.find((entry) => entry.id === item.id)
+      if (!remote) return
+      if (remote.type === 'directory') {
+        void enterDirectory(remote)
+        return
+      }
+      if (remote.documentId) {
+        setTarget({
+          itemId: remote.id,
+          documentId: remote.documentId,
+          fileId: remote.fileId ?? undefined,
+          title: remote.title,
+          mode: mode ?? (remote.type === 'file' && remote.hasOriginalFile ? 'preview' : 'chunks')
+        })
+      }
+    },
+    [enterDirectory, visibleItems]
+  )
+  const previewRemoteItem = useCallback((item: KnowledgeItem) => openRemoteItem(item, 'preview'), [openRemoteItem])
   if (target)
     return (
       <main data-ui="knowledge.content" className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
@@ -299,13 +554,90 @@ export default function OrgKnowledgeDetail({ base, owned }: { base: OrgKnowledge
     )
   return (
     <main data-ui="knowledge.content" className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-      <PageHeader
-        titleClassName="text-2xl leading-8 font-semibold tracking-tight"
-        className="mt-0 mb-0 h-auto min-h-20 flex-wrap gap-3 border-b border-border px-6 py-5"
-        title={base.name}
+      <DetailHeader
+        base={base}
         // action={<Badge variant="outline">{t('knowledge.org.readonly')}</Badge>}
+        actions={
+          owned ? (
+            <>
+              <Button variant="ghost" onClick={() => setTab(tab === 'members' ? 'documents' : 'members')}>
+                {t(tab === 'members' ? 'knowledge.org.documents' : 'knowledge.org.shares')}
+              </Button>
+              {/* 原独立邀请按钮由与本地一致的分享菜单承接。 */}
+              {canCreateShare ? (
+                <CommandPopupMenu
+                  location="webcontents.context"
+                  align="end"
+                  side="bottom"
+                  extraItems={[
+                    {
+                      type: 'item',
+                      id: 'share-code',
+                      label: t('knowledge.org.share_code'),
+                      onSelect: () => setSharing('code')
+                    },
+                    {
+                      type: 'item',
+                      id: 'invite-people',
+                      label: t('knowledge.org.invite_people'),
+                      onSelect: () => setSharing('people')
+                    }
+                  ]}>
+                  <Button variant="ghost" size="sm">
+                    {t('knowledge.org.share')}
+                    <ChevronDown className="size-3.5" />
+                  </Button>
+                </CommandPopupMenu>
+              ) : null}
+            </>
+          ) : undefined
+        }
       />
-      <div className="min-h-0 flex-1 overflow-auto">
+      {/* 原邀请入口依赖 base.localBaseId；已有云端库直接使用云端身份。 */}
+      {sharing && canCreateShare ? (
+        <ShareKnowledgeDialog
+          baseId={base.id}
+          name={base.name}
+          remote
+          mode={sharing}
+          onClose={() => setSharing(false)}
+          onShared={() => onShared?.()}
+        />
+      ) : null}
+      {addSource && addedBaseId && owned ? (
+        <KnowledgeItemSourceDialog
+          open
+          selectedBaseId={addedBaseId}
+          pendingAddSource={addSource}
+          pendingAddFiles={addFilesInput}
+          onAdded={() => {
+            setAdditionSubmitted(true)
+            setAdditionMessage(t('knowledge.org.added_local_notice'))
+            setAddError(null)
+          }}
+          onOpenChange={(open) => {
+            if (!open) setAddSource(null)
+          }}
+        />
+      ) : null}
+      {owned ? (
+        <div className="px-6 py-2 text-sm">
+          {/* 首次共享已确定策略，追加不再允许选择。
+          <label className="flex items-start gap-2">
+            <Checkbox
+              checked={uploadOriginal}
+              disabled={adding || !!addedBaseId}
+              onCheckedChange={(checked) => setUploadOriginal(checked === true)}
+            />
+            {t('knowledge.org.upload_original_notice')}
+          </label>
+          */}
+          {/* {addedBaseId ? <p role="status">{t('knowledge.org.added_local_notice')}</p> : null} */}
+          {additionMessage ? <p role="status">{additionMessage}</p> : null}
+          {addError ? <p role="alert">{addError}</p> : null}
+        </div>
+      ) : null}
+      <div className="min-h-0 flex-1 overflow-hidden px-3 pt-3 pb-4">
         {/* 原说明与页签保留，详情直接展示文件列表。
         <div className="space-y-1 px-6 py-4">
           <p className="text-sm text-muted-foreground">{base.description}</p>
@@ -344,195 +676,172 @@ export default function OrgKnowledgeDetail({ base, owned }: { base: OrgKnowledge
         </div>
         */}
         {tab === 'members' && owned ? (
-          <KnowledgeSharingPanel key={base.id} baseId={base.id} name={base.name} />
+          <KnowledgeSharingPanel
+            key={base.id}
+            baseId={base.id}
+            name={base.name}
+            localBaseId={base.localBaseId}
+            canCreateShare={canCreateShare}
+            onUnshared={onUnshared}
+          />
         ) : tab === 'search' ? (
           <SearchPanel baseId={base.id} onOpen={setTarget} />
         ) : (
-          <section className="space-y-3 px-6 pt-3 pb-4" aria-label={t('knowledge.org.documents')}>
-            {loading ? (
-              <p role="status">{t('common.loading')}</p>
-            ) : error ? (
-              <div role="alert">
-                <p className="text-error">{error}</p>
+          <>
+            {itemsError ? (
+              <div role="alert" className="px-3 pb-2 text-error text-sm">
+                <p>{itemsError}</p>
                 <Button onClick={() => void refresh()}>{t('knowledge.org.refresh')}</Button>
               </div>
-            ) : (
-              <>
-                {data?.items.length === 0 ? (
-                  <p className="text-muted-foreground">{t('knowledge.org.empty_documents')}</p>
-                ) : null}
-                {/* 原纵向文件列表保留，改用与本地一致的分列表格。
-                {data?.items.map((item) => (
-                  <div key={item.id} className="flex flex-wrap items-center gap-3 border-b border-border py-3">
-                    <div className="min-w-0 flex-1">
-                      <p className="break-words">{item.title}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {item.type} · {item.status} · {item.updatedAt}
-                      </p>
-                    </div>
-                    <Button
-                      variant="outline"
-                      disabled={!item.documentId}
-                      onClick={() => {
-                        if (item.documentId)
-                          setTarget({
-                            itemId: item.id,
-                            documentId: item.documentId,
-                            fileId: item.fileId ?? undefined,
-                            title: item.title
-                          })
-                      }}>
-                      {t('knowledge.org.read')}
-                    </Button>
-                  </div>
-                ))}
-                */}
-                {data?.items.length ? (
-                  <div role="grid" aria-label={t('knowledge.data_source.table.aria_label')} className="-mx-3">
-                    <div role="row" className={cn(KNOWLEDGE_ITEM_ROW_GRID, 'mb-2 h-11 border-b border-border px-2.5')}>
-                      <div role="columnheader" aria-label={t('knowledge.org.readonly')} />
-                      {(['name', 'type', 'status', 'updated_at', 'actions'] as const).map((column) => (
-                        <div
-                          key={column}
-                          role="columnheader"
-                          className="min-w-0 text-xs font-medium text-foreground-tertiary">
-                          {column === 'actions' ? (
-                            <span className="sr-only">{t('knowledge.data_source.table.columns.actions')}</span>
-                          ) : (
-                            {
-                              name: t('knowledge.data_source.table.columns.name'),
-                              type: t('knowledge.data_source.table.columns.type'),
-                              status: t('knowledge.data_source.table.columns.status'),
-                              updated_at: t('knowledge.data_source.table.columns.updated_at')
-                            }[column]
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                    <div role="rowgroup" className="space-y-1.5">
-                      {data.items.map((item) => {
-                        const typeConfig = Object.entries(dataSourceTypeDisplayConfig).find(
-                          ([type]) => type === item.type
-                        )?.[1]
-                        const Icon = typeConfig?.icon.icon ?? FileText
-                        const ready = item.status === 'ready' || item.status === 'completed'
-                        const failed = item.status === 'failed'
-                        const StatusIcon = ready ? Check : failed ? CircleAlert : LoaderCircle
-                        const openDocument = (mode: 'preview' | 'chunks' = 'preview') => {
-                          if (item.documentId)
-                            setTarget({
-                              itemId: item.id,
-                              documentId: item.documentId,
-                              fileId: item.fileId ?? undefined,
-                              title: item.title,
-                              mode
-                            })
-                        }
-                        const actions: CommandContextMenuExtraItem[] = [
-                          {
-                            type: 'item',
-                            id: 'preview-source',
-                            label: t('knowledge.data_source.actions.preview_source'),
-                            icon: <BookOpen className="size-3.5" />,
-                            enabled: !!item.documentId,
-                            onSelect: () => openDocument('preview')
-                          }
-                        ]
-                        if (ready && item.documentId)
-                          actions.push({
-                            type: 'item',
-                            id: 'view-chunks',
-                            label: t('knowledge.data_source.actions.view_chunks'),
-                            icon: <Eye className="size-3.5" />,
-                            onSelect: () => openDocument('chunks')
-                          })
-                        return (
-                          <CommandContextMenu key={item.id} location="webcontents.context" extraItems={actions}>
-                            <div
-                              key={item.id}
-                              role="row"
-                              tabIndex={item.documentId ? 0 : undefined}
-                              aria-label={t('knowledge.data_source.table.open_row', { title: item.title })}
-                              onClick={() => openDocument()}
-                              onKeyDown={(event) => {
-                                if (
-                                  event.target === event.currentTarget &&
-                                  (event.key === 'Enter' || event.key === ' ')
-                                ) {
-                                  event.preventDefault()
-                                  openDocument()
-                                }
-                              }}
-                              className={cn(
-                                KNOWLEDGE_ITEM_ROW_GRID,
-                                'group/row min-h-11 rounded-md px-2.5 py-1.5 transition-colors hover:bg-muted',
-                                item.documentId && 'cursor-pointer focus-visible:bg-muted focus-visible:outline-none'
-                              )}>
-                              <div role="gridcell" />
-                              <div role="gridcell" className="flex min-w-0 items-center gap-2">
-                                <span className="flex size-6 shrink-0 items-center justify-center rounded bg-background-subtle">
-                                  <Icon className={cn('size-3.5', typeConfig?.icon.iconClassName)} />
-                                </span>
-                                <span className="min-w-0 flex-1 truncate text-sm text-foreground" title={item.title}>
-                                  {item.title}
-                                </span>
-                              </div>
-                              <div role="gridcell" className="truncate text-xs text-muted-foreground">
-                                {typeConfig ? t(typeConfig.filterLabelKey) : item.type}
-                              </div>
-                              <div role="gridcell">
-                                <span
-                                  className={cn(
-                                    'inline-flex items-center gap-1 text-xs',
-                                    ready ? 'text-success' : failed ? 'text-error' : 'text-info'
-                                  )}>
-                                  <StatusIcon
-                                    className={cn(
-                                      'size-3',
-                                      !ready && !failed && 'animate-spin motion-reduce:animate-none'
-                                    )}
-                                  />
-                                  {ready
-                                    ? t('knowledge.data_source.status.ready')
-                                    : failed
-                                      ? t('knowledge.data_source.status.error')
-                                      : item.status}
-                                </span>
-                              </div>
-                              <div
-                                role="gridcell"
-                                className="truncate text-xs text-muted-foreground"
-                                title={item.updatedAt}>
-                                {Number.isFinite(Date.parse(item.updatedAt))
-                                  ? formatRelativeTime(item.updatedAt, language)
-                                  : '—'}
-                              </div>
-                              <div role="gridcell">
-                                {/* 原单一阅读入口改为与本地相同的操作菜单。
-                              <Button variant="ghost" onClick={() => openDocument()}>{t('knowledge.org.read')}</Button>
-                              */}
-                                <KnowledgeRowActionsMenu items={actions} />
-                              </div>
-                            </div>
-                          </CommandContextMenu>
-                        )
-                      })}
-                    </div>
-                  </div>
-                ) : null}
-                {cursor ? (
-                  <Button variant="outline" onClick={() => setCursor(null)}>
-                    {t('knowledge.org.first_page')}
-                  </Button>
-                ) : null}
-                {data?.nextCursor ? (
-                  <Button variant="outline" onClick={() => setCursor(data.nextCursor)}>
+            ) : null}
+            {directoryError ? (
+              <p role="alert" className="px-3 pb-2 text-error text-sm">
+                {directoryError}
+              </p>
+            ) : null}
+            <DataSourcePanel
+              items={readOnlyItems}
+              total={data?.total ?? base.documentCount ?? 0}
+              isLoading={loading}
+              hasMore={Boolean(data?.nextCursor)}
+              isLoadingMore={false}
+              onLoadMore={() => setCursor(data?.nextCursor ?? null)}
+              updatedAt={base.updatedAt ?? ''}
+              // onAdd={() => {}}
+              allowAdd={owned && !adding}
+              onAdd={(source = 'file', files) => {
+                if (adding || !owned) return
+                const open = (localBaseId: string) => {
+                  if (!activeSession.current) return
+                  setAddedBaseId(localBaseId)
+                  setAddSource(source)
+                  setAddFiles(files)
+                }
+                if (addedBaseId) {
+                  open(addedBaseId)
+                  return
+                }
+                setAdding(true)
+                setAddError(null)
+                void ipcApi
+                  .request('enterprise.knowledge.prepare_added_files', { baseId: base.id })
+                  .then((prepared) => open(prepared.localBaseId))
+                  .catch((cause) => {
+                    if (activeSession.current) setAddError(cause instanceof Error ? cause.message : String(cause))
+                  })
+                  .finally(() => {
+                    if (activeSession.current) setAdding(false)
+                  })
+              }}
+              onPreviewFile={() => {}}
+              onActivateItem={(item) => openRemoteItem(item)}
+              onPreviewSource={previewRemoteItem}
+              onItemClick={(itemId) => {
+                const item = readOnlyItems.find((entry) => entry.id === itemId)
+                if (item) openRemoteItem(item, 'chunks')
+              }}
+              onDrillIntoDirectory={(item) => {
+                const remote = visibleItems.find((entry) => entry.id === item.id)
+                if (remote) void enterDirectory(remote)
+              }}
+              currentDirectory={
+                currentDirectory ? (toReadOnlyKnowledgeItem(currentDirectory) as KnowledgeItemOf<'directory'>) : null
+              }
+              onNavigateUp={navigateUp}
+              // onDelete={() => {}}
+              onDelete={async (item) => {
+                const remote = visibleItems.find((entry) => entry.id === item.id)
+                if (!owned || !remote?.fileId) throw new Error(t('common.error'))
+                await ipcApi.request('enterprise.knowledge.delete_file', { baseId: base.id, fileId: remote.fileId })
+                if (!activeSession.current) return
+                if (currentDirectory) {
+                  const request = ++directoryRequest.current
+                  const items: OrgKnowledgeItem[] = []
+                  const seen = new Set<string | null>()
+                  let nextCursor: string | null = null
+                  do {
+                    if (seen.has(nextCursor)) throw new Error(t('common.error'))
+                    seen.add(nextCursor)
+                    const page = await ipcApi.request('enterprise.knowledge.items', {
+                      baseId: base.id,
+                      cursor: nextCursor
+                    })
+                    if (request !== directoryRequest.current || !activeSession.current) return
+                    items.push(...page.items)
+                    nextCursor = page.nextCursor
+                  } while (nextCursor)
+                  setDirectoryItems(items)
+                }
+                await refresh()
+                onShared?.()
+              }}
+              allowDelete={(item) => owned && Boolean(visibleItems.find((entry) => entry.id === item.id)?.fileId)}
+              deleteDescription={t('knowledge.org.delete_file_notice')}
+              onDeleteItems={async (itemIds) => {
+                const selectedFiles = itemIds.map((itemId) => {
+                  const remote = visibleItems.find((entry) => entry.id === itemId)
+                  if (!remote?.fileId) throw new Error(t('common.error'))
+                  return remote.fileId
+                })
+                let firstError: unknown
+                for (const fileId of selectedFiles) {
+                  try {
+                    await ipcApi.request('enterprise.knowledge.delete_file', { baseId: base.id, fileId })
+                  } catch (cause) {
+                    firstError ??= cause
+                  }
+                }
+                if (!activeSession.current) {
+                  if (firstError) throw firstError
+                  return
+                }
+                if (currentDirectory) {
+                  const request = ++directoryRequest.current
+                  const items: OrgKnowledgeItem[] = []
+                  const seen = new Set<string | null>()
+                  let nextCursor: string | null = null
+                  do {
+                    if (seen.has(nextCursor)) throw new Error(t('common.error'))
+                    seen.add(nextCursor)
+                    const page = await ipcApi.request('enterprise.knowledge.items', {
+                      baseId: base.id,
+                      cursor: nextCursor
+                    })
+                    if (request !== directoryRequest.current || !activeSession.current) return
+                    items.push(...page.items)
+                    nextCursor = page.nextCursor
+                  } while (nextCursor)
+                  setDirectoryItems(items)
+                }
+                await refresh()
+                onShared?.()
+                if (firstError) throw firstError
+              }}
+              onReindex={() => {}}
+              onReindexItems={() => {}}
+              readOnly
+              virtualize={false}
+              paginationActions={
+                data?.nextCursor ? (
+                  <Button variant="outline" size="sm" onClick={() => setCursor(data.nextCursor)}>
                     {t('knowledge.org.next_page')}
                   </Button>
-                ) : null}
-              </>
-            )}
-          </section>
+                ) : undefined
+              }
+              toolbarActions={
+                owned && (!currentDirectory || addedBaseId) ? (
+                  <>
+                    {addedBaseId && addError && !additionSubmitted ? (
+                      <Button variant="outline" size="sm" disabled={adding} onClick={() => void addFiles()}>
+                        {t('knowledge.org.upload_continue')}
+                      </Button>
+                    ) : null}
+                    {/* 添加菜单由共用面板提供，继续上传保留独立操作。 */}
+                  </>
+                ) : undefined
+              }
+            />
+          </>
         )}
       </div>
     </main>
