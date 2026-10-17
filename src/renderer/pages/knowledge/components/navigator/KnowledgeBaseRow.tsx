@@ -1,4 +1,5 @@
-import { ArrowRightLeft, FolderPlus, PencilLine, Trash2 } from 'lucide-react'
+// import { ArrowRightLeft, FolderPlus, PencilLine, Trash2 } from 'lucide-react'
+import { ArrowRightLeft, FolderPlus, PencilLine, Share2, Trash2 } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -16,6 +17,7 @@ const KnowledgeBaseRow = ({
   base,
   groups,
   shared,
+  onRequestUnshare,
   selected,
   onSelectBase,
   onMoveBase,
@@ -121,6 +123,17 @@ const KnowledgeBaseRow = ({
       icon: <SidebarShortcutIcon pinned={sidebarPinned} className="size-3.5" />,
       onSelect: () => onToggleSidebar(base)
     })
+    // MEA:enterprise-knowledge-page 列表与右键菜单复用取消分享确认入口。
+    if (shared && onRequestUnshare) {
+      items.push({
+        type: 'item',
+        id: 'unshare',
+        label: t('knowledge.org.unshare'),
+        icon: <Share2 className="size-3.5" />,
+        // destructive: true,
+        onSelect: () => onRequestUnshare(base.id)
+      })
+    }
     items.push({ type: 'separator' })
     items.push({
       type: 'item',
@@ -142,6 +155,8 @@ const KnowledgeBaseRow = ({
     handleRequestDelete,
     onToggleSidebar,
     sidebarPinned,
+    shared,
+    onRequestUnshare,
     t
   ])
 
@@ -150,8 +165,8 @@ const KnowledgeBaseRow = ({
       <CommandContextMenu location="webcontents.context" extraItems={contextMenuItems}>
         <div
           className={cn(
-            'group/row my-1 flex min-h-12 w-full items-center gap-2 rounded-lg px-3 py-2 transition-colors',
-            selected ? 'bg-accent text-foreground ring-1 ring-inset ring-border' : 'hover:bg-muted'
+            'group/row flex h-8 w-full items-center gap-1 rounded-md px-2.5 transition-colors',
+            selected ? 'bg-muted text-foreground' : 'hover:bg-muted'
           )}>
           <Button
             type="button"

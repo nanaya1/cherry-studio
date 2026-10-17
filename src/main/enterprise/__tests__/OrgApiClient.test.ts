@@ -18,6 +18,7 @@ vi.mock('@logger', () => ({
 }))
 
 import { OrgApiClient } from '@main/enterprise/OrgApiClient'
+import { OrgKnowledgePreviewSchema } from '@shared/data/types/enterpriseKnowledge'
 
 const session = (over: Partial<{ accessToken: string }> = {}) => ({
   userId: 'u1',
@@ -112,23 +113,39 @@ describe('OrgApiClient server contract', () => {
       if (kind === 'json') await client['request'](path)
       if (kind === 'multipart') await client.requestMultipart(path, new FormData())
       if (kind === 'text') await client.requestText(path)
-      if (kind === 'bytes') await client.requestBytes(path, 100)
+      if (kind === 'bytes') await client.requestBytes(path)
       const url = new URL(fetchMock.mock.calls[0][0])
       expect(url.searchParams.getAll('scope')).toEqual(['client'])
       expect(url.searchParams.get('cursor')).toBe('a:b')
     }
   )
 
-  it.each([true, false])('拒绝超限预览流（声明长度：%s）', async (declared) => {
-    fetchMock.mockResolvedValue(new Response('12345', { headers: declared ? { 'content-length': '5' } : {} }))
+  it.each([true, false])('完整读取超过旧10MiB阈值的预览（声明长度：%s）', async (declared) => {
+    const content = new Uint8Array(10 * 1024 * 1024 + 1).fill(65)
+    fetchMock.mockResolvedValue(
+      new Response(content, { headers: declared ? { 'content-length': String(content.length) } : {} })
+    )
     const client = new OrgApiClient(vi.fn().mockResolvedValue(session()))
-    await expect(client.requestBytes('/api/kb/v1/files/f/preview', 4)).rejects.toThrow('预览文件超过大小限制')
+    const bytes = await client.requestBytes('/api/kb/v1/files/f/preview')
+    expect(bytes.length).toBe(content.length)
+    expect(bytes.at(-1)).toBe(65)
   })
 
-  it('鉴权读取有限预览字节且禁止重定向', async () => {
+  it('IPC预览契约接受超过旧14MiB阈值的完整原文', () => {
+    const result = OrgKnowledgePreviewSchema.safeParse({
+      kind: 'inline',
+      fileName: 'large.pdf',
+      mimeType: 'application/pdf',
+      content: '',
+      base64: 'A'.repeat(14 * 1024 * 1024 + 4)
+    })
+    expect(result.success).toBe(true)
+  })
+
+  it('鉴权读取预览字节且禁止重定向', async () => {
     fetchMock.mockResolvedValue(new Response('原文'))
     const client = new OrgApiClient(vi.fn().mockResolvedValue(session()))
-    expect((await client.requestBytes('/api/kb/v1/files/f/preview', 20)).toString('utf8')).toBe('原文')
+    expect((await client.requestBytes('/api/kb/v1/files/f/preview')).toString('utf8')).toBe('原文')
     expect(fetchMock.mock.calls[0][1]).toMatchObject({
       redirect: 'error',
       headers: { authorization: 'Bearer stale-token' }

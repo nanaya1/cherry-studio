@@ -279,25 +279,30 @@ export class OrgApiClient {
 
   /** 拉取纯文本响应（如签名 URL 指向的原文预览内容）。主进程内部使用，不向渲染进程暴露 URL。 */
   async requestText(path: string): Promise<string> {
-    return (await this.requestBytes(path, 10 * 1024 * 1024)).toString('utf8')
+    // 原10MiB限制停用，与modern完整读取预览一致。
+    // return (await this.requestBytes(path, 10 * 1024 * 1024)).toString('utf8')
+    return (await this.requestBytes(path)).toString('utf8')
   }
 
-  async requestBytes(path: string, maxBytes: number): Promise<Buffer> {
+  // async requestBytes(path: string, maxBytes: number): Promise<Buffer> {
+  async requestBytes(path: string): Promise<Buffer> {
     const res = await this.sendAuth(path, { method: 'GET', redirect: 'error', signal: AbortSignal.timeout(30_000) })
+    /* 停用预览声明长度阈值，保留原逻辑便于恢复。
     if (Number(res.headers.get('content-length')) > maxBytes) {
       await res.body?.cancel()
       throw new Error('预览文件超过大小限制')
     }
+    */
     if (!res.body) return Buffer.alloc(0)
     const reader = res.body.getReader()
     const chunks: Uint8Array[] = []
-    let size = 0
+    // let size = 0
     try {
       for (;;) {
         const { done, value } = await reader.read()
         if (done) break
-        size += value.byteLength
-        if (size > maxBytes) throw new Error('预览文件超过大小限制')
+        // size += value.byteLength
+        // if (size > maxBytes) throw new Error('预览文件超过大小限制')
         chunks.push(value)
       }
       return Buffer.concat(chunks)

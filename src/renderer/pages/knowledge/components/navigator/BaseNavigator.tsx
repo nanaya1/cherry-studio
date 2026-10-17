@@ -24,6 +24,7 @@ interface BaseNavigatorProps {
   isLoading: boolean
   width: number
   sharedBaseIds?: ReadonlySet<string>
+  onRequestUnshare?: (baseId: string) => void
   selectedBaseId: string
   onSelectBase: (baseId: string) => void
   onCreateGroup: (baseId: string) => void
@@ -45,6 +46,7 @@ const BaseNavigator = ({
   isLoading,
   width,
   sharedBaseIds,
+  onRequestUnshare,
   selectedBaseId,
   onSelectBase,
   onCreateGroup,
@@ -101,6 +103,7 @@ const BaseNavigator = ({
               groups={groups}
               groupById={groupById}
               sharedBaseIds={sharedBaseIds}
+              onRequestUnshare={onRequestUnshare}
               selectedBaseId={selectedBaseId}
               getGroupLabel={getGroupLabel}
               onSelectBase={onSelectBase}

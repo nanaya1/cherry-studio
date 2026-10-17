@@ -1,12 +1,16 @@
 import { type MouseEvent as ReactMouseEvent, useCallback, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+// import { Button } from '@cherrystudio/ui'
+// import { Button, PageSidePanel } from '@cherrystudio/ui'
 import { Button } from '@cherrystudio/ui'
 import { useResizeDrag } from '@renderer/hooks/useResizeDrag'
 
 import KnowledgeInvitations from '../components/KnowledgeInvitations'
 import { BaseNavigator } from '../components/navigator'
 import ReceiveKnowledgeShareDialog from '../components/ReceiveKnowledgeShareDialog'
+// import KnowledgeSharingPanel from '../components/KnowledgeSharingPanel'
+import UnshareKnowledgeDialog from '../components/UnshareKnowledgeDialog'
 import { useKnowledgePage } from '../KnowledgePageProvider'
 
 const NAVIGATOR_DEFAULT_WIDTH = 250
@@ -17,6 +21,8 @@ const KnowledgePageNavigatorSection = () => {
   const { t } = useTranslation()
   const { org, orgSession, category, setCategory, selectedOrgBase, selectOrgBase } = useKnowledgePage()
   const [receiving, setReceiving] = useState(false)
+  const [unshareBaseId, setUnshareBaseId] = useState<string | null>(null)
+  const unshareCopy = org.catalog.owned.find((base) => base.localBaseId === unshareBaseId)
   const orgBases = category === 'local' ? [] : org.catalog[category]
   const {
     bases,
@@ -52,88 +58,130 @@ const KnowledgePageNavigatorSection = () => {
   )
 
   return (
-    <BaseNavigator
-      header={
-        <div className="mb-4 flex shrink-0 items-center gap-1 border-b border-border pb-3">
-          {(['local', 'public', 'shared'] as const).map((value) => (
-            <Button
-              key={value}
-              size="sm"
-              variant={category === value ? 'secondary' : 'ghost'}
-              className="min-w-0 flex-1 rounded-md px-1 text-xs"
-              aria-pressed={category === value}
-              onClick={() => setCategory(value)}>
-              {t(
-                { local: 'knowledge.org.local', public: 'knowledge.org.public', shared: 'knowledge.org.shared' }[value]
-              )}
-            </Button>
-          ))}
-        </div>
-      }
-      content={
-        category === 'local' ? undefined : (
-          <div className="min-h-0 flex-1 space-y-2 overflow-auto">
-            {category === 'shared' ? (
-              <Button variant="outline" className="w-full" onClick={() => setReceiving(true)}>
-                {t('knowledge.org.add_with_code')}
-              </Button>
-            ) : null}
-            {category === 'shared' ? <KnowledgeInvitations key={orgSession} onChanged={org.refresh} /> : null}
-            {receiving && category === 'shared' ? (
-              <ReceiveKnowledgeShareDialog
-                key={orgSession}
-                onClose={() => setReceiving(false)}
-                onReceived={async (received) => {
-                  selectOrgBase({ id: received.baseId, name: received.name, description: null })
-                  await org.refresh()
-                }}
-              />
-            ) : null}
-            {org.loading ? (
-              <p role="status" className="p-2 text-muted-foreground">
-                {t('common.loading')}
-              </p>
-            ) : null}
-            {org.error ? (
-              <div role="alert" className="p-2">
-                <p className="break-words text-error">{org.error}</p>
-                <Button variant="ghost" onClick={() => void org.refresh()}>
-                  {t('knowledge.org.refresh')}
+    <>
+      {/* <PageSidePanel
+        open={!!unshareCopy}
+        onClose={() => setUnshareBaseId(null)}
+        title={t('knowledge.org.unshare')}
+        closeLabel={t('common.close')}>
+        {unshareCopy && unshareBaseId ? (
+          <KnowledgeSharingPanel
+            key={`${orgSession}-${unshareBaseId}`}
+            baseId={unshareCopy.id}
+            localBaseId={unshareBaseId}
+            name={unshareCopy.name}
+            confirmUnshare
+            onUnshared={() => {
+              setUnshareBaseId(null)
+              void org.refresh()
+            }}
+          />
+        ) : null}
+      </PageSidePanel> */}
+      {unshareCopy && unshareBaseId ? (
+        <UnshareKnowledgeDialog
+          key={`${orgSession}-${unshareBaseId}`}
+          baseId={unshareBaseId}
+          name={unshareCopy.name}
+          onClose={() => setUnshareBaseId(null)}
+          onUnshared={() => void org.refresh()}
+        />
+      ) : null}
+      <BaseNavigator
+        onRequestUnshare={setUnshareBaseId}
+        header={
+          <div className="shrink-0">
+            {/* <h1 className="px-3 pt-1 pb-5 text-lg font-semibold tracking-tight">{t('knowledge.title')}</h1> */}
+            <div className="mb-4 flex items-center gap-1 border-b border-border pb-3">
+              {(['local', 'public', 'shared'] as const).map((value) => (
+                <Button
+                  key={value}
+                  size="sm"
+                  variant={category === value ? 'secondary' : 'ghost'}
+                  className="min-w-0 flex-1 rounded-md px-1 text-xs"
+                  aria-pressed={category === value}
+                  onClick={() => setCategory(value)}>
+                  {t(
+                    { local: 'knowledge.org.local', public: 'knowledge.org.public', shared: 'knowledge.org.shared' }[
+                      value
+                    ]
+                  )}
                 </Button>
-              </div>
-            ) : null}
-            {!org.loading && !org.error && orgBases.length === 0 ? (
-              <p className="p-2 text-sm text-muted-foreground">{t('knowledge.org.empty_bases')}</p>
-            ) : null}
-            {orgBases.map((base) => (
-              <Button
-                key={base.id}
-                variant={selectedOrgBase?.id === base.id ? 'secondary' : 'ghost'}
-                className="h-auto min-h-12 w-full justify-start rounded-lg whitespace-normal px-3 py-3 text-left"
-                aria-pressed={selectedOrgBase?.id === base.id}
-                onClick={() => selectOrgBase(base)}>
-                {base.name}
-              </Button>
-            ))}
+              ))}
+            </div>
           </div>
-        )
-      }
-      sharedBaseIds={new Set(org.catalog.owned.flatMap((base) => (base.localBaseId ? [base.localBaseId] : [])))}
-      bases={bases}
-      groups={groups}
-      isLoading={isLoading}
-      width={navigatorWidth}
-      selectedBaseId={selectedBaseId}
-      onSelectBase={selectBase}
-      onCreateGroup={openCreateGroupDialog}
-      onCreateBase={openCreateBaseDialog}
-      onMoveBase={moveBase}
-      onRenameBase={openRenameBaseDialog}
-      onRenameGroup={openRenameGroupDialog}
-      onDeleteGroup={deleteGroup}
-      onDeleteBase={deleteBase}
-      onResizeStart={startNavigatorResize}
-    />
+        }
+        content={
+          category === 'local' ? undefined : (
+            <div className="min-h-0 flex-1 space-y-2 overflow-auto">
+              {category === 'shared' ? (
+                <Button variant="outline" className="w-full" onClick={() => setReceiving(true)}>
+                  {t('knowledge.org.add_with_code')}
+                </Button>
+              ) : null}
+              {category === 'shared' ? (
+                <KnowledgeInvitations
+                  key={orgSession}
+                  onChanged={org.refresh}
+                  onAddWithCode={() => setReceiving(true)}
+                />
+              ) : null}
+              {receiving && category === 'shared' ? (
+                <ReceiveKnowledgeShareDialog
+                  key={orgSession}
+                  onClose={() => setReceiving(false)}
+                  onReceived={async (received) => {
+                    selectOrgBase({ id: received.baseId, name: received.name, description: null })
+                    await org.refresh()
+                  }}
+                />
+              ) : null}
+              {org.loading ? (
+                <p role="status" className="p-2 text-muted-foreground">
+                  {t('common.loading')}
+                </p>
+              ) : null}
+              {org.error ? (
+                <div role="alert" className="p-2">
+                  <p className="break-words text-error">{org.error}</p>
+                  <Button variant="ghost" onClick={() => void org.refresh()}>
+                    {t('knowledge.org.refresh')}
+                  </Button>
+                </div>
+              ) : null}
+              {!org.loading && !org.error && orgBases.length === 0 ? (
+                <p className="p-2 text-sm text-muted-foreground">{t('knowledge.org.empty_bases')}</p>
+              ) : null}
+              {orgBases.map((base) => (
+                <Button
+                  key={base.id}
+                  variant={selectedOrgBase?.id === base.id ? 'secondary' : 'ghost'}
+                  className="h-auto w-full justify-start whitespace-normal py-2 text-left"
+                  aria-pressed={selectedOrgBase?.id === base.id}
+                  onClick={() => selectOrgBase(base)}>
+                  {base.name}
+                </Button>
+              ))}
+            </div>
+          )
+        }
+        sharedBaseIds={new Set(org.catalog.owned.flatMap((base) => (base.localBaseId ? [base.localBaseId] : [])))}
+        bases={bases}
+        groups={groups}
+        isLoading={isLoading}
+        width={navigatorWidth}
+        selectedBaseId={selectedBaseId}
+        onSelectBase={selectBase}
+        onCreateGroup={openCreateGroupDialog}
+        onCreateBase={openCreateBaseDialog}
+        onMoveBase={moveBase}
+        onRenameBase={openRenameBaseDialog}
+        onRenameGroup={openRenameGroupDialog}
+        onDeleteGroup={deleteGroup}
+        onDeleteBase={deleteBase}
+        onResizeStart={startNavigatorResize}
+      />
+    </>
   )
 }
 

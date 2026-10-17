@@ -36,7 +36,22 @@ it.each(['accept', 'decline'])('从独立弹窗%s邀请后更新数量和目录'
   await waitFor(() => expect(screen.queryByText('Team documents')).not.toBeInTheDocument())
   expect(request).toHaveBeenCalledWith(`enterprise.knowledge.${action}`, { invitationId: 'invite-1' })
   expect(onChanged).toHaveBeenCalledOnce()
+  // 弹窗打开时背景入口对辅助技术隐藏，关闭后验证数量清零。
+  // await user.click(screen.getByRole('button', { name: 'Close', exact: true }))
+  await user.click(screen.getByRole('button', { name: 'Close' }))
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
   expect(screen.getByRole('button', { name: 'Pending invitations' })).toBeInTheDocument()
+})
+
+it('从邀请弹窗切换分享码添加时关闭当前弹窗', async () => {
+  request.mockResolvedValue({ invitations: [] })
+  const onAddWithCode = vi.fn()
+  const user = userEvent.setup()
+  render(<KnowledgeInvitations onChanged={vi.fn()} onAddWithCode={onAddWithCode} />)
+  await user.click(screen.getByRole('button', { name: /Invitations/i }))
+  await user.click(screen.getByRole('button', { name: 'Add with share code' }))
+  expect(onAddWithCode).toHaveBeenCalledOnce()
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
 })
 
 it('加载失败仍可打开弹窗并重试', async () => {

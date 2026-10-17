@@ -32,6 +32,23 @@ describe('OrgKnowledgeClient', () => {
     expect(fetch).not.toHaveBeenCalled()
   })
 
+  it('deleteShareSpace 走现有路由 DELETE 且 204 无响应体视为成功', async () => {
+    const request = vi.fn().mockResolvedValue(undefined)
+    const client = new OrgKnowledgeClient(makeApiClient({ request }))
+    await expect(client.deleteShareSpace('space')).resolves.toBeUndefined()
+    expect(request).toHaveBeenCalledWith('/api/kb/v1/spaces/space', expect.objectContaining({ method: 'DELETE' }))
+    const init = request.mock.calls[0][1] as RequestInit
+    expect((init.signal as AbortSignal)?.constructor?.name).toBe('AbortSignal')
+  })
+
+  it('deleteShareSpace 远程 404 抛 OrgApiHttpError 不假定成功', async () => {
+    const { OrgApiHttpError } = await import('../OrgApiClient')
+    const request = vi.fn().mockRejectedValue(new OrgApiHttpError(404, 'not found'))
+    const client = new OrgKnowledgeClient(makeApiClient({ request }))
+    await expect(client.deleteShareSpace('space')).rejects.toBeInstanceOf(OrgApiHttpError)
+    await expect(client.deleteShareSpace('space')).rejects.toMatchObject({ status: 404 })
+  })
+
   it('分享列表遵守 ShareOut 默认值且剥离额外敏感字段', async () => {
     const share = {
       id: 'c357f93f-572b-4c16-868b-c2f43c20a88e',

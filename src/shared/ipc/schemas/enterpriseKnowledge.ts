@@ -95,6 +95,11 @@ export const enterpriseKnowledgeRequestSchemas = {
     input: z.strictObject({ baseId: z.string().min(1) }),
     output: OrgKnowledgeShareResultSchema
   }),
+  // 取消分享：输入本地知识库 uuid，主进程删除云端 space 后解绑（本地副本保留），输出是否成功。
+  'enterprise.knowledge.unshare': defineRoute({
+    input: z.strictObject({ baseId: localBaseId }),
+    output: z.strictObject({ ok: z.boolean() })
+  }),
   'enterprise.knowledge.shares': defineRoute({
     input: z.strictObject({ baseId: orgId.refine((id) => !!parseOrgId(id)) }),
     output: OrgKnowledgeShareListSchema

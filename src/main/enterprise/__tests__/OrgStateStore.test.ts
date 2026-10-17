@@ -96,6 +96,39 @@ describe('OrgStateStore', () => {
     expect(new OrgStateStore().getShareAssociation('key')).toEqual(record)
   })
 
+  it('clearShare 原子清除关联与首传记录且持久化（避免复用旧 space）', () => {
+    const store = new OrgStateStore()
+    store.setShareAssociation('key', { shareId: 's1', completion: 'completed', files: [] })
+    store.setFirstShareUpload('key', {
+      name: '副本',
+      creation: 'created',
+      shareId: 's1',
+      files: []
+    } as never)
+    expect(store.getShareAssociation('key')?.shareId).toBe('s1')
+    expect(store.getFirstShareUpload('key')?.shareId).toBe('s1')
+
+    store.clearShare('key')
+
+    expect(store.getShareAssociation('key')).toBeUndefined()
+    expect(store.getFirstShareUpload('key')).toBeUndefined()
+    const reloaded = new OrgStateStore()
+    expect(reloaded.getShareAssociation('key')).toBeUndefined()
+    expect(reloaded.getFirstShareUpload('key')).toBeUndefined()
+  })
+
+  it('clearShare 不影响其他 key 的关联与首传记录', () => {
+    const store = new OrgStateStore()
+    store.setShareAssociation('key', { shareId: 's1', completion: 'completed', files: [] })
+    store.setShareAssociation('other', { shareId: 's2', completion: 'completed', files: [] })
+    store.setFirstShareUpload('other', { name: 'o', creation: 'created', shareId: 's2', files: [] } as never)
+
+    store.clearShare('key')
+
+    expect(store.getShareAssociation('other')?.shareId).toBe('s2')
+    expect(store.getFirstShareUpload('other')?.shareId).toBe('s2')
+  })
+
   it.each(['replace', 'remove'] as const)('原子替换失败时 %s 不丢失旧关联和其他状态', (operation) => {
     const store = new OrgStateStore()
     store.upsert('demo', { version: '1', contentHash: 'h', skillId: 's', folderName: 'd' })

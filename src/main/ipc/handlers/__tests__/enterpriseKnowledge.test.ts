@@ -23,6 +23,7 @@ describe('enterpriseKnowledgeHandlers', () => {
     preview: vi.fn(),
     share: vi.fn(),
     shares: vi.fn(),
+    unshare: vi.fn(),
     createShareCode: vi.fn(),
     revokeShare: vi.fn(),
     receiveShare: vi.fn(),
@@ -134,5 +135,20 @@ describe('enterpriseKnowledgeHandlers', () => {
       await enterpriseKnowledgeHandlers['enterprise.knowledge.invite']({ baseId: 'local-uuid', userId: 3 }, ctx)
     ).toEqual(member)
     expect(fakeKnowledge.invite).toHaveBeenCalledWith({ baseId: 'local-uuid', userId: 3, expireDays: undefined })
+  })
+
+  it('unshare delegates with local baseId and returns { ok }', async () => {
+    fakeKnowledge.unshare.mockResolvedValue({ ok: true })
+    expect(
+      await enterpriseKnowledgeHandlers['enterprise.knowledge.unshare']({ baseId: 'local-uuid' }, ctx)
+    ).toEqual({ ok: true })
+    expect(fakeKnowledge.unshare).toHaveBeenCalledWith({ baseId: 'local-uuid' })
+  })
+
+  it('unshare maps OrgApiHttpError 404 to ORGKB_NOT_FOUND', async () => {
+    fakeKnowledge.unshare.mockRejectedValue(new OrgApiHttpError(404, 'nf'))
+    await expect(
+      enterpriseKnowledgeHandlers['enterprise.knowledge.unshare']({ baseId: 'local-uuid' }, ctx)
+    ).rejects.toMatchObject({ code: E.ORGKB_NOT_FOUND })
   })
 })

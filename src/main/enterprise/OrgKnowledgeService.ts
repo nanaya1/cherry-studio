@@ -1,7 +1,10 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { createReadStream } from 'node:fs'
 import { readFile, stat } from 'node:fs/promises'
-import { basename } from 'node:path'
+// import { basename } from 'node:path'
+import { basename, extname } from 'node:path'
+
+import { fileTypeFromBuffer } from 'file-type'
 
 import { application } from '@application'
 import { knowledgeItemService } from '@data/services/KnowledgeItemService'
@@ -91,6 +94,8 @@ export class OrgKnowledgeService {
   private jobs!: Pick<JobManager, 'registerHandler' | 'enqueue' | 'list' | 'onJobSettled'>
   private readonly syncPlans = new Map<string, SyncPlan>()
   private readonly syncing = new Set<string>()
+  // MEA:enterprise-knowledge-page 取消分享期间同步占位：阻止 share/invite/createShareCode/syncApply/syncPreview 对同一 space 的并发写。
+  private readonly unsharing = new Set<string>()
   private readonly autoSyncTimers = new Map<string, ReturnType<typeof setTimeout>>()
   private jobSettledSubscription?: Disposable
   private disposed = false
@@ -360,6 +365,62 @@ export class OrgKnowledgeService {
     const lease = this.acquireLease()
     const preview = await this.checked(() => this.client.getPreviewUrl(fileId), lease)
     const mimeType = preview.mime_type?.split(';')[0].trim().toLowerCase() ?? null
+    logger.info('knowledge preview metadata', { fileId: params.fileId, kind: preview.kind, mimeType })
+    const inlineTypes = [
+      'application/pdf',
+      'image/png',
+      'image/jpeg',
+      'image/gif',
+      'image/webp',
+      'image/avif',
+      'image/bmp'
+    ]
+    let previewUrl: string | undefined
+    if (preview.kind === 'inline' && preview.url) {
+      const parsed = new URL(preview.url)
+      if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password) {
+        throw new OrgKnowledgeError(E.ORGKB_PROTOCOL, '预览地址无效')
+      }
+      previewUrl = parsed.href
+    }
+    // PDF 交给应用内 PDF.js；仅图片直接引用临时地址。
+    if (previewUrl && mimeType && mimeType !== 'application/pdf' && inlineTypes.includes(mimeType)) {
+      return { kind: 'inline', fileName: preview.file_name, mimeType, content: '', url: previewUrl }
+    }
+    if (preview.kind === 'inline' && !mimeType) {
+      const expectedMime = new Map([
+        ['.pdf', 'application/pdf'],
+        ['.png', 'image/png'],
+        ['.jpg', 'image/jpeg'],
+        ['.jpeg', 'image/jpeg'],
+        ['.gif', 'image/gif'],
+        ['.webp', 'image/webp'],
+        ['.avif', 'image/avif'],
+        ['.bmp', 'image/bmp']
+      ]).get(extname(preview.file_name).toLowerCase())
+      if (expectedMime) {
+        const bytes = await this.checked(() => this.client.fetchPreviewBytes(fileId), lease)
+        // 只补全缺失的 MIME，文件名和二进制签名必须一致。
+        const detected = await fileTypeFromBuffer(bytes).catch(() => undefined)
+        logger.info('knowledge preview MIME detection', {
+          fileId: params.fileId,
+          expectedMime,
+          detectedMime: detected?.mime ?? null,
+          matched: detected?.mime === expectedMime
+        })
+        if (detected?.mime === expectedMime) {
+          return {
+            kind: 'inline',
+            fileName: preview.file_name,
+            mimeType: detected.mime,
+            content: '',
+            ...(previewUrl && detected.mime !== 'application/pdf'
+              ? { url: previewUrl }
+              : { base64: bytes.toString('base64') })
+          }
+        }
+      }
+    }
     if (
       preview.kind === 'text' ||
       (preview.kind === 'inline' && (mimeType?.startsWith('text/') || mimeType === 'application/json'))
@@ -429,9 +490,18 @@ export class OrgKnowledgeService {
     ) {
       throw new OrgKnowledgeError(E.ORGKB_SHARE_INCOMPLETE, '内容副本未完整上传或状态未确认')
     }
+    // MEA:enterprise-knowledge-page 取消分享期间拒绝新建分享码，避免 DELETE 与创建竞争同一 space。
+    if (associations.some(([key]) => this.unsharing.has(key))) {
+      throw new OrgKnowledgeError(E.ORGKB_SHARE_FAILED, '正在取消分享，请稍后再试')
+    }
     const raw = await this.checked(async () => {
       try {
-        return await this.client.createShareCode(spaceId, params)
+        // return await this.client.createShareCode(spaceId, params)
+        return await this.shareMutex.runExclusive(associations[0][0], () => {
+          if (associations.some(([key]) => this.unsharing.has(key) || !orgStateStore.getShareAssociations()[key]))
+            throw new OrgKnowledgeError(E.ORGKB_SHARE_FAILED, '共享状态已变化，请刷新后再试')
+          return this.client.createShareCode(spaceId, params)
+        })
       } catch (error) {
         if (error instanceof OrgApiHttpError && error.status < 500) throw error
         throw new OrgKnowledgeError(E.ORGKB_SHARE_CREATE_UNKNOWN, '创建分享码结果未知，请刷新分享列表核查后再操作')
@@ -480,6 +550,10 @@ export class OrgKnowledgeService {
     if (isOrgId(params.baseId)) throw new OrgKnowledgeError(E.ORGKB_BAD_INPUT, '邀请仅支持本地知识库')
     // 解析本地已完成的可信关联（副本已上传确认），不允许未关联或未完成即邀请。
     const lease = this.acquireLease()
+    // MEA:enterprise-knowledge-page 取消分享期间拒绝邀请，避免 DELETE 与添加成员竞争同一 space。
+    if (this.unsharing.has(this.syncKey(params.baseId, lease))) {
+      throw new OrgKnowledgeError(E.ORGKB_SHARE_FAILED, '正在取消分享，请稍后再试')
+    }
     // 与共享状态使用同一身份上下文的关联键，避免误判已共享的本地库。
     // const association = orgStateStore.getShareAssociation(params.baseId)
     const association = orgStateStore.getShareAssociation(this.syncKey(params.baseId, lease))
@@ -507,7 +581,13 @@ export class OrgKnowledgeService {
     if (existing && isLiveMemberStatus(existing.status)) {
       throw new OrgKnowledgeError(E.ORGKB_MEMBER_EXISTS, '该用户已是成员或邀请待处理，不能重复邀请')
     }
-    return toMember(await this.checked(() => this.client.addMember(spaceId, params.userId, params.expireDays), lease))
+    // return toMember(await this.checked(() => this.client.addMember(spaceId, params.userId, params.expireDays), lease))
+    const key = this.syncKey(params.baseId, lease)
+    return this.shareMutex.runExclusive(key, async () => {
+      if (this.unsharing.has(key) || orgStateStore.getShareAssociation(key)?.shareId !== spaceId)
+        throw new OrgKnowledgeError(E.ORGKB_SHARE_FAILED, '共享状态已变化，请刷新后再试')
+      return toMember(await this.checked(() => this.client.addMember(spaceId, params.userId, params.expireDays), lease))
+    })
   }
 
   async invitations(): Promise<OrgKnowledgeInvitationList> {
@@ -565,6 +645,10 @@ export class OrgKnowledgeService {
 
   async syncPreview({ baseId }: { baseId: string }): Promise<OrgKnowledgeSyncPreview> {
     const lease = this.acquireLease()
+    // MEA:enterprise-knowledge-page 取消分享期间拒绝构建同步计划，避免基于即将删除的 space 提交写。
+    if (this.unsharing.has(this.syncKey(baseId, lease))) {
+      throw new OrgKnowledgeError(E.ORGKB_SHARE_FAILED, '正在取消分享，请稍后再试')
+    }
     const association = orgStateStore.getShareAssociation(this.syncKey(baseId, lease))
     if (!association) throw new OrgKnowledgeError(E.ORGKB_BAD_INPUT, '本地知识库尚未共享')
     this.assertLease(lease)
@@ -703,6 +787,10 @@ export class OrgKnowledgeService {
     confirmDeletes: boolean
   }): Promise<OrgKnowledgeSyncApply> {
     const lease = this.acquireLease()
+    // MEA:enterprise-knowledge-page 取消分享期间拒绝提交同步，避免 DELETE 与同步写竞争同一 space。
+    if (this.unsharing.has(this.syncKey(baseId, lease))) {
+      throw new OrgKnowledgeError(E.ORGKB_SHARE_FAILED, '正在取消分享，请稍后再试')
+    }
     const plan = this.syncPlans.get(planId)
     this.syncPlans.delete(planId)
     if (
@@ -1008,9 +1096,82 @@ export class OrgKnowledgeService {
     }
   }
 
+  /**
+   * 取消分享（主进程）。本地已分享库取消 = 删除云端 space 后解绑，本地副本保留。
+   * 仅允许当前 lease 下已完成的可信关联；无绑定幂等成功（不触碰远端）。取消期间用 unsharing
+   * 同步占位 + shareMutex 串行，确保 share/invite/createShareCode/syncApply 不会并发写同一 space。
+   * 仅 204 成功后清除本地绑定与首传记录；超时/403/404 保留绑定不假定成功；会话变化不跨账号解绑。
+   */
+  async unshare({ baseId }: { baseId: string }): Promise<{ ok: boolean }> {
+    const lease = this.acquireLease()
+    const key = this.syncKey(baseId, lease)
+    // MEA:enterprise-knowledge-page 取消期间同步占位，拒绝并发新建/同步/邀请对同一 space 的写。
+    if (this.unsharing.has(key)) {
+      throw new OrgKnowledgeError(E.ORGKB_SHARE_FAILED, '该知识库正在取消分享，请稍后再试')
+    }
+    const association = orgStateStore.getShareAssociation(key)
+    // 无绑定：幂等成功，不触碰远端。
+    if (!association) return { ok: true }
+    if (association.completion !== 'completed') {
+      throw new OrgKnowledgeError(E.ORGKB_SHARE_INCOMPLETE, '共享内容尚未完整上传，暂不能取消')
+    }
+    // 同 key 的上传/同步进行中，拒绝以免 DELETE 与写竞争同一 space。
+    if (this.firstShareActive && this.firstShareActive.key === key) {
+      throw new OrgKnowledgeError(E.ORGKB_SHARE_FAILED, '正在上传云端副本，请完成后再取消分享')
+    }
+    if (this.syncing.has(key)) {
+      throw new OrgKnowledgeError(E.ORGKB_SHARE_FAILED, '正在同步，请完成后再取消分享')
+    }
+    // MEA:enterprise-knowledge-page 操作前同步占位，shareMutex 串行确保取消期间无新增写。
+    this.unsharing.add(key)
+    try {
+      return await this.shareMutex.runExclusive(key, async () => {
+        // 锁内重读绑定：会话变化或并发取消可能已改变/清除。
+        const current = orgStateStore.getShareAssociation(key)
+        if (!current || current.completion !== 'completed') return { ok: true }
+        // 按真实 owner 取消（允许 public 空间），不依赖同步 owner 校验的 public 拒绝；最小新校验。
+        await this.assertRealOwner(current.shareId, lease)
+        // 仅 204 成功后清除本地绑定与首传记录；失败（超时/403/404）保留绑定不假定成功。
+        // await this.client.deleteShareSpace(current.shareId)
+        await this.checked(() => this.client.deleteShareSpace(current.shareId), lease)
+        this.clearLocalShare(key)
+        return { ok: true }
+      })
+    } finally {
+      this.unsharing.delete(key)
+    }
+  }
+
+  private async assertRealOwner(shareId: string, lease: Lease): Promise<void> {
+    const catalog = await this.checked(() => this.client.getCatalog(), lease)
+    const owned = catalog.owned.find((space) => space.id === shareId)
+    if (
+      !owned ||
+      !(owned.my_role === 'owner' || (owned.owner_id !== undefined && String(owned.owner_id) === lease.userId))
+    ) {
+      throw new OrgKnowledgeError(E.ORGKB_FORBIDDEN, '仅允许取消本人拥有的关联空间')
+    }
+  }
+
+  private clearLocalShare(key: string): void {
+    // MEA:enterprise-knowledge-page 清除首传 state 很重要，否则下次 share 复用旧 space。
+    orgStateStore.clearShare(key)
+    this.firstShareProgress.delete(key)
+    for (const [planId, plan] of this.syncPlans) if (plan.key === key) this.syncPlans.delete(planId)
+    const timer = this.autoSyncTimers.get(key)
+    if (timer) {
+      clearTimeout(timer)
+      this.autoSyncTimers.delete(key)
+    }
+  }
+
   share(localBaseId: string, verifyOnly = false): Promise<OrgKnowledgeShareResult> {
     const lease = this.acquireLease()
     const key = this.syncKey(localBaseId, lease)
+    // MEA:enterprise-knowledge-page 取消分享期间拒绝新建上传，避免 DELETE 与上传竞争同一 space。
+    if (this.unsharing.has(key)) {
+      return Promise.reject(new OrgKnowledgeError(E.ORGKB_SHARE_FAILED, '正在取消分享，请稍后再试'))
+    }
     // MEA:enterprise-knowledge-page 在第一个await之前占用，异库拒绝且同库复用。
     if (this.firstShareActive) {
       if (this.firstShareActive.key === key) return this.firstShareActive.promise

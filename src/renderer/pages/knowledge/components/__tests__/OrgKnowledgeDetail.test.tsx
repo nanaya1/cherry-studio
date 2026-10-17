@@ -8,6 +8,11 @@ import OrgKnowledgeDetail from '../OrgKnowledgeDetail'
 const { request } = vi.hoisted(() => ({ request: vi.fn() }))
 vi.mock('@renderer/ipc', () => ({ ipcApi: { request } }))
 vi.unmock('@cherrystudio/ui')
+vi.mock('@renderer/components/FilePreview/plugins/pdf/PdfFilePreview', () => ({
+  default: ({ fileName, base64 }: { fileName: string; base64: string }) => (
+    <div title={fileName} data-pdf-base64={base64} />
+  )
+}))
 
 const base = { id: 'orgkb:base', name: '企业资料', description: '服务端说明', documentCount: 2 }
 const item = {
@@ -45,6 +50,10 @@ describe('组织知识库只读详情', () => {
     const user = userEvent.setup()
     render(<OrgKnowledgeDetail base={base} owned={false} />)
     expect(await screen.findByText('说明.pdf')).toBeInTheDocument()
+    expect(screen.queryByText(base.description)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: i18n.t('knowledge.org.documents') })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: i18n.t('knowledge.org.search') })).not.toBeInTheDocument()
+    expect(screen.queryByText(i18n.t('knowledge.org.readonly_notice'))).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Next page' }))
     expect(await screen.findByText('第二页')).toBeInTheDocument()
     expect(request).toHaveBeenCalledWith('enterprise.knowledge.items', { baseId: base.id, cursor: 'page2' })
@@ -52,17 +61,14 @@ describe('组织知识库只读详情', () => {
     expect(screen.queryByRole('button', { name: /Share|Add|Delete|Rebuild/ })).not.toBeInTheDocument()
   })
 
-  it('读取文档与分块，使用文件映射在沙箱展示 PDF', async () => {
+  it('使用文件映射在应用内查看器展示 PDF', async () => {
     const user = userEvent.setup()
     render(<OrgKnowledgeDetail base={base} owned={false} />)
-    await user.click(await screen.findByRole('button', { name: 'Read document' }))
-    expect(await screen.findByText('解析正文')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Chunks' }))
-    expect(await screen.findByText('分块内容')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Preview original' }))
-    const frame = await screen.findByTitle(item.title)
-    expect(frame).toHaveAttribute('sandbox', '')
-    expect(frame).toHaveAttribute('src', 'data:application/pdf;base64,JVBERi0=')
+    await user.click(await screen.findByText(item.title))
+    expect(await screen.findByTitle(item.title)).toHaveAttribute('data-pdf-base64', 'JVBERi0=')
+    expect(screen.queryByText(base.name)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Chunks' })).not.toBeInTheDocument()
+    expect(document.querySelector('iframe')).toBeNull()
     expect(request).toHaveBeenCalledWith('enterprise.knowledge.preview', { fileId: item.fileId })
   })
 
@@ -78,16 +84,50 @@ describe('组织知识库只读详情', () => {
     )
     const user = userEvent.setup()
     const view = render(<OrgKnowledgeDetail base={base} owned={false} />)
-    await user.click(await screen.findByRole('button', { name: 'Read document' }))
-    await user.click(screen.getByRole('button', { name: 'Preview original' }))
+    await user.click(await screen.findByText(item.title))
     expect(await screen.findByRole('img', { name: 'a.png' })).toHaveAttribute('src', 'data:image/png;base64,aGVsbG8=')
     view.unmount()
     html = true
     const second = render(<OrgKnowledgeDetail base={base} owned={false} />)
-    await user.click(await screen.findByRole('button', { name: 'Read document' }))
-    await user.click(screen.getByRole('button', { name: 'Preview original' }))
+    await user.click(await screen.findByText(item.title))
     expect(await screen.findByText('<script>bad()</script>')).toBeInTheDocument()
     expect(second.container.querySelector('script')).toBeNull()
+  })
+
+  it('操作菜单可直接预览原文或查看分块', async () => {
+    const user = userEvent.setup()
+    render(<OrgKnowledgeDetail base={base} owned={false} />)
+    await screen.findByText(item.title)
+    await user.click(screen.getByRole('button', { name: i18n.t('common.more') }))
+    await user.click(await screen.findByRole('menuitem', { name: i18n.t('knowledge.data_source.actions.view_chunks') }))
+    expect(await screen.findByText('分块内容')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: i18n.t('common.back') }))
+    await user.click(screen.getByRole('button', { name: i18n.t('common.more') }))
+    await user.click(
+      await screen.findByRole('menuitem', { name: i18n.t('knowledge.data_source.actions.preview_source') })
+    )
+    expect(await screen.findByTitle(item.title)).toHaveAttribute('data-pdf-base64', 'JVBERi0=')
+  })
+
+  it('PDF 即便带有临时地址也不创建会触发下载的 iframe', async () => {
+    const original = request.getMockImplementation()!
+    request.mockImplementation(async (route, input) =>
+      route === 'enterprise.knowledge.preview'
+        ? {
+            kind: 'inline',
+            fileName: item.title,
+            mimeType: 'application/pdf',
+            content: '',
+            url: 'https://storage.example/document.pdf?signature=test',
+            base64: 'JVBERi0='
+          }
+        : original(route, input)
+    )
+    const user = userEvent.setup()
+    render(<OrgKnowledgeDetail base={base} owned={false} />)
+    await user.click(await screen.findByText(item.title))
+    expect(await screen.findByTitle(item.title)).toHaveAttribute('data-pdf-base64', 'JVBERi0=')
+    expect(document.querySelector('iframe')).toBeNull()
   })
 
   it('请求失败后可刷新恢复', async () => {

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button, Combobox } from '@cherrystudio/ui'
@@ -13,7 +13,8 @@ export default function KnowledgeInvitePanel({
   busy,
   onBusyChange,
   onPrepared,
-  onInvited
+  onInvited,
+  renderActions
 }: {
   baseId: string
   prepared?: OrgKnowledgeShareResult
@@ -21,6 +22,7 @@ export default function KnowledgeInvitePanel({
   onBusyChange: (busy: boolean) => void
   onPrepared: (result: OrgKnowledgeShareResult) => void
   onInvited: () => void
+  renderActions?: (inviteButton: ReactNode) => ReactNode
 }) {
   const { t } = useTranslation()
   const [keyword, setKeyword] = useState('')
@@ -106,6 +108,11 @@ export default function KnowledgeInvitePanel({
       if (active.current) onBusyChange(false)
     }
   }
+  const inviteButton = (
+    <Button disabled={busy || !selected || sent.includes(selected.id)} onClick={() => void invite()}>
+      {t('knowledge.org.invite')}
+    </Button>
+  )
   return (
     <section className="space-y-3" aria-label={t('knowledge.org.invite_people')}>
       <p className="text-sm text-muted-foreground">{t('knowledge.org.permission')}</p>
@@ -141,15 +148,18 @@ export default function KnowledgeInvitePanel({
           }
         }}
       />
+      {/* 原发送按钮由下方操作区承载。
       <Button disabled={busy || !selected || sent.includes(selected.id)} onClick={() => void invite()}>
         {t('knowledge.org.invite')}
       </Button>
+      */}
       {sent.length > 0 ? <p role="status">{t('knowledge.org.invited')}</p> : null}
       {error ? (
         <p role="alert" className="text-error">
           {error}
         </p>
       ) : null}
+      {renderActions ? renderActions(inviteButton) : inviteButton}
     </section>
   )
 }

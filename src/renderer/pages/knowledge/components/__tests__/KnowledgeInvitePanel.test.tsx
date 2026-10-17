@@ -19,6 +19,7 @@ beforeEach(async () => {
       return { shareId: 'orgkb:copy', completion: 'completed', files: [{ fileName: 'a', status: 'success' }] }
     if (route === 'enterprise.knowledge.members') return { members: [] }
     if (route === 'enterprise.knowledge.invite') return { userId: 42 }
+    return undefined
   })
 })
 it('输入自动远程模糊查询，下拉选中后才允许发送且原始id透传', async () => {

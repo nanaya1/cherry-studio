@@ -1,4 +1,6 @@
 export { FilePreview, type FilePreviewProps } from './FilePreview'
+export { FilePreviewLayout } from './FilePreviewLayout'
+export { default as PdfFilePreview } from './plugins/pdf/PdfFilePreview'
 export { FilePreviewNavigationProvider } from './FilePreviewNavigationProvider'
 export { canProduceSelectionReference } from './filePreviewRegistry'
 export { useOpenFilePreviewTab, useOptionalOpenFilePreviewTab } from './hooks/useOpenFilePreviewTab'

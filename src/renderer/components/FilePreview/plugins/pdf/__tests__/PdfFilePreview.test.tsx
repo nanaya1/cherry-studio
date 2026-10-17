@@ -275,6 +275,15 @@ async function flushPdfEffects() {
 }
 
 describe('PdfFilePreview', () => {
+  it('共享 PDF 字节使用同一查看器渲染，无需本地路径或浏览器插件', async () => {
+    render(<PdfFilePreview fileName="shared.pdf" base64="JVBERi0=" />)
+    await act(flushPdfEffects)
+    await waitFor(() => expect(mocks.pdfViewerSetDocument).toHaveBeenCalledWith(mocks.pdfDocument))
+    expect(mocks.getDocument.mock.calls.at(-1)?.[0].data).toEqual(new Uint8Array([37, 80, 68, 70, 45]))
+    expect(mocks.rangeTransportInstances).toHaveLength(0)
+    expect(document.querySelector('iframe')).toBeNull()
+  })
+
   it('reports the clicked page as a reference with the page text as excerpt, and marks it as picked', async () => {
     mocks.pdfDocument.getPage.mockResolvedValue({
       getTextContent: async () => ({

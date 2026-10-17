@@ -325,6 +325,18 @@ export class OrgStateStore {
     delete this.data!.knowledgeShares[localBaseId]
     this.persist()
   }
+
+  /**
+   * [enterprise] 取消分享：原子清除本地关联与首传持久化记录并单次落盘。
+   * MEA:enterprise-knowledge-page 清除首传 state 很重要，否则下次 share 复用旧 space。
+   * 与 removeShareAssociation 不同，这里同时清 firstShareUploads，且仅在远端 204 成功后由调用方触发。
+   */
+  clearShare(localBaseId: string): void {
+    this.ensureLoaded()
+    delete this.data!.knowledgeShares[localBaseId]
+    delete this.data!.firstShareUploads[localBaseId]
+    this.persist()
+  }
 }
 
 /** [enterprise] 企业模块共用单例（进程内一份 state）；惰性初始化，见 ensureLoaded 注释 */

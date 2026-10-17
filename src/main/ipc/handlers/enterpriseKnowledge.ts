@@ -58,6 +58,7 @@ export const enterpriseKnowledgeHandlers: IpcHandlersFor<typeof enterpriseKnowle
   'enterprise.knowledge.upload_status': ({ baseId }) => guard(() => plugin().knowledge.uploadStatus(baseId)),
   'enterprise.knowledge.upload_verify': ({ baseId }) => guard(() => plugin().knowledge.share(baseId, true)),
   'enterprise.knowledge.share': ({ baseId }) => guard(() => plugin().knowledge.share(baseId)),
+  'enterprise.knowledge.unshare': ({ baseId }) => guard(() => plugin().knowledge.unshare({ baseId })),
   'enterprise.knowledge.shares': (params) => guard(() => plugin().knowledge.shares(params)),
   'enterprise.knowledge.create_share': (params) => guard(() => plugin().knowledge.createShareCode(params)),
   'enterprise.knowledge.revoke_share': (params) => guard(() => plugin().knowledge.revokeShare(params)),

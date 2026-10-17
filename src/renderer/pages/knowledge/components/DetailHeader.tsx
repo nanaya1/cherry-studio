@@ -9,13 +9,21 @@ import { statusBadgeClassNames } from './statusStyles'
 
 interface DetailHeaderProps {
   actions?: ReactNode
+  sharingStatus?: ReactNode
   base: KnowledgeBase
   onOpenRagConfig: () => void
   onOpenRecallTest: () => void
   onRebuild: () => void
 }
 
-const DetailHeader = ({ base, actions, onOpenRagConfig, onOpenRecallTest, onRebuild }: DetailHeaderProps) => {
+const DetailHeader = ({
+  base,
+  actions,
+  sharingStatus,
+  onOpenRagConfig,
+  onOpenRecallTest,
+  onRebuild
+}: DetailHeaderProps) => {
   const { t } = useTranslation()
 
   const statusLabelKey = `knowledge.status.${base.status}` as const
@@ -23,8 +31,14 @@ const DetailHeader = ({ base, actions, onOpenRagConfig, onOpenRecallTest, onRebu
 
   return (
     <PageHeader
-      title={base.name}
-      className="relative mb-0 h-auto min-h-20 px-6 py-5 [&_h1]:text-xl after:pointer-events-none after:absolute after:right-6 after:bottom-0 after:left-6 after:border-b after:border-border after:content-['']"
+      title={
+        <span className="flex min-w-0 items-center gap-3">
+          <span className="truncate">{base.name}</span>
+          {sharingStatus}
+        </span>
+      }
+      titleClassName="text-2xl leading-8 font-semibold tracking-tight"
+      className="relative mt-0 mb-0 h-auto min-h-20 flex-wrap gap-3 px-6 py-5 after:pointer-events-none after:absolute after:right-6 after:bottom-0 after:left-6 after:border-b after:border-border after:content-['']"
       action={
         base.status === 'failed' ? (
           <Button

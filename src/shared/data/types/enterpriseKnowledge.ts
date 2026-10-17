@@ -145,17 +145,16 @@ export type OrgKnowledgeReadResult = z.infer<typeof OrgKnowledgeReadResultSchema
 
 /**
  * 原文预览结果。主进程通过鉴权 preview 接口拉取解析正文后回传正文/元信息，
- * 绝不把签名 URL 暴露给渲染进程（preview 不暴露任意 URL fetch）。
+ * 内联 PDF/图片可返回服务端签发并校验的临时 URL，仅供当前预览使用，不持久化。
  */
 export const OrgKnowledgePreviewSchema = z.strictObject({
   kind: z.string(),
   fileName: z.string(),
   mimeType: z.string().nullable(),
   content: z.string(),
-  base64: z
-    .string()
-    .max(14 * 1024 * 1024)
-    .optional()
+  url: z.url().optional(),
+  // base64: z.string().max(14 * 1024 * 1024).optional(),
+  base64: z.string().optional()
 })
 export type OrgKnowledgePreview = z.infer<typeof OrgKnowledgePreviewSchema>
 

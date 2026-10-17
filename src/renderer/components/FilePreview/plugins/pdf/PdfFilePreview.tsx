@@ -132,13 +132,22 @@ function PdfPreviewTooLarge({ filePath }: { filePath: AbsoluteFilePath }) {
  * an internal destination with `link.onclick`, which runs first and jumps instead of picking (known
  * limitation, see the FilePreview README).
  */
-export default function PdfFilePreview({
-  filePath,
-  fileName,
-  metadata,
-  refreshKey,
-  onSelectionReference
-}: FilePreviewPluginProps) {
+type PdfPreviewProps =
+  | FilePreviewPluginProps
+  | {
+      fileName: string
+      base64: string
+      filePath?: never
+      metadata?: never
+      refreshKey?: number
+      onSelectionReference?: never
+    }
+
+export default function PdfFilePreview(props: PdfPreviewProps) {
+  const { filePath, fileName, metadata, refreshKey, onSelectionReference } = props
+  const base64 = 'base64' in props ? props.base64 : undefined
+  const sourceName = filePath ?? fileName
+  const fileSize = metadata?.size
   const { t } = useTranslation()
   const rootRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -208,7 +217,7 @@ export default function PdfFilePreview({
   const pickTokenRef = useRef(0)
   const handlePick = useCallback(
     (event: ReactMouseEvent<HTMLDivElement>) => {
-      if (!onSelectionReference || !(event.target instanceof Element)) return
+      if (!onSelectionReference || !filePath || !metadata || !(event.target instanceof Element)) return
       if (event.target.closest('a[href]')) event.preventDefault()
 
       const resolved = pageToPdfAnchor(event.target)
@@ -361,7 +370,7 @@ export default function PdfFilePreview({
       failed = true
       rangeTransport?.abort()
       if (loadingTask) {
-        destroyLoadingTask(loadingTask, filePath)
+        destroyLoadingTask(loadingTask, sourceName)
         loadingTask = null
       }
       const normalized = error instanceof Error ? error : new Error(String(error))
@@ -393,15 +402,20 @@ export default function PdfFilePreview({
 
     void (async () => {
       try {
-        const handle = createFilePathHandle(filePath)
+        // 共享原文直接交给 PDF.js，避免浏览器插件把预签名地址作为下载打开。
+        if (filePath && fileSize !== undefined) {
+          rangeTransport = new PdfFileRangeTransport(createFilePathHandle(filePath), fileSize, failLoad)
+        }
         if (cancelled) return
-
-        rangeTransport = new PdfFileRangeTransport(handle, metadata.size, failLoad)
         loadingTask = getDocument({
-          range: rangeTransport,
-          rangeChunkSize: PDF_RANGE_CHUNK_SIZE_BYTES,
-          disableAutoFetch: true,
-          disableStream: true,
+          ...(base64 !== undefined
+            ? { data: Uint8Array.from(atob(base64), (character) => character.charCodeAt(0)) }
+            : {
+                range: rangeTransport!,
+                rangeChunkSize: PDF_RANGE_CHUNK_SIZE_BYTES,
+                disableAutoFetch: true,
+                disableStream: true
+              }),
           // Non-embedded CID-keyed fonts decode to no glyphs without these; the
           // packaged bundle is served over IPC because file:// pages cannot
           // fetch asset URLs (see pdfjsResourceFactories.ts).
@@ -422,11 +436,11 @@ export default function PdfFilePreview({
       rangeTransport?.abort()
       rangeTransport = null
       if (loadingTask) {
-        destroyLoadingTask(loadingTask, filePath)
+        destroyLoadingTask(loadingTask, sourceName)
         loadingTask = null
       }
     }
-  }, [filePath, metadata.size, refreshKey])
+  }, [base64, filePath, fileSize, refreshKey, sourceName])
 
   useEffect(() => {
     if (!documentProxy) return
@@ -670,7 +684,9 @@ export default function PdfFilePreview({
               />
             </div>
           ) : status === 'too_large' ? (
-            <PdfPreviewTooLarge filePath={filePath} />
+            filePath ? (
+              <PdfPreviewTooLarge filePath={filePath} />
+            ) : null
           ) : (
             <>
               <div className="flex h-full min-h-0 w-full">

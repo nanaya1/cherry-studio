@@ -26,6 +26,7 @@ beforeEach(() => {
   auth.acquireLease.mockImplementation(() => ({ ...lease }))
   auth.assertLease.mockImplementation(() => {})
   vi.mocked(orgStateStore.getShareAssociation).mockReturnValue(undefined)
+  vi.mocked(orgStateStore.clearShare).mockClear()
   vi.mocked(readFile).mockResolvedValue(Buffer.from('file-bytes'))
   vi.mocked(stat).mockResolvedValue({ size: 10, isFile: () => true } as never)
   let firstState: any
@@ -58,7 +59,8 @@ vi.mock('../OrgStateStore', () => ({
     getShareAssociation: vi.fn().mockReturnValue(undefined),
     getShareAssociations: vi.fn(() => ({})),
     setShareAssociation: vi.fn(),
-    removeShareAssociation: vi.fn()
+    removeShareAssociation: vi.fn(),
+    clearShare: vi.fn()
   }
 }))
 
@@ -145,6 +147,94 @@ const codeShare = {
   created_at: '2026-10-15T00:00:00Z'
 }
 const codeCatalog = { public: [], shared: [], owned: [{ id: codeSpaceId, name: '副本', my_role: 'owner' }] }
+
+describe('取消整个分享', () => {
+  const key = JSON.stringify([lease.issuerId, lease.userId, lease.groupId, 'local-1'])
+  function setup() {
+    let association: any = { shareId: codeSpaceId, completion: 'completed', files: [] }
+    vi.mocked(orgStateStore.getShareAssociation).mockImplementation(() => association)
+    vi.mocked(orgStateStore.clearShare).mockImplementation(() => {
+      association = undefined
+    })
+    const api = makeApiClient()
+    api.request.mockResolvedValue(codeCatalog)
+    const service = makeService(api)
+    return { api, service }
+  }
+
+  it('远端确认后解除关联，状态恢复未分享并清理首传进度', async () => {
+    const { api, service } = setup()
+    api.request.mockImplementation(async (_path, init) => {
+      if (init?.method === 'DELETE') {
+        expect(orgStateStore.getShareAssociation(key)).toBeDefined()
+        return undefined
+      }
+      return codeCatalog
+    })
+    await expect(service.unshare({ baseId: 'local-1' })).resolves.toEqual({ ok: true })
+    expect(await service.syncStatus({ baseId: 'local-1' })).toEqual({ state: 'unshared', lastSyncedAt: null })
+    expect(orgStateStore.clearShare).toHaveBeenCalledWith(key)
+    service.dispose()
+  })
+
+  it.each([403, 404, 500])('远端失败 %s 时保留绑定允许重试', async (status) => {
+    const { api, service } = setup()
+    api.request.mockImplementation(async (_path, init) => {
+      if (init?.method === 'DELETE') throw new Error(`HTTP ${status}`)
+      return codeCatalog
+    })
+    await expect(service.unshare({ baseId: 'local-1' })).rejects.toThrow(`HTTP ${status}`)
+    expect(orgStateStore.getShareAssociation(key)).toBeDefined()
+    expect(orgStateStore.clearShare).not.toHaveBeenCalled()
+    service.dispose()
+  })
+
+  it('删除期间账号变化不能清除关联', async () => {
+    const { api, service } = setup()
+    api.request.mockImplementation(async (_path, init) => {
+      if (init?.method === 'DELETE') {
+        auth.assertLease.mockImplementation(() => {
+          throw new Error('session changed')
+        })
+        return undefined
+      }
+      return codeCatalog
+    })
+    await expect(service.unshare({ baseId: 'local-1' })).rejects.toMatchObject({ code: E.ORGKB_UNAUTHORIZED })
+    expect(orgStateStore.getShareAssociation(key)).toBeDefined()
+    expect(orgStateStore.clearShare).not.toHaveBeenCalled()
+    service.dispose()
+  })
+
+  it.each(['upload', 'sync'])('活跃 %s 任务期间不删除远端空间', async (kind) => {
+    const { api, service } = setup()
+    if (kind === 'upload') (service as any).firstShareActive = { key }
+    else (service as any).syncing.add(key)
+    await expect(service.unshare({ baseId: 'local-1' })).rejects.toMatchObject({ code: E.ORGKB_SHARE_FAILED })
+    expect(api.request).not.toHaveBeenCalled()
+    expect(orgStateStore.getShareAssociation(key)).toBeDefined()
+    service.dispose()
+  })
+
+  it('取消期间拒绝重复取消与再次分享', async () => {
+    const { api, service } = setup()
+    let finish!: () => void
+    api.request.mockImplementation(async (_path, init) => {
+      if (init?.method === 'DELETE')
+        return new Promise<void>((resolve) => {
+          finish = resolve
+        })
+      return codeCatalog
+    })
+    const pending = service.unshare({ baseId: 'local-1' })
+    await vi.waitFor(() => expect(finish).toBeTypeOf('function'))
+    await expect(service.unshare({ baseId: 'local-1' })).rejects.toThrow('正在取消分享')
+    await expect(service.share('local-1')).rejects.toThrow('正在取消分享')
+    finish()
+    await pending
+    service.dispose()
+  })
+})
 
 describe('同步安全边界', () => {
   const key = JSON.stringify([lease.issuerId, lease.userId, lease.groupId, 'local-1'])
@@ -937,13 +1027,63 @@ describe('OrgKnowledgeService catalog/items', () => {
     expect(api.requestText).not.toHaveBeenCalled()
   })
 
+  it('PDF 返回原文字节供应用内渲染，不透传会触发下载的预签名地址', async () => {
+    const api = makeApiClient()
+    api.request.mockResolvedValue({
+      kind: 'inline',
+      file_name: 'a.pdf',
+      mime_type: 'application/pdf',
+      url: 'https://storage.example/a.pdf?signature=test'
+    })
+    expect(await makeService(api).preview({ fileId: encodeOrgId('f') })).toMatchObject({
+      kind: 'inline',
+      mimeType: 'application/pdf',
+      base64: Buffer.from('%PDF-1.7').toString('base64')
+    })
+    expect(api.requestBytes).toHaveBeenCalledWith('/api/kb/v1/files/f/preview')
+  })
+
+  it.each(['javascript:alert(1)', 'file:///tmp/a.pdf', 'https://user:pass@storage.example/a.pdf'])(
+    '拒绝不安全预览地址 %s',
+    async (url) => {
+      const api = makeApiClient()
+      api.request.mockResolvedValue({ kind: 'inline', file_name: 'a.pdf', mime_type: 'application/pdf', url })
+      await expect(makeService(api).preview({ fileId: encodeOrgId('f') })).rejects.toThrow()
+    }
+  )
+
+  it('MIME 缺失时仅在 PDF 文件名与文件头一致后提供原文预览', async () => {
+    const api = makeApiClient()
+    api.request.mockResolvedValue({ kind: 'inline', file_name: '研究.PDF', mime_type: null })
+    api.requestBytes.mockResolvedValue(Buffer.from('%PDF-1.7\n'))
+    expect(await makeService(api).preview({ fileId: encodeOrgId('f') })).toMatchObject({
+      kind: 'inline',
+      mimeType: 'application/pdf',
+      base64: Buffer.from('%PDF-1.7\n').toString('base64')
+    })
+  })
+
+  it.each([
+    ['fake.pdf', '<html>not a PDF</html>'],
+    ['wrong.png', '%PDF-1.7\n'],
+    ['empty.pdf', '']
+  ])('MIME 缺失且文件名与内容不符时不提供预览：%s', async (fileName, content) => {
+    const api = makeApiClient()
+    api.request.mockResolvedValue({ kind: 'inline', file_name: fileName, mime_type: null })
+    api.requestBytes.mockResolvedValue(Buffer.from(content))
+    const result = await makeService(api).preview({ fileId: encodeOrgId('f') })
+    expect(result.mimeType).toBeNull()
+    expect(result).not.toHaveProperty('base64')
+  })
+
   it('inline 预览不泄漏签名地址或将二进制当文本读取', async () => {
     const api = makeApiClient()
     api.request.mockResolvedValue({
       kind: 'inline',
       file_name: 'a.pdf',
       mime_type: 'application/pdf',
-      url: 'https://signed/f'
+      // url: 'https://signed/f'
+      url: null
     })
     expect(await makeService(api).preview({ fileId: encodeOrgId('f') })).toEqual({
       kind: 'inline',
@@ -952,7 +1092,7 @@ describe('OrgKnowledgeService catalog/items', () => {
       content: '',
       base64: Buffer.from('%PDF-1.7').toString('base64')
     })
-    expect(api.requestBytes).toHaveBeenCalledWith('/api/kb/v1/files/f/preview', 10 * 1024 * 1024)
+    expect(api.requestBytes).toHaveBeenCalledWith('/api/kb/v1/files/f/preview')
     expect(api.requestText).not.toHaveBeenCalled()
   })
 

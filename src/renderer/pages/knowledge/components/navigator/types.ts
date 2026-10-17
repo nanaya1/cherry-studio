@@ -11,6 +11,7 @@ export interface BaseNavigatorContentProps {
   groups: Group[]
   groupById: ReadonlyMap<string, Group>
   sharedBaseIds?: ReadonlySet<string>
+  onRequestUnshare?: (baseId: string) => void
   selectedBaseId: string
   getGroupLabel: (groupId: string | null) => string
   onSelectBase: (baseId: string) => void
@@ -29,6 +30,7 @@ export interface BaseNavigatorGroupSectionProps {
   groupLabel: string
   groups: Group[]
   sharedBaseIds?: ReadonlySet<string>
+  onRequestUnshare?: (baseId: string) => void
   selectedBaseId: string
   onSelectBase: (baseId: string) => void
   onMoveBase: (baseId: string, groupId: string | null) => Promise<void> | void
@@ -56,6 +58,7 @@ export interface KnowledgeBaseRowProps {
   base: KnowledgeBaseListItem
   groups: Group[]
   shared?: boolean
+  onRequestUnshare?: (baseId: string) => void
   selected: boolean
   onSelectBase: (baseId: string) => void
   onMoveBase: (baseId: string, groupId: string | null) => Promise<void> | void

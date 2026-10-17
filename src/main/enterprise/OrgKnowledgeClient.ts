@@ -243,7 +243,8 @@ export class OrgKnowledgeClient {
   }
 
   async fetchPreviewBytes(fileId: string): Promise<Buffer> {
-    return this.apiClient.requestBytes(`/api/kb/v1/files/${encodeURIComponent(fileId)}/preview`, 10 * 1024 * 1024)
+    // return this.apiClient.requestBytes(`/api/kb/v1/files/${encodeURIComponent(fileId)}/preview`, 10 * 1024 * 1024)
+    return this.apiClient.requestBytes(`/api/kb/v1/files/${encodeURIComponent(fileId)}/preview`)
   }
 
   async resolveFileId(documentId: string): Promise<string | null> {
@@ -427,6 +428,18 @@ export class OrgKnowledgeClient {
     // DELETE 可能返回 204 无响应体；request 对空响应体返回 undefined 即视为成功。
     await this.apiClient['request'](`/api/kb/v1/spaces/${encodeURIComponent(spaceId)}/members/${userId}`, {
       method: 'DELETE'
+    })
+  }
+
+  /**
+   * 取消分享：删除整个远端 space。沿用现有路由转换（scoped=client），不猜测新路由。
+   * 204 无响应体由 request 返回 undefined 视为成功；403/404/超时抛错由上层保留本地绑定。
+   * MEA:enterprise-knowledge-page 仅本人拥有的关联空间可删，本地副本保留。
+   */
+  async deleteShareSpace(spaceId: string): Promise<void> {
+    await this.apiClient['request'](`/api/kb/v1/spaces/${encodeURIComponent(spaceId)}`, {
+      method: 'DELETE',
+      signal: AbortSignal.timeout(30_000)
     })
   }
 }

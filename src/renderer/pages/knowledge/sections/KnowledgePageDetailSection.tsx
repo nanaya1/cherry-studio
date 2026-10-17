@@ -1,8 +1,9 @@
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, ChevronDown } from 'lucide-react'
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { Button, PageSidePanel } from '@cherrystudio/ui'
+import { Badge, Button, PageSidePanel } from '@cherrystudio/ui'
+import { CommandPopupMenu } from '@renderer/components/command'
 import { FilePreview } from '@renderer/components/FilePreview'
 import { useDeleteKnowledgeItem, useKnowledgeItems, useReindexKnowledgeItem } from '@renderer/hooks/useKnowledgeItems'
 import type { KnowledgeItemOf } from '@shared/data/types/knowledge'
@@ -102,10 +103,40 @@ const KnowledgePageDetailSection = () => {
       {!selectedItemId && !filePreview ? (
         <DetailHeader
           base={selectedBase}
+          sharingStatus={
+            <Badge variant="outline" className="shrink-0 text-xs font-normal">
+              {t(sharedCopy ? 'knowledge.org.shared_tag' : 'knowledge.sync.state.unshared')}
+            </Badge>
+          }
           actions={
-            <Button variant="ghost" size="sm" disabled={!sharedCopy} onClick={() => setRecords(true)}>
-              {t('knowledge.org.shares')}
-            </Button>
+            <>
+              <Button variant="ghost" size="sm" disabled={!sharedCopy} onClick={() => setRecords(true)}>
+                {t('knowledge.org.shares')}
+              </Button>
+              <CommandPopupMenu
+                location="webcontents.context"
+                align="end"
+                side="bottom"
+                extraItems={[
+                  {
+                    type: 'item',
+                    id: 'share-code',
+                    label: t('knowledge.org.share_code'),
+                    onSelect: () => setSharing('code')
+                  },
+                  {
+                    type: 'item',
+                    id: 'invite-people',
+                    label: t('knowledge.org.invite_people'),
+                    onSelect: () => setSharing('people')
+                  }
+                ]}>
+                <Button variant="ghost" size="sm">
+                  {t('knowledge.org.share')}
+                  <ChevronDown className="size-3.5" />
+                </Button>
+              </CommandPopupMenu>
+            </>
           }
           onOpenRagConfig={openRagConfigDrawer}
           onOpenRecallTest={openRecallTestDrawer}
@@ -113,7 +144,7 @@ const KnowledgePageDetailSection = () => {
         />
       ) : null}
 
-      <div className="mx-6 flex flex-wrap items-center gap-2 border-b border-border py-3">
+      <div className="hidden">
         {/* <Button variant="ghost" size="sm" onClick={() => setSharing(true)}>
           {t('knowledge.org.share')}
         </Button> */}
@@ -152,6 +183,12 @@ const KnowledgePageDetailSection = () => {
             key={`${orgSession}-${selectedBaseId}`}
             baseId={sharedCopy.id}
             name={selectedBase.name}
+            localBaseId={sharedCopy.localBaseId}
+            onUnshared={() => {
+              void org.refresh()
+              void sync.refresh()
+              setRecords(false)
+            }}
           />
         ) : null}
       </PageSidePanel>

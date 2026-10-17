@@ -43,6 +43,7 @@ vi.mock('@cherrystudio/ui', () => ({
       {children}
     </button>
   ),
+  Badge: ({ children }: { children: ReactNode }) => <span>{children}</span>,
   ConfirmDialog: () => null,
   DropdownMenu: ({ children }: { children: ReactNode }) => <div>{children}</div>,
   DropdownMenuContent: ({ children }: { children: ReactNode }) => <div>{children}</div>,
@@ -120,7 +121,34 @@ const createGroup = (overrides: Partial<Group> = {}): Group => ({
   ...overrides
 })
 
+vi.mock('../KnowledgeUploadDetails', () => ({ default: () => null, useKnowledgeUpload: () => null }))
+
 describe('KnowledgeBaseRow', () => {
+  it.each([true, false])('取消分享入口仅对已分享库显示 shared=%s', (shared) => {
+    const onRequestUnshare = vi.fn()
+    render(
+      <KnowledgeBaseRow
+        base={createKnowledgeBase()}
+        groups={[]}
+        shared={shared}
+        selected={false}
+        onSelectBase={vi.fn()}
+        onMoveBase={vi.fn()}
+        onRenameBase={vi.fn()}
+        onCreateGroup={vi.fn()}
+        onDeleteBase={vi.fn()}
+        onToggleSidebar={vi.fn()}
+        sidebarPinned={false}
+        onRequestUnshare={onRequestUnshare}
+      />
+    )
+    const entries = screen.queryAllByRole('button', { name: 'knowledge.org.unshare' })
+    if (shared) {
+      expect(entries.length).toBeGreaterThan(0)
+      fireEvent.click(entries[0])
+      expect(onRequestUnshare).toHaveBeenCalledWith('base-1')
+    } else expect(entries).toHaveLength(0)
+  })
   it('renders only the base name, without the document count or status dot', () => {
     const { container } = render(
       <KnowledgeBaseRow
