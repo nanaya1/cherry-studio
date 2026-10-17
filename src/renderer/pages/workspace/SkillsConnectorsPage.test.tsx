@@ -104,19 +104,29 @@ afterEach(() => {
 })
 
 describe('SkillsConnectorsPage', () => {
-  it('hides the public skill tab when no management server is configured', () => {
-    orgSessionMock.authMode = 'official-direct'
-    render(<SkillsConnectorsPage connectorView={<div>connector catalog</div>} />)
+  // 上游原契约：未配置管理服务时只显示推荐二级 Tab，管理 OAuth 模式下显示公共二级 Tab。
+  // it('hides the public skill tab when no management server is configured', () => {
+  //   orgSessionMock.authMode = 'official-direct'
+  //   render(<SkillsConnectorsPage connectorView={<div>connector catalog</div>} />)
+  //
+  //   expect(screen.getByRole('tab', { name: 'Recommended skills' })).toBeVisible()
+  //   expect(screen.queryByRole('tab', { name: 'Organization' })).not.toBeInTheDocument()
+  // })
+  //
+  // it('shows the organization skill tab in management OAuth mode', () => {
+  //   orgSessionMock.authMode = 'management-oauth'
+  //   render(<SkillsConnectorsPage connectorView={<div>connector catalog</div>} />)
+  //
+  //   expect(screen.getByRole('tab', { name: 'Organization' })).toBeVisible()
+  // })
 
-    expect(screen.getByRole('tab', { name: 'Recommended skills' })).toBeVisible()
-    expect(screen.queryByRole('tab', { name: 'Organization' })).not.toBeInTheDocument()
-  })
-
-  it('shows the organization skill tab in management OAuth mode', () => {
+  it('hides recommended and public tab switching while keeping recommended skills visible', () => {
     orgSessionMock.authMode = 'management-oauth'
     render(<SkillsConnectorsPage connectorView={<div>connector catalog</div>} />)
 
-    expect(screen.getByRole('tab', { name: 'Organization' })).toBeVisible()
+    expect(screen.queryByRole('tab', { name: 'Recommended skills' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('tab', { name: 'Organization' })).not.toBeInTheDocument()
+    expect(screen.getByText('recommended skills:')).toBeVisible()
   })
 
   it('shows recommended skills by default and preserves access to installed skills', async () => {
@@ -124,14 +134,18 @@ describe('SkillsConnectorsPage', () => {
     render(<SkillsConnectorsPage connectorView={<div>connector catalog</div>} />)
 
     expect(screen.getByRole('tab', { name: 'Skills' })).toBeVisible()
-    expect(screen.getByRole('tab', { name: 'Recommended skills' })).toHaveClass('border-b-2')
-    expect(screen.getByRole('tab', { name: 'Organization' })).toHaveClass('border-b-2')
+    // 上游原契约允许在推荐与公共目录之间切换，MEA 隐藏该二级切换栏。
+    // expect(screen.getByRole('tab', { name: 'Recommended skills' })).toHaveClass('border-b-2')
+    // expect(screen.getByRole('tab', { name: 'Organization' })).toHaveClass('border-b-2')
+    expect(screen.queryByRole('tab', { name: 'Recommended skills' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('tab', { name: 'Organization' })).not.toBeInTheDocument()
     expect(screen.getByText('recommended skills:')).toBeVisible()
 
     await user.type(screen.getByPlaceholderText('library.toolbar.search_placeholder'), '周报')
-    await user.click(screen.getByRole('tab', { name: 'Organization' }))
-    expect(screen.getByText('org skills: 周报')).toBeVisible()
-    await user.click(screen.getByRole('tab', { name: 'Recommended skills' }))
+    // await user.click(screen.getByRole('tab', { name: 'Organization' }))
+    // expect(screen.getByText('org skills: 周报')).toBeVisible()
+    // await user.click(screen.getByRole('tab', { name: 'Recommended skills' }))
+    expect(screen.getByText('recommended skills: 周报')).toBeVisible()
     expect(screen.getByText('skill dialogs:')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /My installed/ })).toHaveTextContent('2')
 

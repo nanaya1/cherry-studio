@@ -19,7 +19,15 @@ const store = {
     saved = structuredClone(value)
   }
 }
-const client = { createShareSpace: vi.fn(), uploadShareStream: vi.fn(), verify: vi.fn() }
+// const client = { createShareSpace: vi.fn(), uploadShareStream: vi.fn(), verify: vi.fn() }
+const client = {
+  createShareSpace: vi.fn(),
+  createShareFolder: vi.fn(),
+  verifyFolder: vi.fn(),
+  verifyPolicy: vi.fn(),
+  uploadShareStream: vi.fn(),
+  verify: vi.fn()
+}
 const run = () =>
   new FirstShareUpload(store, client).run(
     'key',
@@ -34,6 +42,155 @@ beforeEach(() => {
   client.createShareSpace.mockResolvedValue({ share_id: 'space' })
   client.uploadShareStream.mockResolvedValue({ share_id: 'space', file_id: 'file', chunk_count: 1 })
   client.verify.mockResolvedValue(undefined)
+})
+it('创建前持久化库级false，创建与每次上传前核验真实策略', async () => {
+  client.createShareSpace.mockImplementation(async (_name, mode) => {
+    expect(saved.uploadOriginal).toBe(false)
+    expect(mode).toBe(false)
+    return { share_id: 'space' }
+  })
+  const result = await new FirstShareUpload(store, client).run(
+    'key',
+    '库',
+    async () => [{ ...entry, uploadOriginal: false }],
+    () => {},
+    () => {}
+  )
+  expect(result.completion).toBe('completed')
+  expect(client.verifyPolicy).toHaveBeenCalledWith('space', false, true)
+  expect(saved.uploadOriginal).toBe(false)
+})
+it('空库也在创建前持久化库级false且可恢复', async () => {
+  const upload = () =>
+    new FirstShareUpload(store, client).run(
+      'key',
+      '空库',
+      async () => [],
+      () => {},
+      () => {},
+      false,
+      false
+    )
+  expect((await upload()).completion).toBe('completed')
+  expect(saved.uploadOriginal).toBe(false)
+  expect((await upload()).completion).toBe('completed')
+  expect(client.createShareSpace).toHaveBeenCalledTimes(1)
+  expect(client.uploadShareStream).not.toHaveBeenCalled()
+})
+it('策略核验失败禁止上传且保留可信空间供重试', async () => {
+  client.verifyPolicy.mockRejectedValue(new Error('策略不符'))
+  expect((await run()).completion).toBe('incomplete')
+  expect(client.uploadShareStream).not.toHaveBeenCalled()
+  expect(saved.shareId).toBe('space')
+})
+
+describe('目录分享', () => {
+  const folders = [
+    { itemId: 'z', fileName: '资料', parentItemId: null },
+    { itemId: 'a', fileName: '合同', parentItemId: 'z' },
+    { itemId: 'empty', fileName: '空目录', parentItemId: 'a' }
+  ]
+  const plan = async () => ({ files: [{ ...entry, parentItemId: 'a' }], folders })
+  const share = (verifyOnly = false) =>
+    new FirstShareUpload(store, client).run(
+      'key',
+      '库',
+      plan,
+      () => {},
+      () => {},
+      verifyOnly
+    )
+  beforeEach(() => {
+    client.createShareFolder.mockImplementation(async (space, folder, parent) => {
+      expect(saved.folders.find((f: any) => f.itemId === folder.itemId).phase).toBe('intent')
+      return { folder_id: `remote-${folder.itemId}`, name: folder.fileName, space_id: space, parent_id: parent }
+    })
+  })
+  it('按父子顺序创建多层及空目录，文件传入可信父目录ID', async () => {
+    expect((await share()).completion).toBe('completed')
+    expect(client.createShareFolder.mock.calls.map(([, f, p]) => [f.fileName, p])).toEqual([
+      ['资料', null],
+      ['合同', 'remote-z'],
+      ['空目录', 'remote-a']
+    ])
+    expect(client.uploadShareStream.mock.calls[0][1]).toMatchObject({ parentId: 'remote-a' })
+    expect(saved.folders.every((f: any) => f.phase === 'success')).toBe(true)
+  })
+  it('只有空目录也可分享，创建空间响应丢失不能误判完成', async () => {
+    const upload = () =>
+      new FirstShareUpload(store, client).run(
+        'key',
+        '库',
+        async () => ({ files: [], folders }),
+        () => {},
+        () => {}
+      )
+    client.createShareSpace.mockRejectedValueOnce(new Error('断网'))
+    expect((await upload()).completion).toBe('incomplete')
+    saved = undefined
+    expect((await upload()).completion).toBe('completed')
+    expect(client.uploadShareStream).not.toHaveBeenCalled()
+  })
+  it.each([
+    { folder_id: 'x', name: '资料', space_id: 'wrong', parent_id: null },
+    { folder_id: 'x', name: '资料', space_id: 'space', parent_id: 'wrong' }
+  ])('目录响应归属不符时不保存可信ID：%j', async (response) => {
+    client.createShareFolder.mockResolvedValueOnce(response)
+    expect((await share()).completion).toBe('incomplete')
+    expect(saved.folders.find((f: any) => f.itemId === 'z').folderId).toBeNull()
+    await share()
+    expect(client.createShareFolder).toHaveBeenCalledTimes(1)
+  })
+  it('明确路由不存在后允许继续，其他404保持未知且禁止重建', async () => {
+    client.createShareFolder.mockRejectedValueOnce(new OrgApiHttpError(404, '接口不存在'))
+    expect((await share()).completion).toBe('incomplete')
+    expect(saved.folders.find((f: any) => f.itemId === 'z').phase).toBe('failure')
+    saved.folders.find((f: any) => f.itemId === 'z').phase = 'unknown'
+    expect((await share()).completion).toBe('completed')
+    saved = undefined
+    client.createShareFolder.mockRejectedValueOnce(new OrgApiHttpError(404, '目录不存在'))
+    expect((await share()).completion).toBe('incomplete')
+    const sent = client.createShareFolder.mock.calls.length
+    expect((await share()).completion).toBe('incomplete')
+    expect(client.createShareFolder).toHaveBeenCalledTimes(sent)
+  })
+  it('目录创建响应丢失后暂停且不能重建或上传', async () => {
+    client.createShareFolder.mockRejectedValue(new Error('超时'))
+    expect((await share()).completion).toBe('incomplete')
+    expect((await share()).completion).toBe('incomplete')
+    expect(client.createShareFolder).toHaveBeenCalledTimes(1)
+    expect(client.uploadShareStream).not.toHaveBeenCalled()
+  })
+  it('已保存目录ID核对失败后保留ID，下次只核对不重建', async () => {
+    client.verifyFolder.mockRejectedValueOnce(new Error('核对失败'))
+    expect((await share()).completion).toBe('incomplete')
+    expect(saved.folders.find((f: any) => f.itemId === 'z').folderId).toBe('remote-z')
+    expect((await share()).completion).toBe('completed')
+    expect(client.createShareFolder).toHaveBeenCalledTimes(3)
+  })
+  it('目录改名或文件移动后阻止继续分享', async () => {
+    await share()
+    const changed = async () => ({ files: [{ ...entry, parentItemId: 'z' }], folders })
+    expect(
+      (
+        await new FirstShareUpload(store, client).run(
+          'key',
+          '库',
+          changed,
+          () => {},
+          () => {}
+        )
+      ).completion
+    ).toBe('incomplete')
+    expect(client.uploadShareStream).toHaveBeenCalledTimes(1)
+  })
+  it('仅核对不得创建尚未发送的目录', async () => {
+    client.createShareFolder.mockRejectedValueOnce(new OrgApiHttpError(422, '非法名称'))
+    await share()
+    await share(true)
+    expect(client.createShareFolder).toHaveBeenCalledTimes(1)
+    expect(client.uploadShareStream).not.toHaveBeenCalled()
+  })
 })
 describe('首次上传写前日志', () => {
   it('创建响应丢失后禁止重建空间', async () => {
@@ -207,5 +364,93 @@ describe('首次上传写前日志', () => {
     client.uploadShareStream.mockRejectedValue(new OrgApiHttpError(413, '服务端容量限制'))
     expect((await run()).completion).toBe('incomplete')
     expect(saved.files[0]).toMatchObject({ phase: 'failure', error: '服务端容量限制', fileId: null })
+  })
+})
+describe('可选不上传源文件', () => {
+  it('uploadOriginal=false透传给上传与核对客户端并持久模式', async () => {
+    const upload = new FirstShareUpload(store, client)
+    expect(
+      (
+        await upload.run(
+          'key',
+          '库',
+          async () => [{ ...entry, uploadOriginal: false }],
+          () => {},
+          () => {}
+        )
+      ).completion
+    ).toBe('completed')
+    expect(client.uploadShareStream.mock.calls[0][1]).toMatchObject({ uploadOriginal: false })
+    expect(saved.files[0]).toMatchObject({ uploadOriginal: false, phase: 'success', fileId: 'file' })
+  })
+  it('uploadOriginal=true显式透传并持久模式', async () => {
+    await new FirstShareUpload(store, client).run(
+      'key',
+      '库',
+      async () => [{ ...entry, uploadOriginal: true }],
+      () => {},
+      () => {}
+    )
+    expect(client.uploadShareStream.mock.calls[0][1]).toMatchObject({ uploadOriginal: true })
+    expect(saved.files[0]).toMatchObject({ uploadOriginal: true })
+  })
+  it.each([
+    [false, undefined],
+    [false, true],
+    [true, false],
+    [undefined, false]
+  ])('恢复时上传选项变化则暂停，禁止错模式恢复且不重传：%s → %s', async (previous, current) => {
+    const upload = new FirstShareUpload(store, client)
+    await upload.run(
+      'key',
+      '库',
+      async () => [{ ...entry, uploadOriginal: previous }],
+      () => {},
+      () => {}
+    )
+    if (previous === undefined) delete saved.files[0].uploadOriginal
+    expect(saved.files[0].phase).toBe('success')
+    const before = structuredClone(saved)
+    const report = vi.fn()
+    const result = await upload.run(
+      'key',
+      '库',
+      async () => [{ ...entry, uploadOriginal: current }],
+      report,
+      () => {}
+    )
+    expect(result.completion).toBe('incomplete')
+    expect(report).toHaveBeenLastCalledWith(expect.objectContaining({ phase: 'paused', error: expect.any(String) }))
+    expect(saved).toEqual(before)
+    expect(client.createShareSpace).toHaveBeenCalledTimes(1)
+    expect(client.uploadShareStream).toHaveBeenCalledTimes(1)
+    expect(client.verify).toHaveBeenCalledTimes(1)
+  })
+  it.each([
+    [false, false],
+    [true, true],
+    [undefined, true],
+    [true, undefined],
+    [undefined, undefined]
+  ])('恢复时上传选项一致可继续核对完成：%s → %s', async (previous, current) => {
+    const upload = new FirstShareUpload(store, client)
+    await upload.run(
+      'key',
+      '库',
+      async () => [{ ...entry, uploadOriginal: previous }],
+      () => {},
+      () => {}
+    )
+    if (previous === undefined) delete saved.files[0].uploadOriginal
+    const result = await upload.run(
+      'key',
+      '库',
+      async () => [{ ...entry, uploadOriginal: current }],
+      () => {},
+      () => {}
+    )
+    expect(result.completion).toBe('completed')
+    expect(client.uploadShareStream).toHaveBeenCalledTimes(1)
+    expect(client.verify).toHaveBeenCalledTimes(2)
   })
 })

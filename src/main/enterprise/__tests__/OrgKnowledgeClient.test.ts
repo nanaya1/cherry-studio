@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { OrgApiClient } from '../OrgApiClient'
-import { OrgKnowledgeClient, OrgKnowledgeProtocolError } from '../OrgKnowledgeClient'
+import { getKnowledgeSpacePath, OrgKnowledgeClient, OrgKnowledgeProtocolError } from '../OrgKnowledgeClient'
 
 function makeApiClient(
   overrides: Partial<Record<'request' | 'requestMultipart' | 'requestText', ReturnType<typeof vi.fn>>>
@@ -14,6 +14,53 @@ function makeApiClient(
 }
 
 describe('OrgKnowledgeClient', () => {
+  it('根据部署模式选择 modern 代理或知识库直连路径', () => {
+    expect(getKnowledgeSpacePath('space id', true)).toBe('/api/kb/v1/spaces/space%20id')
+    expect(getKnowledgeSpacePath('space id', false)).toBe('/api/v1/spaces/space%20id')
+  })
+  it.each([false, true])('部署模式%s读取空间策略时使用正确接口', async (management) => {
+    vi.resetModules()
+    vi.stubEnv('MAIN_VITE_ORG_SERVER_BASE_URL', management ? 'https://management.example.test' : '')
+    try {
+      const { OrgKnowledgeClient: Client } = await import('../OrgKnowledgeClient')
+      const request = vi.fn().mockResolvedValue({ id: 'space', name: '库', allow_local_file_upload: true })
+      const client = new Client(makeApiClient({ request }))
+      await expect(client.getSpace('space')).resolves.toMatchObject({ allow_local_file_upload: true })
+      expect(request.mock.calls[0][0]).toBe(management ? '/api/kb/v1/spaces/space' : '/api/v1/spaces/space')
+    } finally {
+      vi.unstubAllEnvs()
+      vi.resetModules()
+    }
+  })
+  it.each([false, true])('创建携带策略%s且不发送visibility，详情保留策略与独立下载权限', async (mode) => {
+    const request = vi.fn().mockResolvedValueOnce({ share_id: 'space' }).mockResolvedValueOnce({
+      id: 'space',
+      name: '库',
+      allow_local_file_upload: mode,
+      can_download: false
+    })
+    const client = new OrgKnowledgeClient(makeApiClient({ request }))
+    await client.createShareSpace('库', mode)
+    expect(JSON.parse(request.mock.calls[0][1].body)).toEqual({ name: '库', allow_local_file_upload: mode })
+    expect(await client.getSpace('space')).toMatchObject({ allow_local_file_upload: mode, can_download: false })
+  })
+  it('共享目录创建透传父目录，校验folder_id和空间归属字段', async () => {
+    const request = vi
+      .fn()
+      .mockResolvedValue({ folder_id: 'folder', name: '合同', space_id: 'space', parent_id: 'parent' })
+    const client = new OrgKnowledgeClient(makeApiClient({ request }))
+    expect(await client.createShareFolder('space', { fileName: '合同' }, 'parent')).toMatchObject({
+      folder_id: 'folder',
+      parent_id: 'parent'
+    })
+    expect(request).toHaveBeenCalledWith(
+      '/api/v1/local-share/spaces/space/folders',
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ name: '合同', parent_id: 'parent' }) }),
+      undefined
+    )
+    request.mockResolvedValue({ folder_id: '', name: '合同', space_id: 'space' })
+    await expect(client.createShareFolder('space', { fileName: '合同' }, null)).rejects.toThrow('响应结构不符合契约')
+  })
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn())
   })
@@ -26,7 +73,11 @@ describe('OrgKnowledgeClient', () => {
     const request = vi.fn().mockResolvedValue({ deleted: 1 })
     const client = new OrgKnowledgeClient(makeApiClient({ request }))
     await client.deleteFile('f:1')
-    expect(request).toHaveBeenCalledWith('/api/kb/v1/files/f%3A1', expect.objectContaining({ method: 'DELETE' }))
+    expect(request).toHaveBeenCalledWith(
+      '/api/kb/v1/files/f%3A1',
+      expect.objectContaining({ method: 'DELETE' }),
+      undefined
+    )
     request.mockResolvedValue(undefined)
     await expect(client.deleteFile('f:1')).rejects.toThrow('响应结构不符合契约')
     expect(fetch).not.toHaveBeenCalled()
@@ -36,7 +87,11 @@ describe('OrgKnowledgeClient', () => {
     const request = vi.fn().mockResolvedValue(undefined)
     const client = new OrgKnowledgeClient(makeApiClient({ request }))
     await expect(client.deleteShareSpace('space')).resolves.toBeUndefined()
-    expect(request).toHaveBeenCalledWith('/api/kb/v1/spaces/space', expect.objectContaining({ method: 'DELETE' }))
+    expect(request).toHaveBeenCalledWith(
+      '/api/v1/spaces/space',
+      expect.objectContaining({ method: 'DELETE' }),
+      undefined
+    )
     const init = request.mock.calls[0][1] as RequestInit
     expect((init.signal as AbortSignal)?.constructor?.name).toBe('AbortSignal')
   })
@@ -107,14 +162,37 @@ describe('OrgKnowledgeClient', () => {
     await expect(client.listCollaborators({})).rejects.toBeInstanceOf(OrgKnowledgeProtocolError)
   })
 
-  it('接受真实 SpaceOut 没有 document_count 的目录', async () => {
-    const base = { id: 'space', name: '空间' }
+  it('接受真实 SpaceOut 的更新时间且兼容没有 document_count 的目录', async () => {
+    const base = { id: 'space', name: '空间', updated_at: '2026-10-17T00:00:00Z' }
     const client = new OrgKnowledgeClient(
       makeApiClient({ request: vi.fn().mockResolvedValue({ public: [base], shared: [], owned: [] }) })
     )
     const result = (await client.getCatalog()).public[0]
     expect(result).toMatchObject(base)
     expect(result.document_count).toBeUndefined()
+  })
+
+  it('列表响应混入其他知识库条目时拒绝展示', async () => {
+    const request = vi.fn().mockResolvedValue({
+      items: [
+        {
+          id: 'item',
+          base_id: 'B',
+          group_id: null,
+          type: 'file',
+          title: '乙库私密文件',
+          status: 'completed',
+          error: null,
+          document_id: null,
+          data: {},
+          created_at: '2026-10-17T00:00:00Z',
+          updated_at: '2026-10-17T00:00:00Z'
+        }
+      ],
+      total: 1
+    })
+    const client = new OrgKnowledgeClient(makeApiClient({ request }))
+    await expect(client.listItems('A')).rejects.toBeInstanceOf(OrgKnowledgeProtocolError)
   })
 
   it('listItems encodes baseId and passes cursor', async () => {
@@ -232,4 +310,90 @@ describe('OrgKnowledgeClient', () => {
     const client = new OrgKnowledgeClient(makeApiClient({ request }))
     await expect(client.getCatalog()).rejects.toBeInstanceOf(OrgKnowledgeProtocolError)
   })
+
+  it('renameSpace PUT 编码 spaceId，发送 {name} 并 30s 超时', async () => {
+    const request = vi.fn().mockResolvedValue({ id: 'space', name: '新名' })
+    const client = new OrgKnowledgeClient(makeApiClient({ request }))
+    await expect(client.renameSpace('space', '新名')).resolves.toEqual({ id: 'space', name: '新名' })
+    expect(request).toHaveBeenCalledWith(
+      '/api/v1/spaces/space',
+      expect.objectContaining({ method: 'PUT', body: JSON.stringify({ name: '新名' }) }),
+      undefined
+    )
+    const init = request.mock.calls[0][1] as RequestInit
+    expect((init.signal as AbortSignal)?.constructor?.name).toBe('AbortSignal')
+  })
+
+  it('renameSpace 携带写守卫作为第三参数', async () => {
+    const request = vi.fn().mockResolvedValue({ id: 'space', name: '新名' })
+    const guard = vi.fn(() => () => {})
+    const client = new OrgKnowledgeClient(makeApiClient({ request }), guard)
+    await expect(client.renameSpace('space', '新名')).resolves.toEqual({ id: 'space', name: '新名' })
+    expect(guard).toHaveBeenCalled()
+    expect(request).toHaveBeenCalledWith(
+      '/api/v1/spaces/space',
+      expect.objectContaining({ method: 'PUT', body: JSON.stringify({ name: '新名' }) }),
+      expect.any(Function)
+    )
+  })
+
+  it('预签名预览直取字节时省略账号凭据并限制响应大小', async () => {
+    const fetcher = vi.fn().mockResolvedValue(new Response(new Uint8Array([1, 2, 3]), { status: 200 }))
+    vi.stubGlobal('fetch', fetcher)
+    const client = new OrgKnowledgeClient(makeApiClient({}))
+
+    await expect(
+      client.fetchPresignedPreviewBytes('https://minio.example.test/object?X-Amz-Signature=secret', 3)
+    ).resolves.toEqual(Buffer.from([1, 2, 3]))
+    expect(fetcher).toHaveBeenCalledWith(
+      'https://minio.example.test/object?X-Amz-Signature=secret',
+      expect.objectContaining({ credentials: 'omit', signal: expect.any(AbortSignal) })
+    )
+    expect(fetcher.mock.calls[0][1]).not.toHaveProperty('headers')
+  })
+
+  it('预签名 URL 拒绝 userinfo、HTTP 错误和 Content-Length 超限', async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(new Response('denied', { status: 403 }))
+      .mockResolvedValueOnce(
+        new Response(new Uint8Array([1, 2, 3, 4]), { status: 200, headers: { 'Content-Length': '4' } })
+      )
+    vi.stubGlobal('fetch', fetcher)
+    const client = new OrgKnowledgeClient(makeApiClient({}))
+
+    await expect(client.fetchPresignedPreviewBytes('https://user:pass@minio.example.test/object', 10)).rejects.toThrow()
+    await expect(client.fetchPresignedPreviewBytes('https://minio.example.test/object', 10)).rejects.toThrow('HTTP 403')
+    await expect(client.fetchPresignedPreviewBytes('https://minio.example.test/object', 3)).rejects.toThrow('过大')
+    expect(fetcher).toHaveBeenCalledTimes(2)
+  })
+
+  it('预签名响应流读取超过上限时取消读取并报错', async () => {
+    const cancel = vi.fn().mockResolvedValue(undefined)
+    const read = vi
+      .fn()
+      .mockResolvedValueOnce({ done: false, value: new Uint8Array([1, 2]) })
+      .mockResolvedValueOnce({ done: false, value: new Uint8Array([3, 4]) })
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: new Headers(),
+        body: { getReader: () => ({ read, cancel, releaseLock: vi.fn() }) }
+      })
+    )
+    const client = new OrgKnowledgeClient(makeApiClient({}))
+
+    await expect(client.fetchPresignedPreviewBytes('https://minio.example.test/object', 3)).rejects.toThrow('过大')
+    expect(cancel).toHaveBeenCalled()
+  })
+
+  it.each([{}, { id: 'space' }, { name: 'x' }, { id: 1, name: 'x' }])(
+    'renameSpace 拒绝缺少 id/name 的响应 %#',
+    async (raw) => {
+      const client = new OrgKnowledgeClient(makeApiClient({ request: vi.fn().mockResolvedValue(raw) }))
+      await expect(client.renameSpace('space', '新名')).rejects.toBeInstanceOf(OrgKnowledgeProtocolError)
+    }
+  )
 })

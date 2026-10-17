@@ -27,12 +27,16 @@ import { getMcpProviderLogo, getProviderDisplayName, type ProviderConfig, provid
 
 // [enterprise] 组织连接器由发现页三级 tab 上移为目录二级 tab
 // type CatalogTab = 'discover' | 'providers' | 'mine'
-type CatalogTab = 'discover' | 'org' | 'providers' | 'mine'
+// type CatalogTab = 'discover' | 'org' | 'providers' | 'mine'
+type CatalogTab = 'builtin' | 'discover' | 'org' | 'providers' | 'mine'
 // type DiscoverTab = 'builtin' | 'marketplace' | 'org'
 type DiscoverTab = 'builtin' | 'marketplace'
 
 const primaryTabClassName =
   'h-10 flex-none rounded-none border-x-0 border-t-0 border-b-2 border-transparent bg-transparent px-1.5 font-medium text-muted-foreground shadow-none hover:bg-transparent hover:text-foreground data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none dark:data-[state=active]:border-foreground dark:data-[state=active]:bg-transparent'
+
+// MEA：连接器仅展示内置服务器和我的 MCP；改为 true 可恢复扩展目录原实现。
+const showExtendedCatalog = false
 
 export default function McpCatalog() {
   const { t } = useTranslation()
@@ -42,7 +46,8 @@ export default function McpCatalog() {
   const showPublicCatalog =
     accountStatus?.phase === 'signed-in' &&
     (accountStatus.authMode === 'management-exchange' || accountStatus.authMode === 'management-oauth')
-  const [activeTab, setActiveTab] = useState<CatalogTab>('discover')
+  // const [activeTab, setActiveTab] = useState<CatalogTab>('discover')
+  const [activeTab, setActiveTab] = useState<CatalogTab>('builtin')
   const [discoverTab, setDiscoverTab] = useState<DiscoverTab>('builtin')
   const [selectedProvider, setSelectedProvider] = useState<ProviderConfig | null>(null)
 
@@ -88,38 +93,51 @@ export default function McpCatalog() {
     <Tabs value={activeTab} onValueChange={changeTab} className="flex h-full min-h-0 flex-col gap-0">
       <div className="shrink-0 px-6 pt-5">
         <TabsList className="h-11 gap-6 rounded-none bg-transparent p-0">
-          <TabsTrigger value="discover" className={primaryTabClassName}>
-            {t('settings.mcp.discover')}
+          {/* MEA：连接器只保留内置服务器和我的 MCP，原目录入口保留在下方注释。 */}
+          <TabsTrigger value="builtin" className={primaryTabClassName}>
+            {t('settings.mcp.builtinServers')}
           </TabsTrigger>
-          {/* [enterprise] 组织连接器从发现页三级 tab 上移至二级 */}
+          {/* <TabsTrigger value="discover" className={primaryTabClassName}>
+            {t('settings.mcp.discover')}
+          </TabsTrigger> */}
+          {/* [enterprise] 组织连接器从发现页三级 tab 上移至二级
           {showPublicCatalog ? (
             <TabsTrigger value="org" className={primaryTabClassName}>
               {t('workspace.skillsConnectors.sources.org')}
             </TabsTrigger>
-          ) : null}
-          <TabsTrigger value="providers" className={primaryTabClassName}>
+          ) : null} */}
+          {/* <TabsTrigger value="providers" className={primaryTabClassName}>
             {t('settings.mcp.providers')}
-          </TabsTrigger>
+          </TabsTrigger> */}
           <TabsTrigger value="mine" className={primaryTabClassName}>
             {t('settings.mcp.myServers')}
           </TabsTrigger>
         </TabsList>
       </div>
 
-      <TabsContent value="discover" className="flex min-h-0 flex-1 flex-col">
+      <TabsContent value="builtin" className="flex min-h-0 flex-1 flex-col">
         <Scrollbar className="@container/mcp-discover min-h-0 flex-1 px-6 pt-5 pb-6">
-          {discoverTab === 'builtin' ? (
-            <BuiltinMcpServerList variant="catalog" toolbarStart={discoverTabs} />
-          ) : (
-            // [enterprise] 原组织连接器分支已上移至独立二级 tab
-            // <OrgConnectorList variant="catalog" toolbarStart={discoverTabs} />
-            <McpMarketList variant="catalog" toolbarStart={discoverTabs} />
-          )}
+          <BuiltinMcpServerList variant="catalog" />
         </Scrollbar>
       </TabsContent>
 
-      {/* [enterprise] 组织连接器目录升级为二级 tab 内容 */}
-      {showPublicCatalog ? (
+      {/* MEA：停用发现页及内置/市场切换，保留原实现以便恢复。 */}
+      {showExtendedCatalog && (
+        <TabsContent value="discover" className="flex min-h-0 flex-1 flex-col">
+          <Scrollbar className="@container/mcp-discover min-h-0 flex-1 px-6 pt-5 pb-6">
+            {discoverTab === 'builtin' ? (
+              <BuiltinMcpServerList variant="catalog" toolbarStart={discoverTabs} />
+            ) : (
+              // [enterprise] 原组织连接器分支已上移至独立二级 tab
+              // <OrgConnectorList variant="catalog" toolbarStart={discoverTabs} />
+              <McpMarketList variant="catalog" toolbarStart={discoverTabs} />
+            )}
+          </Scrollbar>
+        </TabsContent>
+      )}
+
+      {/* [enterprise] 停用组织连接器目录内容，保留原实现以便恢复。 */}
+      {showExtendedCatalog && showPublicCatalog ? (
         <TabsContent value="org" className="min-h-0 flex-1">
           <Scrollbar className="@container/mcp-discover h-full px-6 py-5">
             <OrgConnectorList variant="catalog" />
@@ -127,64 +145,70 @@ export default function McpCatalog() {
         </TabsContent>
       ) : null}
 
-      <TabsContent value="providers" className="min-h-0 flex-1">
-        <Scrollbar className="@container/mcp-providers h-full px-6 py-5">
-          <div className="grid @[1120px]/mcp-providers:grid-cols-4 @[560px]/mcp-providers:grid-cols-2 @[840px]/mcp-providers:grid-cols-3 grid-cols-1 gap-3">
-            {providers.map((provider) => {
-              const Logo = getMcpProviderLogo(provider.key)
-              const providerName = getProviderDisplayName(provider, t)
+      {/* MEA：停用服务商目录内容，保留原实现以便恢复。 */}
+      {showExtendedCatalog && (
+        <TabsContent value="providers" className="min-h-0 flex-1">
+          <Scrollbar className="@container/mcp-providers h-full px-6 py-5">
+            <div className="grid @[1120px]/mcp-providers:grid-cols-4 @[560px]/mcp-providers:grid-cols-2 @[840px]/mcp-providers:grid-cols-3 grid-cols-1 gap-3">
+              {providers.map((provider) => {
+                const Logo = getMcpProviderLogo(provider.key)
+                const providerName = getProviderDisplayName(provider, t)
 
-              return (
-                <button
-                  key={provider.key}
-                  type="button"
-                  className={cn(
-                    'group flex min-h-20 items-center gap-3 rounded-lg border border-border-subtle bg-card p-3 text-left',
-                    'transition-[background-color,border-color,box-shadow] hover:border-border-strong hover:bg-background-subtle hover:shadow-sm',
-                    'focus-visible:border-ring focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50'
-                  )}
-                  onClick={() => setSelectedProvider(provider)}>
-                  <div className="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted">
-                    {Logo ? (
-                      <Logo.Avatar size={22} shape="circle" />
-                    ) : (
-                      <FolderCog className="size-4 text-muted-foreground" />
+                return (
+                  <button
+                    key={provider.key}
+                    type="button"
+                    className={cn(
+                      'group flex min-h-20 items-center gap-3 rounded-lg border border-border-subtle bg-card p-3 text-left',
+                      'transition-[background-color,border-color,box-shadow] hover:border-border-strong hover:bg-background-subtle hover:shadow-sm',
+                      'focus-visible:border-ring focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50'
                     )}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate font-semibold text-base leading-5">{providerName}</div>
-                    <div className="mt-2 truncate text-muted-foreground text-sm leading-5">
-                      {t('settings.provider.api_key.label')}
+                    onClick={() => setSelectedProvider(provider)}>
+                    <div className="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted">
+                      {Logo ? (
+                        <Logo.Avatar size={22} shape="circle" />
+                      ) : (
+                        <FolderCog className="size-4 text-muted-foreground" />
+                      )}
                     </div>
-                  </div>
-                </button>
-              )
-            })}
-          </div>
-        </Scrollbar>
-      </TabsContent>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate font-semibold text-base leading-5">{providerName}</div>
+                      <div className="mt-2 truncate text-muted-foreground text-sm leading-5">
+                        {t('settings.provider.api_key.label')}
+                      </div>
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          </Scrollbar>
+        </TabsContent>
+      )}
 
       <TabsContent value="mine" className="min-h-0 flex-1">
         <McpServersList variant="catalog" showTitle={false} />
       </TabsContent>
 
-      <Dialog open={Boolean(selectedProvider)} onOpenChange={(open) => !open && setSelectedProvider(null)}>
-        <DialogContent
-          size="xl"
-          showCloseButton={false}
-          className="max-h-[80vh] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0">
-          {selectedProvider && (
-            <>
-              <DialogTitle className="sr-only">{getProviderDisplayName(selectedProvider, t)}</DialogTitle>
-              <McpProviderSettings
-                provider={selectedProvider}
-                existingServers={mcpServers}
-                onBack={() => setSelectedProvider(null)}
-              />
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
+      {/* MEA：服务商入口停用后不挂载详情弹窗，原逻辑保留。 */}
+      {showExtendedCatalog && (
+        <Dialog open={Boolean(selectedProvider)} onOpenChange={(open) => !open && setSelectedProvider(null)}>
+          <DialogContent
+            size="xl"
+            showCloseButton={false}
+            className="max-h-[80vh] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0">
+            {selectedProvider && (
+              <>
+                <DialogTitle className="sr-only">{getProviderDisplayName(selectedProvider, t)}</DialogTitle>
+                <McpProviderSettings
+                  provider={selectedProvider}
+                  existingServers={mcpServers}
+                  onBack={() => setSelectedProvider(null)}
+                />
+              </>
+            )}
+          </DialogContent>
+        </Dialog>
+      )}
     </Tabs>
   )
 }

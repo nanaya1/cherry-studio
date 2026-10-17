@@ -7,6 +7,7 @@ import { useMutation } from '@renderer/data/hooks/useDataApi'
 import { ipcApi } from '@renderer/ipc'
 import { openRoute } from '@renderer/services/mainWindowNavigation'
 import { toast } from '@renderer/services/toast'
+import { getSkillDisplayName } from '@shared/data/api/schemas/skills'
 import type { InstalledSkill } from '@shared/data/types/agent'
 
 const logger = loggerService.withContext('SkillLauncher')
@@ -16,7 +17,8 @@ type LaunchSkill = (skill: InstalledSkill) => Promise<void>
 const SkillLauncherContext = createContext<LaunchSkill | null>(null)
 
 export function SkillLauncherProvider({ children }: PropsWithChildren) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const locale = i18n.resolvedLanguage ?? i18n.language
   const { trigger: enableSkill } = useMutation('PATCH', '/skills/:skillId', {
     refresh: ['/skills', '/skills/*']
   })
@@ -42,11 +44,17 @@ export function SkillLauncherProvider({ children }: PropsWithChildren) {
       try {
         await createSessionAndOpen(skill)
       } catch (error) {
-        logger.error('Failed to launch Skill in Cherry Assistant', error as Error, { skillId: skill.id })
-        toast.error(t('settings.skills.launchFailed', { name: skill.name }))
+        // logger.error('Failed to launch Skill in Cherry Assistant', error as Error, { skillId: skill.id })
+        logger.error('Failed to launch Skill in MEA Cowork Assistant', error as Error, { skillId: skill.id })
+        // toast.error(t('settings.skills.launchFailed', { name: skill.name }))
+        toast.error(
+          t('settings.skills.launchFailed', {
+            name: getSkillDisplayName(skill, locale)
+          })
+        )
       }
     },
-    [createSessionAndOpen, t]
+    [createSessionAndOpen, locale, t]
   )
 
   const confirmLaunch = useCallback(async () => {
@@ -60,11 +68,16 @@ export function SkillLauncherProvider({ children }: PropsWithChildren) {
       await createSessionAndOpen(enabledSkill)
     } catch (error) {
       logger.error('Failed to enable and launch Skill', error as Error, { skillId: skill.id })
-      toast.error(t('settings.skills.launchFailed', { name: skill.name }))
+      // toast.error(t('settings.skills.launchFailed', { name: skill.name }))
+      toast.error(
+        t('settings.skills.launchFailed', {
+          name: getSkillDisplayName(skill, locale)
+        })
+      )
     } finally {
       setIsLaunching(false)
     }
-  }, [createSessionAndOpen, enableSkill, pendingSkill, t])
+  }, [createSessionAndOpen, enableSkill, locale, pendingSkill, t])
 
   const value = useMemo(() => launchSkill, [launchSkill])
 
@@ -77,7 +90,10 @@ export function SkillLauncherProvider({ children }: PropsWithChildren) {
           if (!open && !isLaunching) setPendingSkill(null)
         }}
         title={t('settings.skills.enableToTry.title')}
-        description={t('settings.skills.enableToTry.description', { name: pendingSkill?.name ?? '' })}
+        description={t('settings.skills.enableToTry.description', {
+          // name: pendingSkill?.name ?? '',
+          name: pendingSkill ? getSkillDisplayName(pendingSkill, locale) : ''
+        })}
         confirmText={t('settings.skills.enableToTry.confirm')}
         cancelText={t('common.cancel')}
         confirmLoading={isLaunching}

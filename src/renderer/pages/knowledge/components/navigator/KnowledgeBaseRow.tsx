@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next'
 import { Badge, Button, ConfirmDialog } from '@cherrystudio/ui'
 import { cn } from '@cherrystudio/ui/lib/utils'
 import { CommandContextMenu, type CommandContextMenuExtraItem } from '@renderer/components/command'
-import SidebarShortcutIcon from '@renderer/components/icons/SidebarShortcutIcon'
+// import SidebarShortcutIcon from '@renderer/components/icons/SidebarShortcutIcon'
 import KnowledgeRowActionsMenu from '@renderer/pages/knowledge/components/KnowledgeRowActionsMenu'
 import { DEFAULT_KNOWLEDGE_GROUP_LABEL_KEY } from '@renderer/pages/knowledge/utils/group'
 
@@ -15,6 +15,7 @@ import type { KnowledgeBaseRowProps } from './types'
 
 const KnowledgeBaseRow = ({
   base,
+  remote = false,
   groups,
   shared,
   onRequestUnshare,
@@ -23,15 +24,16 @@ const KnowledgeBaseRow = ({
   onMoveBase,
   onRenameBase,
   onCreateGroup,
-  onDeleteBase,
-  onToggleSidebar,
-  sidebarPinned
+  onDeleteBase
+  // onToggleSidebar,
+  // sidebarPinned
 }: KnowledgeBaseRowProps) => {
   const { t } = useTranslation()
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [uploadOpen, setUploadOpen] = useState(false)
-  const upload = useKnowledgeUpload(base.id)
-  const uploading = upload && upload.phase !== 'completed'
+  const upload = useKnowledgeUpload(base.id, !remote)
+  // const uploading = upload && upload.phase !== 'completed'
+  const uploading = upload && ['counting', 'uploading', 'confirming'].includes(upload.phase)
   const availableGroups = useMemo(() => groups.filter((group) => group.id !== base.groupId), [base.groupId, groups])
   const canMoveToUngrouped = base.groupId !== null
 
@@ -44,8 +46,8 @@ const KnowledgeBaseRow = ({
   )
 
   const handleRenameBase = useCallback(() => {
-    onRenameBase({ id: base.id, name: base.name })
-  }, [base.id, base.name, onRenameBase])
+    onRenameBase({ id: base.id, name: base.name, remote })
+  }, [base.id, base.name, onRenameBase, remote])
 
   const handleCreateGroup = useCallback(() => {
     onCreateGroup(base.id)
@@ -116,13 +118,14 @@ const KnowledgeBaseRow = ({
       })
     }
 
-    items.push({
-      type: 'item',
-      id: 'toggle-sidebar',
-      label: t(sidebarPinned ? 'launchpad.unpin_from_sidebar' : 'launchpad.pin_to_sidebar'),
-      icon: <SidebarShortcutIcon pinned={sidebarPinned} className="size-3.5" />,
-      onSelect: () => onToggleSidebar(base)
-    })
+    // 暂时隐藏知识库侧边栏快捷入口，保留代码便于恢复。
+    // items.push({
+    //   type: 'item',
+    //   id: 'toggle-sidebar',
+    //   label: t(sidebarPinned ? 'launchpad.unpin_from_sidebar' : 'launchpad.pin_to_sidebar'),
+    //   icon: <SidebarShortcutIcon pinned={sidebarPinned} className="size-3.5" />,
+    //   onSelect: () => onToggleSidebar(base)
+    // })
     // MEA:enterprise-knowledge-page 列表与右键菜单复用取消分享确认入口。
     if (shared && onRequestUnshare) {
       items.push({
@@ -153,8 +156,8 @@ const KnowledgeBaseRow = ({
     handleMoveBase,
     handleRenameBase,
     handleRequestDelete,
-    onToggleSidebar,
-    sidebarPinned,
+    // onToggleSidebar,
+    // sidebarPinned,
     shared,
     onRequestUnshare,
     t
@@ -171,17 +174,27 @@ const KnowledgeBaseRow = ({
           <Button
             type="button"
             variant="ghost"
+            aria-pressed={selected}
             onClick={() => onSelectBase(base.id)}
             className="flex min-h-0 min-w-0 flex-1 items-center justify-start rounded-md p-0 text-left shadow-none hover:bg-transparent">
             <div className="min-w-0 truncate text-sm leading-5 font-normal text-foreground">{base.name}</div>
           </Button>
           {uploading ? (
             <Button variant="ghost" className="h-5 shrink-0 px-1 text-[10px]" onClick={() => setUploadOpen(true)}>
-              {t(upload.phase === 'paused' ? 'knowledge.org.upload_paused' : 'knowledge.org.upload_sharing')}{' '}
+              {t(
+                upload.phase === 'cleanup_pending'
+                  ? 'knowledge.org.upload_cleanup_pending'
+                  : upload.phase === 'cleanup_unknown'
+                    ? 'knowledge.org.upload_cleanup_unknown'
+                    : upload.phase === 'paused'
+                      ? 'knowledge.org.upload_paused'
+                      : 'knowledge.org.upload_sharing'
+              )}{' '}
               {upload.totalBytes ? Math.floor((upload.uploadedBytes / upload.totalBytes) * 100) : 0}%
             </Button>
           ) : null}
-          {shared && !uploading ? (
+          {/* {shared && !uploading ? ( */}
+          {shared && !uploading && (!upload || upload.phase === 'completed') ? (
             <Badge
               variant="outline"
               className="h-4 shrink-0 rounded px-1 py-0 text-[10px] leading-none border-emerald-600/25 bg-emerald-50 text-emerald-700 dark:border-emerald-400/30 dark:bg-emerald-400/10 dark:text-emerald-300">

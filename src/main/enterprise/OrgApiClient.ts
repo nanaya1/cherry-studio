@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto'
  */
 import { createReadStream } from 'node:fs'
 import { Readable } from 'node:stream'
+import { finished } from 'node:stream/promises'
 
 import { loggerService } from '@logger'
 
@@ -98,16 +99,33 @@ export class OrgApiClient {
     } catch {
       /* 非 JSON 错误保留状态，不记录响应体。 */
     }
+    logger.info('knowledge api request failed', {
+      status: response.status,
+      url: response.url ? new URL(response.url).origin + new URL(response.url).pathname : undefined,
+      error: message
+    })
     throw new OrgApiHttpError(response.status, message)
   }
 
   /** 统一会话传输、client scope 与明确 401 后的一次刷新重试。 */
-  private async sendAuth(path: string, init: RequestInit = {}): Promise<Response> {
+  // private async sendAuth(path: string, init: RequestInit = {}): Promise<Response> {
+  private async sendAuth(
+    path: string,
+    init: RequestInit = {},
+    assertSession?: (session?: OrgSession) => void
+  ): Promise<Response> {
     // const isShare = /^\/api\/kb\/v1\/(shares\/|spaces\/[^/]+\/shares(?:\/|\?|$))/.test(path)
-    // MEA:enterprise-knowledge-page 副本创建和上传同样保留分享错误详情，避免仅显示通用 400。
-    const isShare = /^\/api\/kb\/v1\/(local-share(?:\/|\?|$)|shares\/|spaces\/[^/]+\/shares(?:\/|\?|$))/.test(path)
+    // MEA:enterprise-knowledge-page 副本创建、上传和云端空间改名均保留服务端错误详情。
+    const isShare =
+      /^\/api\/(?:kb\/v1\/(?:local-share(?:\/|\?|$)|shares\/|spaces\/[^/]+\/shares(?:\/|\?|$))|v1\/(?:local-share(?:\/|\?|$)|spaces\/[^/]+$))/.test(
+        path
+      )
+    // MEA:enterprise-knowledge-page DELETE 在凭据获取前后校验原操作身份，且禁止401重放。
+    const destructive = init.method === 'DELETE' && path.startsWith('/api/kb/v1/')
+    assertSession?.()
     const session = await this.getValidSession()
     if (!session) throw new Error('未登录')
+    assertSession?.(session)
     const target = new URL(`${getOrgApiBaseUrl()}${path}`)
     // 客户端始终按分组权限访问知识库，管理员会话也不能绕过 client scope。
     if (target.pathname.startsWith('/api/kb/v1/') || target.pathname === '/api/kb/catalog') {
@@ -144,7 +162,8 @@ export class OrgApiClient {
 
     const res = await bearerFetch(session.accessToken)
     // [enterprise] 修复 401：access token 被服务端提前吊销时兜底——刷新一次重试一次
-    if (res.status === 401) {
+    // if (res.status === 401) {
+    if (res.status === 401 && !destructive && !(assertSession && /^\/api\/(?:kb\/v1|v1)\/local-share\//.test(path))) {
       const refreshed = await this.getValidSession()
       if (!refreshed || refreshed.accessToken === session.accessToken) {
         throw new OrgApiHttpError(401, '账户服务请求失败 (401)')
@@ -170,8 +189,14 @@ export class OrgApiClient {
   /**
    * JSON 请求：解析 JSON 响应；空响应体返回 undefined。兼容既有技能/连接器调用。
    */
-  private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
-    const res = await this.sendAuth(path, init)
+  // private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  private async request<T>(
+    path: string,
+    init: RequestInit = {},
+    assertSession?: (session?: OrgSession) => void
+  ): Promise<T> {
+    // const res = await this.sendAuth(path, init)
+    const res = await this.sendAuth(path, init, assertSession)
     const text = await res.text()
     if (!text) return undefined as T
     return JSON.parse(text) as T
@@ -191,44 +216,134 @@ export class OrgApiClient {
   // MEA:enterprise-knowledge-page 消费一次的流不经过401重放，文件数据始终受背压约束。
   async requestFileMultipart<T>(
     path: string,
-    file: { path: string; fileName: string; size: number; chunks: unknown[]; hash?: string },
-    progress: (bytes: number) => void
+    // file: { path: string; fileName: string; size: number; chunks: unknown[]; hash?: string },
+    file: {
+      path: string
+      fileName: string
+      size: number
+      chunks: unknown[]
+      hash?: string
+      parentId?: string | null
+      // MEA:enterprise-knowledge-page 可选不上传源文件：缺省（undefined/true）发送原件字节；
+      // 显式 false 仅发送元数据（file_name/chunks/parent_id），不读取原件、不校验原件哈希。
+      uploadOriginal?: boolean
+    },
+    progress: (bytes: number) => void,
+    assertSession?: (session?: OrgSession) => void,
+    beforeStop?: (error: unknown) => void,
+    signal?: AbortSignal
   ): Promise<T> {
+    assertSession?.()
     const session = await this.getValidSession()
     if (!session) throw new Error('未登录')
+    assertSession?.(session)
     const boundary = `mea-${randomUUID()}`
     const name = file.fileName.replace(/[\r\n"\\]/g, '_')
-    const prefix = Buffer.from(
-      `--${boundary}\r\nContent-Disposition: form-data; name="file_name"\r\n\r\n${file.fileName}\r\n--${boundary}\r\nContent-Disposition: form-data; name="chunks"\r\n\r\n${JSON.stringify(file.chunks)}\r\n--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${name}"\r\nContent-Type: application/octet-stream\r\n\r\n`
+    // 临时诊断上传表单字段大小，排查服务端multipart限制。
+    logger.info('knowledge upload chunks', {
+      fileName: file.fileName,
+      chunkCount: file.chunks.length,
+      chunksBytes: Buffer.byteLength(JSON.stringify(file.chunks), 'utf8'),
+      chunks: file.chunks
+    })
+    // MEA:enterprise-knowledge-page uploadOriginal !== false 才发送原件字节并校验哈希；
+    // 否则仅发送元数据（file_name/chunks/parent_id），进度不读原件，避免传输/核对依赖本地文件。
+    const uploadOriginal = file.uploadOriginal !== false
+    const parentField = file.parentId
+      ? Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="parent_id"\r\n\r\n${file.parentId}\r\n`)
+      : Buffer.alloc(0)
+    // 原文本分块字段：`--${boundary}\r\nContent-Disposition: form-data; name="file_name"\r\n\r\n${file.fileName}\r\n--${boundary}\r\nContent-Disposition: form-data; name="chunks"\r\n\r\n${JSON.stringify(file.chunks)}\r\n`
+    // 分块作为 JSON 文件，避免普通表单字段触发服务端 1MiB 限制。
+    const metaPrefix = Buffer.from(
+      `--${boundary}\r\nContent-Disposition: form-data; name="file_name"\r\n\r\n${file.fileName}\r\n--${boundary}\r\nContent-Disposition: form-data; name="chunks_file"; filename="chunks.json"\r\nContent-Type: application/json\r\n\r\n${JSON.stringify(file.chunks)}\r\n`
     )
-    const suffix = Buffer.from(`\r\n--${boundary}--\r\n`)
+    const fileHeader = Buffer.from(
+      `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${name}"\r\nContent-Type: application/octet-stream\r\n\r\n`
+    )
+    // const suffix = Buffer.from(`\r\n--${boundary}--\r\n`)
+    // 元数据末尾已有换行；原件字节后才需要补上边界前的换行。
+    const suffix = Buffer.from(`${uploadOriginal ? '\r\n' : ''}--${boundary}--\r\n`)
     async function* body() {
-      yield prefix
-      let bytes = 0
-      const fingerprint = (await import('node:crypto')).createHash('sha256')
-      for await (const chunk of createReadStream(file.path)) {
-        if (source.destroyed) return
-        fingerprint.update(chunk)
-        bytes += chunk.length
-        if (bytes > file.size) throw new Error('上传期间文件大小发生变化')
+      yield parentField
+      yield metaPrefix
+      if (uploadOriginal) {
+        yield fileHeader
+        let bytes = 0
+        const fingerprint = (await import('node:crypto')).createHash('sha256')
+        for await (const chunk of createReadStream(file.path)) {
+          if (source.destroyed) return
+          fingerprint.update(chunk)
+          bytes += chunk.length
+          if (bytes > file.size) throw new Error('上传期间文件大小发生变化')
+          resetTimeout()
+          progress(bytes)
+          yield chunk
+        }
+        if (bytes !== file.size) throw new Error('上传期间文件大小发生变化')
+        if (file.hash && fingerprint.digest('hex') !== file.hash)
+          throw new Error('上传期间文件内容发生变化，结果需核对')
+      } else {
+        // MEA:enterprise-knowledge-page 元数据模式单跳到满进度，不读取原件字节。
         resetTimeout()
-        progress(bytes)
-        yield chunk
+        progress(file.size)
       }
-      if (bytes !== file.size) throw new Error('上传期间文件大小发生变化')
-      if (file.hash && fingerprint.digest('hex') !== file.hash) throw new Error('上传期间文件内容发生变化，结果需核对')
       yield suffix
     }
     const target = new URL(`${getOrgApiBaseUrl()}${path}`)
     target.searchParams.set('scope', 'client')
+    // 原对象输出：logger.info('knowledge upload request parameters', { ... })
+    logger.info(
+      'knowledge upload request parameters\n' +
+        JSON.stringify(
+          {
+            method: 'POST',
+            url: target.toString(),
+            contentType: `multipart/form-data; boundary=${boundary}`,
+            contentLength:
+              parentField.length +
+              metaPrefix.length +
+              (uploadOriginal ? fileHeader.length + file.size : 0) +
+              suffix.length,
+            parameters: {
+              file_name: file.fileName,
+              ...(file.parentId ? { parent_id: file.parentId } : {}),
+              chunks: JSON.stringify(file.chunks),
+              ...(uploadOriginal
+                ? {
+                    file: { path: file.path, filename: name, size: file.size, contentType: 'application/octet-stream' }
+                  }
+                : { uploadOriginal: false })
+            }
+          },
+          null,
+          2
+        )
+    )
     const source = Readable.from(body())
     const controller = new AbortController()
     // MEA:enterprise-knowledge-page 持续上传可超过5分钟；仅无字节进展或响应时中止。
     const timer = setTimeout(() => {
-      controller.abort(new DOMException('上传无进展超时，结果需核对', 'TimeoutError'))
-      source.destroy()
+      const error = new DOMException('上传无进展超时，结果需核对', 'TimeoutError')
+      try {
+        beforeStop?.(error)
+      } catch (persistError) {
+        logger.error('首次分享清理意图持久化失败', { error: String(persistError) })
+      } finally {
+        controller.abort(error)
+        source.destroy()
+      }
     }, 5 * 60_000)
     const resetTimeout = () => timer.refresh()
+    const stop = () => {
+      try {
+        beforeStop?.(signal?.reason)
+      } finally {
+        controller.abort(signal?.reason)
+        source.destroy()
+      }
+    }
+    signal?.addEventListener('abort', stop, { once: true })
+    if (signal?.aborted) stop()
     const init: RequestInit & { duplex: 'half' } = {
       signal: controller.signal,
       method: 'POST',
@@ -238,7 +353,10 @@ export class OrgApiClient {
       body: Readable.toWeb(source) as ReadableStream<Uint8Array>,
       headers: {
         'content-type': `multipart/form-data; boundary=${boundary}`,
-        'content-length': String(prefix.length + file.size + suffix.length)
+        // 'content-length': String(prefix.length + file.size + suffix.length)
+        'content-length': String(
+          parentField.length + metaPrefix.length + (uploadOriginal ? fileHeader.length + file.size : 0) + suffix.length
+        )
       }
     }
     /* 原请求路径保留；下方统一清理提前响应或断连后仍在读取的流。
@@ -268,12 +386,16 @@ export class OrgApiClient {
       if (!response.ok) return await this.shareHttpError(response)
       return (await response.json()) as T
     } catch (error) {
+      beforeStop?.(error)
+      controller.abort(error)
       controller.signal.throwIfAborted()
       throw error
     } finally {
       clearTimeout(timer)
+      signal?.removeEventListener('abort', stop)
       // MEA:enterprise-knowledge-page 传输提前结束时关闭文件读取，避免后台继续回调进度。
       source.destroy()
+      await finished(source).catch(() => {})
     }
   }
 
@@ -310,6 +432,22 @@ export class OrgApiClient {
       await reader.cancel()
       reader.releaseLock()
     }
+  }
+
+  // MEA:enterprise-knowledge-page 原件恢复直接流式落盘，磁盘错误向上传播。
+  async downloadKnowledgeFile(fileId: string, destination: string): Promise<void> {
+    const { createWriteStream } = await import('node:fs')
+    const { pipeline } = await import('node:stream/promises')
+    const response = await this.sendAuth(`/api/kb/v1/files/${encodeURIComponent(fileId)}/download`, {
+      method: 'GET',
+      redirect: 'error',
+      signal: AbortSignal.timeout(300_000)
+    })
+    if (!response.body) throw new Error('原件下载响应为空')
+    await pipeline(
+      Readable.fromWeb(response.body as never),
+      createWriteStream(destination, { flags: 'wx', mode: 0o600 })
+    )
   }
 
   private requireCookieFetch() {

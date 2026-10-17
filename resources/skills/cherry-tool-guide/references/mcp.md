@@ -1,6 +1,6 @@
 # MCP servers
 
-Covers `mcp__mcp-manager__install_mcp_server` — registering a new MCP server in Cherry
+Covers `mcp__mcp-manager__install_mcp_server` — registering a new MCP server in MEA Cowork
 and binding it to the current agent.
 
 Get exact argument shapes from the live tool schema — this reference gives routing,
@@ -9,7 +9,7 @@ sequencing, and safety only.
 ## Availability
 
 Present for agents that compose with the user's environment. Absent for sealed built-in
-agents (Cherry Support), where registering servers is not available this session.
+agents (MEA Cowork Support), where registering servers is not available this session.
 
 ## Approval
 

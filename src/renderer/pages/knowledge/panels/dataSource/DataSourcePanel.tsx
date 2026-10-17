@@ -1,6 +1,6 @@
 import type { TFunction } from 'i18next'
 import { ChevronLeft, Settings2 } from 'lucide-react'
-import { type DragEvent, useCallback, useEffect, useState } from 'react'
+import { type DragEvent, type ReactNode, useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button, CircularProgress, ConfirmDialog } from '@cherrystudio/ui'
@@ -20,7 +20,7 @@ import type { KnowledgeFilePreviewTarget } from '../../types'
 import DataSourcePanelHeader from './DataSourcePanelHeader'
 import KnowledgeItemList from './KnowledgeItemList'
 import { dataSourceTypeDisplayConfig } from './utils/models'
-import { canReindexKnowledgeItem, getItemTitle } from './utils/selectors'
+import { canReindexKnowledgeItem } from './utils/selectors'
 
 export interface DataSourcePanelProps {
   embeddingModelId?: string | null
@@ -32,9 +32,14 @@ export interface DataSourcePanelProps {
   hasMore?: boolean
   isLoadingMore?: boolean
   onLoadMore?: () => void
+  paginationActions?: ReactNode
   updatedAt: string
   onAdd: (source?: KnowledgeItemType, files?: File[]) => void
   onPreviewFile: (target: KnowledgeFilePreviewTarget) => void
+  /** Override row activation for remote or read-only adapters. */
+  onActivateItem?: (item: KnowledgeItem) => void | Promise<unknown>
+  /** Override source preview for remote or read-only adapters. */
+  onPreviewSource?: (item: KnowledgeItem) => void | Promise<unknown>
   /** View an item's indexed chunks in-app (the row's context menu). */
   onItemClick?: (itemId: string) => void
   /** View a note's original stored content in-app (note left-click). */
@@ -49,6 +54,12 @@ export interface DataSourcePanelProps {
   onDeleteItems: (itemIds: string[]) => void | Promise<unknown>
   onReindex: (item: KnowledgeItem) => void | Promise<unknown>
   onReindexItems: (itemIds: string[]) => void | Promise<unknown>
+  readOnly?: boolean
+  allowAdd?: boolean
+  allowDelete?: (item: KnowledgeItem) => boolean
+  deleteDescription?: string
+  virtualize?: boolean
+  toolbarActions?: ReactNode
 }
 
 type LocalEmbeddingStatus = Exclude<LocalModelStatus, 'ready'>
@@ -155,9 +166,12 @@ const DataSourcePanelContent = ({
   hasMore = false,
   isLoadingMore = false,
   onLoadMore = () => undefined,
+  paginationActions,
   updatedAt,
   onAdd,
   onPreviewFile,
+  onActivateItem: onActivateItemOverride,
+  onPreviewSource: onPreviewSourceOverride,
   onItemClick,
   onViewNoteContent,
   onDrillIntoDirectory,
@@ -167,6 +181,12 @@ const DataSourcePanelContent = ({
   onDeleteItems,
   onReindex,
   onReindexItems,
+  readOnly = false,
+  allowAdd = !readOnly,
+  allowDelete,
+  deleteDescription,
+  virtualize,
+  toolbarActions,
   localEmbeddingState
 }: DataSourcePanelContentProps) => {
   const { t } = useTranslation()
@@ -194,18 +214,29 @@ const DataSourcePanelContent = ({
   // and error toasts. Chunks are a separate advanced action reached from the row's context menu.
   const handleActivateItem = useCallback(
     (item: KnowledgeItem) => {
+      if (onActivateItemOverride) {
+        void onActivateItemOverride(item)
+        return
+      }
       if (item.type === 'directory') {
         invalidatePreviewRequests()
         onDrillIntoDirectory?.(item)
         return
       }
       if (item.type === 'file' || item.type === 'url') {
-        void previewSource(item)
+        void (onPreviewSourceOverride ? onPreviewSourceOverride(item) : previewSource(item))
         return
       }
       onViewNoteContent?.(item.id)
     },
-    [invalidatePreviewRequests, onDrillIntoDirectory, onViewNoteContent, previewSource]
+    [
+      invalidatePreviewRequests,
+      onActivateItemOverride,
+      onDrillIntoDirectory,
+      onViewNoteContent,
+      onPreviewSourceOverride,
+      previewSource
+    ]
   )
 
   const handleNavigateUp = useCallback(() => {
@@ -296,7 +327,8 @@ const DataSourcePanelContent = ({
   )
   const { isDragging, handleDragEnter, handleDragLeave, handleDragOver, handleDrop } =
     useDrag<HTMLDivElement>(handleFileDrop)
-  const canAddSource = !currentDirectory && !localEmbeddingState
+  // const canAddSource = !currentDirectory && !localEmbeddingState
+  const canAddSource = allowAdd && !currentDirectory && !localEmbeddingState
   const localModelStatus =
     localEmbeddingState && (items.length > 0 || Boolean(currentDirectory))
       ? {
@@ -312,7 +344,10 @@ const DataSourcePanelContent = ({
     <KnowledgePanelShell
       headerClassName="shrink-0 px-3"
       header={
-        <div className="flex h-11 items-center border-border border-b">
+        <div
+          role="toolbar"
+          aria-label={t('knowledge.org.documents')}
+          className="flex h-11 items-center border-border border-b">
           <DataSourcePanelHeader
             total={total}
             loadedCount={items.length}
@@ -321,7 +356,9 @@ const DataSourcePanelContent = ({
             onBulkReindex={handleBulkReindex}
             onBulkDelete={() => setIsBulkDeleteOpen(true)}
             onAdd={handleAddSource}
+            // canAddSource={canAddSource && !readOnly}
             canAddSource={canAddSource}
+            actions={toolbarActions}
             localModelStatus={localModelStatus}
           />
         </div>
@@ -339,6 +376,7 @@ const DataSourcePanelContent = ({
             <span className="font-medium text-sm">{t('files.drag_upload')}</span>
           </div>
         ) : null}
+        {paginationActions ? <div className="flex shrink-0 justify-end px-3 pt-2">{paginationActions}</div> : null}
         {currentDirectory && onNavigateUp && (
           <div className="flex shrink-0 items-center gap-2 px-3 py-2">
             {/* Flat text button (no chrome): the `px-2.5` matches the row's own inset so the chevron
@@ -352,9 +390,6 @@ const DataSourcePanelContent = ({
               <ChevronLeft className="size-4" />
               {t('knowledge.data_source.back_to_parent')}
             </Button>
-            <span className="min-w-0 truncate text-muted-foreground text-sm" title={getItemTitle(currentDirectory)}>
-              {getItemTitle(currentDirectory)}
-            </span>
           </div>
         )}
         {localEmbeddingState && items.length === 0 && !currentDirectory ? (
@@ -379,9 +414,12 @@ const DataSourcePanelContent = ({
             onToggleAll={handleToggleAll}
             onActivate={handleActivateItem}
             onDelete={setPendingDeleteItem}
-            onPreviewSource={previewSource}
+            onPreviewSource={onPreviewSourceOverride ?? previewSource}
             onReindex={onReindex}
             onViewChunks={handleItemClick}
+            readOnly={readOnly}
+            allowDelete={allowDelete}
+            virtualize={virtualize}
           />
         )}
       </div>
@@ -393,7 +431,7 @@ const DataSourcePanelContent = ({
           }
         }}
         title={t('knowledge.data_source.delete_confirm_title')}
-        description={t('knowledge.data_source.delete_confirm_description')}
+        description={deleteDescription ?? t('knowledge.data_source.delete_confirm_description')}
         confirmText={t('common.delete')}
         cancelText={t('common.cancel')}
         destructive

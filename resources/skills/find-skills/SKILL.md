@@ -21,13 +21,13 @@ Use this skill when the user:
 
 ## The skill tools
 
-Cherry gives you two built-in tools for skills — use them, and do NOT shell out to
+MEA Cowork gives you two built-in tools for skills — use them, and do NOT shell out to
 `npx skills`, `git`, or any package manager:
 
 - **`search_skills(query)`** — search the marketplace by keyword. Returns matches, each with an
   opaque `install_source` value.
-- **`install_skill(install_source)`** — install ONE skill into Cherry's managed
-  library and enable it for this agent. Cherry clones the repo, installs just that one skill,
+- **`install_skill(install_source)`** — install ONE skill into MEA Cowork's managed
+  library and enable it for this agent. MEA Cowork clones the repo, installs just that one skill,
   and registers it in a single deterministic step. Permission handling follows the active Claude
   permission mode (Step 6).
 
@@ -77,7 +77,7 @@ When you find relevant skills, present them to the user with:
 
 1. The skill name and what it does
 2. The install count and source
-3. That you can install it for them into Cherry
+3. That you can install it for them into MEA Cowork
 4. A link to learn more at skills.sh
 
 Example response:
@@ -87,7 +87,7 @@ I found a skill that might help! The "react-best-practices" skill provides
 React and Next.js performance optimization guidelines from Vercel Engineering.
 (185K installs)
 
-I can install it into Cherry's skill library for you — want me to go ahead?
+I can install it into MEA Cowork's skill library for you — want me to go ahead?
 
 Learn more: https://skills.sh/vercel-labs/agent-skills/react-best-practices
 ```
@@ -116,7 +116,7 @@ mode runs directly.
 
 Do **not** run `npx skills add`, `git clone`, or any shell command to install — that would
 install the whole repo (dozens of skills), scatter symlinks across other tools, and land
-outside Cherry's library. `install_skill` installs **only that one skill** into Cherry's
+outside MEA Cowork's library. `install_skill` installs **only that one skill** into MEA Cowork's
 managed library in one deterministic step. The Claude Agent SDK applies the configured permission
 mode before it runs. Once done it is registered and listed in the app — nothing is left elsewhere.
 
@@ -155,5 +155,5 @@ I searched for skills related to "xyz" but didn't find any matches.
 I can still help you with this task directly! Would you like me to proceed?
 
 If this is something you do often, I can author a custom skill for you — just ask
-me to "create a skill for <task>" and I'll write one into Cherry's skills directory.
+me to "create a skill for <task>" and I'll write one into MEA Cowork's skills directory.
 ```

@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 
 import {
   Button,
+  Checkbox,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -43,15 +44,37 @@ export default function ShareKnowledgeDialog({
   const upload = useKnowledgeUpload(baseId, !remote)
   const [uploadStarted, setUploadStarted] = useState(false)
   useEffect(() => {
-    if (upload && upload.phase !== 'completed') setUploadStarted(true)
+    // if (upload && upload.phase !== 'completed') setUploadStarted(true)
+    if (!upload) {
+      setUploadStarted(false)
+      setResult(undefined)
+    }
+    if (upload) {
+      if (upload.phase !== 'completed') setUploadStarted(true)
+      if (typeof upload.uploadOriginal === 'boolean') setUploadOriginal(upload.uploadOriginal)
+    }
   }, [upload])
   // MEA:enterprise-knowledge-page 仅保留本次弹窗观察到的上传完成反馈，历史结果仍用于复用副本。
   const hideCompletedUpload = upload?.phase === 'completed' && !uploadStarted
   const visibleUpload = hideCompletedUpload ? null : upload
+  const [uploadOriginal, setUploadOriginal] = useState(true)
+  const originalOption =
+    !remote && !uploadStarted && !upload ? (
+      <label className="flex items-start gap-2 text-sm">
+        {/* <input type="checkbox" checked={uploadOriginal} disabled={uploadStarted} onChange={(event) => setUploadOriginal(event.target.checked)} /> */}
+        <Checkbox
+          checked={uploadOriginal}
+          disabled={uploadStarted}
+          onCheckedChange={(checked) => setUploadOriginal(checked === true)}
+        />
+        {t('knowledge.org.upload_original_notice')}
+      </label>
+    ) : null
   const [password, setPassword] = useState('')
   const [maxViews, setMaxViews] = useState('')
   const [expiry, setExpiry] = useState('7')
   const [result, setResult] = useState<OrgKnowledgeShareResult>()
+  const [showUploadDetails, setShowUploadDetails] = useState(false)
   const visibleResult = result && (!hideCompletedUpload || !canInviteAfterShare(result)) ? result : undefined
   const [share, setShare] = useState<OrgKnowledgeShare>()
   const [records, setRecords] = useState<OrgKnowledgeShare[]>([])
@@ -91,11 +114,21 @@ export default function ShareKnowledgeDialog({
         const uploaded =
           result && canInviteAfterShare(result)
             ? result
-            : await ipcApi.request('enterprise.knowledge.share', { baseId })
+            : await ipcApi.request('enterprise.knowledge.share', { baseId, uploadOriginal })
         if (!active.current) return
         setResult(uploaded)
         if (!canInviteAfterShare(uploaded)) {
-          setError(t('knowledge.org.upload_incomplete'))
+          const status = await ipcApi.request('enterprise.knowledge.upload_status', { baseId })
+          if (!active.current) return
+          if (!status && !uploaded.shareId) {
+            setResult(undefined)
+            setUploadStarted(false)
+          }
+          // setError(t('knowledge.org.upload_incomplete'))
+          const failedFile = uploaded.files.find((file) => file.status !== 'success' && file.error)
+          // const reason = failedFile ? `${failedFile.fileName} · ${failedFile.error}` : status?.error
+          const reason = failedFile ? `${failedFile.fileName} · ${failedFile.error}` : uploaded.error ?? status?.error
+          setError([reason, t('knowledge.org.upload_incomplete')].filter(Boolean).join('\n'))
           return
         }
         target = uploaded.shareId
@@ -144,8 +177,10 @@ export default function ShareKnowledgeDialog({
       if (active.current) setError(cause instanceof Error ? cause.message : String(cause))
     }
   }
-  const disabled = busy || Boolean(share) || unknown
-  if (mode === 'people' && !remote) {
+  const disabled =
+    busy || Boolean(share) || unknown || upload?.phase === 'cleanup_pending' || upload?.phase === 'cleanup_unknown'
+  // if (mode === 'people' && !remote) {
+  if (mode === 'people') {
     return (
       <Dialog
         open
@@ -158,10 +193,13 @@ export default function ShareKnowledgeDialog({
           <KnowledgeDialogBody>
             {/* {upload ? <KnowledgeUploadProgress progress={upload} /> : null} */}
             {visibleUpload ? <KnowledgeUploadProgress progress={visibleUpload} /> : null}
+            {originalOption}
             <KnowledgeInvitePanel
+              remote={remote}
+              uploadOriginal={uploadOriginal}
               baseId={baseId}
               prepared={result}
-              busy={busy}
+              busy={busy || upload?.phase === 'cleanup_pending' || upload?.phase === 'cleanup_unknown'}
               // onBusyChange={setBusy}
               onBusyChange={(value) => {
                 if (value && upload?.phase !== 'completed') setUploadStarted(true)
@@ -178,20 +216,29 @@ export default function ShareKnowledgeDialog({
                 </KnowledgeDialogFooter>
               )}
             />
-            {/* 原条件：result?.files.map((file, index) => (...) */}
-            {visibleResult?.files.map((file, index) => (
-              <p key={`${file.fileName}-${index}`}>
-                {file.fileName} ·{' '}
-                {t(
-                  {
-                    success: 'knowledge.org.file_success',
-                    failure: 'knowledge.org.file_failure',
-                    unknown: 'knowledge.org.file_unknown'
-                  }[file.status]
-                )}
-                {file.error ? ` · ${file.error}` : ''}
-              </p>
-            ))}
+            {visibleResult?.files.length ? (
+              <Button
+                variant="outline"
+                aria-expanded={showUploadDetails}
+                onClick={() => setShowUploadDetails((shown) => !shown)}>
+                {t('knowledge.org.upload_details')}
+              </Button>
+            ) : null}
+            {/* 原条件：visibleResult?.files.map((file, index) => (...) */}
+            {showUploadDetails &&
+              visibleResult?.files.map((file, index) => (
+                <p key={`${file.fileName}-${index}`}>
+                  {file.fileName} ·{' '}
+                  {t(
+                    {
+                      success: 'knowledge.org.file_success',
+                      failure: 'knowledge.org.file_failure',
+                      unknown: 'knowledge.org.file_unknown'
+                    }[file.status]
+                  )}
+                  {file.error ? ` · ${file.error}` : ''}
+                </p>
+              ))}
           </KnowledgeDialogBody>
           {/* 关闭按钮与发送邀请合并到面板操作区。
           <KnowledgeDialogFooter>
@@ -223,6 +270,7 @@ export default function ShareKnowledgeDialog({
           </DialogDescription>
         </div>
         <KnowledgeDialogBody className="space-y-5 px-7 pb-7">
+          {originalOption}
           {/* {upload ? <KnowledgeUploadProgress progress={upload} /> : null} */}
           {visibleUpload ? <KnowledgeUploadProgress progress={visibleUpload} /> : null}
           {/* <div className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
@@ -342,8 +390,16 @@ export default function ShareKnowledgeDialog({
             </div>
           ) : null}
           */}
-          {/* 原 !share && result / result.files 条件未区分历史完成副本。 */}
-          {!share && visibleResult
+          {!share && visibleResult?.files.length ? (
+            <Button
+              variant="outline"
+              aria-expanded={showUploadDetails}
+              onClick={() => setShowUploadDetails((shown) => !shown)}>
+              {t('knowledge.org.upload_details')}
+            </Button>
+          ) : null}
+          {/* 原条件：!share && visibleResult，逐项结果改为点击后展示。 */}
+          {!share && showUploadDetails && visibleResult
             ? visibleResult.files.map((file, index) => (
                 <p key={`${file.fileName}-${index}`} className="text-xs text-muted-foreground">
                   {file.fileName} ·{' '}

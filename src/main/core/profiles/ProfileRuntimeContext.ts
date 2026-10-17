@@ -13,7 +13,7 @@ let launchContext: ProfileLaunchContext | undefined
  * started *in this process*. Independent of the current launch context (which is
  * `signed-out` while a login window is open, so it must NOT be used to decide
  * activation). A cold start that never launched business leaves this `null`,
- * which lets the first signed-in account activate in-process.
+ * so the first signed-in account must relaunch with its isolated paths.
  */
 let lastBusinessIdentityDigest: string | null = null
 
@@ -38,16 +38,18 @@ export function getLastBusinessIdentityDigest(): string | null {
 
 /**
  * Decide whether the just-authenticated `record` should open its business
- * runtime in the current process (no relaunch). A cold start (`null` last
- * identity) activates any first account; afterwards only the same identity may
- * reuse the process — a different identity forces a relaunch so a clean,
- * account-isolated runtime is built from scratch.
+ * runtime in the current process (no relaunch). Only the same identity may
+ * reuse a previously started business runtime. First login and different
+ * identities relaunch so account paths are applied before Electron sessions
+ * and business services are created.
  */
 export function shouldActivateInProcess(
   record: { kind: string; identityDigest: string },
   lastBusinessIdentityDigest: string | null
 ): boolean {
   if (record.kind !== 'authenticated') return false
-  if (lastBusinessIdentityDigest === null) return true
+  // 首次登录须在创建 Electron session 前设置账号路径，交由冷启动完成。
+  // if (lastBusinessIdentityDigest === null) return true
+  if (lastBusinessIdentityDigest === null) return false
   return record.identityDigest === lastBusinessIdentityDigest
 }

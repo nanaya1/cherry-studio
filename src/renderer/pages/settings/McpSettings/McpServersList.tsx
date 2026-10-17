@@ -57,6 +57,9 @@ const FILTER_OPTIONS: { value: McpServerFilter; labelKey?: string; label?: strin
   { value: 'builtin', labelKey: 'settings.mcp.builtinServers' }
 ]
 
+// MEA：我的 MCP 只保留通用状态筛选；完整筛选定义供设置页继续使用。
+const CATALOG_FILTER_OPTIONS = FILTER_OPTIONS.filter(({ value }) => ['all', 'enabled', 'disabled'].includes(value))
+
 interface McpServersListProps {
   variant?: 'settings' | 'catalog'
   showTitle?: boolean
@@ -283,7 +286,7 @@ const McpServersList: FC<McpServersListProps> = ({ variant = 'settings', showTit
 
   const catalogFilters = (
     <div role="tablist" aria-label={t('settings.mcp.filter.label')} className="flex min-w-0 flex-wrap gap-1">
-      {FILTER_OPTIONS.map((option) => (
+      {CATALOG_FILTER_OPTIONS.map((option) => (
         <Button
           key={option.value}
           role="tab"

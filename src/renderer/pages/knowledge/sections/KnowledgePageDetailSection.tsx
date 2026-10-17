@@ -24,11 +24,16 @@ const KnowledgeItemNoteContentPanel = lazy(() => import('../panels/dataSource/Kn
 const RagConfigPanel = lazy(() => import('../panels/ragConfig/RagConfigPanel'))
 const RecallTestPanel = lazy(() => import('../panels/recallTest/RecallTestPanel'))
 
-const KnowledgePageDetailSection = () => {
+// const KnowledgePageDetailSection = () => {
+const KnowledgePageDetailSection = ({ onSharingChange }: { onSharingChange?: (open: boolean) => void }) => {
   const { t } = useTranslation()
   const { org, orgSession } = useKnowledgePage()
   // const [sharing, setSharing] = useState(false)
   const [sharing, setSharing] = useState<false | 'code' | 'people'>(false)
+  // 上传结束可能切换为云端详情；让页面保留当前弹窗直到用户关闭。
+  useEffect(() => {
+    onSharingChange?.(sharing !== false)
+  }, [sharing, onSharingChange])
   const [records, setRecords] = useState(false)
   const [syncing, setSyncing] = useState(false)
   useEffect(() => {
@@ -105,7 +110,8 @@ const KnowledgePageDetailSection = () => {
           base={selectedBase}
           sharingStatus={
             <Badge variant="outline" className="shrink-0 text-xs font-normal">
-              {t(sharedCopy ? 'knowledge.org.shared_tag' : 'knowledge.sync.state.unshared')}
+              {/* {t(sharedCopy ? 'knowledge.org.shared_tag' : 'knowledge.sync.state.unshared')} */}
+              {t(sharedCopy?.shareCompleted ? 'knowledge.org.shared_tag' : 'knowledge.sync.state.unshared')}
             </Badge>
           }
           actions={
@@ -184,6 +190,7 @@ const KnowledgePageDetailSection = () => {
             baseId={sharedCopy.id}
             name={selectedBase.name}
             localBaseId={sharedCopy.localBaseId}
+            canCreateShare={Boolean(sharedCopy.localBaseId) && sharedCopy.shareCompleted === true}
             onUnshared={() => {
               void org.refresh()
               void sync.refresh()

@@ -16,17 +16,17 @@ Renders an image from a prompt using the configured **painting model**.
 
 ## Artifacts — `mcp__cherry-tools__report_artifacts`
 
-Declares your final deliverable file(s) so Cherry can surface them to the user.
+Declares your final deliverable file(s) so MEA Cowork can surface them to the user.
 
 1. **Produce the file first** with your normal tools.
 2. Then call `mcp__cherry-tools__report_artifacts` to register it as a deliverable.
 
-**It's a declaration, not a transfer.** `report_artifacts` makes Cherry aware of the
+**It's a declaration, not a transfer.** `report_artifacts` makes MEA Cowork aware of the
 deliverable in the UI; it does **not** push the file anywhere. To actually send a file to
 the user through an IM channel, use `mcp__cherry-tools__notify` instead (see
 [autonomy.md](autonomy.md)). Pick by intent:
 
-- Surface a finished file in the Cherry UI → `report_artifacts`.
+- Surface a finished file in the MEA Cowork UI → `report_artifacts`.
 - Deliver a file to the user over a connected channel → `notify`.
 
 They're not interchangeable, and you may legitimately do both for the same file.

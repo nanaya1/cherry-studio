@@ -121,9 +121,43 @@ const createGroup = (overrides: Partial<Group> = {}): Group => ({
   ...overrides
 })
 
-vi.mock('../KnowledgeUploadDetails', () => ({ default: () => null, useKnowledgeUpload: () => null }))
+const uploadState = vi.hoisted(() => ({ phase: null as string | null }))
+vi.mock('../KnowledgeUploadDetails', () => ({
+  default: () => null,
+  useKnowledgeUpload: () =>
+    uploadState.phase ? { phase: uploadState.phase, totalBytes: 100, uploadedBytes: 25 } : null
+}))
 
 describe('KnowledgeBaseRow', () => {
+  it('上传失败后移除列表中的状态和百分比', () => {
+    uploadState.phase = 'uploading'
+    const row = (
+      <KnowledgeBaseRow
+        base={createKnowledgeBase()}
+        groups={[]}
+        shared
+        selected={false}
+        onSelectBase={vi.fn()}
+        onMoveBase={vi.fn()}
+        onRenameBase={vi.fn()}
+        onCreateGroup={vi.fn()}
+        onDeleteBase={vi.fn()}
+        onToggleSidebar={vi.fn()}
+        sidebarPinned={false}
+      />
+    )
+    try {
+      const { rerender } = render(row)
+      expect(screen.getByRole('button', { name: 'knowledge.org.upload_sharing 25%' })).toBeInTheDocument()
+      uploadState.phase = 'paused'
+      rerender(<KnowledgeBaseRow {...row.props} />)
+      expect(screen.queryByRole('button', { name: /25%/ })).not.toBeInTheDocument()
+      expect(screen.queryByText('knowledge.org.shared_tag')).not.toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Base 1' })).toBeInTheDocument()
+    } finally {
+      uploadState.phase = null
+    }
+  })
   it.each([true, false])('取消分享入口仅对已分享库显示 shared=%s', (shared) => {
     const onRequestUnshare = vi.fn()
     render(
@@ -190,7 +224,8 @@ describe('KnowledgeBaseRow', () => {
     expect(screen.getByRole('button', { name: '更多' })).toBeInTheDocument()
   })
 
-  it('requests the knowledge base be added to the sidebar', () => {
+  // it('requests the knowledge base be added to the sidebar', () => {
+  it.each([false, true])('hides the sidebar shortcut action when pinned=%s', (sidebarPinned) => {
     const base = createKnowledgeBase()
     const onToggleSidebar = vi.fn()
     render(
@@ -204,12 +239,14 @@ describe('KnowledgeBaseRow', () => {
         onCreateGroup={vi.fn()}
         onDeleteBase={vi.fn()}
         onToggleSidebar={onToggleSidebar}
-        sidebarPinned={false}
+        // sidebarPinned={false}
+        sidebarPinned={sidebarPinned}
       />
     )
 
-    fireEvent.click(screen.getByRole('button', { name: '添加到侧边栏' }))
-
-    expect(onToggleSidebar).toHaveBeenCalledWith(base)
+    // fireEvent.click(screen.getByRole('button', { name: '添加到侧边栏' }))
+    // expect(onToggleSidebar).toHaveBeenCalledWith(base)
+    expect(screen.queryByRole('button', { name: '添加到侧边栏' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'launchpad.unpin_from_sidebar' })).not.toBeInTheDocument()
   })
 })

@@ -8,8 +8,8 @@ import { Mutex } from 'async-mutex'
 import { application } from '@application'
 import { agentGlobalSkillService } from '@data/services/AgentGlobalSkillService'
 import { loggerService } from '@logger'
-import { orgStateStore } from '@main/enterprise/OrgStateStore'
 import { isWin } from '@main/core/platform'
+import { orgStateStore } from '@main/enterprise/OrgStateStore'
 import { runPathMutationExclusive } from '@main/services/file'
 import { isOutsidePath, isPathInside } from '@main/utils/file'
 import { directoryExists } from '@main/utils/legacyFile'
@@ -512,7 +512,7 @@ export class SkillService {
    * live under `.claude/skills/` or `.agents/skills/`. Those entries can be real directories or
    * user-created symlinks to directories.
    *
-   * Cherry-managed skills also appear under `.claude/skills/` as app-owned mirror
+   * MEA Cowork-managed skills also appear under `.claude/skills/` as app-owned mirror
    * entries when enabled for Claude SDK discovery, but their source of truth is
    * `agent_global_skill` and they are rendered by `list({ agentId })`. Keep
    * them out of this local-only list.
@@ -1535,7 +1535,7 @@ export class SkillService {
         await fs.promises.writeFile(path.join(destPath, BUILTIN_VERSION_FILE), appVersion, 'utf-8')
       }
 
-      // Builtin contentHash is the trusted install baseline excluding Cherry's version marker.
+      // Builtin contentHash is the trusted install baseline excluding MEA Cowork's version marker.
       if (existing && !filesUpdated && existing.contentHash === sourceHash) return false
 
       const metadata = await parseSkillMetadata(destPath, folderName, 'skills')

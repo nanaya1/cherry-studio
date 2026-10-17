@@ -9,6 +9,8 @@ import { canInviteAfterShare } from '../utils/sharing'
 
 export default function KnowledgeInvitePanel({
   baseId,
+  uploadOriginal = true,
+  remote = false,
   prepared,
   busy,
   onBusyChange,
@@ -17,6 +19,8 @@ export default function KnowledgeInvitePanel({
   renderActions
 }: {
   baseId: string
+  uploadOriginal?: boolean
+  remote?: boolean
   prepared?: OrgKnowledgeShareResult
   busy: boolean
   onBusyChange: (busy: boolean) => void
@@ -79,13 +83,19 @@ export default function KnowledgeInvitePanel({
     try {
       // const result = copy ?? prepared ?? (await ipcApi.request('enterprise.knowledge.share', { baseId }))
       const cached = copy ?? prepared
-      const result =
-        cached && canInviteAfterShare(cached) ? cached : await ipcApi.request('enterprise.knowledge.share', { baseId })
-      if (!active.current) return
-      setCopy(result)
-      onPrepared(result)
-      if (!canInviteAfterShare(result)) throw new Error(t('knowledge.org.upload_incomplete'))
-      const current = await ipcApi.request('enterprise.knowledge.members', { baseId: result.shareId })
+      let target = baseId
+      if (!remote) {
+        const result =
+          cached && canInviteAfterShare(cached)
+            ? cached
+            : await ipcApi.request('enterprise.knowledge.share', { baseId, uploadOriginal })
+        if (!active.current) return
+        setCopy(result)
+        onPrepared(result)
+        if (!canInviteAfterShare(result)) throw new Error(t('knowledge.org.upload_incomplete'))
+        target = result.shareId
+      }
+      const current = await ipcApi.request('enterprise.knowledge.members', { baseId: target })
       if (!active.current) return
       if (
         current.members.some(

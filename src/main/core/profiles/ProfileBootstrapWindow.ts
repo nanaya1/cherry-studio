@@ -164,6 +164,9 @@ export function createProfileBootstrapWindow(context: ProfileLaunchContext): Bro
     // completed same-process activation flips the launch context to 'business'
     // and keeps the process alive.
     window.once('closed', () => {
+      // 重启链路会自己拉起新进程，这里再 forceExit 会抢在 app.relaunch 之前结束进程。
+      // 注意不能看 isQuitting：登出也会置位，但登出后仍需关闭登录窗即退出。
+      if (application.isRelaunching) return
       if (getProfileLaunchContext()?.mode !== 'business') application.forceExit(0)
     })
     return window
@@ -325,9 +328,8 @@ function registerSignedOutHandlers(context: ProfileLaunchContext, window: Browse
       // 业务 fence 在登出后保持关闭；登录窗口拥有独立的切换周期。
       fence: loginFence,
       application,
-      // Same-process activation: open the business runtime in this process when the
-      // just-authenticated account matches the last business identity (or this is a
-      // cold start). A different account falls through to a relaunch.
+      // Same-process activation is reserved for the last business identity.
+      // First login and different accounts fall through to a clean relaunch.
       activateAuthenticated: async (record) => {
         if (!shouldActivateInProcess(record, getLastBusinessIdentityDigest())) return false
         const { buildBusinessLaunchContext, startBusinessRuntime } = await import('./businessStartup')

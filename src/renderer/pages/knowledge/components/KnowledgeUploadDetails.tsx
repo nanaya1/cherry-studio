@@ -49,12 +49,15 @@ export function KnowledgeUploadProgress({ progress }: { progress: OrgKnowledgeUp
             uploading: t('knowledge.org.upload_uploading'),
             confirming: t('knowledge.org.upload_confirming'),
             paused: t('knowledge.org.upload_paused'),
+            cleanup_pending: t('knowledge.org.upload_cleanup_pending'),
+            cleanup_unknown: t('knowledge.org.upload_cleanup_unknown'),
             completed: t('knowledge.org.upload_completed')
           }[progress.phase]
         }
       </p>
       <p className="break-all">{progress.currentFile}</p>
       <progress className="h-2 w-full" max={100} value={percentage} aria-label={t('knowledge.org.upload_bytes')} />
+      {/* 上传统计信息仅保留进度条展示。
       <p>
         {progress.uploadedBytes.toLocaleString()} / {progress.totalBytes.toLocaleString()}{' '}
         {t('knowledge.org.upload_bytes')} · {percentage}%
@@ -62,12 +65,13 @@ export function KnowledgeUploadProgress({ progress }: { progress: OrgKnowledgeUp
       <p>
         {progress.completedFiles} / {progress.totalFiles} {t('knowledge.org.upload_files')}
       </p>
+      */}
       {progress.error ? (
         <p role="alert" className="text-error">
           {progress.error}
         </p>
       ) : null}
-      <p className="text-xs text-muted-foreground">{t('knowledge.org.upload_limitations')}</p>
+      {/* <p className="text-xs text-muted-foreground">{t('knowledge.org.upload_limitations')}</p> */}
     </section>
   )
 }

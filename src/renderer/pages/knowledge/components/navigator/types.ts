@@ -5,8 +5,24 @@ import type { KnowledgeBaseListItem } from '@shared/data/api/schemas/knowledges'
 import type { Group } from '@shared/data/types/group'
 import type { KnowledgeBase } from '@shared/data/types/knowledge'
 
+export interface BaseNavigatorRemoteRow {
+  id: string
+  name: string
+  selected: boolean
+  onSelect: () => void
+  tag: string
+  groupId?: string | null
+  onMove?: (groupId: string | null) => void
+  onRename?: () => void
+  onCreateGroup?: () => void
+  onUnshare?: () => void
+  onDelete?: () => void
+}
+
 export interface BaseNavigatorContentProps {
   isLoading: boolean
+  remoteRows?: BaseNavigatorRemoteRow[]
+
   sections: KnowledgePageBaseGroupSection[]
   groups: Group[]
   groupById: ReadonlyMap<string, Group>
@@ -16,7 +32,7 @@ export interface BaseNavigatorContentProps {
   getGroupLabel: (groupId: string | null) => string
   onSelectBase: (baseId: string) => void
   onMoveBase: (baseId: string, groupId: string | null) => Promise<void> | void
-  onRenameBase: (base: Pick<KnowledgeBase, 'id' | 'name'>) => void
+  onRenameBase: (base: Pick<KnowledgeBase, 'id' | 'name'> & { remote?: boolean }) => void
   onRenameGroup: (group: Pick<Group, 'id' | 'name'>) => void
   onCreateBaseInGroup: (groupId: string) => void
   onCreateGroup: (baseId: string) => void
@@ -34,7 +50,7 @@ export interface BaseNavigatorGroupSectionProps {
   selectedBaseId: string
   onSelectBase: (baseId: string) => void
   onMoveBase: (baseId: string, groupId: string | null) => Promise<void> | void
-  onRenameBase: (base: Pick<KnowledgeBase, 'id' | 'name'>) => void
+  onRenameBase: (base: Pick<KnowledgeBase, 'id' | 'name'> & { remote?: boolean }) => void
   onRenameGroup: (group: Pick<Group, 'id' | 'name'>) => void
   onCreateBaseInGroup: (groupId: string) => void
   onCreateGroup: (baseId: string) => void
@@ -42,6 +58,7 @@ export interface BaseNavigatorGroupSectionProps {
   onDeleteBase: (baseId: string) => Promise<void> | void
   onToggleSidebar: (base: KnowledgeBaseListItem) => void
   sidebarPinnedBaseIds: ReadonlySet<string>
+  remoteRows?: BaseNavigatorRemoteRow[]
 }
 
 export interface BaseNavigatorSectionTriggerProps {
@@ -55,14 +72,15 @@ export interface BaseNavigatorResizeHandleProps {
 }
 
 export interface KnowledgeBaseRowProps {
-  base: KnowledgeBaseListItem
+  base: Pick<KnowledgeBaseListItem, 'id' | 'name' | 'groupId'>
+  remote?: boolean
   groups: Group[]
   shared?: boolean
   onRequestUnshare?: (baseId: string) => void
   selected: boolean
   onSelectBase: (baseId: string) => void
   onMoveBase: (baseId: string, groupId: string | null) => Promise<void> | void
-  onRenameBase: (base: Pick<KnowledgeBase, 'id' | 'name'>) => void
+  onRenameBase: (base: Pick<KnowledgeBase, 'id' | 'name'> & { remote?: boolean }) => void
   onCreateGroup: (baseId: string) => void
   onDeleteBase: (baseId: string) => Promise<void> | void
   onToggleSidebar: (base: KnowledgeBaseListItem) => void

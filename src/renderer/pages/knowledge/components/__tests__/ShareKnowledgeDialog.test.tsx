@@ -35,6 +35,124 @@ beforeEach(async () => {
   )
 })
 
+it('跨端云端邀请直接使用云端ID，不启动本地上传', async () => {
+  request.mockImplementation(async (route) => {
+    if (route === 'enterprise.knowledge.collaborators')
+      return { items: [{ id: 42, username: 'alice' }], total: 1, page: 1, pageSize: 20 }
+    if (route === 'enterprise.knowledge.members') return { members: [] }
+    if (route === 'enterprise.knowledge.invite') return { userId: 42, status: 'pending' }
+    throw new Error(`Unexpected request: ${route}`)
+  })
+  const user = userEvent.setup()
+  const invited = vi.fn()
+  render(<ShareKnowledgeDialog {...props} baseId="orgkb:copy" remote mode="people" onShared={invited} />)
+  await user.type(screen.getByRole('combobox'), 'ali')
+  await user.click(await screen.findByRole('option', { name: 'alice' }))
+  await user.click(screen.getByRole('button', { name: 'Send invitation' }))
+  expect(await screen.findByRole('status')).toHaveTextContent(i18n.t('knowledge.org.invited'))
+  expect(request).toHaveBeenCalledWith('enterprise.knowledge.invite', {
+    baseId: 'orgkb:copy',
+    userId: 42,
+    expireDays: 7
+  })
+  expect(
+    request.mock.calls.some(
+      ([route]) => route === 'enterprise.knowledge.share' || route === 'enterprise.knowledge.upload_status'
+    )
+  ).toBe(false)
+})
+
+it.each(['code', 'people'] as const)('%s 失败条目默认收起，点击详情后展示并可再次收起', async (mode) => {
+  request.mockImplementation(async (route) => {
+    if (route === 'enterprise.knowledge.share')
+      return {
+        shareId: 'orgkb:copy',
+        completion: 'incomplete',
+        files: [{ fileName: 'broken.md', status: 'failure', error: '接口不存在' }]
+      }
+    if (route === 'enterprise.knowledge.collaborators')
+      return { items: [{ id: 42, username: 'alice' }], total: 1, page: 1, pageSize: 20 }
+    if (route === 'enterprise.knowledge.members') return { members: [] }
+    return null
+  })
+  const user = userEvent.setup()
+  render(<ShareKnowledgeDialog {...props} mode={mode} />)
+  if (mode === 'people') {
+    await user.type(screen.getByRole('combobox'), 'ali')
+    await user.click(await screen.findByRole('option', { name: 'alice' }))
+  }
+  await user.click(screen.getByRole('button', { name: mode === 'code' ? 'Generate share code' : 'Send invitation' }))
+  const details = await screen.findByRole('button', { name: i18n.t('knowledge.org.upload_details') })
+  expect(details).toHaveAttribute('aria-expanded', 'false')
+  expect(screen.queryByText(/broken\.md/, { selector: 'p:not([role="alert"])' })).not.toBeInTheDocument()
+  await user.click(details)
+  expect(screen.getByText(/broken\.md/, { selector: 'p:not([role="alert"])' })).toHaveTextContent('接口不存在')
+  expect(details).toHaveAttribute('aria-expanded', 'true')
+  await user.click(details)
+  expect(screen.queryByText(/broken\.md/, { selector: 'p:not([role="alert"])' })).not.toBeInTheDocument()
+})
+
+it('失败回滚清理后仍直接显示文件错误，并允许重新分享', async () => {
+  request.mockImplementation(async (route) => {
+    if (route === 'enterprise.knowledge.share')
+      return {
+        shareId: '',
+        completion: 'incomplete',
+        files: [{ fileName: 'broken.pdf', status: 'unknown', error: 'upload rejected by server' }]
+      }
+    return null
+  })
+  const user = userEvent.setup()
+  render(<ShareKnowledgeDialog {...props} />)
+  await user.click(screen.getByRole('button', { name: 'Generate share code' }))
+  const alert = await screen.findByRole('alert')
+  expect(alert).toHaveTextContent('broken.pdf')
+  expect(alert).toHaveTextContent('upload rejected by server')
+  expect(screen.getByRole('button', { name: 'Generate share code' })).toBeEnabled()
+  expect(request.mock.calls.some(([route]) => route === 'enterprise.knowledge.create_share')).toBe(false)
+})
+
+it('文件尚未请求时展示空间核对错误，不用汇总提示覆盖原因', async () => {
+  let failed = false
+  request.mockImplementation(async (route) => {
+    if (route === 'enterprise.knowledge.share') {
+      failed = true
+      return {
+        shareId: '',
+        completion: 'incomplete',
+        files: [],
+        error: '空间源文件上传策略未确认或已变化'
+      }
+    }
+    if (route === 'enterprise.knowledge.upload_status' && failed)
+      return { ...uploadProgress('paused'), error: '空间源文件上传策略未确认或已变化' }
+    return null
+  })
+  const user = userEvent.setup()
+  render(<ShareKnowledgeDialog {...props} />)
+  await user.click(screen.getByRole('button', { name: 'Generate share code' }))
+  await waitFor(() => {
+    const alerts = screen.getAllByRole('alert')
+    expect(alerts[alerts.length - 1]).toHaveTextContent('空间源文件上传策略未确认或已变化')
+  })
+  expect(request.mock.calls.some(([route]) => route === 'enterprise.knowledge.create_share')).toBe(false)
+})
+
+it.each(['completed', 'paused'])('重开%s任务隐藏原件选择并恢复false模式', async (phase) => {
+  request.mockImplementation(async (route) => {
+    if (route === 'enterprise.knowledge.upload_status') return { ...uploadProgress(phase), uploadOriginal: false }
+    if (route === 'enterprise.knowledge.share') return { shareId: 'orgkb:copy', completion: 'incomplete', files: [] }
+    return null
+  })
+  const user = userEvent.setup()
+  render(<ShareKnowledgeDialog {...props} />)
+  await waitFor(() => expect(screen.queryByRole('checkbox')).not.toBeInTheDocument())
+  await user.click(screen.getByRole('button', { name: 'Generate share code' }))
+  await waitFor(() =>
+    expect(request).toHaveBeenCalledWith('enterprise.knowledge.share', { baseId: 'local', uploadOriginal: false })
+  )
+})
+
 const uploadProgress = (phase = 'completed') => ({
   phase,
   totalBytes: 100,
@@ -158,6 +276,31 @@ it('指定人入口只展示邀请，复用完整副本发送邀请', async () =
   expect(request.mock.calls.some(([route]) => route === 'enterprise.knowledge.create_share')).toBe(false)
   expect(request).toHaveBeenCalledWith('enterprise.knowledge.invite', { baseId: 'local', userId: 42, expireDays: 7 })
   expect(request.mock.calls.filter(([route]) => route === 'enterprise.knowledge.share')).toHaveLength(1)
+})
+
+it.each(['code', 'people'] as const)('%s 原件默认勾选，取消后仅分块选项传入首传请求', async (mode) => {
+  const original = request.getMockImplementation()!
+  request.mockImplementation(async (route, args) => {
+    if (route === 'enterprise.knowledge.upload_status') return null
+    if (route === 'enterprise.knowledge.collaborators')
+      return { items: [{ id: 42, username: 'alice' }], total: 1, page: 1, pageSize: 20 }
+    if (route === 'enterprise.knowledge.members') return { members: [] }
+    return original(route, args)
+  })
+  const user = userEvent.setup()
+  render(<ShareKnowledgeDialog {...props} mode={mode} />)
+  const checkbox = screen.getByRole('checkbox', { name: i18n.t('knowledge.org.upload_original_notice') })
+  expect(checkbox).toBeChecked()
+  await user.click(checkbox)
+  expect(checkbox).not.toBeChecked()
+  if (mode === 'people') {
+    await user.type(screen.getByRole('combobox'), 'ali')
+    await user.click(await screen.findByRole('option', { name: 'alice' }))
+  }
+  await user.click(screen.getByRole('button', { name: mode === 'code' ? 'Generate share code' : 'Send invitation' }))
+  await waitFor(() =>
+    expect(request).toHaveBeenCalledWith('enterprise.knowledge.share', { baseId: 'local', uploadOriginal: false })
+  )
 })
 
 it('分享码入口不展示指定人邀请', () => {

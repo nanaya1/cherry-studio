@@ -90,6 +90,50 @@ describe('applyMigrations', () => {
     }
   })
 
+  it('repairs remote knowledge tables skipped by a later legacy migration timestamp without losing data', () => {
+    const staged = stageMigrations()
+    const journalPath = join(staged, 'meta', '_journal.json')
+    const journal = JSON.parse(readFileSync(journalPath, 'utf8')) as {
+      entries: Array<{ tag: string; when: number }>
+    }
+    const legacyTimestamp = 1789841624693
+    const baseline = journal.entries.filter((entry) => entry.when < legacyTimestamp && entry.tag !== '0031_busy_spot')
+    writeFileSync(journalPath, JSON.stringify({ ...journal, entries: baseline }))
+    applyMigrations(db, staged)
+    sqlite
+      .prepare('INSERT INTO __drizzle_migrations (hash, created_at) VALUES (?, ?)')
+      .run('legacy-release-migration', legacyTimestamp)
+    sqlite
+      .prepare(
+        'INSERT INTO user_provider (provider_id, name, order_key, created_at, updated_at) VALUES (?, ?, ?, ?, ?)'
+      )
+      .run('existing', 'Existing provider', 'a0', 1000, 2000)
+
+    applyMigrations(db, resolveMigrationsPath())
+    for (const table of [
+      'assistant_remote_knowledge_base',
+      'agent_remote_knowledge_base',
+      'remote_knowledge_service'
+    ]) {
+      expect(sqlite.prepare('SELECT name FROM sqlite_master WHERE type = ? AND name = ?').get('table', table)).toEqual({
+        name: table
+      })
+    }
+    sqlite
+      .prepare(`INSERT INTO remote_knowledge_service (id, name, base_url, created_at, updated_at)
+        VALUES ('kept-service', 'Existing service', 'https://knowledge.example', 1000, 2000)`)
+      .run()
+    applyMigrations(db, resolveMigrationsPath())
+    expect(sqlite.prepare('SELECT name FROM user_provider WHERE provider_id = ?').get('existing')).toEqual({
+      name: 'Existing provider'
+    })
+    expect(sqlite.prepare('SELECT name FROM remote_knowledge_service WHERE id = ?').get('kept-service')).toEqual({
+      name: 'Existing service'
+    })
+    expect(sqlite.pragma('foreign_key_check')).toEqual([])
+    expect(String(sqlite.pragma('integrity_check', { simple: true }))).toBe('ok')
+  })
+
   it('is idempotent when run again on an already-migrated database', () => {
     applyMigrations(db, resolveMigrationsPath())
 

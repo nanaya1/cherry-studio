@@ -8,13 +8,44 @@ policy:
   require_tests: true
   preserve_original_code_by_comment: true
 customizations:
-  - id: enterprise-knowledge-page
-    title: 企业知识库访问、原文预览、本地分享、列表菜单取消分享与手动同步
+  - id: remote-knowledge-upgrade-repair
+    title: 旧发布线升级补齐远程知识库表
     owner: main
-    behavior: 文档标识经显式文件映射或文件元信息校验后用于预览；主进程鉴权限量读取，渲染进程以纯文本、图片或沙箱 PDF 展示。首次分享递归stat原文件总量（含子目录），逐文件流式上传；2026-10-17最新约定暂不设置客户端总容量上限，取代此前2GiB及临时20MiB限制，OrgKnowledgeService.buildFirstSharePlan及FirstShareUpload.run两处旧检查和抛错均保留为注释，服务端仍可限制容量且错误处理保持不变；客户端原子互斥且同库复用，列表可重开字节进度详情。创建及文件请求前持久化intent，响应归属和分块数校验后保存fileId并核对哈希和完整分块，未知结果暂停且不得盲目重传或重建库；Cookie流式请求不手设Content-Length，传输结束关闭源流；上传连续5分钟无字节进展或服务器响应时中止并清理源流，创建库和远端核对请求30秒超时，未知结果不重放且finally释放全局忙碌槽；全部确认前禁止分享码和邀请。分享码与人员邀请弹窗重开时隐藏历史completed进度、上传说明及复用文件成功结果，本会话新上传或未完成恢复仍展示进度与完成反馈，不清理持久化记录。后续同步保持原manifest协议。
+    behavior: 旧库迁移时间戳越过0031时，追加迁移幂等补建助手绑定、智能体绑定及远程知识服务表；保留已有业务数据与已存在的绑定，不改写历史迁移记录。
+    markers:
+      - MEA:remote-knowledge-upgrade-repair
+    touchpoints:
+      - migrations/sqlite-drizzle/0034_remote_knowledge_upgrade_repair.sql
+      - migrations/sqlite-drizzle/meta/_journal.json
+    tests:
+      - src/main/data/db/__tests__/applyMigrations.test.ts
+  - id: enterprise-knowledge-page
+    # title: 企业知识库访问、原文预览、本地分享、列表菜单取消分享与手动同步
+    # title: 企业知识库访问、原文预览、本地分享保留多层目录、列表菜单取消分享与手动同步
+    title: 企业知识库云端管理、托管新增资料与取消恢复本地
+    # 首次分享按groupId创建父子目录并传parent_id，含已导入空目录；目录写前intent及可信ID持久化，未知结果禁止重建。
+    # 核对远端名称/空间/父目录/is_dir后才完成；历史已完成平铺副本不自动迁移。回归覆盖FirstShareUpload和OrgKnowledgeFirstShare。
+    # 原件上传默认开启，两个分享入口透传uploadOriginal；核对按文件恢复持久模式，缺省true。
+    # 首次模式库级写前持久化并携带allow_local_file_upload创建；恢复隐藏选择，追加实时读取策略，未知拒绝上传。
+    # 原件入口严格按每文件has_original_file展示；直接预览复核能力，策略与下载权限独立透传。
+    # 关闭原件仍核对可信身份、目录和一对一完整分块；首次计划仍读取本机原件hash作为副本身份。
+    # P1：知识库DELETE凭据获取前后校验原租约/session身份且不401重放；恢复先固化expectedHashes再核对导入目标。
+    # 删除模式不扫描/下载/恢复：先固化当前账号可信副本，DELETE成功后才清受管本机库、分组及失效引用；未知禁止重发，失败仅本机续作。
+    # 三分类：local聚合本机与catalog.owned，localBaseId关联去重且点击云端详情；public/shared严格使用各自目录，跨端owned可管理。
+    # 列表附加FileOut的403/404/422/常见5xx及协议错误仅使该文件能力未知；列表授权、401、租约和未知异常仍阻断。
+    # 目录分页拒绝重复游标并显示错误；返回上级、切库和卸载后丢弃迟到响应。
+    # 切库同步本机路由与云端选中，详情独立会话清理预览/目录/页码；旧refresh和取消分享回调不能覆盖新库。
+    # 主进程列表校验全部条目base_id匹配请求库，跨库响应按协议错误阻断而非静默展示。
+    # 首次分享失败改为task可信空间补偿：先持久cleanup再停止流，owner/lease校验DELETE，unknown不重放；保留本机资料，追加及completed不回滚。
+    owner: main
+    behavior: 文档标识经显式文件映射或文件元信息校验后用于预览；主进程鉴权限量读取，渲染进程以纯文本、图片或沙箱 PDF 展示。首次分享递归stat原文件总量（含子目录），逐文件流式上传；2026-10-17最新约定暂不设置客户端总容量上限，取代此前2GiB及临时20MiB限制，OrgKnowledgeService.buildFirstSharePlan及FirstShareUpload.run两处旧检查和抛错均保留为注释，服务端仍可限制容量且错误处理保持不变；客户端原子互斥且同库复用，列表可重开字节进度详情。创建及文件请求前持久化intent，响应归属和分块数校验后保存fileId并核对哈希和完整分块，未知结果暂停且不得盲目重传或重建库；Cookie流式请求不手设Content-Length，传输结束关闭源流；上传连续5分钟无字节进展或服务器响应时中止并清理源流，创建库和远端核对请求30秒超时，未知结果不重放且finally释放全局忙碌槽；全部确认前禁止分享码和邀请。分享码与人员邀请弹窗重开时隐藏历史completed进度、上传说明及复用文件成功结果，本会话新上传或未完成恢复仍展示进度与完成反馈，不清理持久化记录。后续旧manifest推送已停用；本机任务不得自动写云端，云端owner新增文件先托管解析再上传到同space并保留可信fileId。分享完成迁移助手与智能体知识源，取消时先恢复可用本地资料，下载故障阻断删除；缺失资料与其他设备停止操作须明确确认，未知DELETE持久化且不重发，可信删除后回绑本地。
     markers:
       - MEA:enterprise-knowledge-page
     touchpoints:
+      - src/main/enterprise/CloudKnowledgeRecovery.ts
+      - src/main/enterprise/KnowledgeSourceBindings.ts
+      - src/main/data/services/AssistantService.ts
+      - src/main/data/services/AgentService.ts
       - src/main/enterprise/FirstShareUpload.ts
       - src/renderer/pages/knowledge/components/KnowledgeUploadDetails.tsx
       - src/renderer/pages/knowledge/components/navigator/KnowledgeBaseRow.tsx
@@ -54,10 +85,14 @@ customizations:
       - src/renderer/pages/knowledge/sections/KnowledgePageNavigatorSection.tsx
       - src/renderer/pages/knowledge/utils/sharing.ts
     tests:
+      - src/main/enterprise/__tests__/CloudKnowledgeRecovery.test.ts
+      - src/main/enterprise/__tests__/KnowledgeSourceBindings.test.ts
       - src/main/enterprise/__tests__/FirstShareUpload.test.ts
       - src/main/enterprise/__tests__/OrgKnowledgeFirstShare.test.ts
       - src/main/enterprise/__tests__/OrgApiClient.stream.test.ts
       - src/renderer/pages/knowledge/components/__tests__/KnowledgeUploadDetails.test.tsx
+      - src/renderer/pages/knowledge/components/__tests__/OrgKnowledgeDetail.test.tsx
+      - src/shared/data/types/__tests__/enterpriseKnowledge.test.ts
       - src/main/enterprise/__tests__/OrgKnowledgeService.test.ts
       - src/main/enterprise/__tests__/OrgKnowledgeClient.test.ts
       - src/main/enterprise/__tests__/OrgApiClient.test.ts
@@ -164,14 +199,15 @@ customizations:
       - packages/provider-registry/src/__tests__/xuelang-catalog.test.ts
 
   - id: hidden-settings
-    title: Hide legacy MCP and Skills settings everywhere
+    title: Hide MEA-disabled settings everywhere
     owner: renderer
-    behavior: Hide /settings/mcp and /settings/skills from every consumer, including navigation and settings search; all consumers must share MEA_HIDDEN_SETTINGS_ROUTES.
+    behavior: Hide /settings/mcp, /settings/skills, /settings/scheduled-tasks, /settings/device-connections, and /settings/remote-knowledge from every consumer, including navigation and settings search; all consumers must share MEA_HIDDEN_SETTINGS_ROUTES.
     touchpoints:
       - src/renderer/components/settingsMenu.ts
       - src/renderer/pages/settings/SettingsPage.tsx
       - src/renderer/pages/settings/settingsSearch/aggregate.ts
     tests:
+      - src/renderer/pages/settings/__tests__/SettingsPage.test.tsx
       - src/renderer/pages/settings/settingsSearch/__tests__/settingsSearchIndex.test.ts
 
   - id: new-task-composer-layout
@@ -211,7 +247,7 @@ customizations:
   - id: resource-protection
     title: Protect MEA builtin resources and resource-center behavior
     owner: renderer
-    behavior: Keep builtin assistant deletion protection, Bot fallback icons, non-leading pinned topics, and the MEA read-only resource-center entry behavior. Resource-center assistant cards use MessageCircle and agent cards use Bot instead of resource Emoji; Skill custom images and prompt avatars remain available.
+    behavior: Keep builtin assistant deletion protection, Bot fallback icons, non-leading pinned topics, and the MEA read-only resource-center entry behavior. Resource-center assistant cards use MessageCircle and agent cards use Bot instead of resource Emoji; Skill custom images and prompt avatars remain available. Hide the Recommended/Public secondary skill tab switch while keeping Recommended skills as the default visible catalog; preserve installed-skill actions and the Skills/Connectors primary switch.
     markers:
       - MEA:resource-protection
     touchpoints:
@@ -223,6 +259,7 @@ customizations:
       - src/renderer/components/resourceCatalog/catalog/__tests__/ResourceGrid.test.tsx
       - src/renderer/components/resourceCatalog/catalog/__tests__/RecommendedSkillCatalogView.test.tsx
       - src/renderer/components/__tests__/ResourceViewSourceProvider.test.tsx
+      - src/renderer/pages/workspace/SkillsConnectorsPage.test.tsx
 
   - id: resource-icons
     title: 恢复统一资源图标并隐藏头像编辑
@@ -268,14 +305,25 @@ customizations:
       - src/renderer/components/resourceCatalog/dialogs/detail/__tests__/AssistantPresetPreviewDialog.test.tsx
 
   - id: builtin-mcp-names
-    title: Preserve unprefixed builtin MCP names
+    title: Preserve MEA builtin connector and skill branding
     owner: shared
-    behavior: BuiltinMcpServerNames values must not regain the @cherry/ prefix.
+    behavior: BuiltinMcpServerNames values must not regain the @cherry/ prefix; flomo and nowledge-mem remain compatible presets but stay hidden from builtin connector choices. The connector catalog exposes only Built-in Servers and My MCP; marketplace, public organization, provider directory, and provider details stay unmounted while their implementation remains recoverable. My MCP exposes only All, Enabled, and Disabled filters; STDIO, SSE, Streamable, and Built-in Servers filters stay hidden in the catalog while the complete settings-page filter implementation remains available. Builtin connector provider/header metadata and skill marketplace User-Agent use MEA Cowork branding, including safe migration of legacy builtin rows. Builtin skill prose contains no Cherry branding; cherry-tool-guide, cherry-browser, mcp__cherry-tools__* and CHERRY_STUDIO_SKILLS_DIR remain stable compatibility identifiers.
     touchpoints:
       - src/shared/utils/mcp.ts
       - src/shared/data/presets/mcpServers.ts
+      - src/main/data/db/seeding/seeders/builtinMcpServerSeeder.ts
+      - src/main/ai/skills/skillRemoteSource.ts
+      - src/renderer/pages/settings/McpSettings/BuiltinMcpServerList.tsx
+      - src/renderer/pages/settings/McpSettings/McpCatalog.tsx
+      - src/renderer/pages/settings/McpSettings/McpServersList.tsx
+      - resources/skills
     tests:
       - src/shared/data/presets/__tests__/mcpServers.test.ts
+      - src/renderer/pages/settings/McpSettings/__tests__/McpCatalog.test.tsx
+      - src/renderer/pages/settings/McpSettings/__tests__/McpServersList.test.tsx
+      - src/main/data/db/seeding/seeders/__tests__/builtinMcpServerSeeder.test.ts
+      - src/main/ai/skills/__tests__/SkillService.test.ts
+      - scripts/__tests__/i18n-check-values.test.ts
 
   - id: mea-i18n
     title: Preserve MEA-only translations and product wording

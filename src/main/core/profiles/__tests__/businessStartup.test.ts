@@ -103,9 +103,9 @@ const context: ProfileLaunchContext = {
 }
 
 describe('业务账号激活决策', () => {
-  it('首次允许任意账号，同账号可复用，不同账号必须重启', () => {
+  it('首次登录必须重启以在业务窗口创建前应用账号路径，同账号可复用，不同账号必须重启', () => {
     const record = { kind: 'authenticated', identityDigest: context.identityDigest }
-    expect(shouldActivateInProcess(record, null)).toBe(true)
+    expect(shouldActivateInProcess(record, null)).toBe(false)
     expect(shouldActivateInProcess(record, context.identityDigest)).toBe(true)
     expect(shouldActivateInProcess(record, 'c'.repeat(64))).toBe(false)
   })

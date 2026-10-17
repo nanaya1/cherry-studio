@@ -62,7 +62,7 @@ it('已有副本生成码不重新上传文件', async () => {
       ? { shares: [] }
       : { id: 'orgkb:code', shareCode: 'New_1234', expiresAt: null }
   )
-  render(<KnowledgeSharingPanel baseId="orgkb:owned" name="资料" />)
+  render(<KnowledgeSharingPanel baseId="orgkb:owned" name="资料" canCreateShare />)
   await screen.findByText('No share codes')
   await user.click(screen.getByRole('button', { name: 'Generate share code' }))
   await user.click(screen.getByRole('button', { name: 'Generate share code' }))
@@ -71,17 +71,19 @@ it('已有副本生成码不重新上传文件', async () => {
 })
 
 it('列表入口直接打开二次确认但确认前不提交取消', async () => {
-  request.mockImplementation(async (route) => route === 'enterprise.knowledge.shares' ? { shares: [] } : { state: 'shared' })
+  request.mockImplementation(async (route) =>
+    route === 'enterprise.knowledge.shares' ? { shares: [] } : { state: 'shared' }
+  )
   render(<KnowledgeSharingPanel baseId="orgkb:owned" localBaseId="local-1" confirmUnshare />)
-  expect(await screen.findByRole('button', { name: 'Confirm unsharing' })).toBeInTheDocument()
+  expect(await screen.findByRole('button', { name: 'Restore and check local files' })).toBeInTheDocument()
   expect(request.mock.calls.some(([route]) => route === 'enterprise.knowledge.unshare')).toBe(false)
 })
 
-it('无 localBaseId 时不显示取消整个分享', async () => {
+it('无 localBaseId 的云端 owner 仍可进入取消恢复', async () => {
   request.mockImplementation(async (route) => (route === 'enterprise.knowledge.shares' ? { shares: [] } : {}))
   render(<KnowledgeSharingPanel baseId="orgkb:owned" />)
   await screen.findByText('No share codes')
-  expect(screen.queryByRole('button', { name: 'Cancel sharing' })).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Cancel sharing' })).toBeEnabled()
 })
 
 it('本地副本显示取消整个分享，二次确认明确云端撤下本地保留并刷新', async () => {
@@ -106,6 +108,7 @@ it('本地副本显示取消整个分享，二次确认明确云端撤下本地�
         ]
       }
     if (route === 'enterprise.knowledge.upload_status') return null
+    if (route === 'enterprise.knowledge.unshare_preview') return { restored: 1, missing: [] }
     if (route === 'enterprise.knowledge.sync_status') return { state: 'shared', lastSyncedAt: null }
     if (route === 'enterprise.knowledge.unshare') return { ok: true }
     return {}
@@ -115,11 +118,19 @@ it('本地副本显示取消整个分享，二次确认明确云端撤下本地�
   await user.click(screen.getByRole('button', { name: 'Cancel sharing' }))
   // 二次确认文案明确云端副本撤下、本地保留。
   expect(screen.getByText(/cloud copy will be taken down/i)).toBeInTheDocument()
+  const prepare = await screen.findByRole('button', { name: 'Restore and check local files' })
+  await waitFor(() => expect(prepare).toBeEnabled())
+  await user.click(prepare)
+  await user.click(await screen.findByRole('checkbox'))
   const confirm = await screen.findByRole('button', { name: 'Confirm unsharing' })
   await waitFor(() => expect(confirm).toBeEnabled())
   await user.click(confirm)
   expect(await screen.findByText('Abcd_123')).toBeInTheDocument()
-  expect(request).toHaveBeenCalledWith('enterprise.knowledge.unshare', { baseId: 'local-1' })
+  expect(request).toHaveBeenCalledWith('enterprise.knowledge.unshare', {
+    baseId: 'local-1',
+    confirmMissing: false,
+    confirmDevicesStopped: true
+  })
   expect(onUnshared).toHaveBeenCalledTimes(1)
 })
 
@@ -129,6 +140,7 @@ it('取消分享失败保留确认与错误并可重试', async () => {
   request.mockImplementation(async (route) => {
     if (route === 'enterprise.knowledge.shares') return { shares: [] }
     if (route === 'enterprise.knowledge.upload_status') return null
+    if (route === 'enterprise.knowledge.unshare_preview') return { restored: 1, missing: [] }
     if (route === 'enterprise.knowledge.sync_status') return { state: 'shared', lastSyncedAt: null }
     if (route === 'enterprise.knowledge.unshare') throw new Error('server rejected')
     return {}
@@ -136,6 +148,10 @@ it('取消分享失败保留确认与错误并可重试', async () => {
   render(<KnowledgeSharingPanel baseId="orgkb:owned" localBaseId="local-1" onUnshared={onUnshared} />)
   await screen.findByText('No share codes')
   await user.click(screen.getByRole('button', { name: 'Cancel sharing' }))
+  const prepare = await screen.findByRole('button', { name: 'Restore and check local files' })
+  await waitFor(() => expect(prepare).toBeEnabled())
+  await user.click(prepare)
+  await user.click(await screen.findByRole('checkbox'))
   const confirm = await screen.findByRole('button', { name: 'Confirm unsharing' })
   await waitFor(() => expect(confirm).toBeEnabled())
   await user.click(confirm)
@@ -156,6 +172,7 @@ it('忙碌期间确认按钮禁用，重复点击不触发第二次请求', asyn
   request.mockImplementation(async (route) => {
     if (route === 'enterprise.knowledge.shares') return { shares: [] }
     if (route === 'enterprise.knowledge.upload_status') return null
+    if (route === 'enterprise.knowledge.unshare_preview') return { restored: 1, missing: [] }
     if (route === 'enterprise.knowledge.sync_status') return { state: 'shared', lastSyncedAt: null }
     if (route === 'enterprise.knowledge.unshare')
       return new Promise((resolve) => {
@@ -166,6 +183,10 @@ it('忙碌期间确认按钮禁用，重复点击不触发第二次请求', asyn
   render(<KnowledgeSharingPanel baseId="orgkb:owned" localBaseId="local-1" onUnshared={onUnshared} />)
   await screen.findByText('No share codes')
   await user.click(screen.getByRole('button', { name: 'Cancel sharing' }))
+  const prepare = await screen.findByRole('button', { name: 'Restore and check local files' })
+  await waitFor(() => expect(prepare).toBeEnabled())
+  await user.click(prepare)
+  await user.click(await screen.findByRole('checkbox'))
   const confirm = await screen.findByRole('button', { name: 'Confirm unsharing' })
   await waitFor(() => expect(confirm).toBeEnabled())
   await user.click(confirm)
@@ -192,13 +213,14 @@ it('活跃上传期间禁用取消分享确认', async () => {
         currentFile: 'a',
         error: null
       }
+    if (route === 'enterprise.knowledge.unshare_preview') return { restored: 1, missing: [] }
     if (route === 'enterprise.knowledge.sync_status') return { state: 'shared', lastSyncedAt: null }
     return {}
   })
   render(<KnowledgeSharingPanel baseId="orgkb:owned" localBaseId="local-1" />)
   await screen.findByText('No share codes')
   await user.click(screen.getByRole('button', { name: 'Cancel sharing' }))
-  const confirm = await screen.findByRole('button', { name: 'Confirm unsharing' })
+  const confirm = await screen.findByRole('button', { name: 'Restore and check local files' })
   await waitFor(() => expect(confirm).toBeDisabled())
   expect(screen.getByText(/upload or sync is in progress/i)).toBeInTheDocument()
 })
@@ -209,6 +231,7 @@ it('pending 同步状态不阻止取消分享确认（仅 syncing 视为活跃�
     if (route === 'enterprise.knowledge.shares') return { shares: [] }
     if (route === 'enterprise.knowledge.upload_status') return null
     // pending 是已排队、尚未开始的待处理任务，不是进行中的同步，不应阻止取消分享。
+    if (route === 'enterprise.knowledge.unshare_preview') return { restored: 1, missing: [] }
     if (route === 'enterprise.knowledge.sync_status') return { state: 'pending', lastSyncedAt: null }
     if (route === 'enterprise.knowledge.unshare') return { ok: true }
     return {}
@@ -216,12 +239,20 @@ it('pending 同步状态不阻止取消分享确认（仅 syncing 视为活跃�
   render(<KnowledgeSharingPanel baseId="orgkb:owned" localBaseId="local-1" />)
   await screen.findByText('No share codes')
   await user.click(screen.getByRole('button', { name: 'Cancel sharing' }))
+  const prepare = await screen.findByRole('button', { name: 'Restore and check local files' })
+  await waitFor(() => expect(prepare).toBeEnabled())
+  await user.click(prepare)
+  await user.click(await screen.findByRole('checkbox'))
   const confirm = await screen.findByRole('button', { name: 'Confirm unsharing' })
   await waitFor(() => expect(confirm).toBeEnabled())
   expect(screen.queryByText(/upload or sync is in progress/i)).not.toBeInTheDocument()
   await user.click(confirm)
   expect(await screen.findByText('No share codes')).toBeInTheDocument()
-  expect(request).toHaveBeenCalledWith('enterprise.knowledge.unshare', { baseId: 'local-1' })
+  expect(request).toHaveBeenCalledWith('enterprise.knowledge.unshare', {
+    baseId: 'local-1',
+    confirmMissing: false,
+    confirmDevicesStopped: true
+  })
 })
 
 it('取消分享确认期间禁用生成码、刷新与吊销等竞争动作', async () => {
@@ -245,10 +276,11 @@ it('取消分享确认期间禁用生成码、刷新与吊销等竞争动作', a
         ]
       }
     if (route === 'enterprise.knowledge.upload_status') return null
+    if (route === 'enterprise.knowledge.unshare_preview') return { restored: 1, missing: [] }
     if (route === 'enterprise.knowledge.sync_status') return { state: 'shared', lastSyncedAt: null }
     return {}
   })
-  render(<KnowledgeSharingPanel baseId="orgkb:owned" localBaseId="local-1" name="资料" />)
+  render(<KnowledgeSharingPanel baseId="orgkb:owned" localBaseId="local-1" name="资料" canCreateShare />)
   await screen.findByText('Abcd_123')
   const generate = screen.getByRole('button', { name: 'Generate share code' })
   const refresh = screen.getByRole('button', { name: 'Refresh' })
@@ -257,7 +289,7 @@ it('取消分享确认期间禁用生成码、刷新与吊销等竞争动作', a
   expect(refresh).toBeEnabled()
   expect(revoke).toBeEnabled()
   await user.click(screen.getByRole('button', { name: 'Cancel sharing' }))
-  expect(await screen.findByRole('button', { name: 'Confirm unsharing' })).toBeInTheDocument()
+  expect(await screen.findByRole('button', { name: 'Restore and check local files' })).toBeInTheDocument()
   expect(generate).toBeDisabled()
   expect(refresh).toBeDisabled()
   expect(revoke).toBeDisabled()
@@ -290,7 +322,7 @@ it('吊销确认期间禁用生成码、刷新与取消分享等竞争动作', a
       }
     return {}
   })
-  render(<KnowledgeSharingPanel baseId="orgkb:owned" localBaseId="local-1" name="资料" />)
+  render(<KnowledgeSharingPanel baseId="orgkb:owned" localBaseId="local-1" name="资料" canCreateShare />)
   await screen.findByText('Abcd_123')
   const generate = screen.getByRole('button', { name: 'Generate share code' })
   const refresh = screen.getByRole('button', { name: 'Refresh' })

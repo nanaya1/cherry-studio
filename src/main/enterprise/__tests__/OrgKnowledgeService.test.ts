@@ -1,22 +1,35 @@
 import { createHash } from 'node:crypto'
 import type * as NodeFs from 'node:fs'
-import { readFile, stat } from 'node:fs/promises'
+import { createReadStream } from 'node:fs'
+import { copyFile, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import type * as NodeFsPromises from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { basename, join } from 'node:path'
 import { Readable } from 'node:stream'
 
 vi.mock('node:fs', async (original) => ({
   ...(await original<typeof NodeFs>()),
-  createReadStream: () => Readable.from([Buffer.from('file-bytes')])
+  createReadStream: vi.fn(() => Readable.from([Buffer.from('file-bytes')]))
 }))
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { OrgApiClient, OrgApiHttpError } from '../OrgApiClient'
 import { orgStateStore } from '../OrgStateStore'
+
+vi.mock('../KnowledgeSourceBindings', () => ({
+  replaceKnowledgeSourceBindings: vi.fn(),
+  removeKnowledgeSourceBindings: vi.fn(),
+  captureKnowledgeSourceBindings: vi.fn(() => ({ assistantIds: ['assistant'], agentIds: [] }))
+}))
+import { replaceKnowledgeSourceBindings } from '../KnowledgeSourceBindings'
 
 const lease = { generation: 1, issuerId: 'server-1', groupId: 'g', userId: 'u' }
 const auth = { acquireLease: vi.fn(() => ({ ...lease })), assertLease: vi.fn() }
 
 beforeEach(() => {
   vi.useRealTimers()
+  vi.mocked(createReadStream).mockImplementation(() => Readable.from([Buffer.from('file-bytes')]) as never)
   jobSettledListener = undefined
   shareJobs.registerHandler.mockClear()
   shareJobs.enqueue.mockReset()
@@ -25,6 +38,8 @@ beforeEach(() => {
   getSubtreeItems.mockReturnValue([])
   auth.acquireLease.mockImplementation(() => ({ ...lease }))
   auth.assertLease.mockImplementation(() => {})
+  vi.mocked(orgStateStore.getCloudRecovery).mockReset()
+  vi.mocked(orgStateStore.getShareAssociations).mockReturnValue({})
   vi.mocked(orgStateStore.getShareAssociation).mockReturnValue(undefined)
   vi.mocked(orgStateStore.clearShare).mockClear()
   vi.mocked(readFile).mockResolvedValue(Buffer.from('file-bytes'))
@@ -43,10 +58,19 @@ import { enterpriseKnowledgeErrorCodes as E } from '../../../shared/ipc/errors/e
 import { OrgKnowledgeError } from '../OrgKnowledgeService'
 import { OrgKnowledgeService } from '../OrgKnowledgeService'
 
-const { getSubtreeItems } = vi.hoisted(() => ({ getSubtreeItems: vi.fn(() => []) }))
-vi.mock('@data/services/KnowledgeItemService', () => ({ knowledgeItemService: { getSubtreeItems } }))
+const { getSubtreeItems, recoveryItems } = vi.hoisted(() => ({
+  getSubtreeItems: vi.fn(() => []),
+  recoveryItems: {
+    getItemsByBaseId: vi.fn((): any[] => []),
+    getById: vi.fn(),
+    createActive: vi.fn(),
+    updateStatus: vi.fn()
+  }
+}))
+vi.mock('@data/services/KnowledgeItemService', () => ({ knowledgeItemService: { getSubtreeItems, ...recoveryItems } }))
 
-vi.mock('node:fs/promises', () => ({
+vi.mock('node:fs/promises', async (original) => ({
+  ...(await original<typeof NodeFsPromises>()),
   readFile: vi.fn().mockResolvedValue(Buffer.from('file-bytes')),
   stat: vi.fn().mockResolvedValue({ size: 10, isFile: () => true })
 }))
@@ -60,7 +84,12 @@ vi.mock('../OrgStateStore', () => ({
     getShareAssociations: vi.fn(() => ({})),
     setShareAssociation: vi.fn(),
     removeShareAssociation: vi.fn(),
-    clearShare: vi.fn()
+    clearShare: vi.fn(),
+    getCloudRecovery: vi.fn(),
+    setCloudRecovery: vi.fn(),
+    moveOwnedSpace: vi.fn(),
+    getCloudRecoveries: vi.fn(() => ({})),
+    getOwnedSpaceGroups: vi.fn(() => ({}))
   }
 }))
 
@@ -104,11 +133,23 @@ function settleKnowledgeJob(type: string, baseId = 'local-1'): void {
 
 function makeService(apiClient: ReturnType<typeof makeApiClient>) {
   const service = new OrgKnowledgeService({ apiClient, ...auth } as never)
+  vi.spyOn((service as any).client, 'getSpace').mockImplementation(async (...args: unknown[]) => ({
+    id: String(args[0]),
+    name: '库',
+    allow_local_file_upload: true
+  }))
   apiClient.requestFileMultipart.mockImplementation(async (path, entry) => {
     const form = new FormData()
     form.append('chunks', JSON.stringify(entry.chunks))
     form.append('file', new Blob(['file-bytes']), entry.fileName)
     return apiClient.requestMultipart(path, form)
+  })
+  const getFile = (service as any).client.getFile.bind((service as any).client)
+  vi.spyOn((service as any).client, 'getFile').mockImplementation(async (...args: unknown[]) => {
+    const id = String(args[0])
+    if (['f', 'f:1', 'f-1'].includes(id))
+      return { id, space_id: 'space', name: '文件', is_dir: false, has_original_file: true }
+    return getFile(id)
   })
   vi.spyOn(service as any, 'verifyFirstShareFile').mockResolvedValue(undefined)
   service.initialize(shareJobs as never)
@@ -133,6 +174,61 @@ function makeService(apiClient: ReturnType<typeof makeApiClient>) {
   return service
 }
 
+describe('云端文件删除', () => {
+  const baseId = encodeOrgId('space')
+  const fileId = encodeOrgId('f')
+
+  function setup(owned = true) {
+    const api = makeApiClient()
+    const service = makeService(api)
+    vi.spyOn((service as any).client, 'getCatalog').mockResolvedValue({
+      owned: owned ? [{ id: 'space', my_role: 'owner' }] : [],
+      public: [],
+      shared: []
+    })
+    api.request.mockResolvedValue({ deleted: 1 })
+    return { api, service }
+  }
+
+  it('跨端所有者按真实文件ID删除云端文件，不依赖本地分享记录', async () => {
+    const { api, service } = setup()
+    await expect(service.deleteFile({ baseId, fileId })).resolves.toEqual({ ok: true })
+    expect(api.request).toHaveBeenCalledWith(
+      '/api/kb/v1/files/f',
+      expect.objectContaining({ method: 'DELETE' }),
+      expect.any(Function)
+    )
+    expect(orgStateStore.clearShare).not.toHaveBeenCalled()
+  })
+
+  it('拒绝非所有者删除', async () => {
+    const { api, service } = setup(false)
+    await expect(service.deleteFile({ baseId, fileId })).rejects.toMatchObject({ code: E.ORGKB_FORBIDDEN })
+    expect(api.request).not.toHaveBeenCalled()
+  })
+
+  it('拒绝把其他空间的文件ID放入当前库删除', async () => {
+    const { api, service } = setup()
+    vi.mocked((service as any).client.getFile).mockResolvedValue({ id: 'f', space_id: 'other', is_dir: false })
+    await expect(service.deleteFile({ baseId, fileId })).rejects.toMatchObject({ code: E.ORGKB_FORBIDDEN })
+    expect(api.request).not.toHaveBeenCalled()
+  })
+
+  it('目录使用相同删除接口，由上游级联；服务端拒绝时保留错误', async () => {
+    const { api, service } = setup()
+    vi.mocked((service as any).client.getFile).mockResolvedValue({ id: 'f', space_id: 'space', is_dir: true })
+    api.request.mockRejectedValue(new OrgApiHttpError(403, '拒绝删除'))
+    await expect(service.deleteFile({ baseId, fileId })).rejects.toMatchObject({ status: 403 })
+  })
+
+  it('恢复中的库拒绝删除', async () => {
+    const { api, service } = setup()
+    vi.mocked(orgStateStore.getCloudRecovery).mockReturnValue({ phase: 'restoring' } as never)
+    await expect(service.deleteFile({ baseId, fileId })).rejects.toMatchObject({ code: E.ORGKB_FORBIDDEN })
+    expect(api.request).not.toHaveBeenCalled()
+  })
+})
+
 const codeSpaceId = 'ccbc8b6e-172b-4fb2-8cb8-6773565336bd'
 const codeShare = {
   id: 'c357f93f-572b-4c16-868b-c2f43c20a88e',
@@ -148,6 +244,372 @@ const codeShare = {
 }
 const codeCatalog = { public: [], shared: [], owned: [{ id: codeSpaceId, name: '副本', my_role: 'owner' }] }
 
+describe('云端 Office 预览', () => {
+  it.each([
+    ['docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 25 * 1024 * 1024],
+    ['xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 20 * 1024 * 1024],
+    ['pptx', 'application/vnd.openxmlformats-officedocument.presentationml.presentation', 25 * 1024 * 1024]
+  ])('有下载权限的 inline %s 通过预签名 URL 返回 base64', async (extension, mimeType, maxBytes) => {
+    const api = makeApiClient()
+    const service = makeService(api)
+    const bytes = Buffer.from(`office-${extension}`)
+    vi.spyOn((service as any).client, 'getFile').mockResolvedValue({ id: 'f', is_dir: false, has_original_file: true })
+    vi.spyOn((service as any).client, 'getPreviewUrl').mockResolvedValue({
+      kind: 'inline',
+      url: `https://minio.example.test/${extension}?signature=secret`,
+      file_name: `报告.${extension}`,
+      mime_type: mimeType
+    })
+    const fetchPreview = vi
+      .spyOn((service as any).client, 'fetchPresignedPreviewBytes')
+      .mockImplementation(async (_url, limit) => {
+        expect(limit).toBe(maxBytes)
+        return bytes
+      })
+
+    await expect(service.preview({ fileId: 'orgkb:Zg' })).resolves.toMatchObject({
+      kind: 'inline',
+      fileName: `报告.${extension}`,
+      mimeType,
+      base64: bytes.toString('base64'),
+      content: ''
+    })
+    expect(fetchPreview).toHaveBeenCalledWith(expect.stringContaining(`/${extension}?signature=secret`), maxBytes)
+    expect(api.requestText).not.toHaveBeenCalled()
+    expect(api.requestBytes).not.toHaveBeenCalled()
+    service.dispose()
+  })
+
+  it('无下载权限的 Office kind=text 仍返回文本', async () => {
+    const api = makeApiClient()
+    const service = makeService(api)
+    vi.spyOn((service as any).client, 'getFile').mockResolvedValue({ id: 'f', is_dir: false, has_original_file: true })
+    vi.spyOn((service as any).client, 'getPreviewUrl').mockResolvedValue({
+      kind: 'text',
+      url: null,
+      file_name: '报告.docx',
+      mime_type: null
+    })
+    api.requestText.mockResolvedValue('解析正文')
+
+    await expect(service.preview({ fileId: 'orgkb:Zg' })).resolves.toMatchObject({ kind: 'text', content: '解析正文' })
+    expect(api.requestText).toHaveBeenCalledWith('/api/kb/v1/files/f/preview')
+    service.dispose()
+  })
+
+  it.each(['doc', 'xls', 'ppt'])('旧格式 %s 的 inline 仍返回文本', async (extension) => {
+    const api = makeApiClient()
+    const service = makeService(api)
+    vi.spyOn((service as any).client, 'getFile').mockResolvedValue({ id: 'f', is_dir: false, has_original_file: true })
+    vi.spyOn((service as any).client, 'getPreviewUrl').mockResolvedValue({
+      kind: 'inline',
+      url: 'https://minio.example.test/object',
+      file_name: `报告.${extension}`,
+      mime_type: null
+    })
+    api.requestText.mockResolvedValue('旧格式正文')
+
+    await expect(service.preview({ fileId: 'orgkb:Zg' })).resolves.toMatchObject({
+      kind: 'text',
+      content: '旧格式正文'
+    })
+    expect(api.requestBytes).not.toHaveBeenCalled()
+    service.dispose()
+  })
+
+  it.each(['docx', 'xlsx', 'pptx'])('Office %s 缺少预签名 URL 时显示解析正文', async (extension) => {
+    const api = makeApiClient()
+    const service = makeService(api)
+    vi.spyOn((service as any).client, 'getFile').mockResolvedValue({ id: 'f', is_dir: false, has_original_file: true })
+    vi.spyOn((service as any).client, 'getPreviewUrl').mockResolvedValue({
+      kind: 'inline',
+      url: null,
+      file_name: `报告.${extension}`,
+      mime_type: null
+    })
+    api.requestText.mockResolvedValue('Office 解析正文')
+
+    await expect(service.preview({ fileId: 'orgkb:Zg' })).resolves.toMatchObject({
+      kind: 'text',
+      content: 'Office 解析正文'
+    })
+    expect(api.requestText).toHaveBeenCalledWith('/api/kb/v1/files/f/preview')
+    expect(api.requestBytes).not.toHaveBeenCalled()
+    service.dispose()
+  })
+})
+
+describe('catalog 跨端分享证据', () => {
+  function setup(shares: unknown = [], members: unknown = []) {
+    const api = makeApiClient()
+    api.request.mockImplementation(async (path) => {
+      if (path.includes('/shares')) return shares
+      if (path.includes('/members')) return members
+      return codeCatalog
+    })
+    return { api, service: makeService(api) }
+  }
+
+  it('将云端空间更新时间映射为详情可用的 updatedAt', async () => {
+    const updatedAt = '2026-10-17T00:00:00Z'
+    const { service } = setup()
+    vi.spyOn((service as any).client, 'getCatalog').mockResolvedValue({
+      public: [{ id: 'public', name: '公共', updated_at: updatedAt }],
+      shared: [],
+      owned: []
+    })
+    try {
+      expect((await service.catalog()).public[0].updatedAt).toBe(updatedAt)
+    } finally {
+      service.dispose()
+    }
+  })
+
+  it.each([
+    { name: 'active', patch: {}, expected: true },
+    { name: 'expired', patch: { expires_at: '2000-01-01T00:00:00Z' }, expected: false },
+    { name: 'revoked', patch: { revoked_at: '2026-01-01T00:00:00Z' }, expected: false },
+    { name: 'exhausted', patch: { max_views: 1, view_count: 1 }, expected: false },
+    { name: 'over-limit', patch: { max_views: 1, view_count: 2 }, expected: false },
+    { name: 'below-limit', patch: { max_views: 2, view_count: 1 }, expected: true },
+    { name: 'other-type', patch: { share_type: 2 }, expected: false },
+    { name: 'future', patch: { expires_at: '2099-01-01T00:00:00Z' }, expected: true },
+    { name: 'wrong-space', patch: { space_id: codeShare.id }, expected: undefined }
+  ])('分享码 $name 不改变本机完成态', async ({ patch, expected }) => {
+    const { service } = setup([{ ...codeShare, ...patch }])
+    try {
+      expect((await service.catalog()).owned[0]).toMatchObject({ hasShareEvidence: expected, shareCompleted: false })
+    } finally {
+      service.dispose()
+    }
+  })
+
+  it.each([
+    { status: 'active', expected: true },
+    { status: 'accepted', expected: true },
+    { status: 'pending', expected: true },
+    { status: 'invited', expected: true },
+    { status: 'expired', expected: false },
+    { status: 'removed', expected: false },
+    { status: 'declined', expected: false },
+    { status: 'unknown', expected: false }
+  ])('指定人记录 $status 是独立证据而非 completion', async ({ status, expected }) => {
+    const { service } = setup([], [{ user_id: 42, role: 'viewer', joined_at: codeShare.created_at, status }])
+    try {
+      expect((await service.catalog()).owned[0]).toMatchObject({ hasShareEvidence: expected, shareCompleted: false })
+    } finally {
+      service.dispose()
+    }
+  })
+
+  it.each([
+    { role: 'owner', status: 'active' },
+    { role: 'admin', status: 'active' },
+    { role: 'unknown', status: 'active' },
+    { role: 'viewer', status: 'active', expires_at: '2000-01-01T00:00:00Z' }
+  ])('owner 或过期成员不能证已分享：%j', async (patch) => {
+    const { service } = setup([], [{ user_id: 42, joined_at: codeShare.created_at, ...patch }])
+    try {
+      expect((await service.catalog()).owned[0]).toMatchObject({ hasShareEvidence: false, shareCompleted: false })
+    } finally {
+      service.dispose()
+    }
+  })
+
+  it('到期时间等于当前时间的分享码和 viewer 都不再有效', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-10-17T12:00:00Z'))
+    const expires_at = new Date().toISOString()
+    const { service } = setup(
+      [{ ...codeShare, expires_at }],
+      [{ user_id: 42, role: 'viewer', joined_at: codeShare.created_at, expires_at }]
+    )
+    try {
+      expect((await service.catalog()).owned[0].hasShareEvidence).toBe(false)
+    } finally {
+      service.dispose()
+      vi.useRealTimers()
+    }
+  })
+
+  it('仅补查非 public 的 owned，不从公共只读成员或 owner/admin 身份推导分享', async () => {
+    const { api, service } = setup()
+    api.request.mockResolvedValue({
+      public: [{ id: 'public-owner', name: '公共所有者', my_role: 'owner' }],
+      shared: [{ id: 'shared-admin', name: '管理员可读', my_role: 'admin' }],
+      owned: []
+    })
+    try {
+      const catalog = await service.catalog()
+      expect(catalog.owned).toEqual([])
+      expect(catalog.public).toHaveLength(1)
+      expect(catalog.shared).toHaveLength(1)
+      expect(api.request).toHaveBeenCalledTimes(1)
+    } finally {
+      service.dispose()
+    }
+  })
+
+  it('本人不是指定人分享证据', async () => {
+    auth.acquireLease.mockReturnValue({ ...lease, userId: '42' })
+    const { service } = setup([], [{ user_id: 42, role: 'viewer', joined_at: codeShare.created_at, status: 'active' }])
+    try {
+      expect((await service.catalog()).owned[0]).toMatchObject({ hasShareEvidence: false })
+    } finally {
+      service.dispose()
+    }
+  })
+
+  it('失败隔离并保留 public/shared 和 owned 基础资料，单路成功仍可提供证据', async () => {
+    const { api, service } = setup()
+    api.request.mockImplementation(async (path) => {
+      if (path.includes('/shares')) throw new Error('offline')
+      if (path.includes('/members')) return []
+      return { ...codeCatalog, public: [{ id: 'public', name: '公共' }], shared: [{ id: 'shared', name: '收到' }] }
+    })
+    try {
+      const catalog = await service.catalog()
+      expect(catalog.public).toHaveLength(1)
+      expect(catalog.shared).toHaveLength(1)
+      expect(catalog.owned[0].name).toBe('副本')
+      expect(catalog.owned[0]).not.toHaveProperty('hasShareEvidence', true)
+      expect(catalog.owned[0].hasShareEvidence).toBeUndefined()
+      api.request.mockImplementation(async (path) => {
+        if (path.includes('/shares')) return [codeShare]
+        if (path.includes('/members')) throw new Error('offline')
+        return codeCatalog
+      })
+      expect((await service.catalog()).owned[0].hasShareEvidence).toBe(true)
+    } finally {
+      service.dispose()
+    }
+  })
+
+  it.each(['shares', 'members'] as const)('可选 %s 查询 401 即使另一条有正证据仍抛出', async (denied) => {
+    const { api, service } = setup()
+    api.request.mockImplementation(async (path) => {
+      if (path.includes(`/${denied}`)) throw new OrgApiHttpError(401, 'denied')
+      if (path.includes('/shares')) return [codeShare]
+      if (path.includes('/members')) return [{ user_id: 42, role: 'viewer', joined_at: codeShare.created_at }]
+      return codeCatalog
+    })
+    try {
+      await expect(service.catalog()).rejects.toMatchObject({ status: 401 })
+    } finally {
+      service.dispose()
+    }
+  })
+
+  it.each(['shares', 'members'] as const)('可选 %s 查询 403 保留目录且证据未知，另一条正证据仍有效', async (denied) => {
+    const { api, service } = setup()
+    let positive = false
+    api.request.mockImplementation(async (path) => {
+      if (path.includes(`/${denied}`)) throw new OrgApiHttpError(403, '可选证据无权限')
+      if (path.includes('/shares')) return positive ? [codeShare] : []
+      if (path.includes('/members'))
+        return positive ? [{ user_id: 42, role: 'viewer', joined_at: codeShare.created_at }] : []
+      return { ...codeCatalog, public: [{ id: 'public', name: '公共' }], shared: [{ id: 'shared', name: '收到' }] }
+    })
+    try {
+      const catalog = await service.catalog()
+      expect(catalog.public).toHaveLength(1)
+      expect(catalog.shared).toHaveLength(1)
+      expect(catalog.owned[0]).toMatchObject({ name: '副本', hasShareEvidence: undefined, shareCompleted: false })
+      positive = true
+      expect((await service.catalog()).owned[0].hasShareEvidence).toBe(true)
+    } finally {
+      service.dispose()
+    }
+  })
+
+  it.each([401, 403])('基础 catalog 授权错误 %s 仍阻断且不发起补查询', async (status) => {
+    const { api, service } = setup()
+    api.request.mockRejectedValue(new OrgApiHttpError(status, '目录无权限'))
+    try {
+      await expect(service.catalog()).rejects.toMatchObject({ status })
+      expect(api.request).toHaveBeenCalledTimes(1)
+    } finally {
+      service.dispose()
+    }
+  })
+
+  it('证据查询中 lease 失效不能返回旧身份 catalog', async () => {
+    const { api, service } = setup()
+    api.request.mockImplementation(async (path) => {
+      if (path.includes('/shares')) {
+        auth.assertLease.mockImplementation(() => {
+          throw new Error('stale')
+        })
+        return [codeShare]
+      }
+      if (path.includes('/members')) return []
+      return codeCatalog
+    })
+    try {
+      await expect(service.catalog()).rejects.toMatchObject({ code: E.ORGKB_UNAUTHORIZED })
+    } finally {
+      service.dispose()
+    }
+  })
+
+  it('本机 completed 仍可证已分享且不依赖跨端查询', async () => {
+    const key = JSON.stringify([lease.issuerId, lease.userId, lease.groupId, 'local-completed'])
+    vi.mocked(orgStateStore.getShareAssociations).mockReturnValue({
+      [key]: { shareId: codeSpaceId, completion: 'completed', files: [] }
+    })
+    const { api, service } = setup()
+    try {
+      expect((await service.catalog()).owned[0]).toMatchObject({
+        localBaseId: 'local-completed',
+        shareCompleted: true,
+        hasShareEvidence: true
+      })
+      expect(api.request).toHaveBeenCalledTimes(1)
+    } finally {
+      service.dispose()
+    }
+  })
+
+  it('证据请求均带超时信号，超时按未知保留基础目录', async () => {
+    const { api, service } = setup()
+    api.request.mockImplementation(async (path, init) => {
+      if (path.includes('/shares') || path.includes('/members')) {
+        expect(init.signal).toBeInstanceOf(AbortSignal)
+        throw new DOMException('timeout', 'TimeoutError')
+      }
+      return codeCatalog
+    })
+    try {
+      expect((await service.catalog()).owned[0]).toMatchObject({ name: '副本', hasShareEvidence: undefined })
+    } finally {
+      service.dispose()
+    }
+  })
+
+  it('多个 owned 限制查询并发且不逐库串行', async () => {
+    const { api, service } = setup()
+    let active = 0
+    let maxActive = 0
+    api.request.mockImplementation(async (path) => {
+      if (path.includes('/shares') || path.includes('/members')) {
+        active++
+        maxActive = Math.max(maxActive, active)
+        await new Promise((resolve) => setTimeout(resolve, 1))
+        active--
+        return []
+      }
+      return { public: [], shared: [], owned: Array.from({ length: 10 }, (_, i) => ({ id: `s-${i}`, name: `库${i}` })) }
+    })
+    try {
+      expect((await service.catalog()).owned).toHaveLength(10)
+      expect(maxActive).toBeGreaterThan(1)
+      expect(maxActive).toBeLessThanOrEqual(4)
+    } finally {
+      service.dispose()
+    }
+  })
+})
+
 describe('取消整个分享', () => {
   const key = JSON.stringify([lease.issuerId, lease.userId, lease.groupId, 'local-1'])
   function setup() {
@@ -156,11 +618,151 @@ describe('取消整个分享', () => {
     vi.mocked(orgStateStore.clearShare).mockImplementation(() => {
       association = undefined
     })
+    let recovery: any
+    vi.mocked(orgStateStore.getCloudRecovery).mockImplementation(() => recovery && structuredClone(recovery))
+    vi.mocked(orgStateStore.setCloudRecovery).mockImplementation((_key, state) => {
+      recovery = structuredClone(state)
+    })
+    vi.mocked(orgStateStore.getShareAssociations).mockImplementation(() => (association ? { [key]: association } : {}))
+    const ks = {
+      createBase: vi.fn(async () => ({ id: 'recovered' })),
+      deleteBase: vi.fn(async (_id: string) => {}),
+      listBasesForDiscovery: vi.fn(() => ({ items: [{ id: 'recovered' }, { id: 'local-1' }] })),
+      addItems: vi.fn(),
+      getFilePath: vi.fn(() => '/managed/file.txt')
+    }
+    vi.mocked(application.get).mockReturnValue(ks as never)
+    recoveryItems.getItemsByBaseId.mockReturnValue([])
     const api = makeApiClient()
-    api.request.mockResolvedValue(codeCatalog)
+    api.request.mockImplementation(async (path, init) => {
+      if (init?.method === 'DELETE') return undefined
+      if (path.includes('/files')) return { folders: [], files: [], total: 0 }
+      return codeCatalog
+    })
     const service = makeService(api)
-    return { api, service }
+    return { api, service, ks }
   }
+
+  async function prepare(service: OrgKnowledgeService) {
+    await service.unsharePreview({ baseId: 'local-1' })
+  }
+
+  it.each(['switch', 'wrong-session'])('%s 真实 DELETE 传输在凭据获取期间阻断异账号', async (mode) => {
+    let switched = false
+    const fetcher = vi.fn(async () => new Response(null, { status: 204 }))
+    vi.stubGlobal('fetch', fetcher)
+    const apiClient = new OrgApiClient(async () => {
+      if (mode === 'switch') switched = true
+      return { ...lease, userId: 'other', accessToken: 'other-token' } as never
+    })
+    const service = new OrgKnowledgeService({
+      apiClient,
+      acquireLease: () => ({ ...lease }),
+      assertLease: () => {
+        if (switched) throw new Error('stale')
+      }
+    } as never)
+    try {
+      await expect((service as any).client.deleteShareSpace(codeSpaceId)).rejects.toMatchObject({
+        code: E.ORGKB_UNAUTHORIZED
+      })
+      expect(fetcher).not.toHaveBeenCalled()
+    } finally {
+      vi.unstubAllGlobals()
+      service.dispose()
+    }
+  })
+
+  it('cleanup_local 只能续作已确认成功的删除，旧 ready 日志不得触发云端请求', async () => {
+    const { api, service } = setup()
+    await prepare(service)
+    const state = orgStateStore.getCloudRecovery('')!
+    vi.mocked(orgStateStore.setCloudRecovery)('ignored', { ...state, deleteLocal: true })
+    api.request.mockClear()
+    await expect(service.cleanupLocal({ baseId: encodeOrgId(codeSpaceId), localBaseId: 'recovered' })).rejects.toThrow(
+      '本地清理'
+    )
+    expect(api.request).not.toHaveBeenCalled()
+    service.dispose()
+  })
+
+  it('删除直接使用可信本机副本，不扫描下载或创建恢复库', async () => {
+    const { api, service, ks } = setup()
+    const original = api.request.getMockImplementation()!
+    api.request.mockImplementation(async (path, init) => {
+      if (init?.method === 'DELETE') {
+        expect(orgStateStore.getCloudRecovery('')).toMatchObject({
+          phase: 'delete-unknown',
+          localCopies: ['local-1'],
+          cleanupScope: { associationKeys: [key], localGroups: { 'local-1': null }, assistantIds: ['assistant'] }
+        })
+        expect(ks.deleteBase).not.toHaveBeenCalled()
+      }
+      return original(path, init)
+    })
+    await expect(
+      service.unshare({ baseId: encodeOrgId(codeSpaceId), confirmDevicesStopped: true, deleteLocal: true })
+    ).resolves.toEqual({ ok: true, localBaseId: 'local-1' })
+    expect(ks.createBase).not.toHaveBeenCalled()
+    expect(ks.addItems).not.toHaveBeenCalled()
+    expect(api.request.mock.calls.some(([path]) => path.includes('/files'))).toBe(false)
+    expect(api.requestBytes).not.toHaveBeenCalled()
+    expect(ks.deleteBase).toHaveBeenCalledWith('local-1')
+    expect(orgStateStore.moveOwnedSpace).toHaveBeenCalledWith(lease.issuerId, lease.userId, codeSpaceId, null)
+    service.dispose()
+  })
+
+  it('跨端无副本完成删除，清理失败的空 ID 记录可续作且禁止任意本机 ID', async () => {
+    const { api, service, ks } = setup()
+    vi.mocked(orgStateStore.getShareAssociations).mockReturnValue({})
+    vi.mocked(orgStateStore.getShareAssociation).mockReturnValue(undefined)
+    vi.mocked(orgStateStore.moveOwnedSpace).mockImplementationOnce(() => {
+      throw new Error('state disk')
+    })
+    await expect(
+      service.unshare({ baseId: encodeOrgId(codeSpaceId), confirmDevicesStopped: true, deleteLocal: true })
+    ).rejects.toThrow('state disk')
+    await expect(service.cleanupLocal({ baseId: encodeOrgId(codeSpaceId), localBaseId: 'unrelated' })).rejects.toThrow(
+      '不匹配'
+    )
+    await expect(service.cleanupLocal({ baseId: encodeOrgId(codeSpaceId), localBaseId: '' })).resolves.toEqual({
+      ok: true,
+      localBaseId: ''
+    })
+    expect(ks.createBase).not.toHaveBeenCalled()
+    expect(ks.deleteBase).not.toHaveBeenCalled()
+    expect(api.request.mock.calls.filter(([, init]) => init?.method === 'DELETE')).toHaveLength(1)
+    service.dispose()
+  })
+
+  it('取消返回真正恢复库 ID，确认远端成功前不删除本机', async () => {
+    const { api, service, ks } = setup()
+    await prepare(service)
+    const original = api.request.getMockImplementation()!
+    api.request.mockImplementation(async (path, init) => {
+      if (init?.method === 'DELETE') expect(ks.deleteBase).not.toHaveBeenCalled()
+      return original(path, init)
+    })
+    await expect(
+      service.unshare({ baseId: 'local-1', confirmDevicesStopped: true, deleteLocal: true })
+    ).resolves.toMatchObject({ ok: true, localBaseId: 'recovered' })
+    service.dispose()
+  })
+
+  it('本人分享删除清理真实恢复库及原本机副本，清理失败续作不重复 DELETE', async () => {
+    const { api, service, ks } = setup()
+    await prepare(service)
+    ks.deleteBase.mockRejectedValueOnce(new Error('cleanup failed'))
+    await expect(
+      service.unshare({ baseId: encodeOrgId(codeSpaceId), confirmDevicesStopped: true, deleteLocal: true })
+    ).rejects.toThrow('cleanup failed')
+    await service.unsharePreview({ baseId: encodeOrgId(codeSpaceId) })
+    await service.unshare({ baseId: encodeOrgId(codeSpaceId) })
+    expect(ks.deleteBase).toHaveBeenCalledWith('recovered')
+    expect(ks.deleteBase).toHaveBeenCalledWith('local-1')
+    expect(api.request.mock.calls.filter(([, init]) => init?.method === 'DELETE')).toHaveLength(1)
+    service.dispose()
+  })
 
   it('远端确认后解除关联，状态恢复未分享并清理首传进度', async () => {
     const { api, service } = setup()
@@ -169,9 +771,14 @@ describe('取消整个分享', () => {
         expect(orgStateStore.getShareAssociation(key)).toBeDefined()
         return undefined
       }
+      if (_path.includes('/files')) return { folders: [], files: [], total: 0 }
       return codeCatalog
     })
-    await expect(service.unshare({ baseId: 'local-1' })).resolves.toEqual({ ok: true })
+    await prepare(service)
+    await expect(service.unshare({ baseId: 'local-1', confirmDevicesStopped: true })).resolves.toEqual({
+      ok: true,
+      localBaseId: 'recovered'
+    })
     expect(await service.syncStatus({ baseId: 'local-1' })).toEqual({ state: 'unshared', lastSyncedAt: null })
     expect(orgStateStore.clearShare).toHaveBeenCalledWith(key)
     service.dispose()
@@ -181,9 +788,11 @@ describe('取消整个分享', () => {
     const { api, service } = setup()
     api.request.mockImplementation(async (_path, init) => {
       if (init?.method === 'DELETE') throw new Error(`HTTP ${status}`)
+      if (_path.includes('/files')) return { folders: [], files: [], total: 0 }
       return codeCatalog
     })
-    await expect(service.unshare({ baseId: 'local-1' })).rejects.toThrow(`HTTP ${status}`)
+    await prepare(service)
+    await expect(service.unshare({ baseId: 'local-1', confirmDevicesStopped: true })).rejects.toThrow(`HTTP ${status}`)
     expect(orgStateStore.getShareAssociation(key)).toBeDefined()
     expect(orgStateStore.clearShare).not.toHaveBeenCalled()
     service.dispose()
@@ -198,9 +807,13 @@ describe('取消整个分享', () => {
         })
         return undefined
       }
+      if (_path.includes('/files')) return { folders: [], files: [], total: 0 }
       return codeCatalog
     })
-    await expect(service.unshare({ baseId: 'local-1' })).rejects.toMatchObject({ code: E.ORGKB_UNAUTHORIZED })
+    await prepare(service)
+    await expect(service.unshare({ baseId: 'local-1', confirmDevicesStopped: true })).rejects.toMatchObject({
+      code: E.ORGKB_UNAUTHORIZED
+    })
     expect(orgStateStore.getShareAssociation(key)).toBeDefined()
     expect(orgStateStore.clearShare).not.toHaveBeenCalled()
     service.dispose()
@@ -208,11 +821,301 @@ describe('取消整个分享', () => {
 
   it.each(['upload', 'sync'])('活跃 %s 任务期间不删除远端空间', async (kind) => {
     const { api, service } = setup()
-    if (kind === 'upload') (service as any).firstShareActive = { key }
+    if (kind === 'upload') (service as any).firstShareActive = { key, stop: vi.fn() }
     else (service as any).syncing.add(key)
     await expect(service.unshare({ baseId: 'local-1' })).rejects.toMatchObject({ code: E.ORGKB_SHARE_FAILED })
     expect(api.request).not.toHaveBeenCalled()
     expect(orgStateStore.getShareAssociation(key)).toBeDefined()
+    service.dispose()
+  })
+
+  it('无本地关联的云端 owner 可预检；未确认缺失时不发 DELETE', async () => {
+    const { api, service } = setup()
+    vi.mocked(orgStateStore.getShareAssociation).mockReturnValue(undefined)
+    vi.mocked(orgStateStore.getShareAssociations).mockReturnValue({})
+    const remote = {
+      id: 'f',
+      space_id: codeSpaceId,
+      parent_id: null,
+      name: '缺失.txt',
+      is_dir: false,
+      has_original_file: false,
+      file_hash: null,
+      updated_at: 'today'
+    }
+    api.request.mockImplementation(async (path, init) => {
+      if (init?.method === 'DELETE') return undefined
+      return path.includes('/files') ? { folders: [], files: [remote], total: 1 } : codeCatalog
+    })
+    const baseId = encodeOrgId(codeSpaceId)
+    expect((await service.unsharePreview({ baseId })).missing).toEqual([{ id: 'f', name: '缺失.txt' }])
+    await expect(service.unshare({ baseId, confirmDevicesStopped: true })).rejects.toThrow('确认')
+    expect(api.request.mock.calls.some(([, init]) => init?.method === 'DELETE')).toBe(false)
+    service.dispose()
+  })
+
+  it('后续同步可信映射可恢复无远端哈希原件', async () => {
+    const { api, service, ks } = setup()
+    const hash = createHash('sha256').update('file-bytes').digest('hex')
+    vi.mocked(orgStateStore.getShareAssociations).mockReturnValue({
+      [key]: {
+        shareId: codeSpaceId,
+        completion: 'completed',
+        files: [],
+        manifest: {
+          entries: [{ itemId: 'new-local', fileId: 'f', fileName: '资料.txt', hash }],
+          operations: [],
+          state: 'shared',
+          lastSyncedAt: null
+        }
+      }
+    } as never)
+    const remote = {
+      id: 'f',
+      space_id: codeSpaceId,
+      parent_id: null,
+      name: '资料.txt',
+      is_dir: false,
+      has_original_file: false,
+      file_hash: null,
+      updated_at: 'today'
+    }
+    api.request.mockImplementation(async (path) =>
+      path.includes('/files') ? { folders: [], files: [remote], total: 1 } : codeCatalog
+    )
+    ks.addItems.mockImplementation(async () => {
+      recoveryItems.getItemsByBaseId.mockReturnValue([{ id: 'restored' }])
+    })
+    recoveryItems.getById.mockReturnValue({ id: 'restored', baseId: 'recovered', type: 'file', status: 'completed' })
+    expect((await service.unsharePreview({ baseId: 'local-1' })).missing).toEqual([])
+    expect(ks.getFilePath).toHaveBeenCalledWith('new-local')
+    expect(ks.addItems).toHaveBeenCalledWith('recovered', [expect.objectContaining({ type: 'file' })])
+    service.dispose()
+  })
+
+  it.each(['local', 'download-hash', 'download-no-hash'])('%s 复制期间内容变化必须阻止预检和 DELETE', async (mode) => {
+    const { api, service, ks } = setup()
+    const actualFs = await vi.importActual<typeof NodeFs>('node:fs')
+    vi.mocked(createReadStream).mockImplementation(actualFs.createReadStream)
+    const root = await mkdtemp(join(tmpdir(), 'recovery-copy-race-'))
+    const source = join(root, 'source.txt')
+    const destination = join(root, 'restored.txt')
+    await writeFile(source, 'file-bytes')
+    ks.getFilePath.mockImplementation((itemId?: string) => (itemId === 'restored' ? destination : source))
+    const hash = createHash('sha256').update('file-bytes').digest('hex')
+    if (mode === 'local') {
+      vi.mocked(orgStateStore.getFirstShareUpload).mockReturnValue({
+        files: [{ itemId: 'source', fileId: 'f', hash }]
+      } as never)
+    } else {
+      vi.mocked(orgStateStore.getShareAssociations).mockReturnValue({})
+      vi.spyOn((service as any).client, 'downloadOriginal').mockImplementation(async (_id: unknown, path: unknown) => {
+        await writeFile(path as string, 'file-bytes')
+      })
+      vi.mocked(application.getPath).mockReturnValue(join(root, 'download-'))
+    }
+    const remote = {
+      id: 'f',
+      space_id: codeSpaceId,
+      parent_id: null,
+      name: '资料.txt',
+      is_dir: false,
+      has_original_file: mode !== 'local',
+      file_hash: mode === 'download-hash' ? hash : null,
+      updated_at: 'today'
+    }
+    api.request.mockImplementation(async (path) =>
+      path.includes('/files') ? { folders: [], files: [remote], total: 1 } : codeCatalog
+    )
+    ks.addItems.mockImplementation(async (_baseId?: unknown, items?: unknown) => {
+      const path = (items as Array<{ data: { path: string } }>)[0].data.path
+      // 在真实磁盘上于源校验后修改字节，再复制到保持稳定的目标。
+      await writeFile(path, 'changed-during-copy')
+      await copyFile(path, destination)
+      recoveryItems.getItemsByBaseId.mockReturnValue([{ id: 'restored' }])
+    })
+    recoveryItems.getById.mockReturnValue({ baseId: 'recovered', type: 'file', status: 'completed' })
+    await expect(service.unsharePreview({ baseId: 'local-1' })).rejects.toThrow('校验')
+    await expect(service.unshare({ baseId: 'local-1', confirmDevicesStopped: true })).rejects.toThrow()
+    expect(api.request.mock.calls.some(([, init]) => init?.method === 'DELETE')).toBe(false)
+    const state = orgStateStore.getCloudRecovery(
+      JSON.stringify([lease.issuerId, lease.userId, 'recovery', codeSpaceId])
+    )
+    expect(state?.phase).toBe('preparing')
+    expect(state?.expectedHashes.f).toBe(hash)
+    service.dispose()
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it('可信映射的本机字节已改变且无云端原件时列缺失，不冒充恢复成功', async () => {
+    const { api, service, ks } = setup()
+    vi.mocked(orgStateStore.getShareAssociations).mockReturnValue({
+      [key]: {
+        shareId: codeSpaceId,
+        completion: 'completed',
+        files: [],
+        manifest: {
+          entries: [{ itemId: 'old', fileId: 'f', fileName: '资料.txt', hash: 'different' }],
+          operations: [],
+          state: 'shared',
+          lastSyncedAt: null
+        }
+      }
+    } as never)
+    const remote = {
+      id: 'f',
+      space_id: codeSpaceId,
+      parent_id: null,
+      name: '资料.txt',
+      is_dir: false,
+      has_original_file: false,
+      file_hash: null,
+      updated_at: 'today'
+    }
+    api.request.mockImplementation(async (path) =>
+      path.includes('/files') ? { folders: [], files: [remote], total: 1 } : codeCatalog
+    )
+    expect((await service.unsharePreview({ baseId: 'local-1' })).missing).toEqual([{ id: 'f', name: '资料.txt' }])
+    expect(ks.addItems).not.toHaveBeenCalled()
+    service.dispose()
+  })
+
+  it('恢复日志引用的本地知识库被删除后创建新库并重新导入', async () => {
+    const { api, service, ks } = setup()
+    const client = (service as any).client
+    vi.spyOn(client, 'downloadOriginal').mockResolvedValue(undefined)
+    vi.mocked(application.getPath).mockReturnValue('/tmp/knowledge-recovery-')
+    const remote = {
+      id: 'f',
+      space_id: codeSpaceId,
+      parent_id: null,
+      name: '资料.txt',
+      is_dir: false,
+      has_original_file: true,
+      file_hash: null,
+      updated_at: 'today'
+    }
+    api.request.mockImplementation(async (path) =>
+      path.includes('/files') ? { folders: [], files: [remote], total: 1 } : codeCatalog
+    )
+    ks.createBase.mockResolvedValueOnce({ id: 'recovered' }).mockResolvedValueOnce({ id: 'replacement-recovery' })
+    ks.addItems
+      .mockImplementationOnce(async () => {
+        recoveryItems.getItemsByBaseId.mockReturnValue([{ id: 'first-item' }])
+      })
+      .mockImplementationOnce(async () => {
+        recoveryItems.getItemsByBaseId.mockReturnValue([{ id: 'replacement-item' }])
+      })
+    recoveryItems.getById.mockImplementation((itemId: string) => ({
+      baseId: itemId === 'first-item' ? 'recovered' : 'replacement-recovery',
+      type: 'file',
+      status: 'completed'
+    }))
+    await service.unsharePreview({ baseId: 'local-1' })
+    ks.listBasesForDiscovery.mockReturnValue({ items: [] })
+    await service.unsharePreview({ baseId: 'local-1' })
+    expect(ks.createBase).toHaveBeenCalledTimes(2)
+    expect(ks.addItems).toHaveBeenLastCalledWith('replacement-recovery', [expect.objectContaining({ type: 'file' })])
+    service.dispose()
+  })
+
+  it('恢复日志引用的本地条目被删除后重新导入', async () => {
+    const { api, service, ks } = setup()
+    const client = (service as any).client
+    vi.spyOn(client, 'downloadOriginal').mockResolvedValue(undefined)
+    vi.mocked(application.getPath).mockReturnValue('/tmp/knowledge-recovery-')
+    const remote = {
+      id: 'f',
+      space_id: codeSpaceId,
+      parent_id: null,
+      name: '资料.txt',
+      is_dir: false,
+      has_original_file: true,
+      file_hash: null,
+      updated_at: 'today'
+    }
+    api.request.mockImplementation(async (path) =>
+      path.includes('/files') ? { folders: [], files: [remote], total: 1 } : codeCatalog
+    )
+    ks.addItems
+      .mockImplementationOnce(async () => {
+        recoveryItems.getItemsByBaseId.mockReturnValue([{ id: 'deleted' }])
+      })
+      .mockImplementationOnce(async () => {
+        recoveryItems.getItemsByBaseId.mockReturnValue([{ id: 'replacement' }])
+      })
+    recoveryItems.getById.mockReturnValue({ baseId: 'recovered', type: 'file', status: 'completed' })
+    await service.unsharePreview({ baseId: 'local-1' })
+    recoveryItems.getItemsByBaseId.mockReturnValue([])
+    await service.unsharePreview({ baseId: 'local-1' })
+    expect(ks.addItems).toHaveBeenCalledTimes(2)
+    expect(
+      orgStateStore.getCloudRecovery(JSON.stringify([lease.issuerId, lease.userId, 'recovery', codeSpaceId]))
+    ).toMatchObject({ restored: { f: 'replacement' } })
+    service.dispose()
+  })
+
+  it('云端原件导入托管库后等待解析；解析完成重试不重复导入', async () => {
+    const { api, service, ks } = setup()
+    const client = (service as any).client
+    vi.spyOn(client, 'downloadOriginal').mockResolvedValue(undefined)
+    vi.mocked(application.getPath).mockReturnValue('/tmp/knowledge-recovery-')
+    const remote = {
+      id: 'f',
+      space_id: codeSpaceId,
+      parent_id: null,
+      name: '资料.txt',
+      is_dir: false,
+      has_original_file: true,
+      file_hash: null,
+      updated_at: 'today'
+    }
+    api.request.mockImplementation(async (path) =>
+      path.includes('/files') ? { folders: [], files: [remote], total: 1 } : codeCatalog
+    )
+    ks.addItems.mockImplementation(async () => {
+      recoveryItems.getItemsByBaseId.mockReturnValue([{ id: 'downloaded' }])
+    })
+    recoveryItems.getById.mockReturnValue({ baseId: 'recovered', type: 'file', status: 'pending' })
+    await expect(service.unsharePreview({ baseId: 'local-1' })).rejects.toThrow('解析')
+    await expect(service.unshare({ baseId: 'local-1', confirmDevicesStopped: true })).rejects.toThrow()
+    expect(api.request.mock.calls.some(([, init]) => init?.method === 'DELETE')).toBe(false)
+    recoveryItems.getById.mockReturnValue({ baseId: 'recovered', type: 'file', status: 'completed' })
+    await service.unsharePreview({ baseId: 'local-1' })
+    expect(client.downloadOriginal).toHaveBeenCalledTimes(1)
+    expect(basename(client.downloadOriginal.mock.calls[0][1])).toBe('资料.txt')
+    expect(ks.addItems).toHaveBeenCalledWith('recovered', [
+      expect.objectContaining({ data: expect.objectContaining({ path: expect.stringMatching(/资料\.txt$/) }) })
+    ])
+    expect(ks.addItems).toHaveBeenCalledTimes(1)
+    service.dispose()
+  })
+
+  it('下载失败阻断DELETE并保留恢复日志', async () => {
+    const { api, service } = setup()
+    vi.spyOn((service as any).client, 'downloadOriginal').mockRejectedValue(new Error('下载断流'))
+    vi.mocked(application.getPath).mockReturnValue('/tmp/knowledge-recovery-')
+    const remote = {
+      id: 'f',
+      space_id: codeSpaceId,
+      parent_id: null,
+      name: '资料.txt',
+      is_dir: false,
+      has_original_file: true,
+      file_hash: null,
+      updated_at: 'today'
+    }
+    api.request.mockImplementation(async (path) =>
+      path.includes('/files') ? { folders: [], files: [remote], total: 1 } : codeCatalog
+    )
+    await expect(service.unsharePreview({ baseId: 'local-1' })).rejects.toThrow('下载断流')
+    await expect(
+      service.unshare({ baseId: 'local-1', confirmMissing: true, confirmDevicesStopped: true })
+    ).rejects.toThrow()
+    expect(
+      orgStateStore.getCloudRecovery(JSON.stringify([lease.issuerId, lease.userId, 'recovery', codeSpaceId]))?.phase
+    ).toBe('preparing')
+    expect(api.request.mock.calls.some(([, init]) => init?.method === 'DELETE')).toBe(false)
     service.dispose()
   })
 
@@ -224,15 +1127,174 @@ describe('取消整个分享', () => {
         return new Promise<void>((resolve) => {
           finish = resolve
         })
+      if (_path.includes('/files')) return { folders: [], files: [], total: 0 }
       return codeCatalog
     })
-    const pending = service.unshare({ baseId: 'local-1' })
+    await prepare(service)
+    const pending = service.unshare({ baseId: 'local-1', confirmDevicesStopped: true })
     await vi.waitFor(() => expect(finish).toBeTypeOf('function'))
     await expect(service.unshare({ baseId: 'local-1' })).rejects.toThrow('正在取消分享')
     await expect(service.share('local-1')).rejects.toThrow('正在取消分享')
     finish()
     await pending
     service.dispose()
+  })
+})
+
+describe('旧同步停用', () => {
+  it('拒绝旧 manifest push 且不创建写任务', async () => {
+    const api = makeApiClient()
+    const service = makeService(api)
+    await expect(service.syncApply({ baseId: 'local-1', planId: 'old', confirmDeletes: true })).rejects.toThrow(
+      '已停用'
+    )
+    expect(shareJobs.enqueue).not.toHaveBeenCalled()
+    expect(api.requestMultipart).not.toHaveBeenCalled()
+    service.dispose()
+  })
+})
+
+describe('云端追加文件安全边界', () => {
+  it('复用已共享的对应本地库，解析完成后自动追加且不需要再次点击上传', async () => {
+    const api = makeApiClient()
+    const service = makeService(api)
+    const key = JSON.stringify([lease.issuerId, lease.userId, lease.groupId, 'local-1'])
+    const association = { shareId: 'space', completion: 'completed' as const, files: [] }
+    vi.mocked(orgStateStore.getShareAssociations).mockReturnValue({ [key]: association })
+    vi.mocked(orgStateStore.getShareAssociation).mockReturnValue(association)
+    vi.spyOn(service as any, 'assertRealOwner').mockResolvedValue(undefined)
+    vi.mocked(application.get).mockReturnValue({
+      listBasesForDiscovery: () => ({ items: [{ id: 'local-1', name: '对应本地库' }] })
+    } as never)
+    const upload = vi
+      .spyOn(service, 'uploadAddedFiles')
+      .mockResolvedValue({ shareId: 'space', completion: 'completed', files: [] })
+    expect(await service.prepareAddedFiles(encodeOrgId('space'))).toEqual({ localBaseId: 'local-1' })
+    settleKnowledgeJob('knowledge.index-documents')
+    await vi.waitFor(() => expect(upload).toHaveBeenCalledWith(encodeOrgId('space'), 'local-1'), { timeout: 3000 })
+    service.dispose()
+  })
+
+  it('等待解析队列结束，切换账号后停止自动追加', async () => {
+    vi.useFakeTimers()
+    const api = makeApiClient()
+    const service = makeService(api)
+    const key = JSON.stringify([lease.issuerId, lease.userId, lease.groupId, 'local-1'])
+    const association = { shareId: 'space', completion: 'completed' as const, files: [] }
+    vi.mocked(orgStateStore.getShareAssociations).mockReturnValue({ [key]: association })
+    vi.spyOn(service as any, 'assertRealOwner').mockResolvedValue(undefined)
+    vi.mocked(application.get).mockReturnValue({
+      listBasesForDiscovery: () => ({ items: [{ id: 'local-1' }] })
+    } as never)
+    const upload = vi.spyOn(service, 'uploadAddedFiles')
+    await service.prepareAddedFiles(encodeOrgId('space'))
+    shareJobs.list.mockResolvedValueOnce([{ id: 'still-parsing' }])
+    settleKnowledgeJob('knowledge.index-documents')
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(upload).not.toHaveBeenCalled()
+    auth.assertLease.mockImplementation(() => {
+      throw new Error('账号已切换')
+    })
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(upload).not.toHaveBeenCalled()
+    service.dispose()
+  })
+  it('第二批追加只上传新文件，保留首批可信映射', async () => {
+    const api = makeApiClient()
+    const service = makeService(api)
+    vi.spyOn(service as any, 'assertRealOwner').mockResolvedValue(undefined)
+    let association: any = { shareId: 'space', completion: 'incomplete', pendingAddition: true, files: [] }
+    vi.mocked(orgStateStore.getShareAssociation).mockImplementation(() => association)
+    vi.mocked(orgStateStore.setShareAssociation).mockImplementation((_key, value) => {
+      association = value
+    })
+    const items = [{ id: 'first', type: 'file', status: 'completed', data: { source: 'first.txt' } }]
+    vi.mocked(application.get).mockReturnValue({
+      listBasesForDiscovery: () => ({ items: [{ id: 'managed', name: '本地副本' }] }),
+      listRootItems: () => items,
+      getFilePath: () => '/storage/file.txt',
+      listItemChunks: async (_base: string, id: string) => [
+        { id: `chunk-${id}`, itemId: id, content: id, metadata: { source: `${id}.txt`, chunkIndex: 0 } }
+      ]
+    } as never)
+    api.requestMultipart.mockImplementation(async (_path, form) => ({
+      share_id: 'space',
+      file_id: `remote-${form.get('file').name}`,
+      chunk_count: 1
+    }))
+    await service.uploadAddedFiles(encodeOrgId('space'), 'managed')
+    items.push({ id: 'second', type: 'file', status: 'completed', data: { source: 'second.txt' } })
+    const result = await service.uploadAddedFiles(encodeOrgId('space'), 'managed')
+    expect(result.completion).toBe('completed')
+    expect(api.requestFileMultipart.mock.calls.map(([, entry]) => entry.fileName)).toEqual(['first.txt', 'second.txt'])
+    expect(association.manifest.entries).toHaveLength(2)
+    service.dispose()
+  })
+  it.each([undefined, null])('服务端策略为%j时禁止追加上传', async (mode) => {
+    const api = makeApiClient()
+    const service = makeService(api)
+    vi.spyOn(service as any, 'assertRealOwner').mockResolvedValue(undefined)
+    vi.mocked((service as any).client.getSpace).mockResolvedValue({
+      id: 'space',
+      name: '库',
+      allow_local_file_upload: mode
+    })
+    await expect(service.uploadAddedFiles(encodeOrgId('space'), 'managed', true)).rejects.toThrow('策略未确认')
+    expect(api.requestFileMultipart).not.toHaveBeenCalled()
+    service.dispose()
+  })
+  it('只传分块追加到既有空间并保存可信文件映射，重复操作不重传', async () => {
+    const api = makeApiClient()
+    const service = makeService(api)
+    vi.spyOn(service as any, 'assertRealOwner').mockResolvedValue(undefined)
+    let association: any = { shareId: 'space', completion: 'incomplete', files: [] }
+    vi.mocked(orgStateStore.getShareAssociation).mockImplementation(() => association)
+    vi.mocked(orgStateStore.setShareAssociation).mockImplementation((_key, value) => {
+      association = value
+    })
+    vi.mocked(application.get).mockReturnValue({
+      listBasesForDiscovery: () => ({ items: [{ id: 'managed', name: '待上传' }] }),
+      listRootItems: () => [
+        { id: 'new-item', type: 'file', status: 'completed', data: { source: '资料.txt', relativePath: '资料.txt' } }
+      ],
+      getFilePath: () => '/storage/managed.txt',
+      listItemChunks: async () => [
+        { id: 'chunk', itemId: 'new-item', content: '新增正文', metadata: { chunkIndex: 0 } }
+      ]
+    } as never)
+    api.requestMultipart.mockResolvedValue({ share_id: 'space', file_id: 'trusted-file', chunk_count: 1 })
+    vi.mocked((service as any).client.getSpace).mockResolvedValue({
+      id: 'space',
+      name: '库',
+      allow_local_file_upload: false
+    })
+    const result = await service.uploadAddedFiles(encodeOrgId('space'), 'managed', true)
+    expect(result.completion).toBe('completed')
+    expect(api.requestFileMultipart.mock.calls[0][1]).toMatchObject({ uploadOriginal: false, fileName: '资料.txt' })
+    expect(association.manifest.entries).toEqual([
+      expect.objectContaining({ itemId: 'new-item', fileId: 'trusted-file' })
+    ])
+    await service.uploadAddedFiles(encodeOrgId('space'), 'managed', false)
+    expect(api.requestFileMultipart).toHaveBeenCalledTimes(1)
+    expect(api.request).not.toHaveBeenCalled()
+    service.dispose()
+  })
+
+  it('解析尚未完成时不发送上传或创建空间请求', async () => {
+    const api = makeApiClient()
+    const service = makeService(api)
+    vi.spyOn(service as any, 'assertRealOwner').mockResolvedValue(undefined)
+    vi.mocked(orgStateStore.getShareAssociation).mockReturnValue({
+      shareId: 'space',
+      completion: 'incomplete',
+      files: []
+    })
+    vi.mocked(application.get).mockReturnValue({
+      listRootItems: () => [{ id: 'pending', type: 'file', status: 'processing' }]
+    } as never)
+    await expect(service.uploadAddedFiles(encodeOrgId('space'), 'managed', false)).rejects.toThrow('无法完整共享')
+    expect(api.requestFileMultipart).not.toHaveBeenCalled()
+    expect(api.request).not.toHaveBeenCalled()
   })
 })
 
@@ -323,6 +1385,21 @@ describe('同步安全边界', () => {
     }
   }
 
+  it('本机索引完成与删除事件均不能触发云端写入', async () => {
+    vi.useFakeTimers()
+    const s = setupSync()
+    settleKnowledgeJob('knowledge.index-documents')
+    settleKnowledgeJob('knowledge.delete-subtree')
+    await vi.advanceTimersByTimeAsync(5_000)
+    expect(s.api.requestMultipart).not.toHaveBeenCalled()
+    expect(s.api.request.mock.calls.some(([, options]) => ['POST', 'PUT', 'DELETE'].includes(options?.method))).toBe(
+      false
+    )
+    expect(s.get().manifest.entries).toEqual([])
+    s.service.dispose()
+  })
+
+  /* 原自动推送测试保留，现契约禁止本地任务写云端。
   describe('自动同步触发', () => {
     it('知识索引完成并且队列静默后自动同步新增文件', async () => {
       vi.useFakeTimers()
@@ -414,6 +1491,8 @@ describe('同步安全边界', () => {
     })
   })
 
+  */
+
   it('初次分享即持久化 itemId、原名与 hash manifest', async () => {
     const s = setupSync()
     vi.mocked(orgStateStore.getShareAssociation).mockReturnValue(undefined)
@@ -424,9 +1503,11 @@ describe('同步安全边界', () => {
       state: 'shared',
       entries: [{ itemId: 'i1', fileName: '原名.txt', fileId: 'new-file' }]
     })
-    expect(saved.manifest.entries[0].hash).toMatch(/^[a-f0-9]{64}$/)
+    expect(saved.manifest.entries[0].hash).toBe(createHash('sha256').update('file-bytes').digest('hex'))
+    expect(replaceKnowledgeSourceBindings).toHaveBeenCalledWith('local-1', encodeOrgId(codeSpaceId))
   })
 
+  /* 原手动推送行为测试保留，由“旧同步停用”拒绝契约替代。
   it('同库并发 apply 重新验证指纹，只上传一次', async () => {
     const s = setupSync()
     const a = await s.service.syncPreview({ baseId: 'local-1' })
@@ -681,6 +1762,8 @@ describe('同步安全边界', () => {
     expect(s.get().manifest.operations[0]).toMatchObject({ newFileId: 'new-file', phase: 'verifying' })
   })
 
+  */
+
   it('无关联时状态为 unshared，历史关联缺 manifest 时为 unconfirmed', async () => {
     const service = makeService(makeApiClient())
     expect(await service.syncStatus({ baseId: 'local-1' })).toEqual({ state: 'unshared', lastSyncedAt: null })
@@ -877,12 +1960,76 @@ describe('分享码授权与结果', () => {
     ).toEqual({ ok: true })
     expect(api.request.mock.calls[0]).toEqual([
       `/api/kb/v1/spaces/${codeSpaceId}/shares/${codeShare.id}`,
-      { method: 'DELETE' }
+      { method: 'DELETE' },
+      expect.any(Function)
     ])
   })
 })
 
+describe('云端生命周期上传契约', () => {
+  it('仅分块上传不要求远端原件hash，但必须核对可信文件归属和完整分块', async () => {
+    const api = makeApiClient()
+    const service = makeService(api)
+    vi.mocked((service as any).verifyFirstShareFile).mockRestore()
+    const client = (service as any).client
+    vi.spyOn(client, 'getFile').mockResolvedValue({
+      id: 'f',
+      space_id: 's',
+      name: 'a.txt',
+      is_dir: false,
+      parent_id: null,
+      file_hash: null
+    })
+    const item = { id: 'i', base_id: 's', document_id: 'f', data: { file_id: 'f' }, status: 'completed' }
+    vi.spyOn(client, 'listItems').mockResolvedValue({ items: [item], total: 1, next_cursor: null })
+    vi.spyOn(client, 'getItem').mockResolvedValue(item)
+    vi.spyOn(client, 'listChunks').mockResolvedValue({
+      chunks: [{ item_id: 'i', content: '正文', metadata: { chunk_index: 0 } }],
+      total: 1,
+      next_cursor: null
+    })
+    const entry = {
+      fileName: 'a.txt',
+      hash: 'local-hash',
+      parentId: null,
+      uploadOriginal: false,
+      chunks: [{ content: '正文', metadata: { chunk_index: 0 } }]
+    }
+    await expect((service as any).verifyFirstShareFile('s', 'f', entry, lease)).resolves.toBeUndefined()
+    client.getFile.mockResolvedValue({ id: 'f', space_id: 'other', name: 'a.txt', is_dir: false })
+    await expect((service as any).verifyFirstShareFile('s', 'f', entry, lease)).rejects.toThrow()
+    service.dispose()
+  })
+})
+
 describe('OrgKnowledgeService catalog/items', () => {
+  it.each([false, undefined])('原件能力%j时直接preview也禁止读取内容', async (hasOriginal) => {
+    const api = makeApiClient()
+    const service = makeService(api)
+    vi.mocked((service as any).client.getFile).mockResolvedValue({
+      id: 'f',
+      space_id: 'space',
+      is_dir: false,
+      has_original_file: hasOriginal
+    })
+    await expect(service.preview({ fileId: encodeOrgId('f') })).rejects.toThrow('原件不可用')
+    expect(api.requestText).not.toHaveBeenCalled()
+    expect(api.requestBytes).not.toHaveBeenCalled()
+    service.dispose()
+  })
+  it('未完成首传的云端副本不能标记为已分享，仍保留本地关联供恢复', async () => {
+    vi.mocked(orgStateStore.getShareAssociations).mockReturnValueOnce({
+      [JSON.stringify(['server-1', 'u', 'g', 'local-1'])]: {
+        shareId: 's1',
+        completion: 'incomplete',
+        files: []
+      }
+    })
+    const api = makeApiClient()
+    api.request.mockResolvedValue({ public: [], shared: [], owned: [{ id: 's1', name: '上传失败' }] })
+    const result = await makeService(api).catalog()
+    expect(result.owned[0]).toMatchObject({ localBaseId: 'local-1', shareCompleted: false })
+  })
   it('目录只返回当前身份上下文的本地关联，不按名称匹配', async () => {
     vi.mocked(orgStateStore.getShareAssociations).mockReturnValueOnce({
       [JSON.stringify(['server-1', 'u', 'g', 'local-1'])]: { shareId: 's1', completion: 'completed', files: [] },
@@ -942,6 +2089,13 @@ describe('OrgKnowledgeService catalog/items', () => {
       total: 1
     })
     const svc = makeService(api)
+    vi.mocked((svc as any).client.getFile).mockResolvedValue({
+      id: 'source-file',
+      space_id: rawBase,
+      name: 'T',
+      is_dir: false,
+      has_original_file: true
+    })
     const page = await svc.listItems(encodeOrgId(rawBase))
     expect(page.items[0].id.startsWith('orgkb:')).toBe(true)
     expect(page.items[0].documentId?.startsWith('orgkb:')).toBe(true)
@@ -971,10 +2125,153 @@ describe('OrgKnowledgeService catalog/items', () => {
         total: 1
       })
       .mockResolvedValueOnce({ id: 'doc', is_dir: false })
+      .mockResolvedValueOnce({ id: 'doc', space_id: 'base', name: '文件', is_dir: false, has_original_file: true })
     const page = await makeService(api).listItems(encodeOrgId('base'))
     expect(page.items[0].fileId).toBe(encodeOrgId('doc'))
-    expect(api.request).toHaveBeenLastCalledWith('/api/kb/v1/files/doc')
+    expect(api.request).toHaveBeenLastCalledWith('/api/kb/v1/files/doc', { signal: expect.any(AbortSignal) })
   })
+
+  it.each(['explicit', 'resolved'])('列表从真实文件补原件能力：%s 映射', async (mapping) => {
+    const api = makeApiClient()
+    const svc = makeService(api)
+    const client = (svc as any).client
+    vi.spyOn(client, 'listItems').mockResolvedValue({
+      items: [
+        {
+          id: 'item',
+          base_id: 'base',
+          type: 'file',
+          title: '文件',
+          document_id: 'doc',
+          data: mapping === 'explicit' ? { file_id: 'source' } : {},
+          status: 'completed'
+        }
+      ],
+      total: 1
+    })
+    vi.spyOn(client, 'resolveFileId').mockResolvedValue('source')
+    vi.mocked(client.getFile).mockResolvedValue({
+      id: 'source',
+      space_id: 'base',
+      is_dir: false,
+      has_original_file: true
+    })
+    const page = await svc.listItems(encodeOrgId('base'))
+    expect(page.items[0]).toMatchObject({ fileId: encodeOrgId('source'), hasOriginalFile: true })
+    expect(client.getFile).toHaveBeenCalledWith('source')
+    svc.dispose()
+  })
+
+  it.each(['id', 'space', 'directory', 'item-space', 'false', 'missing'])(
+    '列表不信任条目原件能力且拒绝不匹配文件：%s',
+    async (mismatch) => {
+      const svc = makeService(makeApiClient())
+      const client = (svc as any).client
+      vi.spyOn(client, 'listItems').mockResolvedValue({
+        items: [
+          {
+            id: 'item',
+            base_id: mismatch === 'item-space' ? 'other' : 'base',
+            type: 'file',
+            title: '文件',
+            document_id: 'doc',
+            data: { file_id: 'source' },
+            has_original_file: true,
+            status: 'completed'
+          }
+        ],
+        total: 1
+      })
+      vi.mocked(client.getFile).mockResolvedValue({
+        id: mismatch === 'id' ? 'other' : 'source',
+        space_id: mismatch === 'space' ? 'other' : 'base',
+        is_dir: mismatch === 'directory',
+        has_original_file: mismatch === 'missing' ? undefined : mismatch !== 'false'
+      })
+      const item = (await svc.listItems(encodeOrgId('base'))).items[0]
+      expect(item.hasOriginalFile).not.toBe(true)
+      if (!['false', 'missing'].includes(mismatch)) expect(item.fileId).toBeNull()
+      svc.dispose()
+    }
+  )
+
+  it.each([403, 404, 422, 500, 'protocol'] as const)(
+    '附加文件查询失败仍返回已授权列表且能力保持未知：%s',
+    async (failure) => {
+      const api = makeApiClient()
+      const svc = makeService(api)
+      const item = (id: string) => ({
+        id,
+        base_id: 'base',
+        group_id: null,
+        type: 'file',
+        title: id,
+        status: 'completed',
+        error: null,
+        document_id: `document-${id}`,
+        data: { file_id: id, has_original_file: true },
+        created_at: '2026-10-15T00:00:00Z',
+        updated_at: '2026-10-15T00:00:00Z'
+      })
+      api.request.mockImplementation(async (path: string) => {
+        if (path.includes('/items')) return { items: [item('bad'), item('good')], total: 2, next_cursor: 'page-2' }
+        if (path.endsWith('/bad')) {
+          if (failure !== 'protocol') throw new OrgApiHttpError(failure, '文件元信息不可用')
+          return { id: 'bad', space_id: 'base', name: 'bad', is_dir: false, parse_status: 2 }
+        }
+        return { id: 'good', space_id: 'base', name: 'good', is_dir: false, has_original_file: true }
+      })
+      const page = await svc.listItems(encodeOrgId('base'))
+      expect(page.total).toBe(2)
+      expect(page.nextCursor).toBe('page-2')
+      expect(page.items[0]).toMatchObject({ title: 'bad', fileId: null })
+      expect(page.items[0].hasOriginalFile).toBeUndefined()
+      expect(page.items[1]).toMatchObject({ fileId: encodeOrgId('good'), hasOriginalFile: true })
+      svc.dispose()
+    }
+  )
+
+  it.each(['list-forbidden', 'file-unauthorized', 'lease', 'unexpected'])(
+    '列表及身份错误保持阻断：%s',
+    async (failure) => {
+      const api = makeApiClient()
+      const svc = makeService(api)
+      const error = failure === 'unexpected' ? new Error('unexpected') : new OrgApiHttpError(401, '会话失效')
+      api.request.mockImplementation(async (path: string) => {
+        if (failure === 'list-forbidden') throw new OrgApiHttpError(403, '列表无权限')
+        if (path.includes('/items'))
+          return {
+            items: [
+              {
+                id: 'item',
+                base_id: 'base',
+                group_id: null,
+                type: 'file',
+                title: '文件',
+                status: 'completed',
+                error: null,
+                document_id: 'doc',
+                data: { file_id: 'source' },
+                created_at: '2026-10-15T00:00:00Z',
+                updated_at: '2026-10-15T00:00:00Z'
+              }
+            ],
+            total: 1
+          }
+        if (failure === 'lease')
+          auth.assertLease.mockImplementation(() => {
+            throw new Error('stale')
+          })
+        throw error
+      })
+      if (failure === 'lease')
+        await expect(svc.listItems(encodeOrgId('base'))).rejects.toMatchObject({ code: E.ORGKB_UNAUTHORIZED })
+      else if (failure === 'list-forbidden')
+        await expect(svc.listItems(encodeOrgId('base'))).rejects.toMatchObject({ status: 403 })
+      else await expect(svc.listItems(encodeOrgId('base'))).rejects.toBe(error)
+      svc.dispose()
+    }
+  )
 
   it('inline HTML 仅回传纯文本，不作为可执行预览', async () => {
     const api = makeApiClient()
@@ -1011,6 +2308,56 @@ describe('OrgKnowledgeService catalog/items', () => {
     vi.mocked(api.requestText).mockResolvedValue('解析正文')
     expect(await makeService(api).preview({ fileId: encodeOrgId('f:1') })).toMatchObject({ content: '解析正文' })
     expect(api.requestText).toHaveBeenCalledWith('/api/kb/v1/files/f%3A1/preview')
+  })
+
+  it.each([
+    ['说明.md', null],
+    ['说明.MD', 'application/octet-stream'],
+    ['说明.markdown', undefined],
+    ['说明', 'application/markdown']
+  ])('Markdown 原件在 MIME 缺失或非 text 类型时仍可预览：%s / %s', async (fileName, mimeType) => {
+    const api = makeApiClient()
+    api.request.mockResolvedValue({ kind: 'inline', file_name: fileName, mime_type: mimeType })
+    api.requestText.mockResolvedValue('# 云端文档\n\n正文内容')
+
+    await expect(makeService(api).preview({ fileId: encodeOrgId('f') })).resolves.toMatchObject({
+      kind: 'text',
+      fileName,
+      content: '# 云端文档\n\n正文内容'
+    })
+    expect(api.requestText).toHaveBeenCalledWith('/api/kb/v1/files/f/preview')
+  })
+
+  it.each(['txt', 'mdx', 'csv', 'html', 'htm', 'epub', 'draftsexport'])(
+    '上传范围内的 %s 在通用二进制 MIME 下仍提供文本预览',
+    async (extension) => {
+      const api = makeApiClient()
+      api.request.mockResolvedValue({
+        kind: 'inline',
+        file_name: `资料.${extension.toUpperCase()}`,
+        mime_type: 'application/octet-stream'
+      })
+      api.requestText.mockResolvedValue('可阅读正文 <script>不执行</script>')
+      await expect(makeService(api).preview({ fileId: encodeOrgId('f') })).resolves.toMatchObject({
+        kind: 'text',
+        content: '可阅读正文 <script>不执行</script>'
+      })
+    }
+  )
+
+  it.each(['%PDF-1.7\n', '<html>伪装 PDF</html>'])('PDF 通用二进制 MIME 必须核对文件头：%s', async (content) => {
+    const api = makeApiClient()
+    api.request.mockResolvedValue({ kind: 'inline', file_name: '资料.PDF', mime_type: 'application/octet-stream' })
+    api.requestBytes.mockResolvedValue(Buffer.from(content))
+    const result = await makeService(api).preview({ fileId: encodeOrgId('f') })
+    if (content.startsWith('%PDF-'))
+      expect(result).toMatchObject({
+        kind: 'inline',
+        mimeType: 'application/pdf',
+        base64: Buffer.from(content).toString('base64')
+      })
+    else expect(result).not.toHaveProperty('base64')
+    expect(api.requestText).not.toHaveBeenCalled()
   })
 
   it('预览元信息到达后切号，不继续获取正文', async () => {
@@ -1226,6 +2573,11 @@ describe('OrgKnowledgeService share', () => {
       api.requestMultipart.mockRejectedValue(new OrgApiHttpError(403, 'forbidden'))
     } else api.requestMultipart.mockRejectedValue(new TypeError('network'))
     const first = await makeService(api).share('local-1')
+    if (status !== 'success') {
+      await expect(makeService(api).share('local-1', true)).rejects.toThrow('首次分享已中断')
+      expect(api.requestMultipart).toHaveBeenCalledTimes(1)
+      return
+    }
     const reopened = await makeService(api).share('local-1', true)
     expect(reopened.completion).toEqual(first.completion)
     expect(reopened.files[0].status).toBe(status)
@@ -1457,6 +2809,12 @@ describe('OrgKnowledgeService share', () => {
     const api = makeApiClient()
     api.request.mockResolvedValue({ share_id: 's1' })
     api.requestMultipart.mockResolvedValue({ share_id: 's1', file_id: 'f1', chunk_count: 1 })
+    api.request.mockImplementation(async (path: string) => {
+      if (path.endsWith('/folders')) return { folder_id: 'folder-id', name: 'a.txt', space_id: 's1', parent_id: null }
+      if (path.endsWith('/files/folder-id'))
+        return { id: 'folder-id', name: 'a.txt', space_id: 's1', parent_id: null, is_dir: true }
+      return { share_id: 's1' }
+    })
     const result = await makeService(api).share('local-1')
     expect(result.files.map((file) => file.fileName)).toEqual(['leaf1.txt', 'leaf2.txt'])
     expect(
@@ -1525,12 +2883,31 @@ describe('OrgKnowledgeService invite（本地 baseId）', () => {
     return api
   }
 
-  it('拒绝 orgkb 远端 id', async () => {
-    const api = makeApiClient()
-    await expect(makeService(api).invite({ baseId: encodeOrgId('s'), userId: 2 })).rejects.toMatchObject({
-      code: E.ORGKB_BAD_INPUT
+  // 原用例拒绝所有远端 ID；本人云端库现在按服务端所有权授权。
+  it('跨端本人云端库无需本地关联即可邀请', async () => {
+    const api = mockApi([])
+    await expect(makeService(api).invite({ baseId: encodeOrgId(space), userId: 5 })).resolves.toMatchObject({
+      userId: 5,
+      status: 'pending'
     })
-    expect(api.request).not.toHaveBeenCalled()
+    expect(api.request).toHaveBeenCalledWith(
+      `/api/kb/v1/spaces/${space}/members`,
+      expect.objectContaining({ method: 'POST', body: expect.stringContaining('"user_id":5') })
+    )
+  })
+
+  it('远端 ID 仍不能绕过本机已知的未完成上传', async () => {
+    vi.mocked(orgStateStore.getShareAssociations).mockReturnValue({
+      [JSON.stringify(['server-1', 'u', 'g', 'local-1'])]: { ...association, completion: 'incomplete' }
+    })
+    const api = mockApi([])
+    await expect(makeService(api).invite({ baseId: encodeOrgId(space), userId: 5 })).rejects.toMatchObject({
+      code: E.ORGKB_SHARE_INCOMPLETE
+    })
+    expect(api.request).not.toHaveBeenCalledWith(
+      expect.stringContaining('/members'),
+      expect.objectContaining({ method: 'POST' })
+    )
   })
 
   it('使用当前账号的共享关联发送邀请', async () => {
@@ -1685,17 +3062,118 @@ describe('OrgKnowledgeService invite（本地 baseId）', () => {
 })
 
 describe('OrgKnowledgeService createShareCode 本地关联约束', () => {
-  it('拒绝无本地关联的空间（仅允许本地知识库）', async () => {
-    const api = makeApiClient()
-    api.request.mockResolvedValue({
-      public: [],
-      shared: [],
-      owned: [{ id: codeSpaceId, name: '副本', my_role: 'owner' }]
+  it('追加资料暂存不阻断已有云端库生成码', async () => {
+    vi.mocked(orgStateStore.getShareAssociations).mockReturnValue({
+      [JSON.stringify([lease.issuerId, lease.userId, lease.groupId, 'pending'])]: {
+        shareId: codeSpaceId,
+        completion: 'incomplete',
+        files: [],
+        pendingAddition: true
+      }
     })
+    const api = makeApiClient()
+    api.request.mockResolvedValueOnce(codeCatalog).mockResolvedValueOnce(codeShare)
+    await expect(
+      makeService(api).createShareCode({ baseId: encodeOrgId(codeSpaceId), expireDays: 7 })
+    ).resolves.toMatchObject({ shareCode: 'AbCd_123' })
+  })
+
+  // 原用例要求本地关联；跨端 owner 现在直接管理已有云端库。
+  it('无本地关联的本人云端库可生成分享码', async () => {
+    const api = makeApiClient()
+    api.request.mockResolvedValueOnce(codeCatalog).mockResolvedValueOnce(codeShare)
     vi.mocked(orgStateStore.getShareAssociations).mockReturnValue({})
     await expect(
       makeService(api).createShareCode({ baseId: encodeOrgId(codeSpaceId), expireDays: 7 })
-    ).rejects.toMatchObject({ code: E.ORGKB_FORBIDDEN })
-    expect(api.request).not.toHaveBeenCalledWith(expect.stringContaining('/shares'), expect.anything())
+    ).resolves.toMatchObject({ shareCode: 'AbCd_123', spaceId: encodeOrgId(codeSpaceId) })
+  })
+})
+
+describe('重命名已分享本地知识库同步云端', () => {
+  const key = JSON.stringify([lease.issuerId, lease.userId, lease.groupId, 'local-1'])
+
+  function setup(association: any) {
+    vi.mocked(orgStateStore.getShareAssociation).mockImplementation(() => association)
+    const api = makeApiClient()
+    api.request.mockResolvedValue(codeCatalog)
+    const service = makeService(api)
+    const renameSpace = vi.spyOn((service as any).client, 'renameSpace')
+    return { api, service, renameSpace }
+  }
+
+  it('无本地关联时不触碰云端（空操作）', async () => {
+    const { service, renameSpace } = setup(undefined)
+    await expect(service.renameSharedBase('local-1', '新名')).resolves.toBeUndefined()
+    expect(renameSpace).not.toHaveBeenCalled()
+  })
+
+  it('有 completed 关联时仅按绑定 spaceId 改名并校验响应', async () => {
+    const { service, renameSpace } = setup({ shareId: codeSpaceId, completion: 'completed', files: [] })
+    renameSpace.mockResolvedValue({ id: codeSpaceId, name: '新名' })
+    await expect(service.renameSharedBase('local-1', '新名')).resolves.toBeUndefined()
+    // 必须按已绑定关联的 spaceId 而非任意名称认领云端。
+    expect(renameSpace).toHaveBeenCalledWith(codeSpaceId, '新名')
+  })
+
+  it('原始云端 UUID 且无本机副本时按 owned 目录直接改名', async () => {
+    const { service, renameSpace } = setup(undefined)
+    renameSpace.mockResolvedValue({ id: codeSpaceId, name: '新名' })
+    await expect(service.renameSharedBase(codeSpaceId, '新名')).resolves.toBeUndefined()
+    expect(renameSpace).toHaveBeenCalledWith(codeSpaceId, '新名')
+  })
+
+  it('owned 目录缺少 owner 字段时仍允许云端改名', async () => {
+    const api = makeApiClient()
+    api.request.mockResolvedValue({ public: [], shared: [], owned: [{ id: codeSpaceId, name: '副本' }] })
+    const service = makeService(api)
+    const renameSpace = vi.spyOn((service as any).client, 'renameSpace').mockResolvedValue({
+      id: codeSpaceId,
+      name: '新名'
+    })
+    await expect(service.renameSharedBase(codeSpaceId, '新名')).resolves.toBeUndefined()
+    expect(renameSpace).toHaveBeenCalledWith(codeSpaceId, '新名')
+  })
+
+  it('取消分享期间拒绝重命名且不下发云端请求', async () => {
+    const { service, renameSpace } = setup({ shareId: codeSpaceId, completion: 'completed', files: [] })
+    vi.mocked(application.get).mockReturnValue({} as never)
+    const ownerCheck = Promise.withResolvers<typeof codeCatalog>()
+    const getCatalog = vi.spyOn((service as any).client, 'getCatalog').mockReturnValueOnce(ownerCheck.promise)
+    const cancelling = service.unshare({ baseId: 'local-1' })
+    const cancelled = expect(cancelling).rejects.toMatchObject({ status: 403 })
+    try {
+      await vi.waitFor(() => expect(getCatalog).toHaveBeenCalled())
+      await expect(service.renameSharedBase('local-1', '新名')).rejects.toMatchObject({ code: E.ORGKB_SHARE_FAILED })
+      expect(renameSpace).not.toHaveBeenCalled()
+    } finally {
+      ownerCheck.reject(new OrgApiHttpError(403, '取消分享校验失败'))
+      await cancelled
+      service.dispose()
+    }
+  })
+
+  it('初传进行中拒绝重命名同一库', async () => {
+    const { service, renameSpace } = setup({ shareId: codeSpaceId, completion: 'completed', files: [] })
+    ;(service as any).firstShareActive = { key, name: '旧名' }
+    await expect(service.renameSharedBase('local-1', '新名')).rejects.toMatchObject({ code: E.ORGKB_SHARE_FAILED })
+    expect(renameSpace).not.toHaveBeenCalled()
+    ;(service as any).firstShareActive = undefined
+  })
+
+  it('云端返回 id/name 不一致时拒绝', async () => {
+    const { service, renameSpace } = setup({ shareId: codeSpaceId, completion: 'completed', files: [] })
+    renameSpace.mockResolvedValue({ id: codeSpaceId, name: '其它' })
+    await expect(service.renameSharedBase('local-1', '新名')).rejects.toMatchObject({ code: E.ORGKB_PROTOCOL })
+    expect(renameSpace).toHaveBeenCalledWith(codeSpaceId, '新名')
+  })
+
+  it('锁内会话失效不提交改名', async () => {
+    const { service, renameSpace } = setup({ shareId: codeSpaceId, completion: 'completed', files: [] })
+    renameSpace.mockResolvedValue({ id: codeSpaceId, name: '新名' })
+    auth.assertLease.mockImplementation(() => {
+      throw new Error('session changed')
+    })
+    await expect(service.renameSharedBase('local-1', '新名')).rejects.toMatchObject({ code: E.ORGKB_UNAUTHORIZED })
+    expect(renameSpace).not.toHaveBeenCalled()
   })
 })

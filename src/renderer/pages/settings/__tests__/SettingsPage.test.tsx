@@ -168,14 +168,22 @@ describe('SettingsPage', () => {
     expect(navigateMock).toHaveBeenCalledWith({ to: '/settings/local-models' })
   })
 
-  it('exposes device connections as its own settings destination without developer mode', () => {
-    MockUsePreferenceUtils.setPreferenceValue('app.developer_mode.enabled', false)
+  // 上游原契约：设备互联不依赖开发者模式，始终作为独立设置入口显示。
+  // it('exposes device connections as its own settings destination without developer mode', () => {
+  //   MockUsePreferenceUtils.setPreferenceValue('app.developer_mode.enabled', false)
+  //   render(<SettingsPage />)
+  //
+  //   const deviceConnectionsItem = screen.getByRole('button', { name: '设备互联' })
+  //   fireEvent.click(deviceConnectionsItem)
+  //
+  //   expect(navigateMock).toHaveBeenCalledWith({ to: '/settings/device-connections' })
+  // })
+
+  it('hides device connections and remote services from the settings menu', () => {
     render(<SettingsPage />)
 
-    const deviceConnectionsItem = screen.getByRole('button', { name: '设备互联' })
-    fireEvent.click(deviceConnectionsItem)
-
-    expect(navigateMock).toHaveBeenCalledWith({ to: '/settings/device-connections' })
+    expect(screen.queryByRole('button', { name: '设备互联' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'settings.remoteKnowledge.title' })).not.toBeInTheDocument()
   })
 
   it('keeps document processing and OCR together in tools and dependencies in the system group', () => {
@@ -231,7 +239,11 @@ describe('SettingsPage', () => {
     expect(screen.getByText('效率')).toBeInTheDocument()
     expect(screen.queryByText('快捷入口')).not.toBeInTheDocument()
 
-    const efficiencyItems = ['频道', '设备互联', '定时任务', '快捷键', '快捷助手', '划词助手', '截图'].map((name) =>
+    // 上游原顺序包含「设备互联」和「定时任务」，MEA 隐藏入口后其余项目保持原相对顺序。
+    // const efficiencyItems = ['频道', '设备互联', '定时任务', '快捷键', '快捷助手', '划词助手', '截图'].map(
+    //   (name) => screen.getByRole('button', { name })
+    // )
+    const efficiencyItems = ['频道', '快捷键', '快捷助手', '划词助手', '截图'].map((name) =>
       screen.getByRole('button', { name })
     )
     const menuItems = screen.getAllByTestId('menu-item')

@@ -3,8 +3,7 @@ import { rm } from 'node:fs/promises'
 import path from 'node:path'
 
 // import { app, session } from 'electron'
-import { app } from 'electron'
-import lockfile from 'proper-lockfile'
+import { app, dialog } from 'electron'
 
 import { application } from '@application'
 import { CHERRY_HOME } from '@main/core/paths/constants'
@@ -28,25 +27,18 @@ import { bootConfigService } from '@main/data/bootConfig'
 import { OrgCredentialStore } from '@main/enterprise/OrgCredentialStore'
 import { createStartupCurrentUserTransport, type ElectronSessionLike } from '@main/enterprise/orgCurrentUserTransport'
 
-import {
-  applyProfileIsolationPaths,
-  lockProfileDataRoot,
-  lockProfileInstance,
-  resolveProfileDataRoot
-} from './profileIsolationPreboot'
+import { acquireDataRootLock, releaseDataRootLock } from './dataRootLock'
+import { applyProfileIsolationPaths, lockProfileDataRoot, resolveProfileDataRoot } from './profileIsolationPreboot'
 import { getNormalizedExecutablePath } from './userDataLocation'
 
-let lockedDataRoot: string | undefined
+function logLockCompromised(error: Error): void {
+  void import('@logger').then(({ loggerService }) => {
+    loggerService.withContext('ProfileIsolation').warn('Profile data root lock compromised', error)
+  })
+}
 
-function acquireDataRootLock(instanceRoot: string): boolean {
-  try {
-    lockfile.lockSync(instanceRoot, { realpath: false, retries: 0 })
-    lockedDataRoot = instanceRoot
-    return true
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ELOCKED') return false
-    throw error
-  }
+function acquireProfileDataRootLock(instanceRoot: string): boolean {
+  return acquireDataRootLock(instanceRoot, logLockCompromised)
 }
 
 export function shouldUseProfileIsolation(): boolean {
@@ -62,7 +54,7 @@ function electronPrebootApi() {
     setPath: (name: 'userData' | 'sessionData' | 'crashDumps' | 'temp', value: string) => app.setPath(name, value),
     setAppLogsPath: (value: string) => app.setAppLogsPath(value),
     mkdirSync: (value: string, options?: { recursive?: boolean }) => fs.mkdirSync(value, options),
-    acquireDataRootLock,
+    acquireDataRootLock: acquireProfileDataRootLock,
     requestSingleInstanceLock: () => app.requestSingleInstanceLock(),
     // Freezing the path registry now rebuilds the runtime in place (no separate
     // initPathRegistry) so the same call serves cold start and a same-process
@@ -78,12 +70,28 @@ export function resolveCurrentProfileDataRoot(legacyRoot: string): string {
 export function lockCurrentProfileDataRoot(dataRoot: string): boolean {
   const locked = lockProfileDataRoot(dataRoot, electronPrebootApi())
   if (locked) {
-    app.once('will-quit', () => {
-      if (lockedDataRoot) lockfile.unlockSync(lockedDataRoot, { realpath: false })
-      lockedDataRoot = undefined
-    })
+    // 登录/恢复窗口不经过 bootstrap()，此处必须自己兜底释放，否则正常退出后
+    // 锁会残留到 stale 判定（10s），期间重新启动会拿不到锁。
+    // eslint-disable-next-line lifecycle/no-direct-quit -- preboot 阶段 Application 尚未接管 quit 事件
+    app.once('will-quit', () => releaseDataRootLock())
   }
   return locked
+}
+
+/**
+ * 数据根被另一个实例持有时不再静默 return：启动阶段没有窗口也没有日志分流，
+ * 用户只会看到“点了没反应”。
+ */
+export async function reportDataRootBusyAndQuit(): Promise<void> {
+  await app.whenReady()
+  await dialog.showMessageBox({
+    type: 'info',
+    title: '应用正在启动',
+    message: '检测到已有一个 MEACowork 实例正在运行或正在退出。',
+    detail: '如果刚切换过账号，请等待几秒后重试；否则请从 Dock 激活已打开的窗口。',
+    buttons: ['好']
+  })
+  application.quit()
 }
 
 export async function initializeLockedProfileIsolation(
@@ -103,7 +111,9 @@ export async function initializeLockedProfileIsolation(
   const context = await coordinator.initialize()
   const electron = electronPrebootApi()
   applyProfileIsolationPaths(context, electron)
-  if (!lockProfileInstance(electron)) return undefined
+  // 单实例锁已在 main.ts 于 userData 仍是默认值时取得，与账号无关。
+  // 此处若再请求，会按 profile 的 userData 生成第二把锁，反而放开多开。
+  // if (!lockProfileInstance(electron)) return undefined
   ;(await import('@logger')).loggerService.rebind(path.join(context.profileRoot, 'logs'))
   return context
 }

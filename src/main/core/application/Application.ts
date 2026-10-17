@@ -17,6 +17,7 @@ import {
 } from '@main/core/lifecycle'
 import { buildPathRegistry, type PathKey, type PathMap, shouldAutoEnsure } from '@main/core/paths/pathRegistry'
 import { isDev, isLinux, isMac, isPortable, isWin } from '@main/core/platform'
+import { releaseDataRootLock } from '@main/core/preboot/dataRootLock'
 import { profileSwitchFence, type SwitchFenceState } from '@main/core/profiles'
 import { handleGuarded } from '@main/core/security/guardedIpc'
 import { bootConfigService } from '@main/data/bootConfig'
@@ -49,6 +50,7 @@ export class Application {
   private isBootstrapped = false
   private isShuttingDown = false
   private _isQuitting = false
+  private _isRelaunching = false
   private quitPreventionHolds = new Map<string, string>()
   private ipcQuitHolds = new Map<string, QuitPreventionHold>()
 
@@ -554,6 +556,10 @@ export class Application {
       options.args = options.args || []
     }
 
+    // app.exit() 跳过 will-quit，数据根锁必须在这里显式释放，否则新进程
+    // preboot 抢不到锁会静默退出（账号切换后“重启不生效”）。
+    releaseDataRootLock()
+    this._isRelaunching = true
     app.relaunch(options)
     app.exit(0)
   }
@@ -734,6 +740,15 @@ export class Application {
   }
 
   /**
+   * Whether the current quit is a relaunch. Logout also sets isQuitting while it
+   * opens a signed-out window in the same process, so window-close guards must
+   * ask this instead.
+   */
+  public get isRelaunching(): boolean {
+    return this._isRelaunching
+  }
+
+  /**
    * Mark the app as quitting without triggering the quit sequence.
    * Used by autoUpdater.quitAndInstall() which has its own quit flow.
    */
@@ -788,6 +803,7 @@ export class Application {
   public forceExit(code: number): void {
     this._isQuitting = true
     logger.warn(`Force exiting application with code ${code}`)
+    releaseDataRootLock()
     app.exit(code)
   }
 

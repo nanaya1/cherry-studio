@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+// import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -99,49 +100,24 @@ afterEach(() => {
 })
 
 describe('McpCatalog', () => {
-  it('hides the public connector tab when no management server is configured', () => {
-    orgSessionMock.authMode = 'official-direct'
-    render(<McpCatalog />)
-
-    expect(screen.getByRole('tab', { name: 'Discover' })).toBeVisible()
-    expect(screen.queryByRole('tab', { name: 'Organization' })).not.toBeInTheDocument()
-  })
-
-  it('shows the organization connector tab in management OAuth mode', () => {
-    orgSessionMock.authMode = 'management-oauth'
-    render(<McpCatalog />)
-
-    expect(screen.getByRole('tab', { name: 'Organization' })).toBeVisible()
-  })
-
-  it('presents discovery, provider, and installed MCP views from the settings sources', async () => {
+  // 上游原契约按登录模式显示发现、公共、服务商与我的 MCP，并允许在发现页切换市场。
+  // MEA 连接器目录只保留内置服务器与我的 MCP 两个入口。
+  it('only presents built-in servers and My MCP', async () => {
     const user = userEvent.setup()
     render(<McpCatalog />)
 
-    expect(screen.getByRole('tab', { name: 'Discover' })).toBeVisible()
-    expect(screen.getByRole('tab', { name: 'Providers' })).toBeVisible()
+    expect(screen.getByRole('tab', { name: 'Built-in Servers' })).toBeVisible()
     expect(screen.getByRole('tab', { name: 'My MCP' })).toBeVisible()
-    expect(screen.getByRole('tab', { name: 'Organization' })).toBeVisible()
+    expect(screen.queryByRole('tab', { name: 'Discover' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('tab', { name: 'Organization' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('tab', { name: 'Providers' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('tab', { name: 'Marketplaces' })).not.toBeInTheDocument()
     expect(screen.getByText('builtin catalog')).toBeVisible()
 
-    await user.click(screen.getByRole('tab', { name: 'Organization' }))
-    expect(screen.getByText('organization catalog')).toBeVisible()
-    await user.click(screen.getByRole('tab', { name: 'Discover' }))
-    expect(screen.getByText('builtin catalog')).toBeVisible()
-    expect(screen.getAllByRole('tab', { name: 'Organization' })).toHaveLength(1)
-
-    await user.click(screen.getByRole('tab', { name: 'Marketplaces' }))
-    expect(screen.getByText('market catalog')).toBeVisible()
-
-    await user.click(screen.getByRole('button', { name: /Bailian/ }))
-    expect(screen.getByRole('dialog')).toBeVisible()
-    expect(screen.getByRole('heading', { name: 'Bailian' })).toHaveClass('sr-only')
-    expect(screen.getByText('provider detail bailian 1')).toBeVisible()
-    expect(screen.getByRole('button', { name: /ModelScope/ })).toBeInTheDocument()
-
-    await user.click(screen.getByRole('button', { name: 'Back' }))
-    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
-
+    await user.click(screen.getByRole('tab', { name: 'My MCP' }))
     expect(screen.getByText('installed catalog false')).toBeVisible()
+
+    await user.click(screen.getByRole('tab', { name: 'Built-in Servers' }))
+    expect(screen.getByText('builtin catalog')).toBeVisible()
   })
 })

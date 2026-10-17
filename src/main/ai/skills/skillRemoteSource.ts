@@ -283,7 +283,7 @@ async function fetchFromClawhub(
   const detailUrl = new URL(`https://clawhub.ai/api/v1/skills/${encodeURIComponent(slug)}`)
   detailUrl.searchParams.set('ownerHandle', ownerHandle)
   const detailResp = await net.fetch(detailUrl.toString(), {
-    headers: { 'User-Agent': 'CherryStudio' }
+    headers: { 'User-Agent': 'MEACowork' }
   })
 
   if (!detailResp.ok) {
@@ -316,7 +316,7 @@ async function fetchFromClawhub(
   downloadUrl.searchParams.set('slug', slug)
   downloadUrl.searchParams.set('ownerHandle', ownerHandle)
   const downloadResp = await net.fetch(downloadUrl.toString(), {
-    headers: { 'User-Agent': 'CherryStudio' }
+    headers: { 'User-Agent': 'MEACowork' }
   })
 
   if (!downloadResp.ok) {
@@ -523,7 +523,7 @@ function assertGithubTargetTree(
 
 /**
  * The single entry point for every git subprocess an install spawns: bounded, non-interactive, and
- * routed through Cherry's proxy — which lives in the main process env, not in the captured login shell.
+ * routed through MEA Cowork's proxy — which lives in the main process env, not in the captured login shell.
  */
 async function runGit(gitCommand: string, args: string[]): Promise<string> {
   const env = await getShellEnv()

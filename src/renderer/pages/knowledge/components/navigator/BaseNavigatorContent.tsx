@@ -13,6 +13,7 @@ import { UNGROUPED_SECTION_VALUE } from './types'
 
 const BaseNavigatorContent = ({
   isLoading,
+  remoteRows,
   sections,
   groups,
   groupById,
@@ -83,11 +84,33 @@ const BaseNavigatorContent = ({
   // what separates the first row from the create action above it.
   return (
     <Scrollbar className="min-h-0 flex-1 overflow-x-hidden pt-1 pb-3">
+      <div data-knowledge-local-remote-rows={remoteRows?.length ? true : undefined} className="space-y-1">
+        {groups.length === 0
+          ? remoteRows?.map((row) => (
+              <KnowledgeBaseRow
+                key={row.id}
+                base={{ id: row.id, name: row.name, groupId: null }}
+                remote
+                shared
+                groups={groups}
+                selected={row.selected}
+                onSelectBase={row.onSelect}
+                onMoveBase={(_id, groupId) => row.onMove?.(groupId)}
+                onRenameBase={() => row.onRename?.()}
+                onCreateGroup={() => row.onCreateGroup?.()}
+                onRequestUnshare={() => row.onUnshare?.()}
+                onDeleteBase={() => row.onDelete?.()}
+                onToggleSidebar={() => {}}
+                sidebarPinned={false}
+              />
+            ))
+          : null}
+      </div>
       {isLoading ? (
         <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
           {t('common.loading')}
         </div>
-      ) : sections.length === 0 || (flatSection && flatSection.items.length === 0) ? (
+      ) : (sections.length === 0 || (flatSection && flatSection.items.length === 0)) && !remoteRows?.length ? (
         // KnowledgePage normally owns the zero-base empty state; keep a defensive fallback
         // for a transient empty collection while navigator data changes.
         <EmptyState preset="no-result" title={t('common.no_results')} compact className="h-full" />
@@ -121,6 +144,7 @@ const BaseNavigatorContent = ({
               <BaseNavigatorGroupSection
                 key={groupValue}
                 section={section}
+                remoteRows={remoteRows?.filter((row) => (row.groupId ?? null) === section.groupId)}
                 group={group}
                 groupLabel={group?.name ?? getGroupLabel(section.groupId)}
                 groups={groups}

@@ -1,4 +1,4 @@
-import { app } from 'electron'
+import { app, BrowserWindow } from 'electron'
 
 import { application } from '@application'
 import { loggerService } from '@logger'
@@ -36,7 +36,18 @@ const logger = loggerService.withContext('SingleInstance')
  * See core/preboot/README.md for the preboot membership criteria.
  */
 export function requireSingleInstance(): void {
-  if (app.requestSingleInstanceLock()) return
+  if (app.requestSingleInstanceLock()) {
+    // 第二实例被拒后把已有窗口拉到前台：用户重复点击图标时得到明确反馈，
+    // 而不是“点了没反应”再点出第三个进程。
+    app.on('second-instance', () => {
+      const [window] = BrowserWindow.getAllWindows()
+      if (!window || window.isDestroyed()) return
+      if (window.isMinimized()) window.restore()
+      window.show()
+      window.focus()
+    })
+    return
+  }
 
   logger.info('Another Cherry Studio instance already holds the single-instance lock; exiting')
   application.quit()

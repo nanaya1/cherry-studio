@@ -27,7 +27,23 @@ describe('BuiltinMcpServerSeeder', () => {
     const row = await rowFor(BuiltinMcpServerNames.flomo)
     expect(row.type).toBe('streamableHttp')
     expect(row.baseUrl).toBe('https://flomoapp.com/mcp')
-    expect(row.headers).toEqual({ APP: 'Cherry Studio' })
+    expect(row.headers).toEqual({ APP: 'MEA Cowork' })
+  })
+
+  it('rebrands legacy metadata on installed builtin rows without overwriting custom headers', async () => {
+    await insert({
+      name: BuiltinMcpServerNames.flomo,
+      type: 'streamableHttp',
+      installSource: 'builtin',
+      provider: 'CherryAI',
+      headers: { APP: 'Cherry Studio', Authorization: 'Bearer mine' }
+    })
+
+    new BuiltinMcpServerSeeder().run(dbh.db)
+
+    const row = await rowFor(BuiltinMcpServerNames.flomo)
+    expect(row.provider).toBe('MEA Cowork')
+    expect(row.headers).toEqual({ APP: 'MEA Cowork', Authorization: 'Bearer mine' })
   })
 
   it('turns an installed in-memory mcp-auto-install row into the npx process it really is', async () => {

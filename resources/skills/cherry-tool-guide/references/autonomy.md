@@ -16,8 +16,8 @@ user requested the effect or it's necessary to complete an already-approved task
 
 ## Scheduling — `mcp__cherry-tools__cron`
 
-Schedules work **inside Cherry**. Never use OS `crontab`, `at`, or a background shell
-loop for user-facing schedules — Cherry owns execution, delivery, and lifecycle.
+Schedules work **inside MEA Cowork**. Never use OS `crontab`, `at`, or a background shell
+loop for user-facing schedules — MEA Cowork owns execution, delivery, and lifecycle.
 
 Actions:
 
@@ -65,7 +65,7 @@ be asked.
   none yet. The tool reports per-channel outcomes; relay them honestly.
 
 `notify` pushes a message/file *through a channel*. To merely register a produced file as
-a deliverable in the Cherry UI (no channel send), that's `report_artifacts` — a different
+a deliverable in the MEA Cowork UI (no channel send), that's `report_artifacts` — a different
 tool; see [outputs.md](outputs.md).
 
 ## Channels & self-config — `mcp__cherry-tools__config`

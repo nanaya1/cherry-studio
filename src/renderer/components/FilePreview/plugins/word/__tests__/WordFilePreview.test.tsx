@@ -375,4 +375,40 @@ describe('WordFilePreview', () => {
 
     await waitFor(() => expect(mocks.fsRead).toHaveBeenCalledTimes(2))
   })
+
+  it('renders DOCX from base64 without reading the disk', async () => {
+    const bytes = mocks.createValidDocxBytes()
+    const base64 = btoa(String.fromCharCode(...bytes))
+
+    render(<WordFilePreview fileName="report.docx" base64={base64} />)
+
+    await waitFor(() => expect(mocks.renderAsync).toHaveBeenCalledTimes(1))
+    expect(mocks.fsRead).not.toHaveBeenCalled()
+    expect(mocks.renderAsync.mock.calls[0][0]).toEqual(bytes)
+    expect(screen.getByTestId('docx-preview-content')).toBeInTheDocument()
+  })
+
+  it('rejects invalid cloud DOCX archives before rendering', async () => {
+    render(<WordFilePreview fileName="broken.docx" base64={btoa('invalid archive')} />)
+
+    await waitFor(() => expect(screen.getByText('file_preview.load_error.title')).toBeInTheDocument())
+    expect(mocks.renderAsync).not.toHaveBeenCalled()
+    expect(mocks.fsRead).not.toHaveBeenCalled()
+  })
+
+  it('reloads the decoded document when a new base64 value arrives', async () => {
+    const first = mocks.createValidDocxBytes()
+    const second = new Uint8Array(23)
+    new DataView(second.buffer).setUint32(0, 0x06054b50, true)
+    new DataView(second.buffer).setUint16(20, 1, true)
+    second[22] = 65
+    const view = render(<WordFilePreview fileName="report.docx" base64={btoa(String.fromCharCode(...first))} />)
+    await waitFor(() => expect(mocks.renderAsync).toHaveBeenCalledTimes(1))
+
+    view.rerender(<WordFilePreview fileName="report.docx" base64={btoa(String.fromCharCode(...second))} />)
+
+    await waitFor(() => expect(mocks.renderAsync).toHaveBeenCalledTimes(2))
+    expect(mocks.fsRead).not.toHaveBeenCalled()
+    expect(mocks.renderAsync.mock.calls[1][0]).toEqual(second)
+  })
 })

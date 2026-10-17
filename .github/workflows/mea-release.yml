@@ -1,0 +1,22 @@
+name: MEA Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+
+  publish:
+    needs: build
+    environment: release
+    permissions:
+      contents: write

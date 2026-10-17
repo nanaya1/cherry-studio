@@ -8,6 +8,20 @@ import type { DbType, ISeeder } from '../../types'
 import { hashObject } from '../hashObject'
 
 const legacyMcpAutoInstallArgs = ['-y', '@mcpmarket/mcp-auto-install', 'connect', '--json']
+const legacyBuiltinProvider = 'CherryAI'
+const legacyBuiltinAppHeader = 'Cherry Studio'
+const builtinProvider = 'MEA Cowork'
+
+function rebrandBuiltinMetadata(row: McpServerRow): Pick<McpServerRow, 'provider' | 'headers'> | null {
+  const providerChanged = row.provider === legacyBuiltinProvider
+  const headerChanged = row.headers?.APP === legacyBuiltinAppHeader
+  if (!providerChanged && !headerChanged) return null
+
+  return {
+    provider: providerChanged ? builtinProvider : row.provider,
+    headers: headerChanged ? { ...row.headers, APP: builtinProvider } : row.headers
+  }
+}
 
 function isLegacyMcpAutoInstall(row: McpServerRow): boolean {
   return (
@@ -54,6 +68,17 @@ export class BuiltinMcpServerSeeder implements ISeeder {
     // pointing at a transport the runtime no longer implements.
     db.transaction((tx) => {
       for (const preset of PRESET_MCP_SERVERS) {
+        const builtinRows = tx
+          .select()
+          .from(mcpServerTable)
+          .where(and(eq(mcpServerTable.name, preset.name), eq(mcpServerTable.installSource, 'builtin')))
+          .all()
+
+        for (const row of builtinRows) {
+          const branded = rebrandBuiltinMetadata(row)
+          if (branded) tx.update(mcpServerTable).set(branded).where(eq(mcpServerTable.id, row.id)).run()
+        }
+
         if (preset.type === 'inMemory' || preset.type === undefined) continue
 
         const rows = tx

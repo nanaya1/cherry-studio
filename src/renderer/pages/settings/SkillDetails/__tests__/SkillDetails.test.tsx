@@ -39,7 +39,7 @@ vi.mock('@renderer/hooks/resourceCatalog', () => ({
 }))
 vi.mock('@renderer/hooks/useSkillLauncher', () => ({ useSkillLauncher: () => mocks.launchSkill }))
 vi.mock('@renderer/ipc', () => ({ ipcApi: { request: mocks.ipcRequest } }))
-vi.mock('@renderer/components/resourceCatalog/catalog/SkillSourceBadge', () => ({
+vi.mock('@renderer/components/resourceCatalog/catalog', () => ({
   SkillSourceBadge: ({ source, sourceUrl }: { source: string; sourceUrl?: string | null }) => (
     <span data-source-url={sourceUrl ?? ''} data-testid="source-badge">
       {source}
@@ -205,6 +205,22 @@ describe('SkillDetails', () => {
     render(<SkillDetails skillId="skill-1" />)
     expect(screen.getByText('settings.skills.notFound')).toBeInTheDocument()
     expect(screen.queryByTestId('skill-file-browser')).not.toBeInTheDocument()
+  })
+
+  it('shows display metadata without changing the skill used by actions', () => {
+    const skill = createSkill({
+      name: 'cherry-tool-guide',
+      displayName: 'mea-cowork-tool-guide',
+      displayNameEn: 'mea-cowork-tool-guide'
+    })
+    mocks.query = { data: skill, error: undefined, isLoading: false }
+
+    render(<SkillDetails skillId="skill-1" />)
+
+    expect(screen.getByRole('heading', { name: 'mea-cowork-tool-guide' })).toBeInTheDocument()
+    expect(screen.queryByText('cherry-tool-guide')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'settings.skills.tryNow' }))
+    expect(mocks.launchSkill).toHaveBeenCalledExactlyOnceWith(skill)
   })
 
   it('keeps source and editability in the compact identity without repeating frontmatter tags', () => {

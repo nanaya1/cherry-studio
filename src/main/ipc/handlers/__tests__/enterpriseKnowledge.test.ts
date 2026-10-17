@@ -33,7 +33,8 @@ describe('enterpriseKnowledgeHandlers', () => {
     invitations: vi.fn(),
     accept: vi.fn(),
     decline: vi.fn(),
-    removeMember: vi.fn()
+    removeMember: vi.fn(),
+    renameSharedBase: vi.fn()
   }
 
   beforeEach(() => {
@@ -41,6 +42,19 @@ describe('enterpriseKnowledgeHandlers', () => {
     vi.mocked(application.get).mockImplementation((name: string) =>
       name === 'EnterprisePlugin' ? ({ knowledge: fakeKnowledge } as never) : (undefined as never)
     )
+  })
+
+  it('首传透传源文件选项，核对不覆盖持久模式', async () => {
+    const result = { shareId: 'orgkb:copy', completion: 'incomplete', files: [] }
+    fakeKnowledge.share.mockResolvedValue(result)
+    expect(
+      await enterpriseKnowledgeHandlers['enterprise.knowledge.share']({ baseId: 'local', uploadOriginal: false }, ctx)
+    ).toEqual(result)
+    expect(fakeKnowledge.share).toHaveBeenLastCalledWith('local', false, false)
+    expect(await enterpriseKnowledgeHandlers['enterprise.knowledge.upload_verify']({ baseId: 'local' }, ctx)).toEqual(
+      result
+    )
+    expect(fakeKnowledge.share).toHaveBeenLastCalledWith('local', true)
   })
 
   it('同步三个签名返回稳定结果并映射权限错误', async () => {
@@ -139,9 +153,9 @@ describe('enterpriseKnowledgeHandlers', () => {
 
   it('unshare delegates with local baseId and returns { ok }', async () => {
     fakeKnowledge.unshare.mockResolvedValue({ ok: true })
-    expect(
-      await enterpriseKnowledgeHandlers['enterprise.knowledge.unshare']({ baseId: 'local-uuid' }, ctx)
-    ).toEqual({ ok: true })
+    expect(await enterpriseKnowledgeHandlers['enterprise.knowledge.unshare']({ baseId: 'local-uuid' }, ctx)).toEqual({
+      ok: true
+    })
     expect(fakeKnowledge.unshare).toHaveBeenCalledWith({ baseId: 'local-uuid' })
   })
 
@@ -150,5 +164,20 @@ describe('enterpriseKnowledgeHandlers', () => {
     await expect(
       enterpriseKnowledgeHandlers['enterprise.knowledge.unshare']({ baseId: 'local-uuid' }, ctx)
     ).rejects.toMatchObject({ code: E.ORGKB_NOT_FOUND })
+  })
+
+  it('rename_shared 委托服务并返回 void', async () => {
+    fakeKnowledge.renameSharedBase.mockResolvedValue(undefined)
+    await expect(
+      enterpriseKnowledgeHandlers['enterprise.knowledge.rename_shared']({ baseId: 'local-uuid', name: '新名' }, ctx)
+    ).resolves.toBeUndefined()
+    expect(fakeKnowledge.renameSharedBase).toHaveBeenCalledWith('local-uuid', '新名')
+  })
+
+  it('rename_shared 将 OrgKnowledgeError 映射为 IpcError', async () => {
+    fakeKnowledge.renameSharedBase.mockRejectedValue(new OrgKnowledgeError(E.ORGKB_FORBIDDEN, 'owner required'))
+    await expect(
+      enterpriseKnowledgeHandlers['enterprise.knowledge.rename_shared']({ baseId: 'local-uuid', name: '新名' }, ctx)
+    ).rejects.toMatchObject({ code: E.ORGKB_FORBIDDEN })
   })
 })

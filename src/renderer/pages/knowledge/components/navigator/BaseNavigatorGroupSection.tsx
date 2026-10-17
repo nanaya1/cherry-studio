@@ -23,7 +23,8 @@ const BaseNavigatorGroupSection = ({
   onDeleteGroup,
   onDeleteBase,
   onToggleSidebar,
-  sidebarPinnedBaseIds
+  sidebarPinnedBaseIds,
+  remoteRows
 }: BaseNavigatorGroupSectionProps) => {
   const groupValue = section.groupId ?? UNGROUPED_SECTION_VALUE
 
@@ -44,6 +45,24 @@ const BaseNavigatorGroupSection = ({
         className="pt-1.5 pb-0"
         contentClassName="motion-safe:data-[state=open]:[animation-duration:180ms] motion-safe:data-[state=closed]:[animation-duration:120ms] motion-safe:[animation-timing-function:cubic-bezier(0.25,1,0.5,1)] motion-safe:data-[state=open]:[&>div]:animate-in motion-safe:data-[state=open]:[&>div]:fade-in-0 motion-safe:data-[state=open]:[&>div]:slide-in-from-top-1 motion-safe:data-[state=open]:[&>div]:delay-[16ms] motion-safe:data-[state=open]:[&>div]:duration-[120ms] motion-safe:data-[state=open]:[&>div]:ease-[cubic-bezier(0.25,1,0.5,1)] motion-safe:data-[state=closed]:[&>div]:animate-out motion-safe:data-[state=closed]:[&>div]:fade-out-0 motion-safe:data-[state=closed]:[&>div]:slide-out-to-top-1 motion-safe:data-[state=closed]:[&>div]:delay-0 motion-safe:data-[state=closed]:[&>div]:duration-[90ms] motion-safe:data-[state=closed]:[&>div]:ease-[cubic-bezier(0.25,1,0.5,1)] motion-reduce:animate-none motion-reduce:[&>div]:animate-none">
         <div className="space-y-1">
+          {remoteRows?.map((row) => (
+            <KnowledgeBaseRow
+              key={row.id}
+              base={{ id: row.id, name: row.name, groupId: row.groupId ?? null }}
+              remote
+              shared
+              groups={groups}
+              selected={row.selected}
+              onSelectBase={row.onSelect}
+              onMoveBase={(_id, groupId) => row.onMove?.(groupId)}
+              onRenameBase={() => row.onRename?.()}
+              onCreateGroup={() => row.onCreateGroup?.()}
+              onRequestUnshare={() => row.onUnshare?.()}
+              onDeleteBase={() => row.onDelete?.()}
+              onToggleSidebar={() => {}}
+              sidebarPinned={false}
+            />
+          ))}
           {section.items.map((base) => (
             <KnowledgeBaseRow
               key={base.id}

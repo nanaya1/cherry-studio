@@ -23,6 +23,21 @@ export interface FilePreviewPluginProps {
   onSelectionReference?: (reference: SelectionReference | null) => void
 }
 
+/**
+ * In-memory preview for cloud knowledge-base documents. Bytes travel as base64 so the renderer never
+ * touches disk; the host must not pass filePath, metadata, or onSelectionReference with it. Selection
+ * capture is unavailable because there is no fileStamp source.
+ */
+export type OfficeMemoryPreviewProps = {
+  filePath?: never
+  metadata?: never
+  base64: string
+  fileName: string
+  refreshKey?: number
+  onSelectionReference?: never
+  type?: FilePreviewType
+}
+
 export interface FilePreviewPlugin {
   id: string
   extensions: readonly string[]

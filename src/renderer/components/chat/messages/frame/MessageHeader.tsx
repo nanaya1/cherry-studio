@@ -5,7 +5,7 @@ import { memo, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Checkbox, Tooltip } from '@cherrystudio/ui'
-import AppLogo from '@renderer/assets/images/logo.png'
+// import AppLogo from '@renderer/assets/images/logo.png'
 import ModelAvatar from '@renderer/components/Avatar/ModelAvatar'
 import { useTheme } from '@renderer/hooks/useTheme'
 import type { Model } from '@renderer/types/model'
@@ -155,7 +155,9 @@ const MessageHeader: FC<Props> = memo(
         className={`message-header group/header relative flex gap-2.5 ${hasBodySlot ? 'mb-0 items-start' : 'mb-2 items-center'}`}>
         {isAssistantMessage ? (
           <MessageAvatar
-            avatar={AppLogo}
+            // MEA 使用统一 Bot，停用旧应用头像。
+            // avatar={AppLogo}
+            fallback={<Bot size={18} aria-hidden />}
             aria-label={username}
             className="border border-border/60 bg-background p-0.5 shadow-xs"
           />

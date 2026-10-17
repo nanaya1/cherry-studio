@@ -2,11 +2,13 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 // import { Button } from '@cherrystudio/ui'
-import { Button, ConfirmDialog } from '@cherrystudio/ui'
+// import { Button, ConfirmDialog } from '@cherrystudio/ui'
+import { Button } from '@cherrystudio/ui'
 import { ipcApi } from '@renderer/ipc'
 
 import { useOrgKnowledgeResource } from '../hooks/useOrgKnowledgeResource'
 import ShareKnowledgeDialog from './ShareKnowledgeDialog'
+import UnshareKnowledgeDialog from './UnshareKnowledgeDialog'
 
 // 活跃的上传/同步阶段与状态：期间主线程会拒绝取消分享，面板预先禁用确认以避免无谓的错误往返。
 const ACTIVE_UPLOAD_PHASES = ['counting', 'uploading', 'confirming']
@@ -18,13 +20,15 @@ export default function KnowledgeSharingPanel({
   name = '',
   localBaseId,
   onUnshared,
-  confirmUnshare = false
+  confirmUnshare = false,
+  canCreateShare = false
 }: {
   baseId: string
   name?: string
   localBaseId?: string
   onUnshared?: () => void
   confirmUnshare?: boolean
+  canCreateShare?: boolean
 }) {
   const { t } = useTranslation()
   const load = useCallback(() => ipcApi.request('enterprise.knowledge.shares', { baseId }), [baseId])
@@ -86,13 +90,14 @@ export default function KnowledgeSharingPanel({
     }
   }, [localBaseId])
   const startUnshare = useCallback(() => {
-    if (!localBaseId || busy) return
+    if (busy) return
     setUnsharing(true)
     void checkActivity()
-  }, [localBaseId, busy, checkActivity])
+  }, [busy, checkActivity])
   useEffect(() => {
     if (confirmUnshare) void checkActivity()
   }, [confirmUnshare, checkActivity])
+  /* 原直接删除入口保留。
   const unshare = async () => {
     if (!localBaseId || lock.current) return
     lock.current = true
@@ -114,6 +119,7 @@ export default function KnowledgeSharingPanel({
       }
     }
   }
+  */
   const copy = async (code: string) => {
     try {
       await navigator.clipboard.writeText(code)
@@ -128,19 +134,25 @@ export default function KnowledgeSharingPanel({
       <h2 className="font-medium">{t('knowledge.org.shares')}</h2>
       <p className="text-sm text-muted-foreground">{t('knowledge.org.copy_notice')}</p>
       <div className="flex flex-wrap gap-2">
-        <Button disabled={busy || confirming} onClick={() => setCreating(true)}>
-          {t('knowledge.org.generate_code')}
-        </Button>
+        {canCreateShare ? (
+          <Button disabled={busy || confirming} onClick={() => setCreating(true)}>
+            {t('knowledge.org.generate_code')}
+          </Button>
+        ) : null}
         <Button variant="outline" disabled={loading || busy || confirming} onClick={() => void refresh()}>
           {t('knowledge.org.refresh')}
         </Button>
-        {localBaseId ? (
-          <Button variant="outline" disabled={busy || confirming} onClick={() => startUnshare()}>
-            {t('knowledge.org.unshare')}
-          </Button>
-        ) : null}
+        {/* 原入口限制 localBaseId，纯云端 owner 由主进程实时校验权限。 */}
+        <Button variant="outline" disabled={busy || confirming} onClick={() => startUnshare()}>
+          {t('knowledge.org.unshare')}
+        </Button>
       </div>
-      {creating ? (
+      {!canCreateShare ? (
+        <p role="status" className="text-sm text-muted-foreground">
+          {t('knowledge.org.share_requires_local_completion')}
+        </p>
+      ) : null}
+      {creating && canCreateShare ? (
         <ShareKnowledgeDialog
           baseId={baseId}
           name={name}
@@ -221,6 +233,20 @@ export default function KnowledgeSharingPanel({
           </Button>
         </div>
       ) : null} */}
+      {unsharing ? (
+        <UnshareKnowledgeDialog
+          checkingActivity={checkingActivity}
+          activityBlocked={activityBlocked}
+          baseId={localBaseId ?? baseId}
+          name={name}
+          onClose={() => setUnsharing(false)}
+          onUnshared={() => {
+            setUnsharing(false)
+            onUnshared?.()
+          }}
+        />
+      ) : null}
+      {/* 原直接删除确认保留。
       <ConfirmDialog
         open={unsharing}
         onOpenChange={(open) => {
@@ -252,7 +278,7 @@ export default function KnowledgeSharingPanel({
           await unshare()
           return false
         }}
-      />
+      /> */}
     </section>
   )
 }

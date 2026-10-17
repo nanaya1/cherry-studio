@@ -19,6 +19,7 @@ import { initCrashTelemetry } from '@main/core/preboot/crashTelemetry'
 import {
   initializeLockedProfileIsolation,
   lockCurrentProfileDataRoot,
+  reportDataRootBusyAndQuit,
   resolveCurrentProfileDataRoot,
   shouldUseProfileIsolation
 } from '@main/core/preboot/profileIsolationRuntime'
@@ -39,7 +40,9 @@ let profileLaunchContext: ProfileLaunchContext | undefined
 // Resolve the configured dataRoot before either legacy or profile-aware locking.
 // The legacy startup path is retained while profile isolation is gated by BootConfig.
 resolveUserDataLocation()
-if (!profileIsolationEnabled) requireSingleInstance()
+// 单实例锁必须在任何 setPath('userData') 之前取得：Electron 的锁作用域是调用时的
+// userData，profile 隔离会把 userData 切到各账号目录，导致新旧进程各持一把锁并存。
+requireSingleInstance()
 // Privileged schemes must be declared before the app is ready, and only ONCE per
 // process — startApp() itself awaits app.whenReady(), so this cannot move in there.
 protocol.registerSchemesAsPrivileged([CHERRY_MEDIA_SCHEME_DECLARATION, MINI_APP_SCHEME_DECLARATION])
@@ -59,7 +62,7 @@ const startApp = async () => {
     const legacyUserData = app.getPath('userData')
     const dataRoot = resolveCurrentProfileDataRoot(legacyUserData)
     if (!lockCurrentProfileDataRoot(dataRoot)) {
-      application.quit()
+      await reportDataRootBusyAndQuit()
       return
     }
     const dataRootRelocationResult = await runDataRootRelocation()

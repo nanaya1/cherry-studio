@@ -1,7 +1,7 @@
 # Web research
 
 Covers `mcp__cherry-tools__web_search` and `mcp__cherry-tools__web_fetch`, plus the hard
-limits of Cherry's web built-ins.
+limits of MEA Cowork's web built-ins.
 
 Get exact argument shapes from the live tool schema — this reference gives routing,
 sequencing, and limits only.

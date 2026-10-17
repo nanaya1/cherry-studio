@@ -11,7 +11,7 @@ import { formatFileSize } from '@renderer/utils/file'
 
 import { FilePreviewLayout } from '../../FilePreviewLayout'
 import { createSelectionReference, normalizeSelectionText } from '../../selectionReference'
-import type { FilePreviewPluginProps } from '../../types'
+import type { FilePreviewPluginProps, OfficeMemoryPreviewProps } from '../../types'
 import type { ChartRenderer } from './charts/ChartRenderer'
 import type { CellRangeRect } from './gridLayout'
 import type { ChartModel, MergeRange, SheetRenderModel, WorkbookRenderModel } from './renderModel'
@@ -102,15 +102,16 @@ const buildRangeExcerpt = (sheet: SheetRenderModel, rect: CellRangeRect): string
 }
 
 /** Read-only XLSX preview with virtualized sheets, formula status, images, and lazily loaded charts. */
-export default function SpreadsheetFilePreview({
-  filePath,
-  fileName,
-  metadata,
-  refreshKey,
-  onSelectionReference
-}: FilePreviewPluginProps) {
+type SpreadsheetPreviewProps = FilePreviewPluginProps | OfficeMemoryPreviewProps
+
+export default function SpreadsheetFilePreview(props: SpreadsheetPreviewProps) {
+  const { filePath, fileName, refreshKey = 0, onSelectionReference } = props
+  const metadata = 'metadata' in props ? props.metadata : undefined
+  const base64 = 'base64' in props ? props.base64 : undefined
+  const sourceName = filePath ?? fileName
   const { t } = useTranslation()
-  const state = useXlsxWorkbook(filePath, refreshKey, metadata.size)
+  // const state = useXlsxWorkbook(filePath, refreshKey, metadata.size)
+  const state = useXlsxWorkbook(sourceName, refreshKey, metadata?.size, base64)
   const [zoom, setZoom] = useState(DEFAULT_ZOOM)
   const [activeSheetName, setActiveSheetName] = useState<string | null>(null)
   // The sheet is stored with the selection: an A1 range means nothing without the sheet it was taken from.
@@ -142,14 +143,14 @@ export default function SpreadsheetFilePreview({
   // Derived from the selection rather than emitted by its callback, so any clear reports null on its own. The
   // sheet is compared rather than assumed: a sheet switch resets the selection in an effect, one commit later.
   const selectionReference = useMemo(() => {
-    if (!selectedCell || !activeSheet || selectedCell.sheet !== activeSheet) return null
+    if (!selectedCell || !activeSheet || selectedCell.sheet !== activeSheet || !filePath || !metadata) return null
     return createSelectionReference({
       filePath,
       anchor: { format: 'xlsx', sheet: activeSheet.name, range: selectedCell.range },
       excerpt: buildRangeExcerpt(activeSheet, selectedCell.rect),
       metadata: { size: metadata.size, modifiedAt: metadata.modifiedAt }
     })
-  }, [selectedCell, activeSheet, filePath, metadata.size, metadata.modifiedAt])
+  }, [selectedCell, activeSheet, filePath, metadata?.size, metadata?.modifiedAt])
 
   // Capture arms empty so switching it on never turns a browsing selection into a pick the user never made.
   // The host's side of this (a steady callback identity) is in the FilePreview README, Selection References.
@@ -234,12 +235,20 @@ export default function SpreadsheetFilePreview({
   } else if (state.status === 'error') {
     // state.message carries raw technical detail from the worker and is logged by useXlsxWorkbook.
     content = (
-      <EmptyState
-        icon={AlertCircle}
-        title={t('file_preview.load_error.title')}
-        description={t('xlsx_preview.error.description')}
-        className="h-full"
-      />
+      <div className="flex h-full flex-col">
+        <EmptyState
+          icon={AlertCircle}
+          title={t('file_preview.load_error.title')}
+          description={t('xlsx_preview.error.description')}
+          className="min-h-0 flex-1"
+        />
+        <details className="mx-auto mb-4 w-full max-w-xl px-4 text-sm text-muted-foreground">
+          <summary className="cursor-pointer">{t('common.detail')}</summary>
+          <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-md bg-muted/50 p-3 font-mono text-xs">
+            {state.message}
+          </pre>
+        </details>
+      </div>
     )
   } else if (state.status === 'oversize') {
     content = (

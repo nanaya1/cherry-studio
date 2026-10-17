@@ -682,7 +682,8 @@ const AgentChatSessionCenter = ({
       {isEmptyConversation && (
         <div className="pointer-events-none absolute inset-0 z-10">
           <ConversationGreeting
-            avatar={activeAgent ? getAgentAvatarFromConfiguration(activeAgent.configuration) : undefined}
+            // MEA 隐藏欢迎区配置头像，与助手新会话保持一致。
+            // avatar={activeAgent ? getAgentAvatarFromConfiguration(activeAgent.configuration) : undefined}
             title={homeWelcomeText ?? ''}
           />
         </div>

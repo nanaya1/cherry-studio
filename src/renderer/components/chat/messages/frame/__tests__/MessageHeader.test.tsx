@@ -126,7 +126,8 @@ describe('MessageHeader', () => {
     expect(container.querySelector('.message-body-column')).toBeNull()
   })
 
-  it('uses the app logo for assistant messages regardless of the producing model', () => {
+  // it('uses the app logo for assistant messages regardless of the producing model', () => {
+  it('keeps assistant identity without rendering the legacy logo', () => {
     render(
       <MessageHeader
         message={createMessage('assistant', {
@@ -140,9 +141,11 @@ describe('MessageHeader', () => {
       />
     )
 
-    const logo = screen.getByRole('presentation')
-    expect(screen.getByLabelText('My Assistant')).toContainElement(logo)
-    expect(logo).toHaveAttribute('src', 'logo.png')
+    // const logo = screen.getByRole('presentation')
+    // expect(screen.getByLabelText('My Assistant')).toContainElement(logo)
+    // expect(logo).toHaveAttribute('src', 'logo.png')
+    expect(screen.getByText('My Assistant')).toBeVisible()
+    expect(screen.getByLabelText('My Assistant').querySelector('img')).toBeNull()
   })
 
   it('explains a runtime-started assistant turn with its origin', () => {
