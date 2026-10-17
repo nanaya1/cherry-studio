@@ -306,7 +306,8 @@ input {
   position: relative;
   isolation: isolate;
   display: block;
-  min-height: 100vh;
+  /* min-height: 100vh; */
+  min-height: 100dvh;
   overflow: hidden auto;
   background: var(--surface);
   color: var(--ink);
@@ -351,11 +352,15 @@ input {
   object-fit: contain;
 }
 .profile-login .form-panel {
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  min-height: 100vh;
-  padding: clamp(250px, 33.2vh, 545px) 28px 80px;
+  /* display: flex; */
+  /* align-items: flex-start; */
+  /* justify-content: center; */
+  display: grid;
+  place-items: safe center;
+  /* min-height: 100vh; */
+  min-height: 100dvh;
+  /* padding: clamp(250px, 33.2vh, 545px) 28px 80px; */
+  padding: clamp(96px, 12vh, 136px) 28px;
   background: transparent;
 }
 .profile-login .login-form {
@@ -547,10 +552,13 @@ input {
     left: 24px;
   }
   .profile-login .form-panel {
-    min-height: 100vh;
-    padding: 150px 22px 48px;
+    /* min-height: 100vh; */
+    min-height: 100dvh;
+    /* padding: 150px 22px 48px; */
+    padding: 96px 22px;
   }
   .profile-login .login-form {
+    width: 100%;
     padding: 0;
   }
   .profile-login .login-form h1 {
@@ -574,10 +582,11 @@ input {
     font-size: 14px;
   }
 }
-@media (max-height: 760px) and (min-width: 821px) {
+@media (max-height: 760px) {
   .profile-login .form-panel {
-    padding-top: 118px;
-    padding-bottom: 36px;
+    /* padding-top: 118px; */
+    /* padding-bottom: 36px; */
+    padding-block: 60px;
   }
   .profile-login .login-form h1 {
     margin-bottom: 32px;
