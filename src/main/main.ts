@@ -53,6 +53,8 @@ import { loggerService } from '@logger'
 const logger = loggerService.withContext('MainEntry')
 
 const startApp = async () => {
+  // Register Sentry before asynchronous profile work can let Electron emit ready.
+  initSentry()
   if (profileIsolationEnabled) {
     const legacyUserData = app.getPath('userData')
     const dataRoot = resolveCurrentProfileDataRoot(legacyUserData)
@@ -79,7 +81,7 @@ const startApp = async () => {
     if (profileLaunchContext.mode !== 'business') {
       configureChromiumFlags()
       initCrashTelemetry()
-      initSentry()
+      // initSentry() — initialized before asynchronous profile resolution.
       await app.whenReady()
       createProfileBootstrapWindow(profileLaunchContext)
       return
@@ -89,7 +91,7 @@ const startApp = async () => {
     // Verify it online before any business service registers; else recover.
     configureChromiumFlags()
     initCrashTelemetry()
-    initSentry()
+    // initSentry() — initialized before asynchronous profile resolution.
     await app.whenReady()
     // 在线校验与业务服务启动统一由 startBusinessRuntime 执行。
   }
@@ -98,7 +100,7 @@ const startApp = async () => {
   if (!profileIsolationEnabled) {
     configureChromiumFlags()
     initCrashTelemetry()
-    initSentry()
+    // initSentry() — initialized before asynchronous profile resolution.
   }
 
   await startBusinessRuntime(profileLaunchContext)

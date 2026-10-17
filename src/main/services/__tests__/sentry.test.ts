@@ -18,6 +18,7 @@ const { initMock, makeElectronTransportMock, sendMock, flushMock, preferenceStat
 vi.mock('@sentry/electron/main', () => {
   const stub = (name: string) => () => ({ name })
   return {
+    IPCMode: { Classic: 1, Protocol: 2, Both: 3 },
     init: initMock,
     makeElectronTransport: makeElectronTransportMock,
     dedupeIntegration: stub('Dedupe'),
@@ -152,13 +153,24 @@ describe('Sentry consent gate', () => {
 })
 
 describe('Sentry instrumentation surface', () => {
+  it('does not open the default session while profile paths are still resolving', () => {
+    const options = initOptions()
+
+    expect(options.ipcMode).toBe(1)
+    expect(options.getSessions()).toEqual([])
+    expect(options.integrations.map((integration: { name: string }) => integration.name)).not.toContain(
+      'PreloadInjection'
+    )
+  })
+
   it('uses the build release and edition rather than the packaged display name', () => {
     vi.stubGlobal('__APP_EDITION__', 'cn')
 
     const options = initOptions()
 
     expect(options.initialScope.tags).toMatchObject({ 'app.edition': 'cn', 'event.process': 'main' })
-    expect(options.release).toBe(`CherryStudio@${options.initialScope.tags['app.version']}`)
+    // expect(options.release).toBe(`CherryStudio@${options.initialScope.tags['app.version']}`)
+    expect(options.release).toBe(`MEACowork@${options.initialScope.tags['app.version']}`)
   })
 
   it('opts out of the SDK defaults so an upgrade cannot add instrumentation silently', () => {
@@ -172,7 +184,8 @@ describe('Sentry instrumentation surface', () => {
   it('keeps the renderer bridge, dedupe and path scrubbing the rest of the design relies on', () => {
     const configured = initOptions().integrations.map((integration: { name: string }) => integration.name)
 
-    expect(configured).toContain('PreloadInjection')
+    // expect(configured).toContain('PreloadInjection')
+    expect(configured).not.toContain('PreloadInjection')
     expect(configured).toContain('NormalizePaths')
     expect(configured).toContain('OnUncaughtException')
     expect(configured).toContain('Dedupe')

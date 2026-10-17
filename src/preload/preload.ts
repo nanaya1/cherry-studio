@@ -1,3 +1,4 @@
+import '@sentry/electron/preload'
 import { electronAPI } from '@electron-toolkit/preload'
 import type { OpenDialogOptions } from 'electron'
 import { contextBridge, ipcRenderer, shell, webUtils } from 'electron'

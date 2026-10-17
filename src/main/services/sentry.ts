@@ -36,7 +36,8 @@ function allowedIntegrations() {
     Sentry.gpuContextIntegration(),
     Sentry.additionalContextIntegration(),
     // Injects the renderer↔main bridge preload; without it renderer capture is inert.
-    Sentry.preloadInjectionIntegration(),
+    // Sentry.preloadInjectionIntegration(),
+    // The business preload loads the bridge after profile paths have been applied.
     // Strips usernames out of file paths — must run after context collection.
     Sentry.normalizePathsIntegration()
   ]
@@ -60,6 +61,9 @@ export function initSentry(): void {
 
   Sentry.init({
     dsn: SENTRY_DSN,
+    // Protocol IPC and automatic preload injection can open a session before profile resolution.
+    ipcMode: Sentry.IPCMode.Classic,
+    getSessions: () => [],
     release: buildContext.release,
     initialScope: { tags: { ...buildContext.tags, 'event.process': 'main' } },
     maxBreadcrumbs: 0,
