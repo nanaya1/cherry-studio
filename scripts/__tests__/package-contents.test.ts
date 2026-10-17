@@ -11,7 +11,11 @@ const projectRoot = path.resolve(import.meta.dirname, '../..')
 const require = createRequire(import.meta.url)
 const builderRequire = createRequire(require.resolve('electron-builder'))
 const { FileMatcher } = builderRequire('app-builder-lib/out/fileMatcher')
-const config = parse(readFileSync(path.join(projectRoot, 'electron-builder.yml'), 'utf8')) as { files: string[] }
+const config = parse(readFileSync(path.join(projectRoot, 'electron-builder.yml'), 'utf8')) as {
+  files: string[]
+  npmRebuild: boolean
+  buildDependenciesFromSource: boolean
+}
 const fileStat = statSync(path.join(projectRoot, 'package.json'))
 
 function includesFile(filename: string, patterns = config.files): boolean {
@@ -22,6 +26,11 @@ function includesFile(filename: string, patterns = config.files): boolean {
 }
 
 describe('packaged dependency contents', () => {
+  it('preserves native prebuilds and delegates ABI-sensitive rebuilds to beforePack', () => {
+    expect(config.npmRebuild).toBe(false)
+    expect(config.buildDependenciesFromSource).toBe(false)
+  })
+
   it.each([
     ['darwin', 'arm64', 'darwin-arm64'],
     ['darwin', 'x64', 'darwin-x64'],
