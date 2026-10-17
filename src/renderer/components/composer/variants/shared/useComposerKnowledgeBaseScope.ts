@@ -47,7 +47,8 @@ export function useComposerKnowledgeBaseScope({
 }: UseComposerKnowledgeBaseScopeParams): UseComposerKnowledgeBaseScopeResult {
   const { catalog } = useOrgKnowledge()
   const allKnowledgeBases = useMemo(() => {
-    const orgBases = new Map([...catalog.public, ...catalog.shared].map((base) => [base.id, base]))
+    // const orgBases = new Map([...catalog.public, ...catalog.shared].map((base) => [base.id, base]))
+    const orgBases = new Map([...catalog.public, ...catalog.shared, ...catalog.owned].map((base) => [base.id, base]))
     return [
       ...suppliedKnowledgeBases.filter((base) => !isOrgId(base.id)),
       ...[...orgBases.values()].map(projectOrgKnowledgeBase)

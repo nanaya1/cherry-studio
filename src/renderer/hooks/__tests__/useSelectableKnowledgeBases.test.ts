@@ -93,16 +93,25 @@ describe('useSelectableKnowledgeBases', () => {
 })
 
 describe('mergeSelectableKnowledgeBases', () => {
-  it('合并公共和分享目录并去重，不把 owned 自动当作分享给我', () => {
+  // it('合并公共和分享目录并去重，不把 owned 自动当作分享给我', () => {
+  it('合并公共、分享和本人云端库，并按云端 id 去重', () => {
     const publicBase = { id: 'orgkb:cHVibGlj', name: '公共', description: null, documentCount: 4 }
     const sharedBase = { ...publicBase, id: 'orgkb:c2hhcmVk', name: '分享' }
     const catalog = {
       public: [publicBase],
       shared: [publicBase, sharedBase],
-      owned: [{ ...publicBase, id: 'orgkb:b3duZWQ' }]
+      // owned: [{ ...publicBase, id: 'orgkb:b3duZWQ' }]
+      owned: [sharedBase, { ...publicBase, id: 'orgkb:b3duZWQ', name: '本人云端库' }]
     }
     const merged = mergeSelectableKnowledgeBases([localBase], [remoteBase], catalog)
-    expect(merged.map((base) => base.id)).toEqual([localBase.id, remoteBase.id, publicBase.id, sharedBase.id])
+    // expect(merged.map((base) => base.id)).toEqual([localBase.id, remoteBase.id, publicBase.id, sharedBase.id])
+    expect(merged.map((base) => base.id)).toEqual([
+      localBase.id,
+      remoteBase.id,
+      publicBase.id,
+      sharedBase.id,
+      'orgkb:b3duZWQ'
+    ])
     expect(merged[2]).toMatchObject({ name: '公共', itemCount: 4, documentCount: 4, status: 'completed' })
   })
 

@@ -71,8 +71,11 @@ export function mergeSelectableKnowledgeBases(
   catalog?: OrgKnowledgeCatalog
 ): KnowledgeBaseListItem[] {
   // return [...localBases, ...remoteBases.map(projectRemoteKnowledgeBase)]
-  // [enterprise] owned 仅用于管理，不自动进入分享给我的可选目录。
-  const orgBases = new Map([...(catalog?.public ?? []), ...(catalog?.shared ?? [])].map((base) => [base.id, base]))
+  // const orgBases = new Map([...(catalog?.public ?? []), ...(catalog?.shared ?? [])].map((base) => [base.id, base]))
+  // [enterprise] 引用目录包含本人分享的云端库，跨分类按云端 id 去重。
+  const orgBases = new Map(
+    [...(catalog?.public ?? []), ...(catalog?.shared ?? []), ...(catalog?.owned ?? [])].map((base) => [base.id, base])
+  )
   return [
     ...localBases,
     ...remoteBases.map(projectRemoteKnowledgeBase),

@@ -1,17 +1,18 @@
 import { act, renderHook } from '@testing-library/react'
 import { useState } from 'react'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import type { OrgKnowledgeCatalog } from '@shared/data/types/enterpriseKnowledge'
 import type { KnowledgeBase } from '@shared/data/types/knowledge'
 
 import { useComposerKnowledgeBaseScope } from '../useComposerKnowledgeBaseScope'
 
 const org = vi.hoisted(() => ({
   catalog: {
-    public: [] as { id: string; name: string; description: null; documentCount: number }[],
+    public: [],
     shared: [],
     owned: []
-  },
+  } as OrgKnowledgeCatalog,
   loading: false
 }))
 vi.mock('@renderer/hooks/useOrgKnowledge', () => ({ useOrgKnowledge: () => org }))
@@ -45,6 +46,36 @@ function useScopeHarness(props: HarnessProps) {
 const SCOPE_KEY = 'topic-1:agent-1'
 
 describe('useComposerKnowledgeBaseScope', () => {
+  beforeEach(() => {
+    org.catalog = { public: [], shared: [], owned: [] }
+    org.loading = false
+  })
+
+  it('支持本人云端库标记和选择恢复，并保留配置范围与账号切换清理', () => {
+    const owned = { id: 'orgkb:b3duZWQ', name: '本人云端库', description: null, documentCount: 2 }
+    const excluded = { ...owned, id: 'orgkb:b3RoZXI', name: '未配置云端库' }
+    org.catalog = { public: [], shared: [], owned: [owned, excluded] }
+    const props = {
+      configuredKnowledgeBaseIds: [owned.id],
+      allKnowledgeBases: [],
+      isKnowledgeBasesLoading: false,
+      scopeKey: SCOPE_KEY
+    }
+    const { result, rerender } = renderHook(useScopeHarness, { initialProps: props })
+
+    expect(result.current.selectableKnowledgeBases.map((base) => base.id)).toEqual([owned.id])
+    expect(result.current.resolveKnowledgeBaseMarker(owned.id)).toMatchObject({ kind: 'knowledge' })
+    expect(result.current.resolveKnowledgeBaseMarker(owned.name)).toMatchObject({ kind: 'knowledge' })
+    expect(result.current.resolveKnowledgeBaseMarker(excluded.id)).toBeNull()
+    act(() => result.current.restoreKnowledgeBaseSelection([owned.id, excluded.id]))
+    expect(result.current.selectedKnowledgeBasesInScope.map((base) => base.id)).toEqual([owned.id])
+
+    org.catalog = { public: [], shared: [], owned: [] }
+    rerender(props)
+    expect(result.current.selectedKnowledgeBases).toEqual([])
+    expect(result.current.resolveKnowledgeBaseMarker(owned.id)).toBeNull()
+  })
+
   it('解析组织库标记，并在账号目录清空时立即移除旧选择', () => {
     const base = { id: 'orgkb:b25l', name: '组织库', description: null, documentCount: 2 }
     org.catalog = { public: [base], shared: [], owned: [] }
