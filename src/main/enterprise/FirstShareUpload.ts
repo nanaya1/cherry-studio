@@ -8,9 +8,22 @@ export const firstShareStateSchema = z.object({
   name: z.string(),
   creation: z.enum(['intent', 'unknown', 'created']),
   shareId: z.string().nullable(),
+  folders: z
+    .array(
+      z.object({
+        itemId: z.string(),
+        fileName: z.string(),
+        parentItemId: z.string().nullable(),
+        folderId: z.string().nullable(),
+        phase: z.enum(['pending', 'intent', 'unknown', 'failure', 'success']),
+        error: z.string().nullable()
+      })
+    )
+    .optional(),
   files: z.array(
     z.object({
       itemId: z.string(),
+      parentItemId: z.string().nullable().optional(),
       fileName: z.string(),
       size: z.number(),
       hash: z.string(),
@@ -22,7 +35,11 @@ export const firstShareStateSchema = z.object({
   )
 })
 export type FirstShareState = z.infer<typeof firstShareStateSchema>
+export type FirstShareFolder = { itemId: string; fileName: string; parentItemId: string | null }
+export type FirstSharePlan = { files: FirstShareEntry[]; folders: FirstShareFolder[] }
 export type FirstShareEntry = {
+  parentItemId?: string | null
+  parentId?: string | null
   itemId: string
   fileName: string
   path: string
@@ -43,6 +60,12 @@ export type FirstShareProgress = {
 type Store = { get(key: string): FirstShareState | undefined; set(key: string, state: FirstShareState): void }
 type Client = {
   createShareSpace(name: string): Promise<{ share_id: string }>
+  createShareFolder(
+    shareId: string,
+    folder: FirstShareFolder,
+    parentId: string | null
+  ): Promise<{ folder_id: string; name: string; space_id: string; parent_id?: string | null }>
+  verifyFolder(shareId: string, folderId: string, folder: FirstShareFolder, parentId: string | null): Promise<void>
   uploadShareStream(
     shareId: string,
     entry: FirstShareEntry,
@@ -61,7 +84,8 @@ export class FirstShareUpload {
   async run(
     key: string,
     name: string,
-    plan: () => Promise<FirstShareEntry[]>,
+    // plan: () => Promise<FirstShareEntry[]>,
+    plan: () => Promise<FirstShareEntry[] | FirstSharePlan>,
     report: (state: FirstShareProgress) => void,
     active: () => void,
     verifyOnly = false
@@ -76,13 +100,37 @@ export class FirstShareUpload {
       currentFile: null,
       error: null
     })
-    const entries = (await plan()).sort((a, b) => a.itemId.localeCompare(b.itemId))
+    // const entries = (await plan()).sort((a, b) => a.itemId.localeCompare(b.itemId))
+    const planned = await plan()
+    const entries = (Array.isArray(planned) ? planned : planned.files).sort((a, b) => a.itemId.localeCompare(b.itemId))
+    const folders = Array.isArray(planned) ? [] : [...planned.folders].sort((a, b) => a.itemId.localeCompare(b.itemId))
+    const ordered: FirstShareFolder[] = []
+    const visiting = new Set<string>()
+    const visited = new Set<string>()
+    const byId = new Map(folders.map((folder) => [folder.itemId, folder]))
+    const visit = (folder: FirstShareFolder) => {
+      if (visited.has(folder.itemId)) return
+      if (visiting.has(folder.itemId)) throw new Error('本地目录存在循环')
+      visiting.add(folder.itemId)
+      if (folder.parentItemId) {
+        const parent = byId.get(folder.parentItemId)
+        if (!parent) throw new Error('本地父目录缺失')
+        visit(parent)
+      }
+      visiting.delete(folder.itemId)
+      visited.add(folder.itemId)
+      ordered.push(folder)
+    }
+    folders.forEach(visit)
+    for (const entry of entries)
+      if (entry.parentItemId && !byId.has(entry.parentItemId)) throw new Error('文件父目录缺失')
     active()
     const totalBytes = entries.reduce((sum, entry) => sum + entry.size, 0)
     // MEA:enterprise-knowledge-page 暂不设置客户端总容量上限，旧检查保留供回溯。
     // if (totalBytes >= 2 ** 31) throw new Error('知识库原文件总大小必须严格小于 2 GiB')
     // if (totalBytes >= 20 * 1024 * 1024) throw new Error('知识库原文件总大小必须严格小于 20 MiB')
-    if (!entries.length) throw new Error('该知识库没有可分享文件')
+    // if (!entries.length) throw new Error('该知识库没有可分享文件')
+    if (!entries.length && !folders.length) throw new Error('该知识库没有可分享文件')
     let state = this.store.get(key)
     const persist = () => this.store.set(key, state!)
     if (!state && verifyOnly) throw new Error('没有可核对的上传任务')
@@ -91,8 +139,10 @@ export class FirstShareUpload {
         name,
         creation: 'intent',
         shareId: null,
+        folders: folders.map((folder) => ({ ...folder, folderId: null, phase: 'pending', error: null })),
         files: entries.map((entry) => ({
           itemId: entry.itemId,
+          parentItemId: entry.parentItemId ?? null,
           fileName: entry.fileName,
           size: entry.size,
           hash: entry.hash,
@@ -144,6 +194,14 @@ export class FirstShareUpload {
       return this.result(state)
     }
     if (
+      (state.folders ?? []).length !== folders.length ||
+      (state.folders ?? []).some(
+        (folder, index) =>
+          folder.itemId !== folders[index]?.itemId ||
+          folder.fileName !== folders[index]?.fileName ||
+          folder.parentItemId !== folders[index]?.parentItemId
+      ) ||
+      state.files.some((file, index) => (file.parentItemId ?? null) !== (entries[index]?.parentItemId ?? null)) ||
       state.files.length !== entries.length ||
       state.files.some(
         (file, index) =>
@@ -155,9 +213,70 @@ export class FirstShareUpload {
       pause('本地文件已变化，请恢复原文件后核对，或联系管理员核查。')
       return this.result(state, false)
     }
+    // MEA:enterprise-knowledge-page 父目录先建并核对；未知创建结果禁止按同名认领或重放。
+    const remoteFolders = new Map<string, string>()
+    for (const folder of ordered) {
+      active()
+      const saved = state.folders!.find((value) => value.itemId === folder.itemId)!
+      const parentId = folder.parentItemId ? remoteFolders.get(folder.parentItemId)! : null
+      progress.currentFile = folder.fileName
+      try {
+        if (!saved.folderId) {
+          // 旧客户端把明确未匹配路由的404存为unknown，可在保留空间记录下重试。
+          if (saved.phase === 'unknown' && saved.error === '接口不存在') saved.phase = 'failure'
+          if (saved.phase === 'intent' || saved.phase === 'unknown')
+            throw new Error('目录创建结果未知且没有可信ID，禁止自动重建，请联系管理员核查。')
+          if (verifyOnly) {
+            pause('目录尚未上传，请继续上传。')
+            return this.result(state, false)
+          }
+          saved.phase = 'intent'
+          saved.error = null
+          persist()
+          active()
+          progress.phase = 'uploading'
+          report({ ...progress })
+          const created = await this.client.createShareFolder(state.shareId, folder, parentId)
+          if (
+            created.space_id !== state.shareId ||
+            created.name !== folder.fileName.trim() ||
+            (created.parent_id ?? null) !== parentId ||
+            !created.folder_id
+          )
+            throw new Error('目录创建响应未确认')
+          saved.folderId = created.folder_id
+          persist()
+          active()
+        }
+        progress.phase = 'confirming'
+        report({ ...progress })
+        await this.client.verifyFolder(state.shareId, saved.folderId, folder, parentId)
+        active()
+        saved.phase = 'success'
+        saved.error = null
+        persist()
+        remoteFolders.set(folder.itemId, saved.folderId)
+      } catch (error) {
+        saved.phase =
+          // 原明确失败条件：!saved.folderId && error instanceof OrgApiHttpError && [401, 403, 422].includes(error.status)
+          !saved.folderId &&
+          error instanceof OrgApiHttpError &&
+          ([401, 403, 422].includes(error.status) || (error.status === 404 && error.message === '接口不存在'))
+            ? 'failure'
+            : 'unknown'
+        saved.error = error instanceof Error ? error.message : String(error)
+        persist()
+        pause(saved.error)
+        return this.result(state, false)
+      }
+    }
     for (const [index, file] of state.files.entries()) {
       active()
-      const entry = entries[index]
+      // const entry = entries[index]
+      const entry = {
+        ...entries[index],
+        parentId: entries[index].parentItemId ? remoteFolders.get(entries[index].parentItemId)! : null
+      }
       progress.currentFile = file.fileName
       try {
         if (file.fileId) {
@@ -231,7 +350,15 @@ export class FirstShareUpload {
   private result(state: FirstShareState, allowComplete = true): OrgKnowledgeShareResult {
     return {
       shareId: state.shareId ? encodeOrgId(state.shareId) : '',
-      completion: allowComplete && state.files.every((file) => file.phase === 'success') ? 'completed' : 'incomplete',
+      // completion: allowComplete && state.files.every((file) => file.phase === 'success') ? 'completed' : 'incomplete',
+      completion:
+        allowComplete &&
+        state.creation === 'created' &&
+        Boolean(state.shareId) &&
+        (state.folders ?? []).every((folder) => folder.phase === 'success') &&
+        state.files.every((file) => file.phase === 'success')
+          ? 'completed'
+          : 'incomplete',
       files: state.files.map((file) => ({
         fileName: file.fileName,
         status:

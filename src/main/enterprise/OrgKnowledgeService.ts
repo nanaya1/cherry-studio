@@ -41,7 +41,13 @@ import type { KnowledgeItemChunk } from '@shared/data/types/knowledge'
 import { enterpriseKnowledgeErrorCodes as E } from '@shared/ipc/errors/enterpriseKnowledge'
 import type { AbsoluteFilePath } from '@shared/types/file'
 
-import { FirstShareUpload, type FirstShareEntry, type FirstShareProgress } from './FirstShareUpload'
+// import { FirstShareUpload, type FirstShareEntry, type FirstShareProgress } from './FirstShareUpload'
+import {
+  FirstShareUpload,
+  type FirstShareEntry,
+  type FirstShareProgress,
+  type FirstSharePlan
+} from './FirstShareUpload'
 import { OrgApiHttpError } from './OrgApiClient'
 import type { OrgAuthManager } from './OrgAuthManager'
 import { OrgKnowledgeClient } from './OrgKnowledgeClient'
@@ -1084,13 +1090,20 @@ export class OrgKnowledgeService {
     const saved = orgStateStore.getFirstShareUpload(key)
     if (!saved) return null
     return {
-      phase: saved.files.every((file) => file.phase === 'success') ? 'completed' : 'paused',
+      // phase: saved.files.every((file) => file.phase === 'success') ? 'completed' : 'paused',
+      phase:
+        saved.creation === 'created' &&
+        (saved.folders ?? []).every((folder) => folder.phase === 'success') &&
+        saved.files.every((file) => file.phase === 'success')
+          ? 'completed'
+          : 'paused',
       totalBytes: saved.files.reduce((sum, file) => sum + file.size, 0),
       uploadedBytes: saved.files.reduce((sum, file) => sum + (file.phase === 'success' ? file.size : 0), 0),
       completedFiles: saved.files.filter((file) => file.phase === 'success').length,
       totalFiles: saved.files.length,
       currentFile: null,
       error:
+        saved.folders?.find((folder) => folder.error)?.error ??
         saved.files.find((file) => file.error)?.error ??
         (saved.creation !== 'created' ? '创建云端库结果未知，请联系管理员核查' : null)
     }
@@ -1198,6 +1211,18 @@ export class OrgKnowledgeService {
       },
       {
         createShareSpace: (name) => this.client.createShareSpace(name),
+        createShareFolder: (shareId, folder, parentId) => this.client.createShareFolder(shareId, folder, parentId),
+        verifyFolder: async (shareId, folderId, folder, parentId) => {
+          const remote = await this.checked(() => this.client.getFile(folderId), lease)
+          if (
+            remote.id !== folderId ||
+            remote.space_id !== shareId ||
+            !remote.is_dir ||
+            remote.name !== folder.fileName.trim() ||
+            remote.parent_id !== parentId
+          )
+            throw new Error('远端目录名称或归属尚未确认')
+        },
         uploadShareStream: (shareId, entry, report) => this.client.uploadShareStream(shareId, entry, report),
         verify: (shareId, fileId, entry) => this.verifyFirstShareFile(shareId, fileId, entry, lease)
       }
@@ -1276,7 +1301,8 @@ export class OrgKnowledgeService {
     ks: ReturnType<typeof application.get<'KnowledgeService'>>,
     baseId: string,
     active: () => void
-  ): Promise<FirstShareEntry[]> {
+    // ): Promise<FirstShareEntry[]> {
+  ): Promise<FirstSharePlan> {
     const roots = ks.listRootItems(baseId)
     const descendants = knowledgeItemService.getSubtreeItems(
       baseId,
@@ -1343,6 +1369,7 @@ export class OrgKnowledgeService {
       result.push({
         itemId: item.id,
         fileName: basename(name),
+        parentItemId: item.groupId ?? null,
         path,
         size,
         hash: hash.digest('hex'),
@@ -1350,7 +1377,16 @@ export class OrgKnowledgeService {
         chunks: body
       })
     }
-    return result
+    // return result
+    const folders = items
+      .filter((item) => item.type === 'directory')
+      .map((item) => {
+        const data = item.data as { relativePath?: string; source?: string }
+        const name = data?.relativePath || data?.source
+        if (!name) throw new Error(`目录 ${item.id} 缺少原始名称`)
+        return { itemId: item.id, fileName: basename(name), parentItemId: item.groupId ?? null }
+      })
+    return { files: result, folders }
   }
 
   private async verifyFirstShareFile(
@@ -1364,6 +1400,7 @@ export class OrgKnowledgeService {
       file.id !== fileId ||
       file.space_id !== shareId ||
       file.is_dir ||
+      (entry.parentId !== undefined && (entry.parentId ? file.parent_id !== entry.parentId : file.parent_id != null)) ||
       file.file_hash !== entry.hash ||
       file.name !== entry.fileName
     )

@@ -8,8 +8,22 @@ policy:
   require_tests: true
   preserve_original_code_by_comment: true
 customizations:
+  - id: remote-knowledge-upgrade-repair
+    title: 旧发布线升级补齐远程知识库表
+    owner: main
+    behavior: 旧库迁移时间戳越过0031时，追加迁移幂等补建助手绑定、智能体绑定及远程知识服务表；保留已有业务数据与已存在的绑定，不改写历史迁移记录。
+    markers:
+      - MEA:remote-knowledge-upgrade-repair
+    touchpoints:
+      - migrations/sqlite-drizzle/0034_remote_knowledge_upgrade_repair.sql
+      - migrations/sqlite-drizzle/meta/_journal.json
+    tests:
+      - src/main/data/db/__tests__/applyMigrations.test.ts
   - id: enterprise-knowledge-page
-    title: 企业知识库访问、原文预览、本地分享、列表菜单取消分享与手动同步
+    # title: 企业知识库访问、原文预览、本地分享、列表菜单取消分享与手动同步
+    title: 企业知识库访问、原文预览、本地分享保留多层目录、列表菜单取消分享与手动同步
+    # 首次分享按groupId创建父子目录并传parent_id，含已导入空目录；目录写前intent及可信ID持久化，未知结果禁止重建。
+    # 核对远端名称/空间/父目录/is_dir后才完成；历史已完成平铺副本不自动迁移。回归覆盖FirstShareUpload和OrgKnowledgeFirstShare。
     owner: main
     behavior: 文档标识经显式文件映射或文件元信息校验后用于预览；主进程鉴权限量读取，渲染进程以纯文本、图片或沙箱 PDF 展示。首次分享递归stat原文件总量（含子目录），逐文件流式上传；2026-10-17最新约定暂不设置客户端总容量上限，取代此前2GiB及临时20MiB限制，OrgKnowledgeService.buildFirstSharePlan及FirstShareUpload.run两处旧检查和抛错均保留为注释，服务端仍可限制容量且错误处理保持不变；客户端原子互斥且同库复用，列表可重开字节进度详情。创建及文件请求前持久化intent，响应归属和分块数校验后保存fileId并核对哈希和完整分块，未知结果暂停且不得盲目重传或重建库；Cookie流式请求不手设Content-Length，传输结束关闭源流；上传连续5分钟无字节进展或服务器响应时中止并清理源流，创建库和远端核对请求30秒超时，未知结果不重放且finally释放全局忙碌槽；全部确认前禁止分享码和邀请。分享码与人员邀请弹窗重开时隐藏历史completed进度、上传说明及复用文件成功结果，本会话新上传或未完成恢复仍展示进度与完成反馈，不清理持久化记录。后续同步保持原manifest协议。
     markers:

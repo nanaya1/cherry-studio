@@ -191,18 +191,30 @@ export class OrgApiClient {
   // MEA:enterprise-knowledge-page 消费一次的流不经过401重放，文件数据始终受背压约束。
   async requestFileMultipart<T>(
     path: string,
-    file: { path: string; fileName: string; size: number; chunks: unknown[]; hash?: string },
+    // file: { path: string; fileName: string; size: number; chunks: unknown[]; hash?: string },
+    file: { path: string; fileName: string; size: number; chunks: unknown[]; hash?: string; parentId?: string | null },
     progress: (bytes: number) => void
   ): Promise<T> {
     const session = await this.getValidSession()
     if (!session) throw new Error('未登录')
     const boundary = `mea-${randomUUID()}`
     const name = file.fileName.replace(/[\r\n"\\]/g, '_')
+    // 临时诊断上传表单字段大小，排查服务端multipart限制。
+    logger.info('knowledge upload chunks', {
+      fileName: file.fileName,
+      chunkCount: file.chunks.length,
+      chunksBytes: Buffer.byteLength(JSON.stringify(file.chunks), 'utf8'),
+      chunks: file.chunks
+    })
     const prefix = Buffer.from(
       `--${boundary}\r\nContent-Disposition: form-data; name="file_name"\r\n\r\n${file.fileName}\r\n--${boundary}\r\nContent-Disposition: form-data; name="chunks"\r\n\r\n${JSON.stringify(file.chunks)}\r\n--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${name}"\r\nContent-Type: application/octet-stream\r\n\r\n`
     )
     const suffix = Buffer.from(`\r\n--${boundary}--\r\n`)
+    const parentField = file.parentId
+      ? Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="parent_id"\r\n\r\n${file.parentId}\r\n`)
+      : Buffer.alloc(0)
     async function* body() {
+      yield parentField
       yield prefix
       let bytes = 0
       const fingerprint = (await import('node:crypto')).createHash('sha256')
@@ -221,6 +233,26 @@ export class OrgApiClient {
     }
     const target = new URL(`${getOrgApiBaseUrl()}${path}`)
     target.searchParams.set('scope', 'client')
+    // 原对象输出：logger.info('knowledge upload request parameters', { ... })
+    logger.info(
+      'knowledge upload request parameters\n' +
+        JSON.stringify(
+          {
+            method: 'POST',
+            url: target.toString(),
+            contentType: `multipart/form-data; boundary=${boundary}`,
+            contentLength: parentField.length + prefix.length + file.size + suffix.length,
+            parameters: {
+              file_name: file.fileName,
+              ...(file.parentId ? { parent_id: file.parentId } : {}),
+              chunks: JSON.stringify(file.chunks),
+              file: { path: file.path, filename: name, size: file.size, contentType: 'application/octet-stream' }
+            }
+          },
+          null,
+          2
+        )
+    )
     const source = Readable.from(body())
     const controller = new AbortController()
     // MEA:enterprise-knowledge-page 持续上传可超过5分钟；仅无字节进展或响应时中止。
@@ -238,7 +270,8 @@ export class OrgApiClient {
       body: Readable.toWeb(source) as ReadableStream<Uint8Array>,
       headers: {
         'content-type': `multipart/form-data; boundary=${boundary}`,
-        'content-length': String(prefix.length + file.size + suffix.length)
+        // 'content-length': String(prefix.length + file.size + suffix.length)
+        'content-length': String(parentField.length + prefix.length + file.size + suffix.length)
       }
     }
     /* 原请求路径保留；下方统一清理提前响应或断连后仍在读取的流。

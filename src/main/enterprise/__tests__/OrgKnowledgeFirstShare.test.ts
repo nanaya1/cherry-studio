@@ -188,19 +188,74 @@ it.each([20 * 1024 * 1024 - 1, 20 * 1024 * 1024, 20 * 1024 * 1024 + 1])(
     const ks = application.get('KnowledgeService')
     vi.spyOn(ks, 'listRootItems').mockReturnValue([
       { id: 'i', type: 'file', status: 'completed', data: { relativePath: '原文.txt' } },
-      { id: 'dir', type: 'directory', status: 'completed' }
+      // { id: 'dir', type: 'directory', status: 'completed' }
+      { id: 'dir', type: 'directory', status: 'completed', data: { relativePath: '资料' } }
     ] as never)
     vi.spyOn(knowledgeItemService, 'getSubtreeItems').mockReturnValue([
-      { id: 'nested', type: 'directory', status: 'completed' },
-      { id: 'leaf', type: 'file', status: 'completed', data: { relativePath: '子目录/原文.txt' } }
+      // { id: 'nested', type: 'directory', status: 'completed' },
+      // { id: 'leaf', type: 'file', status: 'completed', data: { relativePath: '子目录/原文.txt' } }
+      { id: 'nested', groupId: 'dir', type: 'directory', status: 'completed', data: { relativePath: '资料/子目录' } },
+      {
+        id: 'leaf',
+        groupId: 'nested',
+        type: 'file',
+        status: 'completed',
+        data: { relativePath: '资料/子目录/原文.txt' }
+      }
     ] as never)
     vi.spyOn(ks, 'getFilePath').mockImplementation((id) => (id === 'leaf' ? leaf : file) as never)
     vi.spyOn(service as any, 'verifyFirstShareFile').mockResolvedValue(undefined)
+    const request = api.request.getMockImplementation()!
+    const folders = new Map<string, any>()
+    api.request.mockImplementation(async (path: string, options?: any) => {
+      if (path.endsWith('/folders')) {
+        const data = JSON.parse(options.body)
+        const id = `folder-${folders.size}`
+        folders.set(id, { id, space_id: 'space', is_dir: true, ...data })
+        return { folder_id: id, space_id: 'space', ...data }
+      }
+      return folders.get(path.split('/').at(-1)!) ?? request(path)
+    })
     expect((await service.share('A')).completion).toBe('completed')
+    expect([...folders.values()].map((folder) => [folder.name, folder.parent_id])).toEqual([
+      ['资料', null],
+      ['子目录', 'folder-0']
+    ])
+    expect(api.requestFileMultipart.mock.calls.find(([, value]) => value.itemId === 'leaf')?.[1].parentId).toBe(
+      'folder-1'
+    )
     expect(await service.uploadStatus('A')).toMatchObject({ totalBytes: total, completedFiles: 2 })
     expect(api.requestFileMultipart).toHaveBeenCalledTimes(2)
   }
 )
+it.each(['parent', 'space', 'type'])('远端目录%s异常时暂停且不上传文件，重启状态不误判完成', async (mismatch) => {
+  const ks = application.get('KnowledgeService')
+  vi.spyOn(ks, 'listRootItems').mockReturnValue([
+    { id: 'dir', type: 'directory', status: 'completed', data: { relativePath: '资料' } }
+  ] as never)
+  const request = api.request.getMockImplementation()!
+  api.request.mockImplementation(async (path: string) => {
+    if (path.endsWith('/folders')) return { folder_id: 'folder', space_id: 'space', name: '资料', parent_id: null }
+    if (path.endsWith('/files/folder'))
+      return {
+        id: 'folder',
+        space_id: mismatch === 'space' ? 'other' : 'space',
+        name: '资料',
+        parent_id: mismatch === 'parent' ? 'other' : null,
+        is_dir: mismatch !== 'type'
+      }
+    return request(path)
+  })
+  expect((await service.share('A')).completion).toBe('incomplete')
+  expect(api.requestFileMultipart).not.toHaveBeenCalled()
+  service.dispose()
+  service = new OrgKnowledgeService({
+    apiClient: api,
+    acquireLease: () => ({ issuerId: 's', userId: 'u', groupId: 'g', generation: 1 }),
+    assertLease: () => {}
+  } as never)
+  expect(await service.uploadStatus('A')).toMatchObject({ phase: 'paused', error: '远端目录名称或归属尚未确认' })
+})
 it('重开核对成功且未变化的文件，不重复上传', async () => {
   expect((await service.share('A')).completion).toBe('completed')
   expect((await service.share('A')).completion).toBe('completed')

@@ -8,6 +8,35 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { OrgApiClient } from '../OrgApiClient'
 let root: string | undefined
 
+it.each(['bearer', 'cookie'])('%s目录文件multipart可解析parent_id且长度准确', async (mode) => {
+  root = await mkdtemp(join(tmpdir(), 'multipart-'))
+  const path = join(root, 'file')
+  await writeFile(path, 'abc')
+  const fetcher = vi.fn(async (_url: unknown, init: RequestInit) => {
+    const bytes = Buffer.from(await new Response(init.body as ReadableStream).arrayBuffer())
+    if (mode === 'bearer') expect(bytes.length).toBe(Number((init.headers as any)['content-length']))
+    const form = await new Response(bytes, {
+      headers: { 'content-type': (init.headers as any)['content-type'] }
+    }).formData()
+    expect(form.get('parent_id')).toBe('trusted-parent')
+    expect(form.get('file_name')).toBe('原文.txt')
+    expect(await (form.get('file') as File).text()).toBe('abc')
+    return Response.json({ ok: true })
+  })
+  vi.stubGlobal('fetch', fetcher)
+  const client = new OrgApiClient(
+    async () => ({ accessToken: 'token', authMode: mode === 'cookie' ? 'management-cookie' : undefined }) as never,
+    fetcher
+  )
+  expect(
+    await client.requestFileMultipart(
+      '/upload',
+      { path, fileName: '原文.txt', size: 3, chunks: [], parentId: 'trusted-parent' },
+      () => {}
+    )
+  ).toEqual({ ok: true })
+})
+
 it.each(['bearer', 'cookie'])('%s上传无响应5分钟后中止且关闭源流，不重放', async (mode) => {
   root = await mkdtemp(join(tmpdir(), 'multipart-'))
   const path = join(root, 'file')

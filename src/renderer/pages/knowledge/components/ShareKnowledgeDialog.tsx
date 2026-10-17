@@ -52,6 +52,7 @@ export default function ShareKnowledgeDialog({
   const [maxViews, setMaxViews] = useState('')
   const [expiry, setExpiry] = useState('7')
   const [result, setResult] = useState<OrgKnowledgeShareResult>()
+  const [showUploadDetails, setShowUploadDetails] = useState(false)
   const visibleResult = result && (!hideCompletedUpload || !canInviteAfterShare(result)) ? result : undefined
   const [share, setShare] = useState<OrgKnowledgeShare>()
   const [records, setRecords] = useState<OrgKnowledgeShare[]>([])
@@ -178,20 +179,29 @@ export default function ShareKnowledgeDialog({
                 </KnowledgeDialogFooter>
               )}
             />
-            {/* 原条件：result?.files.map((file, index) => (...) */}
-            {visibleResult?.files.map((file, index) => (
-              <p key={`${file.fileName}-${index}`}>
-                {file.fileName} ·{' '}
-                {t(
-                  {
-                    success: 'knowledge.org.file_success',
-                    failure: 'knowledge.org.file_failure',
-                    unknown: 'knowledge.org.file_unknown'
-                  }[file.status]
-                )}
-                {file.error ? ` · ${file.error}` : ''}
-              </p>
-            ))}
+            {visibleResult?.files.length ? (
+              <Button
+                variant="outline"
+                aria-expanded={showUploadDetails}
+                onClick={() => setShowUploadDetails((shown) => !shown)}>
+                {t('knowledge.org.upload_details')}
+              </Button>
+            ) : null}
+            {/* 原条件：visibleResult?.files.map((file, index) => (...) */}
+            {showUploadDetails &&
+              visibleResult?.files.map((file, index) => (
+                <p key={`${file.fileName}-${index}`}>
+                  {file.fileName} ·{' '}
+                  {t(
+                    {
+                      success: 'knowledge.org.file_success',
+                      failure: 'knowledge.org.file_failure',
+                      unknown: 'knowledge.org.file_unknown'
+                    }[file.status]
+                  )}
+                  {file.error ? ` · ${file.error}` : ''}
+                </p>
+              ))}
           </KnowledgeDialogBody>
           {/* 关闭按钮与发送邀请合并到面板操作区。
           <KnowledgeDialogFooter>
@@ -342,8 +352,16 @@ export default function ShareKnowledgeDialog({
             </div>
           ) : null}
           */}
-          {/* 原 !share && result / result.files 条件未区分历史完成副本。 */}
-          {!share && visibleResult
+          {!share && visibleResult?.files.length ? (
+            <Button
+              variant="outline"
+              aria-expanded={showUploadDetails}
+              onClick={() => setShowUploadDetails((shown) => !shown)}>
+              {t('knowledge.org.upload_details')}
+            </Button>
+          ) : null}
+          {/* 原条件：!share && visibleResult，逐项结果改为点击后展示。 */}
+          {!share && showUploadDetails && visibleResult
             ? visibleResult.files.map((file, index) => (
                 <p key={`${file.fileName}-${index}`} className="text-xs text-muted-foreground">
                   {file.fileName} ·{' '}

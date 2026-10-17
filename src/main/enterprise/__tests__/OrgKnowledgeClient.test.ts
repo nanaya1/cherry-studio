@@ -14,6 +14,22 @@ function makeApiClient(
 }
 
 describe('OrgKnowledgeClient', () => {
+  it('共享目录创建透传父目录，校验folder_id和空间归属字段', async () => {
+    const request = vi
+      .fn()
+      .mockResolvedValue({ folder_id: 'folder', name: '合同', space_id: 'space', parent_id: 'parent' })
+    const client = new OrgKnowledgeClient(makeApiClient({ request }))
+    expect(await client.createShareFolder('space', { fileName: '合同' }, 'parent')).toMatchObject({
+      folder_id: 'folder',
+      parent_id: 'parent'
+    })
+    expect(request).toHaveBeenCalledWith(
+      '/api/kb/v1/local-share/spaces/space/folders',
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ name: '合同', parent_id: 'parent' }) })
+    )
+    request.mockResolvedValue({ folder_id: '', name: '合同', space_id: 'space' })
+    await expect(client.createShareFolder('space', { fileName: '合同' }, null)).rejects.toThrow('响应结构不符合契约')
+  })
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn())
   })

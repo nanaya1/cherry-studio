@@ -260,6 +260,7 @@ export class OrgKnowledgeClient {
         space_id: z.string(),
         name: z.string(),
         is_dir: z.boolean(),
+        parent_id: z.string().nullable().optional(),
         file_hash: z.string().nullable().optional(),
         parse_status: z.string().nullable().optional()
       }),
@@ -315,6 +316,27 @@ export class OrgKnowledgeClient {
     return parseOrThrow(serverShareCreateSchema, raw, 'local-share/spaces')
   }
 
+  async createShareFolder(shareId: string, folder: { fileName: string }, parentId: string | null) {
+    const raw = await this.apiClient['request'](
+      `/api/kb/v1/local-share/spaces/${encodeURIComponent(shareId)}/folders`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ name: folder.fileName, parent_id: parentId }),
+        signal: AbortSignal.timeout(30_000)
+      }
+    )
+    return parseOrThrow(
+      z.object({
+        folder_id: z.string().min(1),
+        name: z.string(),
+        space_id: z.string(),
+        parent_id: z.string().nullable().optional()
+      }),
+      raw,
+      'local-share/folders'
+    )
+  }
+
   async uploadShareFile(shareId: string, form: FormData): Promise<z.infer<typeof serverShareFileSchema>> {
     // [enterprise] FormData 不设置 application/json：boundary 由 fetch 自行决定。
     const raw = await this.apiClient.requestMultipart(
@@ -326,7 +348,8 @@ export class OrgKnowledgeClient {
 
   async uploadShareStream(
     shareId: string,
-    entry: { path: string; fileName: string; size: number; chunks: unknown[] },
+    // entry: { path: string; fileName: string; size: number; chunks: unknown[] },
+    entry: { path: string; fileName: string; size: number; chunks: unknown[]; parentId?: string | null },
     progress: (bytes: number) => void
   ) {
     const raw = await this.apiClient.requestFileMultipart(

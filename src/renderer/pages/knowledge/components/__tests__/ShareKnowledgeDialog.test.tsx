@@ -35,6 +35,36 @@ beforeEach(async () => {
   )
 })
 
+it.each(['code', 'people'] as const)('%s 失败条目默认收起，点击详情后展示并可再次收起', async (mode) => {
+  request.mockImplementation(async (route) => {
+    if (route === 'enterprise.knowledge.share')
+      return {
+        shareId: 'orgkb:copy',
+        completion: 'incomplete',
+        files: [{ fileName: 'broken.md', status: 'failure', error: '接口不存在' }]
+      }
+    if (route === 'enterprise.knowledge.collaborators')
+      return { items: [{ id: 42, username: 'alice' }], total: 1, page: 1, pageSize: 20 }
+    if (route === 'enterprise.knowledge.members') return { members: [] }
+    return null
+  })
+  const user = userEvent.setup()
+  render(<ShareKnowledgeDialog {...props} mode={mode} />)
+  if (mode === 'people') {
+    await user.type(screen.getByRole('combobox'), 'ali')
+    await user.click(await screen.findByRole('option', { name: 'alice' }))
+  }
+  await user.click(screen.getByRole('button', { name: mode === 'code' ? 'Generate share code' : 'Send invitation' }))
+  const details = await screen.findByRole('button', { name: i18n.t('knowledge.org.upload_details') })
+  expect(details).toHaveAttribute('aria-expanded', 'false')
+  expect(screen.queryByText(/broken\.md/)).not.toBeInTheDocument()
+  await user.click(details)
+  expect(screen.getByText(/broken\.md/)).toHaveTextContent('接口不存在')
+  expect(details).toHaveAttribute('aria-expanded', 'true')
+  await user.click(details)
+  expect(screen.queryByText(/broken\.md/)).not.toBeInTheDocument()
+})
+
 const uploadProgress = (phase = 'completed') => ({
   phase,
   totalBytes: 100,

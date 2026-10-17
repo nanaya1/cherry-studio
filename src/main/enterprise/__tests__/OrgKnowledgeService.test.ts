@@ -1457,6 +1457,12 @@ describe('OrgKnowledgeService share', () => {
     const api = makeApiClient()
     api.request.mockResolvedValue({ share_id: 's1' })
     api.requestMultipart.mockResolvedValue({ share_id: 's1', file_id: 'f1', chunk_count: 1 })
+    api.request.mockImplementation(async (path: string) => {
+      if (path.endsWith('/folders')) return { folder_id: 'folder-id', name: 'a.txt', space_id: 's1', parent_id: null }
+      if (path.endsWith('/files/folder-id'))
+        return { id: 'folder-id', name: 'a.txt', space_id: 's1', parent_id: null, is_dir: true }
+      return { share_id: 's1' }
+    })
     const result = await makeService(api).share('local-1')
     expect(result.files.map((file) => file.fileName)).toEqual(['leaf1.txt', 'leaf2.txt'])
     expect(

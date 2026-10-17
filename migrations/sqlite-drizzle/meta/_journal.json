@@ -238,6 +238,13 @@
       "when": 1791860904634,
       "tag": "0033_nostalgic_christian_walker",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "6",
+      "when": 1792221325584,
+      "tag": "0034_remote_knowledge_upgrade_repair",
+      "breakpoints": true
     }
   ],
   "version": "7"
