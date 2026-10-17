@@ -57,7 +57,10 @@ export interface SettingsMenuEntry {
 export const MEA_HIDDEN_SETTINGS_ROUTES: readonly string[] = [
   '/settings/mcp',
   '/settings/skills',
-  '/settings/scheduled-tasks'
+  '/settings/scheduled-tasks',
+  // MEA：隐藏设备互联与远端服务设置入口，保留页面和路由以便恢复。
+  '/settings/device-connections',
+  '/settings/remote-knowledge'
 ]
 
 /**

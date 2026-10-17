@@ -39,6 +39,12 @@ vi.mock('@renderer/ipc', () => ({
 
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => mocks.navigate,
+  useMatches: () => [
+    {
+      routeId: '/settings/mcp/servers',
+      search: { protocolInstallRequestId: mocks.protocolInstallRequestId }
+    }
+  ],
   getRouteApi: () => ({
     useSearch: () => ({ protocolInstallRequestId: mocks.protocolInstallRequestId })
   })
@@ -78,6 +84,23 @@ const protocolServers: ProtocolMcpServerInstall[] = [
     installedAt: 2
   }
 ]
+
+describe('McpServersList catalog filters', () => {
+  it('hides transport and builtin filters from My MCP while preserving status filters', async () => {
+    mocks.pendingProtocolInstalls = []
+    mocks.ipcRequest.mockResolvedValue([])
+    render(<McpServersList variant="catalog" showTitle={false} />)
+
+    await waitFor(() => expect(mocks.ipcRequest).toHaveBeenCalledWith('mcp.protocol_install.list_pending'))
+    expect(screen.getByRole('tab', { name: 'models.all' })).toBeVisible()
+    expect(screen.getByRole('tab', { name: 'common.enabled' })).toBeVisible()
+    expect(screen.getByRole('tab', { name: 'common.disabled' })).toBeVisible()
+    expect(screen.queryByRole('tab', { name: 'STDIO' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('tab', { name: 'SSE' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('tab', { name: 'settings.mcp.types.streamableHttp' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('tab', { name: 'settings.mcp.builtinServers' })).not.toBeInTheDocument()
+  })
+})
 
 describe('McpServersList protocol install', () => {
   beforeEach(() => {
