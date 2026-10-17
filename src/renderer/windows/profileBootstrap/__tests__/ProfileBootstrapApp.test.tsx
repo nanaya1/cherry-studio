@@ -4,7 +4,23 @@ import { describe, expect, it, vi } from 'vitest'
 import ProfileBootstrapApp from '../ProfileBootstrapApp'
 
 describe('profile login', () => {
+  it('shows only password login with the current account placeholder', () => {
+    window.history.pushState({}, '', '?sso=1')
+    Object.defineProperty(window, 'profileBootstrap', {
+      configurable: true,
+      value: { passwordLogin: vi.fn(), enterpriseLogin: vi.fn() }
+    })
+
+    render(<ProfileBootstrapApp />)
+
+    expect(screen.getByLabelText('帐号')).toHaveAttribute('placeholder', '请输入邮箱或用户名')
+    expect(screen.queryByRole('button', { name: '企业统一登录' })).not.toBeInTheDocument()
+    expect(screen.queryByText(/登录即代表您已阅读并同意/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '《企业使用条款》' })).not.toBeInTheDocument()
+  })
+
   it('keeps the account and clears the password after a failed login so the user can retry', async () => {
+    window.history.pushState({}, '', '/')
     const passwordLogin = vi
       .fn()
       .mockRejectedValue(

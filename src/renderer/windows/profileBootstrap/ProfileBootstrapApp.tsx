@@ -69,7 +69,8 @@ export default function ProfileBootstrapApp() {
               name="identifier"
               value={identifier}
               onChange={(event) => setIdentifier(event.target.value)}
-              placeholder="请输入手机号、邮箱或用户名"
+              // placeholder="请输入手机号、邮箱或用户名"
+              placeholder="请输入邮箱或用户名"
               autoComplete="username"
               required
               disabled={loading}
@@ -110,6 +111,7 @@ export default function ProfileBootstrapApp() {
           <Button type="submit" className="login-submit" disabled={loading}>
             {loading ? '正在登录…' : '登录'}
           </Button>
+          {/* 停用企业统一登录入口，保留原逻辑便于恢复。
           {new URLSearchParams(window.location.search).get('sso') === '1' && (
             <Button
               type="button"
@@ -125,7 +127,7 @@ export default function ProfileBootstrapApp() {
               }}>
               企业统一登录
             </Button>
-          )}
+          )} */}
           {/* <div className="account-links">
             <p>
               还没有账号？
@@ -137,6 +139,7 @@ export default function ProfileBootstrapApp() {
               忘记密码？请联系企业管理员重置
             </Button>
           </div> */}
+          {/* 停用企业使用条款提示，保留原文案便于恢复。
           <p className="agreement">
             登录即代表您已阅读并同意
             <Button
@@ -145,7 +148,7 @@ export default function ProfileBootstrapApp() {
               onClick={() => setNotice('请联系企业管理员获取本企业适用的企业使用条款。')}>
               《企业使用条款》
             </Button>
-          </p>
+          </p> */}
           <p className="login-notice" role="status" aria-live="polite">
             {notice}
           </p>
