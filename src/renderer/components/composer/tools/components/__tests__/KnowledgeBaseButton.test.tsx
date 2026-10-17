@@ -1,4 +1,4 @@
-import { render, waitFor } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import type * as LucideReact from 'lucide-react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -62,6 +62,9 @@ vi.mock('react-i18next', () => ({
     },
     t: (key: string, options?: Record<string, unknown>) => {
       const translations: Record<string, string> = {
+        'knowledge.org.local': '本地',
+        'knowledge.org.public': '公共',
+        'knowledge.org.share': '分享',
         'chat.input.knowledge_base': 'Knowledge Base',
         'chat.save.knowledge.empty.no_knowledge_base': 'No knowledge base',
         'common.selectedItems': `${options?.count ?? 0} selected`,
@@ -99,6 +102,28 @@ describe('KnowledgeBaseToolRuntime', () => {
       createKnowledgeBase({ id: 'kb-1', name: 'Knowledge One', itemCount: 2 }),
       createKnowledgeBase({ id: 'kb-2', name: 'Knowledge Two', itemCount: 5 })
     ]
+  })
+
+  it('按目录来源显示本地、公共和分享标签，同名知识库仍可区分', async () => {
+    mocks.knowledgeBases = [createKnowledgeBase({ id: 'kb-1', name: '同名知识库' })]
+    mocks.orgCatalog.public = [{ id: 'orgkb:cHVibGlj', name: '同名知识库', description: null }]
+    mocks.orgCatalog.shared = [{ id: 'orgkb:c2hhcmVk', name: '同名知识库', description: null }]
+    const launcher = createLauncherApi()
+    render(<KnowledgeBaseToolRuntime launcher={launcher} onSelect={vi.fn()} />)
+
+    await waitFor(() => expect(launcher.registerLaunchers).toHaveBeenCalled())
+    const items = vi.mocked(launcher.registerLaunchers).mock.calls.at(-1)![0][0].rootSearchItems!
+    for (const [index, source] of ['本地', '公共', '分享'].entries()) {
+      const view = render(
+        <>
+          <span>{items[index].label}</span>
+          {items[index].suffix}
+        </>
+      )
+      expect(screen.getByText('同名知识库')).toBeInTheDocument()
+      expect(screen.getByText(source)).toBeInTheDocument()
+      view.unmount()
+    }
   })
 
   it('在知识库面板中提供组织目录的选择项', async () => {

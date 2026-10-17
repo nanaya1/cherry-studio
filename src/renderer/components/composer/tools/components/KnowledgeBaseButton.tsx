@@ -3,6 +3,7 @@ import type { FC } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { Badge } from '@cherrystudio/ui'
 import {
   ComposerPanelSymbol,
   getQuickPanelSearchAliases,
@@ -128,6 +129,14 @@ const useKnowledgeBaseToolController = ({
     [disposeCloseOnInputAfterSelection]
   )
 
+  const knowledgeBaseSourceLabels = useMemo(() => {
+    void language
+    const labels = new Map<string, string>()
+    for (const base of catalog?.public ?? []) labels.set(base.id, tRef.current('knowledge.org.public'))
+    for (const base of catalog?.shared ?? []) labels.set(base.id, tRef.current('knowledge.org.share'))
+    return labels
+  }, [catalog, language])
+
   const buildKnowledgeBaseItems = useCallback((): QuickPanelListItem[] => {
     void language
     return configuredBases.map((base) => ({
@@ -150,7 +159,14 @@ const useKnowledgeBaseToolController = ({
           : tRef.current('library.config.knowledge.doc_count', { count: base.itemCount }),
       filterText: [base.name, base.id].join(' '),
       icon: <FileSearch />,
-      suffix: tRef.current('chat.input.knowledge_base'),
+      // suffix: tRef.current('chat.input.knowledge_base'),
+      suffix: (
+        <Badge variant="outline" className="rounded-[3px] px-1 py-0 text-[10px] text-muted-foreground leading-4">
+          {isRemoteKnowledgeBaseId(base.id)
+            ? tRef.current('chat.input.knowledge_base')
+            : (knowledgeBaseSourceLabels.get(base.id) ?? tRef.current('knowledge.org.local'))}
+        </Badge>
+      ),
       isSelected: selectedBaseIds.has(base.id),
       action: ({ context, inputAdapter, item }) => {
         const nextSelectedIds = new Set(selectedBasesRef.current.map((selectedBase) => selectedBase.id))
@@ -167,7 +183,7 @@ const useKnowledgeBaseToolController = ({
         }
       }
     }))
-  }, [closeKnowledgeBasePanelOnNextInput, configuredBases, language, selectedBaseIds])
+  }, [closeKnowledgeBasePanelOnNextInput, configuredBases, knowledgeBaseSourceLabels, language, selectedBaseIds])
 
   const knowledgeBaseItems = useMemo(() => buildKnowledgeBaseItems(), [buildKnowledgeBaseItems])
   const knowledgeBaseRootSearchItems = useMemo(
