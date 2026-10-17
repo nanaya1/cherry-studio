@@ -157,6 +157,7 @@ export class ProfileSwitchCoordinator {
         return this.needsRecovery('business-startup')
       }
     }
+    logger.info('Profile switch committed; requesting application relaunch')
     this.dependencies.application.relaunch()
     return { kind: 'relaunching' }
   }

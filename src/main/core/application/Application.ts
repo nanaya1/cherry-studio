@@ -542,6 +542,15 @@ export class Application {
       return
     }
 
+    if (this._isRelaunching) return
+    const callerArgs = options?.args
+    // 显式选择当前可执行文件，并保留调用方的启动参数。
+    options = {
+      ...options,
+      execPath: options?.execPath ?? process.execPath,
+      args: [...(options?.args ?? process.argv.slice(1))]
+    }
+
     // Platform-specific fixes
     if (isLinux && process.env.APPIMAGE) {
       options = options || {}
@@ -554,13 +563,29 @@ export class Application {
       options = options || {}
       options.execPath = process.env.PORTABLE_EXECUTABLE_FILE
       options.args = options.args || []
+      // 便携启动器重新解压，不重放首次启动时的临时入口参数。
+      options.args = [...(callerArgs ?? [])]
     }
 
     // app.exit() 跳过 will-quit，数据根锁必须在这里显式释放，否则新进程
     // preboot 抢不到锁会静默退出（账号切换后“重启不生效”）。
-    releaseDataRootLock()
     this._isRelaunching = true
-    app.relaunch(options)
+    logger.info('Scheduling application relaunch', {
+      platform: process.platform,
+      portable: isPortable,
+      execPath: options.execPath
+    })
+    // releaseDataRootLock()
+    // this._isRelaunching = true
+    try {
+      app.relaunch(options)
+    } catch (error) {
+      this._isRelaunching = false
+      logger.error('Could not schedule application relaunch', error as Error)
+      throw error
+    }
+    logger.info('Application relaunch scheduled; exiting current process')
+    releaseDataRootLock()
     app.exit(0)
   }
 
