@@ -21,6 +21,11 @@ protocols:
       - meacowork
 files:
   - "**/*"
+  # Keep local diagnostics and build backups out of release packages.
+  - "!outputs{,/**}"
+  - "!output{,/**}"
+  - "!out.workbuddy-backup-*{,/**}"
+  - "!electron.vite.config.*.mjs"
   - "!**/{.vscode,.yarn,.yarn-lock,.github,.cursorrules,.prettierrc}"
   - "!electron.vite.config.{js,ts,mjs,cjs}}"
   - "!electron-builder.cn.config.cjs"
