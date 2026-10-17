@@ -163,6 +163,17 @@ customizations:
       - src/main/services/__tests__/OpenClawService.test.ts
       - src/main/features/apiGateway/routes/__tests__/routes.integration.test.ts
 
+  - id: native-module-packaging
+    title: Preserve native prebuilds during packaging
+    owner: main
+    behavior: Disable electron-builder's blanket native dependency rebuild, keep node-pty platform prebuilds, and let beforePack rebuild only ABI-sensitive modules such as better-sqlite3.
+    touchpoints:
+      - electron-builder.yml
+      - scripts/before-pack.js
+    tests:
+      - scripts/__tests__/before-pack.test.ts
+      - scripts/__tests__/package-contents.test.ts
+
   - id: oauth-branding
     title: MEA OAuth callback and repository identity
     owner: main
