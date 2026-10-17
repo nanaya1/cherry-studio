@@ -1,6 +1,7 @@
 import * as z from 'zod'
 
 import {
+  OrgKnowledgeUploadProgressSchema,
   OrgKnowledgeSyncPreviewSchema,
   OrgKnowledgeSyncApplySchema,
   OrgKnowledgeSyncStatusSchema,
@@ -82,6 +83,14 @@ export const enterpriseKnowledgeRequestSchemas = {
     output: OrgKnowledgePreviewSchema
   }),
   // 分享：输入为本地知识库 uuid，主进程读取其所属原文件与 chunks，不接收渲染进程路径/URL/Authorization。
+  'enterprise.knowledge.upload_status': defineRoute({
+    input: z.strictObject({ baseId: localBaseId }),
+    output: OrgKnowledgeUploadProgressSchema.nullable()
+  }),
+  'enterprise.knowledge.upload_verify': defineRoute({
+    input: z.strictObject({ baseId: localBaseId }),
+    output: OrgKnowledgeShareResultSchema
+  }),
   'enterprise.knowledge.share': defineRoute({
     input: z.strictObject({ baseId: z.string().min(1) }),
     output: OrgKnowledgeShareResultSchema

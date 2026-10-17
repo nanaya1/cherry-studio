@@ -55,6 +55,8 @@ export const enterpriseKnowledgeHandlers: IpcHandlersFor<typeof enterpriseKnowle
   'enterprise.knowledge.read': ({ baseId, documentId, chunkId }) =>
     guard(() => plugin().knowledge.read({ baseId, documentId, chunkId: chunkId ?? null })),
   'enterprise.knowledge.preview': ({ fileId }) => guard(() => plugin().knowledge.preview({ fileId })),
+  'enterprise.knowledge.upload_status': ({ baseId }) => guard(() => plugin().knowledge.uploadStatus(baseId)),
+  'enterprise.knowledge.upload_verify': ({ baseId }) => guard(() => plugin().knowledge.share(baseId, true)),
   'enterprise.knowledge.share': ({ baseId }) => guard(() => plugin().knowledge.share(baseId)),
   'enterprise.knowledge.shares': (params) => guard(() => plugin().knowledge.shares(params)),
   'enterprise.knowledge.create_share': (params) => guard(() => plugin().knowledge.createShareCode(params)),

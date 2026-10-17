@@ -11,10 +11,13 @@ customizations:
   - id: enterprise-knowledge-page
     title: 企业知识库访问、原文预览、本地分享与手动同步
     owner: main
-    behavior: 文档标识经显式文件映射或文件元信息校验后用于预览；主进程鉴权限量读取，渲染进程以纯文本、图片或沙箱 PDF 展示。已关联分享直接复用，目录按递归叶子原文件导出；本地副本创建和上传保留服务端错误详情（含 modern error 字符串），不将失败上传视为完整分享。
+    behavior: 文档标识经显式文件映射或文件元信息校验后用于预览；主进程鉴权限量读取，渲染进程以纯文本、图片或沙箱 PDF 展示。首次分享递归stat原文件总量（含子目录），逐文件流式上传；2026-10-17最新约定暂不设置客户端总容量上限，取代此前2GiB及临时20MiB限制，OrgKnowledgeService.buildFirstSharePlan及FirstShareUpload.run两处旧检查和抛错均保留为注释，服务端仍可限制容量且错误处理保持不变；客户端原子互斥且同库复用，列表可重开字节进度详情。创建及文件请求前持久化intent，响应归属和分块数校验后保存fileId并核对哈希和完整分块，未知结果暂停且不得盲目重传或重建库；Cookie流式请求不手设Content-Length，传输结束关闭源流；上传连续5分钟无字节进展或服务器响应时中止并清理源流，创建库和远端核对请求30秒超时，未知结果不重放且finally释放全局忙碌槽；全部确认前禁止分享码和邀请。分享码与人员邀请弹窗重开时隐藏历史completed进度、上传说明及复用文件成功结果，本会话新上传或未完成恢复仍展示进度与完成反馈，不清理持久化记录。后续同步保持原manifest协议。
     markers:
       - MEA:enterprise-knowledge-page
     touchpoints:
+      - src/main/enterprise/FirstShareUpload.ts
+      - src/renderer/pages/knowledge/components/KnowledgeUploadDetails.tsx
+      - src/renderer/pages/knowledge/components/navigator/KnowledgeBaseRow.tsx
       - src/main/enterprise/OrgKnowledgeService.ts
       - src/main/enterprise/OrgKnowledgeClient.ts
       - src/main/enterprise/OrgApiClient.ts
@@ -47,6 +50,10 @@ customizations:
       - src/renderer/pages/knowledge/sections/KnowledgePageNavigatorSection.tsx
       - src/renderer/pages/knowledge/utils/sharing.ts
     tests:
+      - src/main/enterprise/__tests__/FirstShareUpload.test.ts
+      - src/main/enterprise/__tests__/OrgKnowledgeFirstShare.test.ts
+      - src/main/enterprise/__tests__/OrgApiClient.stream.test.ts
+      - src/renderer/pages/knowledge/components/__tests__/KnowledgeUploadDetails.test.tsx
       - src/main/enterprise/__tests__/OrgKnowledgeService.test.ts
       - src/main/enterprise/__tests__/OrgKnowledgeClient.test.ts
       - src/main/enterprise/__tests__/OrgApiClient.test.ts

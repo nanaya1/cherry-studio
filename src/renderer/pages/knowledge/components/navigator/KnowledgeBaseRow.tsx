@@ -9,6 +9,7 @@ import SidebarShortcutIcon from '@renderer/components/icons/SidebarShortcutIcon'
 import KnowledgeRowActionsMenu from '@renderer/pages/knowledge/components/KnowledgeRowActionsMenu'
 import { DEFAULT_KNOWLEDGE_GROUP_LABEL_KEY } from '@renderer/pages/knowledge/utils/group'
 
+import KnowledgeUploadDetails, { useKnowledgeUpload } from '../KnowledgeUploadDetails'
 import type { KnowledgeBaseRowProps } from './types'
 
 const KnowledgeBaseRow = ({
@@ -26,6 +27,9 @@ const KnowledgeBaseRow = ({
 }: KnowledgeBaseRowProps) => {
   const { t } = useTranslation()
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+  const [uploadOpen, setUploadOpen] = useState(false)
+  const upload = useKnowledgeUpload(base.id)
+  const uploading = upload && upload.phase !== 'completed'
   const availableGroups = useMemo(() => groups.filter((group) => group.id !== base.groupId), [base.groupId, groups])
   const canMoveToUngrouped = base.groupId !== null
 
@@ -156,7 +160,13 @@ const KnowledgeBaseRow = ({
             className="flex min-h-0 min-w-0 flex-1 items-center justify-start rounded-md p-0 text-left shadow-none hover:bg-transparent">
             <div className="min-w-0 truncate text-sm leading-5 font-normal text-foreground">{base.name}</div>
           </Button>
-          {shared ? (
+          {uploading ? (
+            <Button variant="ghost" className="h-5 shrink-0 px-1 text-[10px]" onClick={() => setUploadOpen(true)}>
+              {t(upload.phase === 'paused' ? 'knowledge.org.upload_paused' : 'knowledge.org.upload_sharing')}{' '}
+              {upload.totalBytes ? Math.floor((upload.uploadedBytes / upload.totalBytes) * 100) : 0}%
+            </Button>
+          ) : null}
+          {shared && !uploading ? (
             <Badge
               variant="outline"
               className="h-4 shrink-0 rounded px-1 py-0 text-[10px] leading-none border-emerald-600/25 bg-emerald-50 text-emerald-700 dark:border-emerald-400/30 dark:bg-emerald-400/10 dark:text-emerald-300">
@@ -167,6 +177,9 @@ const KnowledgeBaseRow = ({
         </div>
       </CommandContextMenu>
 
+      {uploadOpen ? (
+        <KnowledgeUploadDetails baseId={base.id} name={base.name} onClose={() => setUploadOpen(false)} />
+      ) : null}
       <ConfirmDialog
         open={isDeleteDialogOpen}
         onOpenChange={setIsDeleteDialogOpen}

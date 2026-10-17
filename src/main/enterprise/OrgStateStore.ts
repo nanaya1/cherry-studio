@@ -15,6 +15,8 @@ import { atomicWriteFileSync } from '@main/utils/file'
 import { OrgKnowledgeShareResultSchema } from '@shared/data/types/enterpriseKnowledge'
 import { AbsoluteFilePathSchema } from '@shared/types/file'
 
+import { firstShareStateSchema, type FirstShareState } from './FirstShareUpload'
+
 const shareAssociationSchema = z.union([
   z.string().transform((shareId) => ({ shareId, files: [], completion: 'unconfirmed' as const })),
   OrgKnowledgeShareResultSchema
@@ -70,7 +72,8 @@ const fileSchema = z.object({
   // [enterprise] 组织知识库本地共享副本关联：本地 baseId → 服务端 share/space id（原始形态）。
   // 已有副本不重复登记空间；账号切换或重登后据此判断是否需增量上传/邀请。
   // 逐文件结果与完成状态随关联落盘；旧字符串关联保持未确认，不推断上传成功。
-  knowledgeShares: z.record(z.string(), shareAssociationSchema).default({})
+  knowledgeShares: z.record(z.string(), shareAssociationSchema).default({}),
+  firstShareUploads: z.record(z.string(), firstShareStateSchema).default({})
 })
 
 function stateFile(): string {
@@ -286,6 +289,18 @@ export class OrgStateStore {
   snapshotUnavailable(): boolean {
     this.ensureLoaded()
     return this.data!.unavailable
+  }
+
+  getFirstShareUpload(key: string): FirstShareState | undefined {
+    this.ensureLoaded()
+    const value = this.data!.firstShareUploads[key]
+    return value ? structuredClone(value) : undefined
+  }
+
+  setFirstShareUpload(key: string, state: FirstShareState): void {
+    this.ensureLoaded()
+    this.data!.firstShareUploads[key] = firstShareStateSchema.parse(state)
+    this.persist()
   }
 
   // [enterprise] 组织知识库共享副本关联

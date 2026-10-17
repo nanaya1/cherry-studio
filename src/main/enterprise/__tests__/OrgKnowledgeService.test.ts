@@ -1,5 +1,12 @@
 import { createHash } from 'node:crypto'
-import { readFile } from 'node:fs/promises'
+import type * as NodeFs from 'node:fs'
+import { readFile, stat } from 'node:fs/promises'
+import { Readable } from 'node:stream'
+
+vi.mock('node:fs', async (original) => ({
+  ...(await original<typeof NodeFs>()),
+  createReadStream: () => Readable.from([Buffer.from('file-bytes')])
+}))
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -20,6 +27,12 @@ beforeEach(() => {
   auth.assertLease.mockImplementation(() => {})
   vi.mocked(orgStateStore.getShareAssociation).mockReturnValue(undefined)
   vi.mocked(readFile).mockResolvedValue(Buffer.from('file-bytes'))
+  vi.mocked(stat).mockResolvedValue({ size: 10, isFile: () => true } as never)
+  let firstState: any
+  vi.mocked(orgStateStore.getFirstShareUpload).mockImplementation(() => firstState)
+  vi.mocked(orgStateStore.setFirstShareUpload).mockImplementation((_key, value) => {
+    firstState = structuredClone(value)
+  })
 })
 
 import { application } from '@application'
@@ -33,12 +46,15 @@ const { getSubtreeItems } = vi.hoisted(() => ({ getSubtreeItems: vi.fn(() => [])
 vi.mock('@data/services/KnowledgeItemService', () => ({ knowledgeItemService: { getSubtreeItems } }))
 
 vi.mock('node:fs/promises', () => ({
-  readFile: vi.fn().mockResolvedValue(Buffer.from('file-bytes'))
+  readFile: vi.fn().mockResolvedValue(Buffer.from('file-bytes')),
+  stat: vi.fn().mockResolvedValue({ size: 10, isFile: () => true })
 }))
 
 vi.mock('../OrgStateStore', () => ({
   OrgStateStore: class {},
   orgStateStore: {
+    getFirstShareUpload: vi.fn().mockReturnValue(undefined),
+    setFirstShareUpload: vi.fn(),
     getShareAssociation: vi.fn().mockReturnValue(undefined),
     getShareAssociations: vi.fn(() => ({})),
     setShareAssociation: vi.fn(),
@@ -49,6 +65,7 @@ vi.mock('../OrgStateStore', () => ({
 function makeApiClient() {
   return {
     request: vi.fn(),
+    requestFileMultipart: vi.fn(),
     requestMultipart: vi.fn(),
     requestText: vi.fn(),
     requestBytes: vi.fn().mockResolvedValue(Buffer.from('%PDF-1.7'))
@@ -59,7 +76,9 @@ let jobSettledListener: ((event: any) => void) | undefined
 const shareJobs = {
   registerHandler: vi.fn(),
   enqueue: vi.fn(),
-  list: vi.fn(async () => []),
+  // 原推断never[]无法表达运行中的任务，补充测试端口返回类型。
+  // list: vi.fn(async () => []),
+  list: vi.fn(async (): Promise<unknown[]> => []),
   onJobSettled: vi.fn((listener: (event: any) => void) => {
     jobSettledListener = listener
     return { dispose: vi.fn() }
@@ -83,6 +102,13 @@ function settleKnowledgeJob(type: string, baseId = 'local-1'): void {
 
 function makeService(apiClient: ReturnType<typeof makeApiClient>) {
   const service = new OrgKnowledgeService({ apiClient, ...auth } as never)
+  apiClient.requestFileMultipart.mockImplementation(async (path, entry) => {
+    const form = new FormData()
+    form.append('chunks', JSON.stringify(entry.chunks))
+    form.append('file', new Blob(['file-bytes']), entry.fileName)
+    return apiClient.requestMultipart(path, form)
+  })
+  vi.spyOn(service as any, 'verifyFirstShareFile').mockResolvedValue(undefined)
   service.initialize(shareJobs as never)
   shareJobs.enqueue.mockImplementation(async (_type, input) => {
     const handler = [...shareJobs.registerHandler.mock.calls].reverse().find(([type]) => type === _type)![1]
@@ -966,27 +992,23 @@ describe('OrgKnowledgeService share', () => {
       expect.objectContaining({ recovery: 'abandon', execute: expect.any(Function) })
     )
     await expect(service.share('local-1')).resolves.toMatchObject({ shareId: encodeOrgId('space') })
-    expect(shareJobs.enqueue).toHaveBeenLastCalledWith(
-      'enterprise.knowledge-share',
-      expect.objectContaining({ localBaseId: 'local-1', lease }),
-      { maxAttempts: 1 }
-    )
+    expect(shareJobs.enqueue).not.toHaveBeenCalled()
   })
 
   function fakeKS(items: Array<{ id: string; type: string }>, opts: { filePath?: string; chunks?: unknown[] } = {}) {
     return {
       listBasesForDiscovery: () => ({ items: [{ id: 'local-1', name: 'My Base' }], total: 1 }),
-      listRootItems: () => items.map((item) => ({ status: 'completed', ...item })),
+      listRootItems: () => items.map((item) => ({ status: 'completed', data: { relativePath: 'a.txt' }, ...item })),
       getFilePath: () => opts.filePath ?? '/mock/a.txt',
       listItemChunks: (_baseId: string, itemId: string) =>
-        (opts.chunks ?? [
+        opts.chunks ?? [
           {
             id: 'c1',
             itemId,
             content: 'x',
             metadata: { chunkIndex: 0, tokenCount: 1, source: 'a.txt', itemType: 'file' }
           }
-        ]) as never
+        ]
     }
   }
 
@@ -1064,8 +1086,8 @@ describe('OrgKnowledgeService share', () => {
       api.requestMultipart.mockRejectedValue(new OrgApiHttpError(403, 'forbidden'))
     } else api.requestMultipart.mockRejectedValue(new TypeError('network'))
     const first = await makeService(api).share('local-1')
-    const reopened = await makeService(api).share('local-1')
-    expect(reopened).toEqual(first)
+    const reopened = await makeService(api).share('local-1', true)
+    expect(reopened.completion).toEqual(first.completion)
     expect(reopened.files[0].status).toBe(status)
     expect(reopened).toHaveProperty('completion', status === 'success' ? 'completed' : 'incomplete')
     expect(api.requestMultipart).toHaveBeenCalledTimes(1)
@@ -1141,7 +1163,7 @@ describe('OrgKnowledgeService share', () => {
   it('原文件不可读时不创建远端空间', async () => {
     const ks = fakeKS([{ id: 'i1', type: 'file' }])
     vi.mocked(application.get).mockReturnValue(ks as never)
-    vi.mocked(readFile).mockRejectedValue(new Error('ENOENT'))
+    vi.mocked(stat).mockRejectedValue(new Error('ENOENT'))
     const api = makeApiClient()
     await expect(makeService(api).share('local-1')).rejects.toThrow('ENOENT')
     expect(api.request).not.toHaveBeenCalled()
@@ -1230,8 +1252,8 @@ describe('OrgKnowledgeService share', () => {
       .mockRejectedValueOnce(new OrgApiHttpError(403, 'forbidden'))
       .mockRejectedValueOnce(new TypeError('network'))
     const result = await makeService(api).share('local-1')
-    expect(result.files.map((file) => file.status)).toEqual(['success', 'failure', 'unknown'])
-    expect(api.requestMultipart).toHaveBeenCalledTimes(3)
+    expect(result.files.map((file) => file.status)).toEqual(['success', 'failure', 'failure'])
+    expect(api.requestMultipart).toHaveBeenCalledTimes(2)
   })
 
   it('does not re-register an existing association', async () => {
@@ -1283,6 +1305,13 @@ describe('OrgKnowledgeService share', () => {
         { id: 'c2', itemId: 'leaf2', content: '二', metadata: { chunkIndex: 0, itemType: 'file', source: 'leaf2.txt' } }
       ]
     })
+    getSubtreeItems.mockReturnValue([
+      { id: 'leaf1', type: 'file', status: 'completed', data: { relativePath: 'leaf1.txt' } },
+      { id: 'leaf2', type: 'file', status: 'completed', data: { relativePath: 'leaf2.txt' } }
+    ] as never)
+    const originalChunks = ks.listItemChunks
+    ks.listItemChunks = (baseId, itemId) =>
+      originalChunks(baseId, itemId).filter((chunk) => (chunk as { itemId: string }).itemId === itemId)
     ks.getFilePath = vi.fn().mockReturnValueOnce('/mock/leaf1.txt').mockReturnValueOnce('/mock/leaf2.txt')
     vi.mocked(application.get).mockReturnValue(ks as never)
     const api = makeApiClient()

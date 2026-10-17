@@ -178,7 +178,9 @@ export class OrgKnowledgeClient {
       cursor: cursor ?? undefined
     })
     // [enterprise] 目录与授权结果不作为永久离线授权缓存：每次实时拉取。
-    const raw = await this.apiClient['request'](path)
+    // const raw = await this.apiClient['request'](path)
+    // MEA:enterprise-knowledge-page 首次分享核对沿用普通HTTP的30秒超时。
+    const raw = await this.apiClient['request'](path, { signal: AbortSignal.timeout(30_000) })
     return parseOrThrow(serverItemPageSchema, raw, 'items')
   }
 
@@ -191,7 +193,8 @@ export class OrgKnowledgeClient {
       `/api/kb/v1/knowledge/bases/${encodeURIComponent(baseId)}/items/${encodeURIComponent(itemId)}/chunks`,
       { cursor: cursor ?? undefined }
     )
-    const raw = await this.apiClient['request'](path)
+    // const raw = await this.apiClient['request'](path)
+    const raw = await this.apiClient['request'](path, { signal: AbortSignal.timeout(30_000) })
     return parseOrThrow(serverChunkPageSchema, raw, 'chunks')
   }
 
@@ -259,7 +262,10 @@ export class OrgKnowledgeClient {
         file_hash: z.string().nullable().optional(),
         parse_status: z.string().nullable().optional()
       }),
-      await this.apiClient['request'](`/api/kb/v1/files/${encodeURIComponent(fileId)}`),
+      // await this.apiClient['request'](`/api/kb/v1/files/${encodeURIComponent(fileId)}`),
+      await this.apiClient['request'](`/api/kb/v1/files/${encodeURIComponent(fileId)}`, {
+        signal: AbortSignal.timeout(30_000)
+      }),
       'file'
     )
   }
@@ -291,7 +297,9 @@ export class OrgKnowledgeClient {
     return parseOrThrow(
       serverItemSchema,
       await this.apiClient['request'](
-        `/api/kb/v1/knowledge/bases/${encodeURIComponent(baseId)}/items/${encodeURIComponent(itemId)}`
+        // `/api/kb/v1/knowledge/bases/${encodeURIComponent(baseId)}/items/${encodeURIComponent(itemId)}`
+        `/api/kb/v1/knowledge/bases/${encodeURIComponent(baseId)}/items/${encodeURIComponent(itemId)}`,
+        { signal: AbortSignal.timeout(30_000) }
       ),
       'item'
     )
@@ -300,7 +308,8 @@ export class OrgKnowledgeClient {
   async createShareSpace(name: string): Promise<z.infer<typeof serverShareCreateSchema>> {
     const raw = await this.apiClient['request']('/api/kb/v1/local-share/spaces', {
       method: 'POST',
-      body: JSON.stringify({ name, visibility: 1 })
+      body: JSON.stringify({ name, visibility: 1 }),
+      signal: AbortSignal.timeout(30_000)
     })
     return parseOrThrow(serverShareCreateSchema, raw, 'local-share/spaces')
   }
@@ -310,6 +319,19 @@ export class OrgKnowledgeClient {
     const raw = await this.apiClient.requestMultipart(
       `/api/kb/v1/local-share/spaces/${encodeURIComponent(shareId)}/files`,
       form
+    )
+    return parseOrThrow(serverShareFileSchema, raw, 'local-share/files')
+  }
+
+  async uploadShareStream(
+    shareId: string,
+    entry: { path: string; fileName: string; size: number; chunks: unknown[] },
+    progress: (bytes: number) => void
+  ) {
+    const raw = await this.apiClient.requestFileMultipart(
+      `/api/kb/v1/local-share/spaces/${encodeURIComponent(shareId)}/files`,
+      entry,
+      progress
     )
     return parseOrThrow(serverShareFileSchema, raw, 'local-share/files')
   }

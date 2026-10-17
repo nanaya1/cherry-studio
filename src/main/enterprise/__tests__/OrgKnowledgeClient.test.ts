@@ -104,7 +104,9 @@ describe('OrgKnowledgeClient', () => {
     const request = vi.fn().mockResolvedValue({ items: [], total: 0 })
     const client = new OrgKnowledgeClient(makeApiClient({ request }))
     await client.listItems('b:1', 'cur:2')
-    expect(request).toHaveBeenCalledWith(expect.stringContaining('/api/kb/v1/knowledge/bases/'))
+    expect(request).toHaveBeenCalledWith(expect.stringContaining('/api/kb/v1/knowledge/bases/'), {
+      signal: expect.any(AbortSignal)
+    })
     const arg = request.mock.calls[0][0] as string
     expect(arg).toContain('cursor=cur%3A2')
   })

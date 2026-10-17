@@ -313,6 +313,17 @@ export const OrgKnowledgeSyncManifestSchema = z.strictObject({
 })
 export type OrgKnowledgeSyncManifest = z.infer<typeof OrgKnowledgeSyncManifestSchema>
 
+export const OrgKnowledgeUploadProgressSchema = z.strictObject({
+  phase: z.enum(['counting', 'uploading', 'confirming', 'paused', 'completed']),
+  totalBytes: z.number().nonnegative(),
+  uploadedBytes: z.number().nonnegative(),
+  completedFiles: z.number().int().nonnegative(),
+  totalFiles: z.number().int().nonnegative(),
+  currentFile: z.string().nullable(),
+  error: z.string().nullable()
+})
+export type OrgKnowledgeUploadProgress = z.infer<typeof OrgKnowledgeUploadProgressSchema>
+
 export const OrgKnowledgeShareResultSchema = z.strictObject({
   shareId: z.string(),
   files: z.array(OrgKnowledgeShareFileResultSchema),

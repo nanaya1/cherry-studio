@@ -20,6 +20,7 @@ import type { OrgKnowledgeShare, OrgKnowledgeShareResult } from '@shared/data/ty
 import { canInviteAfterShare } from '../utils/sharing'
 import { KnowledgeDialogBody, KnowledgeDialogFooter, KnowledgeDialogHeader } from './KnowledgeDialogLayout'
 import KnowledgeInvitePanel from './KnowledgeInvitePanel'
+import { KnowledgeUploadProgress, useKnowledgeUpload } from './KnowledgeUploadDetails'
 
 export default function ShareKnowledgeDialog({
   baseId,
@@ -37,10 +38,19 @@ export default function ShareKnowledgeDialog({
   onShared: () => void
 }) {
   const { t } = useTranslation()
+  const upload = useKnowledgeUpload(baseId, !remote)
+  const [uploadStarted, setUploadStarted] = useState(false)
+  useEffect(() => {
+    if (upload && upload.phase !== 'completed') setUploadStarted(true)
+  }, [upload])
+  // MEA:enterprise-knowledge-page 仅保留本次弹窗观察到的上传完成反馈，历史结果仍用于复用副本。
+  const hideCompletedUpload = upload?.phase === 'completed' && !uploadStarted
+  const visibleUpload = hideCompletedUpload ? null : upload
   const [password, setPassword] = useState('')
   const [maxViews, setMaxViews] = useState('')
   const [expiry, setExpiry] = useState('7')
   const [result, setResult] = useState<OrgKnowledgeShareResult>()
+  const visibleResult = result && (!hideCompletedUpload || !canInviteAfterShare(result)) ? result : undefined
   const [share, setShare] = useState<OrgKnowledgeShare>()
   const [records, setRecords] = useState<OrgKnowledgeShare[]>([])
   const [unknown, setUnknown] = useState(false)
@@ -70,11 +80,16 @@ export default function ShareKnowledgeDialog({
     if (!validPassword || !validCount || locked.current || unknown || share) return
     locked.current = true
     setBusy(true)
+    if (!remote && upload?.phase !== 'completed') setUploadStarted(true)
     setError(null)
     let target = baseId
     try {
       if (!remote) {
-        const uploaded = result ?? (await ipcApi.request('enterprise.knowledge.share', { baseId }))
+        // const uploaded = result ?? (await ipcApi.request('enterprise.knowledge.share', { baseId }))
+        const uploaded =
+          result && canInviteAfterShare(result)
+            ? result
+            : await ipcApi.request('enterprise.knowledge.share', { baseId })
         if (!active.current) return
         setResult(uploaded)
         if (!canInviteAfterShare(uploaded)) {
@@ -133,21 +148,25 @@ export default function ShareKnowledgeDialog({
       <Dialog
         open
         onOpenChange={(open) => {
-          if (!open && !busy) onClose()
+          if (!open) onClose()
         }}>
         <DialogContent closeLabel={t('common.close')}>
           <KnowledgeDialogHeader>{t('knowledge.org.invite_people')}</KnowledgeDialogHeader>
           <DialogDescription>{name}</DialogDescription>
           <KnowledgeDialogBody>
+            {visibleUpload ? <KnowledgeUploadProgress progress={visibleUpload} /> : null}
             <KnowledgeInvitePanel
               baseId={baseId}
               prepared={result}
               busy={busy}
-              onBusyChange={setBusy}
+              onBusyChange={(value) => {
+                if (value && upload?.phase !== 'completed') setUploadStarted(true)
+                setBusy(value)
+              }}
               onPrepared={setResult}
               onInvited={onShared}
             />
-            {result?.files.map((file, index) => (
+            {visibleResult?.files.map((file, index) => (
               <p key={`${file.fileName}-${index}`}>
                 {file.fileName} ·{' '}
                 {t(
@@ -162,7 +181,7 @@ export default function ShareKnowledgeDialog({
             ))}
           </KnowledgeDialogBody>
           <KnowledgeDialogFooter>
-            <Button variant="outline" disabled={busy} onClick={onClose}>
+            <Button variant="outline" onClick={onClose}>
               {t('common.close')}
             </Button>
           </KnowledgeDialogFooter>
@@ -174,12 +193,13 @@ export default function ShareKnowledgeDialog({
     <Dialog
       open
       onOpenChange={(open) => {
-        if (!open && !busy) onClose()
+        if (!open) onClose()
       }}>
       <DialogContent closeLabel={t('common.close')}>
         <KnowledgeDialogHeader>{t('knowledge.org.share_code')}</KnowledgeDialogHeader>
         <DialogDescription>{t('knowledge.org.share_description')}</DialogDescription>
         <KnowledgeDialogBody>
+          {visibleUpload ? <KnowledgeUploadProgress progress={visibleUpload} /> : null}
           <p className="font-medium">{name}</p>
           <p className="text-sm text-muted-foreground">{t('knowledge.org.readonly')}</p>
           <Label htmlFor="share-expiry">{t('knowledge.org.validity')}</Label>
@@ -216,7 +236,7 @@ export default function ShareKnowledgeDialog({
             onChange={(e) => setMaxViews(e.target.value)}
           />
           {!validPassword || !validCount ? <p role="alert">{t('knowledge.org.invalid_settings')}</p> : null}
-          {result?.files.map((file, index) => (
+          {visibleResult?.files.map((file, index) => (
             <p key={`${file.fileName}-${index}`}>
               {file.fileName} ·{' '}
               {t(
@@ -262,19 +282,27 @@ export default function ShareKnowledgeDialog({
           {/* 指定人邀请移至独立入口，分享码弹窗仅管理分享码。
           {!remote ? (
             <KnowledgeInvitePanel baseId={baseId} prepared={result} busy={busy}
-              onBusyChange={setBusy} onPrepared={setResult} onInvited={onShared} />
+              onBusyChange={(value) => {
+                if (value && upload?.phase !== 'completed') setUploadStarted(true)
+                setBusy(value)
+              }} onPrepared={setResult} onInvited={onShared} />
           ) : null}
           */}
         </KnowledgeDialogBody>
         <KnowledgeDialogFooter>
-          <Button variant="outline" disabled={busy} onClick={onClose}>
+          <Button variant="outline" onClick={onClose}>
             {t('common.close')}
           </Button>
           {share ? (
             <Button onClick={() => void copy()}>{t('knowledge.org.copy_text')}</Button>
           ) : (
             <Button
-              disabled={disabled || !validPassword || !validCount || Boolean(result && !canInviteAfterShare(result))}
+              disabled={
+                disabled ||
+                !validPassword ||
+                !validCount ||
+                Boolean(result && !canInviteAfterShare(result) && upload?.phase !== 'completed')
+              }
               onClick={() => void submit()}>
               {busy ? t('common.loading') : t('knowledge.org.generate_code')}
             </Button>

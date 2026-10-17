@@ -1,4 +1,4 @@
-import { act, render, screen } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import i18n from 'i18next'
 import { beforeEach, expect, it, vi } from 'vitest'
@@ -33,6 +33,94 @@ beforeEach(async () => {
       ? { shareId: 'orgkb:copy', completion: 'completed', files: [{ fileName: 'a.md', status: 'success' }] }
       : share
   )
+})
+
+const uploadProgress = (phase = 'completed') => ({
+  phase,
+  totalBytes: 100,
+  uploadedBytes: phase === 'completed' ? 100 : 30,
+  completedFiles: phase === 'completed' ? 1 : 0,
+  totalFiles: 1,
+  currentFile: 'a.md',
+  error: phase === 'paused' ? 'network failed' : null
+})
+
+it.each(['code', 'people'] as const)('%s 重开隐藏历史完成进度和复用文件结果', async (mode) => {
+  let statusReads = 0
+  request.mockImplementation(async (route) => {
+    if (route === 'enterprise.knowledge.upload_status') {
+      statusReads++
+      return uploadProgress()
+    }
+    if (route === 'enterprise.knowledge.share')
+      return { shareId: 'orgkb:copy', completion: 'completed', files: [{ fileName: 'a.md', status: 'success' }] }
+    if (route === 'enterprise.knowledge.collaborators')
+      return { items: [{ id: 42, username: 'alice' }], total: 1, page: 1, pageSize: 20 }
+    if (route === 'enterprise.knowledge.members') return { members: [] }
+    throw new Error('action failed')
+  })
+  const user = userEvent.setup()
+  const view = render(<ShareKnowledgeDialog {...props} mode={mode} />)
+  await waitFor(() => expect(statusReads).toBeGreaterThan(0))
+  expect(screen.queryByText('Upload confirmed')).not.toBeInTheDocument()
+  expect(screen.queryByRole('progressbar')).not.toBeInTheDocument()
+  expect(screen.queryByText(i18n.t('knowledge.org.upload_limitations'))).not.toBeInTheDocument()
+  if (mode === 'people') {
+    await user.type(screen.getByRole('combobox'), 'ali')
+    await user.click(await screen.findByRole('option', { name: 'alice' }))
+  }
+  await user.click(screen.getByRole('button', { name: mode === 'code' ? 'Generate share code' : 'Send invitation' }))
+  expect(await screen.findByRole('alert')).toHaveTextContent('action failed')
+  expect(screen.queryByText(/a\.md/)).not.toBeInTheDocument()
+  view.unmount()
+  statusReads = 0
+  render(<ShareKnowledgeDialog {...props} mode={mode} />)
+  await waitFor(() => expect(statusReads).toBeGreaterThan(0))
+  expect(screen.queryByRole('progressbar')).not.toBeInTheDocument()
+  expect(screen.queryByText(/a\.md/)).not.toBeInTheDocument()
+})
+
+it.each(['counting', 'uploading', 'confirming', 'paused'])('%s 未完成状态仍展示以便恢复', async (phase) => {
+  request.mockResolvedValue(uploadProgress(phase))
+  render(<ShareKnowledgeDialog {...props} />)
+  expect(await screen.findByRole('progressbar')).toBeInTheDocument()
+  expect(screen.getByText('a.md')).toBeInTheDocument()
+  if (phase === 'paused') expect(screen.getByRole('alert')).toHaveTextContent('network failed')
+})
+
+it.each(['code', 'people'] as const)('%s 本会话新上传完成保留反馈，重开隐藏', async (mode) => {
+  let phase = 'uploading'
+  let statusReads = 0
+  request.mockImplementation(async () => {
+    statusReads++
+    return uploadProgress(phase)
+  })
+  const view = render(<ShareKnowledgeDialog {...props} mode={mode} />)
+  expect(await screen.findByRole('progressbar')).toBeInTheDocument()
+  phase = 'completed'
+  expect(await screen.findByText('Upload confirmed')).toBeInTheDocument()
+  view.unmount()
+  statusReads = 0
+  render(<ShareKnowledgeDialog {...props} mode={mode} />)
+  await waitFor(() => expect(statusReads).toBeGreaterThan(0))
+  expect(screen.queryByText('Upload confirmed')).not.toBeInTheDocument()
+})
+
+it('本次发起的快速上传即使轮询只读到完成也保留反馈', async () => {
+  let completed = false
+  request.mockImplementation(async (route) => {
+    if (route === 'enterprise.knowledge.upload_status') return completed ? uploadProgress() : null
+    if (route === 'enterprise.knowledge.share') {
+      completed = true
+      return { shareId: 'orgkb:copy', completion: 'completed', files: [{ fileName: 'a.md', status: 'success' }] }
+    }
+    return share
+  })
+  const user = userEvent.setup()
+  render(<ShareKnowledgeDialog {...props} />)
+  await user.click(screen.getByRole('button', { name: 'Generate share code' }))
+  expect(await screen.findByText('Abcd_123')).toBeInTheDocument()
+  expect(await screen.findByText('Upload confirmed')).toBeInTheDocument()
 })
 
 it('完整上传后明确创建七天只读码，用户复制前不写剪贴板', async () => {
@@ -97,7 +185,7 @@ it('非法密码或次数阻断请求，留空恢复有效', async () => {
   expect(screen.getByRole('button', { name: 'Generate share code' })).toBeDisabled()
   await user.clear(count)
   expect(screen.getByRole('button', { name: 'Generate share code' })).toBeEnabled()
-  expect(request).not.toHaveBeenCalled()
+  expect(request.mock.calls.some(([route]) => route !== 'enterprise.knowledge.upload_status')).toBe(false)
 })
 
 it.each(['incomplete', 'unconfirmed', 'completed'])('%s 且文件失败时禁止创建码', async (completion) => {
@@ -108,6 +196,39 @@ it.each(['incomplete', 'unconfirmed', 'completed'])('%s 且文件失败时禁止
   await screen.findByRole('alert')
   expect(request.mock.calls.some(([route]) => route === 'enterprise.knowledge.create_share')).toBe(false)
   expect(screen.getByRole('button', { name: 'Generate share code' })).toBeDisabled()
+})
+
+it('详情恢复完成后解除旧失败结果锁定，重新确认完整副本才生成码', async () => {
+  let recovered = false
+  request.mockImplementation(async (route) => {
+    if (route === 'enterprise.knowledge.upload_status')
+      return {
+        phase: recovered ? 'completed' : 'paused',
+        totalBytes: 100,
+        uploadedBytes: recovered ? 100 : 0,
+        completedFiles: recovered ? 1 : 0,
+        totalFiles: 1,
+        currentFile: 'a.md',
+        error: null
+      }
+    if (route === 'enterprise.knowledge.share')
+      return {
+        shareId: 'orgkb:copy',
+        completion: recovered ? 'completed' : 'incomplete',
+        files: [{ fileName: 'a.md', status: recovered ? 'success' : 'unknown' }]
+      }
+    return share
+  })
+  const user = userEvent.setup()
+  render(<ShareKnowledgeDialog {...props} />)
+  await user.click(screen.getByRole('button', { name: 'Generate share code' }))
+  await screen.findByRole('alert')
+  expect(screen.getByRole('button', { name: 'Generate share code' })).toBeDisabled()
+  recovered = true
+  await screen.findByText('Upload confirmed')
+  await user.click(screen.getByRole('button', { name: 'Generate share code' }))
+  expect(await screen.findByText('Abcd_123')).toBeInTheDocument()
+  expect(request.mock.calls.filter(([route]) => route === 'enterprise.knowledge.share')).toHaveLength(2)
 })
 
 it('创建未知先查列表并锁住重复 POST，即使列表查询失败', async () => {
@@ -149,6 +270,7 @@ it('明确失败复用完整副本，永久与密码及次数正确发送', asyn
   request.mockImplementation(async (route) => {
     if (route === 'enterprise.knowledge.share')
       return { shareId: 'orgkb:copy', completion: 'completed', files: [{ fileName: 'a.md', status: 'success' }] }
+    if (route === 'enterprise.knowledge.upload_status') return null
     if (++attempts === 1) throw new Error('failed')
     return { ...share, hasPassword: true }
   })

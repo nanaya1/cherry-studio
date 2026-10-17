@@ -75,7 +75,10 @@ export default function KnowledgeInvitePanel({
     onBusyChange(true)
     setError(null)
     try {
-      const result = copy ?? prepared ?? (await ipcApi.request('enterprise.knowledge.share', { baseId }))
+      // const result = copy ?? prepared ?? (await ipcApi.request('enterprise.knowledge.share', { baseId }))
+      const cached = copy ?? prepared
+      const result =
+        cached && canInviteAfterShare(cached) ? cached : await ipcApi.request('enterprise.knowledge.share', { baseId })
       if (!active.current) return
       setCopy(result)
       onPrepared(result)

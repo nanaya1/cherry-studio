@@ -1,7 +1,11 @@
+import { randomUUID } from 'node:crypto'
 /**
  * [enterprise] T0 企业扩展 - 企业服务 HTTP 客户端
  * 薄封装：base URL 常量 + 统一 Authorization 头 + json 解析。
  */
+import { createReadStream } from 'node:fs'
+import { Readable } from 'node:stream'
+
 import { loggerService } from '@logger'
 
 import type {
@@ -182,6 +186,95 @@ export class OrgApiClient {
     const text = await res.text()
     if (!text) return undefined as T
     return JSON.parse(text) as T
+  }
+
+  // MEA:enterprise-knowledge-page 消费一次的流不经过401重放，文件数据始终受背压约束。
+  async requestFileMultipart<T>(
+    path: string,
+    file: { path: string; fileName: string; size: number; chunks: unknown[]; hash?: string },
+    progress: (bytes: number) => void
+  ): Promise<T> {
+    const session = await this.getValidSession()
+    if (!session) throw new Error('未登录')
+    const boundary = `mea-${randomUUID()}`
+    const name = file.fileName.replace(/[\r\n"\\]/g, '_')
+    const prefix = Buffer.from(
+      `--${boundary}\r\nContent-Disposition: form-data; name="file_name"\r\n\r\n${file.fileName}\r\n--${boundary}\r\nContent-Disposition: form-data; name="chunks"\r\n\r\n${JSON.stringify(file.chunks)}\r\n--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${name}"\r\nContent-Type: application/octet-stream\r\n\r\n`
+    )
+    const suffix = Buffer.from(`\r\n--${boundary}--\r\n`)
+    async function* body() {
+      yield prefix
+      let bytes = 0
+      const fingerprint = (await import('node:crypto')).createHash('sha256')
+      for await (const chunk of createReadStream(file.path)) {
+        if (source.destroyed) return
+        fingerprint.update(chunk)
+        bytes += chunk.length
+        if (bytes > file.size) throw new Error('上传期间文件大小发生变化')
+        resetTimeout()
+        progress(bytes)
+        yield chunk
+      }
+      if (bytes !== file.size) throw new Error('上传期间文件大小发生变化')
+      if (file.hash && fingerprint.digest('hex') !== file.hash) throw new Error('上传期间文件内容发生变化，结果需核对')
+      yield suffix
+    }
+    const target = new URL(`${getOrgApiBaseUrl()}${path}`)
+    target.searchParams.set('scope', 'client')
+    const source = Readable.from(body())
+    const controller = new AbortController()
+    // MEA:enterprise-knowledge-page 持续上传可超过5分钟；仅无字节进展或响应时中止。
+    const timer = setTimeout(() => {
+      controller.abort(new DOMException('上传无进展超时，结果需核对', 'TimeoutError'))
+      source.destroy()
+    }, 5 * 60_000)
+    const resetTimeout = () => timer.refresh()
+    const init: RequestInit & { duplex: 'half' } = {
+      signal: controller.signal,
+      method: 'POST',
+      redirect: 'error',
+      duplex: 'half',
+      // body: Readable.toWeb(Readable.from(body())) as ReadableStream<Uint8Array>,
+      body: Readable.toWeb(source) as ReadableStream<Uint8Array>,
+      headers: {
+        'content-type': `multipart/form-data; boundary=${boundary}`,
+        'content-length': String(prefix.length + file.size + suffix.length)
+      }
+    }
+    /* 原请求路径保留；下方统一清理提前响应或断连后仍在读取的流。
+    let response: Response
+    if (session.authMode === 'management-cookie') {
+      response = await this.requireCookieFetch()(target.toString(), { ...init, credentials: 'include' })
+    } else {
+      response = await fetch(target, {
+        ...init,
+        headers: { ...init.headers, authorization: `Bearer ${session.accessToken}` }
+      })
+    }
+    if (!response.ok) return this.shareHttpError(response)
+    return (await response.json()) as T
+    */
+    try {
+      // MEA:enterprise-knowledge-page Chromium流式上传拒绝手设Content-Length，Cookie传输交由网络栈分帧。
+      if (session.authMode === 'management-cookie') delete (init.headers as Record<string, string>)['content-length']
+      const response =
+        session.authMode === 'management-cookie'
+          ? await this.requireCookieFetch()(target.toString(), { ...init, credentials: 'include' })
+          : await fetch(target, {
+              ...init,
+              headers: { ...init.headers, authorization: `Bearer ${session.accessToken}` }
+            })
+      resetTimeout()
+      if (!response.ok) return await this.shareHttpError(response)
+      return (await response.json()) as T
+    } catch (error) {
+      controller.signal.throwIfAborted()
+      throw error
+    } finally {
+      clearTimeout(timer)
+      // MEA:enterprise-knowledge-page 传输提前结束时关闭文件读取，避免后台继续回调进度。
+      source.destroy()
+    }
   }
 
   /** 拉取纯文本响应（如签名 URL 指向的原文预览内容）。主进程内部使用，不向渲染进程暴露 URL。 */

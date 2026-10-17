@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { readFile } from 'node:fs/promises'
+import { createReadStream } from 'node:fs'
+import { readFile, stat } from 'node:fs/promises'
 import { basename } from 'node:path'
 
 import { application } from '@application'
@@ -37,6 +38,7 @@ import type { KnowledgeItemChunk } from '@shared/data/types/knowledge'
 import { enterpriseKnowledgeErrorCodes as E } from '@shared/ipc/errors/enterpriseKnowledge'
 import type { AbsoluteFilePath } from '@shared/types/file'
 
+import { FirstShareUpload, type FirstShareEntry, type FirstShareProgress } from './FirstShareUpload'
 import { OrgApiHttpError } from './OrgApiClient'
 import type { OrgAuthManager } from './OrgAuthManager'
 import { OrgKnowledgeClient } from './OrgKnowledgeClient'
@@ -92,6 +94,8 @@ export class OrgKnowledgeService {
   private readonly autoSyncTimers = new Map<string, ReturnType<typeof setTimeout>>()
   private jobSettledSubscription?: Disposable
   private disposed = false
+  private firstShareActive?: { key: string; name: string; promise: Promise<OrgKnowledgeShareResult> }
+  private readonly firstShareProgress = new Map<string, FirstShareProgress>()
 
   initialize(jobs: Pick<JobManager, 'registerHandler' | 'enqueue' | 'list' | 'onJobSettled'>): void {
     this.jobs = jobs
@@ -985,6 +989,110 @@ export class OrgKnowledgeService {
     throw new Error('新文件尚未出现在知识目录')
   }
 
+  async uploadStatus(baseId: string): Promise<FirstShareProgress | null> {
+    const key = this.syncKey(baseId, this.acquireLease())
+    const progress = this.firstShareProgress.get(key)
+    if (progress) return { ...progress }
+    const saved = orgStateStore.getFirstShareUpload(key)
+    if (!saved) return null
+    return {
+      phase: saved.files.every((file) => file.phase === 'success') ? 'completed' : 'paused',
+      totalBytes: saved.files.reduce((sum, file) => sum + file.size, 0),
+      uploadedBytes: saved.files.reduce((sum, file) => sum + (file.phase === 'success' ? file.size : 0), 0),
+      completedFiles: saved.files.filter((file) => file.phase === 'success').length,
+      totalFiles: saved.files.length,
+      currentFile: null,
+      error:
+        saved.files.find((file) => file.error)?.error ??
+        (saved.creation !== 'created' ? '创建云端库结果未知，请联系管理员核查' : null)
+    }
+  }
+
+  share(localBaseId: string, verifyOnly = false): Promise<OrgKnowledgeShareResult> {
+    const lease = this.acquireLease()
+    const key = this.syncKey(localBaseId, lease)
+    // MEA:enterprise-knowledge-page 在第一个await之前占用，异库拒绝且同库复用。
+    if (this.firstShareActive) {
+      if (this.firstShareActive.key === key) return this.firstShareActive.promise
+      return Promise.reject(
+        new OrgKnowledgeError(E.ORGKB_SHARE_FAILED, `「${this.firstShareActive.name}」正在上传云端，请完成后再试`)
+      )
+    }
+    const existing = orgStateStore.getShareAssociation(key)
+    if (existing && (existing.completion === 'completed' || !orgStateStore.getFirstShareUpload(key)))
+      return Promise.resolve({ ...existing, shareId: encodeOrgId(existing.shareId) })
+    const ks = application.get('KnowledgeService')
+    const base = ks
+      .listBasesForDiscovery({ limit: 1, scope: { kind: 'restricted', baseIds: [localBaseId] } })
+      .items.find((item) => item.id === localBaseId)
+    if (!base) return Promise.reject(new OrgKnowledgeError(E.ORGKB_BAD_INPUT, '本地知识库不存在'))
+    const active = () => {
+      this.assertLease(lease)
+      if (this.disposed) throw new Error('上传服务已停止')
+    }
+    const upload = new FirstShareUpload(
+      {
+        get: (id) => orgStateStore.getFirstShareUpload(id),
+        set: (id, state) => orgStateStore.setFirstShareUpload(id, state)
+      },
+      {
+        createShareSpace: (name) => this.client.createShareSpace(name),
+        uploadShareStream: (shareId, entry, report) => this.client.uploadShareStream(shareId, entry, report),
+        verify: (shareId, fileId, entry) => this.verifyFirstShareFile(shareId, fileId, entry, lease)
+      }
+    )
+    const promise = Promise.resolve()
+      .then(() =>
+        this.shareMutex.runExclusive(key, () =>
+          upload.run(
+            key,
+            base.name,
+            () => this.buildFirstSharePlan(ks, localBaseId, active),
+            (progress) => this.firstShareProgress.set(key, progress),
+            active,
+            verifyOnly
+          )
+        )
+      )
+      .then((result) => {
+        active()
+        const saved = orgStateStore.getFirstShareUpload(key)
+        if (saved?.shareId)
+          orgStateStore.setShareAssociation(key, {
+            ...result,
+            shareId: saved.shareId,
+            manifest: {
+              entries: saved.files.map((file) => ({
+                itemId: file.itemId,
+                fileId: file.fileId,
+                fileName: file.fileName,
+                hash: file.fingerprint
+              })),
+              operations: [],
+              state: result.completion === 'completed' ? 'shared' : 'incomplete',
+              lastSyncedAt: result.completion === 'completed' ? new Date().toISOString() : null
+            }
+          })
+        return result
+      })
+      .catch((error) => {
+        const previous = this.firstShareProgress.get(key)
+        if (previous)
+          this.firstShareProgress.set(key, {
+            ...previous,
+            phase: 'paused',
+            error: error instanceof Error ? error.message : String(error)
+          })
+        throw error
+      })
+      .finally(() => {
+        if (this.firstShareActive?.key === key) this.firstShareActive = undefined
+      })
+    this.firstShareActive = { key, name: base.name, promise }
+    return promise
+  }
+
+  /* 原排队分享入口保留，首次上传改为上方原子占用。
   async share(localBaseId: string): Promise<OrgKnowledgeShareResult> {
     const lease = this.acquireLease()
     const key = JSON.stringify([lease.issuerId, lease.userId, lease.groupId, localBaseId])
@@ -999,6 +1107,151 @@ export class OrgKnowledgeService {
       )
     }
     return result.output as OrgKnowledgeShareResult
+  }
+
+  */
+
+  private async buildFirstSharePlan(
+    ks: ReturnType<typeof application.get<'KnowledgeService'>>,
+    baseId: string,
+    active: () => void
+  ): Promise<FirstShareEntry[]> {
+    const roots = ks.listRootItems(baseId)
+    const descendants = knowledgeItemService.getSubtreeItems(
+      baseId,
+      roots.filter((item) => item.type === 'directory').map((item) => item.id)
+    )
+    const items = [...new Map([...roots, ...descendants].map((item) => [item.id, item])).values()]
+    const files: Array<{ item: (typeof items)[number]; path: string; size: number }> = []
+    let total = 0
+    for (const item of items) {
+      active()
+      if (!['file', 'directory'].includes(item.type) || item.status !== 'completed')
+        throw new OrgKnowledgeError(E.ORGKB_SHARE_NO_CONTENT, `无法完整共享: ${item.id}`)
+      if (item.type !== 'file') continue
+      const path = String(ks.getFilePath(item.id))
+      const info = await stat(path)
+      if (!info.isFile()) throw new Error('原文件不是普通文件')
+      total += info.size
+      // MEA:enterprise-knowledge-page 暂不设置客户端总容量上限，旧检查保留供回溯。
+      // if (total >= 2 ** 31) throw new OrgKnowledgeError(E.ORGKB_BAD_INPUT, '知识库原文件总大小必须严格小于 2 GiB')
+      // if (total >= 20 * 1024 * 1024)
+      //   throw new OrgKnowledgeError(E.ORGKB_BAD_INPUT, '知识库原文件总大小必须严格小于 20 MiB')
+      files.push({ item, path, size: info.size })
+    }
+    const result: FirstShareEntry[] = []
+    for (const { item, path, size } of files) {
+      active()
+      const chunks = await ks.listItemChunks(baseId, item.id)
+      if (!chunks.length) throw new OrgKnowledgeError(E.ORGKB_SHARE_NO_CONTENT, `文件 ${item.id} 没有可分享分块`)
+      const data = item.data as { relativePath?: string; source?: string } | undefined
+      const name = data?.relativePath || data?.source || chunks[0].metadata.source
+      if (!name) throw new Error('文件缺少原始名称')
+      const body = chunks.map((chunk) => ({
+        chunk_id: chunk.id,
+        item_id: chunk.itemId,
+        document_id: item.id,
+        content: chunk.content,
+        metadata: {
+          chunk_index: chunk.metadata.chunkIndex,
+          token_count: chunk.metadata.tokenCount,
+          source: chunk.metadata.source,
+          item_type: chunk.metadata.itemType
+        }
+      }))
+      const hash = createHash('sha256')
+      const fingerprint = createHash('sha256')
+      for await (const bytes of createReadStream(path)) {
+        active()
+        hash.update(bytes)
+        fingerprint.update(bytes)
+      }
+      const canonical = (value: unknown): unknown =>
+        Array.isArray(value)
+          ? value.map(canonical)
+          : value && typeof value === 'object'
+            ? Object.fromEntries(
+                Object.entries(value)
+                  .sort(([a], [b]) => a.localeCompare(b))
+                  .map(([key, child]) => [key, canonical(child)])
+              )
+            : value
+      fingerprint
+        .update('\u0000')
+        .update(JSON.stringify(body.map(canonical).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)))))
+      result.push({
+        itemId: item.id,
+        fileName: basename(name),
+        path,
+        size,
+        hash: hash.digest('hex'),
+        fingerprint: fingerprint.digest('hex'),
+        chunks: body
+      })
+    }
+    return result
+  }
+
+  private async verifyFirstShareFile(
+    shareId: string,
+    fileId: string,
+    entry: FirstShareEntry,
+    lease: Lease
+  ): Promise<void> {
+    const file = await this.checked(() => this.client.getFile(fileId), lease)
+    if (
+      file.id !== fileId ||
+      file.space_id !== shareId ||
+      file.is_dir ||
+      file.file_hash !== entry.hash ||
+      file.name !== entry.fileName
+    )
+      throw new Error('远端文件哈希或归属尚未确认')
+    let cursor: string | null | undefined
+    const seen = new Set<string>()
+    do {
+      const page = await this.checked(() => this.client.listItems(shareId, cursor), lease)
+      const item = page.items.find(
+        (candidate) =>
+          candidate.base_id === shareId && (candidate.data.file_id === fileId || candidate.document_id === fileId)
+      )
+      if (item) {
+        const visible = await this.checked(() => this.client.getItem(shareId, item.id), lease)
+        const chunks = await this.checked(() => this.client.listChunks(shareId, item.id), lease)
+        const chunkCursors = new Set<string>()
+        let chunkCursor = chunks.next_cursor
+        while (chunkCursor) {
+          if (chunkCursors.has(chunkCursor)) throw new Error('远端分块分页未确认')
+          chunkCursors.add(chunkCursor)
+          const next = await this.checked(() => this.client.listChunks(shareId, item.id, chunkCursor), lease)
+          if (next.total !== chunks.total) throw new Error('远端分块统计已变化')
+          chunks.chunks.push(...next.chunks)
+          chunkCursor = next.next_cursor
+        }
+        const local = entry.chunks as Array<{ content: string; metadata: { chunk_index: number } }>
+        if (
+          visible.status !== 'completed' ||
+          visible.base_id !== shareId ||
+          chunks.total !== local.length ||
+          chunks.chunks.length !== local.length ||
+          local.some(
+            (chunk) =>
+              !chunks.chunks.some(
+                (remote) =>
+                  remote.item_id === item.id &&
+                  remote.content === chunk.content &&
+                  remote.metadata.chunk_index === chunk.metadata.chunk_index
+              )
+          )
+        )
+          throw new Error('远端分块尚未完整确认')
+        return
+      }
+      cursor = page.next_cursor
+      if (cursor && seen.has(cursor)) throw new Error('远端目录分页未确认')
+      if (cursor) seen.add(cursor)
+    } while (cursor)
+    throw new Error('远端文件尚未出现在知识目录')
   }
 
   private async createShare(
