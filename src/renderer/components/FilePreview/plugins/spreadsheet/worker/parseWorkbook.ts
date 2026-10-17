@@ -532,6 +532,59 @@ async function normalizeDrawingsForExcelJs(zip: JSZip, original: ArrayBuffer): P
     zip.file(file.name, prefixed)
     modified = true
   }
+
+  // ExcelJS treats a top-level <t> as a string and then cannot add richText when a sibling <r> follows.
+  // Normalize only mixed direct children, retaining the original <t> attributes/content and every existing run.
+  const sharedStringsFile = zip.file('xl/sharedStrings.xml')
+  const richTextFiles = [
+    ...(sharedStringsFile ? [sharedStringsFile] : []),
+    ...zip.file(/^xl\/worksheets\/sheet[0-9]+\.xml$/)
+  ]
+  for (const file of richTextFiles) {
+    const xml = await file.async('string')
+    const normalized = xml.replace(
+      /(<(?:[a-zA-Z0-9._-]+:)?(?:si|is)\b[^>]*>)([\s\S]*?)(<\/(?:[a-zA-Z0-9._-]+:)?(?:si|is)>)/g,
+      (_, open, content, close) => {
+        const children: { start: number; end: number; name: string }[] = []
+        const stack: { start: number; name: string }[] = []
+        const tagPattern = /<[^>]*>/g
+        let match: RegExpExecArray | null
+        while ((match = tagPattern.exec(content))) {
+          const tag = match[0]
+          if (tag.startsWith('</')) {
+            const child = stack.pop()
+            if (child && stack.length === 0)
+              children.push({ start: child.start, end: tagPattern.lastIndex, name: child.name })
+          } else if (!/^<\?|^<!--/.test(tag)) {
+            const nameMatch = /^<([a-zA-Z0-9._-]+:)?([a-zA-Z0-9._-]+)/.exec(tag)
+            if (!nameMatch) continue
+            const name = nameMatch[2]
+            if (/\/\s*>$/.test(tag)) {
+              if (stack.length === 0) children.push({ start: match.index, end: tagPattern.lastIndex, name })
+            } else {
+              stack.push({ start: match.index, name })
+            }
+          }
+        }
+        if (!children.some((child) => child.name === 'r') || !children.some((child) => child.name === 't'))
+          return open + content + close
+        let result = ''
+        let cursor = 0
+        for (const child of children) {
+          result += content.slice(cursor, child.start)
+          const childXml = content.slice(child.start, child.end)
+          result += child.name === 't' ? `<r>${childXml}</r>` : childXml
+          cursor = child.end
+        }
+        return open + result + content.slice(cursor) + close
+      }
+    )
+    if (normalized !== xml) {
+      zip.file(file.name, normalized)
+      modified = true
+    }
+  }
+
   if (!modified) return original
   // JSZip has no in-place entry rewrite: changing any drawing regenerates the package. The 256 MiB declared-size
   // preflight bounds well-formed inputs; avoiding this temporary peak requires a ZIP writer that can copy raw entries.

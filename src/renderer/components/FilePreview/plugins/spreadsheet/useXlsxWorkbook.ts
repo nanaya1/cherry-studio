@@ -12,6 +12,10 @@ function toUint8Array(data: Uint8Array | ArrayBuffer | ArrayBufferView): Uint8Ar
   return new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
 }
 
+function decodeBase64(base64: string): Uint8Array {
+  return Uint8Array.from(atob(base64), (character) => character.charCodeAt(0))
+}
+
 /** Files above this size are not parsed and fall back to opening in an external app. */
 export const XLSX_PREVIEW_MAX_SIZE_BYTES = 20 * 1024 * 1024
 
@@ -33,7 +37,12 @@ type XlsxWorker = Pick<Worker, 'postMessage' | 'terminate'> & {
  * dedicated worker that is terminated as soon as it reaches a terminal state (response, crash, supersession, or
  * unmount), so a slow parse can't pin a shared worker and an idle preview doesn't hold a parser isolate alive.
  */
-export function useXlsxWorkbook(filePath: string, refreshKey: number, sourceSize?: number): XlsxWorkbookState {
+export function useXlsxWorkbook(
+  filePath: string,
+  refreshKey: number,
+  sourceSize?: number,
+  base64?: string
+): XlsxWorkbookState {
   const [state, setState] = useState<XlsxWorkbookState>({ status: 'idle' })
   const workerRef = useRef<XlsxWorker | null>(null)
   const requestIdRef = useRef(0)
@@ -56,9 +65,10 @@ export function useXlsxWorkbook(filePath: string, refreshKey: number, sourceSize
     void (async () => {
       let bytes: ArrayBuffer
       try {
-        const raw = await window.api.fs.read(filePath)
+        // const raw = await window.api.fs.read(filePath)
+        const raw = base64 !== undefined ? decodeBase64(base64) : toUint8Array(await window.api.fs.read(filePath))
         if (cancelled || requestId !== requestIdRef.current) return
-        bytes = toUint8Array(raw).slice().buffer
+        bytes = raw.slice().buffer
         if (bytes.byteLength > XLSX_PREVIEW_MAX_SIZE_BYTES) {
           setState({ status: 'oversize', sizeBytes: bytes.byteLength })
           return
@@ -137,7 +147,7 @@ export function useXlsxWorkbook(filePath: string, refreshKey: number, sourceSize
       workerRef.current?.terminate()
       workerRef.current = null
     }
-  }, [filePath, refreshKey, sourceSize])
+  }, [base64, filePath, refreshKey, sourceSize])
 
   return state
 }

@@ -14,7 +14,7 @@ import type { XlsxGridProps } from '../XlsxGrid'
 
 const mocks = vi.hoisted(() => ({
   workbookState: { status: 'idle' } as unknown,
-  useXlsxWorkbookCalls: [] as Array<{ filePath: string; refreshKey: number; sourceSize?: number }>,
+  useXlsxWorkbookCalls: [] as Array<{ filePath: string; refreshKey: number; sourceSize?: number; base64?: string }>,
   translationCalls: [] as Array<{ key: string; options?: Record<string, unknown> }>,
   gridProps: [] as unknown[],
   /** Status-bar text captured at every committed frame, to catch a stale frame an effect later clears. */
@@ -32,8 +32,8 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../useXlsxWorkbook', () => ({
   XLSX_PREVIEW_MAX_SIZE_BYTES: 20 * 1024 * 1024,
-  useXlsxWorkbook: (filePath: string, refreshKey: number, sourceSize?: number) => {
-    mocks.useXlsxWorkbookCalls.push({ filePath, refreshKey, sourceSize })
+  useXlsxWorkbook: (filePath: string, refreshKey: number, sourceSize?: number, base64?: string) => {
+    mocks.useXlsxWorkbookCalls.push({ filePath, refreshKey, sourceSize, base64 })
     return mocks.workbookState
   }
 }))
@@ -241,15 +241,17 @@ describe('SpreadsheetFilePreview', () => {
     expect(screen.queryByTestId('xlsx-grid')).not.toBeInTheDocument()
   })
 
-  it('renders the error state with a translated description, not the raw technical message', () => {
-    setWorkbookState({ status: 'error', message: 'not an xlsx' })
+  it('keeps the generic error description and exposes the technical message as plain text', () => {
+    setWorkbookState({ status: 'error', message: 'not an xlsx <script>alert(1)</script>' })
 
     renderPanel()
 
     expect(screen.getByTestId('empty-state')).toHaveTextContent('file_preview.load_error.title')
-    // The raw worker message is logged, not shown; the UI uses a translated, generic description.
     expect(screen.getByTestId('empty-state')).toHaveTextContent('xlsx_preview.error.description')
-    expect(screen.getByTestId('empty-state')).not.toHaveTextContent('not an xlsx')
+    expect(screen.getByText('common.detail')).toBeInTheDocument()
+    const technicalMessage = screen.getByText('not an xlsx <script>alert(1)</script>')
+    expect(technicalMessage).toBeInTheDocument()
+    expect(technicalMessage.tagName).toBe('PRE')
   })
 
   it('renders the oversize state with the size-limit message', () => {
@@ -661,5 +663,22 @@ describe('SpreadsheetFilePreview', () => {
       refreshKey: 0,
       sourceSize: 1024
     })
+  })
+
+  it('renders the workbook from base64 and hands it to the hook without a filePath', () => {
+    setWorkbookState({ status: 'ready', model: modelWithoutCharts() })
+    const bytes = new Uint8Array([1, 2, 3, 4])
+    const base64 = btoa(String.fromCharCode(...bytes))
+
+    render(<SpreadsheetFilePreview fileName="book.xlsx" base64={base64} />)
+
+    expect(mocks.useXlsxWorkbookCalls.at(-1)).toEqual({
+      filePath: 'book.xlsx',
+      refreshKey: 0,
+      sourceSize: undefined,
+      base64
+    })
+    expect(screen.getByTestId('spreadsheet-file-preview')).toBeInTheDocument()
+    expect(screen.getByTestId('xlsx-grid')).toHaveAttribute('data-sheet-name', 'Sales')
   })
 })

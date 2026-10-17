@@ -103,6 +103,24 @@ describe('parseWorkbook — sheets, values, hidden', () => {
   })
 })
 
+describe('parseWorkbook — base64 xlsx integration', () => {
+  it('parses real xlsx bytes after a base64 round trip and preserves cell data', async () => {
+    const bytes = await buildChartWorkbookArrayBuffer('basic')
+    const base64 = Buffer.from(bytes).toString('base64')
+    const decoded = Buffer.from(base64, 'base64')
+    const arrayBuffer = new ArrayBuffer(decoded.byteLength)
+    new Uint8Array(arrayBuffer).set(decoded)
+
+    const model = await parseWorkbook(arrayBuffer, 'base64-round-trip.xlsx')
+    const dataSheet = model.sheets.find((sheet) => sheet.name === 'Data')
+
+    expect(dataSheet?.cells['1:1'].text).toBe('Category')
+    expect(dataSheet?.cells['2:1'].text).toBe('Q1')
+    expect(dataSheet?.cells['2:2'].raw).toBe(10)
+    expect(dataSheet?.cells['5:3'].raw).toBe(35)
+  })
+})
+
 describe('parseWorkbook — styles: extraction + dedup', () => {
   let model: WorkbookRenderModel
 

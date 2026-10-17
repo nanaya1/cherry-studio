@@ -454,4 +454,29 @@ describe('PowerPointFilePreview', () => {
     await waitFor(() => expect(mocks.load).toHaveBeenCalledTimes(2))
     expect(mocks.destroy).toHaveBeenCalledTimes(1)
   })
+
+  it('renders PPTX from base64 without reading the disk', async () => {
+    const bytes = new Uint8Array([80, 75, 3, 4])
+    const base64 = btoa(String.fromCharCode(...bytes))
+
+    render(<PowerPointFilePreview fileName="roadmap.pptx" base64={base64} />)
+
+    await waitFor(() => expect(mocks.load).toHaveBeenCalledTimes(1))
+    expect(mocks.fsRead).not.toHaveBeenCalled()
+    expect(new Uint8Array(mocks.parseZipLazyMedia.mock.calls[0][0])).toEqual(bytes)
+    expect(screen.getByTestId('pptx-preview-page-indicator')).toHaveTextContent('1 / 3')
+  })
+
+  it('rebuilds the viewer when a new base64 value arrives', async () => {
+    const first = new Uint8Array([80, 75, 3, 4])
+    const second = new Uint8Array([80, 75, 3, 4, 5])
+    const view = render(<PowerPointFilePreview fileName="roadmap.pptx" base64={btoa(String.fromCharCode(...first))} />)
+    await waitFor(() => expect(mocks.load).toHaveBeenCalledTimes(1))
+
+    view.rerender(<PowerPointFilePreview fileName="roadmap.pptx" base64={btoa(String.fromCharCode(...second))} />)
+
+    await waitFor(() => expect(mocks.load).toHaveBeenCalledTimes(2))
+    expect(mocks.destroy).toHaveBeenCalledTimes(1)
+    expect(mocks.fsRead).not.toHaveBeenCalled()
+  })
 })

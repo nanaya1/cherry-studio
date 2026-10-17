@@ -10,7 +10,7 @@ import { loggerService } from '@logger'
 
 import { FilePreviewLayout } from '../../FilePreviewLayout'
 import { createSelectionReference } from '../../selectionReference'
-import type { FilePreviewPluginProps } from '../../types'
+import type { FilePreviewPluginProps, OfficeMemoryPreviewProps } from '../../types'
 import { PowerPointFilePreviewToolbar } from './PowerPointFilePreviewToolbar'
 import { slideExcerpt, slideToPptxAnchor } from './pptxSelectionAnchor'
 
@@ -95,13 +95,13 @@ function stripExternalMediaRelationships(presentation: PresentationData): void {
  * hyperlink a pick; the renderer's in-deck jump links are `role="link"` spans that stop propagation,
  * so they jump without picking (known limitation, see the FilePreview README).
  */
-export default function PowerPointFilePreview({
-  filePath,
-  fileName,
-  metadata,
-  refreshKey,
-  onSelectionReference
-}: FilePreviewPluginProps) {
+type PowerPointPreviewProps = FilePreviewPluginProps | OfficeMemoryPreviewProps
+
+export default function PowerPointFilePreview(props: PowerPointPreviewProps) {
+  const { filePath, fileName, refreshKey, onSelectionReference } = props
+  const metadata = 'metadata' in props ? props.metadata : undefined
+  const base64 = 'base64' in props ? props.base64 : undefined
+  const sourceName = filePath ?? fileName
   const { t } = useTranslation()
   const containerRef = useRef<HTMLDivElement>(null)
   const viewerRef = useRef<PptxViewer | null>(null)
@@ -199,9 +199,12 @@ export default function PowerPointFilePreview({
 
     void (async () => {
       try {
-        assertSourceSize(metadata.size)
-
-        const pptxData = toUint8Array(await window.api.fs.read(filePath))
+        if (base64 === undefined) assertSourceSize(metadata!.size)
+        // const pptxData = toUint8Array(await window.api.fs.read(filePath))
+        const pptxData =
+          base64 !== undefined
+            ? Uint8Array.from(atob(base64), (character) => character.charCodeAt(0))
+            : toUint8Array(await window.api.fs.read(filePath!))
         assertSourceSize(pptxData.byteLength)
         if (cancelled) return
 
@@ -272,7 +275,7 @@ export default function PowerPointFilePreview({
         viewer?.destroy()
         container.innerHTML = ''
         const normalized = loadError instanceof Error ? loadError : new Error(String(loadError))
-        logger.error(`Failed to load PPTX preview: ${filePath}`, normalized)
+        logger.error(`Failed to load PPTX preview: ${sourceName}`, normalized)
         setError(normalized)
       } finally {
         if (!cancelled) setLoading(false)
@@ -290,13 +293,13 @@ export default function PowerPointFilePreview({
       viewer?.destroy()
       container.innerHTML = ''
     }
-  }, [filePath, focusContainer, metadata.size, refreshKey, setPreviewControlsBusy])
+  }, [base64, filePath, focusContainer, metadata?.size, refreshKey, setPreviewControlsBusy, sourceName])
 
   // The marker goes on only after createSelectionReference confirms the host receives something: a slide
   // with no text must not look picked while the host gets null.
   const handlePick = useCallback(
     (event: ReactMouseEvent<HTMLDivElement>) => {
-      if (!onSelectionReference || !(event.target instanceof Element)) return
+      if (!onSelectionReference || !filePath || !metadata || !(event.target instanceof Element)) return
       if (event.target.closest('a[href]')) event.preventDefault()
 
       const result = slideToPptxAnchor(event.target)

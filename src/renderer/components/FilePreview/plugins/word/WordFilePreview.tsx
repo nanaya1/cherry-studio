@@ -10,7 +10,7 @@ import { loggerService } from '@logger'
 import { FilePreviewLayout } from '../../FilePreviewLayout'
 import { assertZipLimits } from '../../officeZipPreflight'
 import { createSelectionReference } from '../../selectionReference'
-import type { FilePreviewPluginProps } from '../../types'
+import type { FilePreviewPluginProps, OfficeMemoryPreviewProps } from '../../types'
 import { paragraphToDocxAnchor } from './docxSelectionAnchor'
 import { WordFilePreviewToolbar } from './WordFilePreviewToolbar'
 
@@ -69,13 +69,13 @@ function sanitizeHyperlinks(body: HTMLElement): void {
  * the render effect re-runs only for `filePath` / `refreshKey` (and the metadata they carry), which
  * remount the plugin through FilePreview's ErrorBoundary key rather than replacing the body.
  */
-export default function WordFilePreview({
-  filePath,
-  fileName,
-  metadata,
-  refreshKey,
-  onSelectionReference
-}: FilePreviewPluginProps) {
+type WordPreviewProps = FilePreviewPluginProps | OfficeMemoryPreviewProps
+
+export default function WordFilePreview(props: WordPreviewProps) {
+  const { filePath, fileName, refreshKey, onSelectionReference } = props
+  const metadata = 'metadata' in props ? props.metadata : undefined
+  const base64 = 'base64' in props ? props.base64 : undefined
+  const sourceName = filePath ?? fileName
   const { t } = useTranslation()
   const containerRef = useRef<HTMLDivElement>(null)
   const bodyRef = useRef<HTMLDivElement>(null)
@@ -146,9 +146,12 @@ export default function WordFilePreview({
 
     void (async () => {
       try {
-        assertSourceSize(metadata.size)
-
-        const docxData = toUint8Array(await window.api.fs.read(filePath))
+        if (base64 === undefined) assertSourceSize(metadata!.size)
+        // const docxData = toUint8Array(await window.api.fs.read(filePath))
+        const docxData =
+          base64 !== undefined
+            ? Uint8Array.from(atob(base64), (character) => character.charCodeAt(0))
+            : toUint8Array(await window.api.fs.read(filePath!))
         assertSourceSize(docxData.byteLength)
         if (!isCurrent()) return
 
@@ -186,7 +189,7 @@ export default function WordFilePreview({
       } catch (loadError) {
         if (!isCurrent()) return
         const normalized = loadError instanceof Error ? loadError : new Error(String(loadError))
-        logger.error(`Failed to load DOCX preview: ${filePath}`, normalized)
+        logger.error(`Failed to load DOCX preview: ${sourceName}`, normalized)
         setError(normalized)
       } finally {
         if (isCurrent()) setLoading(false)
@@ -200,7 +203,7 @@ export default function WordFilePreview({
       styleContainer.innerHTML = ''
       stagingHost.remove()
     }
-  }, [filePath, focusContainer, metadata.size, refreshKey])
+  }, [base64, filePath, focusContainer, metadata?.size, refreshKey, sourceName])
 
   useEffect(() => {
     const scrollRoot = containerRef.current
@@ -236,7 +239,7 @@ export default function WordFilePreview({
   // paragraph must not look picked while the host gets null.
   const handlePick = useCallback(
     (event: ReactMouseEvent<HTMLDivElement>) => {
-      if (!onSelectionReference || !(event.target instanceof Element)) return
+      if (!onSelectionReference || !filePath || !metadata || !(event.target instanceof Element)) return
       if (event.target.closest('a[href]')) event.preventDefault()
       const bodyContainer = bodyRef.current
       const previous = bodyContainer?.querySelector<HTMLElement>('[data-docx-picked="true"]') ?? null

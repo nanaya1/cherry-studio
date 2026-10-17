@@ -259,4 +259,47 @@ describe('useXlsxWorkbook', () => {
 
     expect(mocks.logger.warn).toHaveBeenCalledTimes(2)
   })
+
+  it('decodes base64 in the effect and parses without reading the disk', async () => {
+    const bytes = new Uint8Array([9, 8, 7, 6, 5])
+    const base64 = btoa(String.fromCharCode(...bytes))
+    const model = createMockWorkbookModel()
+
+    const { result } = renderHook(() => useXlsxWorkbook('/tmp/x.xlsx', 0, undefined, base64))
+
+    expect(result.current.status).toBe('loading')
+    await waitFor(() => expect(mocks.requests).toHaveLength(1))
+    expect(mocks.fsRead).not.toHaveBeenCalled()
+    expect(new Uint8Array(mocks.requests[0].data)).toEqual(bytes)
+    expect(mocks.requests[0].fileName).toBe('x.xlsx')
+
+    act(() => lastWorker().respond({ id: mocks.requests[0].id, ok: true, model }))
+    await waitFor(() => expect(result.current.status).toBe('ready'))
+  })
+
+  it('reports an oversize state from decoded base64 bytes without reading the disk', async () => {
+    const oversizeBytes = XLSX_PREVIEW_MAX_SIZE_BYTES + 1
+    const buffer = new Uint8Array(oversizeBytes)
+    let binary = ''
+    for (let offset = 0; offset < buffer.length; offset += 0x8000) {
+      binary += String.fromCharCode(...buffer.subarray(offset, offset + 0x8000))
+    }
+    const base64 = btoa(binary)
+    mocks.fsRead.mockResolvedValue(new Uint8Array([1, 2, 3]))
+
+    const { result } = renderHook(() => useXlsxWorkbook('/tmp/big.xlsx', 0, undefined, base64))
+
+    await waitFor(() => expect(result.current).toEqual({ status: 'oversize', sizeBytes: oversizeBytes }))
+    expect(mocks.fsRead).not.toHaveBeenCalled()
+    expect(mocks.workers).toHaveLength(0)
+  })
+
+  it('keeps the disk path when no base64 is given', async () => {
+    const { result } = renderHook(() => useXlsxWorkbook('/tmp/dir/book.xlsx', 0))
+
+    expect(result.current.status).toBe('loading')
+    await waitFor(() => expect(mocks.requests).toHaveLength(1))
+    expect(mocks.fsRead).toHaveBeenCalledWith('/tmp/dir/book.xlsx')
+    expect(new Uint8Array(mocks.requests[0].data)).toEqual(new Uint8Array([1, 2, 3, 4]))
+  })
 })
