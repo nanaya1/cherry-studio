@@ -20,7 +20,10 @@ vi.mock('@renderer/services/mainWindowNavigation', () => ({ openRoute: mocks.ope
 vi.mock('@renderer/services/toast', () => ({ toast: { error: mocks.toastError } }))
 vi.mock('@logger', () => ({ loggerService: { withContext: () => ({ error: vi.fn() }) } }))
 vi.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string) => key })
+  useTranslation: () => ({
+    i18n: { language: 'zh-CN', resolvedLanguage: 'zh-CN' },
+    t: (key: string) => key
+  })
 }))
 vi.mock('@cherrystudio/ui', () => ({
   ConfirmDialog: ({

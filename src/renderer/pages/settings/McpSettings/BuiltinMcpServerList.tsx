@@ -1,3 +1,8 @@
+import { Check, Download, LoaderCircle, Plug } from 'lucide-react'
+import type { FC, ReactNode } from 'react'
+import { useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+
 import { Badge, Button, Popover, PopoverContent, PopoverTrigger, Tabs, TabsList, TabsTrigger } from '@cherrystudio/ui'
 import CollapsibleSearchBar from '@renderer/components/CollapsibleSearchBar'
 import { SettingTitle } from '@renderer/components/SettingsPrimitives'
@@ -5,13 +10,10 @@ import { useMcpServers } from '@renderer/hooks/useMcpServer'
 import { getBuiltInMcpServerDescriptionLabelKey } from '@renderer/i18n/label'
 import { toast } from '@renderer/services/toast'
 import { cn } from '@renderer/utils/style'
-import { PRESET_MCP_SERVERS } from '@shared/data/presets/mcpServers'
+// import { PRESET_MCP_SERVERS } from '@shared/data/presets/mcpServers'
+import { VISIBLE_PRESET_MCP_SERVERS } from '@shared/data/presets/mcpServers'
 import { isBrowserMcpServer } from '@shared/utils/mcp'
 import { BuiltinMcpServerNames } from '@shared/utils/mcp'
-import { Check, Download, LoaderCircle, Plug } from 'lucide-react'
-import type { FC, ReactNode } from 'react'
-import { useMemo, useState } from 'react'
-import { useTranslation } from 'react-i18next'
 
 import { QVERIS_API_KEY_REGISTRATION_URL } from './QVerisApiKeyGuide'
 import { toCreateMcpServerDto } from './utils'
@@ -31,7 +33,8 @@ const BuiltinMcpServerList: FC<BuiltinMcpServerListProps> = ({ variant = 'settin
   const filteredServers = useMemo(() => {
     const keyword = searchText.trim().toLowerCase()
 
-    return PRESET_MCP_SERVERS.filter((server) => {
+    // return PRESET_MCP_SERVERS.filter((server) => {
+    return VISIBLE_PRESET_MCP_SERVERS.filter((server) => {
       // MEA：需要配置（shouldConfig）的内置服务器暂时隐藏，配置流程完善后删除此行恢复
       if (server.shouldConfig) return false
 

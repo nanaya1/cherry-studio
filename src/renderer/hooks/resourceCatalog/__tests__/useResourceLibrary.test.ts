@@ -43,6 +43,7 @@ vi.mock('@renderer/hooks/useGroups', () => ({
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
+    i18n: { language: 'zh-CN', resolvedLanguage: 'zh-CN' },
     t: (key: string) => (key === 'agent.builtin.cherry_assistant.description' ? 'Advisor 诊断 helper' : key)
   })
 }))
@@ -219,6 +220,25 @@ describe('useResourceLibrary', () => {
     const { result } = renderResourceLibrary({ resourceType: 'agent' })
 
     expect(result.current.allResources[0]?.avatar).toBe('🤖')
+  })
+
+  it('uses display metadata for skill resource cards without changing the stable name', () => {
+    mocks.useSkillList.mockReturnValue(
+      listResult([
+        {
+          ...skillListItem,
+          name: 'cherry-browser',
+          displayName: 'mea-cowork-browser',
+          displayNameEn: 'mea-cowork-browser'
+        }
+      ])
+    )
+
+    const { result } = renderResourceLibrary({ resourceType: 'skill' })
+    const skill = result.current.allResources.find((resource) => resource.type === 'skill')
+
+    expect(skill?.name).toBe('mea-cowork-browser')
+    expect(skill?.raw.name).toBe('cherry-browser')
   })
 
   it('does not use skill source metadata tags for resource cards', () => {

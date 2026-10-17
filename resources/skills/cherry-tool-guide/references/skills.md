@@ -28,9 +28,9 @@ install through the shell.
 ## Handle `install_source` verbatim
 
 `install_source` is opaque — **never construct or edit it yourself**. Pass back exactly
-what a search result gave you. Cherry clones, installs the single skill, and registers it
+what a search result gave you. MEA Cowork clones, installs the single skill, and registers it
 in one call, so **never** run `npx skills add`, `git clone`, or any shell command to
-install — that skips Cherry's registration.
+install — that skips MEA Cowork's registration.
 
 ## Recovery
 

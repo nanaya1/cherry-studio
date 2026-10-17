@@ -11,14 +11,14 @@ keeps in sync with the filesystem automatically — there is **no** install or r
 tool to call, and you should **ignore** any `package_skill.py` / `.skill` packaging
 steps mentioned later in this file (they apply to Claude Code / Claude.ai, not here).
 
-**To create a new skill, write it straight into Cherry's managed skills directory:**
+**To create a new skill, write it straight into MEA Cowork's managed skills directory:**
 
 1. Resolve the directory once by running `echo "$CHERRY_STUDIO_SKILLS_DIR"` in Bash.
-   That folder is Cherry's managed skill library.
+   That folder is MEA Cowork's managed skill library.
 2. Create `$CHERRY_STUDIO_SKILLS_DIR/<skill-folder-name>/` and write `SKILL.md` plus any
    supporting files (`scripts/`, `references/`, `assets/`) into it with your normal file
    tools.
-3. That's it. Cherry's skill sync detects the new directory, registers it in the catalog,
+3. That's it. MEA Cowork's skill sync detects the new directory, registers it in the catalog,
    and lists it in the app — no register step. You can re-edit the files in place at any
    time and the changes are picked up on the next sync.
 

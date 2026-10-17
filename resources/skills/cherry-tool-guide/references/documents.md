@@ -3,7 +3,7 @@
 Covers `mcp__cherry-tools__to_markdown` — converting a supported readable local document
 into Markdown.
 This is distinct from knowledge-base tools, which search documents already indexed by
-Cherry, and from shell runtimes or managed CLIs.
+MEA Cowork, and from shell runtimes or managed CLIs.
 
 Get exact argument shapes from the live tool schema — this reference gives routing,
 sequencing, supported formats, and recovery.
@@ -15,7 +15,7 @@ local document that ordinary text reads cannot handle.
 
 Pass a path relative to the session workspace, or an absolute path to a file the user
 attached to this session (the paths announced with the turn) or one under the agent data
-directory. Cherry converts the source with its bundled document converter and writes the complete result
+directory. MEA Cowork converts the source with its bundled document converter and writes the complete result
 to an agent-private temporary Markdown file. The tool result contains only that file's
 absolute path and character count — it deliberately does not inject the whole document
 into context. Read the returned file in slices, search it, or copy it to a user-requested

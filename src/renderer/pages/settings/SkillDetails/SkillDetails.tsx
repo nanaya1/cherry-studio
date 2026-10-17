@@ -24,6 +24,7 @@ import { useSkillMutationsById } from '@renderer/hooks/resourceCatalog'
 import { useSkillLauncher } from '@renderer/hooks/useSkillLauncher'
 import { ipcApi } from '@renderer/ipc'
 import { toast } from '@renderer/services/toast'
+import { getSkillDisplayName } from '@shared/data/api/schemas/skills'
 import { IpcError } from '@shared/ipc/errors/IpcError'
 import { skillErrorCodes } from '@shared/ipc/errors/skill'
 import type { SkillRemoteUpdateCheck } from '@shared/types/skill'
@@ -33,7 +34,7 @@ import { SkillFileBrowser, type SkillFileBrowserHandles } from './SkillFileBrows
 const logger = loggerService.withContext('SkillDetails')
 
 export function SkillDetails({ skillId }: { skillId: string }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const navigate = useNavigate()
   const launchSkill = useSkillLauncher()
   const { data: skill, isLoading, error, refetch } = useQuery('/skills/:skillId', { params: { skillId } })
@@ -66,7 +67,12 @@ export function SkillDetails({ skillId }: { skillId: string }) {
       await updateGlobalEnabled(checked)
     } catch (error) {
       logger.error('Failed to update Skill global state', error as Error, { skillId })
-      toast.error(t('settings.skills.toggleFailed', { name: skill.name }))
+      toast.error(
+        t('settings.skills.toggleFailed', {
+          // name: skill.name,
+          name: getSkillDisplayName(skill, i18n.resolvedLanguage ?? i18n.language)
+        })
+      )
     }
   }
 
@@ -172,6 +178,8 @@ export function SkillDetails({ skillId }: { skillId: string }) {
     )
   }
 
+  const displayName = getSkillDisplayName(skill, i18n.resolvedLanguage ?? i18n.language)
+
   return (
     <SettingsContentBody
       className="min-h-0 flex-1 overflow-hidden pt-4"
@@ -184,7 +192,8 @@ export function SkillDetails({ skillId }: { skillId: string }) {
         </Button>
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <h1 className="truncate font-semibold text-foreground text-lg">{skill.name}</h1>
+            {/* <h1 className="truncate font-semibold text-foreground text-lg">{skill.name}</h1> */}
+            <h1 className="truncate font-semibold text-foreground text-lg">{displayName}</h1>
             {skill.version ? <span className="text-foreground-tertiary text-xs">{skill.version}</span> : null}
             <SkillSourceBadge source={skill.source} sourceUrl={skill.sourceUrl} />
             {folder.data?.access === 'read_only' ? (
@@ -192,11 +201,12 @@ export function SkillDetails({ skillId }: { skillId: string }) {
                 {t('settings.skills.readOnly')}
               </Badge>
             ) : null}
+            {/* 原 aria-label 使用 skill.name，现改为展示名；稳定 name 仍用于技能调用。 */}
             <Switch
               size="sm"
               checked={skill.isGlobalEnabled}
               disabled={isUpdating}
-              aria-label={t('settings.skills.globalToggle', { name: skill.name })}
+              aria-label={t('settings.skills.globalToggle', { name: displayName })}
               onCheckedChange={(checked) => void handleToggle(checked)}
             />
           </div>

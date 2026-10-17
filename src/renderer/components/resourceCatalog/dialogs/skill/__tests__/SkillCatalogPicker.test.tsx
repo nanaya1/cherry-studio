@@ -12,7 +12,10 @@ import { SkillCatalogPicker } from '../SkillCatalogPicker'
 vi.mock('@cherrystudio/ui', async (importOriginal) => importOriginal<typeof CherryStudioUi>())
 
 vi.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string) => key })
+  useTranslation: () => ({
+    i18n: { language: 'zh-CN', resolvedLanguage: 'zh-CN' },
+    t: (key: string) => key
+  })
 }))
 
 vi.mock('../ImportSkillDialog', () => ({
@@ -73,6 +76,36 @@ function SkillPickerDialog({ onOpenChange }: { onOpenChange: (open: boolean) => 
 }
 
 describe('SkillCatalogPicker', () => {
+  it('shows skill display metadata while preserving the stable selected id', async () => {
+    const user = userEvent.setup()
+    const onSelectedIdsChange = vi.fn()
+    const skill = {
+      id: 'cherry-browser-id',
+      name: 'cherry-browser',
+      displayName: 'mea-cowork-browser',
+      displayNameEn: 'mea-cowork-browser',
+      source: 'builtin',
+      isGlobalEnabled: true
+    } as InstalledSkill
+
+    render(
+      <SkillCatalogPicker
+        mode="edit"
+        skills={[skill]}
+        loading={false}
+        selectedIds={[]}
+        onSelectedIdsChange={onSelectedIdsChange}
+        emptyLabel="No skills"
+        portalContainer={null}
+      />
+    )
+
+    expect(screen.getByText('mea-cowork-browser')).toBeInTheDocument()
+    expect(screen.queryByText('cherry-browser')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('switch', { name: 'mea-cowork-browser' }))
+    expect(onSelectedIdsChange).toHaveBeenCalledWith(['cherry-browser-id'])
+  })
+
   it('hides globally disabled skills from Agent selection and bulk enablement', async () => {
     const user = userEvent.setup()
     const onSelectedIdsChange = vi.fn()

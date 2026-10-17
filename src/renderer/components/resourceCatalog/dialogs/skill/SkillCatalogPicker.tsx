@@ -12,6 +12,7 @@ import {
   Switch
 } from '@cherrystudio/ui'
 import { ResourceCatalogSearchInput } from '@renderer/components/resourceCatalog/ResourceCatalogSearchInput'
+import { getSkillDescription, getSkillDisplayName } from '@shared/data/api/schemas/skills'
 import type { InstalledSkill } from '@shared/data/types/agent'
 
 import { type CatalogItem, CatalogToggleGrid } from '../components/CatalogPicker'
@@ -43,7 +44,8 @@ export function SkillCatalogPicker({
   disabled = false,
   trailingItem
 }: SkillCatalogPickerProps) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const locale = i18n.resolvedLanguage ?? i18n.language
   const [query, setQuery] = useState('')
   const [marketplaceOpen, setMarketplaceOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
@@ -70,12 +72,21 @@ export function SkillCatalogPicker({
     const normalizedQuery = query.trim().toLowerCase()
 
     return availableSkills
-      .filter((skill) => !normalizedQuery || skill.name.toLowerCase().includes(normalizedQuery))
+      .filter((skill) => {
+        const displayName = getSkillDisplayName(skill, locale)
+        return (
+          !normalizedQuery ||
+          displayName.toLowerCase().includes(normalizedQuery) ||
+          skill.name.toLowerCase().includes(normalizedQuery)
+        )
+      })
       .map((skill) => {
+        const displayName = getSkillDisplayName(skill, locale)
         if (mode === 'create' && skill.source === 'builtin') {
           return {
             id: skill.id,
-            name: skill.name,
+            // name: skill.name,
+            name: displayName,
             disableToggle: true,
             inactiveBadge: t('library.config.dialogs.create.capability.builtin_badge')
           }
@@ -83,12 +94,13 @@ export function SkillCatalogPicker({
 
         return {
           id: skill.id,
-          name: skill.name,
-          description: mode === 'edit' ? skill.description : undefined,
+          // name: skill.name,
+          name: displayName,
+          description: mode === 'edit' ? (getSkillDescription(skill, locale) ?? undefined) : undefined,
           icon: mode === 'edit' ? <Sparkles size={13} strokeWidth={1.5} className="text-warning" /> : undefined
         }
       })
-  }, [availableSkills, mode, query, t])
+  }, [availableSkills, locale, mode, query, t])
   const allSelected = selectableIds.length > 0 && selectableIds.every((id) => selectedIdSet.has(id))
 
   const setSelected = (id: string, enabled: boolean) => {

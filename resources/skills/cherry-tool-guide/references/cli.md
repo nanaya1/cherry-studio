@@ -3,7 +3,7 @@
 Covers the bundled shell runtimes plus `mcp__cherry-tools__cli_list`,
 `mcp__cherry-tools__cli_search`, and `mcp__cherry-tools__cli_install`. The first group
 executes local, project-scoped, or one-off work; the MCP tools install reusable CLIs in
-Cherry's **isolated managed environment**.
+MEA Cowork's **isolated managed environment**.
 
 Get exact argument shapes from the live tool schema — this reference gives routing,
 sequencing, and safety only.
@@ -25,7 +25,7 @@ Use the shortest-lived mechanism that fits:
 
 Shell-capable general agents receive `bun`, `uv` / `uvx`, and `rg` on their execution
 PATH. Prefer them over `node` / `npm` / `npx` / `pip`, which are not guaranteed to
-exist. Do not assume a version or source: a Cherry-managed or system executable may
+exist. Do not assume a version or source: a MEA Cowork-managed or system executable may
 shadow the bundled fallback. If `command -v` cannot resolve one of these expected
 commands, report an environment problem rather than pretending the command ran.
 
@@ -52,13 +52,13 @@ the shell.
 
 Before installing anything:
 
-1. **Probe the agent's effective PATH.** `mcp__cherry-tools__cli_list` reports only Cherry-managed
+1. **Probe the agent's effective PATH.** `mcp__cherry-tools__cli_list` reports only MEA Cowork-managed
    binaries and does **not** see the system PATH — so a tool it calls "unavailable" may
    already resolve in the agent shell. Run `command -v <name>` (shell inspection is
    fine) to inspect the agent's effective PATH before installing a duplicate. This PATH
-   includes Cherry-managed and bundled locations as well as the user's shell PATH; do
+   includes MEA Cowork-managed and bundled locations as well as the user's shell PATH; do
    not treat it as a pure system-only probe. Use `mcp__cherry-tools__cli_list` to see
-   what Cherry already manages.
+   what MEA Cowork already manages.
 2. **`mcp__cherry-tools__cli_search`** — look up the exact `name`/`tool` recipe from the
    registry. Never guess the executable name or recipe.
 3. **`mcp__cherry-tools__cli_install`** — install using the recipe from search (or one
@@ -67,9 +67,9 @@ Before installing anything:
 ## Don't reach around the managed environment
 
 **Do not** substitute `npm install -g`, `pipx install`, `cargo install`, `brew install`,
-or a manual download — those bypass Cherry's managed environment.
+or a manual download — those bypass MEA Cowork's managed environment.
 `mcp__cherry-tools__cli_install` accepts the same backends, so there's no capability you
-gain by shelling out — you only lose Cherry's bookkeeping.
+gain by shelling out — you only lose MEA Cowork's bookkeeping.
 
 ## Recovery
 
@@ -82,6 +82,6 @@ gain by shelling out — you only lose Cherry's bookkeeping.
 > "I need `jq` available for later data-processing tasks."
 
 `command -v jq` to check the agent's effective PATH → if absent, `mcp__cherry-tools__cli_list` to see
-if Cherry already manages it → `mcp__cherry-tools__cli_search` "jq" for the exact recipe →
+if MEA Cowork already manages it → `mcp__cherry-tools__cli_search` "jq" for the exact recipe →
 `mcp__cherry-tools__cli_install` with that recipe (approval runs). Never `brew install` /
 `apt install` it yourself.

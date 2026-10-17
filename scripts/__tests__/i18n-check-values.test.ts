@@ -1,12 +1,21 @@
 /** Covers known broken translations and prevents false positives from stranding valid text. */
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
+import matter from 'gray-matter'
 import { describe, expect, it } from 'vitest'
 
 import { checkTranslationValues, validate, validateSource } from '../i18n-check-values'
 
 const repoRoot = join(import.meta.dirname, '..', '..')
+
+function walkTextFiles(directory: string): string[] {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const filePath = join(directory, entry.name)
+    return entry.isDirectory() ? walkTextFiles(filePath) : [filePath]
+  })
+}
+
 const shippedBrandSurfaces = [
   'src/main/i18n/locales',
   'src/main/services/tokenDanceOAuth.ts',
@@ -84,6 +93,43 @@ describe('validate rejects broken translations', () => {
 })
 
 describe('shipped product branding', () => {
+  it.each([
+    ['cherry-tool-guide', 'mea-cowork-tool-guide'],
+    ['cherry-browser', 'mea-cowork-browser']
+  ])('brands builtin skill %s without changing its stable invocation name', (stableName, displayName) => {
+    const skillPath = join(repoRoot, 'resources', 'skills', stableName, 'SKILL.md')
+    const metadata = matter(readFileSync(skillPath, 'utf8')).data
+
+    expect(metadata.name).toBe(stableName)
+    expect(metadata.display_name).toBe(displayName)
+    expect(metadata.display_name_en).toBe(displayName)
+  })
+
+  it('keeps Cherry only in stable builtin skill identifiers and protocol names', () => {
+    const skillsRoot = join(repoRoot, 'resources', 'skills')
+    const allowedCherryPatterns = [
+      /name: cherry-(?:tool-guide|browser)/gi,
+      /cherry-tool-guide/gi,
+      /cherry-browser/gi,
+      /mcp__cherry-tools__/gi,
+      /CHERRY_STUDIO_SKILLS_DIR/g
+    ]
+    const offenders: string[] = []
+
+    for (const file of walkTextFiles(skillsRoot)) {
+      const relativePath = file.slice(skillsRoot.length + 1)
+      readFileSync(file, 'utf8')
+        .split('\n')
+        .forEach((line, index) => {
+          if (!/cherry/i.test(line)) return
+          const scrubbed = allowedCherryPatterns.reduce((value, pattern) => value.replaceAll(pattern, ''), line)
+          if (/cherry/i.test(scrubbed)) offenders.push(`${relativePath}:${index + 1}: ${line.trim()}`)
+        })
+    }
+
+    expect(offenders).toEqual([])
+  })
+
   it('uses MEA Cowork instead of the upstream product name on user-visible surfaces', () => {
     const offenders: string[] = []
 

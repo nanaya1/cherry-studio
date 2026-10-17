@@ -34,7 +34,8 @@ export const PRESET_MCP_SERVERS = freezePresets([
     reference: 'https://flomoapp.com',
     type: 'streamableHttp',
     baseUrl: 'https://flomoapp.com/mcp',
-    headers: { APP: 'Cherry Studio' },
+    // headers: { APP: 'Cherry Studio' },
+    headers: { APP: 'MEA Cowork' },
     isActive: false,
     provider: 'flomo',
     installSource: 'builtin',
@@ -45,7 +46,8 @@ export const PRESET_MCP_SERVERS = freezePresets([
     reference: 'https://qveris.ai/docs/mcp-server',
     type: 'streamableHttp',
     baseUrl: 'https://mcp.qveris.ai/mcp',
-    headers: { APP: 'Cherry Studio' },
+    // headers: { APP: 'Cherry Studio' },
+    headers: { APP: 'MEA Cowork' },
     isActive: false,
     env: {
       QVERIS_API_KEY: ''
@@ -63,7 +65,8 @@ export const PRESET_MCP_SERVERS = freezePresets([
     command: 'npx',
     args: ['-y', '@mcpmarket/mcp-auto-install', 'connect', '--json'],
     isActive: false,
-    provider: 'CherryAI',
+    // provider: 'CherryAI',
+    provider: 'MEA Cowork',
     installSource: 'builtin',
     isTrusted: true
   },
@@ -76,7 +79,8 @@ export const PRESET_MCP_SERVERS = freezePresets([
       MEMORY_FILE_PATH: 'YOUR_MEMORY_FILE_PATH'
     },
     shouldConfig: true,
-    provider: 'CherryAI',
+    // provider: 'CherryAI',
+    provider: 'MEA Cowork',
     installSource: 'builtin',
     isTrusted: true
   },
@@ -84,7 +88,8 @@ export const PRESET_MCP_SERVERS = freezePresets([
     name: BuiltinMcpServerNames.sequentialThinking,
     type: 'inMemory',
     isActive: true,
-    provider: 'CherryAI',
+    // provider: 'CherryAI',
+    provider: 'MEA Cowork',
     installSource: 'builtin',
     isTrusted: true
   },
@@ -96,7 +101,8 @@ export const PRESET_MCP_SERVERS = freezePresets([
       BRAVE_API_KEY: 'YOUR_API_KEY'
     },
     shouldConfig: true,
-    provider: 'CherryAI',
+    // provider: 'CherryAI',
+    provider: 'MEA Cowork',
     installSource: 'builtin',
     isTrusted: true
   },
@@ -104,7 +110,8 @@ export const PRESET_MCP_SERVERS = freezePresets([
     name: BuiltinMcpServerNames.fetch,
     type: 'inMemory',
     isActive: true,
-    provider: 'CherryAI',
+    // provider: 'CherryAI',
+    provider: 'MEA Cowork',
     installSource: 'builtin',
     isTrusted: true
   },
@@ -115,7 +122,8 @@ export const PRESET_MCP_SERVERS = freezePresets([
     disabledAutoApproveTools: [...filesystemManualApprovalTools],
     shouldConfig: true,
     isActive: false,
-    provider: 'CherryAI',
+    // provider: 'CherryAI',
+    provider: 'MEA Cowork',
     installSource: 'builtin',
     isTrusted: true
   },
@@ -127,7 +135,8 @@ export const PRESET_MCP_SERVERS = freezePresets([
       DIFY_KEY: 'YOUR_DIFY_KEY'
     },
     shouldConfig: true,
-    provider: 'CherryAI',
+    // provider: 'CherryAI',
+    provider: 'MEA Cowork',
     installSource: 'builtin',
     isTrusted: true
   },
@@ -135,7 +144,8 @@ export const PRESET_MCP_SERVERS = freezePresets([
     name: BuiltinMcpServerNames.python,
     type: 'inMemory',
     isActive: false,
-    provider: 'CherryAI',
+    // provider: 'CherryAI',
+    provider: 'MEA Cowork',
     installSource: 'builtin',
     isTrusted: true
   },
@@ -148,7 +158,8 @@ export const PRESET_MCP_SERVERS = freezePresets([
       DIDI_API_KEY: 'YOUR_DIDI_API_KEY'
     },
     shouldConfig: true,
-    provider: 'CherryAI',
+    // provider: 'CherryAI',
+    provider: 'MEA Cowork',
     installSource: 'builtin',
     isTrusted: true
   },
@@ -157,10 +168,21 @@ export const PRESET_MCP_SERVERS = freezePresets([
     reference: 'https://mem.nowledge.co/',
     type: 'streamableHttp',
     baseUrl: 'http://127.0.0.1:14242/mcp',
-    headers: { APP: 'Cherry Studio' },
+    // headers: { APP: 'Cherry Studio' },
+    headers: { APP: 'MEA Cowork' },
     isActive: false,
     provider: 'Nowledge',
     installSource: 'builtin',
     isTrusted: true
   }
 ])
+
+const hiddenBuiltinChoices: ReadonlySet<BuiltinMcpServerName> = new Set([
+  BuiltinMcpServerNames.flomo,
+  BuiltinMcpServerNames.nowledgeMem
+])
+
+/** User-selectable builtins; hidden presets remain available for installed-row compatibility and reconciliation. */
+export const VISIBLE_PRESET_MCP_SERVERS = Object.freeze(
+  PRESET_MCP_SERVERS.filter((server) => !hiddenBuiltinChoices.has(server.name))
+)

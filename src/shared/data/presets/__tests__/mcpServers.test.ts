@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { PRESET_MCP_SERVERS } from '@shared/data/presets/mcpServers'
+import { PRESET_MCP_SERVERS, VISIBLE_PRESET_MCP_SERVERS } from '@shared/data/presets/mcpServers'
 import { BuiltinMcpServerNames } from '@shared/utils/mcp'
 
 const preset = (name: string) => PRESET_MCP_SERVERS.find((server) => server.name === name)
@@ -14,6 +14,21 @@ describe('PRESET_MCP_SERVERS', () => {
     expect(preset(BuiltinMcpServerNames.nowledgeMem)).toEqual(
       expect.objectContaining({ type: 'streamableHttp', baseUrl: 'http://127.0.0.1:14242/mcp' })
     )
+  })
+
+  it('keeps flomo and nowledge-mem available for compatibility but hides them from builtin choices', () => {
+    expect(preset(BuiltinMcpServerNames.flomo)).toBeDefined()
+    expect(preset(BuiltinMcpServerNames.nowledgeMem)).toBeDefined()
+    expect(VISIBLE_PRESET_MCP_SERVERS.map((server) => server.name)).not.toEqual(
+      expect.arrayContaining([BuiltinMcpServerNames.flomo, BuiltinMcpServerNames.nowledgeMem])
+    )
+  })
+
+  it('uses MEA Cowork branding in builtin connector metadata', () => {
+    for (const server of PRESET_MCP_SERVERS) {
+      expect(server.provider).not.toMatch(/cherry/i)
+      expect(Object.values(server.headers ?? {})).not.toEqual(expect.arrayContaining(['Cherry Studio']))
+    }
   })
 
   it('models the online-package server as stdio instead of in-memory', () => {
