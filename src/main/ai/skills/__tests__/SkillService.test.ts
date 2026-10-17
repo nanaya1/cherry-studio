@@ -270,9 +270,13 @@ describe('SkillService', () => {
         .update(agentGlobalSkillTable)
         .set({ sourceUrl: 'org-skill:skill-one' })
         .where(eq(agentGlobalSkillTable.id, SKILL_ID_1))
-      const allowed = vi.spyOn(orgStateStore, 'isSkillAllowed').mockImplementation((sourceUrl) => sourceUrl !== 'org-skill:skill-one')
+      const allowed = vi
+        .spyOn(orgStateStore, 'isSkillAllowed')
+        .mockImplementation((sourceUrl) => sourceUrl !== 'org-skill:skill-one')
 
-      await expect(skillService.list()).resolves.not.toEqual(expect.arrayContaining([expect.objectContaining({ id: SKILL_ID_1 })]))
+      await expect(skillService.list()).resolves.not.toEqual(
+        expect.arrayContaining([expect.objectContaining({ id: SKILL_ID_1 })])
+      )
       await expect(skillService.getById(SKILL_ID_1)).resolves.toBeNull()
 
       allowed.mockRestore()
@@ -488,7 +492,7 @@ describe('SkillService', () => {
       )
     })
 
-    it('skips Cherry-managed skill symlinks that point to the global skill storage', async () => {
+    it('skips MEA Cowork-managed skill symlinks that point to the global skill storage', async () => {
       const skillService = new SkillService()
       const workdir = await createTempDir('skill-local-workdir-')
       const skillsDir = path.join(workdir, '.claude', 'skills')
@@ -608,7 +612,7 @@ describe('SkillService', () => {
         sourcePath: 'large-skill',
         filename: 'large-skill',
         name: 'Large Skill',
-        description: 'Lives outside Cherry',
+        description: 'Lives outside MEA Cowork',
         category: 'skills',
         type: 'skill',
         version: '1.0.0',
@@ -1600,13 +1604,13 @@ describe('SkillService', () => {
 
         expect(result).toBe(installedSkill)
         expect(net.fetch).toHaveBeenNthCalledWith(1, 'https://clawhub.ai/api/v1/skills/code?ownerHandle=ivangdavila', {
-          headers: { 'User-Agent': 'CherryStudio' }
+          headers: { 'User-Agent': 'MEACowork' }
         })
         expect(net.fetch).toHaveBeenNthCalledWith(
           2,
           'https://clawhub.ai/api/v1/download?slug=code&ownerHandle=ivangdavila',
           {
-            headers: { 'User-Agent': 'CherryStudio' }
+            headers: { 'User-Agent': 'MEACowork' }
           }
         )
         expect(createTempDirSpy).toHaveBeenCalledWith('clawhub')

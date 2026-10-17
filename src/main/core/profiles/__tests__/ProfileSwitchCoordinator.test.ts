@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { ShutdownResult } from '@main/core/application/Application'
 
 import type { ControlMutationResult, ControlWriteResult } from '../ProfileControlStore'
+import { shouldActivateInProcess } from '../ProfileRuntimeContext'
 import type { ActiveProfilePointerV1, ProfileRecordV1, ProfileSwitchJournalV1 } from '../ProfileSchemas'
 import { ProfileSwitchCoordinator } from '../ProfileSwitchCoordinator'
 import { SwitchFence } from '../SwitchFence'
@@ -85,6 +86,37 @@ function dependencies() {
 }
 
 describe('ProfileSwitchCoordinator', () => {
+  it('relaunches after committing the first login without entering business in the login process', async () => {
+    const deps = dependencies()
+    const startBusiness = vi.fn(async () => {
+      throw new Error('Business startup cannot reuse the login process')
+    })
+    const result = await new ProfileSwitchCoordinator({
+      ...deps,
+      activateAuthenticated: async (record) => {
+        if (!shouldActivateInProcess(record, null)) return false
+        await startBusiness()
+        return true
+      }
+    }).switchProfile(request, deps.targetRecord, {
+      afterCommit: async () => {
+        deps.order.push('credentials:committed')
+      }
+    })
+
+    expect(result).toEqual({ kind: 'relaunching' })
+    expect(deps.order).toEqual([
+      'journal:prepared',
+      'application:teardown',
+      'pointer:committed',
+      'journal:committed',
+      'credentials:committed',
+      'application:relaunch'
+    ])
+    expect(startBusiness).not.toHaveBeenCalled()
+    expect(deps.application.forceExit).not.toHaveBeenCalled()
+  })
+
   it('returns to the login window after durable logout without relaunching Electron', async () => {
     const deps = dependencies()
     const openSignedOut = vi.fn(async () => {

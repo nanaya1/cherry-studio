@@ -23,6 +23,8 @@ class ProcessExitSentinel extends Error {
 }
 
 const requestSingleInstanceLockMock = vi.fn<() => boolean>(() => true)
+const appOnMock = vi.fn()
+const getAllWindowsMock = vi.fn<() => unknown[]>(() => [])
 const applicationQuitMock = vi.fn()
 const processExitMock = vi.fn<(code?: number | string | null) => never>((code) => {
   throw new ProcessExitSentinel(code)
@@ -34,7 +36,11 @@ function stubElectron() {
   vi.doMock('electron', () => ({
     __esModule: true,
     app: {
-      requestSingleInstanceLock: requestSingleInstanceLockMock
+      requestSingleInstanceLock: requestSingleInstanceLockMock,
+      on: appOnMock
+    },
+    BrowserWindow: {
+      getAllWindows: getAllWindowsMock
     }
   }))
 }
@@ -54,6 +60,8 @@ async function loadModule() {
 beforeEach(() => {
   vi.resetModules()
   requestSingleInstanceLockMock.mockReset().mockReturnValue(true)
+  appOnMock.mockReset()
+  getAllWindowsMock.mockReset().mockReturnValue([])
   applicationQuitMock.mockReset()
   processExitMock.mockReset().mockImplementation((code) => {
     throw new ProcessExitSentinel(code)
@@ -78,6 +86,30 @@ describe('requireSingleInstance', () => {
     expect(requestSingleInstanceLockMock).toHaveBeenCalledTimes(1)
     expect(applicationQuitMock).not.toHaveBeenCalled()
     expect(processExitMock).not.toHaveBeenCalled()
+  })
+
+  it('brings the existing window to the front when a second instance is rejected', async () => {
+    const window = {
+      isDestroyed: () => false,
+      isMinimized: () => true,
+      restore: vi.fn(),
+      show: vi.fn(),
+      focus: vi.fn()
+    }
+    getAllWindowsMock.mockReturnValue([window])
+    stubElectron()
+    stubApplication()
+
+    const { requireSingleInstance } = await loadModule()
+    requireSingleInstance()
+
+    const handler = appOnMock.mock.calls.find(([event]) => event === 'second-instance')?.[1] as (() => void) | undefined
+    expect(handler).toBeTypeOf('function')
+    handler?.()
+
+    expect(window.restore).toHaveBeenCalledTimes(1)
+    expect(window.show).toHaveBeenCalledTimes(1)
+    expect(window.focus).toHaveBeenCalledTimes(1)
   })
 
   it('calls application.quit() and process.exit(0) when the lock is denied', async () => {
