@@ -363,8 +363,12 @@ export default function Sidebar({
   // One continuous list: built-in apps and mini apps interleaved in their stored
   // favorites order. Unrenderable rows (no route/icon, or an uninstalled mini app)
   // are dropped here but stay in the preference.
-  const navigationEntries = useMemo(
-    () => [
+  const navigationEntries = useMemo(() => {
+    const knowledgeEntry = appFavorites.includes('knowledge')
+      ? resolveSidebarEntry({ type: 'app', id: 'knowledge' }, variantContext)
+      : null
+
+    return [
       {
         key: 'workspace:new-task',
         label: t('workspace.newTask.title'),
@@ -392,10 +396,10 @@ export default function Sidebar({
         renderIcon: (size: number) => <CalendarClock size={size} />,
         isActive: () => pathname.startsWith('/app/scheduled-tasks'),
         onOpen: () => navigateRouteTab('/app/scheduled-tasks', t('settings.scheduledTasks.title'))
-      }
-    ],
-    [navigateRouteTab, pathname, t]
-  )
+      },
+      knowledgeEntry
+    ].filter((entry): entry is ResolvedSidebarEntry => entry !== null)
+  }, [appFavorites, navigateRouteTab, pathname, t, variantContext])
 
   const historySections = useMemo(
     () => [
@@ -483,8 +487,8 @@ export default function Sidebar({
     [favorites, t, variantContext]
   )
 
-  // "More" panel entries: Resource Center plus the pinned built-in apps that route
-  // to their own pages (translate / paintings / knowledge). Entity favorites
+  // "More" panel entries: Resource Center plus translate / paintings. Knowledge
+  // is promoted to main navigation below scheduled tasks. Entity favorites
   // (agents / assistants) and mini apps stay in the icon-rail favorites list.
   const moreMenuEntries = useMemo(() => {
     const resourcesEntry: ResolvedSidebarEntry = {
@@ -497,7 +501,10 @@ export default function Sidebar({
     const byKey = new Map(entries.map((entry) => [entry.key, entry]))
     const pickApp = (id: SidebarAppId) => byKey.get(`app:${id}`) ?? null
 
-    return [resourcesEntry, pickApp('translate'), pickApp('paintings'), pickApp('knowledge')].filter(
+    // return [resourcesEntry, pickApp('translate'), pickApp('paintings'), pickApp('knowledge')].filter(
+    //   (entry): entry is ResolvedSidebarEntry => entry !== null
+    // )
+    return [resourcesEntry, pickApp('translate'), pickApp('paintings')].filter(
       (entry): entry is ResolvedSidebarEntry => entry !== null
     )
   }, [entries, navigateRouteTab, pathname, t])

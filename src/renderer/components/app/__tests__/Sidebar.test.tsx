@@ -447,19 +447,20 @@ afterEach(() => {
 })
 
 describe('app Sidebar', () => {
-  it('supplies main navigation and both history groups without clearing favorites', () => {
+  it('supplies main navigation with knowledge after scheduled tasks and both history groups', () => {
     mocks.sidebarWidth = 180
-    mocks.sidebarFavorites = [appFavorite('translate'), appFavorite('assistants')]
+    mocks.sidebarFavorites = [appFavorite('translate'), appFavorite('knowledge'), appFavorite('assistants')]
     mocks.topics = [{ id: 'topic-1', name: 'Release planning' }]
     mocks.sessions = [{ id: 'session-1', name: 'Audit dependencies' }]
 
     render(<Sidebar />)
 
-    expect(getSidebarProps().navigationEntries?.map((entry) => entry.label)).toEqual([
-      'New task',
-      'workspace.toolbox.title',
-      'Skills & Connectors',
-      'Scheduled Tasks'
+    expect(getSidebarProps().navigationEntries?.map((entry) => entry.key)).toEqual([
+      'workspace:new-task',
+      'workspace:toolbox',
+      'workspace:skills-connectors',
+      'workspace:scheduled-tasks',
+      'app:knowledge'
     ])
     expect(getSidebarProps().navigationEntries?.every((entry) => entry.presentation === undefined)).toBe(true)
     expect(getSidebarProps().sections?.map((section) => section.label)).toEqual(['Conversations', 'Tasks'])
@@ -468,7 +469,7 @@ describe('app Sidebar', () => {
     expect(mocks.setSidebarFavorites).not.toHaveBeenCalled()
   })
 
-  it('aggregates Resource Center and translate/paintings/knowledge entries in the More menu', () => {
+  it('aggregates Resource Center and translate/paintings entries in the More menu without knowledge', () => {
     mocks.sidebarFavorites = [
       appFavorite('agents'),
       appFavorite('translate'),
@@ -484,8 +485,7 @@ describe('app Sidebar', () => {
     expect(moreMenu?.entries.map((entry) => entry.key)).toEqual([
       'workspace:resources',
       'app:translate',
-      'app:paintings',
-      'app:knowledge'
+      'app:paintings'
     ])
     act(() => moreMenu?.entries[0].onOpen())
     expect(mocks.updateTab).toHaveBeenCalledWith('chat', {
