@@ -15,6 +15,7 @@ import { atomicWriteFileSync } from '@main/utils/file'
 import { OrgKnowledgeShareResultSchema } from '@shared/data/types/enterpriseKnowledge'
 import { AbsoluteFilePathSchema } from '@shared/types/file'
 
+import { cloudRecoverySchema, type CloudRecovery } from './CloudKnowledgeRecovery'
 import { firstShareStateSchema, type FirstShareState } from './FirstShareUpload'
 
 const shareAssociationSchema = z.union([
@@ -73,7 +74,9 @@ const fileSchema = z.object({
   // 已有副本不重复登记空间；账号切换或重登后据此判断是否需增量上传/邀请。
   // 逐文件结果与完成状态随关联落盘；旧字符串关联保持未确认，不推断上传成功。
   knowledgeShares: z.record(z.string(), shareAssociationSchema).default({}),
-  firstShareUploads: z.record(z.string(), firstShareStateSchema).default({})
+  firstShareUploads: z.record(z.string(), firstShareStateSchema).default({}),
+  cloudRecoveries: z.record(z.string(), cloudRecoverySchema).default({}),
+  ownedSpaceGroups: z.record(z.string(), z.record(z.string(), z.string())).default({})
 })
 
 function stateFile(): string {
@@ -88,6 +91,46 @@ export class OrgStateStore {
   // startupScan C1 误判「本地无记录」把已删技能全部重装。改为首次数据访问时才读文件。
   private ensureLoaded(): void {
     if (this.data === null) this.data = this.load()
+  }
+
+  getCloudRecovery(key: string): CloudRecovery | undefined {
+    this.ensureLoaded()
+    const state = this.data!.cloudRecoveries[key]
+    return state ? structuredClone(state) : undefined
+  }
+
+  getCloudRecoveries(): Record<string, CloudRecovery> {
+    this.ensureLoaded()
+    return structuredClone(this.data!.cloudRecoveries)
+  }
+
+  setCloudRecovery(key: string, state: CloudRecovery): void {
+    this.ensureLoaded()
+    this.data!.cloudRecoveries[key] = cloudRecoverySchema.parse(state)
+    this.persist()
+  }
+
+  getOwnedSpaceGroups(issuerId: string, userId: string): Record<string, string> {
+    this.ensureLoaded()
+    return { ...this.data!.ownedSpaceGroups[JSON.stringify([issuerId, userId])] }
+  }
+
+  moveOwnedSpace(issuerId: string, userId: string, spaceId: string, groupId: string | null): void {
+    this.ensureLoaded()
+    const key = JSON.stringify([issuerId, userId])
+    const groups = (this.data!.ownedSpaceGroups[key] ??= {})
+    if (groupId === null) delete groups[spaceId]
+    else groups[spaceId] = groupId
+    this.persist()
+  }
+
+  removeOwnedSpaceGroup(issuerId: string, userId: string, groupId: string): void {
+    this.ensureLoaded()
+    const groups = this.data!.ownedSpaceGroups[JSON.stringify([issuerId, userId])] ?? {}
+    for (const [spaceId, assignedGroup] of Object.entries(groups)) {
+      if (assignedGroup === groupId) delete groups[spaceId]
+    }
+    this.persist()
   }
 
   resetProfileCache(): void {

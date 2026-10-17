@@ -70,8 +70,13 @@ export const OrgKnowledgeBaseSchema = z.strictObject({
   id: z.string(),
   name: z.string(),
   description: z.string().nullable(),
+  updatedAt: z.string().optional(),
   documentCount: z.number().int().nonnegative().optional(),
-  localBaseId: z.string().optional()
+  localBaseId: z.string().optional(),
+  shareCompleted: z.boolean().optional(),
+  hasShareEvidence: z.boolean().optional(),
+  allowLocalFileUpload: z.boolean().optional(),
+  canDownload: z.boolean().optional()
 })
 export type OrgKnowledgeBase = z.infer<typeof OrgKnowledgeBaseSchema>
 
@@ -88,8 +93,11 @@ export const OrgKnowledgeItemSchema = z.strictObject({
   type: z.string(),
   title: z.string(),
   status: z.string(),
+  /** Parent directory item ID; null means the base root. */
+  parentId: z.string().nullable(),
   documentId: z.string().nullable(),
   fileId: z.string().nullable().optional(),
+  hasOriginalFile: z.boolean().optional(),
   createdAt: z.string(),
   updatedAt: z.string()
 })
@@ -313,7 +321,8 @@ export const OrgKnowledgeSyncManifestSchema = z.strictObject({
 export type OrgKnowledgeSyncManifest = z.infer<typeof OrgKnowledgeSyncManifestSchema>
 
 export const OrgKnowledgeUploadProgressSchema = z.strictObject({
-  phase: z.enum(['counting', 'uploading', 'confirming', 'paused', 'completed']),
+  uploadOriginal: z.boolean().optional(),
+  phase: z.enum(['counting', 'uploading', 'confirming', 'paused', 'completed', 'cleanup_pending', 'cleanup_unknown']),
   totalBytes: z.number().nonnegative(),
   uploadedBytes: z.number().nonnegative(),
   completedFiles: z.number().int().nonnegative(),
@@ -324,9 +333,11 @@ export const OrgKnowledgeUploadProgressSchema = z.strictObject({
 export type OrgKnowledgeUploadProgress = z.infer<typeof OrgKnowledgeUploadProgressSchema>
 
 export const OrgKnowledgeShareResultSchema = z.strictObject({
+  error: z.string().optional(),
   shareId: z.string(),
   files: z.array(OrgKnowledgeShareFileResultSchema),
   completion: z.enum(['completed', 'incomplete', 'unconfirmed']).default('unconfirmed'),
-  manifest: OrgKnowledgeSyncManifestSchema.optional()
+  manifest: OrgKnowledgeSyncManifestSchema.optional(),
+  pendingAddition: z.boolean().optional()
 })
 export type OrgKnowledgeShareResult = z.infer<typeof OrgKnowledgeShareResultSchema>

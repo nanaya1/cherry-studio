@@ -3,12 +3,61 @@ import { describe, expect, it } from 'vitest'
 import { enterpriseKnowledgeRequestSchemas } from '../../../ipc/schemas/enterpriseKnowledge'
 import {
   OrgKnowledgeCatalogSchema,
+  OrgKnowledgeUploadProgressSchema,
   OrgKnowledgeItemPageSchema,
   OrgKnowledgeShareFileResultSchema,
   encodeOrgId,
   isOrgId,
   parseOrgId
 } from '../enterpriseKnowledge'
+
+it.each(['cleanup_pending', 'cleanup_unknown'])('首传清理状态%s可跨IPC保留，不能误判completed', (phase) => {
+  expect(
+    OrgKnowledgeUploadProgressSchema.parse({
+      phase,
+      totalBytes: 0,
+      uploadedBytes: 0,
+      completedFiles: 0,
+      totalFiles: 1,
+      currentFile: null,
+      error: null
+    }).phase
+  ).toBe(phase)
+})
+
+it('catalog 分享证据与本机完成态独立，未知允许缺省', () => {
+  const base = {
+    id: encodeOrgId('s'),
+    name: '副本',
+    description: null,
+    updatedAt: '2026-10-17T00:00:00Z',
+    hasShareEvidence: true,
+    shareCompleted: false
+  }
+  expect(OrgKnowledgeCatalogSchema.parse({ public: [], shared: [], owned: [base] }).owned[0]).toEqual(base)
+  expect(
+    OrgKnowledgeCatalogSchema.safeParse({ public: [], shared: [], owned: [{ ...base, hasShareEvidence: 'true' }] })
+      .success
+  ).toBe(false)
+})
+
+it('删除无本机副本允许空结果与续作 ID，输入不允许指定清理副本范围', () => {
+  const routes = enterpriseKnowledgeRequestSchemas
+  expect(routes['enterprise.knowledge.unshare'].output.parse({ ok: true, localBaseId: '' })).toEqual({
+    ok: true,
+    localBaseId: ''
+  })
+  expect(
+    routes['enterprise.knowledge.cleanup_local'].input.parse({ baseId: encodeOrgId('s'), localBaseId: '' })
+  ).toEqual({ baseId: encodeOrgId('s'), localBaseId: '' })
+  expect(
+    routes['enterprise.knowledge.unshare'].input.safeParse({
+      baseId: encodeOrgId('s'),
+      deleteLocal: true,
+      localCopies: ['unrelated']
+    }).success
+  ).toBe(false)
+})
 
 describe('手动同步 IPC 契约', () => {
   it('仅接受本地 baseId 与本次确认，不接受远端目标或缺省确认', () => {
@@ -54,6 +103,32 @@ describe('orgkb id 编解码', () => {
   })
 })
 
+describe('源文件开关 IPC 契约', () => {
+  it('首传缺省上传原件，显式false保留，非布尔值拒绝且核对入口不接受模式覆盖', () => {
+    const schema = enterpriseKnowledgeRequestSchemas['enterprise.knowledge.share'].input
+    expect(schema.parse({ baseId: 'local' })).toEqual({ baseId: 'local', uploadOriginal: true })
+    expect(schema.parse({ baseId: 'local', uploadOriginal: false })).toEqual({ baseId: 'local', uploadOriginal: false })
+    expect(schema.safeParse({ baseId: 'local', uploadOriginal: 'false' }).success).toBe(false)
+    expect(
+      enterpriseKnowledgeRequestSchemas['enterprise.knowledge.upload_verify'].input.safeParse({
+        baseId: 'local',
+        uploadOriginal: false
+      }).success
+    ).toBe(false)
+  })
+})
+
+describe('重命名已分享本地知识库 IPC 契约', () => {
+  it('接受本地 baseId 与 1-128 字符名称，拒绝 orgkb 远端 id 或越界名称', () => {
+    const schema = enterpriseKnowledgeRequestSchemas['enterprise.knowledge.rename_shared'].input
+    expect(schema.safeParse({ baseId: 'local-uuid', name: '新名' }).success).toBe(true)
+    expect(schema.safeParse({ baseId: encodeOrgId('s'), name: '新名' }).success).toBe(false)
+    expect(schema.safeParse({ baseId: 'local-uuid', name: '   ' }).success).toBe(false)
+    expect(schema.safeParse({ baseId: 'local-uuid', name: 'x'.repeat(129) }).success).toBe(false)
+    expect(schema.safeParse({ baseId: 'local-uuid', name: 'x'.repeat(128) }).success).toBe(true)
+  })
+})
+
 describe('分享码 IPC 契约', () => {
   it('创建有效期必传，支持永久并拒绝越界或额外权限', () => {
     const schema = enterpriseKnowledgeRequestSchemas['enterprise.knowledge.create_share'].input
@@ -84,10 +159,10 @@ describe('分享码 IPC 契约', () => {
 })
 
 describe('IPC 契约 schema', () => {
-  it('邀请仅接受本地 baseId 且有效期最多30天，orgkb 远端 id 被拒', () => {
+  it('邀请接受本地或云端 baseId 且有效期最多30天', () => {
     const invite = enterpriseKnowledgeRequestSchemas['enterprise.knowledge.invite'].input
     expect(invite.safeParse({ baseId: 'local-uuid', userId: 1, expireDays: 30 }).success).toBe(true)
-    expect(invite.safeParse({ baseId: encodeOrgId('b'), userId: 1, expireDays: 30 }).success).toBe(false)
+    expect(invite.safeParse({ baseId: encodeOrgId('b'), userId: 1, expireDays: 30 }).success).toBe(true)
     expect(invite.safeParse({ baseId: 'local-uuid', userId: 1, expireDays: 31 }).success).toBe(false)
     const search = enterpriseKnowledgeRequestSchemas['enterprise.knowledge.search'].input
     expect(search.safeParse({ baseIds: [encodeOrgId('b')], query: 'q', topK: 51 }).success).toBe(false)
@@ -133,6 +208,7 @@ describe('IPC 契约 schema', () => {
           type: 'file',
           title: 't',
           status: 'completed',
+          parentId: null,
           documentId: null,
           createdAt: 'c',
           updatedAt: 'u'

@@ -40,6 +40,7 @@ import {
 import type { EntitySearchItem } from '@shared/data/api/schemas/search'
 import type { ListOptions } from '@shared/data/api/types'
 import type { AgentType } from '@shared/data/types/agent'
+import { isOrgId } from '@shared/data/types/enterpriseKnowledge'
 import type { UniqueModelId } from '@shared/data/types/model'
 import { isRemoteKnowledgeBaseId } from '@shared/data/types/remoteKnowledge'
 import { isGatewayRoutableModel } from '@shared/utils/model'
@@ -151,8 +152,11 @@ function removeUntrustedSupportRole(id: string, configuration: unknown): Record<
 function splitKnowledgeBaseIds(ids: readonly string[]): { localIds: string[]; remoteIds: string[] } {
   const uniqueIds = [...new Set(ids)]
   return {
-    localIds: uniqueIds.filter((id) => !isRemoteKnowledgeBaseId(id)),
-    remoteIds: uniqueIds.filter(isRemoteKnowledgeBaseId)
+    // localIds: uniqueIds.filter((id) => !isRemoteKnowledgeBaseId(id)),
+    // remoteIds: uniqueIds.filter(isRemoteKnowledgeBaseId)
+    // MEA:enterprise-knowledge-page 组织知识源存入远端关系表，避免本地外键和旧查询源。
+    localIds: uniqueIds.filter((id) => !isRemoteKnowledgeBaseId(id) && !isOrgId(id)),
+    remoteIds: uniqueIds.filter((id) => isRemoteKnowledgeBaseId(id) || isOrgId(id))
   }
 }
 

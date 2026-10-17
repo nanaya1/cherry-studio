@@ -6,6 +6,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useLayoutEffect,
   useRef,
   useState
 } from 'react'
@@ -19,7 +20,7 @@ import {
   useUpdateKnowledgeBase
 } from '@renderer/hooks/useKnowledgeBase'
 import { useOrgKnowledge } from '@renderer/hooks/useOrgKnowledge'
-import { useIpcOn } from '@renderer/ipc'
+import { ipcApi, useIpcOn } from '@renderer/ipc'
 import { EVENT_NAMES, EventEmitter } from '@renderer/services/EventService'
 import { toast } from '@renderer/services/toast'
 import { formatErrorMessageWithPrefix } from '@renderer/utils/error'
@@ -38,7 +39,7 @@ import type { KnowledgeRestoreBaseInitialValues } from './panels/ragConfig/RagCo
 import type { KnowledgeFilePreviewTarget, KnowledgeTabKey } from './types'
 
 type EditableKnowledgeGroup = Pick<Group, 'id' | 'name'>
-type EditableKnowledgeBase = Pick<KnowledgeBase, 'id' | 'name'>
+type EditableKnowledgeBase = Pick<KnowledgeBase, 'id' | 'name'> & { remote?: boolean }
 type CreateKnowledgeBase = ReturnType<typeof useCreateKnowledgeBase>['createBase']
 type RestoreKnowledgeBase = ReturnType<typeof useRestoreKnowledgeBase>['restoreBase']
 
@@ -49,6 +50,7 @@ interface KnowledgePageContextValue {
   selectedOrgBase: OrgKnowledgeBase | undefined
   selectOrgBase: (base: OrgKnowledgeBase) => void
   orgSession: number
+  handleOrgUnshared: () => void
   bases: KnowledgeBaseListItem[]
   groups: Group[]
   isLoading: boolean
@@ -122,7 +124,7 @@ interface KnowledgePageProviderProps extends PropsWithChildren {
 
 export const KnowledgePageProvider = ({ children, baseId, onBaseIdChange }: KnowledgePageProviderProps) => {
   const { t } = useTranslation()
-  const { bases, isLoading, error: basesError } = useKnowledgeBases()
+  const { bases, isLoading, error: basesError, refetch: refetchBases } = useKnowledgeBases()
   const { groups } = useKnowledgeGroups()
   const org = useOrgKnowledge()
   const [category, updateCategory] = useState<'local' | 'public' | 'shared'>('local')
@@ -132,19 +134,34 @@ export const KnowledgePageProvider = ({ children, baseId, onBaseIdChange }: Know
   }, [])
   const [orgBaseId, setOrgBaseId] = useState<string | null>(null)
   const [orgSession, setOrgSession] = useState(0)
+  // 与 orgSession 同步的可变镜像：事件自增可穿透 async 闭包，供 submitRenameBase 比对。
+  const orgSessionRef = useRef(orgSession)
   useIpcOn('enterprise.status_changed', () => {
     setOrgBaseId(null)
     setOrgSession((value) => value + 1)
+    orgSessionRef.current += 1
   })
+  const [selectionRoute, setSelectionRoute] = useState(baseId)
+  if (selectionRoute !== baseId) {
+    setSelectionRoute(baseId)
+    setOrgBaseId(null)
+  }
   // MEA:enterprise-knowledge-page owned 副本属于本地管理区，不能混入分享给我的目录。
-  const selectedOrgBase = (category === 'local' ? org.catalog.owned : org.catalog[category]).find(
-    (base) => base.id === orgBaseId
+  // const selectedOrgBase = (category === 'local' ? org.catalog.owned : org.catalog[category]).find(
+  //   (base) => base.id === orgBaseId
+  // )
+  const currentOrgBaseId = selectionRoute === baseId ? orgBaseId : null
+  const selectedOrgBase = (category === 'local' ? org.catalog.owned : org.catalog[category]).find((base) =>
+    currentOrgBaseId
+      ? base.id === currentOrgBaseId
+      : category === 'local' && Boolean(baseId) && base.localBaseId === baseId
   )
   const selectOrgBase = useCallback((base: OrgKnowledgeBase) => setOrgBaseId(base.id), [])
   const { createGroup, isCreating: isCreatingGroup } = useCreateKnowledgeGroup()
   const { createBase, isCreating: isCreatingBase } = useCreateKnowledgeBase()
   const { restoreBase, isRestoring: isRestoringBase } = useRestoreKnowledgeBase()
-  const { updateBase, isUpdating: isUpdatingBase } = useUpdateKnowledgeBase()
+  // 原 useUpdateKnowledgeBase.isUpdating 字段保留并别名，避免 isRenamingBase 影响其它 update 操作。
+  const { updateBase, isUpdating: isUpdatingLocalBase } = useUpdateKnowledgeBase()
   const { updateGroup, isUpdating: isUpdatingGroup } = useUpdateKnowledgeGroup()
   const { deleteBase } = useDeleteKnowledgeBase()
   const { deleteGroup } = useDeleteKnowledgeGroup()
@@ -159,6 +176,8 @@ export const KnowledgePageProvider = ({ children, baseId, onBaseIdChange }: Know
   const pendingSelectedBaseListRef = useRef<KnowledgeBase[] | null>(null)
   const [activeTab, setActiveTab] = useState<KnowledgeTabKey>('data')
   const [editingBase, setEditingBase] = useState<EditableKnowledgeBase | null>(null)
+  // 重命名提交态：覆盖本地 + 云端全过程，云端期间禁止重复提交（同名弹窗仍打开）。
+  const [isRenamingBase, setIsRenamingBase] = useState(false)
   const [editingGroup, setEditingGroup] = useState<EditableKnowledgeGroup | null>(null)
   const [restoringBase, setRestoringBase] = useState<KnowledgeBase | null>(null)
   const [restoreBaseInitialValues, setRestoreBaseInitialValues] = useState<
@@ -191,6 +210,13 @@ export const KnowledgePageProvider = ({ children, baseId, onBaseIdChange }: Know
   const resetBaseNavigation = useCallback(() => {
     resetFilePreview()
     setBaseNavigationVersion((version) => version + 1)
+    setSelectedItemId(null)
+    setActiveTab('data')
+    setIsAddSourceDialogOpen(false)
+    setPendingAddSource(undefined)
+    setPendingAddFiles(undefined)
+    setIsRagConfigDrawerOpen(false)
+    setIsRecallTestDrawerOpen(false)
   }, [resetFilePreview])
 
   const openFilePreview = useCallback(
@@ -236,9 +262,28 @@ export const KnowledgePageProvider = ({ children, baseId, onBaseIdChange }: Know
     }
   }, [bases, basesError, isLoading, onBaseIdChange, pendingSelectedBaseId, resetBaseNavigation, selectedBaseId])
 
+  const handleOrgUnshared = useCallback(() => {
+    if (previewNavigationVersion !== previewNavigationVersionRef.current || orgSession !== orgSessionRef.current) return
+    const navigation = previewNavigationVersionRef.current
+    const session = orgSessionRef.current
+    void Promise.allSettled([org.refresh(), refetchBases()]).then(() => {
+      if (navigation !== previewNavigationVersionRef.current || session !== orgSessionRef.current) return
+      setCategory('local')
+      setPendingSelectedBaseId(null)
+      pendingSelectedBaseListRef.current = null
+      setSelectedItemId(null)
+      resetBaseNavigation()
+      onBaseIdChange()
+    })
+    // }, [org, refetchBases, setCategory, resetBaseNavigation, onBaseIdChange])
+  }, [org, refetchBases, setCategory, resetBaseNavigation, onBaseIdChange, previewNavigationVersion, orgSession])
+
   const selectBase = useCallback(
     (baseId: string) => {
       setCategory('local')
+      // MEA:enterprise-knowledge-page 同机关联入口使用云端权威详情。
+      const owned = org.catalog.owned.find((base) => base.localBaseId === baseId)
+      if (owned) setOrgBaseId(owned.id)
       resetBaseNavigation()
 
       if (bases.some((base) => base.id === baseId)) {
@@ -252,13 +297,17 @@ export const KnowledgePageProvider = ({ children, baseId, onBaseIdChange }: Know
       onBaseIdChange(baseId)
       setSelectedItemId(null)
     },
-    [bases, resetBaseNavigation, onBaseIdChange, setCategory]
+    // [bases, resetBaseNavigation, onBaseIdChange, setCategory]
+    [bases, org.catalog.owned, resetBaseNavigation, onBaseIdChange, setCategory]
   )
 
-  useEffect(() => {
+  // useEffect(() => {
+  // MEA:enterprise-knowledge-page 提交切库后、绘制前清除本机预览与弹窗。
+  useLayoutEffect(() => {
     resetBaseNavigation()
     setSelectedItemId(null)
-  }, [selectedBaseId, resetBaseNavigation])
+    // }, [selectedBaseId, resetBaseNavigation])
+  }, [selectedBaseId, selectedOrgBase?.id, category, orgSession, resetBaseNavigation])
 
   useEffect(() => {
     const unsubscribe = EventEmitter.on(EVENT_NAMES.GLOBAL_SEARCH_SELECT_KNOWLEDGE_BASE, (baseId) => {
@@ -400,12 +449,17 @@ export const KnowledgePageProvider = ({ children, baseId, onBaseIdChange }: Know
   const moveBase = useCallback(
     async (baseId: string, groupId: string | null) => {
       try {
-        await updateBase(baseId, { groupId })
+        if (baseId.startsWith('orgkb:')) {
+          await ipcApi.request('enterprise.knowledge.move_local_group', { baseId, groupId })
+          await org.refresh()
+        } else {
+          await updateBase(baseId, { groupId })
+        }
       } catch (error) {
         toast.error(formatErrorMessageWithPrefix(error, t('knowledge.error.failed_to_move')))
       }
     },
-    [t, updateBase]
+    [t, updateBase, org]
   )
 
   const submitCreateGroup = useCallback(
@@ -431,16 +485,87 @@ export const KnowledgePageProvider = ({ children, baseId, onBaseIdChange }: Know
         return
       }
 
-      if (name === editingBase.name.trim()) {
+      if (isRenamingBase) {
+        return
+      }
+
+      const originalName = editingBase.name.trim()
+      const normalized = name.trim()
+
+      if (normalized === originalName) {
         setEditingBase(null)
         return
       }
 
-      await updateBase(editingBase.id, { name })
-      setEditingBase(null)
+      const targetLocalBaseId = editingBase.id
+      // 用 ref 穿透闭包：事件自增后，await 仍可比对出账号是否切换。
+      const capturedSession = orgSessionRef.current
+
+      setIsRenamingBase(true)
+      try {
+        const ownedBinding = org.catalog.owned.find(
+          (base) => base.localBaseId === targetLocalBaseId || base.id === targetLocalBaseId
+        )
+        const isRemoteBase =
+          editingBase.remote === true || (ownedBinding?.id === targetLocalBaseId && ownedBinding.localBaseId == null)
+        const remoteBaseId = isRemoteBase ? targetLocalBaseId : ownedBinding?.id
+        if (!isRemoteBase) {
+          await updateBase(targetLocalBaseId, { name: normalized })
+        }
+
+        // 期间若账号切换（session 自增）则终止并关闭弹窗，避免对错误账号重试云端改名。
+        if (capturedSession !== orgSessionRef.current) {
+          setEditingBase(null)
+          return
+        }
+
+        if (remoteBaseId) {
+          try {
+            await ipcApi.request('enterprise.knowledge.rename_shared', {
+              baseId: remoteBaseId,
+              name: normalized
+            })
+          } catch (error) {
+            // 本地已改名、云端失败：保留弹窗、不回滚本地，提示用户可重试。
+            const reason =
+              error && typeof error === 'object' && 'code' in error && typeof error.code === 'string'
+                ? ` [${error.code}]`
+                : ''
+            toast.error(
+              `${formatErrorMessageWithPrefix(error, t('knowledge.org.rename_shared_cloud_failed'))}${reason}`
+            )
+            return
+          }
+
+          try {
+            await org.refresh()
+          } catch (error) {
+            toast.error(formatErrorMessageWithPrefix(error, t('common.refresh_failed')))
+          }
+        }
+
+        setEditingBase(null)
+      } finally {
+        setIsRenamingBase(false)
+      }
     },
-    [editingBase, updateBase]
+    [editingBase, isRenamingBase, org.catalog.owned, org.refresh, t, updateBase]
   )
+  // 旧替换代码（保留注释）：submitRenameBase 仅本地 updateBase 后关闭弹窗，不同步云端。
+  // const submitRenameBase = useCallback(
+  //   async (name: string) => {
+  //     if (!editingBase) {
+  //       return
+  //     }
+  //     if (name === editingBase.name.trim()) {
+  //       setEditingBase(null)
+  //       return
+  //     }
+  //     await updateBase(editingBase.id, { name })
+  //     setEditingBase(null)
+  //   },
+  //   [editingBase, updateBase]
+  // )
 
   const submitRenameGroup = useCallback(
     async (name: string) => {
@@ -473,6 +598,7 @@ export const KnowledgePageProvider = ({ children, baseId, onBaseIdChange }: Know
   const handleDeleteGroup = useCallback(
     async (groupId: string) => {
       try {
+        await ipcApi.request('enterprise.knowledge.remove_local_group', { groupId })
         await deleteGroup(groupId)
       } catch (error) {
         toast.error(formatErrorMessageWithPrefix(error, t('knowledge.groups.error.failed_to_delete')))
@@ -489,6 +615,7 @@ export const KnowledgePageProvider = ({ children, baseId, onBaseIdChange }: Know
       selectedOrgBase,
       selectOrgBase,
       orgSession,
+      handleOrgUnshared,
       bases,
       groups,
       isLoading,
@@ -514,7 +641,7 @@ export const KnowledgePageProvider = ({ children, baseId, onBaseIdChange }: Know
       createBaseInitialGroupId,
       isCreatingBase,
       isCreatingGroup,
-      isUpdatingBase,
+      isUpdatingBase: isUpdatingLocalBase || isRenamingBase,
       isUpdatingGroup,
       isRestoringBase,
       createBase,
@@ -558,6 +685,7 @@ export const KnowledgePageProvider = ({ children, baseId, onBaseIdChange }: Know
       selectedOrgBase,
       selectOrgBase,
       orgSession,
+      handleOrgUnshared,
       activeTab,
       baseNavigationVersion,
       bases,
@@ -593,7 +721,8 @@ export const KnowledgePageProvider = ({ children, baseId, onBaseIdChange }: Know
       isCreatingBase,
       isCreatingGroup,
       isLoading,
-      isUpdatingBase,
+      isRenamingBase,
+      isUpdatingLocalBase,
       isUpdatingGroup,
       isRestoringBase,
       filePreview,

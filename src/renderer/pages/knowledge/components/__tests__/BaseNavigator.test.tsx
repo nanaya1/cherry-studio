@@ -553,6 +553,18 @@ describe('BaseNavigator', () => {
     onResizeStart: vi.fn()
   }
 
+  it('跨端本人分享行位于分组内，复用菜单并保持云端点击入口', () => {
+    const onSelect = vi.fn()
+    render(<BaseNavigator {...baseProps} bases={[]} groups={[createGroup()]} remoteRows={[
+      { id: 'orgkb:remote', name: 'Remote', groupId: 'group-1', selected: true, onSelect, tag: '已分享' }
+    ]} />)
+    const row = screen.getByRole('button', { name: 'Remote' }).parentElement!
+    expect(row.closest('[data-slot="accordion-content"]')).not.toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Remote' }))
+    expect(onSelect).toHaveBeenCalledOnce()
+    expect(within(row).getByRole('button', { name: '更多' })).toBeInTheDocument()
+  })
+
   // Zero bases normally never reaches the navigator because KnowledgePage owns that empty state.
   it('marks only associated local knowledge bases as shared', () => {
     render(

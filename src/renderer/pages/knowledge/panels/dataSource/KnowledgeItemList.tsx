@@ -27,6 +27,9 @@ export interface KnowledgeItemListProps {
   onPreviewSource: (item: KnowledgeItem) => void | Promise<unknown>
   onReindex: (item: KnowledgeItem) => void | Promise<unknown>
   onViewChunks: (itemId: string) => void
+  readOnly?: boolean
+  allowDelete?: (item: KnowledgeItem) => boolean
+  virtualize?: boolean
 }
 
 const ITEM_ESTIMATED_HEIGHT = 44
@@ -44,7 +47,10 @@ const KnowledgeItemList = ({
   onDelete,
   onPreviewSource,
   onReindex,
-  onViewChunks
+  onViewChunks,
+  readOnly = false,
+  allowDelete,
+  virtualize = true
 }: KnowledgeItemListProps) => {
   const { t } = useTranslation()
   const pendingLoadMoreRef = useRef(false)
@@ -89,9 +95,11 @@ const KnowledgeItemList = ({
         onPreviewSource={() => onPreviewSource(item)}
         onReindex={() => onReindex(item)}
         onViewChunks={() => onViewChunks(item.id)}
+        readOnly={readOnly}
+        allowDelete={allowDelete?.(item)}
       />
     ),
-    [onActivate, onDelete, onPreviewSource, onReindex, onToggleOne, onViewChunks, selectedIds]
+    [allowDelete, onActivate, onDelete, onPreviewSource, onReindex, onToggleOne, onViewChunks, readOnly, selectedIds]
   )
 
   if (isLoading) {
@@ -150,17 +158,25 @@ const KnowledgeItemList = ({
           <div role="columnheader" aria-label={t('knowledge.data_source.table.columns.actions')} />
         </div>
         <div role="presentation" className="min-h-0 flex-1">
-          <DynamicVirtualList
-            list={deferredItems}
-            getItemKey={getItemKey}
-            estimateSize={estimateItemSize}
-            onScroll={handleListScroll}
-            role="rowgroup"
-            autoHideScrollbar
-            itemContainerStyle={{ paddingBottom: 6 }}
-            className="pb-6">
-            {renderItemRow}
-          </DynamicVirtualList>
+          {virtualize ? (
+            <DynamicVirtualList
+              list={deferredItems}
+              getItemKey={getItemKey}
+              estimateSize={estimateItemSize}
+              onScroll={handleListScroll}
+              role="rowgroup"
+              autoHideScrollbar
+              itemContainerStyle={{ paddingBottom: 6 }}
+              className="pb-6">
+              {renderItemRow}
+            </DynamicVirtualList>
+          ) : (
+            <div role="rowgroup" className="space-y-1.5 overflow-auto pb-6" onScroll={handleListScroll}>
+              {deferredItems.map((item, index) => (
+                <div key={getItemKey(index)}>{renderItemRow(item)}</div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
       {isLoadingMore ? (

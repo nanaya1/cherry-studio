@@ -42,12 +42,28 @@ function guard<R>(fn: () => Promise<R>): Promise<R> {
 const plugin = () => application.get('EnterprisePlugin')
 
 export const enterpriseKnowledgeHandlers: IpcHandlersFor<typeof enterpriseKnowledgeRequestSchemas> = {
+  'enterprise.knowledge.pending_cleanup': () => guard(() => plugin().knowledge.pendingCleanup()),
+  'enterprise.knowledge.cleanup_local': (params) => guard(() => plugin().knowledge.cleanupLocal(params)),
+  'enterprise.knowledge.local_groups': () => guard(() => plugin().knowledge.localGroups()),
+  'enterprise.knowledge.move_local_group': ({ baseId, groupId }) =>
+    guard(() => plugin().knowledge.moveLocalGroup(baseId, groupId)),
+  'enterprise.knowledge.remove_local_group': ({ groupId }) => guard(() => plugin().knowledge.removeLocalGroup(groupId)),
   'enterprise.knowledge.sync_preview': (params) => guard(() => plugin().knowledge.syncPreview(params)),
-  'enterprise.knowledge.sync_apply': (params) => guard(() => plugin().knowledge.syncApply(params)),
+  'enterprise.knowledge.sync_apply': () =>
+    guard(async () => {
+      throw new OrgKnowledgeError(
+        enterpriseKnowledgeErrorCodes.ORGKB_FORBIDDEN,
+        '旧本地推送已停用，请在云端详情新增文件'
+      )
+    }),
+  'enterprise.knowledge.prepare_added_files': ({ baseId }) => guard(() => plugin().knowledge.prepareAddedFiles(baseId)),
+  'enterprise.knowledge.upload_added_files': ({ baseId, localBaseId, uploadOriginal }) =>
+    guard(() => plugin().knowledge.uploadAddedFiles(baseId, localBaseId, uploadOriginal)),
   'enterprise.knowledge.sync_status': (params) => guard(() => plugin().knowledge.syncStatus(params)),
   'enterprise.knowledge.catalog': () => guard(() => plugin().knowledge.catalog()),
   'enterprise.knowledge.items': ({ baseId, cursor }) =>
     guard(() => plugin().knowledge.listItems(baseId, cursor ?? null)),
+  'enterprise.knowledge.delete_file': (params) => guard(() => plugin().knowledge.deleteFile(params)),
   'enterprise.knowledge.chunks': ({ baseId, itemId, cursor }) =>
     guard(() => plugin().knowledge.listChunks(baseId, itemId, cursor ?? null)),
   'enterprise.knowledge.search': ({ baseIds, query, topK, rerank }) =>
@@ -57,8 +73,12 @@ export const enterpriseKnowledgeHandlers: IpcHandlersFor<typeof enterpriseKnowle
   'enterprise.knowledge.preview': ({ fileId }) => guard(() => plugin().knowledge.preview({ fileId })),
   'enterprise.knowledge.upload_status': ({ baseId }) => guard(() => plugin().knowledge.uploadStatus(baseId)),
   'enterprise.knowledge.upload_verify': ({ baseId }) => guard(() => plugin().knowledge.share(baseId, true)),
-  'enterprise.knowledge.share': ({ baseId }) => guard(() => plugin().knowledge.share(baseId)),
-  'enterprise.knowledge.unshare': ({ baseId }) => guard(() => plugin().knowledge.unshare({ baseId })),
+  // 'enterprise.knowledge.share': ({ baseId }) => guard(() => plugin().knowledge.share(baseId)),
+  'enterprise.knowledge.share': ({ baseId, uploadOriginal }) =>
+    guard(() => plugin().knowledge.share(baseId, false, uploadOriginal)),
+  // 'enterprise.knowledge.unshare': ({ baseId }) => guard(() => plugin().knowledge.unshare({ baseId })),
+  'enterprise.knowledge.unshare_preview': (params) => guard(() => plugin().knowledge.unsharePreview(params)),
+  'enterprise.knowledge.unshare': (params) => guard(() => plugin().knowledge.unshare(params)),
   'enterprise.knowledge.shares': (params) => guard(() => plugin().knowledge.shares(params)),
   'enterprise.knowledge.create_share': (params) => guard(() => plugin().knowledge.createShareCode(params)),
   'enterprise.knowledge.revoke_share': (params) => guard(() => plugin().knowledge.revokeShare(params)),
@@ -72,5 +92,7 @@ export const enterpriseKnowledgeHandlers: IpcHandlersFor<typeof enterpriseKnowle
   'enterprise.knowledge.accept': ({ invitationId }) => guard(() => plugin().knowledge.accept({ invitationId })),
   'enterprise.knowledge.decline': ({ invitationId }) => guard(() => plugin().knowledge.decline({ invitationId })),
   'enterprise.knowledge.remove_member': ({ baseId, userId }) =>
-    guard(() => plugin().knowledge.removeMember({ baseId, userId }))
+    guard(() => plugin().knowledge.removeMember({ baseId, userId })),
+  'enterprise.knowledge.rename_shared': ({ baseId, name }) =>
+    guard(() => plugin().knowledge.renameSharedBase(baseId, name))
 }

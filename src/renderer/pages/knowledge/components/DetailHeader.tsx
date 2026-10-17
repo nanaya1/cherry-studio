@@ -10,10 +10,10 @@ import { statusBadgeClassNames } from './statusStyles'
 interface DetailHeaderProps {
   actions?: ReactNode
   sharingStatus?: ReactNode
-  base: KnowledgeBase
-  onOpenRagConfig: () => void
-  onOpenRecallTest: () => void
-  onRebuild: () => void
+  base: Pick<KnowledgeBase, 'name'> & Partial<Pick<KnowledgeBase, 'status'>>
+  onOpenRagConfig?: () => void
+  onOpenRecallTest?: () => void
+  onRebuild?: () => void
 }
 
 const DetailHeader = ({
@@ -26,7 +26,7 @@ const DetailHeader = ({
 }: DetailHeaderProps) => {
   const { t } = useTranslation()
 
-  const statusLabelKey = `knowledge.status.${base.status}` as const
+  const statusLabelKey = `knowledge.status.${base.status ?? 'completed'}` as const
   const statusLabel = t(statusLabelKey)
 
   return (
@@ -55,24 +55,28 @@ const DetailHeader = ({
         ) : (
           <div className="flex shrink-0 items-center gap-2">
             {actions}
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-7 text-muted-foreground"
-              onClick={onOpenRecallTest}>
-              <FlaskConical size={14} />
-              {t('knowledge.tabs.recall_test')}
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              aria-label={t('knowledge.tabs.rag_config')}
-              className="size-6 text-muted-foreground hover:text-foreground"
-              onClick={onOpenRagConfig}>
-              <SlidersHorizontal size={14} />
-            </Button>
+            {onOpenRecallTest ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-7 text-muted-foreground"
+                onClick={onOpenRecallTest}>
+                <FlaskConical size={14} />
+                {t('knowledge.tabs.recall_test')}
+              </Button>
+            ) : null}
+            {onOpenRagConfig ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label={t('knowledge.tabs.rag_config')}
+                className="size-6 text-muted-foreground hover:text-foreground"
+                onClick={onOpenRagConfig}>
+                <SlidersHorizontal size={14} />
+              </Button>
+            ) : null}
           </div>
         )
       }

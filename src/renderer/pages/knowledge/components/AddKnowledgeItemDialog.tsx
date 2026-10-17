@@ -51,13 +51,44 @@ const resolveFileEntryDataFromFile = (file: File) => {
   return resolveKnowledgeFileData(filePath, file.name)
 }
 
-const AddKnowledgeItemDialog = ({ open, onOpenChange }: AddKnowledgeItemDialogProps) => {
-  const { t } = useTranslation()
+const AddKnowledgeItemDialog = (props: AddKnowledgeItemDialogProps) => {
   const { selectedBaseId, pendingAddSource, pendingAddFiles } = useKnowledgePage()
+  return (
+    <KnowledgeItemSourceDialog
+      {...props}
+      selectedBaseId={selectedBaseId}
+      pendingAddSource={pendingAddSource}
+      pendingAddFiles={pendingAddFiles}
+    />
+  )
+}
+
+export const KnowledgeItemSourceDialog = ({
+  open,
+  onOpenChange,
+  selectedBaseId,
+  pendingAddSource,
+  pendingAddFiles,
+  onAdded
+}: AddKnowledgeItemDialogProps & {
+  selectedBaseId: string
+  pendingAddSource?: KnowledgeItemType
+  pendingAddFiles?: File[]
+  onAdded?: () => void
+}) => {
+  const { t } = useTranslation()
+  // const { selectedBaseId, pendingAddSource, pendingAddFiles } = useKnowledgePage()
   // The dialog mounts fresh per open (the section conditionally renders it), so the requested
   // source is fixed for this lifetime — derive it instead of mirroring it into state.
   const activeSource = pendingAddSource ?? DEFAULT_SOURCE_TYPE
   const directPick = isDirectPickSource(activeSource)
+  const active = useRef(true)
+  useEffect(() => {
+    active.current = true
+    return () => {
+      active.current = false
+    }
+  }, [])
 
   const [noteMode, setNoteMode] = useState<NoteSourceMode>('import')
   const [selectedNotes, setSelectedNotes] = useState<NoteItem[]>([])
@@ -177,14 +208,17 @@ const AddKnowledgeItemDialog = ({ open, onOpenChange }: AddKnowledgeItemDialogPr
   // once the batch is actually added.
   const submitWithStrategy = useCallback(
     async (items: KnowledgeAddItemInput[], conflictStrategy: 'detect' | ConflictResolution) => {
+      if (!active.current) return
       const result = await submitKnowledgeItems(items, conflictStrategy)
+      if (!active.current) return
       if (result.status === 'conflicts') {
         setPendingConflict({ items, conflicts: result.conflicts })
         return
       }
+      onAdded?.()
       handleOpenChange(false)
     },
-    [handleOpenChange, submitKnowledgeItems]
+    [handleOpenChange, submitKnowledgeItems, onAdded]
   )
 
   const handleSubmit = useCallback(() => {
@@ -264,6 +298,7 @@ const AddKnowledgeItemDialog = ({ open, onOpenChange }: AddKnowledgeItemDialogPr
       setIsResolvingSubmit(true)
       try {
         const items = activeSource === 'file' ? await collectFileInputs() : await collectDirectoryInputs()
+        if (!active.current) return
         // Picker cancelled or nothing selectable — close the (panel-less) flow.
         if (!items || items.length === 0) {
           handleOpenChange(false)

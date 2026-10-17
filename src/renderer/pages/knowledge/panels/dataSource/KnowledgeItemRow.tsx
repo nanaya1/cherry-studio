@@ -27,6 +27,8 @@ export interface KnowledgeItemRowProps {
   onPreviewSource: () => void | Promise<unknown>
   onReindex: () => void | Promise<unknown>
   onViewChunks: () => void
+  readOnly?: boolean
+  allowDelete?: boolean
 }
 
 /**
@@ -108,7 +110,9 @@ const KnowledgeItemRow = ({
   onDelete,
   onPreviewSource,
   onReindex,
-  onViewChunks
+  onViewChunks,
+  readOnly = false,
+  allowDelete = !readOnly
 }: KnowledgeItemRowProps) => {
   const {
     i18n: { language },
@@ -161,7 +165,7 @@ const KnowledgeItemRow = ({
       })
     }
 
-    if (canReindex) {
+    if (!readOnly && canReindex) {
       items.push({
         type: 'item',
         id: 'reindex',
@@ -175,22 +179,36 @@ const KnowledgeItemRow = ({
       })
     }
 
-    items.push({ type: 'separator' })
-    items.push({
-      type: 'item',
-      id: 'delete',
-      label: t('knowledge.data_source.actions.delete'),
-      icon: <Trash2 className="size-3.5" />,
-      destructive: true,
-      onSelect: () => {
-        void Promise.resolve(onDelete()).catch((error) => {
-          toast.error(formatErrorMessageWithPrefix(error, t('knowledge.data_source.delete_failed')))
-        })
-      }
-    })
+    // if (!readOnly) {
+    if (allowDelete) {
+      items.push({ type: 'separator' })
+      items.push({
+        type: 'item',
+        id: 'delete',
+        label: t('knowledge.data_source.actions.delete'),
+        icon: <Trash2 className="size-3.5" />,
+        destructive: true,
+        onSelect: () => {
+          void Promise.resolve(onDelete()).catch((error) => {
+            toast.error(formatErrorMessageWithPrefix(error, t('knowledge.data_source.delete_failed')))
+          })
+        }
+      })
+    }
 
     return items
-  }, [canReindex, canViewChunks, item.type, onDelete, onPreviewSource, onReindex, onViewChunks, t])
+  }, [
+    allowDelete,
+    canReindex,
+    canViewChunks,
+    item.type,
+    onDelete,
+    onPreviewSource,
+    onReindex,
+    onViewChunks,
+    readOnly,
+    t
+  ])
 
   // Keyboard equivalent for the row's primary click action. Only handle keys raised on the row
   // itself so Enter/Space on the checkbox (which bubble up) don't also open chunks.

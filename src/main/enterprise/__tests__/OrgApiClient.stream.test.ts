@@ -1,12 +1,119 @@
 import { createHash } from 'node:crypto'
-import { mkdtemp, writeFile, rm } from 'node:fs/promises'
+import { mkdtemp, writeFile, rm, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { afterEach, expect, it, vi } from 'vitest'
 
 import { OrgApiClient } from '../OrgApiClient'
+import { OrgKnowledgeClient } from '../OrgKnowledgeClient'
+
+it.each(['space', 'file', 'share', 'member'])('%s DELETE 收到401后不得换账号重放', async (kind) => {
+  const getSession = vi
+    .fn()
+    .mockResolvedValueOnce({ accessToken: 'account-a' })
+    .mockResolvedValue({ accessToken: 'account-b' })
+  const fetcher = vi
+    .fn()
+    .mockResolvedValueOnce(new Response('', { status: 401 }))
+    .mockResolvedValue(new Response(null, { status: 204 }))
+  vi.stubGlobal('fetch', fetcher)
+  const client = new OrgKnowledgeClient(new OrgApiClient(getSession))
+  const deletion =
+    kind === 'space'
+      ? client.deleteShareSpace('s')
+      : kind === 'file'
+        ? client.deleteFile('f')
+        : kind === 'share'
+          ? client.revokeShare('s', 'share')
+          : client.removeMember('s', 2)
+  await expect(deletion).rejects.toMatchObject({ status: 401 })
+  expect(fetcher).toHaveBeenCalledTimes(1)
+  expect(getSession).toHaveBeenCalledTimes(1)
+})
+it.each(['switch', 'wrong-session', 'stale-before'])('%s 获取 DELETE 凭据前后身份失效不能发请求', async (mode) => {
+  let current = 'a'
+  const getSession = vi.fn(async () => {
+    if (mode === 'switch') current = 'b'
+    return { issuerId: 'server', userId: mode === 'wrong-session' ? 'b' : current, groupId: 'g', accessToken: 'token' }
+  })
+  const fetcher = vi.fn(async () => new Response(null, { status: 204 }))
+  vi.stubGlobal('fetch', fetcher)
+  const guard = () => {
+    const expected = current
+    if (mode === 'stale-before') throw new Error('stale identity')
+    return (session?: { userId: string }) => {
+      if (current !== expected || (session && session.userId !== expected)) throw new Error('stale identity')
+    }
+  }
+  const client = new OrgKnowledgeClient(new OrgApiClient(getSession as never), guard)
+  await expect(client.deleteShareSpace('s')).rejects.toThrow('stale identity')
+  expect(fetcher).not.toHaveBeenCalled()
+  if (mode === 'stale-before') expect(getSession).not.toHaveBeenCalled()
+})
+
+it('流请求业务中断先持久清理意图，再abort并等待源流停止', async () => {
+  root = await mkdtemp(join(tmpdir(), 'rollback-stream-'))
+  const path = join(root, 'original.txt')
+  await writeFile(path, 'abc')
+  const controller = new AbortController()
+  const started = Promise.withResolvers<void>()
+  const events: string[] = []
+  vi.stubGlobal('fetch', async (_url: unknown, init: RequestInit) => {
+    started.resolve()
+    return new Promise<Response>((_resolve, reject) => {
+      init.signal!.addEventListener(
+        'abort',
+        () => {
+          events.push('abort')
+          reject(init.signal!.reason)
+        },
+        { once: true }
+      )
+    })
+  })
+  const client = new OrgApiClient(async () => ({ accessToken: 'token' }) as never)
+  const pending = client.requestFileMultipart(
+    '/api/kb/v1/local-share/spaces/s/files',
+    { path, fileName: 'original.txt', size: 3, chunks: [] },
+    () => {},
+    undefined,
+    () => {
+      events.push('persist')
+    },
+    controller.signal
+  )
+  await started.promise
+  controller.abort(new Error('业务中断'))
+  await expect(pending).rejects.toThrow('业务中断')
+  expect(events[0]).toBe('persist')
+  expect(events.indexOf('abort')).toBeGreaterThan(0)
+  expect(await readFile(path, 'utf8')).toBe('abc')
+})
+
 let root: string | undefined
+
+it.each(['bearer', 'cookie'])('%s恢复原件带scope鉴权流式落盘且不覆盖已有文件', async (mode) => {
+  root = await mkdtemp(join(tmpdir(), 'recovery-download-'))
+  const destination = join(root, 'original.txt')
+  const fetcher = vi.fn(async (url: string, init: RequestInit) => {
+    expect(new URL(url).searchParams.get('scope')).toBe('client')
+    expect(new URL(url).pathname).toBe('/api/kb/v1/files/trusted-id/download')
+    expect(init.redirect).toBe('error')
+    if (mode === 'bearer') expect((init.headers as any).authorization).toBe('Bearer token')
+    else expect(init.credentials).toBe('include')
+    return new Response('原件字节')
+  })
+  vi.stubGlobal('fetch', fetcher)
+  const client = new OrgApiClient(
+    async () => ({ accessToken: 'token', authMode: mode === 'cookie' ? 'management-cookie' : undefined }) as never,
+    fetcher
+  )
+  await client.downloadKnowledgeFile('trusted-id', destination)
+  expect(await readFile(destination, 'utf8')).toBe('原件字节')
+  await expect(client.downloadKnowledgeFile('trusted-id', destination)).rejects.toMatchObject({ code: 'EEXIST' })
+  expect(await readFile(destination, 'utf8')).toBe('原件字节')
+})
 
 it.each(['bearer', 'cookie'])('%s目录文件multipart可解析parent_id且长度准确', async (mode) => {
   root = await mkdtemp(join(tmpdir(), 'multipart-'))
@@ -21,6 +128,11 @@ it.each(['bearer', 'cookie'])('%s目录文件multipart可解析parent_id且长�
     expect(form.get('parent_id')).toBe('trusted-parent')
     expect(form.get('file_name')).toBe('原文.txt')
     expect(await (form.get('file') as File).text()).toBe('abc')
+    expect(form.get('chunks')).toBeNull()
+    const chunksFile = form.get('chunks_file') as File
+    expect(chunksFile.name).toBe('chunks.json')
+    expect(chunksFile.type).toBe('application/json')
+    expect(await chunksFile.text()).toBe('[]')
     return Response.json({ ok: true })
   })
   vi.stubGlobal('fetch', fetcher)
@@ -242,4 +354,46 @@ it('逐块消费multipart时持续报告字节，401后不重放消费过的流'
     )
   ).rejects.toMatchObject({ status: 401 })
   expect(fetcher).toHaveBeenCalledTimes(1)
+})
+
+it.each(['bearer', 'cookie'])('%s uploadOriginal=false 仅发送元数据且不读取原件', async (mode) => {
+  root = await mkdtemp(join(tmpdir(), 'multipart-'))
+  const path = join(root, 'missing-original')
+  const fetcher = vi.fn(async (_url: unknown, init: RequestInit) => {
+    const bytes = Buffer.from(await new Response(init.body as ReadableStream).arrayBuffer())
+    if (mode === 'bearer') expect(bytes.length).toBe(Number((init.headers as any)['content-length']))
+    const form = await new Response(bytes, {
+      headers: { 'content-type': (init.headers as any)['content-type'] }
+    }).formData()
+    expect(form.get('file')).toBeNull()
+    expect(form.get('file_name')).toBe('原文.txt')
+    // 超过普通表单字段的 1MiB 上限，必须按 JSON 文件传输。
+    expect(form.get('chunks')).toBeNull()
+    const chunksFile = form.get('chunks_file') as File
+    expect(chunksFile.name).toBe('chunks.json')
+    expect(chunksFile.type).toBe('application/json')
+    expect(await chunksFile.text()).toBe(JSON.stringify([{ content: 'x'.repeat(1024 * 1024 + 1) }]))
+    expect(form.get('parent_id')).toBe('trusted-parent')
+    return Response.json({ ok: true })
+  })
+  vi.stubGlobal('fetch', fetcher)
+  const client = new OrgApiClient(
+    async () => ({ accessToken: 'token', authMode: mode === 'cookie' ? 'management-cookie' : undefined }) as never,
+    fetcher
+  )
+  const progress = vi.fn()
+  const result = await client.requestFileMultipart(
+    '/upload',
+    {
+      path,
+      fileName: '原文.txt',
+      size: 21,
+      chunks: [{ content: 'x'.repeat(1024 * 1024 + 1) }],
+      parentId: 'trusted-parent',
+      uploadOriginal: false
+    },
+    progress
+  )
+  expect(result).toEqual({ ok: true })
+  expect(progress).toHaveBeenCalledWith(21)
 })

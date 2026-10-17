@@ -6,7 +6,17 @@ import { OrgApiHttpError } from './OrgApiClient'
 
 export const firstShareStateSchema = z.object({
   name: z.string(),
+  taskId: z.string().optional(),
+  purpose: z.enum(['first', 'append']).optional(),
+  createdByTask: z.string().optional(),
+  cleanup: z
+    .object({
+      phase: z.enum(['pending', 'intent', 'unknown', 'deleted']),
+      error: z.string().nullable()
+    })
+    .optional(),
   creation: z.enum(['intent', 'unknown', 'created']),
+  uploadOriginal: z.boolean().optional(),
   shareId: z.string().nullable(),
   folders: z
     .array(
@@ -30,7 +40,9 @@ export const firstShareStateSchema = z.object({
       fingerprint: z.string(),
       phase: z.enum(['pending', 'intent', 'unknown', 'failure', 'success']),
       fileId: z.string().nullable(),
-      error: z.string().nullable()
+      error: z.string().nullable(),
+      // MEA:enterprise-knowledge-page 记录首传模式，恢复时与本地选项比对，防止错模式恢复。
+      uploadOriginal: z.boolean().optional()
     })
   )
 })
@@ -47,9 +59,12 @@ export type FirstShareEntry = {
   hash: string
   fingerprint: string
   chunks: unknown[]
+  // MEA:enterprise-knowledge-page 可选不上传源文件：缺省（undefined/true）发送原件字节；false 仅发送元数据。
+  uploadOriginal?: boolean
 }
 export type FirstShareProgress = {
-  phase: 'counting' | 'uploading' | 'confirming' | 'paused' | 'completed'
+  uploadOriginal?: boolean
+  phase: 'counting' | 'uploading' | 'confirming' | 'paused' | 'completed' | 'cleanup_pending' | 'cleanup_unknown'
   totalBytes: number
   uploadedBytes: number
   completedFiles: number
@@ -59,7 +74,8 @@ export type FirstShareProgress = {
 }
 type Store = { get(key: string): FirstShareState | undefined; set(key: string, state: FirstShareState): void }
 type Client = {
-  createShareSpace(name: string): Promise<{ share_id: string }>
+  createShareSpace(name: string, uploadOriginal: boolean): Promise<{ share_id: string }>
+  verifyPolicy(shareId: string, uploadOriginal: boolean, createdNow?: boolean): Promise<void>
   createShareFolder(
     shareId: string,
     folder: FirstShareFolder,
@@ -88,7 +104,8 @@ export class FirstShareUpload {
     plan: () => Promise<FirstShareEntry[] | FirstSharePlan>,
     report: (state: FirstShareProgress) => void,
     active: () => void,
-    verifyOnly = false
+    verifyOnly = false,
+    uploadOriginal = true
   ): Promise<OrgKnowledgeShareResult> {
     active()
     report({
@@ -130,7 +147,8 @@ export class FirstShareUpload {
     // if (totalBytes >= 2 ** 31) throw new Error('知识库原文件总大小必须严格小于 2 GiB')
     // if (totalBytes >= 20 * 1024 * 1024) throw new Error('知识库原文件总大小必须严格小于 20 MiB')
     // if (!entries.length) throw new Error('该知识库没有可分享文件')
-    if (!entries.length && !folders.length) throw new Error('该知识库没有可分享文件')
+    // if (!entries.length && !folders.length) throw new Error('该知识库没有可分享文件')
+    let createdNow = false
     let state = this.store.get(key)
     const persist = () => this.store.set(key, state!)
     if (!state && verifyOnly) throw new Error('没有可核对的上传任务')
@@ -138,6 +156,7 @@ export class FirstShareUpload {
       state = {
         name,
         creation: 'intent',
+        uploadOriginal: entries[0]?.uploadOriginal ?? uploadOriginal,
         shareId: null,
         folders: folders.map((folder) => ({ ...folder, folderId: null, phase: 'pending', error: null })),
         files: entries.map((entry) => ({
@@ -149,15 +168,19 @@ export class FirstShareUpload {
           fingerprint: entry.fingerprint,
           phase: 'pending',
           fileId: null,
-          error: null
+          error: null,
+          // MEA:enterprise-knowledge-page 持久首传模式：缺省按上传原件处理，保证恢复不漂移。
+          uploadOriginal: entry.uploadOriginal ?? true
         }))
       }
       persist()
       try {
         active()
-        const created = await this.client.createShareSpace(name)
+        // const created = await this.client.createShareSpace(name)
+        const created = await this.client.createShareSpace(name, state.uploadOriginal!)
         state.shareId = created.share_id
         state.creation = 'created'
+        createdNow = true
         persist()
         active()
       } catch (error) {
@@ -207,10 +230,23 @@ export class FirstShareUpload {
         (file, index) =>
           file.itemId !== entries[index]?.itemId ||
           file.fingerprint !== entries[index]?.fingerprint ||
-          file.fileName !== entries[index]?.fileName
+          file.fileName !== entries[index]?.fileName ||
+          // (file.uploadOriginal ?? true) !== (entries[index]?.uploadOriginal ?? true)
+          (file.uploadOriginal ?? state.uploadOriginal) !== (entries[index]?.uploadOriginal ?? true)
       )
     ) {
       pause('本地文件已变化，请恢复原文件后核对，或联系管理员核查。')
+      return this.result(state, false)
+    }
+    try {
+      const mode = state.uploadOriginal ?? entries[0]?.uploadOriginal
+      if (typeof mode !== 'boolean') throw new Error('首传模式未知，请核查空间策略')
+      await this.client.verifyPolicy(state.shareId, mode, createdNow)
+      active()
+      state.uploadOriginal = mode
+      persist()
+    } catch (error) {
+      pause(error instanceof Error ? error.message : String(error))
       return this.result(state, false)
     }
     // MEA:enterprise-knowledge-page 父目录先建并核对；未知创建结果禁止按同名认领或重放。
@@ -294,6 +330,13 @@ export class FirstShareUpload {
           pause(file.error)
           break
         } else if (!verifyOnly) {
+          try {
+            await this.client.verifyPolicy(state.shareId, entry.uploadOriginal ?? state.uploadOriginal)
+            active()
+          } catch (error) {
+            pause(error instanceof Error ? error.message : String(error))
+            return this.result(state, false)
+          }
           file.phase = 'intent'
           file.error = null
           persist()

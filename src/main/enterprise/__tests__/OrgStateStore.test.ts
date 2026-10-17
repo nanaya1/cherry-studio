@@ -41,6 +41,8 @@ vi.mock('@logger', () => ({
 
 import { OrgStateStore } from '@main/enterprise/OrgStateStore'
 
+import { CloudKnowledgeRecovery, type CloudRecovery } from '../CloudKnowledgeRecovery'
+
 describe('OrgStateStore', () => {
   let tmp: string
 
@@ -57,6 +59,129 @@ describe('OrgStateStore', () => {
   afterEach(() => {
     rmSync(tmp, { recursive: true, force: true })
     vi.clearAllMocks()
+  })
+
+  it('首次回滚task与unknown删除日志真实落盘，重启保留且不清其他账号', () => {
+    const store = new OrgStateStore()
+    const key = JSON.stringify(['issuer', 'alice', 'group', 'base'])
+    const otherKey = JSON.stringify(['issuer', 'bob', 'group', 'base'])
+    const state = {
+      name: '库',
+      creation: 'created' as const,
+      shareId: 'new-space',
+      taskId: 'task',
+      createdByTask: 'task',
+      cleanup: { phase: 'unknown' as const, error: '断网' },
+      files: []
+    }
+    store.setFirstShareUpload(key, state)
+    store.setFirstShareUpload(otherKey, { ...state, shareId: 'other-space' })
+    const restarted = new OrgStateStore()
+    expect(restarted.getFirstShareUpload(key)).toEqual(state)
+    restarted.clearShare(key)
+    expect(new OrgStateStore().getFirstShareUpload(key)).toBeUndefined()
+    expect(new OrgStateStore().getFirstShareUpload(otherKey)?.shareId).toBe('other-space')
+  })
+
+  it('本人分享分组按账号隔离，重启保留，删除组只清理对应关系', () => {
+    const store = new OrgStateStore()
+    store.moveOwnedSpace('issuer', 'alice', 'space', 'group')
+    store.moveOwnedSpace('issuer', 'bob', 'space', 'other-group')
+    const restarted = new OrgStateStore()
+    expect(restarted.getOwnedSpaceGroups('issuer', 'alice')).toEqual({ space: 'group' })
+    expect(restarted.getOwnedSpaceGroups('issuer', 'bob')).toEqual({ space: 'other-group' })
+    expect(restarted.getOwnedSpaceGroups('other-issuer', 'alice')).toEqual({})
+    restarted.removeOwnedSpaceGroup('issuer', 'alice', 'group')
+    expect(new OrgStateStore().getOwnedSpaceGroups('issuer', 'alice')).toEqual({})
+    expect(new OrgStateStore().getOwnedSpaceGroups('issuer', 'bob')).toEqual({ space: 'other-group' })
+  })
+
+  it('真实磁盘恢复日志跨实例续作只清理本机，账号隔离且未知禁止重放', async () => {
+    const key = JSON.stringify(['issuer', 'alice', 'recovery', 'space'])
+    const otherKey = JSON.stringify(['issuer', 'bob', 'recovery', 'space'])
+    let store = new OrgStateStore()
+    const deleted: string[] = []
+    const ports = {
+      load: () => store.getCloudRecovery(key),
+      save: (state: CloudRecovery) => store.setCloudRecovery(key, state),
+      scan: async () => [],
+      createBase: async () => 'real-restored-id',
+      localCopies: () => [],
+      hasBase: async () => false,
+      restore: async () => null,
+      fingerprint: async () => null,
+      hasRestoredItem: async () => false,
+      assertReady: async () => {},
+      deleteSpace: vi.fn(async () => {
+        expect(new OrgStateStore().getCloudRecovery(key)?.deleteLocal).toBe(true)
+        expect(deleted).toEqual([])
+      }),
+      finish: async () => {},
+      deleteLocalBase: vi.fn(async (id: string) => {
+        deleted.push(id)
+        throw new Error('磁盘清理失败')
+      }),
+      active: () => {}
+    }
+    const recovery = new CloudKnowledgeRecovery(ports)
+    await recovery.prepare('space')
+    await expect(recovery.cancel(false, true, true)).rejects.toThrow('磁盘清理失败')
+    store = new OrgStateStore()
+    expect(store.getCloudRecovery(otherKey)).toBeUndefined()
+    expect(store.getCloudRecovery(key)?.phase).toBe('local-cleanup')
+    ports.deleteLocalBase.mockImplementation(async (id) => {
+      deleted.push(id)
+      return undefined as never
+    })
+    expect(await new CloudKnowledgeRecovery(ports).cancel(false, false)).toBe('real-restored-id')
+    expect(ports.deleteSpace).toHaveBeenCalledTimes(1)
+    expect(new OrgStateStore().getCloudRecovery(key)?.phase).toBe('completed')
+    store.setCloudRecovery(key, { ...store.getCloudRecovery(key)!, phase: 'delete-unknown' })
+    store = new OrgStateStore()
+    await expect(new CloudKnowledgeRecovery(ports).cancel(true, true, true)).rejects.toThrow('待核查')
+    expect(ports.deleteSpace).toHaveBeenCalledTimes(1)
+    expect(deleted).toEqual(['real-restored-id', 'real-restored-id'])
+  })
+
+  it('本机清理意图及副本 ID 重启可枚举，返回值不能篡改日志', () => {
+    const store = new OrgStateStore()
+    store.setCloudRecovery('account', {
+      spaceId: 'space',
+      localBaseId: 'restored',
+      localCopies: ['original'],
+      deleteLocal: true,
+      phase: 'local-cleanup',
+      snapshot: '[]',
+      restored: {},
+      fingerprints: {},
+      expectedHashes: {},
+      missing: []
+    })
+    const restarted = new OrgStateStore()
+    const pending = restarted.getCloudRecoveries()
+    expect(pending.account.localCopies).toEqual(['original'])
+    expect(pending.account.deleteLocal).toBe(true)
+    pending.account.phase = 'completed'
+    expect(restarted.getCloudRecovery('account')?.phase).toBe('local-cleanup')
+  })
+
+  it('取消删除未知状态跨实例保留，读取结果不能修改持久化记录', () => {
+    const state = {
+      spaceId: 's',
+      localBaseId: 'local',
+      phase: 'delete-unknown' as const,
+      snapshot: '[]',
+      restored: { f: 'item' },
+      fingerprints: { item: 'hash' },
+      expectedHashes: { f: 'hash' },
+      missing: []
+    }
+    const store = new OrgStateStore()
+    store.setCloudRecovery('owner', state)
+    const loaded = new OrgStateStore().getCloudRecovery('owner')!
+    expect(loaded).toEqual(state)
+    loaded.phase = 'completed'
+    expect(store.getCloudRecovery('owner')?.phase).toBe('delete-unknown')
   })
 
   it('同步未知上传和旧新 cleanup 映射跨实例保留', () => {

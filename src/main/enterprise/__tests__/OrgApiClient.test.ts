@@ -83,6 +83,29 @@ describe('OrgApiClient server contract', () => {
     expect(shareWarn).not.toHaveBeenCalled()
   })
 
+  it.each(['bearer', 'cookie', 'refresh'])('云端空间改名失败透传服务端详情且 %s 不记录响应体', async (mode) => {
+    shareWarn.mockClear()
+    const errorResponse = () => new Response(JSON.stringify({ detail: '空间名称已存在' }), { status: 422 })
+    fetchMock.mockResolvedValueOnce(mode === 'refresh' ? new Response('', { status: 401 }) : errorResponse())
+    if (mode === 'refresh') fetchMock.mockResolvedValueOnce(errorResponse())
+    const getSession = vi
+      .fn()
+      .mockResolvedValueOnce({ ...session(), authMode: mode === 'cookie' ? 'management-cookie' : undefined })
+      .mockResolvedValue(session({ accessToken: 'fresh' }))
+    const client = new OrgApiClient(
+      getSession,
+      vi.fn().mockImplementation(async () => errorResponse())
+    )
+
+    await expect(
+      client['request']('/api/v1/spaces/space', {
+        method: 'PUT',
+        body: JSON.stringify({ name: '新名' })
+      })
+    ).rejects.toMatchObject({ status: 422, message: '空间名称已存在' })
+    expect(JSON.stringify(shareWarn.mock.calls)).not.toMatch(/新名/)
+  })
+
   it('multipart 首次与401刷新均带 Bearer 且让 fetch 生成 boundary', async () => {
     fetchMock.mockResolvedValueOnce(new Response('', { status: 401 })).mockResolvedValueOnce(new Response('{}'))
     const client = new OrgApiClient(

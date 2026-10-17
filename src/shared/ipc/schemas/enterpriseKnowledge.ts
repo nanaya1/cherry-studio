@@ -44,6 +44,35 @@ const localBaseId = z
   .refine((id) => !id.startsWith('orgkb:'))
 
 export const enterpriseKnowledgeRequestSchemas = {
+  'enterprise.knowledge.pending_cleanup': defineRoute({
+    input: z.void(),
+    output: z.array(z.strictObject({ baseId: z.string(), localBaseId: z.string() }))
+  }),
+  'enterprise.knowledge.cleanup_local': defineRoute({
+    // 无本机副本时 ID 为空；清理范围仅从主进程可信日志读取。
+    input: z.strictObject({ baseId: z.string().min(1), localBaseId: z.string() }),
+    output: z.strictObject({ ok: z.boolean(), localBaseId: z.string() })
+  }),
+  'enterprise.knowledge.local_groups': defineRoute({
+    input: z.void(),
+    output: z.record(z.string(), z.string())
+  }),
+  'enterprise.knowledge.move_local_group': defineRoute({
+    input: z.strictObject({ baseId: orgId, groupId: z.string().min(1).nullable() }),
+    output: z.void()
+  }),
+  'enterprise.knowledge.remove_local_group': defineRoute({
+    input: z.strictObject({ groupId: z.string().min(1) }),
+    output: z.void()
+  }),
+  'enterprise.knowledge.prepare_added_files': defineRoute({
+    input: z.strictObject({ baseId: orgId }),
+    output: z.strictObject({ localBaseId: z.string().min(1) })
+  }),
+  'enterprise.knowledge.upload_added_files': defineRoute({
+    input: z.strictObject({ baseId: orgId, localBaseId, uploadOriginal: z.boolean().optional() }),
+    output: OrgKnowledgeShareResultSchema
+  }),
   'enterprise.knowledge.sync_preview': defineRoute({
     input: z.strictObject({ baseId: localBaseId }),
     output: OrgKnowledgeSyncPreviewSchema
@@ -60,6 +89,10 @@ export const enterpriseKnowledgeRequestSchemas = {
   'enterprise.knowledge.items': defineRoute({
     input: z.strictObject({ baseId: orgId, cursor }),
     output: OrgKnowledgeItemPageSchema
+  }),
+  'enterprise.knowledge.delete_file': defineRoute({
+    input: z.strictObject({ baseId: orgId, fileId: orgId }),
+    output: z.strictObject({ ok: z.literal(true) })
   }),
   'enterprise.knowledge.chunks': defineRoute({
     input: z.strictObject({ baseId: orgId, itemId: orgId, cursor }),
@@ -92,13 +125,28 @@ export const enterpriseKnowledgeRequestSchemas = {
     output: OrgKnowledgeShareResultSchema
   }),
   'enterprise.knowledge.share': defineRoute({
-    input: z.strictObject({ baseId: z.string().min(1) }),
+    input: z.strictObject({ baseId: z.string().min(1), uploadOriginal: z.boolean().default(true) }),
     output: OrgKnowledgeShareResultSchema
   }),
   // 取消分享：输入本地知识库 uuid，主进程删除云端 space 后解绑（本地副本保留），输出是否成功。
+  'enterprise.knowledge.unshare_preview': defineRoute({
+    input: z.strictObject({ baseId: z.string().min(1) }),
+    output: z.strictObject({
+      localBaseId: z.string(),
+      phase: z.string(),
+      restored: z.number(),
+      missing: z.array(z.strictObject({ id: z.string(), name: z.string() }))
+    })
+  }),
   'enterprise.knowledge.unshare': defineRoute({
-    input: z.strictObject({ baseId: localBaseId }),
-    output: z.strictObject({ ok: z.boolean() })
+    input: z.strictObject({
+      baseId: z.string().min(1),
+      confirmMissing: z.boolean().optional(),
+      confirmDevicesStopped: z.boolean().optional(),
+      deleteLocal: z.boolean().optional()
+    }),
+    // output: z.strictObject({ ok: z.boolean(), localBaseId: z.string().min(1) })
+    output: z.strictObject({ ok: z.boolean(), localBaseId: z.string() })
   }),
   'enterprise.knowledge.shares': defineRoute({
     input: z.strictObject({ baseId: orgId.refine((id) => !!parseOrgId(id)) }),
@@ -143,7 +191,8 @@ export const enterpriseKnowledgeRequestSchemas = {
    */
   'enterprise.knowledge.invite': defineRoute({
     input: z.strictObject({
-      baseId: localBaseId,
+      // baseId: localBaseId,
+      baseId: z.union([localBaseId, orgId]),
       userId: safePositiveUserId,
       expireDays: z.number().int().positive().max(30).optional()
     }),
@@ -161,5 +210,10 @@ export const enterpriseKnowledgeRequestSchemas = {
   'enterprise.knowledge.remove_member': defineRoute({
     input: z.strictObject({ baseId: orgId, userId: safePositiveUserId }),
     output: z.strictObject({ ok: z.boolean() })
+  }),
+  // 重命名：输入本地知识库 uuid（仅本人已绑定关联可改名），名称 1-128 字符，输出 void。
+  'enterprise.knowledge.rename_shared': defineRoute({
+    input: z.strictObject({ baseId: z.string().min(1), name: z.string().trim().min(1).max(128) }),
+    output: z.void()
   })
 }

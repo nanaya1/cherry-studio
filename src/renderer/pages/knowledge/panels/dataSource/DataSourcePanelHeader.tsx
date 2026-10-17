@@ -1,5 +1,5 @@
 import { Plus, RefreshCw, Settings2, Trash2 } from 'lucide-react'
-import { useCallback, useState } from 'react'
+import { type ReactNode, useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button, MenuItem, MenuList, Popover, PopoverContent, PopoverTrigger } from '@cherrystudio/ui'
@@ -21,6 +21,7 @@ interface DataSourcePanelHeaderProps {
   /** Adding is only meaningful at the base root; a drilled-in directory mirrors a read-only
    *  filesystem folder, so the entry is hidden there to avoid "add" silently landing at the root. */
   canAddSource?: boolean
+  actions?: ReactNode
   localModelStatus?: {
     label: string
     onOpenSettings?: () => void
@@ -36,6 +37,7 @@ const DataSourcePanelHeader = ({
   onBulkDelete,
   onAdd,
   canAddSource = true,
+  actions,
   localModelStatus
 }: DataSourcePanelHeaderProps) => {
   const { t, i18n } = useTranslation()
@@ -81,9 +83,12 @@ const DataSourcePanelHeader = ({
   return (
     <div className="flex min-h-8 w-full min-w-0 items-center justify-between gap-2">
       <span className="min-w-0 truncate pl-2 text-xs leading-4 text-foreground-tertiary">
-        {t('knowledge.meta.updated_at', { time: formatRelativeTime(updatedAt, i18n.language) })}
+        {t('knowledge.meta.updated_at', {
+          time: Number.isFinite(Date.parse(updatedAt)) ? formatRelativeTime(updatedAt, i18n.language) : '—'
+        })}
       </span>
       <div className="flex shrink-0 items-center gap-2">
+        {actions}
         {localModelStatus ? (
           <>
             <span

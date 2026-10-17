@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { toast } from '@renderer/services/toast'
@@ -291,6 +291,21 @@ describe('AddKnowledgeItemDialog', () => {
   const setPendingAddFiles = (pendingAddFiles: File[]) => {
     mockUseKnowledgePage.mockReturnValue({ selectedBaseId: 'base-1', pendingAddSource: 'file', pendingAddFiles })
   }
+
+  it('离开详情后文件选择器晚返回不提交到旧知识库', async () => {
+    let finish!: (value: unknown) => void
+    mockFileSelect.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve
+        })
+    )
+    const view = render(<AddKnowledgeItemDialog open onOpenChange={vi.fn()} />)
+    await waitFor(() => expect(mockFileSelect).toHaveBeenCalled())
+    view.unmount()
+    await act(async () => finish([createSelectedFile('late.txt')]))
+    expect(mockSubmitKnowledgeItems).not.toHaveBeenCalled()
+  })
 
   describe('file source (native picker, no panel)', () => {
     it('opens the OS file picker on mount instead of rendering a panel', async () => {

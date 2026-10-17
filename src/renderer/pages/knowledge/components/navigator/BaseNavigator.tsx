@@ -14,6 +14,7 @@ import type { KnowledgeBase } from '@shared/data/types/knowledge'
 
 import BaseNavigatorContent from './BaseNavigatorContent'
 import BaseNavigatorResizeHandle from './BaseNavigatorResizeHandle'
+import type { BaseNavigatorRemoteRow } from './types'
 
 interface BaseNavigatorProps {
   header?: ReactNode
@@ -22,6 +23,7 @@ interface BaseNavigatorProps {
   bases: KnowledgeBaseListItem[]
   groups: Group[]
   isLoading: boolean
+  remoteRows?: BaseNavigatorRemoteRow[]
   width: number
   sharedBaseIds?: ReadonlySet<string>
   onRequestUnshare?: (baseId: string) => void
@@ -44,6 +46,7 @@ const BaseNavigator = ({
   bases,
   groups,
   isLoading,
+  remoteRows,
   width,
   sharedBaseIds,
   onRequestUnshare,
@@ -99,6 +102,7 @@ const BaseNavigator = ({
 
             <BaseNavigatorContent
               isLoading={isLoading}
+              remoteRows={remoteRows}
               sections={knowledgeBaseGroupSections}
               groups={groups}
               groupById={groupById}

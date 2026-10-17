@@ -10,9 +10,19 @@ import * as z from 'zod'
 import { loggerService } from '@logger'
 import { OrgKnowledgeShareCodeSchema } from '@shared/data/types/enterpriseKnowledge'
 
+import { ORG_SERVER_BASE_URL } from './OrgApiClient'
 import type { OrgApiClient } from './OrgApiClient'
+import type { OrgSession } from './types'
 
 const logger = loggerService.withContext('OrgKnowledgeClient')
+
+// 管理端提供 /api/kb 代理；官网直连模式直接使用知识服务 OpenAPI 的 /api/v1。
+const localShareApiPrefix = ORG_SERVER_BASE_URL ? '/api/kb/v1/local-share' : '/api/v1/local-share'
+
+export function getKnowledgeSpacePath(spaceId: string, useManagementProxy = Boolean(ORG_SERVER_BASE_URL)): string {
+  const pathPrefix = useManagementProxy ? '/api/kb/v1/spaces' : '/api/v1/spaces'
+  return `${pathPrefix}/${encodeURIComponent(spaceId)}`
+}
 
 /** 服务端返回 2xx 但结构不符合契约时抛出。 */
 export class OrgKnowledgeProtocolError extends Error {
@@ -27,7 +37,10 @@ const serverBaseSchema = z.object({
   id: z.string(),
   name: z.string(),
   description: z.string().nullable().optional(),
+  updated_at: z.iso.datetime({ offset: true }).optional(),
   owner_id: z.number().int().safe().optional(),
+  allow_local_file_upload: z.boolean().optional(),
+  can_download: z.boolean().optional(),
   my_role: z.string().nullable().optional(),
   // SpaceOut 不含计数；兼容带摘要的响应，缺失计数保持未知。
   document_count: z.number().int().nonnegative().optional()
@@ -41,6 +54,7 @@ const serverItemSchema = z.object({
   status: z.enum(['idle', 'preparing', 'processing', 'reading', 'embedding', 'completed', 'failed', 'deleting']),
   error: z.string().nullable(),
   document_id: z.string().nullable(),
+  has_original_file: z.boolean().optional(),
   data: z.record(z.string(), z.unknown()),
   created_at: z.iso.datetime({ offset: true }),
   updated_at: z.iso.datetime({ offset: true })
@@ -156,7 +170,11 @@ function parseOrThrow<T>(schema: z.ZodType<T>, data: unknown, where: string): T 
 }
 
 export class OrgKnowledgeClient {
-  constructor(private readonly apiClient: OrgApiClient) {}
+  // constructor(private readonly apiClient: OrgApiClient) {}
+  constructor(
+    private readonly apiClient: OrgApiClient,
+    private readonly acquireWriteGuard?: () => (session?: OrgSession) => void
+  ) {}
 
   private url(path: string, query?: Record<string, string | number | undefined | null>): string {
     if (!query) return path
@@ -181,7 +199,11 @@ export class OrgKnowledgeClient {
     // const raw = await this.apiClient['request'](path)
     // MEA:enterprise-knowledge-page 首次分享核对沿用普通HTTP的30秒超时。
     const raw = await this.apiClient['request'](path, { signal: AbortSignal.timeout(30_000) })
-    return parseOrThrow(serverItemPageSchema, raw, 'items')
+    // return parseOrThrow(serverItemPageSchema, raw, 'items')
+    // MEA:enterprise-knowledge-page 列表整体校验归属，禁止标题新库却显示其他库文件。
+    const page = parseOrThrow(serverItemPageSchema, raw, 'items')
+    if (page.items.some((item) => item.base_id !== baseId)) throw new OrgKnowledgeProtocolError('items.base_id')
+    return page
   }
 
   async listChunks(
@@ -247,6 +269,57 @@ export class OrgKnowledgeClient {
     return this.apiClient.requestBytes(`/api/kb/v1/files/${encodeURIComponent(fileId)}/preview`)
   }
 
+  async fetchPresignedPreviewBytes(url: string, maxBytes: number): Promise<Buffer> {
+    let parsed: URL
+    try {
+      parsed = new URL(url)
+    } catch {
+      throw new Error('预签名预览地址无效')
+    }
+    if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password)
+      throw new Error('预签名预览地址无效')
+    if (!Number.isSafeInteger(maxBytes) || maxBytes <= 0) throw new Error('预签名预览大小上限无效')
+
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 30_000)
+    let reader: ReadableStreamDefaultReader<Uint8Array> | undefined
+    try {
+      const response = await fetch(parsed.href, { credentials: 'omit', signal: controller.signal })
+      if (!response.ok) throw new Error(`预签名预览请求失败 (HTTP ${response.status})`)
+      const contentLength = response.headers.get('content-length')
+      if (contentLength !== null) {
+        const declaredSize = Number(contentLength)
+        if (!Number.isSafeInteger(declaredSize) || declaredSize < 0) throw new Error('预签名预览响应大小无效')
+        if (declaredSize > maxBytes) throw new Error('预签名预览响应过大')
+      }
+      if (!response.body) {
+        const bytes = Buffer.from(await response.arrayBuffer())
+        if (bytes.length > maxBytes) throw new Error('预签名预览响应过大')
+        return bytes
+      }
+
+      reader = response.body.getReader()
+      const chunks: Buffer[] = []
+      let total = 0
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        const chunk = Buffer.from(value)
+        total += chunk.length
+        if (total > maxBytes) throw new Error('预签名预览响应过大')
+        chunks.push(chunk)
+      }
+      return Buffer.concat(chunks, total)
+    } catch (error) {
+      controller.abort()
+      if (reader) await reader.cancel().catch(() => undefined)
+      throw error
+    } finally {
+      reader?.releaseLock()
+      clearTimeout(timeout)
+    }
+  }
+
   async resolveFileId(documentId: string): Promise<string | null> {
     const raw = await this.apiClient['request'](`/api/kb/v1/files/${encodeURIComponent(documentId)}`)
     const file = parseOrThrow(z.object({ id: z.string(), is_dir: z.boolean() }), raw, 'file')
@@ -262,7 +335,8 @@ export class OrgKnowledgeClient {
         is_dir: z.boolean(),
         parent_id: z.string().nullable().optional(),
         file_hash: z.string().nullable().optional(),
-        parse_status: z.string().nullable().optional()
+        parse_status: z.string().nullable().optional(),
+        has_original_file: z.boolean().optional()
       }),
       // await this.apiClient['request'](`/api/kb/v1/files/${encodeURIComponent(fileId)}`),
       await this.apiClient['request'](`/api/kb/v1/files/${encodeURIComponent(fileId)}`, {
@@ -272,13 +346,41 @@ export class OrgKnowledgeClient {
     )
   }
 
+  async listRecoveryFiles(spaceId: string, parentId: string | null, page: number) {
+    const { recoveryFileSchema } = await import('./CloudKnowledgeRecovery')
+    return parseOrThrow(
+      z.object({
+        folders: z.array(recoveryFileSchema),
+        files: z.array(recoveryFileSchema),
+        total: z.number().int().nonnegative()
+      }),
+      await this.apiClient['request'](
+        this.url(`/api/kb/v1/spaces/${encodeURIComponent(spaceId)}/files`, {
+          parent_id: parentId ?? undefined,
+          page,
+          page_size: 100
+        }),
+        { signal: AbortSignal.timeout(30_000) }
+      ),
+      'recovery-files'
+    )
+  }
+
+  downloadOriginal(fileId: string, destination: string): Promise<void> {
+    return this.apiClient.downloadKnowledgeFile(fileId, destination)
+  }
+
   async deleteFile(fileId: string): Promise<void> {
     parseOrThrow(
       z.record(z.string(), z.unknown()),
-      await this.apiClient['request'](`/api/kb/v1/files/${encodeURIComponent(fileId)}`, {
-        method: 'DELETE',
-        signal: AbortSignal.timeout(30_000)
-      }),
+      await this.apiClient['request'](
+        `/api/kb/v1/files/${encodeURIComponent(fileId)}`,
+        {
+          method: 'DELETE',
+          signal: AbortSignal.timeout(30_000)
+        },
+        this.acquireWriteGuard?.()
+      ),
       'delete-file'
     )
   }
@@ -307,23 +409,40 @@ export class OrgKnowledgeClient {
     )
   }
 
-  async createShareSpace(name: string): Promise<z.infer<typeof serverShareCreateSchema>> {
-    const raw = await this.apiClient['request']('/api/kb/v1/local-share/spaces', {
-      method: 'POST',
-      body: JSON.stringify({ name, visibility: 1 }),
-      signal: AbortSignal.timeout(30_000)
-    })
+  async getSpace(spaceId: string) {
+    return parseOrThrow(
+      serverBaseSchema,
+      // await this.apiClient['request'](`/api/v1/spaces/${encodeURIComponent(spaceId)}`, {
+      await this.apiClient['request'](getKnowledgeSpacePath(spaceId), {
+        signal: AbortSignal.timeout(30_000)
+      }),
+      'space'
+    )
+  }
+
+  async createShareSpace(name: string, uploadOriginal = true): Promise<z.infer<typeof serverShareCreateSchema>> {
+    const raw = await this.apiClient['request'](
+      `${localShareApiPrefix}/spaces`,
+      {
+        method: 'POST',
+        // body: JSON.stringify({ name, visibility: 1 }),
+        body: JSON.stringify({ name, allow_local_file_upload: uploadOriginal }),
+        signal: AbortSignal.timeout(30_000)
+      },
+      this.acquireWriteGuard?.()
+    )
     return parseOrThrow(serverShareCreateSchema, raw, 'local-share/spaces')
   }
 
   async createShareFolder(shareId: string, folder: { fileName: string }, parentId: string | null) {
     const raw = await this.apiClient['request'](
-      `/api/kb/v1/local-share/spaces/${encodeURIComponent(shareId)}/folders`,
+      `${localShareApiPrefix}/spaces/${encodeURIComponent(shareId)}/folders`,
       {
         method: 'POST',
         body: JSON.stringify({ name: folder.fileName, parent_id: parentId }),
         signal: AbortSignal.timeout(30_000)
-      }
+      },
+      this.acquireWriteGuard?.()
     )
     return parseOrThrow(
       z.object({
@@ -340,7 +459,7 @@ export class OrgKnowledgeClient {
   async uploadShareFile(shareId: string, form: FormData): Promise<z.infer<typeof serverShareFileSchema>> {
     // [enterprise] FormData 不设置 application/json：boundary 由 fetch 自行决定。
     const raw = await this.apiClient.requestMultipart(
-      `/api/kb/v1/local-share/spaces/${encodeURIComponent(shareId)}/files`,
+      `${localShareApiPrefix}/spaces/${encodeURIComponent(shareId)}/files`,
       form
     )
     return parseOrThrow(serverShareFileSchema, raw, 'local-share/files')
@@ -349,21 +468,36 @@ export class OrgKnowledgeClient {
   async uploadShareStream(
     shareId: string,
     // entry: { path: string; fileName: string; size: number; chunks: unknown[] },
-    entry: { path: string; fileName: string; size: number; chunks: unknown[]; parentId?: string | null },
-    progress: (bytes: number) => void
+    entry: {
+      path: string
+      fileName: string
+      size: number
+      chunks: unknown[]
+      parentId?: string | null
+      uploadOriginal?: boolean
+    },
+    progress: (bytes: number) => void,
+    beforeStop?: (error: unknown) => void,
+    signal?: AbortSignal
   ) {
     const raw = await this.apiClient.requestFileMultipart(
-      `/api/kb/v1/local-share/spaces/${encodeURIComponent(shareId)}/files`,
+      `${localShareApiPrefix}/spaces/${encodeURIComponent(shareId)}/files`,
       entry,
-      progress
+      progress,
+      this.acquireWriteGuard?.(),
+      beforeStop,
+      signal
     )
     return parseOrThrow(serverShareFileSchema, raw, 'local-share/files')
   }
 
-  async listShares(spaceId: string) {
+  async listShares(spaceId: string, signal?: AbortSignal) {
     return parseShareResponse(
       z.array(serverShareSchema),
-      await this.apiClient['request'](`/api/kb/v1/spaces/${encodeURIComponent(spaceId)}/shares`)
+      await this.apiClient['request'](
+        `/api/kb/v1/spaces/${encodeURIComponent(spaceId)}/shares`,
+        ...(signal ? [{ signal }] : [])
+      )
     )
   }
 
@@ -384,7 +518,8 @@ export class OrgKnowledgeClient {
   async revokeShare(spaceId: string, shareId: string): Promise<void> {
     await this.apiClient['request'](
       `/api/kb/v1/spaces/${encodeURIComponent(spaceId)}/shares/${encodeURIComponent(shareId)}`,
-      { method: 'DELETE' }
+      { method: 'DELETE' },
+      this.acquireWriteGuard?.()
     )
   }
 
@@ -397,8 +532,8 @@ export class OrgKnowledgeClient {
     return parseShareResponse(z.object({ id: z.uuid(), name: z.string() }), raw)
   }
 
-  async listMembers(spaceId: string): Promise<z.infer<typeof serverMemberSchema>[]> {
-    const raw = await this.apiClient['request'](`/api/kb/v1/spaces/${encodeURIComponent(spaceId)}/members`)
+  async listMembers(spaceId: string, signal?: AbortSignal): Promise<z.infer<typeof serverMemberSchema>[]> {
+    const raw = await this.apiClient['request'](`/api/kb/v1/spaces/${encodeURIComponent(spaceId)}/members`, { signal })
     return parseOrThrow(z.array(serverMemberSchema), raw, 'members')
   }
 
@@ -449,9 +584,13 @@ export class OrgKnowledgeClient {
 
   async removeMember(spaceId: string, userId: number): Promise<void> {
     // DELETE 可能返回 204 无响应体；request 对空响应体返回 undefined 即视为成功。
-    await this.apiClient['request'](`/api/kb/v1/spaces/${encodeURIComponent(spaceId)}/members/${userId}`, {
-      method: 'DELETE'
-    })
+    await this.apiClient['request'](
+      `/api/kb/v1/spaces/${encodeURIComponent(spaceId)}/members/${userId}`,
+      {
+        method: 'DELETE'
+      },
+      this.acquireWriteGuard?.()
+    )
   }
 
   /**
@@ -460,10 +599,34 @@ export class OrgKnowledgeClient {
    * MEA:enterprise-knowledge-page 仅本人拥有的关联空间可删，本地副本保留。
    */
   async deleteShareSpace(spaceId: string): Promise<void> {
-    await this.apiClient['request'](`/api/kb/v1/spaces/${encodeURIComponent(spaceId)}`, {
-      method: 'DELETE',
-      signal: AbortSignal.timeout(30_000)
-    })
+    await this.apiClient['request'](
+      `/api/kb/v1/spaces/${encodeURIComponent(spaceId)}`,
+      {
+        method: 'DELETE',
+        signal: AbortSignal.timeout(30_000)
+      },
+      this.acquireWriteGuard?.()
+    )
+  }
+
+  /**
+   * 重命名已分享云端空间。管理端经 /api/kb/v1 代理，官网直连使用上游 /api/v1。
+   * 仅按传入的 spaceId 提交改名，不按名称认领/查找云端空间。
+   */
+  async renameSpace(spaceId: string, name: string) {
+    return parseOrThrow(
+      z.object({ id: z.string(), name: z.string() }),
+      await this.apiClient['request'](
+        getKnowledgeSpacePath(spaceId),
+        {
+          method: 'PUT',
+          body: JSON.stringify({ name }),
+          signal: AbortSignal.timeout(30_000)
+        },
+        this.acquireWriteGuard?.()
+      ),
+      'rename-space'
+    )
   }
 }
 
