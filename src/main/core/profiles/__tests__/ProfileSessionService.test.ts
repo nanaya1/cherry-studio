@@ -82,6 +82,30 @@ describe('ProfileSessionService', () => {
     expect(store.clear).toHaveBeenCalledOnce()
   })
 
+  it('continues authentication when target credential durability is unsupported on Windows', async () => {
+    const { deps, authenticated } = setup()
+    const targetStore = {
+      save: vi.fn().mockResolvedValue({
+        kind: 'committed-durability-unknown',
+        reason: 'unsupported',
+        error: 'EPERM: operation not permitted, fsync'
+      }),
+      clear: vi.fn()
+    }
+    deps.credentialStoreFor.mockReturnValue(targetStore)
+    const service = new ProfileSessionService(deps)
+
+    await expect(
+      service.completeAuthentication({
+        identity: { kind: 'authenticated', accountKind: 'management', issuerId: 'server', subjectId: 'user' },
+        authorizationContext: { groupId: 'group', role: 'member', status: 'active' },
+        session: { userId: 'user' } as never
+      })
+    ).resolves.toEqual({ kind: 'relaunching' })
+    expect(deps.coordinator.switchProfile).toHaveBeenCalled()
+    expect(authenticated.profileId).toHaveLength(32)
+  })
+
   it('refuses to enter the local profile because it is staging-only', async () => {
     const { deps } = setup()
     const service = new ProfileSessionService(deps)

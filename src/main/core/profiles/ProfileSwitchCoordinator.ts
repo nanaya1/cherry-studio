@@ -67,7 +67,7 @@ export class ProfileSwitchCoordinator {
   ): Promise<ProfileSwitchResult> {
     const prepared = await this.dependencies.journal.prepare(request)
     this.dependencies.fence.beginSwitch(request.operationId)
-    if (prepared.durability.kind === 'committed-durability-unknown') {
+    if (prepared.durability.kind === 'committed-durability-unknown' && prepared.durability.reason !== 'unsupported') {
       return this.needsRecovery('journal-prepared')
     }
 
@@ -97,7 +97,10 @@ export class ProfileSwitchCoordinator {
       logger.error('Target profile preparation failed; switch was not committed', { error: message })
       try {
         const cancelled = await this.dependencies.journal.cancel(request.operationId)
-        if (cancelled.durability.kind === 'committed-durability-unknown') {
+        if (
+          cancelled.durability.kind === 'committed-durability-unknown' &&
+          cancelled.durability.reason !== 'unsupported'
+        ) {
           return this.needsRecovery('journal-prepared')
         }
       } catch {
@@ -115,7 +118,7 @@ export class ProfileSwitchCoordinator {
     } catch {
       return this.needsRecovery('active-pointer')
     }
-    if (pointer.durability.kind === 'committed-durability-unknown') {
+    if (pointer.durability.kind === 'committed-durability-unknown' && pointer.durability.reason !== 'unsupported') {
       return this.needsRecovery('active-pointer')
     }
 
@@ -125,7 +128,7 @@ export class ProfileSwitchCoordinator {
     } catch {
       return this.needsRecovery('journal-committed')
     }
-    if (committed.durability.kind === 'committed-durability-unknown') {
+    if (committed.durability.kind === 'committed-durability-unknown' && committed.durability.reason !== 'unsupported') {
       return this.needsRecovery('journal-committed')
     }
 

@@ -86,9 +86,12 @@ describe('ProfileSwitchJournal', () => {
     const prepared = (await journal.prepare(request)).value
 
     await expect(journal.cancel(OTHER_OPERATION_ID)).rejects.toThrow(/operation/i)
-    await expect(journal.cancel(OPERATION_ID)).resolves.toEqual({
+    await expect(journal.cancel(OPERATION_ID)).resolves.toMatchObject({
       value: prepared,
-      durability: { kind: 'committed-confirmed' }
+      durability:
+        process.platform === 'win32'
+          ? { kind: 'committed-durability-unknown', reason: 'unsupported' }
+          : { kind: 'committed-confirmed' }
     })
 
     await expect(journal.read()).resolves.toEqual({ kind: 'none' })
@@ -141,6 +144,26 @@ describe('ProfileSwitchJournal', () => {
     await expect(readFile(filePath, 'utf8')).resolves.toContain('"phase": "committed"')
   })
 
+  it('continues preparing after archive durability is unsupported', async () => {
+    const filePath = await createJournalPath()
+    const journal = new ProfileSwitchJournal(filePath, async (target) => {
+      if (target.endsWith('.committed')) {
+        throw Object.assign(new Error('EPERM: operation not permitted, fsync'), { code: 'EPERM' })
+      }
+    })
+    await journal.prepare(request)
+    await journal.commit(request)
+    const next = {
+      ...request,
+      operationId: OTHER_OPERATION_ID,
+      fromProfileId: request.targetProfileId,
+      targetProfileId: 'abcdef0123456789abcdef0123456789',
+      targetIdentityDigest: 'f'.repeat(64)
+    }
+
+    await expect(journal.prepare(next)).resolves.toMatchObject({ value: { phase: 'prepared', ...next } })
+  })
+
   it('archives a committed operation before preparing the next operation', async () => {
     const filePath = await createJournalPath()
     const journal = new ProfileSwitchJournal(filePath)
@@ -163,7 +186,9 @@ describe('ProfileSwitchJournal', () => {
     await writeFile(parentFile, 'not-a-directory', 'utf8')
     const journal = new ProfileSwitchJournal(path.join(parentFile, 'switch-journal.json'))
 
-    await expect(journal.prepare(request)).rejects.toMatchObject({ code: 'ENOTDIR' })
+    await expect(journal.prepare(request)).rejects.toMatchObject({
+      code: process.platform === 'win32' ? 'ENOENT' : 'ENOTDIR'
+    })
   })
 
   it.each([

@@ -5,7 +5,7 @@ import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import * as z from 'zod'
 
-import { ProfileControlStore } from '..'
+import { isUnsupportedParentDirectoryDurabilityError, ProfileControlStore } from '..'
 
 const TestRecordSchema = z.strictObject({
   version: z.literal(1),
@@ -27,6 +27,16 @@ afterEach(async () => {
 })
 
 describe('ProfileControlStore', () => {
+  it.each(['EPERM', 'EACCES'])('treats Windows %s from parent-directory sync as unsupported', (code) => {
+    expect(isUnsupportedParentDirectoryDurabilityError(code, 'win32')).toBe(true)
+    expect(isUnsupportedParentDirectoryDurabilityError(code, 'linux')).toBe(false)
+  })
+
+  it.each(['EINVAL', 'EISDIR', 'ENOTSUP'])('treats %s as unsupported on every platform', (code) => {
+    expect(isUnsupportedParentDirectoryDurabilityError(code, 'win32')).toBe(true)
+    expect(isUnsupportedParentDirectoryDurabilityError(code, 'linux')).toBe(true)
+  })
+
   it('returns none only when the file does not exist', async () => {
     const directory = await createTemporaryDirectory()
     const store = new ProfileControlStore(path.join(directory, 'missing.json'), TestRecordSchema)
@@ -82,10 +92,15 @@ describe('ProfileControlStore', () => {
     const filePath = path.join(directory, 'record.json')
     const store = new ProfileControlStore(filePath, TestRecordSchema)
 
-    await expect(store.write({ version: 1, name: 'saved' })).resolves.toEqual({ kind: 'committed-confirmed' })
+    const result = await store.write({ version: 1, name: 'saved' })
 
+    expect(result).toMatchObject(
+      process.platform === 'win32'
+        ? { kind: 'committed-durability-unknown', reason: 'unsupported' }
+        : { kind: 'committed-confirmed' }
+    )
     await expect(readFile(filePath, 'utf8')).resolves.toBe('{\n  "version": 1,\n  "name": "saved"\n}\n')
-    expect((await stat(filePath)).mode & 0o777).toBe(0o600)
+    if (process.platform !== 'win32') expect((await stat(filePath)).mode & 0o777).toBe(0o600)
   })
 
   it.each([

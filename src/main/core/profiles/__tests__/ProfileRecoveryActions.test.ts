@@ -122,6 +122,22 @@ describe('ProfileRecoveryActions', () => {
     expect(dependencies.prepareProfileRoot).not.toHaveBeenCalledWith('abcdef0123456789abcdef0123456789')
   })
 
+  it('continues signed-out activation when directory durability is unsupported', async () => {
+    const dependencies = createDependencies()
+    dependencies.activePointer.commitPointer.mockResolvedValue({
+      value: {},
+      durability: {
+        kind: 'committed-durability-unknown',
+        reason: 'unsupported',
+        error: 'EPERM: operation not permitted, fsync'
+      }
+    })
+    const actions = new ProfileRecoveryActions(dependencies)
+
+    await expect(actions.selectSignedOut()).resolves.toBeUndefined()
+    expect(dependencies.relaunch).toHaveBeenCalledOnce()
+  })
+
   it('exports diagnostics through a fixed no-argument action', async () => {
     const dependencies = createDependencies()
     const actions = new ProfileRecoveryActions(dependencies)

@@ -71,7 +71,10 @@ export class ProfilePrebootCoordinator {
         if (journal.kind === 'corrupt') return this.recoveryContext('corrupt-control-plane')
         if (journal.kind === 'ok' && journal.value.phase === 'prepared') {
           const cancelled = await switchJournal.cancel(journal.value.operationId)
-          if (cancelled.durability.kind === 'committed-durability-unknown') {
+          if (
+            cancelled.durability.kind === 'committed-durability-unknown' &&
+            cancelled.durability.reason !== 'unsupported'
+          ) {
             return this.recoveryContext('corrupt-control-plane')
           }
         }
@@ -82,13 +85,26 @@ export class ProfilePrebootCoordinator {
           targetIdentityDigest: signedOut.identityDigest
         }
         const prepared = await switchJournal.prepare(request)
-        if (prepared.durability.kind === 'committed-durability-unknown') {
+        if (
+          prepared.durability.kind === 'committed-durability-unknown' &&
+          prepared.durability.reason !== 'unsupported'
+        ) {
           return this.recoveryContext('corrupt-control-plane')
         }
         const selected = await activePointer.commitPointer(signedOut, request.operationId)
-        if (selected.durability.kind !== 'committed-confirmed') return this.recoveryContext('corrupt-control-plane')
+        if (
+          selected.durability.kind === 'committed-durability-unknown' &&
+          selected.durability.reason !== 'unsupported'
+        ) {
+          return this.recoveryContext('corrupt-control-plane')
+        }
         const committed = await switchJournal.commit(request)
-        if (committed.durability.kind !== 'committed-confirmed') return this.recoveryContext('corrupt-control-plane')
+        if (
+          committed.durability.kind === 'committed-durability-unknown' &&
+          committed.durability.reason !== 'unsupported'
+        ) {
+          return this.recoveryContext('corrupt-control-plane')
+        }
         await this.cleanupCommittedSource(switchJournal, await activePointer.read(), paths)
         await logoutIntent.complete()
         return this.context('signed-out', signedOut)
@@ -123,7 +139,10 @@ export class ProfilePrebootCoordinator {
           return this.context('signed-out', signedOut, undefined, switchRecovery.pendingSwitch)
         }
         const selected = await activePointer.commitPointer(signedOut)
-        if (selected.durability.kind === 'committed-durability-unknown') {
+        if (
+          selected.durability.kind === 'committed-durability-unknown' &&
+          selected.durability.reason !== 'unsupported'
+        ) {
           return this.recoveryContext('corrupt-control-plane')
         }
         return this.context('signed-out', signedOut)
@@ -209,7 +228,12 @@ export class ProfilePrebootCoordinator {
     if (targetMatches) {
       if (pointer.value.operationId !== state.value.operationId) return { kind: 'mismatch' }
       const committed = await journal.commit(state.value)
-      if (committed.durability.kind === 'committed-durability-unknown') return { kind: 'mismatch' }
+      if (
+        committed.durability.kind === 'committed-durability-unknown' &&
+        committed.durability.reason !== 'unsupported'
+      ) {
+        return { kind: 'mismatch' }
+      }
       return { kind: 'ok' }
     }
 

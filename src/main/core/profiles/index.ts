@@ -10,6 +10,7 @@ export {
   type ProfileBootRecoveryDecision
 } from './ProfileBootJournal'
 export {
+  isUnsupportedParentDirectoryDurabilityError,
   ProfileControlStore,
   type ControlMutationResult,
   type ControlReadResult,

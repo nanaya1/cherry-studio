@@ -44,6 +44,7 @@ interface ProfileClaimServiceOptions {
   journalPath?: string
   sqliteValidator?: (filePath: string) => Promise<void>
   rename?: (source: string, target: string) => Promise<void>
+  confirmDurability?: ConstructorParameters<typeof ProfileControlStore<ProfileClaimJournalV1>>[2]
 }
 
 interface StoredPreview {
@@ -69,7 +70,7 @@ export class ProfileClaimService {
     const journalPath =
       options.journalPath ??
       path.join(path.dirname(options.targetUserData), 'Runtime', 'ProfileClaim', 'claim-journal.json')
-    this.journal = new ProfileControlStore(journalPath, ProfileClaimJournalV1Schema)
+    this.journal = new ProfileControlStore(journalPath, ProfileClaimJournalV1Schema, options.confirmDurability)
   }
 
   async preview(): Promise<ProfileClaimPreview> {
@@ -166,6 +167,10 @@ export class ProfileClaimService {
         await rm(stagingRoot, { recursive: true, force: true })
         return { status: 'cancelled' }
       }
+      // Windows cannot rename a directory over an existing empty directory.
+      if (process.platform === 'win32' && !(await this.isNonEmptyDirectory(this.options.targetUserData))) {
+        await rm(this.options.targetUserData, { recursive: true, force: true })
+      }
       await (this.options.rename ?? rename)(stagingRoot, this.options.targetUserData)
       await this.writeJournal({
         version: 1,
@@ -191,7 +196,7 @@ export class ProfileClaimService {
 
   private async writeJournal(value: ProfileClaimJournalV1): Promise<void> {
     const durability = await this.journal.write(value)
-    if (durability.kind === 'committed-durability-unknown') {
+    if (durability.kind === 'committed-durability-unknown' && durability.reason !== 'unsupported') {
       throw new Error(`Profile claim journal durability is unknown: ${durability.error}`)
     }
   }

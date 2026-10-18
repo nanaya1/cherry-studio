@@ -24,6 +24,14 @@ export type DurabilityConfirmer = (filePath: string) => Promise<void>
 
 const unsupportedCodes = new Set(['EINVAL', 'EISDIR', 'ENOTSUP'])
 
+export function isUnsupportedParentDirectoryDurabilityError(
+  code: string | undefined,
+  platform: NodeJS.Platform = process.platform
+): boolean {
+  if (code !== undefined && unsupportedCodes.has(code)) return true
+  return platform === 'win32' && (code === 'EPERM' || code === 'EACCES')
+}
+
 async function confirmParentDirectoryDurability(filePath: string): Promise<void> {
   const directory = await open(path.dirname(filePath), 'r')
   try {
@@ -77,9 +85,7 @@ export class ProfileControlStore<T> {
       return { kind: 'committed-confirmed' }
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code
-      const unsupported =
-        (code !== undefined && unsupportedCodes.has(code)) ||
-        (process.platform === 'win32' && (code === 'EPERM' || code === 'EACCES'))
+      const unsupported = isUnsupportedParentDirectoryDurabilityError(code)
       return {
         kind: 'committed-durability-unknown',
         reason: unsupported ? 'unsupported' : 'error',

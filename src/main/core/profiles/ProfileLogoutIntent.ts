@@ -32,12 +32,16 @@ export class ProfileLogoutIntent {
       const result = await this.store.write(
         existing.kind === 'ok' && existing.value ? existing.value : { version: 1, sourceProfileId, operationId }
       )
-      if (result.kind !== 'committed-confirmed') throw new Error('Logout intent durability is unknown')
+      if (result.kind === 'committed-durability-unknown' && result.reason !== 'unsupported') {
+        throw new Error(`Logout intent durability is unknown: ${result.error}`)
+      }
     })
   }
 
   async complete(): Promise<void> {
     const result = await this.store.write(null)
-    if (result.kind !== 'committed-confirmed') throw new Error('Logout completion durability is unknown')
+    if (result.kind === 'committed-durability-unknown' && result.reason !== 'unsupported') {
+      throw new Error(`Logout completion durability is unknown: ${result.error}`)
+    }
   }
 }

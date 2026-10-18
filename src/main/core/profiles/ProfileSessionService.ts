@@ -78,22 +78,25 @@ export class ProfileSessionService {
           await prepareUserData?.apply()
           rollback.session = (await authentication.prepareTargetSession?.(profileRoot)) || undefined
           const saved = await store.save(authentication.session)
-          if (saved?.kind === 'committed-durability-unknown') {
-            throw new Error('Target credential durability is unknown')
+          if (saved?.kind === 'committed-durability-unknown' && saved.reason !== 'unsupported') {
+            throw new Error(`Target credential durability is unknown: ${saved.error}`)
           }
           const authorized = await this.dependencies.registry.updateAuthorizationContext(
             authentication.identity,
             authentication.authorizationContext
           )
-          if (authorized.durability?.kind === 'committed-durability-unknown') {
-            throw new Error('Target authorization durability is unknown')
+          if (
+            authorized.durability?.kind === 'committed-durability-unknown' &&
+            authorized.durability.reason !== 'unsupported'
+          ) {
+            throw new Error(`Target authorization durability is unknown: ${authorized.durability.error}`)
           }
           const bootJournal =
             this.dependencies.bootJournal ??
             new ProfileBootJournal(path.join(this.dependencies.dataRoot, 'control', 'boot-journal.json'))
           const reset = await bootJournal.resetAfterAuthentication()
-          if (reset.kind !== 'committed-confirmed') {
-            throw new Error('Boot recovery reset durability is unknown')
+          if (reset.kind === 'committed-durability-unknown' && reset.reason !== 'unsupported') {
+            throw new Error(`Boot recovery reset durability is unknown: ${reset.error}`)
           }
           return authorized.value
         },
@@ -138,7 +141,7 @@ export class ProfileSessionService {
       throw new Error('Credential store does not support transactional logout')
     }
     const quarantined = await store.quarantine()
-    if (quarantined.kind === 'committed-durability-unknown') {
+    if (quarantined.kind === 'committed-durability-unknown' && quarantined.reason !== 'unsupported') {
       return { kind: 'needs-recovery', stage: 'logout-quarantine' }
     }
     const signedOut = await this.dependencies.registry.requireActivatable(
