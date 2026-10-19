@@ -40,7 +40,8 @@ const openclawConfigPath = (): AbsoluteFilePath =>
   AbsoluteFilePathSchema.parse(path.join(openclawConfigDir(), 'openclaw.json'))
 const openclawConfigBakPath = () => path.join(openclawConfigDir(), 'openclaw.json.bak')
 const openclawLegacyConfigPath = () => path.join(openclawConfigDir(), 'openclaw.cherry.json')
-const DEFAULT_GATEWAY_PORT = 19790
+// const DEFAULT_GATEWAY_PORT = 19790
+const DEFAULT_GATEWAY_PORT = 19791
 const GATEWAY_PROBE_INTERVAL_MS = 5000
 const OPENCLAW_COMMAND_TIMEOUT_MS = 10000
 const OPENCLAW_SCHEMA_TIMEOUT_MS = 30000
@@ -670,6 +671,7 @@ export class OpenClawService extends BaseService {
     try {
       const result = await this.runOpenClawCommand(runtime.path, ['config', 'validate', '--json'], {
         ...runtime.env,
+        OPENCLAW_STATE_DIR: openclawConfigDir(),
         OPENCLAW_CONFIG_PATH: configPath
       })
       const report = this.parseValidationResult(result)
@@ -724,6 +726,7 @@ export class OpenClawService extends BaseService {
         ['config', 'schema'],
         {
           ...runtime.env,
+          OPENCLAW_STATE_DIR: openclawConfigDir(),
           OPENCLAW_CONFIG_PATH: openclawConfigPath()
         },
         {
@@ -847,6 +850,7 @@ export class OpenClawService extends BaseService {
       // switch, scoped to the gateway process we spawn.
       env: {
         ...env,
+        OPENCLAW_STATE_DIR: openclawConfigDir(),
         OPENCLAW_CONFIG_PATH: openclawConfigPath(),
         OPENCLAW_NO_AUTO_UPDATE: '1'
       },

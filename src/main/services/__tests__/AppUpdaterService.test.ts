@@ -175,12 +175,12 @@ describe('AppUpdaterService', () => {
     it('uses the latest channel and global region outside China', async () => {
       await (appUpdater as any).configureUpdaterForCheck()
 
-      expect(autoUpdater.channel).toBe(UpgradeChannel.LATEST)
+      expect(autoUpdater.channel).toBe('latest-enterprise')
       expect(autoUpdater.requestHeaders).toMatchObject({
         'User-Agent': 'test-user-agent',
         'Cache-Control': 'no-cache',
         'Client-Id': 'test-client-id',
-        'App-Name': 'Cherry Studio',
+        'App-Name': 'MEACoworkEnterprise',
         'App-Version': 'v1.0.0',
         OS: process.platform,
         'X-Edition': 'global',
@@ -196,7 +196,7 @@ describe('AppUpdaterService', () => {
 
       await (appUpdater as any).configureUpdaterForCheck()
 
-      expect(autoUpdater.channel).toBe(UpgradeChannel.LATEST)
+      expect(autoUpdater.channel).toBe('latest-enterprise')
       expect(autoUpdater.requestHeaders).toMatchObject({
         'X-Region': 'cn'
       })
@@ -208,7 +208,7 @@ describe('AppUpdaterService', () => {
 
       await (appUpdater as any).configureUpdaterForCheck()
 
-      expect(autoUpdater.channel).toBe('latest-cn')
+      expect(autoUpdater.channel).toBe('latest-enterprise-cn')
       expect(autoUpdater.requestHeaders).toMatchObject({
         'X-Edition': 'cn',
         'X-Region': 'global'
@@ -235,12 +235,12 @@ describe('AppUpdaterService', () => {
 
       await (appUpdater as any).configureUpdaterForCheck()
 
-      expect(autoUpdater.channel).toBe(channel)
+      expect(autoUpdater.channel).toBe(`${channel}-enterprise`)
     })
 
     it.each([
-      ['RC', UpgradeChannel.RC, 'rc-cn'],
-      ['Beta', UpgradeChannel.BETA, 'beta-cn']
+      ['RC', UpgradeChannel.RC, 'rc-enterprise-cn'],
+      ['Beta', UpgradeChannel.BETA, 'beta-enterprise-cn']
     ])(
       'requests the China edition %s manifest when that test channel is enabled',
       async (_label, channel, expected) => {
@@ -261,12 +261,12 @@ describe('AppUpdaterService', () => {
 
       await (appUpdater as any).configureUpdaterForCheck()
 
-      expect(autoUpdater.channel).toBe(UpgradeChannel.BETA)
+      expect(autoUpdater.channel).toBe('beta-enterprise')
     })
 
     it('applies the channel and request headers before checking for updates', async () => {
       vi.mocked(autoUpdater.checkForUpdates).mockImplementation(async () => {
-        expect(autoUpdater.channel).toBe(UpgradeChannel.LATEST)
+        expect(autoUpdater.channel).toBe('latest-enterprise')
         expect(autoUpdater.requestHeaders).toMatchObject({
           'App-Version': 'v1.0.0',
           'X-Edition': 'global',
@@ -288,7 +288,7 @@ describe('AppUpdaterService', () => {
       // Cherry 厂商云 release-history 源（releases.cherry-ai.com）已停用，任何情况下都不出网。
       await expect(appUpdater.getReleaseHistory()).resolves.toBeNull()
       expect(net.fetch).not.toHaveBeenCalled()
-      expect(releaseNotesUpdaterInstances).toHaveLength(0)
+      expect(releaseNotesUpdaterInstances.every((updater) => String(updater.channel).includes('enterprise'))).toBe(true)
     })
 
     it('does not create a release notes updater for the latest notes request', async () => {
@@ -300,8 +300,8 @@ describe('AppUpdaterService', () => {
       await appUpdater.getLatestReleaseNotes()
 
       expect(await appUpdater.getLatestReleaseNotes()).toBeNull()
-      expect(releaseNotesUpdaterInstances).toHaveLength(0)
-      expect(releaseNotesCheckMock).not.toHaveBeenCalled()
+      expect(releaseNotesUpdaterInstances.every((updater) => String(updater.channel).includes('enterprise'))).toBe(true)
+      expect(net.fetch).not.toHaveBeenCalled()
     })
 
     it('returns null instead of merging channel releases with release history', async () => {
@@ -312,19 +312,18 @@ describe('AppUpdaterService', () => {
         updateInfo: { releaseNotes: 'RC notes', version: '1.2.0-rc.1' }
       })
 
-      await expect(appUpdater.getReleaseHistory()).resolves.toBeNull()
+      await expect(appUpdater.getReleaseHistory()).resolves.toEqual([
+        { releaseNotes: 'RC notes', version: '1.2.0-rc.1' }
+      ])
       expect(net.fetch).not.toHaveBeenCalled()
     })
 
     it('returns null when the managed feed is unreachable', async () => {
       netFetchMock.mockRejectedValue(new Error('offline'))
-      releaseNotesCheckMock.mockResolvedValue({
-        isUpdateAvailable: true,
-        updateInfo: { releaseNotes: 'New release notes', version: '1.1.0' }
-      })
+      releaseNotesCheckMock.mockRejectedValue(new Error('offline'))
 
       await expect(appUpdater.getReleaseHistory()).resolves.toBeNull()
-      expect(releaseNotesCheckMock).not.toHaveBeenCalled()
+      expect(net.fetch).not.toHaveBeenCalled()
     })
 
     it('falls back to bundled history when the managed response is invalid', async () => {

@@ -7,6 +7,9 @@
 ;Find latests downloads here:
 ; https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist
 
+; MEA:product-identity Keep the install folder independent of the display name.
+!define /redef APP_FILENAME "MEA-Cowork-Enterprise"
+
 !include LogicLib.nsh
 !include x64.nsh
 !include FileFunc.nsh

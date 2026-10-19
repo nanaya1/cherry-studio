@@ -104,14 +104,27 @@ describe('edition packaging', () => {
       publish: config.publish,
       windowsArtifactName: config.win.artifactName
     }).toEqual({
-      appId: 'com.meacowork.desktop',
+      appId: 'com.meacowork.enterprise',
       edition: GLOBAL_EDITION,
-      nsisGuid: '845e0f97-161d-4a9e-919b-aa4d3665880d',
-      productName: 'MEA Cowork',
-      protocol: 'meacowork',
-      publish: undefined,
-      windowsArtifactName: '${productName}-${version}-${arch}-setup.${ext}'
+      nsisGuid: '652956ab-a934-4b3f-8318-2fda9a583666',
+      productName: 'MEA Cowork 企业版',
+      protocol: 'meacowork-enterprise',
+      publish: null,
+      windowsArtifactName: 'MEA-Cowork-Enterprise-${version}-win-${arch}-setup.${ext}'
     })
+  })
+
+  it('keeps English artifact and install names separate from the Chinese application name', () => {
+    const config = parse(readFileSync(path.join(projectRoot, 'electron-builder.yml'), 'utf8'))
+    const installer = readFileSync(path.join(projectRoot, config.nsis.include), 'utf8')
+
+    expect(config.productName).toBe('MEA Cowork 企业版')
+    expect(config.nsis.shortcutName).toBe('${productName}')
+    expect(config.nsis.uninstallDisplayName).toBe('${productName}')
+    expect(installer).toContain('!define /redef APP_FILENAME "MEA-Cowork-Enterprise"')
+    for (const target of ['win', 'nsis', 'portable', 'mac', 'linux']) {
+      expect(config[target].artifactName).toMatch(/^MEA-Cowork-Enterprise-/)
+    }
   })
 
   it('changes only the package identity, edition marker, and update channel for the China edition', async () => {
@@ -121,11 +134,11 @@ describe('edition packaging', () => {
 
     expect(config).toEqual({
       extends: './electron-builder.yml',
-      appId: 'com.meacowork.desktop.cn',
+      appId: 'com.meacowork.enterprise.cn',
       extraMetadata: {
         cherryEdition: CHINA_EDITION
       },
-      publish: { provider: 'generic', url: 'https://releases.cherry-ai.com', channel: 'latest-cn' }
+      publish: null
     })
   })
 
@@ -135,14 +148,14 @@ describe('edition packaging', () => {
     })
     const chinaPackageMetadata = { ...packageMetadata, ...config.extraMetadata }
 
-    expect(packageMetadata.productName ?? packageMetadata.name).toBe('MEACowork')
-    expect(chinaPackageMetadata.productName ?? chinaPackageMetadata.name).toBe('MEACowork')
+    expect(packageMetadata.productName ?? packageMetadata.name).toBe('meacowork-enterprise')
+    expect(chinaPackageMetadata.productName ?? chinaPackageMetadata.name).toBe('meacowork-enterprise')
   })
 
   it.each([
-    ['2.1.0', 'latest', 'latest-cn'],
-    ['2.1.0-rc.1', 'rc', 'rc-cn'],
-    ['2.1.0-beta.2', 'beta', 'beta-cn']
+    ['2.1.0', 'latest-enterprise', 'latest-enterprise-cn'],
+    ['2.1.0-rc.1', 'rc-enterprise', 'rc-enterprise-cn'],
+    ['2.1.0-beta.2', 'beta-enterprise', 'beta-enterprise-cn']
   ])('maps %s to separate global and China update channels', (version, globalChannel, chinaChannel) => {
     expect(getReleaseChannel(version, GLOBAL_EDITION)).toBe(globalChannel)
     expect(getReleaseChannel(version, CHINA_EDITION)).toBe(chinaChannel)
@@ -153,26 +166,26 @@ describe('edition packaging', () => {
       getExpectedReleaseArtifacts({
         edition: CHINA_EDITION,
         platform: 'linux',
-        productName: 'MEA Cowork',
+        productName: 'MEA Cowork 企业版',
         version: '2.1.0-rc.1'
       })
     ).toEqual({
       files: [
-        'MEA-Cowork-CN-2.1.0-rc.1-linux-x64.AppImage',
-        'MEA-Cowork-CN-2.1.0-rc.1-linux-x64.deb',
-        'MEA-Cowork-CN-2.1.0-rc.1-linux-x64.rpm',
-        'MEA-Cowork-CN-2.1.0-rc.1-linux-arm64.AppImage',
-        'MEA-Cowork-CN-2.1.0-rc.1-linux-arm64.deb',
-        'MEA-Cowork-CN-2.1.0-rc.1-linux-arm64.rpm'
+        'MEA-Cowork-Enterprise-2.1.0-rc.1-linux-x64.AppImage',
+        'MEA-Cowork-Enterprise-2.1.0-rc.1-linux-x64.deb',
+        'MEA-Cowork-Enterprise-2.1.0-rc.1-linux-x64.rpm',
+        'MEA-Cowork-Enterprise-2.1.0-rc.1-linux-arm64.AppImage',
+        'MEA-Cowork-Enterprise-2.1.0-rc.1-linux-arm64.deb',
+        'MEA-Cowork-Enterprise-2.1.0-rc.1-linux-arm64.rpm'
       ],
       manifests: [
         {
-          file: 'rc-cn-linux.yml',
-          urls: ['MEA-Cowork-CN-2.1.0-rc.1-linux-x64.AppImage']
+          file: 'rc-enterprise-cn-linux.yml',
+          urls: ['MEA-Cowork-Enterprise-2.1.0-rc.1-linux-x64.AppImage']
         },
         {
-          file: 'rc-cn-linux-arm64.yml',
-          urls: ['MEA-Cowork-CN-2.1.0-rc.1-linux-arm64.AppImage']
+          file: 'rc-enterprise-cn-linux-arm64.yml',
+          urls: ['MEA-Cowork-Enterprise-2.1.0-rc.1-linux-arm64.AppImage']
         }
       ]
     })
@@ -183,16 +196,16 @@ describe('edition packaging', () => {
       getExpectedReleaseArtifacts({
         edition: CHINA_EDITION,
         platform: 'mac',
-        productName: 'MEA Cowork',
+        productName: 'MEA Cowork 企业版',
         version: '2.1.0'
       }).files
     ).toEqual([
-      'MEA-Cowork-CN-2.1.0-mac-x64.zip',
-      'MEA-Cowork-CN-2.1.0-mac-x64.zip.blockmap',
-      'MEA-Cowork-CN-2.1.0-mac-arm64.zip',
-      'MEA-Cowork-CN-2.1.0-mac-arm64.zip.blockmap',
-      'MEA-Cowork-CN-2.1.0-mac-x64.dmg',
-      'MEA-Cowork-CN-2.1.0-mac-arm64.dmg'
+      'MEA-Cowork-Enterprise-2.1.0-mac-x64.zip',
+      'MEA-Cowork-Enterprise-2.1.0-mac-x64.zip.blockmap',
+      'MEA-Cowork-Enterprise-2.1.0-mac-arm64.zip',
+      'MEA-Cowork-Enterprise-2.1.0-mac-arm64.zip.blockmap',
+      'MEA-Cowork-Enterprise-2.1.0-mac-x64.dmg',
+      'MEA-Cowork-Enterprise-2.1.0-mac-arm64.dmg'
     ])
   })
 

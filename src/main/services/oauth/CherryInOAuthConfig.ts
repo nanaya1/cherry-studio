@@ -14,7 +14,8 @@ const CHERRYIN_CONFIG = {
 const XUELANG_CONFIG = {
   CLIENT_ID: CHERRYIN_CONFIG.CLIENT_ID,
   ALLOWED_HOSTS: [XUELANG_API_HOST],
-  REDIRECT_URI: 'meacowork://oauth/callback',
+  // REDIRECT_URI: 'meacowork://oauth/callback',
+  REDIRECT_URI: 'meacowork-enterprise://oauth/callback',
   SCOPES: 'profile email offline_access balance:read usage:read tokens:read tokens:write'
 } as const
 

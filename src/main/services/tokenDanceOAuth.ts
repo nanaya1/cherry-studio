@@ -14,7 +14,8 @@ const TOKEN_DANCE_CONFIG = {
   authorizeUrl: 'https://tokendance.space/auth',
   exchangeUrl: 'https://tokendance.space/portal/api/v1/auth/keys',
   appUrl: TOKEN_DANCE_APP_URL,
-  keyName: 'MEA Cowork',
+  // keyName: 'MEA Cowork',
+  keyName: 'MEA Cowork 企业版',
   callbackPath: '/oauth/tokendance/callback',
   authorizationTimeoutMs: 10 * 60 * 1000,
   exchangeTimeoutMs: 30 * 1000

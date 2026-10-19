@@ -151,16 +151,33 @@ customizations:
   - id: product-identity
     title: MEA application identity and protocol
     owner: main
-    behavior: Keep MEACowork productName, com.meacowork.desktop appId, meacowork:// protocol, API gateway port 24333, and OpenClaw port 19790.
+    # behavior: Keep MEACowork productName, com.meacowork.desktop appId, meacowork:// protocol, API gateway port 24333, and OpenClaw port 19790.
+    behavior: Enterprise product uses MEA Cowork 企业版, com.meacowork.enterprise (cn suffix for China), meacowork-enterprise://, isolated .meacowork-enterprise home and OpenClaw config, API port 24334 and OpenClaw port 19791. Default assistant name stays MEA Cowork. Package artifacts and the Windows default install folder use MEA-Cowork-Enterprise; macOS app bundle and application display name remain MEA Cowork 企业版. Updates use enterprise channels; no personal feed fallback.
     touchpoints:
       - package.json
       - electron-builder.yml
       - src/main/services/protocol/ProtocolService.ts
       - src/main/services/OpenClawService.ts
       - src/shared/data/preference/preferenceSchemas.ts
+      - src/main/core/paths/constants.ts
+      - src/main/core/paths/pathRegistry.ts
+      - src/main/utils/appEdition.ts
+      - src/main/services/AppUpdaterService.ts
+      - src/main/core/profiles/ProfileBootstrapWindow.ts
+      - scripts/before-pack.js
+      - build/nsis-installer.nsh
+      - scripts/release/edition.js
+      - electron-builder.cn.config.cjs
+      - src/shared/utils/constants.ts
+      - src/shared/utils/apiGateway.ts
+      - scripts/data-classify/data/classification.json
     tests:
       - src/main/services/protocol/__tests__/ProtocolService.test.ts
       - src/main/services/__tests__/OpenClawService.test.ts
+      - src/main/core/paths/__tests__/constants.test.ts
+      - src/main/utils/__tests__/appEdition.test.ts
+      - src/main/services/__tests__/AppUpdaterService.test.ts
+      - scripts/__tests__/edition-packaging.test.ts
       - src/main/features/apiGateway/routes/__tests__/routes.integration.test.ts
 
   - id: native-module-packaging
@@ -177,7 +194,8 @@ customizations:
   - id: oauth-branding
     title: MEA OAuth callback and repository identity
     owner: main
-    behavior: Keep the meacowork:// OAuth callback and DCR client_uri pointing to https://github.com/nanaya1/cherry-studio.
+    # behavior: Keep the meacowork:// OAuth callback and DCR client_uri pointing to https://github.com/nanaya1/cherry-studio.
+    behavior: Keep the meacowork-enterprise:// OAuth callback and DCR client_uri pointing to https://github.com/nanaya1/cherry-studio.
     touchpoints:
       - src/main/services/oauth/CherryInOAuthConfig.ts
       - src/main/ai/mcp/oauth/provider.ts

@@ -81,6 +81,23 @@ describe('getAppEdition', () => {
     expect(() => getAppEdition()).toThrow('Unsupported application edition: enterprise')
   })
 
+  it('disables the personal feed and only enables an explicitly configured enterprise feed', async () => {
+    vi.stubEnv('MEA_ENTERPRISE_UPDATE_URL', '')
+    const disabled = await createChinaEditionConfig({
+      packageMetadata: { value: Promise.resolve({ version: '2.1.4' }) }
+    })
+    expect(disabled.publish).toBeNull()
+    vi.stubEnv('MEA_ENTERPRISE_UPDATE_URL', 'https://updates.example.com/enterprise')
+    const enabled = await createChinaEditionConfig({
+      packageMetadata: { value: Promise.resolve({ version: '2.1.4' }) }
+    })
+    expect(enabled.publish).toEqual({
+      provider: 'generic',
+      url: 'https://updates.example.com/enterprise',
+      channel: 'latest-enterprise-cn'
+    })
+  })
+
   it('keeps runtime application IDs aligned with both packaging configurations', async () => {
     const actualFs = await vi.importActual<typeof NodeFs>('node:fs')
     const projectRoot = path.resolve(import.meta.dirname, '../../../..')

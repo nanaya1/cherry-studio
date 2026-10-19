@@ -18,17 +18,21 @@ function getReleaseChannel(version, edition) {
   }
 
   const channel = prerelease === null ? 'latest' : String(prerelease[0])
-  return edition === CHINA_EDITION ? `${channel}-cn` : channel
+  // return edition === CHINA_EDITION ? `${channel}-cn` : channel
+  return edition === CHINA_EDITION ? `${channel}-enterprise-cn` : `${channel}-enterprise`
 }
 
 function getReleaseProductName(productName, edition) {
   assertEdition(edition)
-  return edition === CHINA_EDITION ? 'MEA Cowork CN' : productName
+  // return edition === CHINA_EDITION ? 'MEA Cowork CN' : productName
+  return productName
 }
 
-function getReleaseDownloadGroups({ edition, platform, productName, version }) {
+// function getReleaseDownloadGroups({ edition, platform, productName, version }) {
+function getReleaseDownloadGroups({ edition, platform, version }) {
   assertEdition(edition)
-  const artifactProductName = getReleaseProductName(productName, edition).replace(/ /g, '-')
+  // const artifactProductName = getReleaseProductName(productName, edition).replace(/ /g, '-')
+  const artifactProductName = 'MEA-Cowork-Enterprise'
   const platformName = platform === 'windows' ? 'win' : platform
 
   if (!['windows', 'mac', 'linux'].includes(platform)) {

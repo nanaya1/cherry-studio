@@ -212,6 +212,17 @@ const getNativeModuleFilters = (platform, arch) => {
 exports.getNativeModuleFilters = getNativeModuleFilters
 
 exports.default = async function (context) {
+  // MEA:product-identity Enterprise feeds are opt-in and never inherit personal publish targets.
+  const enterpriseUpdateUrl = process.env.MEA_ENTERPRISE_UPDATE_URL?.trim()
+  if (enterpriseUpdateUrl) {
+    const { getReleaseChannel } = require('./release/edition')
+    const edition = context.packager.config.extraMetadata?.cherryEdition || 'global'
+    context.packager.config.publish = {
+      provider: 'generic',
+      url: enterpriseUpdateUrl,
+      channel: getReleaseChannel(context.packager.appInfo.version, edition)
+    }
+  }
   const arch = context.arch === Arch.arm64 ? 'arm64' : 'x64'
   const platformName = context.packager.platform.name
   const platform = platformToArch[platformName]

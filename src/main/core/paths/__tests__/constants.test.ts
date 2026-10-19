@@ -79,7 +79,7 @@ describe('LOGS_DIR dev diversion', () => {
     const { setAppLogsPath } = stubElectron({ isPackaged: true })
     const { CHERRY_HOME, LOGS_DIR } = await loadConstants()
     expect(setAppLogsPath).not.toHaveBeenCalled()
-    expect(CHERRY_HOME).toBe(path.join(os.homedir(), '.cherrystudio'))
+    expect(CHERRY_HOME).toBe(path.join(os.homedir(), '.meacowork-enterprise'))
     expect(LOGS_DIR).toBe(DEFAULT_LOGS)
   })
 
@@ -93,8 +93,8 @@ describe('LOGS_DIR dev diversion', () => {
 
     const isolatedPaths = [CHERRY_HOME, BOOT_CONFIG_PATH, resolveDevUserDataPath(), LOGS_DIR]
     expect(isolatedPaths).toEqual([
-      path.join(DEV_PROFILE_ROOT, '.cherrystudio'),
-      path.join(DEV_PROFILE_ROOT, '.cherrystudio', 'boot-config.json'),
+      path.join(DEV_PROFILE_ROOT, '.meacowork-enterprise'),
+      path.join(DEV_PROFILE_ROOT, '.meacowork-enterprise', 'boot-config.json'),
       path.join(DEV_PROFILE_ROOT, 'userData'),
       path.join(DEV_PROFILE_ROOT, 'logs')
     ])
@@ -215,7 +215,7 @@ describe('CS_DEV_PROFILE_ROOT validation', () => {
     vi.stubEnv('CS_DEV_USER_DATA_SUFFIX', 'DevQuito')
     stubElectron()
     const { CHERRY_HOME, LOGS_DIR, resolveDevUserDataPath } = await loadConstants()
-    expect(CHERRY_HOME).toBe(path.join(os.homedir(), '.cherrystudio'))
+    expect(CHERRY_HOME).toBe(path.join(os.homedir(), '.meacowork-enterprise'))
     expect(resolveDevUserDataPath()).toBe(`${DEFAULT_USER_DATA}DevQuito`)
     expect(LOGS_DIR).toBe(`${DEFAULT_LOGS}DevQuito`)
   })

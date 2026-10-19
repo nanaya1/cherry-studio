@@ -863,7 +863,7 @@ const MigrationApp: React.FC = () => {
           </div>
           <div className="flex items-center gap-2">
             <img src={AppLogo} alt="MEA Cowork" className="h-4.5 w-4.5 rounded-full object-cover" />
-            <span className="font-medium text-foreground text-sm">MEA Cowork</span>
+            <span className="font-medium text-foreground text-sm">MEA Cowork 企业版</span>
             <span className="text-foreground-tertiary">·</span>
             <span className="text-foreground-tertiary text-xs">{t('migration.title')}</span>
           </div>

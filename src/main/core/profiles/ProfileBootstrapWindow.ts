@@ -138,7 +138,8 @@ export function createProfileBootstrapWindow(context: ProfileLaunchContext): Bro
     minWidth: isLogin ? 480 : 520,
     minHeight: isLogin ? 640 : 360,
     resizable: isLogin,
-    title: 'MEACowork Profile',
+    // title: 'MEACowork Profile',
+    title: 'MEA Cowork 企业版',
     webPreferences: {
       preload: path.join(__dirname, '../preload/profileBootstrap.js'),
       contextIsolation: true,
@@ -384,7 +385,8 @@ function registerSignedOutHandlers(context: ProfileLaunchContext, window: Browse
     } catch {
       return
     }
-    if (url.protocol !== 'meacowork:' || url.hostname.toLowerCase() !== 'auth') return
+    // if (url.protocol !== 'meacowork:' || url.hostname.toLowerCase() !== 'auth') return
+    if (url.protocol !== 'meacowork-enterprise:' || url.hostname.toLowerCase() !== 'auth') return
     void auth.handleAuthCallback(url).catch(handleAuthError)
   }
   const openUrlHandler = (event: Electron.Event, value: string) => {
@@ -392,7 +394,8 @@ function registerSignedOutHandlers(context: ProfileLaunchContext, window: Browse
     handleAuthUrl(value)
   }
   const secondInstanceHandler = (_event: Electron.Event, argv: string[]) => {
-    const value = argv.find((argument) => argument.startsWith('meacowork://auth'))
+    // const value = argv.find((argument) => argument.startsWith('meacowork://auth'))
+    const value = argv.find((argument) => argument.startsWith('meacowork-enterprise://auth'))
     if (value) handleAuthUrl(value)
   }
   app.on('open-url', openUrlHandler)

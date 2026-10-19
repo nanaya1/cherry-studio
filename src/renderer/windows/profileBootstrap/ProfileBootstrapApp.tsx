@@ -55,9 +55,9 @@ export default function ProfileBootstrapApp() {
   return (
     <main className="profile-login">
       {/* 原双栏品牌面板已停用，改为与参考图一致的单列企业登录页。 */}
-      <header className="brand-header" aria-label="MEACowork">
+      <header className="brand-header" aria-label="MEA Cowork 企业版">
         <img src={AppLogo} alt="" />
-        <span>MEACowork</span>
+        <span>MEA Cowork 企业版</span>
       </header>
       <section className="form-panel" aria-label="账号登录">
         <form className="login-form" onSubmit={submit} aria-busy={loading}>

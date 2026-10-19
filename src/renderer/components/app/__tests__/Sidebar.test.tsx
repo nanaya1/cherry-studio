@@ -577,7 +577,7 @@ describe('app Sidebar', () => {
     const props = getSidebarProps()
 
     expect(container.querySelector('#app-sidebar')).toHaveAttribute('data-ui', 'app.sidebar')
-    expect(props.title).toBe('MEA Cowork')
+    expect(props.title).toBe('MEA Cowork 企业版')
     expect(props.logo).toBeDefined()
     expect(props.showHeader).toBe(showHeader)
     expect(props.user).toMatchObject({ name: 'JD', description: 'Local user' })

@@ -1,5 +1,7 @@
-appId: com.meacowork.desktop
-productName: MEA Cowork
+# appId: com.meacowork.desktop
+# productName: MEA Cowork
+appId: com.meacowork.enterprise
+productName: MEA Cowork 企业版
 extraMetadata:
   cherryEdition: global
 electronLanguages:
@@ -16,9 +18,9 @@ directories:
   buildResources: build
 
 protocols:
-  - name: MEA Cowork
+  - name: MEA Cowork 企业版
     schemes:
-      - meacowork
+      - meacowork-enterprise
 files:
   - "**/*"
   # Keep local diagnostics and build backups out of release packages.
@@ -127,8 +129,10 @@ extraResources:
   - from: "packages/provider-registry/data"
     to: "provider-registry"
 win:
-  executableName: MEA Cowork
-  artifactName: ${productName}-${version}-${arch}-setup.${ext}
+  # executableName: MEA Cowork
+  executableName: MEACoworkEnterprise
+  # artifactName: ${productName}-${version}-${arch}-setup.${ext}
+  artifactName: MEA-Cowork-Enterprise-${version}-win-${arch}-setup.${ext}
   extraResources:
     - from: "node_modules/@aiany/sqlite-vec-windows-${arch}/vec0.dll"
       to: "app.asar.unpacked/node_modules/@aiany/sqlite-vec-windows-${arch}/vec0.dll"
@@ -142,8 +146,10 @@ win:
   verifyUpdateCodeSignature: false
 nsis:
   # Stable MEA Cowork installer identity; keep this GUID unchanged for future upgrades.
-  guid: 845e0f97-161d-4a9e-919b-aa4d3665880d
-  artifactName: ${productName}-${version}-${arch}-setup.${ext}
+  # guid: 845e0f97-161d-4a9e-919b-aa4d3665880d
+  guid: 652956ab-a934-4b3f-8318-2fda9a583666
+  # artifactName: ${productName}-${version}-${arch}-setup.${ext}
+  artifactName: MEA-Cowork-Enterprise-${version}-win-${arch}-setup.${ext}
   shortcutName: ${productName}
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
@@ -153,14 +159,16 @@ nsis:
   buildUniversalInstaller: false
   differentialPackage: false
 portable:
-  artifactName: ${productName}-${version}-${arch}-portable.${ext}
+  # artifactName: ${productName}-${version}-${arch}-portable.${ext}
+  artifactName: MEA-Cowork-Enterprise-${version}-win-${arch}-portable.${ext}
   buildUniversalInstaller: false
   # electron-builder 26.15.6 uses true for a unique $PLUGINSDIR on every launch.
   unpackDirName: true
 mac:
   entitlementsInherit: build/entitlements.mac.plist
   notarize: false
-  artifactName: ${productName}-${version}-${arch}.${ext}
+  # artifactName: ${productName}-${version}-${arch}.${ext}
+  artifactName: MEA-Cowork-Enterprise-${version}-${os}-${arch}.${ext}
   extendInfo:
     LSMultipleInstancesProhibited: true
     NSCameraUsageDescription: Application requests access to the device's camera.
@@ -175,8 +183,9 @@ dmg:
 toolsets:
   appimage: "1.0.3"
 linux:
-  artifactName: ${productName}-${version}-${arch}.${ext}
-  executableName: MEACowork
+  # artifactName: ${productName}-${version}-${arch}.${ext}
+  artifactName: MEA-Cowork-Enterprise-${version}-${os}-${arch}.${ext}
+  executableName: MEACoworkEnterprise
   target:
     - target: AppImage
     - target: deb
@@ -185,10 +194,10 @@ linux:
   category: Utility
   desktop:
     entry:
-      Name: MEA Cowork
-      StartupWMClass: MEACowork
+      Name: MEA Cowork 企业版
+      StartupWMClass: MEACoworkEnterprise
   mimeTypes:
-    - x-scheme-handler/meacowork
+    - x-scheme-handler/meacowork-enterprise
 rpm:
   # Workaround for electron build issue on rpm package:
   # https://github.com/electron/forge/issues/3594
@@ -197,6 +206,7 @@ rpm:
 # publish:
 #   provider: generic
 #   url: https://releases.cherry-ai.com
+publish: null
 electronDownload:
   mirror: https://npmmirror.com/mirrors/electron/
 # Keep upstream native prebuilds; beforePack rebuilds the ABI-sensitive modules explicitly.

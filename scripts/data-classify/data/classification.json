@@ -2436,7 +2436,7 @@
             },
             {
               "category": "preferences",
-              "defaultValue": 24333,
+              "defaultValue": 24334,
               "originalKey": "port",
               "status": "classified",
               "targetKey": "feature.api_gateway.port",

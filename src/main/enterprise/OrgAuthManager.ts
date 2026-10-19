@@ -27,7 +27,8 @@ import { parseOrgAuthCallback, type OrgAuthPhase } from './types'
 const logger = loggerService.withContext('OrgAuthManager')
 const OFFICIAL_LOGIN_URL = import.meta.env.MAIN_VITE_OFFICIAL_LOGIN_URL?.trim() || 'https://mro.xuelangyun.com/login'
 const CLIENT_ID = 'cherry-desktop'
-const REDIRECT_URI = 'meacowork://auth/callback'
+// const REDIRECT_URI = 'meacowork://auth/callback'
+const REDIRECT_URI = 'meacowork-enterprise://auth/callback'
 const PENDING_TTL_MS = 10 * 60 * 1000
 const TOKEN_EXPIRY_MARGIN_MS = 60 * 1000
 

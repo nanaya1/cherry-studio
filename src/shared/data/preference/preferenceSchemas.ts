@@ -776,7 +776,7 @@ export const DefaultPreferences: PreferenceSchemas = {
     'feature.api_gateway.api_key': null,
     'feature.api_gateway.enabled': false,
     'feature.api_gateway.host': '127.0.0.1',
-    'feature.api_gateway.port': 24333,
+    'feature.api_gateway.port': 24334,
     'feature.binary.install_settings': { githubMirror: '', githubToken: '', npmRegistry: '', pipIndexUrl: '', verifySignatures: true },
     'feature.binary.tools': [],
     'feature.code_cli.configs': {},

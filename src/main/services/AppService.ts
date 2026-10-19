@@ -70,7 +70,8 @@ export class AppService extends BaseService {
     } else if (isLinux) {
       const autostartDir = AbsoluteFilePathSchema.parse(application.getPath('sys.appdata.autostart'))
       const desktopFile = AbsoluteFilePathSchema.parse(
-        path.join(autostartDir, isDev ? 'meacowork-dev.desktop' : 'meacowork.desktop')
+        // path.join(autostartDir, isDev ? 'meacowork-dev.desktop' : 'meacowork.desktop')
+        path.join(autostartDir, isDev ? 'meacowork-enterprise-dev.desktop' : 'meacowork-enterprise.desktop')
       )
 
       if (isLaunchOnBoot) {
@@ -86,10 +87,12 @@ export class AppService extends BaseService {
         // Create desktop file content
         const desktopContent = `[Desktop Entry]
   Type=Application
-  Name=MEA Cowork
+  # Name=MEA Cowork
+  Name=MEA Cowork 企业版
   Comment=A powerful AI assistant for producer.
   Exec=${executablePath}
-  Icon=MEACowork
+  # Icon=MEACowork
+  Icon=MEACoworkEnterprise
   Terminal=false
   StartupNotify=false
   Categories=Development;Utility;

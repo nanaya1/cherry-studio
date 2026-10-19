@@ -196,7 +196,8 @@ export class SubWindowService extends BaseService {
     // the vibrancy-enabled default through the options merge path.
     // zoomFactor mirrors MainWindowService: PreferenceService-dependent, so injected per-call.
     const options: Partial<WindowOptions> = {
-      title: title || 'MEA Cowork Tab',
+      // title: title || 'MEA Cowork Tab',
+      title: title || 'MEA Cowork 企业版 Tab',
       darkTheme: dark,
       ...(!isMac && { backgroundColor: dark ? '#181818' : '#FFFFFF' }),
       ...(isLinux && { icon: linuxIcon }),

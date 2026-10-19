@@ -333,7 +333,8 @@ export function buildPathRegistry() {
       : isWin
         ? path.join(process.env.APPDATA || path.join(sysHome, 'AppData/Roaming'), 'Mozilla/Firefox/Profiles')
         : path.join(sysHome, '.mozilla/firefox'),
-    'external.openclaw.config': path.join(sysHome, '.openclaw'),
+    // 'external.openclaw.config': path.join(sysHome, '.openclaw'),
+    'external.openclaw.config': path.join(sysHome, '.meacowork-enterprise-openclaw'),
     'external.deepseek_harness.config': path.join(sysHome, '.dsh'),
     'external.pi.settings_file': path.join(sysHome, '.pi', 'agent', 'settings.json'),
     'external.hermes.default_home': isWin

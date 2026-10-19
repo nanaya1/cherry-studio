@@ -79,7 +79,8 @@ export type OrgAuthCallback = { token: string } | { code: string; state: string 
 
 /** [enterprise] 解析官网 SSO token 或管理端 OAuth code 回调。 */
 export function parseOrgAuthCallback(url: URL): OrgAuthCallback | null {
-  if (url.protocol !== 'meacowork:' || url.hostname.toLowerCase() !== 'auth') return null
+  // if (url.protocol !== 'meacowork:' || url.hostname.toLowerCase() !== 'auth') return null
+  if (url.protocol !== 'meacowork-enterprise:' || url.hostname.toLowerCase() !== 'auth') return null
 
   const params = new URLSearchParams(url.search)
   if (url.pathname === '/sso/callback') {

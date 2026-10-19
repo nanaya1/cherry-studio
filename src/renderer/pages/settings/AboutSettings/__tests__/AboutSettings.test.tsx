@@ -134,7 +134,7 @@ describe('AboutSettings diagnostics entry', () => {
     const user = userEvent.setup()
     await renderAboutSettings()
 
-    expect(screen.getByText('MEA Cowork')).toBeInTheDocument()
+    expect(screen.getByText('MEA Cowork 企业版')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'settings.about.feedback.button' })).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'settings.about.feedback.dialog.title' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'settings.about.releases.button' })).not.toBeInTheDocument()

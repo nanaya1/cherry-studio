@@ -6,7 +6,7 @@ import { BaseService } from '@main/core/lifecycle/BaseService'
 import { WindowType } from '@main/core/window/types'
 
 const { getApplicationIdMock } = vi.hoisted(() => ({
-  getApplicationIdMock: vi.fn(() => 'com.meacowork.desktop')
+  getApplicationIdMock: vi.fn(() => 'com.meacowork.enterprise')
 }))
 
 vi.mock('@main/utils/appEdition', () => ({
@@ -248,8 +248,8 @@ describe('SelectionService macOS toolbar', () => {
   })
 
   it.each([
-    ['global', 'com.meacowork.desktop'],
-    ['China', 'com.meacowork.desktop.cn']
+    ['global', 'com.meacowork.enterprise'],
+    ['China', 'com.meacowork.enterprise.cn']
   ])('preserves selection inside the %s edition', (_edition, applicationId) => {
     getApplicationIdMock.mockReturnValue(applicationId)
     const { access, toolbarWindow } = createToolbarHarness()
@@ -261,10 +261,10 @@ describe('SelectionService macOS toolbar', () => {
   })
 
   it('treats the other edition as an external app', () => {
-    getApplicationIdMock.mockReturnValue('com.meacowork.desktop')
+    getApplicationIdMock.mockReturnValue('com.meacowork.enterprise')
     const { access, toolbarWindow } = createToolbarHarness()
 
-    access.showToolbarAtPosition({ x: 10, y: 20 }, 'bottomLeft', 'com.meacowork.desktop.cn')
+    access.showToolbarAtPosition({ x: 10, y: 20 }, 'bottomLeft', 'com.meacowork.enterprise.cn')
 
     expect(toolbarWindow.setFocusable).toHaveBeenCalledWith(false)
     expect(toolbarWindow.setVisibleOnAllWorkspaces).toHaveBeenCalledWith(true, {

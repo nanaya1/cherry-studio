@@ -226,6 +226,10 @@ This repo is maintained as **MEA Cowork**, a customized fork of Cherry Studio (u
 
 `.mea/customizations.yml` is the versioned source of truth for MEA behavior that must survive upstream merges. WorkBuddy memory and commit history are supporting evidence, not substitutes for this contract. Every MEA behavior change must add or update its customization entry in the same change, including production touchpoints and focused regression tests. New non-obvious branches use a stable `// MEA:<customization-id> ...` marker.
 
+### Enterprise Product Identity
+
+This enterprise branch uses display name **MEA Cowork 企业版**, app IDs `com.meacowork.enterprise` / `com.meacowork.enterprise.cn`, protocol `meacowork-enterprise://`, package `meacowork-enterprise`, executable `MEACoworkEnterprise`, home `.meacowork-enterprise`, and separate OpenClaw configuration. API/OpenClaw defaults are 24334/19791. The default assistant name remains **MEA Cowork**. Enterprise update channels are suffixed `-enterprise` / `-enterprise-cn`; no personal update feed is allowed. These explicit enterprise rules supersede the older desktop identity values below. Do not automatically adopt personal data.
+
 ### Branded Identity vs Compatibility Identity
 
 The rebranding follows one principle: **swap everything user-visible; keep external-identity/storage compatibility items at their Cherry Studio values**. When touching branding strings, first decide which category applies:

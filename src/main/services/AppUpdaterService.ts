@@ -16,7 +16,8 @@ import { generateUserAgent, getClientId } from '@main/utils/systemInfo'
 import type { RetryPolicy } from '@shared/data/api/schemas/jobs'
 import { UpgradeChannel } from '@shared/data/preference/preferenceTypes'
 import type { AppEdition } from '@shared/types/appEdition'
-import { APP_NAME } from '@shared/utils/constants'
+// import { APP_NAME } from '@shared/utils/constants'
+// import { APP_NAME } from '@shared/utils/constants'
 import { hasMultiLanguageReleaseNotes, localizeReleaseNotes, type ReleaseNotesEntry } from '@shared/utils/releaseNotes'
 
 const logger = loggerService.withContext('AppUpdaterService')
@@ -29,7 +30,8 @@ type ReleaseRegion = 'cn' | 'global'
 // const RELEASE_HISTORY_MAX_BYTES = 1024 * 1024
 
 function getEditionUpdateChannel(channel: UpgradeChannel, edition: AppEdition): string {
-  return edition === 'cn' ? `${channel}-cn` : channel
+  // return edition === 'cn' ? `${channel}-cn` : channel
+  return edition === 'cn' ? `${channel}-enterprise-cn` : `${channel}-enterprise`
 }
 
 function getUpdateHeaders({ region, edition }: { region: ReleaseRegion; edition: AppEdition }) {
@@ -37,7 +39,8 @@ function getUpdateHeaders({ region, edition }: { region: ReleaseRegion; edition:
     'User-Agent': generateUserAgent(),
     'Cache-Control': 'no-cache',
     'Client-Id': getClientId(),
-    'App-Name': APP_NAME,
+    // 'App-Name': APP_NAME,
+    'App-Name': 'MEACoworkEnterprise',
     'App-Version': `v${app.getVersion()}`,
     OS: process.platform,
     'X-Edition': edition,

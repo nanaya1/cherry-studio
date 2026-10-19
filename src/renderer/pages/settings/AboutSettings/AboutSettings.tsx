@@ -218,7 +218,7 @@ const AboutSettings: FC = () => {
             </span>
 
             <div className="flex min-h-18 flex-col items-start justify-center">
-              <div className="mb-1 text-lg font-bold text-foreground">MEA Cowork</div>
+              <div className="mb-1 text-lg font-bold text-foreground">MEA Cowork 企业版</div>
               <div className="text-muted-foreground text-sm">{t('settings.about.description')}</div>
               <Badge className="mt-1.5 rounded-md border-primary/20 bg-primary/10 px-1.5 py-0 text-[11px] leading-4 text-primary">
                 v{version}

@@ -51,7 +51,8 @@ export class TrayService extends BaseService implements Activatable {
       this.tray.setContextMenu(this.contextMenu)
     }
 
-    this.tray.setToolTip('MEA Cowork')
+    // this.tray.setToolTip('MEA Cowork')
+    this.tray.setToolTip('MEA Cowork 企业版')
 
     this.tray.on('right-click', () => {
       if (this.contextMenu) {

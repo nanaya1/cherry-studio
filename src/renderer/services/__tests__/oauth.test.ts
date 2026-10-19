@@ -22,7 +22,7 @@ describe('provider websites', () => {
     expect(route).toBe('system.shell.open_external_website')
     const authorization = new URL(url as string)
     expect(authorization.origin).toBe('https://ppio.com')
-    expect(authorization.searchParams.get('redirect_uri')).toBe('meacowork://')
+    expect(authorization.searchParams.get('redirect_uri')).toBe('meacowork-enterprise://')
   })
 
   it('starts Xuelang through the deep-link runtime and opens authorization externally', async () => {

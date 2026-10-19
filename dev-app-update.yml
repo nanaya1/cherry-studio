@@ -5,4 +5,7 @@
 # repo: cherry-studio
 # owner: kangfenmao
 provider: generic
-url: http://127.0.0.1:3378
+# url: http://127.0.0.1:3378
+url: http://127.0.0.1:3378/enterprise
+channel: latest-enterprise
+updaterCacheDirName: meacowork-enterprise-updater

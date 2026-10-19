@@ -50,7 +50,7 @@ describe('useNutstoreSso', () => {
     vi.useRealTimers()
   })
 
-  it.each(['meacowork://?s=encrypted-token', 'meacowork://nutstore-sync/sso?s=encrypted-token'])(
+  it.each(['meacowork-enterprise://?s=encrypted-token', 'meacowork-enterprise://nutstore-sync/sso?s=encrypted-token'])(
     'accepts the Nutstore callback %s and cleans up after success',
     async (callbackUrl) => {
       const { result } = renderHook(() => useNutstoreSso())
@@ -59,13 +59,13 @@ describe('useNutstoreSso', () => {
       act(() => {
         emitProtocolData('not a url')
         emitProtocolData('https://example.com/callback?s=wrong-scheme')
-        emitProtocolData('meacowork://navigate/settings')
-        emitProtocolData('meacowork://unknown/callback?s=forged-token')
-        emitProtocolData('meacowork://unknown/sso?s=forged-token')
-        emitProtocolData('meacowork://nutstore-sync/other?s=forged-token')
+        emitProtocolData('meacowork-enterprise://navigate/settings')
+        emitProtocolData('meacowork-enterprise://unknown/callback?s=forged-token')
+        emitProtocolData('meacowork-enterprise://unknown/sso?s=forged-token')
+        emitProtocolData('meacowork-enterprise://nutstore-sync/other?s=forged-token')
         emitProtocolData('https://nutstore-sync/sso?s=wrong-scheme')
-        emitProtocolData('meacowork://nutstore-sync/sso')
-        emitProtocolData('meacowork://nutstore-sync/sso?s=')
+        emitProtocolData('meacowork-enterprise://nutstore-sync/sso')
+        emitProtocolData('meacowork-enterprise://nutstore-sync/sso?s=')
       })
 
       expect(mocks.activeListeners.size).toBe(1)
@@ -95,7 +95,7 @@ describe('useNutstoreSso', () => {
     expect(mocks.activeListeners.size).toBe(1)
 
     act(() => {
-      emitProtocolData('meacowork://?s=second-token')
+      emitProtocolData('meacowork-enterprise://?s=second-token')
     })
 
     await expect(second).resolves.toBe('second-token')

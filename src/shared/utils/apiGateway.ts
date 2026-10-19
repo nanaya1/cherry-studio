@@ -7,7 +7,8 @@ import { isManagedCherryAiDefaultModel } from '@shared/data/presets/cherryai'
  */
 export const ANTIGRAVITY_MODEL_PATH_SEPARATOR = '/models/'
 export const DEFAULT_API_GATEWAY_HOST = '127.0.0.1'
-export const DEFAULT_API_GATEWAY_PORT = 24333
+// export const DEFAULT_API_GATEWAY_PORT = 24333
+export const DEFAULT_API_GATEWAY_PORT = 24334
 
 /**
  * The origin a client uses to reach the gateway, derived from its bind host.
