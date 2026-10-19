@@ -1,7 +1,12 @@
 import { unlink } from 'node:fs/promises'
 
 import { withProfileControlLock } from './ProfileControlLock'
-import { type ControlMutationResult, ProfileControlStore, type ControlReadResult } from './ProfileControlStore'
+import {
+  type ControlMutationResult,
+  ProfileControlStore,
+  type ControlReadResult,
+  type DurabilityConfirmer
+} from './ProfileControlStore'
 import { type ProfileSwitchJournalV1, ProfileSwitchJournalV1Schema } from './ProfileSchemas'
 
 type PreparedJournal = Extract<ProfileSwitchJournalV1, { phase: 'prepared' }>
@@ -25,18 +30,26 @@ export class ProfileSwitchJournal {
   private readonly latestCommittedStore: ProfileControlStore<ProfileSwitchJournalV1>
   private readonly latestCancelledStore: ProfileControlStore<ProfileSwitchJournalV1>
 
-  constructor(filePathOrStore: string | ProfileControlStore<ProfileSwitchJournalV1>) {
+  constructor(
+    filePathOrStore: string | ProfileControlStore<ProfileSwitchJournalV1>,
+    confirmDurability?: DurabilityConfirmer
+  ) {
     this.store =
       typeof filePathOrStore === 'string'
-        ? new ProfileControlStore(filePathOrStore, ProfileSwitchJournalV1Schema)
+        ? new ProfileControlStore(filePathOrStore, ProfileSwitchJournalV1Schema, confirmDurability)
         : filePathOrStore
     this.latestCommittedStore = new ProfileControlStore(
       `${this.store.path}.committed`,
-      ProfileSwitchJournalV1Schema.refine((value) => value.phase === 'committed', 'Expected a committed switch journal')
+      ProfileSwitchJournalV1Schema.refine(
+        (value) => value.phase === 'committed',
+        'Expected a committed switch journal'
+      ),
+      confirmDurability
     )
     this.latestCancelledStore = new ProfileControlStore(
       `${this.store.path}.cancelled`,
-      ProfileSwitchJournalV1Schema.refine((value) => value.phase === 'prepared', 'Expected a prepared switch journal')
+      ProfileSwitchJournalV1Schema.refine((value) => value.phase === 'prepared', 'Expected a prepared switch journal'),
+      confirmDurability
     )
   }
 
@@ -57,7 +70,7 @@ export class ProfileSwitchJournal {
       if (existing.kind === 'ok') {
         if (existing.value.phase === 'committed') {
           const archived = await this.latestCommittedStore.write(existing.value)
-          if (archived.kind === 'committed-durability-unknown') {
+          if (archived.kind === 'committed-durability-unknown' && archived.reason !== 'unsupported') {
             throw new Error(`Could not durably archive committed profile switch: ${archived.error}`)
           }
         } else {
@@ -90,7 +103,7 @@ export class ProfileSwitchJournal {
       }
 
       const archived = await this.latestCancelledStore.write(existing.value)
-      if (archived.kind === 'committed-durability-unknown') {
+      if (archived.kind === 'committed-durability-unknown' && archived.reason !== 'unsupported') {
         return { value: existing.value, durability: archived }
       }
       await unlink(this.store.path)

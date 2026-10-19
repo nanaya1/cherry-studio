@@ -195,6 +195,33 @@ describe('ProfileClaimService', () => {
     await expect(readFile(path.join(targetUserData, 'existing'), 'utf8')).resolves.toBe('keep')
   })
 
+  it('continues migration when Windows cannot confirm directory fsync durability', async () => {
+    const { localUserData, targetUserData } = await fixture()
+    const journalPath = path.join(path.dirname(targetUserData), 'claim-journal.json')
+    const confirmDurability = vi
+      .fn()
+      .mockRejectedValue(Object.assign(new Error('EPERM: operation not permitted, fsync'), { code: 'EPERM' }))
+    const service = new ProfileClaimService({ localUserData, targetUserData, journalPath, confirmDurability })
+    const preview = await service.preview()
+    if (preview.status !== 'ready') throw new Error('expected ready preview')
+
+    await expect(service.confirm({ previewId: preview.previewId, allow: [] })).resolves.toEqual({ status: 'claimed' })
+    await expect(service.commit()).resolves.toBeUndefined()
+    expect(confirmDurability).toHaveBeenCalled()
+  })
+
+  it('still rejects a real claim journal durability error', async () => {
+    const { localUserData, targetUserData } = await fixture()
+    const confirmDurability = vi.fn().mockRejectedValue(new Error('permission denied'))
+    const service = new ProfileClaimService({ localUserData, targetUserData, confirmDurability })
+    const preview = await service.preview()
+    if (preview.status !== 'ready') throw new Error('expected ready preview')
+
+    await expect(service.confirm({ previewId: preview.previewId, allow: [] })).rejects.toThrow(
+      'Profile claim journal durability is unknown: permission denied'
+    )
+  })
+
   it('cancels before commit and leaves the target absent', async () => {
     const { localUserData, targetUserData } = await fixture()
     const service = new ProfileClaimService({ localUserData, targetUserData })

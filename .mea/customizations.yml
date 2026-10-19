@@ -127,6 +127,7 @@ customizations:
       - src/main/core/profiles/ProfileStartupVerifier.ts
       - src/main/core/profiles/ProfilePrebootCoordinator.ts
       - src/main/core/profiles/ProfileSessionService.ts
+      - src/main/core/profiles/ProfileControlStore.ts
       - src/main/core/profiles/ProfileRecoveryActions.ts
       - src/main/core/profiles/ProfileBootstrapWindow.ts
       - src/main/enterprise/orgCurrentUserTransport.ts

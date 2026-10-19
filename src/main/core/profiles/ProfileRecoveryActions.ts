@@ -93,7 +93,7 @@ export class ProfileRecoveryActions {
     durability: Awaited<ReturnType<ProfileActivePointer['commitPointer']>>['durability'],
     subject: string
   ): void {
-    if (durability.kind === 'committed-durability-unknown') {
+    if (durability.kind === 'committed-durability-unknown' && durability.reason !== 'unsupported') {
       throw new Error(`Could not confirm durability for ${subject}: ${durability.error}`)
     }
   }
