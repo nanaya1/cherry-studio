@@ -1819,7 +1819,7 @@
   "knowledge.org.copy_text": "复制分享文本",
   "knowledge.org.create_unknown": "创建结果待核对，请检查已刷新的分享记录；不要自动重试创建。",
   "knowledge.org.decline": "拒绝",
-  "knowledge.org.delete_file_notice": "仅删除云端资料；文件夹及其子项会一并删除。本机原文件保留。",
+  "knowledge.org.delete_file_notice": "已分享的文件会同步删除，被分享人将无法继续查看",
   "knowledge.org.delete_shared_notice": "将永久删除此云端知识库，所有终端将无法继续访问分享。确认云端删除成功后，清理当前设备已有的关联副本、索引、分组和助手绑定，不下载或恢复云端资料；保留受管存储之外的原始源文件。云端删除结果未知时保留本机数据。",
   "knowledge.org.document_total": "{{count}} 个文档",
   "knowledge.org.documents": "文档",

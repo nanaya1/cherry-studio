@@ -142,6 +142,7 @@ describe('云端删除交互', () => {
       await user.click(checkbox)
     }
     await user.click(screen.getByRole('button', { name: i18n.t('knowledge.data_source.bulk.delete') }))
+    expect(await screen.findByText(i18n.t('knowledge.org.delete_file_notice'))).toBeInTheDocument()
     await user.click(await screen.findByRole('button', { name: i18n.t('common.delete') }))
 
     await waitFor(() => expect(screen.queryByText(item.title)).not.toBeInTheDocument())

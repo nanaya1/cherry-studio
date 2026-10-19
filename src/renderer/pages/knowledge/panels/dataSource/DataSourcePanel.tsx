@@ -441,7 +441,9 @@ const DataSourcePanelContent = ({
         open={isBulkDeleteOpen}
         onOpenChange={setIsBulkDeleteOpen}
         title={t('knowledge.data_source.bulk.delete_confirm_title')}
-        description={t('knowledge.data_source.bulk.delete_confirm_description', { count: selectedIds.size })}
+        description={
+          deleteDescription ?? t('knowledge.data_source.bulk.delete_confirm_description', { count: selectedIds.size })
+        }
         confirmText={t('common.delete')}
         cancelText={t('common.cancel')}
         destructive
