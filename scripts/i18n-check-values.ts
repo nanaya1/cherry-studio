@@ -11,6 +11,36 @@ const BASE_LOCALE = process.env.TRANSLATION_BASE_LOCALE ?? 'en-us'
 const CATALOG_DIRECTORIES = ['src/renderer/i18n/locales', 'src/main/i18n/locales']
 const ALLOWED_EMPTY_SOURCE_KEYS = new Set(['src/renderer/i18n/locales:settings.provider.oauth.provided_by_suffix'])
 
+const APPLICATION_BRAND_KEYS = new Set([
+  'agent.builtin.cherry_support.diagnostics.prepared',
+  'chat.default.name',
+  'miniApp.detail.pending_hint',
+  'miniApp.install.source_builtin',
+  'ovms.description',
+  'selection.settings.filter_modal.user_tips.windows',
+  'settings.about.diagnostics.mail.subject',
+  'settings.about.feedback.agent_error',
+  'settings.data.app_data.select_error',
+  'settings.data.clear_cache.waiting_for_legacy_database',
+  'settings.data.s3.root.placeholder',
+  'settings.data.siyuan.root_path_placeholder',
+  'settings.dependencies.removeConfirmMessage',
+  'settings.dependencies.removeDefinitionOnlyConfirmMessage',
+  'settings.dependencies.removeRuntimeConfirmMessage',
+  'settings.general.common.menu.presentation_mode.cherry',
+  'settings.skills.enableToTry.description'
+])
+
+export const validateApplicationBrand = (key: string, value: string): string | null => {
+  if (key === 'chat.default.name' && value !== 'MEA Cowork') {
+    return 'default builtin Agent display name must be exactly "MEA Cowork"'
+  }
+  if (!APPLICATION_BRAND_KEYS.has(key)) return null
+  return /cherry(?:[\s_-]*studio|[\s_-]*assistant|[\s_-]*support)?/iu.test(value)
+    ? 'legacy Cherry application branding remains in a user-visible value'
+    : null
+}
+
 const interpolations = (text: string) => (text.match(/{{[^}]*}}/g) ?? []).sort()
 const tagPlaceholders = (text: string) => (text.match(/<\/?[\w-]+\s*\/?>/g) ?? []).sort()
 const nestedKeys = (text: string) => (text.match(/\$t\([^)]*\)/g) ?? []).sort()
@@ -79,6 +109,8 @@ export const checkTranslationValues = (): { checked: number; failures: string[] 
       const allowedEmpty = !source.trim() && ALLOWED_EMPTY_SOURCE_KEYS.has(`${catalogDirectory}:${key}`)
       const reason = allowedEmpty ? null : validateSource(source)
       if (reason) failures.push(`${catalogDirectory}/${BASE_LOCALE}.json ${key}: ${reason}`)
+      const brandReason = validateApplicationBrand(key, source)
+      if (brandReason) failures.push(`${catalogDirectory}/${BASE_LOCALE}.json ${key}: ${brandReason}`)
     }
 
     for (const filename of fs.readdirSync(catalogPath).filter((file) => file.endsWith('.json'))) {
@@ -92,6 +124,8 @@ export const checkTranslationValues = (): { checked: number; failures: string[] 
         checked++
         const reason = validate(english, translation, glossary.doNotTranslate)
         if (reason) failures.push(`${catalogDirectory}/${filename} ${key}: ${reason}`)
+        const brandReason = validateApplicationBrand(key, translation)
+        if (brandReason) failures.push(`${catalogDirectory}/${filename} ${key}: ${brandReason}`)
       }
     }
   }

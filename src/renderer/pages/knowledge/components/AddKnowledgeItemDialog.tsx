@@ -69,11 +69,13 @@ export const KnowledgeItemSourceDialog = ({
   selectedBaseId,
   pendingAddSource,
   pendingAddFiles,
+  cloudBaseId,
   onAdded
 }: AddKnowledgeItemDialogProps & {
   selectedBaseId: string
   pendingAddSource?: KnowledgeItemType
   pendingAddFiles?: File[]
+  cloudBaseId?: string
   onAdded?: () => void
 }) => {
   const { t } = useTranslation()
@@ -98,7 +100,11 @@ export const KnowledgeItemSourceDialog = ({
   const [isResolvingSubmit, setIsResolvingSubmit] = useState(false)
   const [pendingConflict, setPendingConflict] = useState<PendingConflictState | null>(null)
   const [pendingResolution, setPendingResolution] = useState<ConflictResolution | null>(null)
-  const { submit: submitKnowledgeItems, isSubmitting: isSubmittingItems } = useAddKnowledgeItems(selectedBaseId)
+  // const { submit: submitKnowledgeItems, isSubmitting: isSubmittingItems } = useAddKnowledgeItems(selectedBaseId)
+  const { submit: submitKnowledgeItems, isSubmitting: isSubmittingItems } = useAddKnowledgeItems(
+    selectedBaseId,
+    cloudBaseId
+  )
 
   const handleOpenChange = useCallback(
     (nextOpen: boolean) => {

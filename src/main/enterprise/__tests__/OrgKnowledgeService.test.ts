@@ -1155,6 +1155,45 @@ describe('旧同步停用', () => {
 })
 
 describe('云端追加文件安全边界', () => {
+  it('打开后取消添加不会进入上传状态，也不会被无关解析事件触发', async () => {
+    vi.useFakeTimers()
+    const service = makeService(makeApiClient())
+    const key = JSON.stringify([lease.issuerId, lease.userId, lease.groupId, 'local-1'])
+    const association = { shareId: 'space', completion: 'completed' as const, files: [] }
+    vi.mocked(orgStateStore.getShareAssociations).mockReturnValue({ [key]: association })
+    vi.mocked(orgStateStore.getShareAssociation).mockReturnValue(association)
+    vi.spyOn(service as any, 'assertRealOwner').mockResolvedValue(undefined)
+    vi.mocked(application.get).mockReturnValue({
+      listBasesForDiscovery: () => ({ items: [{ id: 'local-1' }] })
+    } as never)
+    const upload = vi.spyOn(service, 'uploadAddedFiles')
+    await service.prepareAddedFiles(encodeOrgId('space'))
+    expect(await service.uploadStatus('local-1')).toMatchObject({ phase: 'completed' })
+    settleKnowledgeJob('knowledge.index-documents')
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(upload).not.toHaveBeenCalled()
+    service.dispose()
+  })
+
+  it('同名冲突和添加失败均不登记自动追加', async () => {
+    const service = makeService(makeApiClient())
+    const association = { shareId: 'space', completion: 'completed' as const, files: [] }
+    vi.mocked(orgStateStore.getShareAssociation).mockReturnValue(association)
+    vi.spyOn(service as any, 'assertRealOwner').mockResolvedValue(undefined)
+    const addItems = vi
+      .fn()
+      .mockResolvedValueOnce({ status: 'conflicts', conflicts: [] })
+      .mockRejectedValueOnce(new Error('添加失败'))
+    vi.mocked(application.get).mockReturnValue({ addItems } as never)
+    const items = [{ type: 'note' as const, data: { source: '新资料', content: '正文' } }]
+    expect(await service.addFiles(encodeOrgId('space'), 'local-1', items, 'detect')).toMatchObject({
+      status: 'conflicts'
+    })
+    expect(await service.uploadStatus('local-1')).toMatchObject({ phase: 'completed' })
+    await expect(service.addFiles(encodeOrgId('space'), 'local-1', items)).rejects.toThrow('添加失败')
+    expect(await service.uploadStatus('local-1')).toMatchObject({ phase: 'completed' })
+    service.dispose()
+  })
   it('复用已共享的对应本地库，解析完成后自动追加且不需要再次点击上传', async () => {
     const api = makeApiClient()
     const service = makeService(api)
@@ -1170,7 +1209,14 @@ describe('云端追加文件安全边界', () => {
       .spyOn(service, 'uploadAddedFiles')
       .mockResolvedValue({ shareId: 'space', completion: 'completed', files: [] })
     expect(await service.prepareAddedFiles(encodeOrgId('space'))).toEqual({ localBaseId: 'local-1' })
-    settleKnowledgeJob('knowledge.index-documents')
+    expect(await service.uploadStatus('local-1')).toMatchObject({ phase: 'completed' })
+    const addItems = vi.fn().mockResolvedValue({ status: 'added', items: [{ id: 'new-file' }] })
+    vi.mocked(application.get).mockReturnValue({ addItems } as never)
+    await service.addFiles(encodeOrgId('space'), 'local-1', [
+      { type: 'note', data: { source: '新资料', content: '正文' } }
+    ])
+    expect(await service.uploadStatus('local-1')).toMatchObject({ phase: 'preparing' })
+    // 即使解析完成事件早于添加返回，也必须由提交端主动启动。
     await vi.waitFor(() => expect(upload).toHaveBeenCalledWith(encodeOrgId('space'), 'local-1'), { timeout: 3000 })
     service.dispose()
   })
@@ -1188,6 +1234,13 @@ describe('云端追加文件安全边界', () => {
     } as never)
     const upload = vi.spyOn(service, 'uploadAddedFiles')
     await service.prepareAddedFiles(encodeOrgId('space'))
+    vi.mocked(orgStateStore.getShareAssociation).mockReturnValue(association)
+    vi.mocked(application.get).mockReturnValue({
+      addItems: vi.fn().mockResolvedValue({ status: 'added', items: [{ id: 'new-file' }] })
+    } as never)
+    await service.addFiles(encodeOrgId('space'), 'local-1', [
+      { type: 'note', data: { source: '新资料', content: '正文' } }
+    ])
     shareJobs.list.mockResolvedValueOnce([{ id: 'still-parsing' }])
     settleKnowledgeJob('knowledge.index-documents')
     await vi.advanceTimersByTimeAsync(1000)

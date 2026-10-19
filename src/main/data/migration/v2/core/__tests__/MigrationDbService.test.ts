@@ -16,7 +16,7 @@ describe('MigrationDbService', () => {
     await Promise.all(
       fixtureRoots.splice(0).map(async (root) => {
         await fs.chmod(path.join(root, 'Data'), 0o755).catch(() => {})
-        await fs.chmod(path.join(root, 'Data', 'cherrystudio.sqlite'), 0o644).catch(() => {})
+        await fs.chmod(path.join(root, 'Data', 'meacowork.sqlite'), 0o644).catch(() => {})
         await fs.chmod(root, 0o755).catch(() => {})
         await fs.rm(root, { recursive: true, force: true })
       })
@@ -27,7 +27,7 @@ describe('MigrationDbService', () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'migration-db-readonly-'))
     fixtureRoots.push(root)
     const dataDir = path.join(root, 'Data')
-    const databaseFile = path.join(dataDir, 'cherrystudio.sqlite')
+    const databaseFile = path.join(dataDir, 'meacowork.sqlite')
     await fs.mkdir(dataDir)
 
     const setupDb = new Database(databaseFile)

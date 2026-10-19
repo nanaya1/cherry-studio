@@ -222,7 +222,7 @@ class BackupManager {
    *
    * Version 7 archives store SQLite inside Data instead of as a standalone
    * resource. Full backups include all supported resources, while slim
-   * backups include only Data/cherrystudio.sqlite and cache.json.
+   * backups include only Data/meacowork.sqlite and cache.json.
    */
   private requireBackupProfile(): ProfileLaunchContext & { kind: 'local' | 'authenticated' } {
     const context = getProfileLaunchContext()
@@ -263,7 +263,9 @@ class BackupManager {
     const normalizedCandidate = path.posix.normalize(candidate)
     if (
       normalizedCandidate !== normalizedNamespace &&
-      !normalizedCandidate.startsWith(`${normalizedNamespace.endsWith('/') ? normalizedNamespace : `${normalizedNamespace}/`}`)
+      !normalizedCandidate.startsWith(
+        `${normalizedNamespace.endsWith('/') ? normalizedNamespace : `${normalizedNamespace}/`}`
+      )
     ) {
       throw new Error(`${provider} backup path escaped its profile namespace`)
     }
@@ -305,7 +307,7 @@ class BackupManager {
   /**
    * Direct backup method - copies Data (excluding transient SQLite sidecars
    * and the internal restore journal) plus cache.json, IndexedDB, and Local Storage.
-   * Slim backups keep only Data/cherrystudio.sqlite and cache.json.
+   * Slim backups keep only Data/meacowork.sqlite and cache.json.
    * @param _ - Electron IPC event
    * @param fileName - Name of the backup file
    * @param destinationPath - Path to save the backup (defaults to this.backupDir)
@@ -327,7 +329,8 @@ class BackupManager {
 
   private createBackupFileName(): string {
     const profile = this.requireBackupProfile()
-    return `cherry-studio.${profile.kind}.${profile.identityDigest}.${dayjs().format('YYYYMMDDHHmmssSSS')}.${getHostname() || 'unknown'}.${getDeviceType() || 'unknown'}.zip`
+    // return `cherry-studio.${profile.kind}.${profile.identityDigest}.${dayjs().format('YYYYMMDDHHmmssSSS')}.${getHostname() || 'unknown'}.${getDeviceType() || 'unknown'}.zip`
+    return `meacowork.${profile.kind}.${profile.identityDigest}.${dayjs().format('YYYYMMDDHHmmssSSS')}.${getHostname() || 'unknown'}.${getDeviceType() || 'unknown'}.zip`
   }
 
   private createRemoteCleanupSignal(signal?: AbortSignal): AbortSignal {
@@ -1105,6 +1108,7 @@ class BackupManager {
       }
 
       if (metadata.resources.database) {
+        // Legacy standalone backups retain their original archive contract.
         await this.assertArchiveFile(path.join(extractionDir, 'cherrystudio.sqlite'), 'SQLite database')
         await fs.copy(path.join(extractionDir, 'cherrystudio.sqlite'), workDatabase)
       } else {
@@ -1112,7 +1116,8 @@ class BackupManager {
         if (!databaseDataPath) {
           throw new Error('SQLite database is not inside the Data directory')
         }
-        const stagedDatabase = path.join(stagedData, databaseDataPath)
+        // const stagedDatabase = path.join(stagedData, databaseDataPath)
+        const stagedDatabase = path.join(stagedData, metadata.version === 7 ? 'cherrystudio.sqlite' : databaseDataPath)
         await this.assertArchiveFile(stagedDatabase, 'SQLite database in Data')
         await fs.copy(stagedDatabase, workDatabase)
       }
@@ -1229,7 +1234,8 @@ class BackupManager {
           },
           db: {
             promote: path.relative(userDataPath, workDatabase),
-            aside: path.relative(userDataPath, path.join(restoreDir, 'aside', 'cherrystudio.sqlite')),
+            // aside: path.relative(userDataPath, path.join(restoreDir, 'aside', 'cherrystudio.sqlite')),
+            aside: path.relative(userDataPath, path.join(restoreDir, 'aside', 'meacowork.sqlite')),
             fingerprint,
             chain
           },
@@ -2270,7 +2276,8 @@ class BackupManager {
       .replace(/[-:T.Z]/g, '')
       .slice(0, 14)
 
-    const fileName = `cherry-studio.${timestamp}.zip`
+    // const fileName = `cherry-studio.${timestamp}.zip`
+    const fileName = `meacowork.${timestamp}.zip`
     const tempPath = application.getPath('feature.lan_transfer.temp')
     const targetPath = destinationPath || tempPath
 

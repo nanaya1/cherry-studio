@@ -4,7 +4,7 @@ import { shouldStripSafeImportPath } from '../SafeImportPolicy'
 
 describe('shouldStripSafeImportPath', () => {
   it.each([
-    'Credentials/cherry-account.json',
+    'Credentials/meacowork-account.json',
     'Sensitive/Mcp/oauth/token.json',
     'Cookies',
     'Network/Cookies',

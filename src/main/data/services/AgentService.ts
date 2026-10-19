@@ -549,7 +549,17 @@ export class AgentService {
       this.claimBuiltinSupportIdentityTx(tx, { restoreDeleted: true })
       restored = preClaim?.deletedAt != null
     }
-    const existing = this.findBuiltinAgentByRoleTx(tx, input.builtinRole)
+    let existing = this.findBuiltinAgentByRoleTx(tx, input.builtinRole)
+
+    if (
+      existing &&
+      input.builtinRole === BUILTIN_AGENT_ROLE.SUPPORT &&
+      (existing.name === 'Cherry Support' || existing.name === '产品反馈') &&
+      existing.name !== input.name
+    ) {
+      tx.update(agentsTable).set({ name: input.name }).where(eq(agentsTable.id, existing.id)).run()
+      existing = { ...existing, name: input.name }
+    }
 
     if (existing) {
       const mcps = fetchMcpsForAgents(tx, [existing.id]).get(existing.id) ?? []

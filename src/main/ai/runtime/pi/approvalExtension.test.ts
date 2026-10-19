@@ -40,7 +40,7 @@ beforeAll(() => {
   outside = join(testRoot, 'outside')
   skillRoot = join(testRoot, 'skills', 'test-skill')
   userData = join(testRoot, 'user data')
-  databaseFile = join(userData, 'Data', 'cherrystudio.sqlite')
+  databaseFile = join(userData, 'Data', 'meacowork.sqlite')
   mkdirSync(workspace)
   mkdirSync(agentData)
   mkdirSync(outside)

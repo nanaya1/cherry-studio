@@ -322,7 +322,17 @@ export type OrgKnowledgeSyncManifest = z.infer<typeof OrgKnowledgeSyncManifestSc
 
 export const OrgKnowledgeUploadProgressSchema = z.strictObject({
   uploadOriginal: z.boolean().optional(),
-  phase: z.enum(['counting', 'uploading', 'confirming', 'paused', 'completed', 'cleanup_pending', 'cleanup_unknown']),
+  // phase: z.enum(['counting', 'uploading', 'confirming', 'paused', 'completed', 'cleanup_pending', 'cleanup_unknown']),
+  phase: z.enum([
+    'preparing',
+    'counting',
+    'uploading',
+    'confirming',
+    'paused',
+    'completed',
+    'cleanup_pending',
+    'cleanup_unknown'
+  ]),
   totalBytes: z.number().nonnegative(),
   uploadedBytes: z.number().nonnegative(),
   completedFiles: z.number().int().nonnegative(),

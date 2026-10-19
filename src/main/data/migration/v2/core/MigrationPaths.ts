@@ -19,6 +19,7 @@ import { app } from 'electron'
 
 import { loggerService } from '@logger'
 import { CHERRY_HOME, DEV_PROFILE_ROOT } from '@main/core/paths/constants'
+import { migrateBrandDataFiles } from '@main/core/preboot/brandDataFileMigration'
 import { getNormalizedExecutablePath, isUsableDataDir } from '@main/core/preboot/userDataLocation'
 import { bootConfigService } from '@main/data/bootConfig'
 
@@ -26,7 +27,9 @@ import { evaluateCandidateVersion } from './versionPolicy'
 
 const logger = loggerService.withContext('MigrationPaths')
 
-const DB_NAME = 'cherrystudio.sqlite'
+// const DB_NAME = 'cherrystudio.sqlite'
+const DB_NAME = 'meacowork.sqlite'
+const LEGACY_DB_NAME = 'cherrystudio.sqlite'
 const MIGRATIONS_BASE_PATH = 'migrations/sqlite-drizzle'
 
 /**
@@ -46,7 +49,7 @@ export interface MigrationPaths {
 
   // ── Derived from userData (pre-computed, consumers use directly) ──
 
-  /** {userData}/Data/cherrystudio.sqlite */
+  /** {userData}/Data/meacowork.sqlite */
   readonly databaseFile: string
   /** {userData}/Data/KnowledgeBase */
   readonly knowledgeBaseDir: string
@@ -226,6 +229,8 @@ export function resolveMigrationPaths(): MigrationPathsResult {
     }
   }
 
+  migrateBrandDataFiles(currentUserData)
+
   const filesDataDir = path.join(currentUserData, 'Data', 'Files')
   const migrationTempDir = path.join(currentUserData, 'migration_temp')
   const migrationLocalStorageExportDir = path.join(migrationTempDir, 'localstorage_export')
@@ -283,7 +288,7 @@ export interface SelectionProbe {
   isUsableDir(dir: string): boolean
   /** Directory holds recognizable v1 data (version.log / Chromium storage / config keys). */
   hasV1Data(dir: string): boolean
-  /** Directory already holds a non-empty cherrystudio.sqlite (A0 guard). */
+  /** Directory already holds a non-empty meacowork.sqlite (A0 guard). */
   hasValidSqlite(dir: string): boolean
   /** Directory's version.log clears the v1→v2 upgrade gate. */
   versionOk(dir: string): boolean
@@ -485,19 +490,22 @@ function configHasKeys(configFile: string): boolean {
 }
 
 /**
- * Whether a directory already holds a *non-empty* cherrystudio.sqlite. Mirrors
+ * Whether a directory already holds a *non-empty* meacowork.sqlite. Mirrors
  * the DB layer's integrity gate (MigrationDbService.ensureDatabaseIntegrity,
  * which unlinks 0-byte files): a leftover 0-byte sqlite must NOT count as
  * V2-ized, or A0 would short-circuit fuzzy recovery only for the DB layer to
  * delete the file moments later — locking migration on the empty default.
  */
 function hasValidSqlite(dir: string): boolean {
-  try {
-    const stat = fs.statSync(path.join(dir, 'Data', DB_NAME))
-    return stat.isFile() && stat.size > 0
-  } catch {
-    return false
+  for (const databaseName of [DB_NAME, LEGACY_DB_NAME]) {
+    try {
+      const stat = fs.statSync(path.join(dir, 'Data', databaseName))
+      if (stat.isFile() && stat.size > 0) return true
+    } catch {
+      // Missing and inaccessible candidates are not valid databases.
+    }
   }
+  return false
 }
 
 /** Directory mtime in ms, or 0 when unreadable (for the recency tie-break). */

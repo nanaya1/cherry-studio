@@ -1,4 +1,5 @@
-import { Bot, ChevronRight, FileArchive, Github } from 'lucide-react'
+// import { Bot, Github } from 'lucide-react'
+import { ChevronRight, FileArchive } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -18,11 +19,11 @@ import {
 } from '@cherrystudio/ui'
 import { loggerService } from '@logger'
 import { DoctorPopup } from '@renderer/components/doctor'
-import { ipcApi } from '@renderer/ipc'
-import { openRoute } from '@renderer/services/mainWindowNavigation'
+// import { ipcApi } from '@renderer/ipc'
+// import { openRoute } from '@renderer/services/mainWindowNavigation'
 import { POPUP_EXIT_MS } from '@renderer/services/popup'
-import { toast } from '@renderer/services/toast'
-import { openExternalWebsite } from '@renderer/services/website'
+// import { toast } from '@renderer/services/toast'
+// import { openExternalWebsite } from '@renderer/services/website'
 
 // export const FEEDBACK_GITHUB_URL = 'https://github.com/CherryHQ/cherry-studio/issues/new/choose'
 export const FEEDBACK_GITHUB_URL = 'https://github.com/nanaya1/cherry-studio/issues/new/choose'
@@ -88,24 +89,24 @@ export function FeedbackDialog({ open, onOpenChange }: FeedbackDialogProps) {
     }, delay)
   }
 
-  const openAgentFeedback = async () => {
-    try {
-      const { sessionId } = await ipcApi.request('ai.agent.support_session.create')
-      openRoute(getFeedbackAgentRoute(sessionId))
-    } catch (error) {
-      logger.error('Failed to create Cherry Support feedback session', error as Error)
-      toast.error(t('settings.about.feedback.agent_error'))
-    }
-  }
+  // const openAgentFeedback = async () => {
+  //   try {
+  //     const { sessionId } = await ipcApi.request('ai.agent.support_session.create')
+  //     openRoute(getFeedbackAgentRoute(sessionId))
+  //   } catch (error) {
+  //     logger.error('Failed to create MEA Cowork Support feedback session', error as Error)
+  //     toast.error(t('settings.about.feedback.agent_error'))
+  //   }
+  // }
 
-  const openGitHubIssue = async () => {
-    try {
-      await openExternalWebsite(FEEDBACK_GITHUB_URL)
-    } catch (error) {
-      logger.error('Failed to open GitHub issue chooser', error as Error)
-      toast.error(t('settings.about.feedback.github.error'))
-    }
-  }
+  // const openGitHubIssue = async () => {
+  //   try {
+  //     await openExternalWebsite(FEEDBACK_GITHUB_URL)
+  //   } catch (error) {
+  //     logger.error('Failed to open GitHub issue chooser', error as Error)
+  //     toast.error(t('settings.about.feedback.github.error'))
+  //   }
+  // }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -122,18 +123,18 @@ export function FeedbackDialog({ open, onOpenChange }: FeedbackDialogProps) {
             recommended
             onSelect={() => selectOption(() => void DoctorPopup.show({ initialPanel: 'report' }), POPUP_EXIT_MS)}
           />
-          <FeedbackOption
+          {/* <FeedbackOption
             icon={<Bot className="size-5" />}
             title={t('settings.about.feedback.agent.title')}
             description={t('settings.about.feedback.agent.description')}
             onSelect={() => selectOption(openAgentFeedback)}
-          />
-          <FeedbackOption
+          /> */}
+          {/* <FeedbackOption
             icon={<Github className="size-5" />}
             title={t('settings.about.feedback.github.title')}
             description={t('settings.about.feedback.github.description')}
             onSelect={() => selectOption(openGitHubIssue)}
-          />
+          /> */}
         </ItemGroup>
       </DialogContent>
     </Dialog>

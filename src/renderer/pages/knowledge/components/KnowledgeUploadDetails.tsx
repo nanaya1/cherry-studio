@@ -45,6 +45,7 @@ export function KnowledgeUploadProgress({ progress }: { progress: OrgKnowledgeUp
       <p>
         {
           {
+            preparing: t('knowledge.org.added_local_notice'),
             counting: t('knowledge.org.upload_counting'),
             uploading: t('knowledge.org.upload_uploading'),
             confirming: t('knowledge.org.upload_confirming'),

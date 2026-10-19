@@ -4,6 +4,7 @@ import type { formatFromExtension, toMarkdownBytes } from '@firecrawl/anydoc'
 
 import { application } from '@application'
 import { loggerService } from '@logger'
+import { isMac, isWin } from '@main/core/platform'
 import { createPdfParser } from '@main/utils/pdf'
 
 import type { FileProcessingCapabilityHandler } from '../../types'
@@ -44,9 +45,8 @@ function loadAnydocModule(): Promise<AnydocModule> {
 /**
  * Fully offline PDF to markdown. anydoc handles PDFs whose every page carries a
  * text layer; a scan or mixed PDF goes through local PaddleOCR in full so no page
- * can disappear from the result. `prepare` refuses the whole job unless that
- * model is ready, even for a text-layer PDF that would never touch it — a scan
- * must not reach a dead end halfway through.
+ * can disappear from the result. `prepare` inspects the PDF first and only refuses
+ * when a textless page requires a model that is not ready.
  */
 export const localDocumentToMarkdownHandler: FileProcessingCapabilityHandler<'document_to_markdown'> = {
   mode: 'background',
@@ -56,16 +56,20 @@ export const localDocumentToMarkdownHandler: FileProcessingCapabilityHandler<'do
     if (file.ext?.toLowerCase() !== 'pdf') {
       throw new Error(`Local document processing only supports PDF files, got ${file.ext ?? 'no extension'}`)
     }
-    if (!application.get('LocalModelService').isCapabilityReady('ocr')) {
-      throw new Error('Local OCR model is not downloaded')
-    }
-
+    // 原逻辑在准备阶段无条件要求 OCR 模型，普通文字型 PDF 也会被拦截。
+    // if (!application.get('LocalModelService').isCapabilityReady('ocr')) throw new Error('Local OCR model is not downloaded')
     const pdfBytes = await readFile(file.path)
     signal?.throwIfAborted()
 
     const { pageCount, hasTextlessPages } = await inspectPdf(pdfBytes)
     if (pageCount > MAX_PDF_PAGES) {
       throw new Error(`PDF has ${pageCount} pages, which exceeds the ${MAX_PDF_PAGES}-page local processing limit`)
+    }
+
+    // macOS and Windows use the bundled system OCR path during page rendering.
+    // Linux still requires the local PaddleOCR model for scanned pages.
+    if (hasTextlessPages && !isMac && !isWin && !application.get('LocalModelService').isCapabilityReady('ocr')) {
+      throw new Error('Local OCR model is not downloaded')
     }
 
     return {

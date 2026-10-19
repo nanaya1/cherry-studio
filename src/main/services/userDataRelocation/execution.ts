@@ -20,6 +20,7 @@ import {
   invalid,
   isErrno,
   isPathInside,
+  legacyRelocationArtifactPaths,
   normalizeForCompare,
   pathEntryExists,
   relocationArtifactPaths,
@@ -46,7 +47,9 @@ const logger = loggerService.withContext('UserDataRelocation')
 // and rollback delete a tree recursively only when the marker matches the
 // task ID, so user data that happens to sit at an artifact path is never
 // removed.
-const RELOCATION_OWNER_MARKER = '.cherry-relocation-owner.json'
+// const RELOCATION_OWNER_MARKER = '.cherry-relocation-owner.json'
+const RELOCATION_OWNER_MARKER = '.meacowork-relocation-owner.json'
+const LEGACY_RELOCATION_OWNER_MARKER = '.cherry-relocation-owner.json'
 // The copy lands in workPath/payload/, not in workPath itself: fsp.cp must be
 // the one to create its destination (see the cp call below), while the
 // recovery invariant needs the owner marker inside workPath before the first
@@ -57,7 +60,12 @@ const RELOCATION_PAYLOAD_DIRNAME = 'payload'
 // volume to the last byte would break the app that boots from it.
 const FREE_SPACE_SAFETY_FACTOR = 1.2
 
+// const relocationOwnerSchema = z.object({ kind: z.literal('cherry-studio-user-data-relocation'), taskId: z.string() })
 const relocationOwnerSchema = z.object({
+  kind: z.literal('meacowork-user-data-relocation'),
+  taskId: z.string()
+})
+const legacyRelocationOwnerSchema = z.object({
   kind: z.literal('cherry-studio-user-data-relocation'),
   taskId: z.string()
 })
@@ -279,7 +287,10 @@ async function executeRelocation(
         // The reset marker is bound to the source profile.
         if (
           isSourceRootEntry &&
-          (name.startsWith('Singleton') || name === RELOCATION_OWNER_MARKER || name === dataResetMarkerBasename)
+          (name.startsWith('Singleton') ||
+            name === RELOCATION_OWNER_MARKER ||
+            name === LEGACY_RELOCATION_OWNER_MARKER ||
+            name === dataResetMarkerBasename)
         ) {
           return false
         }
@@ -408,7 +419,14 @@ function commitUserDataRelocation(targetPath: string): void {
  */
 async function recoverInterruptedCopy(pending: PendingRelocation): Promise<void> {
   const target = pending.to
-  const { workPath, asidePath } = relocationArtifactPaths(target, pending.taskId)
+  let { workPath, asidePath } = relocationArtifactPaths(target, pending.taskId)
+  if (!pathEntryExists(workPath) && !pathEntryExists(asidePath)) {
+    const legacyPaths = legacyRelocationArtifactPaths(target, pending.taskId)
+    if (pathEntryExists(legacyPaths.workPath) || pathEntryExists(legacyPaths.asidePath)) {
+      workPath = legacyPaths.workPath
+      asidePath = legacyPaths.asidePath
+    }
+  }
   const hasWork = pathEntryExists(workPath)
   const hasAside = pathEntryExists(asidePath)
   const targetOwned = isOwnedByRelocation(target, pending.taskId)
@@ -578,14 +596,19 @@ function makeProgress(
 async function writeRelocationOwner(directory: string, taskId: string): Promise<void> {
   await fsp.writeFile(
     path.join(directory, RELOCATION_OWNER_MARKER),
-    JSON.stringify({ kind: 'cherry-studio-user-data-relocation', taskId })
+    // JSON.stringify({ kind: 'cherry-studio-user-data-relocation', taskId })
+    JSON.stringify({ kind: 'meacowork-user-data-relocation', taskId })
   )
 }
 
 function isOwnedByRelocation(directory: string, taskId?: string): boolean {
   if (!taskId || !pathEntryExists(directory)) return false
   const marker = relocationOwnerSchema.safeParse(readJsonFile(path.join(directory, RELOCATION_OWNER_MARKER)))
-  return marker.success && marker.data.taskId === taskId
+  if (marker.success && marker.data.taskId === taskId) return true
+  const legacyMarker = legacyRelocationOwnerSchema.safeParse(
+    readJsonFile(path.join(directory, LEGACY_RELOCATION_OWNER_MARKER))
+  )
+  return legacyMarker.success && legacyMarker.data.taskId === taskId
 }
 
 async function removeOwnedRelocationTree(directory: string, taskId: string): Promise<void> {

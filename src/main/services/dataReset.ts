@@ -29,6 +29,10 @@ const MAX_WIPE_ATTEMPTS = 2
  * The marker is removed separately after a durable completion record is written.
  */
 export const USER_DATA_WIPE = [
+  'meacowork.sqlite',
+  'meacowork.sqlite-wal',
+  'meacowork.sqlite-shm',
+  // Legacy root database names remain cleanup-only.
   'cherrystudio.sqlite',
   'cherrystudio.sqlite-wal',
   'cherrystudio.sqlite-shm',

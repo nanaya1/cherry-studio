@@ -1,7 +1,8 @@
 import { app } from 'electron'
 
-import { isLinux, isWin } from '@main/core/platform'
+import { isLinux, isMac, isWin } from '@main/core/platform'
 import { bootConfigService } from '@main/data/bootConfig'
+import { APP_NAME } from '@shared/utils/constants'
 
 /**
  * Configure Chromium startup flags — the umbrella term Electron uses for
@@ -23,6 +24,9 @@ import { bootConfigService } from '@main/data/bootConfig'
  * See core/preboot/README.md for the preboot membership criteria.
  */
 export function configureChromiumFlags(): void {
+  // Keep macOS runtime labels readable while the executable and .app directory stay stable.
+  if (isMac) app.setName(APP_NAME)
+
   // Disable hardware acceleration if the user opted out via BootConfig.
   if (bootConfigService.get('app.disable_hardware_acceleration')) {
     app.disableHardwareAcceleration()

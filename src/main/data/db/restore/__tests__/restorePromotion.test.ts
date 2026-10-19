@@ -98,7 +98,7 @@ vi.mock('@application', () => ({
     getPath: vi.fn((key: string, filename?: string) => {
       const bases: Record<string, string> = {
         'app.userdata': userData,
-        'app.database.file': join(userData, 'Data', 'cherrystudio.sqlite'),
+        'app.database.file': join(userData, 'Data', 'meacowork.sqlite'),
         'app.database.migrations': resolveMigrationsPath(),
         'feature.backup.restore.file': join(userData, 'Data', 'restore-journal.json'),
         'feature.backup.restore.staging': join(userData, 'restore-staging')
@@ -114,8 +114,8 @@ const RID = 'restore-t1'
 const MARKER_KEY = 'restore-test-marker'
 
 const dataDir = () => join(userData, 'Data')
-const livePath = () => join(dataDir(), 'cherrystudio.sqlite')
-const asideRel = `Data/cherrystudio.sqlite.pre-restore-${RID}`
+const livePath = () => join(dataDir(), 'meacowork.sqlite')
+const asideRel = `Data/meacowork.sqlite.pre-restore-${RID}`
 const asidePath = () => join(userData, asideRel)
 const workRel = `restore-staging/${RID}/work.sqlite`
 const workPath = () => join(userData, workRel)

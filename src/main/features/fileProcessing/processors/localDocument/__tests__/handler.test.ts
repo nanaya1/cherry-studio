@@ -10,6 +10,7 @@ import { FileInfoSchema } from '@shared/types/file'
 const {
   tempRoot,
   recognizeMock,
+  systemRecognizeMock,
   isLocalModelReadyMock,
   toMarkdownBytesMock,
   formatFromExtensionMock,
@@ -28,6 +29,7 @@ const {
   // that. Override the one path the handler uses so it stays absolute on both platforms.
   tempRoot: process.platform === 'win32' ? 'C:\\mock\\file-processing-temp' : '/mock/file-processing-temp',
   recognizeMock: vi.fn(),
+  systemRecognizeMock: vi.fn(),
   isLocalModelReadyMock: vi.fn(),
   toMarkdownBytesMock: vi.fn(),
   formatFromExtensionMock: vi.fn(),
@@ -41,6 +43,8 @@ const {
   writeMock: vi.fn(),
   preprocessImageMock: vi.fn()
 }))
+
+vi.mock('@main/core/platform', () => ({ isMac: true, isWin: false }))
 
 vi.mock('@application', async () => {
   const { mockApplicationFactory } = await import('@test-mocks/main/application')
@@ -57,6 +61,11 @@ vi.mock('@application', async () => {
   )
   return result
 })
+
+vi.mock('@napi-rs/system-ocr', () => ({
+  OcrAccuracy: { Accurate: 'accurate' },
+  recognize: systemRecognizeMock
+}))
 
 vi.mock('@firecrawl/anydoc', () => ({
   toMarkdownBytes: toMarkdownBytesMock,
@@ -132,6 +141,8 @@ describe('localDocumentToMarkdownHandler', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     isLocalModelReadyMock.mockReturnValue(true)
+    systemRecognizeMock.mockRejectedValue(new Error('system OCR unavailable'))
+    recognizeMock.mockResolvedValue({ text: 'local ocr text' })
     formatFromExtensionMock.mockReturnValue('pdf')
     readFileMock.mockResolvedValue(PDF_BYTES)
     getTextMock.mockResolvedValue({
@@ -161,11 +172,25 @@ describe('localDocumentToMarkdownHandler', () => {
       await expect(prepareBackground(createFile(null))).rejects.toThrow('got no extension')
     })
 
-    it('rejects when the local OCR model has not been downloaded', async () => {
+    it('allows a text-layer PDF without downloading the local OCR model', async () => {
       isLocalModelReadyMock.mockReturnValue(false)
 
-      await expect(prepareBackground()).rejects.toThrow('Local OCR model is not downloaded')
-      expect(readFileMock).not.toHaveBeenCalled()
+      const prepared = await prepareBackground()
+      toMarkdownBytesMock.mockResolvedValueOnce('# Title\n\nbody\n')
+
+      await expect(
+        prepared.execute({ signal: new AbortController().signal, reportProgress: vi.fn() })
+      ).resolves.toEqual({
+        kind: 'markdown',
+        markdownContent: '# Title\n\nbody'
+      })
+    })
+
+    it('allows a scanned PDF to use system OCR without a downloaded local model', async () => {
+      isLocalModelReadyMock.mockReturnValue(false)
+      getTextMock.mockResolvedValue({ total: 1, pages: [{ num: 1, text: '' }] })
+
+      await expect(prepareBackground()).resolves.toBeDefined()
     })
 
     it('rejects a PDF past the page limit, naming the actual page count', async () => {
@@ -191,6 +216,21 @@ describe('localDocumentToMarkdownHandler', () => {
   })
 
   describe('execute', () => {
+    it('uses system OCR for a scanned PDF when no local model is installed', async () => {
+      isLocalModelReadyMock.mockReturnValue(false)
+      getTextMock.mockResolvedValue({ total: 1, pages: [{ num: 1, text: '' }] })
+      getScreenshotMock.mockResolvedValue({ pages: [{ data: new Uint8Array([1]) }] })
+      systemRecognizeMock.mockResolvedValue({ lines: [{ text: 'system OCR text' }] })
+      const prepared = await prepareBackground()
+
+      await expect(
+        prepared.execute({ signal: new AbortController().signal, reportProgress: vi.fn() })
+      ).resolves.toEqual({ kind: 'markdown', markdownContent: 'system OCR text' })
+
+      expect(systemRecognizeMock).toHaveBeenCalledWith(PDF_BYTES, 'accurate')
+      expect(recognizeMock).not.toHaveBeenCalled()
+    })
+
     it('returns the anydoc conversion for a PDF that carries a text layer, without touching OCR', async () => {
       const prepared = await prepareBackground()
       toMarkdownBytesMock.mockResolvedValueOnce('# Title\n\nbody\n')

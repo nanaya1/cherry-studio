@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   recover: vi.fn(),
   loadServiceRegistry: vi.fn(),
   migration: vi.fn(),
+  migrateBrandDataFiles: vi.fn(),
   commitPointer: vi.fn(),
   requireActivatable: vi.fn()
 }))
@@ -21,7 +22,9 @@ vi.mock('@application', () => ({
   application: {
     prepareProfileRuntime: mocks.prepare,
     registerAll: mocks.register,
-    bootstrap: mocks.bootstrap
+    bootstrap: mocks.bootstrap,
+    getPath: vi.fn(() => '/mock/userData'),
+    quit: vi.fn()
   }
 }))
 vi.mock('electron', () => ({
@@ -30,7 +33,8 @@ vi.mock('electron', () => ({
     setAppLogsPath: vi.fn(),
     requestSingleInstanceLock: vi.fn(),
     whenReady: vi.fn(async () => {})
-  }
+  },
+  dialog: { showErrorBox: vi.fn() }
 }))
 vi.mock('@logger', () => ({ loggerService: { rebind: mocks.rebind, withContext: () => ({ info: vi.fn() }) } }))
 vi.mock('node:fs', () => ({ default: { mkdirSync: vi.fn() } }))
@@ -71,6 +75,10 @@ vi.mock('@main/core/preboot/profileIsolationRuntime', () => ({
   markProfileBootSuccessful: mocks.mark
 }))
 vi.mock('@main/core/preboot/backupRestoreGate', () => ({ runBackupRestoreGate: vi.fn() }))
+vi.mock('@main/core/preboot/brandDataFileMigration', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@main/core/preboot/brandDataFileMigration')>()),
+  migrateBrandDataFiles: mocks.migrateBrandDataFiles
+}))
 vi.mock('@main/core/preboot/v2MigrationGate', () => ({ runV2MigrationGate: mocks.migration }))
 vi.mock('@main/core/application/serviceRegistry', () => {
   mocks.loadServiceRegistry()
@@ -146,6 +154,7 @@ describe('同进程业务启动', () => {
     await startBusinessRuntime(context, { rebuildRuntime: true, onVerifyFailure: 'throw' })
     expect(mocks.order.indexOf('sessionData')).toBeLessThan(mocks.order.indexOf('prepare'))
     expect(mocks.rebind).toHaveBeenCalledWith('/data/profiles/account/logs')
+    expect(mocks.migrateBrandDataFiles).toHaveBeenCalledWith('/mock/userData')
     expect(mocks.mark).toHaveBeenCalledWith(context)
   })
 

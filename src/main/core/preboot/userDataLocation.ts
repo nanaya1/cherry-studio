@@ -19,12 +19,24 @@ const logger = loggerService.withContext('Preboot')
 
 export function getNormalizedExecutablePath(): string {
   if (isLinux && process.env.APPIMAGE) {
+    // return path.join(path.dirname(process.env.APPIMAGE), 'cherry-studio.appimage')
+    return path.join(path.dirname(process.env.APPIMAGE), 'MEA-Cowork-Enterprise.appimage')
+  }
+  if (isWin && isPortable) {
+    // return path.join(process.env.PORTABLE_EXECUTABLE_DIR || '', 'cherry-studio-portable.exe')
+    return path.join(process.env.PORTABLE_EXECUTABLE_DIR || '', 'MEA-Cowork-Enterprise-portable.exe')
+  }
+  return app.getPath('exe')
+}
+
+export function getLegacyNormalizedExecutablePath(): string | null {
+  if (isLinux && process.env.APPIMAGE) {
     return path.join(path.dirname(process.env.APPIMAGE), 'cherry-studio.appimage')
   }
   if (isWin && isPortable) {
     return path.join(process.env.PORTABLE_EXECUTABLE_DIR || '', 'cherry-studio-portable.exe')
   }
-  return app.getPath('exe')
+  return null
 }
 
 export function canonicalizeUserDataPath(userDataPath: string): string {
@@ -58,7 +70,10 @@ export function resolveUserDataLocation(): void {
   }
 
   const exe = getNormalizedExecutablePath()
-  const resolved = bootConfigService.get('app.user_data_path')?.[exe]
+  const configuredPaths = bootConfigService.get('app.user_data_path')
+  const legacyExe = getLegacyNormalizedExecutablePath()
+  // const resolved = configuredPaths?.[exe]
+  const resolved = configuredPaths?.[exe] ?? (legacyExe ? configuredPaths?.[legacyExe] : undefined)
   if (resolved && isUsableDataDir(resolved)) {
     app.setPath('userData', resolved)
     logger.info('userData set from BootConfig', { exe, resolved })

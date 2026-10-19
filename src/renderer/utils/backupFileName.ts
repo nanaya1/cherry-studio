@@ -9,5 +9,6 @@ export async function createDefaultBackupFileName(): Promise<string> {
   ])
   const timestamp = dayjs().format('YYYYMMDDHHmmss')
 
-  return `cherry-studio.${timestamp}.${hostname}.${deviceType}.zip`
+  // return `cherry-studio.${timestamp}.${hostname}.${deviceType}.zip`
+  return `meacowork.${timestamp}.${hostname}.${deviceType}.zip`
 }

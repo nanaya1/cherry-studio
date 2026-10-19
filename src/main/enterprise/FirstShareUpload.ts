@@ -64,7 +64,16 @@ export type FirstShareEntry = {
 }
 export type FirstShareProgress = {
   uploadOriginal?: boolean
-  phase: 'counting' | 'uploading' | 'confirming' | 'paused' | 'completed' | 'cleanup_pending' | 'cleanup_unknown'
+  // phase: 'counting' | 'uploading' | 'confirming' | 'paused' | 'completed' | 'cleanup_pending' | 'cleanup_unknown'
+  phase:
+    | 'preparing'
+    | 'counting'
+    | 'uploading'
+    | 'confirming'
+    | 'paused'
+    | 'completed'
+    | 'cleanup_pending'
+    | 'cleanup_unknown'
   totalBytes: number
   uploadedBytes: number
   completedFiles: number

@@ -545,7 +545,7 @@ describe('CacheCleanupService', () => {
   it('does not remove a legacy directory that contains the active userData directory', async () => {
     const legacyInstallPath = rootPath('Home', 'install')
     userDataPath = path.join(legacyInstallPath, 'active-profile')
-    const activeDatabase = path.join(userDataPath, 'Data', 'cherrystudio.sqlite')
+    const activeDatabase = path.join(userDataPath, 'Data', 'meacowork.sqlite')
     await writeTestFile(activeDatabase, 'active')
 
     const cleanup = await cacheCleanupService.run(['legacy_v1'])
@@ -564,7 +564,7 @@ describe('CacheCleanupService', () => {
       [`${legacyDatabase}-journal`, 11],
       [path.join(legacyClaude, 'settings.json'), 13]
     ] as const
-    const v2Database = rootPath('Data', 'cherrystudio.sqlite')
+    const v2Database = rootPath('Data', 'meacowork.sqlite')
     const v2ClaudeSettings = rootPath('Data', 'Agents', '.claude', 'settings.json')
 
     for (const [targetPath, size] of legacyFiles) {

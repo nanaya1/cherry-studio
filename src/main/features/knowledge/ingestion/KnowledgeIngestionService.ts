@@ -336,12 +336,18 @@ export class KnowledgeIngestionService implements KnowledgeItemScheduler {
       if (item.type !== 'file') {
         throw new Error(`File processing source plan produced for non-file item: ${item.id}`)
       }
-      const processorId = FileProcessorIdSchema.parse(base.fileProcessorId)
+      const processorId = FileProcessorIdSchema.parse(plan.processorId)
       const fileProcessing = application.get('FileProcessingService')
       const sourcePath = getKnowledgeBaseFilePath(baseId, item.data.relativePath)
       const processedRelativePath = getProcessedMarkdownRelativePath(item.data.relativePath)
       if (item.data.indexedRelativePath !== processedRelativePath) {
-        this.assertKnowledgeRelativePathNotReserved(baseId, base.fileProcessorId, item.id, processedRelativePath)
+        this.assertKnowledgeRelativePathNotReserved(
+          baseId,
+          base.fileProcessorId ??
+            (getFileExt(item.data.relativePath).toLowerCase() === '.pdf' ? 'local-document' : null),
+          item.id,
+          processedRelativePath
+        )
         await assertKnowledgeFileTargetAvailable(baseId, processedRelativePath)
       }
       const processedPath = getKnowledgeBaseFilePath(baseId, processedRelativePath)
@@ -615,7 +621,10 @@ export class KnowledgeIngestionService implements KnowledgeItemScheduler {
     // A restore that carries a processed artifact reserves the artifact slot too, even if
     // the destination base has no processor configured, so the copied `.md` cannot collide.
     const reserveArtifact =
-      needsProcessedArtifactReservation(fileProcessorId, fileName) || Boolean(input.data.indexedPath)
+      needsProcessedArtifactReservation(
+        fileProcessorId ?? (getFileExt(fileName).toLowerCase() === '.pdf' ? 'local-document' : null),
+        fileName
+      ) || Boolean(input.data.indexedPath)
     const relativePath = reserveImportedFileRelativePath(fileName, reserveArtifact, reservedPaths)
     await copyFileIntoKnowledgeBaseAt(baseId, input.data.path, relativePath)
 

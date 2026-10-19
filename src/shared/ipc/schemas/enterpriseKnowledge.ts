@@ -23,6 +23,12 @@ import {
   OrgKnowledgeShareResultSchema,
   parseOrgId
 } from '@shared/data/types/enterpriseKnowledge'
+import {
+  KnowledgeAddConflictStrategySchema,
+  KnowledgeAddItemInputSchema,
+  KnowledgeAddItemsResultSchema,
+  KNOWLEDGE_RUNTIME_ITEMS_MAX
+} from '@shared/data/types/knowledge'
 
 import { defineRoute } from '../define'
 
@@ -68,6 +74,15 @@ export const enterpriseKnowledgeRequestSchemas = {
   'enterprise.knowledge.prepare_added_files': defineRoute({
     input: z.strictObject({ baseId: orgId }),
     output: z.strictObject({ localBaseId: z.string().min(1) })
+  }),
+  'enterprise.knowledge.add_files': defineRoute({
+    input: z.strictObject({
+      baseId: orgId,
+      localBaseId,
+      items: z.array(KnowledgeAddItemInputSchema).min(1).max(KNOWLEDGE_RUNTIME_ITEMS_MAX),
+      conflictStrategy: KnowledgeAddConflictStrategySchema.optional()
+    }),
+    output: KnowledgeAddItemsResultSchema
   }),
   'enterprise.knowledge.upload_added_files': defineRoute({
     input: z.strictObject({ baseId: orgId, localBaseId, uploadOriginal: z.boolean().optional() }),

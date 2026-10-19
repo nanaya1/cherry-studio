@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import matter from 'gray-matter'
 import { describe, expect, it } from 'vitest'
 
-import { checkTranslationValues, validate, validateSource } from '../i18n-check-values'
+import { checkTranslationValues, validate, validateApplicationBrand, validateSource } from '../i18n-check-values'
 
 const repoRoot = join(import.meta.dirname, '..', '..')
 
@@ -93,6 +93,15 @@ describe('validate rejects broken translations', () => {
 })
 
 describe('shipped product branding', () => {
+  it('rejects legacy app branding only on known user-visible product surfaces', () => {
+    expect(validateApplicationBrand('chat.default.name', 'Cherry Assistant')).toMatch(/exactly/)
+    expect(validateApplicationBrand('chat.default.name', 'MEA Cowork')).toBeNull()
+    expect(validateApplicationBrand('ovms.description', '%USERPROFILE%\\.cherrystudio\\ovms')).toMatch(/legacy Cherry/)
+    expect(validateApplicationBrand('chat.default.name', 'MEA Cowork Assistant')).toMatch(/exactly/)
+    expect(validateApplicationBrand('onboarding.welcome.login_cherry_cloud', 'Sign in to Cherry Cloud')).toBeNull()
+    expect(validateApplicationBrand('provider.cherryin', 'CherryIN')).toBeNull()
+  })
+
   it.each([
     ['cherry-tool-guide', 'mea-cowork-tool-guide'],
     ['cherry-browser', 'mea-cowork-browser']

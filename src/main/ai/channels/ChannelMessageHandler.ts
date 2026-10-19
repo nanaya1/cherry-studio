@@ -421,7 +421,7 @@ export class ChannelMessageHandler {
           logger.info('Persisted channel images to workspace', {
             agentId,
             count: imagePaths.length,
-            dir: path.join(workDir, '.cherry-studio', 'channel-images')
+            dir: path.join(workDir, '.meacowork', 'channel-images')
           })
         } catch (error) {
           logger.warn('Failed to persist channel images', {
@@ -439,7 +439,7 @@ export class ChannelMessageHandler {
           logger.info('Persisted channel files to workspace', {
             agentId,
             count: filePaths.length,
-            dir: path.join(workDir, '.cherry-studio', 'channel-files')
+            dir: path.join(workDir, '.meacowork', 'channel-files')
           })
         } catch (error) {
           logger.warn('Failed to persist channel files', {
@@ -959,7 +959,8 @@ export class ChannelMessageHandler {
    * Returns the list of absolute file paths written.
    */
   private async persistImages(workDir: string, images: ImageAttachment[]): Promise<string[]> {
-    const dir = path.join(workDir, '.cherry-studio', 'channel-images')
+    // const dir = path.join(workDir, '.cherry-studio', 'channel-images')
+    const dir = path.join(workDir, '.meacowork', 'channel-images')
     await fs.mkdir(dir, { recursive: true })
 
     const paths: string[] = []
@@ -980,7 +981,7 @@ export class ChannelMessageHandler {
    * Returns the list of absolute file paths written.
    */
   private async persistFiles(workDir: string, files: FileAttachment[]): Promise<string[]> {
-    const dir = path.join(workDir, '.cherry-studio', 'channel-files')
+    const dir = path.join(workDir, '.meacowork', 'channel-files')
     await fs.mkdir(dir, { recursive: true })
 
     const paths: string[] = []

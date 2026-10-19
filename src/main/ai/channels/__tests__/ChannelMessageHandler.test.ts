@@ -392,11 +392,14 @@ describe('ChannelMessageHandler', () => {
         images: [{ media_type: 'image/a\\..\\..\\..\\evil', data: Buffer.from('img').toString('base64') }]
       })
 
-      const written = await readdir(path.join(workDir, '.cherry-studio', 'channel-images'))
+      // const written = await readdir(path.join(workDir, '.cherry-studio', 'channel-images'))
+      const written = await readdir(path.join(workDir, '.meacowork', 'channel-images'))
       expect(written).toHaveLength(1)
       expect(written[0]).toMatch(/\.png$/)
-      expect(await readdir(workDir)).toEqual(['.cherry-studio'])
-      expect(await readdir(path.join(workDir, '.cherry-studio'))).toEqual(['channel-images'])
+      // expect(await readdir(workDir)).toEqual(['.cherry-studio'])
+      expect(await readdir(workDir)).toEqual(['.meacowork'])
+      // expect(await readdir(path.join(workDir, '.cherry-studio'))).toEqual(['channel-images'])
+      expect(await readdir(path.join(workDir, '.meacowork'))).toEqual(['channel-images'])
     } finally {
       await rm(workDir, { recursive: true, force: true })
     }

@@ -153,7 +153,8 @@ customizations:
     title: MEA application identity and protocol
     owner: main
     # behavior: Keep MEACowork productName, com.meacowork.desktop appId, meacowork:// protocol, API gateway port 24333, and OpenClaw port 19790.
-    behavior: Enterprise product uses MEA Cowork 企业版, com.meacowork.enterprise (cn suffix for China), meacowork-enterprise://, isolated .meacowork-enterprise home and OpenClaw config, API port 24334 and OpenClaw port 19791. Default assistant name stays MEA Cowork. Package artifacts and the Windows default install folder use MEA-Cowork-Enterprise; macOS app bundle and application display name remain MEA Cowork 企业版. Updates use enterprise channels; no personal feed fallback.
+    # behavior: Enterprise product uses MEA Cowork 企业版, com.meacowork.enterprise (cn suffix for China), meacowork-enterprise://, isolated .meacowork-enterprise home and OpenClaw config, API port 24334 and OpenClaw port 19791. Default assistant name stays MEA Cowork. Enterprise brand artwork uses the supplied craftsman logo across build icons, tray variants and renderer logo; third-party provider icons remain unchanged. Packaged default account data root uses MEA-Cowork-Enterprise without .profiles-v2; custom data roots remain authoritative and existing data is not moved automatically. Package artifacts and the Windows default install folder use MEA-Cowork-Enterprise; macOS app bundle and application display name remain MEA Cowork 企业版. Updates use enterprise channels; no personal feed fallback.
+    behavior: Enterprise product uses MEA Cowork 企业版, com.meacowork.enterprise (cn suffix for China), meacowork-enterprise://, isolated .meacowork-enterprise home and OpenClaw config, API port 24334 and OpenClaw port 19791. Default assistant name stays MEA Cowork. Enterprise brand artwork uses the supplied craftsman logo across build icons, tray variants and renderer logo; third-party provider icons remain unchanged. Packaged default account data root uses MEA-Cowork-Enterprise without .profiles-v2; custom data roots remain authoritative and existing data is not moved automatically. Package artifacts and the Windows default install folder use MEA-Cowork-Enterprise; macOS app bundle and application display name remain MEA Cowork 企业版. Active attachment directories, screenshots, backups, diagnostics and relocation artifacts use meacowork names; legacy relocation markers and executable mapping keys remain readable for interrupted upgrades. Updates use enterprise channels; no personal feed fallback.
     touchpoints:
       - package.json
       - electron-builder.yml
@@ -161,7 +162,18 @@ customizations:
       - src/main/services/OpenClawService.ts
       - src/shared/data/preference/preferenceSchemas.ts
       - src/main/core/paths/constants.ts
+      - src/main/core/preboot/profileIsolationPreboot.ts
       - src/main/core/paths/pathRegistry.ts
+      - src/main/core/preboot/userDataLocation.ts
+      - src/main/ai/channels/ChannelMessageHandler.ts
+      - src/main/services/userDataRelocation
+      - src/main/services/dataRootRelocation.ts
+      - src/main/services/screenshot/ScreenshotOverlayService.ts
+      - src/main/services/diagnostics/DiagnosticBundleService.ts
+      - src/main/services/LegacyBackupManager.ts
+      - src/main/data/migration/v2/window/MigrationIpcHandler.ts
+      - src/renderer/services/BackupService.ts
+      - src/renderer/utils/backupFileName.ts
       - src/main/utils/appEdition.ts
       - src/main/services/AppUpdaterService.ts
       - src/main/core/profiles/ProfileBootstrapWindow.ts
@@ -176,6 +188,16 @@ customizations:
       - src/main/services/protocol/__tests__/ProtocolService.test.ts
       - src/main/services/__tests__/OpenClawService.test.ts
       - src/main/core/paths/__tests__/constants.test.ts
+      - src/main/core/preboot/__tests__/profileIsolationPreboot.test.ts
+      - src/main/core/preboot/__tests__/userDataLocation.test.ts
+      - src/main/ai/channels/__tests__/ChannelMessageHandler.test.ts
+      - src/main/services/userDataRelocation/__tests__/execution.test.ts
+      - src/main/services/userDataRelocation/__tests__/validation.test.ts
+      - src/main/services/__tests__/dataRootRelocation.test.ts
+      - src/main/services/screenshot/__tests__/ScreenshotOverlayService.test.ts
+      - src/main/services/diagnostics/__tests__/DiagnosticBundleService.test.ts
+      - src/main/data/migration/v2/window/__tests__/MigrationIpcHandler.test.ts
+      - src/renderer/utils/__tests__/backupFileName.test.ts
       - src/main/utils/__tests__/appEdition.test.ts
       - src/main/services/__tests__/AppUpdaterService.test.ts
       - scripts/__tests__/edition-packaging.test.ts
@@ -347,9 +369,22 @@ customizations:
   - id: mea-i18n
     title: Preserve MEA-only translations and product wording
     owner: i18n
-    behavior: Preserve MEA-only flat locale keys and MEACowork/Xuelang user-facing wording during locale union merges.
+    # behavior: Preserve MEA-only flat locale keys and MEACowork/Xuelang user-facing wording during locale union merges.
+    # behavior: Preserve MEA-only flat locale keys and MEACowork/Xuelang user-facing wording during locale union merges. User-visible app branding uses MEA Cowork, the default builtin Agent display name remains exactly MEA Cowork, and third-party Cherry Cloud/CherryIN names plus stable technical identifiers remain unchanged.
+    behavior: Preserve MEA-only flat locale keys and MEACowork/Xuelang user-facing wording during locale union merges. User-visible app branding uses MEA Cowork, the default builtin Agent display name remains exactly MEA Cowork, and third-party Cherry Cloud/CherryIN names plus stable technical identifiers remain unchanged. The enterprise feedback dialog exposes local diagnostics only, the support Agent displays as MEA Cowork Support, and legacy technical paths stay functional without being shown in localized help text.
     touchpoints:
       - src/main/i18n/locales
       - src/renderer/i18n/locales
+      - scripts/i18n-check-values.ts
+      - src/renderer/components/feedback/FeedbackDialog.tsx
+      - resources/builtin-agents/cherry-support/agent-template.json
+      - src/main/data/services/AgentService.ts
     tests:
       - scripts/__tests__/i18n-check-values.test.ts
+      - src/renderer/pages/settings/__tests__/FeedbackDialog.test.tsx
+      - scripts/generate-cherry-assistant-knowledge/__tests__/guide.test.ts
+      - src/main/data/services/__tests__/AgentService.test.ts
+    markers:
+      - '"chat.default.name": "MEA Cowork"'
+      - '"en-US": "MEA Cowork Support"'
+      - "validateApplicationBrand"

@@ -152,7 +152,7 @@ describe('dataRoot relocation', () => {
   it('recovers an owned promoted target after interruption before BootConfig commit', async () => {
     await fs.mkdir(target)
     await fs.writeFile(
-      path.join(target, DATA_ROOT_RELOCATION_OWNER),
+      path.join(target, '.cherry-data-root-relocation-owner.json'),
       JSON.stringify({ kind: 'cherry-studio-data-root-relocation', taskId: TASK_ID })
     )
     await fs.writeFile(path.join(target, 'stale.txt'), 'stale')
@@ -182,7 +182,8 @@ describe('dataRoot relocation', () => {
     await fs.mkdir(work)
     await fs.writeFile(
       path.join(work, DATA_ROOT_RELOCATION_OWNER),
-      JSON.stringify({ kind: 'cherry-studio-data-root-relocation', taskId: TASK_ID })
+      // JSON.stringify({ kind: 'cherry-studio-data-root-relocation', taskId: TASK_ID })
+      JSON.stringify({ kind: 'meacowork-data-root-relocation', taskId: TASK_ID })
     )
     await fs.writeFile(path.join(work, 'partial.txt'), 'partial')
 

@@ -607,7 +607,8 @@ export class ScreenshotOverlayService extends BaseService {
     try {
       const saveOptions: Electron.SaveDialogOptions = {
         // Local time, not an epoch: the name is what the user scans in a file list.
-        defaultPath: `cherry_screenshot_${dayjs().format('YYYYMMDD_HHmmss')}.png`,
+        // defaultPath: `cherry_screenshot_${dayjs().format('YYYYMMDD_HHmmss')}.png`,
+        defaultPath: `meacowork_screenshot_${dayjs().format('YYYYMMDD_HHmmss')}.png`,
         filters: [{ name: t('dialog.png_image'), extensions: ['png'] }]
       }
 

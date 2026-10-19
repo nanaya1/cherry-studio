@@ -36,7 +36,7 @@ vi.mock('../MigrationDbService', () => ({
 const mockPaths: MigrationPaths = {
   userData: '/tmp/test-userdata',
   cherryHome: '/tmp/test-cherryhome',
-  databaseFile: '/tmp/test-userdata/Data/cherrystudio.sqlite',
+  databaseFile: '/tmp/test-userdata/Data/meacowork.sqlite',
   knowledgeBaseDir: '/tmp/test-userdata/Data/KnowledgeBase',
   filesDataDir: '/tmp/test-userdata/Data/Files',
   versionLogFile: '/tmp/test-userdata/version.log',

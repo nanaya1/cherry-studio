@@ -22,6 +22,15 @@ const context: ProfileLaunchContext = {
 }
 
 describe('runProfileIsolationPreboot', () => {
+  it('uses the enterprise folder without the profile schema suffix for installed builds', () => {
+    expect(deriveProfileDataRoot('/Users/example/Library/Application Support/meacowork-enterprise')).toBe(
+      '/Users/example/Library/Application Support/MEA-Cowork-Enterprise'
+    )
+    expect(deriveProfileDataRoot('/Users/example/Library/Application Support/meacowork-enterpriseDev')).toBe(
+      '/Users/example/Library/Application Support/meacowork-enterpriseDev.profiles-v2'
+    )
+  })
+
   it('derives a sibling profile dataRoot outside the legacy userData tree', () => {
     expect(deriveProfileDataRoot('/Library/Application Support/MEACowork')).toBe(
       '/Library/Application Support/MEACowork.profiles-v2'
@@ -35,6 +44,29 @@ describe('runProfileIsolationPreboot', () => {
     expect(resolveProfileDataRoot('/legacy/user-data', '/mock/exe', { '/other/exe': '/other/root' })).toBe(
       deriveProfileDataRoot('/legacy/user-data')
     )
+  })
+
+  it('prefers the new executable key and falls back to the legacy executable key', () => {
+    expect(
+      resolveProfileDataRoot(
+        '/legacy/user-data',
+        '/apps/MEA-Cowork-Enterprise.appimage',
+        {
+          '/apps/MEA-Cowork-Enterprise.appimage': '/new/profile-root',
+          '/apps/cherry-studio.appimage': '/legacy/profile-root'
+        },
+        '/apps/cherry-studio.appimage'
+      )
+    ).toBe('/new/profile-root')
+
+    expect(
+      resolveProfileDataRoot(
+        '/legacy/user-data',
+        '/apps/MEA-Cowork-Enterprise.appimage',
+        { '/apps/cherry-studio.appimage': '/legacy/profile-root' },
+        '/apps/cherry-studio.appimage'
+      )
+    ).toBe('/legacy/profile-root')
   })
 
   it('exposes separate fixed-root lock and final profile path phases', () => {

@@ -395,7 +395,7 @@ describe('resolveMigrationPaths — legacy custom userData recovery', () => {
 
     const result = resolveMigrationPaths()
 
-    expect(result.paths.databaseFile).toBe(path.join(DEFAULT_USER_DATA, 'Data', 'cherrystudio.sqlite'))
+    expect(result.paths.databaseFile).toBe(path.join(DEFAULT_USER_DATA, 'Data', 'meacowork.sqlite'))
     expect(result.paths.legacyClaudeConfigDir).toBe(path.join(DEFAULT_USER_DATA, '.claude'))
     expect(result.paths.legacyClaudeProjectsDir).toBe(path.join(DEFAULT_USER_DATA, '.claude', 'projects'))
     expect(result.paths.claudeConfigDir).toBe(path.join(DEFAULT_USER_DATA, 'Data', 'Agents', '.claude'))
@@ -561,7 +561,7 @@ describe('resolveMigrationPaths — legacy custom userData recovery', () => {
     h.normalizedExe.mockReturnValue('/new/exe')
     applyFs({
       dirs: [DEFAULT_USER_DATA, '/stale/custom'],
-      sqlite: { [path.join(DEFAULT_USER_DATA, 'Data', 'cherrystudio.sqlite')]: 4096 },
+      sqlite: { [path.join(DEFAULT_USER_DATA, 'Data', 'meacowork.sqlite')]: 4096 },
       contents: {
         [CONFIG_FILE]: JSON.stringify({
           appDataPath: [{ executablePath: '/old/exe', dataPath: '/stale/custom' }]
@@ -580,7 +580,7 @@ describe('resolveMigrationPaths — legacy custom userData recovery', () => {
     h.normalizedExe.mockReturnValue('/new/exe')
     applyFs({
       dirs: [DEFAULT_USER_DATA, '/custom/real'],
-      sqlite: { [path.join(DEFAULT_USER_DATA, 'Data', 'cherrystudio.sqlite')]: 0 }, // 0 bytes → invalid
+      sqlite: { [path.join(DEFAULT_USER_DATA, 'Data', 'meacowork.sqlite')]: 0 }, // 0 bytes → invalid
       contents: {
         [CONFIG_FILE]: JSON.stringify({
           appDataPath: [{ executablePath: '/old/exe', dataPath: '/custom/real' }]

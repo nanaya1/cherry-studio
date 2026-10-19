@@ -37,7 +37,7 @@ paths with `path.join()` from scratch inside migration code.
 | Correct ✅ | Wrong ❌ |
 |-----------|---------|
 | `ctx.paths.userData` | `app.getPath('userData')` |
-| `ctx.paths.databaseFile` | `path.join(app.getPath('userData'), 'Data', 'cherrystudio.sqlite')` |
+| `ctx.paths.databaseFile` | `path.join(app.getPath('userData'), 'Data', 'meacowork.sqlite')` |
 | `ctx.paths.legacyClaudeConfigDir` | `path.join(ctx.paths.userData, '.claude')` |
 | `ctx.paths.legacyClaudeProjectsDir` | `path.join(ctx.paths.userData, '.claude', 'projects')` |
 | `ctx.paths.claudeConfigDir` | `path.join(ctx.paths.userData, 'Data', 'Agents', '.claude')` |

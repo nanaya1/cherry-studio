@@ -57,6 +57,22 @@ describe('useAddKnowledgeItems', () => {
     expect(result.current.isSubmitting).toBe(false)
   })
 
+  it('云端追加通过同一次后台提交启动，刷新对应本地库', async () => {
+    const items = [{ type: 'file' as const, data: { source: '资料.txt', path: '/picked/file.txt' as never } }]
+    const { result } = renderHook(() => useAddKnowledgeItems('local-1', 'orgkb:space'))
+    await act(async () => {
+      await expect(result.current.submit(items, 'detect')).resolves.toEqual({ status: 'added' })
+    })
+    expect(mockIpcRequest).toHaveBeenCalledWith('enterprise.knowledge.add_files', {
+      baseId: 'orgkb:space',
+      localBaseId: 'local-1',
+      items,
+      conflictStrategy: 'detect'
+    })
+    expect(mockIpcRequest).not.toHaveBeenCalledWith('knowledge.add_items', expect.anything())
+    expect(mockInvalidateCache).toHaveBeenCalledWith(['/knowledge-bases/local-1/items', '/knowledge-bases'])
+  })
+
   it('returns the conflicts result and skips the list refresh when the add reports conflicts', async () => {
     const conflictsResult = { status: 'conflicts' as const, conflicts: [{ type: 'note' as const, title: 'Doc A' }] }
     mockIpcRequest.mockResolvedValueOnce(conflictsResult)

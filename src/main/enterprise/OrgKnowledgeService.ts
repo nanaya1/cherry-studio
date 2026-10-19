@@ -37,7 +37,13 @@ import {
   isOrgId,
   parseOrgId
 } from '@shared/data/types/enterpriseKnowledge'
-import type { KnowledgeItemChunk } from '@shared/data/types/knowledge'
+// import type { KnowledgeItemChunk } from '@shared/data/types/knowledge'
+import type {
+  KnowledgeAddConflictStrategy,
+  KnowledgeAddItemInput,
+  KnowledgeAddItemsResult,
+  KnowledgeItemChunk
+} from '@shared/data/types/knowledge'
 import { enterpriseKnowledgeErrorCodes as E } from '@shared/ipc/errors/enterpriseKnowledge'
 import { AbsoluteFilePathSchema, type AbsoluteFilePath } from '@shared/types/file'
 import { sanitizeFilename } from '@shared/utils/file'
@@ -1421,7 +1427,8 @@ export class OrgKnowledgeService {
         .items.find((base) => base.id === localBaseId)
       this.assertLease(lease)
       if (pendingBase) {
-        this.automaticAdditions.set(key, { baseId, localBaseId, lease })
+        // 仅准备本地关联，实际提交资料后再登记自动追加。
+        // this.automaticAdditions.set(key, { baseId, localBaseId, lease })
         return { localBaseId }
       }
     }
@@ -1435,8 +1442,33 @@ export class OrgKnowledgeService {
       pendingAddition: true,
       files: []
     })
-    this.automaticAdditions.set(this.syncKey(base.id, lease), { baseId, localBaseId: base.id, lease })
+    // this.automaticAdditions.set(this.syncKey(base.id, lease), { baseId, localBaseId: base.id, lease })
     return { localBaseId: base.id }
+  }
+
+  async addFiles(
+    baseId: string,
+    localBaseId: string,
+    items: KnowledgeAddItemInput[],
+    conflictStrategy?: KnowledgeAddConflictStrategy
+  ): Promise<KnowledgeAddItemsResult> {
+    if (this.firstShareActive) throw new Error(`「${this.firstShareActive.name}」正在上传云端，请完成后再试`)
+    const lease = this.acquireLease()
+    const spaceId = this.decodeId(baseId, '知识库')
+    await this.assertRealOwner(spaceId, lease)
+    const recoveryKey = JSON.stringify([lease.issuerId, lease.userId, 'recovery', spaceId])
+    if (this.unsharing.has(recoveryKey) || orgStateStore.getCloudRecovery(recoveryKey))
+      throw new Error('该云端库已进入恢复流程，不能新增资料')
+    const key = this.syncKey(localBaseId, lease)
+    if (orgStateStore.getShareAssociation(key)?.shareId !== spaceId) throw new Error('找不到可信的本机新增资料关联')
+    const result = await application.get('KnowledgeService').addItems(localBaseId, items, conflictStrategy)
+    this.assertLease(lease)
+    if (result.status === 'added') {
+      this.automaticAdditions.set(key, { baseId, localBaseId, lease })
+      // 主进程主动调度，避免解析任务已结束或详情关闭时丢失启动信号。
+      this.scheduleAddition(key)
+    }
+    return result
   }
 
   async uploadAddedFiles(
@@ -1516,7 +1548,8 @@ export class OrgKnowledgeService {
     const key = this.syncKey(baseId, lease)
     if (this.automaticAdditions.has(key))
       return {
-        phase: 'counting',
+        // phase: 'counting',
+        phase: 'preparing',
         totalBytes: 0,
         uploadedBytes: 0,
         completedFiles: 0,

@@ -140,7 +140,8 @@ export const useKnowledgeItems = (baseId: string, groupId: string | null = null)
   }
 }
 
-export const useAddKnowledgeItems = (baseId: string) => {
+// export const useAddKnowledgeItems = (baseId: string) => {
+export const useAddKnowledgeItems = (baseId: string, cloudBaseId?: string) => {
   const [error, setError] = useState<Error | undefined>()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const invalidateCache = useInvalidateCache()
@@ -164,7 +165,15 @@ export const useAddKnowledgeItems = (baseId: string) => {
       let submitError: Error | undefined
       let result: KnowledgeAddItemsResult | undefined
       try {
-        result = await ipcApi.request('knowledge.add_items', { baseId, items, conflictStrategy })
+        // result = await ipcApi.request('knowledge.add_items', { baseId, items, conflictStrategy })
+        result = cloudBaseId
+          ? await ipcApi.request('enterprise.knowledge.add_files', {
+              baseId: cloudBaseId,
+              localBaseId: baseId,
+              items,
+              conflictStrategy
+            })
+          : await ipcApi.request('knowledge.add_items', { baseId, items, conflictStrategy })
       } catch (error) {
         submitError = normalizeKnowledgeError(error)
 
@@ -196,7 +205,7 @@ export const useAddKnowledgeItems = (baseId: string) => {
 
       return result as KnowledgeAddItemsResult
     },
-    [baseId, invalidateCache]
+    [baseId, cloudBaseId, invalidateCache]
   )
 
   return {

@@ -37,7 +37,7 @@ beforeAll(async () => {
   root = await mkdtemp(path.join(os.tmpdir(), 'user-data-sqlite-guard-'))
   homePath = path.join(root, 'home')
   userDataPath = path.join(homePath, 'Library', 'Application Support', 'Cherry Studio')
-  databaseFile = path.join(userDataPath, 'Data', 'cherrystudio.sqlite')
+  databaseFile = path.join(userDataPath, 'Data', 'meacowork.sqlite')
   workspacePath = path.join(userDataPath, 'Data', 'Agents', 'system', 'session-1')
   outsideWorkspace = path.join(root, 'workspace')
   await Promise.all([

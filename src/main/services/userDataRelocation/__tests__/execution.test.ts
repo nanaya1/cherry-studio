@@ -539,7 +539,8 @@ describe('userDataRelocation execution', () => {
     await expect(runUserDataRelocation()).resolves.toBe('handled')
 
     expect(fs.readFileSync(path.join(target, 'data.txt'), 'utf8')).toBe('data')
-    expect(fs.existsSync(path.join(target, '.cherry-relocation-owner.json'))).toBe(false)
+    // expect(fs.existsSync(path.join(target, '.cherry-relocation-owner.json'))).toBe(false)
+    expect(fs.existsSync(path.join(target, '.meacowork-relocation-owner.json'))).toBe(false)
     expectCommitted(target, { '/other/exe': '/other/data' })
   })
 

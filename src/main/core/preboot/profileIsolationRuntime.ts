@@ -29,7 +29,7 @@ import { createStartupCurrentUserTransport, type ElectronSessionLike } from '@ma
 
 import { acquireDataRootLock, releaseDataRootLock } from './dataRootLock'
 import { applyProfileIsolationPaths, lockProfileDataRoot, resolveProfileDataRoot } from './profileIsolationPreboot'
-import { getNormalizedExecutablePath } from './userDataLocation'
+import { getLegacyNormalizedExecutablePath, getNormalizedExecutablePath } from './userDataLocation'
 
 function logLockCompromised(error: Error): void {
   void import('@logger').then(({ loggerService }) => {
@@ -64,7 +64,12 @@ function electronPrebootApi() {
 }
 
 export function resolveCurrentProfileDataRoot(legacyRoot: string): string {
-  return resolveProfileDataRoot(legacyRoot, getNormalizedExecutablePath(), bootConfigService.get('app.data_root_path'))
+  return resolveProfileDataRoot(
+    legacyRoot,
+    getNormalizedExecutablePath(),
+    bootConfigService.get('app.data_root_path'),
+    getLegacyNormalizedExecutablePath()
+  )
 }
 
 export function lockCurrentProfileDataRoot(dataRoot: string): boolean {

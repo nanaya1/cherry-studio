@@ -4,15 +4,22 @@ import type { ProfileLaunchContext } from '@main/core/profiles'
 
 export function deriveProfileDataRoot(legacyUserData: string): string {
   const normalized = path.normalize(legacyUserData)
+  // MEA:product-identity Keep packaged enterprise data separate from development and legacy data.
+  if (path.basename(normalized) === 'meacowork-enterprise') {
+    return path.join(path.dirname(normalized), 'MEA-Cowork-Enterprise')
+  }
   return path.join(path.dirname(normalized), `${path.basename(normalized)}.profiles-v2`)
 }
 
 export function resolveProfileDataRoot(
   legacyUserData: string,
   executablePath: string,
-  configuredRoots: Record<string, string>
+  configuredRoots: Record<string, string>,
+  legacyExecutablePath?: string | null
 ): string {
-  const configured = configuredRoots[executablePath]
+  // const configured = configuredRoots[executablePath]
+  const configured =
+    configuredRoots[executablePath] ?? (legacyExecutablePath ? configuredRoots[legacyExecutablePath] : undefined)
   return configured ? path.resolve(configured) : deriveProfileDataRoot(legacyUserData)
 }
 

@@ -119,6 +119,24 @@ describe('edition packaging', () => {
     const installer = readFileSync(path.join(projectRoot, config.nsis.include), 'utf8')
 
     expect(config.productName).toBe('MEA Cowork 企业版')
+    expect(config.mac.executableName).toBe('MEACoworkEnterprise')
+    expect(config.mac.extendInfo.CFBundleName).toBe('MEA Cowork 企业版')
+    // Finder only localizes the bundle when its base display name matches the on-disk name.
+    expect(config.mac.extendInfo.CFBundleDisplayName).toBe(config.mac.executableName)
+    expect(config.mac.extendInfo.LSHasLocalizedDisplayName).toBe(true)
+    expect(config.mac.extendInfo.CFBundleDevelopmentRegion).toBe('en')
+    const localizedNames = config.mac.extraResources.find((resource: { from: string }) =>
+      resource.from.endsWith('zh_CN.lproj')
+    )
+    expect(localizedNames.to).toBe('zh_CN.lproj')
+    const strings = readFileSync(path.join(projectRoot, localizedNames.from, 'InfoPlist.strings'), 'utf8')
+    expect(strings).toContain('CFBundleDisplayName = "MEA Cowork 企业版";')
+    expect(strings).toContain('CFBundleName = "MEA Cowork 企业版";')
+    const fallbackNames = config.mac.extraResources.find((resource: { from: string }) =>
+      resource.from.endsWith('en.lproj')
+    )
+    expect(fallbackNames.to).toBe('en.lproj')
+    expect(readFileSync(path.join(projectRoot, fallbackNames.from, 'InfoPlist.strings'), 'utf8')).toBe(strings)
     expect(config.nsis.shortcutName).toBe('${productName}')
     expect(config.nsis.uninstallDisplayName).toBe('${productName}')
     expect(installer).toContain('!define /redef APP_FILENAME "MEA-Cowork-Enterprise"')

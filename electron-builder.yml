@@ -167,14 +167,26 @@ portable:
 mac:
   entitlementsInherit: build/entitlements.mac.plist
   notarize: false
+  executableName: MEACoworkEnterprise
   # artifactName: ${productName}-${version}-${arch}.${ext}
   artifactName: MEA-Cowork-Enterprise-${version}-${os}-${arch}.${ext}
   extendInfo:
+    CFBundleName: MEA Cowork 企业版
+    # CFBundleDisplayName: MEA Cowork 企业版
+    # Finder requires the base display name to match the .app filename before localizing it.
+    CFBundleDisplayName: MEACoworkEnterprise
+    CFBundleDevelopmentRegion: en
+    LSHasLocalizedDisplayName: true
     LSMultipleInstancesProhibited: true
     NSCameraUsageDescription: Application requests access to the device's camera.
     NSMicrophoneUsageDescription: Application requests access to the device's microphone.
     NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
     NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
+  extraResources:
+    - from: build/zh_CN.lproj
+      to: zh_CN.lproj
+    - from: build/en.lproj
+      to: en.lproj
   target:
     - target: dmg
     - target: zip

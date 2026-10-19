@@ -450,7 +450,7 @@ function OrgKnowledgeDetailSession({
         if (!active || !progress) return
         setAdditionMessage(
           t(
-            progress.phase === 'counting'
+            progress.phase === 'preparing' || progress.phase === 'counting'
               ? 'knowledge.org.added_local_notice'
               : `knowledge.org.upload_${progress.phase}`
           )
@@ -608,6 +608,7 @@ function OrgKnowledgeDetailSession({
         <KnowledgeItemSourceDialog
           open
           selectedBaseId={addedBaseId}
+          cloudBaseId={base.id}
           pendingAddSource={addSource}
           pendingAddFiles={addFilesInput}
           onAdded={() => {

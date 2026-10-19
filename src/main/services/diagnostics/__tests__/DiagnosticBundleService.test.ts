@@ -803,7 +803,8 @@ describe('DiagnosticBundleService', () => {
       status: 'submission_failed'
     })
     expect(result.fileName).toMatch(
-      /^cherry-studio-diagnostics-\d{8}-\d{6}-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.zip$/
+      // /^cherry-studio-diagnostics-\d{8}-\d{6}-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.zip$/
+      /^meacowork-diagnostics-\d{8}-\d{6}-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.zip$/
     )
     const retainedPath = await getRetainedUploadPath()
     expect(path.basename(retainedPath)).toBe(result.fileName)
@@ -1193,7 +1194,8 @@ describe('DiagnosticBundleService', () => {
     }
 
     expect(await readFile(destination, 'utf8')).toBe('external file')
-    expect((await readdir(workDir)).filter((name) => name.startsWith('.cherry-studio-diagnostics-'))).toEqual([])
+    // expect((await readdir(workDir)).filter((name) => name.startsWith('.cherry-studio-diagnostics-'))).toEqual([])
+    expect((await readdir(workDir)).filter((name) => name.startsWith('.meacowork-diagnostics-'))).toEqual([])
     expect(await readdir(appTempDir)).toEqual([])
   })
 })

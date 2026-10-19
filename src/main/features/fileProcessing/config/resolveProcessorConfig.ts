@@ -59,7 +59,16 @@ function assertProcessorUsable(config: FileProcessorMerged, feature: FileProcess
   // platform" sent people hunting for an OS problem when all they had to do was
   // download the model.
   const requiredModel = FILE_PROCESSOR_LOCAL_MODEL[config.id]
-  if (requiredModel && !application.get('LocalModelService').isCapabilityReady(requiredModel)) {
+  // local-document first inspects the PDF text layer and only needs OCR for scanned pages.
+  // Keep that readiness check in the document handler so text PDFs are not rejected at enqueue time.
+  // if (requiredModel && !application.get('LocalModelService').isCapabilityReady(requiredModel)) {
+  //   throw new Error(`File processor ${config.id} needs the local ${requiredModel} model to be downloaded first`)
+  // }
+  if (
+    requiredModel &&
+    config.id !== 'local-document' &&
+    !application.get('LocalModelService').isCapabilityReady(requiredModel)
+  ) {
     throw new Error(`File processor ${config.id} needs the local ${requiredModel} model to be downloaded first`)
   }
 }

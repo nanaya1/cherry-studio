@@ -57,6 +57,8 @@ export const enterpriseKnowledgeHandlers: IpcHandlersFor<typeof enterpriseKnowle
       )
     }),
   'enterprise.knowledge.prepare_added_files': ({ baseId }) => guard(() => plugin().knowledge.prepareAddedFiles(baseId)),
+  'enterprise.knowledge.add_files': ({ baseId, localBaseId, items, conflictStrategy }) =>
+    guard(() => plugin().knowledge.addFiles(baseId, localBaseId, items, conflictStrategy)),
   'enterprise.knowledge.upload_added_files': ({ baseId, localBaseId, uploadOriginal }) =>
     guard(() => plugin().knowledge.uploadAddedFiles(baseId, localBaseId, uploadOriginal)),
   'enterprise.knowledge.sync_status': (params) => guard(() => plugin().knowledge.syncStatus(params)),

@@ -2,11 +2,12 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 import { electronApp } from '@electron-toolkit/utils'
-import { app } from 'electron'
+import { app, dialog } from 'electron'
 
 import { application } from '@application'
 import { loggerService } from '@logger'
 import { runBackupRestoreGate } from '@main/core/preboot/backupRestoreGate'
+import { BrandDataFileMigrationError, migrateBrandDataFiles } from '@main/core/preboot/brandDataFileMigration'
 import {
   applyProfileIsolationPaths,
   type ProfileIsolationElectronApi
@@ -160,6 +161,22 @@ export async function startBusinessRuntime(
   const relocationResult = await runUserDataRelocation()
   if (relocationResult === 'handled') {
     if (options.rebuildRuntime) throw new Error('Business startup was taken over by relocation')
+    return
+  }
+
+  // The current profile must use branded filenames before restore inspects its DB.
+  // The v2 gate repeats this after any legacy custom userData redirect; both calls are idempotent.
+  try {
+    migrateBrandDataFiles(application.getPath('app.userdata'))
+  } catch (error) {
+    if (!(error instanceof BrandDataFileMigrationError)) throw error
+    await app.whenReady()
+    dialog.showErrorBox(
+      'Data File Migration Error - Application Cannot Start',
+      `Could not migrate existing data files to the MEA Cowork names:\n\n  ${error.message}\n\n` +
+        'No existing file was overwritten. Please keep both files and contact support before trying again. The application will now exit.'
+    )
+    application.quit()
     return
   }
 

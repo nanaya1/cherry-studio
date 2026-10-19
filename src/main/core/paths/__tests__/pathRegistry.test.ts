@@ -34,10 +34,10 @@ describe('buildPathRegistry', () => {
     const registry = buildPathRegistry()
     const dataRoot = path.join('/mock/userData', 'Data')
 
-    expect(registry['app.database.file']).toBe(path.join(dataRoot, 'cherrystudio.sqlite'))
+    expect(registry['app.database.file']).toBe(path.join(dataRoot, 'meacowork.sqlite'))
     expect(registry['feature.backup.restore.file']).toBe(path.join(dataRoot, 'restore-journal.json'))
     expect(registry['feature.cherry_account.credentials_file']).toBe(
-      path.join('/mock/userData', 'Credentials', 'cherry-account.json')
+      path.join('/mock/userData', 'Credentials', 'meacowork-account.json')
     )
   })
 
@@ -122,11 +122,11 @@ describe('buildPathRegistry', () => {
     expect(registry['feature.binary.data.isolated.appdata']).toBe(path.join(miseRoot, 'appdata'))
   })
 
-  it('keeps persisted MCP resource blobs in Cherry temporary storage', () => {
+  it('keeps persisted MCP resource blobs in MEA Cowork Enterprise temporary storage', () => {
     const registry = buildPathRegistry()
 
     expect(registry['feature.mcp.resource_results.temp']).toBe(
-      path.join('/mock/temp', 'CherryStudio', 'mcp-resource-results')
+      path.join('/mock/temp', 'MEACoworkEnterprise', 'mcp-resource-results')
     )
   })
 

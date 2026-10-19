@@ -43,7 +43,8 @@ function createFileItem(source: string): KnowledgeItemOf<'file'> {
 describe('planKnowledgeItemSource', () => {
   it('routes PDFs to file processing when a processor is configured', () => {
     expect(planKnowledgeItemSource(createBase(), createFileItem('/docs/source.pdf'))).toEqual({
-      kind: 'needsFileProcessing'
+      kind: 'needsFileProcessing',
+      processorId: 'doc2x'
     })
   })
 
@@ -56,8 +57,15 @@ describe('planKnowledgeItemSource', () => {
     }
   )
 
-  it('indexes supported documents directly when no file processor is configured', () => {
+  it('routes PDFs through the local OCR processor when no file processor is configured', () => {
     expect(planKnowledgeItemSource(createBase(null), createFileItem('/docs/source.pdf'))).toEqual({
+      kind: 'needsFileProcessing',
+      processorId: 'local-document'
+    })
+  })
+
+  it('indexes supported documents directly when no file processor is configured', () => {
+    expect(planKnowledgeItemSource(createBase(null), createFileItem('/docs/source.docx'))).toEqual({
       kind: 'index-documents'
     })
   })
@@ -72,7 +80,8 @@ describe('planKnowledgeItemSource', () => {
     const item = createFileItem('/docs/source.pdf')
     item.data.indexedRelativePath = 'source.md' as PosixRelativeFilePath
     expect(planKnowledgeItemSource(createBase(), item, { forceFileReprocess: true })).toEqual({
-      kind: 'needsFileProcessing'
+      kind: 'needsFileProcessing',
+      processorId: 'doc2x'
     })
   })
 
@@ -81,7 +90,7 @@ describe('planKnowledgeItemSource', () => {
       planKnowledgeItemSource(createBase(null), createFileItem('/docs/source.pdf'), {
         forceFileReprocess: true
       })
-    ).toEqual({ kind: 'index-documents' })
+    ).toEqual({ kind: 'needsFileProcessing', processorId: 'local-document' })
     expect(
       planKnowledgeItemSource(createBase(), createFileItem('/docs/source.docx'), {
         forceFileReprocess: true

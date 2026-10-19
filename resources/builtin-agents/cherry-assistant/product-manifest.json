@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "package": {
-    "name": "MEA Cowork",
-    "version": "2.1.4",
+    "name": "meacowork-enterprise",
+    "version": "1.0.0",
     "description": "A powerful AI assistant for producer.",
     "homepage": "https://github.com/nanaya1/cherry-studio"
   },
@@ -56,8 +56,13 @@
       "/app/files",
       "/app/knowledge",
       "/app/launchpad",
+      "/app/new-task",
       "/app/notes",
       "/app/release-notes",
+      "/app/resources",
+      "/app/scheduled-tasks",
+      "/app/skills-connectors",
+      "/app/toolbox",
       "/app/translate",
       "/settings/about",
       "/settings/api-gateway",
@@ -79,6 +84,7 @@
       "/settings/prompts",
       "/settings/provider",
       "/settings/quick-assistant",
+      "/settings/remote-knowledge",
       "/settings/scheduled-tasks",
       "/settings/screenshot",
       "/settings/search",
@@ -90,6 +96,7 @@
       "/settings/websearch",
       "/app/mini-app/$appId",
       "/app/paintings/$",
+      "/app/scheduled-tasks/$taskId",
       "/settings/mcp/$",
       "/settings/mcp/builtin",
       "/settings/mcp/marketplaces",
@@ -497,8 +504,12 @@
   ],
   "providers": {
     "version": "dbca1ba38bf86df7",
-    "count": 65,
+    "count": 66,
     "entries": [
+      {
+        "id": "xuelang",
+        "name": "雪浪工匠"
+      },
       {
         "id": "cherryin",
         "name": "CherryIN"
@@ -892,7 +903,8 @@
         "manual",
         "ai_assisted",
         "protocol",
-        "unknown"
+        "unknown",
+        "org"
       ]
     },
     "knowledge": {

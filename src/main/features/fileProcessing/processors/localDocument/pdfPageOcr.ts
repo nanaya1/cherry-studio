@@ -1,7 +1,9 @@
 import { randomUUID } from 'node:crypto'
+import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 
 import { application } from '@application'
+import { isMac, isWin } from '@main/core/platform'
 import { ensureDir, remove, removeDir, write } from '@main/utils/file'
 import { createPdfParser } from '@main/utils/pdf'
 import { AbsoluteFilePathSchema } from '@shared/types/file'
@@ -88,9 +90,28 @@ async function recognizePage(
   await write(imagePath, await preprocessImage(Buffer.from(rendered)))
 
   try {
+    if (isMac || isWin) {
+      try {
+        const { recognize, OcrAccuracy } = await import('@napi-rs/system-ocr')
+        const result = await recognize(await readImageBytes(imagePath), OcrAccuracy.Accurate)
+        return result.lines
+          .map((line) => line.text)
+          .join('\n')
+          .trim()
+      } catch (error) {
+        if (!application.get('LocalModelService').isCapabilityReady('ocr')) {
+          throw error
+        }
+      }
+    }
+
     const { text } = await application.get('OcrInferenceService').recognize({ kind: 'path', imagePath }, signal)
     return text.trim()
   } finally {
     await remove(imagePath)
   }
+}
+
+async function readImageBytes(imagePath: string): Promise<Uint8Array> {
+  return readFile(imagePath)
 }

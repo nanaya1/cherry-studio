@@ -33,6 +33,7 @@ import {
 } from '@data/migration/v2'
 import { loggerService } from '@logger'
 import { isDev } from '@main/core/platform'
+import { BrandDataFileMigrationError } from '@main/core/preboot/brandDataFileMigration'
 import { resolveSystemLanguage, t } from '@main/i18n'
 
 const logger = loggerService.withContext('V2MigrationGate')
@@ -59,6 +60,18 @@ export type V2MigrationGateResult = 'handled' | 'skipped'
  * depends on that write, so continuing would relaunch into the old directory
  * and loop (or make migrated data appear lost). Stop loudly instead.
  */
+async function quitWithBrandDataFileMigrationError(cause: BrandDataFileMigrationError): Promise<V2MigrationGateResult> {
+  logger.error('Failed to migrate legacy data file names; cannot continue', cause)
+  await app.whenReady()
+  dialog.showErrorBox(
+    'Data File Migration Error - Application Cannot Start',
+    `Could not migrate existing data files to the MEA Cowork names:\n\n  ${cause.message}\n\n` +
+      'No existing file was overwritten. Please keep both files and contact support before trying again. The application will now exit.'
+  )
+  application.quit()
+  return 'handled'
+}
+
 async function quitWithDataLocationError(cause: unknown): Promise<V2MigrationGateResult> {
   logger.error('Failed to persist userData location; cannot continue', cause as Error)
   await app.whenReady()
@@ -137,10 +150,10 @@ export async function runV2MigrationGate(): Promise<V2MigrationGateResult> {
   try {
     resolved = resolveMigrationPaths()
   } catch (error) {
-    // resolveMigrationPaths()'s only throwing operation is the strict
-    // pinUserDataPath() persist on the redirect branch. Failing there means we
-    // cannot durably record which userData directory to use next launch — a
-    // silent continue would relaunch into the OLD location and loop.
+    if (error instanceof BrandDataFileMigrationError) return quitWithBrandDataFileMigrationError(error)
+    // The remaining throwing operation is the strict pinUserDataPath() persist
+    // on the redirect branch. Failing there means the next launch cannot find
+    // the selected data directory and would loop or make data appear lost.
     return quitWithDataLocationError(error)
   }
   const { paths, userDataChanged, inaccessibleLegacyPath, legacyDataConfirmed, dataLocation } = resolved

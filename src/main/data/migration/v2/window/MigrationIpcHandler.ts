@@ -241,7 +241,8 @@ export function registerMigrationIpcHandlers(paths: MigrationPaths): void {
       const savePromise: Promise<MigrationDiagnosticSaveResult> = (async () => {
         const { canceled, filePath } = await dialog.showSaveDialog({
           title: dialogTitle,
-          defaultPath: 'cherry-studio-migration-diagnostics.zip',
+          // defaultPath: 'cherry-studio-migration-diagnostics.zip',
+          defaultPath: 'meacowork-migration-diagnostics.zip',
           filters: [{ name: 'ZIP', extensions: ['zip'] }],
           properties: ['createDirectory', 'showOverwriteConfirmation']
         })

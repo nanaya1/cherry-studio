@@ -56,7 +56,7 @@ const getBlockMessageMock = vi.fn()
 const defaultMigrationPaths = {
   userData: '/mock/userData',
   versionLogFile: '/mock/version.log',
-  databaseFile: '/mock/userData/Data/cherrystudio.sqlite',
+  databaseFile: '/mock/userData/Data/meacowork.sqlite',
   // The gate's sweep rm's this for real in every skipped-path test, so the default must
   // point somewhere guaranteed absent and harmless (never a plausible real path).
   migrationTempDir: path.join(os.tmpdir(), `v2gate-absent-${process.pid}-${Math.random().toString(36).slice(2)}`)
@@ -148,10 +148,10 @@ function schemaOutOfSyncError(): Error {
 }
 
 function storageError(): Error {
-  const cause = Object.assign(new Error('attempt to write a readonly database at /Users/private/cherrystudio.sqlite'), {
+  const cause = Object.assign(new Error('attempt to write a readonly database at /Users/private/meacowork.sqlite'), {
     code: 'SQLITE_READONLY'
   })
-  return new Error('Database WAL setup failed at /Users/private/cherrystudio.sqlite', { cause })
+  return new Error('Database WAL setup failed at /Users/private/meacowork.sqlite', { cause })
 }
 
 async function loadModule() {
@@ -369,7 +369,7 @@ describe('runV2MigrationGate', () => {
       expect(showMessageBoxMock).toHaveBeenCalledTimes(1)
       expect(showMessageBoxMock.mock.calls[0][0]).toMatchObject({
         title: '数据库不可用',
-        message: 'Cherry Studio 无法访问本地数据库。',
+        message: 'MEA Cowork 无法访问本地数据库。',
         detail: '请检查数据存储位置是否可用且可写，并确保磁盘有足够的可用空间，然后重试。',
         buttons: ['重试', '退出'],
         defaultId: 0,
@@ -381,7 +381,7 @@ describe('runV2MigrationGate', () => {
         .mock.calls.map(([message]) => String(message))
         .find((message) => message.startsWith('Migration database unavailable:'))
       expect(storageLog).toContain(
-        '[SQLITE_READONLY] attempt to write a readonly database at /Users/private/cherrystudio.sqlite'
+        '[SQLITE_READONLY] attempt to write a readonly database at /Users/private/meacowork.sqlite'
       )
       expect(storageLog?.match(/attempt to write a readonly database/g)).toHaveLength(1)
       expect(showErrorBoxMock).not.toHaveBeenCalled()
@@ -494,7 +494,7 @@ describe('runV2MigrationGate', () => {
       expect(showErrorBoxMock).toHaveBeenCalledTimes(1)
       const [title, message] = showErrorBoxMock.mock.calls[0]
       expect(title).toContain('Database Schema Out of Sync')
-      expect(message).toContain('/mock/userData/Data/cherrystudio.sqlite')
+      expect(message).toContain('/mock/userData/Data/meacowork.sqlite')
       expect(appQuitMock).toHaveBeenCalledTimes(1)
     })
 
@@ -537,7 +537,7 @@ describe('runV2MigrationGate', () => {
       expect(message).toContain('DB unavailable')
       // Dev surfaces BOTH possibilities (incompatible data vs migration bug) + the DB path,
       // and explicitly does NOT assert "just delete the DB".
-      expect(message).toContain('/mock/userData/Data/cherrystudio.sqlite')
+      expect(message).toContain('/mock/userData/Data/meacowork.sqlite')
       expect(message).toContain('Do NOT just delete the DB')
       expect(appQuitMock).toHaveBeenCalledTimes(1)
     })

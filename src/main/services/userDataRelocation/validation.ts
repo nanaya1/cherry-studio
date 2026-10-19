@@ -212,6 +212,17 @@ export function relocationArtifactPaths(target: string, taskId: string): { workP
   const parent = path.dirname(target)
   const name = path.basename(target)
   return {
+    // workPath: path.join(parent, `.${name}.cherry-relocation-${taskId}-work`),
+    workPath: path.join(parent, `.${name}.meacowork-relocation-${taskId}-work`),
+    // asidePath: path.join(parent, `.${name}.cherry-relocation-${taskId}-aside`)
+    asidePath: path.join(parent, `.${name}.meacowork-relocation-${taskId}-aside`)
+  }
+}
+
+export function legacyRelocationArtifactPaths(target: string, taskId: string): { workPath: string; asidePath: string } {
+  const parent = path.dirname(target)
+  const name = path.basename(target)
+  return {
     workPath: path.join(parent, `.${name}.cherry-relocation-${taskId}-work`),
     asidePath: path.join(parent, `.${name}.cherry-relocation-${taskId}-aside`)
   }

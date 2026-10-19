@@ -1117,6 +1117,9 @@ describe('ScreenshotOverlayService', () => {
       // transparent frameless overlay — the user would see a frozen screen instead.
       expect(electron.dialog.showSaveDialog).toHaveBeenCalledTimes(1)
       expect(electron.dialog.showSaveDialog.mock.calls[0]).toHaveLength(1)
+      expect(electron.dialog.showSaveDialog.mock.calls[0][0]).toEqual(
+        expect.objectContaining({ defaultPath: expect.stringMatching(/^meacowork_screenshot_\d{8}_\d{6}\.png$/) })
+      )
       expect(fakeWindow('overlay-0-0').hide).toHaveBeenCalled()
       expect(electron.app.focus).toHaveBeenCalledWith({ steal: true })
       // The renderer's own PNG, not a round-trip through nativeImage's encoder.

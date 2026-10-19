@@ -184,13 +184,13 @@ describe('resolveProcessorConfig', () => {
   // A missing model is fixable in one click; a missing platform API never is.
   // The two must not share a message — the platform wording sent users hunting
   // for an OS problem when all they had to do was download the model.
-  it('distinguishes a missing local model from an unsupported platform', () => {
+  it('defers the local-document model check until scanned PDF processing', () => {
     isLocalModelReadyMock.mockReturnValue(false)
 
-    expect(() => resolveProcessorConfigByFeature('document_to_markdown', 'local-document')).toThrowError(
-      'File processor local-document needs the local ocr model to be downloaded first'
+    expect(resolveProcessorConfigByFeature('document_to_markdown', 'local-document')).toEqual(
+      expect.objectContaining({ id: 'local-document' })
     )
-    expect(isLocalModelReadyMock).toHaveBeenCalledWith('ocr')
+    expect(isLocalModelReadyMock).not.toHaveBeenCalled()
   })
 
   it('accepts a local model processor once its model is ready', () => {

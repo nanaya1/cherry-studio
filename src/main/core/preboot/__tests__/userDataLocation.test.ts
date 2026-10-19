@@ -197,7 +197,8 @@ describe('getNormalizedExecutablePath', () => {
     stubFs()
     const { getNormalizedExecutablePath } = await loadModule()
     // path.join is globally mocked to args.join('/'); path.dirname is real.
-    expect(getNormalizedExecutablePath()).toBe('/home/alice/Applications/cherry-studio.appimage')
+    // expect(getNormalizedExecutablePath()).toBe('/home/alice/Applications/cherry-studio.appimage')
+    expect(getNormalizedExecutablePath()).toBe('/home/alice/Applications/MEA-Cowork-Enterprise.appimage')
   })
 
   it('Windows non-portable: returns app.getPath("exe") verbatim', async () => {
@@ -209,7 +210,8 @@ describe('getNormalizedExecutablePath', () => {
     expect(getNormalizedExecutablePath()).toBe('C:\\Program Files\\Cherry Studio\\Cherry Studio.exe')
   })
 
-  it('Windows portable: returns PORTABLE_EXECUTABLE_DIR/cherry-studio-portable.exe', async () => {
+  // it('Windows portable: returns PORTABLE_EXECUTABLE_DIR/cherry-studio-portable.exe', async () => {
+  it('Windows portable: returns PORTABLE_EXECUTABLE_DIR/MEA-Cowork-Enterprise-portable.exe', async () => {
     vi.stubEnv('PORTABLE_EXECUTABLE_DIR', 'D:\\PortableApps\\CherryStudio')
     stubConstants({ isLinux: false, isWin: true, isPortable: true })
     stubElectron({ exePath: 'D:\\PortableApps\\CherryStudio\\Cherry Studio.exe' })
@@ -217,7 +219,8 @@ describe('getNormalizedExecutablePath', () => {
     stubFs()
     const { getNormalizedExecutablePath } = await loadModule()
     // path.join is globally mocked to args.join('/').
-    expect(getNormalizedExecutablePath()).toBe('D:\\PortableApps\\CherryStudio/cherry-studio-portable.exe')
+    // expect(getNormalizedExecutablePath()).toBe('D:\\PortableApps\\CherryStudio/cherry-studio-portable.exe')
+    expect(getNormalizedExecutablePath()).toBe('D:\\PortableApps\\CherryStudio/MEA-Cowork-Enterprise-portable.exe')
   })
 })
 

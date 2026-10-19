@@ -42,7 +42,7 @@ vi.mock('@main/core/paths/pathRegistry', async () => {
         'cherry.bin': '/mock/home/.meacowork-enterprise/bin',
         // Cherry-owned files (auto-ensure dirname only)
         'feature.copilot.token_file': '/mock/userData/Sensitive/Copilot/token.enc',
-        'app.database.file': '/mock/userData/Data/cherrystudio.sqlite',
+        'app.database.file': '/mock/userData/Data/meacowork.sqlite',
         // NO_ENSURE — exact key entries (build artifacts)
         'app.exe_file': '/mock/install/CherryStudio',
         'app.extra_resources': '/mock/resources',

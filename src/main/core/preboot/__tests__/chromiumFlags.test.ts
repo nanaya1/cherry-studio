@@ -26,6 +26,7 @@ interface PlatformFlags {
 
 const disableHardwareAccelerationMock = vi.fn()
 const appendSwitchMock = vi.fn()
+const setNameMock = vi.fn()
 const bootConfigGetMock = vi.fn()
 
 function stubElectron() {
@@ -33,6 +34,7 @@ function stubElectron() {
     __esModule: true,
     app: {
       disableHardwareAcceleration: disableHardwareAccelerationMock,
+      setName: setNameMock,
       commandLine: {
         appendSwitch: appendSwitchMock
       }
@@ -72,6 +74,7 @@ beforeEach(() => {
   vi.resetModules()
   disableHardwareAccelerationMock.mockReset()
   appendSwitchMock.mockReset()
+  setNameMock.mockReset()
   bootConfigGetMock.mockReset()
 })
 
@@ -83,6 +86,17 @@ afterEach(() => {
 })
 
 describe('configureChromiumFlags', () => {
+  it('sets the macOS runtime application name without changing the executable name', async () => {
+    stubConstants({ isLinux: false, isWin: false })
+    stubElectron()
+    stubBootConfig()
+
+    const { configureChromiumFlags } = await loadModule()
+    configureChromiumFlags()
+
+    expect(setNameMock).toHaveBeenCalledWith('MEA Cowork 企业版')
+  })
+
   describe('hardware acceleration toggle', () => {
     it('calls disableHardwareAcceleration() when BootConfig flag is true', async () => {
       stubConstants({ isLinux: false, isWin: false })

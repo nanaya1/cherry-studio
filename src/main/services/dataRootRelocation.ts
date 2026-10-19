@@ -9,14 +9,17 @@ import { getNormalizedExecutablePath } from '@main/core/preboot/userDataLocation
 import { ProfileRegistry, createProfilePaths, resolveProfileRoot, type ProfileLaunchContext } from '@main/core/profiles'
 import { bootConfigService } from '@main/data/bootConfig'
 
-export const DATA_ROOT_RELOCATION_OWNER = '.cherry-data-root-relocation-owner.json'
+// export const DATA_ROOT_RELOCATION_OWNER = '.cherry-data-root-relocation-owner.json'
+export const DATA_ROOT_RELOCATION_OWNER = '.meacowork-data-root-relocation-owner.json'
+const LEGACY_DATA_ROOT_RELOCATION_OWNER = '.cherry-data-root-relocation-owner.json'
 const PAYLOAD = 'payload'
 const EXCLUDED_ROOT_ENTRIES = new Set([
   'SingletonLock',
   'SingletonSocket',
   'SingletonCookie',
   '.profile-data-reset.pending.json',
-  DATA_ROOT_RELOCATION_OWNER
+  DATA_ROOT_RELOCATION_OWNER,
+  LEGACY_DATA_ROOT_RELOCATION_OWNER
 ])
 
 const relocationFields = {
@@ -29,7 +32,12 @@ const cleanupPendingSchema = z.strictObject({ status: z.literal('cleanup-pending
 export type PendingDataRootRelocation = z.infer<typeof pendingSchema>
 type CleanupPendingDataRootRelocation = z.infer<typeof cleanupPendingSchema>
 
+// const ownerSchema = z.strictObject({ kind: z.literal('cherry-studio-data-root-relocation'), taskId: z.uuid() })
 const ownerSchema = z.strictObject({
+  kind: z.literal('meacowork-data-root-relocation'),
+  taskId: z.uuid()
+})
+const legacyOwnerSchema = z.strictObject({
   kind: z.literal('cherry-studio-data-root-relocation'),
   taskId: z.uuid()
 })
@@ -92,7 +100,8 @@ export async function executeDataRootRelocation(
     await fsp.mkdir(work, { recursive: false, mode: 0o700 })
     await fsp.writeFile(
       path.join(work, DATA_ROOT_RELOCATION_OWNER),
-      JSON.stringify({ kind: 'cherry-studio-data-root-relocation', taskId: pending.taskId }),
+      // JSON.stringify({ kind: 'cherry-studio-data-root-relocation', taskId: pending.taskId }),
+      JSON.stringify({ kind: 'meacowork-data-root-relocation', taskId: pending.taskId }),
       { flag: 'wx', mode: 0o600 }
     )
     await copyDataRoot(source, payload)
@@ -149,6 +158,7 @@ function commitDataRootRelocation(target: string): void {
 
 async function cleanupRelocationArtifacts(target: string, work: string): Promise<void> {
   await fsp.rm(path.join(target, DATA_ROOT_RELOCATION_OWNER), { force: true })
+  await fsp.rm(path.join(target, LEGACY_DATA_ROOT_RELOCATION_OWNER), { force: true })
   await fsyncDirectory(target)
   await fsp.rm(work, { recursive: true, force: true })
   await fsyncDirectory(path.dirname(work))
@@ -311,8 +321,16 @@ function artifactPaths(target: string, taskId: string): { work: string; payload:
 
 async function recoverOwnedPath(target: string, taskId: string): Promise<void> {
   try {
-    const raw = await fsp.readFile(path.join(target, DATA_ROOT_RELOCATION_OWNER), 'utf8')
-    const owner = ownerSchema.parse(JSON.parse(raw))
+    let raw: string
+    let legacy = false
+    try {
+      raw = await fsp.readFile(path.join(target, DATA_ROOT_RELOCATION_OWNER), 'utf8')
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+      raw = await fsp.readFile(path.join(target, LEGACY_DATA_ROOT_RELOCATION_OWNER), 'utf8')
+      legacy = true
+    }
+    const owner = legacy ? legacyOwnerSchema.parse(JSON.parse(raw)) : ownerSchema.parse(JSON.parse(raw))
     if (owner.taskId !== taskId) throw new Error(`Relocation path is owned by another task: ${target}`)
     await fsp.rm(target, { recursive: true, force: true })
   } catch (error) {

@@ -314,7 +314,7 @@ vi.mock('@application', () => ({
       const paths: Record<string, string> = {
         'app.userdata': '/mock/userData',
         'app.userdata.data': '/mock/userData/Data',
-        'app.database.file': '/mock/userData/Data/cherrystudio.sqlite',
+        'app.database.file': '/mock/userData/Data/meacowork.sqlite',
         'feature.backup.temp': '/mock/temp/backup',
         'feature.backup.restore.file': '/mock/userData/Data/restore-journal.json',
         'feature.backup.restore.staging': '/mock/userData/restore-staging',
@@ -763,8 +763,8 @@ describe('BackupManager direct v2 data compatibility', () => {
       { spaces: 2 }
     )
     expect(fs.copy).not.toHaveBeenCalledWith(
-      '/mock/userData/Data/cherrystudio.sqlite',
-      '/mock/temp/backup/create-operation-id/cherrystudio.sqlite'
+      '/mock/userData/Data/meacowork.sqlite',
+      '/mock/temp/backup/create-operation-id/meacowork.sqlite'
     )
     expect(archive.directory).toHaveBeenCalledWith('/mock/temp/backup/create-operation-id', false)
     expect(mockAgentIngressHold.dispose).toHaveBeenCalledOnce()
@@ -867,16 +867,16 @@ describe('BackupManager direct v2 data compatibility', () => {
     expect(dataCopyCall).toBeDefined()
     const options = dataCopyCall?.[3] as { excludeRelativePath: (relativePath: string) => boolean }
     expect(getDirSize).toHaveBeenCalledWith('/mock/userData/Data', dataCopyCall?.[3])
-    expect(options.excludeRelativePath('cherrystudio.sqlite')).toBe(false)
-    expect(options.excludeRelativePath('cherrystudio.sqlite-wal')).toBe(true)
-    expect(options.excludeRelativePath('cherrystudio.sqlite-shm')).toBe(true)
+    expect(options.excludeRelativePath('meacowork.sqlite')).toBe(false)
+    expect(options.excludeRelativePath('meacowork.sqlite-wal')).toBe(true)
+    expect(options.excludeRelativePath('meacowork.sqlite-shm')).toBe(true)
     expect(options.excludeRelativePath('restore-journal.json')).toBe(true)
     expect(options.excludeRelativePath('restore-journal.json.tmp')).toBe(true)
     expect(options.excludeRelativePath('Agents/.claude/projects/session.jsonl')).toBe(false)
     expect(options.excludeRelativePath('Files/document.pdf')).toBe(false)
   })
 
-  it('writes a slim archive with only Data/cherrystudio.sqlite and cache.json', async () => {
+  it('writes a slim archive with only Data/meacowork.sqlite and cache.json', async () => {
     vi.mocked(fs.pathExists).mockImplementation(async (entryPath) => {
       return ['/mock/userData/cache.json', '/mock/userData/Data'].includes(String(entryPath))
     })
@@ -892,9 +892,9 @@ describe('BackupManager direct v2 data compatibility', () => {
     expect(dataCopyCall).toBeDefined()
     const options = dataCopyCall?.[3] as { excludeRelativePath: (relativePath: string) => boolean }
     expect(getDirSize).toHaveBeenCalledWith('/mock/userData/Data', dataCopyCall?.[3])
-    expect(options.excludeRelativePath('cherrystudio.sqlite')).toBe(false)
-    expect(options.excludeRelativePath('cherrystudio.sqlite-wal')).toBe(true)
-    expect(options.excludeRelativePath('cherrystudio.sqlite-shm')).toBe(true)
+    expect(options.excludeRelativePath('meacowork.sqlite')).toBe(false)
+    expect(options.excludeRelativePath('meacowork.sqlite-wal')).toBe(true)
+    expect(options.excludeRelativePath('meacowork.sqlite-shm')).toBe(true)
     expect(options.excludeRelativePath('restore-journal.json')).toBe(true)
     expect(options.excludeRelativePath('Agents')).toBe(true)
     expect(options.excludeRelativePath('Files/document.pdf')).toBe(true)
@@ -1075,7 +1075,7 @@ describe('BackupManager direct v2 data compatibility', () => {
         state: 'staged',
         db: {
           promote: 'restore-staging/operation-id/work.sqlite',
-          aside: 'restore-staging/operation-id/aside/cherrystudio.sqlite',
+          aside: 'restore-staging/operation-id/aside/meacowork.sqlite',
           fingerprint: 'same-fingerprint',
           chain: [{ folderMillis: 1, hash: 'migration-hash' }]
         },
@@ -1331,7 +1331,9 @@ describe('BackupManager direct v2 data compatibility', () => {
         maxBackups: 1
       }
 
-      await expect(backupManager.deleteWebdavFile(null, fileName, webdavConfig)).rejects.toThrow(/remote backup file name/i)
+      await expect(backupManager.deleteWebdavFile(null, fileName, webdavConfig)).rejects.toThrow(
+        /remote backup file name/i
+      )
       await expect(backupManager.deleteS3File(null, fileName, s3Config)).rejects.toThrow(/remote backup file name/i)
       await expect(backupManager.restoreFromWebdav({} as Electron.IpcMainInvokeEvent, webdavConfig)).rejects.toThrow(
         /remote backup file name/i
@@ -1563,7 +1565,9 @@ describe('BackupManager direct v2 data compatibility', () => {
     expect(mockSanitizeSafeImportDatabase).toHaveBeenCalledWith(
       '/mock/userData/restore-staging/operation-id/work.sqlite'
     )
-    expect(mockWriteRestoreJournal).toHaveBeenCalledWith(expect.objectContaining({ mode: 'safe-import', state: 'staged' }))
+    expect(mockWriteRestoreJournal).toHaveBeenCalledWith(
+      expect.objectContaining({ mode: 'safe-import', state: 'staged' })
+    )
     expect((backupManager as any).stageArchiveDirectory).not.toHaveBeenCalledWith(
       '/extract/IndexedDB',
       expect.anything()
@@ -1594,6 +1598,21 @@ describe('BackupManager direct v2 data compatibility', () => {
     expect(mockWriteRestoreJournal).not.toHaveBeenCalled()
   })
 
+  it('restores a version 7 Data archive from its legacy SQLite member name', async () => {
+    arrangeDirectRestore({ ...completeDataMetadata, version: 7 })
+    vi.mocked(fs.lstat).mockImplementation(async (entryPath) => {
+      return createStats(String(entryPath) === '/extract/Data' ? 'directory' : 'file') as never
+    })
+    vi.spyOn(backupManager as any, 'createDataJournalResources').mockResolvedValue([])
+
+    await (backupManager as any).restoreDirect('/extract')
+
+    expect(fs.copy).toHaveBeenCalledWith(
+      '/mock/userData/restore-staging/operation-id/resources/Data/cherrystudio.sqlite',
+      '/mock/userData/restore-staging/operation-id/work.sqlite'
+    )
+  })
+
   it('restores complete-Data version 8 archives without reading standalone SQLite or .claude resources', async () => {
     arrangeDirectRestore(completeDataMetadata)
     vi.mocked(fs.lstat).mockImplementation(async (entryPath) => {
@@ -1604,7 +1623,7 @@ describe('BackupManager direct v2 data compatibility', () => {
     await (backupManager as any).restoreDirect('/extract')
 
     expect(fs.copy).toHaveBeenCalledWith(
-      '/mock/userData/restore-staging/operation-id/resources/Data/cherrystudio.sqlite',
+      '/mock/userData/restore-staging/operation-id/resources/Data/meacowork.sqlite',
       '/mock/userData/restore-staging/operation-id/work.sqlite'
     )
     expect(fs.copy).not.toHaveBeenCalledWith(
@@ -1669,7 +1688,7 @@ describe('BackupManager direct v2 data compatibility', () => {
         return ['Files', 'Agents'] as never
       }
       if (directory === '/mock/userData/Data') {
-        return ['Files', 'Agents', 'KnowledgeBase', 'cherrystudio.sqlite', 'restore-journal.json'] as never
+        return ['Files', 'Agents', 'KnowledgeBase', 'meacowork.sqlite', 'restore-journal.json'] as never
       }
       return [] as never
     })
@@ -1693,7 +1712,7 @@ describe('BackupManager direct v2 data compatibility', () => {
       .map((resource: { livePath: string }) => resource.livePath)
       .filter((livePath: string) => livePath.startsWith('Data/'))
     expect(dataResourcePaths).toEqual(['Data/Agents', 'Data/Files', 'Data/KnowledgeBase'])
-    expect(dataResourcePaths).not.toContain('Data/cherrystudio.sqlite')
+    expect(dataResourcePaths).not.toContain('Data/meacowork.sqlite')
     expect(dataResourcePaths).not.toContain('Data/restore-journal.json')
     expect(dataResourcePaths).not.toContain('Data/Agents/.claude')
     expect((backupManager as any).copyClaudeState).toHaveBeenCalledWith(

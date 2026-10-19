@@ -218,13 +218,15 @@ describe('Cherry Assistant guide', () => {
     expect(supportingPrompts).not.toContain('q={query}')
   })
 
-  it('generates a dedicated Cherry Support identity with only the four support skills', () => {
+  // it('generates a dedicated Cherry Support identity with only the four support skills', () => {
+  it('generates a dedicated MEA Cowork Support identity with only the four support skills', () => {
     const template = JSON.parse(fs.readFileSync(SUPPORT_AGENT_TEMPLATE_PATH, 'utf-8'))
     const generated = JSON.parse(fs.readFileSync(SUPPORT_AGENT_PATH, 'utf-8'))
 
     expect(generated).toEqual(
       expect.objectContaining({
-        name: { 'en-US': 'Cherry Support', 'zh-CN': '产品反馈' },
+        // name: { 'en-US': 'Cherry Support', 'zh-CN': '产品反馈' },
+        name: { 'en-US': 'MEA Cowork Support', 'zh-CN': 'MEA Cowork 产品支持' },
         configuration: expect.objectContaining({
           avatar: '🧰',
           permission_mode: 'acceptEdits',
@@ -236,7 +238,10 @@ describe('Cherry Assistant guide', () => {
     )
     expect(generated.instructions['en-US']).toContain('Your scope has four parts')
     expect(generated.instructions['en-US']).toContain('Never introduce yourself as a general-purpose AI')
-    expect(generated.instructions['en-US']).toContain('direct the user to Cherry Assistant')
+    // expect(generated.instructions['en-US']).toContain('direct the user to Cherry Assistant')
+    expect(generated.instructions['en-US']).toContain('direct the user to MEA Cowork')
+    expect(generated.instructions['en-US']).not.toContain('Cherry Support')
+    expect(generated.instructions['en-US']).not.toContain('Cherry Assistant')
     expect(generated.instructions['zh-CN']).toContain('答疑解惑')
     expect(generated.instructions['zh-CN']).toContain('使用帮助')
     expect(generated.instructions['zh-CN']).toContain('问题排查')

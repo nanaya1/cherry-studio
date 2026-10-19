@@ -16,7 +16,7 @@ interface Props {
  * Renders either a CompoundIcon avatar or a plain image avatar,
  * depending on whether the logo is a CompoundIcon or a string URL.
  */
-const LogoAvatar: FC<Props> = ({ logo, size = 32, shape = 'rounded', className, alt }) => {
+const LogoAvatar: FC<Props> = ({ logo, size = 32, shape = '', className, alt }) => {
   if (!logo) return null
 
   const borderClass = 'border border-border'

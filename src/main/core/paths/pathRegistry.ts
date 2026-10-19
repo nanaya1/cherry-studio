@@ -57,7 +57,8 @@ export function buildPathRegistry() {
   const appSession = app.getPath('sessionData')
   const appLogs = app.getPath('logs')
   const sysTemp = app.getPath('temp')
-  const appTemp = path.join(sysTemp, 'CherryStudio')
+  // const appTemp = path.join(sysTemp, 'CherryStudio')
+  const appTemp = path.join(sysTemp, 'MEACoworkEnterprise')
   // electron-builder `extraResources` output — distinct from appRootResources
   const appExtraResources = process.resourcesPath
   // `resources/` inside asar (bundled assets) — distinct from appExtraResources
@@ -96,7 +97,8 @@ export function buildPathRegistry() {
     'app.temp': appTemp, // Cherry-specific temp under sys.temp
     'app.userdata': appUserData, // Electron per-app data dir (Cherry-owned)
     'app.userdata.data': appUserDataData,
-    'app.database.file': path.join(appUserDataData, 'cherrystudio.sqlite'),
+    // 'app.database.file': path.join(appUserDataData, 'cherrystudio.sqlite'),
+    'app.database.file': path.join(appUserDataData, 'meacowork.sqlite'),
     // Dev: relative to __dirname; packaged: shipped via extraResources
     'app.database.migrations': app.isPackaged
       ? path.join(appExtraResources, 'migrations/sqlite-drizzle')
@@ -182,7 +184,8 @@ export function buildPathRegistry() {
     'feature.enterprise.credentials_file': path.join(appUserDataEnterprise, 'org-session.json'),
 
     // Cherry Cloud account credentials (device identity is retained when the session is cleared)
-    'feature.cherry_account.credentials_file': path.join(appUserData, 'Credentials', 'cherry-account.json'),
+    // 'feature.cherry_account.credentials_file': path.join(appUserData, 'Credentials', 'cherry-account.json'),
+    'feature.cherry_account.credentials_file': path.join(appUserData, 'Credentials', 'meacowork-account.json'),
 
     // Trace
     'feature.trace': path.join(appUserDataRuntime, 'trace'),

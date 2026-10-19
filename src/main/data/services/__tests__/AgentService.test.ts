@@ -497,6 +497,22 @@ describe('AgentService', () => {
       expect(activeBuiltinRows()).toHaveLength(1)
     })
 
+    it('renames only the shipped legacy Support display name when ensuring the reserved Agent', () => {
+      const legacyDefaults: Parameters<typeof agentService.ensureBuiltinAgent>[0] = {
+        ...defaults,
+        builtinRole: 'support',
+        name: 'Cherry Support'
+      }
+      const first = agentService.ensureBuiltinAgent(legacyDefaults)
+
+      const renamed = agentService.ensureBuiltinAgent({ ...legacyDefaults, name: 'MEA Cowork Support' })
+      expect(renamed).toMatchObject({ id: first.id, name: 'MEA Cowork Support' })
+
+      dbh.db.update(agentTable).set({ name: 'My Support' }).where(eq(agentTable.id, first.id)).run()
+      const customized = agentService.ensureBuiltinAgent({ ...legacyDefaults, name: 'MEA Cowork Support' })
+      expect(customized.name).toBe('My Support')
+    })
+
     it('re-fires onAgentCreated when a soft-deleted Support agent is restored in place', () => {
       // The claim path restores the reserved support row WITHOUT creating a
       // new one (created: false) — post-commit provisioning subscribers (the
