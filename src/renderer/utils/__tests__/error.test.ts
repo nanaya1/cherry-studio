@@ -23,6 +23,21 @@ import { classifyError } from '../errorClassifier'
 vi.mock('i18next', () => ({ t: (key: string) => key }))
 
 describe('error', () => {
+  it('includes safe IPC validation paths and messages in prefixed errors', () => {
+    const error = new IpcError('VALIDATION_FAILED', 'Invalid input for channel.create', {
+      issues: [
+        { path: ['config', 'client_id'], message: 'Invalid input: expected string, received undefined' },
+        { path: [], message: 'Unrecognized key: "unexpected"' }
+      ]
+    })
+
+    expect(formatErrorMessageWithPrefix(error, 'Create failed')).toBe(
+      'Create failed: Invalid input for channel.create\n' +
+        'config.client_id: Invalid input: expected string, received undefined\n' +
+        'Unrecognized key: "unexpected"'
+    )
+  })
+
   it.each(['responseBody', 'data'] as const)('preserves quota diagnosis after sanitizing %s', (field) => {
     for (const signal of [{ type: 'insufficient_quota' }, { code: 'billing_hard_limit_reached' }]) {
       const payload = { error: signal, prompt: 'private prompt' }

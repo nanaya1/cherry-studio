@@ -4,6 +4,7 @@ import { type FC, useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import {
+  Button,
   Dialog,
   DialogContent,
   DialogHeader,
@@ -513,6 +514,87 @@ export const WeChatForm: FC<ChannelFormProps & { onRemove?: () => void }> = ({ c
   )
 }
 
+export const DingTalkForm: FC<ChannelFormProps> = ({ channel, onConfigChange }) => {
+  const { t } = useTranslation()
+  const cfg = channel.config
+  const requireMention = (cfg.require_mention as boolean) ?? true
+  const [testing, setTesting] = useState(false)
+  const [testResult, setTestResult] = useState<'success' | 'failure' | null>(null)
+
+  const testConnection = async () => {
+    setTesting(true)
+    setTestResult(null)
+    try {
+      const result = await ipcApi.request('channel.dingtalk.test_connection', {
+        client_id: (cfg.client_id as string) ?? '',
+        client_secret: (cfg.client_secret as string) ?? ''
+      })
+      setTestResult(result.connected ? 'success' : 'failure')
+    } catch {
+      setTestResult('failure')
+    } finally {
+      setTesting(false)
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-xs text-muted-foreground">{t('agent.channels.dingtalk.authNotice')}</p>
+      <ChannelFieldsForm
+        channel={channel}
+        onConfigChange={onConfigChange}
+        fields={[
+          {
+            key: 'client_id',
+            label: t('agent.channels.dingtalk.clientId'),
+            placeholder: t('agent.channels.dingtalk.clientIdPlaceholder')
+          },
+          {
+            key: 'client_secret',
+            label: t('agent.channels.dingtalk.clientSecret'),
+            placeholder: t('agent.channels.dingtalk.clientSecretPlaceholder'),
+            secret: true
+          },
+          {
+            key: 'robot_code',
+            label: t('agent.channels.dingtalk.robotCode'),
+            placeholder: t('agent.channels.dingtalk.robotCodePlaceholder')
+          }
+        ]}
+        chatIds={{
+          label: t('agent.channels.dingtalk.chatIds'),
+          placeholder: t('agent.channels.dingtalk.chatIdsPlaceholder'),
+          hint: t('agent.channels.dingtalk.chatIdsHint'),
+          fullWidth: true
+        }}
+        extraContent={
+          <div className="col-span-2 flex items-center gap-3 pt-1">
+            <Switch
+              checked={requireMention}
+              onCheckedChange={(checked) => onConfigChange({ config: { ...cfg, require_mention: checked } })}
+            />
+            <div className="flex flex-col gap-0.5">
+              <span className="text-sm">{t('agent.channels.dingtalk.mentionOnly')}</span>
+              <span className="text-xs text-muted-foreground">{t('agent.channels.dingtalk.mentionOnlyHint')}</span>
+            </div>
+          </div>
+        }
+      />
+      <div className="flex items-center gap-2">
+        <Button size="sm" variant="outline" disabled={testing} onClick={() => void testConnection()}>
+          {testing ? t('agent.channels.dingtalk.testing') : t('agent.channels.dingtalk.testConnection')}
+        </Button>
+        {testResult === 'success' && (
+          <span className="text-xs text-success">{t('agent.channels.dingtalk.testSuccess')}</span>
+        )}
+        {testResult === 'failure' && (
+          <span className="text-xs text-error">{t('agent.channels.dingtalk.testFailure')}</span>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export const SlackForm: FC<ChannelFormProps> = ({ channel, onConfigChange }) => {
   const { t } = useTranslation()
   return (
@@ -559,6 +641,8 @@ export const getFormForType = (type: string) => {
       return DiscordForm
     case 'slack':
       return SlackForm
+    case 'dingtalk':
+      return DingTalkForm
     case 'wechat':
       return WeChatForm
     default:
