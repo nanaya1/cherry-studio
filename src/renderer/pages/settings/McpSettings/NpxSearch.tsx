@@ -1,10 +1,9 @@
-import { Check, ExternalLink, Plus } from 'lucide-react'
+import { Check, ExternalLink, Package, Plus } from 'lucide-react'
 import { npxFinder } from 'npx-scope-finder'
 import { type FC, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Badge, Button, Center, Flex, Input, RowFlex, Spinner } from '@cherrystudio/ui'
-import logo from '@renderer/assets/images/cherry-text-logo.svg'
 import { useMcpServers } from '@renderer/hooks/useMcpServer'
 import { toast } from '@renderer/services/toast'
 import { getMcpConfigSampleFromReadme } from '@renderer/utils/mcp'
@@ -102,7 +101,7 @@ const NpxSearch: FC = () => {
       <Center>
         <div className="mb-6.25 flex w-full max-w-125 flex-col px-4">
           <Center className="mb-3.75">
-            <img src={logo} alt="npm" width={120} />
+            <Package className="size-10 text-muted-foreground" />
           </Center>
           <div className="w-full">
             <Input
