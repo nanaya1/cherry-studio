@@ -24,6 +24,7 @@ import {
   type PreparedMigrationExportPaths,
   type StartMigrationPayload
 } from '@shared/data/migration/v2/types'
+import { APP_FILE_NAME_PREFIX } from '@shared/utils/constants'
 
 import { migrationEngine } from '../core/MigrationEngine'
 import { isValidLocalDate } from '../utils/localDate'
@@ -241,7 +242,8 @@ export function registerMigrationIpcHandlers(paths: MigrationPaths): void {
       const savePromise: Promise<MigrationDiagnosticSaveResult> = (async () => {
         const { canceled, filePath } = await dialog.showSaveDialog({
           title: dialogTitle,
-          defaultPath: 'cherry-studio-migration-diagnostics.zip',
+          // defaultPath: 'cherry-studio-migration-diagnostics.zip',
+          defaultPath: `${APP_FILE_NAME_PREFIX}-migration-diagnostics.zip`,
           filters: [{ name: 'ZIP', extensions: ['zip'] }],
           properties: ['createDirectory', 'showOverwriteConfirmation']
         })

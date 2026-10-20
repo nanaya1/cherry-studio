@@ -1077,6 +1077,19 @@ describe('ScreenshotOverlayService', () => {
       expect(mockMainLoggerService.error).toHaveBeenCalled()
     })
 
+    it('uses an MEA Cowork filename in the save dialog', async () => {
+      singleDisplaySetup()
+      await service.startCapture()
+      electron.dialog.showSaveDialog.mockResolvedValue({ canceled: true, filePath: undefined })
+
+      await service.save({ pngBytes: PNG_BYTES })
+
+      const saveOptions = electron.dialog.showSaveDialog.mock.calls[0].at(-1)
+      expect(saveOptions).toMatchObject({
+        defaultPath: expect.stringMatching(/^meacowork_screenshot_\d{8}_\d{6}\.png$/)
+      })
+    })
+
     it('writes no file when the result bytes cannot be decoded', async () => {
       singleDisplaySetup()
       await service.startCapture()

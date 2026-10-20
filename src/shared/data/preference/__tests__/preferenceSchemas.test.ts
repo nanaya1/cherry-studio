@@ -83,6 +83,11 @@ describe('DefaultPreferences', () => {
     expect(DefaultPreferences.default['agent.input.toolbar.pinned_tools']).toEqual(agentPinnedToolsDefault)
   })
 
+  it('uses MEA Cowork remote backup directories for new users', () => {
+    expect(DefaultPreferences.default['data.backup.nutstore.path']).toBe('/meacowork')
+    expect(DefaultPreferences.default['data.backup.webdav.path']).toBe('/meacowork')
+  })
+
   it('defaults transparent windows on for new users', () => {
     const windowStyleDefault: PreferenceSchemas['default']['ui.window_style'] = 'transparent'
 

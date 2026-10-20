@@ -263,7 +263,8 @@ describe('MigrationIpcHandler', () => {
       expect(application.getPath).not.toHaveBeenCalled()
       expect(dialog.showSaveDialog).toHaveBeenCalledWith({
         title: 'Save diagnostics',
-        defaultPath: 'cherry-studio-migration-diagnostics.zip',
+        // defaultPath: 'cherry-studio-migration-diagnostics.zip',
+        defaultPath: 'meacowork-migration-diagnostics.zip',
         filters: [{ name: 'ZIP', extensions: ['zip'] }],
         properties: ['createDirectory', 'showOverwriteConfirmation']
       })

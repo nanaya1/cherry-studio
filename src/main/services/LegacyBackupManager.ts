@@ -54,6 +54,7 @@ import {
   type WebDavConfig
 } from '@shared/types/backup'
 import { AbsoluteFilePathSchema } from '@shared/types/file'
+import { BACKUP_FILE_NAME_PREFIX } from '@shared/utils/constants'
 
 import S3Storage from './S3Storage'
 import WebDav from './WebDav'
@@ -255,7 +256,8 @@ class BackupManager {
   }
 
   private createBackupFileName(): string {
-    return `cherry-studio.${dayjs().format('YYYYMMDDHHmmssSSS')}.${getHostname() || 'unknown'}.${getDeviceType() || 'unknown'}.zip`
+    // return `cherry-studio.${dayjs().format('YYYYMMDDHHmmssSSS')}.${getHostname() || 'unknown'}.${getDeviceType() || 'unknown'}.zip`
+    return `${BACKUP_FILE_NAME_PREFIX}.${dayjs().format('YYYYMMDDHHmmssSSS')}.${getHostname() || 'unknown'}.${getDeviceType() || 'unknown'}.zip`
   }
 
   private createRemoteCleanupSignal(signal?: AbortSignal): AbortSignal {
@@ -276,7 +278,8 @@ class BackupManager {
       signal?.throwIfAborted()
       const suffix = `.${getHostname() || 'unknown'}.${getDeviceType() || 'unknown'}.zip`
       const files = (await listFiles(signal)).filter(
-        (file) => file.fileName.startsWith('cherry-studio.') && file.fileName.endsWith(suffix)
+        // (file) => file.fileName.startsWith('cherry-studio.') && file.fileName.endsWith(suffix)
+        (file) => file.fileName.startsWith(`${BACKUP_FILE_NAME_PREFIX}.`) && file.fileName.endsWith(suffix)
       )
       for (const file of files.slice(maxBackups)) {
         await this.deleteWithRetry(file.fileName, deleteFile, signal, deleteAttempts)
@@ -1456,7 +1459,8 @@ class BackupManager {
    */
   async restoreFromWebdav(_: Electron.IpcMainInvokeEvent, webdavConfig: WebDavConfig) {
     return this.runBackupWorkflow(async () => {
-      const filename = webdavConfig.fileName || 'cherry-studio.backup.zip'
+      // const filename = webdavConfig.fileName || 'cherry-studio.backup.zip'
+      const filename = webdavConfig.fileName || `${BACKUP_FILE_NAME_PREFIX}.backup.zip`
       const webdavClient = this.getWebDavInstance(webdavConfig)
       const downloadDir = await this.createOperationDir('webdav-download')
       const backupedFilePath = path.join(downloadDir, path.basename(filename))
@@ -1483,7 +1487,8 @@ class BackupManager {
    */
   async restoreFromS3(_: Electron.IpcMainInvokeEvent, s3Config: S3Config) {
     return this.runBackupWorkflow(async () => {
-      const filename = s3Config.fileName || 'cherry-studio.backup.zip'
+      // const filename = s3Config.fileName || 'cherry-studio.backup.zip'
+      const filename = s3Config.fileName || `${BACKUP_FILE_NAME_PREFIX}.backup.zip`
 
       logger.debug(`Starting restore from S3: ${filename}`)
 
@@ -2111,7 +2116,8 @@ class BackupManager {
       .replace(/[-:T.Z]/g, '')
       .slice(0, 14)
 
-    const fileName = `cherry-studio.${timestamp}.zip`
+    // const fileName = `cherry-studio.${timestamp}.zip`
+    const fileName = `${BACKUP_FILE_NAME_PREFIX}.${timestamp}.zip`
     const tempPath = application.getPath('feature.lan_transfer.temp')
     const targetPath = destinationPath || tempPath
 

@@ -12,7 +12,7 @@ import {
   Globe,
   HardDrive,
   Info,
-  MonitorSmartphone,
+  // MonitorSmartphone, // 设备连接入口已下线（见下方注释项）
   Package,
   Palette,
   PictureInPicture2,
@@ -172,12 +172,12 @@ export const settingsMenu: readonly SettingsMenuEntry[] = [
     icon: createElement(Radio),
     groupKey: 'settings.menuGroups.automation'
   },
-  {
-    route: '/settings/device-connections',
-    titleKey: 'deviceConnections.title',
-    icon: createElement(MonitorSmartphone),
-    groupKey: 'settings.menuGroups.automation'
-  },
+  // {
+  //   route: '/settings/device-connections',
+  //   titleKey: 'deviceConnections.title',
+  //   icon: createElement(MonitorSmartphone),
+  //   groupKey: 'settings.menuGroups.automation'
+  // },
   {
     route: '/settings/scheduled-tasks',
     titleKey: 'settings.scheduledTasks.title',

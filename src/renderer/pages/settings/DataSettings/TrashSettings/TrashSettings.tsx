@@ -30,12 +30,12 @@ const logger = loggerService.withContext('TrashSettings')
 type TrashCategory = 'topics' | 'agents' | 'sessions' | 'assistants' | 'paintings' | 'files'
 
 const CATEGORIES: { id: TrashCategory; labelKey: string; Icon: LucideIcon }[] = [
-  { id: 'assistants', labelKey: 'settings.data.trash.domain.assistants', Icon: SIDEBAR_ICON_COMPONENTS.assistants },
+  // { id: 'assistants', labelKey: 'settings.data.trash.domain.assistants', Icon: SIDEBAR_ICON_COMPONENTS.assistants },
   { id: 'topics', labelKey: 'settings.data.trash.domain.topics', Icon: MessageSquare },
-  { id: 'agents', labelKey: 'settings.data.trash.domain.agents', Icon: SIDEBAR_ICON_COMPONENTS.agents },
+  // { id: 'agents', labelKey: 'settings.data.trash.domain.agents', Icon: SIDEBAR_ICON_COMPONENTS.agents },
   { id: 'sessions', labelKey: 'settings.data.trash.domain.sessions', Icon: MessagesSquare },
   { id: 'paintings', labelKey: 'settings.data.trash.domain.paintings', Icon: SIDEBAR_ICON_COMPONENTS.paintings },
-  { id: 'files', labelKey: 'settings.data.trash.domain.files', Icon: SIDEBAR_ICON_COMPONENTS.files }
+  // { id: 'files', labelKey: 'settings.data.trash.domain.files', Icon: SIDEBAR_ICON_COMPONENTS.files }
 ]
 
 const SECTION_BY_CATEGORY: Record<TrashCategory, FC<TrashDomainSectionProps>> = {
