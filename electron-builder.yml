@@ -21,6 +21,9 @@ protocols:
       - meacowork
 files:
   - "**/*"
+  - "!outputs{,/**}"
+  - "!output{,/**}"
+  - "!out.workbuddy-backup-*{,/**}"
   - "!**/{.vscode,.yarn,.yarn-lock,.github,.cursorrules,.prettierrc}"
   - "!electron.vite.config.{js,ts,mjs,cjs}}"
   - "!electron-builder.cn.config.cjs"
