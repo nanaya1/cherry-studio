@@ -102,7 +102,7 @@ export const enterpriseKnowledgeRequestSchemas = {
   }),
   'enterprise.knowledge.catalog': defineRoute({ input: z.void(), output: OrgKnowledgeCatalogSchema }),
   'enterprise.knowledge.items': defineRoute({
-    input: z.strictObject({ baseId: orgId, cursor }),
+    input: z.strictObject({ baseId: orgId, cursor, parentId: orgId.nullable().optional() }),
     output: OrgKnowledgeItemPageSchema
   }),
   'enterprise.knowledge.delete_file': defineRoute({

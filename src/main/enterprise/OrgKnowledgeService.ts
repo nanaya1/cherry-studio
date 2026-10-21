@@ -472,10 +472,8 @@ export class OrgKnowledgeService {
     const fileIds = new Map<string, string>()
     const originals = new Map<string, boolean | undefined>()
     for (const item of raw.items) {
-      // if (item.type !== 'file' || item.base_id !== rawBase) continue
       if (!['file', 'directory'].includes(item.type) || item.base_id !== rawBase) continue
       try {
-        // MEA:enterprise-knowledge-page 不透明文档 ID 必须经文件接口确认，不能直接视作文件 ID。
         const fileId =
           typeof item.data.file_id === 'string' && item.data.file_id
             ? item.data.file_id
@@ -486,12 +484,10 @@ export class OrgKnowledgeService {
                 : null
         if (!fileId) continue
         const file = await this.checked(() => this.client.getFile(fileId), lease)
-        // if (file.id !== fileId || file.space_id !== rawBase || file.is_dir !== false) continue
         if (file.id !== fileId || file.space_id !== rawBase || file.is_dir !== (item.type === 'directory')) continue
         fileIds.set(item.id, fileId)
         originals.set(item.id, file.has_original_file)
       } catch (error) {
-        // MEA:enterprise-knowledge-page 附加元信息失败不撤销列表授权；身份与未知错误仍阻断。
         const optionalFailure =
           error instanceof OrgKnowledgeProtocolError ||
           (error instanceof OrgApiHttpError && [403, 404, 422, 500, 502, 503, 504].includes(error.status))
@@ -517,6 +513,59 @@ export class OrgKnowledgeService {
       })),
       total: raw.total,
       nextCursor: raw.next_cursor ?? null
+    }
+  }
+
+  async listDirectoryItems(
+    baseId: string,
+    cursor?: string | null,
+    parentId?: string | null
+  ): Promise<OrgKnowledgeItemPage> {
+    const rawBase = this.decodeId(baseId, 'baseId')
+    const lease = this.acquireLease()
+    const rawParent = parentId ? this.decodeId(parentId, 'parentId') : null
+    const pageNumber = cursor ? Number(cursor) : 1
+    if (!Number.isInteger(pageNumber) || pageNumber < 1) throw new OrgKnowledgeError(E.ORGKB_BAD_INPUT, '非法目录分页')
+    const page = await this.checked(() => this.client.listSpaceFiles(rawBase, rawParent, pageNumber), lease)
+    if (page.folders.some((file) => file.space_id !== rawBase || file.parent_id !== rawParent))
+      throw new OrgKnowledgeError(E.ORGKB_PROTOCOL, '目录文件归属不匹配')
+    if (page.files.some((file) => file.space_id !== rawBase || file.parent_id !== rawParent))
+      throw new OrgKnowledgeError(E.ORGKB_PROTOCOL, '目录文件归属不匹配')
+    const byFileId = new Map<string, Awaited<ReturnType<OrgKnowledgeClient['listItems']>>['items'][number]>()
+    let itemCursor: string | null | undefined
+    const seenItemCursors = new Set<string>()
+    do {
+      const itemPage = await this.checked(() => this.client.listItems(rawBase, itemCursor), lease)
+      for (const item of itemPage.items) {
+        const fileId = typeof item.data.file_id === 'string' && item.data.file_id ? item.data.file_id : item.document_id
+        if (fileId) byFileId.set(fileId, item)
+      }
+      itemCursor = itemPage.next_cursor
+      if (itemCursor) {
+        if (seenItemCursors.has(itemCursor)) throw new OrgKnowledgeError(E.ORGKB_PROTOCOL, '知识条目分页未确认')
+        seenItemCursors.add(itemCursor)
+      }
+    } while (itemCursor)
+    const entries = [...page.folders, ...page.files]
+    return {
+      items: entries.map((file) => {
+        const item = byFileId.get(file.id)
+        return {
+          id: encodeOrgId(item?.id ?? file.id),
+          baseId: encodeOrgId(rawBase),
+          type: file.is_dir ? 'directory' : 'file',
+          title: file.name,
+          status: item?.status ?? 'completed',
+          parentId: file.parent_id ? encodeOrgId(file.parent_id) : null,
+          documentId: item?.document_id ? encodeOrgId(item.document_id) : file.is_dir ? null : encodeOrgId(file.id),
+          hasOriginalFile: file.has_original_file,
+          fileId: encodeOrgId(file.id),
+          createdAt: item?.created_at ?? file.updated_at,
+          updatedAt: file.updated_at
+        }
+      }),
+      total: page.total,
+      nextCursor: entries.length < page.total ? String(pageNumber + 1) : null
     }
   }
 
@@ -2145,6 +2194,9 @@ export class OrgKnowledgeService {
     }
     const existing = orgStateStore.getShareAssociation(key)
     const residual = orgStateStore.getFirstShareUpload(key)
+    // 首次分享的服务端文件接口要求必须包含原文件；仅分块模式只适用于已确认的云端库追加。
+    const canSkipOriginal = existing?.completion === 'completed' || residual?.purpose === 'append'
+    const effectiveUploadOriginal = canSkipOriginal ? uploadOriginal : true
     if (residual && !existing && !residual.cleanup) {
       residual.cleanup = { phase: 'pending', error: '首次分享任务已中断' }
       orgStateStore.setFirstShareUpload(key, residual)
@@ -2278,7 +2330,10 @@ export class OrgKnowledgeService {
               const modes = new Set(
                 savedState?.files.map((file) => file.uploadOriginal).filter((mode) => typeof mode === 'boolean')
               )
-              let mode = savedState?.uploadOriginal ?? (modes.size === 1 ? [...modes][0] : undefined)
+              const canReuseSavedMode = existing?.completion === 'completed' || savedState?.purpose === 'append'
+              let mode = canReuseSavedMode
+                ? (savedState?.uploadOriginal ?? (modes.size === 1 ? [...modes][0] : undefined))
+                : effectiveUploadOriginal
               if (savedState && typeof mode !== 'boolean') {
                 if (!savedState.shareId || savedState.creation !== 'created')
                   throw new Error('首传模式及空间未知，禁止重建')
@@ -2291,7 +2346,7 @@ export class OrgKnowledgeService {
                 savedState.uploadOriginal = mode
                 orgStateStore.setFirstShareUpload(key, savedState)
               }
-              const plan = await this.buildFirstSharePlan(ks, localBaseId, active, mode ?? uploadOriginal)
+              const plan = await this.buildFirstSharePlan(ks, localBaseId, active, mode ?? effectiveUploadOriginal)
               /* 旧逐文件默认true恢复会导致首传模式漂移。
               if (verifyOnly) {
                 const saved = orgStateStore.getFirstShareUpload(key)
@@ -2311,7 +2366,7 @@ export class OrgKnowledgeService {
             (progress) => this.firstShareProgress.set(key, progress),
             active,
             verifyOnly,
-            uploadOriginal
+            effectiveUploadOriginal
           )
         )
       )

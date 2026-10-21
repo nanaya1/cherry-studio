@@ -63,8 +63,8 @@ export const enterpriseKnowledgeHandlers: IpcHandlersFor<typeof enterpriseKnowle
     guard(() => plugin().knowledge.uploadAddedFiles(baseId, localBaseId, uploadOriginal)),
   'enterprise.knowledge.sync_status': (params) => guard(() => plugin().knowledge.syncStatus(params)),
   'enterprise.knowledge.catalog': () => guard(() => plugin().knowledge.catalog()),
-  'enterprise.knowledge.items': ({ baseId, cursor }) =>
-    guard(() => plugin().knowledge.listItems(baseId, cursor ?? null)),
+  'enterprise.knowledge.items': ({ baseId, cursor, parentId }) =>
+    guard(() => plugin().knowledge.listDirectoryItems(baseId, cursor ?? null, parentId ?? null)),
   'enterprise.knowledge.delete_file': (params) => guard(() => plugin().knowledge.deleteFile(params)),
   'enterprise.knowledge.chunks': ({ baseId, itemId, cursor }) =>
     guard(() => plugin().knowledge.listChunks(baseId, itemId, cursor ?? null)),
