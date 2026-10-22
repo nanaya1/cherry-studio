@@ -11,8 +11,10 @@ import {
   confirmProfileClaim,
   createProfileBootstrapWindow,
   createProfilePaths,
+  getLastBusinessIdentityDigest,
   getProfileLaunchContext,
   setProfileLaunchContext,
+  shouldActivateInProcess,
   ProfileActivePointer,
   ProfileClaimService,
   ProfileInstallation,
@@ -33,6 +35,10 @@ import { OrgSkillCatalog } from './OrgSkillCatalog'
 import { ProfileOnlineMonitor } from './ProfileOnlineMonitor'
 
 const logger = loggerService.withContext('EnterprisePlugin')
+
+// Keep this lazy to avoid loading serviceRegistry through the profiles barrel during bootstrap.
+// eslint-disable-next-line barrel/closed
+const loadBusinessStartup = () => import('../core/profiles/businessStartup')
 
 @Injectable('EnterprisePlugin')
 @ServicePhase(Phase.WhenReady)
@@ -91,6 +97,17 @@ export class EnterprisePlugin extends BaseService {
           activePointer,
           fence: profileSwitchFence,
           application,
+          // Reuse the current Electron process when the authenticated identity is
+          // already the process identity; different identities keep the relaunch fallback.
+          activateAuthenticated: async (record) => {
+            if (!shouldActivateInProcess(record, getLastBusinessIdentityDigest())) return false
+            const { buildBusinessLaunchContext, startBusinessRuntime } = await loadBusinessStartup()
+            await startBusinessRuntime(buildBusinessLaunchContext(context.dataRoot, record), {
+              rebuildRuntime: true,
+              onVerifyFailure: 'throw'
+            })
+            return true
+          },
           openSignedOut: async (record) => {
             const signedOutContext = {
               mode: 'signed-out' as const,
