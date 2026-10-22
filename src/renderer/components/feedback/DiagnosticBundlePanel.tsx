@@ -19,6 +19,7 @@ import {
   useDiagnosticSourceSelection
 } from './DiagnosticSourceSelector'
 
+// The legacy support email remains only for the disabled rollback path.
 const SUPPORT_EMAIL = 'support@cherry-ai.com'
 const MEA_ENABLE_CHERRY_SUPPORT_EMAIL = false
 const logger = loggerService.withContext('DiagnosticBundlePanel')

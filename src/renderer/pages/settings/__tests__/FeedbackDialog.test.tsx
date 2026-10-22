@@ -41,7 +41,7 @@ vi.mock('@renderer/components/doctor', () => ({
   DoctorPopup: { show: (...args: unknown[]) => mocks.showDoctor(...args) }
 }))
 
-import { FEEDBACK_GITHUB_URL, FeedbackDialog, getFeedbackAgentRoute } from '../FeedbackDialog'
+import { FeedbackDialog, getFeedbackAgentRoute } from '../FeedbackDialog'
 
 function ControlledFeedbackDialog() {
   const [open, setOpen] = useState(true)
@@ -58,16 +58,15 @@ describe('FeedbackDialog', () => {
     vi.useRealTimers()
   })
 
-  it('shows diagnostics, Cherry Support, and GitHub in the requested order', () => {
+  it('shows diagnostics and Cherry Support while hiding the GitHub Issues entry', () => {
     render(<FeedbackDialog open onOpenChange={vi.fn()} />)
 
     const diagnostics = screen.getByRole('button', { name: /settings.about.feedback.diagnostics.title/ })
     const agent = screen.getByRole('button', { name: /settings.about.feedback.agent.title/ })
-    const github = screen.getByRole('button', { name: /settings.about.feedback.github.title/ })
     const recommended = within(diagnostics).getByText('settings.about.feedback.recommended')
 
     expect(diagnostics.compareDocumentPosition(agent)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
-    expect(agent.compareDocumentPosition(github)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
+    expect(screen.queryByRole('button', { name: /settings.about.feedback.github.title/ })).not.toBeInTheDocument()
     expect(recommended).toBeVisible()
   })
 
@@ -105,31 +104,5 @@ describe('FeedbackDialog', () => {
     expect(mocks.openRoute).not.toHaveBeenCalled()
   })
 
-  it('opens the GitHub issue chooser', async () => {
-    render(<FeedbackDialog open onOpenChange={vi.fn()} />)
-
-    fireEvent.click(screen.getByRole('button', { name: /settings.about.feedback.github.title/ }))
-
-    await waitFor(() =>
-      expect(mocks.ipcRequest).toHaveBeenCalledWith('system.shell.open_external_website', FEEDBACK_GITHUB_URL)
-    )
-  })
-
-  it('closes before reporting GitHub issue chooser failures', async () => {
-    mocks.ipcRequest.mockImplementation((route: string) => {
-      if (route === 'system.shell.open_external_website') {
-        expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-        return Promise.reject(new Error('open failed'))
-      }
-      return Promise.resolve({ sessionId: 'feedback-session' })
-    })
-    render(<ControlledFeedbackDialog />)
-
-    fireEvent.click(screen.getByRole('button', { name: /settings.about.feedback.github.title/ }))
-
-    await waitFor(() =>
-      expect(mocks.loggerError).toHaveBeenCalledWith('Failed to open GitHub issue chooser', expect.any(Error))
-    )
-    expect(mocks.toastError).toHaveBeenCalledWith('settings.about.feedback.github.error')
-  })
+  // GitHub Issues interaction tests remain here for restoration when the entry is re-enabled.
 })

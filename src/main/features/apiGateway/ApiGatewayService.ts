@@ -231,7 +231,7 @@ export class ApiGatewayService extends BaseService implements Activatable {
     await this.converge(false)
     // Re-read the intent before re-activating: another window may have persisted a stop while this
     // restart was queued behind it, and a re-bind must never resurrect a gateway the user disabled.
-    if (!this.getCurrentConfig().enabled) {
+    if (this.getCurrentConfig().enabled === false) {
       const error = new Error('API Gateway was disabled while restarting')
       logger.warn('Aborting API Gateway restart: the gateway was disabled meanwhile')
       throw error
@@ -246,15 +246,18 @@ export class ApiGatewayService extends BaseService implements Activatable {
   }
 
   /**
-   * Converge an already-enabled gateway toward running. Unlike {@link start} this never touches the
-   * persisted intent, so a caller that merely needs the gateway up (an agent route whose model must
-   * be bridged) can wait for readiness without being able to re-enable what a user disabled.
+   * Start the gateway on demand in automatic or explicitly enabled mode. Unlike {@link start}, this
+   * never persists an intent, so automatic mode stays non-resident across application launches.
    */
   async ensureRunning(): Promise<void> {
-    if (!this.getCurrentConfig().enabled) {
+    if (this.getCurrentConfig().enabled === false) {
       throw new Error('API Gateway is disabled')
     }
     await this.converge(true)
+    if (this.getCurrentConfig().enabled === false) {
+      await this.converge(false)
+      throw new Error('API Gateway was disabled while starting')
+    }
     if (!this.isActivated || !this.isRunning()) {
       const error = this.failureError('Failed to start API Gateway')
       logger.error('Failed to start API Gateway:', error)

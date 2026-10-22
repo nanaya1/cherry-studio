@@ -4,7 +4,7 @@
   "private": true,
   "description": "A powerful AI assistant for producer.",
   "homepage": "https://github.com/nanaya1/cherry-studio",
-  "author": "support@cherry-ai.com",
+  "author": "MEA Cowork",
   "main": "./out/main/main.js",
   "scripts": {
     "analyze:main": "VISUALIZER_MAIN=true pnpm build",

@@ -37,7 +37,7 @@ describe('CherryAssistantSeeder', () => {
   })
 
   it('uses a new rollout version after the version 2 library-wide rollout', () => {
-    expect(new CherryAssistantSeeder().version).toBe('5')
+    expect(new CherryAssistantSeeder().version).toBe('6')
   })
 
   function insertOrdinaryAgent(): string {
@@ -68,13 +68,26 @@ describe('CherryAssistantSeeder', () => {
       model: null
     })
     expect(agent.configuration).toMatchObject({
-      avatar: '🍒',
+      avatar: '',
       permission_mode: 'acceptEdits',
       bootstrap_completed: true,
       env_vars: {},
       builtin_role: 'assistant'
     })
     expect(dbh.db.select().from(agentSessionTable).all()).toHaveLength(0)
+  })
+
+  it('clears the legacy cherry avatar on an existing builtin assistant', () => {
+    const id = insertOrdinaryAgent()
+    dbh.db
+      .update(agentTable)
+      .set({ name: 'MEA Cowork', configuration: { builtin_role: 'assistant', avatar: '🍒' } })
+      .where(eq(agentTable.id, id))
+      .run()
+
+    new CherryAssistantSeeder().run(dbh.db)
+
+    expect(builtinAgents(dbh.db)[0]?.configuration).toMatchObject({ avatar: '' })
   })
 
   it('backfills enabled resources without overriding explicit exclusions', () => {
@@ -231,7 +244,7 @@ describe('CherryAssistantSeeder', () => {
     const [updated] = builtinAgents(dbh.db)
     expect(updated.configuration).toMatchObject({ permission_mode: 'default' })
     const [journal] = dbh.db.select().from(appStateTable).where(eq(appStateTable.key, 'seed:cherryAssistant')).all()
-    expect(journal?.value).toMatchObject({ version: '5' })
+    expect(journal?.value).toMatchObject({ version: '6' })
   })
 
   it('adds Cherry Assistant after a version 1 skip in an existing library and journals the rollout', () => {
@@ -347,7 +360,7 @@ describe('CherryAssistantSeeder', () => {
     expect(dbh.db.select().from(agentTable).where(isNull(agentTable.deletedAt)).all()).toHaveLength(0)
     expect(builtinAgents(dbh.db)).toHaveLength(1)
     const [journal] = dbh.db.select().from(appStateTable).where(eq(appStateTable.key, 'seed:cherryAssistant')).all()
-    expect(journal?.value).toMatchObject({ version: '5' })
+    expect(journal?.value).toMatchObject({ version: '6' })
   })
 
   it('falls back to a null model when the CherryAI default model is absent', () => {

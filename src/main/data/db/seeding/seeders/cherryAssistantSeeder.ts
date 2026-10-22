@@ -14,7 +14,7 @@ import type { DbType, ISeeder } from '../../types'
 const CHERRY_ASSISTANT_SEED = {
   name: 'MEA Cowork',
   configuration: {
-    avatar: '🍒',
+    avatar: '',
     permission_mode: 'acceptEdits',
     bootstrap_completed: true,
     builtin_role: 'assistant',
@@ -33,7 +33,8 @@ export class CherryAssistantSeeder implements ISeeder {
   // prevents recreating a user-deleted assistant or overwriting user choices.
   // Version 3 renamed stock Chinese names to 工匠智能体. Version 4 backfilled
   // enabled resources. Version 5 rolls untouched stock names forward to MEA Cowork.
-  readonly version = '5'
+  // Version 6 removes the legacy cherry avatar from the builtin assistant seed.
+  readonly version = '6'
 
   run(db: DbType): void {
     db.transaction((tx) => {
@@ -72,9 +73,16 @@ export class CherryAssistantSeeder implements ISeeder {
    */
   private renameStockNames(tx: DbType): void {
     const builtin = agentService.findBuiltinAgentByRoleTx(tx, 'assistant', { includeDeleted: true })
-    if (!builtin || !LEGACY_NAMES.includes(builtin.name)) return
+    if (!builtin) return
 
-    tx.update(agentTable).set({ name: CHERRY_ASSISTANT_SEED.name }).where(eq(agentTable.id, builtin.id)).run()
+    const updates: { name?: string; configuration?: AgentConfiguration } = {}
+    if (LEGACY_NAMES.includes(builtin.name)) updates.name = CHERRY_ASSISTANT_SEED.name
+    if (builtin.configuration?.avatar === '🍒') {
+      updates.configuration = { ...builtin.configuration, avatar: '' }
+    }
+    if (Object.keys(updates).length === 0) return
+
+    tx.update(agentTable).set(updates).where(eq(agentTable.id, builtin.id)).run()
   }
 
   private getNameForPreferredSystemLanguage(): string {
