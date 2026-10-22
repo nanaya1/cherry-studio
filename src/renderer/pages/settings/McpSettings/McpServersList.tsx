@@ -200,10 +200,13 @@ const McpServersList: FC<McpServersListProps> = ({ variant = 'settings', showTit
   const handleQuickCreate = useCallback(
     async (dto: CreateMcpServerDto) => {
       const newServer = await addMcpServer(dto)
-      void navigate({ to: `/settings/mcp/settings/${newServer.id}` })
+      // 连接器目录内创建后继续停留在当前页面；设置页保留原编辑跳转。
+      if (!isCatalog) {
+        void navigate({ to: `/settings/mcp/settings/${newServer.id}` })
+      }
       toast.success(t('settings.mcp.addSuccess'))
     },
-    [addMcpServer, navigate, t]
+    [addMcpServer, isCatalog, navigate, t]
   )
 
   const handleAddServerSuccess = useCallback(
