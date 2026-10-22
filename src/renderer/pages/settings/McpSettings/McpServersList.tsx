@@ -89,6 +89,7 @@ const McpServersList: FC<McpServersListProps> = ({ variant = 'settings', showTit
   const pendingAutoEnableServerIdRef = useRef<string | null>(null)
   const protocolInstallRequest = protocolInstallQueue[0]
 
+  const isCatalog = variant === 'catalog'
   const [searchText, setSearchText] = useState('')
   // Keep typing responsive: the list re-filters on the deferred value.
   const deferredSearchText = useDeferredValue(searchText)
@@ -197,10 +198,13 @@ const McpServersList: FC<McpServersListProps> = ({ variant = 'settings', showTit
   const handleQuickCreate = useCallback(
     async (dto: CreateMcpServerDto) => {
       const newServer = await addMcpServer(dto)
-      void navigate({ to: `/settings/mcp/settings/${newServer.id}` })
+      // 连接器目录内保持当前页面；设置页继续打开新建 MCP 的编辑页。
+      if (!isCatalog) {
+        void navigate({ to: `/settings/mcp/settings/${newServer.id}` })
+      }
       toast.success(t('settings.mcp.addSuccess'))
     },
-    [addMcpServer, navigate, t]
+    [addMcpServer, isCatalog, navigate, t]
   )
 
   const handleAddServerSuccess = useCallback(
@@ -258,7 +262,6 @@ const McpServersList: FC<McpServersListProps> = ({ variant = 'settings', showTit
     setIsAddModalVisible(true)
   }, [])
 
-  const isCatalog = variant === 'catalog'
   const selectedServer = selectedServerId ? mcpServers.find((server) => server.id === selectedServerId) : undefined
 
   const addServerMenu = (
