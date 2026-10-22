@@ -1,11 +1,11 @@
 // import { BookOpen, Check, Copy, LockKeyhole } from 'lucide-react'
 import { Check, Copy } from 'lucide-react'
+// import { Checkbox } from '@cherrystudio/ui' // 首次分享必须上传源文件，暂不允许关闭
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import {
   Button,
-  Checkbox,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -51,24 +51,15 @@ export default function ShareKnowledgeDialog({
     }
     if (upload) {
       if (upload.phase !== 'completed') setUploadStarted(true)
-      if (typeof upload.uploadOriginal === 'boolean') setUploadOriginal(upload.uploadOriginal)
     }
   }, [upload])
   // MEA:enterprise-knowledge-page 仅保留本次弹窗观察到的上传完成反馈，历史结果仍用于复用副本。
   const hideCompletedUpload = upload?.phase === 'completed' && !uploadStarted
   const visibleUpload = hideCompletedUpload ? null : upload
-  const [uploadOriginal, setUploadOriginal] = useState(true)
+  const uploadOriginal = true
   const originalOption =
     !remote && !uploadStarted && !upload ? (
-      <label className="flex items-start gap-2 text-sm">
-        {/* <input type="checkbox" checked={uploadOriginal} disabled={uploadStarted} onChange={(event) => setUploadOriginal(event.target.checked)} /> */}
-        <Checkbox
-          checked={uploadOriginal}
-          disabled={uploadStarted}
-          onCheckedChange={(checked) => setUploadOriginal(checked === true)}
-        />
-        {t('knowledge.org.upload_original_notice')}
-      </label>
+      <div className="text-sm text-muted-foreground">{t('knowledge.org.upload_original_required')}</div>
     ) : null
   const [password, setPassword] = useState('')
   const [maxViews, setMaxViews] = useState('')

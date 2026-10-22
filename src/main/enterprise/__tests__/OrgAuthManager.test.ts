@@ -130,6 +130,38 @@ describe('OrgAuthManager C3 组织可用性标记', () => {
     expect(profileSession.logout).toHaveBeenCalledOnce()
   })
 
+  it.each([502, 503, 504])('retains the local session when refresh returns %s', async (status) => {
+    const manager = new OrgAuthManager()
+    seedSession(manager)
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('', { status })))
+    await expect(manager.getValidSession()).resolves.toMatchObject({ accessToken: 'old-access' })
+    expect(manager.getStatus().phase).toBe('signed-in')
+  })
+
+  it('retains the local session when refresh fails from a network error', async () => {
+    const manager = new OrgAuthManager()
+    seedSession(manager)
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('fetch failed')))
+    await expect(manager.getValidSession()).resolves.toMatchObject({ accessToken: 'old-access' })
+    expect(manager.getStatus().phase).toBe('signed-in')
+  })
+
+  it('signs out when refresh returns 401', async () => {
+    const manager = new OrgAuthManager()
+    seedSession(manager)
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('', { status: 401 })))
+    await expect(manager.getValidSession()).resolves.toBeNull()
+    expect(manager.getStatus().phase).toBe('signed-out')
+  })
+
+  it('signs out when refresh explicitly reports a revoked token', async () => {
+    const manager = new OrgAuthManager()
+    seedSession(manager)
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('refresh token revoked')))
+    await expect(manager.getValidSession()).resolves.toBeNull()
+    expect(manager.getStatus().phase).toBe('signed-out')
+  })
+
   it('rejects runtime identity changes instead of switching accounts', async () => {
     const manager = new OrgAuthManager()
     seedSession(manager, { ...managementSession, expiresAt: Number.MAX_SAFE_INTEGER })
@@ -288,7 +320,7 @@ describe('OrgAuthManager C3 组织可用性标记', () => {
       )
     )
     await manager.startLogin()
-    const callback = manager.handleAuthCallback(new URL('meacowork://auth/sso/callback?token=old'))
+    const callback = manager.handleAuthCallback(new URL('meacowork-enterprise://auth/sso/callback?token=old'))
     const rejected = expect(callback).rejects.toThrow(/stale|epoch/)
     await writing.promise
     const logout = manager.logout()
@@ -310,7 +342,7 @@ describe('OrgAuthManager C3 组织可用性标记', () => {
       'fetch',
       vi.fn(() => response.promise)
     )
-    const callback = manager.handleAuthCallback(new URL(`meacowork://auth/callback?code=old&state=${state}`))
+    const callback = manager.handleAuthCallback(new URL(`meacowork-enterprise://auth/callback?code=old&state=${state}`))
     const rejected = expect(callback).rejects.toThrow(/stale|epoch/)
     await manager.logout()
     response.resolve(
@@ -335,7 +367,7 @@ describe('OrgAuthManager C3 组织可用性标记', () => {
       'fetch',
       vi.fn(() => response.promise)
     )
-    const callback = manager.handleAuthCallback(new URL('meacowork://auth/sso/callback?token=old'))
+    const callback = manager.handleAuthCallback(new URL('meacowork-enterprise://auth/sso/callback?token=old'))
     const rejected = expect(callback).rejects.toThrow()
     await manager.logout()
     await manager.startLogin()
@@ -368,7 +400,7 @@ describe('OrgAuthManager C3 组织可用性标记', () => {
     // 注入 pending（模拟 startLogin 后收到回调）
     ;(mgr as unknown as { pending: unknown }).pending = { createdAt: Date.now(), generation: 0 }
 
-    const url = new URL('meacowork://auth/sso/callback?token=official-token')
+    const url = new URL('meacowork-enterprise://auth/sso/callback?token=official-token')
     await mgr.handleAuthCallback(url)
 
     expect(stateStoreMock.markAvailable).not.toHaveBeenCalled()
@@ -411,7 +443,7 @@ describe('OrgAuthManager C3 组织可用性标记', () => {
       state: 'y'
     }
 
-    await manager.handleAuthCallback(new URL('meacowork://auth/callback?code=x&state=y'))
+    await manager.handleAuthCallback(new URL('meacowork-enterprise://auth/callback?code=x&state=y'))
 
     expect(profileSession.completeAuthentication).toHaveBeenCalled()
     expect(manager['switching']).toBe(false)

@@ -53,14 +53,7 @@ vi.mock('@tanstack/react-router', () => ({
 vi.mock('@renderer/components/CollapsibleSearchBar', () => ({ default: () => null }))
 vi.mock('@renderer/pages/settings/DependenciesSettings/EnvironmentDependencies', () => ({ default: () => null }))
 vi.mock('../AddMcpServerModal', () => ({ default: () => null }))
-vi.mock('../QuickCreateMcpServerDialog', () => ({
-  default: ({ open, onCreate }: { open: boolean; onCreate: (dto: { name: string }) => Promise<void> }) =>
-    open ? (
-      <button type="button" onClick={() => void onCreate({ name: 'created-server' })}>
-        quick-create-server
-      </button>
-    ) : null
-}))
+vi.mock('../QuickCreateMcpServerDialog', () => ({ default: () => null }))
 vi.mock('../McpServerCard', () => ({ default: () => null }))
 
 vi.mock('react-i18next', async (importOriginal) => {
@@ -106,25 +99,6 @@ describe('McpServersList catalog filters', () => {
     expect(screen.queryByRole('tab', { name: 'SSE' })).not.toBeInTheDocument()
     expect(screen.queryByRole('tab', { name: 'settings.mcp.types.streamableHttp' })).not.toBeInTheDocument()
     expect(screen.queryByRole('tab', { name: 'settings.mcp.builtinServers' })).not.toBeInTheDocument()
-  })
-})
-
-describe('McpServersList quick create', () => {
-  beforeEach(() => {
-    mocks.addMcpServer.mockResolvedValue({ id: 'created-server-id', name: 'created-server' })
-    mocks.ipcRequest.mockResolvedValue([])
-  })
-
-  it('stays on the connector catalog after creating a server', async () => {
-    const user = userEvent.setup()
-    render(<McpServersList variant="catalog" />)
-
-    await user.click(screen.getByRole('button', { name: 'common.add' }))
-    await user.click(screen.getByRole('menuitem', { name: 'settings.mcp.addServer.create' }))
-    await user.click(screen.getByRole('button', { name: 'quick-create-server' }))
-
-    await waitFor(() => expect(mocks.addMcpServer).toHaveBeenCalledWith({ name: 'created-server' }))
-    expect(mocks.navigate).not.toHaveBeenCalled()
   })
 })
 

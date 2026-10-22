@@ -50,7 +50,7 @@ describe('CherryAiDefaultModelSeeder', () => {
     expect(provider).toMatchObject({
       providerId: CHERRYAI_PROVIDER_ID,
       presetProviderId: CHERRYAI_PROVIDER_ID,
-      name: 'CherryAI',
+      name: 'AI Service',
       defaultChatEndpoint: ENDPOINT_TYPE.OPENAI_CHAT_COMPLETIONS,
       isEnabled: false
     })
@@ -58,7 +58,7 @@ describe('CherryAiDefaultModelSeeder', () => {
     expect(cloudProvider).toMatchObject({
       providerId: CHERRY_CLOUD_PROVIDER_ID,
       presetProviderId: CHERRYAI_PROVIDER_ID,
-      name: 'CherryAI',
+      name: 'Cloud Service',
       defaultChatEndpoint: ENDPOINT_TYPE.ANTHROPIC_MESSAGES,
       isEnabled: true
     })

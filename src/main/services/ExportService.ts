@@ -3,10 +3,10 @@
 
 import fs from 'fs'
 
-import type * as Docx from 'docx'
+import * as Docx from 'docx'
 import type { ExternalHyperlink, Table, TableCell, TableRow, TextRun } from 'docx'
 import { dialog } from 'electron'
-import type MarkdownIt from 'markdown-it'
+import MarkdownIt from 'markdown-it'
 
 import { loggerService } from '@logger'
 import { t } from '@main/i18n'
@@ -387,10 +387,9 @@ export class ExportService {
         return false
       }
 
-      const [{ default: MarkdownIt }, docx] = await Promise.all([import('markdown-it'), import('docx')])
-      const elements = this.convertMarkdownToDocxElements(markdown, new MarkdownIt(), docx)
+      const elements = this.convertMarkdownToDocxElements(markdown, new MarkdownIt(), Docx)
 
-      const doc = new docx.Document({
+      const doc = new Docx.Document({
         styles: {
           paragraphStyles: [
             {
@@ -411,7 +410,7 @@ export class ExportService {
         ]
       })
 
-      const buffer = await docx.Packer.toBuffer(doc)
+      const buffer = await Docx.Packer.toBuffer(doc)
 
       await fs.promises.writeFile(filePath, buffer)
       logger.debug('Document exported successfully')

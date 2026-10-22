@@ -2,6 +2,7 @@
 # productName: MEA Cowork
 appId: com.meacowork.enterprise
 productName: MEA Cowork 企业版
+copyright: Copyright © 2026 MEA Cowork
 extraMetadata:
   cherryEdition: global
 electronLanguages:
@@ -20,7 +21,7 @@ directories:
 protocols:
   - name: MEA Cowork 企业版
     schemes:
-      - meacowork
+      - meacowork-enterprise
 files:
   - "**/*"
   # Keep local diagnostics and build backups out of release packages.
@@ -209,7 +210,7 @@ linux:
       Name: MEA Cowork 企业版
       StartupWMClass: MEACoworkEnterprise
   mimeTypes:
-    - x-scheme-handler/meacowork
+    - x-scheme-handler/meacowork-enterprise
 rpm:
   # Workaround for electron build issue on rpm package:
   # https://github.com/electron/forge/issues/3594
@@ -217,7 +218,7 @@ rpm:
 # MEA Cowork 不使用 Cherry 厂商云更新源；如需恢复，取消下方注释。
 # publish:
 #   provider: generic
-#   url: https://releases.cherry-ai.com
+#   url: # configure the MEA update host before enabling publish
 publish: null
 electronDownload:
   mirror: https://npmmirror.com/mirrors/electron/

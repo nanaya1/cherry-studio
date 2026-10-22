@@ -27,9 +27,20 @@ import { parseOrgAuthCallback, type OrgAuthPhase } from './types'
 const logger = loggerService.withContext('OrgAuthManager')
 const OFFICIAL_LOGIN_URL = import.meta.env.MAIN_VITE_OFFICIAL_LOGIN_URL?.trim() || 'https://mro.xuelangyun.com/login'
 const CLIENT_ID = 'cherry-desktop'
-const REDIRECT_URI = 'meacowork://auth/callback'
+// const REDIRECT_URI = 'meacowork://auth/callback'
+const REDIRECT_URI = 'meacowork-enterprise://auth/callback'
 const PENDING_TTL_MS = 10 * 60 * 1000
 const TOKEN_EXPIRY_MARGIN_MS = 60 * 1000
+
+class SessionRefreshError extends Error {
+  constructor(
+    message: string,
+    readonly authenticationInvalid: boolean
+  ) {
+    super(message)
+    this.name = 'SessionRefreshError'
+  }
+}
 
 interface PendingAuth {
   state?: string
@@ -505,7 +516,9 @@ export class OrgAuthManager {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ refreshToken: current.refreshToken })
       })
-      if (!response.ok) throw new Error(`refresh failed (${response.status})`)
+      if (!response.ok) {
+        throw new SessionRefreshError(`refresh failed (${response.status})`, response.status === 401)
+      }
       const data = (await response.json()) as { accessToken: string; refreshToken: string; expiresIn: number }
       this.epoch.assertCurrent(snapshot)
       this.session = {
@@ -519,6 +532,15 @@ export class OrgAuthManager {
       try {
         this.epoch.assertCurrent(snapshot)
       } catch {
+        return
+      }
+      const authenticationInvalid =
+        error instanceof SessionRefreshError
+          ? error.authenticationInvalid
+          : error instanceof Error && /(?:401|invalid.*(?:token|credential)|token.*(?:revok|invalid)|revok)/i.test(error.message)
+      if (!authenticationInvalid) {
+        logger.warn('org session refresh unavailable; retaining local session', { error: String(error) })
+        this.emitStatus()
         return
       }
       logger.warn('org session refresh failed, signing out locally', { error: String(error) })

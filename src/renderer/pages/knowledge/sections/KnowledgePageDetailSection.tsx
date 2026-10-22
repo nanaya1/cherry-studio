@@ -2,7 +2,7 @@ import { ArrowLeft, ChevronDown } from 'lucide-react'
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { Badge, Button, PageSidePanel } from '@cherrystudio/ui'
+import { Badge, Button, PageSidePanel, Tooltip } from '@cherrystudio/ui'
 import { CommandPopupMenu } from '@renderer/components/command'
 import { FilePreview } from '@renderer/components/FilePreview'
 import { useDeleteKnowledgeItem, useKnowledgeItems, useReindexKnowledgeItem } from '@renderer/hooks/useKnowledgeItems'
@@ -16,6 +16,7 @@ import ShareKnowledgeDialog from '../components/ShareKnowledgeDialog'
 import { useKnowledgeSyncStatus } from '../hooks/useKnowledgeSyncStatus'
 import { useKnowledgePage } from '../KnowledgePageProvider'
 import DataSourcePanel from '../panels/dataSource/DataSourcePanel'
+import { areKnowledgeItemsReady } from '../utils/sharing'
 
 // Item detail views are loaded when an item is opened, not with the page.
 const KnowledgeItemChunkDetailPanel = lazy(() => import('../panels/dataSource/KnowledgeItemChunkDetailPanel'))
@@ -96,8 +97,27 @@ const KnowledgePageDetailSection = ({ onSharingChange }: { onSharingChange?: (op
     isLoadingMore: isLoadingMoreItems,
     loadMore: loadMoreItems
   } = useKnowledgeItems(selectedBaseId, currentDirectory?.id ?? null)
+  const {
+    items: rootItems,
+    total: rootItemsTotal,
+    isLoading: isRootItemsLoading,
+    hasMore: hasMoreRootItems,
+    isLoadingMore: isLoadingMoreRootItems,
+    loadMore: loadMoreRootItems
+  } = useKnowledgeItems(selectedBaseId)
+  useEffect(() => {
+    if (hasMoreRootItems && !isLoadingMoreRootItems) {
+      loadMoreRootItems()
+    }
+  }, [hasMoreRootItems, isLoadingMoreRootItems, loadMoreRootItems])
   const { deleteItem, deleteItems } = useDeleteKnowledgeItem(selectedBaseId)
   const { reindexItem, reindexItems } = useReindexKnowledgeItem(selectedBaseId)
+  const canShare = areKnowledgeItemsReady(rootItems, rootItemsTotal, isRootItemsLoading)
+  const shareDisabledReason = isRootItemsLoading
+    ? t('knowledge.org.share_disabled_loading')
+    : rootItemsTotal === 0
+      ? t('knowledge.org.share_disabled_empty')
+      : t('knowledge.org.share_disabled_not_ready')
 
   if (!selectedBase) {
     return null
@@ -119,29 +139,36 @@ const KnowledgePageDetailSection = ({ onSharingChange }: { onSharingChange?: (op
               <Button variant="ghost" size="sm" disabled={!sharedCopy} onClick={() => setRecords(true)}>
                 {t('knowledge.org.shares')}
               </Button>
-              <CommandPopupMenu
-                location="webcontents.context"
-                align="end"
-                side="bottom"
-                extraItems={[
-                  {
-                    type: 'item',
-                    id: 'share-code',
-                    label: t('knowledge.org.share_code'),
-                    onSelect: () => setSharing('code')
-                  },
-                  {
-                    type: 'item',
-                    id: 'invite-people',
-                    label: t('knowledge.org.invite_people'),
-                    onSelect: () => setSharing('people')
-                  }
-                ]}>
-                <Button variant="ghost" size="sm">
-                  {t('knowledge.org.share')}
-                  <ChevronDown className="size-3.5" />
-                </Button>
-              </CommandPopupMenu>
+              <Tooltip content={canShare ? undefined : shareDisabledReason} placement="bottom">
+                <CommandPopupMenu
+                  location="webcontents.context"
+                  align="end"
+                  side="bottom"
+                  disabled={!canShare}
+                  extraItems={[
+                    {
+                      type: 'item',
+                      id: 'share-code',
+                      label: t('knowledge.org.share_code'),
+                      onSelect: () => setSharing('code')
+                    },
+                    {
+                      type: 'item',
+                      id: 'invite-people',
+                      label: t('knowledge.org.invite_people'),
+                      onSelect: () => setSharing('people')
+                    }
+                  ]}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={!canShare}
+                    className="disabled:pointer-events-auto disabled:cursor-default">
+                    {t('knowledge.org.share')}
+                    <ChevronDown className="size-3.5" />
+                  </Button>
+                </CommandPopupMenu>
+              </Tooltip>
             </>
           }
           onOpenRagConfig={openRagConfigDrawer}

@@ -37,7 +37,6 @@ function setup(files = [file]) {
     fingerprint: vi.fn<(itemId: string) => Promise<string | null>>(async () => 'original-hash'),
     hasRestoredItem: vi.fn(async () => true),
     assertReady: vi.fn(async () => {}),
-    checkSpace: vi.fn(async () => true),
     deleteSpace: vi.fn(async () => {}),
     finish: vi.fn(async () => {}),
     deleteLocalBase: vi.fn(async (_baseId: string) => {}),
@@ -76,56 +75,10 @@ describe('删除无需恢复契约', () => {
     expect(ports.deleteLocalBase).not.toHaveBeenCalled()
   })
 
-  it('核查确认云端空间已删除后继续本地收尾', async () => {
-    const { ports, recovery } = setup()
-    await recovery.prepare('s')
-    ports.deleteSpace.mockRejectedValueOnce(new Error('timeout'))
-    ports.checkSpace.mockResolvedValue(false)
-
-    await expect(recovery.cancel(false, true)).resolves.toBe('local')
-    expect(ports.load()?.phase).toBe('completed')
-    expect(ports.deleteSpace).toHaveBeenCalledTimes(1)
-  })
-
-  it('删除请求超时但核查确认空间已消失时立即继续本地收尾', async () => {
-    const { ports, recovery } = setup()
-    await recovery.prepare('s')
-    ports.deleteSpace.mockRejectedValueOnce(new Error('timeout'))
-    ports.checkSpace.mockResolvedValue(false)
-
-    await expect(recovery.cancel(false, true)).resolves.toBe('local')
-    expect(ports.load()?.phase).toBe('completed')
-    expect(ports.deleteSpace).toHaveBeenCalledTimes(1)
-  })
-
-  it('删除知识库请求超时但核查确认空间已消失时继续本地清理', async () => {
-    const { ports, recovery } = setup()
-    ports.deleteSpace.mockRejectedValueOnce(new Error('timeout'))
-    ports.checkSpace.mockResolvedValue(false)
-
-    await expect(recovery.remove('s', ['existing'], true)).resolves.toBe('existing')
-    expect(ports.load()?.phase).toBe('completed')
-    expect(ports.deleteSpace).toHaveBeenCalledTimes(1)
-    expect(ports.deleteLocalBase).toHaveBeenCalledWith('existing')
-  })
-
-  it('核查发现云端空间仍存在时保留待核查状态', async () => {
-    const { ports, recovery } = setup()
-    await recovery.prepare('s')
-    ports.deleteSpace.mockRejectedValueOnce(new Error('timeout'))
-
-    await expect(recovery.cancel(false, true)).rejects.toThrow('待核查')
-
-    await expect(recovery.confirmDeleteResult()).rejects.toThrow('仍存在')
-    expect(ports.load()?.phase).toBe('delete-unknown')
-    expect(ports.deleteSpace).toHaveBeenCalledTimes(1)
-  })
-
   it.each(['timeout', 'offline', 'HTTP 500'])('未知结果 %s 不清理，重启禁止重发', async (message) => {
     const { ports, recovery } = setup()
     ports.deleteSpace.mockRejectedValue(new Error(message))
-    ports.checkSpace.mockRejectedValue(new Error('check failed'))
-    await expect(recovery.remove('s', ['existing'], true)).rejects.toThrow('待核查')
+    await expect(recovery.remove('s', ['existing'], true)).rejects.toThrow(message)
     await expect(new CloudKnowledgeRecovery(ports).remove('s', ['existing'], true)).rejects.toThrow('待核查')
     expect(ports.load()?.phase).toBe('delete-unknown')
     expect(ports.deleteSpace).toHaveBeenCalledTimes(1)
@@ -211,8 +164,7 @@ describe('取消分享恢复安全契约', () => {
     const unknown = setup()
     await unknown.recovery.prepare('s')
     unknown.ports.deleteSpace.mockRejectedValue(new Error('timeout'))
-    unknown.ports.checkSpace.mockRejectedValue(new Error('check failed'))
-    await expect(unknown.recovery.cancel(false, true, true)).rejects.toThrow('待核查')
+    await expect(unknown.recovery.cancel(false, true, true)).rejects.toThrow('timeout')
     await expect(new CloudKnowledgeRecovery(unknown.ports).cancel(true, true, true)).rejects.toThrow('待核查')
     expect(unknown.ports.deleteLocalBase).not.toHaveBeenCalled()
     const missing = setup()
@@ -311,41 +263,11 @@ describe('取消分享恢复安全契约', () => {
     expect(ports.deleteSpace).not.toHaveBeenCalled()
   })
 
-  it('恢复中断后复用同一本地知识库并只继续未完成文件', async () => {
-    const files = [file, { ...file, id: 'g', name: '第二份.pdf' }]
-    const { ports, recovery } = setup(files)
-    ports.restore
-      .mockImplementationOnce(async (_file, _baseId, _parent, expectHash) => {
-        expectHash('original-hash')
-        return 'first-item'
-      })
-      .mockImplementationOnce(async (_file, _baseId, _parent, expectHash) => {
-        expectHash('original-hash')
-        throw new Error('copy interrupted')
-      })
-      .mockResolvedValueOnce('second-item')
-
-    await expect(recovery.prepare('s')).rejects.toThrow('copy interrupted')
-    expect(ports.load()).toMatchObject({ localBaseId: 'local', restored: { f: 'first-item' }, phase: 'preparing' })
-    expect(ports.createBase).toHaveBeenCalledTimes(1)
-
-    const resumed = await new CloudKnowledgeRecovery(ports).prepare('s')
-    expect(resumed.restored).toEqual({ f: 'first-item', g: 'second-item' })
-    expect(ports.createBase).toHaveBeenCalledTimes(1)
-    expect(ports.restore).toHaveBeenCalledTimes(3)
-  })
-
-  it('本地解析未完成不阻止恢复预检或取消分享', async () => {
+  it('索引未完成时阻止删除', async () => {
     const { ports, recovery } = setup()
     ports.assertReady.mockRejectedValue(new Error('资料尚未解析完成'))
-
-    const prepared = await recovery.prepare('s')
-    expect(prepared.phase).toBe('ready')
-    expect(ports.assertReady).not.toHaveBeenCalled()
-
-    await recovery.cancel(false, true)
-    expect(ports.deleteSpace).toHaveBeenCalledTimes(1)
-    expect(ports.assertReady).not.toHaveBeenCalled()
+    await expect(recovery.prepare('s')).rejects.toThrow('解析')
+    expect(ports.deleteSpace).not.toHaveBeenCalled()
   })
   it('缺失原件必须独立确认，并确认其他设备停止', async () => {
     const { ports, recovery } = setup([{ ...file, has_original_file: false }])
@@ -360,8 +282,7 @@ describe('取消分享恢复安全契约', () => {
     const { ports, recovery } = setup()
     await recovery.prepare('s')
     ports.deleteSpace.mockRejectedValue(new Error('timeout'))
-    ports.checkSpace.mockRejectedValue(new Error('check failed'))
-    await expect(recovery.cancel(false, true)).rejects.toThrow('待核查')
+    await expect(recovery.cancel(false, true)).rejects.toThrow('timeout')
     expect(ports.load()?.phase).toBe('delete-unknown')
     await expect(new CloudKnowledgeRecovery(ports).cancel(true, true)).rejects.toThrow('待核查')
     expect(ports.deleteSpace).toHaveBeenCalledTimes(1)

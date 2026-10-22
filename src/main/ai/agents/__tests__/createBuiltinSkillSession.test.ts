@@ -28,7 +28,7 @@ describe('createBuiltinSkillSession', () => {
     vi.clearAllMocks()
     mocks.loadInput.mockReturnValue({
       builtinRole: 'assistant',
-      configuration: { avatar: '🍒', permission_mode: 'default', env_vars: {} },
+      configuration: { avatar: '🤖', permission_mode: 'default', env_vars: {} },
       name: 'Cherry Assistant',
       preferredModelId: null,
       type: 'claude-code'

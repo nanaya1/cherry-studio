@@ -49,7 +49,7 @@ describe('createGatewayOAuthProvider', () => {
     expect(def.clientId).toBe('2a348c87-bae1-4756-a62f-b2e97200fd6d')
     expect(def.transport).toEqual({
       type: 'deep-link',
-      config: { redirectUri: 'meacowork://oauth/callback' }
+      config: { redirectUri: 'meacowork-enterprise://oauth/callback' }
     })
 
     const request = (

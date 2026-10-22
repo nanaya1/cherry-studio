@@ -71,7 +71,7 @@ export class AppService extends BaseService {
       const autostartDir = AbsoluteFilePathSchema.parse(application.getPath('sys.appdata.autostart'))
       const desktopFile = AbsoluteFilePathSchema.parse(
         // path.join(autostartDir, isDev ? 'meacowork-dev.desktop' : 'meacowork.desktop')
-        path.join(autostartDir, isDev ? 'meacowork-dev.desktop' : 'meacowork.desktop')
+        path.join(autostartDir, isDev ? 'meacowork-enterprise-dev.desktop' : 'meacowork-enterprise.desktop')
       )
 
       if (isLaunchOnBoot) {

@@ -20,9 +20,9 @@ import { parseMcpInstallProtocolUrl } from './handlers/mcpInstall'
 import { handleNavigateProtocolUrl } from './handlers/navigate'
 import { handleProvidersProtocolUrl } from './handlers/providersImport'
 
-export const CHERRY_STUDIO_PROTOCOL = 'meacowork'
+export const CHERRY_STUDIO_PROTOCOL = 'meacowork-enterprise'
 
-const DESKTOP_FILE_NAME = 'meacowork-url-handler.desktop'
+const DESKTOP_FILE_NAME = 'meacowork-enterprise-url-handler.desktop'
 const execAsync = promisify(exec)
 const logger = loggerService.withContext('ProtocolService')
 
@@ -257,7 +257,7 @@ export class ProtocolService extends BaseService {
 
   /**
    * Sets up deep linking for the AppImage build on Linux by creating a .desktop file.
-   * This allows the OS to open meacowork:// URLs with this App.
+   * This allows the OS to open meacowork-enterprise:// URLs with this App.
    */
   private async setupAppImageDeepLink(): Promise<void> {
     // Only run on Linux and when packaged as an AppImage

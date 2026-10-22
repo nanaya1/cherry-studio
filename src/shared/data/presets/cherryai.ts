@@ -2,7 +2,9 @@ import { createUniqueModelId } from '@shared/data/types/model'
 import type { AppEdition } from '@shared/types/appEdition'
 
 export const CHERRYAI_PROVIDER_ID = 'cherryai' as const
-export const CHERRYAI_PROVIDER_NAME = 'CherryAI' as const
+// 保留常量名与 providerId 兼容迁移；值仅用于隐藏的遗留供应商行。
+export const CHERRYAI_PROVIDER_NAME = 'AI Service' as const
+export const CHERRY_CLOUD_PROVIDER_NAME = 'Cloud Service' as const
 export const CHERRY_CLOUD_PROVIDER_ID = 'cherryai-subscription' as const
 export const CHERRYAI_DEFAULT_MODEL_ID = 'qwen' as const
 export const CHERRYAI_DEFAULT_MODEL_NAME = 'Qwen' as const

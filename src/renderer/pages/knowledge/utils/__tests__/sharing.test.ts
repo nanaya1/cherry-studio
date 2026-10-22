@@ -1,8 +1,16 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { inviteAfterShare, parseRecipientId, previewText } from '../sharing'
+import { areKnowledgeItemsReady, inviteAfterShare, parseRecipientId, previewText } from '../sharing'
 
 describe('组织知识库分享边界', () => {
+  it('只有全部文件就绪且列表完整时允许分享', () => {
+    const item = { status: 'completed' as const }
+    expect(areKnowledgeItemsReady([item], 1, false)).toBe(true)
+    expect(areKnowledgeItemsReady([item], 2, false)).toBe(false)
+    expect(areKnowledgeItemsReady([{ ...item, status: 'processing' }], 1, false)).toBe(false)
+    expect(areKnowledgeItemsReady([item], 1, true)).toBe(false)
+  })
+
   it.each(['0', '-1', '1.2', '1e3', '9007199254740992', '', 'abc'])('拒绝无效用户 ID %s', (value) => {
     expect(parseRecipientId(value)).toBeNull()
   })

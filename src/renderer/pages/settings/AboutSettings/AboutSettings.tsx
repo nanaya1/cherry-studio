@@ -214,7 +214,7 @@ const AboutSettings: FC = () => {
                   />
                 </div>
               )}
-              <LogoAvatar logo={AppLogo} size={72} className="rounded-full" alt="" />
+              <LogoAvatar logo={AppLogo} size={72} alt="" />
             </span>
 
             <div className="flex min-h-18 flex-col items-start justify-center">

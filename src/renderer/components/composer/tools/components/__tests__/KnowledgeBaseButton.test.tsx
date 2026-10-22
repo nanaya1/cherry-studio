@@ -126,6 +126,35 @@ describe('KnowledgeBaseToolRuntime', () => {
     }
   })
 
+  it('选中的知识库在来源标签上显示主题色选中样式', async () => {
+    const launcher = createLauncherApi()
+    render(
+      <KnowledgeBaseToolRuntime
+        launcher={launcher}
+        configuredKnowledgeBaseIds={['kb-1', 'kb-2']}
+        selectedBases={[mocks.knowledgeBases[0]]}
+        onSelect={vi.fn()}
+      />
+    )
+
+    await waitFor(() => expect(launcher.registerLaunchers).toHaveBeenCalled())
+    const items = vi.mocked(launcher.registerLaunchers).mock.calls.at(-1)![0][0].rootSearchItems!
+    const view = render(
+      <>
+        {items[0].suffix}
+        {items[1].suffix}
+      </>
+    )
+    const badges = screen.getAllByText('本地').map((text) => text.closest('[data-testid=badge]') as HTMLElement)
+    expect(badges).toHaveLength(2)
+    expect(badges[0].className).toContain('bg-primary/10')
+    expect(badges[0].className).toContain('text-primary')
+    expect(badges[0].querySelector('svg')).not.toBeNull()
+    expect(badges[1].className).not.toContain('bg-primary/10')
+    expect(badges[1].querySelector('svg')).toBeNull()
+    view.unmount()
+  })
+
   it('在知识库面板中提供组织目录的选择项', async () => {
     mocks.orgCatalog.public = [{ id: 'orgkb:b25l', name: '组织公共库', description: null, documentCount: 3 }]
     const launcher = createLauncherApi()

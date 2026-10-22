@@ -7,7 +7,6 @@ import { app } from 'electron'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { WindowType } from '@main/core/window/types'
-import { XUELANG_DEFAULT_UNIQUE_MODEL_ID } from '@shared/data/presets/xuelang'
 
 // 停用：MEA 删除 CherryAI 用例后未再使用（恢复用例时取消注释）
 // import { CHERRYAI_DEFAULT_UNIQUE_MODEL_ID } from '@shared/data/presets/cherryai'
@@ -210,7 +209,7 @@ describe('TopicNamingService', () => {
     expect(mocks.generateText.mock.calls[0][0]).not.toHaveProperty('assistantId')
   })
 
-  it('falls back to the managed Xuelang default when the quick and chat default models are empty', async () => {
+  it('skips summary naming when no quick or chat default model is configured', async () => {
     MockMainPreferenceServiceUtils.setPreferenceValue('feature.quick_assistant.model_id', null)
     MockMainPreferenceServiceUtils.setPreferenceValue('chat.default_model_id', null)
 
@@ -219,34 +218,12 @@ describe('TopicNamingService', () => {
       parts: [{ type: 'text', text: 'Assistant response' }]
     } as never)
 
-    expect(mocks.generateText).toHaveBeenCalledWith(
-      expect.objectContaining({
-        uniqueModelId: XUELANG_DEFAULT_UNIQUE_MODEL_ID
-      })
-    )
+    expect(mocks.generateText).not.toHaveBeenCalled()
+    expect(mocks.updateTopic).not.toHaveBeenCalled()
+    expect(mocks.broadcastToType).not.toHaveBeenCalled()
   })
 
-  it('falls back to the managed Xuelang default when the quick model preference is invalid', async () => {
-    MockMainPreferenceServiceUtils.setPreferenceValue('feature.quick_assistant.model_id', 'bad-value')
-    MockMainPreferenceServiceUtils.setPreferenceValue('chat.default_model_id', 'anthropic::claude-3-haiku')
-
-    await createService().maybeRenameFromConversationSummary('topic-1', undefined, 'message-1', {
-      role: 'assistant',
-      parts: [{ type: 'text', text: 'Assistant response' }]
-    } as never)
-
-    expect(mocks.generateText).toHaveBeenCalledWith(
-      expect.objectContaining({
-        uniqueModelId: XUELANG_DEFAULT_UNIQUE_MODEL_ID
-      })
-    )
-    expect(mockMainLoggerService.warn).toHaveBeenCalledWith(
-      'Quick assistant model is not usable for topic naming; falling back to managed Xuelang default',
-      { configured: 'bad-value' }
-    )
-  })
-
-  it('falls back to the managed Xuelang default when the quick model no longer exists', async () => {
+  it('skips summary naming when the configured model no longer exists', async () => {
     MockMainPreferenceServiceUtils.setPreferenceValue('feature.quick_assistant.model_id', 'ghost::missing')
     mocks.getModelByKey.mockImplementation(() => {
       throw new Error('missing model')
@@ -258,13 +235,10 @@ describe('TopicNamingService', () => {
     } as never)
 
     expect(mocks.getModelByKey).toHaveBeenCalledWith('ghost', 'missing')
-    expect(mocks.generateText).toHaveBeenCalledWith(
-      expect.objectContaining({
-        uniqueModelId: XUELANG_DEFAULT_UNIQUE_MODEL_ID
-      })
-    )
+    expect(mocks.generateText).not.toHaveBeenCalled()
+    expect(mocks.updateTopic).not.toHaveBeenCalled()
     expect(mockMainLoggerService.warn).toHaveBeenCalledWith(
-      'Quick assistant model is not usable for topic naming; falling back to managed Xuelang default',
+      'Configured model is not usable for topic naming; skipping automatic naming',
       { configured: 'ghost::missing' }
     )
   })
@@ -662,7 +636,7 @@ describe('TopicNamingService', () => {
     expect(mocks.broadcast).not.toHaveBeenCalled()
   })
 
-  it('falls back when the quick model points to an external-CLI (agent-only) provider', async () => {
+  it('skips naming when the quick model points to an external-CLI provider', async () => {
     MockMainPreferenceServiceUtils.setPreferenceValue('feature.quick_assistant.model_id', 'claude-code::haiku')
     mocks.getProviderByProviderId.mockReturnValue({ authMethods: ['external-cli'] })
     mocks.getSession.mockReturnValue({
@@ -678,13 +652,10 @@ describe('TopicNamingService', () => {
     } as never)
 
     expect(mocks.getModelByKey).not.toHaveBeenCalledWith('claude-code', 'haiku')
-    expect(mocks.generateText).toHaveBeenCalledWith(
-      expect.objectContaining({
-        uniqueModelId: XUELANG_DEFAULT_UNIQUE_MODEL_ID
-      })
-    )
+    expect(mocks.generateText).not.toHaveBeenCalled()
+    expect(mocks.updateSession).not.toHaveBeenCalled()
     expect(mockMainLoggerService.warn).toHaveBeenCalledWith(
-      'Quick assistant model is not usable for topic naming; falling back to managed Xuelang default',
+      'Configured model is not usable for topic naming; skipping automatic naming',
       { configured: 'claude-code::haiku' }
     )
   })

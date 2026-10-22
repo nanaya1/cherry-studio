@@ -70,7 +70,7 @@ export const oauthWithAihubmix = async (setKey) => {
 
 export const oauthWithPPIO = async (setKey) => {
   // const redirectUri = 'meacowork://'
-  const redirectUri = 'meacowork://'
+  const redirectUri = 'meacowork-enterprise://'
   const authUrl = `https://ppio.com/oauth/authorize?invited_by=JYT9GD&client_id=${PPIO_CLIENT_ID}&scope=api%20openid&response_type=code&redirect_uri=${encodeURIComponent(redirectUri)}`
 
   void openExternalWebsite(authUrl)

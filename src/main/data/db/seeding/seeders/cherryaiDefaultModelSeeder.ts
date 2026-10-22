@@ -10,6 +10,7 @@ import { insertManyWithOrderKey } from '@data/services/utils/orderKey'
 import { loggerService } from '@logger'
 import {
   CHERRY_CLOUD_PROVIDER_ID,
+  CHERRY_CLOUD_PROVIDER_NAME,
   CHERRYAI_API_BASE_URL,
   CHERRYAI_DEFAULT_MODEL_GROUP,
   CHERRYAI_DEFAULT_MODEL_ID,
@@ -50,7 +51,7 @@ function createCherryCloudProviderRow(): ManagedCherryProviderRow {
   return {
     providerId: CHERRY_CLOUD_PROVIDER_ID,
     presetProviderId: CHERRYAI_PROVIDER_ID,
-    name: CHERRYAI_PROVIDER_NAME,
+    name: CHERRY_CLOUD_PROVIDER_NAME,
     endpointConfigs: null,
     defaultChatEndpoint: ENDPOINT_TYPE.ANTHROPIC_MESSAGES,
     authConfig: null,
