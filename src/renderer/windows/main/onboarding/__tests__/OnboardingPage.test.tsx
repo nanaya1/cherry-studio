@@ -834,6 +834,17 @@ describe('OnboardingPage', () => {
     await waitFor(() => expect(MockUsePreferenceUtils.getPreferenceValue('app.language')).toBe('zh-CN'))
   })
 
+  it('only shows Chinese and English in the onboarding language menu', async () => {
+    render(<OnboardingPage />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'common.language' }))
+
+    expect(screen.getByRole('button', { name: '中文' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'English' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '中文（繁体）' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Deutsch' })).not.toBeInTheDocument()
+  })
+
   it('does not expose the login button whose loading state the old flow exercised', () => {
     // 原「加载 10 秒后恢复按钮」的流程已随登录入口隐藏而移除；这里保底断言入口不存在。
     render(<OnboardingPage />)

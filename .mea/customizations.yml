@@ -170,3 +170,12 @@ customizations:
       - src/renderer/i18n/locales
     tests:
       - scripts/__tests__/i18n-check-values.test.ts
+
+  - id: onboarding-language-options
+    title: Limit onboarding language selection
+    owner: renderer
+    behavior: Show only Simplified Chinese and English in the onboarding language picker; keep the full language catalog available elsewhere.
+    touchpoints:
+      - src/renderer/windows/main/onboarding/OnboardingPage.tsx
+    tests:
+      - src/renderer/windows/main/onboarding/__tests__/OnboardingPage.test.tsx
