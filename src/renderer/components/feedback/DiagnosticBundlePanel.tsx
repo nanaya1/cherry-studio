@@ -13,14 +13,8 @@ import { IpcError } from '@shared/ipc/errors/IpcError'
 import type { OutputFor } from '@shared/ipc/types'
 import { createFilePathHandle } from '@shared/utils/file'
 
-import {
-  diagnosticRangeLabelKey,
-  DiagnosticSourceSelector,
-  useDiagnosticSourceSelection
-} from './DiagnosticSourceSelector'
+import { DiagnosticSourceSelector, useDiagnosticSourceSelection } from './DiagnosticSourceSelector'
 
-const SUPPORT_EMAIL = 'support@cherry-ai.com'
-const MEA_ENABLE_CHERRY_SUPPORT_EMAIL = false
 const logger = loggerService.withContext('DiagnosticBundlePanel')
 type SavedResult = Extract<OutputFor<'diagnostics.bundle.export'>, { status: 'saved' }>
 type ExportState =
@@ -29,7 +23,6 @@ type ExportState =
   | { readonly result: SavedResult; readonly status: 'saved' }
 
 interface DiagnosticBundlePanelProps {
-  readonly appVersion: string
   readonly onBusyChange?: (busy: boolean) => void
   readonly onClose: () => void
 }
@@ -42,12 +35,11 @@ function isDestinationConflictError(error: unknown): boolean {
   )
 }
 
-const DiagnosticBundlePanel: FC<DiagnosticBundlePanelProps> = ({ appVersion, onBusyChange, onClose }) => {
+const DiagnosticBundlePanel: FC<DiagnosticBundlePanelProps> = ({ onBusyChange, onClose }) => {
   const { t } = useTranslation()
   const [consent, setConsent] = useState(false)
   const sourceSelection = useDiagnosticSourceSelection(() => setConsent(false))
   const [isConfirmationOpen, setIsConfirmationOpen] = useState(false)
-  const [copyEmailFallback, setCopyEmailFallback] = useState(false)
   const [exportState, setExportState] = useState<ExportState>({ status: 'idle' })
   const revealButtonRef = useRef<HTMLButtonElement>(null)
   const exportButtonRef = useRef<HTMLButtonElement>(null)
@@ -154,37 +146,6 @@ const DiagnosticBundlePanel: FC<DiagnosticBundlePanelProps> = ({ appVersion, onB
     }
   }
 
-  const copySupportEmail = async () => {
-    try {
-      await navigator.clipboard.writeText(SUPPORT_EMAIL)
-      toast.success(t('settings.about.diagnostics.success.email_copied'))
-    } catch {
-      toast.error(t('settings.about.diagnostics.errors.copy_failed'))
-    }
-  }
-
-  const handleContactSupport = async () => {
-    if (!savedResult) return
-    const params = new URLSearchParams({
-      subject: t('settings.about.diagnostics.mail.subject', { bundleId: savedResult.bundleId }),
-      body: t('settings.about.diagnostics.mail.body', {
-        bundleId: savedResult.bundleId,
-        fileName: savedResult.fileName,
-        platform: window.electron.process.platform,
-        range: t(diagnosticRangeLabelKey(range)),
-        version: appVersion || t('settings.about.diagnostics.unknown')
-      })
-    })
-    try {
-      const query = params.toString().replaceAll('+', '%20')
-      await ipcApi.request('system.shell.open_website', `mailto:${SUPPORT_EMAIL}?${query}`)
-    } catch (error) {
-      logger.error('Failed to open support email client', error as Error)
-      setCopyEmailFallback(true)
-      toast.error(t('settings.about.diagnostics.errors.email_client_failed'))
-    }
-  }
-
   return (
     <div className="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)_auto] gap-0 overflow-hidden">
       <Scrollbar className="min-h-0 px-6 py-2">
@@ -227,18 +188,6 @@ const DiagnosticBundlePanel: FC<DiagnosticBundlePanelProps> = ({ appVersion, onB
             <Button ref={revealButtonRef} variant="outline" onClick={() => void handleReveal()}>
               {t('settings.about.diagnostics.actions.reveal')}
             </Button>
-            {/* MEA 暂不开放 Cherry 支持邮箱入口；改为 true 即可恢复原按钮。 */}
-            {MEA_ENABLE_CHERRY_SUPPORT_EMAIL && (
-              <Button
-                variant="emphasis"
-                onClick={() => void (copyEmailFallback ? copySupportEmail() : handleContactSupport())}>
-                {t(
-                  copyEmailFallback
-                    ? 'settings.about.diagnostics.actions.copy_email'
-                    : 'settings.about.diagnostics.actions.contact'
-                )}
-              </Button>
-            )}
           </>
         ) : (
           <>

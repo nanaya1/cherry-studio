@@ -1938,6 +1938,10 @@ export class OrgKnowledgeService {
             throw new Error('恢复原件不是可读文件')
         }
       },
+      checkSpace: async () => {
+        const catalog = await this.checked(() => this.client.getCatalog(), lease)
+        return catalog.owned.some((entry) => entry.id === spaceId)
+      },
       // deleteSpace: () => this.client.deleteShareSpace(spaceId),
       deleteSpace: () => {
         active()

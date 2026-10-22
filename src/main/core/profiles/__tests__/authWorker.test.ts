@@ -36,7 +36,11 @@ describe('auth worker macOS application identity', () => {
 
       // @types/node@24 的 process.emit('message') 重载要求显式传第二个 sendHandle 参数（可为 undefined）
       // process.emit('message', { operation: 'read', profileRoot: '/tmp/profile', baseUrl: 'https://example.test' })
-      process.emit('message', { operation: 'read', profileRoot: '/tmp/profile', baseUrl: 'https://example.test' }, undefined)
+      process.emit(
+        'message',
+        { operation: 'read', profileRoot: '/tmp/profile', baseUrl: 'https://example.test' },
+        undefined
+      )
       await vi.waitFor(() => expect(app.setActivationPolicy).toHaveBeenCalledWith('prohibited'))
       expect(app.whenReady).toHaveBeenCalled()
       expect(send).toHaveBeenCalledWith({ ok: true, result: [] }, undefined, undefined, expect.any(Function))

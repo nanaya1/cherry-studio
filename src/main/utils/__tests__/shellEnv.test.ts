@@ -18,7 +18,7 @@ vi.mock('@main/core/platform', () => ({
 vi.mock('@application', () => ({
   application: {
     getPath: (key: string) => {
-      if (key === 'cherry.bin') return 'C:\\Users\\test\\.meacowork-enterprise\\bin'
+      if (key === 'cherry.bin') return 'C:\\Users\\test\\.meacowork\\bin'
       if (key === 'feature.binary.data') {
         return 'C:\\Users\\test\\AppData\\Roaming\\CherryStudio\\Toolchain\\mise'
       }
@@ -201,7 +201,7 @@ describe('shellEnv – Windows registry PATH', () => {
 
     expect(env.MISE_DATA_DIR).toBe('C:\\Users\\TestUser\\mise-data')
     expect(env.Path).toBe('C:\\Windows;C:\\UserNode')
-    expect(env.Path).not.toContain('.meacowork-enterprise')
+    expect(env.Path).not.toContain('.meacowork')
   })
 
   it('should append Cherry Studio tool directories to PATH', async () => {
@@ -209,7 +209,7 @@ describe('shellEnv – Windows registry PATH', () => {
 
     const env = await refreshShellEnv()
 
-    expect(env.Path).toContain('.meacowork-enterprise')
+    expect(env.Path).toContain('.meacowork')
     expect(env.Path).toContain('Toolchain\\mise')
     expect(env.Path).toContain('shims')
     expect(env.Path).toContain('bin')

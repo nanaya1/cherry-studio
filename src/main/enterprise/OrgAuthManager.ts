@@ -26,9 +26,8 @@ import { parseOrgAuthCallback, type OrgAuthPhase } from './types'
 
 const logger = loggerService.withContext('OrgAuthManager')
 const OFFICIAL_LOGIN_URL = import.meta.env.MAIN_VITE_OFFICIAL_LOGIN_URL?.trim() || 'https://mro.xuelangyun.com/login'
-const CLIENT_ID = 'cherry-desktop'
-// const REDIRECT_URI = 'meacowork://auth/callback'
-const REDIRECT_URI = 'meacowork-enterprise://auth/callback'
+const CLIENT_ID = 'meacowork-desktop'
+const REDIRECT_URI = 'meacowork://auth/callback'
 const PENDING_TTL_MS = 10 * 60 * 1000
 const TOKEN_EXPIRY_MARGIN_MS = 60 * 1000
 
@@ -537,7 +536,8 @@ export class OrgAuthManager {
       const authenticationInvalid =
         error instanceof SessionRefreshError
           ? error.authenticationInvalid
-          : error instanceof Error && /(?:401|invalid.*(?:token|credential)|token.*(?:revok|invalid)|revok)/i.test(error.message)
+          : error instanceof Error &&
+            /(?:401|invalid.*(?:token|credential)|token.*(?:revok|invalid)|revok)/i.test(error.message)
       if (!authenticationInvalid) {
         logger.warn('org session refresh unavailable; retaining local session', { error: String(error) })
         this.emitStatus()

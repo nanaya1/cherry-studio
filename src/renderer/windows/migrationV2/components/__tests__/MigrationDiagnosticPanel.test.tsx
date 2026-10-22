@@ -17,9 +17,6 @@ const mocks = vi.hoisted(() => ({
 }))
 
 const translations: Record<string, string> = {
-  'migration.diagnostics.contact': 'Copy feedback email',
-  'migration.diagnostics.copy_failed': 'Failed to copy feedback email',
-  'migration.diagnostics.copy_success': 'Feedback email copied',
   'migration.diagnostics.logs_not_included':
     'Application logs could not be included. This diagnostic bundle contains only system information.',
   'migration.diagnostics.open_folder': 'Open file location',
@@ -29,7 +26,7 @@ const translations: Record<string, string> = {
   'migration.diagnostics.save': 'Save diagnostic bundle',
   'migration.diagnostics.save_failed': 'Could not save diagnostic bundle',
   'migration.diagnostics.saved_local':
-    'The diagnostic bundle was saved locally and was not uploaded automatically. Please send it to the feedback email to help us investigate.',
+    'The diagnostic bundle was saved locally and was not uploaded automatically. Please use the support channel provided by your deployment team for investigation.',
   'migration.diagnostics.saving': 'Saving…'
 }
 
@@ -77,7 +74,7 @@ async function saveBundle(logs: 'included' | 'not_included' = 'included') {
   render(<MigrationDiagnosticPanel />)
   fireEvent.click(screen.getByRole('button', { name: 'Save diagnostic bundle' }))
   await screen.findByText(
-    'The diagnostic bundle was saved locally and was not uploaded automatically. Please send it to the feedback email to help us investigate.'
+    'The diagnostic bundle was saved locally and was not uploaded automatically. Please use the support channel provided by your deployment team for investigation.'
   )
 }
 
@@ -144,11 +141,11 @@ describe('MigrationDiagnosticPanel', () => {
 
     expect(
       screen.getByText(
-        'The diagnostic bundle was saved locally and was not uploaded automatically. Please send it to the feedback email to help us investigate.'
+        'The diagnostic bundle was saved locally and was not uploaded automatically. Please use the support channel provided by your deployment team for investigation.'
       )
     ).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Open file location' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Copy feedback email' })).toBeInTheDocument()
+    expect(screen.getAllByRole('button')).toHaveLength(1)
     expect(mocks.saveDiagnostics).not.toHaveBeenCalled()
   })
 
@@ -213,9 +210,9 @@ describe('MigrationDiagnosticPanel', () => {
     await saveBundle()
 
     const buttons = screen.getAllByRole('button')
-    expect(buttons).toHaveLength(2)
+    expect(buttons).toHaveLength(1)
     expect(screen.getByRole('button', { name: 'Open file location' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Copy feedback email' })).toBeInTheDocument()
+    expect(screen.getAllByRole('button')).toHaveLength(1)
     expect(screen.queryByRole('button', { name: /save|retry/i })).not.toBeInTheDocument()
     expect(document.querySelector('a[href^="mailto:"]')).toBeNull()
   })
@@ -233,7 +230,7 @@ describe('MigrationDiagnosticPanel', () => {
 
     await waitFor(() =>
       expect(status).toHaveTextContent(
-        'The diagnostic bundle was saved locally and was not uploaded automatically. Please send it to the feedback email to help us investigate.'
+        'The diagnostic bundle was saved locally and was not uploaded automatically. Please use the support channel provided by your deployment team for investigation.'
       )
     )
   })
@@ -259,7 +256,7 @@ describe('MigrationDiagnosticPanel', () => {
         'Application logs could not be included. This diagnostic bundle contains only system information.'
       )
     ).toBeInTheDocument()
-    expect(screen.getAllByRole('button')).toHaveLength(2)
+    expect(screen.getAllByRole('button')).toHaveLength(1)
   })
 
   it('reveals the bundle through IPC', async () => {
@@ -295,22 +292,4 @@ describe('MigrationDiagnosticPanel', () => {
     expect(mocks.toast.error).toHaveBeenCalledWith('Could not open file location')
   })
 
-  it('copies the feedback address and shows a success toast', async () => {
-    await saveBundle()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Copy feedback email' }))
-
-    await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledWith('support@cherry-ai.com'))
-    expect(mocks.toast.success).toHaveBeenCalledWith('Feedback email copied')
-  })
-
-  it('shows an error toast when clipboard copy fails', async () => {
-    vi.mocked(navigator.clipboard.writeText).mockRejectedValueOnce(new Error('copy failed'))
-    await saveBundle()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Copy feedback email' }))
-
-    await waitFor(() => expect(mocks.toast.error).toHaveBeenCalledWith('Failed to copy feedback email'))
-    expect(mocks.toast.success).not.toHaveBeenCalled()
-  })
 })

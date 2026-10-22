@@ -118,7 +118,7 @@ export default function ShareKnowledgeDialog({
           // setError(t('knowledge.org.upload_incomplete'))
           const failedFile = uploaded.files.find((file) => file.status !== 'success' && file.error)
           // const reason = failedFile ? `${failedFile.fileName} · ${failedFile.error}` : status?.error
-          const reason = failedFile ? `${failedFile.fileName} · ${failedFile.error}` : uploaded.error ?? status?.error
+          const reason = failedFile ? `${failedFile.fileName} · ${failedFile.error}` : (uploaded.error ?? status?.error)
           setError([reason, t('knowledge.org.upload_incomplete')].filter(Boolean).join('\n'))
           return
         }

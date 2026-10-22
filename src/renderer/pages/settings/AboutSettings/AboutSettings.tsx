@@ -95,15 +95,6 @@ const AboutSettings: FC = () => {
   //   void openExternalWebsite(url)
   // }
 
-  // const mailto = async () => {
-  //   const email = 'support@cherry-ai.com'
-  //   const subject = 'Cherry Studio Feedback'
-  //   const version = (await ipcApi.request('app.get_info')).version
-  //   const platform = window.electron.process.platform
-  //   const url = `mailto:${email}?subject=${subject}&body=%0A%0AVersion: ${version} | Platform: ${platform}`
-  //   onOpenWebsite(url)
-  // }
-
   const debug = async () => {
     await ipcApi.request('system.toggle_dev_tools')
   }
