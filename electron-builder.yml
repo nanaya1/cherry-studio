@@ -20,7 +20,7 @@ directories:
 protocols:
   - name: MEA Cowork 企业版
     schemes:
-      - meacowork-enterprise
+      - meacowork
 files:
   - "**/*"
   # Keep local diagnostics and build backups out of release packages.
@@ -209,7 +209,7 @@ linux:
       Name: MEA Cowork 企业版
       StartupWMClass: MEACoworkEnterprise
   mimeTypes:
-    - x-scheme-handler/meacowork-enterprise
+    - x-scheme-handler/meacowork
 rpm:
   # Workaround for electron build issue on rpm package:
   # https://github.com/electron/forge/issues/3594

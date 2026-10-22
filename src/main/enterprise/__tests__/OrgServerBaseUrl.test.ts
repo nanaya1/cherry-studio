@@ -103,7 +103,7 @@ describe('ORG_SERVER_BASE_URL', () => {
     expect(authorizationUrl.pathname).toBe('/authorize')
     expect(authorizationUrl.searchParams.get('response_type')).toBe('code')
     expect(authorizationUrl.searchParams.get('client_id')).toBe('cherry-desktop')
-    expect(authorizationUrl.searchParams.get('redirect_uri')).toBe('meacowork-enterprise://auth/callback')
+    expect(authorizationUrl.searchParams.get('redirect_uri')).toBe('meacowork://auth/callback')
     expect(authorizationUrl.searchParams.get('state')).toBeTruthy()
     expect(authorizationUrl.searchParams.get('code_challenge')).toBeTruthy()
     expect(authorizationUrl.searchParams.get('code_challenge_method')).toBe('S256')
@@ -151,7 +151,7 @@ describe('ORG_SERVER_BASE_URL', () => {
     const { authorizationUrl } = await manager.startLogin()
     const state = new URL(authorizationUrl).searchParams.get('state')
 
-    await manager.handleAuthCallback(new URL(`meacowork-enterprise://auth/callback?code=auth-code&state=${state}`))
+    await manager.handleAuthCallback(new URL(`meacowork://auth/callback?code=auth-code&state=${state}`))
 
     expect(fetchMock).toHaveBeenCalledTimes(2)
     const [tokenUrl, init] = fetchMock.mock.calls[0]
@@ -170,7 +170,7 @@ describe('ORG_SERVER_BASE_URL', () => {
       createHash('sha256').update(codeVerifier!).digest('base64url')
     )
     expect(body.get('client_id')).toBe('cherry-desktop')
-    expect(body.get('redirect_uri')).toBe('meacowork-enterprise://auth/callback')
+    expect(body.get('redirect_uri')).toBe('meacowork://auth/callback')
     expect(manager.getStatus()).toMatchObject({ phase: 'signed-in' })
   })
 
@@ -182,7 +182,7 @@ describe('ORG_SERVER_BASE_URL', () => {
     const manager = new OrgAuthManager()
     await manager.startLogin()
 
-    await manager.handleAuthCallback(new URL('meacowork-enterprise://auth/sso/callback?token=official-token'))
+    await manager.handleAuthCallback(new URL('meacowork://auth/sso/callback?token=official-token'))
 
     expect(manager.getStatus().phase).toBe('authorizing')
   })
@@ -228,9 +228,9 @@ describe('ORG_SERVER_BASE_URL', () => {
     const state = new URL(authorizationUrl).searchParams.get('state')
 
     await manager.handleAuthCallback(
-      new URL('meacowork-enterprise://auth/callback?code=forged-code&state=forged-state')
+      new URL('meacowork://auth/callback?code=forged-code&state=forged-state')
     )
-    await manager.handleAuthCallback(new URL(`meacowork-enterprise://auth/callback?code=auth-code&state=${state}`))
+    await manager.handleAuthCallback(new URL(`meacowork://auth/callback?code=auth-code&state=${state}`))
 
     expect(fetchMock).toHaveBeenCalledTimes(2)
     expect(manager.getStatus().phase).toBe('signed-in')
@@ -276,7 +276,7 @@ describe('ORG_SERVER_BASE_URL', () => {
     const manager = new OrgAuthManager()
 
     const result = await manager.startLogin()
-    await manager.handleAuthCallback(new URL('meacowork-enterprise://auth/sso/callback?token=official-token'))
+    await manager.handleAuthCallback(new URL('meacowork://auth/sso/callback?token=official-token'))
 
     expect(result.authorizationUrl).toBe('https://official.example.com/login')
     expect(fetchMock).toHaveBeenCalledWith('https://org.example.com/api/auth/exchange', {
@@ -328,7 +328,7 @@ describe('ORG_SERVER_BASE_URL', () => {
     const secondState = new URL(secondLogin.authorizationUrl).searchParams.get('state')
     expect(manager.getStatus().phase).toBe('authorizing')
     await manager.handleAuthCallback(
-      new URL(`meacowork-enterprise://auth/callback?code=auth-code&state=${secondState}`)
+      new URL(`meacowork://auth/callback?code=auth-code&state=${secondState}`)
     )
     expect(globalThis.fetch).toHaveBeenCalledTimes(2)
   })

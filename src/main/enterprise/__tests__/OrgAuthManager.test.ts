@@ -288,7 +288,7 @@ describe('OrgAuthManager C3 组织可用性标记', () => {
       )
     )
     await manager.startLogin()
-    const callback = manager.handleAuthCallback(new URL('meacowork-enterprise://auth/sso/callback?token=old'))
+    const callback = manager.handleAuthCallback(new URL('meacowork://auth/sso/callback?token=old'))
     const rejected = expect(callback).rejects.toThrow(/stale|epoch/)
     await writing.promise
     const logout = manager.logout()
@@ -310,7 +310,7 @@ describe('OrgAuthManager C3 组织可用性标记', () => {
       'fetch',
       vi.fn(() => response.promise)
     )
-    const callback = manager.handleAuthCallback(new URL(`meacowork-enterprise://auth/callback?code=old&state=${state}`))
+    const callback = manager.handleAuthCallback(new URL(`meacowork://auth/callback?code=old&state=${state}`))
     const rejected = expect(callback).rejects.toThrow(/stale|epoch/)
     await manager.logout()
     response.resolve(
@@ -335,7 +335,7 @@ describe('OrgAuthManager C3 组织可用性标记', () => {
       'fetch',
       vi.fn(() => response.promise)
     )
-    const callback = manager.handleAuthCallback(new URL('meacowork-enterprise://auth/sso/callback?token=old'))
+    const callback = manager.handleAuthCallback(new URL('meacowork://auth/sso/callback?token=old'))
     const rejected = expect(callback).rejects.toThrow()
     await manager.logout()
     await manager.startLogin()
@@ -368,7 +368,7 @@ describe('OrgAuthManager C3 组织可用性标记', () => {
     // 注入 pending（模拟 startLogin 后收到回调）
     ;(mgr as unknown as { pending: unknown }).pending = { createdAt: Date.now(), generation: 0 }
 
-    const url = new URL('meacowork-enterprise://auth/sso/callback?token=official-token')
+    const url = new URL('meacowork://auth/sso/callback?token=official-token')
     await mgr.handleAuthCallback(url)
 
     expect(stateStoreMock.markAvailable).not.toHaveBeenCalled()
@@ -411,7 +411,7 @@ describe('OrgAuthManager C3 组织可用性标记', () => {
       state: 'y'
     }
 
-    await manager.handleAuthCallback(new URL('meacowork-enterprise://auth/callback?code=x&state=y'))
+    await manager.handleAuthCallback(new URL('meacowork://auth/callback?code=x&state=y'))
 
     expect(profileSession.completeAuthentication).toHaveBeenCalled()
     expect(manager['switching']).toBe(false)
