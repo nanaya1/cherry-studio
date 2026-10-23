@@ -108,7 +108,16 @@ export class SkillCatalogService extends BaseService {
       .from(skillCatalogSyncStateTable)
       .where(eq(skillCatalogSyncStateTable.id, ACTIVE_STATE_ID))
       .get()
+    const hasPublishedSkills = Boolean(
+      db
+        .select({ id: skillCatalogTable.id })
+        .from(skillCatalogTable)
+        .where(eq(skillCatalogTable.status, 'published'))
+        .limit(1)
+        .get()
+    )
     if (
+      hasPublishedSkills &&
       current?.status === 'ready' &&
       current.snapshotSource === 'bundled' &&
       current.schemaVersion === validated.manifest.schemaVersion &&

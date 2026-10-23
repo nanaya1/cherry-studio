@@ -577,6 +577,15 @@ it('历史已关联的库原文件变大后仍复用副本，不读取或重传�
   expect(api.request.mock.calls.map(([path]) => path)).toEqual(['/api/v1/spaces/space'])
   expect(api.requestFileMultipart).not.toHaveBeenCalled()
 })
+it('未分享知识库首次分享始终上传本机原文件', async () => {
+  expect((await service.share('A', false, false)).completion).toBe('completed')
+  expect(api.requestFileMultipart.mock.calls[0][1]).toMatchObject({ uploadOriginal: true })
+  expect(api.request.mock.calls.find(([path]) => path.endsWith('/local-share/spaces'))?.[1]).toMatchObject({
+    body: JSON.stringify({ name: 'A', allow_local_file_upload: true })
+  })
+})
+
+/* 原测试覆盖可选仅分块首传；服务端上传接口要求首传必须包含原文件，保留作历史契约记录。
 it.each([false, true])('uploadOriginal=%s 透传并持久化，重启核对沿用原模式', async (uploadOriginal) => {
   const request = api.request.getMockImplementation()!
   let unavailable = true
@@ -602,6 +611,7 @@ it.each([false, true])('uploadOriginal=%s 透传并持久化，重启核对沿�
   await expect(service.share('A', true, !uploadOriginal)).rejects.toThrow('首次分享已中断')
   expect(api.requestFileMultipart).toHaveBeenCalledTimes(1)
 })
+*/
 
 it('核对按文件身份恢复持久模式，不用首项模式覆盖其余文件', async () => {
   const ks = application.get('KnowledgeService')

@@ -18,7 +18,7 @@ describe('GATEWAY_OAUTH_CONFIGS', () => {
     const config = GATEWAY_OAUTH_CONFIGS.xuelang
 
     expect(config.CLIENT_ID).toBe(GATEWAY_OAUTH_CONFIGS.cherryin.CLIENT_ID)
-    expect(config.REDIRECT_URI).toBe('meacowork-enterprise://oauth/callback')
+    expect(config.REDIRECT_URI).toBe('meacowork://oauth/callback')
     // 2026-09-14：雪浪暂不签发 id_token，因此不再与 CherryIN 的 openid scope 完全相同。
     // expect(config.SCOPES).toBe(GATEWAY_OAUTH_CONFIGS.cherryin.SCOPES)
     expect(config.SCOPES).toBe('profile email offline_access balance:read usage:read tokens:read tokens:write')

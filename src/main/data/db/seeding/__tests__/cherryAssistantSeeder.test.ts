@@ -68,7 +68,7 @@ describe('CherryAssistantSeeder', () => {
       model: null
     })
     expect(agent.configuration).toMatchObject({
-      avatar: '🍒',
+      avatar: '🤖',
       permission_mode: 'acceptEdits',
       bootstrap_completed: true,
       env_vars: {},

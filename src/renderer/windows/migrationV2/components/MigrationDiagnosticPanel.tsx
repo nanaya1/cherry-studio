@@ -81,17 +81,6 @@ export function MigrationDiagnosticPanel({
     }
   }
 
-  // 「复制 support@cherry-ai.com」入口暂时隐藏：Mea Cowork 暂不开放经此邮箱联系 Cherry 支持。
-  // 恢复时取消下方注释。
-  // const handleContact = async () => {
-  //   try {
-  //     await navigator.clipboard.writeText(SUPPORT_EMAIL)
-  //     showSuccessToast(t('migration.diagnostics.copy_success'))
-  //   } catch {
-  //     showErrorToast(t('migration.diagnostics.copy_failed'))
-  //   }
-  // }
-
   return (
     <section
       className={embedded ? 'space-y-3 pt-1' : 'space-y-3 rounded-xl border border-border bg-muted/15 px-4 py-3'}>
@@ -118,10 +107,6 @@ export function MigrationDiagnosticPanel({
             onClick={() => void handleReveal()}>
             {t('migration.diagnostics.open_folder')}
           </Button>
-          {/* 「复制 support@cherry-ai.com」入口暂时隐藏：Mea Cowork 暂不开放经此邮箱联系 Cherry 支持。恢复时把 null 换成 ( */}
-          {/* <Button type="button" variant="default" className="flex-1" onClick={() => void handleContact()}> */}
-          {/*   {t('migration.diagnostics.contact')} */}
-          {/* </Button> */}
         </div>
       ) : (
         <Button

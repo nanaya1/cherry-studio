@@ -1,9 +1,10 @@
-import { FileSearch, Settings2 } from 'lucide-react'
+import { Check, FileSearch, Settings2 } from 'lucide-react'
 import type { FC } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Badge } from '@cherrystudio/ui'
+import { cn } from '@cherrystudio/ui/lib/utils'
 import {
   ComposerPanelSymbol,
   getQuickPanelSearchAliases,
@@ -161,7 +162,15 @@ const useKnowledgeBaseToolController = ({
       icon: <FileSearch />,
       // suffix: tRef.current('chat.input.knowledge_base'),
       suffix: (
-        <Badge variant="outline" className="rounded-[3px] px-1 py-0 text-[10px] text-muted-foreground leading-4">
+        <Badge
+          variant="outline"
+          className={cn(
+            'rounded-[3px] px-1 py-0 text-[10px] leading-4',
+            selectedBaseIds.has(base.id)
+              ? 'border-primary/20 bg-primary/10 text-primary [&_svg]:size-2.5'
+              : 'text-muted-foreground'
+          )}>
+          {selectedBaseIds.has(base.id) ? <Check /> : null}
           {isRemoteKnowledgeBaseId(base.id)
             ? tRef.current('chat.input.knowledge_base')
             : (knowledgeBaseSourceLabels.get(base.id) ?? tRef.current('knowledge.org.local'))}

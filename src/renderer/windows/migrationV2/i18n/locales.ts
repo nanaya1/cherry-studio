@@ -31,9 +31,6 @@ export const zhCN = {
   'migration.completed.warning_copy_success': '迁移提示已复制',
   'migration.completed.warning_description': '数据已迁移完成，但以下内容需要注意。',
   'migration.completed.warning_heading': '{{count}} 条迁移提示',
-  'migration.diagnostics.contact': '复制问题反馈邮箱',
-  'migration.diagnostics.copy_failed': '问题反馈邮箱复制失败',
-  'migration.diagnostics.copy_success': '问题反馈邮箱已复制',
   'migration.diagnostics.export_description':
     '诊断包包含迁移错误、系统信息和可用的应用日志。日志可能包含文件路径、错误堆栈、用户内容或凭据；文件只会保存到本地，不会自动上传，请仅发送给 MEA Cowork 支持团队。',
   'migration.diagnostics.logs_not_included': '未能加入应用日志，当前诊断包仅包含系统信息。',
@@ -44,7 +41,7 @@ export const zhCN = {
     '应用日志可能包含文件路径、错误堆栈、用户内容或凭据，请勿分享到公开渠道或提供给 MEA Cowork 支持团队之外的人员。',
   'migration.diagnostics.save': '保存诊断包',
   'migration.diagnostics.save_failed': '诊断包保存失败',
-  'migration.diagnostics.saved_local': '诊断包已保存到本地且未自动上传，请发送至问题反馈邮箱以协助排查。',
+  'migration.diagnostics.saved_local': '诊断包已保存到本地且未自动上传，请通过部署方提供的支持渠道协助排查。',
   'migration.diagnostics.saved_title': '诊断包已保存',
   'migration.diagnostics.saving': '正在保存…',
   'migration.diagnostics.title': '保存问题排查文件',
@@ -181,9 +178,6 @@ export const enUS = {
   'migration.completed.warning_copy_success': 'Migration notices copied',
   'migration.completed.warning_description': 'Migration completed, but the following items need attention.',
   'migration.completed.warning_heading': '{{count}} migration notice(s)',
-  'migration.diagnostics.contact': 'Copy feedback email',
-  'migration.diagnostics.copy_failed': 'Failed to copy feedback email',
-  'migration.diagnostics.copy_success': 'Feedback email copied',
   'migration.diagnostics.export_description':
     'The bundle includes migration errors, system information, and available application logs. Logs may contain file paths, error stacks, user content, or credentials. It is saved locally and never uploaded automatically; share it only with MEA Cowork support.',
   'migration.diagnostics.logs_not_included':
@@ -196,7 +190,7 @@ export const enUS = {
   'migration.diagnostics.save': 'Save diagnostic bundle',
   'migration.diagnostics.save_failed': 'Could not save diagnostic bundle',
   'migration.diagnostics.saved_local':
-    'The diagnostic bundle was saved locally and was not uploaded automatically. Please send it to the feedback email to help us investigate.',
+    'The diagnostic bundle was saved locally and was not uploaded automatically. Please use the support channel provided by your deployment team for investigation.',
   'migration.diagnostics.saved_title': 'Diagnostic bundle saved',
   'migration.diagnostics.saving': 'Saving…',
   'migration.diagnostics.title': 'Save troubleshooting file',

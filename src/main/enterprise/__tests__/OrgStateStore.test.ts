@@ -112,6 +112,7 @@ describe('OrgStateStore', () => {
       fingerprint: async () => null,
       hasRestoredItem: async () => false,
       assertReady: async () => {},
+      checkSpace: async () => false,
       deleteSpace: vi.fn(async () => {
         expect(new OrgStateStore().getCloudRecovery(key)?.deleteLocal).toBe(true)
         expect(deleted).toEqual([])

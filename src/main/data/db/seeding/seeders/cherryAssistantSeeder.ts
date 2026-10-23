@@ -14,7 +14,7 @@ import type { DbType, ISeeder } from '../../types'
 const CHERRY_ASSISTANT_SEED = {
   name: 'MEA Cowork',
   configuration: {
-    avatar: '🍒',
+    avatar: '🤖',
     permission_mode: 'acceptEdits',
     bootstrap_completed: true,
     builtin_role: 'assistant',

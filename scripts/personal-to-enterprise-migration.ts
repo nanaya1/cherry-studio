@@ -1,3 +1,4 @@
+import { lstat } from 'node:fs/promises'
 import path from 'node:path'
 
 import { validateSqliteIntegrity, ProfileClaimService, type ProfileClaimAllow } from '../src/main/core/profiles'
@@ -23,6 +24,20 @@ export interface MigrationApplied {
 }
 
 export type MigrationResult = MigrationPreview | MigrationApplied
+
+async function resolveTargetUserData(target: string): Promise<string> {
+  const normalized = path.normalize(target)
+  if (path.basename(normalized) === 'userData') return normalized
+
+  const existing = await lstat(normalized).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === 'ENOENT') return undefined
+    throw error
+  })
+  if (existing?.isSymbolicLink()) throw new Error(`Refusing symbolic-link target: ${normalized}`)
+  if (existing && !existing.isDirectory()) throw new Error(`Target profile root is not a directory: ${normalized}`)
+  if (path.basename(normalized) === 'userData') return normalized
+  return path.join(normalized, 'userData')
+}
 
 function requireValue(args: string[], index: number, option: string): string {
   const value = args[index + 1]
@@ -53,9 +68,10 @@ export function parseArgs(args: string[]): MigrationOptions {
 }
 
 export async function runMigration(options: MigrationOptions): Promise<MigrationResult> {
+  const targetUserData = await resolveTargetUserData(options.target)
   const service = new ProfileClaimService({
     localUserData: options.source,
-    targetUserData: options.target,
+    targetUserData,
     sqliteValidator: validateSqliteIntegrity
   })
   const preview = await service.preview()
@@ -97,7 +113,7 @@ export async function runMigration(options: MigrationOptions): Promise<Migration
 
 function usage(): string {
   return [
-    'Usage: pnpm tsx scripts/personal-to-enterprise-migration.ts --source <personal-user-data> --target <enterprise-user-data> [options]',
+    'Usage: pnpm tsx scripts/personal-to-enterprise-migration.ts --source <personal-user-data> --target <enterprise-profile-root> [options]',
     '',
     'Options:',
     '  --apply                  Copy files. Without this flag, only preview is generated.',

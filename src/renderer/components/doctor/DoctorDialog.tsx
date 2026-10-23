@@ -165,11 +165,7 @@ export function DoctorDialog({ initialDescription, initialPanel, initialRunTier,
 
         {controller.session.activePanel === 'export' ? (
           <Suspense fallback={<PanelLoading />}>
-            <DiagnosticBundlePanel
-              appVersion={controller.viewModel.report?.basics.version ?? ''}
-              onBusyChange={setBundleBusy}
-              onClose={finishSecondaryPanel}
-            />
+            <DiagnosticBundlePanel onBusyChange={setBundleBusy} onClose={finishSecondaryPanel} />
           </Suspense>
         ) : null}
 

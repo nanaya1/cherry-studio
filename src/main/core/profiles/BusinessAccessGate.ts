@@ -16,7 +16,7 @@
 export type BusinessAccessState =
   | { kind: 'verifying' }
   | { kind: 'verified-online'; expiresAt: number }
-  | { kind: 'blocked'; reason: string }
+  | { kind: 'blocked'; reason: string; retryable?: boolean }
   | { kind: 'restart-required'; reason: string }
 
 export interface BusinessAccessGateOptions {
@@ -39,9 +39,13 @@ export class BusinessAccessGate {
     return { ...this.currentState }
   }
 
-  /** Begin (or re-begin) an online verification. No-op while blocked/restart-required. */
+  /** Begin (or re-begin) an online verification. Retryable blocks may recover. */
   beginVerification(): void {
-    if (this.currentState.kind === 'verifying' || this.currentState.kind === 'verified-online') {
+    if (
+      this.currentState.kind === 'verifying' ||
+      this.currentState.kind === 'verified-online' ||
+      (this.currentState.kind === 'blocked' && this.currentState.retryable)
+    ) {
       this.currentState = { kind: 'verifying' }
     }
   }
@@ -56,9 +60,9 @@ export class BusinessAccessGate {
   }
 
   /** Record a failed verification: block. Ignored if already durable-blocked. */
-  recordVerificationFailure(reason: string): void {
+  recordVerificationFailure(reason: string, retryable = false): void {
     if (this.currentState.kind === 'blocked' || this.currentState.kind === 'restart-required') return
-    this.currentState = { kind: 'blocked', reason }
+    this.currentState = { kind: 'blocked', reason, ...(retryable ? { retryable: true } : {}) }
   }
 
   /** Apply expiry: verified-online past its deadline becomes blocked. */

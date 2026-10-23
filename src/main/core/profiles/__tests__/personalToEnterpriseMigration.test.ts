@@ -16,17 +16,18 @@ async function fixture() {
   const root = await mkdtemp(path.join(tmpdir(), 'personal-to-enterprise-'))
   roots.push(root)
   const source = path.join(root, 'personal-user-data')
-  const target = path.join(root, 'enterprise-user-data')
+  const target = path.join(root, 'profiles', '0123456789abcdef0123456789abcdef')
+  const targetUserData = path.join(target, 'userData')
   await mkdir(path.join(source, 'Data'), { recursive: true })
   await writeFile(path.join(source, 'Data', 'chat.json'), 'business')
   await mkdir(path.join(source, 'Config'), { recursive: true })
   await writeFile(path.join(source, 'Config', 'providers.json'), '{"apiKey":"secret"}')
-  return { source, target }
+  return { source, target, targetUserData }
 }
 
 describe('personal-to-enterprise-migration', () => {
   it('defaults to preview and does not write the target', async () => {
-    const { source, target } = await fixture()
+    const { source, target, targetUserData } = await fixture()
 
     expect(parseArgs(['--source', source, '--target', target])).toEqual({
       source,
@@ -37,27 +38,37 @@ describe('personal-to-enterprise-migration', () => {
     const result = await runMigration({ source, target, apply: false, allow: [] })
 
     expect(result.status).toBe('preview')
-    await expect(readFile(path.join(target, 'Data', 'chat.json'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
+    await expect(readFile(path.join(targetUserData, 'Data', 'chat.json'), 'utf8')).rejects.toMatchObject({
+      code: 'ENOENT'
+    })
   })
 
   it('requires explicit apply and keeps credentials excluded by default', async () => {
-    const { source, target } = await fixture()
+    const { source, target, targetUserData } = await fixture()
 
     const result = await runMigration({ source, target, apply: true, allow: [] })
 
     expect(result.status).toBe('applied')
-    await expect(readFile(path.join(target, 'Data', 'chat.json'), 'utf8')).resolves.toBe('business')
-    await expect(readFile(path.join(target, 'Config', 'providers.json'), 'utf8')).rejects.toMatchObject({
+    await expect(readFile(path.join(targetUserData, 'Data', 'chat.json'), 'utf8')).resolves.toBe('business')
+    await expect(readFile(path.join(targetUserData, 'Config', 'providers.json'), 'utf8')).rejects.toMatchObject({
       code: 'ENOENT'
     })
   })
 
   it('allows API keys only when explicitly requested', async () => {
-    const { source, target } = await fixture()
+    const { source, target, targetUserData } = await fixture()
 
     await runMigration({ source, target, apply: true, allow: ['api-keys'] })
 
-    await expect(readFile(path.join(target, 'Config', 'providers.json'), 'utf8')).resolves.toContain('secret')
+    await expect(readFile(path.join(targetUserData, 'Config', 'providers.json'), 'utf8')).resolves.toContain('secret')
+  })
+
+  it('accepts a target path that already points to userData', async () => {
+    const { source, targetUserData } = await fixture()
+
+    await runMigration({ source, target: targetUserData, apply: true, allow: [] })
+
+    await expect(readFile(path.join(targetUserData, 'Data', 'chat.json'), 'utf8')).resolves.toBe('business')
   })
 
   it('rejects missing required paths', () => {

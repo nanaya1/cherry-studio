@@ -36,7 +36,7 @@ options button. More options keeps Close App in its lower-left footer and presen
 "Save troubleshooting information" first, then "Use V2 without importing V1 data", then "Continue using V1".
 The first option opens a dedicated "Save troubleshooting file" dialog with the detailed privacy notice and save
 action. After a successful save and the export dialog's close animation, a follow-up dialog offers Open file
-location and Copy feedback email. The V2 option opens the existing destructive confirmation; "Continue using V1"
+location. The V2 option opens the existing destructive confirmation; "Continue using V1"
 opens `V1DownloadDialog`, whose download action opens the localized V1 download page. Clicking the visible error
 details, or focusing them and pressing Enter/Space, opens the same diagnostic export dialog; selecting error text
 for copying does not trigger it. The version-incompatible page keeps the standalone diagnostic panel.
@@ -44,9 +44,9 @@ Every More options choice waits for that dialog's shared close animation to fini
 dialog, preventing overlapping overlays and focus restoration from the closing dialog.
 
 The diagnostic panel warns that application logs may contain sensitive data and must not be shared publicly or
-outside Cherry Studio support. Saving never uploads or attaches the bundle; metadata-only fallback is disclosed
-when logs cannot be included. After a successful local-only save, the only support actions reveal the file and
-copy `support@cherry-ai.com`; no mail client or prefilled email is provided. The V1 dialog also opens
+outside the MEA Cowork support channel. Saving never uploads or attaches the bundle; metadata-only fallback is
+disclosed when logs cannot be included. After a successful local-only save, the only support action reveals the
+file. The V1 dialog also opens
 only when selected from More options. The window runs on the `simplest` preload (no shell access), so the
 download button asks main to open the page, passing the wizard's current language;
 `MigrationIpcHandler` owns the URL table and maps that language to a regional site with the same `zh` test

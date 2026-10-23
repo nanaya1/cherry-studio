@@ -31,15 +31,12 @@ import type { DiagnosticRange } from '@shared/ipc/schemas/diagnostics'
 import type { OutputFor } from '@shared/ipc/types'
 import { createFilePathHandle } from '@shared/utils/file'
 
-// const SUPPORT_EMAIL = 'support@cherry-ai.com' — 「联系 Cherry 支持」入口暂时隐藏，恢复时取消注释。
 const logger = loggerService.withContext('DiagnosticBundleDialog')
 const RANGE_OPTIONS = [
   { translationKey: 'settings.about.diagnostics.ranges.24h', value: '24h' },
   { translationKey: 'settings.about.diagnostics.ranges.3d', value: '3d' },
   { translationKey: 'settings.about.diagnostics.ranges.7d', value: '7d' }
 ] as const
-// RANGE_TRANSLATION_KEYS 原用于「联系 Cherry 支持」邮件正文，随入口隐藏暂时移除（见 git 历史）。
-
 type InspectResult = OutputFor<'diagnostics.bundle.inspect'>
 type SavedResult = Extract<OutputFor<'diagnostics.bundle.export'>, { status: 'saved' }>
 type ExportState =
@@ -48,7 +45,6 @@ type ExportState =
   | { readonly result: SavedResult; readonly status: 'saved' }
 
 interface DiagnosticBundleDialogProps {
-  readonly appVersion: string
   readonly onOpenChange: (open: boolean) => void
   readonly open: boolean
 }
@@ -61,7 +57,6 @@ function isDestinationConflictError(error: unknown): boolean {
   )
 }
 
-// appVersion prop 原用于「联系 Cherry 支持」邮件正文，随入口隐藏暂时不解构（见 git 历史）。
 const DiagnosticBundleDialog: FC<DiagnosticBundleDialogProps> = ({ onOpenChange, open }) => {
   const { t } = useTranslation()
   const [range, setRange] = useState<DiagnosticRange>('24h')
@@ -260,11 +255,6 @@ const DiagnosticBundleDialog: FC<DiagnosticBundleDialogProps> = ({ onOpenChange,
     }
   }
 
-  // 「联系 Cherry 支持（support@cherry-ai.com）」入口暂时隐藏：Mea Cowork 暂不开放经此邮箱发送诊断。
-  // 恢复时取消下方函数注释、copyEmailFallback state 与 DialogFooter 中的按钮 JSX（见 git 历史）。
-  // const copySupportEmail = async () => { ... }
-  // const handleContactSupport = async () => { ... }
-
   const rangeOptions = RANGE_OPTIONS.map(({ translationKey, value }) => ({
     label: t(translationKey),
     value
@@ -391,16 +381,6 @@ const DiagnosticBundleDialog: FC<DiagnosticBundleDialogProps> = ({ onOpenChange,
                 <Button ref={revealButtonRef} variant="outline" onClick={() => void handleReveal()}>
                   {t('settings.about.diagnostics.actions.reveal')}
                 </Button>
-                {/* 「联系 Cherry 支持（support@cherry-ai.com）」入口暂时隐藏。Mea Cowork 暂不开放经此邮箱发送诊断。恢复时把 null 换成 ( */}
-                {/* <Button */}
-                {/*   variant="emphasis" */}
-                {/*   onClick={() => void (copyEmailFallback ? copySupportEmail() : handleContactSupport())}> */}
-                {/*   {t( */}
-                {/*     copyEmailFallback */}
-                {/*       ? 'settings.about.diagnostics.actions.copy_email' */}
-                {/*       : 'settings.about.diagnostics.actions.contact' */}
-                {/*   )} */}
-                {/* </Button> */}
               </>
             ) : (
               <>

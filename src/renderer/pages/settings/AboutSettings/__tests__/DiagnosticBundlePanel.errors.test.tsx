@@ -57,7 +57,7 @@ describe('DiagnosticBundlePanel export errors', () => {
 
   it('explains how to recover when the selected destination conflicts with diagnostic data', async () => {
     const user = userEvent.setup()
-    render(<DiagnosticBundlePanel appVersion="2.0.0" onClose={vi.fn()} />)
+    render(<DiagnosticBundlePanel onClose={vi.fn()} />)
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'settings.about.diagnostics.actions.export' })).toBeEnabled()
     )

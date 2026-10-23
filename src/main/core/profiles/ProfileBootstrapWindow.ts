@@ -305,7 +305,9 @@ function registerSignedOutHandlers(context: ProfileLaunchContext, window: Browse
           const preview = await claim.preview()
           if (preview.status === 'already-claimed') return
           if (preview.status === 'unsupported') {
-            throw new Error(translateForBootstrap('dialog.profile_claim.error.target_not_empty'))
+            // 账号 Profile 已有数据时沿用现有数据，登录继续进行；原先的硬失败逻辑保留注释。
+            // throw new Error(translateForBootstrap('dialog.profile_claim.error.target_not_empty'))
+            return undefined
           }
           if (preview.status === 'staged') {
             return { apply: async () => undefined, commit: () => claim.commit() }
@@ -385,8 +387,7 @@ function registerSignedOutHandlers(context: ProfileLaunchContext, window: Browse
     } catch {
       return
     }
-    // if (url.protocol !== 'meacowork:' || url.hostname.toLowerCase() !== 'auth') return
-    if (url.protocol !== 'meacowork-enterprise:' || url.hostname.toLowerCase() !== 'auth') return
+    if (url.protocol !== 'meacowork:' || url.hostname.toLowerCase() !== 'auth') return
     void auth.handleAuthCallback(url).catch(handleAuthError)
   }
   const openUrlHandler = (event: Electron.Event, value: string) => {
@@ -394,8 +395,7 @@ function registerSignedOutHandlers(context: ProfileLaunchContext, window: Browse
     handleAuthUrl(value)
   }
   const secondInstanceHandler = (_event: Electron.Event, argv: string[]) => {
-    // const value = argv.find((argument) => argument.startsWith('meacowork://auth'))
-    const value = argv.find((argument) => argument.startsWith('meacowork-enterprise://auth'))
+    const value = argv.find((argument) => argument.startsWith('meacowork://auth'))
     if (value) handleAuthUrl(value)
   }
   app.on('open-url', openUrlHandler)

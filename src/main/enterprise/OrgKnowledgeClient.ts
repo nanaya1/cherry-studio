@@ -355,7 +355,7 @@ export class OrgKnowledgeClient {
         total: z.number().int().nonnegative()
       }),
       await this.apiClient['request'](
-        this.url(`/api/kb/v1/spaces/${encodeURIComponent(spaceId)}/files`, {
+        this.url(`${getKnowledgeSpacePath(spaceId)}/files`, {
           parent_id: parentId ?? undefined,
           page,
           page_size: 100
@@ -363,6 +363,43 @@ export class OrgKnowledgeClient {
         { signal: AbortSignal.timeout(30_000) }
       ),
       'recovery-files'
+    )
+  }
+
+  async listSpaceFiles(spaceId: string, parentId: string | null, page: number) {
+    return parseOrThrow(
+      z.object({
+        folders: z.array(z.object({
+          id: z.string().min(1),
+          space_id: z.string().min(1),
+          parent_id: z.string().nullable(),
+          name: z.string(),
+          is_dir: z.literal(true),
+          has_original_file: z.boolean().default(false),
+          updated_at: z.string()
+        })),
+        files: z.array(z.object({
+          id: z.string().min(1),
+          space_id: z.string().min(1),
+          parent_id: z.string().nullable(),
+          name: z.string(),
+          is_dir: z.literal(false),
+          has_original_file: z.boolean().default(false),
+          updated_at: z.string()
+        })),
+        total: z.number().int().nonnegative(),
+        page: z.number().int().positive(),
+        page_size: z.number().int().positive()
+      }),
+      await this.apiClient['request'](
+        this.url(`${getKnowledgeSpacePath(spaceId)}/files`, {
+          parent_id: parentId ?? undefined,
+          page,
+          page_size: 100
+        }),
+        { signal: AbortSignal.timeout(30_000) }
+      ),
+      'space-files'
     )
   }
 

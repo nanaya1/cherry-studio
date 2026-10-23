@@ -41,6 +41,21 @@ describe('ProfileOnlineMonitor', () => {
     monitor.stop()
   })
 
+  it('retries a temporary service failure and restores access after recovery', async () => {
+    vi.useFakeTimers()
+    const { gate, verify, blocked, monitor } = setup()
+    verify.mockRejectedValueOnce(new Error('currentuser request failed (503)')).mockResolvedValue(undefined)
+    monitor.start()
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(gate.isAllowed()).toBe(false)
+    expect(gate.state.kind).toBe('verifying')
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(verify.mock.calls.length).toBeGreaterThanOrEqual(2)
+    expect(gate.isAllowed()).toBe(true)
+    expect(blocked).not.toHaveBeenCalled()
+    monitor.stop()
+  })
+
   it('blocks a hung request at the deadline and rejects its late success', async () => {
     vi.useFakeTimers()
     const { gate, verify, monitor } = setup()

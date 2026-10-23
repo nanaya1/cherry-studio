@@ -52,6 +52,7 @@ type Ports = {
   fingerprint(itemId: string): Promise<string | null>
   hasRestoredItem(baseId: string, itemId: string): Promise<boolean>
   assertReady(baseId: string, itemIds: string[]): Promise<void>
+  checkSpace(): Promise<boolean>
   deleteSpace(): Promise<void>
   finish(baseId: string, preserveBaseId?: string): Promise<void>
   deleteLocalBase(baseId: string): Promise<void>
@@ -151,7 +152,8 @@ export class CloudKnowledgeRecovery {
       visited.delete(file.id)
     }
     for (const file of files) await restore(file)
-    await p.assertReady(state.localBaseId, Object.values(state.restored))
+    // 本地解析由知识库任务异步处理，不作为云端删除的前置条件。
+    // await p.assertReady(state.localBaseId, Object.values(state.restored))
     p.active()
     if (this.snapshot(await p.scan()) !== snapshot) throw new Error('云端内容已变化，禁止删除，请重新核查')
     p.active()
@@ -161,6 +163,24 @@ export class CloudKnowledgeRecovery {
   }
 
   // MEA:enterprise-knowledge-page 删除不恢复资料；未知结果保留意图，成功后才允许本机续作。
+  async confirmDeleteResult(): Promise<string> {
+    const p = this.ports
+    const state = p.load()
+    if (!state || state.phase !== 'delete-unknown') throw new Error('没有待核查的云端删除记录')
+    p.active()
+    let exists: boolean
+    try {
+      exists = await p.checkSpace()
+    } catch {
+      throw new Error('云端删除结果暂时无法核查，请稍后重试')
+    }
+    p.active()
+    if (exists) throw new Error('云端空间仍存在，请稍后重试删除')
+    state.phase = 'deleted'
+    p.save(state)
+    return state.localBaseId
+  }
+
   async remove(spaceId: string, localCopies: string[], confirmed: boolean): Promise<string> {
     const p = this.ports
     p.active()
@@ -191,7 +211,18 @@ export class CloudKnowledgeRecovery {
       }
       p.active()
       p.save(state)
-      await p.deleteSpace()
+      // await p.deleteSpace()
+      try {
+        await p.deleteSpace()
+      } catch (error) {
+        const deleted = await p
+          .checkSpace()
+          .then((exists) => !exists)
+          .catch(() => false)
+        if (!deleted) throw new Error('云端删除结果待核查，请稍后重试', { cause: error })
+        state.phase = 'deleted'
+        p.save(state)
+      }
       state.phase = 'deleted'
       p.save(state)
       p.active()
@@ -223,7 +254,8 @@ export class CloudKnowledgeRecovery {
     if (state.phase !== 'deleted' && state.phase !== 'local-cleanup') {
       if (state.phase !== 'ready' || !confirmDevicesStopped || (state.missing.length > 0 && !confirmMissing))
         throw new Error('请确认缺失资料及其他设备已停止操作')
-      await p.assertReady(state.localBaseId, Object.values(state.restored))
+      // 本地解析由知识库任务异步处理，不作为云端删除的前置条件。
+      // await p.assertReady(state.localBaseId, Object.values(state.restored))
       // for (const itemId of Object.values(state.restored)) {
       for (const [fileId, itemId] of Object.entries(state.restored)) {
         const fingerprint = await p.fingerprint(itemId)
@@ -241,10 +273,22 @@ export class CloudKnowledgeRecovery {
       state.deleteLocal = deleteLocal
       state.phase = 'delete-unknown'
       p.save(state)
-      await p.deleteSpace()
+      try {
+        await p.deleteSpace()
+      } catch (error) {
+        const deleted = await p
+          .checkSpace()
+          .then((exists) => !exists)
+          .catch(() => false)
+        if (!deleted) throw new Error('云端删除结果待核查，请稍后重试', { cause: error })
+        state.phase = 'deleted'
+        p.save(state)
+      }
       // 删除成功属于原账号，先保存结果再检查租约，避免重启误发 DELETE。
-      state.phase = 'deleted'
-      p.save(state)
+      if (state.phase === 'delete-unknown') {
+        state.phase = 'deleted'
+        p.save(state)
+      }
       p.active()
     }
     const localCopies = [...new Set([...(state.localCopies ?? []), ...p.localCopies()])]
@@ -262,7 +306,9 @@ export class CloudKnowledgeRecovery {
     if (state.deleteLocal || (state.localCopies ?? []).length > 0) {
       p.active()
       // const localBaseIds = state.deleteLocal ? [state.localBaseId, ...(state.localCopies ?? [])] : [state.localBaseId]
-      const localBaseIds = state.deleteLocal ? [state.localBaseId, ...(state.localCopies ?? [])] : [...(state.localCopies ?? [])]
+      const localBaseIds = state.deleteLocal
+        ? [state.localBaseId, ...(state.localCopies ?? [])]
+        : [...(state.localCopies ?? [])]
       for (const baseId of new Set(localBaseIds)) {
         if (!baseId) continue
         p.active()

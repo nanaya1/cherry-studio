@@ -23,6 +23,8 @@ export function startAuthWorker(profileRoot: string): void {
       const origin = new URL(request.baseUrl)
       if (!['http:', 'https:'].includes(origin.protocol)) throw new Error()
       await app.whenReady()
+      // Cookie storage worker runs as a separate Electron process; keep it out of the macOS Dock.
+      if (process.platform === 'darwin') app.setActivationPolicy('prohibited')
       const target = session.defaultSession
       if (request.operation === 'replace') {
         const previous = await target.cookies.get({ url: request.baseUrl, name: 'sid' })

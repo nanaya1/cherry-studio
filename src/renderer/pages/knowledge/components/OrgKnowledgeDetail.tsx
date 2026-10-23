@@ -91,7 +91,7 @@ function DocumentView({ baseId, target, onBack }: { baseId: string; target: Docu
         do {
           if (seen.has(nextCursor)) throw new Error(t('common.error'))
           seen.add(nextCursor)
-          const page = await ipcApi.request('enterprise.knowledge.items', { baseId, cursor: nextCursor })
+          const page = await ipcApi.request('enterprise.knowledge.items', { baseId, cursor: nextCursor, parentId: null })
           fileId = page.items.find((item) => item.documentId === target.documentId)?.fileId ?? undefined
           nextCursor = page.nextCursor
         } while (!fileId && nextCursor)
@@ -435,11 +435,15 @@ function OrgKnowledgeDetailSession({
     }
   }
   const currentDirectory = directoryStack[directoryStack.length - 1] ?? null
-  const currentParentId = currentDirectory?.id ?? null
-  const load = useCallback(
-    () => ipcApi.request('enterprise.knowledge.items', { baseId: base.id, cursor }),
-    [base.id, cursor]
-  )
+  const currentParentId = currentDirectory?.fileId ?? currentDirectory?.id ?? null
+  const load = useCallback(async () => {
+    const page = await ipcApi.request('enterprise.knowledge.items', {
+      baseId: base.id,
+      cursor,
+      parentId: currentParentId
+    })
+    return page
+  }, [base.id, cursor, currentParentId])
   const { data, loading, error: itemsError, refresh } = useOrgKnowledgeResource(load)
   useEffect(() => {
     if (!addedBaseId || !additionSubmitted) return
@@ -477,8 +481,8 @@ function OrgKnowledgeDetailSession({
   }, [addedBaseId, additionSubmitted, refresh, t])
   const currentPageItems = data?.items ?? []
   const visibleItems = useMemo(
-    () => (directoryItems ?? currentPageItems).filter((item) => item.parentId === currentParentId),
-    [currentPageItems, currentParentId, directoryItems]
+    () => directoryItems ?? currentPageItems,
+    [currentPageItems, directoryItems]
   )
   const readOnlyItems = useMemo(() => visibleItems.map(toReadOnlyKnowledgeItem), [visibleItems])
   const enterDirectory = useCallback(
@@ -496,7 +500,11 @@ function OrgKnowledgeDetailSession({
         do {
           if (seen.has(nextCursor)) throw new Error(t('common.error'))
           seen.add(nextCursor)
-          const page = await ipcApi.request('enterprise.knowledge.items', { baseId: base.id, cursor: nextCursor })
+          const page = await ipcApi.request('enterprise.knowledge.items', {
+            baseId: base.id,
+            cursor: nextCursor,
+            parentId: item.fileId ?? item.id
+          })
           if (request !== directoryRequest.current) return
           items.push(...page.items)
           nextCursor = page.nextCursor
@@ -765,7 +773,8 @@ function OrgKnowledgeDetailSession({
                     seen.add(nextCursor)
                     const page = await ipcApi.request('enterprise.knowledge.items', {
                       baseId: base.id,
-                      cursor: nextCursor
+                      cursor: nextCursor,
+                      parentId: currentParentId
                     })
                     if (request !== directoryRequest.current || !activeSession.current) return
                     items.push(...page.items)
@@ -806,7 +815,8 @@ function OrgKnowledgeDetailSession({
                     seen.add(nextCursor)
                     const page = await ipcApi.request('enterprise.knowledge.items', {
                       baseId: base.id,
-                      cursor: nextCursor
+                      cursor: nextCursor,
+                      parentId: currentParentId
                     })
                     if (request !== directoryRequest.current || !activeSession.current) return
                     items.push(...page.items)

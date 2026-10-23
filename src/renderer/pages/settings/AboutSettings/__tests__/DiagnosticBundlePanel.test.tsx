@@ -30,16 +30,6 @@ vi.mock('@renderer/services/toast', () => ({
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string, values?: Record<string, unknown>) => {
-      if (key === 'settings.about.diagnostics.mail.subject') return `Diagnostics ${values?.bundleId}`
-      if (key === 'settings.about.diagnostics.mail.body') {
-        return [
-          `ID ${values?.bundleId}`,
-          `Version ${values?.version}`,
-          `Platform ${values?.platform}`,
-          `Range ${values?.range}`,
-          `File ${values?.fileName}`
-        ].join('\n')
-      }
       if (key === 'settings.about.diagnostics.sources.message_summary') {
         return `${values?.count} messages, about ${values?.size}`
       }
@@ -77,7 +67,7 @@ const logsSwitchName = 'settings.about.diagnostics.sources.logs.title'
 const tracesSwitchName = 'settings.about.diagnostics.sources.traces.title'
 
 function renderPanel() {
-  render(<DiagnosticBundlePanel appVersion="2.0.0" onClose={vi.fn()} />)
+  render(<DiagnosticBundlePanel onClose={vi.fn()} />)
 }
 
 async function confirmSensitiveExport(user: ReturnType<typeof userEvent.setup>) {
@@ -104,7 +94,7 @@ describe('DiagnosticBundlePanel', () => {
   it('dismisses sensitive-source confirmation without closing the panel or losing selections', async () => {
     const user = userEvent.setup()
     const onClose = vi.fn()
-    render(<DiagnosticBundlePanel appVersion="2.0.0" onClose={onClose} />)
+    render(<DiagnosticBundlePanel onClose={onClose} />)
 
     await waitFor(() => expect(mocks.request).toHaveBeenCalledWith('diagnostics.bundle.inspect', { range: '24h' }))
     await user.click(screen.getByRole('radio', { name: 'settings.about.diagnostics.ranges.3d' }))
@@ -216,7 +206,7 @@ describe('DiagnosticBundlePanel', () => {
         path: '/tmp/cherry-studio-diagnostics.zip'
       })
     )
-    // 联系支持入口已隐藏（见实现中的注释），不再发起 mailto 请求。
+    // 诊断包仅保存到本地并支持打开文件位置，不会发起邮件请求。
     expect(mocks.request).not.toHaveBeenCalledWith('system.shell.open_website', expect.stringMatching(/^mailto:/))
   })
 
@@ -308,8 +298,7 @@ describe('DiagnosticBundlePanel', () => {
     expect(screen.getByRole('button', { name: 'settings.about.diagnostics.actions.export' })).toBeDisabled()
   })
 
-  it('does not offer the copy-email fallback because the support entry is hidden', async () => {
-    // 「联系 Cherry 支持」与「复制邮箱」兜底入口均已随 Cherry 厂商云隐藏而移除。
+  it('does not offer email actions after saving a diagnostic bundle', async () => {
     const user = userEvent.setup()
     const clipboardWrite = vi.spyOn(navigator.clipboard, 'writeText')
     mocks.request.mockImplementation(async (route: string) => {
@@ -327,6 +316,6 @@ describe('DiagnosticBundlePanel', () => {
     expect(
       screen.queryByRole('button', { name: 'settings.about.diagnostics.actions.copy_email' })
     ).not.toBeInTheDocument()
-    expect(clipboardWrite).not.toHaveBeenCalledWith('support@cherry-ai.com')
+    expect(clipboardWrite).not.toHaveBeenCalled()
   })
 })

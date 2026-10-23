@@ -20,9 +20,9 @@ import { parseMcpInstallProtocolUrl } from './handlers/mcpInstall'
 import { handleNavigateProtocolUrl } from './handlers/navigate'
 import { handleProvidersProtocolUrl } from './handlers/providersImport'
 
-export const CHERRY_STUDIO_PROTOCOL = 'meacowork-enterprise'
+export const CHERRY_STUDIO_PROTOCOL = 'meacowork'
 
-const DESKTOP_FILE_NAME = 'meacowork-enterprise-url-handler.desktop'
+const DESKTOP_FILE_NAME = 'meacowork-url-handler.desktop'
 const execAsync = promisify(exec)
 const logger = loggerService.withContext('ProtocolService')
 

@@ -1,5 +1,14 @@
 import type { BusinessAccessGate } from '@main/core/profiles'
 
+export function isRetryableVerificationError(error: unknown): boolean {
+  const status =
+    typeof error === 'object' && error !== null && 'status' in error && typeof error.status === 'number'
+      ? error.status
+      : undefined
+  if (status !== undefined) return status === 502 || status === 503 || status === 504
+  return !(error instanceof Error && /(?:401|403|token|revok|invalid credential)/i.test(error.message))
+}
+
 export interface ProfileOnlineMonitorOptions {
   gate: BusinessAccessGate
   verify: () => Promise<void>
@@ -35,11 +44,15 @@ export class ProfileOnlineMonitor {
     const { gate, onBlocked } = this.options
     gate.enforceDeadline()
     if (!gate.isAllowed()) {
-      if (!this.notified) {
-        this.notified = true
-        onBlocked('Online verification is blocked; restart is required')
+      if (gate.state.kind === 'blocked' && gate.state.retryable) {
+        gate.beginVerification()
+      } else if (gate.state.kind !== 'verifying') {
+        if (!this.notified) {
+          this.notified = true
+          onBlocked('Online verification is blocked; restart is required')
+        }
+        return
       }
-      return
     }
     if (this.running || performance.now() < this.nextVerification) return
     this.running = true
@@ -51,7 +64,11 @@ export class ProfileOnlineMonitor {
           if (!this.stopped) gate.recordVerificationSuccess()
         },
         (error: unknown) => {
-          if (!this.stopped) gate.recordVerificationFailure(error instanceof Error ? error.message : String(error))
+          if (!this.stopped) {
+            const reason = error instanceof Error ? error.message : String(error)
+            const retryable = isRetryableVerificationError(error)
+            gate.recordVerificationFailure(reason, retryable)
+          }
         }
       )
       .finally(() => {
