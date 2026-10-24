@@ -47,6 +47,77 @@ describe('Alibaba Qwen catalog', () => {
     })
   })
 
+  it('registers Z-Image Turbo as a text-only Alibaba image model', () => {
+    const creator = CREATORS.find(({ id }) => id === 'alibaba')
+
+    expect(creator?.models?.find(({ id }) => id === 'z-image-turbo')).toMatchObject({
+      capabilities: ['image-generation'],
+      inputModalities: ['text'],
+      outputModalities: ['image']
+    })
+    expect(loader.findModel('z-image-turbo')).toMatchObject({
+      id: 'z-image-turbo',
+      name: 'Z-Image Turbo',
+      ownedBy: 'alibaba'
+    })
+    expect(loader.findOverride('dashscope', 'z-image-turbo')).toMatchObject({
+      apiModelId: 'z-image-turbo',
+      modelId: 'z-image-turbo',
+      imageGeneration: {
+        modes: {
+          generate: {
+            vendorTransport: {
+              endpoint: '/api/v1/services/aigc/multimodal-generation/generation',
+              isSync: true
+            }
+          }
+        }
+      }
+    })
+  })
+
+  it('registers Qwen Image 2.1 Pro in the creator and generated catalog', () => {
+    const creator = CREATORS.find(({ id }) => id === 'alibaba')
+
+    expect(creator?.models?.find(({ id }) => id === 'qwen-image-2-1-pro')).toMatchObject({
+      capabilities: expect.arrayContaining(['image-recognition', 'image-generation']),
+      inputModalities: ['text', 'image'],
+      outputModalities: ['image']
+    })
+    expect(loader.findModel('qwen-image-2-1-pro')).toMatchObject({
+      id: 'qwen-image-2-1-pro',
+      name: 'Qwen Image 2.1 Pro',
+      ownedBy: 'alibaba'
+    })
+  })
+
+  it('maps DashScope qwen-image-2.1-pro to the native sync multimodal transport', () => {
+    expect(loader.findOverride('dashscope', 'qwen-image-2.1-pro')).toMatchObject({
+      apiModelId: 'qwen-image-2.1-pro',
+      modelId: 'qwen-image-2-1-pro',
+      imageGeneration: {
+        modes: {
+          edit: {
+            vendorTransport: {
+              endpoint: '/api/v1/services/aigc/multimodal-generation/generation',
+              isSync: true
+            }
+          },
+          generate: {
+            vendorTransport: {
+              endpoint: '/api/v1/services/aigc/multimodal-generation/generation',
+              isSync: true
+            }
+          }
+        }
+      }
+    })
+  })
+
+  it('enables registry supplementation for DashScope native image models', () => {
+    expect(loader.findProvider('dashscope')).toMatchObject({ supplementModelsFromRegistry: true })
+  })
+
   it('maps DashScope to qwen3.8-flash with the Qwen3.8 effort contract', () => {
     expect(loader.findOverride('dashscope', 'qwen3.8-flash')).toMatchObject({
       apiModelId: 'qwen3.8-flash',

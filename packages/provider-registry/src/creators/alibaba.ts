@@ -14,6 +14,43 @@ const qwenImage3Supports: ImageModeDef['supports'] = {
   }
 }
 
+/** Z-Image Turbo is a text-only, single-image model on the native multimodal endpoint. */
+const zImageTurboSupports: ImageModeDef['supports'] = {
+  promptExtend: { default: false, type: 'switch' },
+  seed: { type: 'text' },
+  size: {
+    default: '1024x1536',
+    options: [
+      '1024x1024',
+      '832x1248',
+      '1248x832',
+      '864x1152',
+      '1152x864',
+      '720x1280',
+      '1280x720',
+      '576x1344',
+      '1344x576'
+    ],
+    render: 'chips',
+    type: 'enum'
+  }
+}
+
+/** qwen-image-2.1-pro supports text-to-image and image editing on the native multimodal endpoint. */
+const qwenImage21Supports: ImageModeDef['supports'] = {
+  addWatermark: { default: false, type: 'switch' },
+  numImages: { default: 1, max: 6, min: 1, type: 'range' },
+  promptExtend: { default: true, type: 'switch' },
+  seed: { type: 'text' },
+  size: {
+    default: 'auto',
+    options: ['auto', '1328x1328', '1664x928', '928x1664', '1472x1140', '1140x1472'],
+    render: 'chips',
+    type: 'enum'
+  },
+  thinkingMode: { type: 'switch' }
+}
+
 export default defineCreator({
   id: 'alibaba',
   name: 'Alibaba (Qwen)',
@@ -156,6 +193,29 @@ export default defineCreator({
               }
             }
           }
+        }
+      }
+    },
+    {
+      id: 'z-image-turbo',
+      name: 'Z-Image Turbo',
+      family: 'z-image',
+      capabilities: ['image-generation'],
+      inputModalities: ['text'],
+      outputModalities: ['image'],
+      imageGeneration: { modes: { generate: { supports: zImageTurboSupports } } }
+    },
+    {
+      id: 'qwen-image-2-1-pro',
+      name: 'Qwen Image 2.1 Pro',
+      family: 'qwen',
+      capabilities: ['image-recognition', 'image-generation'],
+      inputModalities: ['text', 'image'],
+      outputModalities: ['image'],
+      imageGeneration: {
+        modes: {
+          edit: { supports: qwenImage21Supports },
+          generate: { supports: qwenImage21Supports }
         }
       }
     },

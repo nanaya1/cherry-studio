@@ -3,6 +3,7 @@ import { trace } from '@opentelemetry/api'
 import { BasicTracerProvider, InMemorySpanExporter, SimpleSpanProcessor } from '@opentelemetry/sdk-trace-base'
 import { defaultServiceInstances } from '@test-mocks/main/application'
 import { MockMainPreferenceServiceUtils } from '@test-mocks/main/PreferenceService'
+import { TypeValidationError } from 'ai'
 import { afterEach, beforeEach, describe, expect, expectTypeOf, it, vi } from 'vitest'
 
 import { BaseService } from '@main/core/lifecycle/BaseService'
@@ -2716,6 +2717,82 @@ describe('AiService.listModels', () => {
 
     await vi.advanceTimersByTimeAsync(31_000)
     await result
+  })
+
+  it('falls back to registry models when a supplementing provider returns an invalid model-list response', async () => {
+    const service = createService()
+    const provider = { id: 'dashscope', modelListSource: 'api', supplementModelsFromRegistry: true }
+    const registryModels = [{ id: 'dashscope::qwen-image-2-1-pro', apiModelId: 'qwen-image-2.1-pro' }]
+    mockProviderGetByProviderId.mockReturnValue(provider)
+    mockListModelsFromProvider.mockRejectedValue(
+      new TypeValidationError({
+        value: { object: 'list' },
+        cause: new Error('Required property data is missing'),
+        context: { entityName: 'OpenAIModelsResponse' }
+      })
+    )
+    mockListProviderRegistryModels.mockReturnValue(registryModels)
+
+    await expect(service.listModels({ providerId: 'dashscope', throwOnError: true })).resolves.toEqual({
+      models: registryModels
+    })
+  })
+
+  it('uses registry fallback when the response validation error is wrapped as a cause', async () => {
+    const service = createService()
+    const provider = { id: 'dashscope', modelListSource: 'api', supplementModelsFromRegistry: true }
+    const registryModels = [{ id: 'dashscope::qwen-image-2-1-pro', apiModelId: 'qwen-image-2.1-pro' }]
+    mockProviderGetByProviderId.mockReturnValue(provider)
+    mockListModelsFromProvider.mockRejectedValue({
+      name: 'APICallError',
+      cause: new TypeValidationError({
+        value: { object: 'list' },
+        cause: new Error('Required property data is missing'),
+        context: { entityName: 'OpenAIModelsResponse' }
+      })
+    })
+    mockListProviderRegistryModels.mockReturnValue(registryModels)
+
+    await expect(service.listModels({ providerId: 'dashscope', throwOnError: true })).resolves.toEqual({
+      models: registryModels
+    })
+  })
+
+  it('uses registry fallback from the model-check listing path', async () => {
+    const service = createService()
+    const provider = makeProvider({
+      id: 'dashscope',
+      presetProviderId: 'dashscope',
+      modelListSource: 'api',
+      supplementModelsFromRegistry: true,
+      defaultChatEndpoint: 'openai-chat-completions',
+      endpointConfigs: {
+        'openai-chat-completions': { baseUrl: 'https://cn-beijing.maas.qianwenaiapi.com/api/v1' }
+      }
+    })
+    const model = {
+      id: 'dashscope::qwen-image-2-1-pro',
+      providerId: 'dashscope',
+      apiModelId: 'qwen-image-2.1-pro',
+      name: 'Qwen Image 2.1 Pro',
+      capabilities: ['image-generation'],
+      endpointTypes: ['openai-chat-completions']
+    }
+    const registryModels = [{ id: model.id, apiModelId: model.apiModelId }]
+    mockProviderGetByProviderId.mockReturnValue(provider)
+    mockModelGetByKey.mockReturnValue(model)
+    mockListModelsFromProvider.mockRejectedValue(
+      new TypeValidationError({
+        value: { object: 'list' },
+        cause: new Error('Required property data is missing'),
+        context: { entityName: 'OpenAIModelsResponse' }
+      })
+    )
+    mockListProviderRegistryModels.mockReturnValue(registryModels)
+
+    const target = service.prepareModelCheck(model.id as never)
+
+    await expect(target.listModels(new AbortController().signal)).resolves.toEqual(['qwen-image-2.1-pro'])
   })
 
   it('appends registry-only models the API never returns, deduping enrichment twins by bare id (publisher prefix)', async () => {

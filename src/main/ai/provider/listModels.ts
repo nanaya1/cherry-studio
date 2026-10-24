@@ -907,7 +907,8 @@ const openAIFetcher: ModelFetcher = {
 async function listOpenAICompatibleModels(
   provider: Provider,
   baseUrl: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  options?: { throwOnError?: boolean }
 ): Promise<ListedModels> {
   const response = await getFromApi({
     url: `${baseUrl}/models`,
@@ -928,7 +929,8 @@ async function listOpenAICompatibleModels(
 
 const openAICompatibleFetcher: ModelFetcher = {
   match: () => true,
-  fetch: (provider, signal) => listOpenAICompatibleModels(provider, formatApiHost(getBaseUrl(provider)), signal)
+  fetch: (provider, signal, options) =>
+    listOpenAICompatibleModels(provider, formatApiHost(getBaseUrl(provider)), signal, options)
 }
 
 const omlxFetcher: ModelFetcher = {

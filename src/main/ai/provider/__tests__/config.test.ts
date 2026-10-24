@@ -1223,6 +1223,28 @@ describe('providerToAiSdkConfig — builder dispatch matrix', () => {
       // A builder that installs no fetch of its own must default to the proxy-aware customFetch
       // (the `settings.fetch ??= customFetch` in providerToAiSdkConfig — the point of this path).
       expect(settings.fetch).toBe(customFetch)
+      expect(settings.imageBaseURL).toBe('https://dashscope.aliyuncs.com')
+    })
+
+    it('derives the native image root from a MaaS /api/v1 DashScope base URL', async () => {
+      const provider = makeProvider({
+        id: 'dashscope-maas',
+        presetProviderId: 'dashscope',
+        defaultChatEndpoint: ENDPOINT_TYPE.OPENAI_CHAT_COMPLETIONS,
+        endpointConfigs: {
+          [ENDPOINT_TYPE.OPENAI_CHAT_COMPLETIONS]: {
+            baseUrl: 'https://cn-beijing.maas.qianwenaiapi.com/api/v1',
+            dialect: { streamOptions: true }
+          }
+        }
+      })
+      const model = makeModel({ providerId: 'dashscope-maas', endpointTypes: [ENDPOINT_TYPE.OPENAI_CHAT_COMPLETIONS] })
+
+      const config = await providerToAiSdkConfig(provider, model)
+      const settings = config.providerSettings as Record<string, unknown>
+
+      expect(settings.baseURL).toBe('https://cn-beijing.maas.qianwenaiapi.com/api/v1')
+      expect(settings.imageBaseURL).toBe('https://cn-beijing.maas.qianwenaiapi.com')
     })
 
     it('routes a preset-derived DashScope instance (UUID id) through DashScope config', async () => {

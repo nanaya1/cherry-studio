@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
 
 import {
+  TypeValidationError,
   type EmbeddingModelUsage,
   isToolUIPart,
   type LanguageModelUsage,
@@ -169,6 +170,22 @@ function sourceSnapshotForAssistant(assistant: Assistant | undefined): SourceSna
         icon: assistant.emoji
       }
     : undefined
+}
+
+function isModelListResponseValidationError(error: unknown): boolean {
+  // provider-utils may expose the response-schema failure directly, or wrap it
+  // as the cause of a transport error. Only this narrow validation branch may
+  // use the registry catalog; auth, HTTP, timeout, and network failures must
+  // remain visible to the caller.
+  let current: unknown = error
+  const visited = new Set<unknown>()
+  while (current && !visited.has(current)) {
+    visited.add(current)
+    if (TypeValidationError.isInstance(current)) return true
+    if (typeof current !== 'object') return false
+    current = 'cause' in current ? (current as { cause?: unknown }).cause : undefined
+  }
+  return false
 }
 
 function resolveTextRetryPolicy(
@@ -1220,6 +1237,54 @@ export class AiService extends BaseService {
   }
 
   // ── Model listing ──
+  private async listModelsForProvider(
+    provider: Provider,
+    options: { throwOnError?: boolean } = {},
+    signal?: AbortSignal
+  ): Promise<ListedModels> {
+    if (provider.modelListSource === 'registry') {
+      return {
+        models: providerRegistryService.listProviderRegistryModels({
+          providerId: provider.id,
+          presetProviderId: provider.presetProviderId ?? null
+        })
+      }
+    }
+
+    let remote: ListedModels
+    try {
+      remote = await listModelsFromProvider(provider, signal, options)
+    } catch (error) {
+      if (!provider.supplementModelsFromRegistry || !isModelListResponseValidationError(error)) {
+        throw error
+      }
+      const registryModels = providerRegistryService.listProviderRegistryModels({
+        providerId: provider.id,
+        presetProviderId: provider.presetProviderId ?? null
+      })
+      if (registryModels.length === 0) {
+        throw error
+      }
+      logger.warn('Provider model list failed; using registry catalog', {
+        providerId: provider.id,
+        errorType: error instanceof Error ? error.name : typeof error
+      })
+      return { models: registryModels }
+    }
+
+    if (!provider.supplementModelsFromRegistry) {
+      return remote
+    }
+    const registryModels = providerRegistryService.listProviderRegistryModels({
+      providerId: provider.id,
+      presetProviderId: provider.presetProviderId ?? null
+    })
+    return {
+      models: mergeProviderModelsWithRegistry(remote.models, registryModels),
+      ...(remote.skippedModels ? { skippedModels: remote.skippedModels } : {})
+    }
+  }
+
   async listModels(request: ListModelsRequest): Promise<ListedModels> {
     let providerId = request.providerId
     if (!providerId && request.assistantId) {
@@ -1237,30 +1302,7 @@ export class AiService extends BaseService {
       throw new Error('Cannot resolve providerId: not in request and assistant has no model')
     }
     const provider = providerService.getByProviderId(providerId)
-    // Registry-sourced providers (login-based, no API model list) return their
-    // shipped catalog instead of calling the upstream API. The rest of the pull
-    // flow (enrich → reconcile → enable) is unchanged.
-    if (provider.modelListSource === 'registry') {
-      return {
-        models: providerRegistryService.listProviderRegistryModels({
-          providerId,
-          presetProviderId: provider.presetProviderId ?? null
-        })
-      }
-    }
-    const remote = await listModelsFromProvider(provider, undefined, { throwOnError: request.throwOnError })
-    if (!provider.supplementModelsFromRegistry) {
-      return remote
-    }
-    const registryModels = providerRegistryService.listProviderRegistryModels({
-      providerId,
-      presetProviderId: provider.presetProviderId ?? null
-    })
-    // Catalog supplementation must not hide the provider's skipped-model notice.
-    return {
-      models: mergeProviderModelsWithRegistry(remote.models, registryModels),
-      ...(remote.skippedModels ? { skippedModels: remote.skippedModels } : {})
-    }
+    return this.listModelsForProvider(provider, { throwOnError: request.throwOnError })
   }
 
   /** Captures one model configuration for related probes without re-reading changing settings. */
@@ -1287,10 +1329,10 @@ export class AiService extends BaseService {
       isExternalCli: isExternalCliProvider(provider),
       supportsChat: chatPrimary || !isNonChatModel(model),
       listModels: async (signal: AbortSignal) => {
-        const { models } = await listModelsFromProvider(
+        const { models } = await this.listModelsForProvider(
           { ...provider, defaultChatEndpoint: endpoint.endpointType },
-          signal,
-          { throwOnError: true }
+          { throwOnError: true },
+          signal
         )
         return models.flatMap((candidate) =>
           candidate.apiModelId === undefined
