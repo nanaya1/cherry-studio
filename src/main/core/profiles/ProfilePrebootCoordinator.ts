@@ -63,19 +63,25 @@ export class ProfilePrebootCoordinator {
       const registryState = await registry.initialize()
       const logoutIntent = new ProfileLogoutIntent(path.join(paths.controlRoot, 'logout-intent.json'))
       const logout = await logoutIntent.read()
-      if (logout.kind === 'corrupt') return this.recoveryContext('corrupt-control-plane')
+      // 原恢复弹窗路径保留，启动异常统一回到独立登录页，避免直接加载业务数据。
+      // if (logout.kind === 'corrupt') return this.recoveryContext('corrupt-control-plane')
+      if (logout.kind === 'corrupt') return this.signedOutRecoveryContext()
       if (logout.kind === 'ok' && logout.value) {
         const signedOut = await registry.requireActivatable('signed-out', SIGNED_OUT_DIGEST)
         await this.validateProfileRoot(paths, signedOut.profileId)
         const journal = await switchJournal.read()
-        if (journal.kind === 'corrupt') return this.recoveryContext('corrupt-control-plane')
+        // 原恢复弹窗路径保留。
+        // if (journal.kind === 'corrupt') return this.recoveryContext('corrupt-control-plane')
+        if (journal.kind === 'corrupt') return this.signedOutRecoveryContext()
         if (journal.kind === 'ok' && journal.value.phase === 'prepared') {
           const cancelled = await switchJournal.cancel(journal.value.operationId)
           if (
             cancelled.durability.kind === 'committed-durability-unknown' &&
             cancelled.durability.reason !== 'unsupported'
           ) {
-            return this.recoveryContext('corrupt-control-plane')
+            // 原恢复弹窗路径保留。
+            // return this.recoveryContext('corrupt-control-plane')
+            return this.signedOutRecoveryContext()
           }
         }
         const request = {
@@ -89,21 +95,27 @@ export class ProfilePrebootCoordinator {
           prepared.durability.kind === 'committed-durability-unknown' &&
           prepared.durability.reason !== 'unsupported'
         ) {
-          return this.recoveryContext('corrupt-control-plane')
+          // 原恢复弹窗路径保留。
+          // return this.recoveryContext('corrupt-control-plane')
+          return this.signedOutRecoveryContext()
         }
         const selected = await activePointer.commitPointer(signedOut, request.operationId)
         if (
           selected.durability.kind === 'committed-durability-unknown' &&
           selected.durability.reason !== 'unsupported'
         ) {
-          return this.recoveryContext('corrupt-control-plane')
+          // 原恢复弹窗路径保留。
+          // return this.recoveryContext('corrupt-control-plane')
+          return this.signedOutRecoveryContext()
         }
         const committed = await switchJournal.commit(request)
         if (
           committed.durability.kind === 'committed-durability-unknown' &&
           committed.durability.reason !== 'unsupported'
         ) {
-          return this.recoveryContext('corrupt-control-plane')
+          // 原恢复弹窗路径保留。
+          // return this.recoveryContext('corrupt-control-plane')
+          return this.signedOutRecoveryContext()
         }
         await this.cleanupCommittedSource(switchJournal, await activePointer.read(), paths)
         await logoutIntent.complete()
@@ -111,15 +123,21 @@ export class ProfilePrebootCoordinator {
       }
       const pointer = await activePointer.read()
 
-      if (pointer.kind === 'corrupt') return this.recoveryContext('corrupt-control-plane')
+      // 原恢复弹窗路径保留。
+      // if (pointer.kind === 'corrupt') return this.recoveryContext('corrupt-control-plane')
+      if (pointer.kind === 'corrupt') return this.signedOutRecoveryContext()
       const switchRecovery = await this.reconcileSwitchJournal(switchJournal, pointer)
-      if (switchRecovery.kind === 'mismatch') return this.recoveryContext('profile-switch-mismatch')
+      // 原恢复弹窗路径保留。
+      // if (switchRecovery.kind === 'mismatch') return this.recoveryContext('profile-switch-mismatch')
+      if (switchRecovery.kind === 'mismatch') return this.signedOutRecoveryContext()
       await this.cleanupCommittedSource(switchJournal, pointer, paths)
       if (pointer.kind === 'none') {
         // 旧数据迁移延后到首次认证成功后确认，避免在登录前阻断用户。
         // if (await this.options.legacyDataExists()) return this.bootstrapContext('migration-required')
         const signedOut = registryState.value.profiles.find((profile) => profile.profileId === 'signed-out')
-        if (!signedOut) return this.recoveryContext('corrupt-control-plane')
+        // 原恢复弹窗路径保留。
+        // if (!signedOut) return this.recoveryContext('corrupt-control-plane')
+        if (!signedOut) return this.signedOutRecoveryContext()
         await this.validateProfileRoot(paths, signedOut.profileId)
         await activePointer.commitPointer(signedOut)
         return this.context('signed-out', signedOut)
@@ -133,7 +151,9 @@ export class ProfilePrebootCoordinator {
       if (pointer.record.kind === 'local') {
         // MEA:profile-online-login Adoption keeps the legacy source; a staged local record proceeds to login.
         const signedOut = registryState.value.profiles.find((profile) => profile.profileId === 'signed-out')
-        if (!signedOut) return this.recoveryContext('corrupt-control-plane')
+        // 原恢复弹窗路径保留。
+        // if (!signedOut) return this.recoveryContext('corrupt-control-plane')
+        if (!signedOut) return this.signedOutRecoveryContext()
         await this.validateProfileRoot(paths, signedOut.profileId)
         if (switchRecovery.pendingSwitch) {
           return this.context('signed-out', signedOut, undefined, switchRecovery.pendingSwitch)
@@ -143,7 +163,9 @@ export class ProfilePrebootCoordinator {
           selected.durability.kind === 'committed-durability-unknown' &&
           selected.durability.reason !== 'unsupported'
         ) {
-          return this.recoveryContext('corrupt-control-plane')
+          // 原恢复弹窗路径保留。
+          // return this.recoveryContext('corrupt-control-plane')
+          return this.signedOutRecoveryContext()
         }
         return this.context('signed-out', signedOut)
       }
@@ -160,13 +182,18 @@ export class ProfilePrebootCoordinator {
 
       await bootJournal.beginAttempt(pointer.record.profileId)
       const recoveryDecision = await bootJournal.getRecoveryDecision(pointer.record.profileId)
-      if (recoveryDecision.recover) return this.recoveryContext('consecutive-boot-failures')
+      // 原连续启动失败恢复弹窗路径保留。
+      // if (recoveryDecision.recover) return this.recoveryContext('consecutive-boot-failures')
+      if (recoveryDecision.recover) return this.signedOutRecoveryContext()
 
       await this.validateProfileRoot(paths, pointer.record.profileId)
       return this.context('business', pointer.record)
     } catch (error) {
-      if (this.isInvalidProfilePathError(error)) return this.recoveryContext('invalid-profile-path')
-      return this.recoveryContext('corrupt-control-plane')
+      // 原恢复弹窗路径保留。
+      // if (this.isInvalidProfilePathError(error)) return this.recoveryContext('invalid-profile-path')
+      // return this.recoveryContext('corrupt-control-plane')
+      if (this.isInvalidProfilePathError(error)) return this.signedOutRecoveryContext()
+      return this.signedOutRecoveryContext()
     }
   }
 
@@ -209,6 +236,19 @@ export class ProfilePrebootCoordinator {
 
   private recoveryContext(recoveryReason: ProfileRecoveryReason): ProfileLaunchContext {
     return this.bootstrapContext('recovery', recoveryReason)
+  }
+
+  private signedOutRecoveryContext(): ProfileLaunchContext {
+    const paths = createProfilePaths(this.options.dataRoot)
+    return {
+      // 原 recovery 模式保留用于后续诊断；启动异常先回到独立登录页。
+      mode: 'signed-out',
+      profileId: 'signed-out',
+      identityDigest: SIGNED_OUT_DIGEST,
+      kind: 'signed-out',
+      dataRoot: paths.dataRoot,
+      profileRoot: resolveProfileRoot(paths, 'signed-out')
+    }
   }
 
   private async reconcileSwitchJournal(

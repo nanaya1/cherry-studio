@@ -130,7 +130,7 @@ export async function confirmProfileClaim(
 }
 
 export function createProfileBootstrapWindow(context: ProfileLaunchContext): BrowserWindow {
-  const isLogin = context.mode === 'signed-out' && !context.pendingSwitch
+  const isLogin = context.mode === 'signed-out'
   const window = new BrowserWindow({
     // 原恢复窗口尺寸保留，登录页使用服务端双栏布局。
     width: isLogin ? 1100 : 520,
@@ -174,9 +174,10 @@ export function createProfileBootstrapWindow(context: ProfileLaunchContext): Bro
   }
   // if (context.mode === 'signed-out' && !context.pendingSwitch) registerSignedOutHandlers(context, window)
   if (context.mode === 'migration-required') registerLegacyAdoptionHandler(context, window)
+  // recovery/pendingSwitch 页面保留，当前启动异常统一通过 signed-out 登录页处理。
   if (context.mode === 'recovery' || context.pendingSwitch) registerRecoveryHandlers(context, window)
   const title =
-    context.mode === 'signed-out' && !context.pendingSwitch
+    context.mode === 'signed-out'
       ? 'Choose how to continue'
       : context.mode === 'migration-required'
         ? translateForBootstrap('dialog.profile_claim.legacy.title')
@@ -194,7 +195,7 @@ export function createProfileBootstrapWindow(context: ProfileLaunchContext): Bro
           : // : 'No business profile is active. No business data was loaded.'
             '当前没有可用的账号数据空间，尚未加载业务数据。'
   const actions =
-    context.mode === 'signed-out' && !context.pendingSwitch
+    context.mode === 'signed-out'
       ? `<form id="password-login"><input id="identifier" autocomplete="username" placeholder="Account" required><input id="password" type="password" autocomplete="current-password" placeholder="Password" required><button type="submit">Sign in</button></form><div class="actions"><button id="enterprise">Enterprise login</button></div><p id="status"></p><script>document.getElementById('password-login').onsubmit=async(e)=>{e.preventDefault();const button=e.target.querySelector('button');button.disabled=true;const password=document.getElementById('password');try{await window.profileBootstrap.passwordLogin({identifier:document.getElementById('identifier').value,password:password.value})}catch(error){document.getElementById('status').textContent=String(error)}finally{password.value='';button.disabled=false}};const api=window.profileBootstrap;const status=document.getElementById('status');document.getElementById('enterprise').onclick=async()=>{status.textContent='Opening enterprise login...';try{await api.enterpriseLogin()}catch(e){status.textContent=String(e)}}</script>`
       : context.mode === 'migration-required'
         ? `<div class="actions"><button id="adopt">${translateForBootstrap('dialog.profile_claim.legacy.confirm')}</button></div><p id="status"></p><script>const status=document.getElementById('status');document.getElementById('adopt').onclick=async()=>{status.textContent=${JSON.stringify(translateForBootstrap('dialog.profile_claim.legacy.copying'))};try{await window.profileBootstrap.adoptLegacy();status.textContent=${JSON.stringify(translateForBootstrap('dialog.profile_claim.legacy.restarting'))}}catch(e){status.textContent=String(e)}}</script>`

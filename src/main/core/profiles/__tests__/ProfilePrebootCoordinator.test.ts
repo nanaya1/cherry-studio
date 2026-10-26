@@ -76,7 +76,7 @@ describe('ProfilePrebootCoordinator', () => {
       legacyDataExists: async () => false,
       cleanupCommittedSource
     })
-    expect(await coordinator.initialize()).toMatchObject({ mode: 'recovery' })
+    expect(await coordinator.initialize()).toMatchObject({ mode: 'signed-out', profileId: 'signed-out' })
     expect(JSON.parse(await readFile(intentPath, 'utf8'))).toMatchObject({ sourceProfileId: source.profileId })
     expect(await coordinator.initialize()).toMatchObject({ mode: 'signed-out' })
     expect(JSON.parse(await readFile(intentPath, 'utf8'))).toBeNull()
@@ -87,7 +87,7 @@ describe('ProfilePrebootCoordinator', () => {
     const coordinator = new ProfilePrebootCoordinator({ dataRoot, legacyDataExists: async () => false })
     await coordinator.initialize()
     await writeFile(path.join(dataRoot, 'control', 'logout-intent.json'), '{broken')
-    expect(await coordinator.initialize()).toMatchObject({ mode: 'recovery', recoveryReason: 'corrupt-control-plane' })
+    expect(await coordinator.initialize()).toMatchObject({ mode: 'signed-out', profileId: 'signed-out' })
   })
 
   it('initializes installation and registry, then selects and persists signed-out on a clean first launch', async () => {
@@ -200,7 +200,7 @@ describe('ProfilePrebootCoordinator', () => {
   })
 
   it.each(['installation.json', 'profiles.json', 'active-profile.json'])(
-    'fails closed to recovery for corrupt %s',
+    'returns to signed-out login for corrupt %s',
     async (fileName) => {
       const dataRoot = await createDataRoot()
       const first = new ProfilePrebootCoordinator({ dataRoot, legacyDataExists: async () => false })
@@ -212,11 +212,8 @@ describe('ProfilePrebootCoordinator', () => {
         legacyDataExists: async () => false
       }).initialize()
 
-      expect(context).toMatchObject({
-        mode: 'recovery',
-        profileId: 'signed-out',
-        recoveryReason: 'corrupt-control-plane'
-      })
+      expect(context).toMatchObject({ mode: 'signed-out', profileId: 'signed-out', kind: 'signed-out' })
+      expect(context.mode).not.toBe('recovery')
       await expect(readFile(path.join(dataRoot, 'control', fileName), 'utf8')).resolves.toBe('{not-json')
     }
   )
@@ -328,7 +325,8 @@ describe('ProfilePrebootCoordinator', () => {
 
     const context = await new ProfilePrebootCoordinator({ dataRoot, legacyDataExists: async () => false }).initialize()
 
-    expect(context).toMatchObject({ mode: 'recovery', recoveryReason: 'profile-switch-mismatch' })
+    expect(context).toMatchObject({ mode: 'signed-out', profileId: 'signed-out', kind: 'signed-out' })
+    expect(context.mode).not.toBe('recovery')
     await expect(journal.read()).resolves.toMatchObject({ kind: 'ok', value: { phase: 'prepared' } })
   })
 
@@ -341,7 +339,8 @@ describe('ProfilePrebootCoordinator', () => {
 
     const context = await new ProfilePrebootCoordinator({ dataRoot, legacyDataExists: async () => false }).initialize()
 
-    expect(context).toMatchObject({ mode: 'recovery', profileId: 'signed-out', recoveryReason: 'invalid-profile-path' })
-    expect(context.profileRoot).toBe(path.join(dataRoot, 'control', 'recovery-profile'))
+    expect(context).toMatchObject({ mode: 'signed-out', profileId: 'signed-out', kind: 'signed-out' })
+    expect(context.mode).not.toBe('recovery')
+    expect(context.profileRoot).toBe(path.join(dataRoot, 'profiles', 'signed-out'))
   })
 })

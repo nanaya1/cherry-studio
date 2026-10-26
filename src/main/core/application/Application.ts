@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
-import { app, dialog } from 'electron'
+import { app, BrowserWindow, dialog } from 'electron'
 import { v4 as uuidv4 } from 'uuid'
 
 import { loggerService } from '@logger'
@@ -584,7 +584,14 @@ export class Application {
       logger.error('Could not schedule application relaunch', error as Error)
       throw error
     }
-    logger.info('Application relaunch scheduled; exiting current process')
+    logger.info('Application relaunch scheduled; closing old windows and exiting current process')
+    // relaunch() 会先拉起新进程；先隐藏旧窗口，避免登录窗口和新主窗口
+    // 在交接期间同时显示。窗口关闭事件会因 isRelaunching 跳过 forceExit。
+    for (const window of BrowserWindow?.getAllWindows?.() ?? []) {
+      if (!window.isDestroyed()) window.hide()
+    }
+    // 先释放旧进程的单实例锁，避免新进程在旧进程 app.exit(0) 前抢锁失败后直接退出。
+    app.releaseSingleInstanceLock()
     releaseDataRootLock()
     app.exit(0)
   }
