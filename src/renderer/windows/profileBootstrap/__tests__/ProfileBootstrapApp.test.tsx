@@ -4,6 +4,20 @@ import { describe, expect, it, vi } from 'vitest'
 import ProfileBootstrapApp from '../ProfileBootstrapApp'
 
 describe('profile login', () => {
+  it('shows the workspace startup state without rendering the login form', () => {
+    window.history.pushState({}, '', '?startup=1')
+    Object.defineProperty(window, 'profileBootstrap', {
+      configurable: true,
+      value: { passwordLogin: vi.fn(), enterpriseLogin: vi.fn() }
+    })
+
+    render(<ProfileBootstrapApp />)
+
+    expect(screen.getByRole('heading', { name: '正在准备工作空间' })).toBeInTheDocument()
+    expect(screen.getByText('准备完成后将自动进入会话页面')).toBeInTheDocument()
+    expect(screen.queryByLabelText('帐号')).not.toBeInTheDocument()
+  })
+
   it('shows only password login with the current account placeholder', () => {
     window.history.pushState({}, '', '?sso=1')
     Object.defineProperty(window, 'profileBootstrap', {

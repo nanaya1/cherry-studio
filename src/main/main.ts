@@ -36,6 +36,7 @@ import { initSentry } from '@main/services/sentry'
 
 const profileIsolationEnabled = shouldUseProfileIsolation()
 let profileLaunchContext: ProfileLaunchContext | undefined
+let businessStartupWindow: Electron.BrowserWindow | undefined
 
 // Resolve the configured dataRoot before either legacy or profile-aware locking.
 // The legacy startup path is retained while profile isolation is gated by BootConfig.
@@ -97,6 +98,7 @@ const startApp = async () => {
     // initSentry() — initialized before asynchronous profile resolution.
     await app.whenReady()
     // 在线校验与业务服务启动统一由 startBusinessRuntime 执行。
+    businessStartupWindow = createProfileBootstrapWindow(profileLaunchContext)
   }
 
   // MEA:profile-online-login Profile launches configure Electron before online verification waits for ready.
@@ -106,7 +108,12 @@ const startApp = async () => {
     // initSentry() — initialized before asynchronous profile resolution.
   }
 
-  await startBusinessRuntime(profileLaunchContext)
+  await startBusinessRuntime(profileLaunchContext, {
+    onBusinessReady: () => {
+      if (businessStartupWindow && !businessStartupWindow.isDestroyed()) businessStartupWindow.close()
+      businessStartupWindow = undefined
+    }
+  })
 }
 
 // Top-level safety net: bootstrap() handles known fatal errors internally

@@ -22,6 +22,7 @@ function getErrorMessage(cause: unknown): string {
 }
 
 export default function ProfileBootstrapApp() {
+  const startup = new URLSearchParams(window.location.search).get('startup') === '1'
   const [identifier, setIdentifier] = useState('')
   const [password, setPassword] = useState('')
   const [visible, setVisible] = useState(false)
@@ -50,6 +51,31 @@ export default function ProfileBootstrapApp() {
       setLoading(false)
       submitting.current = false
     }
+  }
+
+  if (startup) {
+    return (
+      <main className="profile-login profile-startup">
+        <header className="brand-header" aria-label="MEA Cowork 企业版">
+          <img src={AppLogo} alt="" />
+          <span>MEA Cowork 企业版</span>
+        </header>
+        <section className="form-panel" aria-label="正在准备工作空间">
+          <div className="startup-card" role="status" aria-live="polite">
+            <div className="startup-mark" aria-hidden="true">
+              <span />
+            </div>
+            <p className="startup-kicker">WORKSPACE</p>
+            <h1>正在准备工作空间</h1>
+            <p className="startup-detail">正在安全加载你的账号数据和业务服务，请稍候。</p>
+            <div className="startup-progress" aria-hidden="true">
+              <span />
+            </div>
+            <p className="startup-footnote">准备完成后将自动进入会话页面</p>
+          </div>
+        </section>
+      </main>
+    )
   }
 
   return (

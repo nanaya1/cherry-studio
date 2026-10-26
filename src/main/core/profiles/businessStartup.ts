@@ -87,6 +87,7 @@ export interface StartBusinessRuntimeOptions {
    * business-startup recovery (same-process activation).
    */
   onVerifyFailure?: 'recovery-window' | 'throw'
+  onBusinessReady?: () => void
 }
 
 /**
@@ -221,4 +222,5 @@ export async function startBusinessRuntime(
   // direct-import singletons rather than stale destroyed instances.
   await registerIpc()
   if (context?.mode === 'business') await markProfileBootSuccessful(context)
+  options.onBusinessReady?.()
 }
