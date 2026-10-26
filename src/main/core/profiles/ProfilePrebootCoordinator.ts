@@ -11,13 +11,7 @@ import { ProfileRegistry, SIGNED_OUT_DIGEST } from './ProfileRegistry'
 import type { ProfileRecordV1 } from './ProfileSchemas'
 import { ProfileSwitchJournal } from './ProfileSwitchJournal'
 
-export type ProfileLaunchMode = 'business' | 'signed-out' | 'migration-required' | 'recovery'
-export type ProfileRecoveryReason =
-  | 'corrupt-control-plane'
-  | 'invalid-profile-path'
-  | 'consecutive-boot-failures'
-  | 'profile-switch-mismatch'
-
+export type ProfileLaunchMode = 'business' | 'signed-out' | 'migration-required'
 export interface PendingProfileSwitch {
   operationId: string
   action: 'retry-or-cancel'
@@ -30,7 +24,6 @@ export interface ProfileLaunchContext {
   kind: ProfileRecordV1['kind']
   dataRoot: string
   profileRoot: string
-  recoveryReason?: ProfileRecoveryReason
   pendingSwitch?: PendingProfileSwitch
   legacyRoot?: string
 }
@@ -63,25 +56,19 @@ export class ProfilePrebootCoordinator {
       const registryState = await registry.initialize()
       const logoutIntent = new ProfileLogoutIntent(path.join(paths.controlRoot, 'logout-intent.json'))
       const logout = await logoutIntent.read()
-      // 原恢复弹窗路径保留，启动异常统一回到独立登录页，避免直接加载业务数据。
-      // if (logout.kind === 'corrupt') return this.recoveryContext('corrupt-control-plane')
-      if (logout.kind === 'corrupt') return this.signedOutRecoveryContext()
+      if (logout.kind === 'corrupt') return this.signedOutFallback()
       if (logout.kind === 'ok' && logout.value) {
         const signedOut = await registry.requireActivatable('signed-out', SIGNED_OUT_DIGEST)
         await this.validateProfileRoot(paths, signedOut.profileId)
         const journal = await switchJournal.read()
-        // 原恢复弹窗路径保留。
-        // if (journal.kind === 'corrupt') return this.recoveryContext('corrupt-control-plane')
-        if (journal.kind === 'corrupt') return this.signedOutRecoveryContext()
+        if (journal.kind === 'corrupt') return this.signedOutFallback()
         if (journal.kind === 'ok' && journal.value.phase === 'prepared') {
           const cancelled = await switchJournal.cancel(journal.value.operationId)
           if (
             cancelled.durability.kind === 'committed-durability-unknown' &&
             cancelled.durability.reason !== 'unsupported'
           ) {
-            // 原恢复弹窗路径保留。
-            // return this.recoveryContext('corrupt-control-plane')
-            return this.signedOutRecoveryContext()
+            return this.signedOutFallback()
           }
         }
         const request = {
@@ -95,27 +82,21 @@ export class ProfilePrebootCoordinator {
           prepared.durability.kind === 'committed-durability-unknown' &&
           prepared.durability.reason !== 'unsupported'
         ) {
-          // 原恢复弹窗路径保留。
-          // return this.recoveryContext('corrupt-control-plane')
-          return this.signedOutRecoveryContext()
+          return this.signedOutFallback()
         }
         const selected = await activePointer.commitPointer(signedOut, request.operationId)
         if (
           selected.durability.kind === 'committed-durability-unknown' &&
           selected.durability.reason !== 'unsupported'
         ) {
-          // 原恢复弹窗路径保留。
-          // return this.recoveryContext('corrupt-control-plane')
-          return this.signedOutRecoveryContext()
+          return this.signedOutFallback()
         }
         const committed = await switchJournal.commit(request)
         if (
           committed.durability.kind === 'committed-durability-unknown' &&
           committed.durability.reason !== 'unsupported'
         ) {
-          // 原恢复弹窗路径保留。
-          // return this.recoveryContext('corrupt-control-plane')
-          return this.signedOutRecoveryContext()
+          return this.signedOutFallback()
         }
         await this.cleanupCommittedSource(switchJournal, await activePointer.read(), paths)
         await logoutIntent.complete()
@@ -123,21 +104,15 @@ export class ProfilePrebootCoordinator {
       }
       const pointer = await activePointer.read()
 
-      // 原恢复弹窗路径保留。
-      // if (pointer.kind === 'corrupt') return this.recoveryContext('corrupt-control-plane')
-      if (pointer.kind === 'corrupt') return this.signedOutRecoveryContext()
+      if (pointer.kind === 'corrupt') return this.signedOutFallback()
       const switchRecovery = await this.reconcileSwitchJournal(switchJournal, pointer)
-      // 原恢复弹窗路径保留。
-      // if (switchRecovery.kind === 'mismatch') return this.recoveryContext('profile-switch-mismatch')
-      if (switchRecovery.kind === 'mismatch') return this.signedOutRecoveryContext()
+      if (switchRecovery.kind === 'mismatch') return this.signedOutFallback()
       await this.cleanupCommittedSource(switchJournal, pointer, paths)
       if (pointer.kind === 'none') {
         // 旧数据迁移延后到首次认证成功后确认，避免在登录前阻断用户。
         // if (await this.options.legacyDataExists()) return this.bootstrapContext('migration-required')
         const signedOut = registryState.value.profiles.find((profile) => profile.profileId === 'signed-out')
-        // 原恢复弹窗路径保留。
-        // if (!signedOut) return this.recoveryContext('corrupt-control-plane')
-        if (!signedOut) return this.signedOutRecoveryContext()
+        if (!signedOut) return this.signedOutFallback()
         await this.validateProfileRoot(paths, signedOut.profileId)
         await activePointer.commitPointer(signedOut)
         return this.context('signed-out', signedOut)
@@ -145,27 +120,26 @@ export class ProfilePrebootCoordinator {
 
       if (pointer.record.kind === 'signed-out') {
         await this.validateProfileRoot(paths, pointer.record.profileId)
-        return this.context('signed-out', pointer.record, undefined, switchRecovery.pendingSwitch)
+        if (switchRecovery.pendingSwitch) {
+          await switchJournal.cancel(switchRecovery.pendingSwitch.operationId)
+        }
+        return this.context('signed-out', pointer.record)
       }
 
       if (pointer.record.kind === 'local') {
         // MEA:profile-online-login Adoption keeps the legacy source; a staged local record proceeds to login.
         const signedOut = registryState.value.profiles.find((profile) => profile.profileId === 'signed-out')
-        // 原恢复弹窗路径保留。
-        // if (!signedOut) return this.recoveryContext('corrupt-control-plane')
-        if (!signedOut) return this.signedOutRecoveryContext()
+        if (!signedOut) return this.signedOutFallback()
         await this.validateProfileRoot(paths, signedOut.profileId)
         if (switchRecovery.pendingSwitch) {
-          return this.context('signed-out', signedOut, undefined, switchRecovery.pendingSwitch)
+          await switchJournal.cancel(switchRecovery.pendingSwitch.operationId)
         }
         const selected = await activePointer.commitPointer(signedOut)
         if (
           selected.durability.kind === 'committed-durability-unknown' &&
           selected.durability.reason !== 'unsupported'
         ) {
-          // 原恢复弹窗路径保留。
-          // return this.recoveryContext('corrupt-control-plane')
-          return this.signedOutRecoveryContext()
+          return this.signedOutFallback()
         }
         return this.context('signed-out', signedOut)
       }
@@ -181,26 +155,18 @@ export class ProfilePrebootCoordinator {
       }
 
       await bootJournal.beginAttempt(pointer.record.profileId)
-      const recoveryDecision = await bootJournal.getRecoveryDecision(pointer.record.profileId)
-      // 原连续启动失败恢复弹窗路径保留。
-      // if (recoveryDecision.recover) return this.recoveryContext('consecutive-boot-failures')
-      if (recoveryDecision.recover) return this.signedOutRecoveryContext()
 
       await this.validateProfileRoot(paths, pointer.record.profileId)
       return this.context('business', pointer.record)
     } catch (error) {
-      // 原恢复弹窗路径保留。
-      // if (this.isInvalidProfilePathError(error)) return this.recoveryContext('invalid-profile-path')
-      // return this.recoveryContext('corrupt-control-plane')
-      if (this.isInvalidProfilePathError(error)) return this.signedOutRecoveryContext()
-      return this.signedOutRecoveryContext()
+      if (this.isInvalidProfilePathError(error)) return this.signedOutFallback()
+      return this.signedOutFallback()
     }
   }
 
   private context(
     mode: ProfileLaunchMode,
     profile: ProfileRecordV1,
-    recoveryReason?: ProfileRecoveryReason,
     pendingSwitch?: PendingProfileSwitch
   ): ProfileLaunchContext {
     const paths = createProfilePaths(this.options.dataRoot)
@@ -211,16 +177,12 @@ export class ProfilePrebootCoordinator {
       kind: profile.kind,
       dataRoot: paths.dataRoot,
       profileRoot: resolveProfileRoot(paths, profile.profileId),
-      ...(recoveryReason ? { recoveryReason } : {}),
       ...(pendingSwitch ? { pendingSwitch } : {}),
       ...(this.legacyRoot ? { legacyRoot: this.legacyRoot } : {})
     }
   }
 
-  private bootstrapContext(
-    mode: 'migration-required' | 'recovery',
-    recoveryReason?: ProfileRecoveryReason
-  ): ProfileLaunchContext {
+  private bootstrapContext(mode: 'migration-required' | 'signed-out'): ProfileLaunchContext {
     const paths = createProfilePaths(this.options.dataRoot)
     return {
       mode,
@@ -228,27 +190,13 @@ export class ProfilePrebootCoordinator {
       identityDigest: SIGNED_OUT_DIGEST,
       kind: 'signed-out',
       dataRoot: paths.dataRoot,
-      profileRoot: path.join(paths.controlRoot, 'recovery-profile'),
-      ...(mode === 'migration-required' && this.options.legacyRoot ? { legacyRoot: this.options.legacyRoot } : {}),
-      ...(recoveryReason ? { recoveryReason } : {})
+      profileRoot: path.join(paths.profilesRoot, 'signed-out'),
+      ...(mode === 'migration-required' && this.options.legacyRoot ? { legacyRoot: this.options.legacyRoot } : {})
     }
   }
 
-  private recoveryContext(recoveryReason: ProfileRecoveryReason): ProfileLaunchContext {
-    return this.bootstrapContext('recovery', recoveryReason)
-  }
-
-  private signedOutRecoveryContext(): ProfileLaunchContext {
-    const paths = createProfilePaths(this.options.dataRoot)
-    return {
-      // 原 recovery 模式保留用于后续诊断；启动异常先回到独立登录页。
-      mode: 'signed-out',
-      profileId: 'signed-out',
-      identityDigest: SIGNED_OUT_DIGEST,
-      kind: 'signed-out',
-      dataRoot: paths.dataRoot,
-      profileRoot: resolveProfileRoot(paths, 'signed-out')
-    }
+  private signedOutFallback(): ProfileLaunchContext {
+    return this.bootstrapContext('signed-out')
   }
 
   private async reconcileSwitchJournal(

@@ -4,11 +4,7 @@ export { BusinessAccessGate } from './BusinessAccessGate'
 export { ProfileAuthEpoch } from './ProfileAuthEpoch'
 export { verifyCandidateProfile, type StartupVerificationResult } from './ProfileStartupVerifier'
 export { ProfileActivePointer, type ActiveProfileReadResult } from './ProfileActivePointer'
-export {
-  ProfileBootJournal,
-  type ProfileBootJournalOptions,
-  type ProfileBootRecoveryDecision
-} from './ProfileBootJournal'
+export { ProfileBootJournal, type ProfileBootJournalOptions } from './ProfileBootJournal'
 export {
   isUnsupportedParentDirectoryDurabilityError,
   ProfileControlStore,
@@ -35,11 +31,6 @@ export {
   type ProfileIdentity
 } from './ProfileIdentity'
 export { confirmProfileClaim, createProfileBootstrapWindow } from './ProfileBootstrapWindow'
-export {
-  ProfileRecoveryActions,
-  type ProfileRecoveryActionsDependencies,
-  type ProfileRecoveryExportResult
-} from './ProfileRecoveryActions'
 export { ProfileInstallation } from './ProfileInstallation'
 export {
   LegacyProfileAdoption,
@@ -79,8 +70,7 @@ export {
   type ProfileLaunchContext,
   type ProfileLaunchMode,
   type PendingProfileSwitch,
-  type ProfilePrebootCoordinatorOptions,
-  type ProfileRecoveryReason
+  type ProfilePrebootCoordinatorOptions
 } from './ProfilePrebootCoordinator'
 export { createProfilePaths, resolveProfileRoot, validateExistingProfilePath, type ProfilePaths } from './ProfilePaths'
 export { ProfileRegistry, SIGNED_OUT_DIGEST, type ProfileAuthorizationContext } from './ProfileRegistry'

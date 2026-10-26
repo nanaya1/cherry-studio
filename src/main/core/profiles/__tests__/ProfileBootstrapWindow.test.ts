@@ -155,7 +155,7 @@ describe('createProfileBootstrapWindow', () => {
     const window = createProfileBootstrapWindow(context) as any
 
     expect(window.loadFile).toHaveBeenCalledWith(
-      expect.stringContaining('/renderer/windows/profileBootstrap/index.html')
+      expect.stringMatching(/renderer[\\/]windows[\\/]profileBootstrap[\\/]index\.html/)
     )
     expect(window.webPreferences).toMatchObject({
       width: 1100,
@@ -163,23 +163,6 @@ describe('createProfileBootstrapWindow', () => {
       webPreferences: { partition: 'profile-bootstrap', contextIsolation: true, nodeIntegration: false, sandbox: true }
     })
     expect(ipcMainHandleMock).not.toHaveBeenCalledWith('profile-bootstrap:enter-local', expect.any(Function))
-  })
-
-  it('opens the login form when a signed-out context has a pending switch', () => {
-    const window = createProfileBootstrapWindow({
-      mode: 'signed-out',
-      profileId: 'signed-out',
-      identityDigest: SIGNED_OUT_DIGEST,
-      kind: 'signed-out',
-      dataRoot: '/data',
-      profileRoot: '/data/profiles/signed-out',
-      pendingSwitch: { operationId: 'operation-1', action: 'retry-or-cancel' }
-    }) as any
-
-    expect(window.loadFile).toHaveBeenCalledWith(
-      expect.stringContaining('/renderer/windows/profileBootstrap/index.html')
-    )
-    expect(window.webPreferences).toMatchObject({ width: 1100, height: 760 })
   })
 
   it('reports a failed account switch to the login form instead of resolving as success', async () => {
@@ -217,8 +200,24 @@ describe('createProfileBootstrapWindow', () => {
     const window = createProfileBootstrapWindow(context) as any
 
     expect(window.loadFile).toHaveBeenCalledWith(
-      expect.stringContaining('/renderer/windows/profileBootstrap/index.html')
+      expect.stringMatching(/renderer[\\/]windows[\\/]profileBootstrap[\\/]index\.html/)
     )
     expect(ipcMainHandleMock).not.toHaveBeenCalledWith('profile-bootstrap:adopt-legacy', expect.any(Function))
+  })
+
+  it('uses the isolated login renderer for the signed-out fallback', () => {
+    const window = createProfileBootstrapWindow({
+      mode: 'signed-out',
+      profileId: 'signed-out',
+      identityDigest: SIGNED_OUT_DIGEST,
+      kind: 'signed-out',
+      dataRoot: '/data',
+      profileRoot: '/data/profiles/signed-out'
+    }) as any
+
+    expect(window.loadFile).toHaveBeenCalledWith(
+      expect.stringMatching(/renderer[\\/]windows[\\/]profileBootstrap[\\/]index\.html/)
+    )
+    expect(ipcMainHandleMock).toHaveBeenCalledWith('profile-bootstrap:password-login', expect.any(Function))
   })
 })

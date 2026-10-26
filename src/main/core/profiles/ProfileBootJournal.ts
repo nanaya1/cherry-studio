@@ -2,22 +2,15 @@ import { type ControlWriteResult, ProfileControlStore } from './ProfileControlSt
 import { type ProfileBootJournalV1, ProfileBootJournalV1Schema } from './ProfileSchemas'
 
 export interface ProfileBootJournalOptions {
-  failureThreshold?: number
   now?: () => Date
 }
 
-export type ProfileBootRecoveryDecision =
-  | { recover: false; profileId: string }
-  | { recover: true; profileId: 'signed-out' }
-
 export class ProfileBootJournal {
   private readonly store: ProfileControlStore<ProfileBootJournalV1>
-  private readonly failureThreshold: number
   private readonly now: () => Date
 
   constructor(filePath: string, options: ProfileBootJournalOptions = {}) {
     this.store = new ProfileControlStore(filePath, ProfileBootJournalV1Schema)
-    this.failureThreshold = options.failureThreshold ?? 2
     this.now = options.now ?? (() => new Date())
   }
 
@@ -82,16 +75,6 @@ export class ProfileBootJournal {
       failureCount: 0,
       ...(state.lastKnownGood ? { lastKnownGood: state.lastKnownGood } : {})
     })
-  }
-
-  async getRecoveryDecision(profileId: string): Promise<ProfileBootRecoveryDecision> {
-    try {
-      const state = await this.read()
-      if (state.failureCount >= this.failureThreshold) return { recover: true, profileId: 'signed-out' }
-      return { recover: false, profileId }
-    } catch {
-      return { recover: true, profileId: 'signed-out' }
-    }
   }
 
   private emptyState(): ProfileBootJournalV1 {

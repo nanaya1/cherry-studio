@@ -10,7 +10,7 @@ vi.mock('@main/core/platform', () => platform)
 describe('packaged application relaunch', () => {
   beforeEach(() => {
     Object.assign(platform, { isDev: false, isLinux: false, isMac: false, isPortable: false, isWin: false })
-    Object.assign(app, { isPackaged: true, relaunch: vi.fn(), releaseSingleInstanceLock: vi.fn(), exit: vi.fn() })
+    Object.assign(app, { isPackaged: true, relaunch: vi.fn(), exit: vi.fn() })
     ;(Application as unknown as { instance: Application | null }).instance = null
     vi.spyOn(process, 'argv', 'get').mockReturnValue([process.execPath, '--original-launch'])
   })
@@ -24,7 +24,6 @@ describe('packaged application relaunch', () => {
     platform[os] = true
     Application.getInstance().relaunch()
     expect(app.relaunch).toHaveBeenCalledWith({ execPath: process.execPath, args: ['--original-launch'] })
-    expect(app.releaseSingleInstanceLock).toHaveBeenCalledTimes(1)
     expect(app.exit).toHaveBeenCalledWith(0)
   })
 

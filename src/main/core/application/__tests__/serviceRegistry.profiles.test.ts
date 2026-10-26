@@ -32,7 +32,7 @@ describe('profile-aware service registry', () => {
     ])
   })
 
-  it.each(['signed-out', 'migration-required', 'recovery'] as const)(
+  it.each(['signed-out', 'migration-required'] as const)(
     'does not include Db/MCP/Knowledge/Agent/AutoBackup services in %s mode',
     (mode) => {
       const names = serviceNameList(getServiceListForProfileMode(mode, businessServiceList))

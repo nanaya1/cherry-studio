@@ -153,7 +153,7 @@ describe('同进程业务启动', () => {
     })
     await startBusinessRuntime(context, { rebuildRuntime: true, onVerifyFailure: 'throw' })
     expect(mocks.order.indexOf('sessionData')).toBeLessThan(mocks.order.indexOf('prepare'))
-    expect(mocks.rebind).toHaveBeenCalledWith('/data/profiles/account/logs')
+    expect(mocks.rebind).toHaveBeenCalledWith(expect.stringMatching(/[\\/]data[\\/]profiles[\\/]account[\\/]logs/))
     expect(mocks.migrateBrandDataFiles).toHaveBeenCalledWith('/mock/userData')
     expect(mocks.mark).toHaveBeenCalledWith(context)
   })
@@ -172,14 +172,14 @@ describe('同进程业务启动', () => {
     mocks.verify.mockResolvedValue({
       kind: 'failed',
       reason: 'login expired',
-      failureContext: { ...context, mode: 'recovery' }
+      failureContext: { ...context, mode: 'signed-out' }
     })
     await startBusinessRuntime({ ...context, legacyRoot: '/legacy' })
     expect(mocks.commitPointer).toHaveBeenCalledWith(expect.objectContaining({ profileId: 'signed-out' }))
     expect(mocks.recover).toHaveBeenCalledWith(
       expect.objectContaining({ mode: 'signed-out', profileRoot: '/data/profiles/signed-out', legacyRoot: '/legacy' })
     )
-    expect(mocks.rebind).toHaveBeenCalledWith('/data/profiles/signed-out/logs')
+    expect(mocks.rebind).toHaveBeenCalledWith(expect.stringMatching(/[\\/]data[\\/]profiles[\\/]signed-out[\\/]logs/))
     expect(mocks.prepare).toHaveBeenCalledOnce()
     expect(mocks.register).not.toHaveBeenCalled()
     expect(mocks.bootstrap).not.toHaveBeenCalled()
@@ -188,7 +188,7 @@ describe('同进程业务启动', () => {
   })
 
   it('未登录状态无法可靠保存时保留恢复页，不打开登录空间', async () => {
-    const failureContext = { ...context, mode: 'recovery' }
+    const failureContext = { ...context, mode: 'signed-out' }
     mocks.verify.mockResolvedValue({ kind: 'failed', reason: 'expired', failureContext })
     mocks.commitPointer.mockResolvedValue({ durability: { kind: 'committed-durability-unknown' } })
     await startBusinessRuntime(context)

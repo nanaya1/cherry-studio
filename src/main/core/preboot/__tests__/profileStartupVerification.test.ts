@@ -120,7 +120,7 @@ describe('verifyBusinessCandidate through the runtime', () => {
     expect(result.kind).toBe('failed')
     if (result.kind !== 'failed') throw new Error('Expected failed verification')
     expect(result.reason).toMatch(/no credential/i)
-    expect(result.failureContext.mode).toBe('recovery')
+    expect(result.failureContext.mode).toBe('signed-out')
   })
 
   it('routes unreadable credentials to recovery without issuing a request', async () => {
@@ -128,7 +128,7 @@ describe('verifyBusinessCandidate through the runtime', () => {
     const result = await verifyBusinessCandidate(businessContext())
     expect(result.kind).toBe('failed')
     if (result.kind !== 'failed') throw new Error('Expected failed verification')
-    expect(result.failureContext.mode).toBe('recovery')
+    expect(result.failureContext.mode).toBe('signed-out')
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
