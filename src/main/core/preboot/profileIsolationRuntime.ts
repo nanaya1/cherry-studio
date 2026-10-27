@@ -159,8 +159,7 @@ export async function markProfileBootSuccessful(context: ProfileLaunchContext): 
 }
 
 /**
- * Builds a signed-out launch context from a dataRoot. Kept for tests and the
- * preboot recovery flows; the verifier no longer routes failures here.
+ * Builds a signed-out launch context from a dataRoot for login fallback flows.
  */
 export function buildSignedOutLaunchContext(dataRoot: string): ProfileLaunchContext {
   const paths = createProfilePaths(dataRoot)
@@ -175,19 +174,18 @@ export function buildSignedOutLaunchContext(dataRoot: string): ProfileLaunchCont
 }
 
 /**
- * Fail-closed route for a candidate that cannot be online-verified. Uses a
- * dedicated recovery context at the control plane (not a signed-out profile
- * bound to the candidate business disk), per design §3 / line 179.
+ * Routes a candidate that cannot be online-verified back to the isolated login
+ * profile without exposing the candidate business data.
  */
 export function buildVerificationFailureContext(dataRoot: string): ProfileLaunchContext {
   const paths = createProfilePaths(dataRoot)
   return {
-    mode: 'recovery',
+    mode: 'signed-out',
     profileId: 'signed-out',
     identityDigest: SIGNED_OUT_DIGEST,
     kind: 'signed-out',
     dataRoot: paths.dataRoot,
-    profileRoot: path.join(paths.controlRoot, 'recovery-profile')
+    profileRoot: resolveProfileRoot(paths, 'signed-out')
   }
 }
 

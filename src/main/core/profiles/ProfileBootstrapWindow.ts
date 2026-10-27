@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir } from 'node:fs/promises'
 import path from 'node:path'
 
 import { app, BrowserWindow, dialog, ipcMain } from 'electron'
@@ -24,7 +24,6 @@ import {
 import { ProfileInstallation } from './ProfileInstallation'
 import { createProfilePaths, validateExistingProfilePath } from './ProfilePaths'
 import type { ProfileLaunchContext } from './ProfilePrebootCoordinator'
-import { ProfileRecoveryActions } from './ProfileRecoveryActions'
 import { ProfileRegistry } from './ProfileRegistry'
 import {
   getProfileLaunchContext,
@@ -40,10 +39,6 @@ import { SwitchFence } from './SwitchFence'
 const PASSWORD_LOGIN = 'profile-bootstrap:password-login'
 const ENTERPRISE_LOGIN = 'profile-bootstrap:enterprise-login'
 const ADOPT_LEGACY = 'profile-bootstrap:adopt-legacy'
-const RETRY_RECOVERY = 'profile-bootstrap:retry-recovery'
-const CANCEL_SWITCH = 'profile-bootstrap:cancel-switch'
-const SELECT_SIGNED_OUT = 'profile-bootstrap:select-signed-out'
-const EXPORT_DIAGNOSTICS = 'profile-bootstrap:export-diagnostics'
 
 const translateForBootstrap = (key: string, params?: Record<string, string | number>) =>
   t(key, params, resolveSystemLanguage(app.getLocale()))
@@ -130,14 +125,16 @@ export async function confirmProfileClaim(
 }
 
 export function createProfileBootstrapWindow(context: ProfileLaunchContext): BrowserWindow {
-  const isLogin = context.mode === 'signed-out' && !context.pendingSwitch
+  const isLogin = context.mode === 'signed-out'
+  const isBusinessStartup = context.mode === 'business'
   const window = new BrowserWindow({
     // 原恢复窗口尺寸保留，登录页使用服务端双栏布局。
-    width: isLogin ? 1100 : 520,
-    height: isLogin ? 760 : 360,
-    minWidth: isLogin ? 480 : 520,
-    minHeight: isLogin ? 640 : 360,
+    width: isLogin ? 1100 : isBusinessStartup ? 620 : 520,
+    height: isLogin ? 760 : isBusinessStartup ? 460 : 360,
+    minWidth: isLogin ? 480 : isBusinessStartup ? 620 : 520,
+    minHeight: isLogin ? 640 : isBusinessStartup ? 460 : 360,
     resizable: isLogin,
+    show: !isBusinessStartup,
     // title: 'MEACowork Profile',
     title: 'MEA Cowork 企业版',
     webPreferences: {
@@ -149,7 +146,30 @@ export function createProfileBootstrapWindow(context: ProfileLaunchContext): Bro
       partition: 'profile-bootstrap'
     }
   })
-  if (isLogin) {
+  if (isLogin || isBusinessStartup) {
+    if (isBusinessStartup) {
+      const closeOnLoadFailure = (
+        _event: Electron.Event,
+        _errorCode: number,
+        _errorDescription: string,
+        _validatedURL: string,
+        isMainFrame: boolean
+      ) => {
+        if (isMainFrame && !window.isDestroyed()) window.close()
+      }
+      window.once('ready-to-show', () => {
+        if (!window.isDestroyed()) window.show()
+      })
+      window.webContents.once('did-fail-load', closeOnLoadFailure)
+      const startupPath = path.join(__dirname, '../renderer/windows/profileBootstrap/index.html')
+      if (process.env['ELECTRON_RENDERER_URL']) {
+        void window.loadURL(`${process.env['ELECTRON_RENDERER_URL']}/windows/profileBootstrap/index.html?startup=1`)
+      } else {
+        void window.loadFile(startupPath, { query: { startup: '1' } })
+      }
+      return window
+    }
+
     registerSignedOutHandlers(context, window)
     const sso = ORG_AUTH_MODE === 'management-oauth' || ORG_AUTH_MODE === 'official-direct'
     if (process.env['ELECTRON_RENDERER_URL']) {
@@ -172,35 +192,10 @@ export function createProfileBootstrapWindow(context: ProfileLaunchContext): Bro
     })
     return window
   }
-  // if (context.mode === 'signed-out' && !context.pendingSwitch) registerSignedOutHandlers(context, window)
   if (context.mode === 'migration-required') registerLegacyAdoptionHandler(context, window)
-  if (context.mode === 'recovery' || context.pendingSwitch) registerRecoveryHandlers(context, window)
-  const title =
-    context.mode === 'signed-out' && !context.pendingSwitch
-      ? 'Choose how to continue'
-      : context.mode === 'migration-required'
-        ? translateForBootstrap('dialog.profile_claim.legacy.title')
-        : // : 'Profile recovery required'
-          '需要恢复用户数据空间'
-  const detail =
-    context.mode === 'migration-required'
-      ? translateForBootstrap('dialog.profile_claim.legacy.detail')
-      : context.mode === 'recovery'
-        ? // ? 'The profile control state could not be opened safely. No business data was loaded.'
-          '无法安全打开用户数据空间。为保护你的数据，尚未加载聊天、知识库等业务数据。'
-        : context.pendingSwitch
-          ? // ? 'A prepared profile switch was interrupted. Retry or cancel it before continuing.'
-            '上次账号空间切换意外中断，请重试或取消切换后继续。'
-          : // : 'No business profile is active. No business data was loaded.'
-            '当前没有可用的账号数据空间，尚未加载业务数据。'
-  const actions =
-    context.mode === 'signed-out' && !context.pendingSwitch
-      ? `<form id="password-login"><input id="identifier" autocomplete="username" placeholder="Account" required><input id="password" type="password" autocomplete="current-password" placeholder="Password" required><button type="submit">Sign in</button></form><div class="actions"><button id="enterprise">Enterprise login</button></div><p id="status"></p><script>document.getElementById('password-login').onsubmit=async(e)=>{e.preventDefault();const button=e.target.querySelector('button');button.disabled=true;const password=document.getElementById('password');try{await window.profileBootstrap.passwordLogin({identifier:document.getElementById('identifier').value,password:password.value})}catch(error){document.getElementById('status').textContent=String(error)}finally{password.value='';button.disabled=false}};const api=window.profileBootstrap;const status=document.getElementById('status');document.getElementById('enterprise').onclick=async()=>{status.textContent='Opening enterprise login...';try{await api.enterpriseLogin()}catch(e){status.textContent=String(e)}}</script>`
-      : context.mode === 'migration-required'
-        ? `<div class="actions"><button id="adopt">${translateForBootstrap('dialog.profile_claim.legacy.confirm')}</button></div><p id="status"></p><script>const status=document.getElementById('status');document.getElementById('adopt').onclick=async()=>{status.textContent=${JSON.stringify(translateForBootstrap('dialog.profile_claim.legacy.copying'))};try{await window.profileBootstrap.adoptLegacy();status.textContent=${JSON.stringify(translateForBootstrap('dialog.profile_claim.legacy.restarting'))}}catch(e){status.textContent=String(e)}}</script>`
-        : // 原英文恢复页操作保留，使用中文按钮和状态提示。
-          // : `<div class="actions recovery"><button id="retry">Retry</button><button id="signed-out">Use signed-out</button><button id="diagnostics">Export diagnostics</button>${context.pendingSwitch ? '<button id="cancel-switch">Cancel pending switch</button>' : ''}</div><p id="status"></p><script>const api=window.profileBootstrap;const status=document.getElementById('status');const run=async(label,action)=>{status.textContent=label;try{const result=await action();status.textContent=result?.kind==='cancelled'?'Export cancelled':'Restarting...'}catch(e){status.textContent=String(e)}};document.getElementById('retry').onclick=()=>run('Retrying...',api.retryRecovery);document.getElementById('signed-out').onclick=()=>run('Selecting signed-out profile...',api.selectSignedOut);document.getElementById('diagnostics').onclick=()=>run('Exporting diagnostics...',api.exportDiagnostics);const cancel=document.getElementById('cancel-switch');if(cancel)cancel.onclick=()=>run('Cancelling pending switch...',api.cancelSwitch)</script>`
-          `<div class="actions recovery"><button id="retry">重试</button><button id="signed-out">返回登录页</button><button id="diagnostics">导出诊断信息</button>${context.pendingSwitch ? '<button id="cancel-switch">取消待完成的切换</button>' : ''}</div><p id="status"></p><script>const api=window.profileBootstrap;const status=document.getElementById('status');const run=async(label,action)=>{status.textContent=label;try{const result=await action();status.textContent=result?.kind==='cancelled'?'已取消导出':result?.kind==='exported'?'诊断信息已导出':'正在重新启动…'}catch(e){status.textContent='操作失败：'+String(e)}};document.getElementById('retry').onclick=()=>run('正在重试…',api.retryRecovery);document.getElementById('signed-out').onclick=()=>run('正在返回登录页…',api.selectSignedOut);document.getElementById('diagnostics').onclick=()=>run('正在导出诊断信息…',api.exportDiagnostics);const cancel=document.getElementById('cancel-switch');if(cancel)cancel.onclick=()=>run('正在取消切换…',api.cancelSwitch)</script>`
+  const title = translateForBootstrap('dialog.profile_claim.legacy.title')
+  const detail = translateForBootstrap('dialog.profile_claim.legacy.detail')
+  const actions = `<div class="actions"><button id="adopt">${translateForBootstrap('dialog.profile_claim.legacy.confirm')}</button></div><p id="status"></p><script>const status=document.getElementById('status');document.getElementById('adopt').onclick=async()=>{status.textContent=${JSON.stringify(translateForBootstrap('dialog.profile_claim.legacy.copying'))};try{await window.profileBootstrap.adoptLegacy();status.textContent=${JSON.stringify(translateForBootstrap('dialog.profile_claim.legacy.restarting'))}}catch(e){status.textContent=String(e)}}</script>`
   const html = `<!doctype html><meta charset="utf-8"><title>${title}</title><style>body{margin:0;font:14px system-ui;background:#f5f5f5;color:#202124}main{padding:48px}h1{font-size:22px;margin:0 0 16px}p{line-height:1.6;margin:0;color:#5f6368}.actions{display:flex;gap:12px;margin-top:28px}button{border:1px solid #c7c7c7;background:#fff;padding:10px 16px;border-radius:6px;cursor:pointer}button:last-child{background:#1f1f1f;color:#fff;border-color:#1f1f1f}#status{margin-top:18px}</style><main><h1>${title}</h1><p>${detail}</p>${actions}</main>`
   void window.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
   return window
@@ -213,70 +208,6 @@ function registerLegacyAdoptionHandler(context: ProfileLaunchContext, window: Br
     await adoptLegacyProfile(context)
     application.relaunch()
   })
-}
-
-function registerRecoveryHandlers(context: ProfileLaunchContext, window: BrowserWindow): void {
-  const channels = [RETRY_RECOVERY, CANCEL_SWITCH, SELECT_SIGNED_OUT, EXPORT_DIAGNOSTICS]
-  for (const channel of channels) ipcMain.removeHandler(channel)
-
-  const paths = createProfilePaths(context.dataRoot)
-  const registry = new ProfileRegistry(path.join(paths.controlRoot, 'profiles.json'))
-  const journal = new ProfileSwitchJournal(path.join(paths.controlRoot, 'switch-journal.json'))
-  const actions = new ProfileRecoveryActions({
-    context,
-    journal,
-    registry,
-    installation: new ProfileInstallation(path.join(paths.controlRoot, 'installation.json')),
-    activePointer: new ProfileActivePointer(path.join(paths.controlRoot, 'active-profile.json'), registry),
-    prepareProfileRoot: async (profileId) => {
-      const profileRoot = path.join(paths.profilesRoot, profileId)
-      await validateExistingProfilePath(paths, profileRoot)
-      await mkdir(profileRoot, { recursive: true })
-    },
-    relaunch: () => application.relaunch(),
-    exportDiagnostics: async () => {
-      const result = await dialog.showSaveDialog(window, {
-        // title: 'Export profile recovery diagnostics',
-        title: '导出用户空间恢复诊断信息',
-        defaultPath: 'profile-recovery-diagnostics.json',
-        filters: [{ name: 'JSON', extensions: ['json'] }]
-      })
-      if (result.canceled || !result.filePath) return { kind: 'cancelled' }
-      const [registryState, journalState] = await Promise.all([
-        registry.read().then(
-          (value) => ({ kind: 'ok' as const, profileKinds: value.profiles.map((profile) => profile.kind) }),
-          (error) => ({ kind: 'error' as const, error: error instanceof Error ? error.message : String(error) })
-        ),
-        journal.read()
-      ])
-      await writeFile(
-        result.filePath,
-        `${JSON.stringify(
-          {
-            version: 1,
-            generatedAt: new Date().toISOString(),
-            mode: context.mode,
-            recoveryReason: context.recoveryReason,
-            pendingSwitchOperationId: context.pendingSwitch?.operationId,
-            registry: registryState,
-            switchJournal: journalState.kind === 'ok' ? { kind: 'ok', phase: journalState.value.phase } : journalState
-          },
-          null,
-          2
-        )}\n`,
-        { encoding: 'utf8', mode: 0o600 }
-      )
-      return { kind: 'exported' }
-    }
-  })
-
-  window.once('closed', () => {
-    for (const channel of channels) ipcMain.removeHandler(channel)
-  })
-  ipcMain.handle(RETRY_RECOVERY, () => actions.retry())
-  ipcMain.handle(CANCEL_SWITCH, () => actions.cancelPendingSwitch())
-  ipcMain.handle(SELECT_SIGNED_OUT, () => actions.selectSignedOut())
-  ipcMain.handle(EXPORT_DIAGNOSTICS, () => actions.exportDiagnostics())
 }
 
 function registerSignedOutHandlers(context: ProfileLaunchContext, window: BrowserWindow): void {
