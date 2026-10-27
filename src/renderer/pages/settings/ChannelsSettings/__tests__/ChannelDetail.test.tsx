@@ -291,6 +291,11 @@ describe('ChannelDetail', () => {
     expect(nameInput).toHaveFocus()
     expect(nameInput.selectionStart).toBe(nameInput.selectionEnd)
 
+    const dialogTitle = screen.getByRole('heading', { name: 'Telegram channel' })
+    const dialogContent = dialogTitle.parentElement?.parentElement?.parentElement
+    expect(dialogContent).toHaveClass('max-h-[calc(100vh-2rem)]', 'overflow-y-auto')
+    expect(dialogTitle.parentElement?.parentElement).toHaveClass('pr-1')
+
     fireEvent.click(screen.getByText('agent.channels.security.inheritFromAgent'))
 
     await waitFor(() => {
