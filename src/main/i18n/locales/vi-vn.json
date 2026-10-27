@@ -99,6 +99,8 @@
   "dialog.open_file": "Mở tệp",
   "dialog.pdf_files": "Tệp PDF",
   "dialog.png_image": "Hình ảnh PNG",
+  "dialog.profile_bootstrap.load_failed.message": "Không thể tải cửa sổ tài khoản nên cửa sổ đã đóng. Hãy khởi động lại ứng dụng và thử lại.",
+  "dialog.profile_bootstrap.load_failed.title": "Cửa sổ tài khoản không khả dụng",
   "dialog.profile_claim.api_keys.detail": "API keys are credentials. Only include them when this account profile belongs to the same user.",
   "dialog.profile_claim.api_keys.include": "Include API keys",
   "dialog.profile_claim.api_keys.message": "Also copy locally configured provider API keys?",

@@ -211,6 +211,45 @@ import { contextMenu } from '../ContextMenu'
 import { markMainRendererReadyForTabAttach, resetMainRendererTabAttachDelivery } from '../mainWindowNavigation'
 import { MainWindowService } from '../MainWindowService'
 
+it.each(['meacowork://oauth/callback?code=test&state=test', 'meacowork://providers?data=test'])(
+  '主窗二次启动监听器将 %s 的显示决策交给协议路由',
+  (url) => {
+    vi.mocked(app.on).mockClear()
+    const service = new MainWindowService()
+    const show = vi.spyOn(service, 'showMainWindow').mockImplementation(() => {})
+    ;(service as any).registerSecondInstanceHandler()
+    const handler = vi.mocked(app.on).mock.calls.find(([event]) => String(event) === 'second-instance')![1] as (
+      event: unknown,
+      argv: string[]
+    ) => void
+
+    try {
+      handler({}, ['app.exe', url])
+      expect(show).not.toHaveBeenCalled()
+    } finally {
+      show.mockRestore()
+    }
+  }
+)
+
+it('普通二次启动仍由主窗服务恢复业务主窗', () => {
+  vi.mocked(app.on).mockClear()
+  const service = new MainWindowService()
+  const show = vi.spyOn(service, 'showMainWindow').mockImplementation(() => {})
+  ;(service as any).registerSecondInstanceHandler()
+  const handler = vi.mocked(app.on).mock.calls.find(([event]) => String(event) === 'second-instance')![1] as (
+    event: unknown,
+    argv: string[]
+  ) => void
+
+  try {
+    handler({}, ['app.exe'])
+    expect(show).toHaveBeenCalledOnce()
+  } finally {
+    show.mockRestore()
+  }
+})
+
 it('业务主窗口显式使用账号 sessionData 路径', () => {
   setProfileLaunchContext({
     mode: 'business',

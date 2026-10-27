@@ -99,6 +99,8 @@
   "dialog.open_file": "打开文件",
   "dialog.pdf_files": "PDF 文件",
   "dialog.png_image": "PNG 图片",
+  "dialog.profile_bootstrap.load_failed.message": "账号窗口加载失败，已关闭。请重新启动应用后重试。",
+  "dialog.profile_bootstrap.load_failed.title": "账号窗口不可用",
   "dialog.profile_claim.api_keys.detail": "API 密钥属于敏感凭据。仅当此账号 Profile 仍属于同一用户时才应迁移。",
   "dialog.profile_claim.api_keys.include": "迁移 API 密钥",
   "dialog.profile_claim.api_keys.message": "是否同时迁移本地配置的服务商 API 密钥？",

@@ -99,6 +99,8 @@
   "dialog.open_file": "Abrir Ficheiro",
   "dialog.pdf_files": "Ficheiros PDF",
   "dialog.png_image": "Imagem PNG",
+  "dialog.profile_bootstrap.load_failed.message": "Não foi possível carregar a janela da conta e esta foi fechada. Reinicie a aplicação e tente novamente.",
+  "dialog.profile_bootstrap.load_failed.title": "Janela da conta indisponível",
   "dialog.profile_claim.api_keys.detail": "API keys are credentials. Only include them when this account profile belongs to the same user.",
   "dialog.profile_claim.api_keys.include": "Include API keys",
   "dialog.profile_claim.api_keys.message": "Also copy locally configured provider API keys?",

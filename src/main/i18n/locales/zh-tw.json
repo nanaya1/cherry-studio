@@ -99,6 +99,8 @@
   "dialog.open_file": "開啟檔案",
   "dialog.pdf_files": "PDF 檔案",
   "dialog.png_image": "PNG 影像",
+  "dialog.profile_bootstrap.load_failed.message": "帳號視窗載入失敗，已關閉。請重新啟動應用程式後重試。",
+  "dialog.profile_bootstrap.load_failed.title": "帳號視窗無法使用",
   "dialog.profile_claim.api_keys.detail": "API 金鑰屬於敏感憑證。僅當此帳號 Profile 仍屬於同一位使用者時才應遷移。",
   "dialog.profile_claim.api_keys.include": "遷移 API 金鑰",
   "dialog.profile_claim.api_keys.message": "是否同時遷移本機設定的服務商 API 金鑰？",

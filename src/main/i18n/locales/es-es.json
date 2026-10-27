@@ -99,6 +99,8 @@
   "dialog.open_file": "Abrir archivo",
   "dialog.pdf_files": "Archivos PDF",
   "dialog.png_image": "Imagen PNG",
+  "dialog.profile_bootstrap.load_failed.message": "La ventana de la cuenta no pudo cargarse y se ha cerrado. Reinicie la aplicación e inténtelo de nuevo.",
+  "dialog.profile_bootstrap.load_failed.title": "Ventana de cuenta no disponible",
   "dialog.profile_claim.api_keys.detail": "API keys are credentials. Only include them when this account profile belongs to the same user.",
   "dialog.profile_claim.api_keys.include": "Include API keys",
   "dialog.profile_claim.api_keys.message": "Also copy locally configured provider API keys?",
