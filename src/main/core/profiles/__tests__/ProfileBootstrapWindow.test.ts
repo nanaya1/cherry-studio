@@ -22,7 +22,7 @@ const {
 vi.mock('electron', () => ({
   app: { getLocale: () => 'zh-CN', on: vi.fn(), removeListener: vi.fn() },
   BrowserWindow: class {
-    webContents = { mainFrame: {} }
+    webContents = { mainFrame: {}, once: vi.fn() }
     webPreferences: unknown = undefined
     constructor(opts: unknown) {
       this.webPreferences = opts
@@ -31,6 +31,9 @@ vi.mock('electron', () => ({
     loadFile = vi.fn()
     once = vi.fn()
     on = vi.fn()
+    show = vi.fn()
+    close = vi.fn()
+    isDestroyed = vi.fn(() => false)
   },
   dialog: { showMessageBox: showMessageBoxMock },
   ipcMain: { handle: ipcMainHandleMock, removeHandler: ipcMainRemoveHandlerMock }
@@ -163,6 +166,72 @@ describe('createProfileBootstrapWindow', () => {
       webPreferences: { partition: 'profile-bootstrap', contextIsolation: true, nodeIntegration: false, sandbox: true }
     })
     expect(ipcMainHandleMock).not.toHaveBeenCalledWith('profile-bootstrap:enter-local', expect.any(Function))
+  })
+
+  it('opens the workspace startup page hidden until the renderer is ready', () => {
+    const window = createProfileBootstrapWindow({
+      mode: 'business',
+      profileId: 'profile-1',
+      identityDigest: 'a'.repeat(64),
+      kind: 'authenticated',
+      dataRoot: '/data',
+      profileRoot: '/data/profiles/profile-1'
+    }) as any
+
+    expect(window.loadFile).toHaveBeenCalledWith(
+      expect.stringMatching(/renderer[\\/]windows[\\/]profileBootstrap[\\/]index\.html/),
+      { query: { startup: '1' } }
+    )
+    expect(window.webPreferences).toMatchObject({
+      width: 620,
+      height: 460,
+      show: false
+    })
+    expect(window.show).not.toHaveBeenCalled()
+
+    const readyToShowHandler = window.once.mock.calls.find(([event]: [string]) => event === 'ready-to-show')?.[1]
+    expect(readyToShowHandler).toEqual(expect.any(Function))
+    readyToShowHandler()
+
+    expect(window.show).toHaveBeenCalledTimes(1)
+  })
+
+  it('closes the workspace startup page when the main frame fails to load', () => {
+    const window = createProfileBootstrapWindow({
+      mode: 'business',
+      profileId: 'profile-1',
+      identityDigest: 'a'.repeat(64),
+      kind: 'authenticated',
+      dataRoot: '/data',
+      profileRoot: '/data/profiles/profile-1'
+    }) as any
+
+    const didFailLoadHandler = window.webContents.once.mock.calls.find(
+      ([event]: [string]) => event === 'did-fail-load'
+    )?.[1]
+    expect(didFailLoadHandler).toEqual(expect.any(Function))
+
+    didFailLoadHandler({}, -6, 'ERR_FILE_NOT_FOUND', 'file:///startup.html', true)
+
+    expect(window.close).toHaveBeenCalledTimes(1)
+  })
+
+  it('ignores subframe load failures for the workspace startup page', () => {
+    const window = createProfileBootstrapWindow({
+      mode: 'business',
+      profileId: 'profile-1',
+      identityDigest: 'a'.repeat(64),
+      kind: 'authenticated',
+      dataRoot: '/data',
+      profileRoot: '/data/profiles/profile-1'
+    }) as any
+
+    const didFailLoadHandler = window.webContents.once.mock.calls.find(
+      ([event]: [string]) => event === 'did-fail-load'
+    )?.[1]
+    didFailLoadHandler({}, -6, 'ERR_FILE_NOT_FOUND', 'file:///subframe.html', false)
+
+    expect(window.close).not.toHaveBeenCalled()
   })
 
   it('reports a failed account switch to the login form instead of resolving as success', async () => {

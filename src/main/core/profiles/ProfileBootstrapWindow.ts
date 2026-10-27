@@ -126,13 +126,15 @@ export async function confirmProfileClaim(
 
 export function createProfileBootstrapWindow(context: ProfileLaunchContext): BrowserWindow {
   const isLogin = context.mode === 'signed-out'
+  const isBusinessStartup = context.mode === 'business'
   const window = new BrowserWindow({
     // 原恢复窗口尺寸保留，登录页使用服务端双栏布局。
-    width: isLogin ? 1100 : 520,
-    height: isLogin ? 760 : 360,
-    minWidth: isLogin ? 480 : 520,
-    minHeight: isLogin ? 640 : 360,
+    width: isLogin ? 1100 : isBusinessStartup ? 620 : 520,
+    height: isLogin ? 760 : isBusinessStartup ? 460 : 360,
+    minWidth: isLogin ? 480 : isBusinessStartup ? 620 : 520,
+    minHeight: isLogin ? 640 : isBusinessStartup ? 460 : 360,
     resizable: isLogin,
+    show: !isBusinessStartup,
     // title: 'MEACowork Profile',
     title: 'MEA Cowork 企业版',
     webPreferences: {
@@ -144,7 +146,30 @@ export function createProfileBootstrapWindow(context: ProfileLaunchContext): Bro
       partition: 'profile-bootstrap'
     }
   })
-  if (isLogin) {
+  if (isLogin || isBusinessStartup) {
+    if (isBusinessStartup) {
+      const closeOnLoadFailure = (
+        _event: Electron.Event,
+        _errorCode: number,
+        _errorDescription: string,
+        _validatedURL: string,
+        isMainFrame: boolean
+      ) => {
+        if (isMainFrame && !window.isDestroyed()) window.close()
+      }
+      window.once('ready-to-show', () => {
+        if (!window.isDestroyed()) window.show()
+      })
+      window.webContents.once('did-fail-load', closeOnLoadFailure)
+      const startupPath = path.join(__dirname, '../renderer/windows/profileBootstrap/index.html')
+      if (process.env['ELECTRON_RENDERER_URL']) {
+        void window.loadURL(`${process.env['ELECTRON_RENDERER_URL']}/windows/profileBootstrap/index.html?startup=1`)
+      } else {
+        void window.loadFile(startupPath, { query: { startup: '1' } })
+      }
+      return window
+    }
+
     registerSignedOutHandlers(context, window)
     const sso = ORG_AUTH_MODE === 'management-oauth' || ORG_AUTH_MODE === 'official-direct'
     if (process.env['ELECTRON_RENDERER_URL']) {
