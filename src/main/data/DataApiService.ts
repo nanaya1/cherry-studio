@@ -62,6 +62,10 @@ export class DataApiService extends BaseService {
     }
   }
 
+  protected override onDestroy(): void {
+    this.apiServer.dispose()
+  }
+
   /**
    * Log system information for debugging
    */

@@ -152,6 +152,18 @@ export async function migrateProfileSensitiveData(context: ProfileLaunchContext)
   })
 }
 
+/**
+ * Open a boot attempt for a same-process business activation. Cold starts get
+ * this from `ProfilePrebootCoordinator`; a rebuilt runtime skips preboot, so
+ * without this the later `markProfileBootSuccessful()` has no started attempt
+ * to close and the activation aborts with a force-exit.
+ */
+export async function beginProfileBootAttempt(context: ProfileLaunchContext): Promise<void> {
+  if (context.mode !== 'business') return
+  const journal = new ProfileBootJournal(path.join(context.dataRoot, 'control', 'boot-journal.json'))
+  await journal.beginAttempt(context.profileId)
+}
+
 export async function markProfileBootSuccessful(context: ProfileLaunchContext): Promise<void> {
   if (context.mode !== 'business') return
   const journal = new ProfileBootJournal(path.join(context.dataRoot, 'control', 'boot-journal.json'))

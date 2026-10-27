@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   verify: vi.fn(),
   bootstrap: vi.fn(),
   migrate: vi.fn(),
+  begin: vi.fn(),
   mark: vi.fn(),
   register: vi.fn(),
   prepare: vi.fn(),
@@ -72,6 +73,7 @@ vi.mock('@main/core/preboot/profileIsolationRuntime', () => ({
   }),
   verifyBusinessCandidate: mocks.verify,
   migrateProfileSensitiveData: mocks.migrate,
+  beginProfileBootAttempt: mocks.begin,
   markProfileBootSuccessful: mocks.mark
 }))
 vi.mock('@main/core/preboot/backupRestoreGate', () => ({ runBackupRestoreGate: vi.fn() }))
@@ -155,6 +157,22 @@ describe('同进程业务启动', () => {
     expect(mocks.order.indexOf('sessionData')).toBeLessThan(mocks.order.indexOf('prepare'))
     expect(mocks.rebind).toHaveBeenCalledWith(expect.stringMatching(/[\\/]data[\\/]profiles[\\/]account[\\/]logs/))
     expect(mocks.migrateBrandDataFiles).toHaveBeenCalledWith('/mock/userData')
+    expect(mocks.mark).toHaveBeenCalledWith(context)
+  })
+
+  it('同进程重建必须自己开启 boot attempt，否则成功标记找不到可关闭的尝试', async () => {
+    mocks.begin.mockImplementation(async () => {
+      expect(mocks.verify).not.toHaveBeenCalled()
+      expect(mocks.register).not.toHaveBeenCalled()
+    })
+    await startBusinessRuntime(context, { rebuildRuntime: true, onVerifyFailure: 'throw' })
+    expect(mocks.begin).toHaveBeenCalledWith(context)
+    expect(mocks.mark).toHaveBeenCalledWith(context)
+  })
+
+  it('冷启动的 boot attempt 仍由 preboot 负责，不重复开启', async () => {
+    await startBusinessRuntime(context)
+    expect(mocks.begin).not.toHaveBeenCalled()
     expect(mocks.mark).toHaveBeenCalledWith(context)
   })
 
