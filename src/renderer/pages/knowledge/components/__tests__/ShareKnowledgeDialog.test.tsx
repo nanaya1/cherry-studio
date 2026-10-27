@@ -3,6 +3,8 @@ import userEvent from '@testing-library/user-event'
 import i18n from 'i18next'
 import { beforeEach, expect, it, vi } from 'vitest'
 
+import { toast } from '@renderer/services/toast'
+
 import ShareKnowledgeDialog from '../ShareKnowledgeDialog'
 
 const { request } = vi.hoisted(() => ({ request: vi.fn() }))
@@ -33,6 +35,100 @@ beforeEach(async () => {
       ? { shareId: 'orgkb:copy', completion: 'completed', files: [{ fileName: 'a.md', status: 'success' }] }
       : share
   )
+})
+
+it.each(['success', 'failure', 'session-ended'] as const)('关闭后后台邀请 %s 仅以实际发送结果反馈', async (outcome) => {
+  let resolveUpload!: (value: unknown) => void
+  const uploading = new Promise((resolve) => {
+    resolveUpload = resolve
+  })
+  const shared = vi.fn()
+  const settled = vi.fn()
+  let sessionActive = true
+  const successToast = vi.spyOn(toast, 'success').mockImplementation(() => undefined)
+  const errorToast = vi.spyOn(toast, 'error').mockImplementation(() => undefined)
+  request.mockImplementation(async (route) => {
+    if (route === 'enterprise.knowledge.upload_status') return null
+    if (route === 'enterprise.knowledge.collaborators')
+      return { items: [{ id: 42, username: 'alice' }], total: 1, page: 1, pageSize: 20 }
+    if (route === 'enterprise.knowledge.share') return uploading
+    if (route === 'enterprise.knowledge.members') return { members: [] }
+    if (route === 'enterprise.knowledge.invite') {
+      if (outcome === 'failure') throw new Error('invite rejected')
+      return { userId: 42, status: 'pending' }
+    }
+    throw new Error(`Unexpected request: ${route}`)
+  })
+  const user = userEvent.setup()
+  const view = render(
+    <ShareKnowledgeDialog
+      {...props}
+      mode="people"
+      canContinueInvite={() => sessionActive}
+      onShared={shared}
+      onInviteSettled={settled}
+    />
+  )
+  await user.type(screen.getByRole('combobox'), 'ali')
+  await user.click(await screen.findByRole('option', { name: 'alice' }))
+  await user.click(screen.getByRole('button', { name: 'Send invitation' }))
+  expect(successToast).not.toHaveBeenCalled()
+  view.unmount()
+  if (outcome === 'session-ended') sessionActive = false
+  await act(async () =>
+    resolveUpload({ shareId: 'orgkb:copy', completion: 'completed', files: [{ fileName: 'a.md', status: 'success' }] })
+  )
+  if (outcome === 'session-ended') {
+    expect(request.mock.calls.some(([route]) => route === 'enterprise.knowledge.invite')).toBe(false)
+    expect(successToast).not.toHaveBeenCalled()
+  } else {
+    await waitFor(() => expect(settled).toHaveBeenCalledOnce())
+    expect(request).toHaveBeenCalledWith('enterprise.knowledge.invite', { baseId: 'local', userId: 42, expireDays: 7 })
+    if (outcome === 'success') {
+      expect(shared).toHaveBeenCalledOnce()
+      expect(successToast).toHaveBeenCalledWith(i18n.t('knowledge.org.invited'))
+    } else {
+      expect(shared).not.toHaveBeenCalled()
+      expect(successToast).not.toHaveBeenCalled()
+      expect(errorToast).toHaveBeenCalledWith('invite rejected')
+    }
+  }
+  successToast.mockRestore()
+  errorToast.mockRestore()
+})
+
+it('自动恢复分享码链路只生成一次分享码', async () => {
+  const view = render(<ShareKnowledgeDialog {...props} mode="code" autoGenerate />)
+  expect(await screen.findByText('Abcd_123')).toBeInTheDocument()
+  view.rerender(<ShareKnowledgeDialog {...props} mode="code" autoGenerate />)
+  expect(request.mock.calls.filter(([route]) => route === 'enterprise.knowledge.create_share')).toHaveLength(1)
+})
+
+it('自动恢复邀请人链路保留邀请面板且不生成分享码', async () => {
+  request.mockImplementation(async (route) => {
+    if (route === 'enterprise.knowledge.upload_status') return null
+    if (route === 'enterprise.knowledge.collaborators')
+      return { items: [{ id: 42, username: 'alice' }], total: 1, page: 1, pageSize: 20 }
+    if (route === 'enterprise.knowledge.members') return { members: [] }
+    if (route === 'enterprise.knowledge.share')
+      return { shareId: 'orgkb:copy', completion: 'completed', files: [{ fileName: 'a.md', status: 'success' }] }
+    if (route === 'enterprise.knowledge.invite') return { userId: 42, status: 'pending' }
+    throw new Error(`Unexpected request: ${route}`)
+  })
+  const user = userEvent.setup()
+  render(<ShareKnowledgeDialog {...props} mode="people" autoGenerate />)
+  expect(screen.getByRole('heading', { name: 'Invite people' })).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Generate share code' })).not.toBeInTheDocument()
+  await user.type(screen.getByRole('combobox'), 'ali')
+  await user.click(await screen.findByRole('option', { name: 'alice' }))
+  await user.click(screen.getByRole('button', { name: 'Send invitation' }))
+  expect(await screen.findByRole('status')).toHaveTextContent(i18n.t('knowledge.org.invited'))
+  expect(request).toHaveBeenCalledWith('enterprise.knowledge.invite', {
+    baseId: 'local',
+    userId: 42,
+    expireDays: 7
+  })
+  expect(request.mock.calls.some(([route]) => route === 'enterprise.knowledge.create_share')).toBe(false)
 })
 
 it('跨端云端邀请直接使用云端ID，不启动本地上传', async () => {
