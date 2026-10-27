@@ -39,6 +39,7 @@ import { SwitchFence } from './SwitchFence'
 const PASSWORD_LOGIN = 'profile-bootstrap:password-login'
 const ENTERPRISE_LOGIN = 'profile-bootstrap:enterprise-login'
 const ADOPT_LEGACY = 'profile-bootstrap:adopt-legacy'
+const profileBootstrapWindows = new Set<BrowserWindow>()
 
 const translateForBootstrap = (key: string, params?: Record<string, string | number>) =>
   t(key, params, resolveSystemLanguage(app.getLocale()))
@@ -124,6 +125,13 @@ export async function confirmProfileClaim(
   return { copy: true, allow }
 }
 
+export function closeProfileBootstrapWindows(): void {
+  for (const window of profileBootstrapWindows) {
+    if (!window.isDestroyed()) window.close()
+  }
+  profileBootstrapWindows.clear()
+}
+
 export function createProfileBootstrapWindow(context: ProfileLaunchContext): BrowserWindow {
   const isLogin = context.mode === 'signed-out'
   const isBusinessStartup = context.mode === 'business'
@@ -146,6 +154,8 @@ export function createProfileBootstrapWindow(context: ProfileLaunchContext): Bro
       partition: 'profile-bootstrap'
     }
   })
+  profileBootstrapWindows.add(window)
+  window.once('closed', () => profileBootstrapWindows.delete(window))
   if (isLogin || isBusinessStartup) {
     if (isBusinessStartup) {
       const closeOnLoadFailure = (

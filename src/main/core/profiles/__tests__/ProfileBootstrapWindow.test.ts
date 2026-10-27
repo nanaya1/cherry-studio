@@ -55,7 +55,11 @@ vi.mock('@main/enterprise/passwordLoginRuntime', () => ({
 }))
 vi.mock('@main/enterprise/OrgCredentialStore', () => ({ OrgCredentialStore: class {} }))
 
-import { confirmProfileClaim, createProfileBootstrapWindow } from '../ProfileBootstrapWindow'
+import {
+  closeProfileBootstrapWindows,
+  confirmProfileClaim,
+  createProfileBootstrapWindow
+} from '../ProfileBootstrapWindow'
 
 const SIGNED_OUT_DIGEST = 'f'.repeat(64)
 const preview = {
@@ -144,6 +148,30 @@ describe('createProfileBootstrapWindow', () => {
   beforeEach(() => {
     showMessageBoxMock.mockReset()
     ipcMainHandleMock.mockReset()
+  })
+
+  it('closes every live bootstrap window after same-process business activation', () => {
+    const first = createProfileBootstrapWindow({
+      mode: 'signed-out',
+      profileId: 'signed-out',
+      identityDigest: SIGNED_OUT_DIGEST,
+      kind: 'signed-out',
+      dataRoot: '/data',
+      profileRoot: '/data/profiles/signed-out'
+    }) as any
+    const second = createProfileBootstrapWindow({
+      mode: 'business',
+      profileId: 'profile-1',
+      identityDigest: 'a'.repeat(64),
+      kind: 'authenticated',
+      dataRoot: '/data',
+      profileRoot: '/data/profiles/profile-1'
+    }) as any
+
+    closeProfileBootstrapWindows()
+
+    expect(first.close).toHaveBeenCalledOnce()
+    expect(second.close).toHaveBeenCalledOnce()
   })
 
   it('opens the standalone login renderer without loading business data on the signed-out window', () => {
