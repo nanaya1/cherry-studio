@@ -17,6 +17,7 @@ import type {
 import { isSerializedAiSdkApiCallError, isSerializedAiSdkRetryError } from '@renderer/types/error'
 import { getSafeProviderErrorMessage, serializeNestedProviderError } from '@shared/ai/providerError'
 import { aiErrorDetail, aiStreamAdmissionReason, isAgentSessionArchiveBusyError } from '@shared/ipc/errors/ai'
+import { IpcError } from '@shared/ipc/errors/IpcError'
 import { safeSerialize } from '@shared/utils/serialize'
 
 import { formatErrorDetails } from './errorDetails'
@@ -51,8 +52,28 @@ export function getErrorMessage(error: unknown): string {
 export function formatErrorMessageWithPrefix(error: unknown, prefix: string): string {
   const actionableMessage = getActionableAiErrorMessage(error)
   if (actionableMessage) return actionableMessage
+
+  if (error instanceof IpcError && error.code === 'VALIDATION_FAILED') {
+    const validationDetails = formatIpcValidationDetails(error.data)
+    if (validationDetails) return `${prefix}: ${getErrorMessage(error)}\n${validationDetails}`
+  }
+
   const msg = getErrorMessage(error)
   return `${prefix}: ${msg}`
+}
+
+function formatIpcValidationDetails(data: unknown): string | undefined {
+  if (!data || typeof data !== 'object' || !('issues' in data) || !Array.isArray(data.issues)) return undefined
+
+  const details = data.issues.flatMap((issue) => {
+    if (!issue || typeof issue !== 'object') return []
+    const path = 'path' in issue && Array.isArray(issue.path) ? issue.path.join('.') : ''
+    const message = 'message' in issue && typeof issue.message === 'string' ? issue.message : ''
+    if (!message) return []
+    return [path ? `${path}: ${message}` : message]
+  })
+
+  return details.length > 0 ? details.join('\n') : undefined
 }
 
 function getActionableAiErrorMessage(error: unknown): string | undefined {
