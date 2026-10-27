@@ -30,6 +30,10 @@ export default function ShareKnowledgeDialog({
   name,
   remote = false,
   mode = 'code',
+  autoGenerate = false,
+  canContinueInvite,
+  onInviteSettled,
+  onUploadStarted,
   onClose,
   onShared
 }: {
@@ -37,6 +41,10 @@ export default function ShareKnowledgeDialog({
   name: string
   remote?: boolean
   mode?: 'code' | 'people'
+  autoGenerate?: boolean
+  canContinueInvite?: () => boolean
+  onInviteSettled?: () => void
+  onUploadStarted?: () => void
   onClose: () => void
   onShared: () => void
 }) {
@@ -96,7 +104,10 @@ export default function ShareKnowledgeDialog({
     if (!validPassword || !validCount || locked.current || unknown || share) return
     locked.current = true
     setBusy(true)
-    if (!remote && upload?.phase !== 'completed') setUploadStarted(true)
+    if (!remote && upload?.phase !== 'completed') {
+      setUploadStarted(true)
+      onUploadStarted?.()
+    }
     setError(null)
     let target = baseId
     try {
@@ -152,6 +163,15 @@ export default function ShareKnowledgeDialog({
       }
     }
   }
+  const autoSubmitted = useRef(false)
+  useEffect(() => {
+    if (autoGenerate && mode === 'code' && !autoSubmitted.current) {
+      autoSubmitted.current = true
+      void submit()
+    }
+    // 自动恢复只在弹窗挂载时执行一次，submit 依赖弹窗内的表单状态。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoGenerate, mode])
   const copy = async () => {
     if (!share) return
     try {
@@ -193,11 +213,16 @@ export default function ShareKnowledgeDialog({
               busy={busy || upload?.phase === 'cleanup_pending' || upload?.phase === 'cleanup_unknown'}
               // onBusyChange={setBusy}
               onBusyChange={(value) => {
-                if (value && upload?.phase !== 'completed') setUploadStarted(true)
+                if (value && !remote && upload?.phase !== 'completed') {
+                  setUploadStarted(true)
+                  onUploadStarted?.()
+                }
                 setBusy(value)
               }}
               onPrepared={setResult}
               onInvited={onShared}
+              canContinue={canContinueInvite}
+              onSettled={onInviteSettled}
               renderActions={(inviteButton) => (
                 <KnowledgeDialogFooter className="flex-row justify-end pt-3">
                   <Button variant="outline" onClick={onClose}>
