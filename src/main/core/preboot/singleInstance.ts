@@ -4,6 +4,12 @@ import { application } from '@application'
 import { loggerService } from '@logger'
 
 const logger = loggerService.withContext('SingleInstance')
+const pendingWindowReveal = new WeakSet<BrowserWindow>()
+
+export function deferWindowReveal(window: BrowserWindow): () => void {
+  pendingWindowReveal.add(window)
+  return () => pendingWindowReveal.delete(window)
+}
 
 /**
  * Require this process to be the primary Cherry Studio instance.
@@ -39,9 +45,19 @@ export function requireSingleInstance(): void {
   if (app.requestSingleInstanceLock()) {
     // 第二实例被拒后把已有窗口拉到前台：用户重复点击图标时得到明确反馈，
     // 而不是“点了没反应”再点出第三个进程。
-    app.on('second-instance', () => {
-      const [window] = BrowserWindow.getAllWindows()
-      if (!window || window.isDestroyed()) return
+    // MEA:second-instance-window-reveal 协议回调由路由负责，普通启动只能唤醒已展示的就绪窗口。
+    app.on('second-instance', (_event, argv) => {
+      if (argv?.some((arg) => /^[a-z][a-z\d+.-]*:\/\//i.test(arg))) return
+      // const [window] = BrowserWindow.getAllWindows()
+      const window = BrowserWindow.getAllWindows().find(
+        (candidate) =>
+          !candidate.isDestroyed() &&
+          !pendingWindowReveal.has(candidate) &&
+          (candidate.isVisible() || candidate.isMinimized())
+      )
+      // if (!window || window.isDestroyed()) return
+      // if (!window || window.isDestroyed() || pendingWindowReveal.has(window)) return
+      if (!window) return
       if (window.isMinimized()) window.restore()
       window.show()
       window.focus()

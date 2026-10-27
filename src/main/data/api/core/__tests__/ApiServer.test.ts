@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import type { ApiImplementation } from '@shared/data/api/types'
+
 import { ApiServer } from '../ApiServer'
 
 const originalNodeEnv = process.env.NODE_ENV
@@ -23,6 +25,17 @@ function createServer(): { extract: (pattern: string, path: string) => Record<st
     extract: (pattern: string, path: string) => server.extractPathParams(pattern, path)
   }
 }
+
+describe('ApiServer lifecycle', () => {
+  it('allows a new runtime to initialize after the previous server is disposed', () => {
+    const first = ApiServer.initialize({} as ApiImplementation)
+
+    first.dispose()
+
+    expect(() => ApiServer.initialize({} as ApiImplementation)).not.toThrow()
+    ApiServer.getInstance().dispose()
+  })
+})
 
 describe('ApiServer.extractPathParams', () => {
   describe('plain params (backwards compatible)', () => {

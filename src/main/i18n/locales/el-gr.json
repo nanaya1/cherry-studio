@@ -99,6 +99,8 @@
   "dialog.open_file": "Άνοιγμα Αρχείου",
   "dialog.pdf_files": "Αρχεία PDF",
   "dialog.png_image": "Εικόνα PNG",
+  "dialog.profile_bootstrap.load_failed.message": "Το παράθυρο λογαριασμού δεν φορτώθηκε και έκλεισε. Επανεκκινήστε την εφαρμογή και δοκιμάστε ξανά.",
+  "dialog.profile_bootstrap.load_failed.title": "Το παράθυρο λογαριασμού δεν είναι διαθέσιμο",
   "dialog.profile_claim.api_keys.detail": "API keys are credentials. Only include them when this account profile belongs to the same user.",
   "dialog.profile_claim.api_keys.include": "Include API keys",
   "dialog.profile_claim.api_keys.message": "Also copy locally configured provider API keys?",

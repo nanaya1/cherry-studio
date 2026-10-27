@@ -154,9 +154,11 @@ export class ProfileSwitchCoordinator {
       try {
         const activated = await this.dependencies.activateAuthenticated(committedTarget)
         if (activated) return { kind: 'activated', record: committedTarget }
-      } catch {
+      } catch (error) {
         // Post-commit startup failure. The credentials are already durable, so a
         // rollback would be wrong — force-exit into business-startup recovery.
+        // 必须留下原因：这里只 force-exit(1)，日志里没有异常就无法判断为什么没起来。
+        logger.error('Same-process business activation failed; entering business-startup recovery', error as Error)
         return this.needsRecovery('business-startup')
       }
     }

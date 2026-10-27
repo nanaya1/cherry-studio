@@ -8,6 +8,22 @@ policy:
   require_tests: true
   preserve_original_code_by_comment: true
 customizations:
+  - id: second-instance-window-reveal
+    title: 二次启动不得显示隐藏预热窗口
+    owner: main
+    behavior: 通用二次启动监听器跳过协议 URL，仅唤醒可见或最小化且不在等待首帧的窗口；隐藏业务主窗由 MainWindowService 恢复，协议回调的焦点由 ProtocolService 与 OAuth 处理器决定。保留 bootstrap readiness 保护和冷启动协议队列。已知企业版与个人版仍共用 meacowork OAuth 回调协议，跨产品冲突需服务端同步处理，本次不修改协议。
+    markers:
+      - MEA:second-instance-window-reveal
+    touchpoints:
+      - src/main/core/preboot/singleInstance.ts
+      - src/main/services/MainWindowService.ts
+    tests:
+      - src/main/core/preboot/__tests__/singleInstance.test.ts
+      - src/main/services/__tests__/MainWindowService.test.ts
+      - src/main/core/profiles/__tests__/ProfileBootstrapWindow.test.ts
+      - src/main/services/protocol/__tests__/ProtocolService.test.ts
+      - src/main/services/oauth/runtime/__tests__/OAuthRuntimeService.test.ts
+      - src/main/services/oauth/__tests__/CherryInOAuthService.test.ts
   - id: remote-knowledge-upgrade-repair
     title: 旧发布线升级补齐远程知识库表
     owner: main
@@ -118,7 +134,8 @@ customizations:
   - id: profile-online-login
     title: Require online management identity before profile business startup
     owner: main
-    behavior: In profile isolation mode, local records are legacy staging only. Verify authenticated candidates online against modern currentuser before starting business services; route failed verification to recovery and persist signed-out selection before login.
+    # behavior: In profile isolation mode, local records are legacy staging only. Verify authenticated candidates online against modern currentuser before starting business services; route failed verification to recovery and persist signed-out selection before login.
+    behavior: In profile isolation mode, local records are legacy staging only. Verify authenticated candidates online before business startup; persist signed-out selection before login. Keep one bootstrap window, reuse only identical complete launch contexts, defer display until ready even on second-instance, and close with a localized prompt on main-frame load failure. Replaced windows cannot remove current IPC handlers or consume OAuth callbacks; preserve login cancellation exit, successful activation and relaunch semantics.
     markers:
       - MEA:profile-online-login
     touchpoints:
@@ -130,6 +147,7 @@ customizations:
       - src/main/core/profiles/ProfileControlStore.ts
       - src/main/core/profiles/ProfileRecoveryActions.ts
       - src/main/core/profiles/ProfileBootstrapWindow.ts
+      - src/main/core/preboot/singleInstance.ts
       - src/main/enterprise/orgCurrentUserTransport.ts
       - src/main/enterprise/PasswordProfileLogin.ts
       - src/main/enterprise/passwordLoginRuntime.ts
@@ -143,6 +161,7 @@ customizations:
       - src/main/core/profiles/__tests__/ProfileSessionService.test.ts
       - src/main/core/profiles/__tests__/ProfileRecoveryActions.test.ts
       - src/main/core/profiles/__tests__/ProfileBootstrapWindow.test.ts
+      - src/main/core/preboot/__tests__/singleInstance.test.ts
       - src/main/core/preboot/__tests__/profileStartupVerification.test.ts
       - src/main/enterprise/__tests__/orgCurrentUserTransport.test.ts
       - src/main/enterprise/__tests__/PasswordProfileLogin.test.ts

@@ -99,6 +99,8 @@
   "dialog.open_file": "ファイルを開く",
   "dialog.pdf_files": "PDFファイル",
   "dialog.png_image": "PNG画像",
+  "dialog.profile_bootstrap.load_failed.message": "アカウントウィンドウを読み込めなかったため閉じました。アプリを再起動して、もう一度お試しください。",
+  "dialog.profile_bootstrap.load_failed.title": "アカウントウィンドウを利用できません",
   "dialog.profile_claim.api_keys.detail": "API keys are credentials. Only include them when this account profile belongs to the same user.",
   "dialog.profile_claim.api_keys.include": "Include API keys",
   "dialog.profile_claim.api_keys.message": "Also copy locally configured provider API keys?",

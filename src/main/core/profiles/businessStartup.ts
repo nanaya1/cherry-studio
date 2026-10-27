@@ -13,6 +13,7 @@ import {
   type ProfileIsolationElectronApi
 } from '@main/core/preboot/profileIsolationPreboot'
 import {
+  beginProfileBootAttempt,
   buildSignedOutLaunchContext,
   markProfileBootSuccessful,
   migrateProfileSensitiveData,
@@ -102,6 +103,10 @@ export async function startBusinessRuntime(
     // Rebuilds the runtime in place (no separate init) via prepareProfileRuntime.
     applyProfileIsolationPaths(context as ProfileLaunchContext, electronPrebootApi())
     logger.info('Rebuilt profile runtime for same-process business start')
+    // 冷启动由 ProfilePrebootCoordinator 开启 boot attempt；同进程重建没有走 preboot，
+    // 必须在这里补一次，否则末尾的 markProfileBootSuccessful 找不到 started attempt
+    // 会抛错并被切换协调器当成启动失败强制退出（表现为“重启不生效、需手动打开”）。
+    if (context?.mode === 'business') await beginProfileBootAttempt(context)
   }
 
   setProfileLaunchContext(context)

@@ -99,6 +99,8 @@
   "dialog.open_file": "Открыть файл",
   "dialog.pdf_files": "Файлы PDF",
   "dialog.png_image": "PNG-изображение",
+  "dialog.profile_bootstrap.load_failed.message": "Не удалось загрузить окно учётной записи, и оно было закрыто. Перезапустите приложение и повторите попытку.",
+  "dialog.profile_bootstrap.load_failed.title": "Окно учётной записи недоступно",
   "dialog.profile_claim.api_keys.detail": "API keys are credentials. Only include them when this account profile belongs to the same user.",
   "dialog.profile_claim.api_keys.include": "Include API keys",
   "dialog.profile_claim.api_keys.message": "Also copy locally configured provider API keys?",

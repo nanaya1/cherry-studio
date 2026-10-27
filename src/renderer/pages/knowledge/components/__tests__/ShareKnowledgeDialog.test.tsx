@@ -45,8 +45,8 @@ it.each(['success', 'failure', 'session-ended'] as const)('关闭后后台邀请
   const shared = vi.fn()
   const settled = vi.fn()
   let sessionActive = true
-  const successToast = vi.spyOn(toast, 'success').mockImplementation(() => undefined)
-  const errorToast = vi.spyOn(toast, 'error').mockImplementation(() => undefined)
+  const successToast = vi.spyOn(toast, 'success').mockReturnValue('success-toast-id')
+  const errorToast = vi.spyOn(toast, 'error').mockReturnValue('error-toast-id')
   request.mockImplementation(async (route) => {
     if (route === 'enterprise.knowledge.upload_status') return null
     if (route === 'enterprise.knowledge.collaborators')

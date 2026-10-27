@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from 'vitest'
+import { mockMainLoggerService } from '@test-mocks/MainLoggerService'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { ShutdownResult } from '@main/core/application/Application'
 
@@ -86,6 +87,10 @@ function dependencies() {
 }
 
 describe('ProfileSwitchCoordinator', () => {
+  afterEach(() => {
+    mockMainLoggerService.error.mockClear()
+  })
+
   it('relaunches after committing the first login without entering business in the login process', async () => {
     const deps = dependencies()
     const startBusiness = vi.fn(async () => {
@@ -156,6 +161,27 @@ describe('ProfileSwitchCoordinator', () => {
       'application:relaunch'
     ])
     expect(beginSwitch).toHaveBeenCalledWith(request.operationId)
+  })
+
+  it('logs the activation failure reason before exiting for business-startup recovery', async () => {
+    const deps = dependencies()
+    mockMainLoggerService.error.mockClear()
+
+    const result = await new ProfileSwitchCoordinator({
+      ...deps,
+      activateAuthenticated: async () => {
+        throw new Error('No active boot attempt for profile abc')
+      }
+    }).switchProfile(request, deps.targetRecord)
+
+    expect(result).toEqual({ kind: 'needs-recovery', stage: 'business-startup' })
+    expect(deps.application.forceExit).toHaveBeenCalledWith(1)
+    expect(deps.application.relaunch).not.toHaveBeenCalled()
+    // 只能靠日志定位：这里 force-exit 后不会重启，没有原因就无法判断为何起不来。
+    expect(mockMainLoggerService.error).toHaveBeenCalledWith(
+      'Same-process business activation failed; entering business-startup recovery',
+      expect.any(Error)
+    )
   })
 
   it('runs target preparation only after clean teardown and before pointer commit', async () => {

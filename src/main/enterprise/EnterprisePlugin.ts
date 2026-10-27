@@ -8,6 +8,7 @@ import { application } from '@application'
 import { loggerService } from '@logger'
 import { BaseService, DependsOn, Injectable, Phase, ServicePhase } from '@main/core/lifecycle'
 import {
+  closeProfileBootstrapWindows,
   confirmProfileClaim,
   createProfileBootstrapWindow,
   createProfilePaths,
@@ -106,6 +107,7 @@ export class EnterprisePlugin extends BaseService {
               rebuildRuntime: true,
               onVerifyFailure: 'throw'
             })
+            closeProfileBootstrapWindows()
             return true
           },
           openSignedOut: async (record) => {

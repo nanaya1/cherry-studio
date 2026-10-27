@@ -6,6 +6,7 @@ import { v4 as uuidv4 } from 'uuid'
 
 import { application } from '@application'
 import { adoptLegacyProfile } from '@main/core/preboot/profileIsolationRuntime'
+import { deferWindowReveal } from '@main/core/preboot/singleInstance'
 // import { ORG_SERVER_BASE_URL } from '@main/enterprise/OrgApiClient'
 import { ORG_AUTH_MODE, ORG_SERVER_BASE_URL } from '@main/enterprise/OrgApiClient'
 import { OrgAuthManager } from '@main/enterprise/OrgAuthManager'
@@ -39,6 +40,34 @@ import { SwitchFence } from './SwitchFence'
 const PASSWORD_LOGIN = 'profile-bootstrap:password-login'
 const ENTERPRISE_LOGIN = 'profile-bootstrap:enterprise-login'
 const ADOPT_LEGACY = 'profile-bootstrap:adopt-legacy'
+const profileBootstrapWindows = new Set<BrowserWindow>()
+let activeBootstrap: { window: BrowserWindow; contextKey: string; ready: boolean; superseded: boolean } | undefined
+const handlerOwners = new Map<string, BrowserWindow>()
+
+function registerBootstrapHandler(
+  channel: string,
+  window: BrowserWindow,
+  handler: Parameters<typeof ipcMain.handle>[1]
+): void {
+  ipcMain.removeHandler(channel)
+  handlerOwners.set(channel, window)
+  ipcMain.handle(channel, (event, ...args) => {
+    if (
+      activeBootstrap?.window !== window ||
+      window.isDestroyed() ||
+      event.sender !== window.webContents ||
+      event.senderFrame !== window.webContents.mainFrame
+    ) {
+      throw new Error('Untrusted authentication sender')
+    }
+    return handler(event, ...args)
+  })
+  window.once('closed', () => {
+    if (handlerOwners.get(channel) !== window) return
+    ipcMain.removeHandler(channel)
+    handlerOwners.delete(channel)
+  })
+}
 
 const translateForBootstrap = (key: string, params?: Record<string, string | number>) =>
   t(key, params, resolveSystemLanguage(app.getLocale()))
@@ -124,7 +153,43 @@ export async function confirmProfileClaim(
   return { copy: true, allow }
 }
 
+export function closeProfileBootstrapWindows(): void {
+  for (const window of profileBootstrapWindows) {
+    if (!window.isDestroyed()) window.close()
+  }
+  profileBootstrapWindows.clear()
+  activeBootstrap = undefined
+}
+
 export function createProfileBootstrapWindow(context: ProfileLaunchContext): BrowserWindow {
+  const contextKey = JSON.stringify([
+    context.mode,
+    context.profileId,
+    context.identityDigest,
+    context.kind,
+    context.dataRoot,
+    context.profileRoot,
+    context.legacyRoot,
+    context.pendingSwitch?.operationId,
+    context.pendingSwitch?.action
+  ])
+  if (activeBootstrap && !activeBootstrap.window.isDestroyed()) {
+    if (activeBootstrap.contextKey === contextKey) {
+      if (activeBootstrap.ready) {
+        if (activeBootstrap.window.isMinimized()) activeBootstrap.window.restore()
+        activeBootstrap.window.show()
+        activeBootstrap.window.focus()
+      }
+      return activeBootstrap.window
+    }
+    const previous = activeBootstrap.window
+    activeBootstrap.superseded = true
+    activeBootstrap = undefined
+    deferWindowReveal(previous)
+    previous.hide()
+    previous.close()
+    profileBootstrapWindows.delete(previous)
+  }
   const isLogin = context.mode === 'signed-out'
   const isBusinessStartup = context.mode === 'business'
   const window = new BrowserWindow({
@@ -134,7 +199,8 @@ export function createProfileBootstrapWindow(context: ProfileLaunchContext): Bro
     minWidth: isLogin ? 480 : isBusinessStartup ? 620 : 520,
     minHeight: isLogin ? 640 : isBusinessStartup ? 460 : 360,
     resizable: isLogin,
-    show: !isBusinessStartup,
+    // show: !isBusinessStartup,
+    show: false, // MEA:profile-online-login 认证窗口也必须等待首帧。
     // title: 'MEACowork Profile',
     title: 'MEA Cowork 企业版',
     webPreferences: {
@@ -146,8 +212,43 @@ export function createProfileBootstrapWindow(context: ProfileLaunchContext): Bro
       partition: 'profile-bootstrap'
     }
   })
+  const state = { window, contextKey, ready: false, superseded: false }
+  activeBootstrap = state
+  profileBootstrapWindows.add(window)
+  window.once('closed', () => {
+    profileBootstrapWindows.delete(window)
+    if (activeBootstrap === state) activeBootstrap = undefined
+  })
+  const allowWindowReveal = deferWindowReveal(window)
+  let loadFailed = false
+  window.once('ready-to-show', () => {
+    if (activeBootstrap !== state || loadFailed || window.isDestroyed()) return
+    state.ready = true
+    allowWindowReveal()
+    window.show()
+  })
+  const closeOnLoadFailure = () => {
+    if (loadFailed || activeBootstrap !== state || window.isDestroyed()) return
+    loadFailed = true
+    state.ready = false
+    activeBootstrap = undefined
+    deferWindowReveal(window)
+    window.hide()
+    dialog.showErrorBox(
+      translateForBootstrap('dialog.profile_bootstrap.load_failed.title'),
+      translateForBootstrap('dialog.profile_bootstrap.load_failed.message')
+    )
+    window.close()
+  }
+  window.webContents.on('did-fail-load', (_event, _code, _description, _url, isMainFrame) => {
+    if (isMainFrame) closeOnLoadFailure()
+  })
+  const load = (promise: Promise<void>) => {
+    void promise.catch(closeOnLoadFailure)
+  }
   if (isLogin || isBusinessStartup) {
     if (isBusinessStartup) {
+      /* 原业务窗口专属处理保留，所有 bootstrap 窗口现在共享就绪与失败处理。
       const closeOnLoadFailure = (
         _event: Electron.Event,
         _errorCode: number,
@@ -161,11 +262,14 @@ export function createProfileBootstrapWindow(context: ProfileLaunchContext): Bro
         if (!window.isDestroyed()) window.show()
       })
       window.webContents.once('did-fail-load', closeOnLoadFailure)
+      */
       const startupPath = path.join(__dirname, '../renderer/windows/profileBootstrap/index.html')
       if (process.env['ELECTRON_RENDERER_URL']) {
-        void window.loadURL(`${process.env['ELECTRON_RENDERER_URL']}/windows/profileBootstrap/index.html?startup=1`)
+        // void window.loadURL(`${process.env['ELECTRON_RENDERER_URL']}/windows/profileBootstrap/index.html?startup=1`)
+        load(window.loadURL(`${process.env['ELECTRON_RENDERER_URL']}/windows/profileBootstrap/index.html?startup=1`))
       } else {
-        void window.loadFile(startupPath, { query: { startup: '1' } })
+        // void window.loadFile(startupPath, { query: { startup: '1' } })
+        load(window.loadFile(startupPath, { query: { startup: '1' } }))
       }
       return window
     }
@@ -173,13 +277,21 @@ export function createProfileBootstrapWindow(context: ProfileLaunchContext): Bro
     registerSignedOutHandlers(context, window)
     const sso = ORG_AUTH_MODE === 'management-oauth' || ORG_AUTH_MODE === 'official-direct'
     if (process.env['ELECTRON_RENDERER_URL']) {
+      /*
       void window.loadURL(
         `${process.env['ELECTRON_RENDERER_URL']}/windows/profileBootstrap/index.html${sso ? '?sso=1' : ''}`
       )
+      */
+      load(
+        window.loadURL(
+          `${process.env['ELECTRON_RENDERER_URL']}/windows/profileBootstrap/index.html${sso ? '?sso=1' : ''}`
+        )
+      )
     } else {
       const loginPath = path.join(__dirname, '../renderer/windows/profileBootstrap/index.html')
-      if (sso) void window.loadFile(loginPath, { query: { sso: '1' } })
-      else void window.loadFile(loginPath)
+      // if (sso) void window.loadFile(loginPath, { query: { sso: '1' } })
+      // else void window.loadFile(loginPath)
+      load(sso ? window.loadFile(loginPath, { query: { sso: '1' } }) : window.loadFile(loginPath))
     }
     // Cancel login (window closed before any business started) exits the app; a
     // completed same-process activation flips the launch context to 'business'
@@ -187,7 +299,8 @@ export function createProfileBootstrapWindow(context: ProfileLaunchContext): Bro
     window.once('closed', () => {
       // 重启链路会自己拉起新进程，这里再 forceExit 会抢在 app.relaunch 之前结束进程。
       // 注意不能看 isQuitting：登出也会置位，但登出后仍需关闭登录窗即退出。
-      if (application.isRelaunching) return
+      // if (application.isRelaunching) return
+      if (state.superseded || application.isRelaunching) return
       if (getProfileLaunchContext()?.mode !== 'business') application.forceExit(0)
     })
     return window
@@ -197,21 +310,23 @@ export function createProfileBootstrapWindow(context: ProfileLaunchContext): Bro
   const detail = translateForBootstrap('dialog.profile_claim.legacy.detail')
   const actions = `<div class="actions"><button id="adopt">${translateForBootstrap('dialog.profile_claim.legacy.confirm')}</button></div><p id="status"></p><script>const status=document.getElementById('status');document.getElementById('adopt').onclick=async()=>{status.textContent=${JSON.stringify(translateForBootstrap('dialog.profile_claim.legacy.copying'))};try{await window.profileBootstrap.adoptLegacy();status.textContent=${JSON.stringify(translateForBootstrap('dialog.profile_claim.legacy.restarting'))}}catch(e){status.textContent=String(e)}}</script>`
   const html = `<!doctype html><meta charset="utf-8"><title>${title}</title><style>body{margin:0;font:14px system-ui;background:#f5f5f5;color:#202124}main{padding:48px}h1{font-size:22px;margin:0 0 16px}p{line-height:1.6;margin:0;color:#5f6368}.actions{display:flex;gap:12px;margin-top:28px}button{border:1px solid #c7c7c7;background:#fff;padding:10px 16px;border-radius:6px;cursor:pointer}button:last-child{background:#1f1f1f;color:#fff;border-color:#1f1f1f}#status{margin-top:18px}</style><main><h1>${title}</h1><p>${detail}</p>${actions}</main>`
-  void window.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
+  // void window.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
+  load(window.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`))
   return window
 }
 
 function registerLegacyAdoptionHandler(context: ProfileLaunchContext, window: BrowserWindow): void {
-  ipcMain.removeHandler(ADOPT_LEGACY)
-  window.once('closed', () => ipcMain.removeHandler(ADOPT_LEGACY))
-  ipcMain.handle(ADOPT_LEGACY, async () => {
+  // ipcMain.removeHandler(ADOPT_LEGACY)
+  // window.once('closed', () => ipcMain.removeHandler(ADOPT_LEGACY))
+  // ipcMain.handle(ADOPT_LEGACY, async () => {
+  registerBootstrapHandler(ADOPT_LEGACY, window, async () => {
     await adoptLegacyProfile(context)
     application.relaunch()
   })
 }
 
 function registerSignedOutHandlers(context: ProfileLaunchContext, window: BrowserWindow): void {
-  ipcMain.removeHandler(ENTERPRISE_LOGIN)
+  // ipcMain.removeHandler(ENTERPRISE_LOGIN)
   const paths = createProfilePaths(context.dataRoot)
   const registry = new ProfileRegistry(path.join(paths.controlRoot, 'profiles.json'))
   const activePointer = new ProfileActivePointer(path.join(paths.controlRoot, 'active-profile.json'), registry)
@@ -276,8 +391,9 @@ function registerSignedOutHandlers(context: ProfileLaunchContext, window: Browse
     operationId: uuidv4
   })
   const passwordLogin = ORG_SERVER_BASE_URL ? createPasswordProfileLogin(session) : undefined
-  ipcMain.removeHandler(PASSWORD_LOGIN)
-  ipcMain.handle(PASSWORD_LOGIN, async (event, input: unknown) => {
+  // ipcMain.removeHandler(PASSWORD_LOGIN)
+  // ipcMain.handle(PASSWORD_LOGIN, async (event, input: unknown) => {
+  registerBootstrapHandler(PASSWORD_LOGIN, window, async (event, input: unknown) => {
     if (event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame) {
       throw new Error('Untrusted authentication sender')
     }
@@ -318,6 +434,8 @@ function registerSignedOutHandlers(context: ProfileLaunchContext, window: Browse
     } catch {
       return
     }
+    // MEA:profile-online-login 旧窗口迟到关闭期间不能消费新登录的回调。
+    if (activeBootstrap?.window !== window || window.isDestroyed()) return
     if (url.protocol !== 'meacowork:' || url.hostname.toLowerCase() !== 'auth') return
     void auth.handleAuthCallback(url).catch(handleAuthError)
   }
@@ -334,11 +452,12 @@ function registerSignedOutHandlers(context: ProfileLaunchContext, window: Browse
   window.once('closed', () => {
     app.removeListener('open-url', openUrlHandler)
     app.removeListener('second-instance', secondInstanceHandler)
-    ipcMain.removeHandler(ENTERPRISE_LOGIN)
-    ipcMain.removeHandler(PASSWORD_LOGIN)
+    // ipcMain.removeHandler(ENTERPRISE_LOGIN)
+    // ipcMain.removeHandler(PASSWORD_LOGIN)
     passwordLogin?.cancel()
   })
-  ipcMain.handle(ENTERPRISE_LOGIN, async () => {
+  // ipcMain.handle(ENTERPRISE_LOGIN, async () => {
+  registerBootstrapHandler(ENTERPRISE_LOGIN, window, async () => {
     if (passwordLogin?.isBusy) throw new Error('Password login is in progress')
     passwordLogin?.cancel()
     await auth.startLogin()

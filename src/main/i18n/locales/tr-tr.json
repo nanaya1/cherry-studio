@@ -99,6 +99,8 @@
   "dialog.open_file": "Dosya Aç",
   "dialog.pdf_files": "PDF Dosyaları",
   "dialog.png_image": "PNG Görüntüsü",
+  "dialog.profile_bootstrap.load_failed.message": "Hesap penceresi yüklenemedi ve kapatıldı. Uygulamayı yeniden başlatıp tekrar deneyin.",
+  "dialog.profile_bootstrap.load_failed.title": "Hesap penceresi kullanılamıyor",
   "dialog.profile_claim.api_keys.detail": "API keys are credentials. Only include them when this account profile belongs to the same user.",
   "dialog.profile_claim.api_keys.include": "Include API keys",
   "dialog.profile_claim.api_keys.message": "Also copy locally configured provider API keys?",

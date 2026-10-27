@@ -99,6 +99,8 @@
   "dialog.open_file": "Datei öffnen",
   "dialog.pdf_files": "PDF-Dateien",
   "dialog.png_image": "PNG-Bild",
+  "dialog.profile_bootstrap.load_failed.message": "Das Kontofenster konnte nicht geladen werden und wurde geschlossen. Starten Sie die Anwendung neu und versuchen Sie es erneut.",
+  "dialog.profile_bootstrap.load_failed.title": "Kontofenster nicht verfügbar",
   "dialog.profile_claim.api_keys.detail": "API keys are credentials. Only include them when this account profile belongs to the same user.",
   "dialog.profile_claim.api_keys.include": "Include API keys",
   "dialog.profile_claim.api_keys.message": "Also copy locally configured provider API keys?",
