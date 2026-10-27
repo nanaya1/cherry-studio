@@ -64,10 +64,9 @@ export async function resolveApiGatewayRuntime(sessionId: string): Promise<{
 }> {
   const apiGatewayService = application.get('ApiGatewayService')
   const config = apiGatewayService.getCurrentConfig()
-  // Ask for consent on the PERSISTED intent, never on `isRunning()`: the gateway is also briefly
-  // down while binding at boot, mid-restart, or after a failed activation, and prompting the user
-  // to enable a service they already enabled would be nonsense.
-  if (!config.enabled) throw new ApiGatewayNotRunningError()
+  // 仅显式关闭（false）需要用户同意；自动模式（null）在桥接时按需启动，临时下线的网关走收敛而非再次询问。
+  // 原逻辑：if (!config.enabled) throw new ApiGatewayNotRunningError()
+  if (config.enabled === false) throw new ApiGatewayNotRunningError()
   // Consent already given, so converging is not an implicit start. `ensureRunning()` goes through
   // the same reconciler (serializing behind an in-flight transition) and throws the real bind
   // error; unlike `start()` it cannot re-persist an intent, so it can never re-enable the gateway.
