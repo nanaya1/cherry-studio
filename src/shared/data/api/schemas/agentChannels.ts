@@ -3,7 +3,7 @@ import * as z from 'zod'
 import { AgentPermissionModeSchema } from './agents'
 import { AgentSessionWorkspaceSourceSchema } from './agentWorkspaces'
 
-export const AgentChannelTypeSchema = z.enum(['telegram', 'feishu', 'qq', 'wechat', 'discord', 'slack'])
+export const AgentChannelTypeSchema = z.enum(['telegram', 'feishu', 'qq', 'wechat', 'discord', 'slack', 'dingtalk'])
 export type AgentChannelType = z.infer<typeof AgentChannelTypeSchema>
 
 export const TelegramAgentChannelConfigSchema = z.strictObject({
@@ -44,13 +44,22 @@ export const SlackAgentChannelConfigSchema = z.strictObject({
   allowed_channel_ids: z.array(z.string()).optional()
 })
 
+export const DingTalkAgentChannelConfigSchema = z.strictObject({
+  client_id: z.string(),
+  client_secret: z.string(),
+  robot_code: z.string().optional(),
+  allowed_chat_ids: z.array(z.string()).optional(),
+  require_mention: z.boolean().optional()
+})
+
 export const AgentChannelConfigSchemasByType = {
   telegram: TelegramAgentChannelConfigSchema,
   feishu: FeishuAgentChannelConfigSchema,
   qq: QQAgentChannelConfigSchema,
   wechat: WeChatAgentChannelConfigSchema,
   discord: DiscordAgentChannelConfigSchema,
-  slack: SlackAgentChannelConfigSchema
+  slack: SlackAgentChannelConfigSchema,
+  dingtalk: DingTalkAgentChannelConfigSchema
 } as const satisfies Record<AgentChannelType, z.ZodType<Record<string, unknown>>>
 
 export const ActiveAgentChannelConfigSchemasByType = {
@@ -65,6 +74,10 @@ export const ActiveAgentChannelConfigSchemasByType = {
   slack: SlackAgentChannelConfigSchema.extend({
     bot_token: z.string().min(1),
     app_token: z.string().min(1)
+  }),
+  dingtalk: DingTalkAgentChannelConfigSchema.extend({
+    client_id: z.string().min(1),
+    client_secret: z.string().min(1)
   })
 } as const satisfies Record<AgentChannelType, z.ZodType<Record<string, unknown>>>
 
@@ -74,6 +87,7 @@ export type QQAgentChannelConfig = z.infer<typeof QQAgentChannelConfigSchema>
 export type WeChatAgentChannelConfig = z.infer<typeof WeChatAgentChannelConfigSchema>
 export type DiscordAgentChannelConfig = z.infer<typeof DiscordAgentChannelConfigSchema>
 export type SlackAgentChannelConfig = z.infer<typeof SlackAgentChannelConfigSchema>
+export type DingTalkAgentChannelConfig = z.infer<typeof DingTalkAgentChannelConfigSchema>
 export type AgentChannelConfig =
   | TelegramAgentChannelConfig
   | FeishuAgentChannelConfig
@@ -81,6 +95,7 @@ export type AgentChannelConfig =
   | WeChatAgentChannelConfig
   | DiscordAgentChannelConfig
   | SlackAgentChannelConfig
+  | DingTalkAgentChannelConfig
 
 const AgentChannelBaseFields = {
   id: z.string(),
@@ -138,6 +153,10 @@ export const DiscordAgentChannelEntitySchema = createAgentChannelEntitySchema(
   DiscordAgentChannelConfigSchema
 )
 export const SlackAgentChannelEntitySchema = createAgentChannelEntitySchema('slack', SlackAgentChannelConfigSchema)
+export const DingTalkAgentChannelEntitySchema = createAgentChannelEntitySchema(
+  'dingtalk',
+  DingTalkAgentChannelConfigSchema
+)
 
 export const AgentChannelEntitySchema = z.discriminatedUnion('type', [
   TelegramAgentChannelEntitySchema,
@@ -145,7 +164,8 @@ export const AgentChannelEntitySchema = z.discriminatedUnion('type', [
   QQAgentChannelEntitySchema,
   WeChatAgentChannelEntitySchema,
   DiscordAgentChannelEntitySchema,
-  SlackAgentChannelEntitySchema
+  SlackAgentChannelEntitySchema,
+  DingTalkAgentChannelEntitySchema
 ])
 export type AgentChannelEntity = z.infer<typeof AgentChannelEntitySchema>
 
@@ -161,6 +181,10 @@ export const DiscordCreateAgentChannelSchema = createAgentChannelMutationSchema(
   DiscordAgentChannelConfigSchema
 )
 export const SlackCreateAgentChannelSchema = createAgentChannelMutationSchema('slack', SlackAgentChannelConfigSchema)
+export const DingTalkCreateAgentChannelSchema = createAgentChannelMutationSchema(
+  'dingtalk',
+  DingTalkAgentChannelConfigSchema
+)
 
 export const CreateAgentChannelSchema = z.discriminatedUnion('type', [
   TelegramCreateAgentChannelSchema,
@@ -168,7 +192,8 @@ export const CreateAgentChannelSchema = z.discriminatedUnion('type', [
   QQCreateAgentChannelSchema,
   WeChatCreateAgentChannelSchema,
   DiscordCreateAgentChannelSchema,
-  SlackCreateAgentChannelSchema
+  SlackCreateAgentChannelSchema,
+  DingTalkCreateAgentChannelSchema
 ])
 export type CreateAgentChannelDto = z.infer<typeof CreateAgentChannelSchema>
 
@@ -183,7 +208,8 @@ export const UpdateAgentChannelSchema = z.strictObject({
       QQAgentChannelConfigSchema,
       WeChatAgentChannelConfigSchema,
       DiscordAgentChannelConfigSchema,
-      SlackAgentChannelConfigSchema
+      SlackAgentChannelConfigSchema,
+      DingTalkAgentChannelConfigSchema
     ])
     .optional(),
   isActive: z.boolean().optional(),

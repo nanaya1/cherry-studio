@@ -6,6 +6,15 @@ export type ChannelAdapterLoader = (channel: AgentChannelEntity, agentId: string
 
 export const loadChannelAdapter: ChannelAdapterLoader = async (channel, agentId) => {
   switch (channel.type) {
+    case 'dingtalk': {
+      const { createDingTalkAdapter } = await import('./adapters/dingtalk/DingTalkAdapter')
+      return createDingTalkAdapter({
+        channelId: channel.id,
+        channelType: channel.type,
+        agentId,
+        channelConfig: channel.config
+      })
+    }
     case 'discord': {
       const { createDiscordAdapter } = await import('./adapters/discord/DiscordAdapter')
       return createDiscordAdapter({
