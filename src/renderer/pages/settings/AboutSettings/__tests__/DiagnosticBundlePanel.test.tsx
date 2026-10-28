@@ -309,7 +309,7 @@ describe('DiagnosticBundlePanel', () => {
   })
 
   it('does not offer the copy-email fallback because the support entry is hidden', async () => {
-    // 「联系 Cherry 支持」与「复制邮箱」兜底入口均已随 Cherry 厂商云隐藏而移除。
+    // 「联系 Cowork 支持」与「复制邮箱」兜底入口均已随 Cherry 厂商云隐藏而移除。
     const user = userEvent.setup()
     const clipboardWrite = vi.spyOn(navigator.clipboard, 'writeText')
     mocks.request.mockImplementation(async (route: string) => {
@@ -327,6 +327,6 @@ describe('DiagnosticBundlePanel', () => {
     expect(
       screen.queryByRole('button', { name: 'settings.about.diagnostics.actions.copy_email' })
     ).not.toBeInTheDocument()
-    expect(clipboardWrite).not.toHaveBeenCalledWith('support@cherry-ai.com')
+    expect(clipboardWrite).not.toHaveBeenCalledWith('mkt@xuelangyun.com')
   })
 })
