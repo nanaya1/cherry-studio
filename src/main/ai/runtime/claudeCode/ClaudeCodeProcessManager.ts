@@ -170,11 +170,19 @@ class ManagedClaudeCodeProcess implements SpawnedProcess {
 @ServicePhase(Phase.WhenReady)
 export class ClaudeCodeProcessManager extends BaseService {
   private readonly processes = new Set<TrackedSpawnedProcess>()
+  private readonly exitPromises = new Set<Promise<void>>()
+  private stopped = false
+
+  /** Ceiling for waiting on real child exits after SIGTERM. On expiry we go non-clean rather than force-kill. */
+  protected stopTimeoutMs = 5000
 
   /** Seam for tests. A constructor parameter would break the container's `ServiceConstructor` shape. */
   protected spawnProcess: SpawnProcess = (command, args, options) => spawn(command, args, options)
 
   spawn(options: SpawnOptions, diagnostics = createClaudeCodeProcessDiagnostics()): SpawnedProcess {
+    if (this.stopped) {
+      throw new Error('ClaudeCodeProcessManager is stopped; cannot spawn a new Claude Code process')
+    }
     resetClaudeCodeProcessDiagnostics(diagnostics)
     const rawChild = this.spawnProcess(options.command, options.args, {
       cwd: options.cwd,
@@ -192,10 +200,17 @@ export class ClaudeCodeProcessManager extends BaseService {
     })
     const child = new ManagedClaudeCodeProcess(rawChild, diagnostics) as TrackedSpawnedProcess
     this.processes.add(child)
+    this.exitPromises.add(diagnostics.exited)
     // Untracked on the raw exit, not the wrapper's — no reason to hold a dead handle through the drain.
-    rawChild.once('exit', () => this.processes.delete(child))
+    rawChild.once('exit', () => {
+      this.processes.delete(child)
+      this.exitPromises.delete(diagnostics.exited!)
+    })
     child.once('error', () => {
-      if (child.pid === undefined) this.processes.delete(child)
+      if (child.pid === undefined) {
+        this.processes.delete(child)
+        this.exitPromises.delete(diagnostics.exited!)
+      }
     })
     return child
   }
@@ -219,8 +234,30 @@ export class ClaudeCodeProcessManager extends BaseService {
     }
   }
 
-  protected onStop(): void {
+  // 定制点：原 stop 仅同步发送 SIGTERM 不等退出，保留以便回滚。
+  // protected onStop(): void { this.killAll('SIGTERM') }
+
+  /**
+   * Sends SIGTERM, then waits on the real OS exit (`diagnostics.exited`) before settling. On
+   * timeout we do not escalate to SIGKILL; a child that refuses to exit leaves the stop non-clean,
+   * which blocks the rebuild — see `spawn`'s guard.
+   */
+  protected async onStop(): Promise<void> {
+    this.stopped = true
     this.killAll('SIGTERM')
+    const exits = [...this.exitPromises]
+    if (exits.length === 0) return
+    let timer: ReturnType<typeof setTimeout> | undefined
+    await Promise.race([
+      Promise.all(exits),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error('Claude Code processes did not exit after SIGTERM')),
+          this.stopTimeoutMs
+        )
+        timer.unref?.()
+      })
+    ]).finally(() => clearTimeout(timer))
   }
 
   private hasExited(child: TrackedSpawnedProcess): boolean {

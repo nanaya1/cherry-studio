@@ -353,6 +353,33 @@ describe('Application shutdown', () => {
     expect(() => application.prepareProfileRuntime()).toThrow(/not clean/)
   })
 
+  it('keeps rebuild blocked after a stop rejects and its late work subsequently completes', async () => {
+    let finished = false
+    @Injectable('RejectedDrainService')
+    class RejectedDrainService extends BaseService {
+      protected override async onStop(): Promise<void> {
+        setTimeout(() => {
+          finished = true
+        }, SERVICE_STOP_TIMEOUT_MS + 1000)
+        await new Promise<void>((resolve) => setTimeout(resolve, SERVICE_STOP_TIMEOUT_MS - 500))
+        throw new Error('Unsettled background work')
+      }
+    }
+    const application = Application.getInstance()
+    ServiceContainer.getInstance().register(RejectedDrainService)
+    await application.getLifecycleManager().startPhase(Phase.WhenReady)
+    const teardown = application.prepareProfileSwitch()
+    await vi.advanceTimersByTimeAsync(SERVICE_STOP_TIMEOUT_MS - 500)
+    const result = await teardown
+    expect(result.clean).toBe(false)
+    expect(result.stop.failed).toContain('RejectedDrainService')
+    expect(result.stop.timedOut).toEqual([])
+    expect(() => application.prepareProfileRuntime()).toThrow(/not clean/)
+    await vi.advanceTimersByTimeAsync(1500)
+    expect(finished).toBe(true)
+    expect(() => application.prepareProfileRuntime()).toThrow(/not clean/)
+  })
+
   it('returns a clean structured result for profile switch teardown', async () => {
     const application = Application.getInstance()
     const manager = application.getLifecycleManager()

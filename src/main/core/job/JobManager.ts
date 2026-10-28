@@ -550,6 +550,10 @@ export class JobManager extends BaseService {
           inFlight: inFlight.length,
           timeoutMs: JOB_DRAIN_TIMEOUT_MS
         })
+        // MEA:profile-teardown-drain 未排空任务必须使账户重建失败，保留跟踪供晚到结算完成。
+        throw new Error(
+          `JobManager.onStop: ${inFlight.length} in-flight job(s) did not settle within ${JOB_DRAIN_TIMEOUT_MS}ms`
+        )
       } else {
         logger.info('JobManager.onStop: all in-flight jobs settled')
       }

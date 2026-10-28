@@ -70,6 +70,7 @@ export class ProxyService extends BaseService {
   private desiredKey: string | null = null
   private systemProxyReadFailed = false
   private nodeProxyController: NodeProxyController | null = null
+  private preferenceUnsubscribe: (() => void) | null = null
 
   // Latest-wins reconciler: rapid proxy-preference toggles (or system-proxy changes) collapse
   // into a single re-read + re-apply — single-flight and level-triggered, so a change landing
@@ -112,11 +113,24 @@ export class ProxyService extends BaseService {
    * changing the proxy in the UI would have no effect on the network stack.
    */
   protected async onReady(): Promise<void> {
+    /*
     this.registerDisposable(
       application
         .get('PreferenceService')
         .subscribeMultipleChanges([...PROXY_PREFERENCE_KEYS], () => this.proxyReconciler.request())
     )
+    */
+    let subscribed = true
+    const unsubscribe = application
+      .get('PreferenceService')
+      .subscribeMultipleChanges([...PROXY_PREFERENCE_KEYS], () => this.proxyReconciler.request())
+    this.preferenceUnsubscribe = () => {
+      if (!subscribed) return
+      subscribed = false
+      unsubscribe()
+    }
+    this.registerDisposable(this.preferenceUnsubscribe)
+    this.appliedKey = null
     // Don't gate startup on the initial apply. The OS-proxy read (a `scutil` spawn in system
     // mode) only feeds the Node-side controller, which no startup request hits; Electron sessions
     // already follow the system proxy by Chromium default. Converge in the background instead.
@@ -127,6 +141,22 @@ export class ProxyService extends BaseService {
         logger.error('Initial proxy apply failed; traffic uses the default route until the next change', error)
       }
     })
+  }
+
+  protected async onStop(): Promise<void> {
+    // Shield triggers so the old reconciler cannot start new work after this point.
+    this.preferenceUnsubscribe?.()
+    this.preferenceUnsubscribe = null
+    this.clearSystemProxyMonitor()
+    // Drain any in-flight apply; the outer shutdown ceiling enforces the timeout (non-clean),
+    // so we do not add one here and the readonly reconciler is left alive for a restart.
+    await this.proxyReconciler.flush()
+  }
+
+  protected async onDestroy(): Promise<void> {
+    // Hand the backend off: it is process-level and must keep the last proxy config (login
+    // network) across profile rebuilds, so it is never torn down here — just detach the ref.
+    this.nodeProxyController = null
   }
 
   /** Latest intent from preferences, resolving the concrete OS proxy for `system` mode. */

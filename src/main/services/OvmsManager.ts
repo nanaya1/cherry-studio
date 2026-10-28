@@ -1,4 +1,4 @@
-import { exec, execFile } from 'node:child_process'
+import { exec, execFile, type ChildProcess } from 'node:child_process'
 import { promisify } from 'node:util'
 import * as path from 'path'
 
@@ -19,7 +19,7 @@ import {
 const logger = loggerService.withContext('OvmsManager')
 
 const execAsync = promisify(exec)
-const execFileAsync = promisify(execFile)
+// const execFileAsync = promisify(execFile) // original: promisified execFile used by addModel; no owned handle to cancel. Replaced by the callback form in addModel to retain a stoppable, owned handle (and to drain stdout/stderr).
 
 interface OvmsProcess {
   pid: number
@@ -41,9 +41,32 @@ interface OvmsConfig {
 @Conditional(onPlatform('win32'), onCpuVendor('intel'))
 export class OvmsManager extends BaseService {
   private ovms: OvmsProcess | null = null
+  // Owned handles: only these may be terminated. Never treat a scanned PID as owned.
+  private ovmsChild: ChildProcess | null = null
+  private downloadChild: ChildProcess | null = null
+  // Once lifecycle shutdown runs, never (re)start an owned process.
+  private stopped = false
+  private static readonly POWERSHELL_TIMEOUT_MS = 10000
+  private static readonly MAX_DOWNLOAD_BUFFER = 64 * 1024 * 1024
 
   protected async onStop() {
-    await this.stopOvms()
+    this.stopped = true
+    const failures: string[] = []
+    // Stop the owned OVMS process tree (no-op if none is owned).
+    const ovmsResult = await this.stopOvms()
+    if (!ovmsResult.success) {
+      failures.push(ovmsResult.message ?? 'Failed to stop OVMS process')
+    }
+    // Also stop any owned model download so a lingering ovdnd.exe is not left behind.
+    const downloadResult = await this.stopAddModel()
+    if (!downloadResult.success) {
+      failures.push(downloadResult.message ?? 'Failed to stop model download')
+    }
+    // Shutdown is irreversible: forbid any further runOvms/addModel from starting a process.
+    this.stopped = true
+    if (failures.length > 0) {
+      throw new Error(failures.join('; '))
+    }
   }
 
   /**
@@ -52,10 +75,22 @@ export class OvmsManager extends BaseService {
    * @returns Promise<{ success: boolean; message?: string }>
    */
   private async terminalProcess(pid: number): Promise<{ success: boolean; message?: string }> {
+    // Never act on an invalid PID. `child.pid ?? -1` can be -1 when a process failed to
+    // report a PID; sending that to Stop-Process would target PID -1 (every process in the
+    // session), which is unsafe. Refuse instead so the caller keeps its owned handle.
+    if (!Number.isInteger(pid) || pid <= 0) {
+      logger.error(`Refusing to terminate invalid PID: ${pid}`)
+      return { success: false, message: `Invalid PID: ${pid}` }
+    }
+    const ps = (command: string) =>
+      execAsync(`powershell -Command "${command}"`, {
+        timeout: OvmsManager.POWERSHELL_TIMEOUT_MS,
+        windowsHide: true
+      })
     try {
       // Check if the process is running
       const processCheckCommand = `Get-Process -Id ${pid} -ErrorAction SilentlyContinue | Select-Object Id | ConvertTo-Json`
-      const { stdout: processStdout } = await execAsync(`powershell -Command "${processCheckCommand}"`)
+      const { stdout: processStdout } = await ps(processCheckCommand)
 
       if (!processStdout.trim()) {
         logger.info(`Process with PID ${pid} is not running`)
@@ -64,28 +99,34 @@ export class OvmsManager extends BaseService {
 
       // Find child processes
       const childProcessCommand = `Get-WmiObject -Class Win32_Process | Where-Object { $_.ParentProcessId -eq ${pid} } | Select-Object ProcessId | ConvertTo-Json`
-      const { stdout: childStdout } = await execAsync(`powershell -Command "${childProcessCommand}"`)
+      const { stdout: childStdout } = await ps(childProcessCommand)
 
       // If there are child processes, terminate them first
+      let childFailed = false
       if (childStdout.trim()) {
         const childProcesses = JSON.parse(childStdout)
         const childList = Array.isArray(childProcesses) ? childProcesses : [childProcesses]
 
         logger.info(`Found ${childList.length} child processes for PID ${pid}`)
 
-        // Recursively terminate each child process
+        // Recursively terminate each child process; a non-clean child stop must be
+        // propagated so the caller does not report a falsely successful teardown.
         for (const childProcess of childList) {
           const childPid = childProcess.ProcessId
           logger.info(`Terminating child process PID: ${childPid}`)
-          await this.terminalProcess(childPid)
+          const childResult = await this.terminalProcess(childPid)
+          if (!childResult.success) {
+            childFailed = true
+            logger.warn(`Child process ${childPid} failed to terminate: ${childResult.message}`)
+          }
         }
       } else {
         logger.info(`No child processes found for PID ${pid}`)
       }
 
-      // Finally, terminate the parent process
+      // Finally, terminate the parent process (-Force keeps OVMS's existing semantics)
       const killCommand = `Stop-Process -Id ${pid} -Force -ErrorAction SilentlyContinue`
-      await execAsync(`powershell -Command "${killCommand}"`)
+      await ps(killCommand)
       logger.info(`Terminated process with PID: ${pid}`)
 
       // Wait for the process to disappear with 5-second timeout
@@ -94,10 +135,13 @@ export class OvmsManager extends BaseService {
 
       while (Date.now() - startTime < timeout) {
         const checkCommand = `Get-Process -Id ${pid} -ErrorAction SilentlyContinue | Select-Object Id | ConvertTo-Json`
-        const { stdout: checkStdout } = await execAsync(`powershell -Command "${checkCommand}"`)
+        const { stdout: checkStdout } = await ps(checkCommand)
 
         if (!checkStdout.trim()) {
           logger.info(`Process with PID ${pid} has disappeared`)
+          if (childFailed) {
+            return { success: false, message: `Process ${pid} terminated but a child failed to stop` }
+          }
           return { success: true, message: `Process ${pid} and all child processes terminated successfully` }
         }
 
@@ -118,17 +162,24 @@ export class OvmsManager extends BaseService {
    * @returns Promise<{ success: boolean; message?: string }>
    */
   public async stopOvms(): Promise<{ success: boolean; message?: string }> {
+    // Only terminate the process tree this app started; never scan-kill external ovms.exe.
+    if (!this.ovms) {
+      logger.info('No owned OVMS process to stop')
+      return { success: true, message: 'No OVMS process owned by this app' }
+    }
+    const pid = this.ovms.pid
     try {
-      // close the OVMS process
-      await execAsync(
-        `powershell -Command "Get-WmiObject Win32_Process | Where-Object { $_.CommandLine -like 'ovms.exe*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }"`
-      )
-
-      // Reset the ovms instance
-      this.ovms = null
-
-      logger.info('OVMS process stopped successfully')
-      return { success: true, message: 'OVMS process stopped successfully' }
+      // execAsync(`powershell -Command "Get-WmiObject Win32_Process | Where-Object { $_.CommandLine -like 'ovms.exe*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }"`)  // old: killed external instances
+      const result = await this.terminalProcess(pid)
+      // Retain the owned handle on a non-clean stop so we never silently lose track of a
+      // process this app started (and never report a false "stopped").
+      if (result.success) {
+        this.ovms = null
+        this.ovmsChild = null
+        logger.info('OVMS process stopped successfully')
+        return { success: true, message: 'OVMS process stopped successfully' }
+      }
+      return result
     } catch (error) {
       logger.error(`Failed to stop OVMS process: ${error}`)
       return { success: false, message: 'Failed to stop OVMS process' }
@@ -140,6 +191,11 @@ export class OvmsManager extends BaseService {
    * @returns Promise<{ success: boolean; message?: string }>
    */
   public async runOvms(): Promise<{ success: boolean; message?: string }> {
+    // After shutdown, never (re)start an owned process.
+    if (this.stopped) {
+      logger.warn('runOvms refused: manager is stopped')
+      return { success: false, message: 'OVMS manager is stopped' }
+    }
     const ovmsDir = application.getPath('feature.ovms.ovms')
     const configPath = path.join(ovmsDir, 'models', 'config.json')
     const runBatPath = path.join(ovmsDir, 'run.bat')
@@ -168,15 +224,41 @@ export class OvmsManager extends BaseService {
         return { success: false, message: 'run.bat not found' }
       }
 
+      // Reuse the existing owned handle instead of overwriting it: a second run must not
+      // orphan the first process tree (PID-reuse guard).
+      if (this.ovms && this.ovmsChild && !this.ovmsChild.killed && this.ovmsChild.exitCode === null) {
+        logger.info(`OVMS already running (PID ${this.ovms.pid}); reusing owned handle`)
+        return { success: true }
+      }
+
       // Run run.bat without waiting for it to complete
       logger.info(`Starting OVMS with run.bat: ${runBatPath}`)
-      exec(`"${runBatPath}"`, { cwd: ovmsDir }, (error) => {
+      // exec(`"${runBatPath}"`, { cwd: ovmsDir }, (error) => { if (error) logger.error(`Error running run.bat: ${error}`) })  // old: no owned handle
+      const child = exec(`"${runBatPath}"`, { cwd: ovmsDir }, (error) => {
         if (error) {
           logger.error(`Error running run.bat: ${error}`)
         }
+        // Clear the owned handle when the wrapper process exits (guards PID reuse).
+        if (this.ovmsChild === child) {
+          this.ovmsChild = null
+          this.ovms = null
+        }
       })
+      this.ovmsChild = child
+      const pid = child.pid
+      if (pid == null) {
+        logger.error('Failed to obtain a PID for the OVMS process')
+        this.ovmsChild = null
+        return { success: false, message: 'Failed to start OVMS (no PID)' }
+      }
+      this.ovms = { pid, path: runBatPath, workingDirectory: ovmsDir }
 
-      logger.info('OVMS started successfully')
+      // Ownership note: the bundled run.bat is generated by resources/scripts/install-ovms.js,
+      // which copies setupvars.bat and appends a *direct foreground* `ovms.exe ...` call (no
+      // `start`/detach). So exec()'s cmd.exe child owns ovms.exe as a descendant and the whole
+      // tree is killable via terminalProcess recursion. A user-edited run.bat using `start`
+      // would detach ovms.exe and break this ownership — it is not asserted here.
+      logger.info('OVMS wrapper started (owned handle tracked)')
       return { success: true }
     } catch (error) {
       logger.error(`Failed to run OVMS: ${error}`)
@@ -198,9 +280,12 @@ export class OvmsManager extends BaseService {
         return 'not-installed'
       }
 
-      // Check if OVMS process is running
+      // Check if OVMS process is running (read-only probe; bounded like the stop paths)
       const psCommand = `Get-Process -Name "ovms" -ErrorAction SilentlyContinue | Select-Object Id, Path | ConvertTo-Json`
-      const { stdout } = await execAsync(`powershell -Command "${psCommand}"`)
+      const { stdout } = await execAsync(`powershell -Command "${psCommand}"`, {
+        timeout: OvmsManager.POWERSHELL_TIMEOUT_MS,
+        windowsHide: true
+      })
 
       if (!stdout.trim()) {
         logger.info('OVMS process not running')
@@ -227,30 +312,34 @@ export class OvmsManager extends BaseService {
    * Initialize OVMS by finding the executable path and working directory
    */
   public async initializeOvms(): Promise<boolean> {
-    // Use PowerShell to find ovms.exe processes with their paths
+    // NOTE: the original implementation scanned `Get-Process -Name "ovms"` and adopted ANY
+    // external ovms.exe as "owned", which let us kill processes we didn't start. The new
+    // version only re-confirms the process this app actually started. Original code:
+    /*
     const psCommand = `Get-Process -Name "ovms" -ErrorAction SilentlyContinue | Select-Object Id, Path | ConvertTo-Json`
     const { stdout } = await execAsync(`powershell -Command "${psCommand}"`)
-
     if (!stdout.trim()) {
       logger.error('Command to find OVMS process returned no output')
       return false
     }
     logger.debug(`OVMS process output: ${stdout}`)
-
     const processes = JSON.parse(stdout)
     const processList = Array.isArray(processes) ? processes : [processes]
-
-    // Find the first process with a valid path
     for (const process of processList) {
-      this.ovms = {
-        pid: process.Id,
-        path: process.Path,
-        workingDirectory: path.dirname(process.Path)
-      }
+      this.ovms = { pid: process.Id, path: process.Path, workingDirectory: path.dirname(process.Path) }
       return true
     }
-
     return this.ovms !== null
+    */
+    if (!this.ovms || !this.ovmsChild) {
+      return false
+    }
+    if (this.ovmsChild.killed || this.ovmsChild.exitCode !== null) {
+      this.ovms = null
+      this.ovmsChild = null
+      return false
+    }
+    return true
   }
 
   /**
@@ -342,6 +431,16 @@ export class OvmsManager extends BaseService {
     modelSource: string,
     task: string = 'text_generation'
   ): Promise<{ success: boolean; message?: string }> {
+    // After shutdown, never start a download.
+    if (this.stopped) {
+      logger.warn('addModel refused: manager is stopped')
+      return { success: false, message: 'OVMS manager is stopped' }
+    }
+    // Do not overwrite an in-flight download handle; a duplicate start would orphan it.
+    if (this.downloadChild && !this.downloadChild.killed && this.downloadChild.exitCode === null) {
+      logger.warn('A model download is already in progress')
+      return { success: false, message: 'A model download is already in progress' }
+    }
     logger.info(`Adding model: ${modelName} with ID: ${modelId}, Source: ${modelSource}, Task: ${task}`)
 
     const ovdndDir = application.getPath('feature.ovms.ovms')
@@ -401,10 +500,28 @@ export class OvmsManager extends BaseService {
       }
 
       logger.info(`Running ovdnd --pull for ${modelId} from ${modelSource}`)
-      const { stdout } = await execFileAsync(ovdndPath, args, { env: env, cwd: ovdndDir })
-
+      // const { stdout } = await execFileAsync(ovdndPath, args, { env, cwd: ovdndDir })  // old: no owned handle to cancel
+      // Use the callback form (not bare execFile) so stdout/stderr are drained into buffers
+      // (large model logs won't stall the child under the default 1MB maxBuffer), while still
+      // giving us the `child` as an owned, stoppable handle for stopAddModel.
+      await new Promise<void>((resolve, reject) => {
+        const child = execFile(
+          ovdndPath,
+          args,
+          { env, cwd: ovdndDir, maxBuffer: OvmsManager.MAX_DOWNLOAD_BUFFER },
+          (error, _stdout, stderr) => {
+            this.downloadChild = null
+            if (error) {
+              logger.error(`ovdnd failed: ${stderr || error.message}`)
+              reject(error)
+            } else {
+              resolve()
+            }
+          }
+        )
+        this.downloadChild = child
+      })
       logger.info('Model download completed')
-      logger.debug(`Command output: ${stdout}`)
     } catch (error) {
       // remove ovdnDir+'models'+modelId if it exists
       if (await fs.pathExists(pathModel)) {
@@ -438,31 +555,49 @@ export class OvmsManager extends BaseService {
    * @returns Promise<{ success: boolean; message?: string }>
    */
   public async stopAddModel(): Promise<{ success: boolean; message?: string }> {
+    // NOTE: the original implementation scanned `Get-Process -Name "ovdnd"` and killed ALL
+    // ovdnd.exe instances (including ones we didn't start). The new version only stops the
+    // download this app started. Original code:
+    /*
     try {
-      // Check if ovdnd.exe process is running
       const psCommand = `Get-Process -Name "ovdnd" -ErrorAction SilentlyContinue | Select-Object Id, Path | ConvertTo-Json`
       const { stdout } = await execAsync(`powershell -Command "${psCommand}"`)
-
       if (!stdout.trim()) {
         logger.info('ovdnd process is not running')
         return { success: true, message: 'Model download process is not running' }
       }
-
       const processes = JSON.parse(stdout)
       const processList = Array.isArray(processes) ? processes : [processes]
-
       if (processList.length === 0) {
         logger.info('ovdnd process is not running')
         return { success: true, message: 'Model download process is not running' }
       }
-
-      // Terminate all ovdnd processes
       for (const process of processList) {
         void this.terminalProcess(process.Id)
       }
-
       logger.info('Model download process stopped successfully')
       return { success: true, message: 'Model download process stopped successfully' }
+    } catch (error) {
+      logger.error(`Failed to stop model download process: ${error}`)
+      return { success: false, message: 'Failed to stop model download process' }
+    }
+    */
+    // Only stop the download this app started; never scan-kill external ovdnd.exe.
+    if (!this.downloadChild) {
+      logger.info('No owned model download process to stop')
+      return { success: true, message: 'Model download process is not running' }
+    }
+    const pid = this.downloadChild.pid ?? -1
+    try {
+      // const { stdout } = await execAsync(`powershell -Command "Get-Process -Name \"ovdnd\" ..."`)  // old: killed external downloads
+      const result = await this.terminalProcess(pid)
+      // Retain the owned handle on a non-clean stop (e.g. invalid PID) so we never lose it.
+      if (result.success) {
+        this.downloadChild = null
+        logger.info('Model download process stopped successfully')
+        return { success: true, message: 'Model download process stopped successfully' }
+      }
+      return result
     } catch (error) {
       logger.error(`Failed to stop model download process: ${error}`)
       return { success: false, message: 'Failed to stop model download process' }

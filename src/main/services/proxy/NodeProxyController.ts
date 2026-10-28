@@ -25,11 +25,24 @@ const PROXY_ENV_KEYS = [
   'all_proxy'
 ] as const
 
+// 进程级共享后端：跨实例复用，重建时不重复包裹全局、不重置代理。
+let sharedBackendPromise: Promise<NodeProxyBackend> | null = null
+let sharedConfigKey: string | null = null
+
 export class NodeProxyController {
-  private currentConfigKey: string | null = null
-  private backendPromise: Promise<NodeProxyBackend> | undefined
+  // private currentConfigKey: string | null = null
+  // private backendPromise: Promise<NodeProxyBackend> | undefined
 
   constructor(private logger?: NodeProxyLogger) {}
+
+  // Backend is process-level (see sharedBackendPromise) so the last proxy config
+  // survives profile rebuilds and rebuilds never stack wrappers.
+  private getBackend(): Promise<NodeProxyBackend> {
+    sharedBackendPromise ??= import('./NodeProxyBackend').then(
+      ({ NodeProxyBackend }) => new NodeProxyBackend(this.logger)
+    )
+    return sharedBackendPromise
+  }
 
   async configure(config: NodeProxyConfig): Promise<void> {
     const proxyUrl = config.proxyRules?.trim()
@@ -41,7 +54,8 @@ export class NodeProxyController {
       }
     }
     const configKey = JSON.stringify({ proxyUrl: proxyUrl ?? null, proxyBypassRules: normalizedBypassRules })
-    if (this.currentConfigKey === configKey) return
+    // if (this.currentConfigKey === configKey) return
+    if (sharedConfigKey === configKey) return
 
     const proxyEndpoint = normalizeProxyEndpoint(proxyUrl)
     if (proxyEndpoint) {
@@ -50,8 +64,9 @@ export class NodeProxyController {
           this.setEnvironment(proxyUrl, normalizedBypassRules)
         )
       )
-    } else if (this.backendPromise) {
-      await this.backendPromise.then((backend) =>
+    } else if (sharedBackendPromise) {
+      // 原逻辑（保留）：else if (this.backendPromise)。后端已共享，按共享引用判断。
+      await sharedBackendPromise.then((backend) =>
         backend.configure(undefined, null, normalizedBypassRules, () =>
           this.setEnvironment(undefined, normalizedBypassRules)
         )
@@ -60,15 +75,18 @@ export class NodeProxyController {
       this.setEnvironment(undefined, normalizedBypassRules)
     }
 
-    this.currentConfigKey = configKey
+    // this.currentConfigKey = configKey
+    sharedConfigKey = configKey
   }
 
+  /*
   private getBackend(): Promise<NodeProxyBackend> {
     this.backendPromise ??= import('./NodeProxyBackend').then(
       ({ NodeProxyBackend }) => new NodeProxyBackend(this.logger)
     )
     return this.backendPromise
   }
+  */
 
   private setEnvironment(url: string | undefined, normalizedBypassRules: string[]): void {
     for (const key of PROXY_ENV_KEYS) delete process.env[key]

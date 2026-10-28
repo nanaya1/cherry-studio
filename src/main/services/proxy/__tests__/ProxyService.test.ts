@@ -353,4 +353,73 @@ describe('ProxyService — preference wiring', () => {
     await reconciler.flush()
     expect(intervalRegistrations).toHaveLength(2)
   })
+
+  it('onStop drains the in-flight apply and shields preference triggers without disposing the reconciler', async () => {
+    MockMainPreferenceServiceUtils.setPreferenceValue('app.proxy.mode', 'custom')
+    MockMainPreferenceServiceUtils.setPreferenceValue('app.proxy.url', 'http://a:1')
+
+    // Gate the first apply so it is still in flight when onStop runs.
+    let releaseApply!: () => void
+    const gate = new Promise<void>((resolve) => {
+      releaseApply = resolve
+    })
+    sessionSetProxyMock.mockReturnValueOnce(gate.then(() => undefined))
+
+    const manager = new ProxyService()
+    await (manager as any).onReady()
+
+    const stopPromise = (manager as any).onStop()
+    // onStop must block until the in-flight apply completes (not resolve immediately).
+    const settledEarly = await Promise.race([stopPromise.then(() => true), Promise.resolve(false)])
+    expect(settledEarly).toBe(false)
+
+    releaseApply()
+    await stopPromise
+
+    // In-flight work finished and the config was applied.
+    expect(nodeProxyConfigureMock).toHaveBeenCalledWith({ proxyRules: 'http://a:1', proxyBypassRules: undefined })
+    expect(manager.appliedProxyKey).not.toBeNull()
+    // Triggers are shielded: a later preference change starts no new apply.
+    const callsBefore = nodeProxyConfigureMock.mock.calls.length
+    MockMainPreferenceServiceUtils.setPreferenceValue('app.proxy.url', 'http://b:2')
+    await new Promise<void>((resolve) => setImmediate(resolve))
+    expect(nodeProxyConfigureMock.mock.calls.length).toBe(callsBefore)
+    // Reconciler is left alive so a restart can re-arm it.
+    expect((manager as any).proxyReconciler.isDisposed).toBe(false)
+  })
+
+  it('keeps the last proxy config across a stop/rebuild (no forced direct switch during login)', async () => {
+    MockMainPreferenceServiceUtils.setPreferenceValue('app.proxy.mode', 'custom')
+    MockMainPreferenceServiceUtils.setPreferenceValue('app.proxy.url', 'http://a:1')
+
+    const first = new ProxyService()
+    await (first as any).onReady()
+    await reconcilerOf(first).flush()
+    expect(nodeProxyConfigureMock).toHaveBeenLastCalledWith({ proxyRules: 'http://a:1', proxyBypassRules: undefined })
+
+    // Profile rebuild: stop the old instance, start a new one.
+    await (first as any).onStop()
+    const second = new ProxyService()
+    await (second as any).onReady()
+    await reconcilerOf(second).flush()
+
+    // The last applied config is still the proxy — the rebuild did not reset to direct.
+    expect(nodeProxyConfigureMock).toHaveBeenLastCalledWith({ proxyRules: 'http://a:1', proxyBypassRules: undefined })
+    expect(sessionSetProxyMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ mode: 'fixed_servers', proxyRules: 'http://a:1' })
+    )
+  })
+
+  it('onDestroy hands the backend off without tearing it down', async () => {
+    const manager = new ProxyService()
+    await (manager as any).onReady()
+    await reconcilerOf(manager).flush()
+    await (manager as any).onStop()
+    await (manager as any).onDestroy()
+
+    // Backend reference detached; the process-level backend survives (login network kept).
+    expect((manager as any).nodeProxyController).toBeNull()
+    // Reconciler (and thus the backend) is never disposed by stop/destroy.
+    expect((manager as any).proxyReconciler.isDisposed).toBe(false)
+  })
 })

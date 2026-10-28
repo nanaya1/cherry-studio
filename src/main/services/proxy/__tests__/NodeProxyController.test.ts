@@ -19,6 +19,18 @@ async function close(server: Server): Promise<void> {
 }
 
 describe('NodeProxyController', () => {
+  it('reapplies a configuration after another controller changes the shared backend', async () => {
+    const first = new NodeProxyController()
+    const second = new NodeProxyController()
+    try {
+      await first.configure({ proxyRules: 'http://127.0.0.1:7890' })
+      await second.configure({})
+      await first.configure({ proxyRules: 'http://127.0.0.1:7890' })
+      expect(process.env.HTTP_PROXY).toBe('http://127.0.0.1:7890')
+    } finally {
+      await second.configure({})
+    }
+  })
   it.each(['localhost', '127.0.0.1', '[::1]'])(
     'keeps %s direct while routing remote requests through a configured proxy',
     async (hostname) => {

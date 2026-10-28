@@ -31,6 +31,9 @@ import { JobManager } from '@main/core/job/JobManager'
 import type { JobHandle, JobHandler } from '@main/core/job/types'
 import { BaseService } from '@main/core/lifecycle/BaseService'
 import { SERVICE_STOP_TIMEOUT_MS } from '@main/core/lifecycle/constants'
+import { LifecycleManager } from '@main/core/lifecycle/LifecycleManager'
+import { ServiceContainer } from '@main/core/lifecycle/ServiceContainer'
+import { Phase } from '@main/core/lifecycle/types'
 import { SchedulerService } from '@main/core/scheduler/SchedulerService'
 
 import { drainTrailingDispatch } from './_helpers'
@@ -151,6 +154,7 @@ interface BootstrapOptions {
   awaitRecovery?: boolean
   /** Return with fake timers still installed; the caller must vi.useRealTimers(). */
   keepFakeTimers?: boolean
+  lifecycle?: boolean
 }
 
 async function bootstrapManager(opts: BootstrapOptions = {}): Promise<{
@@ -158,8 +162,14 @@ async function bootstrapManager(opts: BootstrapOptions = {}): Promise<{
   jobManager: JobManager
 }> {
   BaseService.resetInstances()
-  const scheduler = new SchedulerService()
-  const jobManager = new JobManager()
+  if (opts.lifecycle) {
+    ServiceContainer.reset()
+    LifecycleManager.reset()
+    ServiceContainer.getInstance().register(SchedulerService)
+    ServiceContainer.getInstance().register(JobManager)
+  }
+  const scheduler = opts.lifecycle ? ServiceContainer.getInstance().get(SchedulerService) : new SchedulerService()
+  const jobManager = opts.lifecycle ? ServiceContainer.getInstance().get(JobManager) : new JobManager()
 
   const dbSvc = MockMainDbServiceExport.dbService
   const cacheSvc = MockMainCacheServiceExport.cacheService
@@ -193,8 +203,11 @@ async function bootstrapManager(opts: BootstrapOptions = {}): Promise<{
   // Interval ticks are registered inside onReady with real setInterval — to
   // gate-test them the fake clock must be installed before _doInit.
   if (opts.fakeIntervalTimers || opts.fakeDate) vi.useFakeTimers({ toFake })
-  await scheduler._doInit()
-  await jobManager._doInit()
+  if (opts.lifecycle) await LifecycleManager.getInstance().startPhase(Phase.WhenReady)
+  else {
+    await scheduler._doInit()
+    await jobManager._doInit()
+  }
   if (!(opts.fakeIntervalTimers || opts.fakeDate)) vi.useFakeTimers({ toFake })
 
   void jobManager._doAllReady()
@@ -654,6 +667,7 @@ describe('JobManager pause / drainInFlight', () => {
         .insert(jobTable)
         .values({
           type: 'pause.xrestart',
+          createdAt: now - 5000,
           status: 'running',
           queue: 'pause.xrestart',
           scheduledAt: now - 1000,
@@ -1237,7 +1251,8 @@ describe('JobManager pause / drainInFlight', () => {
 
       const counter = { count: 0 }
       const handler = makeCountingHandler(counter)
-      handler.recovery = 'singleton'
+      // handler.recovery = 'singleton'
+      handler.recovery = 'abandon'
       let hold!: { dispose: () => void }
       const { scheduler, jobManager } = await bootstrapManager({
         handlers: [['pause.debt', handler]],
@@ -1285,8 +1300,7 @@ describe('JobManager pause / drainInFlight', () => {
       expect(order.indexOf('kicks:promote')).toBeGreaterThanOrEqual(0)
       expect(order.indexOf('recovery:sweep')).toBeLessThan(order.indexOf('kicks:promote'))
 
-      // Singleton recovery keeps the newest non-terminal row (the fresh one)
-      // and must have cancelled the stale one BEFORE any dispatch resumed.
+      // Prior-process work is abandoned before dispatch; current-window work is excluded from recovery.
       expect(jobService.getById(staleRow.id)?.status).toBe('cancelled')
       expect(counter.count).toBe(1)
 
@@ -1533,6 +1547,7 @@ describe('JobManager pause / drainInFlight', () => {
         .insert(jobTable)
         .values({
           type: 'stop.xrestart',
+          createdAt: now - 5000,
           status: 'running',
           queue: 'stop.xrestart',
           scheduledAt: now - 1000,
@@ -1601,9 +1616,58 @@ describe('JobManager pause / drainInFlight', () => {
      * after the timeout branch — the warning, the resolver cleanup — would be
      * unreachable.
      */
+    it('records the real JobManager as failed even after its overdue job later settles', async () => {
+      const gate = makeGate()
+      let finalized = false
+      const { jobManager } = await bootstrapManager({
+        lifecycle: true,
+        keepFakeTimers: true,
+        handlers: [
+          [
+            'stop.lifecycle',
+            {
+              recovery: 'abandon',
+              async execute() {
+                await gate.promise
+                return { ok: true }
+              },
+              async onSettled() {
+                finalized = true
+              }
+            }
+          ]
+        ]
+      })
+      const handle = jobManager.enqueue('stop.lifecycle' as never, {} as never)
+      await pollUntil(() => internals(jobManager).inFlightExecuted.has(handle.id))
+      const stopping = LifecycleManager.getInstance().stopAll()
+      await vi.advanceTimersByTimeAsync(4500)
+      const verdict = await stopping
+      expect(verdict.failed).toContain('JobManager')
+      expect(verdict.timedOut).toEqual([])
+      expect(finalized).toBe(false)
+      gate.release()
+      await vi.advanceTimersByTimeAsync(10)
+      await drainTrailingDispatch(jobManager)
+      expect(finalized).toBe(true)
+      expect(jobService.getById(handle.id)?.status).toBe('completed')
+      expect(verdict.failed).toContain('JobManager')
+      await LifecycleManager.getInstance().destroyAll()
+      LifecycleManager.reset()
+      ServiceContainer.reset()
+    })
+
     const EXPECTED_DRAIN_BUDGET_MS = 4500
 
-    it('gives up draining at its own budget, before the framework ceiling, and still cleans up', async () => {
+    /**
+     * Contract (account-switch safety): a drain that gives up because a job
+     * overran its budget must NOT report a clean teardown. onStop must reject so
+     * LifecycleManager records JobManager as a failed stop (non-clean) instead of
+     * the process believing every job finished. The in-flight set is left intact
+     * on the timeout path, so the late finalize/onSettled still runs and the row
+     * is recovered on next start.
+     */
+    it('reports a non-clean teardown when a job overruns the drain budget, and preserves in-flight tracking for late recovery', async () => {
       const drainTimeoutWarn = () =>
         mockMainLoggerService.warn.mock.calls.find(([message]) =>
           String(message).includes('JobManager.onStop timed out')
@@ -1623,24 +1687,84 @@ describe('JobManager pause / drainInFlight', () => {
 
       mockMainLoggerService.warn.mockClear()
       const stopP = jobManager._doStop()
+      // Swallow the rejection at the source so it is never reported as
+      // unhandled; expect().rejects still observes the original promise.
+      void stopP.catch(() => {})
 
       await vi.advanceTimersByTimeAsync(EXPECTED_DRAIN_BUDGET_MS - 1)
       expect(drainTimeoutWarn()).toBeUndefined()
 
       await vi.advanceTimersByTimeAsync(1)
-      await stopP
+      // The drain giving up must reject onStop — LifecycleManager then records a
+      // failed (non-clean) stop rather than a false-clean one.
+      await expect(stopP).rejects.toThrow(/in-flight job/i)
 
       expect(drainTimeoutWarn()).toEqual([
         expect.stringContaining('JobManager.onStop timed out'),
         { inFlight: 1, timeoutMs: EXPECTED_DRAIN_BUDGET_MS }
       ])
-      // Reachable only because the budget expired first.
-      expect(internals(jobManager).inFlightExecuted.size).toBe(0)
-      expect(internals(jobManager).finishedResolvers.size).toBe(0)
+      // In-flight tracking is NOT discarded on timeout, so the late settlement
+      // still runs and the row recovers on next start.
+      expect(internals(jobManager).inFlightExecuted.size).toBe(1)
 
+      // Releasing the gate lets the overdue execution finally settle; the row
+      // reaches a terminal state and the in-flight marker is cleaned up.
       gate.release()
-      vi.useRealTimers()
+      await vi.advanceTimersByTimeAsync(10)
       await drainTrailingDispatch(jobManager)
+      expect(jobService.getById(handle.id)?.status).not.toBe('running')
+      expect(internals(jobManager).inFlightExecuted.size).toBe(0)
+
+      await scheduler._doStop()
+    })
+
+    /**
+     * Contract: a job whose handler finished but whose onSettled is still
+     * running past the drain budget is NOT "ended". The timeout verdict must
+     * lock at the budget (non-clean) regardless of the late onSettled, and the
+     * late onSettled must still complete — nothing was discarded.
+     */
+    it('does not treat a late onSettled as a clean settlement after the drain budget', async () => {
+      const counter = { count: 0 }
+      const gate = makeGate()
+      let settledDone = false
+      const { scheduler, jobManager } = await bootstrapManager({
+        handlers: [
+          [
+            'stop.late-settle',
+            makeGateHandler(counter, gate.promise, {
+              onSettled: async () => {
+                await sleep(EXPECTED_DRAIN_BUDGET_MS + 2000)
+                settledDone = true
+              }
+            })
+          ]
+        ],
+        keepFakeTimers: true
+      })
+
+      const handle = jobManager.enqueue('stop.late-settle' as never, { message: 'x' } as never)
+      await pollUntil(() => internals(jobManager).inFlightExecuted.has(handle.id))
+
+      // Let execute() finish (gate releases) but onSettled runs well past the budget.
+      gate.release()
+      await vi.advanceTimersByTimeAsync(50)
+      expect(jobService.getById(handle.id)?.status).toBe('completed')
+
+      const stopP = jobManager._doStop()
+      void stopP.catch(() => {})
+      await vi.advanceTimersByTimeAsync(EXPECTED_DRAIN_BUDGET_MS)
+      // Despite execute() done, the unsettled onSettled means the job is NOT
+      // ended — onStop must reject, not report a clean teardown.
+      await expect(stopP).rejects.toThrow(/in-flight job/i)
+      expect(settledDone).toBe(false)
+
+      // The late onSettled still completes afterward (nothing was discarded).
+      await vi.advanceTimersByTimeAsync(2500)
+      await drainTrailingDispatch(jobManager)
+      expect(settledDone).toBe(true)
+      expect(internals(jobManager).inFlightExecuted.size).toBe(0)
+
       await scheduler._doStop()
     })
   })

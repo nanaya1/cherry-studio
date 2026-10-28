@@ -29,6 +29,14 @@ class TestProcessManager extends ClaudeCodeProcessManager {
   }
 }
 
+/** Test seam: shorten the SIGTERM wait so the timeout path is exercised fast. */
+class FastStopProcessManager extends TestProcessManager {
+  constructor(spawnProcess: SpawnProcess) {
+    super(spawnProcess)
+    this.stopTimeoutMs = 50
+  }
+}
+
 function createFakeChild(options: { pid?: number } = {}) {
   const emitter = new EventEmitter()
   const stderr = new PassThrough()
@@ -275,8 +283,14 @@ describe('ClaudeCodeProcessManager', () => {
     const manager = new TestProcessManager(vi.fn(() => child.process))
     manager.spawn(spawnOptions)
 
-    await expect(manager._doStop()).resolves.toBeUndefined()
+    const stop = manager._doStop()
+    // killAll (SIGTERM) runs synchronously on the live child at the start of onStop.
+    await Promise.resolve()
     expect(child.kill).toHaveBeenCalledExactlyOnceWith('SIGTERM')
+    // Resolve the real exit so the stop can settle.
+    child.emitExit(0, null, false)
+    child.stderr.end()
+    await stop
   })
 
   it('absorbs child kill failures', () => {
@@ -289,5 +303,48 @@ describe('ClaudeCodeProcessManager', () => {
 
     expect(() => manager.killAll('SIGTERM')).not.toThrow()
     expect(child.kill).toHaveBeenCalledExactlyOnceWith('SIGTERM')
+  })
+
+  it('waits for the real child exit after SIGTERM before the stop resolves', async () => {
+    const child = createFakeChild()
+    const manager = new TestProcessManager(vi.fn(() => child.process))
+    manager.spawn(spawnOptions)
+
+    let resolved = false
+    const stop = manager._doStop().then(() => {
+      resolved = true
+    })
+    // Let onStop reach its await on the real exit; kill alone must not settle it.
+    await Promise.resolve()
+    expect(resolved).toBe(false)
+    expect(child.kill).toHaveBeenCalledExactlyOnceWith('SIGTERM')
+
+    child.emitExit()
+    child.stderr.end()
+    await stop
+    expect(resolved).toBe(true)
+  })
+
+  it('does not force-kill and goes non-clean when a child refuses to exit, blocking the rebuild', async () => {
+    const child = createFakeChild()
+    const manager = new FastStopProcessManager(vi.fn(() => child.process))
+    manager.spawn(spawnOptions)
+
+    // Timeout must not escalate to SIGKILL; the stop becomes non-clean instead.
+    await expect(manager._doStop()).rejects.toThrow(/did not exit/)
+    expect(child.kill).not.toHaveBeenCalledWith('SIGKILL')
+    // A non-clean stop blocks a subsequent spawn (rebuild).
+    expect(() => manager.spawn(spawnOptions)).toThrow()
+  })
+
+  it('refuses to spawn after a clean stop', async () => {
+    const child = createFakeChild()
+    const manager = new TestProcessManager(vi.fn(() => child.process))
+    manager.spawn(spawnOptions)
+    child.emitExit()
+    child.stderr.end()
+
+    await expect(manager._doStop()).resolves.toBeUndefined()
+    expect(() => manager.spawn(spawnOptions)).toThrow()
   })
 })

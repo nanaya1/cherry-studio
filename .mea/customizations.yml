@@ -8,6 +8,26 @@ policy:
   require_tests: true
   preserve_original_code_by_comment: true
 customizations:
+  - id: profile-teardown-drain
+    title: 账户运行时停止必须等待任务与自有进程
+    owner: main
+    behavior: 任务超时与进程停止失败报告非干净停止；代理在途配置排空且登录保留最后代理；Claude仅SIGTERM并等待真实退出，不自动强杀；OVMS仅停止本应用创建的进程树。
+    markers:
+      - MEA:profile-teardown-drain
+    touchpoints:
+      - src/main/core/job/JobManager.ts
+      - src/main/services/proxy/ProxyService.ts
+      - src/main/services/proxy/NodeProxyController.ts
+      - src/main/services/proxy/NodeProxyBackend.ts
+      - src/main/ai/runtime/claudeCode/ClaudeCodeProcessManager.ts
+      - src/main/services/OvmsManager.ts
+    tests:
+      - src/main/core/job/__tests__/JobManager.pause.test.ts
+      - src/main/services/proxy/__tests__/ProxyService.test.ts
+      - src/main/services/proxy/__tests__/NodeProxyController.test.ts
+      - src/main/services/proxy/__tests__/NodeProxyBackend.test.ts
+      - src/main/ai/runtime/claudeCode/__tests__/ClaudeCodeProcessManager.test.ts
+      - src/main/services/__tests__/OvmsManager.test.ts
   - id: second-instance-window-reveal
     title: 二次启动不得显示隐藏预热窗口
     owner: main

@@ -11,6 +11,17 @@ import type { ProxyEndpoint } from './proxyRouting'
 const SOCKS_DISPATCHER_SYMBOL = Symbol.for('undici.globalDispatcher.1')
 const globalDispatcherRegistry = globalThis as typeof globalThis & Record<symbol, Dispatcher | undefined>
 
+// True process originals captured once at module load, before any proxy wrapping.
+// A rebuilt backend never adopts a stale wrapper as its baseline (no stacking).
+const TRUE_ORIGINAL_GLOBAL_DISPATCHER = getGlobalDispatcher()
+const TRUE_ORIGINAL_SOCKS_DISPATCHER =
+  globalDispatcherRegistry[SOCKS_DISPATCHER_SYMBOL] ?? TRUE_ORIGINAL_GLOBAL_DISPATCHER
+const TRUE_ORIGINAL_HTTP_GET = http.get
+const TRUE_ORIGINAL_HTTP_REQUEST = http.request
+const TRUE_ORIGINAL_HTTPS_GET = https.get
+const TRUE_ORIGINAL_HTTPS_REQUEST = https.request
+const TRUE_ORIGINAL_AXIOS_ADAPTER = axios.defaults.adapter
+
 interface HttpProxyAgents {
   http: http.Agent
   https: http.Agent
@@ -64,6 +75,7 @@ export class NodeProxyBackend {
   private readonly originalAxiosAdapter
 
   constructor(private logger?: NodeProxyLogger) {
+    /*
     this.originalGlobalDispatcher = getGlobalDispatcher()
     this.originalSocksDispatcher = globalDispatcherRegistry[SOCKS_DISPATCHER_SYMBOL] ?? this.originalGlobalDispatcher
     this.originalHttpGet = http.get
@@ -71,6 +83,14 @@ export class NodeProxyBackend {
     this.originalHttpsGet = https.get
     this.originalHttpsRequest = https.request
     this.originalAxiosAdapter = axios.defaults.adapter
+    */
+    this.originalGlobalDispatcher = TRUE_ORIGINAL_GLOBAL_DISPATCHER
+    this.originalSocksDispatcher = TRUE_ORIGINAL_SOCKS_DISPATCHER
+    this.originalHttpGet = TRUE_ORIGINAL_HTTP_GET
+    this.originalHttpRequest = TRUE_ORIGINAL_HTTP_REQUEST
+    this.originalHttpsGet = TRUE_ORIGINAL_HTTPS_GET
+    this.originalHttpsRequest = TRUE_ORIGINAL_HTTPS_REQUEST
+    this.originalAxiosAdapter = TRUE_ORIGINAL_AXIOS_ADAPTER
   }
 
   async configure(
@@ -171,6 +191,8 @@ export class NodeProxyBackend {
       return
     }
 
+    const previousDispatcher = this.proxyDispatcher
+    if (previousDispatcher) void previousDispatcher.close()
     axios.defaults.adapter = 'fetch'
     if (endpoint.kind === 'http') {
       this.proxyDispatcher = new SelectiveDispatcher(
