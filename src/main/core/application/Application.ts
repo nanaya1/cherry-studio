@@ -321,8 +321,43 @@ export class Application {
   private completedProfileTeardown?: ShutdownResult
 
   public async prepareProfileLogout(): Promise<ShutdownResult> {
+    if (this.isShuttingDown && !this.completedProfileTeardown?.clean) {
+      throw new Error('Application is already shutting down')
+    }
     this.returningToLogin = true
-    return this.prepareProfileSwitch()
+    // return this.prepareProfileSwitch()
+    let result: ShutdownResult
+    try {
+      result = await this.prepareProfileSwitch()
+    } catch (error) {
+      await this.recoverFailedProfileLogout()
+      throw error
+    }
+    if (!result.clean) await this.recoverFailedProfileLogout()
+    return result
+  }
+
+  private async recoverFailedProfileLogout(): Promise<void> {
+    logger.error('Logout teardown failed; offering restart without rebuilding the business runtime', {
+      teardown: this.completedProfileTeardown
+    })
+    try {
+      const { response } = await dialog.showMessageBox({
+        type: 'warning',
+        title: '退出账号需要重启',
+        message: '部分后台任务未能安全停止，无法直接打开登录窗口。',
+        detail: '为避免旧账号任务继续运行，请重启应用后重新登录。正在生成的回复可能不完整。',
+        buttons: ['重启并返回登录', '退出应用'],
+        defaultId: 0,
+        cancelId: 1,
+        noLink: true
+      })
+      if (response === 0) this.relaunch()
+      else this.forceExit(0)
+    } catch (error) {
+      logger.error('Could not recover failed logout; exiting for recovery on next launch', error as Error)
+      this.forceExit(1)
+    }
   }
 
   public finishProfileLogout(): void {

@@ -58,6 +58,39 @@ describe('ProfilePrebootCoordinator', () => {
     expect(await coordinator.initialize()).toMatchObject({ mode: 'signed-out' })
   })
 
+  it('returns to login after failed teardown leaves a prepared logout journal and the old pointer', async () => {
+    const dataRoot = await createDataRoot()
+    const coordinator = new ProfilePrebootCoordinator({ dataRoot, legacyDataExists: async () => false })
+    await coordinator.initialize()
+    const control = path.join(dataRoot, 'control')
+    const registry = new ProfileRegistry(path.join(control, 'profiles.json'))
+    const source = (await registry.ensureAuthenticated(AUTHENTICATED_IDENTITY)).value
+    const signedOut = await registry.requireActivatable(
+      'signed-out',
+      computeIdentityDigest({ kind: 'signed-out', bootstrapId: 'signed-out' })
+    )
+    const pointer = new ProfileActivePointer(path.join(control, 'active-profile.json'), registry)
+    await pointer.commitPointer(source)
+    await writeFile(
+      path.join(control, 'logout-intent.json'),
+      JSON.stringify({
+        version: 1,
+        operationId: OPERATION_ID,
+        sourceProfileId: source.profileId
+      })
+    )
+    await new ProfileSwitchJournal(path.join(control, 'switch-journal.json')).prepare({
+      operationId: '550e8400-e29b-41d4-a716-446655440001',
+      fromProfileId: source.profileId,
+      targetProfileId: signedOut.profileId,
+      targetIdentityDigest: signedOut.identityDigest
+    })
+
+    expect(await coordinator.initialize()).toMatchObject({ mode: 'signed-out', profileId: signedOut.profileId })
+    expect(await pointer.read()).toMatchObject({ kind: 'ok', record: { kind: 'signed-out' } })
+    expect(await coordinator.initialize()).toMatchObject({ mode: 'signed-out' })
+  })
+
   it('retains logout intent when cleanup fails and finishes it on the next launch', async () => {
     const dataRoot = await createDataRoot()
     await new ProfilePrebootCoordinator({ dataRoot, legacyDataExists: async () => false }).initialize()
@@ -214,7 +247,7 @@ describe('ProfilePrebootCoordinator', () => {
 
       expect(context).toMatchObject({
         mode: 'signed-out',
-        profileId: 'signed-out',
+        profileId: 'signed-out'
       })
       await expect(readFile(path.join(dataRoot, 'control', fileName), 'utf8')).resolves.toBe('{not-json')
     }
@@ -238,7 +271,9 @@ describe('ProfilePrebootCoordinator', () => {
       mode: 'signed-out',
       profileId: 'signed-out'
     })
-    await expect(new ProfileSwitchJournal(path.join(dataRoot, 'control', 'switch-journal.json')).read()).resolves.toEqual({
+    await expect(
+      new ProfileSwitchJournal(path.join(dataRoot, 'control', 'switch-journal.json')).read()
+    ).resolves.toEqual({
       kind: 'none'
     })
   })

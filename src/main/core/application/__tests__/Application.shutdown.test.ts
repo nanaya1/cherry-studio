@@ -108,6 +108,96 @@ describe('Application shutdown', () => {
     await vi.runAllTimersAsync()
   }
 
+  it.each(['restart', 'exit'] as const)(
+    'offers %s recovery after logout destroys windows but AI stop fails',
+    async (choice) => {
+      let windowsDestroyed = false
+      @Injectable('LogoutWindowOwner')
+      class LogoutWindowOwner extends BaseService {
+        protected override onDestroy(): void {
+          windowsDestroyed = true
+        }
+      }
+      @Injectable('LogoutAiWorker')
+      class LogoutAiWorker extends BaseService {
+        protected override async onStop(): Promise<void> {
+          throw new Error('AI process did not exit')
+        }
+      }
+      const application = Application.getInstance()
+      application.getContainer().register(LogoutWindowOwner)
+      application.getContainer().register(LogoutAiWorker)
+      await application.getLifecycleManager().startPhase(Phase.WhenReady)
+      const relaunch = vi.spyOn(application, 'relaunch').mockImplementation(() => {})
+      const forceExit = vi.spyOn(application, 'forceExit').mockImplementation(() => {})
+      vi.mocked(dialog.showMessageBox).mockImplementation(async () => {
+        expect(windowsDestroyed).toBe(true)
+        return { response: choice === 'restart' ? 0 : 1, checkboxChecked: false }
+      })
+
+      const result = await application.prepareProfileLogout()
+
+      expect(result.clean).toBe(false)
+      expect(dialog.showMessageBox).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'warning',
+          buttons: ['重启并返回登录', '退出应用'],
+          defaultId: 0,
+          cancelId: 1
+        })
+      )
+      expect(relaunch).toHaveBeenCalledTimes(choice === 'restart' ? 1 : 0)
+      expect(forceExit).toHaveBeenCalledTimes(choice === 'exit' ? 1 : 0)
+      expect(() => application.prepareProfileRuntime()).toThrow()
+    }
+  )
+
+  it('does not mistake a concurrent logout for a teardown failure', async () => {
+    const application = Application.getInstance()
+    let release!: () => void
+    vi.spyOn(profileSwitchFence, 'drainTasks').mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve
+        })
+    )
+    const first = application.prepareProfileLogout()
+    await expect(application.prepareProfileLogout()).rejects.toThrow('already shutting down')
+    expect(dialog.showMessageBox).not.toHaveBeenCalled()
+    release()
+    expect((await first).clean).toBe(true)
+  })
+
+  it.each(['dialog', 'relaunch'] as const)('does not remain windowless if recovery %s fails', async (failure) => {
+    const application = Application.getInstance()
+    vi.spyOn(profileSwitchFence, 'drainTasks').mockRejectedValue(new Error('AI task'))
+    vi.mocked(dialog.showMessageBox).mockResolvedValue({ response: 0, checkboxChecked: false })
+    const relaunch = vi.spyOn(application, 'relaunch').mockImplementation(() => {})
+    const forceExit = vi.spyOn(application, 'forceExit').mockImplementation(() => {})
+    if (failure === 'dialog') vi.mocked(dialog.showMessageBox).mockRejectedValue(new Error('dialog failed'))
+    else
+      relaunch.mockImplementation(() => {
+        throw new Error('relaunch failed')
+      })
+
+    await expect(application.prepareProfileLogout()).rejects.toThrow('AI task')
+
+    expect(forceExit).toHaveBeenCalledWith(1)
+  })
+
+  it('offers recovery when logout task draining throws before teardown', async () => {
+    const application = Application.getInstance()
+    vi.spyOn(profileSwitchFence, 'drainTasks').mockRejectedValue(new Error('in-flight AI task'))
+    vi.mocked(dialog.showMessageBox).mockResolvedValue({ response: 0, checkboxChecked: false })
+    const relaunch = vi.spyOn(application, 'relaunch').mockImplementation(() => {})
+
+    await expect(application.prepareProfileLogout()).rejects.toThrow('in-flight AI task')
+
+    expect(dialog.showMessageBox).toHaveBeenCalled()
+    expect(relaunch).toHaveBeenCalledOnce()
+    expect(() => application.prepareProfileRuntime()).toThrow()
+  })
+
   it('should not force-exit when a single service times out, and still stop the rest', async () => {
     const stopped: string[] = []
 
