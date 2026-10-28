@@ -88,6 +88,53 @@ const qwenImage3Mode: ImageModeDef = {
 
 const qwenImage3ImageGeneration = { modes: { edit: qwenImage3Mode, generate: qwenImage3Mode } }
 
+/** Z-Image Turbo uses the sync multimodal endpoint and accepts text-only input. */
+const zImageTurboMode: ImageModeDef = {
+  supports: {
+    promptExtend: { default: false, type: 'switch' },
+    seed: { type: 'text' },
+    size: {
+      default: '1024x1536',
+      options: [
+        '1024x1024',
+        '832x1248',
+        '1248x832',
+        '864x1152',
+        '1152x864',
+        '720x1280',
+        '1280x720',
+        '576x1344',
+        '1344x576'
+      ],
+      render: 'chips',
+      type: 'enum'
+    }
+  },
+  vendorTransport: { endpoint: '/api/v1/services/aigc/multimodal-generation/generation', isSync: true }
+}
+
+const zImageTurboImageGeneration = { modes: { generate: zImageTurboMode } }
+
+/** qwen-image-2.1-pro uses the same sync multimodal endpoint with a narrower parameter set. */
+const qwenImage21Mode: ImageModeDef = {
+  supports: {
+    addWatermark: { default: false, type: 'switch' },
+    numImages: { default: 1, max: 6, min: 1, type: 'range' },
+    promptExtend: { default: true, type: 'switch' },
+    seed: { type: 'text' },
+    size: {
+      default: 'auto',
+      options: ['auto', '1328x1328', '1664x928', '928x1664', '1472x1140', '1140x1472'],
+      render: 'chips',
+      type: 'enum'
+    },
+    thinkingMode: { type: 'switch' }
+  },
+  vendorTransport: { endpoint: '/api/v1/services/aigc/multimodal-generation/generation', isSync: true }
+}
+
+const qwenImage21ImageGeneration = { modes: { edit: qwenImage21Mode, generate: qwenImage21Mode } }
+
 const qwenChatWire: ReasoningWireProfile = {
   off: { operations: [{ target: 'enable_thinking', value: { source: 'literal', value: false } }] },
   auto: {
@@ -360,6 +407,8 @@ export default defineProvider({
   name: 'Bailian',
   availableInEditions: ['global', 'cn'],
   defaultChatEndpoint: 'openai-chat-completions',
+  modelListSource: 'registry',
+  supplementModelsFromRegistry: true,
   endpointConfigs: {
     'anthropic-messages': {
       adapterFamily: 'anthropic',
@@ -422,6 +471,16 @@ export default defineProvider({
         }
       },
       modelId: 'qwen-image'
+    },
+    {
+      apiModelId: 'z-image-turbo',
+      imageGeneration: zImageTurboImageGeneration,
+      modelId: 'z-image-turbo'
+    },
+    {
+      apiModelId: 'qwen-image-2.1-pro',
+      imageGeneration: qwenImage21ImageGeneration,
+      modelId: 'qwen-image-2-1-pro'
     },
     {
       apiModelId: 'qwen-image-3.0',

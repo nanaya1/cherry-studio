@@ -2,7 +2,7 @@ import { LOCAL_EMBEDDING_PROVIDER_ID } from '@shared/data/presets/localEmbedding
 import type { Provider } from '@shared/data/types/provider'
 import { isCherryAIProvider, matchesPreset } from '@shared/utils/provider'
 
-const VISIBLE_PRESET_PROVIDER_IDS = ['xuelang', 'deepseek', 'zhipu']
+const VISIBLE_PRESET_PROVIDER_IDS = ['xuelang', 'deepseek', 'zhipu', 'dashscope']
 
 export function isProviderSettingsListVisibleProvider(provider: Provider): boolean {
   // The local embedding provider is download-managed, so exposing generic

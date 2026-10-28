@@ -1707,7 +1707,9 @@
           "id": "url-context",
           "modelScope": "model-dependent"
         }
-      ]
+      ],
+      "modelListSource": "registry",
+      "supplementModelsFromRegistry": true
     },
     {
       "availableInEditions": ["global", "cn"],

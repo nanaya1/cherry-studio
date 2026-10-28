@@ -922,12 +922,17 @@ function buildDmxapiConfig(ctx: BuilderContext): ProviderConfig<'dmxapi'> {
   }
 }
 
+function normalizeDashScopeImageBaseURL(baseURL: string): string {
+  return baseURL.replace(/\/(?:compatible-mode|compatible-api|api)\/v1\/?$/, '')
+}
+
 function buildDashScopeConfig(ctx: BuilderContext): ProviderConfig<'dashscope'> {
   return {
     providerId: 'dashscope',
     endpoint: ctx.endpoint,
     providerSettings: {
       ...ctx.baseConfig,
+      imageBaseURL: normalizeDashScopeImageBaseURL(ctx.baseConfig.baseURL),
       headers: { ...getProviderAppHeaders(ctx.actualProvider), ...getExtraHeaders(ctx.actualProvider) },
       includeUsage: resolveEndpointDialect(ctx.actualProvider, ctx.endpointType).streamOptions
     }

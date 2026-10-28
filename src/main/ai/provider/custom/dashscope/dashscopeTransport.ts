@@ -191,6 +191,28 @@ function buildText2ImageBody(input: ImageGenerationSubmitInput, bag: DashScopePr
   }
 }
 
+/** Official Z-Image contract: one text block, one image, and no image-edit content. */
+function buildZImageBody(input: ImageGenerationSubmitInput, bag: DashScopeProviderParams): Record<string, unknown> {
+  if (input.files && input.files.length > 0) {
+    throw new Error('Z-Image Turbo accepts text-to-image only; remove the input image.')
+  }
+  if (input.n !== undefined && input.n !== 1) {
+    throw new Error('Z-Image Turbo always returns exactly one image.')
+  }
+
+  const parameters: Record<string, unknown> = {}
+  const sizeWire = resolveSizeParameter(input, bag)
+  if (sizeWire) parameters.size = sizeWire
+  if (typeof input.seed === 'number') parameters.seed = input.seed
+  if (bag.promptExtend !== undefined) parameters.prompt_extend = bag.promptExtend
+
+  return {
+    model: input.modelId,
+    input: { messages: [{ role: 'user', content: [{ text: input.prompt ?? '' }] }] },
+    ...(Object.keys(parameters).length > 0 && { parameters })
+  }
+}
+
 /**
  * Families A & B — chat-message body for multimodal-generation (sync) and
  * image-generation/generation (async). Both share the `messages[].content[]`
@@ -201,7 +223,11 @@ function buildText2ImageBody(input: ImageGenerationSubmitInput, bag: DashScopePr
  * `prompt: { text, images }` → `options.files`). DashScope accepts both
  * `https?:` URLs and `data:` base64 URLs in `content[].image`.
  */
-function buildChatLikeBody(input: ImageGenerationSubmitInput, bag: DashScopeProviderParams): Record<string, unknown> {
+function buildChatLikeBody(
+  input: ImageGenerationSubmitInput,
+  bag: DashScopeProviderParams,
+  options: { thinkingParameter?: 'thinking_mode' | 'enable_thinking' } = {}
+): Record<string, unknown> {
   const content: Array<{ text?: string; image?: string }> = []
   if (input.prompt) content.push({ text: input.prompt })
   for (const file of input.files ?? []) content.push({ image: fileToDataUrl(file) })
@@ -213,7 +239,9 @@ function buildChatLikeBody(input: ImageGenerationSubmitInput, bag: DashScopeProv
   if (typeof input.seed === 'number') parameters.seed = input.seed
   if (bag.negativePrompt) parameters.negative_prompt = bag.negativePrompt
   if (bag.promptExtend !== undefined) parameters.prompt_extend = bag.promptExtend
-  if (bag.thinkingMode !== undefined) parameters.thinking_mode = bag.thinkingMode
+  if (bag.thinkingMode !== undefined) {
+    parameters[options.thinkingParameter ?? 'thinking_mode'] = bag.thinkingMode
+  }
   if (bag.enableInterleave !== undefined) parameters.enable_interleave = bag.enableInterleave
   if (bag.addWatermark !== undefined) parameters.watermark = bag.addWatermark
 
@@ -340,6 +368,9 @@ function buildRequestBody(
   const bag = (input.providerParams ?? {}) as DashScopeProviderParams
   switch (descriptor.id) {
     case 'z-image-turbo':
+      return buildZImageBody(input, bag)
+    case 'qwen-image-2.1-pro':
+      return buildChatLikeBody(input, bag, { thinkingParameter: 'enable_thinking' })
     case 'qwen-image-3.0':
     case 'qwen-image-3.0-pro':
     case 'qwen-image-edit':

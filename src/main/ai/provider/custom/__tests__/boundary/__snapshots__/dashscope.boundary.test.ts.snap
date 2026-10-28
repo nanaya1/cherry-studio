@@ -46,6 +46,53 @@ exports[`DashScope request boundary > chat-like (qwen-image-edit) → messages[]
 }
 `;
 
+exports[`DashScope request boundary > qwen-image-2.1-pro image-to-image → messages[] image content: satisfies the wire contract and matches snapshot 1`] = `
+{
+  "input": {
+    "messages": [
+      {
+        "content": [
+          {
+            "text": "edit the fox",
+          },
+          {
+            "image": "data:image/png;base64,AQID",
+          },
+        ],
+        "role": "user",
+      },
+    ],
+  },
+  "model": "qwen-image-2.1-pro",
+}
+`;
+
+exports[`DashScope request boundary > qwen-image-2.1-pro text-to-image → native sync body with enable_thinking: satisfies the wire contract and matches snapshot 1`] = `
+{
+  "input": {
+    "messages": [
+      {
+        "content": [
+          {
+            "text": "a fox",
+          },
+        ],
+        "role": "user",
+      },
+    ],
+  },
+  "model": "qwen-image-2.1-pro",
+  "parameters": {
+    "enable_thinking": true,
+    "n": 2,
+    "prompt_extend": true,
+    "seed": 42,
+    "size": "1328*1328",
+    "watermark": false,
+  },
+}
+`;
+
 exports[`DashScope request boundary > qwen-mt-image → input.image_url + source/target lang (no prompt): satisfies the wire contract and matches snapshot 1`] = `
 {
   "input": {
@@ -115,6 +162,29 @@ exports[`DashScope request boundary > wanx2.1-imageedit → input.function + bas
     "seed": 3,
     "upscale_factor": 2,
     "watermark": true,
+  },
+}
+`;
+
+exports[`DashScope request boundary > z-image-turbo text-to-image → official single-text sync body: satisfies the wire contract and matches snapshot 1`] = `
+{
+  "input": {
+    "messages": [
+      {
+        "content": [
+          {
+            "text": "a fox",
+          },
+        ],
+        "role": "user",
+      },
+    ],
+  },
+  "model": "z-image-turbo",
+  "parameters": {
+    "prompt_extend": false,
+    "seed": 42,
+    "size": "1024*1536",
   },
 }
 `;

@@ -1004,7 +1004,7 @@ describe('listModels — newApiFetcher endpoint types', () => {
       }
     })
 
-    const models = await listModels(provider)
+    const { models } = await listModels(provider)
 
     expect(models[0]).toMatchObject({
       apiModelId: 'xuelang-model',
@@ -1026,7 +1026,7 @@ describe('listModels — newApiFetcher endpoint types', () => {
       }
     })
 
-    const models = await listModels(provider)
+    const { models } = await listModels(provider)
 
     expect(models[0]).toMatchObject({
       apiModelId: 'copied-xuelang-model',
