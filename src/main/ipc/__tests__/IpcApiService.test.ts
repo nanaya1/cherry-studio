@@ -7,10 +7,13 @@ import { getPhase } from '@main/core/lifecycle/decorators'
 import { IpcError } from '@shared/ipc/errors/IpcError'
 import { IpcChannel } from '@shared/IpcChannel'
 
+import { profileSwitchFence } from '../../core/profiles/SwitchFence'
 import { IpcApiService } from '../IpcApiService'
 
 const { appGetMock, getPathMock } = vi.hoisted(() => ({ appGetMock: vi.fn(), getPathMock: vi.fn(() => '/app') }))
 vi.mock('@application', () => ({ application: { get: appGetMock, getPath: getPathMock } }))
+
+vi.mock('../handlers/ipcHandlers', () => ({ ipcHandlers: {} }))
 
 const dispatchMock = vi.fn()
 const sendSpy = vi.fn()
@@ -44,6 +47,7 @@ const webviewEvent = {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  profileSwitchFence.resetForTesting()
   BaseService.resetInstances()
   windowManager = {
     getWindowIdByWebContents: vi.fn(() => 'win-7'),
@@ -63,6 +67,36 @@ describe('IpcApiService lifecycle metadata', () => {
 })
 
 describe('IpcApiService request handling', () => {
+  it('rejects business requests after switching begins', async () => {
+    const svc = makeService()
+    ;(svc as unknown as { onInit(): void }).onInit()
+    profileSwitchFence.beginSwitch('logout')
+    await expect(registeredHandler()(trustedEvent, 'demo.add', {})).resolves.toMatchObject({ ok: false })
+    expect(dispatchMock).not.toHaveBeenCalled()
+  })
+
+  it('allows logout to drain business requests without waiting for its own IPC promise', async () => {
+    const svc = makeService()
+    ;(svc as unknown as { onInit(): void }).onInit()
+    let finish!: () => void
+    dispatchMock.mockImplementation(async (route: string) => {
+      if (route === 'enterprise.session.logout') {
+        profileSwitchFence.beginSwitch('logout')
+        await profileSwitchFence.drainTasks(1000)
+        return 'signed-out'
+      }
+      return new Promise<void>((resolve) => {
+        finish = resolve
+      })
+    })
+    const work = registeredHandler()(trustedEvent, 'demo.add', {})
+    const logout = registeredHandler()(trustedEvent, 'enterprise.session.logout', {})
+    await expect(profileSwitchFence.drainTasks(1)).rejects.toThrow(/in-flight/i)
+    finish()
+    await work
+    await expect(logout).resolves.toEqual({ ok: true, data: 'signed-out' })
+  })
+
   it('registers a single ipcMain handler on the IpcApi_Request channel', () => {
     const svc = makeService()
     ;(svc as unknown as { onInit(): void }).onInit()

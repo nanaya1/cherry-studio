@@ -3,7 +3,7 @@ import { MockMainCacheServiceExport } from '@test-mocks/main/CacheService'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { agentChannelService as channelService } from '@data/services/AgentChannelService'
-import { BaseService, Injectable, ServiceContainer } from '@main/core/lifecycle'
+import { BaseService, DependsOn, Injectable, LifecycleManager, Phase, ServiceContainer } from '@main/core/lifecycle'
 
 import { ChannelAdapter, type ChannelAdapterConfig } from '../ChannelAdapter'
 import { loadChannelAdapter } from '../channelAdapterLoader'
@@ -11,7 +11,9 @@ import { ChannelManager } from '../ChannelManager'
 import { channelMessageHandler } from '../ChannelMessageHandler'
 
 const mocks = vi.hoisted(() => ({
-  getLifecycleState: vi.fn()
+  getLifecycleState: vi.fn(),
+  stopStream: vi.fn(),
+  stopRuntime: vi.fn()
 }))
 
 vi.mock('../channelAdapterLoader', () => ({ loadChannelAdapter: vi.fn() }))
@@ -20,6 +22,21 @@ vi.mock('../channelAdapterLoader', () => ({ loadChannelAdapter: vi.fn() }))
 class TestWindowManager {
   constructor() {
     Object.assign(this, defaultServiceInstances.WindowManager)
+  }
+}
+
+@Injectable('AiStreamManager')
+class TestAiStreamManager extends BaseService {
+  protected override onStop(): void {
+    mocks.stopStream()
+  }
+}
+
+@Injectable('AgentSessionRuntimeService')
+@DependsOn(['WindowManager'])
+class TestAgentSessionRuntime extends BaseService {
+  protected override onStop(): void {
+    mocks.stopRuntime()
   }
 }
 
@@ -52,6 +69,10 @@ vi.mock('../ChannelMessageHandler', () => ({
     clearSessionTracker: vi.fn(),
     pause: vi.fn(),
     drainInFlight: vi.fn(),
+    drainTurns: vi.fn().mockResolvedValue(undefined),
+    acquireShutdownPause: vi.fn(),
+    releaseShutdownPause: vi.fn(),
+    clearSessionTrackerBindings: vi.fn(),
     listActiveWork: vi.fn()
   }
 }))
@@ -122,13 +143,46 @@ describe('ChannelManager', () => {
     const container = ServiceContainer.getInstance()
     container.register(TestWindowManager)
     container.register(ChannelManager)
+    container.register(TestAiStreamManager)
+    container.register(TestAgentSessionRuntime)
     manager = container.get(ChannelManager)
   })
 
   afterEach(async () => {
+    // Reset the drain mock so the lifecycle _doStop (which also calls stop) never hangs or rejects.
+    vi.mocked(channelMessageHandler.drainTurns).mockResolvedValue(undefined)
     await manager._doStop()
     BaseService.resetInstances()
     ServiceContainer.reset()
+  })
+
+  it('finishes channel turns before stopping the AI runtime regardless of registration order', async () => {
+    const order: string[] = []
+    mocks.stopStream.mockImplementation(() => order.push('stream:stop'))
+    mocks.stopRuntime.mockImplementation(() => order.push('runtime:stop'))
+    LifecycleManager.reset()
+    const lifecycle = LifecycleManager.getInstance()
+    let finish!: () => void
+    vi.mocked(channelMessageHandler.drainTurns).mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          order.push('channel:drain')
+          finish = resolve
+        })
+    )
+    try {
+      await lifecycle.startPhase(Phase.WhenReady)
+      const stopping = lifecycle.stopAll()
+      await vi.waitFor(() => expect(order).toContain('channel:drain'))
+      const beforeFinish = [...order]
+      finish()
+      const result = await stopping
+      expect(beforeFinish).toEqual(['channel:drain'])
+      expect(result).toEqual({ timedOut: [], failed: [] })
+      expect(order.slice(1).sort()).toEqual(['runtime:stop', 'stream:stop'])
+    } finally {
+      LifecycleManager.reset()
+    }
   })
 
   it('connects only when both channel intent and Agent lifecycle are active', async () => {
@@ -198,5 +252,59 @@ describe('ChannelManager', () => {
 
     qrOnConnect = 'https://example.com/qr'
     await expect(manager.waitForQrAndReconcile('agent-1', 'ch-1')).resolves.toBe('https://example.com/qr')
+  })
+
+  it('stop pauses intake, awaits drainTurns, then disconnects runtimes without releasing the hold itself', async () => {
+    rows = [makeChannel()]
+    await manager.start()
+    await vi.waitFor(() => expect(adapters).toHaveLength(1))
+    const adapter = adapters[0]
+
+    // Defer drainTurns so we can assert stop does not disconnect before the drain resolves.
+    let releaseDrain!: () => void
+    const drainPromise = new Promise<void>((resolve) => {
+      releaseDrain = resolve
+    })
+    vi.mocked(channelMessageHandler.drainTurns).mockReturnValue(drainPromise)
+
+    const stopPromise = manager.stop()
+
+    await vi.waitFor(() => expect(channelMessageHandler.acquireShutdownPause).toHaveBeenCalled())
+    // start() already released its own (no-op) hold; stop must not release any hold itself.
+    const releaseCountBeforeStop = vi.mocked(channelMessageHandler.releaseShutdownPause).mock.calls.length
+    expect(adapter.disconnect).not.toHaveBeenCalled()
+
+    releaseDrain()
+    await stopPromise
+
+    expect(adapter.disconnect).toHaveBeenCalled()
+    expect(channelMessageHandler.clearSessionTrackerBindings).toHaveBeenCalled()
+    // start() is responsible for releasing the hold, not stop().
+    expect(vi.mocked(channelMessageHandler.releaseShutdownPause).mock.calls.length).toBe(releaseCountBeforeStop)
+  })
+
+  it('stop propagates a drainTurns timeout and blocks teardown (runtimes stay connected)', async () => {
+    rows = [makeChannel()]
+    await manager.start()
+    await vi.waitFor(() => expect(adapters).toHaveLength(1))
+    const adapter = adapters[0]
+
+    vi.mocked(channelMessageHandler.drainTurns).mockRejectedValue(new Error('drainTurns timed out after 50ms'))
+
+    await expect(manager.stop()).rejects.toThrow(/timed out/)
+    expect(adapter.disconnect).not.toHaveBeenCalled()
+    // start() already released its own (no-op) hold; stop must not release any hold itself.
+    const releaseCountBeforeStop = vi.mocked(channelMessageHandler.releaseShutdownPause).mock.calls.length
+    expect(vi.mocked(channelMessageHandler.releaseShutdownPause).mock.calls.length).toBe(releaseCountBeforeStop)
+  })
+
+  it('start releases the shutdown pause hold left behind by stop', async () => {
+    vi.mocked(channelMessageHandler.drainTurns).mockResolvedValue(undefined)
+    await manager.stop()
+    expect(channelMessageHandler.acquireShutdownPause).toHaveBeenCalled()
+    expect(channelMessageHandler.releaseShutdownPause).not.toHaveBeenCalled()
+
+    await manager.start()
+    expect(channelMessageHandler.releaseShutdownPause).toHaveBeenCalledTimes(1)
   })
 })

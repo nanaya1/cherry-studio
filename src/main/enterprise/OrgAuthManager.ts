@@ -544,7 +544,20 @@ export class OrgAuthManager {
         return
       }
       logger.warn('org session refresh failed, signing out locally', { error: String(error) })
-      await this.logout()
+      // await this.logout()
+      // Finish the expired request before logout drains IPC; deny access immediately.
+      if (this.dependencies?.profileSession) {
+        this.session = null
+        this.switching = true
+        profileBusinessAccessGate.recordVerificationFailure('Session credentials were revoked')
+        setImmediate(() => {
+          void this.logout().catch((logoutError) => {
+            logger.error('Could not finish logout after session refresh failed', logoutError as Error)
+          })
+        })
+      } else {
+        await this.logout()
+      }
     }
   }
 

@@ -179,17 +179,25 @@ class BackupManager {
 
   async cleanupStaleTempArtifacts(): Promise<void> {
     const cutoff = Date.now() - STALE_TEMP_ARTIFACT_AGE_MS
+    // Startup cleanup may outlive its profile; capture every root before yielding.
+    const backupDir = this.backupDir
+    const lanTransferDir = application.getPath('feature.lan_transfer.temp')
+    const restoreStagingDir = application.getPath('feature.backup.restore.staging')
 
     // Best-effort boot hardening: pre-existing 0755 roots are fixed even with
     // no operation running; ENOENT (never used yet) is expected and silent.
     // The restore-staging root seals crash-recovered trees too — 0700 on the
     // root blocks traversal into any pre-existing subtree.
-    await this.hardenStagingRootBestEffort(this.backupDir)
-    await this.hardenStagingRootBestEffort(application.getPath('feature.lan_transfer.temp'))
-    await this.hardenStagingRootBestEffort(application.getPath('feature.backup.restore.staging'))
+    // await this.hardenStagingRootBestEffort(this.backupDir)
+    // await this.hardenStagingRootBestEffort(application.getPath('feature.lan_transfer.temp'))
+    // await this.hardenStagingRootBestEffort(application.getPath('feature.backup.restore.staging'))
+    await this.hardenStagingRootBestEffort(backupDir)
+    await this.hardenStagingRootBestEffort(lanTransferDir)
+    await this.hardenStagingRootBestEffort(restoreStagingDir)
 
     try {
-      const entries = await fs.readdir(this.backupDir, { withFileTypes: true })
+      // const entries = await fs.readdir(this.backupDir, { withFileTypes: true })
+      const entries = await fs.readdir(backupDir, { withFileTypes: true })
       for (const entry of entries) {
         const isManagedDirectory = entry.isDirectory() && BACKUP_OPERATION_DIR_PATTERN.test(entry.name)
         const isManagedArchive = entry.isFile() && BACKUP_TEMP_ARCHIVE_PATTERN.test(entry.name)
@@ -197,7 +205,8 @@ class BackupManager {
           continue
         }
 
-        const artifactPath = path.join(this.backupDir, entry.name)
+        // const artifactPath = path.join(this.backupDir, entry.name)
+        const artifactPath = path.join(backupDir, entry.name)
         try {
           const stats = await fs.lstat(artifactPath)
           if (stats.mtimeMs >= cutoff) {

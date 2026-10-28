@@ -5,6 +5,7 @@ import { application } from '@application'
 import { loggerService } from '@logger'
 import { DIAGNOSTICS_ENABLED, SLOW_THRESHOLD_MS } from '@main/core/diagnostics'
 import { BaseService, Injectable, Phase, ServicePhase } from '@main/core/lifecycle'
+import { profileSwitchFence } from '@main/core/profiles'
 import { validateSender } from '@main/core/security/validateSender'
 import type { WindowType } from '@main/core/window/types'
 import { IpcError, IpcErrorCode, type IpcResult } from '@shared/ipc/errors/IpcError'
@@ -70,7 +71,10 @@ export class IpcApiService extends BaseService {
 
     const t0 = DIAGNOSTICS_ENABLED ? performance.now() : 0
     try {
-      const data = await this.router.dispatch(route, input, this.makeContext(event))
+      // Logout coordinates the drain and cannot wait for its own request.
+      // const data = await this.router.dispatch(route, input, this.makeContext(event))
+      const dispatch = () => this.router.dispatch(route, input, this.makeContext(event))
+      const data = await (route === 'enterprise.session.logout' ? dispatch() : profileSwitchFence.runTask(dispatch))
       return { ok: true, data }
     } catch (e) {
       // Never throw to ipcMain.handle: Electron's reject drops code/data, so serialize into the result.

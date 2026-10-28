@@ -127,6 +127,24 @@ describe('IpcAdapter', () => {
     expect(handleRequest).not.toHaveBeenCalled()
   })
 
+  it('rejects reads during switching and waits for reads already admitted', async () => {
+    let finish!: (value: unknown) => void
+    handleRequest.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve
+        })
+    )
+    const work = requestHandler(trustedEvent, { id: 'old', method: 'GET', path: '/topics' })
+    profileSwitchFence.beginSwitch('logout')
+    const late = await requestHandler(trustedEvent, { id: 'late', method: 'GET', path: '/topics' })
+    expect(late.status).toBe(400)
+    await expect(profileSwitchFence.drainTasks(1)).rejects.toThrow(/in-flight/i)
+    finish({ id: 'old', status: 200, data: [] })
+    await work
+    await profileSwitchFence.drainTasks(1000)
+  })
+
   it('rejects untrusted request senders with 403 before ApiServer is reached', async () => {
     for (const [kind, event] of Object.entries(untrustedEvents)) {
       const response = await requestHandler(event, { id: 'req-x', method: 'POST', path: '/topics' })

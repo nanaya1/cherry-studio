@@ -36,7 +36,7 @@ import { createProfileBootstrapWindow } from './ProfileBootstrapWindow'
 import { createProfilePaths, resolveProfileRoot, validateExistingProfilePath } from './ProfilePaths'
 import type { ProfileLaunchContext } from './ProfilePrebootCoordinator'
 import { ProfileRegistry, SIGNED_OUT_DIGEST } from './ProfileRegistry'
-import { setProfileLaunchContext } from './ProfileRuntimeContext'
+import { recordSuccessfulBusinessIdentity, setProfileLaunchContext } from './ProfileRuntimeContext'
 import { profileBusinessAccessGate } from './ProfileRuntimeContext'
 import type { ProfileRecordV1 } from './ProfileSchemas'
 import { profileSwitchFence } from './SwitchFence'
@@ -225,5 +225,9 @@ export async function startBusinessRuntime(
   // same-process activation) is a no-op, so handlers keep referencing the live
   // direct-import singletons rather than stale destroyed instances.
   await registerIpc()
-  if (context?.mode === 'business') await markProfileBootSuccessful(context)
+  // if (context?.mode === 'business') await markProfileBootSuccessful(context)
+  if (context?.mode === 'business') {
+    await markProfileBootSuccessful(context)
+    recordSuccessfulBusinessIdentity(context)
+  }
 }

@@ -2,7 +2,15 @@ import { application } from '@application'
 import { agentChannelService as channelService } from '@data/services/AgentChannelService'
 import { agentService } from '@data/services/AgentService'
 import { loggerService } from '@logger'
-import { BaseService, DependsOn, type Disposable, Injectable, Phase, ServicePhase } from '@main/core/lifecycle'
+import {
+  BaseService,
+  DependsOn,
+  type Disposable,
+  Injectable,
+  Phase,
+  SERVICE_STOP_TIMEOUT_MS,
+  ServicePhase
+} from '@main/core/lifecycle'
 import { WindowType } from '@main/core/window/types'
 import { t } from '@main/i18n'
 import type { ChannelConfig } from '@shared/data/types/channel'
@@ -18,9 +26,14 @@ import type { ChannelLogEntry, ChannelStatusEvent } from './types'
 
 const logger = loggerService.withContext('ChannelManager')
 
+// How long stop() waits for in-flight channel turns to fully drain before disconnecting runtimes.
+const CHANNEL_STOP_DRAIN_TIMEOUT_MS = SERVICE_STOP_TIMEOUT_MS - 1000
+
 @Injectable('ChannelManager')
 @ServicePhase(Phase.WhenReady)
-@DependsOn(['WindowManager'])
+// @DependsOn(['WindowManager'])
+// Keep AI runtimes alive until queued channel turns have drained.
+@DependsOn(['WindowManager', 'AiStreamManager', 'AgentSessionRuntimeService'])
 export class ChannelManager extends BaseService {
   private readonly runtimes = new Map<string, ChannelRuntime>()
   private readonly channelLogs = new ChannelLogBuffer()
@@ -48,6 +61,8 @@ export class ChannelManager extends BaseService {
 
   async start(): Promise<void> {
     this.acceptingConnections = true
+    // Release the shutdown pause hold that stop() acquired and left for us — never the backup hold.
+    channelMessageHandler.releaseShutdownPause()
     let channels: ReturnType<typeof channelService.listChannels>
     try {
       channels = channelService.listChannels()
@@ -66,6 +81,11 @@ export class ChannelManager extends BaseService {
     this.acceptingConnections = false
     logger.info('Stopping channel manager')
     const runtimes = [...this.runtimes.values()]
+    // Keep intake paused until the next start; unfinished turns must block clean teardown.
+    channelMessageHandler.acquireShutdownPause()
+    await channelMessageHandler.drainTurns(CHANNEL_STOP_DRAIN_TIMEOUT_MS)
+    // Clean drain complete — drop tracker so a later restart won't reuse a stale singleton session.
+    channelMessageHandler.clearSessionTrackerBindings()
     for (const runtime of runtimes) runtime.requestReconcile()
     await Promise.allSettled(runtimes.map((runtime) => runtime.flush()))
     await Promise.allSettled(runtimes.map((runtime) => runtime.dispose()))

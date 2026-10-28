@@ -20,6 +20,7 @@ import { DependsOn, Injectable } from '../../lifecycle/decorators'
 import { LifecycleManager } from '../../lifecycle/LifecycleManager'
 import { ServiceContainer } from '../../lifecycle/ServiceContainer'
 import { Phase, ServiceInitError } from '../../lifecycle/types'
+import { profileSwitchFence } from '../../profiles/SwitchFence'
 import { Application } from '../Application'
 
 // The `@application` alias resolves to Application.ts, so the global
@@ -52,6 +53,7 @@ describe('Application shutdown', () => {
 
   beforeEach(() => {
     resetApplication()
+    profileSwitchFence.resetForTesting()
     vi.useFakeTimers()
 
     // Extend (not replace) the global electron mock: it ships `getPath` and
@@ -269,6 +271,86 @@ describe('Application shutdown', () => {
     await expect(application.prepareProfileSwitch()).resolves.toEqual(result)
     expect(stop).toHaveBeenCalledTimes(1)
     expect(appExit).not.toHaveBeenCalled()
+  })
+
+  it('waits for old IPC work before stopping profile services', async () => {
+    const application = Application.getInstance()
+    const order: string[] = []
+    let finish!: () => void
+    const work = profileSwitchFence.runTask(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve
+        })
+    )
+    const manager = application.getLifecycleManager()
+    vi.spyOn(manager, 'stopAll').mockImplementation(async () => {
+      order.push('stop')
+      return { timedOut: [], failed: [] }
+    })
+    vi.spyOn(manager, 'destroyAll').mockResolvedValue({ timedOut: [], failed: [] })
+    profileSwitchFence.beginSwitch('logout')
+    const teardown = application.prepareProfileSwitch()
+    await Promise.resolve()
+    expect(order).toEqual([])
+    finish()
+    await work
+    await expect(teardown).resolves.toMatchObject({ clean: true })
+    expect(order).toEqual(['stop'])
+  })
+
+  it('blocks runtime rebuild when old IPC cannot finish within the shutdown budget', async () => {
+    const application = Application.getInstance()
+    let finish!: () => void
+    const work = profileSwitchFence.runTask(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve
+        })
+    )
+    profileSwitchFence.beginSwitch('logout')
+    const teardown = application.prepareProfileSwitch()
+    const rejected = expect(teardown).rejects.toThrow(/in-flight/i)
+    await vi.advanceTimersByTimeAsync(SHUTDOWN_TIMEOUT_MS)
+    await rejected
+    expect(() => application.prepareProfileRuntime()).toThrow(/not clean/)
+    finish()
+    await work
+  })
+
+  it('rejects runtime rebuild after a background stop times out, even when the work later finishes', async () => {
+    let finish!: () => void
+    let stopping = false
+    let destroyed = false
+    @Injectable('BackgroundBackupService')
+    class BackgroundBackupService extends BaseService {
+      protected override onStop(): Promise<void> {
+        stopping = true
+        return new Promise<void>((resolve) => {
+          finish = resolve
+        })
+      }
+      protected override onDestroy(): void {
+        destroyed = true
+      }
+    }
+    const application = Application.getInstance()
+    const container = ServiceContainer.getInstance()
+    container.register(BackgroundBackupService)
+    await application.getLifecycleManager().startPhase(Phase.WhenReady)
+    const service = container.get(BackgroundBackupService)
+    const teardown = application.prepareProfileSwitch()
+    await vi.advanceTimersByTimeAsync(SERVICE_STOP_TIMEOUT_MS)
+    const result = await teardown
+    expect(stopping).toBe(true)
+    expect(result.clean).toBe(false)
+    expect(result.stop.timedOut).toContain('BackgroundBackupService')
+    expect(destroyed).toBe(false)
+    expect(() => application.prepareProfileRuntime()).toThrow(/not clean/)
+    finish()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(service.isStopped).toBe(true)
+    expect(() => application.prepareProfileRuntime()).toThrow(/not clean/)
   })
 
   it('returns a clean structured result for profile switch teardown', async () => {

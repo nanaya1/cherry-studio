@@ -42,7 +42,8 @@ vi.mock('@main/enterprise/OrgStateStore', async (importOriginal) => {
 })
 
 vi.mock('../OrgApiClient', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../OrgApiClient')>()
+  // const actual = await importOriginal<typeof import('../OrgApiClient')>()
+  const actual = await importOriginal<typeof OrgApiClientModule>()
   return {
     ...actual,
     get ORG_AUTH_MODE() {
@@ -52,8 +53,10 @@ vi.mock('../OrgApiClient', async (importOriginal) => {
   }
 })
 
+import { profileSwitchFence } from '@main/core/profiles/SwitchFence'
 import { OrgAuthManager } from '@main/enterprise/OrgAuthManager'
 
+import type * as OrgApiClientModule from '../OrgApiClient'
 import type { OrgCredentialStore, OrgSession } from '../OrgCredentialStore'
 
 function deferred<T>() {
@@ -92,6 +95,7 @@ describe('OrgAuthManager C3 组织可用性标记', () => {
   })
 
   afterEach(() => {
+    profileSwitchFence.resetForTesting()
     vi.restoreAllMocks()
     vi.unstubAllGlobals()
   })
@@ -152,6 +156,25 @@ describe('OrgAuthManager C3 组织可用性标记', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('', { status: 401 })))
     await expect(manager.getValidSession()).resolves.toBeNull()
     expect(manager.getStatus().phase).toBe('signed-out')
+  })
+
+  it('finishes a revoked-token request before starting profile teardown', async () => {
+    profileSwitchFence.resetForTesting()
+    const profileSession = {
+      beginLogout: vi.fn(async () => undefined),
+      logout: vi.fn(async () => {
+        profileSwitchFence.beginSwitch('expired')
+        await profileSwitchFence.drainTasks(20)
+        return { kind: 'signed-out' }
+      })
+    }
+    const manager = new OrgAuthManager({ credentialStore: {} as never, profileSession: profileSession as never })
+    seedSession(manager)
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('', { status: 401 })))
+    await expect(profileSwitchFence.runTask(() => manager.getValidSession())).resolves.toBeNull()
+    await vi.waitFor(() => expect(profileSession.logout).toHaveBeenCalledOnce())
+    await profileSwitchFence.drainTasks(100)
+    profileSwitchFence.resetForTesting()
   })
 
   it('signs out when refresh explicitly reports a revoked token', async () => {

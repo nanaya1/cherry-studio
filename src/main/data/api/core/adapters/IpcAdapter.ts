@@ -65,7 +65,8 @@ export class IpcAdapter implements Disposable {
 
       try {
         this.assertBusinessAccess()
-        if (request.method !== 'GET') {
+        // if (request.method !== 'GET') {
+        {
           try {
             profileSwitchFence.assertWritable()
           } catch (error) {
@@ -75,7 +76,8 @@ export class IpcAdapter implements Disposable {
             )
           }
         }
-        const response = await this.apiServer.handleRequest(request)
+        // const response = await this.apiServer.handleRequest(request)
+        const response = await profileSwitchFence.runTask(() => this.apiServer.handleRequest(request))
         this.assertBusinessAccess()
 
         return response

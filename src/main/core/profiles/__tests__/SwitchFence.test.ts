@@ -41,6 +41,61 @@ describe('SwitchFence', () => {
     expect(() => fence.assertTaskStartAllowed()).toThrow(/recovery/i)
   })
 
+  it('waits for admitted work before allowing the next runtime to reopen', async () => {
+    const fence = new SwitchFence()
+    let finish!: () => void
+    const work = fence.runTask(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve
+        })
+    )
+    fence.beginSwitch('switch')
+    expect(() => fence.runTask(() => 'late')).toThrow(/profile switch/i)
+    expect(() => fence.reopenAfterTeardown()).toThrow(/in-flight/i)
+    let drained = false
+    const drain = fence.drainTasks(1000).then(() => {
+      drained = true
+    })
+    await Promise.resolve()
+    expect(drained).toBe(false)
+    finish()
+    await work
+    await drain
+    fence.reopenAfterTeardown()
+    expect(fence.runTask(() => 'next')).toBe('next')
+  })
+
+  it('keeps unfinished work tracked after a drain timeout', async () => {
+    const fence = new SwitchFence()
+    let finish!: () => void
+    const work = fence.runTask(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve
+        })
+    )
+    fence.beginSwitch('switch')
+    await expect(fence.drainTasks(1)).rejects.toThrow(/in-flight/i)
+    expect(() => fence.reopenAfterTeardown()).toThrow(/in-flight/i)
+    finish()
+    await work
+    await fence.drainTasks(1000)
+  })
+
+  it('removes rejected work without swallowing its error or leaving a drain pending', async () => {
+    const fence = new SwitchFence()
+    await expect(fence.runTask(() => Promise.reject(new Error('failed')))).rejects.toThrow('failed')
+    expect(() =>
+      fence.runTask(() => {
+        throw new Error('sync')
+      })
+    ).toThrow('sync')
+    fence.beginSwitch('switch')
+    await fence.drainTasks(1000)
+    fence.reopenAfterTeardown()
+  })
+
   describe('reopenAfterTeardown', () => {
     it('reopens the fence only while a switch is in progress', () => {
       const fence = new SwitchFence()

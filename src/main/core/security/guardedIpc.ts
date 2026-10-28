@@ -3,7 +3,9 @@ import { ipcMain } from 'electron'
 
 import { loggerService } from '@logger'
 import { IpcError, IpcErrorCode } from '@shared/ipc/errors/IpcError'
+import { IpcChannel } from '@shared/IpcChannel'
 
+import { profileSwitchFence } from '../profiles'
 import { validateSender } from './validateSender'
 
 /**
@@ -35,6 +37,13 @@ export function handleGuarded(
 ): void {
   ipcMain.handle(channel, (event, ...args) => {
     assertTrustedSender(event, channel, appRootDir)
-    return handler(event, ...args)
+    if (
+      channel === IpcChannel.Application_Relaunch ||
+      channel === IpcChannel.Application_PreventQuit ||
+      channel === IpcChannel.Application_AllowQuit
+    )
+      return handler(event, ...args)
+    // return handler(event, ...args)
+    return profileSwitchFence.runTask(() => handler(event, ...args))
   })
 }

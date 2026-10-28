@@ -4,11 +4,13 @@ import { pathToFileURL } from 'node:url'
 
 import type { IpcMainInvokeEvent } from 'electron'
 import { ipcMain } from 'electron'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { application } from '@application'
 import { IpcError } from '@shared/ipc/errors/IpcError'
+import { IpcChannel } from '@shared/IpcChannel'
 
+import { profileSwitchFence } from '../../profiles/SwitchFence'
 import { assertTrustedSender, handleGuarded } from '../guardedIpc'
 
 const APP_ROOT = resolve(application.getPath('app.root'))
@@ -46,6 +48,37 @@ describe('assertTrustedSender', () => {
 })
 
 describe('handleGuarded', () => {
+  afterEach(() => profileSwitchFence.resetForTesting())
+
+  it('keeps an admitted manual backup pending until it finishes and rejects new work during switching', async () => {
+    vi.mocked(ipcMain.handle).mockClear()
+    let finish!: () => void
+    handleGuarded(
+      'Backup_Backup',
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve
+        })
+    )
+    const wrapped = vi.mocked(ipcMain.handle).mock.calls[0][1]
+    const work = wrapped(evt('window', indexUrl))
+    profileSwitchFence.beginSwitch('logout')
+    expect(() => wrapped(evt('window', indexUrl))).toThrow(/profile switch/i)
+    await expect(profileSwitchFence.drainTasks(1)).rejects.toThrow(/in-flight/i)
+    finish()
+    await work
+    await profileSwitchFence.drainTasks(1000)
+  })
+
+  it('keeps restart recovery available after a failed switch', () => {
+    vi.mocked(ipcMain.handle).mockClear()
+    handleGuarded(IpcChannel.Application_Relaunch, () => 'restarting')
+    profileSwitchFence.beginSwitch('logout')
+    profileSwitchFence.markTeardownFailed('busy')
+    const wrapped = vi.mocked(ipcMain.handle).mock.calls[0][1]
+    expect(wrapped(evt('window', indexUrl))).toBe('restarting')
+  })
+
   it('registers through ipcMain.handle and gates before the handler runs', () => {
     const handle = vi.mocked(ipcMain.handle)
     handle.mockClear()

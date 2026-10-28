@@ -23,7 +23,14 @@ export function setProfileLaunchContext(context: ProfileLaunchContext | undefine
     clock: () => performance.now(),
     verificationWindowMs: 5 * 60_000
   })
-  if (context?.mode === 'business') {
+  // 停用候选上下文提前授予同进程激活资格，改由业务启动成功后记录。
+  // if (context?.mode === 'business') {
+  //   lastBusinessIdentityDigest = context.identityDigest
+  // }
+}
+
+export function recordSuccessfulBusinessIdentity(context: ProfileLaunchContext): void {
+  if (context.mode === 'business' && context.kind === 'authenticated') {
     lastBusinessIdentityDigest = context.identityDigest
   }
 }

@@ -156,6 +156,10 @@ function pendingAdmissionCount(handler: ChannelMessageHandler): number {
   return (handler as unknown as { pendingAdmissions: Map<string, Promise<void>> }).pendingAdmissions.size
 }
 
+function pendingChatQueueCount(handler: ChannelMessageHandler): number {
+  return (handler as unknown as { chatQueues: Map<string, Promise<void>> }).chatQueues.size
+}
+
 // Delegate coverage below constructs the manager directly, like ChannelManager.test.ts —
 // BaseService's singleton guard allows one instance per module registry.
 const channelManager = new ChannelManager()
@@ -419,6 +423,63 @@ describe('ChannelMessageHandler write quiesce', () => {
     // Fails closed: a hold that is never disposed keeps the gate on.
     handler.pause('never-released')
     expect(handler.isWriteQuiesced).toBe(true)
+  })
+
+  it('drainTurns waits for the in-flight turn to actually finish streaming (real pending contract)', async () => {
+    const adapter = createMockAdapter()
+    vi.mocked(agentSessionService.create).mockReturnValue(SESSION as any)
+    let finishTurn!: () => Promise<void>
+    mockStartAgentSessionRun.mockImplementationOnce(async ({ listeners }) => {
+      finishTurn = async () => {
+        for (const listener of listeners) await listener.onDone({ status: 'success' })
+      }
+      return { mode: 'started' }
+    })
+
+    const turn = handler.handleIncoming(adapter, msg('Hi'))
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(mockStartAgentSessionRun).toHaveBeenCalledTimes(1)
+    expect(pendingChatQueueCount(handler)).toBe(1)
+
+    const hold = handler.pause()
+    const drain = handler.drainTurns(5000)
+    let drained = false
+    void drain.then(() => {
+      drained = true
+    })
+
+    // Microtasks flush, but the turn is still streaming — the drain must not have resolved.
+    await Promise.resolve()
+    expect(drained).toBe(false)
+
+    await finishTurn()
+    await expect(drain).resolves.toBeUndefined()
+    expect(drained).toBe(true)
+    await turn
+    hold.dispose()
+  })
+
+  it('drainTurns throws on timeout when a turn never completes (real timeout contract)', async () => {
+    const adapter = createMockAdapter()
+    vi.mocked(agentSessionService.create).mockReturnValue(SESSION as any)
+    // Stream starts but never fires onDone → the chat-queue turn stays in flight forever.
+    mockStartAgentSessionRun.mockResolvedValue({ mode: 'started' })
+
+    const turn = handler.handleIncoming(adapter, msg('Hi'))
+    turn.catch(() => {})
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(pendingChatQueueCount(handler)).toBe(1)
+
+    const hold = handler.pause()
+    const drain = handler.drainTurns(50)
+    // Attach the rejection handler before advancing timers so the timeout rejection is consumed.
+    const assertion = expect(drain).rejects.toThrow(/timed out/)
+    await vi.advanceTimersByTimeAsync(60)
+
+    await assertion
+    // The stuck turn is still in flight — the drain did not silently drop it.
+    expect(pendingChatQueueCount(handler)).toBe(1)
+    hold.dispose()
   })
 
   it('listActiveWork lists a buffered batch before flush', async () => {

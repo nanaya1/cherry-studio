@@ -101,6 +101,8 @@ export class ChannelMessageHandler {
   private readonly activeAbortControllers = new Map<string, AbortController>()
   /** Write-quiesce holds (backup restore). Quiesced ⇔ non-empty. See `pause()`. */
   private readonly pauseHolds = new Set<symbol>()
+  /** Shutdown pause hold acquired by ChannelManager.stop; released by start(), never by stop. */
+  private shutdownPauseHold: Disposable | null = null
   /** Queued work whose write admission hasn't landed yet — `drainInFlight`'s wait-set.
    *  Resolved (idempotently) once a turn is admitted, a command write completes, or processing
    *  exits early; NOT held open for the full turn (post-admission stream writes are
@@ -180,6 +182,51 @@ export class ChannelMessageHandler {
     } finally {
       if (timeoutHandle) clearTimeout(timeoutHandle)
     }
+  }
+
+  /**
+   * Await in-flight chat-queue turns through full completion (post-admission streaming included) —
+   * distinct from drainInFlight, which stops at admission. Rejects on timeout so a stuck turn blocks
+   * teardown rather than silently losing work.
+   */
+  async drainTurns(timeoutMs: number): Promise<void> {
+    if (!this.isWriteQuiesced) {
+      logger.warn('drainTurns called without an active pause hold — verdict is a point-in-time snapshot')
+    }
+    const snapshot = [...this.chatQueues.values()]
+    if (snapshot.length === 0) return
+
+    let timeoutHandle: ReturnType<typeof setTimeout> | undefined
+    const timeout = new Promise<'timeout'>((resolve) => {
+      timeoutHandle = setTimeout(() => resolve('timeout'), timeoutMs)
+    })
+    try {
+      const winner = await Promise.race([Promise.allSettled(snapshot).then(() => 'done' as const), timeout])
+      if (winner === 'done') return
+      throw new Error(
+        `drainTurns timed out after ${timeoutMs}ms with ${snapshot.length} chat queue turn(s) still in flight`
+      )
+    } finally {
+      if (timeoutHandle) clearTimeout(timeoutHandle)
+    }
+  }
+
+  /** Acquire the shutdown pause hold. Held across stop; released by start(), never by stop itself. */
+  acquireShutdownPause(): void {
+    if (this.shutdownPauseHold) return
+    this.shutdownPauseHold = this.pause('channel-stop')
+  }
+
+  /** Release the shutdown pause hold left by stop (idempotent; never touches other holds). */
+  releaseShutdownPause(): void {
+    if (!this.shutdownPauseHold) return
+    this.shutdownPauseHold.dispose()
+    this.shutdownPauseHold = null
+  }
+
+  /** Drop all session-tracker bindings after a clean shutdown drain so a restart won't reuse a stale singleton session. */
+  clearSessionTrackerBindings(): void {
+    this.sessionTracker.clear()
   }
 
   /** Advisory pre-flight enumeration for the restore orchestrator. Read-only, in-memory. */

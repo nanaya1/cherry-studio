@@ -6,6 +6,46 @@ export type SwitchFenceState =
 
 export class SwitchFence {
   private currentState: SwitchFenceState = { kind: 'open' }
+  private readonly inFlight = new Set<Promise<void>>()
+
+  runTask<T>(task: () => T): T {
+    this.assertTaskStartAllowed()
+    let complete!: () => void
+    const pending = new Promise<void>((resolve) => {
+      complete = resolve
+    })
+    this.inFlight.add(pending)
+    const release = () => {
+      this.inFlight.delete(pending)
+      complete()
+    }
+    try {
+      const result = task()
+      if (result && typeof (result as unknown as PromiseLike<unknown>).then === 'function') {
+        void Promise.resolve(result).then(release, release)
+      } else {
+        release()
+      }
+      return result
+    } catch (error) {
+      release()
+      throw error
+    }
+  }
+
+  async drainTasks(timeoutMs: number): Promise<void> {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    try {
+      await Promise.race([
+        Promise.all([...this.inFlight]),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error('Profile switch has unfinished in-flight IPC tasks')), timeoutMs)
+        })
+      ])
+    } finally {
+      clearTimeout(timer)
+    }
+  }
 
   get state(): SwitchFenceState {
     return { ...this.currentState }
@@ -38,6 +78,7 @@ export class SwitchFence {
     if (this.currentState.kind !== 'switching') {
       throw new Error(`reopenAfterTeardown requires an in-progress switch, not a ${this.currentState.kind} fence`)
     }
+    if (this.inFlight.size > 0) throw new Error('Profile switch still has in-flight IPC tasks')
     this.currentState = { kind: 'open' }
   }
 

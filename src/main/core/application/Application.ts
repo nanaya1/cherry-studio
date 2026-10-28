@@ -343,6 +343,16 @@ export class Application {
       logger.warn('bootConfig flush error:', e as Error)
     }
 
+    try {
+      await profileSwitchFence.drainTasks(SHUTDOWN_TIMEOUT_MS)
+    } catch (error) {
+      this.completedProfileTeardown = {
+        clean: false,
+        stop: { timedOut: ['ProfileIpcTasks'], failed: [] },
+        destroy: { timedOut: [], failed: [] }
+      }
+      throw error
+    }
     const result = await this.teardownServices()
     this.completedProfileTeardown = result
     return result

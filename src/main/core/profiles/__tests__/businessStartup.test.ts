@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import type * as BrandDataFileMigrationModule from '@main/core/preboot/brandDataFileMigration'
+
 import type * as ProfilePathsModule from '../ProfilePaths'
 
 const mocks = vi.hoisted(() => ({
@@ -78,7 +80,8 @@ vi.mock('@main/core/preboot/profileIsolationRuntime', () => ({
 }))
 vi.mock('@main/core/preboot/backupRestoreGate', () => ({ runBackupRestoreGate: vi.fn() }))
 vi.mock('@main/core/preboot/brandDataFileMigration', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@main/core/preboot/brandDataFileMigration')>()),
+  // ...(await importOriginal<typeof import('@main/core/preboot/brandDataFileMigration')>()),
+  ...(await importOriginal<typeof BrandDataFileMigrationModule>()),
   migrateBrandDataFiles: mocks.migrateBrandDataFiles
 }))
 vi.mock('@main/core/preboot/v2MigrationGate', () => ({ runV2MigrationGate: mocks.migration }))
@@ -98,6 +101,7 @@ import type { ProfileLaunchContext } from '../ProfilePrebootCoordinator'
 import {
   profileBusinessAccessGate,
   getLastBusinessIdentityDigest,
+  recordSuccessfulBusinessIdentity,
   setProfileLaunchContext,
   shouldActivateInProcess
 } from '../ProfileRuntimeContext'
@@ -120,8 +124,10 @@ describe('业务账号激活决策', () => {
     expect(shouldActivateInProcess(record, 'c'.repeat(64))).toBe(false)
   })
 
-  it('登出上下文保留本进程最后业务账号', () => {
-    setProfileLaunchContext(context)
+  it('登出上下文保留本进程最后成功启动的业务账号', async () => {
+    mocks.verify.mockResolvedValue({ kind: 'verified' })
+    mocks.bootstrap.mockResolvedValue(true)
+    await startBusinessRuntime(context)
     setProfileLaunchContext(undefined)
     expect(getLastBusinessIdentityDigest()).toBe(context.identityDigest)
   })
@@ -136,6 +142,7 @@ describe('同进程业务启动', () => {
     vi.resetAllMocks()
     mocks.order.length = 0
     profileSwitchFence.resetForTesting()
+    recordSuccessfulBusinessIdentity(context)
     mocks.verify.mockResolvedValue({ kind: 'verified' })
     mocks.bootstrap.mockResolvedValue(true)
     mocks.prepare.mockImplementation(() => mocks.order.push('prepare'))
@@ -174,6 +181,52 @@ describe('同进程业务启动', () => {
     await startBusinessRuntime(context)
     expect(mocks.begin).not.toHaveBeenCalled()
     expect(mocks.mark).toHaveBeenCalledWith(context)
+  })
+
+  it('设置候选上下文不改变最近成功身份', () => {
+    setProfileLaunchContext({ ...context, identityDigest: 'd'.repeat(64) })
+    expect(getLastBusinessIdentityDigest()).toBe(context.identityDigest)
+  })
+
+  it('旧版非认证业务空间不能获得同进程激活资格', () => {
+    recordSuccessfulBusinessIdentity({ ...context, kind: 'local', identityDigest: 'd'.repeat(64) })
+    expect(getLastBusinessIdentityDigest()).toBe(context.identityDigest)
+  })
+
+  it('失败候选返回登录页后不能获得同进程激活资格', async () => {
+    const previousIdentity = getLastBusinessIdentityDigest()
+    const candidate = { ...context, identityDigest: 'd'.repeat(64) }
+    mocks.verify.mockResolvedValue({ kind: 'failed', reason: 'expired' })
+    await startBusinessRuntime(candidate)
+    expect(getLastBusinessIdentityDigest()).toBe(previousIdentity)
+    expect(shouldActivateInProcess(candidate, getLastBusinessIdentityDigest())).toBe(false)
+  })
+
+  it('在线验证通过但 bootstrap 失败不能替换成功身份', async () => {
+    const previousIdentity = getLastBusinessIdentityDigest()
+    mocks.bootstrap.mockResolvedValue(false)
+    await startBusinessRuntime({ ...context, identityDigest: 'e'.repeat(64) })
+    expect(getLastBusinessIdentityDigest()).toBe(previousIdentity)
+  })
+
+  it('成功标记持久化前不能授予新身份免重启资格', async () => {
+    const previousIdentity = getLastBusinessIdentityDigest()
+    const candidate = { ...context, identityDigest: 'f'.repeat(64) }
+    mocks.mark.mockImplementation(async () => {
+      expect(getLastBusinessIdentityDigest()).toBe(previousIdentity)
+    })
+    await startBusinessRuntime(candidate)
+    expect(getLastBusinessIdentityDigest()).toBe(candidate.identityDigest)
+    expect(shouldActivateInProcess(candidate, getLastBusinessIdentityDigest())).toBe(true)
+  })
+
+  it('成功标记写入失败不能替换成功身份', async () => {
+    const previousIdentity = getLastBusinessIdentityDigest()
+    mocks.mark.mockRejectedValue(new Error('boot journal failed'))
+    await expect(startBusinessRuntime({ ...context, identityDigest: '9'.repeat(64) })).rejects.toThrow(
+      'boot journal failed'
+    )
+    expect(getLastBusinessIdentityDigest()).toBe(previousIdentity)
   })
 
   it('验证失败保持 fence 关闭且不注册服务', async () => {

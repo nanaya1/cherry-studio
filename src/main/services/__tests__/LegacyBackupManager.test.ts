@@ -4,6 +4,7 @@ import type * as PathModule from 'path'
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { application } from '@application'
 import {
   BACKUP_ACTIVE_WRITERS_ERROR_CODE,
   BACKUP_BACKGROUND_TASKS_ERROR_CODE,
@@ -514,6 +515,31 @@ describe('BackupManager direct v2 data compatibility', () => {
     expect(fs.remove).toHaveBeenCalledWith(`/mock/temp/backup/${staleExtract}`)
     expect(fs.remove).toHaveBeenCalledWith(`/mock/temp/backup/${staleArchive}`)
     expect(fs.lstat).toHaveBeenCalledTimes(3)
+  })
+
+  it('keeps startup cleanup on its original paths when the profile changes during an await', async () => {
+    const getPath = vi.mocked(application.getPath)
+    const originalGetPath = getPath.getMockImplementation()!
+    let switched = false
+    getPath.mockImplementation((...args) => {
+      const original = originalGetPath(...args)
+      return switched ? original.replace('/mock/', '/next/') : original
+    })
+    vi.mocked(fs.chmod).mockImplementation(async () => {
+      switched = true
+    })
+    vi.mocked(fs.readdir).mockResolvedValue([
+      createDirent('extract-c3556dcc-5460-420e-b994-a68b89642bd3', 'directory')
+    ] as never)
+    vi.mocked(fs.lstat).mockResolvedValue({ ...createStats('file'), mtimeMs: 0 } as never)
+    try {
+      await backupManager.cleanupStaleTempArtifacts()
+      expect(fs.chmod).toHaveBeenCalledWith('/mock/userData/restore-staging', 0o700)
+      expect(fs.readdir).toHaveBeenCalledWith('/mock/temp/backup', { withFileTypes: true })
+      expect(fs.remove).toHaveBeenCalledWith('/mock/temp/backup/extract-c3556dcc-5460-420e-b994-a68b89642bd3')
+    } finally {
+      getPath.mockImplementation(originalGetPath)
+    }
   })
 
   it('boot-hardens both shared-temp staging roots (backup + lan-transfer)', async () => {
@@ -1599,6 +1625,8 @@ describe('BackupManager direct v2 data compatibility', () => {
   })
 
   it('restores a version 7 Data archive from its legacy SQLite member name', async () => {
+    // Legacy archives may replace only local staging, never an authenticated profile.
+    mockGetProfileLaunchContext.mockReturnValue({ ...AUTHENTICATED_PROFILE_CONTEXT, kind: 'local' })
     arrangeDirectRestore({ ...completeDataMetadata, version: 7 })
     vi.mocked(fs.lstat).mockImplementation(async (entryPath) => {
       return createStats(String(entryPath) === '/extract/Data' ? 'directory' : 'file') as never
