@@ -165,7 +165,8 @@ export class EnterprisePlugin extends BaseService {
       type: 'warning',
       title: '需要重新验证账号',
       message: '在线账号验证已失效，业务服务已停止。',
-      detail: '重新启动后将再次验证当前账号。',
+      // detail: '重新启动后将再次验证当前账号。',
+      detail: reason,
       buttons: ['重新启动', '退出'],
       cancelId: 1
     })
