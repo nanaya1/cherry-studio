@@ -19,7 +19,7 @@ import {
   useDiagnosticSourceSelection
 } from './DiagnosticSourceSelector'
 
-const SUPPORT_EMAIL = 'support@cherry-ai.com'
+const SUPPORT_EMAIL = 'mkt@xuelangyun.com'
 const MEA_ENABLE_CHERRY_SUPPORT_EMAIL = false
 const logger = loggerService.withContext('DiagnosticBundlePanel')
 type SavedResult = Extract<OutputFor<'diagnostics.bundle.export'>, { status: 'saved' }>
