@@ -81,7 +81,7 @@ export function MigrationDiagnosticPanel({
     }
   }
 
-  // 「复制 mkt@xuelangyun.com」入口暂时隐藏：Mea Cowork 暂不开放经此邮箱联系 Cowork 支持。
+  // 「复制 support@cherry-ai.com」入口暂时隐藏：Mea Cowork 暂不开放经此邮箱联系 Cherry 支持。
   // 恢复时取消下方注释。
   // const handleContact = async () => {
   //   try {
@@ -118,7 +118,7 @@ export function MigrationDiagnosticPanel({
             onClick={() => void handleReveal()}>
             {t('migration.diagnostics.open_folder')}
           </Button>
-          {/* 「复制 mkt@xuelangyun.com」入口暂时隐藏：Mea Cowork 暂不开放经此邮箱联系 Cowork 支持。恢复时把 null 换成 ( */}
+          {/* 「复制 support@cherry-ai.com」入口暂时隐藏：Mea Cowork 暂不开放经此邮箱联系 Cherry 支持。恢复时把 null 换成 ( */}
           {/* <Button type="button" variant="default" className="flex-1" onClick={() => void handleContact()}> */}
           {/*   {t('migration.diagnostics.contact')} */}
           {/* </Button> */}

@@ -96,7 +96,7 @@ const AboutSettings: FC = () => {
   // }
 
   // const mailto = async () => {
-  //   const email = 'mkt@xuelangyun.com'
+  //   const email = 'support@cherry-ai.com'
   //   const subject = 'Cherry Studio Feedback'
   //   const version = (await ipcApi.request('app.get_info')).version
   //   const platform = window.electron.process.platform

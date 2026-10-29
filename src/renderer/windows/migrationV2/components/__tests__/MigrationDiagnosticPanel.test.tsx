@@ -300,7 +300,7 @@ describe('MigrationDiagnosticPanel', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Copy feedback email' }))
 
-    await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledWith('mkt@xuelangyun.com'))
+    await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledWith('support@cherry-ai.com'))
     expect(mocks.toast.success).toHaveBeenCalledWith('Feedback email copied')
   })
 

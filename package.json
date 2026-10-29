@@ -3,7 +3,8 @@
   "version": "2.1.4",
   "private": true,
   "description": "A powerful AI assistant for producer.",
-  "author": "mkt@xuelangyun.com",
+  "homepage": "https://github.com/nanaya1/cherry-studio",
+  "author": "support@cherry-ai.com",
   "main": "./out/main/main.js",
   "scripts": {
     "analyze:main": "VISUALIZER_MAIN=true pnpm build",
