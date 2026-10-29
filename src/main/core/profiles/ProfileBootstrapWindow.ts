@@ -14,10 +14,10 @@ import { OrgCredentialStore } from '@main/enterprise/OrgCredentialStore'
 import { createPasswordProfileLogin } from '@main/enterprise/passwordLoginRuntime'
 import { resolveSystemLanguage, t } from '@main/i18n'
 
-import { validateSqliteIntegrity } from './LegacyProfileAdoption'
+// import { validateSqliteIntegrity } from './LegacyProfileAdoption'
 import { ProfileActivePointer } from './ProfileActivePointer'
 import {
-  ProfileClaimService,
+  // ProfileClaimService,
   type ProfileClaimAllow,
   type ProfileClaimCategory,
   type ProfileClaimPreview
@@ -340,36 +340,37 @@ function registerSignedOutHandlers(context: ProfileLaunchContext, window: Browse
       await validateExistingProfilePath(paths, profileRoot)
       await mkdir(profileRoot, { recursive: true })
     },
-    prepareAuthenticatedUserData: context.legacyRoot
-      ? async ({ targetProfileRoot }) => {
-          const claim = new ProfileClaimService({
-            localUserData: context.legacyRoot!,
-            targetUserData: path.join(targetProfileRoot, 'userData'),
-            journalPath: path.join(paths.controlRoot, 'legacy-claim.json'),
-            sqliteValidator: validateSqliteIntegrity
-          })
-          const preview = await claim.preview()
-          if (preview.status === 'already-claimed') return
-          if (preview.status === 'unsupported') {
-            // 账号 Profile 已有数据时沿用现有数据，登录继续进行；原先的硬失败逻辑保留注释。
-            // throw new Error(translateForBootstrap('dialog.profile_claim.error.target_not_empty'))
-            return undefined
-          }
-          if (preview.status === 'staged') {
-            return { apply: async () => undefined, commit: () => claim.commit() }
-          }
-          const decision = await confirmProfileClaim(preview)
-          if (!decision) throw new Error(translateForBootstrap('dialog.profile_claim.error.cancelled'))
-          return {
-            apply: async () => {
-              const result = await claim.confirm({ previewId: preview.previewId, allow: decision.allow })
-              if (result.status !== 'claimed')
-                throw new Error(translateForBootstrap('dialog.profile_claim.error.incomplete'))
-            },
-            commit: () => claim.commit()
-          }
-        }
-      : undefined,
+    // 登录仅使用账号隔离目录，不再接收旧本地数据。
+    // prepareAuthenticatedUserData: context.legacyRoot
+    //   ? async ({ targetProfileRoot }) => {
+    //       const claim = new ProfileClaimService({
+    //         localUserData: context.legacyRoot!,
+    //         targetUserData: path.join(targetProfileRoot, 'userData'),
+    //         journalPath: path.join(paths.controlRoot, 'legacy-claim.json'),
+    //         sqliteValidator: validateSqliteIntegrity
+    //       })
+    //       const preview = await claim.preview()
+    //       if (preview.status === 'already-claimed') return
+    //       if (preview.status === 'unsupported') {
+    //         // 账号 Profile 已有数据时沿用现有数据，登录继续进行；原先的硬失败逻辑保留注释。
+    //         // throw new Error(translateForBootstrap('dialog.profile_claim.error.target_not_empty'))
+    //         return undefined
+    //       }
+    //       if (preview.status === 'staged') {
+    //         return { apply: async () => undefined, commit: () => claim.commit() }
+    //       }
+    //       const decision = await confirmProfileClaim(preview)
+    //       if (!decision) throw new Error(translateForBootstrap('dialog.profile_claim.error.cancelled'))
+    //       return {
+    //         apply: async () => {
+    //           const result = await claim.confirm({ previewId: preview.previewId, allow: decision.allow })
+    //           if (result.status !== 'claimed')
+    //             throw new Error(translateForBootstrap('dialog.profile_claim.error.incomplete'))
+    //         },
+    //         commit: () => claim.commit()
+    //       }
+    //     }
+    //   : undefined,
     credentialStoreFor: (profileRoot) => new OrgCredentialStore(profileRoot),
     coordinator: new ProfileSwitchCoordinator({
       journal: new ProfileSwitchJournal(path.join(paths.controlRoot, 'switch-journal.json')),

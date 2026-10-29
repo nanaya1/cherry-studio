@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { application } from '@application'
+import { createPasswordProfileLogin } from '@main/enterprise/passwordLoginRuntime'
 
 import { setProfileLaunchContext } from '../ProfileRuntimeContext'
 
@@ -69,7 +70,7 @@ vi.mock('@main/enterprise/OrgApiClient', () => ({
   ORG_AUTH_MODE: 'management-cookie'
 }))
 vi.mock('@main/enterprise/passwordLoginRuntime', () => ({
-  createPasswordProfileLogin: () => ({ login: passwordLoginMock, cancel: vi.fn() })
+  createPasswordProfileLogin: vi.fn(() => ({ login: passwordLoginMock, cancel: vi.fn() }))
 }))
 vi.mock('@main/enterprise/OrgCredentialStore', () => ({ OrgCredentialStore: class {} }))
 
@@ -194,6 +195,16 @@ describe('createProfileBootstrapWindow', () => {
     vi.mocked(application.forceExit).mockClear()
     Object.assign(application, { isRelaunching: false })
     setProfileLaunchContext(loginContext)
+  })
+
+  it('does not attach legacy data import to login even when a legacy root exists', () => {
+    createProfileBootstrapWindow({ ...loginContext, legacyRoot: '/legacy' })
+
+    const session = vi.mocked(createPasswordProfileLogin).mock.lastCall?.[0]
+    expect(session).toBeDefined()
+    const dependencies = (session as unknown as { dependencies: { prepareAuthenticatedUserData?: unknown } })
+      .dependencies
+    expect(dependencies.prepareAuthenticatedUserData).toBeUndefined()
   })
 
   it('exits on user cancellation but not when a login window is superseded', () => {
