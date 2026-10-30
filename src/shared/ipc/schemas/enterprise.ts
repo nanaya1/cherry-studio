@@ -6,7 +6,9 @@ import { defineRoute } from '../define'
 
 export const enterpriseStatusSchema = z.strictObject({
   phase: z.enum(['signed-out', 'authorizing', 'signed-in']),
-  authMode: z.enum(['management-exchange', 'official-direct']),
+  // [enterprise] authMode 仅支持管理端 PKCE OAuth。
+  // authMode: z.enum(['management-oauth', 'management-exchange', 'official-direct']) // [enterprise] 旧多模式 schema 已删除
+  authMode: z.literal('management-oauth'),
   displayName: z.string().nullable(),
   phone: z.string().nullable(),
   role: z.string().nullable()

@@ -6,7 +6,7 @@ import type { ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 const { orgSessionMock } = vi.hoisted(() => ({
-  orgSessionMock: { authMode: 'management-exchange' }
+  orgSessionMock: { authMode: 'management-oauth' }
 }))
 
 vi.mock('@renderer/hooks/useOrgAccountSession', () => ({
@@ -95,7 +95,7 @@ import McpCatalog from '../McpCatalog'
 
 afterEach(() => {
   cleanup()
-  orgSessionMock.authMode = 'management-exchange'
+  orgSessionMock.authMode = 'management-oauth'
 })
 
 describe('McpCatalog', () => {
@@ -105,6 +105,13 @@ describe('McpCatalog', () => {
 
     expect(screen.getByRole('tab', { name: 'Discover' })).toBeVisible()
     expect(screen.queryByRole('tab', { name: 'Organization' })).not.toBeInTheDocument()
+  })
+
+  it('presents the public connector tab for the legacy oauth management auth mode', () => {
+    orgSessionMock.authMode = 'management-oauth'
+    render(<McpCatalog />)
+
+    expect(screen.getByRole('tab', { name: 'Organization' })).toBeVisible()
   })
 
   it('presents discovery, provider, and installed MCP views from the settings sources', async () => {

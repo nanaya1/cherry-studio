@@ -6,7 +6,7 @@ import { useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 const { orgSessionMock } = vi.hoisted(() => ({
-  orgSessionMock: { authMode: 'management-exchange' }
+  orgSessionMock: { authMode: 'management-oauth' }
 }))
 
 type MockSkillController = {
@@ -100,7 +100,7 @@ import SkillsConnectorsPage from './SkillsConnectorsPage'
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
-  orgSessionMock.authMode = 'management-exchange'
+  orgSessionMock.authMode = 'management-oauth'
 })
 
 describe('SkillsConnectorsPage', () => {
@@ -110,6 +110,13 @@ describe('SkillsConnectorsPage', () => {
 
     expect(screen.getByRole('tab', { name: 'Recommended skills' })).toBeVisible()
     expect(screen.queryByRole('tab', { name: 'Organization' })).not.toBeInTheDocument()
+  })
+
+  it('shows the public skill tab for the legacy oauth management auth mode', () => {
+    orgSessionMock.authMode = 'management-oauth'
+    render(<SkillsConnectorsPage connectorView={<div>connector catalog</div>} />)
+
+    expect(screen.getByRole('tab', { name: 'Organization' })).toBeVisible()
   })
 
   it('shows recommended skills by default and preserves access to installed skills', async () => {

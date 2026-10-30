@@ -85,7 +85,7 @@ const mocks = vi.hoisted(() => ({
   platformState: { isMac: false },
   orgStatus: {
     phase: 'signed-out',
-    authMode: 'official-direct',
+    authMode: 'management-oauth',
     displayName: null,
     phone: null,
     role: null
@@ -435,7 +435,7 @@ afterEach(() => {
   mocks.platformState.isMac = false
   mocks.orgStatus = {
     phase: 'signed-out',
-    authMode: 'official-direct',
+    authMode: 'management-oauth',
     displayName: null,
     phone: null,
     role: null
@@ -583,10 +583,10 @@ describe('app Sidebar', () => {
     expect(mocks.showUserPopup).not.toHaveBeenCalled()
   })
 
-  it('shows the signed-in account name without the local-user subtitle', () => {
+  it('keeps the local profile name and avatar when the org account is signed in', () => {
     mocks.orgStatus = {
       phase: 'signed-in',
-      authMode: 'official-direct',
+      authMode: 'management-oauth',
       displayName: '测试用户',
       phone: '13900000000',
       role: ''
@@ -594,7 +594,13 @@ describe('app Sidebar', () => {
 
     render(<Sidebar />)
 
-    expect(getSidebarProps().user).toMatchObject({ name: '测试用户', description: undefined, avatar: '测' })
+    // The org displayName must not override the local profile name or avatar; the
+    // sidebar shows the local name with the local-user subtitle and the local avatar.
+    expect(getSidebarProps().user).toMatchObject({
+      name: 'JD',
+      description: 'Local user',
+      avatar: undefined
+    })
   })
 
   it('moves search and sidebar collapse actions into the macOS sidebar title bar', () => {

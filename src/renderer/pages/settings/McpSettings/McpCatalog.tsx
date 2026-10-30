@@ -38,7 +38,8 @@ export default function McpCatalog() {
   const { t } = useTranslation()
   const { mcpServers } = useMcpServers()
   const { status: accountStatus } = useOrgAccountSession()
-  const showPublicCatalog = accountStatus?.authMode === 'management-exchange'
+  // const showPublicCatalog = accountStatus?.authMode === 'management-exchange' // [MEA] 已删除旧认证模式
+  const showPublicCatalog = accountStatus?.authMode === 'management-oauth'
   const [activeTab, setActiveTab] = useState<CatalogTab>('discover')
   const [discoverTab, setDiscoverTab] = useState<DiscoverTab>('builtin')
   const [selectedProvider, setSelectedProvider] = useState<ProviderConfig | null>(null)

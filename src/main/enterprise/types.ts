@@ -37,10 +37,16 @@ export interface OrgConnectorCatalogItem {
   config: Record<string, unknown>
 }
 
-export type OrgAuthMode = 'management-exchange' | 'official-direct'
+/** [enterprise] 当前仅支持管理端 PKCE OAuth 认证。 */
+export type OrgAuthMode = 'management-oauth'
+// [enterprise] 已删除的旧类型：
+// export type OrgAuthMode = 'management-oauth' | 'management-exchange' | 'official-direct'
+// export type OrgAuthMode = 'management-exchange' | 'official-direct'
 
 export interface OrgSession {
   authMode: OrgAuthMode
+  /** 签发该会话的管理端 origin，恢复时用于匹配，避免错端会话被沿用 */
+  authOrigin: string
   userId: string
   officialUserId: string
   displayName: string | null
@@ -51,16 +57,43 @@ export interface OrgSession {
   /** access token 过期时间（epoch ms），提前 60s 视为过期以触发刷新 */
   expiresAt: number
 }
+// [enterprise] 原 OrgSession（无 authOrigin 字段，签名由 old enum 决定）：
+// export interface OrgSession {
+//   authMode: OrgAuthMode
+//   userId: string
+//   officialUserId: string
+//   displayName: string | null
+//   phone: string
+//   role: string
+//   accessToken: string
+//   refreshToken: string
+//   expiresAt: number
+// }
 
 export type OrgAuthPhase = 'signed-out' | 'authorizing' | 'signed-in'
 
-/** [enterprise] 官网 SSO 回调 URL 解析：meacowork://auth/sso/callback?token=.. */
-export function parseOrgAuthCallback(url: URL): { token: string } | null {
+/**
+ * [enterprise] PKCE OAuth 回调 URL 解析：meacowork://auth/sso/callback?code=..&state=..
+ * 仅接受该 scheme/host/path；官网 token 回调不在此模式中处理。
+ */
+export function parseOrgAuthCallback(url: URL): { code: string; state: string } | null {
   if (url.protocol !== 'meacowork:' || url.hostname.toLowerCase() !== 'auth' || url.pathname !== '/sso/callback') {
     return null
   }
   const params = new URLSearchParams(url.search)
-  const token = params.get('token')
-  if (!token) return null
-  return { token }
+  const code = params.get('code')
+  const state = params.get('state')
+  if (!code || !state) return null
+  return { code, state }
 }
+
+// [enterprise] 旧官网 token 回调解析（已停用，保留以备追溯，不再被调用）：
+// export function parseOrgAuthCallback(url: URL): { token: string } | null {
+//   if (url.protocol !== 'meacowork:' || url.hostname.toLowerCase() !== 'auth' || url.pathname !== '/sso/callback') {
+//     return null
+//   }
+//   const params = new URLSearchParams(url.search)
+//   const token = params.get('token')
+//   if (!token) return null
+//   return { token }
+// }

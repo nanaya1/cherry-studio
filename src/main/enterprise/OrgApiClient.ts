@@ -10,43 +10,30 @@ const logger = loggerService.withContext('OrgApiClient')
 
 /**
  * 管理端地址（区别于雪浪网关 XUELANG_API_ORIGIN / Cherry Cloud MAIN_VITE_CHERRY_CLOUD_API_ORIGIN）。
- * 有值时启用管理端 Exchange；无值时启用官网直连模式。
+ * 默认回退到旧管理端 http://36.150.116.248:3000；MAIN_VITE_ORG_SERVER_BASE_URL 可覆盖。
+ * 该地址承载企业版 PKCE 登录（/authorize、/api/token、刷新）与技能、连接器目录。
  */
-function resolveOrgServerBaseUrl(): string | null {
+function resolveOrgServerBaseUrl(): string {
   const configured = import.meta.env.MAIN_VITE_ORG_SERVER_BASE_URL?.trim()
-  if (!configured) return null
-  try {
-    return new URL(configured).origin
-  } catch {
-    throw new Error(`MAIN_VITE_ORG_SERVER_BASE_URL 不是合法 URL: ${configured}`)
-  }
-}
-
-function resolveOfficialApiBaseUrl(): string {
-  const configured = import.meta.env.MAIN_VITE_OFFICIAL_API_BASE_URL?.trim()
   if (configured) {
     try {
       return new URL(configured).origin
     } catch {
-      throw new Error(`MAIN_VITE_OFFICIAL_API_BASE_URL 不是合法 URL: ${configured}`)
+      throw new Error(`MAIN_VITE_ORG_SERVER_BASE_URL 不是合法 URL: ${configured}`)
     }
   }
-
-  const loginUrl = import.meta.env.MAIN_VITE_OFFICIAL_LOGIN_URL?.trim() || 'https://www.xuelangyun.com/#/login?source=Cowork'
-  try {
-    return new URL(loginUrl).origin
-  } catch {
-    throw new Error(`MAIN_VITE_OFFICIAL_LOGIN_URL 不是合法 URL: ${loginUrl}`)
-  }
+  return 'http://36.150.116.248:3000'
 }
 
-export type OrgAuthMode = 'management-exchange' | 'official-direct'
+// export type OrgAuthMode = 'management-oauth' | 'official-direct' // [enterprise] 旧多模式类型已删除
+export type OrgAuthMode = 'management-oauth'
 export const ORG_SERVER_BASE_URL = resolveOrgServerBaseUrl()
-export const ORG_AUTH_MODE: OrgAuthMode = ORG_SERVER_BASE_URL ? 'management-exchange' : 'official-direct'
-export const OFFICIAL_API_BASE_URL = resolveOfficialApiBaseUrl()
+/** [enterprise] 定向恢复：认证模式固定为 management-oauth（PKCE），不再有官网直连/Exchange 多模式选择 */
+export const ORG_AUTH_MODE: OrgAuthMode = 'management-oauth'
 
+/** [enterprise] 公共目录固定指向管理端，不依赖官网配置解析 */
 export function getOrgApiBaseUrl(): string {
-  return ORG_SERVER_BASE_URL ?? OFFICIAL_API_BASE_URL
+  return ORG_SERVER_BASE_URL
 }
 
 export class OrgApiClient {

@@ -3,7 +3,8 @@ import { useTranslation } from 'react-i18next'
 
 import {
   Avatar,
-  AvatarFallback,
+  // [MEA 定向恢复] 原服务端首字头像分支已停用，AvatarFallback 随之停用（保留为注释以满足「原 import 不删除」约定）。
+  // AvatarFallback,
   AvatarImage,
   Button,
   Center,
@@ -40,7 +41,8 @@ const PopupContainer: React.FC<Props> = ({ open, resolve }) => {
   // The stored name is always trimmed; the draft keeps the raw text so a space can be typed
   // mid-name, and stays unset until typed so the input follows the preference until then.
   const [userNameDraft, setUserNameDraft] = useState<string>()
-  const [avatarPreference] = usePreference('app.user.avatar')
+  // [MEA 定向恢复] 姓名头像只用本地设置，不再用服务端资料：原 avatarPreference 仅用于「服务端首字头像」分支，现已停用。
+  // const [avatarPreference] = usePreference('app.user.avatar')
 
   const [avatarPopoverOpen, setAvatarPopoverOpen] = useState(false)
   const [avatarPopoverView, setAvatarPopoverView] = useState<AvatarPopoverView>('menu')
@@ -73,7 +75,8 @@ const PopupContainer: React.FC<Props> = ({ open, resolve }) => {
     // [enterprise] C3：登出后 org 资源标记"组织不可用"，重登自动恢复
     orgUnavailable
   } = useOrgAccountSession(open)
-  const signedInDisplayName = orgStatus?.phase === 'signed-in' ? orgStatus.displayName?.trim() : undefined
+  // [MEA 定向恢复] 姓名头像只用本地设置，不再用服务端资料：原 signedInDisplayName 用于「服务端首字头像」与「输入框禁用+覆盖」分支，现已停用。
+  // const signedInDisplayName = orgStatus?.phase === 'signed-in' ? orgStatus.displayName?.trim() : undefined
 
   const onOpenChange = (nextOpen: boolean) => {
     if (!nextOpen) {
@@ -148,6 +151,7 @@ const PopupContainer: React.FC<Props> = ({ open, resolve }) => {
                   variant="ghost"
                   aria-label={t('common.avatar')}
                   className="size-20 rounded-[25%] p-0 text-foreground shadow-none transition-opacity hover:bg-transparent hover:text-foreground hover:opacity-80 focus-visible:bg-transparent focus-visible:opacity-80">
+                  {/* [MEA 定向恢复] 原逻辑：signedInDisplayName && !avatarPreference 时显示服务端首字头像；现停用，只用本地 emoji/图片头像。
                   {signedInDisplayName && !avatarPreference ? (
                     <Avatar className="size-20 rounded-[25%]">
                       <AvatarFallback className="bg-linear-to-br from-blue-400 to-indigo-500 text-2xl text-white">
@@ -155,6 +159,15 @@ const PopupContainer: React.FC<Props> = ({ open, resolve }) => {
                       </AvatarFallback>
                     </Avatar>
                   ) : isEmoji(avatar) ? (
+                    <EmojiAvatar size={80} fontSize={40}>
+                      {avatar}
+                    </EmojiAvatar>
+                  ) : (
+                    <Avatar className="size-20 rounded-[25%]">
+                      <AvatarImage src={avatar} className="object-cover" />
+                    </Avatar>
+                  )} */}
+                  {isEmoji(avatar) ? (
                     <EmojiAvatar size={80} fontSize={40}>
                       {avatar}
                     </EmojiAvatar>
@@ -205,6 +218,7 @@ const PopupContainer: React.FC<Props> = ({ open, resolve }) => {
           </ColFlex>
         </Center>
         <RowFlex className="items-center gap-2.5 p-5">
+          {/* [MEA 定向恢复] 原逻辑：signedInDisplayName 存在时占位符清空、value 用服务端名、输入框禁用；现停用，姓名只走本地 app.user.name 且始终可编辑（保留输入空格修复与草稿逻辑）。
           <Input
             placeholder={signedInDisplayName ? undefined : t('settings.general.user_name.placeholder')}
             value={signedInDisplayName || (userNameDraft ?? userName)}
@@ -217,6 +231,16 @@ const PopupContainer: React.FC<Props> = ({ open, resolve }) => {
                   }
             }
             disabled={Boolean(signedInDisplayName)}
+            className="w-full flex-1 text-center disabled:cursor-default disabled:opacity-100"
+            maxLength={30}
+          /> */}
+          <Input
+            placeholder={t('settings.general.user_name.placeholder')}
+            value={userNameDraft ?? userName}
+            onChange={(e) => {
+              setUserNameDraft(e.target.value)
+              void setUserName(e.target.value.trim())
+            }}
             className="w-full flex-1 text-center disabled:cursor-default disabled:opacity-100"
             maxLength={30}
           />

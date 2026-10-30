@@ -220,7 +220,7 @@ describe('UserPopup', () => {
     vi.useRealTimers()
   })
 
-  it('shows the signed-in account name and its initial instead of the local profile placeholder', async () => {
+  it('keeps the local profile name and avatar editable when the org account is signed in', async () => {
     mocks.ipcRequest.mockImplementation(async (route: string) => {
       if (route === 'enterprise.status.get') {
         return {
@@ -234,12 +234,21 @@ describe('UserPopup', () => {
       if (route === 'enterprise.status.orgUnavailable') return { unavailable: false }
       return undefined
     })
+    MockUsePreferenceUtils.setPreferenceValue('app.user.name', '本地用户')
+    MockUsePreferenceUtils.setPreferenceValue('app.user.avatar', 'file:///tmp/local.png')
 
     showUserPopup()
 
-    expect(await screen.findByDisplayValue('测试用户')).toBeDisabled()
-    expect(screen.getByTestId('avatar-fallback')).toHaveTextContent('测')
-    expect(screen.queryByPlaceholderText('settings.general.user_name.placeholder')).not.toBeInTheDocument()
+    // The org displayName must not replace the local profile name, and the input
+    // stays editable (the org sign-in state must not lock the local profile).
+    const input = await screen.findByDisplayValue('本地用户')
+    expect(input).not.toBeDisabled()
+    expect(input).not.toHaveValue('测试用户')
+    expect(screen.queryByPlaceholderText('settings.general.user_name.placeholder')).toBeInTheDocument()
+    // The first-char avatar derived from the org displayName must not render.
+    expect(screen.queryByTestId('avatar-fallback')).not.toBeInTheDocument()
+    // The local avatar preference is used instead.
+    expect(screen.getByTestId('avatar-image')).toHaveAttribute('src', 'file:///tmp/local.png')
   })
 
   it('renders image avatars with object-cover cropping', async () => {
