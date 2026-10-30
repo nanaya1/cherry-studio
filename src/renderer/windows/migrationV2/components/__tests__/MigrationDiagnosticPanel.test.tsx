@@ -299,8 +299,19 @@ describe('MigrationDiagnosticPanel', () => {
   it('keeps the feedback email action hidden after saving', async () => {
     await saveBundle()
 
-    expect(screen.queryByRole('button', { name: 'Copy feedback email' })).not.toBeInTheDocument()
-    expect(navigator.clipboard.writeText).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Copy feedback email' }))
+
+    await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledWith('mkt@xuelangyun.com'))
+    expect(mocks.toast.success).toHaveBeenCalledWith('Feedback email copied')
+  })
+
+  it('shows an error toast when clipboard copy fails', async () => {
+    vi.mocked(navigator.clipboard.writeText).mockRejectedValueOnce(new Error('copy failed'))
+    await saveBundle()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Copy feedback email' }))
+
+    await waitFor(() => expect(mocks.toast.error).toHaveBeenCalledWith('Failed to copy feedback email'))
     expect(mocks.toast.success).not.toHaveBeenCalled()
     expect(mocks.toast.error).not.toHaveBeenCalled()
   })

@@ -46,7 +46,7 @@ dialog, preventing overlapping overlays and focus restoration from the closing d
 The diagnostic panel warns that application logs may contain sensitive data and must not be shared publicly or
 outside Cherry Studio support. Saving never uploads or attaches the bundle; metadata-only fallback is disclosed
 when logs cannot be included. After a successful local-only save, the only support actions reveal the file and
-copy the legacy support address; no mail client or prefilled email is provided. The V1 dialog also opens
+copy `mkt@xuelangyun.com`; no mail client or prefilled email is provided. The V1 dialog also opens
 only when selected from More options. The window runs on the `simplest` preload (no shell access), so the
 download button asks main to open the page, passing the wizard's current language;
 `MigrationIpcHandler` owns the URL table and maps that language to a regional site with the same `zh` test

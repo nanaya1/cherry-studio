@@ -96,7 +96,7 @@ const AboutSettings: FC = () => {
   // }
 
   // const mailto = async () => {
-  //   const email = 'support@cherry-ai.com' // legacy rollback path
+  //   const email = 'mkt@xuelangyun.com'' // legacy rollback path
   //   const subject = 'MEA Cowork Feedback'
   //   const version = (await ipcApi.request('app.get_info')).version
   //   const platform = window.electron.process.platform
