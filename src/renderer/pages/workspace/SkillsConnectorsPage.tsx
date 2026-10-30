@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next'
 
 import { Button, Tabs, TabsContent, TabsList, TabsTrigger } from '@cherrystudio/ui'
 import {
-  // OrgSkillCatalogView,
+  OrgSkillCatalogView,
   RecommendedSkillCatalogView,
   SkillCatalogDialogs,
   SkillCatalogHeaderActions,
@@ -13,7 +13,7 @@ import {
 } from '@renderer/components/resourceCatalog/catalog'
 import { ResourceCatalogSearchInput } from '@renderer/components/resourceCatalog/ResourceCatalogSearchInput'
 import { useResourceCatalogController } from '@renderer/hooks/resourceCatalog'
-// import { useOrgAccountSession } from '@renderer/hooks/useOrgAccountSession'
+import { useOrgAccountSession } from '@renderer/hooks/useOrgAccountSession'
 
 interface SkillsConnectorsPageProps {
   connectorView: ReactNode
@@ -23,24 +23,24 @@ interface SkillsConnectorsPageProps {
 // type SkillView = 'recommended' | 'installed' | 'org'
 type SkillView = 'recommended' | 'installed'
 // [enterprise] 二级 tab：推荐（原技能市场内容）/ 组织（企业下发技能）
-// type OrgSubTab = 'recommended' | 'org'
+type OrgSubTab = 'recommended' | 'org'
 
 // [enterprise] 与连接器目录二级 tab 保持一致
-// const secondaryTabClassName =
-//   'h-10 flex-none rounded-none border-x-0 border-t-0 border-b-2 border-transparent bg-transparent px-1.5 font-medium text-muted-foreground shadow-none hover:bg-transparent hover:text-foreground data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none dark:data-[state=active]:border-foreground dark:data-[state=active]:bg-transparent'
+const secondaryTabClassName =
+  'h-10 flex-none rounded-none border-x-0 border-t-0 border-b-2 border-transparent bg-transparent px-1.5 font-medium text-muted-foreground shadow-none hover:bg-transparent hover:text-foreground data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none dark:data-[state=active]:border-foreground dark:data-[state=active]:bg-transparent'
 
 export default function SkillsConnectorsPage({ connectorView }: SkillsConnectorsPageProps) {
   const { t } = useTranslation()
   const [activeTab, setActiveTab] = useState('skill')
   const [skillView, setSkillView] = useState<SkillView>('recommended')
   const [recommendedSearch, setRecommendedSearch] = useState('')
-  // const { status: accountStatus } = useOrgAccountSession()
+  const { status: accountStatus } = useOrgAccountSession()
   // 原条件仅检查部署模式，未登录也会显示组织目录并触发 401。
-  // const showPublicCatalog =
-  //   accountStatus?.phase === 'signed-in' &&
-  //   (accountStatus.authMode === 'management-exchange' || accountStatus.authMode === 'management-oauth')
+  const showPublicCatalog =
+    accountStatus?.phase === 'signed-in' &&
+    (accountStatus.authMode === 'management-exchange' || accountStatus.authMode === 'management-oauth')
   // [enterprise] 「推荐」一级视图内的二级 tab 状态
-  // const [orgSubTab, setOrgSubTab] = useState<OrgSubTab>('recommended')
+  const [orgSubTab, setOrgSubTab] = useState<OrgSubTab>('recommended')
   const skillController = useResourceCatalogController('skill', { clientSideSkillSearch: true })
   const installedCount = skillController.gridProps.allResources.filter((resource) => resource.type === 'skill').length
 
@@ -104,8 +104,7 @@ export default function SkillsConnectorsPage({ connectorView }: SkillsConnectors
       <TabsContent value="skill" className="flex min-h-0 flex-1 flex-col">
         {skillView === 'recommended' ? (
           <>
-            {/* MEA：隐藏“推荐 / 公共”二级 tab 切换，默认继续展示推荐技能。 */}
-            {/* [enterprise] 推荐一级视图内分「推荐 / 组织」二级 tab；组织页为卡片式目录
+            {/* [enterprise] 推荐与公共目录共用搜索，公共目录保留登录限制。 */}
             <Tabs
               value={orgSubTab}
               onValueChange={(value) => setOrgSubTab(value as OrgSubTab)}
@@ -131,8 +130,8 @@ export default function SkillsConnectorsPage({ connectorView }: SkillsConnectors
                   <OrgSkillCatalogView search={recommendedSearch} />
                 </TabsContent>
               ) : null}
-            </Tabs> */}
-            <RecommendedSkillCatalogView search={recommendedSearch} onViewInstalled={() => setSkillView('installed')} />
+            </Tabs>
+            {/* <RecommendedSkillCatalogView search={recommendedSearch} onViewInstalled={() => setSkillView('installed')} /> */}
           </>
         ) : (
           <SkillCatalogView controller={skillController} secondary showDialogs={false} />

@@ -39,6 +39,8 @@ interface McpServerCardProps {
 const McpServerCard: FC<McpServerCardProps> = ({ server, onEdit, variant = 'settings' }) => {
   const { updateMcpServer, removeMcpServer } = useMcpServerMutations(server.id)
   const [loading, setLoading] = useState(false)
+  const [failedLogo, setFailedLogo] = useState<string | null>(null)
+  const logoUrl = server.logoUrl && failedLogo !== server.logoUrl ? server.logoUrl : ''
   const [version, setVersion] = useState<string | null>(null)
   const runtimeStatus = useMcpRuntimeStatus(server.id, server.isActive)
 
@@ -248,10 +250,17 @@ const McpServerCard: FC<McpServerCardProps> = ({ server, onEdit, variant = 'sett
             <div
               className={cn(
                 'flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full font-semibold text-sm',
-                !server.logoUrl && getConnectorFallbackStyle(server.name)
+                !logoUrl && getConnectorFallbackStyle(server.name)
               )}>
-              {server.logoUrl ? (
-                <img src={server.logoUrl} alt="" className="size-full object-cover" draggable={false} />
+              {/* 原无失败回退：<img src={server.logoUrl} alt="" className="size-full object-cover" draggable={false} /> */}
+              {logoUrl ? (
+                <img
+                  src={logoUrl}
+                  alt=""
+                  className="size-full object-cover"
+                  draggable={false}
+                  onError={() => setFailedLogo(logoUrl)}
+                />
               ) : (
                 getConnectorInitial(server.name)
               )}
@@ -320,7 +329,18 @@ const McpServerCard: FC<McpServerCardProps> = ({ server, onEdit, variant = 'sett
           ) : (
             <ActiveDot $state={server.isActive ? runtimeStatus.state : 'disabled'} />
           )}
-          {server.logoUrl && <ServerLogo src={server.logoUrl} alt={`${server.name} logo`} />}
+          {/* {server.logoUrl && <ServerLogo src={server.logoUrl} alt={`${server.name} logo`} />} */}
+          {logoUrl ? (
+            <ServerLogo src={logoUrl} alt={`${server.name} logo`} onError={() => setFailedLogo(logoUrl)} />
+          ) : (
+            <span
+              className={cn(
+                'flex size-8 shrink-0 items-center justify-center rounded-full font-semibold',
+                getConnectorFallbackStyle(server.name)
+              )}>
+              {getConnectorInitial(server.name)}
+            </span>
+          )}
           <ServerNameText title={server.name} className={server.isActive ? 'text-foreground' : 'text-muted-foreground'}>
             {server.name}
           </ServerNameText>

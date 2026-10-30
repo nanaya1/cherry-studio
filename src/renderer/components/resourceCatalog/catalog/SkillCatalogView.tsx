@@ -165,6 +165,34 @@ export function SkillCatalogView({
   const { resourceError, refetch, gridProps } = controller
   const [sourceFilter, setSourceFilter] = useState<SkillSourceFilter>('all')
   const [iconUrls, setIconUrls] = useState<Record<string, string>>({})
+  const [orgIconUrls, setOrgIconUrls] = useState<Record<string, string>>({})
+  useEffect(() => {
+    let cancelled = false
+    const copies = gridProps.resources.filter(
+      (resource) => resource.type === 'skill' && isOrgSkill(resource.raw.source, resource.raw.sourceUrl)
+    )
+    setOrgIconUrls({})
+    if (!copies.length) return
+    void ipcApi
+      .request('enterprise.skills.list', { force: true })
+      .then(({ skills }) => {
+        if (cancelled) return
+        const icons: Record<string, string> = {}
+        for (const resource of copies) {
+          if (resource.type !== 'skill') continue
+          const slug = resource.raw.sourceUrl?.match(/^org-skill:(.+)$/)?.[1]
+          const icon = skills.find((skill) => skill.slug === slug)?.iconUrl
+          if (icon) icons[resource.id] = icon
+        }
+        setOrgIconUrls(icons)
+      })
+      .catch((error) => {
+        if (!cancelled) logger.warn('Failed to resolve organization skill icons', { error })
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [gridProps.resources])
   const resources = gridProps.resources.filter((resource): resource is SkillResource => resource.type === 'skill')
   const iconSkillIds = useMemo(
     () =>
@@ -313,7 +341,12 @@ export function SkillCatalogView({
                   <SkillCard
                     key={resource.id}
                     resource={resource}
-                    iconUrl={iconUrls[resource.id]}
+                    // iconUrl={iconUrls[resource.id]}
+                    iconUrl={
+                      isOrgSkill(resource.raw.source, resource.raw.sourceUrl)
+                        ? orgIconUrls[resource.id]
+                        : iconUrls[resource.id]
+                    }
                     onOpen={() => gridProps.onEdit(resource)}
                     onDelete={() => gridProps.onDelete(resource)}
                   />

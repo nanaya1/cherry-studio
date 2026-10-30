@@ -16,6 +16,7 @@ const { authMock, apiMock, skillServiceMock, stateStoreMock, agentGlobalSkillSer
   },
   apiMock: {
     listSkills: vi.fn(),
+    downloadSkillPackage: vi.fn(),
     reportLifecycle: vi.fn()
   },
   skillServiceMock: {
@@ -65,6 +66,8 @@ vi.mock('@main/enterprise/OrgStateStore', () => ({
   OrgStateStore: class {}
 }))
 
+vi.mock('@main/ai/skills/skillArchive', () => ({ extractZip: vi.fn().mockResolvedValue(undefined) }))
+import { extractZip } from '@main/ai/skills/skillArchive'
 import { OrgSkillCatalog } from '@main/enterprise/OrgSkillCatalog'
 
 function makeItem(slug: string, contentHash: string, version = '1.0.0') {
@@ -111,6 +114,19 @@ describe('OrgSkillCatalog C1/C2/C4', () => {
     expect(skills[0].iconUrl).toBe('http://127.0.0.1:3000/api/skill-icons/safe/icon.png?v=h1')
     expect(skills[1].iconUrl).toBeNull()
     expect(skills[2].iconUrl).toBeNull()
+  })
+
+  it('保留后台上传的栅格 data 图标，拒绝 SVG 和脚本地址', async () => {
+    const iconUrl = 'data:image/png;base64,aGVsbG8='
+    apiMock.listSkills.mockResolvedValue({
+      skills: [
+        { ...makeItem('uploaded', 'h1'), iconUrl },
+        { ...makeItem('svg', 'h2'), iconUrl: 'data:image/svg+xml;base64,PHN2Zz4=' },
+        { ...makeItem('script', 'h3'), iconUrl: 'javascript:alert(1)' }
+      ]
+    })
+    const skills = await catalog.list(true)
+    expect(skills.map((skill) => skill.iconUrl)).toEqual([iconUrl, null, null])
   })
 
   // [enterprise] tags/categories 归一化：线上字符串数组 + 文档对象数组双形态 → 统一 {code,name}
@@ -347,6 +363,10 @@ describe('OrgSkillCatalog C1/C2/C4', () => {
     ;(catalog as unknown as { tarExtract: unknown }).tarExtract = tar
 
     await catalog.install('new-skill')
+    expect(extractZip).toHaveBeenCalledWith(expect.stringMatching(/\.zip$/), expect.any(String))
+    expect(installSkillDir.mock.calls[0][0]).toBe(vi.mocked(extractZip).mock.calls[0][1])
+    expect(installSkillDir.mock.calls[0][0]).toMatch(/[/\\]org-new-skill-[a-f0-9]{16}$/)
+    expect(tar).not.toHaveBeenCalled()
     expect(installSkillDir).toHaveBeenCalledWith(
       expect.stringContaining('new-skill'),
       'local',
@@ -356,6 +376,19 @@ describe('OrgSkillCatalog C1/C2/C4', () => {
     expect(stateStoreMock.upsert).not.toHaveBeenCalled()
     expect(stateStoreMock.clearDeleted).not.toHaveBeenCalled()
     expect(apiMock.reportLifecycle).toHaveBeenCalledWith('new-skill', 'install', { version: '1.0.0' })
+  })
+
+  it('不同技能目录独立且同一技能重复安装使用稳定目录名', async () => {
+    apiMock.listSkills.mockResolvedValue({ skills: [makeItem('alpha', 'a'), makeItem('beta', 'b')] })
+    ;(catalog as unknown as { downloadWithHash: unknown }).downloadWithHash = vi.fn().mockResolvedValue(undefined)
+    skillServiceMock.installSkillDir.mockResolvedValue({ id: 'installed' })
+    await catalog.install('alpha')
+    await catalog.install('beta')
+    await catalog.install('alpha')
+    const names = skillServiceMock.installSkillDir.mock.calls.map((call) => String(call[0]).split(/[/\\]/).pop())
+    expect(names[0]).not.toBe(names[1])
+    expect(names[0]).toBe(names[2])
+    expect(names.every((name) => /^org-[a-z0-9-]+-[a-f0-9]{16}$/.test(name!))).toBe(true)
   })
 
   // [enterprise] 显示名修复：服务端目录 name（如「企业代码评审规范」）必须作为 displayName
@@ -472,11 +505,14 @@ describe('OrgSkillCatalog C1/C2/C4', () => {
     vi.unstubAllGlobals()
   })
 
-  it('登录后 downloadWithHash 携带 Bearer token', async () => {
+  // 原用例仅断言直接 Bearer 请求；现在覆盖两种会话并验证统一下载通道。
+  it.each(['management-oauth', 'management-cookie'])('登录后 downloadWithHash 复用 %s 下载通道', async (authMode) => {
     ;(catalog as unknown as { auth: Record<string, unknown> }).auth = {
       ...authMock,
       apiClient: apiMock,
-      getValidSession: vi.fn().mockResolvedValue({ accessToken: 'group-token' })
+      getValidSession: vi
+        .fn()
+        .mockResolvedValue({ authMode, accessToken: authMode === 'management-cookie' ? '' : 'group-token' })
     }
     const tarball = await import('node:zlib').then((z) => z.gzipSync(Buffer.from('x')))
     const stream = new ReadableStream<Uint8Array>({
@@ -486,16 +522,19 @@ describe('OrgSkillCatalog C1/C2/C4', () => {
       }
     })
     const hash = (await import('node:crypto')).createHash('sha256').update(tarball).digest('hex')
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(stream, { status: 200, headers: { 'content-type': 'application/gzip' } })
-    )
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(stream, { status: 200, headers: { 'content-type': 'application/gzip' } }))
     vi.stubGlobal('fetch', fetchMock)
+    apiMock.downloadSkillPackage.mockImplementation(() => fetchMock())
 
     await (catalog as unknown as { downloadWithHash: (i: unknown, d: string) => Promise<void> }).downloadWithHash(
       { ...makeItem('grouped', hash), downloadUrl: '/api/library-items/1/download?format=binary' },
       '/tmp/grouped.zip'
     )
-    expect(fetchMock.mock.calls[0][1].headers.authorization).toBe('Bearer group-token')
+    // 原直接 fetch 的 Bearer 断言停用，传输鉴权在 OrgApiClient.test.ts 中覆盖。
+    // expect(fetchMock.mock.calls[0][1].headers.authorization).toBe('Bearer group-token')
+    expect(apiMock.downloadSkillPackage).toHaveBeenCalledWith('/api/library-items/1/download?format=binary')
     vi.unstubAllGlobals()
   })
 

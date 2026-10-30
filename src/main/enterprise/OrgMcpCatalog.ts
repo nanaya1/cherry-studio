@@ -7,7 +7,7 @@ import { mcpServerService } from '@data/services/McpServerService'
  */
 import { loggerService } from '@logger'
 import { profileSwitchFence } from '@main/core/profiles'
-import type { CreateMcpServerDto } from '@shared/data/api/schemas/mcpServers'
+import type { CreateMcpServerDto, UpdateMcpServerDto } from '@shared/data/api/schemas/mcpServers'
 import { UpdateMcpServerSchema } from '@shared/data/api/schemas/mcpServers'
 
 import type { OrgAuthManager } from './OrgAuthManager'
@@ -52,11 +52,17 @@ export class OrgMcpCatalog {
     return connectors
   }
 
-  private backfillCopyTags(catalog: OrgConnectorCatalogItem[], lease: ReturnType<OrgAuthManager['acquireLease']>): void {
+  private backfillCopyTags(
+    catalog: OrgConnectorCatalogItem[],
+    lease: ReturnType<OrgAuthManager['acquireLease']>
+  ): void {
     const local = mcpServerService.list({}).items
     for (const server of local) {
-      if (server.installSource !== 'manual' || server.tags?.includes('org')) continue
-      const matched = catalog.some((item) => {
+      // 原逻辑跳过已标记组织来源的副本，导致存量图标永远无法补齐。
+      // if (server.installSource !== 'manual' || server.tags?.includes('org')) continue
+      if (server.installSource !== 'manual') continue
+      // const matched = catalog.some((item) => {
+      const matched = catalog.find((item) => {
         if (server.name !== item.name || server.type !== item.type) return false
         if (item.type === 'stdio') {
           const expected = toCreateDto(item)
@@ -70,7 +76,13 @@ export class OrgMcpCatalog {
       if (matched) {
         this.auth.assertLease(lease)
         profileSwitchFence.assertWritable()
-        mcpServerService.update(server.id, { tags: [...(server.tags ?? []), 'org'] })
+        // mcpServerService.update(server.id, { tags: [...(server.tags ?? []), 'org'] })
+        const logoUrl = typeof matched.config.logoUrl === 'string' ? matched.config.logoUrl : ''
+        const patch: UpdateMcpServerDto = {
+          ...(!server.tags?.includes('org') ? { tags: [...(server.tags ?? []), 'org'] } : {}),
+          ...(logoUrl !== (server.logoUrl ?? '') ? { logoUrl } : {})
+        }
+        if (Object.keys(patch).length) mcpServerService.update(server.id, patch)
       }
     }
   }

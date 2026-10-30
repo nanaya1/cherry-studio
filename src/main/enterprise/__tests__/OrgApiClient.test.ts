@@ -39,6 +39,47 @@ describe('OrgApiClient server contract', () => {
     vi.unstubAllGlobals()
   })
 
+  it.each(['bearer', 'cookie'])('技能二进制下载复用 %s 鉴权且禁止重定向', async (mode) => {
+    const cookieFetch = vi.fn().mockResolvedValue(new Response('archive'))
+    fetchMock.mockResolvedValue(new Response('archive'))
+    const client = new OrgApiClient(
+      vi.fn().mockResolvedValue({
+        ...session(),
+        accessToken: mode === 'cookie' ? '' : 'download-token',
+        authMode: mode === 'cookie' ? 'management-cookie' : 'management-oauth'
+      }),
+      cookieFetch
+    )
+    const response = await client.downloadSkillPackage('/api/library-items/1/download?format=binary')
+    expect(await response.text()).toBe('archive')
+    const transport = mode === 'cookie' ? cookieFetch : fetchMock
+    expect(transport).toHaveBeenCalledWith(
+      expect.stringContaining('/api/library-items/1/download?format=binary'),
+      expect.objectContaining({ redirect: 'error' })
+    )
+    const init = transport.mock.calls[0][1]
+    if (mode === 'cookie') {
+      expect(init.credentials).toBe('include')
+      expect(init.headers.authorization).toBeUndefined()
+      expect(fetchMock).not.toHaveBeenCalled()
+    } else {
+      expect(init.headers.authorization).toBe('Bearer download-token')
+      expect(cookieFetch).not.toHaveBeenCalled()
+    }
+  })
+
+  it('技能下载拒绝外部 URL 和非技能路径且不发送凭据', async () => {
+    const client = new OrgApiClient(vi.fn().mockResolvedValue(session()))
+    for (const path of [
+      'https://evil.example/api/library-items/1/download',
+      '//evil.example/api/library-items/1/download',
+      '/api/users'
+    ]) {
+      await expect(client.downloadSkillPackage(path)).rejects.toThrow('技能包下载地址无效')
+    }
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   it.each(['bearer', 'cookie', 'refresh'])('分享失败原文透传且 %s 日志不含码或提取码', async (mode) => {
     shareWarn.mockClear()
     const errorResponse = () => new Response(JSON.stringify({ detail: '提取码不正确' }), { status: 403 })

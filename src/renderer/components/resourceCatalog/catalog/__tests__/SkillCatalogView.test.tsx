@@ -40,6 +40,7 @@ vi.mock('@cherrystudio/ui', async (importOriginal) => {
 
   return {
     ...actual,
+    AvatarImage: (props: ComponentProps<'img'>) => <img {...props} />,
     DropdownMenu: ({
       children,
       open,
@@ -192,6 +193,20 @@ describe('SkillCatalogView helpers', () => {
 })
 
 describe('SkillCatalogView', () => {
+  it('loads current organization icons for already installed copies without icon files', async () => {
+    const view = controller()
+    view.gridProps.resources.push(skill('org-copy', 'Org copy', 'local', undefined, 'org-skill:review'))
+    mocks.ipcRequest.mockImplementation(async (channel: string) =>
+      channel === 'enterprise.skills.list'
+        ? { skills: [{ slug: 'review', iconUrl: 'data:image/png;base64,aGVsbG8=' }] }
+        : {}
+    )
+    const { container } = render(<SkillCatalogView controller={view as never} />)
+    await waitFor(() =>
+      expect(container.querySelector('img[src="data:image/png;base64,aGVsbG8="]')).toBeInTheDocument()
+    )
+  })
+
   it('shows source counts and filters local, ZIP, and system skills as custom uploads', async () => {
     const user = userEvent.setup()
     render(<SkillCatalogView controller={controller() as never} />)

@@ -5,8 +5,10 @@ import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import type * as UI from '@cherrystudio/ui'
+
 const { orgSessionMock } = vi.hoisted(() => ({
-  orgSessionMock: { authMode: 'management-exchange' }
+  orgSessionMock: { phase: 'signed-in', authMode: 'management-exchange' }
 }))
 
 type MockSkillController = {
@@ -59,7 +61,7 @@ vi.mock('@renderer/components/resourceCatalog/catalog', () => ({
 }))
 
 vi.mock('@renderer/hooks/useOrgAccountSession', () => ({
-  useOrgAccountSession: () => ({ status: { authMode: orgSessionMock.authMode } })
+  useOrgAccountSession: () => ({ status: orgSessionMock })
 }))
 
 vi.mock('@renderer/hooks/resourceCatalog', () => ({
@@ -95,12 +97,17 @@ vi.mock('react-i18next', () => ({
   })
 }))
 
+vi.mock('@cherrystudio/ui', async (importOriginal) => ({
+  ...(await importOriginal<typeof UI>())
+}))
+
 import SkillsConnectorsPage from './SkillsConnectorsPage'
 
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
   orgSessionMock.authMode = 'management-exchange'
+  orgSessionMock.phase = 'signed-in'
 })
 
 describe('SkillsConnectorsPage', () => {
@@ -120,13 +127,28 @@ describe('SkillsConnectorsPage', () => {
   //   expect(screen.getByRole('tab', { name: 'Organization' })).toBeVisible()
   // })
 
-  it('hides recommended and public tab switching while keeping recommended skills visible', () => {
-    orgSessionMock.authMode = 'management-oauth'
+  it.each(['management-exchange', 'management-oauth'])(
+    'opens public skills for signed-in %s accounts',
+    async (authMode) => {
+      orgSessionMock.authMode = authMode
+      const user = userEvent.setup()
+      render(<SkillsConnectorsPage connectorView={<div>connector catalog</div>} />)
+
+      expect(screen.getByRole('tab', { name: 'Recommended skills' })).toHaveAttribute('aria-selected', 'true')
+      await user.click(screen.getByRole('tab', { name: 'Organization' }))
+      expect(screen.getByRole('tab', { name: 'Organization' })).toHaveAttribute('aria-selected', 'true')
+      expect(screen.getByRole('tab', { name: 'Recommended skills' })).toHaveAttribute('aria-selected', 'false')
+    }
+  )
+
+  it.each([
+    ['signed-out', 'management-exchange'],
+    ['signed-in', 'official-direct']
+  ])('hides public skills for %s / %s', (phase, authMode) => {
+    Object.assign(orgSessionMock, { phase, authMode })
     render(<SkillsConnectorsPage connectorView={<div>connector catalog</div>} />)
 
-    expect(screen.queryByRole('tab', { name: 'Recommended skills' })).not.toBeInTheDocument()
     expect(screen.queryByRole('tab', { name: 'Organization' })).not.toBeInTheDocument()
-    expect(screen.getByText('recommended skills:')).toBeVisible()
   })
 
   it('shows recommended skills by default and preserves access to installed skills', async () => {
@@ -137,8 +159,9 @@ describe('SkillsConnectorsPage', () => {
     // 上游原契约允许在推荐与公共目录之间切换，MEA 隐藏该二级切换栏。
     // expect(screen.getByRole('tab', { name: 'Recommended skills' })).toHaveClass('border-b-2')
     // expect(screen.getByRole('tab', { name: 'Organization' })).toHaveClass('border-b-2')
-    expect(screen.queryByRole('tab', { name: 'Recommended skills' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('tab', { name: 'Organization' })).not.toBeInTheDocument()
+    // 公共入口恢复后，推荐目录仍为默认视图。
+    expect(screen.getByRole('tab', { name: 'Recommended skills' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('tab', { name: 'Organization' })).toBeVisible()
     expect(screen.getByText('recommended skills:')).toBeVisible()
 
     await user.type(screen.getByPlaceholderText('library.toolbar.search_placeholder'), '周报')

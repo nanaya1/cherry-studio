@@ -28,6 +28,7 @@ const OrgConnectorList: FC<OrgConnectorListProps> = ({ variant = 'catalog' }) =>
   // const [searchText, setSearchText] = useState('')
   const [searchText] = useState('')
 
+  const [failedIcons, setFailedIcons] = useState<Set<string>>(() => new Set())
   const isCatalog = variant === 'catalog'
 
   useEffect(() => {
@@ -85,7 +86,9 @@ const OrgConnectorList: FC<OrgConnectorListProps> = ({ variant = 'catalog' }) =>
         <div className="grid @[1120px]/mcp-discover:grid-cols-4 @[560px]/mcp-discover:grid-cols-2 @[840px]/mcp-discover:grid-cols-3 grid-cols-1 gap-3">
           {filteredConnectors.map((connector) => {
             const installed = isInstalled(connector.name)
-            const logoUrl = typeof connector.config.logoUrl === 'string' ? connector.config.logoUrl : ''
+            // const logoUrl = typeof connector.config.logoUrl === 'string' ? connector.config.logoUrl : ''
+            const configuredLogo = typeof connector.config.logoUrl === 'string' ? connector.config.logoUrl : ''
+            const logoUrl = failedIcons.has(configuredLogo) ? '' : configuredLogo
             return (
               <div
                 key={connector.slug}
@@ -101,8 +104,15 @@ const OrgConnectorList: FC<OrgConnectorListProps> = ({ variant = 'catalog' }) =>
                         'flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full font-semibold text-sm',
                         !logoUrl && getConnectorFallbackStyle(connector.name)
                       )}>
+                      {/* 原无失败回退：<img src={logoUrl} alt="" className="size-full object-cover" draggable={false} /> */}
                       {logoUrl ? (
-                        <img src={logoUrl} alt="" className="size-full object-cover" draggable={false} />
+                        <img
+                          src={logoUrl}
+                          alt=""
+                          className="size-full object-cover"
+                          draggable={false}
+                          onError={() => setFailedIcons((previous) => new Set(previous).add(configuredLogo))}
+                        />
                       ) : (
                         getConnectorInitial(connector.name)
                       )}

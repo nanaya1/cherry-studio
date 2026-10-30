@@ -521,6 +521,16 @@ export class OrgApiClient {
     return { skills }
   }
 
+  /** 技能二进制响应复用目录的 Cookie/Bearer 鉴权，不允许跨源或重定向。 */
+  async downloadSkillPackage(path: string): Promise<Response> {
+    const base = new URL(getOrgApiBaseUrl())
+    const target = new URL(path, base)
+    if (target.origin !== base.origin || !target.pathname.startsWith('/api/library-items/')) {
+      throw new Error('技能包下载地址无效')
+    }
+    return this.sendAuth(`${target.pathname}${target.search}`, { redirect: 'error' })
+  }
+
   async listConnectors() {
     const result = await this.request<{
       items: Array<{ id: number; key: string; config: Record<string, unknown> }>

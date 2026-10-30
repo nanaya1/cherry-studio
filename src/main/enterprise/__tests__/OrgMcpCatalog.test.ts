@@ -91,6 +91,27 @@ describe('OrgMcpCatalog C6 compareAndSync', () => {
     vi.restoreAllMocks()
   })
 
+  it('目录加载时为已安装组织连接器补齐后台图标而不改连接配置', async () => {
+    const logoUrl = 'data:image/png;base64,aGVsbG8='
+    apiMock.listConnectors.mockResolvedValue({
+      connectors: [makeConnector('weather', 'http://w.example/sse', { config: { logoUrl } })]
+    })
+    mcpServiceMock.list.mockReturnValue({
+      items: [
+        {
+          id: 'copy',
+          name: 'weather',
+          type: 'sse',
+          baseUrl: 'http://w.example/sse',
+          installSource: 'manual',
+          tags: ['org']
+        }
+      ]
+    })
+    await catalog.list()
+    expect(mcpServiceMock.update).toHaveBeenCalledWith('copy', { logoUrl })
+  })
+
   it('migrateLegacyCopies 将旧 org MCP 改为 manual 且保留其他配置', () => {
     mcpServiceMock.list.mockReturnValue({
       items: [

@@ -13,6 +13,7 @@ import { promisify } from 'node:util'
 
 import { agentGlobalSkillService } from '@data/services/AgentGlobalSkillService'
 import { loggerService } from '@logger'
+import { extractZip } from '@main/ai/skills/skillArchive'
 import { profileSwitchFence } from '@main/core/profiles'
 
 import { getOrgApiBaseUrl } from './OrgApiClient'
@@ -66,6 +67,14 @@ export class OrgSkillCatalog {
       if (skill.iconUrl?.startsWith('/api/skill-icons/')) {
         const parsed = new URL(skill.iconUrl, getOrgApiBaseUrl())
         if (parsed.origin === new URL(getOrgApiBaseUrl()).origin) iconUrl = parsed.toString()
+      }
+      // 后台上传图标采用栅格 data URL；保持外链和 SVG 的拒绝策略。
+      if (
+        skill.iconUrl &&
+        skill.iconUrl.length <= 3 * 1024 * 1024 &&
+        /^data:image\/(?:png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$/.test(skill.iconUrl)
+      ) {
+        iconUrl = skill.iconUrl
       }
       // [enterprise] tags/categories 双形态归一化（见 normalizeFacets），渲染层恒拿到 {code,name}
       const categories = normalizeFacets(skill.categories)
@@ -185,16 +194,28 @@ export class OrgSkillCatalog {
     if (!item) throw new Error(`企业技能不存在: ${slug}`)
 
     const workDir = join(tmpdir(), `org-skill-${slug}-${Date.now()}`)
-    const tarballPath = join(workDir, `${slug}.tar.gz`)
-    const extractDir = join(workDir, 'extract')
+    // 原 tar.gz 文件名保留：const tarballPath = join(workDir, `${slug}.tar.gz`)
+    const tarballPath = join(workDir, 'skill.zip')
+    // 原固定目录会被安装器用作 folderName，导致不同技能都叫 extract。
+    // const extractDir = join(workDir, 'extract')
+    // 名称仅使用跨平台安全字符；摘要区分服务端、大小写及清洗后同名的 slug。
+    const folderLabel =
+      slug
+        .toLowerCase()
+        .replace(/[^a-z0-9-]/g, '-')
+        .slice(0, 40) || 'skill'
+    const folderHash = createHash('sha256').update(`${this.baseUrl()}\n${slug}`).digest('hex').slice(0, 16)
+    const extractDir = join(workDir, `org-${folderLabel}-${folderHash}`)
 
     try {
       await mkdir(extractDir, { recursive: true })
       await this.downloadWithHash(item, tarballPath)
-      await this.tarExtract('tar', ['-xzf', tarballPath, '-C', extractDir])
-
-      // tarball 结构：<slug>/SKILL.md
-      const skillDir = join(extractDir, slug)
+      // 停用旧 tar.gz / slug 子目录约定，当前服务端返回根目录为 SKILL.md 的规范 ZIP。
+      // await this.tarExtract('tar', ['-xzf', tarballPath, '-C', extractDir])
+      // const skillDir = join(extractDir, slug)
+      // 复用本地技能 ZIP 安全检查：路径越界、大小写碰撞、解压大小与文件数限制。
+      await extractZip(tarballPath, extractDir)
+      const skillDir = extractDir
       // [enterprise] copy 模式：组织仅提供下载目录，安装后作为普通本地技能管理。
       // 显示名修复：SKILL.md frontmatter 的 name 通常是 slug 形态（org-code-review），
       // 必须把服务端目录的 name/description 作为 displayName 传入，否则「我安装的」
@@ -275,7 +296,8 @@ export class OrgSkillCatalog {
     return this.auth.apiClient.reportLifecycle(slug, 'exec', detail)
   }
 
-  /** 下载 + sha256 边下边校验，不匹配即抛错（复用 OrgApiClient 逻辑太绕，这里独立实现） */
+  // 原说明：下载 + sha256 边下边校验，不匹配即抛错（复用 OrgApiClient 逻辑太绕，这里独立实现）。
+  /** 复用 OrgApiClient 的会话鉴权下载，流式计算 sha256，不匹配即抛错。 */
   private async downloadWithHash(item: OrgSkillCatalogItem, destPath: string): Promise<void> {
     // 原匿名下载停用：下载端点与目录读取使用同一分组鉴权，必须携带有效会话。
     // const session = await this.auth.getValidSession().catch(() => null)
@@ -287,9 +309,11 @@ export class OrgSkillCatalog {
     if (downloadUrl.origin !== baseUrl.origin || !downloadUrl.pathname.startsWith('/api/library-items/')) {
       throw new Error('技能包下载地址无效')
     }
-    const res = await fetch(downloadUrl, {
-      headers: { authorization: `Bearer ${session.accessToken}` }
-    })
+    // 停用独立 Bearer 下载：密码登录的 Cookie 会话没有 accessToken，会导致 401。
+    // const res = await fetch(downloadUrl, {
+    //   headers: { authorization: `Bearer ${session.accessToken}` }
+    // })
+    const res = await this.auth.apiClient.downloadSkillPackage(`${downloadUrl.pathname}${downloadUrl.search}`)
     if (!res.ok || !res.body) throw new Error(`技能包下载失败 (${res.status})`)
 
     const hash = createHash('sha256')

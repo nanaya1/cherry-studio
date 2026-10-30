@@ -35,7 +35,7 @@ type DiscoverTab = 'builtin' | 'marketplace'
 const primaryTabClassName =
   'h-10 flex-none rounded-none border-x-0 border-t-0 border-b-2 border-transparent bg-transparent px-1.5 font-medium text-muted-foreground shadow-none hover:bg-transparent hover:text-foreground data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none dark:data-[state=active]:border-foreground dark:data-[state=active]:bg-transparent'
 
-// MEA：连接器仅展示内置服务器和我的 MCP；改为 true 可恢复扩展目录原实现。
+// MEA：发现和服务商目录保持关闭，公共目录独立按登录状态展示。
 const showExtendedCatalog = false
 
 export default function McpCatalog() {
@@ -93,19 +93,19 @@ export default function McpCatalog() {
     <Tabs value={activeTab} onValueChange={changeTab} className="flex h-full min-h-0 flex-col gap-0">
       <div className="shrink-0 px-6 pt-5">
         <TabsList className="h-11 gap-6 rounded-none bg-transparent p-0">
-          {/* MEA：连接器只保留内置服务器和我的 MCP，原目录入口保留在下方注释。 */}
+          {/* MEA：保留内置服务器、公共与我的 MCP，其他入口继续停用。 */}
           <TabsTrigger value="builtin" className={primaryTabClassName}>
             {t('settings.mcp.builtinServers')}
           </TabsTrigger>
           {/* <TabsTrigger value="discover" className={primaryTabClassName}>
             {t('settings.mcp.discover')}
           </TabsTrigger> */}
-          {/* [enterprise] 组织连接器从发现页三级 tab 上移至二级
+          {/* [enterprise] 公共入口独立于发现及服务商目录。 */}
           {showPublicCatalog ? (
             <TabsTrigger value="org" className={primaryTabClassName}>
               {t('workspace.skillsConnectors.sources.org')}
             </TabsTrigger>
-          ) : null} */}
+          ) : null}
           {/* <TabsTrigger value="providers" className={primaryTabClassName}>
             {t('settings.mcp.providers')}
           </TabsTrigger> */}
@@ -136,8 +136,8 @@ export default function McpCatalog() {
         </TabsContent>
       )}
 
-      {/* [enterprise] 停用组织连接器目录内容，保留原实现以便恢复。 */}
-      {showExtendedCatalog && showPublicCatalog ? (
+      {/* {showExtendedCatalog && showPublicCatalog ? ( */}
+      {showPublicCatalog ? (
         <TabsContent value="org" className="min-h-0 flex-1">
           <Scrollbar className="@container/mcp-discover h-full px-6 py-5">
             <OrgConnectorList variant="catalog" />

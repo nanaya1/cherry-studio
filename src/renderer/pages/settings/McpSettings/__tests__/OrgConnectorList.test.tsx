@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   install: vi.fn(),
-  refetchMcpServers: vi.fn()
+  refetchMcpServers: vi.fn(),
+  config: {} as Record<string, string>
 }))
 
 vi.mock('@renderer/hooks/useOrgConnectors', () => ({
@@ -18,7 +19,7 @@ vi.mock('@renderer/hooks/useOrgConnectors', () => ({
         description: 'Weather connector',
         type: 'sse',
         baseUrl: 'https://enterprise.example/sse',
-        config: {}
+        config: mocks.config
       }
     ],
     loading: false,
@@ -49,8 +50,19 @@ import OrgConnectorList from '../OrgConnectorList'
 describe('OrgConnectorList', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mocks.config = {}
     mocks.install.mockResolvedValue(undefined)
     mocks.refetchMcpServers.mockResolvedValue(undefined)
+  })
+
+  it('shows configured icon and falls back to initial on image failure', () => {
+    mocks.config = { logoUrl: 'data:image/png;base64,aGVsbG8=' }
+    const { container } = render(<OrgConnectorList />)
+    const image = container.querySelector('img')!
+    expect(image).toHaveAttribute('src', mocks.config.logoUrl)
+    fireEvent.error(image)
+    expect(container.querySelector('img')).toBeNull()
+    expect(screen.getByText('W')).toBeInTheDocument()
   })
 
   it('refreshes My MCP after installing an organization connector', async () => {

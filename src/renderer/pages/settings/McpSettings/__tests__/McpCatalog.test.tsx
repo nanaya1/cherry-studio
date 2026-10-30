@@ -6,12 +6,14 @@ import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import type * as UI from '@cherrystudio/ui'
+
 const { orgSessionMock } = vi.hoisted(() => ({
-  orgSessionMock: { authMode: 'management-exchange' }
+  orgSessionMock: { phase: 'signed-in', authMode: 'management-exchange' }
 }))
 
 vi.mock('@renderer/hooks/useOrgAccountSession', () => ({
-  useOrgAccountSession: () => ({ status: { authMode: orgSessionMock.authMode } })
+  useOrgAccountSession: () => ({ status: orgSessionMock })
 }))
 
 vi.mock('@renderer/hooks/useMcpServer', () => ({
@@ -92,27 +94,53 @@ vi.mock('react-i18next', () => ({
   })
 }))
 
+vi.mock('@cherrystudio/ui', async (importOriginal) => ({
+  ...(await importOriginal<typeof UI>())
+}))
+
 import McpCatalog from '../McpCatalog'
 
 afterEach(() => {
   cleanup()
   orgSessionMock.authMode = 'management-exchange'
+  orgSessionMock.phase = 'signed-in'
 })
 
 describe('McpCatalog', () => {
-  // 上游原契约按登录模式显示发现、公共、服务商与我的 MCP，并允许在发现页切换市场。
-  // MEA 连接器目录只保留内置服务器与我的 MCP 两个入口。
-  it('only presents built-in servers and My MCP', async () => {
+  it.each([
+    ['signed-out', 'management-exchange'],
+    ['signed-in', 'official-direct']
+  ])('hides public MCP for %s / %s', (phase, authMode) => {
+    Object.assign(orgSessionMock, { phase, authMode })
+    render(<McpCatalog />)
+
+    expect(screen.queryByRole('tab', { name: 'Organization' })).not.toBeInTheDocument()
+  })
+
+  it('allows signed-in management OAuth accounts to open public MCP', async () => {
+    orgSessionMock.authMode = 'management-oauth'
+    const user = userEvent.setup()
+    render(<McpCatalog />)
+
+    await user.click(screen.getByRole('tab', { name: 'Organization' }))
+    expect(screen.getByRole('tab', { name: 'Organization' })).toHaveAttribute('aria-selected', 'true')
+  })
+
+  // 公共目录恢复后，发现和服务商入口仍须保持隐藏。
+  it('presents public MCP alongside built-in servers and My MCP without other catalogs', async () => {
     const user = userEvent.setup()
     render(<McpCatalog />)
 
     expect(screen.getByRole('tab', { name: 'Built-in Servers' })).toBeVisible()
     expect(screen.getByRole('tab', { name: 'My MCP' })).toBeVisible()
     expect(screen.queryByRole('tab', { name: 'Discover' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('tab', { name: 'Organization' })).not.toBeInTheDocument()
+    expect(screen.getByText('builtin catalog')).toBeVisible()
+    await user.click(screen.getByRole('tab', { name: 'Organization' }))
+    expect(screen.getByRole('tab', { name: 'Organization' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('tab', { name: 'Built-in Servers' })).toHaveAttribute('aria-selected', 'false')
     expect(screen.queryByRole('tab', { name: 'Providers' })).not.toBeInTheDocument()
     expect(screen.queryByRole('tab', { name: 'Marketplaces' })).not.toBeInTheDocument()
-    expect(screen.getByText('builtin catalog')).toBeVisible()
+    expect(screen.getByRole('tabpanel')).toHaveTextContent('organization catalog')
 
     await user.click(screen.getByRole('tab', { name: 'My MCP' }))
     expect(screen.getByText('installed catalog false')).toBeVisible()
