@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   addMcpServer: vi.fn(),
   ipcRequest: vi.fn(),
   navigate: vi.fn(),
+  quickCreateOnCreate: undefined as undefined | ((dto: unknown) => Promise<void>),
   pendingProtocolInstalls: [] as ProtocolMcpInstallRequest[],
   protocolInstallRequestId: 'request-1',
   refetch: vi.fn()
@@ -39,6 +40,7 @@ vi.mock('@renderer/ipc', () => ({
 
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => mocks.navigate,
+  useMatches: () => [],
   getRouteApi: () => ({
     useSearch: () => ({ protocolInstallRequestId: mocks.protocolInstallRequestId })
   })
@@ -47,7 +49,12 @@ vi.mock('@tanstack/react-router', () => ({
 vi.mock('@renderer/components/CollapsibleSearchBar', () => ({ default: () => null }))
 vi.mock('@renderer/pages/settings/DependenciesSettings/EnvironmentDependencies', () => ({ default: () => null }))
 vi.mock('../AddMcpServerModal', () => ({ default: () => null }))
-vi.mock('../QuickCreateMcpServerDialog', () => ({ default: () => null }))
+vi.mock('../QuickCreateMcpServerDialog', () => ({
+  default: ({ onCreate }: { onCreate: (dto: unknown) => Promise<void> }) => {
+    mocks.quickCreateOnCreate = onCreate
+    return null
+  }
+}))
 vi.mock('../McpServerCard', () => ({ default: () => null }))
 
 vi.mock('react-i18next', async (importOriginal) => {
@@ -108,6 +115,25 @@ describe('McpServersList protocol install', () => {
       throw new Error(`unexpected route: ${route}`)
     })
     mocks.refetch.mockResolvedValue(undefined)
+    mocks.addMcpServer.mockResolvedValue({ id: 'created-server-id' })
+  })
+
+  it('keeps the connector catalog open after quick creation', async () => {
+    render(<McpServersList variant="catalog" />)
+
+    await waitFor(() => expect(mocks.quickCreateOnCreate).toBeDefined())
+    await mocks.quickCreateOnCreate!({ name: 'created-server' })
+
+    expect(mocks.navigate).not.toHaveBeenCalled()
+  })
+
+  it('opens the editor after quick creation from settings', async () => {
+    render(<McpServersList />)
+
+    await waitFor(() => expect(mocks.quickCreateOnCreate).toBeDefined())
+    await mocks.quickCreateOnCreate!({ name: 'created-server' })
+
+    expect(mocks.navigate).toHaveBeenCalledWith({ to: '/settings/mcp/settings/created-server-id' })
   })
 
   it('waits for install confirmation, creates in order, and requests run confirmation for the last server', async () => {

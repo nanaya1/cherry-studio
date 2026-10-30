@@ -11,8 +11,19 @@ customizations:
   - id: product-identity
     title: MEA application identity and protocol
     owner: main
-    behavior: Keep MEACowork productName, com.meacowork.desktop appId, meacowork:// protocol, API gateway port 24333, and OpenClaw port 19790.
+    # behavior: Keep MEACowork productName, com.meacowork.desktop appId, meacowork:// protocol, API gateway port 24333, and OpenClaw port 19790.
+    behavior: Keep MEACowork productName, com.meacowork.desktop appId, meacowork:// protocol, API gateway port 24333, and OpenClaw port 19790. Preserve the blue-green brand icon across application packages, UI logos, default avatar, and tray icons; macOS tray artwork must retain a transparent monochrome mask.
     touchpoints:
+      - build/icon.png
+      - build/icon.ico
+      - build/icon.icns
+      - build/icons
+      - build/logo.png
+      - build/tray_icon.png
+      - build/tray_icon_dark.png
+      - build/tray_icon_light.png
+      - src/renderer/assets/images/logo.png
+      - src/renderer/assets/images/avatar.svg
       - package.json
       - electron-builder.yml
       - src/main/services/protocol/ProtocolService.ts
@@ -170,3 +181,12 @@ customizations:
       - src/renderer/i18n/locales
     tests:
       - scripts/__tests__/i18n-check-values.test.ts
+
+  - id: onboarding-language-options
+    title: Limit onboarding language selection
+    owner: renderer
+    behavior: Show only Simplified Chinese and English in the onboarding language picker; keep the full language catalog available elsewhere.
+    touchpoints:
+      - src/renderer/windows/main/onboarding/OnboardingPage.tsx
+    tests:
+      - src/renderer/windows/main/onboarding/__tests__/OnboardingPage.test.tsx

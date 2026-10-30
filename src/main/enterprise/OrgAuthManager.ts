@@ -16,7 +16,7 @@ import { parseOrgAuthCallback, type OrgAuthPhase } from './types'
 const logger = loggerService.withContext('OrgAuthManager')
 
 const ORG_BASE_URL = ORG_SERVER_BASE_URL
-const OFFICIAL_LOGIN_URL = import.meta.env.MAIN_VITE_OFFICIAL_LOGIN_URL?.trim() || 'https://mro.xuelangyun.com/login'
+const OFFICIAL_LOGIN_URL = import.meta.env.MAIN_VITE_OFFICIAL_LOGIN_URL?.trim() || 'https://www.xuelangyun.com/#/login?source=Cowork'
 // const REDIRECT_URI = 'meacowork://auth/sso/callback' // [enterprise] 官网登录地址不再拼接 redirect_uri
 
 interface PendingAuth {

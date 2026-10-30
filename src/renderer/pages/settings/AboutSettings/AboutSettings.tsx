@@ -96,8 +96,8 @@ const AboutSettings: FC = () => {
   // }
 
   // const mailto = async () => {
-  //   const email = 'mkt@xuelangyun.com'
-  //   const subject = 'Cherry Studio Feedback'
+  //   const email = 'mkt@xuelangyun.com'' // legacy rollback path
+  //   const subject = 'MEA Cowork Feedback'
   //   const version = (await ipcApi.request('app.get_info')).version
   //   const platform = window.electron.process.platform
   //   const url = `mailto:${email}?subject=${subject}&body=%0A%0AVersion: ${version} | Platform: ${platform}`

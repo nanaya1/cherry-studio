@@ -32,7 +32,7 @@ function resolveOfficialApiBaseUrl(): string {
     }
   }
 
-  const loginUrl = import.meta.env.MAIN_VITE_OFFICIAL_LOGIN_URL?.trim() || 'https://mro.xuelangyun.com/login'
+  const loginUrl = import.meta.env.MAIN_VITE_OFFICIAL_LOGIN_URL?.trim() || 'https://www.xuelangyun.com/#/login?source=Cowork'
   try {
     return new URL(loginUrl).origin
   } catch {

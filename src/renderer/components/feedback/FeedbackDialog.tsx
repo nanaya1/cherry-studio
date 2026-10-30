@@ -1,4 +1,5 @@
-import { Bot, ChevronRight, FileArchive, Github } from 'lucide-react'
+import { Bot, ChevronRight, FileArchive } from 'lucide-react'
+// import { Github } from 'lucide-react' // Temporarily hide the direct GitHub Issues entry.
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -22,10 +23,10 @@ import { ipcApi } from '@renderer/ipc'
 import { openRoute } from '@renderer/services/mainWindowNavigation'
 import { POPUP_EXIT_MS } from '@renderer/services/popup'
 import { toast } from '@renderer/services/toast'
-import { openExternalWebsite } from '@renderer/services/website'
+// import { openExternalWebsite } from '@renderer/services/website' // Used by the temporarily hidden GitHub Issues entry.
 
 // export const FEEDBACK_GITHUB_URL = 'https://github.com/CherryHQ/cherry-studio/issues/new/choose'
-export const FEEDBACK_GITHUB_URL = 'https://github.com/nanaya1/cherry-studio/issues/new/choose'
+export const FEEDBACK_GITHUB_URL = 'https://github.com/nanaya1/cherry-studio/issues/new/choose' // Temporarily hidden.
 
 const logger = loggerService.withContext('FeedbackDialog')
 
@@ -98,14 +99,14 @@ export function FeedbackDialog({ open, onOpenChange }: FeedbackDialogProps) {
     }
   }
 
-  const openGitHubIssue = async () => {
-    try {
-      await openExternalWebsite(FEEDBACK_GITHUB_URL)
-    } catch (error) {
-      logger.error('Failed to open GitHub issue chooser', error as Error)
-      toast.error(t('settings.about.feedback.github.error'))
-    }
-  }
+  // const openGitHubIssue = async () => {
+  //   try {
+  //     await openExternalWebsite(FEEDBACK_GITHUB_URL)
+  //   } catch (error) {
+  //     logger.error('Failed to open GitHub issue chooser', error as Error)
+  //     toast.error(t('settings.about.feedback.github.error'))
+  //   }
+  // }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -128,12 +129,15 @@ export function FeedbackDialog({ open, onOpenChange }: FeedbackDialogProps) {
             description={t('settings.about.feedback.agent.description')}
             onSelect={() => selectOption(openAgentFeedback)}
           />
+          {/* GitHub Issues entry temporarily hidden. */}
+          {/*
           <FeedbackOption
             icon={<Github className="size-5" />}
             title={t('settings.about.feedback.github.title')}
             description={t('settings.about.feedback.github.description')}
             onSelect={() => selectOption(openGitHubIssue)}
           />
+          */}
         </ItemGroup>
       </DialogContent>
     </Dialog>

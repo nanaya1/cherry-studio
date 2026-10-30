@@ -62,6 +62,7 @@ const ONBOARDING_PREFERENCE_KEYS = {
   dataCollectionEnabled: 'app.privacy.data_collection.enabled',
   policyVersion: 'app.privacy.policy_version'
 } as const
+const ONBOARDING_LANGUAGE_OPTIONS = appLanguageOptions.filter(({ value }) => value === 'zh-CN' || value === 'en-US')
 
 function OnboardingProviderSettings() {
   const router = useMemo(() => {
@@ -332,7 +333,7 @@ export default function OnboardingPage({
                 <SelectValue>{displayLanguageLabel}</SelectValue>
               </SelectTrigger>
               <SelectContent align="end">
-                {appLanguageOptions.map((option) => (
+                {ONBOARDING_LANGUAGE_OPTIONS.map((option) => (
                   <SelectItem key={option.value} value={option.value}>
                     <span aria-hidden="true">{option.flag}</span>
                     {option.label}

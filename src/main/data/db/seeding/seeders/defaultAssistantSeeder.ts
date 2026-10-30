@@ -21,7 +21,8 @@ export class DefaultAssistantSeeder implements ISeeder {
       assistant: DEFAULT_ASSISTANT_SEED,
       freshGuard: 'no active assistant/topic/message',
       localizedName: 'MEA Cowork for every locale',
-      stockRename: 'unique stock name=>MEA Cowork+builtinRole'
+      stockRename: 'unique stock name=>MEA Cowork+builtinRole',
+      icon: DEFAULT_ASSISTANT_SEED.emoji
     })
   }
 
