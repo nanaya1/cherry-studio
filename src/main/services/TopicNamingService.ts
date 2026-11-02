@@ -8,7 +8,8 @@ import type { AiGenerateRequest, AsInProcessChat } from '@main/ai/AiService'
 import { WindowType } from '@main/core/window/types'
 import { messageService } from '@main/data/services/MessageService'
 import { getAppLanguage } from '@main/i18n'
-import { XUELANG_DEFAULT_UNIQUE_MODEL_ID } from '@shared/data/presets/xuelang'
+// 停用：雪浪暂定模型已下线，自动命名无可用模型时直接跳过
+// import { XUELANG_DEFAULT_UNIQUE_MODEL_ID } from '@shared/data/presets/xuelang'
 import type { Message, MessageData, UIMessage } from '@shared/data/types/message'
 import { parseUniqueModelId, type UniqueModelId, UniqueModelIdSchema } from '@shared/data/types/model'
 import type { Topic } from '@shared/data/types/topic'
@@ -208,6 +209,7 @@ export class TopicNamingService {
       ]
 
       const uniqueModelId = this.resolveNamingModelId()
+      if (!uniqueModelId) return
       const title = await this.generateSummaryTitle(
         uniqueModelId,
         topicId,
@@ -305,6 +307,7 @@ export class TopicNamingService {
       if (session.isNameManuallyEdited) return
       if (!canAutoRenameAgentSessionName(session.name, userText)) return
       const uniqueModelId = this.resolveNamingModelId()
+      if (!uniqueModelId) return
 
       const structuredConversation: StructuredMessage[] = [
         { role: 'user', mainText: cleanMarkdownImages(userText) },
@@ -408,20 +411,20 @@ export class TopicNamingService {
     return (configuredPrompt || FALLBACK_PROMPT).replaceAll('{{language}}', language)
   }
 
-  private resolveNamingModelId(): UniqueModelId {
+  private resolveNamingModelId(): UniqueModelId | null {
     const preferenceService = application.get('PreferenceService')
 
     const configured =
       preferenceService.get('feature.quick_assistant.model_id') ?? preferenceService.get('chat.default_model_id')
-    const quickModelId = this.toUsableNamingModelId(configured)
-    if (quickModelId) return quickModelId
+    const usableModelId = this.toUsableNamingModelId(configured)
+    if (usableModelId) return usableModelId
     if (configured != null) {
-      logger.warn('Quick assistant model is not usable for topic naming; falling back to managed Xuelang default', {
-        configured
-      })
+      logger.warn('Configured model is not usable for topic naming; skipping automatic naming', { configured })
     }
 
-    return XUELANG_DEFAULT_UNIQUE_MODEL_ID
+    // 停用原雪浪暂定模型 fallback；该模型已下线，继续请求会触发 model not found
+    // return XUELANG_DEFAULT_UNIQUE_MODEL_ID
+    return null
   }
 
   /**
