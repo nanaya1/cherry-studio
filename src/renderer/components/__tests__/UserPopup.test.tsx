@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { POPUP_EXIT_MS, popupService } from '@renderer/services/popup'
 import type * as ImageUtils from '@renderer/utils/image'
+import type { EnterpriseStatus } from '@shared/ipc/schemas/enterprise'
 
 const mocks = vi.hoisted(() => ({
   appEdition: 'cn' as 'cn' | 'global',
@@ -14,7 +15,7 @@ const mocks = vi.hoisted(() => ({
     async (route: string): Promise<unknown> =>
       route === 'cherry_cloud.status.get' ? { phase: 'signed-out', displayName: null } : undefined
   ),
-  statusListener: null as ((status: { phase: string; displayName: string | null }) => void) | null
+  statusListener: null as ((status: EnterpriseStatus) => void) | null
 }))
 
 type PopoverContextValue = {
@@ -142,7 +143,7 @@ vi.mock('@renderer/services/popup', async (importOriginal) => await importOrigin
 
 vi.mock('@renderer/ipc', () => ({
   ipcApi: { request: mocks.ipcRequest },
-  useIpcOn: (_event: string, listener: (status: { phase: string; displayName: string | null }) => void) => {
+  useIpcOn: (_event: string, listener: (status: EnterpriseStatus) => void) => {
     mocks.statusListener = listener
   }
 }))
@@ -355,11 +356,22 @@ describe('UserPopup', () => {
 
   it('starts enterprise browser authorization', async () => {
     const user = userEvent.setup()
+    let authorizing = false
     mocks.ipcRequest.mockImplementation(async (route: string) => {
       if (route === 'enterprise.status.get')
-        return { phase: 'signed-out', authMode: 'official-direct', displayName: null, phone: null, role: null }
-      if (route === 'enterprise.login.start')
-        return { phase: 'authorizing', authMode: 'official-direct', displayName: null, phone: null, role: null }
+        return {
+          phase: authorizing ? 'authorizing' : 'signed-out',
+          authMode: 'management-oauth',
+          displayName: null,
+          phone: null,
+          role: null,
+          loginAttemptId: authorizing ? 'attempt-a' : null,
+          loginStartedAt: authorizing ? Date.now() : null
+        }
+      if (route === 'enterprise.login.start') {
+        authorizing = true
+        return { authorizationUrl: 'https://example.test/oauth' }
+      }
       if (route === 'enterprise.status.orgUnavailable') return { unavailable: false }
       return undefined
     })
@@ -369,8 +381,76 @@ describe('UserPopup', () => {
     await user.click(loginButton)
 
     expect(mocks.ipcRequest).toHaveBeenCalledWith('enterprise.login.start')
-    // Returns to the login action once the start request resolves (status unchanged → signed-out).
-    expect(await screen.findByRole('button', { name: 'settings.provider.org_service.login' })).toBeEnabled()
+    // start 仅返回 URL，不能提前恢复登录按钮。
+    expect(await screen.findByRole('button', { name: 'settings.provider.org_service.signing_in' })).toBeDisabled()
+  })
+
+  it('按主进程起始时间在 60 秒提示继续等待，取消只针对当前 attempt', async () => {
+    showUserPopup()
+    await screen.findByRole('button', { name: 'settings.provider.org_service.login' })
+    const user = userEvent.setup()
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] })
+    act(() =>
+      mocks.statusListener?.({
+        phase: 'authorizing',
+        displayName: null,
+        loginAttemptId: 'attempt-a',
+        loginStartedAt: Date.now() - 59_000
+      } as Parameters<NonNullable<typeof mocks.statusListener>>[0])
+    )
+    expect(screen.getByRole('button', { name: 'settings.provider.org_service.signing_in' })).toBeDisabled()
+    expect(screen.getByText('settings.provider.org_service.login_browser_hint')).toBeInTheDocument()
+    act(() => {
+      vi.advanceTimersByTime(999)
+    })
+    expect(screen.queryByText('settings.provider.org_service.login_wait_hint')).not.toBeInTheDocument()
+    act(() => {
+      vi.advanceTimersByTime(1)
+    })
+    expect(screen.getByText('settings.provider.org_service.login_wait_hint')).toBeInTheDocument()
+    vi.useRealTimers()
+    await user.click(screen.getByRole('button', { name: 'common.cancel' }))
+    expect(mocks.ipcRequest).toHaveBeenCalledWith('enterprise.login.cancel', { attemptId: 'attempt-a' })
+  })
+
+  it.each(['timeout', 'denied', 'failed'])('显示 %s 授权反馈并允许重新登录', async (loginError) => {
+    showUserPopup()
+    await screen.findByRole('button', { name: 'settings.provider.org_service.login' })
+    await act(async () => {
+      mocks.statusListener?.({ phase: 'signed-out', displayName: null, loginError } as Parameters<
+        NonNullable<typeof mocks.statusListener>
+      >[0])
+    })
+    expect(screen.getByRole('alert')).toHaveTextContent(`settings.provider.org_service.login_${loginError}`)
+    expect(screen.getByRole('button', { name: 'settings.provider.org_service.login' })).toBeEnabled()
+  })
+
+  it('重开弹窗保留原始等待时间且关闭不取消', async () => {
+    const base = mocks.ipcRequest.getMockImplementation()!
+    mocks.ipcRequest.mockImplementation(async (route: string) =>
+      route === 'enterprise.status.get'
+        ? {
+            phase: 'authorizing',
+            authMode: 'management-oauth',
+            displayName: null,
+            phone: null,
+            role: null,
+            loginAttemptId: 'a',
+            loginStartedAt: Date.now() - 61_000
+          }
+        : base(route)
+    )
+    showUserPopup()
+    expect(await screen.findByText('settings.provider.org_service.login_wait_hint')).toBeInTheDocument()
+    act(() => {
+      for (const entry of popupService.getSnapshot()) popupService.settle(entry.instanceId, {})
+    })
+    await waitFor(() => expect(popupService.getSnapshot()).toHaveLength(0))
+    act(() => {
+      void UserPopup.show()
+    })
+    expect(await screen.findByText('settings.provider.org_service.login_wait_hint')).toBeInTheDocument()
+    expect(mocks.ipcRequest.mock.calls.some(([route]) => route === 'enterprise.login.cancel')).toBe(false)
   })
 
   it('shows the enterprise login action regardless of edition', async () => {

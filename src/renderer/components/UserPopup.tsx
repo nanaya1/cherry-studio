@@ -70,6 +70,10 @@ const PopupContainer: React.FC<Props> = ({ open, resolve }) => {
     reload: loadOrgStatus,
     login: handleOrgLogin,
     logout: handleOrgLogout,
+    cancelLogin: handleOrgLoginCancel,
+    isCancellingLogin: isOrgCancellingLogin,
+    waitHintVisible,
+    loginError,
     isLoggingIn: isOrgLoggingIn,
     isLoggingOut: isOrgLoggingOut,
     // [enterprise] C3：登出后 org 资源标记"组织不可用"，重登自动恢复
@@ -347,6 +351,7 @@ const PopupContainer: React.FC<Props> = ({ open, resolve }) => {
                   <Button
                     className="w-full"
                     loading={isOrgLoggingIn}
+                    disabled={isOrgLoggingIn || orgStatus.phase === 'authorizing'}
                     onClick={() => void handleOrgLogin()}
                     variant="emphasis">
                     {/* 原硬编码：等待浏览器授权… / 登录 */}
@@ -354,6 +359,42 @@ const PopupContainer: React.FC<Props> = ({ open, resolve }) => {
                       ? t('settings.provider.org_service.signing_in')
                       : t('settings.provider.org_service.login')}
                   </Button>
+                  {isOrgLoggingIn ? (
+                    <>
+                      <div role="status" className="text-center text-foreground-tertiary text-xs leading-tight">
+                        {t(
+                          waitHintVisible
+                            ? 'settings.provider.org_service.login_wait_hint'
+                            : 'settings.provider.org_service.login_browser_hint'
+                        )}
+                      </div>
+                      {waitHintVisible ? (
+                        <div className="text-center text-foreground-tertiary text-xs leading-tight">
+                          {t('settings.provider.org_service.login_browser_hint')}
+                        </div>
+                      ) : null}
+                      <Button
+                        className="w-full"
+                        variant="outline"
+                        loading={isOrgCancellingLogin}
+                        disabled={!orgStatus.loginAttemptId}
+                        onClick={() => void handleOrgLoginCancel()}>
+                        {t('common.cancel')}
+                      </Button>
+                    </>
+                  ) : loginError ? (
+                    <div
+                      role="alert"
+                      className="rounded-lg border border-error-border bg-error-subtle px-3 py-2 text-center text-error-subtle-foreground text-xs">
+                      {t(
+                        loginError === 'timeout'
+                          ? 'settings.provider.org_service.login_timeout'
+                          : loginError === 'denied'
+                            ? 'settings.provider.org_service.login_denied'
+                            : 'settings.provider.org_service.login_failed'
+                      )}
+                    </div>
+                  ) : null}
                 </ColFlex>
               )
             ) : null}

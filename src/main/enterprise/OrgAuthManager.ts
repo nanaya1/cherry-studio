@@ -27,6 +27,13 @@ interface PendingAuth {
   state: string
   codeVerifier: string
   createdAt: number
+  deadline: number
+  authorizationUrl: string
+  timer: ReturnType<typeof setTimeout> | null
+  exchangeTimer: ReturnType<typeof setTimeout> | null
+  exchangeDeadline: number | null
+  controller: AbortController
+  exchanging: boolean
 }
 
 /** verifier 暂存 10 分钟，超时作废（页面登录成功但回调丢失时自动过期） */
@@ -39,6 +46,7 @@ export class OrgAuthManager {
   private session: OrgSession | null = null
   private pending: PendingAuth | null = null
   private refreshing: Promise<void> | null = null
+  private loginError: 'timeout' | 'failed' | 'denied' | null = null
 
   // [enterprise] 修复 401：apiClient 改用 getValidSession（过期自动刷新）。
   // 原裸会话注入注释保留：apiClient = new OrgApiClient(() => this.session)
@@ -54,6 +62,7 @@ export class OrgAuthManager {
   }
 
   getPhase(): OrgAuthPhase {
+    this.expirePending()
     if (this.pending) return 'authorizing'
     return this.session ? 'signed-in' : 'signed-out'
   }
@@ -64,18 +73,23 @@ export class OrgAuthManager {
       authMode: ORG_AUTH_MODE,
       displayName: this.session?.displayName ?? null,
       phone: this.session?.phone ?? null,
-      role: this.session?.role ?? null
+      role: this.session?.role ?? null,
+      loginAttemptId: this.pending?.state ?? null,
+      loginStartedAt: this.pending?.createdAt ?? null,
+      loginError: this.loginError
     }
   }
 
   /** 开始登录：生成 PKCE + 跳系统浏览器到管理端 /authorize */
   async startLogin(): Promise<{ authorizationUrl: string }> {
+    this.expirePending()
+    if (this.pending) return { authorizationUrl: this.pending.authorizationUrl }
     const state = randomBytes(16).toString('base64url')
     const codeVerifier = randomBytes(32).toString('base64url')
     const codeChallenge = createHash('sha256').update(codeVerifier).digest('base64url')
 
-    this.pending = { state, codeVerifier, createdAt: Date.now() }
-    this.emitStatus()
+    // this.pending = { state, codeVerifier, createdAt: Date.now() }
+    // this.emitStatus()
 
     const params = new URLSearchParams({
       response_type: 'code',
@@ -89,7 +103,31 @@ export class OrgAuthManager {
 
     // 摘要日志，不落 verifier
     logger.info('starting org login, opening system browser')
-    await shell.openExternal(authorizationUrl)
+    const createdAt = Date.now()
+    const pending: PendingAuth = {
+      state,
+      codeVerifier,
+      createdAt,
+      deadline: createdAt + PENDING_TTL_MS,
+      authorizationUrl,
+      timer: null,
+      exchangeTimer: null,
+      exchangeDeadline: null,
+      controller: new AbortController(),
+      exchanging: false
+    }
+    this.pending = pending
+    this.loginError = null
+    pending.timer = setTimeout(() => this.finishAttempt(pending, 'timeout'), PENDING_TTL_MS)
+    pending.timer.unref()
+    this.emitStatus()
+    // await shell.openExternal(authorizationUrl)
+    try {
+      await shell.openExternal(authorizationUrl)
+    } catch (error) {
+      this.finishAttempt(pending, 'failed')
+      throw error
+    }
     return { authorizationUrl }
   }
 
@@ -100,42 +138,68 @@ export class OrgAuthManager {
       logger.warn('org auth callback rejected: not a PKCE code+state callback')
       return
     }
-    const { code, state } = callback
-
+    // const { code, state } = callback
+    const { state } = callback
+    this.expirePending()
     const pending = this.pending
     if (!pending || pending.state !== state) {
       logger.warn('org auth callback state mismatch or expired')
-      this.pending = null
-      this.emitStatus()
+      // this.pending = null
+      // this.emitStatus()
       return
     }
-    if (Date.now() - pending.createdAt > PENDING_TTL_MS) {
-      logger.warn('org auth pending expired')
-      this.pending = null
-      this.emitStatus()
-      return
-    }
+    // if (Date.now() - pending.createdAt > PENDING_TTL_MS) { logger.warn('org auth pending expired')
+    //   this.pending = null; this.emitStatus(); return }
 
+    // MEA:enterprise-login 绝对截止时间统一由 expirePending 校验，旧回调不能结束新尝试。
+    if (pending.exchanging) return
+    if ('error' in callback) {
+      this.finishAttempt(pending, callback.error === 'access_denied' ? 'denied' : 'failed')
+      return
+    }
+    const { code } = callback
+    pending.exchanging = true
+    pending.exchangeDeadline = Date.now() + 30_000
+    pending.exchangeTimer = setTimeout(() => this.finishAttempt(pending, 'timeout'), 30_000)
+    pending.exchangeTimer.unref()
+    const aborted = new Promise<never>((_, reject) => {
+      pending.controller.signal.addEventListener('abort', () => reject(new Error('org login aborted')), { once: true })
+    })
     try {
-      const res = await fetch(`${ORG_BASE_URL}/api/token`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-          grant_type: 'authorization_code',
-          code,
-          code_verifier: pending.codeVerifier,
-          client_id: CLIENT_ID,
-          redirect_uri: REDIRECT_URI
-        })
-      })
+      // const res = await fetch(`${ORG_BASE_URL}/api/token`, {
+      const res = await Promise.race([
+        fetch(`${ORG_BASE_URL}/api/token`, {
+          signal: pending.controller.signal,
+          method: 'POST',
+          headers: { 'content-type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({
+            grant_type: 'authorization_code',
+            code,
+            code_verifier: pending.codeVerifier,
+            client_id: CLIENT_ID,
+            redirect_uri: REDIRECT_URI
+          })
+          // })
+        }),
+        aborted
+      ])
       if (!res.ok) throw new Error(`token exchange failed (${res.status})`)
-      const data = (await res.json()) as {
+      // const data = (await res.json()) as {
+      const data = (await Promise.race([res.json(), aborted])) as {
         access_token: string
         refresh_token: string
         expires_in: number
-        user: { id: string | number; username?: string | null; displayName?: string | null; phone?: string | null; role?: string | null }
+        user: {
+          id: string | number
+          username?: string | null
+          displayName?: string | null
+          phone?: string | null
+          role?: string | null
+        }
       }
 
+      this.expirePending()
+      if (this.pending !== pending || pending.controller.signal.aborted) return
       this.session = {
         authMode: 'management-oauth',
         authOrigin: ORG_BASE_URL,
@@ -149,24 +213,57 @@ export class OrgAuthManager {
         expiresAt: Date.now() + data.expires_in * 1000
       }
       this.credentialStore.save(this.session)
-      this.pending = null
+      // this.pending = null
+      this.finishAttempt(pending, null)
       // [enterprise] copy 模式：已安装资源属于本地，登录只恢复组织目录访问。
       // orgStateStore.markAvailable()
       logger.info('org login succeeded', { phone: this.session.phone, role: this.session.role })
       this.emitStatus()
     } catch (error) {
+      this.expirePending()
+      if (this.pending !== pending || pending.controller.signal.aborted) return
       logger.error('org auth callback failed', error as Error)
-      this.pending = null
-      this.emitStatus()
+      // this.pending = null
+      // this.emitStatus()
+      this.finishAttempt(pending, 'failed')
       throw error
     }
   }
 
+  cancelLogin(attemptId: string): { ok: boolean } {
+    this.expirePending()
+    const pending = this.pending
+    if (!pending || pending.state !== attemptId) return { ok: false }
+    this.finishAttempt(pending, null)
+    return { ok: true }
+  }
+
+  private expirePending(): void {
+    const pending = this.pending
+    if (
+      pending &&
+      (Date.now() >= pending.deadline || (pending.exchangeDeadline !== null && Date.now() >= pending.exchangeDeadline))
+    ) {
+      this.finishAttempt(pending, 'timeout')
+    }
+  }
+
+  private finishAttempt(pending: PendingAuth, error: typeof this.loginError): void {
+    if (this.pending !== pending) return
+    this.pending = null
+    this.loginError = error
+    if (pending.timer) clearTimeout(pending.timer)
+    if (pending.exchangeTimer) clearTimeout(pending.exchangeTimer)
+    pending.controller.abort()
+    this.emitStatus()
+  }
 
   /** 退出登录：清内存 + 清文件（T0 不调服务端 revoke，refresh 14 天自然过期） */
   logout(): void {
     this.session = null
-    this.pending = null
+    // this.pending = null
+    if (this.pending) this.finishAttempt(this.pending, null)
+    this.loginError = null
     this.credentialStore.clear()
     // [enterprise] copy 模式：登出仅结束目录访问，已安装的本地副本继续可用。
     // orgStateStore.markUnavailable()
@@ -202,6 +299,8 @@ export class OrgAuthManager {
       })
       if (!res.ok) throw new Error(`refresh failed (${res.status})`)
       const data = (await res.json()) as { accessToken: string; refreshToken: string; expiresIn: number }
+      // MEA:enterprise-login 旧刷新不得在登出或换会话后写回凭据。
+      if (this.session !== current) return
       // 轮换语义：服务端已作废旧 refresh，必须一并替换；保持现有 expiresIn 更新
       this.session = {
         ...current,
@@ -211,6 +310,7 @@ export class OrgAuthManager {
       }
       this.credentialStore.save(this.session)
     } catch (error) {
+      if (this.session !== current) return
       logger.warn('org session refresh failed, signing out locally', { error: String(error) })
       this.logout()
     }

@@ -3,6 +3,15 @@ import { describe, expect, it } from 'vitest'
 import { parseOrgAuthCallback } from '../types'
 
 describe('parseOrgAuthCallback (PKCE code+state)', () => {
+  it('接受带 state 的 OAuth error，拒绝缺失 state 及错误入口', () => {
+    expect(parseOrgAuthCallback(new URL('meacowork://auth/sso/callback?error=access_denied&state=xyz'))).toEqual({
+      error: 'access_denied',
+      state: 'xyz'
+    })
+    expect(parseOrgAuthCallback(new URL('meacowork://auth/sso/callback?error=access_denied'))).toBeNull()
+    expect(parseOrgAuthCallback(new URL('meacowork://other/sso/callback?error=access_denied&state=xyz'))).toBeNull()
+  })
+
   it('接受 PKCE 回调 meacowork://auth/sso/callback?code&state', () => {
     expect(parseOrgAuthCallback(new URL('meacowork://auth/sso/callback?code=abc&state=xyz'))).toEqual({
       code: 'abc',

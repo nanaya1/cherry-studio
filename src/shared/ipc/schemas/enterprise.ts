@@ -11,7 +11,10 @@ export const enterpriseStatusSchema = z.strictObject({
   authMode: z.literal('management-oauth'),
   displayName: z.string().nullable(),
   phone: z.string().nullable(),
-  role: z.string().nullable()
+  role: z.string().nullable(),
+  loginAttemptId: z.string().nullable().optional(),
+  loginStartedAt: z.number().nullable().optional(),
+  loginError: z.enum(['timeout', 'failed', 'denied']).nullable().optional()
 })
 
 export type EnterpriseStatus = z.infer<typeof enterpriseStatusSchema>
@@ -50,6 +53,10 @@ export const enterpriseRequestSchemas = {
   'enterprise.login.start': defineRoute({
     input: z.void(),
     output: z.strictObject({ authorizationUrl: z.string() })
+  }),
+  'enterprise.login.cancel': defineRoute({
+    input: z.strictObject({ attemptId: z.string() }),
+    output: z.strictObject({ ok: z.boolean() })
   }),
   'enterprise.session.logout': defineRoute({ input: z.void(), output: z.strictObject({ ok: z.boolean() }) }),
   'enterprise.skills.list': defineRoute({

@@ -76,14 +76,21 @@ export type OrgAuthPhase = 'signed-out' | 'authorizing' | 'signed-in'
  * [enterprise] PKCE OAuth 回调 URL 解析：meacowork://auth/sso/callback?code=..&state=..
  * 仅接受该 scheme/host/path；官网 token 回调不在此模式中处理。
  */
-export function parseOrgAuthCallback(url: URL): { code: string; state: string } | null {
+// export function parseOrgAuthCallback(url: URL): { code: string; state: string } | null {
+export function parseOrgAuthCallback(
+  url: URL
+): { code: string; state: string } | { error: string; state: string } | null {
   if (url.protocol !== 'meacowork:' || url.hostname.toLowerCase() !== 'auth' || url.pathname !== '/sso/callback') {
     return null
   }
   const params = new URLSearchParams(url.search)
   const code = params.get('code')
   const state = params.get('state')
-  if (!code || !state) return null
+  // if (!code || !state) return null
+  if (!state) return null
+  const error = params.get('error')
+  if (error) return { error, state }
+  if (!code) return null
   return { code, state }
 }
 
