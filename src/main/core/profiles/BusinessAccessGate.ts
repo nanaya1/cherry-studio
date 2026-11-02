@@ -61,7 +61,10 @@ export class BusinessAccessGate {
 
   /** Record a failed verification: block. Ignored if already durable-blocked. */
   recordVerificationFailure(reason: string, retryable = false): void {
+    this.enforceDeadline()
     if (this.currentState.kind === 'blocked' || this.currentState.kind === 'restart-required') return
+    // Temporary failures cannot shorten or extend a previously verified lease.
+    if (retryable && this.isAllowed()) return
     this.currentState = { kind: 'blocked', reason, ...(retryable ? { retryable: true } : {}) }
   }
 

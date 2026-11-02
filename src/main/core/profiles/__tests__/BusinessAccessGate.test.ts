@@ -87,6 +87,30 @@ describe('BusinessAccessGate', () => {
     expect(gate.state.kind).toBe('blocked')
   })
 
+  it('preserves only the remaining lease on retryable failures', () => {
+    let now = 0
+    const gate = makeGate(() => now)
+    gate.recordVerificationSuccess()
+    now = 900
+    gate.recordVerificationFailure('network unavailable', true)
+    expect(gate.isAllowed()).toBe(true)
+    expect(() => gate.assertReadable()).not.toThrow()
+    expect(() => gate.assertWritable()).not.toThrow()
+    now = 999
+    gate.recordVerificationFailure('still unavailable', true)
+    expect(gate.isAllowed()).toBe(true)
+    now = 1000
+    expect(gate.isAllowed()).toBe(false)
+    gate.recordVerificationSuccess()
+    expect(gate.isAllowed()).toBe(false)
+  })
+
+  it('does not grant access on a retryable failure before any successful verification', () => {
+    const gate = makeGate(() => 0)
+    gate.recordVerificationFailure('offline', true)
+    expect(gate.isAllowed()).toBe(false)
+  })
+
   it('transitions to blocked on verification failure', () => {
     const now = 0
     const gate = makeGate(() => now)
