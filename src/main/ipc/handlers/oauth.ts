@@ -45,6 +45,6 @@ export const oauthHandlers: IpcHandlersFor<typeof oauthRequestSchemas> = {
     return application.get('CodeCliService').checkClaudeLogin()
   },
   'oauth.provision_api_keys': ({ providerId }) => mapOAuthServiceError(runtime().provisionApiKeys(providerId)),
-  'oauth.start_deep_link_flow': ({ providerId, oauthServer, apiHost }, ctx) =>
-    runtime().startDeepLinkFlow(ctx.senderId, providerId, { oauthServer, apiHost: apiHost ?? oauthServer })
+  'oauth.start_deep_link_flow': ({ providerId, oauthServer, apiHost, requestId }, ctx) =>
+    runtime().startDeepLinkFlow(ctx.senderId, providerId, { oauthServer, apiHost: apiHost ?? oauthServer, requestId })
 }

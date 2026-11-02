@@ -71,6 +71,7 @@ export interface OAuthRuntimeProviderContext {
   oauthServer?: string
   apiHost?: string
   forceRefresh?: boolean
+  requestId?: string
   signal?: AbortSignal
 }
 

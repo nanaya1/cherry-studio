@@ -48,12 +48,19 @@ export const oauthRequestSchemas = {
   'oauth.tokendance.authorize_api_key': defineRoute({ input: z.void(), output: z.string().min(1) }),
   'oauth.check_external_login': defineRoute({ input: providerInput, output: z.boolean() }),
   'oauth.start_deep_link_flow': defineRoute({
-    input: z.object({ providerId: z.string(), oauthServer: z.string(), apiHost: z.string().optional() }),
+    input: z.object({
+      providerId: z.string(),
+      oauthServer: z.string(),
+      apiHost: z.string().optional(),
+      requestId: z.string().min(1)
+    }),
     output: z.object({ authUrl: z.string(), state: z.string() })
   })
 }
 
 /** Main → initiator-window deep-link OAuth outcome, keyed by state. */
 export type OAuthEventSchemas = {
-  'oauth.deep_link_result': { state: string; apiKeys: string } | { state: string; error: string; code?: string }
+  'oauth.deep_link_result': ({ state: string; apiKeys: string } | { state: string; error: string; code?: string }) & {
+    requestId?: string
+  }
 }

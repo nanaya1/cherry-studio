@@ -22,7 +22,7 @@ export interface DeepLinkAuthorizationRequest {
 // Exactly one of the two outcomes — a successful exchange carries the optional
 // API keys the side effect produced, a failure carries the error message. The
 // union keeps the two mutually exclusive so callers can't send both or neither.
-export type DeepLinkResult = { apiKeys: string } | { error: string; code?: string }
+export type DeepLinkResult = ({ apiKeys: string } | { error: string; code?: string }) & { requestId?: string }
 
 export interface DeepLinkAuthorizationCallback {
   state: string
@@ -133,7 +133,10 @@ export class DeepLinkCallbackTransport {
       'error' in result
         ? { state, error: result.error, ...(result.code ? { code: result.code } : {}) }
         : { state, apiKeys: result.apiKeys }
-    application.get('IpcApiService').send(windowId, 'oauth.deep_link_result', payload)
+    application.get('IpcApiService').send(windowId, 'oauth.deep_link_result', {
+      ...payload,
+      ...(result.requestId ? { requestId: result.requestId } : {})
+    })
   }
 
   getInitiatorWindowId(state: string): WindowId | null {

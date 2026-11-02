@@ -37,7 +37,8 @@ customizations:
   - id: enterprise-login
     title: 企业 OAuth 登录生命周期与等待恢复
     owner: main
-    behavior: 企业登录保持单一 PKCE attempt，重复 start 不重开浏览器；10 分钟绝对截止时间和 token exchange 的独立 30 秒超时覆盖休眠及响应体阻塞。取消只接受当前 attempt，旧回调、浏览器失败及 refresh 不得覆盖新尝试或复活已退出会话。UI 禁止重复登录、支持取消、等待提示和错误恢复；start 后查询权威状态，cancel true/false 均校准会话，广播丢失时按主进程开始时间在 deadline 单次查询，迟到查询不得覆盖新事件；登出不影响已复制资源。
+    # behavior: 企业登录保持单一 PKCE attempt，重复 start 不重开浏览器；10 分钟绝对截止时间和 token exchange 的独立 30 秒超时覆盖休眠及响应体阻塞。取消只接受当前 attempt，旧回调、浏览器失败及 refresh 不得覆盖新尝试或复活已退出会话。UI 禁止重复登录、支持取消、等待提示和错误恢复；start 后查询权威状态，cancel true/false 均校准会话，广播丢失时按主进程开始时间在 deadline 单次查询，迟到查询不得覆盖新事件；登出不影响已复制资源。
+    behavior: 企业登录保持单一 PKCE attempt，重复 start 不重开浏览器；10 分钟绝对截止时间和 token exchange 的独立 30 秒超时覆盖休眠及响应体阻塞。取消只接受当前 attempt，旧回调、浏览器失败及 refresh 不得覆盖新尝试或复活已退出会话。UI 禁止重复登录、支持取消、等待提示和错误恢复；start 后查询权威状态，cancel true/false 均校准会话，广播丢失时按主进程开始时间在 deadline 单次查询，迟到查询不得覆盖新事件；登出不影响已复制资源。弹窗关闭清除局部错误，初开、重开及卸载重建不回放历史 timeout/failed/denied；当前窗口新事件及本次 start/cancel 结果仍反馈，关闭不取消授权，重开按真实状态恢复 60 秒等待提示。
     markers:
       - MEA:enterprise-login
     touchpoints:
@@ -66,6 +67,25 @@ customizations:
     tests:
       - src/main/services/oauth/__tests__/GatewayOAuthConfigs.test.ts
       - src/main/services/oauth/runtime/__tests__/DeepLinkCallbackTransport.test.ts
+
+  - id: xuelang-oauth-lifecycle
+    title: 雪浪工匠授权取消与全程超时恢复
+    owner: main
+    behavior: 雪浪 deep-link attempt 按窗口和 requestId 隔离，允许随时取消；60 秒显示等待提醒，10 分钟 watchdog 覆盖 start IPC、浏览器打开和异步保存。取消或过期后迟到交换不得开始写入，persist await 前后及后续副作用检查 attempt；同 provider 新尝试不受旧结果影响。已提交写入不承诺回滚，卸载不主动取消但使旧组件保存失效；保持 CherryIN 与协议入口不变。审查补齐 CherryIN 既有的服务器上下文匹配及 preset 派生识别契约。
+    markers:
+      - MEA:xuelang-oauth-lifecycle
+    touchpoints:
+      - src/main/services/oauth/runtime/OAuthRuntimeService.ts
+      - src/main/services/oauth/runtime/DeepLinkCallbackTransport.ts
+      - src/main/services/oauth/runtime/types.ts
+      - src/main/ipc/handlers/oauth.ts
+      - src/shared/ipc/schemas/oauth.ts
+      - src/renderer/services/oauth.ts
+      - src/renderer/pages/settings/ProviderSettings/ProviderSpecific/CherryInOauth.tsx
+    tests:
+      - src/main/services/oauth/runtime/__tests__/OAuthRuntimeService.integration.test.ts
+      - src/renderer/services/__tests__/oauth.test.ts
+      - src/renderer/pages/settings/ProviderSettings/__tests__/CherryInOauth.test.tsx
 
   - id: provider-branding
     title: Xuelang provider branding and catalog

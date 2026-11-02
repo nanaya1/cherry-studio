@@ -32,6 +32,15 @@ const TOKEN_EXPIRY_BUFFER_MS = 60 * 1000
  */
 type RefreshResult = { status: 'ok'; accessToken: string } | { status: 'terminal' } | { status: 'retriable' }
 
+type DeepLinkAttempt = {
+  windowId: WindowId
+  requestId: string
+  deadline: number
+  state?: string
+  timer: ReturnType<typeof setTimeout>
+  cancelled: boolean
+}
+
 type ActiveSignIn = {
   operation: {
     initiatorWindowId: WindowId
@@ -71,6 +80,8 @@ export class OAuthRuntimeService extends BaseService {
   private readonly deepLinkTransports = new Map<string, DeepLinkCallbackTransport>()
   private readonly refreshPromises = new Map<string, Promise<RefreshResult>>()
   private readonly activeSignIns = new Map<string, ActiveSignIn>()
+  // MEA:xuelang-oauth-lifecycle 回调消费后仍保留 attempt，隔离交换和持久化的迟到结果。
+  private readonly deepLinkAttempts = new Map<string, DeepLinkAttempt>()
   private stopping = false
   private teardownPromise: Promise<void> | null = null
 
@@ -91,6 +102,11 @@ export class OAuthRuntimeService extends BaseService {
     if (this.teardownPromise) return this.teardownPromise
 
     this.stopping = true
+    for (const attempt of this.deepLinkAttempts.values()) {
+      attempt.cancelled = true
+      clearTimeout(attempt.timer)
+    }
+    this.deepLinkAttempts.clear()
     const activePromises = [...this.activeSignIns.values()].map(({ operation, promise }) => {
       if (this.isSignInCancellable(operation.phase)) operation.controller.abort()
       return promise
@@ -156,9 +172,12 @@ export class OAuthRuntimeService extends BaseService {
   private async persistTokens(
     definition: OAuthRuntimeProviderDefinition,
     tokenData: { access_token: string; refresh_token?: string; expires_in?: number },
-    options?: { expectedRefreshToken?: string }
+    options?: { expectedRefreshToken?: string },
+    check?: () => void
   ): Promise<void> {
+    check?.()
     const current = await this.tokenStore.get(definition.providerId)
+    check?.()
     const accountId = definition.extractAccountId?.(tokenData.access_token) ?? current?.accountId
     await this.tokenStore.set(
       definition.providerId,
@@ -171,6 +190,7 @@ export class OAuthRuntimeService extends BaseService {
       definition.clientId,
       options
     )
+    check?.()
   }
 
   private runSignIn = async (
@@ -309,6 +329,14 @@ export class OAuthRuntimeService extends BaseService {
   public cancelSignIn = async (senderId: WindowId | null, providerId: string, requestId: string): Promise<void> => {
     if (!senderId) throw new OAuthServiceError('OAuth flow caller is not a managed window')
     this.getDefinition(providerId)
+    const deepLink = this.deepLinkAttempts.get(providerId)
+    if (deepLink?.windowId === senderId && deepLink.requestId === requestId) {
+      deepLink.cancelled = true
+      clearTimeout(deepLink.timer)
+      this.deepLinkAttempts.delete(providerId)
+      this.deepLinkTransports.get(providerId)?.close()
+      return
+    }
     const activeSignIn = this.activeSignIns.get(providerId)
     if (
       !activeSignIn ||
@@ -336,9 +364,62 @@ export class OAuthRuntimeService extends BaseService {
     }
     const definition = this.getDefinition(providerId)
     const transport = this.getDeepLinkTransport(definition)
+    /* 原流程直接创建客户端并注册回调；现先预留 attempt，隔离等待期间的交叉登录。
     const client = await definition.createClient(context)
     const { authUrl, state, codeVerifier } = client.createAuthorizationRequest()
     return transport.registerAuthorizationRequest(authUrl, state, codeVerifier, initiatorWindowId, context)
+    */
+    if (this.stopping) throw new OAuthServiceError('OAuth runtime is stopping')
+    const existing = this.deepLinkAttempts.get(providerId)
+    if (existing && Date.now() < existing.deadline) throw new OAuthServiceError('A sign-in is already in progress')
+    if (existing) {
+      existing.cancelled = true
+      clearTimeout(existing.timer)
+      transport.close()
+    }
+    const attempt = {
+      windowId: initiatorWindowId,
+      requestId: context.requestId ?? '',
+      deadline: Date.now() + SIGN_IN_TIMEOUT_MS,
+      cancelled: false,
+      state: undefined as string | undefined,
+      timer: setTimeout(() => {
+        attempt.cancelled = true
+        if (this.deepLinkAttempts.get(providerId) === attempt) {
+          this.deepLinkAttempts.delete(providerId)
+          transport.close()
+        }
+      }, SIGN_IN_TIMEOUT_MS)
+    }
+    this.deepLinkAttempts.set(providerId, attempt)
+    try {
+      const client = await definition.createClient(context)
+      this.checkDeepLinkAttempt(providerId, attempt)
+      const { authUrl, state, codeVerifier } = client.createAuthorizationRequest()
+      attempt.state = state
+      return transport.registerAuthorizationRequest(authUrl, state, codeVerifier, initiatorWindowId, context)
+    } catch (error) {
+      this.finishDeepLinkAttempt(providerId, attempt)
+      throw error
+    }
+  }
+
+  private checkDeepLinkAttempt(providerId: string, attempt: DeepLinkAttempt): void {
+    if (
+      this.stopping ||
+      attempt.cancelled ||
+      Date.now() >= attempt.deadline ||
+      this.deepLinkAttempts.get(providerId) !== attempt
+    ) {
+      throw new OAuthSignInCancelledError(providerId)
+    }
+  }
+
+  private finishDeepLinkAttempt(providerId: string, attempt: DeepLinkAttempt): void {
+    clearTimeout(attempt.timer)
+    if (this.deepLinkAttempts.get(providerId) !== attempt) return
+    this.deepLinkAttempts.delete(providerId)
+    this.deepLinkTransports.get(providerId)?.close()
   }
 
   public handleDeepLinkCallback = async (url: URL): Promise<void> => {
@@ -346,30 +427,53 @@ export class OAuthRuntimeService extends BaseService {
       const definition = this.getDefinition(providerId)
       const state = url.searchParams.get('state')
       const initiatorWindowId = state ? transport.getInitiatorWindowId(state) : null
+      const attempt = this.deepLinkAttempts.get(providerId)
+      if (!attempt || attempt.state !== state) continue
+      const check = () => this.checkDeepLinkAttempt(providerId, attempt)
+      let consumed = false
 
       try {
+        check()
         const callback = transport.consumeCallback(url)
         if (!callback) continue
+        consumed = true
 
         const client = await definition.createClient(callback.context)
+        check()
         const tokenData = await client.exchangeCode(callback.code, callback.codeVerifier)
+        check()
+        /* 原持久化不检查尝试状态；现异步边界检查取消和绝对截止时间。
         await this.persistTokens(definition, tokenData)
+        */
+        await this.persistTokens(definition, tokenData, undefined, check)
+        check()
         const sideEffectResult = await definition.afterPersistTokens?.(tokenData, callback.context)
+        check()
         providerService.update(providerId, { isEnabled: true })
         transport.sendConsumedResult(callback.state, callback.initiatorWindowId, {
-          apiKeys: sideEffectResult?.apiKeys ?? ''
+          // 原结果仅携带 apiKeys；requestId 用于渲染进程严格匹配当前尝试。
+          apiKeys: sideEffectResult?.apiKeys ?? '',
+          requestId: attempt.requestId
         })
         this.logger.info(`${providerId} deep-link sign-in succeeded`)
         return
       } catch (error) {
+        consumed = true
+        if (error instanceof OAuthSignInCancelledError) return
         const message = error instanceof Error ? error.message : String(error)
         const code = error instanceof OAuthServiceError ? error.code : undefined
         this.logger.error(`${providerId} deep-link callback failed`, describeOAuthError(error))
         if (state && initiatorWindowId) {
-          transport.sendConsumedResult(state, initiatorWindowId, { error: message, ...(code ? { code } : {}) })
+          transport.sendConsumedResult(state, initiatorWindowId, {
+            error: message,
+            ...(code ? { code } : {}),
+            requestId: attempt.requestId
+          })
           return
         }
         throw error instanceof OAuthServiceError ? error : new OAuthServiceError(message, error)
+      } finally {
+        if (consumed) this.finishDeepLinkAttempt(providerId, attempt)
       }
     }
   }

@@ -46,6 +46,106 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
+describe('企业登录窗口反馈', () => {
+  it.each(['timeout', 'failed', 'denied'] as const)('初次打开及卸载重建不回放历史 %s', async (loginError) => {
+    const current = { ...signedOut, loginError }
+    mocks.request.mockImplementation(async (route: string) =>
+      route === 'enterprise.status.get' ? current : { unavailable: false }
+    )
+    const first = renderHook(() => useOrgAccountSession())
+    await waitFor(() => expect(first.result.current.loadState).toBe('ready'))
+    expect(first.result.current.loginError).toBeNull()
+    await act(async () => mocks.listener?.(current))
+    expect(first.result.current.loginError).toBe(loginError)
+    first.unmount()
+    const second = renderHook(() => useOrgAccountSession())
+    await waitFor(() => expect(second.result.current.loadState).toBe('ready'))
+    expect(second.result.current.loginError).toBeNull()
+    expect(second.result.current.status).toEqual(current)
+  })
+
+  it.each(['timeout', 'failed', 'denied'] as const)('关闭清除 %s，重开不回放但新事件仍显示', async (loginError) => {
+    const { result, rerender } = renderHook(({ open }) => useOrgAccountSession(open), { initialProps: { open: true } })
+    await waitFor(() => expect(result.current.loadState).toBe('ready'))
+    const current = { ...signedOut, loginError }
+    await act(async () => mocks.listener?.(current))
+    expect(result.current.loginError).toBe(loginError)
+    rerender({ open: false })
+    expect(result.current.loginError).toBeNull()
+    mocks.request.mockImplementation(async (route: string) =>
+      route === 'enterprise.status.get' ? current : { unavailable: false }
+    )
+    await act(async () => mocks.listener?.(current))
+    expect(result.current.loginError).toBeNull()
+    rerender({ open: true })
+    await waitFor(() => expect(result.current.loadState).toBe('ready'))
+    expect(result.current.loginError).toBeNull()
+    await act(async () => mocks.listener?.(current))
+    expect(result.current.loginError).toBe(loginError)
+  })
+
+  it.each(['login', 'cancel'] as const)('本次 %s 后的状态查询仍显示错误', async (action) => {
+    let current = action === 'cancel' ? authorizing() : signedOut
+    mocks.request.mockImplementation(async (route: string) => {
+      if (route === 'enterprise.status.get') return current
+      if (route === 'enterprise.login.start' || route === 'enterprise.login.cancel')
+        current = { ...signedOut, loginError: 'failed' }
+      return { unavailable: false }
+    })
+    const { result } = renderHook(() => useOrgAccountSession())
+    await waitFor(() => expect(result.current.loadState).toBe('ready'))
+    await act(() => (action === 'login' ? result.current.login() : result.current.cancelLogin()))
+    expect(result.current.loginError).toBe('failed')
+    expect(result.current.isLoggingIn).toBe(false)
+  })
+
+  it('新 start 请求失败仍反馈，关闭后的迟到失败不带到重开窗口', async () => {
+    const { result, rerender } = renderHook(({ open }) => useOrgAccountSession(open), { initialProps: { open: true } })
+    await waitFor(() => expect(result.current.loadState).toBe('ready'))
+    mocks.request.mockRejectedValueOnce(new Error('start failed'))
+    await act(() => result.current.login())
+    expect(result.current.loginError).toBe('failed')
+    const start = deferred<void>()
+    mocks.request.mockImplementationOnce(() =>
+      start.promise.then(() => {
+        throw new Error('late failure')
+      })
+    )
+    let login!: Promise<void>
+    act(() => {
+      login = result.current.login()
+    })
+    rerender({ open: false })
+    rerender({ open: true })
+    await waitFor(() => expect(result.current.loadState).toBe('ready'))
+    await act(async () => {
+      start.resolve()
+      await login
+    })
+    expect(result.current.loginError).toBeNull()
+  })
+
+  it('进行中关闭重开按原始时间恢复 60 秒提示且不取消', async () => {
+    const current = { ...authorizing(), loginStartedAt: Date.now() - 59_000 }
+    mocks.request.mockImplementation(async (route: string) =>
+      route === 'enterprise.status.get' ? current : { unavailable: false }
+    )
+    const { result, rerender } = renderHook(({ open }) => useOrgAccountSession(open), { initialProps: { open: true } })
+    await waitFor(() => expect(result.current.loadState).toBe('ready'))
+    expect(result.current.waitHintVisible).toBe(false)
+    vi.useFakeTimers()
+    rerender({ open: false })
+    await act(() => vi.advanceTimersByTimeAsync(1_000))
+    await act(async () => {
+      rerender({ open: true })
+    })
+    expect(result.current.isLoggingIn).toBe(true)
+    expect(result.current.waitHintVisible).toBe(true)
+    expect(result.current.status?.loginAttemptId).toBe('a')
+    expect(mocks.request).not.toHaveBeenCalledWith('enterprise.login.cancel', expect.anything())
+  })
+})
+
 describe('企业登录等待', () => {
   it('authorizing 期间禁止再次 start，并按 attempt 取消', async () => {
     const { result } = renderHook(() => useOrgAccountSession())

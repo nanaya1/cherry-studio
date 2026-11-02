@@ -25,7 +25,7 @@ export function useOrgAccountSession(enabled = true) {
   const [loginStartedAt, setLoginStartedAt] = useState<number | null>(null)
   const [waitHintVisible, setWaitHintVisible] = useState(false)
 
-  const applyStatus = useCallback((next: EnterpriseStatus) => {
+  const applyStatus = useCallback((next: EnterpriseStatus, showLoginError = true) => {
     statusRef.current = next
     const active = actionRef.current
     if (
@@ -35,7 +35,9 @@ export function useOrgAccountSession(enabled = true) {
       actionRef.current = null
       setPendingAction(null)
     }
-    setLoginError(next.loginError ?? null)
+    // setLoginError(next.loginError ?? null)
+    // 打开时只恢复会话状态，不回放主进程保留的历史错误。
+    if (showLoginError) setLoginError(next.loginError ?? null)
     setLoginStartedAt(next.phase === 'authorizing' ? (next.loginStartedAt ?? null) : null)
     setStatus(next)
     setLoadState('ready')
@@ -52,20 +54,26 @@ export function useOrgAccountSession(enabled = true) {
     applyStatus(next)
   })
 
-  const reload = useCallback(async () => {
-    const requestId = ++requestRef.current
-    setLoadState('loading')
-    try {
-      const next = await ipcApi.request('enterprise.status.get')
-      if (requestId === requestRef.current) applyStatus(next)
-    } catch {
-      if (requestId === requestRef.current) setLoadState('error')
-    }
-  }, [applyStatus])
+  const reload = useCallback(
+    async (showLoginError = true) => {
+      const requestId = ++requestRef.current
+      setLoadState('loading')
+      try {
+        const next = await ipcApi.request('enterprise.status.get')
+        // if (requestId === requestRef.current) applyStatus(next)
+        if (requestId === requestRef.current) applyStatus(next, showLoginError)
+      } catch {
+        if (requestId === requestRef.current) setLoadState('error')
+      }
+    },
+    [applyStatus]
+  )
 
   useEffect(() => {
+    setLoginError(null)
     if (!enabled) return
-    void reload()
+    // void reload()
+    void reload(false)
     return () => {
       requestRef.current += 1
     }

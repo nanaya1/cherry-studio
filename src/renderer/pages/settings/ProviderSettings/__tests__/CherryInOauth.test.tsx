@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import i18n from '@renderer/i18n/resolver'
 import { oauthWithCherryIn, provisionOAuthApiKeys } from '@renderer/services/oauth'
 import { popup } from '@renderer/services/popup'
 import { toast } from '@renderer/services/toast'
@@ -61,7 +62,8 @@ vi.mock('@cherrystudio/ui/icons/providers', () => ({
 }))
 
 describe('CherryInOauth', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    await i18n.changeLanguage('zh-CN')
     vi.clearAllMocks()
     oauthWithCherryInMock.mockReset()
     provisionOAuthApiKeysMock.mockReset()
@@ -74,6 +76,180 @@ describe('CherryInOauth', () => {
 
   afterEach(() => {
     vi.restoreAllMocks()
+    vi.useRealTimers()
+  })
+
+  it('offers Xuelang cancellation and a reminder after 60 seconds without accepting late keys', async () => {
+    const addApiKey = vi.fn()
+    useProviderMock.mockReturnValue({
+      provider: { id: 'xuelang', name: '雪浪工匠', apiKeys: [], isEnabled: false },
+      updateProvider: vi.fn(),
+      addApiKey,
+      deleteApiKey: vi.fn()
+    })
+    ipcApiRequestMock.mockImplementation((route: string) =>
+      Promise.resolve(route === 'oauth.has_token' ? false : undefined)
+    )
+    oauthWithCherryInMock.mockImplementation(() => new Promise(() => {}))
+    const user = userEvent.setup()
+    render(<CherryInOauth providerId="xuelang" />)
+    await waitFor(() => expect(ipcApiRequestMock).toHaveBeenCalledWith('oauth.has_token', { providerId: 'xuelang' }))
+    vi.useFakeTimers()
+    fireEvent.click(screen.getByRole('button', { name: /授权|Authorize/i }))
+    expect(screen.getByRole('button', { name: /取消|Cancel/i })).toBeEnabled()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000)
+    })
+    expect(screen.getByText(/尚未收到授权结果|No authorization result/i)).toBeInTheDocument()
+    vi.useRealTimers()
+    await user.click(screen.getByRole('button', { name: /取消|Cancel/i }))
+    await waitFor(() => expect(screen.getByRole('button', { name: /授权|Authorize/i })).toBeEnabled())
+    await act(async () => {
+      await oauthWithCherryInMock.mock.calls[0][0]('late-key')
+    })
+    expect(addApiKey).not.toHaveBeenCalled()
+    expect(toast.success).not.toHaveBeenCalled()
+  })
+
+  it('stops subsequent Xuelang writes when cancelled during an API-key save', async () => {
+    let release!: () => void
+    const addApiKey = vi.fn().mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve
+        })
+    )
+    const updateProvider = vi.fn()
+    useProviderMock.mockReturnValue({
+      provider: { id: 'xuelang', name: '雪浪工匠', apiKeys: [], isEnabled: false },
+      addApiKey,
+      updateProvider,
+      deleteApiKey: vi.fn()
+    })
+    ipcApiRequestMock.mockImplementation((route: string) =>
+      Promise.resolve(route === 'oauth.has_token' ? false : undefined)
+    )
+    oauthWithCherryInMock.mockImplementation(async (save) => {
+      await save('first,second')
+      return 'first,second'
+    })
+    const user = userEvent.setup()
+    render(<CherryInOauth providerId="xuelang" />)
+    await waitFor(() => expect(ipcApiRequestMock).toHaveBeenCalledWith('oauth.has_token', { providerId: 'xuelang' }))
+    await user.click(screen.getByRole('button', { name: /授权/ }))
+    await waitFor(() => expect(addApiKey).toHaveBeenCalledWith('first', 'OAuth'))
+    await user.click(screen.getByRole('button', { name: /取消/ }))
+    await act(async () => {
+      release()
+    })
+    expect(addApiKey).toHaveBeenCalledTimes(1)
+    expect(updateProvider).not.toHaveBeenCalled()
+    expect(toast.success).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: /授权/ })).toBeEnabled()
+  })
+
+  it('ignores an unmounted Xuelang save without cancelling the background attempt', async () => {
+    const addApiKey = vi.fn()
+    const updateProvider = vi.fn()
+    useProviderMock.mockReturnValue({
+      provider: { id: 'xuelang', name: '雪浪工匠', apiKeys: [], isEnabled: false },
+      addApiKey,
+      updateProvider,
+      deleteApiKey: vi.fn()
+    })
+    ipcApiRequestMock.mockResolvedValue(false)
+    oauthWithCherryInMock.mockImplementation(() => new Promise(() => {}))
+    const view = render(<CherryInOauth providerId="xuelang" />)
+    await act(async () => {})
+    fireEvent.click(screen.getByRole('button', { name: /授权/ }))
+    const [save, config] = oauthWithCherryInMock.mock.calls[0]
+    view.unmount()
+    await act(async () => {
+      await save('late-key')
+    })
+    expect(config.signal?.aborted).toBe(false)
+    expect(ipcApiRequestMock).not.toHaveBeenCalledWith('oauth.cancel_sign_in', expect.anything())
+    expect(addApiKey).not.toHaveBeenCalled()
+    expect(updateProvider).not.toHaveBeenCalled()
+    expect(toast.success).not.toHaveBeenCalled()
+  })
+
+  it('keeps a newer Xuelang attempt pending when an older save returns', async () => {
+    let release!: () => void
+    const addApiKey = vi.fn().mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve
+        })
+    )
+    const updateProvider = vi.fn()
+    useProviderMock.mockReturnValue({
+      provider: { id: 'xuelang', name: '雪浪工匠', apiKeys: [], isEnabled: false },
+      addApiKey,
+      updateProvider,
+      deleteApiKey: vi.fn()
+    })
+    ipcApiRequestMock.mockResolvedValue(false)
+    oauthWithCherryInMock.mockImplementationOnce(async (save) => {
+      await save('old-first,old-second')
+      return 'old'
+    })
+    oauthWithCherryInMock.mockImplementationOnce(() => new Promise(() => {}))
+    render(<CherryInOauth providerId="xuelang" />)
+    await act(async () => {})
+    fireEvent.click(screen.getByRole('button', { name: /授权/ }))
+    expect(addApiKey).toHaveBeenCalledWith('old-first', 'OAuth')
+    fireEvent.click(screen.getByRole('button', { name: /取消/ }))
+    fireEvent.click(screen.getByRole('button', { name: /授权/ }))
+    expect(oauthWithCherryInMock).toHaveBeenCalledTimes(2)
+    await act(async () => {
+      release()
+    })
+    expect(addApiKey).toHaveBeenCalledTimes(1)
+    expect(updateProvider).not.toHaveBeenCalled()
+    expect(toast.success).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: /授权/ })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /取消/ })).toBeEnabled()
+  })
+
+  it('ignores a late Xuelang balance response after a newer login starts', async () => {
+    let release!: (balance: typeof DEFAULT_BALANCE) => void
+    useProviderMock.mockReturnValue({
+      provider: { id: 'xuelang', name: '雪浪工匠', apiKeys: [], isEnabled: false },
+      addApiKey: vi.fn().mockResolvedValue(undefined),
+      updateProvider: vi.fn().mockResolvedValue(undefined),
+      deleteApiKey: vi.fn()
+    })
+    ipcApiRequestMock.mockImplementation((route: string) => {
+      if (route === 'cherryin.get_balance')
+        return new Promise((resolve) => {
+          release = resolve
+        })
+      return Promise.resolve(false)
+    })
+    oauthWithCherryInMock.mockImplementationOnce(async (save) => {
+      await save('old-key')
+      return 'old-key'
+    })
+    oauthWithCherryInMock.mockImplementationOnce(() => new Promise(() => {}))
+    render(<CherryInOauth providerId="xuelang" />)
+    await act(async () => {})
+    fireEvent.click(screen.getByRole('button', { name: /授权/ }))
+    await waitFor(() =>
+      expect(ipcApiRequestMock).toHaveBeenCalledWith('cherryin.get_balance', {
+        apiHost: 'https://api.xuelanglm.com',
+        providerId: 'xuelang'
+      })
+    )
+    fireEvent.click(screen.getByRole('button', { name: /取消/ }))
+    fireEvent.click(screen.getByRole('button', { name: /授权/ }))
+    await act(async () => {
+      release(DEFAULT_BALANCE)
+    })
+    expect(toast.success).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: /授权/ })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /取消/ })).toBeEnabled()
+    expect(ipcApiRequestMock.mock.calls.filter(([route]) => route === 'oauth.has_token')).toHaveLength(1)
   })
 
   it('renders the logged-in card with balance and footer attribution', async () => {
@@ -175,9 +351,7 @@ describe('CherryInOauth', () => {
     await user.click(await screen.findByRole('button', { name: /重新领取凭据|Recover credentials/i }))
 
     await waitFor(() =>
-      expect(toast.error).toHaveBeenCalledWith(
-        expect.stringMatching(/当前没有可用订阅|No active subscription is available/i)
-      )
+      expect(toast.error).toHaveBeenCalledWith(i18n.t('settings.provider.oauth.error_codes.NO_ACTIVE_SUBSCRIPTION'))
     )
   })
 
@@ -309,6 +483,26 @@ describe('CherryInOauth', () => {
     expect(screen.queryByRole('button', { name: /取消|Cancel/i })).not.toBeInTheDocument()
   })
 
+  it('超时后使用已有登录超时文案并恢复雪浪登录按钮', async () => {
+    oauthWithCherryInMock.mockRejectedValueOnce(new Error('OAuth flow timed out'))
+    useProviderMock.mockReturnValue({
+      provider: { id: 'xuelang', name: '雪浪工匠', apiKeys: [], isEnabled: true },
+      updateProvider: vi.fn(),
+      addApiKey: vi.fn(),
+      deleteApiKey: vi.fn()
+    })
+    ipcApiRequestMock.mockImplementation((route: string) =>
+      route === 'oauth.has_token' ? Promise.resolve(false) : Promise.resolve(undefined)
+    )
+    const user = userEvent.setup()
+    render(<CherryInOauth providerId="xuelang" />)
+    const loginButton = screen.getByRole('button', { name: i18n.t('settings.provider.oauth.xuelang.login_button') })
+    await user.click(loginButton)
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(i18n.t('settings.provider.org_service.login_timeout')))
+    expect(loginButton).toBeEnabled()
+    expect(screen.queryByRole('button', { name: i18n.t('common.cancel') })).not.toBeInTheDocument()
+  })
+
   it('logs Xuelang out through its independent provider session', async () => {
     const deleteApiKey = vi.fn().mockResolvedValue(undefined)
     useProviderMock.mockReturnValue({
@@ -324,8 +518,9 @@ describe('CherryInOauth', () => {
     })
 
     render(<CherryInOauth providerId="xuelang" />)
+    const logoutButton = await screen.findByRole('button', { name: /退出登录|Logout/i })
     await act(async () => {
-      fireEvent.click(await screen.findByRole('button', { name: /退出登录|Logout/i }))
+      fireEvent.click(logoutButton)
     })
 
     await waitFor(() => expect(deleteApiKey).toHaveBeenCalledWith('oauth-xuelang'))
