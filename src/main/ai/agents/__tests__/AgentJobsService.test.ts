@@ -207,6 +207,32 @@ describe('AgentJobsService', () => {
     seedAgent(AGENT_ID)
   })
 
+  it('denies task creation and mutations without changing persisted schedules', async () => {
+    const task = service.createTask(AGENT_ID, form)
+    await service.pauseTask(AGENT_ID, task.id)
+    const before = jobScheduleService.getById(task.id)
+    const denied = new Error('Business access denied')
+    const taskGate = vi.spyOn(application, 'assertTaskStartAllowed').mockImplementation(() => {
+      throw denied
+    })
+    const writeGate = vi.spyOn(application, 'assertWritable').mockImplementation(() => {
+      throw denied
+    })
+    try {
+      expect(() => service.createTask(AGENT_ID, { ...form, name: 'denied' })).toThrow(denied)
+      expect(() => service.updateTask(AGENT_ID, task.id, { prompt: 'denied' })).toThrow(denied)
+      expect(() => service.resumeTask(AGENT_ID, task.id)).toThrow(denied)
+      await expect(service.runTask(AGENT_ID, task.id)).rejects.toBe(denied)
+      expect(jobScheduleService.getById(task.id)).toEqual(before)
+      expect(jobService.list({ scheduleId: task.id })).toEqual([])
+      expect(jobScheduleService.listAll({ type: 'agent.task' })).toHaveLength(1)
+      expect(await service.deleteTask(AGENT_ID, task.id)).toBe(true)
+    } finally {
+      taskGate.mockRestore()
+      writeGate.mockRestore()
+    }
+  })
+
   // ---------------------------------------------------------------- create
 
   it('refreshes workspace visibility after task creation, workspace changes and deletion', async () => {

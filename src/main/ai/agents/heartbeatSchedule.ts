@@ -203,6 +203,7 @@ export async function syncHeartbeatSchedule(
   signal.throwIfAborted()
   const agent = agentService.getAgent(agentId)
   if (!agent) return 'skipped-missing-agent'
+  application.assertTaskStartAllowed()
 
   // The ids of anything this sync wrote — the mid-sync deletion guard below
   // needs them to undo the writes.
@@ -306,6 +307,7 @@ export async function syncHeartbeatSchedule(
     return finalize('skipped-untrusted-path')
   }
   signal.throwIfAborted()
+  application.assertTaskStartAllowed()
   try {
     await ensureHeartbeatFile(agentDataPath)
     signal.throwIfAborted()
@@ -318,10 +320,12 @@ export async function syncHeartbeatSchedule(
     touchedScheduleIds.push(...pauseHeartbeatRows(agentId, rows, { clearBreakerMarker: false }))
     return finalize('skipped-untrusted-path')
   }
+  application.assertTaskStartAllowed()
   // Re-check inside the provisioning window: mkdir follows ancestor links,
   // so a directory swapped in after the entry check must not arm a row.
   await assertAgentStoragePath(agentsDataRoot, agentDataPath)
   signal.throwIfAborted()
+  application.assertTaskStartAllowed()
   const trigger: Trigger = { kind: 'interval', ms: intervalMinutes * 60_000 }
   const jobInputTemplate: HeartbeatJobInputTemplate = {
     agentId,
@@ -392,6 +396,7 @@ export async function syncHeartbeatSchedule(
     }
   })
   signal.throwIfAborted()
+  application.assertTaskStartAllowed()
   if (!existing) {
     // (type, name) is UNIQUE: a concurrent sync may have registered this row
     // against a stale snapshot — a benign race, repair the winner in place.

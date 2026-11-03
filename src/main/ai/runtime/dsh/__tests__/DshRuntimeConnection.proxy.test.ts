@@ -1,9 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { application } from '@application'
+
 import type { AgentRuntimeConnectInput } from '../../types'
 
 const mocks = vi.hoisted(() => ({
   harnessOptions: undefined as Record<string, any> | undefined,
+  bridgeOptions: undefined as Record<string, any> | undefined,
   getShellEnv: vi.fn(),
   resolveBun: vi.fn(),
   usesDshGateway: vi.fn(),
@@ -60,7 +63,8 @@ vi.mock('../compositionBuilder', () => ({
 }))
 vi.mock('../bunRuntime', () => ({ resolveDshBunRuntime: mocks.resolveBun }))
 vi.mock('../DshBridgeServer', () => ({
-  DshBridgeServer: vi.fn(function DshBridgeServerMock() {
+  DshBridgeServer: vi.fn(function DshBridgeServerMock(options: Record<string, any>) {
+    mocks.bridgeOptions = options
     return {
       socketPath: '/tmp/dsh.sock',
       authenticationToken: 'bridge-token',
@@ -155,6 +159,25 @@ afterEach(() => {
 })
 
 describe('DshRuntimeConnection proxy inheritance', () => {
+  it('denies native guards and bridged calls after business access expires', async () => {
+    const connection = await new DshRuntimeConnection(connectInput).start()
+    const denied = new Error('Business access denied')
+    const gate = vi.spyOn(application, 'assertBusinessAccess').mockImplementation(() => {
+      throw denied
+    })
+    try {
+      expect(await mocks.bridgeOptions?.onGuardCheck('shell', { command: 'pwd' }, '/workspace')).toMatchObject({
+        kind: 'deny',
+        ruleId: 'enterprise-profile-business-access',
+        reason: denied.message
+      })
+      expect(() => mocks.bridgeOptions?.onToolCall('mcp__test', {}, undefined)).toThrow(denied)
+    } finally {
+      gate.mockRestore()
+      await connection.close()
+    }
+  })
+
   it('forwards the applied proxy into the dsh child and keeps loopback direct', async () => {
     // Corporate proxy-only network with a local dsh gateway (#20933): the child
     // must inherit the configured proxy while the 127.0.0.1 gateway stays direct.

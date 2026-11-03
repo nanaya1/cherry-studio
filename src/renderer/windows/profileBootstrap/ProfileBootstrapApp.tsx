@@ -1,4 +1,6 @@
 import { Eye, EyeOff } from 'lucide-react'
+// import { useEffect, useRef, useState, type FormEvent } from 'react'
+// import { useTranslation } from 'react-i18next'
 import { useRef, useState, type FormEvent } from 'react'
 
 import { Button, Input } from '@cherrystudio/ui'
@@ -10,6 +12,9 @@ declare global {
     profileBootstrap: {
       passwordLogin(input: { identifier: string; password: string }): Promise<unknown>
       enterpriseLogin(): Promise<unknown>
+      // startupState(): Promise<StartupState>
+      // retryRecovery(): Promise<StartupState>
+      // selectSignedOut(): Promise<void>
     }
   }
 }
@@ -21,7 +26,92 @@ function getErrorMessage(cause: unknown): string {
   return message.replace(PROFILE_BOOTSTRAP_ERROR_PREFIX, '')
 }
 
+/* 原启动恢复界面及状态类型停用，保留以便恢复。
+type StartupState = {
+  phase: 'failed' | 'verifying' | 'starting' | 'selecting'
+  failureKind?: 'unavailable' | 'invalid'
+}
+
+function StartupRecovery() {
+  const { t } = useTranslation()
+  const [state, setState] = useState<StartupState>({ phase: 'verifying' })
+  const [error, setError] = useState(false)
+  const pending = useRef(false)
+  useEffect(() => {
+    let current = true
+    void window.profileBootstrap.startupState().then(
+      (value) => {
+        if (current) setState(value)
+      },
+      () => {
+        if (current) {
+          setState({ phase: 'failed', failureKind: 'unavailable' })
+          setError(true)
+        }
+      }
+    )
+    return () => {
+      current = false
+    }
+  }, [])
+  const busy = state.phase !== 'failed'
+  const act = async (otherAccount: boolean) => {
+    if (pending.current || busy) return
+    pending.current = true
+    setError(false)
+    setState({ ...state, phase: otherAccount ? 'selecting' : 'verifying' })
+    try {
+      if (otherAccount) await window.profileBootstrap.selectSignedOut()
+      else setState(await window.profileBootstrap.retryRecovery())
+    } catch {
+      setState({ phase: 'failed', failureKind: state.failureKind ?? 'unavailable' })
+      setError(true)
+    } finally {
+      pending.current = false
+    }
+  }
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-background p-8 text-foreground">
+      <section className="flex max-w-md flex-col gap-6" aria-busy={busy}>
+        <h1 className="text-xl font-medium">{t('profile_bootstrap.startup.title')}</h1>
+        <p role="status" className="text-muted-foreground">
+          {t(
+            state.phase === 'failed'
+              ? state.failureKind === 'invalid'
+                ? 'profile_bootstrap.startup.invalid'
+                : 'profile_bootstrap.startup.unavailable'
+              : state.phase === 'starting'
+                ? 'profile_bootstrap.startup.starting'
+                : 'profile_bootstrap.startup.checking'
+          )}
+        </p>
+        {error && (
+          <p role="alert" className="text-error">
+            {t('profile_bootstrap.startup.error')}
+          </p>
+        )}
+        <div className="flex gap-3">
+          <Button disabled={busy} onClick={() => void act(false)}>
+            {t('profile_bootstrap.startup.retry')}
+          </Button>
+          <Button variant="outline" disabled={busy} onClick={() => void act(true)}>
+            {t('profile_bootstrap.startup.other_account')}
+          </Button>
+        </div>
+      </section>
+    </main>
+  )
+}
+
+*/
+
 export default function ProfileBootstrapApp() {
+  // if (new URLSearchParams(window.location.search).get('startup') === '1') return <StartupRecovery />
+  // MEA:profile-verification-network-tolerance 启动验证失败由主进程先切到 signed-out，再进入现有登录页。
+  return <PasswordLogin />
+}
+
+function PasswordLogin() {
   const [identifier, setIdentifier] = useState('')
   const [password, setPassword] = useState('')
   const [visible, setVisible] = useState(false)

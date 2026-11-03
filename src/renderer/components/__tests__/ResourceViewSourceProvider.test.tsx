@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ResourceViewSourceProvider } from '@renderer/components/ResourceViewSourceProvider'
@@ -11,6 +11,7 @@ import {
 } from '@renderer/hooks/resourceViewSources'
 import type * as TabHooksModule from '@renderer/hooks/tab'
 import type { Tab } from '@shared/data/cache/cacheValueTypes'
+import type { EnterpriseVerificationStatus } from '@shared/ipc/schemas/enterprise'
 
 const sourceMocks = vi.hoisted(() => ({
   tabs: [] as Tab[],
@@ -21,6 +22,19 @@ const sourceMocks = vi.hoisted(() => ({
   agentSource: undefined as unknown
 }))
 const sourceProbeRenders = vi.fn()
+const verificationBoundary = vi.hoisted(() => ({
+  request: vi.fn(),
+  listeners: new Set<(status: EnterpriseVerificationStatus) => void>()
+}))
+vi.mock('@renderer/ipc', () => ({
+  ipcApi: {
+    request: verificationBoundary.request,
+    on: (_event: string, listener: (status: EnterpriseVerificationStatus) => void) => {
+      verificationBoundary.listeners.add(listener)
+      return () => verificationBoundary.listeners.delete(listener)
+    }
+  }
+}))
 
 vi.mock('@renderer/hooks/tab', async (importOriginal) => {
   const actual = await importOriginal<typeof TabHooksModule>()
@@ -166,6 +180,33 @@ describe('ResourceViewSourceProvider', () => {
     sourceMocks.assistantSource = createAssistantSource([], { complete: false })
     sourceMocks.agentSource = createAgentSource([], { complete: false })
     sourceProbeRenders.mockClear()
+    verificationBoundary.listeners.clear()
+    verificationBoundary.request.mockResolvedValue({ owner: 'owner-a', revision: 1, state: 'verified' })
+  })
+
+  it('refreshes both mounted lists once on same-account verification recovery without clearing snapshots', async () => {
+    sourceMocks.tabs = [createTab('chat', '/app/chat')]
+    sourceMocks.activeTabId = 'chat'
+    const topics = createAssistantSource(['topic-1'], { complete: true })
+    const sessions = createAgentSource(['session-1'], { complete: true })
+    sourceMocks.assistantSource = topics
+    sourceMocks.agentSource = sessions
+    render(createProviderTree())
+    await waitFor(() => expect(screen.getByTestId('session-ids')).toHaveTextContent('session-1'))
+    const emit = (owner: string, revision: number, state: EnterpriseVerificationStatus['state']) => {
+      act(() => verificationBoundary.listeners.forEach((listener) => listener({ owner, revision, state })))
+    }
+    emit('owner-a', 2, 'unavailable')
+    emit('owner-a', 3, 'verified')
+    expect(topics.refetch).toHaveBeenCalledOnce()
+    expect(sessions.reload).toHaveBeenCalledOnce()
+    emit('owner-a', 4, 'verified')
+    expect(topics.refetch).toHaveBeenCalledOnce()
+    emit('owner-a', 5, 'unavailable')
+    emit('owner-b', 1, 'verified')
+    expect(sessions.reload).toHaveBeenCalledOnce()
+    expect(screen.getByTestId('topic-ids')).toHaveTextContent('topic-1')
+    expect(screen.getByTestId('session-ids')).toHaveTextContent('session-1')
   })
 
   it('publishes progressive assistant topics on cold start and keeps the complete snapshot stable during refresh', async () => {

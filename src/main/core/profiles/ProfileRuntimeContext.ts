@@ -2,8 +2,8 @@ import { BusinessAccessGate } from './BusinessAccessGate'
 import type { ProfileLaunchContext } from './ProfilePrebootCoordinator'
 
 export let profileBusinessAccessGate = new BusinessAccessGate({
-  clock: () => performance.now(),
-  verificationWindowMs: 5 * 60_000
+  clock: () => performance.now()
+  // verificationWindowMs: 5 * 60_000
 })
 
 let launchContext: ProfileLaunchContext | undefined
@@ -20,8 +20,8 @@ let lastBusinessIdentityDigest: string | null = null
 export function setProfileLaunchContext(context: ProfileLaunchContext | undefined): void {
   launchContext = context
   profileBusinessAccessGate = new BusinessAccessGate({
-    clock: () => performance.now(),
-    verificationWindowMs: 5 * 60_000
+    clock: () => performance.now()
+    // verificationWindowMs: 5 * 60_000
   })
   if (context?.mode === 'business') {
     lastBusinessIdentityDigest = context.identityDigest

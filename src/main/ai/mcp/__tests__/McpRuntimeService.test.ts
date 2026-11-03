@@ -7,6 +7,7 @@ import open from 'open'
 import sharp from 'sharp'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { application } from '@application'
 import { BaseService } from '@main/core/lifecycle'
 import { orgStateStore } from '@main/enterprise/OrgStateStore'
 import type { McpServer } from '@shared/data/types/mcpServer'
@@ -639,26 +640,34 @@ describe('McpRuntimeService.callTool cancellation', () => {
     })
   }
 
-  it('blocks an enterprise connector before client startup when its entitlement is stale', async () => {
+  it('keeps an installed connector usable when old group entitlements are stale', async () => {
     const service = new McpRuntimeService()
     const allowed = vi.spyOn(orgStateStore, 'isConnectorAllowed').mockReturnValue(false)
-    const connect = vi.spyOn(service as any, 'connectClient')
+    const callTool = vi.fn().mockResolvedValue({ content: [{ type: 'text', text: 'local copy works' }] })
+    vi.spyOn(service as any, 'getOrCreateClient').mockResolvedValue({ callTool })
 
-    await expect((service as any).getOrCreateClient(server)).rejects.toThrow(/entitlement/i)
-
-    expect(connect).not.toHaveBeenCalled()
+    await expect(service.callTool({ serverId: server.id, name: 'tool', args: {} })).resolves.toMatchObject({
+      content: [{ type: 'text', text: 'local copy works' }]
+    })
     allowed.mockRestore()
   })
 
-  it('rechecks enterprise connector entitlement before every tool call', async () => {
+  it('does not execute a tool when authorization expires while its client connects', async () => {
     const service = new McpRuntimeService()
-    const allowed = vi.spyOn(orgStateStore, 'isConnectorAllowed').mockReturnValue(false)
-    const getClient = vi.spyOn(service as any, 'getOrCreateClient')
+    const client = createDeferred<{ callTool: ReturnType<typeof vi.fn> }>()
+    const callTool = vi.fn().mockResolvedValue({ content: [] })
+    vi.spyOn(service as any, 'getOrCreateClient').mockReturnValue(client.promise)
+    const access = vi.mocked(application.assertBusinessAccess)
+    access.mockImplementation(() => undefined)
 
-    await expect(service.callTool({ serverId: server.id, name: 'tool', args: {} })).rejects.toThrow(/entitlement/i)
-
-    expect(getClient).not.toHaveBeenCalled()
-    allowed.mockRestore()
+    const pending = service.callTool({ serverId: server.id, name: 'tool', args: {} })
+    access.mockImplementation(() => {
+      throw new Error('Business access requires authentication')
+    })
+    client.resolve({ callTool })
+    await expect(pending).rejects.toThrow('Business access requires authentication')
+    expect(callTool).not.toHaveBeenCalled()
+    access.mockReset()
   })
 
   it('aborts the client call and clears the active call when the external signal aborts', async () => {

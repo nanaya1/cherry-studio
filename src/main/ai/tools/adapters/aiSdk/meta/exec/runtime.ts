@@ -1,5 +1,6 @@
 import type { ToolExecutionOptions } from '@ai-sdk/provider-utils'
 
+import { application } from '@application'
 import { type ExecResult, runExecCode } from '@main/ai/tools/codeMode/runtime'
 
 import { isApprovalGated } from '../../isApprovalGated'
@@ -16,6 +17,7 @@ export function runExec(code: string, ctx: ExecRuntimeContext): Promise<ExecResu
   return runExecCode(code, {
     abortSignal: ctx.parentOptions.abortSignal,
     async executeTool(name, params, requestId, signal) {
+      application.assertBusinessAccess()
       const entry = ctx.registry.getByName(name)
       if (!entry) throw new Error(`Tool not found: ${name}`)
       const execute = entry.tool.execute
@@ -34,6 +36,7 @@ export function runExec(code: string, ctx: ExecRuntimeContext): Promise<ExecResu
         throw new Error(`Tool ${name} requires user approval; call it directly instead of via tool_exec.`)
       }
 
+      application.assertBusinessAccess()
       return execute(params, {
         ...ctx.parentOptions,
         toolCallId: `${ctx.parentOptions.toolCallId}::exec::${requestId}`,

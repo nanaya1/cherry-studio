@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 
-export function useOrgKnowledgeResource<T>(load: () => Promise<T>) {
+export function useOrgKnowledgeResource<T>(load: () => Promise<T>, authorizationVersion = 0) {
   const [data, setData] = useState<T>()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const generation = useRef(0)
   // const activeLoader = useRef<typeof load | null>(load)
-  const resource = useMemo(() => ({ load }), [load])
+  // MEA:profile-verification-network-tolerance A stable resource ID can lose access after group/role changes.
+  const resource = useMemo(() => ({ load, authorizationVersion }), [load, authorizationVersion])
   const activeLoader = useRef<typeof resource | null>(resource)
   const [dataLoader, setDataLoader] = useState(resource)
   // MEA:enterprise-knowledge-page 旧操作不能重启已离开的资源请求。

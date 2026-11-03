@@ -417,7 +417,12 @@ export class DshRuntimeConnection implements AgentRuntimeConnection {
         emit: (event, source) => this.emitBridgeEvent(event, source),
         getInteractionState: () =>
           application.get('AgentSessionRuntimeService').getInteractionState(this.input.sessionId),
-        onToolCall: (name, args, signal) => toolBridge.callTool(name, args, signal),
+        // MEA:enterprise-profile-business-access Bridged tools also enforce the live business gate.
+        // onToolCall: (name, args, signal) => toolBridge.callTool(name, args, signal),
+        onToolCall: (name, args, signal) => {
+          application.assertBusinessAccess()
+          return toolBridge.callTool(name, args, signal)
+        },
         onDisconnect: () => {
           this.eventQueue.push({
             type: 'error',
@@ -426,6 +431,20 @@ export class DshRuntimeConnection implements AgentRuntimeConnection {
           void this.close().catch((error) => logger.warn('dsh disconnected runtime close failed', { error }))
         },
         onGuardCheck: async (toolName, args, cwd) => {
+          const businessAccessDenial = () => {
+            try {
+              application.assertBusinessAccess()
+            } catch (error) {
+              return {
+                kind: 'deny' as const,
+                ruleId: 'enterprise-profile-business-access' as const,
+                reason: error instanceof Error ? error.message : String(error)
+              }
+            }
+            return undefined
+          }
+          const denied = businessAccessDenial()
+          if (denied) return denied
           const browserPermission = resolveBrowserToolPermission(toolName)
           if (browserPermission === 'deny')
             return {
@@ -440,6 +459,8 @@ export class DshRuntimeConnection implements AgentRuntimeConnection {
             cwd,
             workspacePath: this.workspacePath
           })
+          const deniedAfterGuard = businessAccessDenial()
+          if (deniedAfterGuard) return deniedAfterGuard
           if (!decision) return { kind: 'allow' }
           logger.info('Blocked a write to user data SQLite', { sessionId: this.input.sessionId, toolName })
           return { kind: 'deny', ...decision }

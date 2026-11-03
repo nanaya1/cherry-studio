@@ -12,6 +12,7 @@ import {
   useRawAssistantTopicsSource
 } from '@renderer/hooks/resourceViewSources'
 import { useTabs } from '@renderer/hooks/tab'
+import { useEnterpriseVerificationRecovery } from '@renderer/hooks/useEnterpriseVerificationStatus'
 // MEA: 宽松门控后 getSidebarApp/tabBelongsToApp 不再被代码引用（见 shouldLoadResourceViewSource 注释），
 // 保留注释以便恢复 upstream 门控时取消注释：
 // import { getSidebarApp, tabBelongsToApp } from '@renderer/utils/sidebar'
@@ -223,6 +224,15 @@ export function ResourceViewSourceProvider({ children }: { children: ReactNode }
   )
   const assistantTopicsSource = useCommittedAssistantTopicsSource(assistantTopicsEnabled, retainAssistantTopicsView)
   const agentSessionsSource = useCommittedAgentSessionsSource(agentSessionsEnabled)
+
+  // MEA:profile-online-login A recovered connection retries readers, never writes or unrelated session state.
+  useEnterpriseVerificationRecovery(() => {
+    const requests = [
+      ...(assistantTopicsEnabled ? [assistantTopicsSource.refetch()] : []),
+      ...(agentSessionsEnabled ? [agentSessionsSource.reload()] : [])
+    ]
+    void Promise.allSettled(requests)
+  }, assistantTopicsEnabled || agentSessionsEnabled)
 
   return (
     <AssistantTopicsSourceContext value={assistantTopicsSource}>

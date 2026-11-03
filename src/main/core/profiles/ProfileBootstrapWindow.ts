@@ -32,7 +32,7 @@ import {
   shouldActivateInProcess
 } from './ProfileRuntimeContext'
 import { ProfileSessionService } from './ProfileSessionService'
-import { ProfileSwitchCoordinator } from './ProfileSwitchCoordinator'
+import { ProfileSwitchCoordinator, showProfileRecoveryChoice } from './ProfileSwitchCoordinator'
 import { ProfileSwitchJournal } from './ProfileSwitchJournal'
 // import { profileSwitchFence } from './SwitchFence'
 import { SwitchFence } from './SwitchFence'
@@ -41,7 +41,26 @@ const PASSWORD_LOGIN = 'profile-bootstrap:password-login'
 const ENTERPRISE_LOGIN = 'profile-bootstrap:enterprise-login'
 const ADOPT_LEGACY = 'profile-bootstrap:adopt-legacy'
 const profileBootstrapWindows = new Set<BrowserWindow>()
-let activeBootstrap: { window: BrowserWindow; contextKey: string; ready: boolean; superseded: boolean } | undefined
+let activeBootstrap:
+  | {
+      window: BrowserWindow
+      contextKey: string
+      ready: boolean
+      superseded: boolean
+      onReady: Set<() => void>
+    }
+  | undefined
+
+export interface ProfileBootstrapWindowOptions {
+  onReady?: () => void
+  /*
+  startupRecovery?: {
+    failureKind: 'unavailable' | 'invalid'
+    retry(isCurrent: () => boolean): Promise<'unavailable' | 'invalid' | void>
+    selectSignedOut(isCurrent: () => boolean): Promise<void>
+  }
+  */
+}
 const handlerOwners = new Map<string, BrowserWindow>()
 
 function registerBootstrapHandler(
@@ -69,8 +88,9 @@ function registerBootstrapHandler(
   })
 }
 
-const translateForBootstrap = (key: string, params?: Record<string, string | number>) =>
-  t(key, params, resolveSystemLanguage(app.getLocale()))
+// const translateForBootstrap = (key: string, params?: Record<string, string | number>) =>
+//   t (key, params, resolveSystemLanguage(app.getLocale()))
+// MEA:profile-verification-network-tolerance Literal translation keys keep native bootstrap messages statically checked.
 
 export async function confirmProfileClaim(
   preview: Extract<ProfileClaimPreview, { status: 'ready' }>
@@ -78,43 +98,49 @@ export async function confirmProfileClaim(
   const categoryLabel = (category: ProfileClaimCategory) => {
     switch (category) {
       case 'api-key':
-        return translateForBootstrap('dialog.profile_claim.category.api_key')
+        return t('dialog.profile_claim.category.api_key', undefined, resolveSystemLanguage(app.getLocale()))
       case 'business-data':
-        return translateForBootstrap('dialog.profile_claim.category.business_data')
+        return t('dialog.profile_claim.category.business_data', undefined, resolveSystemLanguage(app.getLocale()))
       case 'copilot':
-        return translateForBootstrap('dialog.profile_claim.category.copilot')
+        return t('dialog.profile_claim.category.copilot', undefined, resolveSystemLanguage(app.getLocale()))
       case 'credentials':
-        return translateForBootstrap('dialog.profile_claim.category.credentials')
+        return t('dialog.profile_claim.category.credentials', undefined, resolveSystemLanguage(app.getLocale()))
       case 'enterprise-resource':
-        return translateForBootstrap('dialog.profile_claim.category.enterprise_resource')
+        return t('dialog.profile_claim.category.enterprise_resource', undefined, resolveSystemLanguage(app.getLocale()))
       case 'mcp-oauth':
-        return translateForBootstrap('dialog.profile_claim.category.mcp_oauth')
+        return t('dialog.profile_claim.category.mcp_oauth', undefined, resolveSystemLanguage(app.getLocale()))
       case 'ordinary-config':
-        return translateForBootstrap('dialog.profile_claim.category.ordinary_config')
+        return t('dialog.profile_claim.category.ordinary_config', undefined, resolveSystemLanguage(app.getLocale()))
       case 'runtime':
-        return translateForBootstrap('dialog.profile_claim.category.runtime')
+        return t('dialog.profile_claim.category.runtime', undefined, resolveSystemLanguage(app.getLocale()))
       case 'sensitive':
-        return translateForBootstrap('dialog.profile_claim.category.sensitive')
+        return t('dialog.profile_claim.category.sensitive', undefined, resolveSystemLanguage(app.getLocale()))
       case 'session-cookies':
-        return translateForBootstrap('dialog.profile_claim.category.session_cookies')
+        return t('dialog.profile_claim.category.session_cookies', undefined, resolveSystemLanguage(app.getLocale()))
     }
   }
   const included =
-    preview.included.map((item) => categoryLabel(item.category)).join(', ') || translateForBootstrap('common.none')
+    preview.included.map((item) => categoryLabel(item.category)).join(', ') ||
+    t('common.none', undefined, resolveSystemLanguage(app.getLocale()))
   const excluded =
-    preview.excluded.map((item) => categoryLabel(item.category)).join(', ') || translateForBootstrap('common.none')
+    preview.excluded.map((item) => categoryLabel(item.category)).join(', ') ||
+    t('common.none', undefined, resolveSystemLanguage(app.getLocale()))
   const copy = await dialog.showMessageBox({
     type: 'question',
-    title: translateForBootstrap('dialog.profile_claim.migrate.title'),
-    message: translateForBootstrap('dialog.profile_claim.migrate.message'),
-    detail: translateForBootstrap('dialog.profile_claim.migrate.detail', {
-      bytes: preview.totalBytes,
-      included,
-      excluded
-    }),
+    title: t('dialog.profile_claim.migrate.title', undefined, resolveSystemLanguage(app.getLocale())),
+    message: t('dialog.profile_claim.migrate.message', undefined, resolveSystemLanguage(app.getLocale())),
+    detail: t(
+      'dialog.profile_claim.migrate.detail',
+      {
+        bytes: preview.totalBytes,
+        included,
+        excluded
+      },
+      resolveSystemLanguage(app.getLocale())
+    ),
     buttons: [
-      translateForBootstrap('dialog.profile_claim.migrate.confirm'),
-      translateForBootstrap('dialog.profile_claim.cancel_login')
+      t('dialog.profile_claim.migrate.confirm', undefined, resolveSystemLanguage(app.getLocale())),
+      t('dialog.profile_claim.cancel_login', undefined, resolveSystemLanguage(app.getLocale()))
     ],
     defaultId: 0,
     cancelId: 1,
@@ -125,12 +151,12 @@ export async function confirmProfileClaim(
   const allow: ProfileClaimAllow[] = []
   const ordinaryConfig = await dialog.showMessageBox({
     type: 'question',
-    title: translateForBootstrap('dialog.profile_claim.settings.title'),
-    message: translateForBootstrap('dialog.profile_claim.settings.message'),
-    detail: translateForBootstrap('dialog.profile_claim.settings.detail'),
+    title: t('dialog.profile_claim.settings.title', undefined, resolveSystemLanguage(app.getLocale())),
+    message: t('dialog.profile_claim.settings.message', undefined, resolveSystemLanguage(app.getLocale())),
+    detail: t('dialog.profile_claim.settings.detail', undefined, resolveSystemLanguage(app.getLocale())),
     buttons: [
-      translateForBootstrap('dialog.profile_claim.settings.include'),
-      translateForBootstrap('dialog.profile_claim.do_not_include')
+      t('dialog.profile_claim.settings.include', undefined, resolveSystemLanguage(app.getLocale())),
+      t('dialog.profile_claim.do_not_include', undefined, resolveSystemLanguage(app.getLocale()))
     ],
     defaultId: 1,
     cancelId: 1
@@ -139,12 +165,12 @@ export async function confirmProfileClaim(
 
   const apiKeys = await dialog.showMessageBox({
     type: 'warning',
-    title: translateForBootstrap('dialog.profile_claim.api_keys.title'),
-    message: translateForBootstrap('dialog.profile_claim.api_keys.message'),
-    detail: translateForBootstrap('dialog.profile_claim.api_keys.detail'),
+    title: t('dialog.profile_claim.api_keys.title', undefined, resolveSystemLanguage(app.getLocale())),
+    message: t('dialog.profile_claim.api_keys.message', undefined, resolveSystemLanguage(app.getLocale())),
+    detail: t('dialog.profile_claim.api_keys.detail', undefined, resolveSystemLanguage(app.getLocale())),
     buttons: [
-      translateForBootstrap('dialog.profile_claim.do_not_include'),
-      translateForBootstrap('dialog.profile_claim.api_keys.include')
+      t('dialog.profile_claim.do_not_include', undefined, resolveSystemLanguage(app.getLocale())),
+      t('dialog.profile_claim.api_keys.include', undefined, resolveSystemLanguage(app.getLocale()))
     ],
     defaultId: 0,
     cancelId: 0
@@ -154,6 +180,7 @@ export async function confirmProfileClaim(
 }
 
 export function closeProfileBootstrapWindows(): void {
+  if (activeBootstrap) activeBootstrap.superseded = true
   for (const window of profileBootstrapWindows) {
     if (!window.isDestroyed()) window.close()
   }
@@ -161,7 +188,12 @@ export function closeProfileBootstrapWindows(): void {
   activeBootstrap = undefined
 }
 
-export function createProfileBootstrapWindow(context: ProfileLaunchContext): BrowserWindow {
+export function createProfileBootstrapWindow(
+  context: ProfileLaunchContext,
+  options: ProfileBootstrapWindowOptions = {}
+): BrowserWindow {
+  // MEA:profile-verification-network-tolerance 业务候选必须先经 signed-out 事务隔离，不能直接打开无登录 IPC 的窗口。
+  if (context.mode === 'business') throw new Error('Business startup must select signed-out before opening login')
   const contextKey = JSON.stringify([
     context.mode,
     context.profileId,
@@ -172,15 +204,20 @@ export function createProfileBootstrapWindow(context: ProfileLaunchContext): Bro
     context.legacyRoot,
     context.pendingSwitch?.operationId,
     context.pendingSwitch?.action
+    // options.startupRecovery?.failureKind
   ])
   if (activeBootstrap && !activeBootstrap.window.isDestroyed()) {
     if (activeBootstrap.contextKey === contextKey) {
-      if (activeBootstrap.ready) {
-        if (activeBootstrap.window.isMinimized()) activeBootstrap.window.restore()
-        activeBootstrap.window.show()
-        activeBootstrap.window.focus()
+      const current = activeBootstrap
+      if (current.ready) {
+        if (current.window.isMinimized()) current.window.restore()
+        current.window.show()
+        current.window.focus()
+        if (activeBootstrap === current && !current.window.isDestroyed()) options.onReady?.()
+      } else if (options.onReady) {
+        current.onReady.add(options.onReady)
       }
-      return activeBootstrap.window
+      return current.window
     }
     const previous = activeBootstrap.window
     activeBootstrap.superseded = true
@@ -191,7 +228,8 @@ export function createProfileBootstrapWindow(context: ProfileLaunchContext): Bro
     profileBootstrapWindows.delete(previous)
   }
   const isLogin = context.mode === 'signed-out'
-  const isBusinessStartup = context.mode === 'business'
+  // const isBusinessStartup = context.mode === 'business'
+  const isBusinessStartup = false
   const window = new BrowserWindow({
     // 原恢复窗口尺寸保留，登录页使用服务端双栏布局。
     width: isLogin ? 1100 : isBusinessStartup ? 620 : 520,
@@ -212,7 +250,8 @@ export function createProfileBootstrapWindow(context: ProfileLaunchContext): Bro
       partition: 'profile-bootstrap'
     }
   })
-  const state = { window, contextKey, ready: false, superseded: false }
+  const state = { window, contextKey, ready: false, superseded: false, onReady: new Set<() => void>() }
+  if (options.onReady) state.onReady.add(options.onReady)
   activeBootstrap = state
   profileBootstrapWindows.add(window)
   window.once('closed', () => {
@@ -226,6 +265,11 @@ export function createProfileBootstrapWindow(context: ProfileLaunchContext): Bro
     state.ready = true
     allowWindowReveal()
     window.show()
+    for (const callback of state.onReady) {
+      if (activeBootstrap !== state || window.isDestroyed()) break
+      callback()
+    }
+    state.onReady.clear()
   })
   const closeOnLoadFailure = () => {
     if (loadFailed || activeBootstrap !== state || window.isDestroyed()) return
@@ -234,10 +278,15 @@ export function createProfileBootstrapWindow(context: ProfileLaunchContext): Bro
     activeBootstrap = undefined
     deferWindowReveal(window)
     window.hide()
+    /*
     dialog.showErrorBox(
-      translateForBootstrap('dialog.profile_bootstrap.load_failed.title'),
-      translateForBootstrap('dialog.profile_bootstrap.load_failed.message')
+      t('dialog.profile_bootstrap.load_failed.title', undefined, resolveSystemLanguage(app.getLocale())),
+      t('dialog.profile_bootstrap.load_failed.message', undefined, resolveSystemLanguage(app.getLocale()))
     )
+    */
+    // MEA:profile-verification-network-tolerance Never end a failed window handoff without a user choice.
+    state.superseded = true
+    showProfileRecoveryChoice(application, 'bootstrap-load', true)
     window.close()
   }
   window.webContents.on('did-fail-load', (_event, _code, _description, _url, isMainFrame) => {
@@ -248,6 +297,14 @@ export function createProfileBootstrapWindow(context: ProfileLaunchContext): Bro
   }
   if (isLogin || isBusinessStartup) {
     if (isBusinessStartup) {
+      /* 原独立 startup recovery 入口停用；启动失败由主进程切换至 signed-out 后复用登录窗口。
+      if (options.startupRecovery) {
+        registerStartupRecoveryHandlers(window, options.startupRecovery)
+        window.once('closed', () => {
+          if (!state.superseded && !application.isRelaunching) application.forceExit(0)
+        })
+      } else registerBootstrapHandler('profile-bootstrap:startup-state', window, () => ({ phase: 'verifying' }))
+      */
       /* 原业务窗口专属处理保留，所有 bootstrap 窗口现在共享就绪与失败处理。
       const closeOnLoadFailure = (
         _event: Electron.Event,
@@ -263,6 +320,7 @@ export function createProfileBootstrapWindow(context: ProfileLaunchContext): Bro
       })
       window.webContents.once('did-fail-load', closeOnLoadFailure)
       */
+      /* 原 startup=1 恢复页面入口停用，业务窗口仅保留为兼容性入口并不再创建。
       const startupPath = path.join(__dirname, '../renderer/windows/profileBootstrap/index.html')
       if (process.env['ELECTRON_RENDERER_URL']) {
         // void window.loadURL(`${process.env['ELECTRON_RENDERER_URL']}/windows/profileBootstrap/index.html?startup=1`)
@@ -271,6 +329,8 @@ export function createProfileBootstrapWindow(context: ProfileLaunchContext): Bro
         // void window.loadFile(startupPath, { query: { startup: '1' } })
         load(window.loadFile(startupPath, { query: { startup: '1' } }))
       }
+      */
+      // 独立启动恢复窗口不再运行；所有可见登录窗口均由 signed-out 分支创建。
       return window
     }
 
@@ -306,14 +366,63 @@ export function createProfileBootstrapWindow(context: ProfileLaunchContext): Bro
     return window
   }
   if (context.mode === 'migration-required') registerLegacyAdoptionHandler(context, window)
-  const title = translateForBootstrap('dialog.profile_claim.legacy.title')
-  const detail = translateForBootstrap('dialog.profile_claim.legacy.detail')
-  const actions = `<div class="actions"><button id="adopt">${translateForBootstrap('dialog.profile_claim.legacy.confirm')}</button></div><p id="status"></p><script>const status=document.getElementById('status');document.getElementById('adopt').onclick=async()=>{status.textContent=${JSON.stringify(translateForBootstrap('dialog.profile_claim.legacy.copying'))};try{await window.profileBootstrap.adoptLegacy();status.textContent=${JSON.stringify(translateForBootstrap('dialog.profile_claim.legacy.restarting'))}}catch(e){status.textContent=String(e)}}</script>`
+  const title = t('dialog.profile_claim.legacy.title', undefined, resolveSystemLanguage(app.getLocale()))
+  const detail = t('dialog.profile_claim.legacy.detail', undefined, resolveSystemLanguage(app.getLocale()))
+  const actions = `<div class="actions"><button id="adopt">${t('dialog.profile_claim.legacy.confirm', undefined, resolveSystemLanguage(app.getLocale()))}</button></div><p id="status"></p><script>const status=document.getElementById('status');document.getElementById('adopt').onclick=async()=>{status.textContent=${JSON.stringify(t('dialog.profile_claim.legacy.copying', undefined, resolveSystemLanguage(app.getLocale())))};try{await window.profileBootstrap.adoptLegacy();status.textContent=${JSON.stringify(t('dialog.profile_claim.legacy.restarting', undefined, resolveSystemLanguage(app.getLocale())))}}catch(e){status.textContent=String(e)}}</script>`
   const html = `<!doctype html><meta charset="utf-8"><title>${title}</title><style>body{margin:0;font:14px system-ui;background:#f5f5f5;color:#202124}main{padding:48px}h1{font-size:22px;margin:0 0 16px}p{line-height:1.6;margin:0;color:#5f6368}.actions{display:flex;gap:12px;margin-top:28px}button{border:1px solid #c7c7c7;background:#fff;padding:10px 16px;border-radius:6px;cursor:pointer}button:last-child{background:#1f1f1f;color:#fff;border-color:#1f1f1f}#status{margin-top:18px}</style><main><h1>${title}</h1><p>${detail}</p>${actions}</main>`
   // void window.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
   load(window.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`))
   return window
 }
+
+/* 原独立 startup recovery IPC 入口停用，保留以便回滚。
+function registerStartupRecoveryHandlers(
+  window: BrowserWindow,
+  recovery: NonNullable<ProfileBootstrapWindowOptions['startupRecovery']>
+): void {
+  const isCurrent = () => activeBootstrap?.window === window && !window.isDestroyed()
+  let phase: 'failed' | 'verifying' | 'starting' | 'selecting' = 'failed'
+  let failureKind = recovery.failureKind
+  const snapshot = () => ({ phase, failureKind })
+  let inFlight: Promise<ReturnType<typeof snapshot>> | undefined
+  registerBootstrapHandler('profile-bootstrap:startup-state', window, () => snapshot())
+  registerBootstrapHandler('profile-bootstrap:retry-recovery', window, () => {
+    if (inFlight) return inFlight
+    if (phase === 'selecting') throw new Error('Profile startup is already in progress')
+    if (phase === 'starting') return snapshot()
+    phase = 'verifying'
+    inFlight = recovery
+      .retry(isCurrent)
+      .then(
+        (failure) => {
+          if (failure) failureKind = failure
+          phase = failure ? 'failed' : 'starting'
+          return snapshot()
+        },
+        () => {
+          phase = 'failed'
+          return snapshot()
+        }
+      )
+      .finally(() => {
+        inFlight = undefined
+      })
+    return inFlight
+  })
+  registerBootstrapHandler('profile-bootstrap:select-signed-out', window, async () => {
+    if (phase === 'verifying' || phase === 'starting' || phase === 'selecting') {
+      throw new Error('Profile startup is already in progress')
+    }
+    phase = 'selecting'
+    try {
+      await recovery.selectSignedOut(isCurrent)
+    } catch (error) {
+      phase = 'failed'
+      throw error
+    }
+  })
+}
+*/
 
 function registerLegacyAdoptionHandler(context: ProfileLaunchContext, window: BrowserWindow): void {
   // ipcMain.removeHandler(ADOPT_LEGACY)
@@ -352,19 +461,24 @@ function registerSignedOutHandlers(context: ProfileLaunchContext, window: Browse
           if (preview.status === 'already-claimed') return
           if (preview.status === 'unsupported') {
             // 账号 Profile 已有数据时沿用现有数据，登录继续进行；原先的硬失败逻辑保留注释。
-            // throw new Error(translateForBootstrap('dialog.profile_claim.error.target_not_empty'))
+            // throw new Error(t('dialog.profile_claim.error.target_not_empty', undefined, resolveSystemLanguage(app.getLocale())))
             return undefined
           }
           if (preview.status === 'staged') {
             return { apply: async () => undefined, commit: () => claim.commit() }
           }
           const decision = await confirmProfileClaim(preview)
-          if (!decision) throw new Error(translateForBootstrap('dialog.profile_claim.error.cancelled'))
+          if (!decision)
+            throw new Error(
+              t('dialog.profile_claim.error.cancelled', undefined, resolveSystemLanguage(app.getLocale()))
+            )
           return {
             apply: async () => {
               const result = await claim.confirm({ previewId: preview.previewId, allow: decision.allow })
               if (result.status !== 'claimed')
-                throw new Error(translateForBootstrap('dialog.profile_claim.error.incomplete'))
+                throw new Error(
+                  t('dialog.profile_claim.error.incomplete', undefined, resolveSystemLanguage(app.getLocale()))
+                )
             },
             commit: () => claim.commit()
           }

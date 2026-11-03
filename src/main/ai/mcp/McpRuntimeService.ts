@@ -258,14 +258,16 @@ export class McpRuntimeService extends BaseService {
     }
   }
 
-  private assertOrgConnectorAllowed(serverId: string): void {
+  /* private assertOrgConnectorAllowed(serverId: string): void {
     if (!orgStateStore.isConnectorAllowed(serverId, this.currentOrgLease())) {
       throw new Error('Enterprise connector entitlement is unavailable or stale')
     }
-  }
+  } */
 
   async stopUnauthorizedOrgConnectors(): Promise<void> {
-    await Promise.allSettled(orgStateStore.connectorIdsDeniedBy(this.currentOrgLease()).map((serverId) => this.stopServer(serverId)))
+    await Promise.allSettled(
+      orgStateStore.connectorIdsDeniedBy(this.currentOrgLease()).map((serverId) => this.stopServer(serverId))
+    )
   }
 
   public setServerStatus(serverId: string, state: McpRuntimeState, error?: unknown): void {
@@ -389,7 +391,8 @@ export class McpRuntimeService extends BaseService {
   }
 
   private async getOrCreateClient(server: McpServer): Promise<Client> {
-    this.assertOrgConnectorAllowed(server.id)
+    // this.assertOrgConnectorAllowed(server.id)
+    // MEA:profile-online-login Installed copies retain independent remote authentication.
     if (this.stopping || this.isStopped || this.isDestroyed) {
       throw new Error('MCP runtime is stopping')
     }
@@ -816,7 +819,7 @@ export class McpRuntimeService extends BaseService {
     }
   }
 
-  private abortActiveToolCalls() {
+  public abortActiveToolCalls() {
     for (const [key, controllers] of this.activeToolCalls) {
       for (const controller of controllers) {
         controller.abort()
@@ -1089,6 +1092,7 @@ export class McpRuntimeService extends BaseService {
     signal,
     onProgress
   }: RuntimeCallToolArgs): Promise<McpCallToolResponse> {
+    application.assertBusinessAccess()
     const toolCallId = callId || uuidv4()
     const registrationKey = toolCallKey(toolCallId, scope)
     const abortController = new AbortController()
@@ -1119,7 +1123,7 @@ export class McpRuntimeService extends BaseService {
             }
           }
         }
-        this.assertOrgConnectorAllowed(server.id)
+        // this.assertOrgConnectorAllowed(server.id)
         const sourcePolicy = this.getLatestSourcePolicy(server)
         if (isMcpToolDisabledBySource(sourcePolicy, { name })) {
           throw new Error(`MCP tool is disabled: ${name}`)
@@ -1142,6 +1146,8 @@ export class McpRuntimeService extends BaseService {
         ]).finally(() => {
           if (handleAbort) effectiveSignal.removeEventListener('abort', handleAbort)
         })
+        // MEA:profile-online-login Connecting or approving must not outlive authorization.
+        application.assertBusinessAccess()
         const result = await client.callTool({ name, arguments: args }, undefined, {
           onprogress: (process) => {
             getServerLogger(server, { tool: name, callId: toolCallId }).debug(`Progress`, {

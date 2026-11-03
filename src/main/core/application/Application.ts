@@ -18,9 +18,15 @@ import {
 import { buildPathRegistry, type PathKey, type PathMap, shouldAutoEnsure } from '@main/core/paths/pathRegistry'
 import { isDev, isLinux, isMac, isPortable, isWin } from '@main/core/platform'
 import { releaseDataRootLock } from '@main/core/preboot/dataRootLock'
-import { profileSwitchFence, type SwitchFenceState } from '@main/core/profiles'
+import {
+  getProfileLaunchContext,
+  profileBusinessAccessGate,
+  profileSwitchFence,
+  type SwitchFenceState
+} from '@main/core/profiles'
 import { handleGuarded } from '@main/core/security/guardedIpc'
 import { bootConfigService } from '@main/data/bootConfig'
+import { DataApiError, ErrorCode } from '@shared/data/api/errors'
 import { IpcChannel } from '@shared/IpcChannel'
 
 import type { ServiceRegistry } from './serviceRegistry'
@@ -320,8 +326,13 @@ export class Application {
   private returningToLogin = false
   private completedProfileTeardown?: ShutdownResult
 
-  public async prepareProfileLogout(): Promise<ShutdownResult> {
+  public beginProfileLogout(): void {
     this.returningToLogin = true
+  }
+
+  public async prepareProfileLogout(): Promise<ShutdownResult> {
+    // this.returningToLogin = true
+    this.beginProfileLogout()
     return this.prepareProfileSwitch()
   }
 
@@ -749,11 +760,22 @@ export class Application {
     return profileSwitchFence.state
   }
 
+  // MEA:profile-online-login Business admission is distinct from cancellation and cleanup.
+  public assertBusinessAccess(): void {
+    const context = getProfileLaunchContext()
+    if (!context) return
+    if (context.mode !== 'business' || context.kind !== 'authenticated' || !profileBusinessAccessGate.isAllowed()) {
+      throw new DataApiError(ErrorCode.PERMISSION_DENIED, 'Business access requires authentication', 403)
+    }
+  }
+
   public assertWritable(): void {
+    this.assertBusinessAccess()
     profileSwitchFence.assertWritable()
   }
 
   public assertTaskStartAllowed(): void {
+    this.assertBusinessAccess()
     profileSwitchFence.assertTaskStartAllowed()
   }
 

@@ -5,9 +5,10 @@
  */
 import { describe, expect, it, vi } from 'vitest'
 
-import { computeIdentityDigest } from '@main/core/profiles'
 import type { OrgCurrentUser, OrgSession } from '@main/enterprise/types'
+import { VerificationError } from '@main/enterprise/verification'
 
+import { computeIdentityDigest } from '../ProfileIdentity'
 import type { ProfileLaunchContext } from '../ProfilePrebootCoordinator'
 import { verifyCandidateProfile, type StartupVerificationResult } from '../ProfileStartupVerifier'
 
@@ -57,11 +58,12 @@ function run(args: {
   context?: ProfileLaunchContext
   session?: OrgSession | null
   currentUser?: OrgCurrentUser
-  transportError?: string
+  transportError?: string | Error
 }): Promise<StartupVerificationResult> {
   const transport = {
     getCurrentUser: vi.fn().mockImplementation(async () => {
-      if (args.transportError) throw new Error(args.transportError)
+      if (args.transportError)
+        throw typeof args.transportError === 'string' ? new Error(args.transportError) : args.transportError
       return args.currentUser ?? currentUser()
     })
   }
@@ -174,6 +176,44 @@ describe('ProfileStartupVerifier identity gate', () => {
     expect(result.kind).toBe('failed')
     if (result.kind !== 'failed') throw new Error('Expected failed verification')
     expect(result.reason).toMatch(/official/i)
+  })
+
+  it.each(['network timeout', 'currentuser request failed (401)', '503', 'token expired', 'unexpected JSON'])(
+    'keeps ambiguous transport failure retryable: %s',
+    async (transportError) => {
+      expect(await run({ transportError })).toMatchObject({ kind: 'failed', failureKind: 'unavailable' })
+    }
+  )
+
+  it('recognizes only definitive structured authentication evidence as invalid', async () => {
+    expect(
+      await run({
+        transportError: new VerificationError('confirmed rejection', {
+          stage: 'current-user',
+          endpoint: '/api/currentuser',
+          kind: 'invalid',
+          reason: 'credentials-invalid'
+        })
+      })
+    ).toMatchObject({ kind: 'failed', failureKind: 'invalid' })
+  })
+
+  it.each([
+    { server_instance_id: 'inst-1', user: { id: 'u-1', status: 'active' } },
+    currentUser({ user: { id: 'u-1', group_id: 'g-1', role: 'member', status: 'unexpected-status' } }),
+    currentUser({ user: { id: 'u-1', group_id: 'g-1', role: 'member', status: 'inactive' } })
+  ])('does not authorize or invalidate an incomplete or unknown response', async (response) => {
+    expect(await run({ currentUser: response as OrgCurrentUser })).toMatchObject({
+      kind: 'failed',
+      failureKind: 'unavailable'
+    })
+  })
+
+  it('classifies a complete but mismatched identity as invalid', async () => {
+    expect(await run({ currentUser: currentUser({ server_instance_id: 'other-instance' }) })).toMatchObject({
+      kind: 'failed',
+      failureKind: 'invalid'
+    })
   })
 
   it('treats numeric user ids from modern as their string form', async () => {

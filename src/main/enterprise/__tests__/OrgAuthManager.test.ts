@@ -4,8 +4,12 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { stateStoreMock, authConfig } = vi.hoisted(() => ({
+import type * as OrgApiClientModule from '../OrgApiClient'
+
+const { stateStoreMock, authConfig, cookieSession, replaceCookies } = vi.hoisted(() => ({
   authConfig: { mode: 'official-direct' },
+  cookieSession: { fetch: vi.fn(), cookies: { get: vi.fn(), remove: vi.fn(), flushStore: vi.fn() } },
+  replaceCookies: vi.fn(),
   stateStoreMock: {
     markUnavailable: vi.fn(),
     markAvailable: vi.fn(),
@@ -22,11 +26,10 @@ vi.mock('electron', () => ({
   shell: { openExternal: vi.fn().mockResolvedValue(undefined) }
 }))
 
-vi.mock('@application', () => ({
-  application: {
-    get: vi.fn().mockReturnValue({ broadcast: vi.fn() })
-  }
-}))
+vi.mock('@application', async () => {
+  const { mockApplicationFactory } = await import('@test-mocks/main/application')
+  return mockApplicationFactory()
+})
 
 vi.mock('@main/enterprise/OrgCredentialStore', () => ({
   OrgCredentialStore: class {
@@ -42,7 +45,7 @@ vi.mock('@main/enterprise/OrgStateStore', async (importOriginal) => {
 })
 
 vi.mock('../OrgApiClient', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../OrgApiClient')>()
+  const actual = await importOriginal<typeof OrgApiClientModule>()
   return {
     ...actual,
     get ORG_AUTH_MODE() {
@@ -52,9 +55,29 @@ vi.mock('../OrgApiClient', async (importOriginal) => {
   }
 })
 
+vi.mock('@main/core/profiles', async () => {
+  const runtime = await import('../../core/profiles/ProfileRuntimeContext')
+  return {
+    ...(await import('../../core/profiles/ProfileIdentity')),
+    ...runtime,
+    ...(await import('../../core/profiles/ProfileAuthEpoch')),
+    ...(await import('../../core/profiles/SwitchFence')),
+    ...(await import('../../core/profiles/ProfileAuthSession')),
+    getProfileAuthSession: () => cookieSession,
+    runAuthSessionOperation: replaceCookies,
+    get profileBusinessAccessGate() {
+      return runtime.profileBusinessAccessGate
+    }
+  }
+})
+
+import { application } from '@application'
 import { OrgAuthManager } from '@main/enterprise/OrgAuthManager'
 
+import { profileBusinessAccessGate, setProfileLaunchContext } from '../../core/profiles/ProfileRuntimeContext'
 import type { OrgCredentialStore, OrgSession } from '../OrgCredentialStore'
+import { ProfileAuthBroker } from '../ProfileAuthBroker'
+import { VerificationError } from '../verification'
 
 function deferred<T>() {
   let resolve!: (value: T) => void
@@ -89,6 +112,7 @@ describe('OrgAuthManager C3 组织可用性标记', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     authConfig.mode = 'official-direct'
+    setProfileLaunchContext(undefined)
   })
 
   afterEach(() => {
@@ -146,20 +170,112 @@ describe('OrgAuthManager C3 组织可用性标记', () => {
     expect(manager.getStatus().phase).toBe('signed-in')
   })
 
-  it('signs out when refresh returns 401', async () => {
+  it('does not infer invalidity from an undocumented refresh 401', async () => {
     const manager = new OrgAuthManager()
     seedSession(manager)
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('', { status: 401 })))
-    await expect(manager.getValidSession()).resolves.toBeNull()
-    expect(manager.getStatus().phase).toBe('signed-out')
+    await expect(manager.getValidSession()).resolves.toMatchObject({ accessToken: 'old-access' })
+    expect(manager.getVerificationStatus().state).toBe('unavailable')
   })
 
-  it('signs out when refresh explicitly reports a revoked token', async () => {
+  it('does not infer credential invalidity from a network error message', async () => {
     const manager = new OrgAuthManager()
     seedSession(manager)
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('refresh token revoked')))
-    await expect(manager.getValidSession()).resolves.toBeNull()
-    expect(manager.getStatus().phase).toBe('signed-out')
+    await expect(manager.getValidSession()).resolves.toMatchObject({ accessToken: 'old-access' })
+    expect(manager.getStatus().phase).toBe('signed-in')
+  })
+
+  it('merges manual and background verification and refreshes once without recursive verification', async () => {
+    const manager = new OrgAuthManager()
+    seedSession(manager)
+    let refreshes = 0
+    let checks = 0
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init: RequestInit) => {
+        if (url.endsWith('/refresh')) {
+          refreshes++
+          return new Response(JSON.stringify({ accessToken: 'new-access', refreshToken: 'new-refresh', expiresIn: 1 }))
+        }
+        checks++
+        expect(init.headers).toEqual({ authorization: 'Bearer new-access' })
+        return new Response(
+          JSON.stringify({
+            server_instance_id: 'server',
+            user: { id: 7, group_id: 2, role: 'member', status: 'active' }
+          })
+        )
+      })
+    )
+    const first = manager.retryVerification()
+    expect(manager.verifyOnlineAuthority()).toBe(first)
+    expect(manager.revalidateAuthority()).toBe(first)
+    await first
+    expect(refreshes).toBe(1)
+    expect(checks).toBe(1)
+    expect(manager.getVerificationStatus().state).toBe('verified')
+  })
+
+  it('synchronously fences and merges duplicate user logout before durable intent resolves', async () => {
+    const intent = deferred<void>()
+    const manager = new OrgAuthManager({
+      credentialStore: {} as never,
+      profileSession: {
+        beginLogout: () => intent.promise,
+        logout: async () => ({ kind: 'signed-out' })
+      } as never
+    })
+    seedSession(manager)
+    profileBusinessAccessGate.recordVerificationSuccess()
+    vi.spyOn(manager.apiClient, 'revoke').mockResolvedValue(undefined)
+    const logout = manager.logout()
+    expect(manager.logout()).toBe(logout)
+    expect(profileBusinessAccessGate.isAllowed()).toBe(false)
+    expect(manager.getVerificationStatus().state).toBe('switching')
+    expect(manager.getStatus().phase).toBe('switching')
+    expect(application.beginProfileLogout).toHaveBeenCalledOnce()
+    intent.resolve()
+    await logout
+  })
+
+  it('keeps a proven identity block terminal for normal retry and never logs out in background', async () => {
+    const manager = new OrgAuthManager()
+    seedSession(manager, { ...managementSession, expiresAt: Number.MAX_SAFE_INTEGER })
+    profileBusinessAccessGate.recordVerificationSuccess()
+    const logout = vi.spyOn(manager, 'logout')
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              server_instance_id: 'other-server',
+              user: { id: 7, group_id: 2, role: 'member', status: 'active' }
+            })
+          )
+      )
+    )
+    await expect(manager.retryVerification()).rejects.toMatchObject({
+      evidence: { kind: 'invalid', reason: 'identity-changed' }
+    })
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              server_instance_id: 'server',
+              user: { id: 7, group_id: 2, role: 'member', status: 'active' }
+            })
+          )
+      )
+    )
+    await expect(manager.retryVerification()).rejects.toThrow(/authentication/)
+    expect(profileBusinessAccessGate.isAllowed()).toBe(false)
+    expect(manager.getVerificationStatus()).toMatchObject({ state: 'blocked', reason: 'identity-changed' })
+    expect(logout).not.toHaveBeenCalled()
+    expect(() => manager.acquireLease()).toThrow(/unavailable|blocked/)
   })
 
   it('rejects runtime identity changes instead of switching accounts', async () => {
@@ -180,7 +296,7 @@ describe('OrgAuthManager C3 组织可用性标记', () => {
     expect((await manager.getValidSession())?.issuerId).toBe('server')
   })
 
-  it('rejects runtime authorization changes without overwriting the stored context', async () => {
+  it('updates same-identity group changes without global reauthentication', async () => {
     const manager = new OrgAuthManager()
     seedSession(manager, { ...managementSession, expiresAt: Number.MAX_SAFE_INTEGER })
     vi.stubGlobal(
@@ -194,8 +310,398 @@ describe('OrgAuthManager C3 组织可用性标记', () => {
         )
       )
     )
-    await expect(manager.verifyOnlineAuthority()).rejects.toThrow(/authorization/)
-    expect((await manager.getValidSession())?.groupId).toBe('2')
+    await expect(manager.verifyOnlineAuthority()).resolves.toBeUndefined()
+    expect((await manager.getValidSession())?.groupId).toBe('3')
+    expect(manager.getStatus().generation).toBe(1)
+    expect(manager.getVerificationStatus().state).toBe('verified')
+  })
+
+  it('publishes only health transitions with an instance owner and monotonically increasing revision', async () => {
+    const manager = new OrgAuthManager()
+    const other = new OrgAuthManager()
+    seedSession(manager, { ...managementSession, expiresAt: Number.MAX_SAFE_INTEGER })
+    const states: ReturnType<OrgAuthManager['getVerificationStatus']>[] = []
+    const subscription = manager.onVerificationChanged((state) => states.push(state))
+    const good = () =>
+      new Response(
+        JSON.stringify({ server_instance_id: 'server', user: { id: 7, group_id: 2, role: 'member', status: 'active' } })
+      )
+    const fetcher = vi.fn(async () => good())
+    vi.stubGlobal('fetch', fetcher)
+    await manager.retryVerification()
+    await manager.retryVerification()
+    fetcher.mockRejectedValueOnce(new Error('offline'))
+    await expect(manager.retryVerification()).rejects.toThrow()
+    expect(profileBusinessAccessGate.isAllowed()).toBe(true)
+    await manager.retryVerification()
+    expect(states.map((state) => state.state)).toEqual(['verified', 'unavailable', 'verified'])
+    expect(states.map((state) => state.revision)).toEqual([1, 2, 3])
+    expect(new Set(states.map((state) => state.owner)).size).toBe(1)
+    expect(states[0].owner).not.toBe(other.getVerificationStatus().owner)
+    subscription.dispose()
+    manager.dispose()
+    other.dispose()
+  })
+
+  it('updates role and group in durable authorization without revoking unrelated business access', async () => {
+    let persisted: OrgSession | undefined
+    let groupId: string | undefined
+    const manager = new OrgAuthManager({
+      credentialStore: {
+        save: async (value: OrgSession) => {
+          persisted = value
+        }
+      } as never,
+      profileSession: {
+        updateAuthorizationContext: async (_identity: unknown, context: { groupId: string }) => {
+          groupId = context.groupId
+        }
+      } as never
+    })
+    seedSession(manager, { ...managementSession, expiresAt: Number.MAX_SAFE_INTEGER })
+    profileBusinessAccessGate.recordVerificationSuccess()
+    const lease = manager.acquireLease()
+    let nextContext: { groupId: string | null; role: string | null } | undefined
+    manager.onAuthorizationChanged(() => {
+      nextContext = manager.getStatus()
+    })
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              server_instance_id: 'server',
+              user: { id: 7, group_id: 3, role: 'admin', status: 'active' }
+            })
+          )
+      )
+    )
+    await manager.retryVerification()
+    expect(groupId).toBe('3')
+    expect(persisted).toMatchObject({ groupId: '3', role: 'admin', accessToken: 'old-access' })
+    expect(nextContext).toMatchObject({ groupId: '3', role: 'admin' })
+    expect(() => manager.assertLease(lease)).toThrow(/stale/)
+    expect(profileBusinessAccessGate.isAllowed()).toBe(true)
+  })
+
+  it('discards old currentuser evidence when concurrent token refresh installs newer credentials', async () => {
+    const response = deferred<Response>()
+    const started = deferred<void>()
+    const manager = new OrgAuthManager()
+    seedSession(manager, { ...managementSession, expiresAt: Number.MAX_SAFE_INTEGER })
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url.endsWith('/refresh'))
+          return new Response(
+            JSON.stringify({ accessToken: 'new-access', refreshToken: 'new-refresh', expiresIn: 3600 })
+          )
+        started.resolve()
+        return response.promise
+      })
+    )
+    const verification = manager.retryVerification()
+    const rejected = expect(verification).rejects.toThrow(/superseded/)
+    await started.promise
+    seedSession(manager, { ...managementSession, expiresAt: 0 })
+    await manager.getValidSession()
+    response.resolve(
+      new Response(
+        JSON.stringify({ server_instance_id: 'server', user: { id: 7, group_id: 99, role: 'admin', status: 'active' } })
+      )
+    )
+    await rejected
+    expect(await manager.getValidSession()).toMatchObject({
+      accessToken: 'new-access',
+      refreshToken: 'new-refresh',
+      groupId: '2'
+    })
+  })
+
+  it('rechecks the credential version inside the write queue before persisting old authority', async () => {
+    const user = deferred<Response>()
+    const writing = deferred<void>()
+    const release = deferred<void>()
+    const persisted: OrgSession[] = []
+    const manager = new OrgAuthManager({
+      credentialStore: {
+        save: async (session: OrgSession) => {
+          writing.resolve()
+          await release.promise
+          persisted.push(session)
+        }
+      } as never
+    })
+    seedSession(manager, { ...managementSession, expiresAt: Number.MAX_SAFE_INTEGER })
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) =>
+        url.endsWith('/refresh')
+          ? new Response(JSON.stringify({ accessToken: 'new-access', refreshToken: 'new-refresh', expiresIn: 3600 }))
+          : user.promise
+      )
+    )
+    const validating = manager.retryVerification()
+    const rejected = expect(validating).rejects.toThrow(/version.*stale/i)
+    seedSession(manager, { ...managementSession, expiresAt: 0 })
+    const refresh = manager.getValidSession()
+    await writing.promise
+    user.resolve(
+      new Response(
+        JSON.stringify({ server_instance_id: 'server', user: { id: 7, group_id: 99, role: 'admin', status: 'active' } })
+      )
+    )
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    release.resolve()
+    await refresh
+    await rejected
+    expect(persisted).toHaveLength(1)
+    expect(persisted[0]).toMatchObject({ accessToken: 'new-access', groupId: '2' })
+    expect(await manager.getValidSession()).toMatchObject({ accessToken: 'new-access', groupId: '2' })
+  })
+
+  it('does not block newer credentials on a definitive rejection of a superseded verification snapshot', async () => {
+    const rejectedEvidence = deferred<void>()
+    vi.spyOn(ProfileAuthBroker.prototype, 'revalidateManagement').mockImplementationOnce(async () => {
+      await rejectedEvidence.promise
+      throw new VerificationError('Old credential rejected', {
+        stage: 'current-user',
+        endpoint: '/api/currentuser',
+        kind: 'invalid',
+        reason: 'credentials-invalid'
+      })
+    })
+    const manager = new OrgAuthManager()
+    seedSession(manager, { ...managementSession, expiresAt: Number.MAX_SAFE_INTEGER })
+    profileBusinessAccessGate.recordVerificationSuccess()
+    const verifying = manager.retryVerification()
+    const rejected = expect(verifying).rejects.toMatchObject({ evidence: { kind: 'uncertain' } })
+    seedSession(manager, { ...managementSession, expiresAt: 0 })
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ accessToken: 'new-access', refreshToken: 'new-refresh', expiresIn: 3600 }))
+      )
+    )
+    await manager.getValidSession()
+    rejectedEvidence.resolve()
+    await rejected
+    expect(manager.getVerificationStatus().state).not.toBe('blocked')
+    expect(profileBusinessAccessGate.isAllowed()).toBe(true)
+    expect(manager.acquireLease()).toMatchObject({ userId: '7' })
+  })
+
+  it('does not publish or commit a verification result after disposal', async () => {
+    const response = deferred<Response>()
+    const manager = new OrgAuthManager()
+    seedSession(manager, { ...managementSession, expiresAt: Number.MAX_SAFE_INTEGER })
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => response.promise)
+    )
+    const verification = manager.retryVerification()
+    const rejected = expect(verification).rejects.toThrow(/epoch|stale/)
+    const before = manager.getVerificationStatus()
+    manager.dispose()
+    response.resolve(
+      new Response(
+        JSON.stringify({ server_instance_id: 'server', user: { id: 7, group_id: 99, role: 'admin', status: 'active' } })
+      )
+    )
+    await rejected
+    expect(manager.getVerificationStatus()).toEqual(before)
+    expect(manager.getStatus().groupId).toBe('2')
+  })
+
+  it('retains credentials and startup authority when initialize performs a redundant network recheck offline', async () => {
+    authConfig.mode = 'management-oauth'
+    const manager = new OrgAuthManager({
+      credentialStore: {
+        load: async () => ({ ...managementSession, expiresAt: Number.MAX_SAFE_INTEGER }),
+        discardQuarantined: async () => undefined
+      } as never
+    })
+    profileBusinessAccessGate.recordVerificationSuccess()
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('offline')))
+    await expect(manager.initialize()).resolves.toBeUndefined()
+    expect(await manager.getValidSession()).toMatchObject({ userId: '7', accessToken: 'old-access' })
+    expect(profileBusinessAccessGate.isAllowed()).toBe(true)
+    expect(manager.getVerificationStatus().state).toBe('unavailable')
+  })
+
+  it('preserves a blocked initialize recheck for the window control plane instead of failing bootstrap', async () => {
+    authConfig.mode = 'management-oauth'
+    const manager = new OrgAuthManager({
+      credentialStore: {
+        load: async () => ({ ...managementSession, expiresAt: Number.MAX_SAFE_INTEGER }),
+        discardQuarantined: async () => undefined
+      } as never
+    })
+    profileBusinessAccessGate.recordVerificationSuccess()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              server_instance_id: 'other-server',
+              user: { id: 7, group_id: 2, role: 'member', status: 'active' }
+            })
+          )
+      )
+    )
+    await expect(manager.initialize()).resolves.toBeUndefined()
+    expect(manager.getVerificationStatus()).toMatchObject({ state: 'blocked', reason: 'identity-changed' })
+    expect(() => profileBusinessAccessGate.assertWritable()).toThrow()
+    expect(() => manager.acquireLease()).toThrow()
+  })
+
+  it('still rejects credential-store failures during initialization', async () => {
+    const manager = new OrgAuthManager({
+      credentialStore: {
+        discardQuarantined: async () => undefined,
+        load: async () => {
+          throw new Error('disk unavailable')
+        }
+      } as never
+    })
+    await expect(manager.initialize()).rejects.toThrow('disk unavailable')
+  })
+
+  it.each([
+    {},
+    { accessToken: '', refreshToken: 'new', expiresIn: 3600 },
+    { accessToken: 'new', refreshToken: 'new', expiresIn: '3600' },
+    { accessToken: 'new', refreshToken: 'new', expiresIn: -1 }
+  ])('does not replace stored credentials with a malformed refresh response: %o', async (body) => {
+    const manager = new OrgAuthManager()
+    seedSession(manager)
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify(body)))
+    )
+    expect(await manager.getValidSession()).toMatchObject({ accessToken: 'old-access', refreshToken: 'old-refresh' })
+    expect(manager.getVerificationStatus().state).toBe('unavailable')
+  })
+
+  it('merges concurrent credential refresh without issuing currentuser recursively', async () => {
+    const response = deferred<Response>()
+    const fetcher = vi.fn(() => response.promise)
+    vi.stubGlobal('fetch', fetcher)
+    const manager = new OrgAuthManager()
+    seedSession(manager)
+    const first = manager.getValidSession()
+    const second = manager.getValidSession()
+    response.resolve(
+      new Response(JSON.stringify({ accessToken: 'new-access', refreshToken: 'new-refresh', expiresIn: 3600 }))
+    )
+    expect(await first).toMatchObject({ accessToken: 'new-access' })
+    expect(await second).toMatchObject({ accessToken: 'new-access' })
+    expect(fetcher.mock.calls.length).toBe(1)
+  })
+
+  it('never refreshes Bearer credentials for cookie verification', async () => {
+    setProfileLaunchContext({
+      profileId: 'profile-cookie',
+      profileRoot: '/profile-cookie',
+      mode: 'business',
+      kind: 'authenticated'
+    } as never)
+    const manager = new OrgAuthManager()
+    seedSession(manager, { ...managementSession, authMode: 'management-cookie' })
+    cookieSession.fetch.mockResolvedValue(
+      new Response(
+        JSON.stringify({ server_instance_id: 'server', user: { id: 7, group_id: 2, role: 'member', status: 'active' } })
+      )
+    )
+    const bearer = vi.fn().mockRejectedValue(new Error('Bearer must not be used'))
+    vi.stubGlobal('fetch', bearer)
+    await manager.retryVerification()
+    expect(manager.getVerificationStatus().state).toBe('verified')
+    expect(bearer).not.toHaveBeenCalled()
+  })
+
+  it('uses a fixed logout cookie snapshot and never sends response cookies to the login partition', async () => {
+    setProfileLaunchContext({
+      profileId: 'profile-cookie',
+      profileRoot: '/profile-cookie',
+      mode: 'business',
+      kind: 'authenticated'
+    } as never)
+    const manager = new OrgAuthManager({ credentialStore: { clear: async () => undefined } as never })
+    seedSession(manager, { ...managementSession, authMode: 'management-cookie' })
+    cookieSession.cookies.get.mockResolvedValue([{ name: 'sid', value: 'old-cookie', path: '/' }])
+    cookieSession.cookies.remove.mockResolvedValue(undefined)
+    replaceCookies.mockResolvedValue([])
+    let sent: RequestInit | undefined
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string, init: RequestInit) => {
+        sent = init
+        return new Response('', { headers: { 'set-cookie': 'sid=late-old-cookie' } })
+      })
+    )
+    await manager.logout()
+    expect(sent).toMatchObject({ credentials: 'omit', headers: { cookie: 'sid=old-cookie' } })
+    expect(cookieSession.fetch).not.toHaveBeenCalled()
+    expect(manager.getStatus().phase).toBe('signed-out')
+  })
+
+  it('hands local cookie cleanup failure to native recovery once while keeping authority closed', async () => {
+    setProfileLaunchContext({
+      profileId: 'profile-cookie',
+      profileRoot: '/profile-cookie',
+      mode: 'business',
+      kind: 'authenticated'
+    } as never)
+    let recoveryStage: string | undefined
+    let recoveries = 0
+    const manager = new OrgAuthManager({
+      credentialStore: {} as never,
+      profileSession: {
+        beginLogout: async () => undefined,
+        logout: async () => {
+          throw new Error('unsafe transition must not run')
+        }
+      } as never,
+      onLogoutFailure: (stage) => {
+        recoveryStage = stage
+        recoveries++
+      }
+    })
+    seedSession(manager, { ...managementSession, authMode: 'management-cookie' })
+    profileBusinessAccessGate.recordVerificationSuccess()
+    cookieSession.cookies.get.mockResolvedValue([{ name: 'sid', value: 'old-cookie', path: '/' }])
+    replaceCookies.mockRejectedValueOnce(new Error('cookie disk unavailable'))
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(''))
+    )
+    const logout = manager.logout()
+    await expect(logout).rejects.toThrow('cookie disk unavailable')
+    await expect(manager.logout()).rejects.toThrow('cookie disk unavailable')
+    expect(recoveryStage).toBe('logout-cookie-cleanup')
+    expect(recoveries).toBe(1)
+    expect(manager.getVerificationStatus().state).toBe('switching')
+    expect(profileBusinessAccessGate.isAllowed()).toBe(false)
+    expect(await manager.getValidSession()).toBeNull()
+  })
+
+  it('bounds remote logout so offline revocation cannot stall the local durable transition', async () => {
+    vi.useFakeTimers()
+    try {
+      const manager = new OrgAuthManager({ credentialStore: { clear: async () => undefined } as never })
+      seedSession(manager)
+      vi.spyOn(manager.apiClient, 'revoke').mockImplementation(() => new Promise(() => undefined))
+      const logout = manager.logout()
+      await vi.advanceTimersByTimeAsync(10_000)
+      await expect(logout).resolves.toMatchObject({ state: 'signed-out', revocationWarning: 'Remote logout timed out' })
+      expect(await manager.getValidSession()).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('does not restore credentials loaded after logout', async () => {
@@ -248,7 +754,10 @@ describe('OrgAuthManager C3 组织可用性标记', () => {
     const store = { save, clear: vi.fn().mockResolvedValue(undefined) }
     const manager = new OrgAuthManager({ credentialStore: store as unknown as OrgCredentialStore })
     seedSession(manager, { ...managementSession, expiresAt: Number.MAX_SAFE_INTEGER })
-    vi.spyOn(manager.apiClient, 'getCurrentUser').mockReturnValue(response.promise)
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify(await response.promise)))
+    )
     vi.spyOn(manager.apiClient, 'revoke').mockResolvedValue(undefined)
     const validation = manager.revalidateAuthority()
     const rejected = expect(validation).rejects.toThrow(/stale|epoch/)
@@ -276,10 +785,18 @@ describe('OrgAuthManager C3 组织可用性标记', () => {
     }
     const manager = new OrgAuthManager({ credentialStore: store as unknown as OrgCredentialStore })
     seedSession(manager, { ...managementSession, expiresAt: Number.MAX_SAFE_INTEGER })
-    vi.spyOn(manager.apiClient, 'getCurrentUser').mockResolvedValue({
-      server_instance_id: 'server',
-      user: { id: 7, group_id: 2, role: 'member', status: 'active' }
-    })
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(
+        async () =>
+          new Response(
+            JSON.stringify({
+              server_instance_id: 'server',
+              user: { id: 7, group_id: 2, role: 'member', status: 'active' }
+            })
+          )
+      )
+    )
     vi.spyOn(manager.apiClient, 'revoke').mockResolvedValue(undefined)
     const validating = manager.revalidateAuthority()
     const outcome = validating.catch((error: unknown) => error)

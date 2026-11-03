@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { application } from '@application'
 import { BaseService } from '@main/core/lifecycle/BaseService'
 
 import type { AiStreamManagerConfig, StreamListener } from '../types'
@@ -86,6 +87,34 @@ describe('AiStreamManager.dispatch — per-topic serialization', () => {
 
   afterEach(() => {
     BaseService.resetInstances()
+  })
+
+  it('rechecks task admission after waiting for the per-topic mutex', async () => {
+    const denied = new Error('Business access denied')
+    let allowed = true
+    const gate = vi.spyOn(application, 'assertTaskStartAllowed').mockImplementation(() => {
+      if (!allowed) throw denied
+    })
+    let unlock!: () => void
+    const held = mgr.withDispatchLock(
+      't',
+      () =>
+        new Promise<void>((resolve) => {
+          unlock = resolve
+        })
+    )
+    await flush()
+    const pending = mgr.dispatch(fakeSubscriber, openReq('t'))
+    const rejected = expect(pending).rejects.toBe(denied)
+    allowed = false
+    unlock()
+    try {
+      await held
+      await rejected
+      expect(dispatchEvents).toEqual([])
+    } finally {
+      gate.mockRestore()
+    }
   })
 
   it('serializes two concurrent dispatches on the same topic — the second waits for the first', async () => {

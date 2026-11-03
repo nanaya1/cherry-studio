@@ -9,7 +9,7 @@ import { application } from '@application'
 import { agentGlobalSkillService } from '@data/services/AgentGlobalSkillService'
 import { loggerService } from '@logger'
 import { isWin } from '@main/core/platform'
-import { orgStateStore } from '@main/enterprise/OrgStateStore'
+// import { orgStateStore } from '@main/enterprise/OrgStateStore'
 import { runPathMutationExclusive } from '@main/services/file'
 import { isOutsidePath, isPathInside } from '@main/utils/file'
 import { directoryExists } from '@main/utils/legacyFile'
@@ -114,13 +114,17 @@ export class SkillService {
    */
   async getById(id: string): Promise<InstalledSkill | null> {
     const skill = agentGlobalSkillService.getById(id)
-    return skill && this.isOrgSkillAllowed(skill) ? skill : null
+    // return skill && this.isOrgSkillAllowed(skill) ? skill : null
+    // MEA:profile-verification-network-tolerance Installed copies use only local user enablement.
+    return skill
   }
 
   async list(query: ListSkillsQuery = {}): Promise<InstalledSkill[]> {
-    return agentGlobalSkillService.list(query).filter((skill) => this.isOrgSkillAllowed(skill))
+    // return agentGlobalSkillService.list(query).filter((skill) => this.isOrgSkillAllowed(skill))
+    return agentGlobalSkillService.list(query)
   }
 
+  /* Installed copies are not managed by historical organization entitlements.
   private isOrgSkillAllowed(skill: Pick<InstalledSkill, 'sourceUrl'>): boolean {
     let lease: { issuerId: string; groupId: string | null; generation: number } | null = null
     try {
@@ -130,6 +134,7 @@ export class SkillService {
     }
     return orgStateStore.isSkillAllowed(skill.sourceUrl, lease)
   }
+  */
 
   /** Enable or disable a skill for a specific agent. */
   toggle(options: SkillToggleOptions): InstalledSkill | null {

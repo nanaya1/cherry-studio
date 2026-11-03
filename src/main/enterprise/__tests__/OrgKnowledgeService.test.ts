@@ -626,7 +626,7 @@ describe('取消整个分享', () => {
     vi.mocked(orgStateStore.getShareAssociations).mockImplementation(() => (association ? { [key]: association } : {}))
     const ks = {
       createBase: vi.fn(async () => ({ id: 'recovered' })),
-      deleteBase: vi.fn(async (_id: string) => {}),
+      deleteBase: vi.fn<(id: string) => Promise<void>>(async () => {}),
       listBasesForDiscovery: vi.fn(() => ({ items: [{ id: 'recovered' }, { id: 'local-1' }] })),
       addItems: vi.fn(),
       getFilePath: vi.fn(() => '/managed/file.txt')
@@ -1252,6 +1252,50 @@ describe('云端追加文件安全边界', () => {
     expect(upload).not.toHaveBeenCalled()
     service.dispose()
   })
+  it('授权变化取消解析等待和旧进度但保留关联，新授权可重新提交追加', async () => {
+    vi.useFakeTimers()
+    const service = makeService(makeApiClient())
+    const association = { shareId: 'space', completion: 'completed' as const, files: [] }
+    vi.mocked(orgStateStore.getShareAssociation).mockReturnValue(association)
+    vi.spyOn(service as any, 'assertRealOwner').mockResolvedValue(undefined)
+    vi.mocked(application.get).mockReturnValue({
+      addItems: vi.fn().mockResolvedValue({ status: 'added', items: [{ id: 'new-file' }] })
+    } as never)
+    const upload = vi.spyOn(service, 'uploadAddedFiles').mockResolvedValue({
+      shareId: 'space',
+      completion: 'completed',
+      files: []
+    })
+    const items = [{ type: 'note' as const, data: { source: '新资料', content: '正文' } }]
+    await service.addFiles(encodeOrgId('space'), 'local-1', items)
+    let finishJobs!: (jobs: unknown[]) => void
+    shareJobs.list.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishJobs = resolve
+        })
+    )
+    await vi.advanceTimersByTimeAsync(1000)
+    const generation = lease.generation + 1
+    auth.acquireLease.mockImplementation(() => ({ ...lease, generation }))
+    auth.assertLease.mockImplementation((captured: typeof lease) => {
+      if (captured.generation !== generation) throw new Error('stale authorization')
+    })
+    service.invalidateAuthorizationContext()
+    finishJobs([])
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(upload).not.toHaveBeenCalled()
+    expect(await service.uploadStatus('local-1')).toMatchObject({ phase: 'completed' })
+    expect(orgStateStore.clearShare).not.toHaveBeenCalled()
+    settleKnowledgeJob('knowledge.index-documents')
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(upload).not.toHaveBeenCalled()
+    await service.addFiles(encodeOrgId('space'), 'local-1', items)
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(upload).toHaveBeenCalledWith(encodeOrgId('space'), 'local-1')
+    service.dispose()
+  })
+
   it('第二批追加只上传新文件，保留首批可信映射', async () => {
     const api = makeApiClient()
     const service = makeService(api)
@@ -2354,6 +2398,49 @@ describe('OrgKnowledgeService catalog/items', () => {
     })
     await expect(makeService(api).catalog()).rejects.toMatchObject({ code: E.ORGKB_UNAUTHORIZED })
   })
+
+  it.each(['catalog', 'search', 'read'] as const)(
+    '同身份授权变化后丢弃旧 %s 结果，新请求可用且服务不销毁',
+    async (operation) => {
+      const service = makeService(makeApiClient())
+      let current = { ...lease }
+      auth.acquireLease.mockImplementation(() => ({ ...current }))
+      auth.assertLease.mockImplementation((captured: typeof lease) => {
+        if (captured.generation !== current.generation) throw new Error('stale authorization')
+      })
+      const payload = {
+        catalog: { public: [{ id: 'space', name: '新目录' }], shared: [], owned: [] },
+        search: { chunks: [] },
+        read: { document_id: 'document', title: '新正文', content: '当前授权内容', truncated: false }
+      }[operation]
+      let finish!: (value: any) => void
+      vi.spyOn((service as any).client, operation === 'catalog' ? 'getCatalog' : operation)
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              finish = resolve
+            })
+        )
+        .mockResolvedValue(payload)
+      const run = () =>
+        operation === 'catalog'
+          ? service.catalog()
+          : operation === 'search'
+            ? service.search({ baseIds: [encodeOrgId('space')], query: '资料' })
+            : service.read({ baseId: encodeOrgId('space'), documentId: encodeOrgId('document') })
+      const previous = run()
+      const rejected = expect(previous).rejects.toMatchObject({ code: E.ORGKB_UNAUTHORIZED })
+      current = { ...current, generation: current.generation + 1 }
+      service.invalidateAuthorizationContext()
+      finish(payload)
+      await rejected
+      const next = await run()
+      if (operation === 'catalog') expect(next).toMatchObject({ public: [{ name: '新目录' }] })
+      else if (operation === 'search') expect(next).toEqual({ chunks: [] })
+      else expect(next).toMatchObject({ content: '当前授权内容' })
+      service.dispose()
+    }
+  )
 
   it('text 预览调用鉴权 preview 接口，不依赖签名 URL', async () => {
     const api = makeApiClient()

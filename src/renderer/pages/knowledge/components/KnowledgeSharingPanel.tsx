@@ -7,6 +7,7 @@ import { Button } from '@cherrystudio/ui'
 import { ipcApi } from '@renderer/ipc'
 
 import { useOrgKnowledgeResource } from '../hooks/useOrgKnowledgeResource'
+import { useKnowledgeAuthorizationVersion } from '../KnowledgePageProvider'
 import ShareKnowledgeDialog from './ShareKnowledgeDialog'
 import UnshareKnowledgeDialog from './UnshareKnowledgeDialog'
 
@@ -32,7 +33,7 @@ export default function KnowledgeSharingPanel({
 }) {
   const { t } = useTranslation()
   const load = useCallback(() => ipcApi.request('enterprise.knowledge.shares', { baseId }), [baseId])
-  const { data, loading, error, refresh } = useOrgKnowledgeResource(load)
+  const { data, loading, error, refresh } = useOrgKnowledgeResource(load, useKnowledgeAuthorizationVersion())
   const [creating, setCreating] = useState(false)
   const [busy, setBusy] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
