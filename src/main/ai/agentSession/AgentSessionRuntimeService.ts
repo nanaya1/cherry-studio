@@ -589,6 +589,7 @@ export class AgentSessionRuntimeService extends BaseService {
   }
 
   beginTurn(input: BeginAgentSessionTurnInput): AgentSessionRuntimeHandle {
+    application.assertTaskStartAllowed()
     this.assertSessionWritable(input.sessionId)
     const turnId = crypto.randomUUID()
     const userMessage = input.userMessage ?? createSyntheticUserMessage(input.sessionId)
@@ -725,6 +726,7 @@ export class AgentSessionRuntimeService extends BaseService {
   async primeConnection(sessionId: string): Promise<void> {
     if (this.forks.edits.has(sessionId)) return
     try {
+      application.assertTaskStartAllowed()
       const existing = this.entries.get(sessionId)
       if (existing) {
         // Re-prime of a live session (e.g. a second window opening it): re-read and republish the
@@ -938,6 +940,7 @@ export class AgentSessionRuntimeService extends BaseService {
       fastMode?: boolean
     } = {}
   ): void {
+    application.assertTaskStartAllowed()
     const entry = this.entries.get(sessionId)
     if (!entry) return
 
@@ -1516,6 +1519,28 @@ export class AgentSessionRuntimeService extends BaseService {
     return true
   }
 
+  /** Cancel active turns and warm connections while retaining the service lifecycle. */
+  public async cancelActiveWork(reason: string): Promise<void> {
+    const sessions = [...this.entries.values()]
+    const launches = [...this.inFlightTurnStarts.values()]
+    for (const entry of sessions) {
+      this.applyRuntimeStateEvent(entry, { type: 'clear-queue' })
+      application.get('AiStreamManager').abort(entry.topicId, reason)
+      this.abortPendingTurn(entry.sessionId, reason)
+    }
+    try {
+      toolApprovalRegistry.clear(reason)
+    } catch (error) {
+      logger.warn('Failed to clear agent runtime approvals during cancellation', { error })
+    }
+    await Promise.allSettled([
+      this.forks.cancel(),
+      ...sessions.map((entry) => this.closeSession(entry.sessionId)),
+      ...[...this.closingSessions.values()].map((closing) => closing.promise),
+      ...launches
+    ])
+  }
+
   protected async onStop(): Promise<void> {
     this.isShuttingDown = true
     await this.forks.cancel()
@@ -1627,6 +1652,7 @@ export class AgentSessionRuntimeService extends BaseService {
 
   private async ensureConnection(entry: AgentSessionRuntimeEntry): Promise<boolean> {
     while (this.isCurrentEntry(entry)) {
+      application.assertTaskStartAllowed()
       this.assertSessionWritable(entry.sessionId)
       const closing = this.closingSessions.get(entry.sessionId)
       if (closing) {
@@ -1666,6 +1692,7 @@ export class AgentSessionRuntimeService extends BaseService {
           logger.error('Connection reconcile threw; failing closed', { sessionId: entry.sessionId, error })
           verdict = 'failed'
         }
+        application.assertTaskStartAllowed()
         if (!this.isCurrentEntry(entry)) return false
         if (this.currentConnection(entry) !== connection) continue
         // A turn may have been admitted while reconcile awaited (e.g. a racing openTurnStream that
@@ -1757,6 +1784,7 @@ export class AgentSessionRuntimeService extends BaseService {
     this.hydrateResumeToken(entry)
     if (!this.isCurrentEntry(entry)) return false
 
+    application.assertTaskStartAllowed()
     const connection = await driver.connect({
       sessionId: entry.sessionId,
       agentId: entry.agentId,
@@ -1770,6 +1798,12 @@ export class AgentSessionRuntimeService extends BaseService {
       nativeSessionId: agentSessionMessageService.getNativeSessionId(entry.sessionId),
       onSteerInjected: (inputs) => this.reserveSteerContinuation(entry, inputs)
     })
+    try {
+      application.assertTaskStartAllowed()
+    } catch (error) {
+      await this.closeRuntimeConnection(connection, entry.sessionId)
+      throw error
+    }
     if (!this.isCurrentEntry(entry) || !this.connectionTargetEquals(entry, target)) {
       await this.closeRuntimeConnection(connection, entry.sessionId)
       return false
@@ -2589,12 +2623,15 @@ export class AgentSessionRuntimeService extends BaseService {
   }
 
   private async admitTurn(entry: AgentSessionRuntimeEntry, turn: AgentSessionTurn): Promise<void> {
+    application.assertTaskStartAllowed()
     if (!this.isCurrentEntry(entry) || this.currentTurn(entry) !== turn || !this.isTurnLive(entry, turn)) return
     if (isAgentSessionRuntimeTurnAdmitted(entry.runtimeState, turn)) return
     this.applyRuntimeStateEvent(entry, { type: 'turn-admitted', turn })
     // A fresh request starts clean — drop any retry status left over from the previous turn.
     this.clearApiRetry(entry)
     await this.refreshTurnTraceContext(entry, turn)
+    application.assertTaskStartAllowed()
+    if (!this.isCurrentEntry(entry) || !this.isTurnLive(entry, turn)) return
     const connection = this.currentConnection(entry)
     if (!connection) throw new Error('Agent runtime connection unavailable')
     await connection.send({
@@ -2693,6 +2730,15 @@ export class AgentSessionRuntimeService extends BaseService {
           resolve()
           return
         }
+        try {
+          application.assertTaskStartAllowed()
+        } catch (error) {
+          application
+            .get('AiStreamManager')
+            .terminateHeldTopicStream(entry.topicId, entry.modelId, serializeError(error))
+          void this.closeSession(entry.sessionId).finally(resolve)
+          return
+        }
         this.applyRuntimeStateEvent(entry, { type: 'launch-started', target })
         const run = (() => {
           switch (target) {
@@ -2715,6 +2761,18 @@ export class AgentSessionRuntimeService extends BaseService {
               target,
               error
             })
+            try {
+              application.assertTaskStartAllowed()
+            } catch {
+              const turn = this.currentTurn(entry)
+              if (turn)
+                agentSessionMessageService.markAssistantMessageTerminalError(entry.sessionId, turn.assistantMessageId)
+              application
+                .get('AiStreamManager')
+                .terminateHeldTopicStream(entry.topicId, entry.modelId, serializeError(error))
+              void this.closeSession(entry.sessionId)
+              return
+            }
             if (target === 'deferred-turn') {
               const turn = this.currentTurn(entry)
               if (turn) {
@@ -3017,6 +3075,7 @@ export class AgentSessionRuntimeService extends BaseService {
     }
     this.applyRuntimeStateEvent(entry, { type: 'autonomous-turn-created', turn: receiveOnlyTurn })
     await this.refreshTurnTraceContext(entry, receiveOnlyTurn)
+    application.assertTaskStartAllowed()
     if (
       !this.isCurrentEntry(entry) ||
       this.currentTurn(entry) !== receiveOnlyTurn ||
@@ -3132,6 +3191,7 @@ export class AgentSessionRuntimeService extends BaseService {
     }
     this.applyRuntimeStateEvent(entry, { type: 'continuation-turn-created', turn: continuationTurn })
     await this.refreshTurnTraceContext(entry, continuationTurn)
+    application.assertTaskStartAllowed()
     if (
       !this.isCurrentEntry(entry) ||
       this.currentTurn(entry) !== continuationTurn ||

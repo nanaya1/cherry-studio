@@ -21,6 +21,7 @@ import { ThemeProvider } from '@renderer/components/ThemeProvider'
 import ToastHost from '@renderer/components/ToastHost'
 import { WindowFatalFallback } from '@renderer/components/WindowFatalFallback'
 import { useMainWindowNavigation } from '@renderer/hooks/tab'
+import { useEnterpriseVerificationStatus } from '@renderer/hooks/useEnterpriseVerificationStatus'
 import { useIsPrivacyUpdateRequired } from '@renderer/hooks/useIsPrivacyUpdateRequired'
 import { useStorageMonitorNotification } from '@renderer/hooks/useStorageMonitorNotification'
 import { useWindowRuntime } from '@renderer/hooks/useWindowRuntime'
@@ -34,6 +35,7 @@ import { useAppUpdateHandler } from './hooks/useAppUpdateHandler'
 import { useAutoBackupEvents } from './hooks/useAutoBackupEvents'
 import { useTopicNamingErrorNotification } from './hooks/useTopicNamingErrorNotification'
 import { PrivacyPolicyUpdateGate } from './privacy/PrivacyPolicyUpdateGate'
+import { ProfileAccessGate } from './ProfileAccessGate'
 
 const logger = loggerService.withContext('MainApp')
 // MEA 首次启动直接进入工作区，暂不加载服务商引导页。
@@ -118,6 +120,8 @@ export function MainWindowContent(): React.ReactElement {
   const privacyUpdateRequired = useIsPrivacyUpdateRequired()
   // Onboarding collects privacy consent itself, so the gate only owns the window afterwards.
   const privacyGateOpen = providerSetupStatus !== 'pending' && privacyUpdateRequired
+  const verificationStatus = useEnterpriseVerificationStatus()
+  const profileGateOpen = verificationStatus?.state === 'blocked'
 
   const initialDefaultTab = useMemo<Tab>(
     () => ({
@@ -135,7 +139,9 @@ export function MainWindowContent(): React.ReactElement {
   return (
     <TabsProvider initialDefaultTab={initialDefaultTab}>
       <SidebarShortcutRegistryProvider registry={sidebarShortcutRegistry}>
-        <MandatoryGateProvider open={privacyGateOpen}>
+        {/* MEA:profile-online-login Account blocking owns the window before privacy consent. */}
+        {/* <MandatoryGateProvider open={privacyGateOpen}> */}
+        <MandatoryGateProvider open={profileGateOpen || privacyGateOpen}>
           {/* MEA 不展示首次服务商引导，保留原分支供后续恢复。
           {providerSetupStatus === 'pending' ? (
             <Suspense fallback={<BootFallback />}>
@@ -149,7 +155,9 @@ export function MainWindowContent(): React.ReactElement {
           <ConversationNotificationRuntime />
           <PopupHost />
           <ToastHost />
-          {providerSetupStatus === 'pending' ? null : <PrivacyPolicyUpdateGate />}
+          {/* {providerSetupStatus === 'pending' ? null : <PrivacyPolicyUpdateGate />} */}
+          <ProfileAccessGate status={verificationStatus} />
+          {profileGateOpen || providerSetupStatus === 'pending' ? null : <PrivacyPolicyUpdateGate />}
         </MandatoryGateProvider>
       </SidebarShortcutRegistryProvider>
     </TabsProvider>

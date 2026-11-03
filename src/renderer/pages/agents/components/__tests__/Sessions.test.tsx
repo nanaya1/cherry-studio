@@ -328,6 +328,8 @@ const dataApiMocks = vi.hoisted(() => ({
     createdAt: string
     updatedAt: string
   }>,
+  workspacesHasData: true,
+  verificationListeners: new Set<(status: { owner: string; revision: number; state: string }) => void>(),
   workspacesError: undefined as unknown,
   workspacesLoading: false,
   workspacesRefreshing: false
@@ -402,7 +404,7 @@ vi.mock('@renderer/hooks/agent/useSession', () => ({
 }))
 
 vi.mock('@renderer/hooks/agent/useAgent', () => ({
-  useAgents: agentDataMocks.useAgents
+  useAgents: () => ({ hasData: true, isRefreshing: false, ...agentDataMocks.useAgents() })
 }))
 
 vi.mock('@renderer/hooks/tab', () => ({
@@ -527,7 +529,7 @@ vi.mock('@renderer/data/hooks/useDataApi', () => ({
 
     if (path === '/agent-workspaces') {
       return {
-        data: dataApiMocks.workspaces,
+        data: dataApiMocks.workspacesHasData ? dataApiMocks.workspaces : undefined,
         isLoading: dataApiMocks.workspacesLoading,
         isRefreshing: dataApiMocks.workspacesRefreshing,
         error: dataApiMocks.workspacesError,
@@ -583,7 +585,10 @@ vi.mock('@renderer/ipc', () => ({
   ipcApi: {
     request: (route: string, input: unknown) =>
       route === 'ai.agent.restore' ? dataApiMocks.restoreAgent(input) : dataApiMocks.ipcRequest(route, input),
-    on: vi.fn(() => () => undefined)
+    on: (_event: string, listener: (status: { owner: string; revision: number; state: string }) => void) => {
+      dataApiMocks.verificationListeners.add(listener)
+      return () => dataApiMocks.verificationListeners.delete(listener)
+    }
   }
 }))
 
@@ -925,6 +930,8 @@ describe('Sessions', () => {
       makeWorkspace('/Users/jd/project-a', { id: 'ws-a', name: 'Project A Workspace', orderKey: 'a' }),
       makeWorkspace('/Users/jd/project-b', { id: 'ws-b', name: 'Project B Workspace', orderKey: 'b' })
     ]
+    dataApiMocks.workspacesHasData = true
+    dataApiMocks.verificationListeners.clear()
     dataApiMocks.workspacesError = undefined
     dataApiMocks.workspacesLoading = false
     dataApiMocks.workspacesRefreshing = false
@@ -970,6 +977,9 @@ describe('Sessions', () => {
     vi.clearAllMocks()
     dataApiMocks.invalidate.mockResolvedValue(undefined)
     dataApiMocks.ipcRequest.mockImplementation((route: string, input: Record<string, unknown>) => {
+      if (route === 'enterprise.verification.get') {
+        return Promise.resolve({ owner: 'owner-a', revision: 1, state: 'verified' })
+      }
       if (route === 'ai.agent.delete') {
         return dataApiMocks.deleteAgent({
           params: { agentId: input.agentId },
@@ -1933,6 +1943,7 @@ describe('Sessions', () => {
   })
 
   it('keeps workdir sessions loading until workspace rows are ready', () => {
+    dataApiMocks.workspacesHasData = false
     dataApiMocks.workspacesLoading = true
 
     render(<SessionsForTest />)
@@ -1958,6 +1969,7 @@ describe('Sessions', () => {
   })
 
   it('renders workspace load errors in workdir mode', async () => {
+    dataApiMocks.workspacesHasData = false
     dataApiMocks.workspacesError = new Error('Workspace request failed')
 
     render(<SessionsForTest />)
@@ -4098,6 +4110,52 @@ describe('Sessions', () => {
     fireEvent.pointerDown(within(agentGroup as HTMLElement).getByRole('button', { name: 'More' }))
 
     expect(await screen.findByRole('menuitem', { name: 'Unpin Agent' })).toHaveAttribute('data-disabled')
+  })
+
+  it.each(['agent', 'workdir'] as const)(
+    'keeps sessions with loaded empty %s metadata and retries dependencies without waiting for verification',
+    async (mode) => {
+      preferenceMocks.values.set('agent.session.display_mode', mode)
+      dataApiMocks.workspaces = []
+      dataApiMocks.workspacesError = new Error('metadata temporarily unavailable')
+      agentDataMocks.useAgents.mockReturnValue({
+        agents: [],
+        hasData: true,
+        isLoading: false,
+        isRefreshing: false,
+        error: new Error('metadata temporarily unavailable'),
+        refetch: dataApiMocks.refetchAgents
+      })
+      sessionDataMocks.reload.mockImplementationOnce(() => new Promise(() => {}))
+      const defaultRequest = dataApiMocks.ipcRequest.getMockImplementation()!
+      dataApiMocks.ipcRequest.mockImplementation((route: string, input: Record<string, unknown>) =>
+        route === 'enterprise.verification.retry' ? new Promise(() => {}) : defaultRequest(route, input)
+      )
+      render(<SessionsForTest />)
+      expect(screen.getByText('Alpha session')).toBeInTheDocument()
+      expect(screen.queryByText('Failed to get tasks')).not.toBeInTheDocument()
+      await userEvent.setup().click(screen.getByRole('button', { name: 'Retry' }))
+      expect(dataApiMocks.ipcRequest).toHaveBeenCalledWith('enterprise.verification.retry', undefined)
+      expect(sessionDataMocks.reload).toHaveBeenCalledOnce()
+      expect(mode === 'agent' ? dataApiMocks.refetchAgents : dataApiMocks.refetchWorkspaces).toHaveBeenCalledOnce()
+      expect(screen.getByText('Alpha session')).toBeInTheDocument()
+    }
+  )
+
+  it('refreshes grouped metadata once when the same account recovers', async () => {
+    render(<SessionsForTest />)
+    await act(async () => {})
+    const emit = (owner: string, revision: number, state: string) => {
+      act(() => dataApiMocks.verificationListeners.forEach((listener) => listener({ owner, revision, state })))
+    }
+    emit('owner-a', 2, 'unavailable')
+    emit('owner-a', 3, 'verified')
+    expect(dataApiMocks.refetchWorkspaces).toHaveBeenCalledOnce()
+    emit('owner-a', 4, 'verified')
+    emit('owner-a', 5, 'unavailable')
+    emit('owner-b', 1, 'verified')
+    expect(dataApiMocks.refetchWorkspaces).toHaveBeenCalledOnce()
+    expect(screen.getByText('Alpha session')).toBeInTheDocument()
   })
 
   it('offers a retry entry point when a background refresh fails behind a served list', () => {

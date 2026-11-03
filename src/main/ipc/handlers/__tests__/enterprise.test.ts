@@ -14,7 +14,7 @@ const ctx = { senderId: 'w1' }
 
 describe('enterpriseHandlers copy mode', () => {
   it('keeps the legacy delete-report route without touching managed state', async () => {
-    await expect(enterpriseHandlers['enterprise.skills.reportDeleted']({ slug: 'org-review' }, ctx)).resolves.toEqual({
+    await expect(enterpriseHandlers['enterprise.skills.report_deleted']({ slug: 'org-review' }, ctx)).resolves.toEqual({
       ok: true
     })
 
@@ -25,10 +25,10 @@ describe('enterpriseHandlers copy mode', () => {
     const listDisabled = vi.fn().mockResolvedValue(['org-review'])
     applicationGetMock.mockReturnValue({ skills: { listDisabled } })
 
-    await expect(enterpriseHandlers['enterprise.skills.listDisabled'](undefined, ctx)).resolves.toEqual({
+    await expect(enterpriseHandlers['enterprise.skills.list_disabled'](undefined, ctx)).resolves.toEqual({
       disabled: ['org-review']
     })
-    await expect(enterpriseHandlers['enterprise.status.orgUnavailable'](undefined, ctx)).resolves.toEqual({
+    await expect(enterpriseHandlers['enterprise.status.org_unavailable'](undefined, ctx)).resolves.toEqual({
       unavailable: false
     })
 

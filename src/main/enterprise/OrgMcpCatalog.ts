@@ -52,7 +52,10 @@ export class OrgMcpCatalog {
     return connectors
   }
 
-  private backfillCopyTags(catalog: OrgConnectorCatalogItem[], lease: ReturnType<OrgAuthManager['acquireLease']>): void {
+  private backfillCopyTags(
+    catalog: OrgConnectorCatalogItem[],
+    lease: ReturnType<OrgAuthManager['acquireLease']>
+  ): void {
     const local = mcpServerService.list({}).items
     for (const server of local) {
       if (server.installSource !== 'manual' || server.tags?.includes('org')) continue
@@ -223,13 +226,14 @@ export class OrgMcpCatalog {
     // [enterprise] copy 模式：安装后归用户本地所有，不再纳入组织同步与墓碑管理。
     // orgStateStore.clearConnectorDeleted(slug)
     this.installLocal(item)
-    orgStateStore.recordConnectorEntitlement(slug, {
-      issuerId: lease.issuerId,
-      groupId: lease.groupId,
-      resourceId: slug,
-      entitlement: 'active',
-      generation: lease.generation,
-      localResourceId: this.lastCreatedId
-    })
+    // MEA:profile-verification-network-tolerance Copy installation preserves local enablement, not group-bound entitlements.
+    // orgStateStore.recordConnectorEntitlement(slug, {
+    //   issuerId: lease.issuerId,
+    //   groupId: lease.groupId,
+    //   resourceId: slug,
+    //   entitlement: 'active',
+    //   generation: lease.generation,
+    //   localResourceId: this.lastCreatedId
+    // })
   }
 }

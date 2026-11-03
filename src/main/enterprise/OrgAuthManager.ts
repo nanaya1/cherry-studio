@@ -5,6 +5,8 @@ import { shell } from 'electron'
 
 import { application } from '@application'
 import { loggerService } from '@logger'
+// import { orgStateStore } from './OrgStateStore'
+import { Emitter, type Disposable } from '@main/core/lifecycle'
 import {
   getProfileLaunchContext,
   // resolveAuthSessionPath,
@@ -20,9 +22,14 @@ import { runAuthSessionOperation, getProfileAuthSession } from '@main/core/profi
 import { OrgApiClient, ORG_AUTH_MODE, OFFICIAL_API_BASE_URL, ORG_SERVER_BASE_URL } from './OrgApiClient'
 import type { OrgCredentialStore, OrgSession } from './OrgCredentialStore'
 import { createStartupCurrentUserTransport } from './orgCurrentUserTransport'
-import { orgStateStore } from './OrgStateStore'
 import { ProfileAuthBroker, type CompletedAuthentication } from './ProfileAuthBroker'
 import { parseOrgAuthCallback, type OrgAuthPhase } from './types'
+import {
+  VerificationError,
+  verificationHttpError,
+  isDefinitiveVerificationError,
+  type VerificationReason
+} from './verification'
 
 const logger = loggerService.withContext('OrgAuthManager')
 const OFFICIAL_LOGIN_URL = import.meta.env.MAIN_VITE_OFFICIAL_LOGIN_URL?.trim() || 'https://mro.xuelangyun.com/login'
@@ -31,6 +38,8 @@ const REDIRECT_URI = 'meacowork://auth/callback'
 const PENDING_TTL_MS = 10 * 60 * 1000
 const TOKEN_EXPIRY_MARGIN_MS = 60 * 1000
 
+// MEA:profile-verification-network-tolerance Only structured, authoritative evidence may invalidate an account.
+/*
 class SessionRefreshError extends Error {
   constructor(
     message: string,
@@ -40,6 +49,16 @@ class SessionRefreshError extends Error {
     this.name = 'SessionRefreshError'
   }
 }
+*/
+
+export interface OrgVerificationStatus {
+  owner: string
+  revision: number
+  state: 'unknown' | 'verified' | 'unavailable' | 'blocked' | 'switching'
+  reason?: VerificationReason
+}
+
+type LogoutResult = { state: 'switching' | 'signed-out'; revocationWarning: string | null }
 
 interface PendingAuth {
   state?: string
@@ -52,6 +71,7 @@ export interface OrgAuthManagerDependencies {
   credentialStore: OrgCredentialStore
   currentProfile?: () => Promise<ProfileRecordV1>
   profileSession?: ProfileSessionService
+  onLogoutFailure?: (stage: string) => void
   fence?: Pick<typeof profileSwitchFence, 'assertTaskStartAllowed' | 'assertWritable'>
 }
 
@@ -59,10 +79,23 @@ export class OrgAuthManager {
   private session: OrgSession | null = null
   private pending: PendingAuth | null = null
   private refreshing: Promise<void> | null = null
+  private verifying: Promise<void> | null = null
+  private logoutTask: Promise<LogoutResult> | null = null
+  private credentialVersion = 0
+  private disposed = false
+  private readonly requests = new AbortController()
+  private readonly verificationChanged = new Emitter<OrgVerificationStatus>()
+  private readonly authorizationChanged = new Emitter<void>()
+  private verificationStatus: OrgVerificationStatus = {
+    owner: `${getProfileLaunchContext()?.profileId ?? 'unscoped'}:${randomBytes(16).toString('hex')}`,
+    revision: 0,
+    state: 'unknown'
+  }
   private credentialMutation: Promise<unknown> = Promise.resolve()
   private switching = false
   private generation = 0
   private readonly epoch = new ProfileAuthEpoch()
+  private readonly gate = profileBusinessAccessGate
   readonly apiClient: OrgApiClient
   private readonly broker: ProfileAuthBroker
 
@@ -112,7 +145,16 @@ export class OrgAuthManager {
       return
     }
     this.session = stored
-    await this.revalidateAuthority()
+    ++this.credentialVersion
+    // await this.revalidateAuthority()
+    try {
+      await this.retryVerification()
+    } catch (error) {
+      if (this.disposed || this.switching) throw error
+      // if (isDefinitiveVerificationError(error) || !this.gate.isAllowed()) throw error
+      // MEA:profile-online-login Keep the host control plane alive to present blocked or unavailable verification state.
+      logger.warn('startup recheck did not verify authority', { state: this.verificationStatus.state })
+    }
   }
 
   getPhase(): OrgAuthPhase {
@@ -133,8 +175,31 @@ export class OrgAuthManager {
     }
   }
 
+  getVerificationStatus(): OrgVerificationStatus {
+    return { ...this.verificationStatus }
+  }
+
+  onVerificationChanged(listener: (status: OrgVerificationStatus) => void): Disposable {
+    return this.verificationChanged.event(listener)
+  }
+
+  onAuthorizationChanged(listener: () => void): Disposable {
+    return this.authorizationChanged.event(listener)
+  }
+
+  dispose(): void {
+    if (this.disposed) return
+    this.disposed = true
+    this.epoch.advanceAuth()
+    this.broker.invalidate()
+    this.requests.abort()
+    this.verificationChanged.dispose()
+    this.authorizationChanged.dispose()
+  }
+
   async startLogin(): Promise<{ authorizationUrl: string }> {
-    if (this.dependencies?.profileSession && this.switching) throw new Error('Profile transition requires restart')
+    // if (this.dependencies?.profileSession && this.switching) throw new Error('Profile transition requires restart')
+    if (this.switching) throw new Error('Profile transition requires restart')
     // profileSwitchFence.assertTaskStartAllowed()
     ;(this.dependencies?.fence ?? profileSwitchFence).assertTaskStartAllowed()
     let authorizationUrl = OFFICIAL_LOGIN_URL
@@ -211,6 +276,7 @@ export class OrgAuthManager {
         this.session = completed.session
       }
       if (!this.dependencies?.profileSession) {
+        ++this.credentialVersion
         this.switching = false
         this.emitStatus()
       }
@@ -225,6 +291,8 @@ export class OrgAuthManager {
     }
   }
 
+  // MEA:profile-verification-network-tolerance The user logout owns one synchronous fence and one durable transition.
+  /*
   async logout(): Promise<{ state: 'switching' | 'signed-out'; revocationWarning: string | null }> {
     const current = this.session
     ++this.generation
@@ -284,18 +352,150 @@ export class OrgAuthManager {
     return { state: 'signed-out', revocationWarning }
   }
 
+  */
+  logout(): Promise<LogoutResult> {
+    if (this.logoutTask) return this.logoutTask
+    const current = this.session ? { ...this.session } : null
+    const context = getProfileLaunchContext()
+    this.switching = true
+    ++this.generation
+    ++this.credentialVersion
+    this.epoch.advanceAuth()
+    this.broker.invalidate()
+    this.pending = null
+    this.session = null
+    const operation = Promise.resolve().then(() => this.finishLogout(current, context))
+    this.logoutTask = operation
+    this.gate.recordVerificationFailure('Logout requested')
+    application.beginProfileLogout()
+    this.setVerificationStatus('switching')
+    void operation
+      .finally(() => {
+        if (!this.dependencies?.profileSession && !this.switching) this.logoutTask = null
+      })
+      .catch(() => undefined)
+    return operation
+  }
+
+  private async finishLogout(
+    current: OrgSession | null,
+    context: ReturnType<typeof getProfileLaunchContext>
+  ): Promise<LogoutResult> {
+    let stage = 'logout-intent'
+    let revocationWarning: string | null = null
+    try {
+      await this.dependencies?.profileSession?.beginLogout()
+      stage = 'logout-credential-queue'
+      await this.credentialMutation
+      if (current?.authMode === 'management-cookie') {
+        stage = 'logout-cookie-cleanup'
+        if (!context || !ORG_SERVER_BASE_URL) throw new Error('Cookie logout context is missing')
+        // Cookie revocation finishes before local cleanup or a new login can own this partition.
+        revocationWarning = await this.revokeSnapshot(current, context)
+        await runAuthSessionOperation({
+          operation: 'replace',
+          profileRoot: context.profileRoot,
+          baseUrl: ORG_SERVER_BASE_URL,
+          cookies: []
+        })
+        await clearAllowedCookies(getProfileAuthSession(context.profileRoot), ORG_SERVER_BASE_URL, ['sid'])
+      } else if (current?.accountKind === 'management' && current.refreshToken) {
+        revocationWarning = await this.revokeSnapshot(current, context)
+      }
+      if (!this.dependencies?.profileSession) {
+        stage = 'logout-credential-clear'
+        await this.mutateCredentials(async () => this.dependencies?.credentialStore.clear())
+      }
+    } catch (error) {
+      this.dependencies?.onLogoutFailure?.(stage)
+      throw error
+    }
+    if (this.dependencies?.profileSession) {
+      const result = await this.dependencies.profileSession.logout()
+      if (result.kind !== 'relaunching' && result.kind !== 'signed-out') {
+        this.emitStatus()
+        throw new Error(`profile logout failed: ${result.kind}`)
+      }
+      return { state: 'switching', revocationWarning }
+    }
+    // await this.mutateCredentials(async () => this.dependencies?.credentialStore.clear())
+    this.switching = false
+    this.emitStatus()
+    return { state: 'signed-out', revocationWarning }
+  }
+
+  private async revokeSnapshot(
+    current: OrgSession,
+    context: ReturnType<typeof getProfileLaunchContext>
+  ): Promise<string | null> {
+    const controller = new AbortController()
+    let timer: ReturnType<typeof setTimeout> | undefined
+    try {
+      const timeout = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          controller.abort()
+          reject(new Error('Remote logout timed out'))
+        }, 10_000)
+      })
+      const revoke =
+        current.authMode === 'management-cookie'
+          ? (async () => {
+              const cookies = await getProfileAuthSession(context!.profileRoot).cookies.get({ url: current.authOrigin })
+              if (controller.signal.aborted) return
+              const cookie = cookies
+                .filter((item) => item.name === 'sid')
+                .map((item) => `${item.name}=${item.value}`)
+                .join('; ')
+              // MEA:profile-online-login A snapshot request cannot accept Set-Cookie into a newer login's cookie jar.
+              const response = await fetch(`${current.authOrigin}/api/auth/logout`, {
+                method: 'POST',
+                credentials: 'omit',
+                redirect: 'error',
+                signal: controller.signal,
+                headers: { 'content-type': 'application/json', cookie },
+                body: JSON.stringify({ refreshToken: '' })
+              })
+              if (!response.ok) throw new Error(`Remote cookie logout failed (${response.status})`)
+            })()
+          : this.apiClient.revoke(current.refreshToken, current)
+      await Promise.race([revoke, timeout])
+      return null
+    } catch (error) {
+      return error instanceof Error ? error.message : 'Remote logout failed'
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+
   async getValidSession(): Promise<OrgSession | null> {
-    if (!this.session) return null
+    if (!this.session || this.switching || this.disposed) return null
+    const snapshot = this.epoch.snapshot()
     if (
       this.session.authMode !== 'official-direct' &&
       this.session.authMode !== 'management-cookie' &&
       Date.now() >= this.session.expiresAt - TOKEN_EXPIRY_MARGIN_MS
     ) {
-      await this.refreshSession()
+      try {
+        await this.refreshSession()
+      } catch (error) {
+        try {
+          this.epoch.assertCurrent(snapshot)
+        } catch {
+          return null
+        }
+        if (!this.disposed && !this.switching) this.recordVerificationError(error)
+      }
+    }
+    try {
+      this.epoch.assertCurrent(snapshot)
+    } catch {
+      return null
     }
     return this.session
   }
 
+  // MEA:profile-online-login Verification uses a credential snapshot, never an API getter that can recurse through refresh.
+  /*
   async verifyOnlineAuthority(): Promise<void> {
     const snapshot = this.epoch.snapshot()
     const current = await this.getValidSession()
@@ -367,8 +567,166 @@ export class OrgAuthManager {
     await this.mutateCredentials(async () => this.dependencies?.credentialStore.save(completed.session))
   }
 
+  */
+  verifyOnlineAuthority(): Promise<void> {
+    return this.retryVerification()
+  }
+
+  revalidateAuthority(): Promise<void> {
+    return this.retryVerification()
+  }
+
+  retryVerification(): Promise<void> {
+    if (this.verifying) return this.verifying
+    if (this.disposed || this.switching) return Promise.reject(new Error('Profile verification owner is stale'))
+    if (this.verificationStatus.state === 'blocked') {
+      return Promise.reject(
+        new VerificationError('Explicit authentication is required', {
+          stage: 'session',
+          endpoint: '',
+          kind: 'invalid',
+          reason: this.verificationStatus.reason
+        })
+      )
+    }
+    const snapshot = this.epoch.snapshot()
+    const operation = this.performVerification().catch((error: unknown) => {
+      this.epoch.assertCurrent(snapshot)
+      if (!this.disposed && !this.switching) this.recordVerificationError(error)
+      throw error
+    })
+    this.verifying = operation
+    void operation
+      .finally(() => {
+        if (this.verifying === operation) this.verifying = null
+      })
+      .catch(() => undefined)
+    return operation
+  }
+
+  private async performVerification(): Promise<void> {
+    const snapshot = this.epoch.snapshot()
+    let current = this.session
+    if (!current)
+      throw new VerificationError('Management session is unavailable', {
+        stage: 'session',
+        endpoint: '',
+        kind: 'uncertain'
+      })
+    if (current.accountKind !== 'management') return
+    if (current.authMode !== 'management-cookie' && Date.now() >= current.expiresAt - TOKEN_EXPIRY_MARGIN_MS) {
+      await this.refreshSession()
+      this.epoch.assertCurrent(snapshot)
+      current = this.session!
+    }
+    const version = this.credentialVersion
+    const context = getProfileLaunchContext()
+    const transport = createStartupCurrentUserTransport(
+      { ...current },
+      {
+        baseUrl: current.authOrigin,
+        signal: this.requests.signal,
+        electronSession:
+          current.authMode === 'management-cookie' && context ? getProfileAuthSession(context.profileRoot) : undefined
+      }
+    )
+    const broker = new ProfileAuthBroker(transport, current.authOrigin)
+    const completed = await broker
+      .revalidateManagement(
+        current.authMode as 'management-exchange' | 'management-oauth' | 'management-cookie',
+        current
+      )
+      .catch((error: unknown) => {
+        this.epoch.assertCurrent(snapshot)
+        if (version !== this.credentialVersion) {
+          throw new VerificationError('Verification credential snapshot was superseded', {
+            stage: 'session',
+            endpoint: '',
+            kind: 'uncertain'
+          })
+        }
+        throw error
+      })
+    this.epoch.assertCurrent(snapshot)
+    if (version !== this.credentialVersion)
+      throw new VerificationError('Verification credential snapshot was superseded', {
+        stage: 'session',
+        endpoint: '',
+        kind: 'uncertain'
+      })
+    if (completed.session.userId !== current.userId || completed.session.issuerId !== current.issuerId) {
+      throw new VerificationError('Runtime identity changed; explicit login is required', {
+        stage: 'identity',
+        endpoint: `${current.authOrigin}/api/currentuser`,
+        kind: 'invalid',
+        reason: 'identity-changed'
+      })
+    }
+    const authorizationChanged =
+      completed.session.groupId !== current.groupId || completed.session.role !== current.role
+    await this.mutateCredentials(async () => {
+      this.epoch.assertCurrent(snapshot)
+      if (version !== this.credentialVersion || !this.session) throw new Error('Credential version is stale')
+      if (authorizationChanged) {
+        await this.dependencies?.profileSession?.updateAuthorizationContext(
+          completed.identity,
+          completed.authorizationContext
+        )
+        this.epoch.assertCurrent(snapshot)
+        if (version !== this.credentialVersion) throw new Error('Credential version is stale')
+      }
+      const updated = {
+        ...this.session,
+        groupId: completed.session.groupId,
+        role: completed.session.role,
+        status: completed.session.status,
+        displayName: completed.session.displayName,
+        phone: completed.session.phone,
+        officialUserId: completed.session.officialUserId
+      }
+      await this.dependencies?.credentialStore.save(updated)
+      this.epoch.assertCurrent(snapshot)
+      if (version !== this.credentialVersion) throw new Error('Credential version is stale')
+      this.session = updated
+      if (authorizationChanged) {
+        ++this.generation
+        this.authorizationChanged.fire()
+        this.emitStatus()
+      }
+    })
+    this.epoch.assertCurrent(snapshot)
+    this.gate.recordVerificationSuccess()
+    this.setVerificationStatus('verified')
+  }
+
+  private recordVerificationError(error: unknown): void {
+    if (this.verificationStatus.state === 'blocked' || this.verificationStatus.state === 'switching') return
+    if (isDefinitiveVerificationError(error)) {
+      this.epoch.advanceAuth()
+      this.broker.invalidate()
+      this.gate.recordVerificationFailure(error.evidence.reason)
+      this.setVerificationStatus('blocked', error.evidence.reason)
+    } else {
+      this.setVerificationStatus('unavailable')
+    }
+  }
+
+  private setVerificationStatus(state: OrgVerificationStatus['state'], reason?: VerificationReason): void {
+    if (this.disposed || (this.verificationStatus.state === state && this.verificationStatus.reason === reason)) return
+    this.verificationStatus = {
+      owner: this.verificationStatus.owner,
+      revision: this.verificationStatus.revision + 1,
+      state,
+      ...(reason ? { reason } : {})
+    }
+    this.verificationChanged.fire(this.getVerificationStatus())
+  }
+
   acquireLease(): { generation: number; issuerId: string; groupId: string | null; userId: string } {
-    if (!this.session || this.switching) throw new Error('enterprise session is unavailable')
+    // if (!this.session || this.switching) throw new Error('enterprise session is unavailable')
+    if (!this.session || this.switching || this.disposed || this.verificationStatus.state === 'blocked') {
+      throw new Error('enterprise session is unavailable')
+    }
     return {
       generation: this.generation,
       issuerId: this.session.issuerId,
@@ -500,11 +858,20 @@ export class OrgAuthManager {
     }
   }
 
-  private async refreshSession(): Promise<void> {
-    this.refreshing ||= this.doRefresh().finally(() => (this.refreshing = null))
-    return this.refreshing
+  private refreshSession(): Promise<void> {
+    if (this.refreshing) return this.refreshing
+    const operation = this.doRefresh()
+    this.refreshing = operation
+    void operation
+      .finally(() => {
+        if (this.refreshing === operation) this.refreshing = null
+      })
+      .catch(() => undefined)
+    return operation
   }
 
+  // MEA:profile-online-login Refresh must not call verification or logout, nor restore an older credential version.
+  /*
   private async doRefresh(): Promise<void> {
     const current = this.session
     if (!current || current.authMode === 'official-direct') return
@@ -546,6 +913,90 @@ export class OrgAuthManager {
       logger.warn('org session refresh failed, signing out locally', { error: String(error) })
       await this.logout()
     }
+  }
+
+  */
+  private async doRefresh(): Promise<void> {
+    const current = this.session
+    if (
+      !current ||
+      this.switching ||
+      this.disposed ||
+      current.authMode === 'official-direct' ||
+      current.authMode === 'management-cookie'
+    )
+      return
+    const snapshot = this.epoch.snapshot()
+    const version = this.credentialVersion
+    const endpoint = `${this.requireManagementBaseUrl()}/api/auth/token/refresh`
+    let response: Response
+    try {
+      response = await fetch(endpoint, {
+        method: 'POST',
+        credentials: 'omit',
+        redirect: 'error',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ refreshToken: current.refreshToken }),
+        signal: AbortSignal.any([this.requests.signal, AbortSignal.timeout(10_000)])
+      })
+    } catch {
+      throw new VerificationError('Credential refresh network unavailable', {
+        stage: 'refresh',
+        endpoint,
+        kind: 'unavailable'
+      })
+    }
+    if (!response.ok) throw verificationHttpError('refresh', endpoint, response)
+    let data: unknown
+    try {
+      data = await response.json()
+    } catch {
+      throw new VerificationError('Credential refresh response is not valid JSON', {
+        stage: 'refresh',
+        endpoint,
+        kind: 'uncertain',
+        httpStatus: response.status
+      })
+    }
+    if (
+      !data ||
+      typeof data !== 'object' ||
+      !('accessToken' in data) ||
+      typeof data.accessToken !== 'string' ||
+      !data.accessToken.trim() ||
+      !('refreshToken' in data) ||
+      typeof data.refreshToken !== 'string' ||
+      !data.refreshToken.trim() ||
+      !('expiresIn' in data) ||
+      typeof data.expiresIn !== 'number' ||
+      !Number.isFinite(data.expiresIn) ||
+      data.expiresIn <= 0 ||
+      !Number.isSafeInteger(Date.now() + data.expiresIn * 1000)
+    ) {
+      throw new VerificationError('Credential refresh response shape is invalid', {
+        stage: 'refresh',
+        endpoint,
+        kind: 'uncertain',
+        httpStatus: response.status
+      })
+    }
+    const tokens = {
+      accessToken: data.accessToken,
+      refreshToken: data.refreshToken,
+      expiresAt: Date.now() + data.expiresIn * 1000
+    }
+    this.epoch.assertCurrent(snapshot)
+    if (version !== this.credentialVersion) return
+    await this.mutateCredentials(async () => {
+      this.epoch.assertCurrent(snapshot)
+      if (version !== this.credentialVersion || !this.session) return
+      const updated = { ...this.session, ...tokens }
+      await this.dependencies?.credentialStore.save(updated)
+      this.epoch.assertCurrent(snapshot)
+      if (version !== this.credentialVersion) return
+      this.session = updated
+      ++this.credentialVersion
+    })
   }
 
   private mutateCredentials<T>(operation: () => Promise<T>): Promise<T> {

@@ -5,6 +5,10 @@ import type { IpcHandlersFor } from '@shared/ipc/types'
 // [enterprise] T0 企业扩展 IPC 处理器。实现主体在 @main/enterprise/*。
 export const enterpriseHandlers: IpcHandlersFor<typeof enterpriseRequestSchemas> = {
   'enterprise.status.get': async () => application.get('EnterprisePlugin').auth.getStatus(),
+  'enterprise.verification.get': async () => application.get('EnterprisePlugin').auth.getVerificationStatus(),
+  'enterprise.verification.retry': async () => {
+    await application.get('EnterprisePlugin').auth.retryVerification()
+  },
   'enterprise.login.start': async () => application.get('EnterprisePlugin').auth.startLogin(),
   'enterprise.session.logout': async () => application.get('EnterprisePlugin').auth.logout(),
   // [enterprise] installedSlugs：随目录返回已装状态（对话框据此标记「已安装」）
@@ -17,26 +21,26 @@ export const enterpriseHandlers: IpcHandlersFor<typeof enterpriseRequestSchemas>
     await application.get('EnterprisePlugin').skills.install(slug)
     return { ok: true }
   },
-  'enterprise.skills.reportExec': async ({ slug, detail }) => {
+  'enterprise.skills.report_exec': async ({ slug, detail }) => {
     void application.get('EnterprisePlugin').skills.reportExec(slug, detail)
     return { ok: true }
   },
   // copy 模式保留本地副本，但执行前仍按当前分组和离线策略 fail closed。
-  'enterprise.skills.listDisabled': async () => ({
+  'enterprise.skills.list_disabled': async () => ({
     disabled: await application.get('EnterprisePlugin').skills.listDisabled()
   }),
   // [enterprise] copy 模式保留旧路由兼容已打开窗口，但不再上报或写删除墓碑。
-  // 'enterprise.skills.reportDeleted': async ({ slug }) => {
+  // 'enterprise.skills.report_deleted': async ({ slug }) => {
   //   await application.get('EnterprisePlugin').skills.reportDeleted(slug)
   //   return { ok: true }
   // },
-  'enterprise.skills.reportDeleted': async () => ({ ok: true }),
+  'enterprise.skills.report_deleted': async () => ({ ok: true }),
   // [enterprise] copy 模式：登出不影响已安装副本，旧 unavailable 状态不再生效。
-  // 'enterprise.status.orgUnavailable': async () => {
+  // 'enterprise.status.org_unavailable': async () => {
   //   const { orgStateStore } = await import('@main/enterprise/OrgStateStore')
   //   return { unavailable: orgStateStore.snapshotUnavailable() }
   // },
-  'enterprise.status.orgUnavailable': async () => ({ unavailable: false }),
+  'enterprise.status.org_unavailable': async () => ({ unavailable: false }),
   'enterprise.connectors.list': async () => ({
     connectors: await application.get('EnterprisePlugin').connectors.list()
   }),

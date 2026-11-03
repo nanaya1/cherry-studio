@@ -8,6 +8,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { application } from '@application'
 import { BaseService } from '@main/core/lifecycle/BaseService'
 
 const mocks = vi.hoisted(() => ({
@@ -52,9 +53,13 @@ vi.mock('@main/services/TopicNamingService', () => ({
   topicNamingService: { maybeRenameAgentSession: mocks.maybeRenameAgentSession }
 }))
 
-vi.mock('@application', () => ({
-  application: { get: mocks.applicationGet }
-}))
+// vi.mock('@application', () => ({ application: { get: mocks.applicationGet } }))
+vi.mock('@application', async () => {
+  const { mockApplicationFactory } = await import('@test-mocks/main/application')
+  const result = mockApplicationFactory()
+  result.application.get = mocks.applicationGet
+  return result
+})
 
 const { AgentSessionRuntimeService } = await import('../AgentSessionRuntimeService')
 
@@ -181,6 +186,83 @@ describe('AgentSessionRuntimeService pause / drainInFlight', () => {
       }
       throw new Error(`Unexpected application.get(${name})`)
     })
+  })
+
+  it('rejects begin and enqueue when business task admission is blocked', () => {
+    const service = new AgentSessionRuntimeService()
+    service.beginTurn(baseTurnInput)
+    const denied = new Error('Business access denied')
+    const gate = vi.spyOn(application, 'assertTaskStartAllowed').mockImplementation(() => {
+      throw denied
+    })
+    try {
+      expect(() => service.beginTurn({ ...baseTurnInput, sessionId: 'session-denied' })).toThrow(denied)
+      expect(() => service.enqueueUserMessage('session-1', userMessage('denied'))).toThrow(denied)
+      expect(service.inspect('session-denied')).toBeUndefined()
+      expect(service.inspect('session-1')?.pendingMessageCount).toBe(0)
+    } finally {
+      gate.mockRestore()
+    }
+  })
+
+  it('rechecks admission before sending after an asynchronous trace refresh', async () => {
+    const service = new AgentSessionRuntimeService()
+    service.beginTurn(baseTurnInput)
+    const entry = entryOf(service)
+    const turn = entry.runtimeState.execution.turn
+    const refreshed = createDeferred<void>()
+    const send = vi.fn()
+    entry.runtimeState.connection = { kind: 'connected', connection: { send }, occupancy: {} }
+    ;(service as any).refreshTurnTraceContext = () => refreshed.promise
+    const pending = (service as any).admitTurn(entry, turn)
+    const denied = new Error('Business access denied')
+    const gate = vi.spyOn(application, 'assertTaskStartAllowed').mockImplementation(() => {
+      throw denied
+    })
+    const rejected = expect(pending).rejects.toBe(denied)
+    refreshed.resolve()
+    try {
+      await rejected
+      expect(send).not.toHaveBeenCalled()
+    } finally {
+      gate.mockRestore()
+    }
+  })
+
+  it('denies a queued runtime launch when access expires before its scheduled microtask', async () => {
+    const service = new AgentSessionRuntimeService()
+    seedQueuedFollowUp(service)
+    service.markTurnTerminal('session-1', 'success')
+    const denied = new Error('Business access denied')
+    const gate = vi.spyOn(application, 'assertTaskStartAllowed').mockImplementation(() => {
+      throw denied
+    })
+    try {
+      await flushLaunch()
+      expect(mocks.saveMessage).not.toHaveBeenCalled()
+      expect(mocks.startRuntimeTurn).not.toHaveBeenCalled()
+      expect(service.inspect('session-1')).toBeUndefined()
+    } finally {
+      gate.mockRestore()
+    }
+  })
+
+  it('cancels the live runtime and queued turns without stopping the service', async () => {
+    const service = new AgentSessionRuntimeService()
+    const entry = seedQueuedFollowUp(service)
+    const turn = entry.runtimeState.execution.turn
+    const close = vi.fn(async () => {})
+    entry.runtimeState.connection = { kind: 'connected', connection: { close }, occupancy: {} }
+    mocks.applicationGet.mockImplementation((name: string) => {
+      if (name === 'AiStreamManager') return { abort: () => {} }
+      if (name === 'CacheService') return { getShared: () => undefined, deleteShared: () => {} }
+      throw new Error(`Unexpected service ${name}`)
+    })
+    await service.cancelActiveWork('authentication-invalidated')
+    expect(turn.abortController.signal.aborted).toBe(true)
+    expect(close).toHaveBeenCalledOnce()
+    expect(service.inspect('session-1')).toBeUndefined()
+    expect(() => service.beginTurn(baseTurnInput)).not.toThrow()
   })
 
   it('suppresses a queued launch before consuming the queue or writing a placeholder', async () => {

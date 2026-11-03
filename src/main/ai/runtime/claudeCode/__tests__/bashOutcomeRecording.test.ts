@@ -15,7 +15,13 @@ const { loggerMock, applicationMock } = vi.hoisted(() => {
   return { loggerMock, applicationMock }
 })
 
-vi.mock('@application', () => ({ application: applicationMock }))
+// vi.mock('@application', () => ({ application: applicationMock }))
+vi.mock('@application', async () => {
+  const { mockApplicationFactory } = await import('@test-mocks/main/application')
+  const result = mockApplicationFactory()
+  result.application.get = applicationMock.get
+  return result
+})
 vi.mock('@logger', () => ({ loggerService: { withContext: () => loggerMock } }))
 vi.mock('@data/services/AgentService', () => ({ agentService: {} }))
 vi.mock('@data/services/McpServerService', () => ({ mcpServerService: {} }))

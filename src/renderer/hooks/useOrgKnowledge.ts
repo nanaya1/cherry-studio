@@ -11,6 +11,8 @@ export function useOrgKnowledge() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const statusRef = useRef<EnterpriseStatus | null>(null)
+  const [authorizationVersion, setAuthorizationVersion] = useState(0)
+  const authorizationVersionRef = useRef(0)
   const requestRef = useRef(0)
 
   const refresh = useCallback(async () => {
@@ -41,6 +43,9 @@ export function useOrgKnowledge() {
       if (previous && next.generation < previous.generation) return
       if (previous?.generation === next.generation && previous.phase === next.phase) return
       statusRef.current = next
+      // MEA:profile-verification-network-tolerance Health-only events must not reset knowledge navigation.
+      authorizationVersionRef.current += 1
+      setAuthorizationVersion(authorizationVersionRef.current)
       requestRef.current += 1
       setCatalog(EMPTY_CATALOG)
       setError(null)
@@ -70,5 +75,5 @@ export function useOrgKnowledge() {
     }
   }, [applyStatus])
 
-  return { catalog, loading, error, refresh }
+  return { catalog, loading, error, refresh, authorizationVersion, authorizationVersionRef }
 }

@@ -135,7 +135,9 @@ customizations:
     title: Require online management identity before profile business startup
     owner: main
     # behavior: In profile isolation mode, local records are legacy staging only. Verify authenticated candidates online against modern currentuser before starting business services; route failed verification to recovery and persist signed-out selection before login.
-    behavior: In profile isolation mode, local records are legacy staging only. Verify authenticated candidates online before business startup; persist signed-out selection before login. Keep one bootstrap window, reuse only identical complete launch contexts, defer display until ready even on second-instance, and close with a localized prompt on main-frame load failure. Replaced windows cannot remove current IPC handlers or consume OAuth callbacks; preserve login cancellation exit, successful activation and relaunch semantics.
+    # behavior: In profile isolation mode, local records are legacy staging only. Verify authenticated candidates online before business startup; persist signed-out selection before login. Keep one bootstrap window, reuse only identical complete launch contexts, defer display until ready even on second-instance, and close with a localized prompt on main-frame load failure. Replaced windows cannot remove current IPC handlers or consume OAuth callbacks; preserve login cancellation exit, successful activation and relaunch semantics.
+    # behavior: Require online verification before business startup; retain the candidate and credentials with an isolated real retry when verification is unavailable, and select signed-out only on explicit user action. Keep one owner-checked bootstrap window and reveal only after readiness. User logout alone starts teardown; keep the process alive through login ready-to-show. Superseded windows cannot consume callbacks or terminate the current window; unrecoverable handoff failures require a visible restart-or-quit choice.
+    behavior: 业务启动必须通过在线身份验证；验证成功直接进入主界面，失败先完成现有 signed-out 切换事务再打开原账号密码登录窗口，不新增页面或窗口，不清理候选凭据和业务数据。独立 startup recovery 的窗口入口、IPC 注册和 preload 桥接均停用；business 候选不可直接创建 bootstrap 窗口。保留窗口所有者检查、首帧显示、退出登录交接及异常事务恢复边界；替换后的旧窗口不能消费回调或终止当前窗口。
     markers:
       - MEA:profile-online-login
     touchpoints:
@@ -145,7 +147,8 @@ customizations:
       - src/main/core/profiles/ProfilePrebootCoordinator.ts
       - src/main/core/profiles/ProfileSessionService.ts
       - src/main/core/profiles/ProfileControlStore.ts
-      - src/main/core/profiles/ProfileRecoveryActions.ts
+      # - src/main/core/profiles/ProfileRecoveryActions.ts
+      - src/main/core/profiles/ProfileBootstrapWindow.ts
       - src/main/core/profiles/ProfileBootstrapWindow.ts
       - src/main/core/preboot/singleInstance.ts
       - src/main/enterprise/orgCurrentUserTransport.ts
@@ -159,7 +162,8 @@ customizations:
       - src/main/core/profiles/__tests__/ProfileStartupVerifier.test.ts
       - src/main/core/profiles/__tests__/ProfilePrebootCoordinator.test.ts
       - src/main/core/profiles/__tests__/ProfileSessionService.test.ts
-      - src/main/core/profiles/__tests__/ProfileRecoveryActions.test.ts
+      # - src/main/core/profiles/__tests__/ProfileRecoveryActions.test.ts
+      - src/main/core/profiles/__tests__/ProfileBootstrapWindow.test.ts
       - src/main/core/profiles/__tests__/ProfileBootstrapWindow.test.ts
       - src/main/core/preboot/__tests__/singleInstance.test.ts
       - src/main/core/preboot/__tests__/profileStartupVerification.test.ts
@@ -167,6 +171,133 @@ customizations:
       - src/main/enterprise/__tests__/PasswordProfileLogin.test.ts
       - src/main/enterprise/__tests__/passwordLoginRuntime.test.ts
       - src/main/enterprise/__tests__/OrgApiClient.test.ts
+
+  - id: profile-verification-network-tolerance
+    title: 弱网保留进程内授权且后台不自动退出
+    owner: main
+    # 原契约保留；冷启动失败现统一进入登录，不再要求先在启动恢复窗口点击切换账号。
+    # behavior: In-process verified accounts retain business access during network or uncertain verification failures without a time-based revocation. Only structured definitive evidence blocks execution; background verification and refresh never log out or tear down services. Publish owner-versioned status for a non-dismissible main-window dialog, keep cancellation and recovery available, and require explicit user action to switch accounts. Authentication HTTP semantics remain a release-validation prerequisite when no authoritative server contract is available.
+    behavior: 冷启动在线验证成功直接启动业务；任何验证失败均复用 selectSignedOutForStartup 的现有协调事务，持久选择隔离 signed-out 空间并打开现有密码登录页，不再打开启动验证恢复窗口，停用其窗口参数、startup=1 加载路径、IPC 注册和 preload 桥接。仅切换活动指针，不执行 logout、不清空或隔离候选凭据、不删除业务数据；保留 legacyRoot。登录仍经过现有受信任 IPC、在线认证与账号切换校验；事务失败保持业务关闭并沿用控制状态恢复。已在线验证的进程内账号仍在网络或不确定失败时保留业务授权，仅结构化确定失效证据阻断执行；后台验证和刷新不自动退出或销毁服务。同进程激活的 throw 失败策略保留，避免在已提交切换事务中嵌套 signed-out 事务。无权威服务端契约时，HTTP 认证语义仍需发布验证。
+    markers:
+      - MEA:profile-verification-network-tolerance
+      - MEA:profile-online-login
+    touchpoints:
+      - src/main/enterprise/verification.ts
+      - src/main/enterprise/OrgAuthManager.ts
+      - src/main/enterprise/ProfileAuthBroker.ts
+      - src/main/enterprise/orgCurrentUserTransport.ts
+      - src/main/enterprise/ProfileOnlineMonitor.ts
+      - src/main/enterprise/EnterprisePlugin.ts
+      - src/main/core/profiles/BusinessAccessGate.ts
+      - src/main/core/profiles/ProfileRuntimeContext.ts
+      - src/main/core/profiles/ProfileBootstrapWindow.ts
+      - src/main/core/profiles/ProfileStartupVerifier.ts
+      - src/main/core/profiles/ProfileSwitchCoordinator.ts
+      - src/main/core/profiles/businessStartup.ts
+      - src/main/core/application/Application.ts
+      - src/main/data/api/core/adapters/IpcAdapter.ts
+      - src/main/ipc/handlers/app.ts
+      - src/main/ipc/handlers/enterprise.ts
+      - src/shared/ipc/schemas/app.ts
+      - src/shared/ipc/schemas/enterprise.ts
+      - src/preload/profileBootstrap.ts
+      - src/renderer/windows/profileBootstrap/ProfileBootstrapApp.tsx
+      - src/renderer/windows/profileBootstrap/entryPoint.tsx
+      - src/renderer/hooks/useEnterpriseVerificationStatus.ts
+      - src/renderer/windows/main/ProfileAccessGate.tsx
+      - src/renderer/windows/main/MainApp.tsx
+      - src/renderer/components/ResourceViewSourceProvider.tsx
+      - src/renderer/hooks/agent/useAgent.ts
+      - src/renderer/pages/agents/components/Sessions.tsx
+      - src/renderer/i18n/locales
+      - src/main/i18n/locales
+    tests:
+      - src/main/enterprise/__tests__/OrgAuthManager.test.ts
+      - src/main/enterprise/__tests__/ProfileAuthBroker.test.ts
+      - src/main/enterprise/__tests__/orgCurrentUserTransport.test.ts
+      - src/main/enterprise/__tests__/ProfileOnlineMonitor.test.ts
+      - src/main/enterprise/__tests__/EnterprisePlugin.test.ts
+      - src/main/core/profiles/__tests__/BusinessAccessGate.test.ts
+      - src/main/core/profiles/__tests__/ProfileStartupVerifier.test.ts
+      - src/main/core/profiles/__tests__/ProfileBootstrapWindow.test.ts
+      - src/main/core/profiles/__tests__/ProfileSwitchCoordinator.test.ts
+      - src/main/core/profiles/__tests__/businessStartup.test.ts
+      - src/main/data/api/core/adapters/__tests__/IpcAdapter.test.ts
+      - src/renderer/windows/main/__tests__/ProfileAccessGate.test.tsx
+      - src/renderer/windows/main/__tests__/MainApp.test.tsx
+      - src/renderer/hooks/__tests__/useEnterpriseVerificationStatus.test.ts
+      - src/renderer/components/__tests__/ResourceViewSourceProvider.test.tsx
+      - src/renderer/pages/agents/components/__tests__/Sessions.test.tsx
+      - src/renderer/windows/profileBootstrap/__tests__/ProfileBootstrapApp.test.tsx
+      - src/shared/ipc/schemas/__tests__/enterprise.test.ts
+
+  - id: enterprise-profile-business-access
+    title: 明确账号失效时在真实执行边界阻断业务
+    owner: main
+    behavior: Apply the shared process authorization assertion at business admission, job claim and execution, runtime turns, and every runtime tool guard including auto-approved and nested tools. Cancel active work without stopping the host services or windows; retain original-operation terminal persistence, cancellation, status and user logout. Infrastructure cleanup jobs are not blocked by a blanket database gate.
+    markers:
+      - MEA:enterprise-profile-business-access
+      - MEA:profile-online-login
+    touchpoints:
+      - src/main/core/application/Application.ts
+      - src/main/core/job/JobManager.ts
+      - src/main/ai/agents/AgentJobsService.ts
+      - src/main/ai/agents/heartbeatDocument.ts
+      - src/main/ai/agents/heartbeatSchedule.ts
+      - src/main/ai/streamManager/AiStreamManager.ts
+      - src/main/ai/agentSession/AgentSessionRuntimeService.ts
+      - src/main/ai/mcp/McpRuntimeService.ts
+      - src/main/ai/runtime/claudeCode/hooks.ts
+      - src/main/ai/runtime/pi/approvalExtension.ts
+      - src/main/ai/runtime/dsh/DshRuntimeConnection.ts
+      - src/main/ai/runtime/aiSdk/loop/hookRunner.ts
+      - src/main/ai/tools/adapters/aiSdk/meta/exec/runtime.ts
+      - packages/dsh-bridge/src/protocol.ts
+    tests:
+      - src/main/core/job/__tests__/JobManager.businessAccess.test.ts
+      - src/main/ai/agents/__tests__/AgentJobsService.test.ts
+      - src/main/ai/agents/__tests__/heartbeatDocument.test.ts
+      - src/main/ai/agents/__tests__/heartbeatSchedule.test.ts
+      - src/main/ai/streamManager/__tests__/AiStreamManager.dispatch.test.ts
+      - src/main/ai/agentSession/__tests__/AgentSessionRuntimeService.pause.test.ts
+      - src/main/ai/mcp/__tests__/McpRuntimeService.test.ts
+      - src/main/ai/runtime/claudeCode/__tests__/hooks.steer.test.ts
+      - src/main/ai/runtime/pi/approvalExtension.test.ts
+      - src/main/ai/runtime/dsh/__tests__/DshRuntimeConnection.proxy.test.ts
+      - src/main/ai/runtime/aiSdk/loop/__tests__/hookRunner.test.ts
+      - src/main/ai/tools/adapters/aiSdk/meta/exec/__tests__/runtime.test.ts
+      - packages/dsh-bridge/__tests__/plugin.test.ts
+
+  - id: enterprise-authorization-locality
+    title: 分组角色变化仅更新知识库授权且本地技能MCP不被停用
+    owner: main
+    behavior: Accept same-identity active-account group and role updates without revoking global process access or restarting. Invalidate knowledge leases, transient plans and permission-scoped renderer reads while preserving durable share and recovery records. Installed skill and MCP copies do not depend on organization entitlement group or generation; keep user enablement, tool policy and independent remote authentication, and do not delete historical entitlement data.
+    markers:
+      - MEA:profile-online-login
+    touchpoints:
+      - src/main/enterprise/OrgAuthManager.ts
+      - src/main/enterprise/OrgKnowledgeService.ts
+      - src/main/enterprise/OrgSkillCatalog.ts
+      - src/main/enterprise/OrgMcpCatalog.ts
+      - src/main/ai/skills/SkillService.ts
+      - src/main/ai/mcp/McpRuntimeService.ts
+      - src/renderer/hooks/useOrgKnowledge.ts
+      - src/renderer/pages/knowledge/KnowledgePageProvider.tsx
+      - src/renderer/pages/knowledge/hooks/useOrgKnowledgeResource.ts
+      - src/renderer/pages/knowledge/components/OrgKnowledgeDetail.tsx
+      - src/renderer/pages/knowledge/components/KnowledgeSharingPanel.tsx
+      - src/renderer/pages/knowledge/components/KnowledgeInvitations.tsx
+    tests:
+      - src/main/enterprise/__tests__/OrgAuthManager.test.ts
+      - src/main/enterprise/__tests__/OrgKnowledgeService.test.ts
+      - src/main/enterprise/__tests__/OrgKnowledgeFirstShare.test.ts
+      - src/main/enterprise/__tests__/OrgSkillCatalog.test.ts
+      - src/main/enterprise/__tests__/OrgMcpCatalog.test.ts
+      - src/main/ai/skills/__tests__/SkillService.test.ts
+      - src/main/ai/mcp/__tests__/McpRuntimeService.test.ts
+      - src/renderer/hooks/__tests__/useOrgKnowledge.test.ts
+      - src/renderer/pages/knowledge/hooks/__tests__/useOrgKnowledgeResource.test.ts
+      - src/renderer/pages/knowledge/__tests__/OrgKnowledgeNavigation.test.tsx
 
   - id: product-identity
     title: MEA application identity and protocol
@@ -303,6 +434,32 @@ customizations:
       - src/renderer/components/app/__tests__/Sidebar.test.tsx
       - src/renderer/pages/home/Tabs/components/__tests__/Topics.test.tsx
       - src/renderer/pages/agents/components/__tests__/Sessions.test.tsx
+
+  - id: builtin-assistant-mcp-binding
+    title: 默认助手补齐晚于其安装的激活 MCP 绑定
+    owner: main
+    behavior: 在 MCP 安装之后用独立固定 v1 日志补齐默认助手的激活 MCP 绑定，覆盖已有安装日志的升级用户；尊重显式排除、全局禁用和删除，不修改普通 agent，不重放安装版本或在后续启动恢复用户移除的绑定。
+    touchpoints:
+      - src/main/data/db/seeding/seederRegistry.ts
+      - src/main/data/db/seeding/seeders/builtinAssistantMcpBindingSeeder.ts
+    tests:
+      - src/main/data/db/seeding/seeders/__tests__/builtinAssistantMcpBindingSeeder.test.ts
+
+  - id: bundled-skill-catalog-compatibility
+    title: 随包推荐技能目录兼容企业预发布版本
+    owner: shared
+    behavior: 随包 manifest 的 minAppVersion 为 1.0.0-beta，确保当前企业预发布应用通过真实 validateSkillCatalog 兼容校验并加载非空已发布技能目录；保留 catalog 内容哈希、应用版本与全局 semver 规则。
+    touchpoints:
+      - resources/skill-catalog/v1/manifest.json
+      - resources/skill-catalog/v1/catalog.json
+      - package.json
+      - src/shared/types/skillCatalog.ts
+      - src/main/services/SkillCatalogService.ts
+    tests:
+      - scripts/__tests__/bundled-skill-catalog.test.ts
+      - src/main/services/__tests__/SkillCatalogService.test.ts
+      - src/shared/types/__tests__/skillCatalog.test.ts
+      - src/shared/types/skillCatalog.test.ts
 
   - id: resource-protection
     title: Protect MEA builtin resources and resource-center behavior

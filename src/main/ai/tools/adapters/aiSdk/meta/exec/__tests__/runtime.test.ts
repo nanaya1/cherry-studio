@@ -2,6 +2,8 @@ import type { ToolExecutionOptions } from '@ai-sdk/provider-utils'
 import type { Tool } from 'ai'
 import { describe, expect, it, vi } from 'vitest'
 
+import { application } from '@application'
+
 import { ToolRegistry } from '../../../registry'
 import type { ToolEntry } from '../../../types'
 import { runExec } from '../runtime'
@@ -45,6 +47,37 @@ function toolWith(overrides: Partial<Tool>): Tool {
 }
 
 describe('runExec / handleToolCall', () => {
+  it('refuses a nested execute when business access expires during its approval check', async () => {
+    const denied = new Error('Business access denied')
+    let allowed = true
+    const gate = vi.spyOn(application, 'assertBusinessAccess').mockImplementation(() => {
+      if (!allowed) throw denied
+    })
+    const execute = vi.fn(async () => 'must-not-run')
+    const registry = registryWith({
+      name: 'mcp__s1__t',
+      tool: toolWith({
+        execute,
+        needsApproval: async () => {
+          await Promise.resolve()
+          allowed = false
+          return false
+        }
+      })
+    })
+    try {
+      const result = await runExec("return await tools.invoke('mcp__s1__t', {})", {
+        registry,
+        parentOptions: makeOptions()
+      })
+      expect(result.isError).toBe(true)
+      expect(result.error).toContain(denied.message)
+      expect(execute).not.toHaveBeenCalled()
+    } finally {
+      gate.mockRestore()
+    }
+  })
+
   it('dispatches a non-gated invoke to the registry tool and returns its result', async () => {
     const execute = vi.fn().mockResolvedValue({ ok: true })
     const reg = registryWith({ name: 'mcp__s1__t', tool: toolWith({ execute }) })

@@ -7,6 +7,7 @@ import { Button, Dialog, DialogContent, DialogDescription } from '@cherrystudio/
 import { ipcApi } from '@renderer/ipc'
 
 import { useOrgKnowledgeResource } from '../hooks/useOrgKnowledgeResource'
+import { useKnowledgeAuthorizationVersion } from '../KnowledgePageProvider'
 import { KnowledgeDialogHeader } from './KnowledgeDialogLayout'
 
 export default function KnowledgeInvitations({
@@ -18,7 +19,7 @@ export default function KnowledgeInvitations({
 }) {
   const { t } = useTranslation()
   const load = useCallback(() => ipcApi.request('enterprise.knowledge.invitations'), [])
-  const { data, loading, error, refresh } = useOrgKnowledgeResource(load)
+  const { data, loading, error, refresh } = useOrgKnowledgeResource(load, useKnowledgeAuthorizationVersion())
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)

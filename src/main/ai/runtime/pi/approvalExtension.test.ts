@@ -123,6 +123,45 @@ beforeEach(() => {
 })
 
 describe('createPiApprovalExtension — policy + approval gate', () => {
+  it('blocks Full Access after business access expires during command rewrite', async () => {
+    const denied = new Error('Business access denied')
+    let allowed = true
+    const gate = vi.spyOn(application, 'assertBusinessAccess').mockImplementation(() => {
+      if (!allowed) throw denied
+    })
+    mocks.rtkRewrite.mockImplementation(async () => {
+      await Promise.resolve()
+      allowed = false
+      return null
+    })
+    try {
+      const { handler, emitted } = buildGate({ getPermissionMode: () => 'bypassPermissions' })
+      const result = await handler(toolEvent('bash', { command: 'pwd' }), extCtx)
+      expect(result).toMatchObject({ block: true, reason: denied.message })
+      expect(emitted).toHaveLength(0)
+    } finally {
+      gate.mockRestore()
+    }
+  })
+
+  it('rechecks business access after the user approves a pending tool', async () => {
+    const denied = new Error('Business access denied')
+    let allowed = true
+    const gate = vi.spyOn(application, 'assertBusinessAccess').mockImplementation(() => {
+      if (!allowed) throw denied
+    })
+    try {
+      const { handler, emitted } = buildGate()
+      const pending = handler(toolEvent('bash', { command: 'pwd' }), extCtx)
+      await flush()
+      allowed = false
+      toolApprovalRegistry.dispatch(emitted[0].request.approvalId, { approved: true })
+      expect(await pending).toMatchObject({ block: true, reason: denied.message })
+    } finally {
+      gate.mockRestore()
+    }
+  })
+
   it('auto-allows read-only tools in default mode with no approval request', async () => {
     const { handler, emitted } = buildGate()
     await expect(handler(toolEvent('read', { path: 'inside.txt' }), extCtx)).resolves.toBeUndefined()

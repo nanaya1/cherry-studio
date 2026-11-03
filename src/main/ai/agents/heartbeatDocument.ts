@@ -18,7 +18,9 @@ async function heartbeatPath(agentId: string) {
   }
   const root = application.getPath('feature.agents.data')
   const directory = agentDataDirectoryPath(root, agentId)
+  application.assertWritable()
   await ensureAgentStorageDirectory(root, directory)
+  application.assertWritable()
   await ensureHeartbeatFile(directory)
   const target = AbsoluteFilePathSchema.parse(path.join(directory, 'heartbeat.md'))
   await assertAgentStoragePath(root, target)
@@ -42,6 +44,7 @@ export async function readHeartbeatDocument(agentId: string): Promise<HeartbeatD
 
 export async function writeHeartbeatDocument(agentId: string, document: HeartbeatDocument): Promise<HeartbeatDocument> {
   const target = await heartbeatPath(agentId)
+  application.assertWritable()
   const version = await atomicWriteIfUnchanged(target, document.content, document.version, document.contentHash)
   return { content: document.content, version, contentHash: hashContent(document.content) }
 }

@@ -81,6 +81,7 @@ export const appRequestSchemas = {
       )
     })
   }),
+  'app.quit': defineRoute({ input: z.void(), output: z.void() }),
   'app.relaunch': defineRoute({ input: z.void(), output: z.void() }),
   'app.adjust_zoom': defineRoute({
     input: z.object({ delta: z.number(), reset: z.boolean().optional() }),
