@@ -17,6 +17,7 @@ vi.mock('@logger', () => ({
 }))
 
 import { OrgApiClient } from '@main/enterprise/OrgApiClient'
+import type { OrgSession } from '@main/enterprise/types'
 
 const session = (over: Partial<{ accessToken: string }> = {}) => ({
   userId: 'u1',
@@ -132,5 +133,117 @@ describe('OrgApiClient public catalog access', () => {
     // reportLifecycle 吞错不阻塞主流程；匿名时等价于"跳过"：resolve 且不发请求
     await expect(client.reportLifecycle('a', 'install')).resolves.toBeUndefined()
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+})
+
+// [enterprise] 公共目录契约：10s 超时 + 401/403 附带旧 token 匿名重试一次（公共目录匿名可达，
+// 不能把"鉴权失效"误判为"目录不可达"）；匿名仍 401/403 则原样抛错，不伪造成功。
+describe('OrgApiClient public catalog contract', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', fetchMock)
+  })
+
+  afterEach(() => {
+    fetchMock.mockReset()
+    vi.unstubAllGlobals()
+  })
+
+  it('publicRequest sets an explicit 10s AbortSignal.timeout covering request + body read', async () => {
+    const timeoutSpy = vi.spyOn(AbortSignal, 'timeout')
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ skills: [] }), { status: 200 }))
+    const client = new OrgApiClient(vi.fn().mockResolvedValue(session({ accessToken: 'tok' })))
+
+    await client.listSkills()
+
+    // 明确 10000ms 超时信号
+    expect(timeoutSpy).toHaveBeenCalledWith(10000)
+    const init = fetchMock.mock.calls[0][1]
+    expect(init.signal).toBeInstanceOf(AbortSignal)
+    timeoutSpy.mockRestore()
+  })
+
+  it('retries anonymously once when 401 arrives with an attached token', async () => {
+    fetchMock
+      .mockResolvedValueOnce(new Response('{"error":"unauthorized"}', { status: 401 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ skills: [] }), { status: 200 }))
+    const client = new OrgApiClient(vi.fn().mockResolvedValue(session({ accessToken: 'stale' })))
+
+    const result = await client.listSkills()
+
+    expect(result.skills).toEqual([])
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    // 第二次（匿名）不带 Authorization
+    expect(fetchMock.mock.calls[1][1].headers.authorization).toBeUndefined()
+  })
+
+  it('retries anonymously once when 403 arrives with an attached token', async () => {
+    fetchMock
+      .mockResolvedValueOnce(new Response('{"error":"forbidden"}', { status: 403 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ skills: [] }), { status: 200 }))
+    const client = new OrgApiClient(vi.fn().mockResolvedValue(session({ accessToken: 'stale' })))
+
+    const result = await client.listSkills()
+
+    expect(result.skills).toEqual([])
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(fetchMock.mock.calls[1][1].headers.authorization).toBeUndefined()
+  })
+
+  it('surfaces the error as-is (no fake success) when the anonymous retry also 401s', async () => {
+    fetchMock.mockResolvedValue(new Response('{"error":"unauthorized"}', { status: 401 }))
+    const client = new OrgApiClient(vi.fn().mockResolvedValue(session({ accessToken: 'stale' })))
+
+    await expect(client.listSkills()).rejects.toThrow('账户服务请求失败 (401)')
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('surfaces the error as-is (no fake success) when the anonymous retry also 403s', async () => {
+    fetchMock.mockResolvedValue(new Response('{"error":"forbidden"}', { status: 403 }))
+    const client = new OrgApiClient(vi.fn().mockResolvedValue(session({ accessToken: 'stale' })))
+
+    await expect(client.listSkills()).rejects.toThrow('账户服务请求失败 (403)')
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not retry anonymously when 401 arrives without a token (signed out)', async () => {
+    fetchMock.mockResolvedValue(new Response('{"error":"unauthorized"}', { status: 401 }))
+    const client = new OrgApiClient(vi.fn().mockResolvedValue(null))
+
+    await expect(client.listSkills()).rejects.toThrow('账户服务请求失败 (401)')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('rejects the whole catalog request when getValidSession never resolves and the signal aborts', async () => {
+    const controller = new AbortController()
+    const timeoutSpy = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(controller.signal)
+    // 会话永不 resolve：用可控 controller 替代 10s 超时来驱动中止，避免测试等待
+    const getValidSession = vi.fn(() => new Promise<OrgSession | null>(() => {}))
+    const client = new OrgApiClient(getValidSession)
+
+    const promise = client.listSkills()
+    queueMicrotask(() => controller.abort())
+
+    await expect(promise).rejects.toThrow()
+    // 会话阶段就被中止：未发起任何目录 fetch（不只是调用次数）
+    expect(fetchMock).not.toHaveBeenCalled()
+    timeoutSpy.mockRestore()
+  })
+
+  it('reuses the same total-budget signal across the token attempt and the anonymous retry', async () => {
+    const timeoutSpy = vi.spyOn(AbortSignal, 'timeout')
+    fetchMock
+      .mockResolvedValueOnce(new Response('{"error":"unauthorized"}', { status: 401 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ skills: [] }), { status: 200 }))
+    const client = new OrgApiClient(vi.fn().mockResolvedValue(session({ accessToken: 'stale' })))
+
+    await client.listSkills()
+
+    // 同 signal 跨匿名重试是有意的总预算：两阶段共用同一实例，且来源正是 timeout(10000)
+    expect(timeoutSpy).toHaveBeenCalledWith(10000)
+    const firstSignal = fetchMock.mock.calls[0][1].signal
+    const retrySignal = fetchMock.mock.calls[1][1].signal
+    expect(firstSignal).toBeInstanceOf(AbortSignal)
+    expect(retrySignal).toBe(firstSignal)
+    timeoutSpy.mockRestore()
   })
 })

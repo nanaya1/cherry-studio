@@ -7,23 +7,36 @@ import { useTranslation } from 'react-i18next'
 import { Button } from '@cherrystudio/ui'
 // import CollapsibleSearchBar from '@renderer/components/CollapsibleSearchBar'
 import { useMcpServers } from '@renderer/hooks/useMcpServer'
-import { useOrgConnectors } from '@renderer/hooks/useOrgConnectors'
+import { useOrgConnectors, type OrgConnectorItem } from '@renderer/hooks/useOrgConnectors'
 import { toast } from '@renderer/services/toast'
 import { cn } from '@renderer/utils/style'
 
 import { getConnectorFallbackStyle, getConnectorInitial } from './connectorAvatar'
 
 // [enterprise] T0 组织连接器目录：企业下发的直连型 SSE MCP，一键安装为本地 MCP 服务器
+interface OrgConnectorCatalogData {
+  connectors: OrgConnectorItem[]
+  loading: boolean
+  error: string | null
+  install: (slug: string) => Promise<void>
+  installing: Set<string>
+  refetch: () => Promise<void>
+}
+
 interface OrgConnectorListProps {
   variant?: 'settings' | 'catalog'
   toolbarStart?: ReactNode
+  // [enterprise] 页面提升后的同一 catalog 实例；提供时由页面注入，组件不再重复请求
+  catalog?: OrgConnectorCatalogData
 }
 
-// const OrgConnectorList: FC<OrgConnectorListProps> = ({ variant = 'catalog', toolbarStart }) => {
-const OrgConnectorList: FC<OrgConnectorListProps> = ({ variant = 'catalog' }) => {
+// [enterprise] 内部视图：始终接收 catalog 作为 prop，不调用 hook（避免条件 hook 与重复请求）
+const OrgConnectorListContent: FC<{
+  variant?: 'settings' | 'catalog'
+  catalog: OrgConnectorCatalogData
+}> = ({ variant = 'catalog', catalog }) => {
   const { t } = useTranslation()
-  // const { connectors, loading, error, install, installing, refetch } = useOrgConnectors(variant === 'catalog')
-  const { connectors, loading, error, install, installing } = useOrgConnectors(variant === 'catalog')
+  const { connectors, loading, error, install, installing, refetch } = catalog
   const { mcpServers, refetch: refetchMcpServers } = useMcpServers()
   // const [searchText, setSearchText] = useState('')
   const [searchText] = useState('')
@@ -57,8 +70,30 @@ const OrgConnectorList: FC<OrgConnectorListProps> = ({ variant = 'catalog' }) =>
 
   if (!isCatalog) return null
 
+  const hasStaleData = connectors.length > 0
+
+  if (loading && connectors.length === 0) {
+    return <div className="py-10 text-center text-muted-foreground text-sm">{t('common.loading')}</div>
+  }
+
+  // [enterprise] 首次失败（无任何数据）才整屏报错；刷新失败（已有旧卡片）转为非阻塞提示，保留旧列表
+  if (error && !hasStaleData) {
+    return <div className="py-10 text-center text-muted-foreground text-sm">{error}</div>
+  }
+
   return (
     <div className="mb-5">
+      {/* [enterprise] 刷新失败非阻塞提示：错误不覆盖已加载的旧卡片，仅顶部提示 + 刷新 */}
+      {error && hasStaleData ? (
+        <div
+          role="alert"
+          className="mb-3 flex items-center justify-between gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-destructive text-sm">
+          <span className="min-w-0 flex-1 truncate">{error}</span>
+          <Button variant="outline" size="sm" onClick={() => void refetch()}>
+            {t('common.refresh')}
+          </Button>
+        </div>
+      ) : null}
       {/* <div className="mb-3 flex w-full min-w-0 flex-wrap items-center justify-between gap-3">
         {toolbarStart}
         <div className={cn('flex min-w-0 items-center gap-2', !toolbarStart && 'ml-auto')}>
@@ -75,11 +110,7 @@ const OrgConnectorList: FC<OrgConnectorListProps> = ({ variant = 'catalog' }) =>
         </div>
       </div> */}
 
-      {loading && connectors.length === 0 ? (
-        <div className="py-10 text-center text-muted-foreground text-sm">{t('common.loading')}</div>
-      ) : error ? (
-        <div className="py-10 text-center text-muted-foreground text-sm">{error}</div>
-      ) : filteredConnectors.length === 0 ? (
+      {filteredConnectors.length === 0 ? (
         <div className="py-10 text-center text-muted-foreground text-sm">{t('library.org_skill.empty_title')}</div>
       ) : (
         <div className="grid @[1120px]/mcp-discover:grid-cols-4 @[560px]/mcp-discover:grid-cols-2 @[840px]/mcp-discover:grid-cols-3 grid-cols-1 gap-3">
@@ -159,6 +190,15 @@ const OrgConnectorList: FC<OrgConnectorListProps> = ({ variant = 'catalog' }) =>
       )}
     </div>
   )
+}
+
+// [enterprise] 独立使用包装组件：调用 hook（保留独立使用时 hook 行为）。
+// 页面级通过 catalog prop 注入已提升的同一实例；enabled=false 时内部 hook 不再发起重复请求。
+const OrgConnectorList: FC<OrgConnectorListProps> = ({ variant = 'catalog', catalog }) => {
+  // const { connectors, loading, error, install, installing, refetch } = useOrgConnectors(variant === 'catalog')
+  const internalCatalog = useOrgConnectors(catalog ? false : variant === 'catalog')
+  const data = catalog ?? internalCatalog
+  return <OrgConnectorListContent variant={variant} catalog={data} />
 }
 
 export default OrgConnectorList

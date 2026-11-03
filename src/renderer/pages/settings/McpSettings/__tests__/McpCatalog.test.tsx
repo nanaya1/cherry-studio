@@ -9,8 +9,22 @@ const { orgSessionMock } = vi.hoisted(() => ({
   orgSessionMock: { authMode: 'management-oauth' }
 }))
 
+const connectorsCatalogMock = vi.hoisted(() => ({
+  available: true,
+  connectors: [] as Array<{ slug: string }>,
+  loading: false,
+  error: null as string | null,
+  install: vi.fn(),
+  installing: new Set<string>(),
+  refetch: vi.fn()
+}))
+
 vi.mock('@renderer/hooks/useOrgAccountSession', () => ({
   useOrgAccountSession: () => ({ status: { authMode: orgSessionMock.authMode } })
+}))
+
+vi.mock('@renderer/hooks/useOrgConnectors', () => ({
+  useOrgConnectors: () => connectorsCatalogMock
 }))
 
 vi.mock('@renderer/hooks/useMcpServer', () => ({
@@ -96,6 +110,7 @@ import McpCatalog from '../McpCatalog'
 afterEach(() => {
   cleanup()
   orgSessionMock.authMode = 'management-oauth'
+  connectorsCatalogMock.available = true
 })
 
 describe('McpCatalog', () => {
@@ -112,6 +127,15 @@ describe('McpCatalog', () => {
     render(<McpCatalog />)
 
     expect(screen.getByRole('tab', { name: 'Organization' })).toBeVisible()
+  })
+
+  // [enterprise] 公共 tab 仅在组织连接器目录实际请求成功后（available）展示；初始失败隐藏，即使账号模式为 management-oauth
+  it('does not show the public connector tab until the org directory request succeeds', () => {
+    orgSessionMock.authMode = 'management-oauth'
+    connectorsCatalogMock.available = false
+    render(<McpCatalog />)
+
+    expect(screen.queryByRole('tab', { name: 'Organization' })).not.toBeInTheDocument()
   })
 
   it('presents discovery, provider, and installed MCP views from the settings sources', async () => {

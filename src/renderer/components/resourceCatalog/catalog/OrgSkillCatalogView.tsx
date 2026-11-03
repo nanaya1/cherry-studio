@@ -22,17 +22,36 @@ const FALLBACK_COLORS = [
 // 分类筛选值：'all' / 'uncategorized'（待分类）/ 具体分类 code
 type CategoryFilter = 'all' | 'uncategorized' | string
 
-interface OrgSkillCatalogViewProps {
-  search?: string
+// [enterprise] 组织技能目录对外数据契约：页面提升 hook 后与子视图共享同一实例
+export interface OrgSkillCatalogData {
+  skills: OrgSkillItem[]
+  loading: boolean
+  error: string | null
+  install: (slug: string) => Promise<boolean>
+  installing: Set<string>
+  refetch: () => Promise<void>
+  disabledSlugs: string[]
+  installedSlugs: Set<string>
+  remove: (slug: string) => Promise<boolean>
 }
 
-export function OrgSkillCatalogView({ search = '' }: OrgSkillCatalogViewProps) {
+interface OrgSkillCatalogViewProps {
+  search?: string
+  // [enterprise] 页面提升后的同一 catalog 实例；提供时由页面注入，组件不再重复请求
+  catalog?: OrgSkillCatalogData
+}
+
+// [enterprise] 内部视图：始终接收 catalog 作为 prop，不调用 hook（避免条件 hook 与重复请求）
+export function OrgSkillCatalogViewContent({
+  catalog,
+  search = ''
+}: {
+  catalog: OrgSkillCatalogData
+  search?: string
+}) {
   const { t } = useTranslation()
+  const { skills, loading, error, install, installing, refetch, disabledSlugs, installedSlugs, remove } = catalog
   // const [query, setQuery] = useState('')
-  // [enterprise] 公共目录：所有人看到同一套公共资源，未登录也能浏览与安装。
-  // 登录态仅用于设置区显示账号卡片，不再控制目录请求；会话变化由主进程可选埋点承担。
-  const { skills, loading, error, install, installing, refetch, disabledSlugs, installedSlugs, remove } =
-    useOrgSkills(true)
   const [removing, setRemoving] = useState<Set<string>>(() => new Set())
   const [failedIcons, setFailedIcons] = useState<Set<string>>(() => new Set())
   // [enterprise] 分类筛选（'all' | 'uncategorized' | 分类 code）
@@ -105,7 +124,8 @@ export function OrgSkillCatalogView({ search = '' }: OrgSkillCatalogViewProps) {
     )
   }
 
-  if (error) {
+  // [enterprise] 首次失败（无任何数据）才整屏报错；刷新失败（已有旧列表）转为非阻塞提示，保留旧列表
+  if (error && skills.length === 0) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3">
         <EmptyState preset="no-result" title={t('common.error')} description={error} />
@@ -118,6 +138,17 @@ export function OrgSkillCatalogView({ search = '' }: OrgSkillCatalogViewProps) {
 
   return (
     <div className="mx-auto flex h-full w-full flex-col px-6 py-4">
+      {/* [enterprise] 刷新失败非阻塞提示：错误不覆盖已加载的旧列表，仅顶部提示 + 刷新 */}
+      {error && skills.length > 0 ? (
+        <div
+          role="alert"
+          className="mb-3 flex items-center justify-between gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-destructive text-sm">
+          <span className="min-w-0 flex-1 truncate">{error}</span>
+          <Button variant="outline" size="sm" onClick={() => void refetch()}>
+            {t('common.refresh')}
+          </Button>
+        </div>
+      ) : null}
       {/* [enterprise] 分类筛选 tab：全部 / 待分类 固定，其余为分类并集（对齐推荐视图 tab 栏形态） */}
       {skills.length > 0 ? (
         <div className="mb-4 flex gap-1 overflow-x-auto">
@@ -262,4 +293,15 @@ export function OrgSkillCatalogView({ search = '' }: OrgSkillCatalogViewProps) {
       )}
     </div>
   )
+}
+
+// [enterprise] 独立使用包装组件：调用 hook（保留独立使用时 hook 行为）。
+// 页面级通过 catalog prop 注入已提升的同一实例；enabled=false 时内部 hook 不再发起重复请求。
+export function OrgSkillCatalogView({ search = '', catalog }: OrgSkillCatalogViewProps) {
+  // const [query, setQuery] = useState('')
+  // [enterprise] 公共目录：所有人看到同一套公共资源，未登录也能浏览与安装。
+  // 登录态仅用于设置区显示账号卡片，不再控制目录请求；会话变化由主进程可选埋点承担。
+  const internalCatalog = useOrgSkills(catalog ? false : true)
+  const data = catalog ?? internalCatalog
+  return <OrgSkillCatalogViewContent catalog={data} search={search} />
 }

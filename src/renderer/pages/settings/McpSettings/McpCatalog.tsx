@@ -15,6 +15,7 @@ import {
 } from '@cherrystudio/ui'
 import { useMcpServers } from '@renderer/hooks/useMcpServer'
 import { useOrgAccountSession } from '@renderer/hooks/useOrgAccountSession'
+import { useOrgConnectors } from '@renderer/hooks/useOrgConnectors'
 import { cn } from '@renderer/utils/style'
 
 import BuiltinMcpServerList from './BuiltinMcpServerList'
@@ -39,7 +40,11 @@ export default function McpCatalog() {
   const { mcpServers } = useMcpServers()
   const { status: accountStatus } = useOrgAccountSession()
   // const showPublicCatalog = accountStatus?.authMode === 'management-exchange' // [MEA] 已删除旧认证模式
-  const showPublicCatalog = accountStatus?.authMode === 'management-oauth'
+  const orgMode = accountStatus?.authMode === 'management-oauth'
+  // [enterprise] 提升组织连接器目录 hook 到页面：enabled 仅当 management-oauth 账号模式
+  const connectorsCatalog = useOrgConnectors(orgMode)
+  // [enterprise] 实际请求成功（available）才展示公共 tab；初始失败隐藏，刷新失败保留
+  const showPublicCatalog = orgMode && connectorsCatalog.available
   const [activeTab, setActiveTab] = useState<CatalogTab>('discover')
   const [discoverTab, setDiscoverTab] = useState<DiscoverTab>('builtin')
   const [selectedProvider, setSelectedProvider] = useState<ProviderConfig | null>(null)
@@ -120,7 +125,7 @@ export default function McpCatalog() {
       {showPublicCatalog ? (
         <TabsContent value="org" className="min-h-0 flex-1">
           <Scrollbar className="@container/mcp-discover h-full px-6 py-5">
-            <OrgConnectorList variant="catalog" />
+            <OrgConnectorList variant="catalog" catalog={connectorsCatalog} />
           </Scrollbar>
         </TabsContent>
       ) : null}

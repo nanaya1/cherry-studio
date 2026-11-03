@@ -9,6 +9,19 @@ const { orgSessionMock } = vi.hoisted(() => ({
   orgSessionMock: { authMode: 'management-oauth' }
 }))
 
+const skillsCatalogMock = vi.hoisted(() => ({
+  available: true,
+  skills: [] as Array<{ slug: string }>,
+  loading: false,
+  error: null as string | null,
+  install: vi.fn(),
+  installing: new Set<string>(),
+  refetch: vi.fn(),
+  disabledSlugs: [] as string[],
+  installedSlugs: new Set<string>(),
+  remove: vi.fn()
+}))
+
 type MockSkillController = {
   gridProps: {
     onOpenSkillMarketplace: () => void
@@ -62,6 +75,10 @@ vi.mock('@renderer/hooks/useOrgAccountSession', () => ({
   useOrgAccountSession: () => ({ status: { authMode: orgSessionMock.authMode } })
 }))
 
+vi.mock('@renderer/hooks/useOrgSkills', () => ({
+  useOrgSkills: () => skillsCatalogMock
+}))
+
 vi.mock('@renderer/hooks/resourceCatalog', () => ({
   useResourceCatalogController: () => {
     const [skillMarketplaceOpen, setSkillMarketplaceOpen] = useState(false)
@@ -101,6 +118,7 @@ afterEach(() => {
   cleanup()
   vi.clearAllMocks()
   orgSessionMock.authMode = 'management-oauth'
+  skillsCatalogMock.available = true
 })
 
 describe('SkillsConnectorsPage', () => {
@@ -117,6 +135,15 @@ describe('SkillsConnectorsPage', () => {
     render(<SkillsConnectorsPage connectorView={<div>connector catalog</div>} />)
 
     expect(screen.getByRole('tab', { name: 'Organization' })).toBeVisible()
+  })
+
+  // [enterprise] 公共 tab 仅在组织目录实际请求成功后（available）展示；初始失败隐藏，即使账号模式为 management-oauth
+  it('does not show the public skill tab until the org directory request succeeds', () => {
+    orgSessionMock.authMode = 'management-oauth'
+    skillsCatalogMock.available = false
+    render(<SkillsConnectorsPage connectorView={<div>connector catalog</div>} />)
+
+    expect(screen.queryByRole('tab', { name: 'Organization' })).not.toBeInTheDocument()
   })
 
   it('shows recommended skills by default and preserves access to installed skills', async () => {
