@@ -2,6 +2,8 @@ import { mockMainLoggerService } from '@test-mocks/MainLoggerService'
 import type { ToolSet } from 'ai'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { application } from '@application'
+
 import { wrapToolsWithExecutionHooks } from '../hookRunner'
 import type { AgentLoopHooks, ToolExecutionEndEvent, ToolExecutionStartEvent } from '../types'
 
@@ -18,6 +20,27 @@ function makeTools(execute: ToolSet[string]['execute']): ToolSet {
 describe('wrapToolsWithExecutionHooks', () => {
   beforeEach(() => {
     mockMainLoggerService.warn.mockClear()
+  })
+
+  it('refuses execution when business access expires during an awaited observer hook', async () => {
+    const denied = new Error('Business access denied')
+    let allowed = true
+    const gate = vi.spyOn(application, 'assertBusinessAccess').mockImplementation(() => {
+      if (!allowed) throw denied
+    })
+    const execute = vi.fn(async () => 'must-not-run')
+    const wrapped = wrapToolsWithExecutionHooks(makeTools(execute), {
+      onToolExecutionStart: async () => {
+        await Promise.resolve()
+        allowed = false
+      }
+    })!
+    try {
+      await expect(wrapped.myTool.execute!({}, EXECUTE_OPTIONS)).rejects.toBe(denied)
+      expect(execute).not.toHaveBeenCalled()
+    } finally {
+      gate.mockRestore()
+    }
   })
 
   it('logs failed tool execution without hooks and rethrows the original error', async () => {

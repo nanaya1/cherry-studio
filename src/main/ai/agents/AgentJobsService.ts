@@ -136,6 +136,7 @@ export class AgentJobsService extends BaseService {
           await this.deleteSchedulesForAgent(agentId)
           return 'skipped-missing-agent' as const
         }
+        application.assertTaskStartAllowed()
         return syncHeartbeatSchedule(agentId, signal, rows)
       })
     this.heartbeatChains.set(agentId, current)
@@ -238,6 +239,7 @@ export class AgentJobsService extends BaseService {
   }
 
   createTask(agentId: string, form: AgentTaskForm): ScheduledTaskEntity {
+    application.assertTaskStartAllowed()
     this.assertAgentIsActive(agentId)
     this.assertPromptNotReserved(form.prompt)
     this.assertNameNotReserved(form.name)
@@ -281,6 +283,7 @@ export class AgentJobsService extends BaseService {
   }
 
   updateTask(agentId: string, taskId: string, patch: AgentTaskPatch): ScheduledTaskEntity | null {
+    application.assertWritable()
     const existing = this.getActiveTask(agentId, taskId)
     if (!existing) return null
     this.assertPromptNotReserved(patch.prompt)
@@ -375,6 +378,7 @@ export class AgentJobsService extends BaseService {
   }
 
   resumeTask(agentId: string, taskId: string): ScheduledTaskEntity | null {
+    application.assertTaskStartAllowed()
     const existing = this.getActiveTask(agentId, taskId)
     if (!existing) return null
     if (existing.status === 'missed') return existing
@@ -425,11 +429,13 @@ export class AgentJobsService extends BaseService {
   }
 
   writeHeartbeatDocument(agentId: string, document: HeartbeatDocument): Promise<HeartbeatDocument> {
+    application.assertWritable()
     this.assertHeartbeatAvailable()
     return this.inFlightWork.track(writeHeartbeatDocument(agentId, document))
   }
 
   runHeartbeat(agentId: string): Promise<HeartbeatRunResult> {
+    application.assertTaskStartAllowed()
     this.assertHeartbeatAvailable()
     if (this.heartbeatRuns.has(agentId)) return Promise.resolve('busy')
     this.heartbeatRuns.add(agentId)
@@ -442,6 +448,7 @@ export class AgentJobsService extends BaseService {
 
   private async triggerHeartbeat(agentId: string): Promise<HeartbeatRunResult> {
     await this.syncHeartbeat(agentId)
+    application.assertTaskStartAllowed()
     this.assertHeartbeatAvailable()
     const agent = agentService.getAgent(agentId)
     if (!agent || !isHeartbeatEnabled(agent.configuration ?? {})) return 'disabled'
@@ -450,7 +457,9 @@ export class AgentJobsService extends BaseService {
     const agentsDataRoot = application.getPath('feature.agents.data')
     const agentDataPath = agentDataDirectoryPath(agentsDataRoot, agentId)
     await assertAgentStorageDirectory(agentsDataRoot, agentDataPath)
+    application.assertTaskStartAllowed()
     if (!(await readHeartbeat(agentDataPath))) return 'empty'
+    application.assertTaskStartAllowed()
     this.assertHeartbeatAvailable()
     if (jobService.list({ scheduleId: schedule.id, status: ['pending', 'delayed', 'running'], limit: 1 }).length) {
       return 'busy'
@@ -460,6 +469,7 @@ export class AgentJobsService extends BaseService {
 
   /** Run a scheduled agent task now (`ai.agent.task.run`). @returns whether the trigger fired (`false` = not found / not owned). */
   async runTask(agentId: string, taskId: string): Promise<boolean> {
+    application.assertTaskStartAllowed()
     const existing = this.getActiveTask(agentId, taskId)
     if (!existing) return false
     if (existing.status === 'missed') {

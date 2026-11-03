@@ -20,7 +20,7 @@ describe('useOrgSkills', () => {
     vi.clearAllMocks()
     mocks.request.mockImplementation(async (route: string) => {
       if (route === 'enterprise.skills.list') return { skills: [], installedSlugs: [] }
-      if (route === 'enterprise.skills.listDisabled') return { disabled: [] }
+      if (route === 'enterprise.skills.list_disabled') return { disabled: [] }
       throw new Error(`unexpected route: ${route}`)
     })
   })
@@ -92,7 +92,7 @@ describe('useOrgSkills', () => {
 
     mocks.request.mockImplementation(async (route: string) => {
       if (route === 'enterprise.skills.list') return { skills: [], installedSlugs: [] }
-      if (route === 'enterprise.skills.listDisabled') return { disabled: [] }
+      if (route === 'enterprise.skills.list_disabled') return { disabled: [] }
       throw new Error(`unexpected route: ${route}`)
     })
     await act(async () => rerender({ enabled: true }))

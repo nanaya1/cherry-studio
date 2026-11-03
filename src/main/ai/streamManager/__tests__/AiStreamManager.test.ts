@@ -291,6 +291,44 @@ describe('AiStreamManager', () => {
     vi.useRealTimers()
   })
 
+  it('cancelActiveWork aborts active streams, awaits terminal persistence and permits later work', async () => {
+    vi.useRealTimers()
+    const listener = new FakeListener('persistence:cancel', 'persistence')
+    const first = startSingle(mgr, {
+      topicId: 'cancel-topic',
+      modelId: 'provider-a::model-a',
+      request: req('cancel-topic'),
+      listeners: [listener]
+    })
+    let release!: () => void
+    let persisting = false
+    listener.onPausedImpl = () => {
+      persisting = true
+      return new Promise<void>((resolve) => {
+        release = resolve
+      })
+    }
+    let cancelled = false
+    const pending = mgr.cancelActiveWork('authentication-invalidated').then(() => {
+      cancelled = true
+    })
+    await flushUntil(() => persisting)
+    expect(first.executions[0].abortSignal.aborted).toBe(true)
+    expect(cancelled).toBe(false)
+    release()
+    await pending
+    expect(listener.pausedResults).toHaveLength(1)
+    expect(() =>
+      startSingle(mgr, {
+        topicId: 'later-topic',
+        modelId: 'provider-a::model-a',
+        request: req('later-topic'),
+        listeners: [new FakeListener('later')]
+      })
+    ).not.toThrow()
+    await mgr.cancelActiveWork('test-cleanup')
+  })
+
   describe('streamPrompt', () => {
     it('forwards context ownership to AiService.streamText', () => {
       mgr.streamPrompt({

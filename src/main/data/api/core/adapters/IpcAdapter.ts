@@ -1,8 +1,9 @@
 import { ipcMain, type IpcMainInvokeEvent } from 'electron'
 
+import { application } from '@application'
 import { loggerService } from '@logger'
 import type { Disposable } from '@main/core/lifecycle'
-import { profileSwitchFence, getProfileLaunchContext, profileBusinessAccessGate } from '@main/core/profiles'
+import { profileSwitchFence } from '@main/core/profiles'
 import { validateSender } from '@main/core/security/validateSender'
 import { DataApiError, DataApiErrorFactory, ErrorCode, toDataApiError } from '@shared/data/api/errors'
 import type { DataRequest, DataResponse } from '@shared/data/api/types'
@@ -106,11 +107,13 @@ export class IpcAdapter implements Disposable {
    * are logged, not throttled — same stance as `IpcApiService.handleRequest`.
    */
   private assertBusinessAccess(): void {
-    const context = getProfileLaunchContext()
+    /* const context = getProfileLaunchContext()
     if (!context) return
     if (context.mode !== 'business' || context.kind !== 'authenticated' || !profileBusinessAccessGate.isAllowed()) {
       throw new DataApiError(ErrorCode.PERMISSION_DENIED, 'Online profile verification is required', 403)
-    }
+    } */
+    // MEA:profile-online-login Share authorization with direct task and tool admission.
+    application.assertBusinessAccess()
   }
 
   private isTrustedSender(event: IpcMainInvokeEvent, context: string): boolean {

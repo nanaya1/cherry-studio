@@ -4,8 +4,10 @@ import i18n from 'i18next'
 import { useState } from 'react'
 import { beforeEach, expect, it, vi } from 'vitest'
 
+import type { useOrgKnowledge as UseOrgKnowledge } from '@renderer/hooks/useOrgKnowledge'
 import type { KnowledgeBaseListItem } from '@shared/data/api/schemas/knowledges'
 import type { OrgKnowledgeBase } from '@shared/data/types/enterpriseKnowledge'
+import type { EnterpriseStatus } from '@shared/ipc/schemas/enterprise'
 
 import KnowledgePage from '../KnowledgePage'
 import { KnowledgePageProvider, useKnowledgePage } from '../KnowledgePageProvider'
@@ -49,14 +51,18 @@ vi.mock('../components/ShareKnowledgeDialog', () => ({
   default: ({ baseId, mode }: { baseId: string; mode: string }) => <div role="dialog">{`${mode}:${baseId}`}</div>
 }))
 vi.mock('../sections/KnowledgePageDialogSection', () => ({ default: () => null }))
-let capturedStatusHandler: (() => void) | undefined
-const { request, local, catalog, refreshOrg, refetchLocal, updateBase, useIpcOn } = vi.hoisted(() => {
+const { request, local, catalog, refreshOrg, refetchLocal, updateBase, useIpcOn, authorization } = vi.hoisted(() => {
   const request = vi.fn()
   const refreshOrg = vi.fn()
   const refetchLocal = vi.fn()
   const updateBase = vi.fn()
-  const useIpcOn = vi.fn((event: string, handler: () => void) => {
-    if (event === 'enterprise.status_changed') capturedStatusHandler = handler
+  const authorization = {
+    version: 1,
+    live: false,
+    listener: undefined as ((status: EnterpriseStatus) => void) | undefined
+  }
+  const useIpcOn = vi.fn((event: string, handler: typeof authorization.listener) => {
+    if (event === 'enterprise.status_changed') authorization.listener = handler
   })
   return {
     request,
@@ -64,6 +70,7 @@ const { request, local, catalog, refreshOrg, refetchLocal, updateBase, useIpcOn 
     refetchLocal,
     updateBase,
     useIpcOn,
+    authorization,
     local: { bases: [] as KnowledgeBaseListItem[] },
     catalog: {
       public: [{ id: 'orgkb:public', name: '公共资料', description: '', documentCount: 1 }],
@@ -72,9 +79,26 @@ const { request, local, catalog, refreshOrg, refetchLocal, updateBase, useIpcOn 
     }
   }
 })
-vi.mock('@renderer/hooks/useOrgKnowledge', () => ({
-  useOrgKnowledge: () => ({ catalog, loading: false, error: null, refresh: refreshOrg })
-}))
+vi.mock('@renderer/hooks/useOrgKnowledge', async (importOriginal) => {
+  const actual = await importOriginal<{ useOrgKnowledge: typeof UseOrgKnowledge }>()
+  return {
+    useOrgKnowledge: () => {
+      if (authorization.live) return actual.useOrgKnowledge()
+      return {
+        catalog,
+        loading: false,
+        error: null,
+        refresh: refreshOrg,
+        authorizationVersion: authorization.version,
+        authorizationVersionRef: {
+          get current() {
+            return authorization.version
+          }
+        }
+      }
+    }
+  }
+})
 vi.mock('@renderer/hooks/useKnowledgeBase', () => ({
   useKnowledgeBases: () => ({ bases: local.bases, isLoading: false, refetch: refetchLocal }),
   useCreateKnowledgeBase: () => ({}),
@@ -92,6 +116,9 @@ vi.mock('@renderer/ipc', () => ({ ipcApi: { request }, useIpcOn }))
 beforeEach(async () => {
   await i18n.changeLanguage('en-us')
   local.bases = []
+  authorization.version = 1
+  authorization.live = false
+  authorization.listener = undefined
   catalog.owned = [
     { id: 'orgkb:owned', name: '我的服务端副本', description: '', documentCount: 1, hasShareEvidence: true }
   ]
@@ -234,6 +261,35 @@ function RoutedPage() {
   const [baseId, setBaseId] = useState<string>()
   return <KnowledgePage baseId={baseId} onBaseIdChange={setBaseId} />
 }
+
+it('同代际健康状态事件不清除本机分享弹窗或重读组织目录', async () => {
+  authorization.live = true
+  local.bases = [{ id: 'local:first', name: '首次分享库', groupId: null }] as KnowledgeBaseListItem[]
+  catalog.owned = []
+  const status = {
+    generation: 1,
+    phase: 'signed-in' as const,
+    groupId: 'group',
+    authMode: 'management-cookie' as const,
+    displayName: null,
+    phone: null,
+    role: 'member'
+  }
+  const original = request.getMockImplementation()!
+  request.mockImplementation(async (route, input) => {
+    if (route === 'enterprise.status.get') return status
+    if (route === 'enterprise.knowledge.catalog') return catalog
+    return original(route, input)
+  })
+  render(<RoutedPage />)
+  await waitFor(() => expect(request).toHaveBeenCalledWith('enterprise.knowledge.catalog'))
+  await userEvent.click(await screen.findByRole('button', { name: '打开本机分享码' }))
+  const dialog = screen.getByRole('dialog')
+  const catalogRequests = request.mock.calls.filter(([route]) => route === 'enterprise.knowledge.catalog').length
+  act(() => authorization.listener?.(status))
+  expect(screen.getByRole('dialog')).toBe(dialog)
+  expect(request.mock.calls.filter(([route]) => route === 'enterprise.knowledge.catalog')).toHaveLength(catalogRequests)
+})
 
 it('首次分享目录刷新为 owned 后保留本机分享弹窗，主动关闭后进入云端详情', async () => {
   local.bases = [{ id: 'local:first', name: '首次分享库', groupId: null }] as KnowledgeBaseListItem[]
@@ -708,17 +764,17 @@ it('本地改名过程中账号切换时不向云端写重命名，并关闭弹�
       })
   )
   const user = userEvent.setup()
-  render(
+  const tree = () => (
     <KnowledgePageProvider onBaseIdChange={vi.fn()}>
       <RenameHarness />
     </KnowledgePageProvider>
   )
+  const view = render(tree())
   await user.click(screen.getByTestId('open'))
   await user.click(screen.getByTestId('rename-new'))
   await waitFor(() => expect(updateBase).toHaveBeenCalledTimes(1))
-  await act(async () => {
-    capturedStatusHandler?.()
-  })
+  authorization.version += 1
+  view.rerender(tree())
   await act(async () => {
     resolveUpdate()
   })

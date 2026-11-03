@@ -79,6 +79,20 @@ export interface ClaudeCodeHookContext {
 
 export function buildClaudeCodeHooks(ctx: ClaudeCodeHookContext): ClaudeCodeSettings['hooks'] {
   const { sessionId, cwd, agentDataPath } = ctx
+  const businessAccessDenial = (): HookJSONOutput | undefined => {
+    try {
+      application.assertBusinessAccess()
+    } catch (error) {
+      return {
+        hookSpecificOutput: {
+          hookEventName: 'PreToolUse',
+          permissionDecision: 'deny',
+          permissionDecisionReason: error instanceof Error ? error.message : String(error)
+        }
+      }
+    }
+    return undefined
+  }
 
   // The single policy hook: evaluates the guard table with a fire-time context snapshot. Runs as a
   // PreToolUse hook (not in canUseTool) because hooks fire under every permission mode, while the
@@ -87,6 +101,8 @@ export function buildClaudeCodeHooks(ctx: ClaudeCodeHookContext): ClaudeCodeSett
     if (!input || input.hook_event_name !== 'PreToolUse') return {}
     const toolName = String((input as Record<string, unknown>).tool_name ?? '')
     if (!toolName) return {}
+    const denied = businessAccessDenial()
+    if (denied) return denied
     const toolInput = (input as Record<string, unknown>).tool_input as Record<string, unknown> | undefined
     surfaceExitPlanModeInput(sessionId, toolName, toolInput, toolUseId)
     // Live state by id at fire-time: mode and disabled-set follow mid-session agent updates on warm
@@ -107,6 +123,8 @@ export function buildClaudeCodeHooks(ctx: ClaudeCodeHookContext): ClaudeCodeSett
       isDisabled: (name) => snapshot?.isDisabled(name) ?? false,
       bashNoProgressRun: (command) => sessionState().getBashNoProgressRun(sessionId, command, input.agent_id)
     })
+    const deniedAfterGuards = businessAccessDenial()
+    if (deniedAfterGuards) return deniedAfterGuards
     if (!decision) {
       // Soft tier of the bash-repeat-no-progress guard (the hard deny is the guard rule): the
       // first call past the soft threshold is allowed with a one-shot warning so the model can
@@ -147,6 +165,8 @@ export function buildClaudeCodeHooks(ctx: ClaudeCodeHookContext): ClaudeCodeSett
     if (typeof skillName !== 'string' || !skillName) return {}
 
     const { warning } = await checkSkillRuntimeDependencies(skillName, cwd, ctx.pluginDirectories)
+    const denied = businessAccessDenial()
+    if (denied) return denied
     if (!warning) return {}
     logger.debug('Skill declares unresolved runtime dependencies', { sessionId, skillName, warning })
     return { hookSpecificOutput: { hookEventName: 'PreToolUse', additionalContext: warning } }
@@ -163,6 +183,8 @@ export function buildClaudeCodeHooks(ctx: ClaudeCodeHookContext): ClaudeCodeSett
     // Register before yielding so an in-flight rewrite cannot recreate state after teardown.
     sessionState().recordBashRewriteOrigin(sessionId, input.tool_use_id, command)
     const rewritten = await rtkRewrite(command)
+    const denied = businessAccessDenial()
+    if (denied) return denied
     if (!rewritten) {
       sessionState().takeBashRewriteOrigin(sessionId, input.tool_use_id)
       return {}
@@ -219,7 +241,13 @@ export function buildClaudeCodeHooks(ctx: ClaudeCodeHookContext): ClaudeCodeSett
     return {}
   }
 
-  const agentsMdHook = ctx.agentsMdLoader.createPreToolUseHook()
+  // MEA:enterprise-profile-business-access Re-check after the loader's asynchronous filesystem work.
+  // const agentsMdHook = ctx.agentsMdLoader.createPreToolUseHook()
+  const loadAgentsMd = ctx.agentsMdLoader.createPreToolUseHook()
+  const agentsMdHook: HookCallback = async (...args) => {
+    const output = await loadAgentsMd(...args)
+    return businessAccessDenial() ?? output
+  }
 
   // Subagent Bash history is scoped per agent_id; when the subagent stops, its scope is dropped so
   // long-lived sessions don't retain every completed child's history until whole-session disposal.

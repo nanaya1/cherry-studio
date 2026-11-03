@@ -1,5 +1,7 @@
+import { and, asc, eq, lte } from 'drizzle-orm'
+
 import { application } from '@application'
-import type { InsertJobRow, JobRow } from '@data/db/schemas/job'
+import { type InsertJobRow, type JobRow, jobTable } from '@data/db/schemas/job'
 import type { DbOrTx } from '@data/db/types'
 import { jobScheduleService } from '@data/services/JobScheduleService'
 import { jobService } from '@data/services/JobService'
@@ -15,6 +17,7 @@ import {
   SERVICE_STOP_TIMEOUT_MS,
   ServicePhase
 } from '@main/core/lifecycle'
+import { DataApiError, ErrorCode } from '@shared/data/api/errors'
 import type { JobScheduleSnapshot, RetryPolicy, Trigger, UpdateJobScheduleDto } from '@shared/data/api/schemas/jobs'
 import { type JobError, type JobSnapshot } from '@shared/data/api/schemas/jobs'
 import { isTerminalStatus, JOB_ERROR_CODES } from '@shared/data/api/schemas/jobs'
@@ -45,6 +48,21 @@ const DEFAULT_RETRY_POLICY: RetryPolicy = {
   baseDelayMs: 1000,
   maxDelayMs: 60_000
 }
+
+// MEA:enterprise-profile-business-access Infrastructure backfill and deletion cleanup stay available.
+const BUSINESS_JOB_TYPES: ReadonlySet<string> = new Set([
+  'agent.task',
+  'image-generation.generate',
+  'enterprise.knowledge-sync',
+  'enterprise.knowledge-share',
+  'knowledge.prepare-root',
+  'knowledge.index-documents',
+  'knowledge.check-file-processing-result',
+  'knowledge.reindex-subtree',
+  'file-processing.background',
+  'file-processing.background-local',
+  'file-processing.remote-poll'
+])
 
 const MAX_INPUT_BYTES = 1_048_576 // 1MB
 const MAX_CANCEL_REASON_CHARS = 500
@@ -864,6 +882,10 @@ export class JobManager extends BaseService {
     }
   }
 
+  private assertBusinessJobStartAllowed(type: string): void {
+    if (BUSINESS_JOB_TYPES.has(type)) application.assertTaskStartAllowed()
+  }
+
   // ---------------- enqueue / cancel / list / get ----------------
 
   /**
@@ -877,6 +899,7 @@ export class JobManager extends BaseService {
     input: JobPayloadOf<K>,
     opts: EnqueueOptions
   ): { handler: JobHandler; queueName: string; insertRow: InsertJobRow } {
+    this.assertBusinessJobStartAllowed(type)
     const handler = this.handlers.get(type)
     if (!handler) {
       throw this.makeError(JOB_ERROR_CODES.UNKNOWN_TYPE, `No handler registered for type "${type}"`, {
@@ -1237,6 +1260,7 @@ export class JobManager extends BaseService {
    * @throws Error with code `JOB_SCHEDULE_SINGLETON_EXISTS` if `name` omitted on a multi-instance type
    */
   registerJobSchedule<K extends JobType>(input: JobScheduleRegistrationInput<K>): { id: string } {
+    this.assertBusinessJobStartAllowed(input.type)
     if (!this.handlers.has(input.type)) {
       throw this.makeError(JOB_ERROR_CODES.UNKNOWN_TYPE, `No handler for schedule type "${input.type}"`, {
         type: input.type
@@ -1279,6 +1303,7 @@ export class JobManager extends BaseService {
    *   caller transaction
    */
   registerJobScheduleTx<K extends JobType>(tx: DbOrTx, input: JobScheduleRegistrationInput<K>): { id: string } {
+    this.assertBusinessJobStartAllowed(input.type)
     if (!this.handlers.has(input.type)) {
       throw this.makeError(JOB_ERROR_CODES.UNKNOWN_TYPE, `No handler for schedule type "${input.type}"`, {
         type: input.type
@@ -1315,6 +1340,16 @@ export class JobManager extends BaseService {
    *   `JOB_SCHEDULE_TRIGGER_INVALID` before any write
    */
   updateJobScheduleTx(tx: DbOrTx, id: string, patch: UpdateJobScheduleDto): JobScheduleSnapshot | null {
+    const schedule = jobScheduleService.getByIdTx(tx, id)
+    if (
+      schedule &&
+      (patch.enabled === true ||
+        patch.trigger !== undefined ||
+        patch.jobInputTemplate !== undefined ||
+        patch.name !== undefined)
+    ) {
+      this.assertBusinessJobStartAllowed(schedule.type)
+    }
     // eslint-disable-next-line tx-boundary/no-ambient-db-in-tx -- pure schema validation, touches no database
     if (patch.name) jobScheduleService.assertValidName(patch.name)
     if (patch.trigger !== undefined) this.assertValidTrigger(patch.trigger)
@@ -1395,6 +1430,8 @@ export class JobManager extends BaseService {
    * @returns `true` if the row existed and was updated; `false` if not found
    */
   resumeJobScheduleById(id: string): boolean {
+    const schedule = jobScheduleService.getById(id)
+    if (schedule) this.assertBusinessJobStartAllowed(schedule.type)
     const updated = jobScheduleService.setEnabled(id, true)
     if (updated) {
       const snapshot = jobScheduleService.getById(id)
@@ -1422,6 +1459,7 @@ export class JobManager extends BaseService {
   async triggerJobScheduleNowById(id: string): Promise<boolean> {
     const schedule = jobScheduleService.getById(id)
     if (!schedule) return false
+    this.assertBusinessJobStartAllowed(schedule.type)
     // While paused, force the fallback: croner's .trigger() bypasses its own
     // pause AND the armed callback's gate suppresses the enqueue — the cron
     // path would return true having persisted nothing, silently dropping an
@@ -1431,6 +1469,7 @@ export class JobManager extends BaseService {
     const triggered = this.isAutonomySuspended
       ? false
       : await application.get('SchedulerService').triggerNow(`schedule:${id}`)
+    this.assertBusinessJobStartAllowed(schedule.type)
     if (triggered) return true
     // Fallback path (non-cron OR cron not currently armed in this process).
     this.enqueue(schedule.type as JobType, schedule.jobInputTemplate as never, {
@@ -1574,6 +1613,16 @@ export class JobManager extends BaseService {
    * @returns Updated snapshot, or null if no row matches `id`
    */
   updateJobSchedule(id: string, patch: UpdateJobScheduleDto): JobScheduleSnapshot | null {
+    const schedule = jobScheduleService.getById(id)
+    if (
+      schedule &&
+      (patch.enabled === true ||
+        patch.trigger !== undefined ||
+        patch.jobInputTemplate !== undefined ||
+        patch.name !== undefined)
+    ) {
+      this.assertBusinessJobStartAllowed(schedule.type)
+    }
     const updated = jobScheduleService.update(id, patch)
     if (!updated) return null
 
@@ -1696,7 +1745,26 @@ export class JobManager extends BaseService {
           this.globalCapReached = true
           return null
         }
-        return jobService.claimNextPendingTx(tx, queueName)
+        const [candidate] = tx
+          .select({ type: jobTable.type })
+          .from(jobTable)
+          .where(
+            and(
+              eq(jobTable.queue, queueName),
+              eq(jobTable.status, 'pending'),
+              eq(jobTable.cancelRequested, false),
+              lte(jobTable.scheduledAt, Date.now())
+            )
+          )
+          .orderBy(asc(jobTable.priority), asc(jobTable.scheduledAt))
+          .limit(1)
+          .all()
+        if (candidate) this.assertBusinessJobStartAllowed(candidate.type)
+        // MEA:enterprise-profile-business-access Roll back if the claim clock exposes a newly due business row.
+        // return jobService.claimNextPendingTx(tx, queueName)
+        const next = jobService.claimNextPendingTx(tx, queueName)
+        if (next) this.assertBusinessJobStartAllowed(next.type)
+        return next
       })
     } catch (err) {
       logger.error('dispatch transaction failed', { queue: queueName, error: err })
@@ -1816,6 +1884,7 @@ export class JobManager extends BaseService {
       // the job sits in `delayed` (not working) and must not hold the machine awake.
       const sleepHold = application.get('PowerService').preventSleep(`job:${row.type}:${row.id}`)
       try {
+        this.assertBusinessJobStartAllowed(row.type)
         const output = await handler.execute(ctx)
         if (timeoutHandle) clearTimeout(timeoutHandle)
         await this.finalizeJob(row.id, 'completed', output, null)
@@ -1831,6 +1900,14 @@ export class JobManager extends BaseService {
         // string the handler chose to throw, so renderers see e.g.
         // "Job cancelled: user requested" instead of a generic "AbortError".
         const cancelMessage = abortReason instanceof Error ? abortReason.message : null
+        let accessDenied = err instanceof DataApiError && err.code === ErrorCode.PERMISSION_DENIED
+        if (BUSINESS_JOB_TYPES.has(row.type)) {
+          try {
+            application.assertBusinessAccess()
+          } catch {
+            accessDenied = true
+          }
+        }
         const error: JobError =
           isAbort && !isTimeout
             ? {
@@ -1841,7 +1918,8 @@ export class JobManager extends BaseService {
             : {
                 code: isTimeout ? JOB_ERROR_CODES.HANDLER_TIMEOUT : JOB_ERROR_CODES.HANDLER_THREW,
                 message: (err as Error).message || String(err),
-                retryable: true
+                // retryable: true
+                retryable: !accessDenied
               }
 
         const retryPolicy = handler.defaultRetryPolicy ?? DEFAULT_RETRY_POLICY
@@ -2161,6 +2239,7 @@ export class JobManager extends BaseService {
       // fire without re-arming (which would reset an interval's cadence).
       const currentSchedule = jobScheduleService.getById(schedule.id)
       if (!currentSchedule?.enabled) return
+      this.assertBusinessJobStartAllowed(currentSchedule.type)
 
       const firedAt = Date.now()
       try {

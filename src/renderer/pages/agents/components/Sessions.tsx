@@ -40,6 +40,7 @@ import { useUpdateSession } from '@renderer/hooks/agent/useSession'
 import type { AgentSessionsSource } from '@renderer/hooks/resourceViewSources'
 import { useCloseConversationTabs } from '@renderer/hooks/tab'
 import { useConversationNavigation } from '@renderer/hooks/useConversationNavigation'
+import { useEnterpriseVerificationRecovery } from '@renderer/hooks/useEnterpriseVerificationStatus'
 import { useImageCaptureTargets } from '@renderer/hooks/useImageCaptureTargets'
 import { useNotesSettings } from '@renderer/hooks/useNotesSettings'
 import { useOptimisticResourceName } from '@renderer/hooks/useOptimisticResourceName'
@@ -429,7 +430,15 @@ const Sessions = ({
     restoreSession,
     togglePin
   } = agentSessionsSource
-  const { agents, error: agentsError, isLoading: isAgentsLoading, refetch: refetchAgents } = useAgents()
+  // const { agents, error: agentsError, isLoading: isAgentsLoading, refetch: refetchAgents } = useAgents()
+  const {
+    agents,
+    error: agentsError,
+    isLoading: isAgentsLoading,
+    isRefreshing: isAgentsRefreshing,
+    hasData: hasAgentsData,
+    refetch: refetchAgents
+  } = useAgents()
   const listRef = useRef<HTMLDivElement>(null)
   const [optimisticMove, setOptimisticMove] = useState<ResourceListItemReorderPayload | null>(null)
   const [optimisticAgentOrderIds, setOptimisticAgentOrderIds] = useState<string[] | null>(null)
@@ -644,11 +653,14 @@ const Sessions = ({
   } = useQuery('/agent-workspaces', { enabled: displayMode === 'workdir' })
   useDataChange(displayMode === 'workdir' ? '/agent-workspaces' : [], () => void refetchWorkspaces())
   const workspaceRows = workspaces ?? EMPTY_WORKSPACE_ROWS
-  const isWorkdirMetadataLoading = displayMode === 'workdir' && isWorkspacesLoading
+  // MEA:profile-online-login A successful empty metadata response remains usable during background errors.
+  // const isWorkdirMetadataLoading = displayMode === 'workdir' && isWorkspacesLoading
+  const isWorkdirMetadataLoading = displayMode === 'workdir' && workspaces === undefined && isWorkspacesLoading
   const isWorkdirMetadataRefreshing = displayMode === 'workdir' && isWorkspacesRefreshing
   const workdirDragReady =
     displayMode === 'workdir' && dragReady && !isWorkdirMetadataLoading && !isWorkdirMetadataRefreshing
-  const agentDragReady = displayMode === 'agent' && dragReady && !isAgentsLoading
+  // const agentDragReady = displayMode === 'agent' && dragReady && !isAgentsLoading
+  const agentDragReady = displayMode === 'agent' && dragReady && !isAgentsLoading && !isAgentsRefreshing
   const itemDragReady = displayMode === 'workdir' ? workdirDragReady : agentDragReady
   const workspaceRowsForDisplay = useMemo(() => {
     if (!optimisticWorkspaceOrderIds) return workspaceRows
@@ -1268,12 +1280,26 @@ const Sessions = ({
     requestCreateSessionFromSeed(headerCreateSessionSeed)
   }, [headerCreateSessionSeed, requestCreateSessionFromSeed])
 
+  // const handleRetry = useCallback(async () => {
+  //   await reload()
+  //   if (displayMode === 'workdir') {
+  //     await refetchWorkspaces()
+  //   }
+  // }, [displayMode, refetchWorkspaces, reload])
+  const refreshMetadata = useCallback(async () => {
+    await Promise.allSettled([
+      ...(displayMode === 'agent' ? [refetchAgents()] : []),
+      ...(displayMode === 'workdir' ? [refetchWorkspaces()] : [])
+    ])
+  }, [displayMode, refetchAgents, refetchWorkspaces])
   const handleRetry = useCallback(async () => {
-    await reload()
-    if (displayMode === 'workdir') {
-      await refetchWorkspaces()
-    }
-  }, [displayMode, refetchWorkspaces, reload])
+    // MEA:profile-online-login Local retries must not wait for network verification.
+    void ipcApi.request('enterprise.verification.retry').catch((err) => {
+      logger.warn('Failed to retry profile verification', { err })
+    })
+    await Promise.allSettled([reload(), refreshMetadata()])
+  }, [refreshMetadata, reload])
+  useEnterpriseVerificationRecovery(() => void refreshMetadata(), dataEnabled)
 
   const refreshAgentResources = useCallback(async () => {
     const outcomes = await Promise.allSettled([refetchAgents(), reload()])
@@ -2077,13 +2103,21 @@ const Sessions = ({
     ]
   )
 
-  const listError =
-    error ?? (displayMode === 'agent' ? agentsError : displayMode === 'workdir' ? workspacesError : undefined)
+  // const listError =
+  //   error ?? (displayMode === 'agent' ? agentsError : displayMode === 'workdir' ? workspacesError : undefined)
+  const metadataError = displayMode === 'agent' ? agentsError : displayMode === 'workdir' ? workspacesError : undefined
+  const hasMetadata =
+    displayMode === 'agent' ? hasAgentsData : displayMode === 'workdir' ? workspaces !== undefined : true
+  const listError = error ?? (hasMetadata ? undefined : metadataError)
+  const listRefreshError = refreshError ?? (hasMetadata ? metadataError : undefined)
   const historyLoading = isLoadingAll || !isFullyLoaded
+  // const metadataLoading =
+  //   isSessionPinsLoading || isWorkdirMetadataLoading || (displayMode === 'agent' && isAgentsLoading)
   const metadataLoading =
-    isSessionPinsLoading || isWorkdirMetadataLoading || (displayMode === 'agent' && isAgentsLoading)
+    isSessionPinsLoading || isWorkdirMetadataLoading || (displayMode === 'agent' && !hasAgentsData && isAgentsLoading)
   const listLoading = historyLoading || metadataLoading
-  const listValidating = isValidating || isWorkdirMetadataRefreshing
+  // const listValidating = isValidating || isWorkdirMetadataRefreshing
+  const listValidating = isValidating || isWorkdirMetadataRefreshing || (displayMode === 'agent' && isAgentsRefreshing)
   const visibleGroupedSessions = useMemo(
     () => (metadataLoading ? [] : filteredGroupedSessions),
     [filteredGroupedSessions, metadataLoading]
@@ -2181,7 +2215,8 @@ const Sessions = ({
           )}
         </ResourceList.Header>
       )}
-      {refreshError && <ResourceRefreshErrorBanner onRetry={handleRetry} retrying={listValidating} />}
+      {/* {refreshError && <ResourceRefreshErrorBanner onRetry={handleRetry} retrying={listValidating} />} */}
+      {listRefreshError && <ResourceRefreshErrorBanner onRetry={handleRetry} retrying={listValidating} />}
       <SessionListBody
         activeSessionId={activeSessionId}
         channelTypeMap={channelTypeMap}

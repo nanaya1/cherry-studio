@@ -159,6 +159,29 @@ describe('heartbeatSchedule', () => {
     await service._doInit()
   })
 
+  it('does not create a heartbeat schedule when access expires during file provisioning', async () => {
+    seedAgent(AGENT_ID)
+    let release!: () => void
+    heartbeatFileGate.current = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const pending = syncHeartbeatSchedule(AGENT_ID)
+    await vi.waitFor(() => expect(heartbeatFileGate.entered).toHaveBeenCalled())
+    const denied = new Error('Business access denied')
+    const gate = vi.spyOn(application, 'assertTaskStartAllowed').mockImplementation(() => {
+      throw denied
+    })
+    const rejected = expect(pending).rejects.toBe(denied)
+    release()
+    try {
+      await rejected
+      expect(heartbeatRows(AGENT_ID)).toEqual([])
+    } finally {
+      gate.mockRestore()
+      heartbeatFileGate.current = null
+    }
+  })
+
   beforeEach(async () => {
     notifyDataApiDataChangeMock.mockClear()
     heartbeatFileGate.entered.mockClear()

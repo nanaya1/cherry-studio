@@ -3,6 +3,7 @@ import path from 'node:path'
 
 import { electronApp } from '@electron-toolkit/utils'
 import { app, dialog } from 'electron'
+import { v4 as uuidv4 } from 'uuid'
 
 import { application } from '@application'
 import { loggerService } from '@logger'
@@ -32,6 +33,7 @@ import { versionService } from '../../services/VersionService'
 // Avoid the profiles barrel here: it exports ProfileBootstrapWindow, which imports
 // this module and would create an initialization cycle through serviceRegistry.
 import { ProfileActivePointer } from './ProfileActivePointer'
+// import { closeProfileBootstrapWindows, createProfileBootstrapWindow } from './ProfileBootstrapWindow'
 import { createProfileBootstrapWindow } from './ProfileBootstrapWindow'
 import { createProfilePaths, resolveProfileRoot, validateExistingProfilePath } from './ProfilePaths'
 import type { ProfileLaunchContext } from './ProfilePrebootCoordinator'
@@ -39,6 +41,9 @@ import { ProfileRegistry, SIGNED_OUT_DIGEST } from './ProfileRegistry'
 import { setProfileLaunchContext } from './ProfileRuntimeContext'
 import { profileBusinessAccessGate } from './ProfileRuntimeContext'
 import type { ProfileRecordV1 } from './ProfileSchemas'
+// import { ProfileSwitchCoordinator, showProfileRecoveryChoice } from './ProfileSwitchCoordinator'
+import { ProfileSwitchCoordinator } from './ProfileSwitchCoordinator'
+import { ProfileSwitchJournal } from './ProfileSwitchJournal'
 import { profileSwitchFence } from './SwitchFence'
 
 const logger = loggerService.withContext('BusinessStartup')
@@ -83,9 +88,8 @@ export interface StartBusinessRuntimeOptions {
    */
   rebuildRuntime?: boolean
   /**
-   * On a failed online re-verify: `recovery-window` opens the recovery window and
-   * returns (cold start); `throw` aborts so the coordinator can force-exit into
-   * business-startup recovery (same-process activation).
+   * 原策略：`recovery-window` 在冷启动失败时打开恢复窗口。
+   * 冷启动失败现切换至隔离登录；`throw` 仍中止同进程激活，由外层协调器恢复。
    */
   onVerifyFailure?: 'recovery-window' | 'throw'
 }
@@ -117,6 +121,7 @@ export async function startBusinessRuntime(
       if (options.onVerifyFailure === 'throw') {
         throw new Error(`Business candidate failed startup verification: ${verification.reason}`)
       }
+      /* 登录校验失败自动提交 signed-out 的旧路径保留；临时失败不能产生退出语义。
       // 登录校验失败转入独立登录空间，原恢复入口保留供控制状态故障使用。
       // setProfileLaunchContext(verification.failureContext)
       // createProfileBootstrapWindow(verification.failureContext)
@@ -141,6 +146,39 @@ export async function startBusinessRuntime(
       setProfileLaunchContext(signedOut)
       logger.info('Startup identity verification failed; returning to login', { reason: verification.reason })
       createProfileBootstrapWindow(signedOut)
+      */
+      /* 原启动恢复窗口入口停用，保留以便恢复。
+      // MEA:profile-verification-network-tolerance The candidate stays private in this main-process closure.
+      const candidate = context
+      createProfileBootstrapWindow(candidate, {
+        startupRecovery: {
+          failureKind: verification.failureKind ?? 'unavailable',
+          retry: async (isCurrent) => {
+            const retried = await verifyBusinessCandidate(candidate)
+            if (!isCurrent()) throw new Error('Startup recovery was superseded')
+            if (retried.kind !== 'verified') return retried.failureKind ?? 'unavailable'
+            setProfileLaunchContext(candidate)
+            profileBusinessAccessGate.recordVerificationSuccess()
+            try {
+              await completeBusinessStartup(candidate, { ...options, onVerifyFailure: 'throw' })
+              if (isCurrent()) closeProfileBootstrapWindows()
+            } catch (error) {
+              profileBusinessAccessGate.recordVerificationFailure('Business startup failed')
+              logger.error('Retried business startup failed', error as Error)
+              showProfileRecoveryChoice(application, 'business-startup')
+              throw error
+            }
+            return undefined
+          },
+          selectSignedOut: async (isCurrent) => {
+            if (!isCurrent()) throw new Error('Startup recovery was superseded')
+            await selectSignedOutForStartup(candidate, isCurrent)
+          }
+        }
+      })
+      */
+      // MEA:profile-verification-network-tolerance 统一进入隔离登录流程，不清除候选账号凭据或业务数据。
+      await selectSignedOutForStartup(context, () => true)
       return
     }
     profileBusinessAccessGate.recordVerificationSuccess()
@@ -149,6 +187,55 @@ export async function startBusinessRuntime(
     }
   }
 
+  await completeBusinessStartup(context, options)
+}
+
+async function selectSignedOutForStartup(context: ProfileLaunchContext, isCurrent: () => boolean): Promise<void> {
+  const signedOut = {
+    ...buildSignedOutLaunchContext(context.dataRoot),
+    ...(context.legacyRoot ? { legacyRoot: context.legacyRoot } : {})
+  }
+  const paths = createProfilePaths(context.dataRoot)
+  await validateExistingProfilePath(paths, signedOut.profileRoot)
+  const registry = new ProfileRegistry(path.join(paths.controlRoot, 'profiles.json'))
+  const record = await registry.requireActivatable('signed-out', SIGNED_OUT_DIGEST)
+  if (!isCurrent()) throw new Error('Startup recovery was superseded')
+  const result = await new ProfileSwitchCoordinator({
+    journal: new ProfileSwitchJournal(path.join(paths.controlRoot, 'switch-journal.json')),
+    activePointer: new ProfileActivePointer(path.join(paths.controlRoot, 'active-profile.json'), registry),
+    fence: profileSwitchFence,
+    // MEA:profile-verification-network-tolerance 冷启动尚未注册业务服务，仅提交现有切换事务，不执行退出或凭据清理。
+    application: {
+      prepareProfileSwitch: async () => ({
+        clean: true,
+        stop: { timedOut: [], failed: [] },
+        destroy: { timedOut: [], failed: [] }
+      }),
+      relaunch: () => application.relaunch(),
+      forceExit: (code) => application.forceExit(code)
+    },
+    openSignedOut: async () => {
+      if (!isCurrent()) throw new Error('Startup recovery was superseded')
+      applyProfileIsolationPaths(signedOut, electronPrebootApi())
+      setProfileLaunchContext(signedOut)
+      createProfileBootstrapWindow(signedOut)
+    }
+  }).switchProfile(
+    {
+      operationId: uuidv4(),
+      fromProfileId: context.profileId,
+      targetProfileId: record.profileId,
+      targetIdentityDigest: record.identityDigest
+    },
+    record
+  )
+  if (result.kind !== 'signed-out') throw new Error('Could not select the signed-out profile')
+}
+
+async function completeBusinessStartup(
+  context: ProfileLaunchContext | undefined,
+  options: StartBusinessRuntimeOptions
+): Promise<void> {
   // Import legacy device-level sensitive data before reset, backup, migration,
   // or services open the selected profile. Authenticated profiles never auto-import.
   if (context?.mode === 'business') await migrateProfileSensitiveData(context)

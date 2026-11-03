@@ -64,11 +64,29 @@ describe('StartupCurrentUserTransport Bearer contract', () => {
     expect(result).toMatchObject({ server_instance_id: 'inst-1', user: { id: 'u-1' } })
   })
 
-  it('surfaces a non-OK status as a failure', async () => {
-    fetchMock.mockResolvedValue(new Response('no', { status: 401 }))
-    const transport = createStartupCurrentUserTransport(bearerSession(), { baseUrl: BASE })
+  it.each([401, 403, 404, 429, 503])(
+    'retains structured HTTP evidence without inventing global invalidity (%s)',
+    async (status) => {
+      fetchMock.mockResolvedValue(new Response('no', { status }))
+      const transport = createStartupCurrentUserTransport(bearerSession(), { baseUrl: BASE })
+      await expect(transport.getCurrentUser()).rejects.toMatchObject({
+        name: 'VerificationError',
+        evidence: {
+          stage: 'current-user',
+          endpoint: `${BASE}/api/currentuser`,
+          httpStatus: status,
+          kind: status === 429 || status >= 500 ? 'unavailable' : 'uncertain'
+        }
+      })
+    }
+  )
 
-    await expect(transport.getCurrentUser()).rejects.toThrow('401')
+  it('retains parse failures as uncertain verification evidence', async () => {
+    fetchMock.mockResolvedValue(new Response('<html>proxy</html>'))
+    const transport = createStartupCurrentUserTransport(bearerSession(), { baseUrl: BASE })
+    await expect(transport.getCurrentUser()).rejects.toMatchObject({
+      evidence: { stage: 'current-user', kind: 'uncertain', httpStatus: 200 }
+    })
   })
 })
 

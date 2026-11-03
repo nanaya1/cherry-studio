@@ -513,61 +513,64 @@ describe('cherry bridge plugin', () => {
     expect(host.requests.at(-1)).toMatchObject({ method: 'guard/check', params: { sessionId: grandchild.id } })
   })
 
-  it('checks root and delegated native tool calls with Main before local permission policy', async () => {
-    const host = await startHost((method) =>
-      method === 'guard/check' ? { kind: 'deny', ruleId: 'user-data-sqlite-write', reason: 'protected SQLite' } : {}
-    )
-    const rootAgent = { id: 'session-1', session: { header: { cwd: '/root-workspace' } } } as Agent
-    const childAgent = {
-      id: 'child-1',
-      session: { header: { cwd: '/child-workspace', parentSession: 'session-1' } }
-    } as Agent
-    let preExecute: PreExecuteHandler | undefined
-    const on = vi.fn((event: string, handler: unknown) => {
-      if (event === 'tools/pre-execute') preExecute = handler as PreExecuteHandler
-      return () => undefined
-    })
-    const get = vi.fn((id: string) => (id === 'session-1' ? rootAgent : undefined))
-    const ctx = makeContext({ agents: { resume: vi.fn(), create: vi.fn(), get }, on })
-    process.env[BRIDGE_SOCKET_ENV] = host.socketPath
-    process.env[BRIDGE_TOKEN_ENV] = 'one-time-token'
-
-    apply(ctx)
-    await expect.poll(() => host.requests[0]?.method).toBe('ready')
-    if (!preExecute) throw new Error('tools/pre-execute handler was not registered')
-
-    const next = vi.fn()
-    for (const agent of [rootAgent, childAgent]) {
-      await expect(
-        preExecute({ agent, name: 'write', arguments: { file_path: '/user-data/app.sqlite' } }, next)
-      ).resolves.toEqual({
-        kind: 'deny',
-        ruleId: 'user-data-sqlite-write',
-        reason: 'protected SQLite'
+  it.each(['user-data-sqlite-write', 'enterprise-profile-business-access'] as const)(
+    'checks root and delegated native tool calls with Main before local permission policy: %s',
+    async (ruleId) => {
+      const host = await startHost((method) =>
+        method === 'guard/check' ? { kind: 'deny', ruleId, reason: 'Access denied' } : {}
+      )
+      const rootAgent = { id: 'session-1', session: { header: { cwd: '/root-workspace' } } } as Agent
+      const childAgent = {
+        id: 'child-1',
+        session: { header: { cwd: '/child-workspace', parentSession: 'session-1' } }
+      } as Agent
+      let preExecute: PreExecuteHandler | undefined
+      const on = vi.fn((event: string, handler: unknown) => {
+        if (event === 'tools/pre-execute') preExecute = handler as PreExecuteHandler
+        return () => undefined
       })
-    }
-    expect(next).not.toHaveBeenCalled()
-    expect(host.requests.filter((request) => request.method === 'guard/check')).toEqual([
-      {
-        method: 'guard/check',
-        params: {
-          sessionId: 'session-1',
-          toolName: 'write',
-          args: { file_path: '/user-data/app.sqlite' },
-          cwd: '/root-workspace'
-        }
-      },
-      {
-        method: 'guard/check',
-        params: {
-          sessionId: 'session-1',
-          toolName: 'write',
-          args: { file_path: '/user-data/app.sqlite' },
-          cwd: '/child-workspace'
-        }
+      const get = vi.fn((id: string) => (id === 'session-1' ? rootAgent : undefined))
+      const ctx = makeContext({ agents: { resume: vi.fn(), create: vi.fn(), get }, on })
+      process.env[BRIDGE_SOCKET_ENV] = host.socketPath
+      process.env[BRIDGE_TOKEN_ENV] = 'one-time-token'
+
+      apply(ctx)
+      await expect.poll(() => host.requests[0]?.method).toBe('ready')
+      if (!preExecute) throw new Error('tools/pre-execute handler was not registered')
+
+      const next = vi.fn()
+      for (const agent of [rootAgent, childAgent]) {
+        await expect(
+          preExecute({ agent, name: 'write', arguments: { file_path: '/user-data/app.sqlite' } }, next)
+        ).resolves.toEqual({
+          kind: 'deny',
+          ruleId,
+          reason: 'Access denied'
+        })
       }
-    ])
-  })
+      expect(next).not.toHaveBeenCalled()
+      expect(host.requests.filter((request) => request.method === 'guard/check')).toEqual([
+        {
+          method: 'guard/check',
+          params: {
+            sessionId: 'session-1',
+            toolName: 'write',
+            args: { file_path: '/user-data/app.sqlite' },
+            cwd: '/root-workspace'
+          }
+        },
+        {
+          method: 'guard/check',
+          params: {
+            sessionId: 'session-1',
+            toolName: 'write',
+            args: { file_path: '/user-data/app.sqlite' },
+            cwd: '/child-workspace'
+          }
+        }
+      ])
+    }
+  )
 
   it('fails closed when Main cannot complete guard/check', async () => {
     const host = await startHost((method) => {

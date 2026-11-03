@@ -1,7 +1,7 @@
 import { mkdir } from 'node:fs/promises'
 import path from 'node:path'
 
-import { dialog } from 'electron'
+// import { dialog } from 'electron'
 import { v4 as uuidv4 } from 'uuid'
 
 import { application } from '@application'
@@ -28,6 +28,8 @@ import {
   validateExistingProfilePath
 } from '@main/core/profiles'
 
+// eslint-disable-next-line barrel/closed
+import { showProfileRecoveryChoice } from '../core/profiles/ProfileSwitchCoordinator'
 import { OrgAuthManager } from './OrgAuthManager'
 import { OrgCredentialStore } from './OrgCredentialStore'
 import { OrgKnowledgeService } from './OrgKnowledgeService'
@@ -123,8 +125,10 @@ export class EnterprisePlugin extends BaseService {
             // runtime is no longer active. A later same-process activation swaps
             // this back to 'business' and suppresses the force-exit.
             setProfileLaunchContext(signedOutContext)
-            createProfileBootstrapWindow(signedOutContext)
-            application.finishProfileLogout()
+            // createProfileBootstrapWindow(signedOutContext)
+            // application.finishProfileLogout()
+            // MEA:profile-online-login Keep the process alive until the current login window is visible.
+            createProfileBootstrapWindow(signedOutContext, { onReady: () => application.finishProfileLogout() })
           }
         }),
         operationId: uuidv4
@@ -137,7 +141,8 @@ export class EnterprisePlugin extends BaseService {
           if (!profile) throw new Error(`Active profile not found: ${context.profileId}`)
           return profile
         },
-        profileSession
+        profileSession,
+        onLogoutFailure: (stage) => showProfileRecoveryChoice(application, stage)
       })
     } else {
       const profileRoot = context?.profileRoot ?? path.dirname(application.getPath('app.userdata'))
@@ -148,7 +153,7 @@ export class EnterprisePlugin extends BaseService {
     this.knowledge = new OrgKnowledgeService(this.auth)
   }
 
-  private async stopBlockedProfile(reason: string): Promise<void> {
+  /* private async stopBlockedProfile(reason: string): Promise<void> {
     // Logout owns teardown after revocation; the monitor must not race that transition.
     if (
       profileBusinessAccessGate.state.kind === 'blocked' &&
@@ -173,9 +178,33 @@ export class EnterprisePlugin extends BaseService {
     })
     if (result.response === 0) application.relaunch()
     else application.forceExit(0)
+  } */
+
+  // MEA:profile-online-login A revoked account locks execution, never the window lifecycle.
+  private async cancelBlockedWork(): Promise<void> {
+    const reason = 'Account authorization is no longer valid'
+    const cancellations = [
+      () => application.get('JobManager').cancelMany({ type: 'agent.task' }, reason),
+      () => application.get('AiStreamManager').cancelActiveWork(reason),
+      () => application.get('AgentSessionRuntimeService').cancelActiveWork(reason),
+      () => application.get('McpRuntimeService').abortActiveToolCalls()
+    ]
+    const outcomes = await Promise.allSettled(cancellations.map(async (cancel) => cancel()))
+    for (const outcome of outcomes) {
+      if (outcome.status === 'rejected')
+        logger.warn('Could not cancel revoked account work', { error: String(outcome.reason) })
+    }
   }
 
   protected async onInit(): Promise<void> {
+    this.registerDisposable(
+      this.auth.onVerificationChanged((status) => {
+        application.get('IpcApiService').broadcast('enterprise.verification_changed', status)
+        if (status.state === 'blocked') void this.cancelBlockedWork()
+      })
+    )
+    this.registerDisposable(this.auth.onAuthorizationChanged(() => this.knowledge.invalidateAuthorizationContext()))
+    this.registerDisposable(() => this.auth.dispose())
     await this.auth.initialize()
     this.knowledge.initialize(application.get('JobManager'))
     this.registerDisposable(() => this.knowledge.dispose())
@@ -184,13 +213,14 @@ export class EnterprisePlugin extends BaseService {
       const monitor = new ProfileOnlineMonitor({
         gate: profileBusinessAccessGate,
         verify: () => this.auth.verifyOnlineAuthority(),
-        onBlocked: (reason) => {
+        /* onBlocked: (reason) => {
           logger.warn('Business access blocked', { reason })
           void this.stopBlockedProfile(reason).catch((error: unknown) => {
             logger.error('Blocked profile teardown failed', error as Error)
             application.forceExit(1)
           })
-        }
+        } */
+        onBlocked: (reason) => logger.warn('Business access blocked; waiting for user action', { reason })
       })
       this.registerDisposable(() => monitor.stop())
       monitor.start()

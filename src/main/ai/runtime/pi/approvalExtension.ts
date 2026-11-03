@@ -28,6 +28,7 @@ import path from 'node:path'
 
 import type { ExtensionAPI, ExtensionContext, ExtensionFactory, ToolCallEvent } from '@earendil-works/pi-coding-agent'
 
+import { application } from '@application'
 import { loggerService } from '@logger'
 import { resolveBrowserToolPermission } from '@main/ai/toolApproval/browserToolPolicy'
 import { detectGlobalInstall } from '@main/ai/toolApproval/dependencyGuard'
@@ -119,7 +120,17 @@ export type PiToolAuthorizer = (
 
 /** Reusable policy boundary for native Pi calls and nested code-mode calls. */
 export function createPiToolAuthorizer(ctx: PiApprovalContext): PiToolAuthorizer {
+  const businessAccessDenial = (): { block: true; reason: string } | undefined => {
+    try {
+      application.assertBusinessAccess()
+    } catch (error) {
+      return { block: true, reason: error instanceof Error ? error.message : String(error) }
+    }
+    return undefined
+  }
   return async ({ toolName, toolCallId, input, signal, onApprovalPending }) => {
+    const denied = businessAccessDenial()
+    if (denied) return denied
     // (1) disabledTools — block regardless of permission mode.
     const browserPermission = resolveBrowserToolPermission(toolName)
     if (ctx.isDisabled(toolName) || browserPermission === 'deny') {
@@ -167,6 +178,8 @@ export function createPiToolAuthorizer(ctx: PiApprovalContext): PiToolAuthorizer
 
     // (5) Full Access bypasses ordinary approval policy. Cross-Session delegation is the explicit
     // exception: its one-hop live-approval ceiling must hold in every permission mode.
+    const deniedBeforeBypass = businessAccessDenial()
+    if (deniedBeforeBypass) return deniedBeforeBypass
     if (bypass) return
 
     // (6) approval by permission mode. Cherry-owned soul/autonomy tools are auto-approved in every
@@ -183,9 +196,12 @@ export function createPiToolAuthorizer(ctx: PiApprovalContext): PiToolAuthorizer
         ctx.additionalReadOnlyRoots,
         approvalRequired
       ))
-    )
-      return
+    ) {
+      return businessAccessDenial()
+    }
 
+    const deniedBeforeApproval = businessAccessDenial()
+    if (deniedBeforeApproval) return deniedBeforeApproval
     const interactionState = ctx.getInteractionState()
     if (interactionState.userResponse === 'unavailable') {
       return {
@@ -235,6 +251,8 @@ export function createPiToolAuthorizer(ctx: PiApprovalContext): PiToolAuthorizer
     if (!decision.approved) {
       return { block: true, reason: decision.reason ?? 'User denied permission for this tool.' }
     }
+    const deniedAfterApproval = businessAccessDenial()
+    if (deniedAfterApproval) return deniedAfterApproval
     if (decision.updatedInput) applyInputEdit(input, decision.updatedInput)
     return
   }

@@ -1,5 +1,6 @@
 import type { ToolSet } from 'ai'
 
+import { application } from '@application'
 import { loggerService } from '@logger'
 import { chatErrorContext } from '@main/ai/utils/chatErrorContext'
 import { redactToShape } from '@main/ai/utils/redactToShape'
@@ -50,6 +51,8 @@ export function wrapToolsWithExecutionHooks(tools: ToolSet | undefined, hooks: A
     wrapped[name] = {
       ...tool,
       execute: async (input: unknown, options) => {
+        // MEA:enterprise-profile-business-access Never isolate authorization in observer hooks.
+        application.assertBusinessAccess()
         const startEvent: ToolExecutionStartEvent = {
           callId: options.toolCallId,
           toolName: name,
@@ -62,6 +65,7 @@ export function wrapToolsWithExecutionHooks(tools: ToolSet | undefined, hooks: A
         try {
           // NB: AI SDK v6 allows `execute` to return AsyncIterable for preliminary results.
           // No current tool uses that; the end hook would fire prematurely if one did.
+          application.assertBusinessAccess()
           const output = await originalExecute(input, options)
           const durationMs = performance.now() - startTime
           await safeCall('onToolExecutionEnd', hooks.onToolExecutionEnd, {

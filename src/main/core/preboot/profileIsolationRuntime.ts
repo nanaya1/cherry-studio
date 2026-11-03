@@ -227,6 +227,7 @@ export async function verifyBusinessCandidate(context: ProfileLaunchContext): Pr
     return {
       kind: 'failed',
       reason: 'Candidate credentials or auth session could not be opened securely',
+      failureKind: 'unavailable',
       failureContext: buildVerificationFailureContext(context.dataRoot)
     }
   }
