@@ -435,6 +435,16 @@ customizations:
       - src/renderer/pages/home/Tabs/components/__tests__/Topics.test.tsx
       - src/renderer/pages/agents/components/__tests__/Sessions.test.tsx
 
+  - id: builtin-assistant-mcp-binding
+    title: 默认助手补齐晚于其安装的激活 MCP 绑定
+    owner: main
+    behavior: 在 MCP 安装之后用独立固定 v1 日志补齐默认助手的激活 MCP 绑定，覆盖已有安装日志的升级用户；尊重显式排除、全局禁用和删除，不修改普通 agent，不重放安装版本或在后续启动恢复用户移除的绑定。
+    touchpoints:
+      - src/main/data/db/seeding/seederRegistry.ts
+      - src/main/data/db/seeding/seeders/builtinAssistantMcpBindingSeeder.ts
+    tests:
+      - src/main/data/db/seeding/seeders/__tests__/builtinAssistantMcpBindingSeeder.test.ts
+
   - id: bundled-skill-catalog-compatibility
     title: 随包推荐技能目录兼容企业预发布版本
     owner: shared
