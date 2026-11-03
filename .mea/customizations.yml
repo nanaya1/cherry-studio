@@ -435,6 +435,22 @@ customizations:
       - src/renderer/pages/home/Tabs/components/__tests__/Topics.test.tsx
       - src/renderer/pages/agents/components/__tests__/Sessions.test.tsx
 
+  - id: bundled-skill-catalog-compatibility
+    title: 随包推荐技能目录兼容企业预发布版本
+    owner: shared
+    behavior: 随包 manifest 的 minAppVersion 为 1.0.0-beta，确保当前企业预发布应用通过真实 validateSkillCatalog 兼容校验并加载非空已发布技能目录；保留 catalog 内容哈希、应用版本与全局 semver 规则。
+    touchpoints:
+      - resources/skill-catalog/v1/manifest.json
+      - resources/skill-catalog/v1/catalog.json
+      - package.json
+      - src/shared/types/skillCatalog.ts
+      - src/main/services/SkillCatalogService.ts
+    tests:
+      - scripts/__tests__/bundled-skill-catalog.test.ts
+      - src/main/services/__tests__/SkillCatalogService.test.ts
+      - src/shared/types/__tests__/skillCatalog.test.ts
+      - src/shared/types/skillCatalog.test.ts
+
   - id: resource-protection
     title: Protect MEA builtin resources and resource-center behavior
     owner: renderer
