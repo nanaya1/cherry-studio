@@ -354,107 +354,111 @@ describe('UserPopup', () => {
     })
   })
 
-  it('starts enterprise browser authorization', async () => {
-    const user = userEvent.setup()
-    let authorizing = false
-    mocks.ipcRequest.mockImplementation(async (route: string) => {
-      if (route === 'enterprise.status.get')
-        return {
-          phase: authorizing ? 'authorizing' : 'signed-out',
-          authMode: 'management-oauth',
-          displayName: null,
-          phone: null,
-          role: null,
-          loginAttemptId: authorizing ? 'attempt-a' : null,
-          loginStartedAt: authorizing ? Date.now() : null
-        }
-      if (route === 'enterprise.login.start') {
-        authorizing = true
-        return { authorizationUrl: 'https://example.test/oauth' }
-      }
-      if (route === 'enterprise.status.orgUnavailable') return { unavailable: false }
-      return undefined
-    })
-    showUserPopup()
-
-    const loginButton = await screen.findByRole('button', { name: 'settings.provider.org_service.login' })
-    await user.click(loginButton)
-
-    expect(mocks.ipcRequest).toHaveBeenCalledWith('enterprise.login.start')
-    // start 仅返回 URL，不能提前恢复登录按钮。
-    expect(await screen.findByRole('button', { name: 'settings.provider.org_service.signing_in' })).toBeDisabled()
-  })
-
-  it('按主进程起始时间在 60 秒提示继续等待，取消只针对当前 attempt', async () => {
-    showUserPopup()
-    await screen.findByRole('button', { name: 'settings.provider.org_service.login' })
-    const user = userEvent.setup()
-    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] })
-    act(() =>
-      mocks.statusListener?.({
-        phase: 'authorizing',
-        displayName: null,
-        loginAttemptId: 'attempt-a',
-        loginStartedAt: Date.now() - 59_000
-      } as Parameters<NonNullable<typeof mocks.statusListener>>[0])
-    )
-    expect(screen.getByRole('button', { name: 'settings.provider.org_service.signing_in' })).toBeDisabled()
-    expect(screen.getByText('settings.provider.org_service.login_browser_hint')).toBeInTheDocument()
-    act(() => {
-      vi.advanceTimersByTime(999)
-    })
-    expect(screen.queryByText('settings.provider.org_service.login_wait_hint')).not.toBeInTheDocument()
-    act(() => {
-      vi.advanceTimersByTime(1)
-    })
-    expect(screen.getByText('settings.provider.org_service.login_wait_hint')).toBeInTheDocument()
-    vi.useRealTimers()
-    await user.click(screen.getByRole('button', { name: 'common.cancel' }))
-    expect(mocks.ipcRequest).toHaveBeenCalledWith('enterprise.login.cancel', { attemptId: 'attempt-a' })
-  })
-
-  it.each(['timeout', 'denied', 'failed'])('显示 %s 授权反馈并允许重新登录', async (loginError) => {
-    showUserPopup()
-    await screen.findByRole('button', { name: 'settings.provider.org_service.login' })
-    await act(async () => {
-      mocks.statusListener?.({ phase: 'signed-out', displayName: null, loginError } as Parameters<
-        NonNullable<typeof mocks.statusListener>
-      >[0])
-    })
-    expect(screen.getByRole('alert')).toHaveTextContent(`settings.provider.org_service.login_${loginError}`)
-    expect(screen.getByRole('button', { name: 'settings.provider.org_service.login' })).toBeEnabled()
-  })
-
-  it('重开弹窗保留原始等待时间且关闭不取消', async () => {
-    const base = mocks.ipcRequest.getMockImplementation()!
-    mocks.ipcRequest.mockImplementation(async (route: string) =>
-      route === 'enterprise.status.get'
-        ? {
-            phase: 'authorizing',
+  // 登录入口隐藏后，保留原授权交互用例供恢复入口时启用。
+  describe.skip('hidden enterprise login controls', () => {
+    it('starts enterprise browser authorization', async () => {
+      const user = userEvent.setup()
+      let authorizing = false
+      mocks.ipcRequest.mockImplementation(async (route: string) => {
+        if (route === 'enterprise.status.get')
+          return {
+            phase: authorizing ? 'authorizing' : 'signed-out',
             authMode: 'management-oauth',
             displayName: null,
             phone: null,
             role: null,
-            loginAttemptId: 'a',
-            loginStartedAt: Date.now() - 61_000
+            loginAttemptId: authorizing ? 'attempt-a' : null,
+            loginStartedAt: authorizing ? Date.now() : null
           }
-        : base(route)
-    )
-    showUserPopup()
-    expect(await screen.findByText('settings.provider.org_service.login_wait_hint')).toBeInTheDocument()
-    act(() => {
-      for (const entry of popupService.getSnapshot()) popupService.settle(entry.instanceId, {})
+        if (route === 'enterprise.login.start') {
+          authorizing = true
+          return { authorizationUrl: 'https://example.test/oauth' }
+        }
+        if (route === 'enterprise.status.orgUnavailable') return { unavailable: false }
+        return undefined
+      })
+      showUserPopup()
+
+      const loginButton = await screen.findByRole('button', { name: 'settings.provider.org_service.login' })
+      await user.click(loginButton)
+
+      expect(mocks.ipcRequest).toHaveBeenCalledWith('enterprise.login.start')
+      // start 仅返回 URL，不能提前恢复登录按钮。
+      expect(await screen.findByRole('button', { name: 'settings.provider.org_service.signing_in' })).toBeDisabled()
     })
-    await waitFor(() => expect(popupService.getSnapshot()).toHaveLength(0))
-    act(() => {
-      void UserPopup.show()
+
+    it('按主进程起始时间在 60 秒提示继续等待，取消只针对当前 attempt', async () => {
+      showUserPopup()
+      await screen.findByRole('button', { name: 'settings.provider.org_service.login' })
+      const user = userEvent.setup()
+      vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] })
+      act(() =>
+        mocks.statusListener?.({
+          phase: 'authorizing',
+          displayName: null,
+          loginAttemptId: 'attempt-a',
+          loginStartedAt: Date.now() - 59_000
+        } as Parameters<NonNullable<typeof mocks.statusListener>>[0])
+      )
+      expect(screen.getByRole('button', { name: 'settings.provider.org_service.signing_in' })).toBeDisabled()
+      expect(screen.getByText('settings.provider.org_service.login_browser_hint')).toBeInTheDocument()
+      act(() => {
+        vi.advanceTimersByTime(999)
+      })
+      expect(screen.queryByText('settings.provider.org_service.login_wait_hint')).not.toBeInTheDocument()
+      act(() => {
+        vi.advanceTimersByTime(1)
+      })
+      expect(screen.getByText('settings.provider.org_service.login_wait_hint')).toBeInTheDocument()
+      vi.useRealTimers()
+      await user.click(screen.getByRole('button', { name: 'common.cancel' }))
+      expect(mocks.ipcRequest).toHaveBeenCalledWith('enterprise.login.cancel', { attemptId: 'attempt-a' })
     })
-    expect(await screen.findByText('settings.provider.org_service.login_wait_hint')).toBeInTheDocument()
-    expect(mocks.ipcRequest.mock.calls.some(([route]) => route === 'enterprise.login.cancel')).toBe(false)
+
+    it.each(['timeout', 'denied', 'failed'])('显示 %s 授权反馈并允许重新登录', async (loginError) => {
+      showUserPopup()
+      await screen.findByRole('button', { name: 'settings.provider.org_service.login' })
+      await act(async () => {
+        mocks.statusListener?.({ phase: 'signed-out', displayName: null, loginError } as Parameters<
+          NonNullable<typeof mocks.statusListener>
+        >[0])
+      })
+      expect(screen.getByRole('alert')).toHaveTextContent(`settings.provider.org_service.login_${loginError}`)
+      expect(screen.getByRole('button', { name: 'settings.provider.org_service.login' })).toBeEnabled()
+    })
+
+    it('重开弹窗保留原始等待时间且关闭不取消', async () => {
+      const base = mocks.ipcRequest.getMockImplementation()!
+      mocks.ipcRequest.mockImplementation(async (route: string) =>
+        route === 'enterprise.status.get'
+          ? {
+              phase: 'authorizing',
+              authMode: 'management-oauth',
+              displayName: null,
+              phone: null,
+              role: null,
+              loginAttemptId: 'a',
+              loginStartedAt: Date.now() - 61_000
+            }
+          : base(route)
+      )
+      showUserPopup()
+      expect(await screen.findByText('settings.provider.org_service.login_wait_hint')).toBeInTheDocument()
+      act(() => {
+        for (const entry of popupService.getSnapshot()) popupService.settle(entry.instanceId, {})
+      })
+      await waitFor(() => expect(popupService.getSnapshot()).toHaveLength(0))
+      act(() => {
+        void UserPopup.show()
+      })
+      expect(await screen.findByText('settings.provider.org_service.login_wait_hint')).toBeInTheDocument()
+      expect(mocks.ipcRequest.mock.calls.some(([route]) => route === 'enterprise.login.cancel')).toBe(false)
+    })
   })
 
-  it('shows the enterprise login action regardless of edition', async () => {
-    mocks.appEdition = 'global'
+  // 防止后续改动重新暴露侧栏登录入口，同时保留本地资料编辑。
+  it.each(['cn', 'global'] as const)('hides the enterprise login action in %s edition', async (edition) => {
+    mocks.appEdition = edition
     mocks.ipcRequest.mockImplementation(async (route: string) => {
       if (route === 'enterprise.status.get')
         return { phase: 'signed-out', authMode: 'official-direct', displayName: null, phone: null, role: null }
@@ -465,10 +469,25 @@ describe('UserPopup', () => {
 
     await waitFor(() => expect(mocks.ipcRequest).toHaveBeenCalledWith('enterprise.status.get'))
 
-    expect(screen.getByRole('button', { name: 'settings.provider.org_service.login' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'settings.provider.org_service.login' })).not.toBeInTheDocument()
+    expect(screen.getByRole('textbox')).toBeEnabled()
   })
 
-  it('revokes the current enterprise session and returns to the login action', async () => {
+  it('keeps authorizing controls hidden when an external login is in progress', async () => {
+    showUserPopup()
+    await waitFor(() => expect(mocks.ipcRequest).toHaveBeenCalledWith('enterprise.status.get'))
+    await act(async () => {
+      mocks.statusListener?.({
+        phase: 'authorizing',
+        loginAttemptId: 'attempt-a',
+        loginStartedAt: Date.now()
+      } as EnterpriseStatus)
+    })
+    expect(screen.queryByRole('button', { name: 'settings.provider.org_service.signing_in' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'common.cancel' })).not.toBeInTheDocument()
+  })
+
+  it('revokes the current enterprise session without exposing the login action', async () => {
     const user = userEvent.setup()
     let loggedOut = false
     mocks.ipcRequest.mockImplementation(async (route: string) => {
@@ -492,7 +511,10 @@ describe('UserPopup', () => {
     await user.click(logoutButton)
 
     expect(mocks.ipcRequest).toHaveBeenCalledWith('enterprise.session.logout')
-    expect(await screen.findByRole('button', { name: 'settings.provider.org_service.login' })).toBeEnabled()
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: 'settings.provider.org_service.logout' })).not.toBeInTheDocument()
+    )
+    expect(screen.queryByRole('button', { name: 'settings.provider.org_service.login' })).not.toBeInTheDocument()
   })
 
   it('offers a retry when the enterprise account status cannot be loaded', async () => {

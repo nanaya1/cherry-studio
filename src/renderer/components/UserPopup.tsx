@@ -305,7 +305,9 @@ const PopupContainer: React.FC<Props> = ({ open, resolve }) => {
         ) : null}
         */}
         {/* [enterprise] 官网账户登录入口（樱桃云入口同款布局） */}
-        {orgLoadState !== 'loading' ? (
+        {/* 隐藏未登录/授权中的入口，保留已有会话的退出及状态重试。 */}
+        {/* 原条件：orgLoadState !== 'loading' */}
+        {orgLoadState !== 'loading' && (orgLoadState === 'error' || orgStatus?.phase === 'signed-in') ? (
           <RowFlex className="border-border-subtle border-t px-5 py-4">
             {orgLoadState === 'error' ? (
               <ColFlex className="w-full gap-2">
