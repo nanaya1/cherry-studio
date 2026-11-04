@@ -583,6 +583,8 @@ describe('NewTaskPage', () => {
       reasoningEffort: undefined,
       serviceTier: undefined
     })
+    expect(mocks.navigate).not.toHaveBeenCalled()
+    act(() => (mocks.chatProps!.onDraftCleared as () => void)())
     expect(mocks.navigate).toHaveBeenCalledWith({
       to: '/app/chat',
       search: { topicId: 'topic-1' },
@@ -607,6 +609,8 @@ describe('NewTaskPage', () => {
       reasoningEffort: undefined,
       serviceTier: undefined
     })
+    expect(mocks.navigate).not.toHaveBeenCalled()
+    act(() => (mocks.agentProps!.onDraftCleared as () => void)())
     expect(mocks.navigate).toHaveBeenCalledWith({
       to: '/app/agents',
       search: { sessionId: 'session-1' },
@@ -624,6 +628,8 @@ describe('NewTaskPage', () => {
     await expect(getChatOnSend()('second')).resolves.toBe(false)
 
     expect(mocks.streamOpen).toHaveBeenCalledTimes(1)
+    // MEA:new-task-draft-clearing 已受理发送即使同步失败，也要在清理后导航。
+    act(() => ((mocks.chatProps?.onDraftCleared ?? mocks.agentProps?.onDraftCleared) as (() => void) | undefined)?.())
     expect(mocks.navigate).toHaveBeenCalledTimes(1)
   })
 
@@ -639,6 +645,8 @@ describe('NewTaskPage', () => {
     await expect(getAgentOnSend()(undefined, options)).resolves.toBe(false)
 
     expect(mocks.streamOpen).toHaveBeenCalledTimes(1)
+    // MEA:new-task-draft-clearing 已受理发送即使同步失败，也要在清理后导航。
+    act(() => ((mocks.chatProps?.onDraftCleared ?? mocks.agentProps?.onDraftCleared) as (() => void) | undefined)?.())
     expect(mocks.navigate).toHaveBeenCalledTimes(1)
   })
 
@@ -711,6 +719,8 @@ describe('NewTaskPage', () => {
 
     await act(async () => resolveSeed?.())
     await expect(send).resolves.toBe(true)
+    expect(mocks.navigate).not.toHaveBeenCalled()
+    act(() => (mocks.chatProps!.onDraftCleared as () => void)())
     expect(mocks.navigate).toHaveBeenCalledWith({
       to: '/app/chat',
       search: { topicId: 'topic-1' },
@@ -799,6 +809,7 @@ describe('NewTaskPage', () => {
 
       await act(async () => resolveSeed?.())
       await expect(send).resolves.toBe(true)
+      act(() => (mocks.agentProps!.onDraftCleared as () => void)())
       expect(mocks.navigate).toHaveBeenCalledWith({
         to: '/app/agents',
         search: { sessionId: 'session-1' },
