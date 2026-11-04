@@ -18,7 +18,8 @@ import { useAssistantsApi } from '@renderer/hooks/useAssistant'
 import useAvatar from '@renderer/hooks/useAvatar'
 import { useConversationNavigation } from '@renderer/hooks/useConversationNavigation'
 import { useMiniApps } from '@renderer/hooks/useMiniApps'
-import { useOrgAccountSession } from '@renderer/hooks/useOrgAccountSession'
+// [MEA 定向恢复] 姓名头像只用本地设置，不再用服务端资料：原 useOrgAccountSession 仅用于侧栏用户名/头像覆盖，现已停用。
+// import { useOrgAccountSession } from '@renderer/hooks/useOrgAccountSession'
 import { useSidebarFavorites } from '@renderer/hooks/useSidebarFavorites'
 import { mapApiTopicToRendererTopic } from '@renderer/hooks/useTopic'
 import { openSettingsTab } from '@renderer/services/mainWindowNavigation'
@@ -75,7 +76,8 @@ export default function Sidebar({
 }) {
   const { t } = useTranslation()
   const [userName] = usePreference('app.user.name')
-  const [avatarPreference] = usePreference('app.user.avatar')
+  // [MEA 定向恢复] 姓名头像只用本地设置，不再用服务端资料：原 avatarPreference 仅用于「服务端首字头像」分支，现已停用。
+  // const [avatarPreference] = usePreference('app.user.avatar')
   const {
     favorites,
     appFavorites,
@@ -140,21 +142,22 @@ export default function Sidebar({
 
   // User avatar
   const avatar = useAvatar()
-  const { status: orgStatus } = useOrgAccountSession()
-  const signedInDisplayName = orgStatus?.phase === 'signed-in' ? orgStatus.displayName?.trim() : undefined
-  const sidebarDisplayName =
-    signedInDisplayName || userName || t('chat.user', { defaultValue: t('export.user', { defaultValue: 'User' }) })
+  // [MEA 定向恢复] 姓名头像只用本地设置，不再用服务端资料：原 orgStatus / signedInDisplayName 用于侧栏用户名与首字头像覆盖，现已停用。
+  // const { status: orgStatus } = useOrgAccountSession()
+  // const signedInDisplayName = orgStatus?.phase === 'signed-in' ? orgStatus.displayName?.trim() : undefined
+  // 原逻辑：sidebarDisplayName = signedInDisplayName || userName || fallback；description 在登录时隐藏；avatar 在登录且无本地头像时显示服务端首字。
+  // 现改用纯本地设置：本地名 + 本地用户副标题 + 本地头像。
+  const sidebarDisplayName = userName || t('chat.user', { defaultValue: t('export.user', { defaultValue: 'User' }) })
   const sidebarUser = useMemo<SidebarUser>(
     () => ({
       name: sidebarDisplayName,
-      description: signedInDisplayName ? undefined : t('workspace.localUser'),
-      avatar:
-        signedInDisplayName && !avatarPreference ? signedInDisplayName.slice(0, 1).toUpperCase() : avatar || undefined,
+      description: t('workspace.localUser'),
+      avatar: avatar || undefined,
       onClick: () => UserPopup.show(),
       settingsLabel: t('settings.title'),
       onSettingsClick: () => openSettingsTab()
     }),
-    [avatar, avatarPreference, sidebarDisplayName, signedInDisplayName, t]
+    [avatar, sidebarDisplayName, t]
   )
   const sidebarLogo = useMemo(() => <img src={AppLogo} alt="" className="h-full w-full object-cover" />, [])
 

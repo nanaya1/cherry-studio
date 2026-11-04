@@ -14,6 +14,7 @@ import {
 import { ResourceCatalogSearchInput } from '@renderer/components/resourceCatalog/ResourceCatalogSearchInput'
 import { useResourceCatalogController } from '@renderer/hooks/resourceCatalog'
 import { useOrgAccountSession } from '@renderer/hooks/useOrgAccountSession'
+import { useOrgSkills } from '@renderer/hooks/useOrgSkills'
 
 interface SkillsConnectorsPageProps {
   connectorView: ReactNode
@@ -35,7 +36,12 @@ export default function SkillsConnectorsPage({ connectorView }: SkillsConnectors
   const [skillView, setSkillView] = useState<SkillView>('recommended')
   const [recommendedSearch, setRecommendedSearch] = useState('')
   const { status: accountStatus } = useOrgAccountSession()
-  const showPublicCatalog = accountStatus?.authMode === 'management-exchange'
+  // const showPublicCatalog = accountStatus?.authMode === 'management-exchange' // [MEA] 已删除旧认证模式
+  const orgMode = accountStatus?.authMode === 'management-oauth'
+  // [enterprise] 提升组织技能目录 hook 到页面：enabled 仅当 management-oauth 账号模式
+  const skillsCatalog = useOrgSkills(orgMode)
+  // [enterprise] 实际请求成功（available）才展示公共 tab；初始失败隐藏，刷新失败保留
+  const showPublicCatalog = orgMode && skillsCatalog.available
   // [enterprise] 「推荐」一级视图内的二级 tab 状态
   const [orgSubTab, setOrgSubTab] = useState<OrgSubTab>('recommended')
   const skillController = useResourceCatalogController('skill', { clientSideSkillSearch: true })
@@ -136,7 +142,7 @@ export default function SkillsConnectorsPage({ connectorView }: SkillsConnectors
             {showPublicCatalog ? (
               <TabsContent value="org" className="flex min-h-0 flex-1 flex-col">
                 {/* <OrgSkillCatalogView /> */}
-                <OrgSkillCatalogView search={recommendedSearch} />
+                <OrgSkillCatalogView search={recommendedSearch} catalog={skillsCatalog} />
               </TabsContent>
             ) : null}
           </Tabs>

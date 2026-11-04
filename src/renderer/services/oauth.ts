@@ -186,6 +186,7 @@ export interface NewApiOAuthConfig {
   apiHost?: string
   requestId?: string
   providerId?: 'cherryin' | 'xuelang'
+  signal?: AbortSignal
 }
 
 export const provisionOAuthApiKeys = async (providerId: 'cherryin' | 'xuelang'): Promise<string> => {
@@ -209,56 +210,92 @@ export const oauthWithCherryIn = async (
     return result.apiKeys
   }
 
+  // MEA:xuelang-oauth-lifecycle 全程 watchdog 不依赖 start、浏览器或保存是否返回。
+  /* 原流程先等待启动，再创建结果 Promise；现先启动全程超时与取消监听。
   const { authUrl, state } = await ipcApi.request('oauth.start_deep_link_flow', {
-    providerId,
-    oauthServer: config.oauthServer,
-    apiHost: config.apiHost
+    providerId, oauthServer: config.oauthServer, apiHost: config.apiHost
   })
-
-  let cleanupFlow = (): void => {}
-  const resultPromise = new Promise<string>((resolve, reject) => {
-    let timeoutId: ReturnType<typeof setTimeout> | null = null
-    const removeListener = ipcApi.on('oauth.deep_link_result', async (result) => {
-      if (result.state !== state) return
-      cleanup()
-      if ('error' in result) {
-        reject(Object.assign(new Error(result.error), result.code ? { code: result.code } : {}))
-        return
-      }
-      if (!result.apiKeys) {
-        reject(new Error('No API keys received'))
-        return
-      }
-      try {
-        await setKey(result.apiKeys)
-        resolve(result.apiKeys)
-      } catch (error) {
-        reject(error)
-      }
-    })
-
-    function cleanup(): void {
-      removeListener()
-      if (timeoutId) clearTimeout(timeoutId)
+  */
+  return new Promise<string>((resolve, reject) => {
+    const requestId = config.requestId ?? crypto.randomUUID()
+    const deadline = Date.now() + 10 * 60 * 1000
+    let settled = false
+    let state: string | undefined
+    let removeListener = (): void => {}
+    const cancelBackend = () => {
+      void ipcApi.request('oauth.cancel_sign_in', { providerId, requestId }).catch((error) => {
+        logger.warn('Failed to cancel Xuelang OAuth attempt', error as Error)
+      })
     }
-    cleanupFlow = cleanup
-
-    timeoutId = setTimeout(
-      () => {
-        cleanup()
-        reject(new Error('OAuth flow timed out'))
-      },
-      10 * 60 * 1000
-    )
+    const finish = (error?: unknown, key?: string) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      removeListener()
+      config.signal?.removeEventListener('abort', abort)
+      if (error) {
+        cancelBackend()
+        reject(error)
+      } else resolve(key!)
+    }
+    const check = () => {
+      if (!settled && Date.now() >= deadline) finish(new Error('OAuth flow timed out'))
+      return !settled
+    }
+    const abort = () => finish(Object.assign(new Error('OAuth flow cancelled'), { code: 'OAUTH_SIGN_IN_CANCELLED' }))
+    const timer = setTimeout(() => finish(new Error('OAuth flow timed out')), 10 * 60 * 1000)
+    config.signal?.addEventListener('abort', abort, { once: true })
+    if (config.signal?.aborted) {
+      abort()
+      return
+    }
+    void (async () => {
+      try {
+        const flow = await ipcApi.request('oauth.start_deep_link_flow', {
+          providerId,
+          requestId,
+          oauthServer: config.oauthServer,
+          apiHost: config.apiHost
+        })
+        if (!check()) {
+          cancelBackend()
+          return
+        }
+        state = flow.state
+        removeListener = ipcApi.on('oauth.deep_link_result', async (result) => {
+          /* 原回调仅匹配 state 并立即清理超时；现匹配尝试且覆盖保存阶段。
+          if (result.state !== state) return
+          cleanup()
+          */
+          if (result.state !== state || result.requestId !== requestId || !check()) return
+          removeListener()
+          if ('error' in result) {
+            finish(Object.assign(new Error(result.error), { code: result.code }))
+            return
+          }
+          if (!result.apiKeys) {
+            finish(new Error('No API keys received'))
+            return
+          }
+          try {
+            await setKey(result.apiKeys)
+            // 原保存完成立即 resolve(result.apiKeys)；现保留 watchdog 并确认尝试未失效。
+            if (check()) finish(undefined, result.apiKeys)
+          } catch (error) {
+            finish(error)
+          }
+        })
+        /* 原浏览器打开失败只清理本地监听；现 finish 同时取消后端尝试。
+        await openExternalWebsite(authUrl)
+        // catch: cleanupFlow(); return Promise.reject(error)
+        */
+        await openExternalWebsite(flow.authUrl)
+        check()
+      } catch (error) {
+        finish(error)
+      }
+    })()
   })
-
-  try {
-    await openExternalWebsite(authUrl)
-  } catch (error) {
-    cleanupFlow()
-    return Promise.reject(error)
-  }
-  return resultPromise
 }
 
 export const oauthWithTokenDance = async (setKey) => {

@@ -95,6 +95,11 @@ export function createGatewayOAuthProvider(providerId: SystemProviderId | string
     providerId,
     clientId: config.CLIENT_ID,
     transport,
+    matchesSignInContext: (current, next) => {
+      const currentHosts = resolveGatewayContext(providerId, current)
+      const nextHosts = resolveGatewayContext(providerId, next)
+      return currentHosts.oauthServer === nextHosts.oauthServer && currentHosts.apiHost === nextHosts.apiHost
+    },
     createClient: (context?: OAuthRuntimeProviderContext) => {
       const { oauthServer, apiHost } = resolveGatewayContext(providerId, context)
       const tokenHost = isXuelang ? oauthServer : (context?.oauthServer ?? apiHost)

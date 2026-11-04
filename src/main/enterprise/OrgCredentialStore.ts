@@ -10,6 +10,8 @@ import * as z from 'zod'
 import { application } from '@application'
 import { loggerService } from '@logger'
 
+import type { OrgSession } from './types'
+
 const logger = loggerService.withContext('OrgCredentialStore')
 
 // T0 复用 feature 路径机制：在技能库同级建 enterprise 私有目录存凭据。
@@ -20,7 +22,9 @@ function credFile(): string {
 }
 
 export const orgSessionSchema = z.object({
-  authMode: z.enum(['management-exchange', 'official-direct']).default('management-exchange'),
+  // authMode: z.enum(['management-oauth', 'official-direct']).default('management-oauth'), // [enterprise] 旧多模式 schema 已删除
+  authMode: z.literal('management-oauth'),
+  authOrigin: z.string(),
   userId: z.string(),
   officialUserId: z.string(),
   displayName: z.string().nullable().default(null),
@@ -31,7 +35,7 @@ export const orgSessionSchema = z.object({
   expiresAt: z.number()
 })
 
-export type OrgSession = z.infer<typeof orgSessionSchema>
+export type { OrgSession }
 
 const fileSchema = z.object({ session: orgSessionSchema.strict() })
 
@@ -45,7 +49,8 @@ export class OrgCredentialStore {
         logger.warn('org session file corrupted, ignoring')
         return null
       }
-      return { ...parsed.data.session, authMode: parsed.data.session.authMode ?? 'management-exchange' }
+
+      return parsed.data.session
     } catch (error) {
       logger.warn('failed to read org session file', { error: String(error) })
       return null

@@ -310,12 +310,19 @@ describe('OrgSkillCatalog C1/C2/C4', () => {
     expect(apiMock.listSkills).toHaveBeenCalledTimes(2)
   })
 
-  it('C2 list(force)：强刷失败仍有旧缓存 → 降级返回旧目录', async () => {
+  // [enterprise] 新契约：强刷（force=true）网络失败即抛错，即使有旧缓存也不降级静默返回——
+  // UI 手动刷新必须反映真实失败（管理台启停/鉴权失效不能被旧缓存掩盖）。
+  it('C2 list(force)：强刷网络失败即抛错（即使有旧缓存），不降级静默返回', async () => {
     apiMock.listSkills.mockResolvedValueOnce({ skills: [makeItem('a', 'h1')] })
     await catalog.list()
 
     apiMock.listSkills.mockRejectedValueOnce(new Error('down'))
-    const items = await catalog.list(true)
+    await expect(catalog.list(true)).rejects.toThrow('down')
+
+    // 非 force 且缓存过期 → 失败仍回退旧缓存（可用性优先）
+    ;(catalog as unknown as { catalogCache: { at: number } | null }).catalogCache!.at = Date.now() - 6 * 60 * 1000
+    apiMock.listSkills.mockRejectedValueOnce(new Error('down'))
+    const items = await catalog.list()
     expect(items.map((i) => i.slug)).toEqual(['a'])
   })
 

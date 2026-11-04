@@ -376,8 +376,8 @@ export interface PreferenceSchemas {
     'data.trash.retention_days': number
     // redux/settings/apiServer.apiKey
     'feature.api_gateway.api_key': string | null
-    // redux/settings/apiServer.enabled
-    'feature.api_gateway.enabled': boolean
+    // null = automatic, true = always on, false = explicitly disabled
+    'feature.api_gateway.enabled': boolean | null
     // redux/settings/apiServer.host
     'feature.api_gateway.host': string
     // redux/settings/apiServer.port
@@ -772,7 +772,7 @@ export const DefaultPreferences: PreferenceSchemas = {
     'data.integration.yuque.url': '',
     'data.trash.retention_days': 30,
     'feature.api_gateway.api_key': null,
-    'feature.api_gateway.enabled': false,
+    'feature.api_gateway.enabled': null,
     'feature.api_gateway.host': '127.0.0.1',
     'feature.api_gateway.port': 24333,
     'feature.binary.install_settings': { githubMirror: '', githubToken: '', npmRegistry: '', pipIndexUrl: '', verifySignatures: true },

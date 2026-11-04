@@ -58,7 +58,9 @@ function formatCurrency(value: number | null | undefined): string {
 const CherryInOauth: FC<CherryInOauthProps> = ({ providerId }) => {
   const { provider, updateProvider, addApiKey, deleteApiKey } = useProvider(providerId)
   const { t } = useTranslation()
-  const gateway = provider ? resolveGateway(provider.id) : undefined
+  // 原识别仅使用实例 id；现兼容预设派生的服务商实例。
+  // const gateway = provider ? resolveGateway(provider.id) : undefined
+  const gateway = provider ? resolveGateway(provider.presetProviderId ?? provider.id) : undefined
   const presentation = gateway ? GATEWAY_PRESENTATION[gateway] : undefined
 
   const [isLoggingIn, setIsLoggingIn] = useState(false)
@@ -73,16 +75,38 @@ const CherryInOauth: FC<CherryInOauthProps> = ({ providerId }) => {
   const [remoteHasOAuthToken, setRemoteHasOAuthToken] = useState<boolean | null>(null)
   const topupInProgressRef = useRef(false)
   const signInRequestIdRef = useRef<string | null>(null)
+  const loginControllerRef = useRef<AbortController | null>(null)
+  const [waitHintVisible, setWaitHintVisible] = useState(false)
 
-  const refreshHasToken = useCallback(async () => {
-    if (!gateway) return
-    try {
-      setRemoteHasOAuthToken(await ipcApi.request('oauth.has_token', { providerId: gateway }))
-    } catch (error) {
-      logger.warn('Failed to check gateway OAuth token status:', error as Error)
-      setRemoteHasOAuthToken(false)
+  useEffect(() => {
+    if (gateway !== SystemProviderIds.xuelang) return
+    return () => {
+      signInRequestIdRef.current = null
+      loginControllerRef.current = null
     }
   }, [gateway])
+
+  useEffect(() => {
+    if (!isLoggingIn || gateway !== SystemProviderIds.xuelang) return
+    const timer = setTimeout(() => setWaitHintVisible(true), 60_000)
+    return () => clearTimeout(timer)
+  }, [gateway, isLoggingIn])
+
+  const refreshHasToken = useCallback(
+    async (isCurrent: () => boolean = () => true) => {
+      if (!gateway) return
+      try {
+        // 原查询完成直接更新；现拒绝失效尝试的迟到结果。
+        // setRemoteHasOAuthToken(await ipcApi.request('oauth.has_token', { providerId: gateway }))
+        const hasToken = await ipcApi.request('oauth.has_token', { providerId: gateway })
+        if (isCurrent()) setRemoteHasOAuthToken(hasToken)
+      } catch (error) {
+        logger.warn('Failed to check gateway OAuth token status:', error as Error)
+        if (isCurrent()) setRemoteHasOAuthToken(false)
+      }
+    },
+    [gateway]
+  )
 
   useEffect(() => {
     void refreshHasToken()
@@ -92,24 +116,31 @@ const CherryInOauth: FC<CherryInOauthProps> = ({ providerId }) => {
   const hasOAuthToken = oauthTokenOverride ?? remoteHasOAuthToken ?? false
   const isOAuthLoggedIn = hasOAuthKey && hasOAuthToken
 
-  const fetchData = useCallback(async () => {
-    if (!gateway || !presentation) return
-    setIsLoadingData(true)
-    try {
-      const balance = await ipcApi.request(
-        'cherryin.get_balance',
-        gateway === SystemProviderIds.xuelang
-          ? { apiHost: presentation.oauthServer, providerId: gateway }
-          : { apiHost: presentation.oauthServer }
-      )
-      setBalanceInfo(balance)
-    } catch (error) {
-      logger.warn('Failed to fetch balance:', error as Error)
-      setBalanceInfo(null)
-    } finally {
-      setIsLoadingData(false)
-    }
-  }, [gateway, presentation])
+  const fetchData = useCallback(
+    async (isCurrent: () => boolean = () => true) => {
+      if (!gateway || !presentation || !isCurrent()) return
+      setIsLoadingData(true)
+      try {
+        const balance = await ipcApi.request(
+          'cherryin.get_balance',
+          gateway === SystemProviderIds.xuelang
+            ? { apiHost: presentation.oauthServer, providerId: gateway }
+            : { apiHost: presentation.oauthServer }
+        )
+        /* 原余额请求无条件更新状态；现只允许当前尝试更新（含失败与结束状态）。
+        setBalanceInfo(balance)
+        // catch: setBalanceInfo(null); finally: setIsLoadingData(false)
+        */
+        if (isCurrent()) setBalanceInfo(balance)
+      } catch (error) {
+        logger.warn('Failed to fetch balance:', error as Error)
+        if (isCurrent()) setBalanceInfo(null)
+      } finally {
+        if (isCurrent()) setIsLoadingData(false)
+      }
+    },
+    [gateway, presentation]
+  )
 
   useEffect(() => {
     if (isOAuthLoggedIn) {
@@ -141,26 +172,58 @@ const CherryInOauth: FC<CherryInOauthProps> = ({ providerId }) => {
   const showOAuthError = useCallback(
     (error: unknown) => {
       const code = error instanceof Error && 'code' in error && typeof error.code === 'string' ? error.code : undefined
-      const errorKey = code ? `settings.provider.oauth.error_codes.${code}` : 'settings.provider.oauth.error'
+      // 原超时也回退为通用认证失败；现复用已有登录超时提示，不改变超时机制。
+      // const errorKey = code ? `settings.provider.oauth.error_codes.${code}` : 'settings.provider.oauth.error'
+      const errorKey =
+        error instanceof Error && error.message === 'OAuth flow timed out'
+          ? 'settings.provider.org_service.login_timeout'
+          : code
+            ? `settings.provider.oauth.error_codes.${code}`
+            : 'settings.provider.oauth.error'
       toast.error(t(errorKey, { defaultValue: t('settings.provider.oauth.error') }))
     },
     [t]
   )
 
   const saveOAuthKeys = useCallback(
-    async (apiKeys: string) => {
+    async (apiKeys: string, isCurrent: () => boolean = () => true) => {
+      if (!isCurrent()) return
       const keys = apiKeys
         .split(',')
         .map((key) => key.trim())
         .filter(Boolean)
-      await Promise.all(keys.map((key) => addApiKey(key, 'OAuth')))
+      // MEA:xuelang-oauth-lifecycle 已提交写入不回滚，失效后不再发起下一次写入。
+      // 原并行写入（CherryIN 分支仍保留执行）：await Promise.all(keys.map((key) => addApiKey(key, 'OAuth')))
+      if (gateway === SystemProviderIds.xuelang) {
+        for (const key of keys) {
+          if (!isCurrent()) return
+          await addApiKey(key, 'OAuth')
+          if (!isCurrent()) return
+        }
+      } else {
+        await Promise.all(keys.map((key) => addApiKey(key, 'OAuth')))
+      }
+      if (!isCurrent()) return
       await updateProvider({ isEnabled: true })
+      if (!isCurrent()) return
+      if (gateway !== SystemProviderIds.xuelang) {
+        setOauthTokenOverride(true)
+        void refreshHasToken()
+      }
+      /* 原先提前标记登录成功再刷新余额；雪浪现等余额阶段结束后检查尝试再标记。
       setOauthTokenOverride(true)
       void refreshHasToken()
       await fetchData()
+      */
+      await fetchData(isCurrent)
+      if (!isCurrent()) return
+      if (gateway === SystemProviderIds.xuelang) {
+        setOauthTokenOverride(true)
+        void refreshHasToken(isCurrent)
+      }
       toast.success(t('auth.get_key_success'))
     },
-    [addApiKey, fetchData, refreshHasToken, t, updateProvider]
+    [addApiKey, fetchData, gateway, refreshHasToken, t, updateProvider]
   )
 
   const handleProvisionApiKey = useCallback(async () => {
@@ -182,19 +245,42 @@ const CherryInOauth: FC<CherryInOauthProps> = ({ providerId }) => {
     const requestId = crypto.randomUUID()
     signInRequestIdRef.current = requestId
     setIsLoggingIn(true)
+    setWaitHintVisible(false)
+    const controller = new AbortController()
+    const deadline = Date.now() + 600_000
+    if (gateway === SystemProviderIds.xuelang) loginControllerRef.current = controller
+    const isCurrent = () =>
+      signInRequestIdRef.current === requestId && !controller.signal.aborted && Date.now() < deadline
     try {
+      /* 原保存回调没有尝试检查；现雪浪传入受取消和截止时间约束的回调。
       await oauthWithCherryIn(saveOAuthKeys, {
         oauthServer: presentation.oauthServer,
-        ...(gateway === SystemProviderIds.xuelang ? { providerId: gateway } : {}),
-        requestId
+        ...(gateway === SystemProviderIds.xuelang ? { providerId: gateway } : {}), requestId
       })
+      */
+      await oauthWithCherryIn(
+        gateway === SystemProviderIds.xuelang ? (keys) => saveOAuthKeys(keys, isCurrent) : saveOAuthKeys,
+        {
+          oauthServer: presentation.oauthServer,
+          ...(gateway === SystemProviderIds.xuelang ? { providerId: gateway, signal: controller.signal } : {}),
+          requestId
+        }
+      )
     } catch (error) {
-      if (error instanceof IpcError && error.code === oauthErrorCodes.SIGN_IN_CANCELLED) return
+      if (
+        (error instanceof IpcError || error instanceof Error) &&
+        'code' in error &&
+        error.code === oauthErrorCodes.SIGN_IN_CANCELLED
+      )
+        return
+      if (gateway === SystemProviderIds.xuelang && signInRequestIdRef.current !== requestId) return
       logger.error('OAuth error:', error as Error)
       showOAuthError(error)
     } finally {
       if (signInRequestIdRef.current === requestId) {
         signInRequestIdRef.current = null
+        loginControllerRef.current = null
+        setWaitHintVisible(false)
         setIsLoggingIn(false)
       }
     }
@@ -204,6 +290,13 @@ const CherryInOauth: FC<CherryInOauthProps> = ({ providerId }) => {
     const requestId = signInRequestIdRef.current
     if (!requestId) return
 
+    if (gateway === SystemProviderIds.xuelang) {
+      loginControllerRef.current?.abort()
+      signInRequestIdRef.current = null
+      setIsLoggingIn(false)
+      setWaitHintVisible(false)
+      return
+    }
     setIsCancellingLogin(true)
     try {
       await ipcApi.request('oauth.cancel_sign_in', { providerId: SystemProviderIds.cherryin, requestId })
@@ -213,7 +306,7 @@ const CherryInOauth: FC<CherryInOauthProps> = ({ providerId }) => {
     } finally {
       setIsCancellingLogin(false)
     }
-  }, [t])
+  }, [gateway, t])
 
   const handleLogout = useCallback(async () => {
     if (!gateway || !presentation) return
@@ -295,7 +388,9 @@ const CherryInOauth: FC<CherryInOauthProps> = ({ providerId }) => {
               <div className={oauthCardClasses.nameBlock}>
                 <div className={oauthCardClasses.loggedInName}>{statusText}</div>
                 <div className={cn(oauthCardClasses.loggedInEmail, 'text-muted-foreground')}>
-                  {t(`settings.provider.oauth.${presentation.i18nNs}.tagline`)}
+                  {waitHintVisible
+                    ? t('settings.provider.org_service.login_wait_hint')
+                    : t(`settings.provider.oauth.${presentation.i18nNs}.tagline`)}
                 </div>
               </div>
             </div>
@@ -307,7 +402,9 @@ const CherryInOauth: FC<CherryInOauthProps> = ({ providerId }) => {
                 {isLoggingIn || isProvisioningKey ? <RefreshCw className="size-4 animate-spin" aria-hidden /> : null}
                 {actionText}
               </Button>
-              {isLoggingIn && gateway === SystemProviderIds.cherryin ? (
+              {/* 原条件只允许 CherryIN 取消；现雪浪也支持取消当前尝试。
+                  isLoggingIn && gateway === SystemProviderIds.cherryin */}
+              {isLoggingIn ? (
                 <Button variant="outline" onClick={handleCancelLogin} disabled={isCancellingLogin}>
                   {t('common.cancel')}
                 </Button>

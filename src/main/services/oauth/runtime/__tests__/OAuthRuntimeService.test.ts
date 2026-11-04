@@ -61,14 +61,20 @@ vi.mock('../providerDefinitions', () => ({
       providerId: 'codex',
       clientId: 'codex-client',
       clearDisablesProvider: true,
-      transport: { hosts: ['127.0.0.1'], port: 0, path: '/cb', redirectUri: 'http://127.0.0.1/cb' },
+      transport: {
+        type: 'loopback',
+        config: { hosts: ['127.0.0.1'], port: 0, path: '/cb', redirectUri: 'http://127.0.0.1/cb' }
+      },
       createClient: (context?: { signal?: AbortSignal }) => h.createClientMock(context),
       extractAccountId: () => null
     },
     cherryin: {
       providerId: 'cherryin',
       clientId: 'cherryin-client',
-      transport: { hosts: ['127.0.0.1'], port: 0, path: '/cb', redirectUri: 'http://127.0.0.1/cb' },
+      transport: {
+        type: 'loopback',
+        config: { hosts: ['127.0.0.1'], port: 0, path: '/cb', redirectUri: 'http://127.0.0.1/cb' }
+      },
       createClient: () => h.clientMock,
       afterPersistTokens: (tokenData: unknown, context: unknown) => h.afterPersistMock(tokenData, context)
     }

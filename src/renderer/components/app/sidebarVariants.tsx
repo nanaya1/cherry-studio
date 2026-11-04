@@ -15,9 +15,9 @@ function assertNever(value: never): never {
   throw new Error(`Unhandled sidebar favorite variant: ${JSON.stringify(value)}`)
 }
 
-/** A sidebar row is only identifiable by its icon, so 'none' degrades to the generic entity icon. */
+/** Sidebar rows use the resource-center type icon when entity icons are disabled. */
 function sidebarIconType(iconType: AssistantIconType): AssistantIconType {
-  return iconType === 'none' ? 'emoji' : iconType
+  return iconType
 }
 
 // Entity icons are filled discs like mini app logos, not line glyphs, so they follow

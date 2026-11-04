@@ -6,6 +6,7 @@ import type { IpcHandlersFor } from '@shared/ipc/types'
 export const enterpriseHandlers: IpcHandlersFor<typeof enterpriseRequestSchemas> = {
   'enterprise.status.get': async () => application.get('EnterprisePlugin').auth.getStatus(),
   'enterprise.login.start': async () => application.get('EnterprisePlugin').auth.startLogin(),
+  'enterprise.login.cancel': async ({ attemptId }) => application.get('EnterprisePlugin').auth.cancelLogin(attemptId),
   'enterprise.session.logout': async () => {
     application.get('EnterprisePlugin').auth.logout()
     return { ok: true }

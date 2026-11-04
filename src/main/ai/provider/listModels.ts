@@ -910,6 +910,7 @@ async function listOpenAICompatibleModels(
   signal?: AbortSignal,
   options?: { throwOnError?: boolean }
 ): Promise<ListedModels> {
+  void options
   const response = await getFromApi({
     url: `${baseUrl}/models`,
     headers: defaultHeaders(provider),

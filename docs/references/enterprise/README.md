@@ -49,7 +49,7 @@ sources:
 1. 点击侧边栏用户头像打开用户弹窗。
 2. 点击企业账号“登录”。
 3. 客户端生成 PKCE `state`、`codeVerifier` 和 S256 challenge，并用系统浏览器打开企业服务 `/authorize`。
-4. 服务端完成授权后回调 `meacowork://auth/callback`。
+4. 服务端完成授权后回调 `meacowork://auth/sso/callback`。
 5. 主进程校验 state 和 10 分钟有效期，调用 `/api/token` 换取会话并落盘。
 6. 登录后弹窗显示手机号；`super_admin` 额外显示管理员身份。
 7. 退出只清理本地企业会话，不调用服务端 revoke，也不影响已复制资源。

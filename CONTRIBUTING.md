@@ -1,6 +1,6 @@
-# Cherry Studio Contributor Guide
+# MEA Cowork Contributor Guide
 
-Welcome to the Cherry Studio contributor community! We are committed to making Cherry Studio a project that provides long-term value and hope to invite more developers to join us. Whether you are an experienced developer or a beginner just starting out, your contributions will help us better serve users and improve software quality.
+Welcome to the MEA Cowork contributor community! We are committed to making MEA Cowork a project that provides long-term value and hope to invite more developers to join us. Whether you are an experienced developer or a beginner just starting out, your contributions will help us better serve users and improve software quality.
 
 ## How to Contribute
 
@@ -18,7 +18,7 @@ Here are several ways you can participate:
 
 6.  **Community Maintenance**: Participate in community discussions, help answer user questions, and promote community activity.
 
-7.  **Promote Usage**: Promote Cherry Studio through blogs, social media, and other channels to attract more users and developers.
+7.  **Promote Usage**: Promote MEA Cowork through blogs, social media, and other channels to attract more users and developers.
 
 ## Before You Start
 
@@ -40,7 +40,7 @@ Features without tests are considered non-existent. To ensure code is truly effe
 
 ### Automated Testing for Pull Requests
 
-Automated tests are triggered on pull requests (PRs) opened by members of the Cherry Studio organization, except for draft PRs. PRs opened by new contributors will initially be marked with the `needs-ok-to-test` label and will not be automatically tested. Once a Cherry Studio organization member adds `/ok-to-test` to the PR, the test pipeline will be created.
+Automated tests are triggered on pull requests (PRs) opened by repository maintainers, except for draft PRs. PRs opened by new contributors will initially be marked with the `needs-ok-to-test` label and will not be automatically tested. Once a repository maintainer adds `/ok-to-test` to the PR, the test pipeline will be created.
 
 ### Consider Opening Your Pull Request as a Draft
 
@@ -88,6 +88,6 @@ Please review the following critical information before submitting your Pull Req
 If you have any questions or suggestions, feel free to contact us through the following ways:
 
 - WeChat: kangfenmao
-- [GitHub Issues](https://github.com/CherryHQ/cherry-studio/issues)
+<!-- - [GitHub Issues](https://github.com/CherryHQ/cherry-studio/issues) -->
 
-Thank you for your support and contributions! We look forward to working with you to make Cherry Studio a better product.
+Thank you for your support and contributions! We look forward to working with you to make MEA Cowork a better product.

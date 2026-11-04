@@ -199,7 +199,7 @@ const agentProvider: SidebarShortcutProvider = {
       (agent) => ({
         label: agent.name,
         renderIcon: ({ slotSize }) =>
-          renderAgentEntityIcon(iconType === 'none' ? 'emoji' : iconType, agent, defaultModelId, slotSize),
+          renderAgentEntityIcon(iconType, agent, defaultModelId, slotSize),
         supportsNewTab: true
       })
     )
@@ -238,7 +238,7 @@ const assistantProvider: SidebarShortcutProvider = {
         label: assistant.name,
         renderIcon: ({ slotSize, glyphSize }) =>
           renderAssistantEntityIcon(
-            iconType === 'none' ? 'emoji' : iconType,
+            iconType,
             assistant,
             defaultModelId,
             slotSize,

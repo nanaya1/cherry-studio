@@ -1,5 +1,5 @@
 import type { TFunction } from 'i18next'
-import { Bot, Check } from 'lucide-react'
+import { Bot, Check, MessageCircle } from 'lucide-react'
 import type { ReactNode } from 'react'
 
 // import { EmojiIcon } from '@cherrystudio/ui'
@@ -35,21 +35,26 @@ function buildModelAvatarModel(uniqueModelId: unknown, modelName: string | null 
 const RESOURCE_ICON_SIZE = 24
 const RESOURCE_GLYPH_SIZE = 14
 
+function renderResourceTypeIcon(icon: typeof Bot, size: number, glyphSize: number) {
+  const Icon = icon
+  return (
+    <span
+      className="flex items-center justify-center rounded-full bg-background-subtle"
+      style={{ width: size, height: size }}>
+      <Icon size={glyphSize} />
+    </span>
+  )
+}
+
 function renderFallbackAssistantIcon(
   // emoji: string | null | undefined,
   _emoji: string | null | undefined,
   size: number,
   glyphSize: number
 ) {
-  // MEA 隐藏 assistant Emoji，统一使用 Bot fallback；恢复时可重新启用 EmojiIcon 分支。
+  // MEA 隐藏 assistant Emoji，统一使用资源中心类型图标；恢复时可重新启用 EmojiIcon 分支。
   // return emoji ? <EmojiIcon emoji={emoji} size={size} /> : ...
-  return (
-    <span
-      className="flex items-center justify-center rounded-full bg-background-subtle"
-      style={{ width: size, height: size }}>
-      <Bot size={glyphSize} />
-    </span>
-  )
+  return renderResourceTypeIcon(MessageCircle, size, glyphSize)
 }
 
 /**
@@ -62,7 +67,9 @@ export function renderAssistantEntityIcon(
   size: number = RESOURCE_ICON_SIZE,
   fallbackGlyphSize: number = RESOURCE_GLYPH_SIZE
 ) {
-  if (iconType === 'none') return undefined
+  // if (iconType === 'none') return undefined
+  // MEA 使用资源中心的助手类型图标，避免默认 emoji 残留。
+  if (iconType === 'none') return renderResourceTypeIcon(MessageCircle, size, fallbackGlyphSize)
 
   const modelAvatarModel = buildModelAvatarModel(assistant.modelId ?? fallbackModelId, assistant.modelName)
   if (iconType === 'model' && modelAvatarModel) {
@@ -81,7 +88,9 @@ export function renderAgentEntityIcon(
   fallbackModelId?: string | null,
   size: number = RESOURCE_ICON_SIZE
 ) {
-  if (iconType === 'none') return undefined
+  // if (iconType === 'none') return undefined
+  // MEA 使用资源中心的智能体类型图标，避免默认 emoji 残留。
+  if (iconType === 'none') return renderResourceTypeIcon(Bot, size, RESOURCE_GLYPH_SIZE)
 
   const modelAvatarModel = buildModelAvatarModel(agent?.model ?? fallbackModelId, agent?.modelName)
   if (iconType === 'model' && modelAvatarModel) return <ModelAvatar model={modelAvatarModel} size={size} />

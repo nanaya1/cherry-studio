@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { loggerService } from '@logger'
 import { ipcApi } from '@renderer/ipc'
@@ -24,32 +24,60 @@ export function useOrgConnectors(enabled: boolean) {
   const [connectors, setConnectors] = useState<OrgConnectorItem[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // [enterprise] available：目录服务是否实际可达（请求成功即置 true，空数组也成功）
+  const [available, setAvailable] = useState(false)
   const [installing, setInstalling] = useState<Set<string>>(() => new Set())
+  const requestRef = useRef(0)
+  // [enterprise] 追踪是否已成功加载过目录，用于区分「首次失败」与「刷新失败」
+  const availableRef = useRef(false)
 
   const refetch = useCallback(async () => {
+    const requestId = ++requestRef.current
     if (!enabled) {
+      // 登出/未启用：重置目录与可用性，清空错误
       setConnectors([])
+      setAvailable(false)
+      availableRef.current = false
       setError(null)
+      setLoading(false)
       return
     }
     setLoading(true)
     setError(null)
     try {
       const { connectors: list } = await ipcApi.request('enterprise.connectors.list')
+      if (requestId !== requestRef.current) return
       setConnectors(list)
+      // 目录实际请求成功即标记可用（空数组也成功）
+      availableRef.current = true
+      setAvailable(true)
     } catch (cause) {
+      if (requestId !== requestRef.current) return
       const message = orgConnectorErrorMessage(cause)
       logger.warn('Failed to list org connectors', { error: message })
-      setConnectors([])
+      // 原逻辑：失败即清空列表 setConnectors([])
+      // 新逻辑：错误照常记录；仅「从未成功过」时保持不可用，刷新失败保留列表与 available=true
+      if (!availableRef.current) {
+        availableRef.current = false
+        setAvailable(false)
+      }
       setError(message)
     } finally {
-      setLoading(false)
+      if (requestId === requestRef.current) setLoading(false)
     }
   }, [enabled])
 
   useEffect(() => {
     void refetch()
   }, [refetch])
+
+  // [enterprise] 卸载时使在途请求失效，防止旧请求回写到已卸载组件
+  useEffect(() => {
+    const requests = requestRef
+    return () => {
+      requests.current++
+    }
+  }, [])
 
   const install = useCallback(async (slug: string): Promise<void> => {
     setInstalling((current) => new Set(current).add(slug))
@@ -64,5 +92,5 @@ export function useOrgConnectors(enabled: boolean) {
     }
   }, [])
 
-  return { connectors, loading, error, install, installing, refetch }
+  return { connectors, loading, error, available, install, installing, refetch }
 }

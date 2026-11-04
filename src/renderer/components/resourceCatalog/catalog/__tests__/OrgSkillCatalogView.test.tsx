@@ -5,7 +5,7 @@
  */
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -295,5 +295,48 @@ describe('OrgSkillCatalogView', () => {
     render(<OrgSkillCatalogView />)
 
     expect(screen.getByText('v1.0.0')).toBeVisible()
+  })
+
+  // [enterprise] 刷新失败（已成功加载过）保留旧列表，错误以非阻塞提示呈现，不整屏覆盖
+  it('keeps the previous skill list with a non-blocking notice when a refresh fails after a successful load', () => {
+    mocks.useOrgSkills.mockReturnValue({
+      skills: [orgSkill('a', '技能A')],
+      loading: false,
+      error: '企业服务请求失败 (500)',
+      install: vi.fn(),
+      installing: new Set(),
+      refetch: vi.fn(),
+      disabledSlugs: [],
+      installedSlugs: new Set<string>(),
+      remove: vi.fn()
+    })
+    render(<OrgSkillCatalogView />)
+
+    // 旧列表仍可见（未被整屏错误替换）
+    expect(screen.getByRole('heading', { name: '技能A' })).toBeVisible()
+    // 非阻塞错误提示（role=alert）+ 刷新按钮
+    const alert = screen.getByRole('alert')
+    expect(within(alert).getByText('企业服务请求失败 (500)')).toBeVisible()
+    expect(within(alert).getByRole('button', { name: 'common.refresh' })).toBeVisible()
+  })
+
+  // [enterprise] 通过 catalog prop 注入页面提升后的同一实例时，直接使用该数据（不另起请求）
+  it('renders the data provided via the catalog prop without making its own request', () => {
+    const providedCatalog = {
+      skills: [orgSkill('z', '注入技能')],
+      loading: false,
+      error: null,
+      install: vi.fn(),
+      installing: new Set<string>(),
+      refetch: vi.fn(),
+      disabledSlugs: [],
+      installedSlugs: new Set<string>(),
+      remove: vi.fn()
+    }
+    render(<OrgSkillCatalogView catalog={providedCatalog} />)
+
+    expect(screen.getByRole('heading', { name: '注入技能' })).toBeVisible()
+    // 即使内部 hook 被 mock 为不同数据，渲染仍来自传入的 catalog（单实例）
+    expect(screen.queryByRole('heading', { name: '技能A' })).not.toBeInTheDocument()
   })
 })

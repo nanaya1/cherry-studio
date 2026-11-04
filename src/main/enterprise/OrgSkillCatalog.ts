@@ -74,7 +74,13 @@ export class OrgSkillCatalog {
       this.catalogCache = { at: Date.now(), items: resolved }
       return resolved
     } catch (error) {
-      if (this.catalogCache) {
+      // 强制请求必须反映真实可达性；后台非强制读取仍允许缓存降级。
+      // if (this.catalogCache) {
+      //   logger.warn('org skill catalog fetch failed, using stale cache', { error: String(error) })
+      //   return this.catalogCache.items
+      // }
+      // throw error
+      if (!force && this.catalogCache) {
         logger.warn('org skill catalog fetch failed, using stale cache', { error: String(error) })
         return this.catalogCache.items
       }

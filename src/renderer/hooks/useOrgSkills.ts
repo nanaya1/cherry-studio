@@ -32,18 +32,25 @@ export function useOrgSkills(enabled: boolean) {
   const [skills, setSkills] = useState<OrgSkillItem[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // [enterprise] available：目录服务是否实际可达（请求成功即置 true，空数组也成功）
+  const [available, setAvailable] = useState(false)
   const [installing, setInstalling] = useState<Set<string>>(() => new Set())
   // [enterprise] 本地已安装的 slug（对话框标记「已安装」状态）
   const [installedSlugs, setInstalledSlugs] = useState<Set<string>>(() => new Set())
   // [enterprise] C2：本地已安装但企业已停用/下架的 slug（提示"可删除"，不注入新会话）
   const [disabledSlugs, setDisabledSlugs] = useState<string[]>([])
   const requestRef = useRef(0)
+  // [enterprise] 追踪是否已成功加载过目录，用于区分「首次失败」与「刷新失败」
+  const availableRef = useRef(false)
   const invalidate = useInvalidateSkills()
 
   const refetch = useCallback(async () => {
     const requestId = ++requestRef.current
     if (!enabled) {
+      // 登出/未启用：重置目录与可用性，清空错误
       setSkills([])
+      setAvailable(false)
+      availableRef.current = false
       setError(null)
       setLoading(false)
       return
@@ -60,6 +67,9 @@ export function useOrgSkills(enabled: boolean) {
       if (requestId !== requestRef.current) return
       setSkills(list)
       setInstalledSlugs(new Set(installed))
+      // 目录实际请求成功即标记可用（空数组也成功）
+      availableRef.current = true
+      setAvailable(true)
       // [enterprise] C2：并行查询停用列表（查询失败不影响目录展示）
       try {
         const { disabled } = await ipcApi.request('enterprise.skills.listDisabled')
@@ -72,7 +82,12 @@ export function useOrgSkills(enabled: boolean) {
       if (requestId !== requestRef.current) return
       const message = orgSkillErrorMessage(cause)
       logger.warn('Failed to list org skills', { error: message })
-      setSkills([])
+      // 原逻辑：失败即清空列表 setSkills([])
+      // 新逻辑：错误照常记录；仅「从未成功过」时保持不可用，刷新失败保留列表与 available=true
+      if (!availableRef.current) {
+        availableRef.current = false
+        setAvailable(false)
+      }
       setError(message)
     } finally {
       if (requestId === requestRef.current) setLoading(false)
@@ -82,6 +97,14 @@ export function useOrgSkills(enabled: boolean) {
   useEffect(() => {
     void refetch()
   }, [refetch])
+
+  // [enterprise] 卸载时使在途请求失效，防止旧请求回写到已卸载组件
+  useEffect(() => {
+    const requests = requestRef
+    return () => {
+      requests.current++
+    }
+  }, [])
 
   const install = useCallback(
     async (slug: string): Promise<boolean> => {
@@ -130,5 +153,5 @@ export function useOrgSkills(enabled: boolean) {
     [invalidate]
   )
 
-  return { skills, loading, error, install, installing, refetch, disabledSlugs, installedSlugs, remove }
+  return { skills, loading, error, available, install, installing, refetch, disabledSlugs, installedSlugs, remove }
 }

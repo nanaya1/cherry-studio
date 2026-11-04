@@ -11,6 +11,8 @@ import { BaseService } from '@main/core/lifecycle'
 import { OAuthSignInCancelledError } from '../../errors'
 import { LoopbackCallbackTransport } from '../LoopbackCallbackTransport'
 import { OAuthRuntimeService } from '../OAuthRuntimeService'
+import { ProviderAuthConfigOAuthTokenStore } from '../OAuthTokenStore'
+import { PkceOAuthClient } from '../PkceOAuthClient'
 import type * as ProviderDefinitions from '../providerDefinitions'
 
 vi.mock('../providerDefinitions', async (importOriginal) => {
@@ -71,6 +73,122 @@ describe('OAuth login with a real callback server and token store', () => {
     await response.text()
     expect(response.status).toBe(200)
   }
+
+  it('isolates cancelled Xuelang exchanges from a newer attempt and rejects foreign cancellation', async () => {
+    dbh.db.insert(userProviderTable).values({ providerId: 'xuelang', name: '雪浪工匠', orderKey: 'a1' }).run()
+    let exchangeStarted!: () => void
+    const started = new Promise<void>((resolve) => {
+      exchangeStarted = resolve
+    })
+    let finishExchange!: (value: Response) => void
+    vi.mocked(net.fetch).mockImplementationOnce(() => {
+      exchangeStarted()
+      return new Promise<Response>((resolve) => {
+        finishExchange = resolve
+      })
+    })
+    const first = await service.startDeepLinkFlow('window-a', 'xuelang', { requestId: 'old' })
+    const callback = new URL('meacowork://oauth/callback')
+    callback.searchParams.set('state', first.state)
+    callback.searchParams.set('code', 'code')
+    const handling = service.handleDeepLinkCallback(callback)
+    await started
+    await service.cancelSignIn('window-b', 'xuelang', 'old')
+    await expect(service.startDeepLinkFlow('window-a', 'xuelang', { requestId: 'blocked' })).rejects.toThrow(
+      /in progress/
+    )
+    await service.cancelSignIn('window-a', 'xuelang', 'wrong')
+    await expect(service.startDeepLinkFlow('window-a', 'xuelang', { requestId: 'blocked' })).rejects.toThrow(
+      /in progress/
+    )
+    await service.cancelSignIn('window-a', 'xuelang', 'old')
+    const next = await service.startDeepLinkFlow('window-a', 'xuelang', { requestId: 'new' })
+    await service.cancelSignIn('window-a', 'xuelang', 'old')
+    await expect(service.startDeepLinkFlow('window-a', 'xuelang', { requestId: 'blocked-new' })).rejects.toThrow(
+      /in progress/
+    )
+    finishExchange(Response.json(tokenData))
+    await handling
+    expect(
+      dbh.db
+        .select()
+        .from(userProviderTable)
+        .all()
+        .find((row) => row.providerId === 'xuelang')?.authConfig
+    ).toBeNull()
+    const nextCallback = new URL(callback)
+    nextCallback.searchParams.set('state', next.state)
+    await service.handleDeepLinkCallback(nextCallback)
+    expect(
+      dbh.db
+        .select()
+        .from(userProviderTable)
+        .all()
+        .find((row) => row.providerId === 'xuelang')?.authConfig
+    ).toMatchObject({ accessToken: 'private-token' })
+  })
+
+  it('does not persist Xuelang tokens when cancellation happens during the store read', async () => {
+    dbh.db.insert(userProviderTable).values({ providerId: 'xuelang', name: '雪浪工匠', orderKey: 'a1' }).run()
+    const get = ProviderAuthConfigOAuthTokenStore.prototype.get
+    let release!: () => void
+    let entered!: () => void
+    const reading = new Promise<void>((resolve) => {
+      entered = resolve
+    })
+    vi.spyOn(ProviderAuthConfigOAuthTokenStore.prototype, 'get').mockImplementationOnce(
+      async function (this: ProviderAuthConfigOAuthTokenStore, id) {
+        entered()
+        await new Promise<void>((resolve) => {
+          release = resolve
+        })
+        return get.call(this, id)
+      }
+    )
+    const flow = await service.startDeepLinkFlow('window-a', 'xuelang', { requestId: 'persist' })
+    const callback = new URL(`meacowork://oauth/callback?state=${flow.state}&code=code`)
+    const handling = service.handleDeepLinkCallback(callback)
+    await reading
+    await service.cancelSignIn('window-a', 'xuelang', 'persist')
+    release()
+    await handling
+    expect(
+      dbh.db
+        .select()
+        .from(userProviderTable)
+        .all()
+        .find((row) => row.providerId === 'xuelang')?.authConfig
+    ).toBeNull()
+  })
+
+  it('expires a Xuelang exchange by the absolute deadline even before its timer runs', async () => {
+    dbh.db.insert(userProviderTable).values({ providerId: 'xuelang', name: '雪浪工匠', orderKey: 'a1' }).run()
+    let finish!: (value: typeof tokenData) => void
+    let entered!: () => void
+    const exchanging = new Promise<void>((resolve) => {
+      entered = resolve
+    })
+    vi.spyOn(PkceOAuthClient.prototype, 'exchangeCode').mockImplementationOnce(() => {
+      entered()
+      return new Promise((resolve) => {
+        finish = resolve
+      })
+    })
+    const flow = await service.startDeepLinkFlow('window-a', 'xuelang', { requestId: 'expires' })
+    const handling = service.handleDeepLinkCallback(new URL(`meacowork://oauth/callback?state=${flow.state}&code=code`))
+    await exchanging
+    const now = Date.now()
+    vi.spyOn(Date, 'now').mockReturnValue(now + 600_000)
+    finish(tokenData)
+    await handling
+    expect(
+      dbh.db
+        .select()
+        .from(userProviderTable)
+        .all()
+        .find((row) => row.providerId === 'xuelang')?.authConfig
+    ).toBeNull()
+  })
 
   it('delivers API keys only to the initiating window and account information to observers', async () => {
     const login = service.signIn('window-a', 'cherryin', 'owner')

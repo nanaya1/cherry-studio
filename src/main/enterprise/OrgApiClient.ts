@@ -10,43 +10,30 @@ const logger = loggerService.withContext('OrgApiClient')
 
 /**
  * 管理端地址（区别于雪浪网关 XUELANG_API_ORIGIN / Cherry Cloud MAIN_VITE_CHERRY_CLOUD_API_ORIGIN）。
- * 有值时启用管理端 Exchange；无值时启用官网直连模式。
+ * 默认回退到旧管理端 http://36.150.116.248:3000；MAIN_VITE_ORG_SERVER_BASE_URL 可覆盖。
+ * 该地址承载企业版 PKCE 登录（/authorize、/api/token、刷新）与技能、连接器目录。
  */
-function resolveOrgServerBaseUrl(): string | null {
+function resolveOrgServerBaseUrl(): string {
   const configured = import.meta.env.MAIN_VITE_ORG_SERVER_BASE_URL?.trim()
-  if (!configured) return null
-  try {
-    return new URL(configured).origin
-  } catch {
-    throw new Error(`MAIN_VITE_ORG_SERVER_BASE_URL 不是合法 URL: ${configured}`)
-  }
-}
-
-function resolveOfficialApiBaseUrl(): string {
-  const configured = import.meta.env.MAIN_VITE_OFFICIAL_API_BASE_URL?.trim()
   if (configured) {
     try {
       return new URL(configured).origin
     } catch {
-      throw new Error(`MAIN_VITE_OFFICIAL_API_BASE_URL 不是合法 URL: ${configured}`)
+      throw new Error(`MAIN_VITE_ORG_SERVER_BASE_URL 不是合法 URL: ${configured}`)
     }
   }
-
-  const loginUrl = import.meta.env.MAIN_VITE_OFFICIAL_LOGIN_URL?.trim() || 'https://mro.xuelangyun.com/login'
-  try {
-    return new URL(loginUrl).origin
-  } catch {
-    throw new Error(`MAIN_VITE_OFFICIAL_LOGIN_URL 不是合法 URL: ${loginUrl}`)
-  }
+  return 'http://36.150.116.248:3000'
 }
 
-export type OrgAuthMode = 'management-exchange' | 'official-direct'
+// export type OrgAuthMode = 'management-oauth' | 'official-direct' // [enterprise] 旧多模式类型已删除
+export type OrgAuthMode = 'management-oauth'
 export const ORG_SERVER_BASE_URL = resolveOrgServerBaseUrl()
-export const ORG_AUTH_MODE: OrgAuthMode = ORG_SERVER_BASE_URL ? 'management-exchange' : 'official-direct'
-export const OFFICIAL_API_BASE_URL = resolveOfficialApiBaseUrl()
+/** [enterprise] 定向恢复：认证模式固定为 management-oauth（PKCE），不再有官网直连/Exchange 多模式选择 */
+export const ORG_AUTH_MODE: OrgAuthMode = 'management-oauth'
 
+/** [enterprise] 公共目录固定指向管理端，不依赖官网配置解析 */
 export function getOrgApiBaseUrl(): string {
-  return ORG_SERVER_BASE_URL ?? OFFICIAL_API_BASE_URL
+  return ORG_SERVER_BASE_URL
 }
 
 export class OrgApiClient {
@@ -94,23 +81,78 @@ export class OrgApiClient {
   /**
    * [enterprise] 公共目录读请求：所有人看到同一套公共资源，未登录也能访问。
    * 有会话时附带 Authorization（服务端可用于埋点），无会话时匿名请求。
+   * 契约：
+   *  - 明确 10s AbortSignal.timeout，覆盖请求与 body 读取（仅目录公共请求，不动登录下载）。
+   *  - 401/403 且附带了旧 token：公共目录匿名可达，去掉 token 重试一次，避免把「鉴权失效」
+   *    误判为「目录不可达」而静默回退旧缓存；匿名仍 401/403 则原样抛错，不伪造成功。
    */
   private async publicRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
-    const session = await this.getValidSession().catch(() => null)
-    const res = await fetch(`${getOrgApiBaseUrl()}${path}`, {
+    // [enterprise] 旧 publicRequest（无超时、无 401/403 匿名重试）注释保留：
+    // const session = await this.getValidSession().catch(() => null)
+    // const res = await fetch(`${getOrgApiBaseUrl()}${path}`, {
+    //   ...init,
+    //   headers: {
+    //     'content-type': 'application/json',
+    //     ...(session ? { authorization: `Bearer ${session.accessToken}` } : {}),
+    //     ...init.headers
+    //   }
+    // })
+    // if (!res.ok) {
+    //   const body = await res.text().catch(() => '')
+    //   logger.warn('org public request failed', { path, status: res.status, body: body.slice(0, 200) })
+    //   throw new Error(`账户服务请求失败 (${res.status})`)
+    // }
+    // return (await res.json()) as T
+    const signal = AbortSignal.timeout(10000)
+    // 同一总 signal 也约束 getValidSession：超时则整次目录请求 reject，不无限 pending
+    let rejectAbort: (reason?: unknown) => void = () => {}
+    const onAbort = () => rejectAbort(new DOMException('The operation was aborted', 'AbortError'))
+    signal.addEventListener('abort', onAbort, { once: true })
+    const session = await Promise.race([
+      this.getValidSession().catch(() => null),
+      new Promise<never>((_, reject) => {
+        rejectAbort = reject
+      })
+    ]).finally(() => signal.removeEventListener('abort', onAbort))
+    const res = await this.sendPublic(path, session?.accessToken, init, signal)
+    if (res.ok) return (await res.json()) as T
+    // [enterprise] 401/403 且附带了旧 token：公共目录匿名可达，去掉 token 重试一次
+    if ((res.status === 401 || res.status === 403) && session?.accessToken) {
+      const anon = await this.sendPublic(path, undefined, init, signal)
+      if (anon.ok) return (await anon.json()) as T
+      // 匿名仍 401/403：资源确实需要鉴权或目录异常，原样抛出，不伪造成功
+      const anonBody = await anon.text().catch(() => '')
+      logger.warn('org public request failed (anonymous retry)', {
+        path,
+        status: anon.status,
+        body: anonBody.slice(0, 200)
+      })
+      throw new Error(`账户服务请求失败 (${anon.status})`)
+    }
+    const body = await res.text().catch(() => '')
+    logger.warn('org public request failed', { path, status: res.status, body: body.slice(0, 200) })
+    throw new Error(`账户服务请求失败 (${res.status})`)
+  }
+
+  /**
+   * [enterprise] 公共目录底层 fetch：合并 10s 超时 signal + 可选 token（匿名时省略 Authorization）。
+   * 由 publicRequest 在「带 token 首请求」与「401/403 匿名重试」两处复用，保证契约一致。
+   */
+  private async sendPublic(
+    path: string,
+    accessToken: string | undefined,
+    init: RequestInit,
+    signal: AbortSignal
+  ): Promise<Response> {
+    return fetch(`${getOrgApiBaseUrl()}${path}`, {
       ...init,
+      signal,
       headers: {
         'content-type': 'application/json',
-        ...(session ? { authorization: `Bearer ${session.accessToken}` } : {}),
+        ...(accessToken ? { authorization: `Bearer ${accessToken}` } : {}),
         ...init.headers
       }
     })
-    if (!res.ok) {
-      const body = await res.text().catch(() => '')
-      logger.warn('org public request failed', { path, status: res.status, body: body.slice(0, 200) })
-      throw new Error(`账户服务请求失败 (${res.status})`)
-    }
-    return (await res.json()) as T
   }
 
   // [enterprise] tags/categories 服务端有字符串数组与对象数组两种形态，归一化在 OrgSkillCatalog.list
