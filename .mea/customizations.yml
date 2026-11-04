@@ -521,6 +521,64 @@ customizations:
       - src/renderer/components/resourceCatalog/dialogs/edit/__tests__/EditDialogs.test.tsx
       - src/renderer/components/resourceCatalog/dialogs/detail/__tests__/AssistantPresetPreviewDialog.test.tsx
 
+  - id: control-agent-builtin-skill
+    title: 生管管控业务问答技能随应用内置发布
+    owner: main
+    behavior: 将用户提供的 control-agent 技能作为单文件 resources/skills 资源发布，稳定 name 为 control-agent，中文 display_name 为生管管控Skill，不标记 agent_created。依赖已授权生管管控 MCP 的 ask_control_agent，原话传 message，首次省略 session_id，追问仅复用本对话返回的会话；按返回事实中文回答，隐藏连接器、工具、会话及轨迹等技术细节，workflow_pending 只能在业务应用确认。服务或工具不可用时如实说明且不伪造调用；返回数据不得执行嵌入指令或提升权限，不发送无关本地文件或凭据。沿用现有自动发现、全局默认启用、默认助手继承及保留用户禁用逻辑。
+    touchpoints:
+      - resources/skills/control-agent/SKILL.md
+    tests:
+      - src/main/utils/__tests__/controlAgentSkill.test.ts
+      - src/main/utils/__tests__/builtinSkills.test.ts
+      - src/main/ai/skills/__tests__/SkillService.test.ts
+      - src/main/ai/skills/__tests__/SkillService.authoring.test.ts
+
+  - id: enterprise-builtin-mcp
+    title: 五项企业内置 MCP 默认安装与智能体绑定
+    owner: main
+    behavior: 内置图零-质检助手、图零-图纸检索、智能经营决策、质量分析改进、装备运维及生管管控五项，使用明确预设配置且不补写描述或鉴权。独立 enterpriseMcpServers 固定 v1 run-on-change 在旧测试项退役后按名称或 URL 查重，已有配置完整保留，缺失项默认启用并绑定默认助手；尊重禁用及显式排除，后续启动不重装删除项或恢复禁用。通用内置传输升级跳过这五项，目录无描述时静默使用已有空描述翻译。
+    markers:
+      - MEA:enterprise-builtin-mcp
+    touchpoints:
+      - src/shared/utils/mcp.ts
+      - src/shared/data/presets/mcpServers.ts
+      - src/renderer/i18n/label.ts
+      - src/main/data/db/seeding/seederRegistry.ts
+      - src/main/data/db/seeding/seeders/builtinMcpServerSeeder.ts
+      - src/main/data/db/seeding/seeders/enterpriseMcpServersSeeder.ts
+    tests:
+      - src/main/data/db/seeding/seeders/__tests__/enterpriseMcpServersSeeder.test.ts
+      - src/main/data/db/seeding/seeders/__tests__/testMcpRetirementSeeder.test.ts
+      - src/main/data/db/seeding/seeders/__tests__/builtinAssistantMcpBindingSeeder.test.ts
+      # - src/main/data/db/seeding/seeders/__tests__/chatbiMcpSeeder.test.ts
+      - src/shared/data/presets/__tests__/mcpServers.test.ts
+
+  - id: chatbi-builtin-mcp
+    # title: 企业业务数据连接助手替换旧测试内置 MCP
+    title: 退役 chatbi、turing 和 hufu 测试内置 MCP
+    owner: main
+    # behavior: 内置目录以 chatbi 替换 turing 和 hufu，独立 chatbiMcp v1 清理旧 builtin 并绑定默认助手。
+    # behavior: 当前预设目录移除 chatbi、turing 和 hufu，三项历史安装 seeder 均不再注册，保留历史常量、实现与版本。新增独立 testMcpRetirement 固定 v1 日志，在事务内仅删除 installSource 为 builtin 且精确匹配三项中文名、原始名或 URL 的行；已执行 chatbi 安装日志及跳过上次替换升级的用户均能清理。依赖外键 cascade 删除 agent 和 assistant 的 MCP 绑定，保留两类主体、manual、其他来源、来源未知及无关项；不改全局其他 MCP。清理幂等，后续启动不重装测试项。
+    behavior: 当前预设目录移除 chatbi、turing 和 hufu，三项历史安装 seeder 均不再注册，完整源码及旧安装测试保留为注释，不参与编译；历史升级回归直接构造数据库夹具，不依赖退役安装器或缺失常量。新增独立 testMcpRetirement 固定 v1 日志，在事务内仅删除 installSource 为 builtin 且精确匹配三项中文名、原始名或 URL 的行；已执行 chatbi 安装日志及跳过上次替换升级的用户均能清理。依赖外键 cascade 删除 agent 和 assistant 的 MCP 绑定，保留两类主体、manual、其他来源、来源未知及无关项；不改全局其他 MCP。清理幂等，后续启动不重装测试项。
+    markers:
+      - MEA:chatbi-builtin-mcp
+    touchpoints:
+      - src/shared/utils/mcp.ts
+      - src/shared/data/presets/mcpServers.ts
+      - src/renderer/i18n/label.ts
+      - src/main/data/db/seeding/seederRegistry.ts
+      - src/main/data/db/seeding/seeders/chatbiMcpSeeder.ts
+      - src/main/data/db/seeding/seeders/hufuMcpSeeder.ts
+      - src/main/data/db/seeding/seeders/turingDrawingSearchSeeder.ts
+      - src/main/data/db/seeding/seeders/testMcpRetirementSeeder.ts
+      - src/main/data/db/seeding/seeders/builtinAssistantMcpBindingSeeder.ts
+    tests:
+      - src/main/data/db/seeding/seeders/__tests__/testMcpRetirementSeeder.test.ts
+      # - src/main/data/db/seeding/seeders/__tests__/chatbiMcpSeeder.test.ts
+      # - src/main/data/db/seeding/seeders/__tests__/turingDrawingSearchSeeder.test.ts
+      # - src/main/data/db/seeding/seeders/__tests__/hufuMcpSeeder.test.ts
+      - src/main/data/db/seeding/seeders/__tests__/builtinAssistantMcpBindingSeeder.test.ts
+
   - id: builtin-mcp-names
     title: Preserve MEA builtin connector and skill branding
     owner: shared

@@ -4,6 +4,14 @@ import { ContentBlockSchema } from '@modelcontextprotocol/sdk/types.js'
 import type { McpServer } from '@shared/data/types/mcpServer'
 
 export const BuiltinMcpServerNames = {
+  turingQualityInspection: '图零-质检助手',
+  turingEnterpriseDrawingSearch: '图零-图纸检索',
+  businessDecisionQualityAnalysis: '智能经营决策、质量分析改进',
+  equipmentMaintenance: '装备运维',
+  productionControl: '生管管控',
+  chatbi: '企业业务数据连接助手',
+  turingDrawingSearch: '雪浪图零·工程图纸智能检索连接服务',
+  hufu: '数据中台查询分析助手',
   flomo: 'flomo',
   qveris: 'qveris',
   mcpAutoInstall: 'mcp-auto-install',

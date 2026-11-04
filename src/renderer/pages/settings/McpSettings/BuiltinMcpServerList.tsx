@@ -126,13 +126,13 @@ const BuiltinMcpServerList: FC<BuiltinMcpServerListProps> = ({ variant = 'settin
                         'line-clamp-2 cursor-pointer text-muted-foreground text-sm leading-5 transition-colors hover:text-foreground',
                         isCatalog ? 'mt-3' : 'mt-1'
                       )}>
-                      {t(getBuiltInMcpServerDescriptionLabelKey(server.name))}
+                      {server.description ?? t(getBuiltInMcpServerDescriptionLabelKey(server.name))}
                     </div>
                   </PopoverTrigger>
                   <PopoverContent align="start" side="top" className="w-auto max-w-100">
                     <div className="mb-2 font-semibold text-foreground text-sm">{server.name}</div>
                     <div className="wrap-break-word whitespace-pre-wrap text-[14px] text-foreground leading-normal">
-                      {t(getBuiltInMcpServerDescriptionLabelKey(server.name))}
+                      {server.description ?? t(getBuiltInMcpServerDescriptionLabelKey(server.name))}
                       {server.reference && (
                         <a
                           href={server.reference}

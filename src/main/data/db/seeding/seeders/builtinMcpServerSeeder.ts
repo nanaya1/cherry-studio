@@ -1,7 +1,7 @@
 import { and, eq } from 'drizzle-orm'
 
 import { type McpServerRow, mcpServerTable } from '@data/db/schemas/mcpServer'
-import { PRESET_MCP_SERVERS } from '@shared/data/presets/mcpServers'
+import { ENTERPRISE_MCP_SERVERS, PRESET_MCP_SERVERS } from '@shared/data/presets/mcpServers'
 import { BuiltinMcpServerNames } from '@shared/utils/mcp'
 
 import type { DbType, ISeeder } from '../../types'
@@ -68,6 +68,8 @@ export class BuiltinMcpServerSeeder implements ISeeder {
     // pointing at a transport the runtime no longer implements.
     db.transaction((tx) => {
       for (const preset of PRESET_MCP_SERVERS) {
+        // MEA:enterprise-builtin-mcp 企业项由独立安装处理，已有配置不得被通用传输升级改写。
+        if (ENTERPRISE_MCP_SERVERS.some((server) => server.name === preset.name)) continue
         const builtinRows = tx
           .select()
           .from(mcpServerTable)

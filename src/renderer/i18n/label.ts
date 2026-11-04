@@ -327,7 +327,20 @@ export const getFileFieldLabelKey = (key: string): string => {
   return getLabelKey(fileFieldKeyMap, key)
 }
 
-const builtInMcpDescriptionKeyMap: Record<BuiltinMcpServerName, string> = {
+const builtInMcpDescriptionKeyMap: Record<
+  Exclude<
+    BuiltinMcpServerName,
+    | typeof BuiltinMcpServerNames.turingDrawingSearch
+    | typeof BuiltinMcpServerNames.hufu
+    | typeof BuiltinMcpServerNames.chatbi
+    | typeof BuiltinMcpServerNames.turingQualityInspection
+    | typeof BuiltinMcpServerNames.turingEnterpriseDrawingSearch
+    | typeof BuiltinMcpServerNames.businessDecisionQualityAnalysis
+    | typeof BuiltinMcpServerNames.equipmentMaintenance
+    | typeof BuiltinMcpServerNames.productionControl
+  >,
+  string
+> = {
   [BuiltinMcpServerNames.flomo]: 'settings.mcp.builtinServersDescriptions.flomo',
   [BuiltinMcpServerNames.qveris]: 'settings.mcp.builtinServersDescriptions.qveris',
   [BuiltinMcpServerNames.mcpAutoInstall]: 'settings.mcp.builtinServersDescriptions.mcp_auto_install',
@@ -345,5 +358,8 @@ const builtInMcpDescriptionKeyMap: Record<BuiltinMcpServerName, string> = {
 } as const
 
 export const getBuiltInMcpServerDescriptionLabelKey = (key: string): string => {
-  return getLabelKey(builtInMcpDescriptionKeyMap, key, 'settings.mcp.builtinServersDescriptions.no')
+  // return getLabelKey(builtInMcpDescriptionKeyMap, key, 'settings.mcp.builtinServersDescriptions.no')
+  // MEA:enterprise-builtin-mcp 未提供描述的内置项使用已有空描述文案，不记录缺失翻译。
+  if (!Object.hasOwn(builtInMcpDescriptionKeyMap, key)) return 'settings.mcp.builtinServersDescriptions.no'
+  return getLabelKey(builtInMcpDescriptionKeyMap, key)
 }

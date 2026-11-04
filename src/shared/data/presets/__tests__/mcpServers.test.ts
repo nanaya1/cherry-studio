@@ -1,11 +1,18 @@
 import { describe, expect, it } from 'vitest'
 
-import { PRESET_MCP_SERVERS, VISIBLE_PRESET_MCP_SERVERS } from '@shared/data/presets/mcpServers'
+import { ENTERPRISE_MCP_SERVERS, PRESET_MCP_SERVERS, VISIBLE_PRESET_MCP_SERVERS } from '@shared/data/presets/mcpServers'
 import { BuiltinMcpServerNames } from '@shared/utils/mcp'
 
 const preset = (name: string) => PRESET_MCP_SERVERS.find((server) => server.name === name)
 
 describe('PRESET_MCP_SERVERS', () => {
+  it('五项企业预设默认关闭，等待用户显式启用', () => {
+    expect(ENTERPRISE_MCP_SERVERS).toHaveLength(5)
+    for (const server of ENTERPRISE_MCP_SERVERS) {
+      expect(server.isActive, server.name).toBe(false)
+    }
+  })
+
   it('models flomo and nowledge-mem as the HTTP endpoints they are', () => {
     // The seeder writes these URLs onto installed rows, so the exact endpoint is the contract.
     expect(preset(BuiltinMcpServerNames.flomo)).toEqual(
@@ -26,7 +33,9 @@ describe('PRESET_MCP_SERVERS', () => {
 
   it('uses MEA Cowork branding in builtin connector metadata', () => {
     for (const server of PRESET_MCP_SERVERS) {
-      expect(server.provider).not.toMatch(/cherry/i)
+      // expect(server.provider).not.toMatch(/cherry/i)
+      // MEA:enterprise-builtin-mcp 未提供供应商的企业预设不补造元数据。
+      expect(server.provider ?? '').not.toMatch(/cherry/i)
       expect(Object.values(server.headers ?? {})).not.toEqual(expect.arrayContaining(['Cherry Studio']))
     }
   })
