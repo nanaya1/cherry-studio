@@ -529,11 +529,8 @@ function OrgKnowledgeDetailSession({
     setDirectoryError(null)
     setTarget(null)
     setCursor(null)
-    setDirectoryStack((previous) => {
-      const next = previous.slice(0, -1)
-      if (next.length === 0) setDirectoryItems(null)
-      return next
-    })
+    setDirectoryItems(null)
+    setDirectoryStack((previous) => previous.slice(0, -1))
   }, [])
   const openRemoteItem = useCallback(
     (item: KnowledgeItem, mode?: 'preview' | 'chunks') => {
