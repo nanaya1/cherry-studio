@@ -341,6 +341,56 @@ describe('组织知识库只读详情', () => {
     expect(await screen.findByText(directory.title)).toBeInTheDocument()
   })
 
+  it('多层目录逐级返回时显示父目录文件而非子目录缓存', async () => {
+    const directory = {
+      ...item,
+      id: 'orgkb:directory-a',
+      fileId: 'orgkb:file-a',
+      type: 'directory',
+      title: '目录A',
+      documentId: null
+    }
+    const nestedDirectory = {
+      ...directory,
+      id: 'orgkb:directory-b',
+      fileId: 'orgkb:file-b',
+      title: '目录B',
+      parentId: directory.fileId
+    }
+    const parentFile = { ...item, id: 'orgkb:parent-file', title: 'A层文件.txt', parentId: directory.fileId }
+    const childFile = { ...item, id: 'orgkb:child-file', title: 'B层文件.txt', parentId: nestedDirectory.fileId }
+    request.mockImplementation(async (route, input) => {
+      if (route === 'enterprise.knowledge.items') {
+        const items =
+          input.parentId === nestedDirectory.fileId
+            ? [childFile]
+            : input.parentId === directory.fileId
+              ? [nestedDirectory, parentFile]
+              : [directory, item]
+        return { items, total: items.length, nextCursor: null }
+      }
+      return { chunks: [] }
+    })
+    const user = userEvent.setup()
+    render(<OrgKnowledgeDetail base={base} owned={false} />)
+    await user.click(await screen.findByText(directory.title))
+    expect(await screen.findByText(parentFile.title)).toBeInTheDocument()
+    await user.click(await screen.findByText(nestedDirectory.title))
+    expect(await screen.findByText(childFile.title)).toBeInTheDocument()
+    expect(screen.queryByText(parentFile.title)).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Back' }))
+    expect(await screen.findByText(parentFile.title)).toBeInTheDocument()
+    expect(screen.getByText(nestedDirectory.title)).toBeInTheDocument()
+    expect(screen.queryByText(childFile.title)).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Back' }))
+    expect(await screen.findByText(directory.title)).toBeInTheDocument()
+    expect(screen.getByText(item.title)).toBeInTheDocument()
+    expect(screen.queryByText(parentFile.title)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Back' })).not.toBeInTheDocument()
+  })
+
   it('目录分页重复游标停止请求并显示错误而非空态', async () => {
     const directory = { ...item, id: 'orgkb:dir', title: '循环目录', type: 'directory', documentId: null }
     let calls = 0

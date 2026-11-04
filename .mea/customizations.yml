@@ -401,6 +401,21 @@ customizations:
       - src/renderer/pages/settings/__tests__/SettingsPage.test.tsx
       - src/renderer/pages/settings/settingsSearch/__tests__/settingsSearchIndex.test.ts
 
+  - id: new-task-draft-clearing
+    title: 新建任务成功发送后清空草稿再导航
+    owner: renderer
+    behavior: Chat 与 Agent 成功发送后同步清空编辑器文本、tokens、附件及对应草稿缓存，再经 onDraftCleared 导航；卸载不得将已发送内容写回，返回新建任务不恢复已发送内容。失败、阻止发送和未发送草稿仍保留，另一模式草稿互不影响。
+    markers:
+      - MEA:new-task-draft-clearing
+    touchpoints:
+      - src/renderer/pages/workspace/NewTaskPage.tsx
+      - src/renderer/components/composer/variants/ChatComposer.tsx
+      - src/renderer/components/composer/variants/AgentComposer.tsx
+    tests:
+      - src/renderer/pages/workspace/NewTaskPage.test.tsx
+      - src/renderer/components/composer/variants/__tests__/ChatComposer.test.tsx
+      - src/renderer/components/composer/variants/__tests__/AgentComposer.test.tsx
+
   - id: new-task-composer-layout
     title: Preserve MEA new-task composer controls
     owner: renderer
