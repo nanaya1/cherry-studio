@@ -1,6 +1,9 @@
+import { loggerService } from '@logger'
 import type { BusinessAccessGate } from '@main/core/profiles'
 
 import { isDefinitiveVerificationError, VerificationError } from './verification'
+
+const logger = loggerService.withContext('ProfileOnlineMonitor')
 
 export function isRetryableVerificationError(error: unknown): boolean {
   // MEA:profile-verification-network-tolerance Text and HTTP errors alone never prove global credential invalidity.
@@ -63,7 +66,15 @@ export class ProfileOnlineMonitor {
       } else if (gate.state.kind !== 'verifying') {
         if (!this.notified) {
           this.notified = true
-          onBlocked('Online verification is blocked; restart is required')
+          // onBlocked('Online verification is blocked; restart is required')
+          const state = gate.state
+          const expired = state.kind === 'blocked' && state.reason === 'verification window expired'
+          logger.warn('Online verification blocked', { category: expired ? 'expired' : 'authority', state: state.kind })
+          onBlocked(
+            expired
+              ? '账号在线验证已过期，请确认认证服务连接正常后重新启动验证。'
+              : '账号登录状态或权限已失效，请重新启动验证；必要时重新登录。'
+          )
         }
         return
       }

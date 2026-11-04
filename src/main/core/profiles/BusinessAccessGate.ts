@@ -52,6 +52,7 @@ export class BusinessAccessGate {
 
   /** Only definitive failures block; temporary failures retain the last verified authority. */
   recordVerificationFailure(reason: string, retryable = false): void {
+    this.enforceDeadline()
     if (this.currentState.kind === 'blocked' || this.currentState.kind === 'restart-required') return
     // MEA:profile-verification-network-tolerance Temporary unavailability does not revoke this process's last verified authority.
     if (retryable) return
