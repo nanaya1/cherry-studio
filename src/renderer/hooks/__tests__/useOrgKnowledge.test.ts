@@ -89,6 +89,34 @@ describe('useOrgKnowledge', () => {
     expect(result.current.catalog).toEqual(empty)
   })
 
+  it('同代际普通状态事件保留目录和授权版本，同身份新代际重读目录', async () => {
+    const { result } = renderHook(() => useOrgKnowledge())
+    await waitFor(() => expect(result.current.catalog).toEqual(catalog))
+    const version = result.current.authorizationVersion
+    const initialRequests = mocks.request.mock.calls.length
+    act(() => mocks.listener?.(status(1)))
+    expect(result.current.catalog).toEqual(catalog)
+    expect(result.current.authorizationVersion).toBe(version)
+    expect(mocks.request.mock.calls).toHaveLength(initialRequests)
+    const nextCatalog = { public: [], shared: [{ id: 'orgkb:dHdv', name: '新分组', description: null }], owned: [] }
+    let finish!: (value: OrgKnowledgeCatalog) => void
+    mocks.request.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve
+        })
+    )
+    const captured = result.current.authorizationVersionRef
+    act(() => {
+      mocks.listener?.({ ...status(2), groupId: 'new-group', role: 'member' })
+      expect(captured.current).toBeGreaterThan(version)
+    })
+    expect(result.current.catalog).toEqual(empty)
+    expect(result.current.authorizationVersion).toBeGreaterThan(version)
+    await act(async () => finish(nextCatalog))
+    expect(result.current.catalog).toEqual(nextCatalog)
+  })
+
   it('状态事件先到时不允许旧的初始状态覆盖当前账号', async () => {
     let resolveStatus!: (value: EnterpriseStatus) => void
     mocks.request.mockImplementationOnce(

@@ -5,9 +5,14 @@ import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createSidebarShortcutId, type SidebarShortcutTarget } from '@shared/data/preference/preferenceTypes'
+import type { EnterpriseVerificationStatus } from '@shared/ipc/schemas/enterprise'
 import { LATEST_PRIVACY_POLICY_VERSION } from '@shared/utils/constants'
 
 const onboardingModule = vi.hoisted(() => ({ evaluations: 0 }))
+const verification = vi.hoisted(() => ({ status: null as EnterpriseVerificationStatus | null }))
+vi.mock('@renderer/hooks/useEnterpriseVerificationStatus', () => ({
+  useEnterpriseVerificationStatus: () => verification.status
+}))
 
 vi.mock('../onboarding/OnboardingPage', () => {
   onboardingModule.evaluations += 1
@@ -64,6 +69,7 @@ function appShortcut(resourceId: string) {
 describe('MainWindowContent', () => {
   beforeEach(() => {
     MockUsePreferenceUtils.resetMocks()
+    verification.status = null
   })
 
   afterEach(() => {
@@ -83,6 +89,20 @@ describe('MainWindowContent', () => {
       expect(onboardingModule.evaluations).toBe(0)
       view.unmount()
     }
+  })
+
+  it('gives the account blocker priority over privacy without unmounting the workspace', () => {
+    MockUsePreferenceUtils.setPreferenceValue('app.onboarding.provider_setup.status', 'completed')
+    MockUsePreferenceUtils.setPreferenceValue('app.privacy.policy_version', '')
+    verification.status = { owner: 'owner-a', revision: 3, state: 'blocked', reason: 'credentials-invalid' }
+    const { rerender } = render(<MainWindowContent />)
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(screen.queryByTestId('privacy-policy-gate')).not.toBeInTheDocument()
+    expect(screen.getByTestId('app-shell')).toBeInTheDocument()
+    verification.status = { owner: 'owner-a', revision: 4, state: 'switching' }
+    rerender(<MainWindowContent />)
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(screen.getByTestId('privacy-policy-gate')).toBeInTheDocument()
   })
 
   it('skips first-run provider setup without loading onboarding', async () => {

@@ -436,6 +436,7 @@ export class AiStreamManager extends BaseService {
    * both see "no live stream" and orphan a row.
    */
   async dispatch(subscriber: StreamListener, req: MainDispatchRequest): Promise<AiStreamOpenResponse> {
+    application.assertTaskStartAllowed()
     // Gate on the boot reconcile so a placeholder written here is never clobbered by it.
     // No-op after boot (resolved promise); the only caller it can actually block is a
     // stream opened in the boot window before reconcile finished.
@@ -444,6 +445,7 @@ export class AiStreamManager extends BaseService {
       // A renderer submit can land while the previous turn's terminal dispatch is still running;
       // admitting now would evict that stream before its terminal lifecycle ran (see startAgentSessionRun).
       await this.whenTerminalDispatchSettled(req.topicId)
+      application.assertTaskStartAllowed()
 
       // Write-quiesce admission gate, re-checked under the lock so a pause landing while this
       // dispatch waited on the mutex still rejects it — the gate must sit before `prepareDispatch`
@@ -665,6 +667,19 @@ export class AiStreamManager extends BaseService {
     await Promise.allSettled(loopPromises)
   }
 
+  /** Cancel business work without shutting down the service or its event surfaces. */
+  public async cancelActiveWork(reason: string): Promise<void> {
+    this.pendingSteers.clear()
+    this.suppressedChatContinuationTopicIds.clear()
+    const pending: Promise<unknown>[] = [...this.inFlightDispatches.keys(), ...this.inFlightChatContinuations.values()]
+    for (const [topicId, stream] of this.activeStreams) {
+      if (!isLiveStatus(stream.status)) continue
+      for (const execution of stream.executions.values()) pending.push(execution.loopPromise)
+      this.abort(topicId, reason)
+    }
+    await Promise.allSettled(pending)
+  }
+
   protected onDestroy(): void {
     this._onApprovalRequested.dispose()
     this._onConversationCompleted.dispose()
@@ -743,6 +758,7 @@ export class AiStreamManager extends BaseService {
    * Multi-model is detected from `models.length > 1`.
    */
   send(input: SendInput): SendResult {
+    if (input.models.length > 0) application.assertTaskStartAllowed()
     const inputModelIds = new Set<UniqueModelId>()
     for (const { modelId } of input.models) {
       if (inputModelIds.has(modelId)) {
@@ -967,6 +983,7 @@ export class AiStreamManager extends BaseService {
   }
 
   startRuntimeTurn(input: StartRuntimeTurnInput): SendResult {
+    application.assertTaskStartAllowed()
     const existing = this.activeStreams.get(input.topicId)
     const carriedListeners = existing
       ? [...existing.listeners.values()].filter(
@@ -1981,6 +1998,7 @@ export class AiStreamManager extends BaseService {
       // Pre-stream rejection (model resolution, param build) routes through
       // the error path with no half-open stream to tear down.
       // `signal` is injected here because it's not IPC-serialisable.
+      application.assertTaskStartAllowed()
       rawStream = await aiService.streamText({
         ...request,
         requestOptions: { ...request.requestOptions, signal },

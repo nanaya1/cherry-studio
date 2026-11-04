@@ -2420,7 +2420,7 @@
           "children": [
             {
               "category": "preferences",
-              "defaultValue": false,
+              "defaultValue": null,
               "originalKey": "enabled",
               "status": "classified",
               "targetKey": "feature.api_gateway.enabled",

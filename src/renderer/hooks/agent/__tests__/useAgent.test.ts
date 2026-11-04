@@ -156,6 +156,22 @@ describe('useAgents', () => {
       expect(refetch).toHaveBeenCalledOnce()
     })
 
+    it('distinguishes missing metadata from a successfully loaded empty list during background failure', () => {
+      const error = new Error('temporary connection failure')
+      MockUseDataApiUtils.mockQueryResult('/agents', { data: undefined, error })
+      const { result, rerender } = renderHook(() => useAgents())
+      expect(result.current.hasData).toBe(false)
+      MockUseDataApiUtils.mockQueryResult('/agents', {
+        data: { items: [], total: 0, page: 1 } as any,
+        error,
+        isRefreshing: true
+      })
+      rerender()
+      expect(result.current.hasData).toBe(true)
+      expect(result.current.agents).toEqual([])
+      expect(result.current.isRefreshing).toBe(true)
+    })
+
     it('returns empty array when data is undefined', () => {
       MockUseDataApiUtils.mockQueryLoading('/agents')
 

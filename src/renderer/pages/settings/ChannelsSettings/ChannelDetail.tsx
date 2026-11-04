@@ -39,6 +39,7 @@ import { useAgents } from '@renderer/hooks/agent/useAgent'
 import { useChannels } from '@renderer/hooks/agent/useChannels'
 import { ipcApi, useIpcOn } from '@renderer/ipc'
 import { getChannelTypeIcon } from '@renderer/utils/agentSession'
+import { CreateAgentChannelSchema } from '@shared/data/api/schemas/agentChannels'
 import { AGENT_WORKSPACE_TYPE } from '@shared/data/api/schemas/agentWorkspaces'
 import type { ChannelStatus } from '@shared/data/types/channel'
 
@@ -87,6 +88,11 @@ function getChannelSummary(channel: ChannelData): string {
       if (cfg.bot_token) parts.push(`Token: ${truncateId(cfg.bot_token as string)}`)
       const slackChannelIds = (cfg.allowed_channel_ids as string[]) ?? []
       if (slackChannelIds.length > 0) parts.push(`${slackChannelIds.length} channel IDs`)
+      break
+    }
+    case 'dingtalk': {
+      if (cfg.client_id) parts.push(truncateId(cfg.client_id as string))
+      if (chatIds.length > 0) parts.push(`${chatIds.length} chat IDs`)
       break
     }
     case 'wechat':
@@ -262,9 +268,12 @@ const ChannelEditModal: FC<EditModalProps> = ({ open, channel, agents, onClose, 
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
-      <DialogContent closeOnOverlayClick={false} className="max-w-125" closeLabel={t('common.close')}>
+      <DialogContent
+        closeOnOverlayClick={false}
+        className="max-h-[calc(100vh-2rem)] max-w-125 overflow-y-auto"
+        closeLabel={t('common.close')}>
         {renderedChannel && (
-          <>
+          <div className="pr-1">
             <DialogHeader>
               <DialogTitle>{renderedChannel.name}</DialogTitle>
             </DialogHeader>
@@ -319,7 +328,7 @@ const ChannelEditModal: FC<EditModalProps> = ({ open, channel, agents, onClose, 
                 />
               )}
             </div>
-          </>
+          </div>
         )}
       </DialogContent>
     </Dialog>
@@ -487,7 +496,7 @@ const ChannelDetail: FC<ChannelDetailProps> = ({ channelDef }) => {
 
   const handleAdd = useCallback(async () => {
     const existingCount = channels?.length ?? 0
-    const newChannel = await createChannel({
+    const createPayload = CreateAgentChannelSchema.parse({
       type: channelDef.type,
       name: existingCount > 0 ? `${channelDef.name} ${existingCount + 1}` : channelDef.name,
       workspace: { type: AGENT_WORKSPACE_TYPE.SYSTEM },
@@ -495,7 +504,8 @@ const ChannelDetail: FC<ChannelDetailProps> = ({ channelDef }) => {
       // Feishu and WeChat register by QR, so binding an active channel to an agent
       // starts the adapter flow. Credential-gated channels start inactive.
       isActive: channelDef.type === 'feishu' || channelDef.type === 'wechat'
-    } as never)
+    })
+    const newChannel = await createChannel(createPayload)
     if (newChannel) {
       openEditModal(newChannel.id)
     }

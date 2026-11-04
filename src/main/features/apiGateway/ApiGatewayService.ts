@@ -30,7 +30,8 @@ export class ApiGatewayService extends BaseService implements Activatable {
   private readonly internalUsageToken = uuidv4()
   /** Never persisted or exposed through the public API; authenticates Cherry-internal gateway metadata. */
   private readonly internalRequestToken = uuidv4()
-  /** Latest persistent desired state. Its only source is the `enabled` preference. */
+  // Original: Latest persistent desired state, sourced only from the enabled preference.
+  /** Runtime target from explicit intent or an automatic on-demand start. */
   private desiredEnabled = false
   /**
    * Count of active temporary run leases (see {@link acquireLease}). Transient consumers (e.g. PDF
@@ -82,7 +83,9 @@ export class ApiGatewayService extends BaseService implements Activatable {
     // subscription and IPC handlers below are cleaned up, so nothing calls `request()` anyway.
     this.registerDisposable(
       application.get('PreferenceService').subscribeChange('feature.api_gateway.enabled', (enabled) => {
-        this.desiredEnabled = enabled ?? false
+        // 显式 true 才视为常驻意图；null（自动）与 false（禁用）均不作为开机常驻目标。
+        // 原逻辑：this.desiredEnabled = enabled ?? false
+        this.desiredEnabled = enabled === true
         this.reconciler.request()
       })
     )
@@ -92,7 +95,9 @@ export class ApiGatewayService extends BaseService implements Activatable {
     const config = this.getCurrentConfig()
     // Never log the raw API key — redact before emitting.
     logger.info('API gateway config:', { ...config, apiKey: config.apiKey ? REDACTED : null })
-    this.desiredEnabled = config.enabled ?? false
+    // 显式 true 才开机常驻；null（自动）与 false（禁用）不自动启动。
+    // 原逻辑：this.desiredEnabled = config.enabled ?? false
+    this.desiredEnabled = config.enabled === true
     this.reconciler.request()
     await this.reconciler.flush()
   }
@@ -231,7 +236,9 @@ export class ApiGatewayService extends BaseService implements Activatable {
     await this.converge(false)
     // Re-read the intent before re-activating: another window may have persisted a stop while this
     // restart was queued behind it, and a re-bind must never resurrect a gateway the user disabled.
-    if (!this.getCurrentConfig().enabled) {
+    // null（自动）允许重启；仅显式 false 才拒绝。
+    // 原逻辑：if (!this.getCurrentConfig().enabled) {
+    if (this.getCurrentConfig().enabled === false) {
       const error = new Error('API Gateway was disabled while restarting')
       logger.warn('Aborting API Gateway restart: the gateway was disabled meanwhile')
       throw error
@@ -246,15 +253,21 @@ export class ApiGatewayService extends BaseService implements Activatable {
   }
 
   /**
-   * Converge an already-enabled gateway toward running. Unlike {@link start} this never touches the
-   * persisted intent, so a caller that merely needs the gateway up (an agent route whose model must
-   * be bridged) can wait for readiness without being able to re-enable what a user disabled.
+   * Start the gateway on demand in automatic or explicitly enabled mode. Unlike {@link start}, this
+   * never persists an intent, so automatic mode stays non-resident across application launches.
    */
   async ensureRunning(): Promise<void> {
-    if (!this.getCurrentConfig().enabled) {
+    // 仅显式关闭才拒绝；自动模式（null）按需启动且不持久化意图。
+    // 原逻辑：if (!this.getCurrentConfig().enabled) { throw new Error('API Gateway is disabled') }
+    if (this.getCurrentConfig().enabled === false) {
       throw new Error('API Gateway is disabled')
     }
     await this.converge(true)
+    // 启动期间若被显式关闭，必须停止并报错，避免残留非预期常驻。
+    if (this.getCurrentConfig().enabled === false) {
+      await this.converge(false)
+      throw new Error('API Gateway was disabled while starting')
+    }
     if (!this.isActivated || !this.isRunning()) {
       const error = this.failureError('Failed to start API Gateway')
       logger.error('Failed to start API Gateway:', error)

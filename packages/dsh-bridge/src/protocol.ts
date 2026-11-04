@@ -150,7 +150,11 @@ export interface BridgePluginRequestMap {
     result:
       | { kind: 'allow' }
       | { kind: 'ask'; reason: string }
-      | { kind: 'deny'; ruleId: 'user-data-sqlite-write' | 'browser-tool-disabled'; reason: string }
+      | {
+          kind: 'deny'
+          ruleId: 'user-data-sqlite-write' | 'browser-tool-disabled' | 'enterprise-profile-business-access'
+          reason: string
+        }
   }
   'approval/ask': {
     params: {

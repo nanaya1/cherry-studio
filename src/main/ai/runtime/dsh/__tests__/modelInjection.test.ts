@@ -460,8 +460,8 @@ describe('assertDshProviderUsable', () => {
   })
 
   it('accepts a gateway-routable model in automatic mode without starting it during validation', async () => {
-    mocks.getByProviderId.mockResolvedValue(vertexProvider)
-    mocks.getByKey.mockResolvedValue(makeModel())
+    mocks.getByProviderId.mockReturnValue(vertexProvider)
+    mocks.getByKey.mockReturnValue(makeModel())
     mocks.getCurrentConfig.mockReturnValue({ enabled: null })
 
     await expect(assertDshProviderUsable('vertexai::gemini-2.5-pro')).resolves.toBeUndefined()

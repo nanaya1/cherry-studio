@@ -212,7 +212,12 @@ export class MainWindowService extends BaseService {
     // Protocol URL dispatch is handled by ProtocolService on the same event.
     // Multiple listeners on 'second-instance' are intentional: ProtocolService
     // dispatches the URL, MainWindowService restores the window.
-    const handler = () => this.showMainWindow()
+    // const handler = () => this.showMainWindow()
+    // MEA:second-instance-window-reveal 协议处理器自行决定焦点，避免 OAuth 回调额外显示窗口。
+    const handler = (_event: Electron.Event, argv: string[]) => {
+      if (argv.some((arg) => /^[a-z][a-z\d+.-]*:\/\//i.test(arg))) return
+      this.showMainWindow()
+    }
     app.on('second-instance', handler)
     this.registerDisposable(() => app.removeListener('second-instance', handler))
   }

@@ -20,7 +20,8 @@ import {
   useUpdateKnowledgeBase
 } from '@renderer/hooks/useKnowledgeBase'
 import { useOrgKnowledge } from '@renderer/hooks/useOrgKnowledge'
-import { ipcApi, useIpcOn } from '@renderer/ipc'
+// import { ipcApi, useIpcOn } from '@renderer/ipc'
+import { ipcApi } from '@renderer/ipc'
 import { EVENT_NAMES, EventEmitter } from '@renderer/services/EventService'
 import { toast } from '@renderer/services/toast'
 import { formatErrorMessageWithPrefix } from '@renderer/utils/error'
@@ -133,6 +134,7 @@ export const KnowledgePageProvider = ({ children, baseId, onBaseIdChange }: Know
     setOrgBaseId(null)
   }, [])
   const [orgBaseId, setOrgBaseId] = useState<string | null>(null)
+  /* Health polling must not reset selection or local dialogs.
   const [orgSession, setOrgSession] = useState(0)
   // 与 orgSession 同步的可变镜像：事件自增可穿透 async 闭包，供 submitRenameBase 比对。
   const orgSessionRef = useRef(orgSession)
@@ -141,6 +143,15 @@ export const KnowledgePageProvider = ({ children, baseId, onBaseIdChange }: Know
     setOrgSession((value) => value + 1)
     orgSessionRef.current += 1
   })
+  */
+  // MEA:profile-verification-network-tolerance Only authorization changes invalidate knowledge operations.
+  const orgSession = org.authorizationVersion
+  const orgSessionRef = org.authorizationVersionRef
+  const [selectionSession, setSelectionSession] = useState(orgSession)
+  if (selectionSession !== orgSession) {
+    setSelectionSession(orgSession)
+    setOrgBaseId(null)
+  }
   const [selectionRoute, setSelectionRoute] = useState(baseId)
   if (selectionRoute !== baseId) {
     setSelectionRoute(baseId)
@@ -276,7 +287,16 @@ export const KnowledgePageProvider = ({ children, baseId, onBaseIdChange }: Know
       onBaseIdChange()
     })
     // }, [org, refetchBases, setCategory, resetBaseNavigation, onBaseIdChange])
-  }, [org, refetchBases, setCategory, resetBaseNavigation, onBaseIdChange, previewNavigationVersion, orgSession])
+  }, [
+    org,
+    refetchBases,
+    setCategory,
+    resetBaseNavigation,
+    onBaseIdChange,
+    previewNavigationVersion,
+    orgSession,
+    orgSessionRef
+  ])
 
   const selectBase = useCallback(
     (baseId: string) => {
@@ -549,7 +569,7 @@ export const KnowledgePageProvider = ({ children, baseId, onBaseIdChange }: Know
         setIsRenamingBase(false)
       }
     },
-    [editingBase, isRenamingBase, org.catalog.owned, org.refresh, t, updateBase]
+    [editingBase, isRenamingBase, org.catalog.owned, org.refresh, orgSessionRef, t, updateBase]
   )
   // 旧替换代码（保留注释）：submitRenameBase 仅本地 updateBase 后关闭弹窗，不同步云端。
   // const submitRenameBase = useCallback(
@@ -752,6 +772,8 @@ export const KnowledgePageProvider = ({ children, baseId, onBaseIdChange }: Know
 
   return <KnowledgePageContext value={value}>{children}</KnowledgePageContext>
 }
+
+export const useKnowledgeAuthorizationVersion = () => use(KnowledgePageContext)?.orgSession ?? 0
 
 export const useKnowledgePage = () => {
   const context = use(KnowledgePageContext)

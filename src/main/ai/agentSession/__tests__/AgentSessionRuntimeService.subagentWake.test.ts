@@ -64,7 +64,13 @@ vi.mock('@main/ai/utils/usageCapture', () => ({
 vi.mock('@main/services/TopicNamingService', () => ({
   topicNamingService: { maybeRenameAgentSession: mocks.maybeRenameAgentSession }
 }))
-vi.mock('@application', () => ({ application: { get: mocks.applicationGet } }))
+// vi.mock('@application', () => ({ application: { get: mocks.applicationGet } }))
+vi.mock('@application', async () => {
+  const { mockApplicationFactory } = await import('@test-mocks/main/application')
+  const result = mockApplicationFactory()
+  result.application.get = mocks.applicationGet
+  return result
+})
 
 const { AgentSessionRuntimeService } = await import('../AgentSessionRuntimeService')
 const { runtimeDriverRegistry } = await import('../../runtime/registry')

@@ -21,7 +21,7 @@ const DATA_API_HANDLER_TIMING_ENABLED = isDev
  * Now uses direct handler mapping for type-safe routing
  */
 export class ApiServer {
-  private static instance: ApiServer
+  private static instance: ApiServer | undefined
   private middlewareEngine: MiddlewareEngine
   private handlers: ApiImplementation
 
@@ -49,6 +49,15 @@ export class ApiServer {
       throw new Error('ApiServer not initialized. Call initialize() first.')
     }
     return ApiServer.instance
+  }
+
+  /**
+   * Release the process-level server so a profile runtime can be rebuilt.
+   */
+  public dispose(): void {
+    if (ApiServer.instance === this) {
+      ApiServer.instance = undefined
+    }
   }
 
   /**

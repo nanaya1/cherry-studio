@@ -30,7 +30,7 @@ export {
   type AuthenticatedAuthMode,
   type ProfileIdentity
 } from './ProfileIdentity'
-export { confirmProfileClaim, createProfileBootstrapWindow } from './ProfileBootstrapWindow'
+export { closeProfileBootstrapWindows, confirmProfileClaim, createProfileBootstrapWindow } from './ProfileBootstrapWindow'
 export { ProfileInstallation } from './ProfileInstallation'
 export {
   LegacyProfileAdoption,

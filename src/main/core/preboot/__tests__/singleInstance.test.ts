@@ -91,6 +91,7 @@ describe('requireSingleInstance', () => {
   it('brings the existing window to the front when a second instance is rejected', async () => {
     const window = {
       isDestroyed: () => false,
+      isVisible: () => true,
       isMinimized: () => true,
       restore: vi.fn(),
       show: vi.fn(),
@@ -110,6 +111,125 @@ describe('requireSingleInstance', () => {
     expect(window.restore).toHaveBeenCalledTimes(1)
     expect(window.show).toHaveBeenCalledTimes(1)
     expect(window.focus).toHaveBeenCalledTimes(1)
+  })
+
+  it('普通二次启动跳过排在首位的隐藏预热窗口并唤醒可见窗口', async () => {
+    const standby = {
+      isDestroyed: () => false,
+      isVisible: () => false,
+      isMinimized: () => false,
+      restore: vi.fn(),
+      show: vi.fn(),
+      focus: vi.fn()
+    }
+    const visible = { ...standby, isVisible: () => true, show: vi.fn(), focus: vi.fn() }
+    getAllWindowsMock.mockReturnValue([standby, visible])
+    stubElectron()
+    stubApplication()
+    const { requireSingleInstance } = await loadModule()
+    requireSingleInstance()
+
+    appOnMock.mock.calls.find(([event]) => event === 'second-instance')![1]({}, ['app.exe'])
+
+    expect(standby.show).not.toHaveBeenCalled()
+    expect(standby.focus).not.toHaveBeenCalled()
+    expect(visible.focus).toHaveBeenCalledOnce()
+  })
+
+  it.each(['meacowork://oauth/callback?code=test&state=test', 'meacowork://auth?code=test'])(
+    '协议回调 %s 不通过通用监听器显示窗口且继续传递给其他监听器',
+    async (url) => {
+      const window = {
+        isDestroyed: () => false,
+        isVisible: () => true,
+        isMinimized: () => true,
+        restore: vi.fn(),
+        show: vi.fn(),
+        focus: vi.fn()
+      }
+      getAllWindowsMock.mockReturnValue([window])
+      stubElectron()
+      stubApplication()
+      const { requireSingleInstance } = await loadModule()
+      requireSingleInstance()
+      const protocolHandler = vi.fn()
+      appOnMock('second-instance', protocolHandler)
+      const argv = ['app.exe', url]
+      for (const [event, handler] of appOnMock.mock.calls) {
+        if (event === 'second-instance') handler({}, argv)
+      }
+
+      expect(window.restore).not.toHaveBeenCalled()
+      expect(window.show).not.toHaveBeenCalled()
+      expect(window.focus).not.toHaveBeenCalled()
+      expect(protocolHandler).toHaveBeenCalledWith({}, argv)
+    }
+  )
+
+  it('does not reveal a hidden bootstrap before ready-to-show', async () => {
+    const window = {
+      isDestroyed: () => false,
+      isVisible: () => false,
+      isMinimized: () => false,
+      show: vi.fn(),
+      focus: vi.fn()
+    }
+    getAllWindowsMock.mockReturnValue([window])
+    stubElectron()
+    stubApplication()
+    const { requireSingleInstance, deferWindowReveal } = await loadModule()
+    deferWindowReveal(window as any)
+    requireSingleInstance()
+    appOnMock.mock.calls.find(([event]) => event === 'second-instance')![1]()
+    expect(window.show).not.toHaveBeenCalled()
+    expect(window.focus).not.toHaveBeenCalled()
+  })
+
+  it('只有隐藏待用窗口时普通重启不显示任何窗口', async () => {
+    const window = {
+      isDestroyed: () => false,
+      isVisible: () => false,
+      isMinimized: () => false,
+      show: vi.fn(),
+      focus: vi.fn()
+    }
+    getAllWindowsMock.mockReturnValue([window])
+    stubElectron()
+    stubApplication()
+    const { requireSingleInstance } = await loadModule()
+    requireSingleInstance()
+
+    appOnMock.mock.calls.find(([event]) => event === 'second-instance')![1]({}, ['app.exe'])
+
+    expect(window.show).not.toHaveBeenCalled()
+    expect(window.focus).not.toHaveBeenCalled()
+  })
+
+  it('bootstrap 就绪后可唤醒已显示窗口且最小化窗口不依赖 isVisible', async () => {
+    let visible = false
+    const window = {
+      isDestroyed: () => false,
+      isVisible: () => visible,
+      isMinimized: () => true,
+      restore: vi.fn(),
+      show: vi.fn(),
+      focus: vi.fn()
+    }
+    getAllWindowsMock.mockReturnValue([window])
+    stubElectron()
+    stubApplication()
+    const { requireSingleInstance, deferWindowReveal } = await loadModule()
+    const allowReveal = deferWindowReveal(window as any)
+    requireSingleInstance()
+    const handler = appOnMock.mock.calls.find(([event]) => event === 'second-instance')![1]
+    handler({}, ['app.exe'])
+    expect(window.restore).not.toHaveBeenCalled()
+    allowReveal()
+    handler({}, ['app.exe'])
+    expect(window.restore).toHaveBeenCalledOnce()
+    visible = true
+    handler({}, ['app.exe'])
+    expect(window.focus).toHaveBeenCalledTimes(2)
   })
 
   it('calls application.quit() and process.exit(0) when the lock is denied', async () => {

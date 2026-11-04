@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 
 import { Button, Combobox } from '@cherrystudio/ui'
 import { ipcApi } from '@renderer/ipc'
+import { toast } from '@renderer/services/toast'
 import type { OrgKnowledgeCollaborator, OrgKnowledgeShareResult } from '@shared/data/types/enterpriseKnowledge'
 
 import { canInviteAfterShare } from '../utils/sharing'
@@ -16,6 +17,8 @@ export default function KnowledgeInvitePanel({
   onBusyChange,
   onPrepared,
   onInvited,
+  canContinue,
+  onSettled,
   renderActions
 }: {
   baseId: string
@@ -26,6 +29,8 @@ export default function KnowledgeInvitePanel({
   onBusyChange: (busy: boolean) => void
   onPrepared: (result: OrgKnowledgeShareResult) => void
   onInvited: () => void
+  canContinue?: () => boolean
+  onSettled?: () => void
   renderActions?: (inviteButton: ReactNode) => ReactNode
 }) {
   const { t } = useTranslation()
@@ -89,14 +94,16 @@ export default function KnowledgeInvitePanel({
           cached && canInviteAfterShare(cached)
             ? cached
             : await ipcApi.request('enterprise.knowledge.share', { baseId, uploadOriginal })
-        if (!active.current) return
-        setCopy(result)
-        onPrepared(result)
+        if (!(canContinue ? canContinue() : active.current)) return
+        if (active.current) {
+          setCopy(result)
+          onPrepared(result)
+        }
         if (!canInviteAfterShare(result)) throw new Error(t('knowledge.org.upload_incomplete'))
         target = result.shareId
       }
       const current = await ipcApi.request('enterprise.knowledge.members', { baseId: target })
-      if (!active.current) return
+      if (!(canContinue ? canContinue() : active.current)) return
       if (
         current.members.some(
           (member) =>
@@ -104,18 +111,22 @@ export default function KnowledgeInvitePanel({
             ['active', 'pending', 'invited', 'accepted', 'joined'].includes(member.status ?? '')
         )
       ) {
-        setSent((previous) => [...previous, recipient.id])
+        if (active.current) setSent((previous) => [...previous, recipient.id])
         throw new Error(t('knowledge.org.member_exists'))
       }
       await ipcApi.request('enterprise.knowledge.invite', { baseId, userId: recipient.id, expireDays: 7 })
-      if (!active.current) return
-      setSent((previous) => [...previous, recipient.id])
+      if (!(canContinue ? canContinue() : active.current)) return
+      if (active.current) setSent((previous) => [...previous, recipient.id])
+      else toast.success(t('knowledge.org.invited'))
       onInvited()
     } catch (cause) {
-      if (active.current) setError(cause instanceof Error ? cause.message : String(cause))
+      const message = cause instanceof Error ? cause.message : String(cause)
+      if (active.current) setError(message)
+      else if (canContinue?.()) toast.error(message)
     } finally {
       lock.current = false
       if (active.current) onBusyChange(false)
+      if (canContinue?.()) onSettled?.()
     }
   }
   const inviteButton = (

@@ -1,5 +1,6 @@
 import type { ISeeder } from '../types'
 import { BrowserCapabilityUpgradeSeeder } from './seeders/browserCapabilityUpgradeSeeder'
+import { BuiltinAssistantMcpBindingSeeder } from './seeders/builtinAssistantMcpBindingSeeder'
 import { BuiltinMcpServerSeeder } from './seeders/builtinMcpServerSeeder'
 import { CherryAiDefaultModelSeeder } from './seeders/cherryaiDefaultModelSeeder'
 import { CherryAssistantSeeder } from './seeders/cherryAssistantSeeder'
@@ -38,5 +39,7 @@ export const seeders: ISeeder[] = [
   new PresetProviderSeeder(),
   new LocalModelSeeder(),
   new MiniAppSeeder(),
-  new BuiltinMcpServerSeeder()
+  new BuiltinMcpServerSeeder(),
+  // Keep binding after default server installation; do not replay installation versions.
+  new BuiltinAssistantMcpBindingSeeder()
 ]

@@ -1,4 +1,11 @@
-import { describe, expect, it, vi } from 'vitest'
+import { mockMainLoggerService } from '@test-mocks/MainLoggerService'
+import { dialog } from 'electron'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+vi.mock('electron', () => ({
+  app: { getLocale: () => 'en-US' },
+  dialog: { showMessageBoxSync: vi.fn(() => 1) }
+}))
 
 import type { ShutdownResult } from '@main/core/application/Application'
 
@@ -86,6 +93,14 @@ function dependencies() {
 }
 
 describe('ProfileSwitchCoordinator', () => {
+  beforeEach(() => {
+    vi.mocked(dialog.showMessageBoxSync).mockReset().mockReturnValue(1)
+  })
+
+  afterEach(() => {
+    mockMainLoggerService.error.mockClear()
+  })
+
   it('relaunches after committing the first login without entering business in the login process', async () => {
     const deps = dependencies()
     const startBusiness = vi.fn(async () => {
@@ -156,6 +171,27 @@ describe('ProfileSwitchCoordinator', () => {
       'application:relaunch'
     ])
     expect(beginSwitch).toHaveBeenCalledWith(request.operationId)
+  })
+
+  it('logs the activation failure reason before exiting for business-startup recovery', async () => {
+    const deps = dependencies()
+    mockMainLoggerService.error.mockClear()
+
+    const result = await new ProfileSwitchCoordinator({
+      ...deps,
+      activateAuthenticated: async () => {
+        throw new Error('No active boot attempt for profile abc')
+      }
+    }).switchProfile(request, deps.targetRecord)
+
+    expect(result).toEqual({ kind: 'needs-recovery', stage: 'business-startup' })
+    expect(deps.application.forceExit).toHaveBeenCalledWith(1)
+    expect(deps.application.relaunch).not.toHaveBeenCalled()
+    // 只能靠日志定位：这里 force-exit 后不会重启，没有原因就无法判断为何起不来。
+    expect(mockMainLoggerService.error).toHaveBeenCalledWith(
+      'Same-process business activation failed; entering business-startup recovery',
+      expect.any(Error)
+    )
   })
 
   it('runs target preparation only after clean teardown and before pointer commit', async () => {
@@ -328,6 +364,42 @@ describe('ProfileSwitchCoordinator', () => {
     expect(result).toEqual({ kind: 'needs-recovery', stage: 'journal-committed' })
     expect(deps.application.forceExit).toHaveBeenCalledWith(1)
     expect(deps.application.relaunch).not.toHaveBeenCalled()
+  })
+
+  it('offers restart or quit after an unrecoverable switch and never reopens the fence', async () => {
+    const deps = dependencies()
+    deps.activePointer.commitPointer.mockRejectedValue(new Error('disk write failed'))
+    vi.mocked(dialog.showMessageBoxSync).mockImplementation(() => {
+      expect(deps.application.relaunch).not.toHaveBeenCalled()
+      expect(deps.application.forceExit).not.toHaveBeenCalled()
+      expect(deps.fence.state.kind).toBe('needs-recovery')
+      return 0
+    })
+    await expect(new ProfileSwitchCoordinator(deps).switchProfile(request, deps.targetRecord)).resolves.toEqual({
+      kind: 'needs-recovery',
+      stage: 'active-pointer'
+    })
+    expect(dialog.showMessageBoxSync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'error',
+        buttons: expect.arrayContaining([expect.any(String)]),
+        cancelId: 1
+      })
+    )
+    expect(deps.application.relaunch).toHaveBeenCalledOnce()
+    expect(deps.application.forceExit).not.toHaveBeenCalled()
+    expect(deps.fence.state.kind).toBe('needs-recovery')
+  })
+
+  it('reports a journal prepare exception without starting teardown or committing a pointer', async () => {
+    const deps = dependencies()
+    deps.journal.prepare.mockRejectedValue(new Error('disk unavailable'))
+    const result = await new ProfileSwitchCoordinator(deps).switchProfile(request, deps.targetRecord)
+    expect(result).toEqual({ kind: 'needs-recovery', stage: 'journal-prepared' })
+    expect(deps.application.prepareProfileSwitch).not.toHaveBeenCalled()
+    expect(deps.activePointer.commitPointer).not.toHaveBeenCalled()
+    expect(dialog.showMessageBoxSync).toHaveBeenCalledOnce()
+    expect(deps.application.forceExit).toHaveBeenCalledWith(1)
   })
 
   describe('same-process activation (activateAuthenticated)', () => {

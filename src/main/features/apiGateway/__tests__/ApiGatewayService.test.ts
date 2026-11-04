@@ -29,8 +29,8 @@ const {
   mockPreferenceSet: vi.fn<(key: string, value: boolean | string) => Promise<void>>(),
   mockPreferenceSetMultiple: vi.fn<(updates: Record<string, unknown>) => Promise<void>>(),
   captured: {
-    prefHandler: undefined as ((enabled: boolean) => void) | undefined,
-    enabledPreference: false,
+    prefHandler: undefined as ((enabled: boolean | null) => void) | undefined,
+    enabledPreference: false as boolean | null,
     hostPreference: '127.0.0.1',
     portPreference: 23333,
     ipv6Addresses: [] as string[],
@@ -77,7 +77,7 @@ vi.mock('@application', async () => {
   const { mockApplicationFactory } = await import('@test-mocks/main/application')
   return mockApplicationFactory({
     PreferenceService: {
-      subscribeChange: vi.fn((_key: string, cb: (enabled: boolean) => void) => {
+      subscribeChange: vi.fn((_key: string, cb: (enabled: boolean | null) => void) => {
         captured.prefHandler = cb
         return () => {}
       }),
@@ -218,6 +218,75 @@ describe('ApiGatewayService reconcile', () => {
 
     expect(mockStart).not.toHaveBeenCalled()
     expect(service.isActivated).toBe(false)
+  })
+
+  // null = automatic: the gateway must NOT auto-start at boot, only on demand.
+  it('stays stopped at boot in automatic mode', async () => {
+    captured.enabledPreference = null
+    const service = new ApiGatewayService()
+
+    await service._doInit()
+
+    expect(mockStart).not.toHaveBeenCalled()
+    expect(service.isActivated).toBe(false)
+  })
+
+  // Automatic mode may start the gateway to bridge a model, but must not persist an always-on intent.
+  it('starts on demand in automatic mode without persisting always-on intent', async () => {
+    captured.enabledPreference = null
+    const service = new ApiGatewayService()
+    await service._doInit()
+
+    const ensured = service.ensureRunning()
+    await vi.waitFor(() => expect(mockStart).toHaveBeenCalledTimes(1))
+    startResolvers[0]()
+    await ensured
+
+    expect(service.isActivated).toBe(true)
+    expect(mockPreferenceSet).not.toHaveBeenCalled()
+  })
+
+  it('does not start on demand after the user explicitly disabled the gateway', async () => {
+    const service = new ApiGatewayService()
+    await service._doInit()
+
+    await expect(service.ensureRunning()).rejects.toThrow('API Gateway is disabled')
+    expect(mockStart).not.toHaveBeenCalled()
+  })
+
+  // If the user disables the gateway while an automatic start is still binding, it must stop and error
+  // rather than leaving a non-resident gateway resident.
+  it('stops an automatic start when the user disables the gateway while it is binding', async () => {
+    captured.enabledPreference = null
+    const service = new ApiGatewayService()
+    await service._doInit()
+
+    const ensured = service.ensureRunning()
+    await vi.waitFor(() => expect(mockStart).toHaveBeenCalledTimes(1))
+
+    captured.enabledPreference = false
+    captured.prefHandler!(false)
+    startResolvers[0]()
+
+    await expect(ensured).rejects.toThrow('disabled while starting')
+    await vi.waitFor(() => expect(mockStop).toHaveBeenCalledTimes(1))
+    expect(service.isActivated).toBe(false)
+  })
+
+  // Automatic mode never exposes the LAN: it binds loopback even when the persisted host is wildcard.
+  it('binds loopback only when auto-started, never exposing LAN without explicit enable', async () => {
+    captured.enabledPreference = null
+    captured.hostPreference = '0.0.0.0'
+    const service = new ApiGatewayService()
+    await service._doInit()
+
+    const ensured = service.ensureRunning()
+    await vi.waitFor(() => expect(mockStart).toHaveBeenCalledTimes(1))
+    startResolvers[0]()
+    await ensured
+
+    expect(service.isActivated).toBe(true)
+    expect(ApiGateway).toHaveBeenLastCalledWith({ host: '127.0.0.1', port: 23333 })
   })
 
   it('starts at boot when the preference is enabled', async () => {

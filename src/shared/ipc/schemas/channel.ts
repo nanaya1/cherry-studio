@@ -38,6 +38,17 @@ export const channelRequestSchemas = {
     input: z.string(),
     output: z.object({ exists: z.boolean(), userId: z.string().optional() })
   }),
+  'channel.dingtalk.test_connection': defineRoute({
+    input: z.strictObject({
+      client_id: z.string().min(1),
+      client_secret: z.string().min(1),
+      robot_code: z.string().optional()
+    }),
+    output: z.object({
+      connected: z.boolean(),
+      message: z.enum(['connected', 'credentials_invalid', 'connection_failed', 'timeout'])
+    })
+  }),
   'channel.get_logs': defineRoute({ input: z.string(), output: z.array(channelLogEntry) })
 }
 

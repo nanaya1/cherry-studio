@@ -1,5 +1,8 @@
+import { app, dialog } from 'electron'
+
 import { loggerService } from '@logger'
 import type { ShutdownResult } from '@main/core/application/Application'
+import { resolveSystemLanguage, t } from '@main/i18n'
 
 const logger = loggerService.withContext('ProfileSwitchCoordinator')
 
@@ -13,6 +16,36 @@ interface SwitchApplication {
   prepareProfileLogout?(): Promise<ShutdownResult>
   relaunch(): void
   forceExit(code: number): void
+}
+
+// MEA:profile-verification-network-tolerance Recovery must outlive a partially destroyed service container.
+export function showProfileRecoveryChoice(
+  application: Pick<SwitchApplication, 'relaunch' | 'forceExit'>,
+  stage: string,
+  loadFailure = false
+): void {
+  // const translate = (key: string, params?: Record<string, string>) =>
+  //   t (key, params, resolveSystemLanguage(app.getLocale()))
+  const language = resolveSystemLanguage(app.getLocale())
+  const response = dialog.showMessageBoxSync({
+    type: 'error',
+    title: loadFailure
+      ? t('dialog.profile_bootstrap.load_failed.title', undefined, language)
+      : t('dialog.profile_bootstrap.recovery.title', undefined, language),
+    message: loadFailure
+      ? t('dialog.profile_bootstrap.load_failed.message', undefined, language)
+      : t('dialog.profile_bootstrap.recovery.message', undefined, language),
+    detail: t('dialog.profile_bootstrap.recovery.detail', { stage }, language),
+    buttons: [
+      t('dialog.profile_bootstrap.recovery.restart', undefined, language),
+      t('dialog.profile_bootstrap.recovery.quit', undefined, language)
+    ],
+    defaultId: 0,
+    cancelId: 1,
+    noLink: true
+  })
+  if (response === 0) application.relaunch()
+  else application.forceExit(1)
 }
 
 export interface ProfileSwitchCoordinatorDependencies {
@@ -65,7 +98,14 @@ export class ProfileSwitchCoordinator {
     targetRecord: ProfileRecordV1,
     transition: ProfileSwitchTransition = {}
   ): Promise<ProfileSwitchResult> {
-    const prepared = await this.dependencies.journal.prepare(request)
+    // const prepared = await this.dependencies.journal.prepare(request)
+    let prepared: Awaited<ReturnType<ProfileSwitchJournal['prepare']>>
+    try {
+      prepared = await this.dependencies.journal.prepare(request)
+    } catch {
+      this.dependencies.fence.beginSwitch(request.operationId)
+      return this.needsRecovery('journal-prepared')
+    }
     this.dependencies.fence.beginSwitch(request.operationId)
     if (prepared.durability.kind === 'committed-durability-unknown' && prepared.durability.reason !== 'unsupported') {
       return this.needsRecovery('journal-prepared')
@@ -82,10 +122,12 @@ export class ProfileSwitchCoordinator {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       this.dependencies.fence.markTeardownFailed(message)
+      showProfileRecoveryChoice(this.dependencies.application, 'teardown')
       return { kind: 'teardown-failed', error: message }
     }
     if (!teardown.clean) {
       this.dependencies.fence.markTeardownFailed('One or more services failed to stop or destroy cleanly')
+      showProfileRecoveryChoice(this.dependencies.application, 'teardown')
       return { kind: 'teardown-failed', teardown }
     }
 
@@ -109,6 +151,7 @@ export class ProfileSwitchCoordinator {
       this.dependencies.fence.markTeardownFailed(message)
       // Keep the failure visible so an unsuccessful login cannot look like a committed switch.
       // this.dependencies.application.relaunch()
+      showProfileRecoveryChoice(this.dependencies.application, 'target-preparation')
       return { kind: 'teardown-failed', error: message }
     }
 
@@ -143,8 +186,8 @@ export class ProfileSwitchCoordinator {
         await this.dependencies.openSignedOut(committedTarget)
       } catch (error) {
         logger.error('Could not open the signed-out window', error as Error)
-        this.dependencies.application.forceExit(1)
-        throw error
+        // this.dependencies.application.forceExit(1)
+        return this.needsRecovery('business-startup')
       }
       return { kind: 'signed-out' }
     }
@@ -154,9 +197,11 @@ export class ProfileSwitchCoordinator {
       try {
         const activated = await this.dependencies.activateAuthenticated(committedTarget)
         if (activated) return { kind: 'activated', record: committedTarget }
-      } catch {
+      } catch (error) {
         // Post-commit startup failure. The credentials are already durable, so a
         // rollback would be wrong — force-exit into business-startup recovery.
+        // 必须留下原因：这里只 force-exit(1)，日志里没有异常就无法判断为什么没起来。
+        logger.error('Same-process business activation failed; entering business-startup recovery', error as Error)
         return this.needsRecovery('business-startup')
       }
     }
@@ -167,7 +212,8 @@ export class ProfileSwitchCoordinator {
 
   private needsRecovery(stage: Extract<ProfileSwitchResult, { kind: 'needs-recovery' }>['stage']): ProfileSwitchResult {
     this.dependencies.fence.markNeedsRecovery(`Profile switch durability is unknown at ${stage}`)
-    this.dependencies.application.forceExit(1)
+    // this.dependencies.application.forceExit(1)
+    showProfileRecoveryChoice(this.dependencies.application, stage)
     return { kind: 'needs-recovery', stage }
   }
 }

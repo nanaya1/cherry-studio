@@ -404,6 +404,66 @@ it.each(['create', 'folder'])('真实传输 %s 返回401不刷新重放写入', 
   expect(tokens).toBe(stage === 'create' ? 1 : 4)
 })
 
+it.each(['create', 'upload'] as const)(
+  '同身份角色代际变化在 %s 后停止旧上传，保留原key证据且不发DELETE',
+  async (stage) => {
+    service.dispose()
+    let generation = 1
+    service = new OrgKnowledgeService({
+      apiClient: api,
+      acquireLease: () => ({ issuerId: 's', userId: 'u', groupId: 'g', generation }),
+      assertLease: (lease: { generation: number }) => {
+        if (lease.generation !== generation) throw new Error('stale authorization')
+      }
+    } as never)
+    let finish!: () => void
+    let started!: () => void
+    const ready = new Promise<void>((resolve) => {
+      started = resolve
+    })
+    const original = api.request.getMockImplementation()!
+    if (stage === 'create')
+      api.request.mockImplementation((path, options) => {
+        if (path.endsWith('/local-share/spaces'))
+          return new Promise((resolve) => {
+            finish = () => resolve({ share_id: 'space' })
+            started()
+          })
+        return original(path, options)
+      })
+    let uploadSignal: AbortSignal | undefined
+    if (stage === 'upload')
+      api.requestFileMultipart.mockImplementationOnce(
+        (_path, _entry, report, _guard, _beforeStop, signal) =>
+          new Promise((resolve) => {
+            finish = () => resolve({ share_id: 'space', file_id: 'file', chunk_count: 1 })
+            uploadSignal = signal
+            report(4)
+            started()
+          })
+      )
+    const attempt = service.share('A')
+    const rejected = expect(attempt).rejects.toThrow('组织账号已切换')
+    await ready
+    generation += 1
+    service.invalidateAuthorizationContext()
+    if (stage === 'upload') expect(uploadSignal?.aborted).toBe(true)
+    await expect(service.share('B')).rejects.toThrow('正在上传云端')
+    finish()
+    await rejected
+    const key = JSON.stringify(['s', 'u', 'g', 'A'])
+    const saved = orgStateStore.getFirstShareUpload(key)!
+    expect(saved).toMatchObject({ creation: 'created', shareId: 'space' })
+    if (stage === 'upload') expect(saved.files[0]).toMatchObject({ fileId: 'file', phase: 'unknown' })
+    else expect(api.requestFileMultipart).not.toHaveBeenCalled()
+    expect(orgStateStore.getShareAssociation(key)).toBeUndefined()
+    expect(api.request.mock.calls.filter(([, options]) => options?.method === 'DELETE')).toEqual([])
+    expect((service as any).firstShareProgress.size).toBe(0)
+    api.request.mockImplementation(original)
+    expect((await service.share('B')).completion).toBe('completed')
+  }
+)
+
 it('同库复用promise，异库在第一个await前拒绝，未创建第二个远端库', async () => {
   const first = service.share('A')
   expect(service.share('A')).toBe(first)

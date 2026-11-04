@@ -2,6 +2,8 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import React from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { CreateAgentChannelSchema } from '@shared/data/api/schemas/agentChannels'
+
 import ChannelDetail from '../ChannelDetail'
 import type { AvailableChannel } from '../channelTypes'
 
@@ -234,6 +236,33 @@ describe('ChannelDetail', () => {
     } as never
   })
 
+  it('creates a DingTalk channel with a payload accepted by the shared IPC schema', async () => {
+    channelMocks.channels = []
+    channelMocks.createChannel.mockResolvedValue({ id: 'new-dingtalk-channel' })
+    const dingtalkChannelDef: AvailableChannel = {
+      type: 'dingtalk',
+      name: 'DingTalk',
+      titleKey: 'agent.channels.dingtalk.title',
+      description: 'agent.channels.dingtalk.description',
+      available: true,
+      defaultConfig: { client_id: '', client_secret: '', allowed_chat_ids: [], require_mention: true }
+    }
+    render(<ChannelDetail channelDef={dingtalkChannelDef} />)
+
+    fireEvent.click(screen.getByText('agent.channels.add'))
+
+    await waitFor(() => {
+      const payload = channelMocks.createChannel.mock.calls[0][0]
+      expect(CreateAgentChannelSchema.safeParse(payload).success).toBe(true)
+      expect(payload).toMatchObject({
+        type: 'dingtalk',
+        workspace: { type: 'system' },
+        config: dingtalkChannelDef.defaultConfig,
+        isActive: false
+      })
+    })
+  })
+
   it('creates new channels inactive so empty default credentials pass server validation', async () => {
     channelMocks.createChannel.mockResolvedValue({ id: 'channel-2' })
     render(<ChannelDetail channelDef={channelDef} />)
@@ -261,6 +290,11 @@ describe('ChannelDetail', () => {
     const nameInput = await screen.findByDisplayValue<HTMLInputElement>('Telegram channel')
     expect(nameInput).toHaveFocus()
     expect(nameInput.selectionStart).toBe(nameInput.selectionEnd)
+
+    const dialogTitle = screen.getByRole('heading', { name: 'Telegram channel' })
+    const dialogContent = dialogTitle.parentElement?.parentElement?.parentElement
+    expect(dialogContent).toHaveClass('max-h-[calc(100vh-2rem)]', 'overflow-y-auto')
+    expect(dialogTitle.parentElement?.parentElement).toHaveClass('pr-1')
 
     fireEvent.click(screen.getByText('agent.channels.security.inheritFromAgent'))
 

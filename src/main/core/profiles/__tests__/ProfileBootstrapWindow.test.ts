@@ -1,15 +1,27 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { application } from '@application'
+
+import { setProfileLaunchContext } from '../ProfileRuntimeContext'
+
 const {
+  appOnMock,
+  authCallbackMock,
+  loadFileMock,
   showMessageBoxMock,
+  showMessageBoxSyncMock,
   ipcMainHandleMock,
   ipcMainRemoveHandlerMock,
   passwordLoginMock,
   resolveSystemLanguageMock,
   translateMock
 } = vi.hoisted(() => ({
+  appOnMock: vi.fn(),
+  authCallbackMock: vi.fn(() => Promise.resolve()),
+  loadFileMock: vi.fn(() => Promise.resolve()),
   passwordLoginMock: vi.fn(),
   showMessageBoxMock: vi.fn(),
+  showMessageBoxSyncMock: vi.fn(() => 1),
   ipcMainHandleMock: vi.fn(),
   ipcMainRemoveHandlerMock: vi.fn(),
   resolveSystemLanguageMock: vi.fn(() => 'zh-CN'),
@@ -20,30 +32,43 @@ const {
 }))
 
 vi.mock('electron', () => ({
-  app: { getLocale: () => 'zh-CN', on: vi.fn(), removeListener: vi.fn() },
+  app: { getLocale: () => 'zh-CN', on: appOnMock, removeListener: vi.fn() },
   BrowserWindow: class {
-    webContents = { mainFrame: {}, once: vi.fn() }
+    webContents = { mainFrame: {}, once: vi.fn(), on: vi.fn() }
     webPreferences: unknown = undefined
     constructor(opts: unknown) {
       this.webPreferences = opts
     }
-    loadURL = vi.fn()
-    loadFile = vi.fn()
+    loadURL = vi.fn(() => Promise.resolve())
+    loadFile = loadFileMock
+    hide = vi.fn()
+    focus = vi.fn()
+    isMinimized = vi.fn(() => false)
+    restore = vi.fn()
     once = vi.fn()
     on = vi.fn()
     show = vi.fn()
     close = vi.fn()
     isDestroyed = vi.fn(() => false)
   },
-  dialog: { showMessageBox: showMessageBoxMock },
+  dialog: {
+    showMessageBox: showMessageBoxMock,
+    showErrorBox: showMessageBoxMock,
+    showMessageBoxSync: showMessageBoxSyncMock
+  },
   ipcMain: { handle: ipcMainHandleMock, removeHandler: ipcMainRemoveHandlerMock }
 }))
-vi.mock('@application', () => ({ application: {} }))
+vi.mock('@application', async () => {
+  const { mockApplicationFactory } = await import('@test-mocks/main/application')
+  return mockApplicationFactory()
+})
 vi.mock('@main/core/preboot/profileIsolationRuntime', () => ({ adoptLegacyProfile: vi.fn() }))
+vi.mock('../LegacyProfileAdoption', () => ({ validateSqliteIntegrity: vi.fn() }))
 vi.mock('@main/i18n', () => ({ resolveSystemLanguage: resolveSystemLanguageMock, t: translateMock }))
 vi.mock('@main/enterprise/OrgAuthManager', () => ({
   OrgAuthManager: class {
     getPhase = () => 'idle'
+    handleAuthCallback = authCallbackMock
   }
 }))
 vi.mock('@main/enterprise/OrgApiClient', () => ({
@@ -55,7 +80,11 @@ vi.mock('@main/enterprise/passwordLoginRuntime', () => ({
 }))
 vi.mock('@main/enterprise/OrgCredentialStore', () => ({ OrgCredentialStore: class {} }))
 
-import { confirmProfileClaim, createProfileBootstrapWindow } from '../ProfileBootstrapWindow'
+import {
+  closeProfileBootstrapWindows,
+  confirmProfileClaim,
+  createProfileBootstrapWindow
+} from '../ProfileBootstrapWindow'
 
 const SIGNED_OUT_DIGEST = 'f'.repeat(64)
 const preview = {
@@ -140,10 +169,251 @@ describe('confirmProfileClaim', () => {
   })
 })
 
+const loginContext = {
+  mode: 'signed-out' as const,
+  profileId: 'signed-out',
+  identityDigest: SIGNED_OUT_DIGEST,
+  kind: 'signed-out' as const,
+  dataRoot: '/data',
+  profileRoot: '/data/profiles/signed-out'
+}
+
+function emitWindow(window: any, event: string, ...args: unknown[]) {
+  for (const [, listener] of window.once.mock.calls.filter(([name]: [string]) => name === event)) listener(...args)
+}
+
+function failLoad(window: any, isMainFrame: boolean) {
+  const calls = [...window.webContents.once.mock.calls, ...(window.webContents.on?.mock.calls ?? [])]
+  for (const [, listener] of calls.filter(([name]: [string]) => name === 'did-fail-load')) {
+    listener({}, -6, 'ERR_FILE_NOT_FOUND', 'file:///bootstrap.html', isMainFrame)
+  }
+}
+
 describe('createProfileBootstrapWindow', () => {
   beforeEach(() => {
-    showMessageBoxMock.mockReset()
+    closeProfileBootstrapWindows()
+    loadFileMock.mockClear()
+    appOnMock.mockClear()
+    authCallbackMock.mockClear()
+    showMessageBoxMock.mockReset().mockResolvedValue({ response: 0 })
+    showMessageBoxSyncMock.mockReset().mockReturnValue(1)
     ipcMainHandleMock.mockReset()
+    ipcMainRemoveHandlerMock.mockClear()
+    vi.mocked(application.forceExit).mockClear()
+    Object.assign(application, { isRelaunching: false })
+    setProfileLaunchContext(loginContext)
+  })
+
+  it('exits on user cancellation but not when a login window is superseded', () => {
+    const first = createProfileBootstrapWindow(loginContext) as any
+    const second = createProfileBootstrapWindow({ ...loginContext, legacyRoot: '/legacy' }) as any
+    emitWindow(first, 'closed')
+    expect(application.forceExit).not.toHaveBeenCalled()
+    emitWindow(second, 'closed')
+    expect(application.forceExit).toHaveBeenCalledWith(0)
+  })
+
+  it.each(['activation', 'relaunch'])('does not exit on successful %s', (reason) => {
+    const window = createProfileBootstrapWindow(loginContext) as any
+    if (reason === 'activation') setProfileLaunchContext({ ...loginContext, mode: 'business' })
+    else Object.assign(application, { isRelaunching: true })
+    emitWindow(window, 'closed')
+    expect(application.forceExit).not.toHaveBeenCalled()
+  })
+
+  it('consumes a rejected load promise once even when did-fail-load also fires', async () => {
+    loadFileMock.mockRejectedValueOnce(new Error('ERR_FILE_NOT_FOUND'))
+    const window = createProfileBootstrapWindow(loginContext) as any
+    await Promise.resolve()
+    failLoad(window, true)
+    emitWindow(window, 'ready-to-show')
+    expect(window.close).toHaveBeenCalledOnce()
+    expect(window.show).not.toHaveBeenCalled()
+    expect(showMessageBoxSyncMock).toHaveBeenCalledOnce()
+  })
+
+  it('hands off logout keepalive only once the current window actually shows, including ready reuse', () => {
+    const firstReady = vi.fn()
+    const secondReady = vi.fn()
+    const window = createProfileBootstrapWindow(loginContext, { onReady: firstReady }) as any
+    createProfileBootstrapWindow(loginContext, { onReady: secondReady })
+    expect(firstReady).not.toHaveBeenCalled()
+    expect(secondReady).not.toHaveBeenCalled()
+    firstReady.mockImplementation(() => expect(window.show).toHaveBeenCalled())
+    emitWindow(window, 'ready-to-show')
+    expect(firstReady).toHaveBeenCalledOnce()
+    expect(secondReady).toHaveBeenCalledOnce()
+    const readyReuse = vi.fn()
+    createProfileBootstrapWindow(loginContext, { onReady: readyReuse })
+    expect(readyReuse).toHaveBeenCalledOnce()
+  })
+
+  it('does not hand off keepalive from superseded or failed windows', () => {
+    const staleReady = vi.fn()
+    const failedReady = vi.fn()
+    const first = createProfileBootstrapWindow(loginContext, { onReady: staleReady }) as any
+    const second = createProfileBootstrapWindow(
+      { ...loginContext, legacyRoot: '/legacy' },
+      { onReady: failedReady }
+    ) as any
+    emitWindow(first, 'ready-to-show')
+    failLoad(second, true)
+    emitWindow(second, 'ready-to-show')
+    expect(staleReady).not.toHaveBeenCalled()
+    expect(failedReady).not.toHaveBeenCalled()
+    expect(showMessageBoxSyncMock).toHaveBeenCalledWith(
+      expect.objectContaining({ cancelId: 1, buttons: expect.any(Array) })
+    )
+  })
+
+  /* 原独立恢复窗口测试停用，业务候选现在必须先切到 signed-out。
+  it('exposes real owner-safe candidate query/retry, coalesces retry and rejects other-account races', async () => {
+    let complete!: () => void
+    const retry = vi.fn<(isCurrent: () => boolean) => Promise<void>>(
+      () =>
+        new Promise<void>((resolve) => {
+          complete = resolve
+        })
+    )
+    const selectSignedOut = vi.fn(async () => {})
+    const window = createProfileBootstrapWindow(
+      { ...loginContext, mode: 'business', kind: 'authenticated' },
+      {
+        startupRecovery: { failureKind: 'unavailable', retry, selectSignedOut }
+      }
+    ) as any
+    const handler = (channel: string) => ipcMainHandleMock.mock.calls.find(([name]) => name === channel)![1]
+    const event = { sender: window.webContents, senderFrame: window.webContents.mainFrame }
+    expect(await handler('profile-bootstrap:startup-state')(event)).toEqual({
+      phase: 'failed',
+      failureKind: 'unavailable'
+    })
+    expect(() => handler('profile-bootstrap:retry-recovery')({ ...event, senderFrame: {} })).toThrow('Untrusted')
+    const first = handler('profile-bootstrap:retry-recovery')(event)
+    const second = handler('profile-bootstrap:retry-recovery')(event)
+    expect(retry).toHaveBeenCalledOnce()
+    expect(await handler('profile-bootstrap:startup-state')(event)).toMatchObject({ phase: 'verifying' })
+    await expect(handler('profile-bootstrap:select-signed-out')(event)).rejects.toThrow('in progress')
+    expect(selectSignedOut).not.toHaveBeenCalled()
+    const isCurrent = retry.mock.calls[0][0]
+    expect(isCurrent()).toBe(true)
+    createProfileBootstrapWindow(loginContext)
+    expect(isCurrent()).toBe(false)
+    expect(() => handler('profile-bootstrap:startup-state')(event)).toThrow('Untrusted')
+    complete()
+    await Promise.all([first, second])
+  })
+
+  */
+
+  it('业务候选不能绕过 signed-out 事务打开独立恢复窗口', () => {
+    expect(() => createProfileBootstrapWindow({ ...loginContext, mode: 'business', kind: 'authenticated' })).toThrow(
+      'must select signed-out'
+    )
+    expect(loadFileMock).not.toHaveBeenCalled()
+    expect(ipcMainHandleMock).not.toHaveBeenCalled()
+  })
+
+  it('reuses the same complete context without registering another login runtime', () => {
+    const first = createProfileBootstrapWindow(loginContext)
+    const count = ipcMainHandleMock.mock.calls.length
+    const second = createProfileBootstrapWindow({ ...loginContext })
+    expect(second).toBe(first)
+    expect(ipcMainHandleMock.mock.calls).toHaveLength(count)
+    expect((first as any).show).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    { identityDigest: 'a'.repeat(64) },
+    { profileId: 'other' },
+    { profileRoot: '/other/profile' },
+    { dataRoot: '/other' },
+    { kind: 'local' as const },
+    { legacyRoot: '/legacy' },
+    { pendingSwitch: { operationId: 'retry-1', action: 'retry-or-cancel' as const } }
+  ])('replaces a different authentication context: %j', (change) => {
+    const first = createProfileBootstrapWindow(loginContext) as any
+    const second = createProfileBootstrapWindow({ ...loginContext, ...change })
+    expect(second).not.toBe(first)
+    expect(first.close).toHaveBeenCalledOnce()
+  })
+
+  it('rejects IPC from a replaced window even before its closed event arrives', async () => {
+    const first = createProfileBootstrapWindow(loginContext) as any
+    const oldHandler = ipcMainHandleMock.mock.calls.find(
+      ([channel]) => channel === 'profile-bootstrap:password-login'
+    )![1]
+    createProfileBootstrapWindow({ ...loginContext, legacyRoot: '/legacy' })
+    await expect(async () =>
+      oldHandler(
+        { sender: first.webContents, senderFrame: first.webContents.mainFrame },
+        { identifier: 'test-user', password: 'test-password' }
+      )
+    ).rejects.toThrow('Untrusted authentication sender')
+  })
+
+  it('routes OAuth callbacks only to the current window while the replaced window is closing', () => {
+    createProfileBootstrapWindow(loginContext)
+    createProfileBootstrapWindow({ ...loginContext, legacyRoot: '/legacy' })
+    for (const [event, handler] of appOnMock.mock.calls) {
+      if (event === 'open-url') handler({ preventDefault: vi.fn() }, 'meacowork://auth?code=test')
+    }
+    expect(authCallbackMock).toHaveBeenCalledOnce()
+    for (const [event, handler] of appOnMock.mock.calls) {
+      if (event === 'second-instance') handler({}, ['app', 'meacowork://auth?code=test'])
+    }
+    expect(authCallbackMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('keeps replacement login IPC handlers when the old window closes late', () => {
+    const first = createProfileBootstrapWindow(loginContext) as any
+    const second = createProfileBootstrapWindow({ ...loginContext, legacyRoot: '/legacy' }) as any
+    ipcMainRemoveHandlerMock.mockClear()
+    emitWindow(first, 'closed')
+    expect(ipcMainRemoveHandlerMock).not.toHaveBeenCalledWith('profile-bootstrap:password-login')
+    expect(ipcMainRemoveHandlerMock).not.toHaveBeenCalledWith('profile-bootstrap:enterprise-login')
+    emitWindow(second, 'closed')
+    expect(ipcMainRemoveHandlerMock).toHaveBeenCalledWith('profile-bootstrap:password-login')
+  })
+
+  it('keeps login hidden until ready and never shows it after a main-frame failure', async () => {
+    const window = createProfileBootstrapWindow(loginContext) as any
+    expect(window.webPreferences.show).toBe(false)
+    failLoad(window, false)
+    expect(window.close).not.toHaveBeenCalled()
+    failLoad(window, true)
+    emitWindow(window, 'ready-to-show')
+    await Promise.resolve()
+    expect(window.show).not.toHaveBeenCalled()
+    expect(window.close).toHaveBeenCalledOnce()
+    expect(showMessageBoxSyncMock).toHaveBeenCalledOnce()
+  })
+
+  it('closes every live bootstrap window after same-process business activation', () => {
+    const first = createProfileBootstrapWindow({
+      mode: 'signed-out',
+      profileId: 'signed-out',
+      identityDigest: SIGNED_OUT_DIGEST,
+      kind: 'signed-out',
+      dataRoot: '/data',
+      profileRoot: '/data/profiles/signed-out'
+    }) as any
+    /* 原业务 bootstrap 创建入口停用。
+    const second = createProfileBootstrapWindow({
+      mode: 'business',
+      profileId: 'profile-1',
+      identityDigest: 'a'.repeat(64),
+      kind: 'authenticated',
+      dataRoot: '/data',
+      profileRoot: '/data/profiles/profile-1'
+    }) as any
+    */
+    const second = createProfileBootstrapWindow({ ...loginContext, legacyRoot: '/legacy' }) as any
+
+    closeProfileBootstrapWindows()
+
+    expect(first.close).toHaveBeenCalledOnce()
+    expect(second.close).toHaveBeenCalledOnce()
   })
 
   it('opens the standalone login renderer without loading business data on the signed-out window', () => {
@@ -168,6 +438,7 @@ describe('createProfileBootstrapWindow', () => {
     expect(ipcMainHandleMock).not.toHaveBeenCalledWith('profile-bootstrap:enter-local', expect.any(Function))
   })
 
+  /* 原独立启动恢复页面不再提供运行入口。
   it('opens the workspace startup page hidden until the renderer is ready', () => {
     const window = createProfileBootstrapWindow({
       mode: 'business',
@@ -206,7 +477,7 @@ describe('createProfileBootstrapWindow', () => {
       profileRoot: '/data/profiles/profile-1'
     }) as any
 
-    const didFailLoadHandler = window.webContents.once.mock.calls.find(
+    const didFailLoadHandler = window.webContents.on.mock.calls.find(
       ([event]: [string]) => event === 'did-fail-load'
     )?.[1]
     expect(didFailLoadHandler).toEqual(expect.any(Function))
@@ -226,13 +497,15 @@ describe('createProfileBootstrapWindow', () => {
       profileRoot: '/data/profiles/profile-1'
     }) as any
 
-    const didFailLoadHandler = window.webContents.once.mock.calls.find(
+    const didFailLoadHandler = window.webContents.on.mock.calls.find(
       ([event]: [string]) => event === 'did-fail-load'
     )?.[1]
     didFailLoadHandler({}, -6, 'ERR_FILE_NOT_FOUND', 'file:///subframe.html', false)
 
     expect(window.close).not.toHaveBeenCalled()
   })
+
+  */
 
   it('reports a failed account switch to the login form instead of resolving as success', async () => {
     const window = createProfileBootstrapWindow({
@@ -274,7 +547,7 @@ describe('createProfileBootstrapWindow', () => {
     expect(ipcMainHandleMock).not.toHaveBeenCalledWith('profile-bootstrap:adopt-legacy', expect.any(Function))
   })
 
-  it('uses the isolated login renderer for the signed-out fallback', () => {
+  it('signed-out 回退提供受信任的密码登录 IPC，而非仅切换界面', async () => {
     const window = createProfileBootstrapWindow({
       mode: 'signed-out',
       profileId: 'signed-out',
@@ -287,6 +560,18 @@ describe('createProfileBootstrapWindow', () => {
     expect(window.loadFile).toHaveBeenCalledWith(
       expect.stringMatching(/renderer[\\/]windows[\\/]profileBootstrap[\\/]index\.html/)
     )
-    expect(ipcMainHandleMock).toHaveBeenCalledWith('profile-bootstrap:password-login', expect.any(Function))
+    for (const channel of ['startup-state', 'retry-recovery', 'select-signed-out']) {
+      expect(ipcMainHandleMock).not.toHaveBeenCalledWith(`profile-bootstrap:${channel}`, expect.any(Function))
+    }
+    passwordLoginMock.mockResolvedValueOnce({ kind: 'relaunching' })
+    const handler = ipcMainHandleMock.mock.calls.find(([channel]) => channel === 'profile-bootstrap:password-login')![1]
+    expect(() => handler({ sender: window.webContents, senderFrame: {} }, {})).toThrow('Untrusted')
+    await expect(
+      handler(
+        { sender: window.webContents, senderFrame: window.webContents.mainFrame },
+        { identifier: 'test-user', password: 'test-password' }
+      )
+    ).resolves.toEqual({ kind: 'relaunching' })
+    expect(passwordLoginMock).toHaveBeenLastCalledWith('test-user', 'test-password')
   })
 })

@@ -1,12 +1,21 @@
+import { loggerService } from '@logger'
 import type { BusinessAccessGate } from '@main/core/profiles'
 
+import { isDefinitiveVerificationError, VerificationError } from './verification'
+
+const logger = loggerService.withContext('ProfileOnlineMonitor')
+
 export function isRetryableVerificationError(error: unknown): boolean {
+  // MEA:profile-verification-network-tolerance Text and HTTP errors alone never prove global credential invalidity.
+  /*
   const status =
     typeof error === 'object' && error !== null && 'status' in error && typeof error.status === 'number'
       ? error.status
       : undefined
   if (status !== undefined) return status === 502 || status === 503 || status === 504
   return !(error instanceof Error && /(?:401|403|token|revok|invalid credential)/i.test(error.message))
+  */
+  return !isDefinitiveVerificationError(error)
 }
 
 export interface ProfileOnlineMonitorOptions {
@@ -14,6 +23,7 @@ export interface ProfileOnlineMonitorOptions {
   verify: () => Promise<void>
   onBlocked: (reason: string) => void
   intervalMs?: number
+  random?: () => number
 }
 
 export class ProfileOnlineMonitor {
@@ -22,12 +32,18 @@ export class ProfileOnlineMonitor {
   private stopped = true
   private notified = false
   private nextVerification = 0
+  private failures = 0
+  private epoch = 0
 
   constructor(private readonly options: ProfileOnlineMonitorOptions) {}
 
   start(): void {
     if (!this.stopped) return
     this.stopped = false
+    ++this.epoch
+    this.failures = 0
+    this.running = false
+    this.notified = false
     this.nextVerification = performance.now() + (this.options.intervalMs ?? 60_000)
     this.timer = setInterval(() => this.tick(), 250)
     this.timer.unref?.()
@@ -35,6 +51,7 @@ export class ProfileOnlineMonitor {
 
   stop(): void {
     this.stopped = true
+    ++this.epoch
     clearInterval(this.timer)
     this.timer = undefined
   }
@@ -49,29 +66,44 @@ export class ProfileOnlineMonitor {
       } else if (gate.state.kind !== 'verifying') {
         if (!this.notified) {
           this.notified = true
-          onBlocked('Online verification is blocked; restart is required')
+          // onBlocked('Online verification is blocked; restart is required')
+          const state = gate.state
+          const expired = state.kind === 'blocked' && state.reason === 'verification window expired'
+          logger.warn('Online verification blocked', { category: expired ? 'expired' : 'authority', state: state.kind })
+          onBlocked(
+            expired
+              ? '账号在线验证已过期，请确认认证服务连接正常后重新启动验证。'
+              : '账号登录状态或权限已失效，请重新启动验证；必要时重新登录。'
+          )
         }
         return
       }
     }
     if (this.running || performance.now() < this.nextVerification) return
     this.running = true
-    this.nextVerification = performance.now() + (this.options.intervalMs ?? 60_000)
+    const epoch = this.epoch
     void this.options
       .verify()
       .then(
         () => {
-          if (!this.stopped) gate.recordVerificationSuccess()
+          if (this.stopped || epoch !== this.epoch) return
+          gate.recordVerificationSuccess()
+          this.failures = 0
+          this.nextVerification = performance.now() + (this.options.intervalMs ?? 60_000)
         },
         (error: unknown) => {
-          if (!this.stopped) {
-            const reason = error instanceof Error ? error.message : String(error)
-            const retryable = isRetryableVerificationError(error)
-            gate.recordVerificationFailure(reason, retryable)
-          }
+          if (this.stopped || epoch !== this.epoch) return
+          const reason = error instanceof Error ? error.message : String(error)
+          const retryable = isRetryableVerificationError(error)
+          gate.recordVerificationFailure(reason, retryable)
+          const delay = [2000, 5000, 10_000, 30_000][Math.min(this.failures++, 3)]
+          const jitter = 0.9 + (this.options.random ?? Math.random)() * 0.2
+          const retryAfter = error instanceof VerificationError ? (error.evidence.retryAfterMs ?? 0) : 0
+          this.nextVerification = performance.now() + Math.max(Math.round(delay * jitter), retryAfter)
         }
       )
       .finally(() => {
+        if (this.stopped || epoch !== this.epoch) return
         this.running = false
         this.tickIfBlocked()
       })

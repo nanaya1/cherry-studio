@@ -1,5 +1,22 @@
 import fs from 'fs'
 
+import { DWClient } from 'dingtalk-stream'
+import { net } from 'electron'
+
+const DINGTALK_CONNECTION_TIMEOUT_MS = 15_000
+const DINGTALK_TOKEN_TIMEOUT_MS = 15_000
+const DINGTALK_API_BASE = 'https://api.dingtalk.com'
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), timeoutMs)
+  })
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timer) clearTimeout(timer)
+  })
+}
+
 import { application } from '@application'
 import { createAgentChannel, deleteAgentChannel, updateAgentChannel } from '@main/ai/channels'
 import { ErrorCode, isDataApiError } from '@shared/data/api/errors'
@@ -45,6 +62,37 @@ export const channelHandlers: IpcHandlersFor<typeof channelRequestSchemas> = {
       return { exists: true, userId: parsed.userId as string | undefined }
     } catch {
       return { exists: false }
+    }
+  },
+  'channel.dingtalk.test_connection': async ({ client_id, client_secret }) => {
+    const client = new DWClient({ clientId: client_id, clientSecret: client_secret })
+    try {
+      const tokenResponse = await withTimeout(
+        net.fetch(`${DINGTALK_API_BASE}/v1.0/oauth2/accessToken`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ appKey: client_id, appSecret: client_secret })
+        }),
+        DINGTALK_TOKEN_TIMEOUT_MS,
+        'DingTalk access token test timed out'
+      )
+      if (!tokenResponse.ok) return { connected: false, message: 'credentials_invalid' }
+      const tokenPayload = (await tokenResponse.json()) as { accessToken?: string }
+      if (!tokenPayload.accessToken) return { connected: false, message: 'credentials_invalid' }
+
+      await withTimeout(
+        Promise.resolve(client.connect()),
+        DINGTALK_CONNECTION_TIMEOUT_MS,
+        'DingTalk connection test timed out'
+      )
+      return { connected: true, message: 'connected' }
+    } catch (error) {
+      return {
+        connected: false,
+        message: error instanceof Error && error.message.includes('timed out') ? 'timeout' : 'connection_failed'
+      }
+    } finally {
+      await Promise.resolve(client.disconnect()).catch(() => undefined)
     }
   },
   'channel.get_logs': async (channelId) => application.get('ChannelManager').getChannelLogs(channelId)

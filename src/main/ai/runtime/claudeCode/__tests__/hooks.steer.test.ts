@@ -1,6 +1,8 @@
 import type { HookCallback, HookJSONOutput } from '@anthropic-ai/claude-agent-sdk'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { application } from '@application'
+
 import type { AgentRuntimeUserInput } from '../../types'
 
 const { holder } = vi.hoisted(() => ({
@@ -70,6 +72,39 @@ beforeEach(() => {
 })
 
 describe('steer injection hooks', () => {
+  it('denies a real PreToolUse call when business access is invalid, including Full Access', async () => {
+    const denied = new Error('Business access denied')
+    const gate = vi.spyOn(application, 'assertBusinessAccess').mockImplementation(() => {
+      throw denied
+    })
+    try {
+      const outputs = await Promise.all(
+        hooksFor('PreToolUse').map((hook) =>
+          hook(
+            {
+              hook_event_name: 'PreToolUse',
+              tool_name: 'Read',
+              tool_input: { file_path: '/tmp/file' }
+            } as never,
+            'tool-1',
+            { signal: new AbortController().signal }
+          )
+        )
+      )
+      expect(outputs).toContainEqual(
+        expect.objectContaining({
+          hookSpecificOutput: {
+            hookEventName: 'PreToolUse',
+            permissionDecision: 'deny',
+            permissionDecisionReason: denied.message
+          }
+        })
+      )
+    } finally {
+      gate.mockRestore()
+    }
+  })
+
   it('PostToolBatch injects a pending steer as additionalContext and drains the queue', async () => {
     holder.pending = [makeSteer('change direction')]
     const onInjected = vi.fn()

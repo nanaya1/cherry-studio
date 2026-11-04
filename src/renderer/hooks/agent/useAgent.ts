@@ -70,7 +70,8 @@ export const useAgent = (id: string | null) => {
 export const useAgents = (options: { enabled?: boolean } = {}) => {
   const { t } = useTranslation()
   const enabled = options.enabled ?? true
-  const { data, isLoading, error, refetch } = useQuery('/agents', {
+  // const { data, isLoading, error, refetch } = useQuery('/agents', {
+  const { data, isLoading, isRefreshing, error, refetch } = useQuery('/agents', {
     enabled,
     query: { limit: AGENTS_MAX_LIMIT }
   })
@@ -105,7 +106,9 @@ export const useAgents = (options: { enabled?: boolean } = {}) => {
     [invalidate, t]
   )
 
-  return { agents, error, isLoading, addAgent, deleteAgent, refetch }
+  // MEA:profile-online-login Empty metadata is a loaded result, not a failed first read.
+  // return { agents, error, isLoading, addAgent, deleteAgent, refetch }
+  return { agents, error, isLoading, isRefreshing, hasData: data !== undefined, addAgent, deleteAgent, refetch }
 }
 
 /**

@@ -1,17 +1,19 @@
 import { ArrowLeft, ChevronDown } from 'lucide-react'
-import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Badge, Button, PageSidePanel, Tooltip } from '@cherrystudio/ui'
 import { CommandPopupMenu } from '@renderer/components/command'
 import { FilePreview } from '@renderer/components/FilePreview'
 import { useDeleteKnowledgeItem, useKnowledgeItems, useReindexKnowledgeItem } from '@renderer/hooks/useKnowledgeItems'
+import { toast } from '@renderer/services/toast'
 import type { KnowledgeItemOf } from '@shared/data/types/knowledge'
 
 import DetailHeader from '../components/DetailHeader'
 import KnowledgeSharingPanel from '../components/KnowledgeSharingPanel'
 // import KnowledgeSyncBadge from '../components/KnowledgeSyncBadge'
 import KnowledgeSyncDialog from '../components/KnowledgeSyncDialog'
+import { useKnowledgeUpload } from '../components/KnowledgeUploadDetails'
 import ShareKnowledgeDialog from '../components/ShareKnowledgeDialog'
 import { useKnowledgeSyncStatus } from '../hooks/useKnowledgeSyncStatus'
 import { useKnowledgePage } from '../KnowledgePageProvider'
@@ -31,10 +33,18 @@ const KnowledgePageDetailSection = ({ onSharingChange }: { onSharingChange?: (op
   const { org, orgSession } = useKnowledgePage()
   // const [sharing, setSharing] = useState(false)
   const [sharing, setSharing] = useState<false | 'code' | 'people'>(false)
-  // 上传结束可能切换为云端详情；让页面保留当前弹窗直到用户关闭。
+  const [awaitingUpload, setAwaitingUpload] = useState(false)
+  const inviteHostActive = useRef(true)
   useEffect(() => {
-    onSharingChange?.(sharing !== false)
-  }, [sharing, onSharingChange])
+    inviteHostActive.current = true
+    return () => {
+      inviteHostActive.current = false
+    }
+  }, [])
+  // 后台上传和弹窗恢复期间也保留宿主，避免目录刷新切换到云端详情。
+  useEffect(() => {
+    onSharingChange?.(sharing !== false || awaitingUpload)
+  }, [sharing, awaitingUpload, onSharingChange])
   const [records, setRecords] = useState(false)
   const [syncing, setSyncing] = useState(false)
   useEffect(() => {
@@ -64,9 +74,44 @@ const KnowledgePageDetailSection = ({ onSharingChange }: { onSharingChange?: (op
     openRestoreBaseDialog
   } = useKnowledgePage()
 
+  const upload = useKnowledgeUpload(selectedBaseId, Boolean(selectedBaseId))
+  const handledUploadState = useRef<string | null>(null)
+  const observedUpload = useRef(false)
+  const sharingModeBeforeClose = useRef<false | 'code' | 'people'>(false)
+  const [autoRestoreSharing, setAutoRestoreSharing] = useState(false)
   const sharedCopy = org.catalog.owned.find((base) => base.localBaseId === selectedBaseId)
   const sync = useKnowledgeSyncStatus(selectedBaseId, baseNavigationVersion)
   useEffect(() => {
+    if (!upload) return
+    if (['preparing', 'counting', 'uploading', 'confirming'].includes(upload.phase)) observedUpload.current = true
+    if (
+      upload.phase === 'completed' &&
+      (awaitingUpload || observedUpload.current) &&
+      sharing === false &&
+      handledUploadState.current !== `${selectedBaseId}:completed`
+    ) {
+      handledUploadState.current = `${selectedBaseId}:completed`
+      void org.refresh()
+      if (sharingModeBeforeClose.current !== 'people') {
+        setAutoRestoreSharing(true)
+        setSharing('code')
+        setAwaitingUpload(false)
+      }
+    }
+    if (['paused', 'cleanup_pending', 'cleanup_unknown'].includes(upload.phase) && upload.error) {
+      const stateKey = `${selectedBaseId}:${upload.phase}:${upload.error}`
+      if (handledUploadState.current !== stateKey) {
+        handledUploadState.current = stateKey
+        toast.error(upload.error)
+      }
+    }
+  }, [selectedBaseId, sharing, upload, awaitingUpload, org])
+  useEffect(() => {
+    setAutoRestoreSharing(false)
+    setAwaitingUpload(false)
+    handledUploadState.current = null
+    observedUpload.current = false
+    sharingModeBeforeClose.current = false
     setSharing(false)
     setRecords(false)
     setSyncing(false)
@@ -150,13 +195,19 @@ const KnowledgePageDetailSection = ({ onSharingChange }: { onSharingChange?: (op
                       type: 'item',
                       id: 'share-code',
                       label: t('knowledge.org.share_code'),
-                      onSelect: () => setSharing('code')
+                      onSelect: () => {
+                        sharingModeBeforeClose.current = 'code'
+                        setSharing('code')
+                      }
                     },
                     {
                       type: 'item',
                       id: 'invite-people',
                       label: t('knowledge.org.invite_people'),
-                      onSelect: () => setSharing('people')
+                      onSelect: () => {
+                        sharingModeBeforeClose.current = 'people'
+                        setSharing('people')
+                      }
                     }
                   ]}>
                   <Button
@@ -181,10 +232,22 @@ const KnowledgePageDetailSection = ({ onSharingChange }: { onSharingChange?: (op
         {/* <Button variant="ghost" size="sm" onClick={() => setSharing(true)}>
           {t('knowledge.org.share')}
         </Button> */}
-        <Button variant="ghost" size="sm" onClick={() => setSharing('code')}>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => {
+            sharingModeBeforeClose.current = 'code'
+            setSharing('code')
+          }}>
           {t('knowledge.org.share_code')}
         </Button>
-        <Button variant="ghost" size="sm" onClick={() => setSharing('people')}>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => {
+            sharingModeBeforeClose.current = 'people'
+            setSharing('people')
+          }}>
           {t('knowledge.org.invite_people')}
         </Button>
         {/* 手动同步入口暂时隐藏，保留现有同步流程。
@@ -242,13 +305,26 @@ const KnowledgePageDetailSection = ({ onSharingChange }: { onSharingChange?: (op
         <ShareKnowledgeDialog
           key={`${orgSession}-${selectedBaseId}-${sharing}`}
           mode={sharing}
+          autoGenerate={autoRestoreSharing}
+          canContinueInvite={() => inviteHostActive.current}
+          onInviteSettled={() => {
+            if (inviteHostActive.current) setAwaitingUpload(false)
+          }}
+          onUploadStarted={() => {
+            sharingModeBeforeClose.current = sharing
+            handledUploadState.current = null
+            setAwaitingUpload(true)
+          }}
           baseId={selectedBaseId}
           name={selectedBase.name}
           onClose={() => {
+            sharingModeBeforeClose.current = sharing
             setSharing(false)
             void sync.refresh()
           }}
           onShared={() => {
+            handledUploadState.current = `${selectedBaseId}:completed`
+            setAwaitingUpload(false)
             void org.refresh()
             void sync.refresh()
           }}
