@@ -259,7 +259,10 @@ export class McpRuntimeService extends BaseService {
   }
 
   private async assertOrgConnectorAllowed(serverId: string): Promise<void> {
-    if (orgStateStore.javaConnectorResourceKey(serverId)) {
+    // Java enterprise resource connectors must refresh resource authority online;
+    // ordinary self-built connectors are not subject to this enterprise resource judgment.
+    const resourceKey = orgStateStore.javaConnectorResourceKey(serverId)
+    if (resourceKey) {
       try {
         await application.get('EnterprisePlugin').connectors.refreshResourceAuthority()
       } catch {
@@ -828,7 +831,7 @@ export class McpRuntimeService extends BaseService {
     }
   }
 
-  private abortActiveToolCalls() {
+  public abortActiveToolCalls() {
     for (const [key, controllers] of this.activeToolCalls) {
       for (const controller of controllers) {
         controller.abort()
@@ -1101,6 +1104,7 @@ export class McpRuntimeService extends BaseService {
     signal,
     onProgress
   }: RuntimeCallToolArgs): Promise<McpCallToolResponse> {
+    application.assertBusinessAccess()
     const toolCallId = callId || uuidv4()
     const registrationKey = toolCallKey(toolCallId, scope)
     const abortController = new AbortController()
@@ -1162,6 +1166,8 @@ export class McpRuntimeService extends BaseService {
         ]).finally(() => {
           if (handleAbort) effectiveSignal.removeEventListener('abort', handleAbort)
         })
+        // MEA:profile-online-login Connecting or approving must not outlive authorization.
+        application.assertBusinessAccess()
         const result = await client.callTool({ name, arguments: args }, undefined, {
           onprogress: (process) => {
             getServerLogger(server, { tool: name, callId: toolCallId }).debug(`Progress`, {

@@ -316,13 +316,14 @@ export class OrgMcpCatalog {
     // [enterprise] copy 模式：安装后归用户本地所有，不再纳入组织同步与墓碑管理。
     // orgStateStore.clearConnectorDeleted(slug)
     this.installLocal(item)
-    orgStateStore.recordConnectorEntitlement(slug, {
-      issuerId: lease.issuerId,
-      groupId: lease.groupId,
-      resourceId: slug,
-      entitlement: 'active',
-      generation: lease.generation,
-      localResourceId: this.lastCreatedId
-    })
+    // MEA:profile-verification-network-tolerance Copy installation preserves local enablement, not group-bound entitlements.
+    // orgStateStore.recordConnectorEntitlement(slug, {
+    //   issuerId: lease.issuerId,
+    //   groupId: lease.groupId,
+    //   resourceId: slug,
+    //   entitlement: 'active',
+    //   generation: lease.generation,
+    //   localResourceId: this.lastCreatedId
+    // })
   }
 }

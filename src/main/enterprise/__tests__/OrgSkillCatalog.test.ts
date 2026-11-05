@@ -66,6 +66,8 @@ vi.mock('@main/enterprise/OrgApiClient', () => ({
   getOrgApiBaseUrl: () => 'http://127.0.0.1:3000'
 }))
 
+vi.mock('@main/core/profiles', () => ({ profileSwitchFence: { assertWritable: vi.fn() } }))
+
 vi.mock('@main/ai/skills/SkillService', () => ({
   skillService: skillServiceMock
 }))
@@ -480,15 +482,7 @@ describe('OrgSkillCatalog C1/C2/C4', () => {
     expect(result.disabled).toEqual([])
   })
 
-  it('C2 listDisabled：目录齐全且启用 → 空集合', async () => {
-    apiMock.listSkills.mockResolvedValue({ skills: [makeItem('a', 'hash-a')] })
-    stateStoreMock.snapshot.mockReturnValue({
-      a: { version: '1', contentHash: 'hash-a', skillId: 's1', folderName: 'a', enabled: true }
-    })
-    expect(await catalog.listDisabled()).toEqual([])
-  })
-
-  it('C2 listDisabled：目录缺失或 enabled=false → 出现在停用列表', async () => {
+  it('copy listDisabled：历史停用标记与目录缺失不再隐藏本地副本', async () => {
     apiMock.listSkills.mockResolvedValue({ skills: [makeItem('a', 'hash-a')] })
     stateStoreMock.snapshot.mockReturnValue({
       a: { version: '1', contentHash: 'hash-a', skillId: 's1', folderName: 'a', enabled: true },
@@ -496,16 +490,18 @@ describe('OrgSkillCatalog C1/C2/C4', () => {
       off: { version: '1', contentHash: 'ho', skillId: 's3', folderName: 'o', enabled: false }
     })
     const disabled = await catalog.listDisabled()
-    expect(disabled.sort()).toEqual(['gone', 'off'])
+    expect(disabled).toEqual([])
+    expect(apiMock.listSkills).not.toHaveBeenCalled()
+    expect(stateStoreMock.setEnabled).not.toHaveBeenCalled()
   })
 
-  it('C2 listDisabled：目录拉取失败时默认禁用所有企业技能', async () => {
+  it('copy listDisabled：目录网络故障不禁用已安装副本', async () => {
     apiMock.listSkills.mockRejectedValue(new Error('network down'))
     stateStoreMock.snapshot.mockReturnValue({
       localOrg: { version: '1', contentHash: 'hash', skillId: 's1', folderName: 'localOrg', enabled: true }
     })
 
-    await expect(catalog.listDisabled()).resolves.toEqual(['localOrg'])
+    await expect(catalog.listDisabled()).resolves.toEqual([])
   })
 
   // 原 TTL 与 stale-cache 测试停用：服务端可在 userId 不变时调整 group_id，旧缓存不能继续复用。
@@ -575,6 +571,7 @@ describe('OrgSkillCatalog C1/C2/C4', () => {
     )
     expect(stateStoreMock.upsert).not.toHaveBeenCalled()
     expect(stateStoreMock.clearDeleted).not.toHaveBeenCalled()
+    expect(stateStoreMock.recordSkillEntitlement).not.toHaveBeenCalled()
     expect(apiMock.reportLifecycle).toHaveBeenCalledWith('new-skill', 'install', { version: '1.0.0' })
   })
 

@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
+vi.mock('@main/core/profiles', async () => import('../../core/profiles/ProfileIdentity'))
+
 import { computeProfileId } from '@main/core/profiles'
 
 import { ProfileAuthBroker } from '../ProfileAuthBroker'
@@ -157,6 +159,27 @@ describe('ProfileAuthBroker authoritative identity', () => {
 
     expect(result.identity.subjectId).toBe('management-user-2')
     expect(result.session).toMatchObject({ userId: 'management-user-2', groupId: 'group-b', role: 'admin' })
+  })
+
+  it.each([
+    null,
+    [],
+    { server_instance_id: 'management-instance-1', user: null },
+    {
+      server_instance_id: 'management-instance-1',
+      user: { id: 'u', group_id: 'g', role: 'member', status: 'inactive', phone: 9 }
+    },
+    {
+      server_instance_id: 'management-instance-1',
+      user: { id: 'u', group_id: 'g', role: 'member', status: 'future-state' }
+    }
+  ])('treats malformed or undocumented account states as uncertain, not account disablement: %o', async (body) => {
+    const { api, broker } = setup()
+    api.getCurrentUser.mockResolvedValue(body)
+    await expect(broker.revalidateManagement('management-oauth', tokens)).rejects.toMatchObject({
+      name: 'VerificationError',
+      evidence: { kind: 'uncertain', stage: 'current-user' }
+    })
   })
 
   it('discards a late authority response after generation changes', async () => {

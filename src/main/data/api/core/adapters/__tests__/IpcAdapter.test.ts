@@ -10,6 +10,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
  * covered in core/security/__tests__/validateSender.test.ts — here we verify the
  * wiring: rejection short-circuits, trusted requests pass through.
  */
+import { application } from '@application'
+import type { Application as ApplicationType } from '@main/core/application/Application'
 import { profileSwitchFence, setProfileLaunchContext, profileBusinessAccessGate } from '@main/core/profiles'
 import { IpcChannel } from '@shared/IpcChannel'
 
@@ -51,7 +53,13 @@ describe('IpcAdapter', () => {
   let handleRequest: ReturnType<typeof vi.fn<(...args: any[]) => any>>
   let requestHandler: IpcHandler
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    const { Application } = await vi.importActual<{ Application: typeof ApplicationType }>(
+      '@main/core/application/Application'
+    )
+    vi.mocked(application.assertBusinessAccess).mockImplementation(() =>
+      Application.prototype.assertBusinessAccess.call(application)
+    )
     profileSwitchFence.resetForTesting()
     vi.mocked(ipcMain.handle).mockClear()
     handleRequest = vi.fn(async (request) => ({
@@ -101,7 +109,7 @@ describe('IpcAdapter', () => {
     isolatedBusiness()
     profileBusinessAccessGate.recordVerificationSuccess()
     handleRequest.mockImplementation(async () => {
-      profileBusinessAccessGate.recordVerificationFailure('offline')
+      profileBusinessAccessGate.recordVerificationFailure('identity changed')
       return { id: 'late', status: 200, data: { private: 'data' } }
     })
     const response = await requestHandler(trustedEvent, { id: 'late', method: 'GET', path: '/topics' })

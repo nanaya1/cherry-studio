@@ -40,6 +40,47 @@ describe('组织资源请求隔离', () => {
     expect(result.current.data).toBe('甲库新版')
   })
 
+  it('同一个 loader 的授权版本变化后清除旧详情并拒绝旧响应与旧 refresh', async () => {
+    let finishOld!: (value: string) => void
+    const load = vi
+      .fn<() => Promise<string>>()
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finishOld = resolve
+          })
+      )
+      .mockResolvedValue('新权限正文')
+    const { result, rerender } = renderHook(({ version }) => useOrgKnowledgeResource(load, version), {
+      initialProps: { version: 1 }
+    })
+    const staleRefresh = result.current.refresh
+    rerender({ version: 2 })
+    expect(result.current.data).toBeUndefined()
+    await waitFor(() => expect(result.current.data).toBe('新权限正文'))
+    await act(async () => finishOld('旧权限正文'))
+    await act(async () => {
+      await staleRefresh()
+    })
+    expect(result.current.data).toBe('新权限正文')
+    expect(load).toHaveBeenCalledTimes(2)
+  })
+
+  it('新授权被服务端拒绝时不继续展示旧权限正文', async () => {
+    const load = vi
+      .fn<() => Promise<string>>()
+      .mockResolvedValueOnce('旧权限正文')
+      .mockRejectedValueOnce(new Error('无权访问该知识库'))
+    const { result, rerender } = renderHook(({ version }) => useOrgKnowledgeResource(load, version), {
+      initialProps: { version: 1 }
+    })
+    await waitFor(() => expect(result.current.data).toBe('旧权限正文'))
+    rerender({ version: 2 })
+    expect(result.current.data).toBeUndefined()
+    await waitFor(() => expect(result.current.error).toBe('无权访问该知识库'))
+    expect(result.current.data).toBeUndefined()
+  })
+
   it('切换知识库后忽略旧请求，避免旧正文覆盖新正文', async () => {
     let resolveOld!: (value: string) => void
     const old = vi.fn(

@@ -7,6 +7,7 @@ import {
 import { normalizeJavaMe } from './JavaAuthClient'
 import type { OrgSession } from './OrgCredentialStore'
 import type { JavaAuthProfile, JavaMeData, OrgAuthMode, OrgCurrentUser } from './types'
+import { VerificationError } from './verification'
 
 export interface ProfileAuthBrokerApi {
   // 原 getServerIdentity() 已停用：modern 的 /api/currentuser 同时返回 server_instance_id 与 user。
@@ -102,14 +103,25 @@ export class ProfileAuthBroker {
     tokens: TokenSet,
     currentUser: OrgCurrentUser
   ): CompletedAuthentication {
+    if (!currentUser || typeof currentUser !== 'object' || Array.isArray(currentUser)) {
+      throw this.uncertain('currentuser response must be an object')
+    }
     const issuerId = this.required('server_instance_id', currentUser.server_instance_id)
     const user = currentUser.user
-    if (!user || typeof user !== 'object') throw new Error('currentuser.user is required')
+    // if (!user || typeof user !== 'object') throw new Error('currentuser.user is required')
+    if (!user || typeof user !== 'object' || Array.isArray(user)) throw this.uncertain('currentuser.user is required')
     const userId = this.requiredId('currentuser.id', user.id)
     const groupId = this.requiredId('currentuser.group_id', user.group_id)
     const role = this.required('currentuser.role', user.role)
     const status = this.required('currentuser.status', user.status)
-    if (status !== 'active') throw new Error(`management account is inactive (${status})`)
+    for (const field of ['username', 'displayName', 'phone', 'officialUserId'] as const) {
+      if (user[field] !== undefined && user[field] !== null && typeof user[field] !== 'string') {
+        throw this.uncertain(`currentuser.${field} must be a string or null`)
+      }
+    }
+    // if (status !== 'active') throw new Error(`management account is inactive (${status})`)
+    // MEA:profile-verification-network-tolerance Undocumented non-active values are uncertain, never proof of disablement.
+    if (status !== 'active') throw this.uncertain(`management account status is undocumented (${status})`)
     const checkedAt = new Date().toISOString()
     return {
       identity: normalizeAuthenticatedSubject(authMode, issuerId, userId),
@@ -206,7 +218,16 @@ export class ProfileAuthBroker {
   }
 
   private required(name: string, value: unknown): string {
-    if (typeof value !== 'string' || value.trim() === '') throw new Error(`${name} is required`)
+    // if (typeof value !== 'string' || value.trim() === '') throw new Error(`${name} is required`)
+    if (typeof value !== 'string' || value.trim() === '') throw this.uncertain(`${name} is required`)
     return value
+  }
+
+  private uncertain(message: string): VerificationError {
+    return new VerificationError(message, {
+      stage: 'current-user',
+      endpoint: `${this.managementAuthOrigin}/api/currentuser`,
+      kind: 'uncertain'
+    })
   }
 }

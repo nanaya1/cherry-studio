@@ -6,6 +6,7 @@ import { JavaAuthClient } from './JavaAuthClient'
  */
 import { getOrgApiBaseUrl } from './OrgApiClient'
 import type { JavaAuthProfile, OrgCurrentUser, OrgSession } from './types'
+// import { VerificationError, verificationHttpError } from './verification'
 
 export interface StartupCurrentUserTransport {
   getCurrentUser(): Promise<OrgCurrentUser>
@@ -53,6 +54,7 @@ export interface StartupTransportOptions {
   electronSession?: ElectronSessionLike
   /** Single-request timeout in ms (design default 10000). */
   timeoutMs?: number
+  signal?: AbortSignal
 }
 
 const DEFAULT_TIMEOUT_MS = 10_000
@@ -63,7 +65,6 @@ export function createStartupCurrentUserTransport(
 ): StartupCurrentUserTransport {
   const baseUrl = options.baseUrl ?? getOrgApiBaseUrl()
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS
-
   if (!session) {
     return {
       getCurrentUser: async () => {
@@ -79,52 +80,15 @@ export function createStartupCurrentUserTransport(
       throw new Error('旧会话需要重新登录')
     }
   }
-  /* // Cookie contract: password login persists `sid` in an isolated Electron
-  // session. We use session.fetch (includes partition cookies) with credentials:'include'.
-  if (session.accountKind === 'management' && session.authMode === 'management-cookie') {
-    const electronSession = options.electronSession
-    if (!electronSession) {
-      return {
-        getCurrentUser: async () => {
-          throw new Error('cookie verification requires an Electron auth session')
-        }
-      }
-    }
-    return {
-      getCurrentUser: async () => {
-        const controller = new AbortController()
-        const timer = setTimeout(() => controller.abort(), timeoutMs)
-        try {
-          const response = await electronSession.fetch(`${baseUrl}/api/currentuser`, {
-            credentials: 'include',
-            signal: controller.signal
-          })
-          if (!response.ok) throw new Error(`currentuser request failed (${response.status})`)
-          return (await response.json()) as OrgCurrentUser
-        } finally {
-          clearTimeout(timer)
-        }
-      }
-    }
-  }
 
-  // Bearer contract: OAuth/exchange sessions carry an access token and must NOT
-  // send cookies (credentials:'omit').
+  /* 原 Cookie/Bearer currentuser 传输停用，保留以便回溯。
+  const endpoint = `${baseUrl}/api/currentuser`
+  if (session.accountKind === 'management' && session.authMode === 'management-cookie') {
+    return { getCurrentUser: () => options.electronSession!.fetch(endpoint).then((response) => response.json()) }
+  }
   return {
-    getCurrentUser: async () => {
-      const controller = new AbortController()
-      const timer = setTimeout(() => controller.abort(), timeoutMs)
-      try {
-        const response = await fetch(`${baseUrl}/api/currentuser`, {
-          headers: { authorization: `Bearer ${session.accessToken}` },
-          credentials: 'omit',
-          signal: controller.signal
-        })
-        if (!response.ok) throw new Error(`currentuser request failed (${response.status})`)
-        return (await response.json()) as OrgCurrentUser
-      } finally {
-        clearTimeout(timer)
-      }
-    }
-  } */
+    getCurrentUser: () =>
+      fetch(endpoint, { headers: { authorization: `Bearer ${session.accessToken}` } }).then((response) => response.json())
+  }
+  */
 }

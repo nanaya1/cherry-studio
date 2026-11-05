@@ -124,9 +124,14 @@ vi.mock('@main/services/TopicNamingService', () => ({
   topicNamingService: { maybeRenameAgentSession: mocks.maybeRenameAgentSession }
 }))
 
-vi.mock('@application', () => ({
-  application: { get: mocks.applicationGet, getPath: forkRecoveryMocks.getPath }
-}))
+// vi.mock('@application', () => ({ application: { get: mocks.applicationGet, getPath: forkRecoveryMocks.getPath } }))
+vi.mock('@application', async () => {
+  const { mockApplicationFactory } = await import('@test-mocks/main/application')
+  const result = mockApplicationFactory()
+  result.application.get = mocks.applicationGet
+  result.application.getPath = forkRecoveryMocks.getPath
+  return result
+})
 
 const realFs = await vi.importActual<typeof FsPromises>('node:fs/promises')
 const { AgentSessionForkOperations } = await import('../fork')

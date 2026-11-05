@@ -25,6 +25,16 @@ export const enterpriseStatusSchema = z.strictObject({
 
 export type EnterpriseStatus = z.infer<typeof enterpriseStatusSchema>
 
+// MEA:profile-online-login Verification health is independent of group/role generations.
+export const verificationStatusSchema = z.strictObject({
+  owner: z.string(),
+  revision: z.number().int().nonnegative(),
+  state: z.enum(['unknown', 'verified', 'unavailable', 'blocked', 'switching']),
+  reason: z.enum(['credentials-invalid', 'account-disabled', 'identity-changed']).optional()
+})
+
+export type EnterpriseVerificationStatus = z.infer<typeof verificationStatusSchema>
+
 // [enterprise] 分类/标签 facet：只透传展示所需字段，忽略服务端其余字段（id/sort_order/enabled 等）
 // 注意：IpcRouter 只运行时校验 input，output 是编译期契约；字符串→facet 的归一化在 OrgSkillCatalog 完成
 const orgSkillFacetSchema = z.strictObject({
@@ -119,6 +129,8 @@ export const enterpriseRequestSchemas = {
     output: z.strictObject({ ok: z.boolean() })
   }),
   'enterprise.status.get': defineRoute({ input: z.void(), output: enterpriseStatusSchema }),
+  'enterprise.verification.get': defineRoute({ input: z.void(), output: verificationStatusSchema }),
+  'enterprise.verification.retry': defineRoute({ input: z.void(), output: z.void() }),
   'enterprise.login.start': defineRoute({
     input: z.void(),
     output: z.strictObject({ authorizationUrl: z.string() })
@@ -171,4 +183,5 @@ export const enterpriseRequestSchemas = {
 
 export type EnterpriseEventSchemas = {
   'enterprise.status_changed': EnterpriseStatus
+  'enterprise.verification_changed': EnterpriseVerificationStatus
 }

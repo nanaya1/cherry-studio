@@ -191,14 +191,31 @@ export class OrgKnowledgeService {
     this.automaticAdditions.clear()
   }
 
+  // MEA:profile-verification-network-tolerance Authorization changes invalidate transient work, not durable recovery evidence.
+  invalidateAuthorizationContext(): void {
+    this.firstShareActive?.stop()
+    this.syncPlans.clear()
+    for (const timer of this.autoSyncTimers.values()) clearTimeout(timer)
+    this.autoSyncTimers.clear()
+    this.automaticAdditions.clear()
+    this.firstShareProgress.clear()
+  }
+
   private scheduleAddition(key: string): void {
-    if (this.disposed || !this.automaticAdditions.has(key)) return
+    const scheduled = this.automaticAdditions.get(key)
+    if (this.disposed || !scheduled) return
     const previous = this.autoSyncTimers.get(key)
     if (previous) clearTimeout(previous)
     const timer = setTimeout(() => {
       this.autoSyncTimers.delete(key)
       void this.runAddition(key).catch((error: unknown) => {
+        try {
+          this.assertLease(scheduled.lease)
+        } catch {
+          return
+        }
         const pending = this.automaticAdditions.get(key)
+        if (pending && pending !== scheduled) return
         this.automaticAdditions.delete(key)
         this.firstShareProgress.set(key, {
           phase: 'paused',
@@ -2064,6 +2081,7 @@ export class OrgKnowledgeService {
     localBaseId: string,
     _uploadOriginal?: boolean
   ): Promise<OrgKnowledgeShareResult> {
+    void _uploadOriginal
     const lease = this.acquireLease()
     const spaceId = this.decodeId(baseId, '知识库')
     await this.assertRealOwner(spaceId, lease)
@@ -2861,6 +2879,7 @@ export class OrgKnowledgeService {
     if (!base) return Promise.reject(new OrgKnowledgeError(E.ORGKB_BAD_INPUT, '本地知识库不存在'))
     const active = () => {
       this.assertLease(lease)
+      controller.signal.throwIfAborted()
       if (this.disposed) throw new Error('上传服务已停止')
     }
     // 追加沿用旧文件记录，但不能继承首次分享的回滚身份。
@@ -3026,7 +3045,14 @@ export class OrgKnowledgeService {
               }
               return plan
             },
-            (progress) => this.firstShareProgress.set(key, progress),
+            (progress) => {
+              try {
+                active()
+              } catch {
+                return
+              }
+              this.firstShareProgress.set(key, progress)
+            },
             active,
             verifyOnly,
             effectiveUploadOriginal
@@ -3034,6 +3060,7 @@ export class OrgKnowledgeService {
         )
       )
       .then(async (result) => {
+        active()
         if (result.completion !== 'completed') {
           const progress = this.firstShareProgress.get(key)
           result.error = progress?.error ?? result.files.find((file) => file.error)?.error ?? undefined

@@ -114,6 +114,7 @@ export function useOrgSkills(enabled: boolean) {
   const remove = useCallback(
     async (slug: string): Promise<boolean> => {
       try {
+        // [enterprise] C4：旧 report_deleted 不再调用，统一走稳定 resourceKey 卸载。
         // await ipcApi.request('enterprise.skills.report_deleted', { slug })
         await ipcApi.request('enterprise.skills.remove_resource', { resourceKey: slug })
         // [enterprise] 卸载成功即时移除「已安装」标记

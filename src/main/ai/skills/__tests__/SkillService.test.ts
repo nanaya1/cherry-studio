@@ -313,23 +313,36 @@ describe('SkillService', () => {
       expect(result.map((s) => s.name)).toContain('skill-one')
     })
 
-    it('filters a disabled enterprise skill from both list and getById', async () => {
+    it('keeps installed organization copies available despite stale entitlements and preserves user enablement', async () => {
       const skillService = new SkillService()
       await seedSkills()
-      await dbh.db
+      await seedAgent()
+      dbh.db
         .update(agentGlobalSkillTable)
-        .set({ sourceUrl: 'org-skill:skill-one' })
+        .set({ source: 'local', sourceUrl: 'org-skill:skill-one' })
         .where(eq(agentGlobalSkillTable.id, SKILL_ID_1))
-      const allowed = vi
-        .spyOn(orgStateStore, 'isSkillAllowed')
-        .mockImplementation((sourceUrl) => sourceUrl !== 'org-skill:skill-one')
-
-      await expect(skillService.list()).resolves.not.toEqual(
-        expect.arrayContaining([expect.objectContaining({ id: SKILL_ID_1 })])
-      )
-      await expect(skillService.getById(SKILL_ID_1)).resolves.toBeNull()
-
-      allowed.mockRestore()
+        .run()
+      const allowed = vi.spyOn(orgStateStore, 'isSkillAllowed').mockReturnValue(false)
+      try {
+        await expect(skillService.list()).resolves.toEqual(
+          expect.arrayContaining([expect.objectContaining({ id: SKILL_ID_1, sourceUrl: 'org-skill:skill-one' })])
+        )
+        await expect(skillService.getById(SKILL_ID_1)).resolves.toMatchObject({ id: SKILL_ID_1 })
+        skillService.toggle({ agentId: AGENT_ID, skillId: SKILL_ID_1, isEnabled: true })
+        await expect(skillService.list({ agentId: AGENT_ID })).resolves.toEqual(
+          expect.arrayContaining([expect.objectContaining({ id: SKILL_ID_1, isEnabled: true })])
+        )
+        skillService.toggle({ agentId: AGENT_ID, skillId: SKILL_ID_1, isEnabled: false })
+        await expect(skillService.list({ agentId: AGENT_ID })).resolves.toEqual(
+          expect.arrayContaining([expect.objectContaining({ id: SKILL_ID_1, isEnabled: false })])
+        )
+        agentGlobalSkillService.updateGlobalEnabled(SKILL_ID_1, false)
+        await expect(skillService.list({ agentId: AGENT_ID })).resolves.not.toEqual(
+          expect.arrayContaining([expect.objectContaining({ id: SKILL_ID_1 })])
+        )
+      } finally {
+        allowed.mockRestore()
+      }
     })
 
     it('returns source metadata tags and does not expose user tags', async () => {

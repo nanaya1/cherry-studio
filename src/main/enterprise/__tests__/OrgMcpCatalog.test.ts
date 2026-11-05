@@ -47,6 +47,8 @@ vi.mock('@logger', () => ({
   loggerService: { withContext: () => ({ warn: vi.fn(), info: vi.fn(), error: vi.fn() }) }
 }))
 
+vi.mock('@main/core/profiles', () => ({ profileSwitchFence: { assertWritable: vi.fn() } }))
+
 vi.mock('@data/services/McpServerService', () => ({
   mcpServerService: mcpServiceMock
 }))
@@ -312,6 +314,7 @@ describe('OrgMcpCatalog C6 compareAndSync', () => {
       })
     )
     expect(stateStoreMock.upsertConnector).not.toHaveBeenCalled()
+    expect(stateStoreMock.recordConnectorEntitlement).not.toHaveBeenCalled()
   })
 
   it('手动安装时把目录图标写入本地 MCP', async () => {

@@ -25,6 +25,10 @@ export const enterpriseHandlers: IpcHandlersFor<typeof enterpriseRequestSchemas>
     return { ok: true }
   },
   'enterprise.status.get': async () => application.get('EnterprisePlugin').auth.getStatus(),
+  'enterprise.verification.get': async () => application.get('EnterprisePlugin').auth.getVerificationStatus(),
+  'enterprise.verification.retry': async () => {
+    await application.get('EnterprisePlugin').auth.retryVerification()
+  },
   'enterprise.login.start': async () => application.get('EnterprisePlugin').auth.startLogin(),
   'enterprise.session.logout': async () => application.get('EnterprisePlugin').auth.logout(),
   // [enterprise] installedSlugs：随目录返回已装状态（对话框据此标记「已安装」）

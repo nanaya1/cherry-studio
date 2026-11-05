@@ -274,6 +274,7 @@ export class OrgSkillCatalog {
    * 目录不可达时默认禁用已有企业技能，避免离线复用旧组权限。
    */
   async listDisabled(): Promise<string[]> {
+    /* Installed copies no longer inherit directory availability.
     const local = orgStateStore.snapshot()
     try {
       const catalog = await this.list()
@@ -284,6 +285,9 @@ export class OrgSkillCatalog {
     } catch {
       return Object.keys(local)
     }
+    */
+    // MEA:profile-verification-network-tolerance Keep the legacy IPC contract without group/role disablement.
+    return []
   }
 
   /**
@@ -422,13 +426,14 @@ export class OrgSkillCatalog {
         }
       })
 
-      orgStateStore.recordSkillEntitlement(slug, {
-        issuerId: lease.issuerId,
-        groupId: lease.groupId,
-        resourceId: slug,
-        entitlement: 'active',
-        generation: lease.generation
-      })
+      // MEA:profile-verification-network-tolerance Copy installation must not create group-bound runtime entitlements.
+      // orgStateStore.recordSkillEntitlement(slug, {
+      //   issuerId: lease.issuerId,
+      //   groupId: lease.groupId,
+      //   resourceId: slug,
+      //   entitlement: 'active',
+      //   generation: lease.generation
+      // })
       // [enterprise] copy 模式不再写托管快照或墓碑；本地技能表即安装状态来源。
       // orgStateStore.upsert(slug, {
       //   version: item.version,

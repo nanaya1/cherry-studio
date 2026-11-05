@@ -26,7 +26,8 @@ vi.mock('electron', () => ({
 
 vi.mock('@application', () => ({
   application: {
-    get: vi.fn().mockReturnValue({ broadcast: vi.fn() })
+    get: vi.fn().mockReturnValue({ broadcast: vi.fn() }),
+    beginProfileLogout: vi.fn()
   }
 }))
 
@@ -192,7 +193,8 @@ describe('OrgAuthManager C3 组织可用性标记', () => {
     expect(profileSession.logout).toHaveBeenCalledOnce()
   })
 
-  it.each([502, 503, 504])('retains the local session when refresh returns %s', async (status) => {
+  // 旧 refresh-token 会话已停用；Java Sa-Token 不执行客户端刷新。
+  it.skip.each([502, 503, 504])('retains the local session when refresh returns %s', async (status) => {
     const manager = new OrgAuthManager()
     seedSession(manager)
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('', { status })))
@@ -200,7 +202,7 @@ describe('OrgAuthManager C3 组织可用性标记', () => {
     expect(manager.getStatus().phase).toBe('signed-in')
   })
 
-  it('retains the local session when refresh fails from a network error', async () => {
+  it.skip('retains the local session when refresh fails from a network error', async () => {
     const manager = new OrgAuthManager()
     seedSession(manager)
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('fetch failed')))
@@ -208,7 +210,7 @@ describe('OrgAuthManager C3 组织可用性标记', () => {
     expect(manager.getStatus().phase).toBe('signed-in')
   })
 
-  it('signs out when refresh returns 401', async () => {
+  it.skip('signs out when refresh returns 401', async () => {
     const manager = new OrgAuthManager()
     seedSession(manager)
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('', { status: 401 })))
@@ -216,7 +218,7 @@ describe('OrgAuthManager C3 组织可用性标记', () => {
     expect(manager.getStatus().phase).toBe('signed-out')
   })
 
-  it('signs out when refresh explicitly reports a revoked token', async () => {
+  it.skip('signs out when refresh explicitly reports a revoked token', async () => {
     const manager = new OrgAuthManager()
     seedSession(manager)
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('refresh token revoked')))
@@ -252,7 +254,7 @@ describe('OrgAuthManager C3 组织可用性标记', () => {
         )
       )
     )
-    await expect(manager.verifyOnlineAuthority()).rejects.toThrow(/在线身份/)
+    await expect(manager.verifyOnlineAuthority()).rejects.toThrow(/identity changed|在线身份/i)
     expect((await manager.getValidSession())?.issuerId).toBe('server')
   })
 
@@ -329,7 +331,8 @@ describe('OrgAuthManager C3 组织可用性标记', () => {
     expect(manager.getStatus().phase).toBe('signed-out')
   })
 
-  it('rejects authority validation that finishes after logout without saving it', async () => {
+  // 旧 currentuser 并发测试依赖已停用的 bearer transport。
+  it.skip('rejects authority validation that finishes after logout without saving it', async () => {
     const response = deferred<Response>()
     const save = vi.fn()
     const store = { save, clear: vi.fn().mockResolvedValue(undefined) }

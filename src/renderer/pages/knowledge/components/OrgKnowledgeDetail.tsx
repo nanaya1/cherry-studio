@@ -18,6 +18,7 @@ import type { KnowledgeItem, KnowledgeItemOf } from '@shared/data/types/knowledg
 import type { KnowledgeItemType } from '@shared/data/types/knowledge'
 
 import { useOrgKnowledgeResource } from '../hooks/useOrgKnowledgeResource'
+import { useKnowledgeAuthorizationVersion } from '../KnowledgePageProvider'
 // 添加菜单直接复用 DataSourcePanel 的公共入口。
 import DataSourcePanel from '../panels/dataSource/DataSourcePanel'
 import { previewText } from '../utils/sharing'
@@ -122,7 +123,7 @@ function DocumentView({ baseId, target, onBack }: { baseId: string; target: Docu
       })
     }
   }, [baseId, target, mode, cursor, t])
-  const { data, loading, error, refresh } = useOrgKnowledgeResource(load)
+  const { data, loading, error, refresh } = useOrgKnowledgeResource(load, useKnowledgeAuthorizationVersion())
   return (
     <section
       aria-label={target.title}
@@ -311,7 +312,7 @@ function SearchResults({
     () => ipcApi.request('enterprise.knowledge.search', { baseIds: [baseId], query, topK: 10 }),
     [baseId, query]
   )
-  const { data, loading, error, refresh } = useOrgKnowledgeResource(load)
+  const { data, loading, error, refresh } = useOrgKnowledgeResource(load, useKnowledgeAuthorizationVersion())
   return (
     <div className="space-y-3">
       {loading ? <p role="status">{t('common.loading')}</p> : null}
@@ -449,7 +450,12 @@ function OrgKnowledgeDetailSession({
     })
     return page
   }, [base.id, cursor, currentParentId])
-  const { data, loading, error: itemsError, refresh } = useOrgKnowledgeResource(load)
+  const {
+    data,
+    loading,
+    error: itemsError,
+    refresh
+  } = useOrgKnowledgeResource(load, useKnowledgeAuthorizationVersion())
   useEffect(() => {
     if (!addedBaseId || !additionSubmitted) return
     let active = true

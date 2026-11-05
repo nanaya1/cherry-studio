@@ -36,6 +36,21 @@ describe('heartbeatDocument', () => {
     expect(dbh.db.select().from(agentTable).all()[0].configuration).toEqual({})
   })
 
+  it('does not overwrite the checklist if access expires during asynchronous path validation', async () => {
+    const initial = await readHeartbeatDocument('a1')
+    const denied = new Error('Business access denied')
+    const pending = writeHeartbeatDocument('a1', { ...initial, content: '- forbidden change' })
+    const gate = vi.spyOn(application, 'assertWritable').mockImplementation(() => {
+      throw denied
+    })
+    try {
+      await expect(pending).rejects.toBe(denied)
+      expect(await readFile(path.join(root, 'a1', 'heartbeat.md'), 'utf8')).toBe(initial.content)
+    } finally {
+      gate.mockRestore()
+    }
+  })
+
   it('rejects a stale edit without overwriting externally updated tasks', async () => {
     const initial = await readHeartbeatDocument('a1')
     await writeFile(path.join(root, 'a1', 'heartbeat.md'), '- external changes\n')
