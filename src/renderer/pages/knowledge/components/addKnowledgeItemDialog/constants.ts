@@ -9,6 +9,8 @@ export const DEFAULT_SOURCE_TYPE: KnowledgeItemType = 'file'
 // hint instead of the generic IPC "Invalid input" rejection. Kept stricter than the schema's
 // KNOWLEDGE_RUNTIME_ITEMS_MAX backstop, which other callers (e.g. save-to-knowledge) still use.
 export const KNOWLEDGE_ADD_ITEMS_MAX = 20
+// MEA:local-knowledge-file-batches 本地文件选择上限与每次提交大小分离，目录不受影响。
+export const KNOWLEDGE_ADD_FILES_MAX = 100
 
 // Curated, user-facing format list for the upload hint. Deliberately not derived from
 // `knowledgeSupportedFileExts`: that list carries the internal `.draftsexport` identifier and

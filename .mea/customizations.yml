@@ -8,6 +8,17 @@ policy:
   require_tests: true
   preserve_original_code_by_comment: true
 customizations:
+  - id: local-knowledge-file-batches
+    title: 本地知识库文件多选100个并串行分批接收
+    owner: renderer
+    behavior: 仅本地文件多选上限从20放宽至100，每批20个串行提交，前批返回后继续；冲突暂停并沿用既有弹窗，用户选择应用于未接收部分，已接收批次不重放。失败或取消停止后续批次，保留已接收结果，不自动重试；目录、云端、主进程队列和并发不变。
+    markers:
+      - MEA:local-knowledge-file-batches
+    touchpoints:
+      - src/renderer/pages/knowledge/components/AddKnowledgeItemDialog.tsx
+      - src/renderer/pages/knowledge/components/addKnowledgeItemDialog/constants.ts
+    tests:
+      - src/renderer/pages/knowledge/components/__tests__/AddKnowledgeItemDialog.test.tsx
   - id: second-instance-window-reveal
     title: 二次启动不得显示隐藏预热窗口
     owner: main

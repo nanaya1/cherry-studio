@@ -1,9 +1,10 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { toast } from '@renderer/services/toast'
 
-import AddKnowledgeItemDialog from '../AddKnowledgeItemDialog'
+import AddKnowledgeItemDialog, { KnowledgeItemSourceDialog } from '../AddKnowledgeItemDialog'
 
 const mockSubmitKnowledgeItems = vi.fn()
 const mockUseKnowledgePage = vi.fn()
@@ -378,14 +379,14 @@ describe('AddKnowledgeItemDialog', () => {
       expect(toast.warning).toHaveBeenCalledWith('已跳过 1 个不支持的文件')
     })
 
-    it('warns and skips submit when the pick exceeds the per-batch limit', async () => {
-      const tooMany = Array.from({ length: 21 }, (_, index) => createSelectedFile(`doc-${index}.pdf`))
+    it('本地文件超过100个时提示且不提交', async () => {
+      const tooMany = Array.from({ length: 101 }, (_, index) => createSelectedFile(`doc-${index}.pdf`))
       mockFileSelect.mockResolvedValueOnce(tooMany)
       const onOpenChange = vi.fn()
       render(<AddKnowledgeItemDialog open onOpenChange={onOpenChange} />)
 
       await waitFor(() => {
-        expect(toast.warning).toHaveBeenCalledWith('单次最多添加 20 个数据源，请减少选择后重试')
+        expect(toast.warning).toHaveBeenCalledWith('单次最多添加 100 个数据源，请减少选择后重试')
       })
       expect(mockSubmitKnowledgeItems).not.toHaveBeenCalled()
       await waitFor(() => {
@@ -393,16 +394,94 @@ describe('AddKnowledgeItemDialog', () => {
       })
     })
 
-    it('submits a batch sitting exactly at the per-batch limit', async () => {
-      const atLimit = Array.from({ length: 20 }, (_, index) => createSelectedFile(`doc-${index}.pdf`))
-      mockFileSelect.mockResolvedValueOnce(atLimit)
-      render(<AddKnowledgeItemDialog open onOpenChange={vi.fn()} />)
+    it('100个文件按20个串行提交，等待前批接收且全部完成后才关闭', async () => {
+      const files = Array.from({ length: 100 }, (_, index) => createSelectedFile(`doc-${index}.pdf`))
+      mockFileSelect.mockResolvedValueOnce(files)
+      let acceptFirst!: (value: unknown) => void
+      mockSubmitKnowledgeItems.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            acceptFirst = resolve
+          })
+      )
+      const onOpenChange = vi.fn()
+      const view = render(<AddKnowledgeItemDialog open onOpenChange={onOpenChange} />)
 
-      await waitFor(() => {
-        expect(mockSubmitKnowledgeItems).toHaveBeenCalledTimes(1)
-      })
-      expect(mockSubmitKnowledgeItems.mock.calls[0][0]).toHaveLength(20)
+      await waitFor(() => expect(mockSubmitKnowledgeItems).toHaveBeenCalledTimes(1))
+      view.rerender(<AddKnowledgeItemDialog open onOpenChange={onOpenChange} />)
+      expect(mockSubmitKnowledgeItems).toHaveBeenCalledTimes(1)
+      expect(mockFileSelect).toHaveBeenCalledTimes(1)
+      expect(onOpenChange).not.toHaveBeenCalled()
+      await act(async () => acceptFirst({ status: 'added' }))
+      await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false))
+      expect(mockSubmitKnowledgeItems.mock.calls.map(([items]) => items.length)).toEqual([20, 20, 20, 20, 20])
+      expect(
+        mockSubmitKnowledgeItems.mock.calls.flatMap(([items]) => items.map((item: any) => item.data.path))
+      ).toEqual(files.map((file: any) => file.path))
       expect(toast.warning).not.toHaveBeenCalled()
+    })
+
+    it('第二批异常后不提交尾批、不重放已接收文件', async () => {
+      mockFileSelect.mockResolvedValueOnce(
+        Array.from({ length: 41 }, (_, index) => createSelectedFile(`doc-${index}.pdf`))
+      )
+      mockSubmitKnowledgeItems
+        .mockResolvedValueOnce({ status: 'added' })
+        .mockRejectedValueOnce(new Error('batch failed'))
+      const onOpenChange = vi.fn()
+      render(<AddKnowledgeItemDialog open onOpenChange={onOpenChange} />)
+      await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false))
+      expect(toast.error).toHaveBeenCalledWith('添加数据源失败: batch failed')
+      expect(mockSubmitKnowledgeItems.mock.calls.map(([items]) => items.map((item: any) => item.data.path))).toEqual([
+        Array.from({ length: 20 }, (_, index) => `/picked/doc-${index}.pdf`),
+        Array.from({ length: 20 }, (_, index) => `/picked/doc-${index + 20}.pdf`)
+      ])
+    })
+
+    it('卸载后前批晚返回不再提交后批', async () => {
+      mockFileSelect.mockResolvedValueOnce(
+        Array.from({ length: 21 }, (_, index) => createSelectedFile(`doc-${index}.pdf`))
+      )
+      let acceptFirst!: (value: unknown) => void
+      mockSubmitKnowledgeItems.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            acceptFirst = resolve
+          })
+      )
+      const view = render(<AddKnowledgeItemDialog open onOpenChange={vi.fn()} />)
+      await waitFor(() => expect(mockSubmitKnowledgeItems).toHaveBeenCalledTimes(1))
+      view.unmount()
+      await act(async () => acceptFirst({ status: 'added' }))
+      expect(mockSubmitKnowledgeItems).toHaveBeenCalledTimes(1)
+    })
+
+    it('拖入21个本地文件也分成20和1且不打开选择器', async () => {
+      setPendingAddFiles(Array.from({ length: 21 }, (_, index) => createMockFile(`doc-${index}.txt`, 1)))
+      const onOpenChange = vi.fn()
+      render(<AddKnowledgeItemDialog open onOpenChange={onOpenChange} />)
+      await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false))
+      expect(mockSubmitKnowledgeItems.mock.calls.map(([items]) => items.length)).toEqual([20, 1])
+      expect(mockFileSelect).not.toHaveBeenCalled()
+    })
+
+    it('云端文件仍限制20个而不进入本地分批流程', async () => {
+      mockFileSelect.mockResolvedValueOnce(
+        Array.from({ length: 21 }, (_, index) => createSelectedFile(`doc-${index}.pdf`))
+      )
+      const onOpenChange = vi.fn()
+      render(
+        <KnowledgeItemSourceDialog
+          open
+          onOpenChange={onOpenChange}
+          selectedBaseId="base-1"
+          pendingAddSource="file"
+          cloudBaseId="orgkb:space"
+        />
+      )
+      await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false))
+      expect(toast.warning).toHaveBeenCalledWith('单次最多添加 20 个数据源，请减少选择后重试')
+      expect(mockSubmitKnowledgeItems).not.toHaveBeenCalled()
     })
 
     it('toasts and closes when the submit rejects (no panel to fall back to)', async () => {
@@ -735,6 +814,63 @@ describe('AddKnowledgeItemDialog', () => {
   })
 
   describe('same-name conflict resolution', () => {
+    it.each([
+      ['全部保留', 'rename'],
+      ['替换', 'replace']
+    ])('跨批同名选择%s后仅处理未接收部分，后批沿用策略且按钮防重复', async (label, strategy) => {
+      const user = userEvent.setup()
+      const files = Array.from({ length: 41 }, (_, index) => createSelectedFile(`doc-${index}.pdf`))
+      files[20] = createSelectedFile('doc-0.pdf', '/other/doc-0.pdf')
+      mockFileSelect.mockResolvedValueOnce(files)
+      let finishResolution!: (value: unknown) => void
+      mockSubmitKnowledgeItems
+        .mockResolvedValueOnce({ status: 'added' })
+        .mockResolvedValueOnce({ status: 'conflicts', conflicts: [{ type: 'file', title: 'doc-0.pdf' }] })
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              finishResolution = resolve
+            })
+        )
+      const onOpenChange = vi.fn()
+      render(<AddKnowledgeItemDialog open onOpenChange={onOpenChange} />)
+      const resolveButton = await screen.findByRole('button', { name: label })
+      expect(mockSubmitKnowledgeItems).toHaveBeenCalledTimes(2)
+      expect(onOpenChange).not.toHaveBeenCalled()
+      await user.dblClick(resolveButton)
+      expect(resolveButton).toBeDisabled()
+      expect(screen.getByRole('button', { name: '取消' })).toBeDisabled()
+      expect(mockSubmitKnowledgeItems).toHaveBeenCalledTimes(3)
+      await act(async () => finishResolution({ status: 'added' }))
+      await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false))
+      expect(
+        mockSubmitKnowledgeItems.mock.calls.map(([items, selectedStrategy]) => [items.length, selectedStrategy])
+      ).toEqual([
+        [20, 'detect'],
+        [20, 'detect'],
+        [20, strategy],
+        [1, strategy]
+      ])
+      expect(mockSubmitKnowledgeItems.mock.calls[2][0]).toEqual(mockSubmitKnowledgeItems.mock.calls[1][0])
+      expect(mockSubmitKnowledgeItems.mock.calls[3][0]).toEqual([
+        { type: 'file', data: { source: '/picked/doc-40.pdf', path: '/picked/doc-40.pdf' } }
+      ])
+    })
+
+    it('后批冲突取消时不提交剩余文件且不重放前批', async () => {
+      const user = userEvent.setup()
+      mockFileSelect.mockResolvedValueOnce(
+        Array.from({ length: 41 }, (_, index) => createSelectedFile(`doc-${index}.pdf`))
+      )
+      mockSubmitKnowledgeItems
+        .mockResolvedValueOnce({ status: 'added' })
+        .mockResolvedValueOnce({ status: 'conflicts', conflicts: [{ type: 'file', title: 'doc-20.pdf' }] })
+      const onOpenChange = vi.fn()
+      render(<AddKnowledgeItemDialog open onOpenChange={onOpenChange} />)
+      await user.click(await screen.findByRole('button', { name: '取消' }))
+      expect(onOpenChange).toHaveBeenCalledWith(false)
+      expect(mockSubmitKnowledgeItems).toHaveBeenCalledTimes(2)
+    })
     it('surfaces the conflict dialog after a file pick and resolves with keep all', async () => {
       mockFileSelect.mockResolvedValueOnce([createSelectedFile('alpha.pdf')])
       mockSubmitKnowledgeItems
