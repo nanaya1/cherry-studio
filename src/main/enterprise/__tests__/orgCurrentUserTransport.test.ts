@@ -5,7 +5,8 @@
  *    probe proved `net.request` does NOT auto-attach cookies, so the transport
  *    routes through `session.fetch`, which includes the partition cookies.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+// import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 const fetchMock = vi.fn()
 
@@ -19,7 +20,7 @@ import type { OrgSession } from '../types'
 
 const BASE = 'https://api.example'
 
-function bearerSession(over: Partial<OrgSession> = {}): OrgSession {
+function bearerSession(over: Partial<Exclude<OrgSession, { authMode: 'management-java' }>> = {}): OrgSession {
   return {
     authMode: 'management-oauth',
     accountKind: 'management',
@@ -39,7 +40,7 @@ function bearerSession(over: Partial<OrgSession> = {}): OrgSession {
   }
 }
 
-const currentUserBody = JSON.stringify({
+/* const currentUserBody = JSON.stringify({
   server_instance_id: 'inst-1',
   user: { id: 'u-1', group_id: 'g-1', role: 'member', status: 'active' }
 })
@@ -153,5 +154,59 @@ describe('StartupCurrentUserTransport request bounds', () => {
     const transport = createStartupCurrentUserTransport(bearerSession(), { baseUrl: BASE, timeoutMs })
 
     await expect(transport.getCurrentUser()).rejects.toThrow(/aborted/)
+  })
+}) */
+
+describe('Java 启动传输隔离', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    fetchMock.mockReset()
+  })
+  it.each(['management-cookie', 'management-oauth', 'management-exchange', 'official-direct'] as const)(
+    '阻断历史 %s 凭据且不发送请求',
+    async (authMode) => {
+      vi.stubGlobal('fetch', fetchMock)
+      const transport = createStartupCurrentUserTransport(bearerSession({ authMode }), { baseUrl: BASE })
+      await expect(transport.getCurrentUser()).rejects.toThrow('旧会话')
+      expect(fetchMock).not.toHaveBeenCalled()
+    }
+  )
+  it('使用原始 token 和无 Cookie 的 me 接口', async () => {
+    vi.stubGlobal('fetch', fetchMock)
+    fetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          code: 200,
+          data: { serverInstanceId: 'inst-1', id: 'u-1', tenantId: 'tenant', groupId: null, roleCode: 'member' }
+        })
+      )
+    )
+    const transport = createStartupCurrentUserTransport(
+      {
+        authMode: 'management-java',
+        accountKind: 'management',
+        issuerId: 'inst-1',
+        authOrigin: BASE,
+        userId: 'u-1',
+        officialUserId: '',
+        groupId: null,
+        tenantId: 'tenant',
+        role: 'member',
+        displayName: null,
+        phone: '',
+        accessToken: 'raw-token',
+        expiresAt: null
+      },
+      { baseUrl: BASE }
+    )
+    await expect(transport.getCurrentJavaProfile!()).resolves.toMatchObject({
+      userId: 'u-1',
+      groupId: null,
+      tenantId: 'tenant'
+    })
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe(`${BASE}/api/v1/auth/me`)
+    expect(init.headers).toEqual({ token: 'raw-token' })
+    expect(init.credentials).toBe('omit')
   })
 })

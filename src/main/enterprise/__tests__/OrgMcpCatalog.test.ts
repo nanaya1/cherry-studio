@@ -11,7 +11,8 @@ const { authMock, apiMock, mcpServiceMock, stateStoreMock } = vi.hoisted(() => (
     assertLease: vi.fn()
   },
   apiMock: {
-    listConnectors: vi.fn()
+    listConnectors: vi.fn(),
+    javaResources: { listConnectors: vi.fn() }
   },
   mcpServiceMock: {
     list: vi.fn().mockReturnValue({ items: [], total: 0, page: 1 }),
@@ -37,7 +38,8 @@ const { authMock, apiMock, mcpServiceMock, stateStoreMock } = vi.hoisted(() => (
     markConnectorDeleted: vi.fn(),
     deletedConnectorBaseUrl: vi.fn().mockReturnValue(undefined),
     clearConnectorDeleted: vi.fn(),
-    recordConnectorEntitlement: vi.fn()
+    recordConnectorEntitlement: vi.fn(),
+    getConnector: vi.fn()
   }
 }))
 
@@ -89,6 +91,148 @@ describe('OrgMcpCatalog C6 compareAndSync', () => {
 
   afterEach(() => {
     vi.restoreAllMocks()
+  })
+
+  it('Java 目录保留同名资源身份，读取不认领普通本地连接器', async () => {
+    authMock.acquireLease.mockReturnValue({
+      generation: 1,
+      issuerId: '9a38eaa8-d367-41b3-b8e2-90cebef54422',
+      groupId: 'group',
+      userId: 'user'
+    })
+    apiMock.javaResources.listConnectors.mockResolvedValue(
+      [1, 2].map((id) => ({
+        id: String(id),
+        slug: 'same',
+        name: '同名',
+        description: '',
+        tenantId: id === 1 ? null : '9',
+        iconFileCode: null,
+        type: 'sse',
+        baseUrl: 'https://example.test',
+        config: {},
+        configurationError: null
+      }))
+    )
+    const items = await catalog.listResources()
+    expect(items.map((item) => item.resourceKey)).toEqual([
+      `java-resource:${'9a38eaa8-d367-41b3-b8e2-90cebef54422'}:mcp:1`,
+      `java-resource:${'9a38eaa8-d367-41b3-b8e2-90cebef54422'}:mcp:2`
+    ])
+    expect(mcpServiceMock.update).not.toHaveBeenCalled()
+  })
+
+  it('Java 安装使用实际本地 ID 与完整租约，重复安装不复制凭据', async () => {
+    const lease = {
+      generation: 1,
+      issuerId: '9a38eaa8-d367-41b3-b8e2-90cebef54422',
+      groupId: 'group',
+      userId: 'user',
+      tenantId: '9'
+    }
+    authMock.acquireLease.mockReturnValue(lease)
+    apiMock.javaResources.listConnectors.mockResolvedValue([
+      {
+        id: '1',
+        slug: 'same',
+        name: '同名',
+        description: '',
+        tenantId: null,
+        iconFileCode: null,
+        type: 'streamableHttp',
+        baseUrl: 'https://example.test',
+        config: { baseUrl: 'https://wrong.test', type: 'sse' },
+        configurationError: null
+      }
+    ])
+    const key = `java-resource:${'9a38eaa8-d367-41b3-b8e2-90cebef54422'}:mcp:1`
+    await catalog.installResource(key)
+    expect(stateStoreMock.upsertConnector).toHaveBeenCalledWith(key, {
+      mcpId: 'mcp-new',
+      baseUrl: 'https://example.test'
+    })
+    expect(stateStoreMock.recordConnectorEntitlement).toHaveBeenCalledWith(key, {
+      issuerId: lease.issuerId,
+      groupId: lease.groupId,
+      tenantId: '9',
+      generation: 1,
+      resourceId: '1',
+      localResourceId: 'mcp-new',
+      entitlement: 'active'
+    })
+    expect(mcpServiceMock.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'streamableHttp',
+        baseUrl: 'https://example.test',
+        isActive: false
+      })
+    )
+    stateStoreMock.getConnector.mockReturnValue({ mcpId: 'mcp-new', baseUrl: 'https://example.test' })
+    mcpServiceMock.getByIdSafe.mockReturnValue({ id: 'mcp-new', headers: { Authorization: 'private' } })
+    await catalog.installResource(key)
+    expect(mcpServiceMock.create).toHaveBeenCalledTimes(1)
+    expect(mcpServiceMock.update).not.toHaveBeenCalled()
+    await expect(catalog.installResource(`java-resource:${'b'.repeat(32)}:mcp:1`)).rejects.toThrow()
+  })
+
+  it('同一Java连接器并发安装只创建一个本地实体', async () => {
+    authMock.acquireLease.mockReturnValue({
+      generation: 1,
+      issuerId: '9a38eaa8-d367-41b3-b8e2-90cebef54422',
+      groupId: 'group',
+      userId: 'user'
+    })
+    apiMock.javaResources.listConnectors.mockResolvedValue([
+      {
+        id: '1',
+        slug: 'same',
+        name: '同名',
+        description: '',
+        tenantId: null,
+        iconFileCode: null,
+        type: 'sse',
+        baseUrl: 'https://example.test',
+        config: {},
+        configurationError: null
+      }
+    ])
+    const records = new Map<string, { mcpId: string; baseUrl: string }>()
+    stateStoreMock.getConnector.mockImplementation((key) => records.get(key))
+    stateStoreMock.upsertConnector.mockImplementation((key, state) => {
+      records.set(key, state)
+    })
+    mcpServiceMock.getByIdSafe.mockImplementation((id) => (id === 'mcp-new' ? { id } : null))
+    const key = `java-resource:${'9a38eaa8-d367-41b3-b8e2-90cebef54422'}:mcp:1`
+    await Promise.all([catalog.installResource(key), catalog.installResource(key)])
+    expect(mcpServiceMock.create).toHaveBeenCalledTimes(1)
+    expect(records.get(key)?.mcpId).toBe('mcp-new')
+  })
+
+  it('Java 配置 schema 错误禁止降级安装', async () => {
+    authMock.acquireLease.mockReturnValue({
+      generation: 1,
+      issuerId: '9a38eaa8-d367-41b3-b8e2-90cebef54422',
+      groupId: 'group',
+      userId: 'user'
+    })
+    apiMock.javaResources.listConnectors.mockResolvedValue([
+      {
+        id: '1',
+        slug: 'same',
+        name: '同名',
+        description: '',
+        tenantId: null,
+        iconFileCode: null,
+        type: 'stdio',
+        baseUrl: '',
+        config: { args: 'invalid' },
+        configurationError: null
+      }
+    ])
+    await expect(
+      catalog.installResource(`java-resource:${'9a38eaa8-d367-41b3-b8e2-90cebef54422'}:mcp:1`)
+    ).rejects.toThrow('配置')
+    expect(mcpServiceMock.create).not.toHaveBeenCalled()
   })
 
   it('migrateLegacyCopies 将旧 org MCP 改为 manual 且保留其他配置', () => {

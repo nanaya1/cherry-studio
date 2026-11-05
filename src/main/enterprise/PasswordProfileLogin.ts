@@ -1,10 +1,11 @@
 import type { CompletedProfileAuthentication } from '@main/core/profiles'
 import type { ProfileSwitchResult } from '@main/core/profiles'
 
+import type { JavaAuthClient } from './JavaAuthClient'
 import { ProfileAuthBroker } from './ProfileAuthBroker'
-import type { OrgSession } from './types'
+// import type { OrgSession } from './types'
 
-interface PasswordSession {
+/* interface PasswordSession {
   fetch(url: string, init?: RequestInit): Promise<Response>
 }
 interface PasswordLoginDependencies {
@@ -19,6 +20,13 @@ interface PasswordLoginDependencies {
   completeAuthentication(authentication: CompletedProfileAuthentication): Promise<ProfileSwitchResult>
 }
 
+*/
+// MEA:enterprise-java-auth 凭据写入仍由 profile 切换事务负责。
+interface PasswordLoginDependencies {
+  baseUrl: string
+  client: Pick<JavaAuthClient, 'login' | 'fetchMe'>
+  completeAuthentication(authentication: CompletedProfileAuthentication): Promise<ProfileSwitchResult>
+}
 export class PasswordProfileLogin {
   private generation = 0
   private busy = false
@@ -40,7 +48,7 @@ export class PasswordProfileLogin {
     const assertCurrent = () => {
       if (generation !== this.generation) throw new Error('stale authentication response')
     }
-    const temporary = this.dependencies.createTemporarySession()
+    /* const temporary = this.dependencies.createTemporarySession()
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), 30_000)
     try {
@@ -95,6 +103,30 @@ export class PasswordProfileLogin {
       } finally {
         this.busy = false
       }
+    } */
+    try {
+      const tokens = await this.dependencies.client.login(identifier.trim(), password)
+      assertCurrent()
+      const profile = await this.dependencies.client.fetchMe(tokens.accessToken)
+      assertCurrent()
+      if (tokens.tenantId !== profile.tenantId) throw new Error('登录企业与用户企业不一致，请重新登录')
+      const broker = new ProfileAuthBroker(
+        {
+          getCurrentUser: async () => {
+            throw new Error('旧认证已停用')
+          }
+        },
+        this.dependencies.baseUrl
+      )
+      const authentication = broker.javaManagement({ ...profile, id: profile.userId }, tokens.accessToken)
+      return await this.dependencies.completeAuthentication({
+        ...authentication,
+        prepareTargetSession: async () => {
+          assertCurrent()
+        }
+      })
+    } finally {
+      this.busy = false
     }
   }
 }

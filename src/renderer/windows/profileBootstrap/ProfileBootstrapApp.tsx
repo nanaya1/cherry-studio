@@ -63,14 +63,16 @@ export default function ProfileBootstrapApp() {
         <form className="login-form" onSubmit={submit} aria-busy={loading}>
           <h1>企业服务登录</h1>
           <div className="form-item">
-            <label htmlFor="identifier">帐号</label>
+            {/* <label htmlFor="identifier">帐号</label> */}
+            <label htmlFor="identifier">用户名</label>
             <Input
               id="identifier"
               name="identifier"
               value={identifier}
               onChange={(event) => setIdentifier(event.target.value)}
               // placeholder="请输入手机号、邮箱或用户名"
-              placeholder="请输入邮箱或用户名"
+              // placeholder="请输入邮箱或用户名"
+              placeholder="请输入用户名"
               autoComplete="username"
               required
               disabled={loading}

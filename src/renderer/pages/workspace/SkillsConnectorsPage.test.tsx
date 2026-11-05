@@ -59,7 +59,7 @@ vi.mock('@renderer/components/resourceCatalog/catalog', () => ({
 }))
 
 vi.mock('@renderer/hooks/useOrgAccountSession', () => ({
-  useOrgAccountSession: () => ({ status: { authMode: orgSessionMock.authMode } })
+  useOrgAccountSession: () => ({ status: { phase: 'signed-in', authMode: orgSessionMock.authMode } })
 }))
 
 vi.mock('@renderer/hooks/resourceCatalog', () => ({
@@ -104,6 +104,17 @@ afterEach(() => {
 })
 
 describe('SkillsConnectorsPage', () => {
+  it('Java账号可切换公共技能目录且保留推荐搜索和我的安装入口', async () => {
+    orgSessionMock.authMode = 'management-java'
+    const user = userEvent.setup()
+    render(<SkillsConnectorsPage connectorView={<div>connector catalog</div>} />)
+    await user.type(screen.getByPlaceholderText('library.toolbar.search_placeholder'), '周报')
+    await user.click(screen.getByRole('tab', { name: 'Organization' }))
+    expect(screen.getByText('org skills: 周报')).toBeVisible()
+    expect(screen.getByRole('button', { name: /My installed/ })).toHaveTextContent('2')
+    await user.click(screen.getByRole('tab', { name: 'Recommended skills' }))
+    expect(screen.getByText('recommended skills: 周报')).toBeVisible()
+  })
   // 上游原契约：未配置管理服务时只显示推荐二级 Tab，管理 OAuth 模式下显示公共二级 Tab。
   // it('hides the public skill tab when no management server is configured', () => {
   //   orgSessionMock.authMode = 'official-direct'

@@ -1,5 +1,6 @@
 import * as z from 'zod'
 
+import { parseJavaResourceKey } from '../../utils/javaResourceKey'
 import { defineRoute } from '../define'
 
 // [enterprise] T0 企业扩展 IPC 契约。参考 cherryCloud.ts 模式。
@@ -9,7 +10,14 @@ export const enterpriseStatusSchema = z.strictObject({
   generation: z.number().int().nonnegative(),
   groupId: z.string().nullable(),
   // authMode: z.enum(['management-exchange', 'management-oauth', 'official-direct']),
-  authMode: z.enum(['management-exchange', 'management-oauth', 'management-cookie', 'official-direct']),
+  // authMode: z.enum(['management-exchange', 'management-oauth', 'management-cookie', 'official-direct']),
+  authMode: z.enum([
+    'management-exchange',
+    'management-oauth',
+    'management-cookie',
+    'official-direct',
+    'management-java'
+  ]),
   displayName: z.string().nullable(),
   phone: z.string().nullable(),
   role: z.string().nullable()
@@ -46,7 +54,70 @@ const orgConnectorItemSchema = z.strictObject({
   config: z.record(z.string(), z.unknown())
 })
 
+const javaConnectorKeySchema = z
+  .string()
+  // .regex(/^java-resource:[a-f0-9]{32}:mcp:[1-9][0-9]*$/)
+  // MEA:enterprise-java-resources Java部署实例也使用带横杠UUID，保留原值隔离。
+  // .regex(/^java-resource:(?:[a-f0-9]{32}|[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}):mcp:[1-9][0-9]*$/)
+  // .refine((value) => Number.isSafeInteger(Number(value.split(':').at(-1))))
+  .refine((value) => parseJavaResourceKey(value)?.resourceType === 'mcp')
+
+const javaConnectorItemSchema = z.strictObject({
+  id: z.string(),
+  resourceKey: javaConnectorKeySchema,
+  name: z.string(),
+  description: z.string(),
+  slug: z.string(),
+  tenantId: z.string().nullable(),
+  type: z.enum(['stdio', 'sse', 'streamableHttp']).nullable(),
+  baseUrl: z.string(),
+  config: z.record(z.string(), z.unknown()),
+  configurationError: z.string().nullable(),
+  iconUrl: z.string().nullable()
+})
+
+const javaSkillKeySchema = z
+  .string()
+  // .regex(/^java-resource:[a-f0-9]{32}:skill:[1-9][0-9]*$/)
+  // .regex(/^java-resource:(?:[a-f0-9]{32}|[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}):skill:[1-9][0-9]*$/)
+  // .refine((value) => Number.isSafeInteger(Number(value.split(':').at(-1))))
+  .refine((value) => parseJavaResourceKey(value)?.resourceType === 'skill')
+
+const javaSkillItemSchema = z.strictObject({
+  id: z.string(),
+  resourceKey: javaSkillKeySchema,
+  tenantId: z.string().nullable(),
+  slug: z.string(),
+  name: z.string(),
+  description: z.string(),
+  version: z.string(),
+  contentHash: z.string(),
+  iconUrl: z.string().nullable(),
+  categories: z.array(orgSkillFacetSchema),
+  tags: z.array(orgSkillFacetSchema)
+})
+
 export const enterpriseRequestSchemas = {
+  'enterprise.skills.list_resources': defineRoute({
+    input: z.void(),
+    output: z.strictObject({ skills: z.array(javaSkillItemSchema), installedKeys: z.array(z.string()) })
+  }),
+  'enterprise.skills.install_resource': defineRoute({
+    input: z.strictObject({ resourceKey: javaSkillKeySchema }),
+    output: z.strictObject({ ok: z.boolean() })
+  }),
+  'enterprise.skills.remove_resource': defineRoute({
+    input: z.strictObject({ resourceKey: javaSkillKeySchema }),
+    output: z.strictObject({ ok: z.boolean() })
+  }),
+  'enterprise.connectors.list_resources': defineRoute({
+    input: z.void(),
+    output: z.strictObject({ connectors: z.array(javaConnectorItemSchema), installedKeys: z.array(z.string()) })
+  }),
+  'enterprise.connectors.install_resource': defineRoute({
+    input: z.strictObject({ resourceKey: javaConnectorKeySchema }),
+    output: z.strictObject({ ok: z.boolean() })
+  }),
   'enterprise.status.get': defineRoute({ input: z.void(), output: enterpriseStatusSchema }),
   'enterprise.login.start': defineRoute({
     input: z.void(),
@@ -69,22 +140,22 @@ export const enterpriseRequestSchemas = {
     input: z.strictObject({ slug: z.string() }),
     output: z.strictObject({ ok: z.boolean() })
   }),
-  'enterprise.skills.reportExec': defineRoute({
+  'enterprise.skills.report_exec': defineRoute({
     input: z.strictObject({ slug: z.string(), detail: z.record(z.string(), z.unknown()).optional() }),
     output: z.strictObject({ ok: z.boolean() })
   }),
   // [enterprise] C2 停用拦截：渲染层构建技能注入前查询已停用 slug 列表
-  'enterprise.skills.listDisabled': defineRoute({
+  'enterprise.skills.list_disabled': defineRoute({
     input: z.void(),
     output: z.strictObject({ disabled: z.array(z.string()) })
   }),
   // [enterprise] C4 删除上报：用户卸载 org 技能时上报 deleted 事件
-  'enterprise.skills.reportDeleted': defineRoute({
+  'enterprise.skills.report_deleted': defineRoute({
     input: z.strictObject({ slug: z.string() }),
     output: z.strictObject({ ok: z.boolean() })
   }),
   // [enterprise] C3 组织可用性：登出后 org 资源标记不可用，重登恢复
-  'enterprise.status.orgUnavailable': defineRoute({
+  'enterprise.status.org_unavailable': defineRoute({
     input: z.void(),
     output: z.strictObject({ unavailable: z.boolean() })
   }),

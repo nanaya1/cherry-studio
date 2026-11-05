@@ -4,6 +4,8 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import type * as OrgApiClientModule from '../OrgApiClient'
+
 const { stateStoreMock, authConfig } = vi.hoisted(() => ({
   authConfig: { mode: 'official-direct' },
   stateStoreMock: {
@@ -42,7 +44,7 @@ vi.mock('@main/enterprise/OrgStateStore', async (importOriginal) => {
 })
 
 vi.mock('../OrgApiClient', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../OrgApiClient')>()
+  const actual = await importOriginal<typeof OrgApiClientModule>()
   return {
     ...actual,
     get ORG_AUTH_MODE() {
@@ -86,6 +88,66 @@ function seedSession(manager: OrgAuthManager, session = managementSession) {
 }
 
 describe('OrgAuthManager C3 组织可用性标记', () => {
+  it('Java 会话不刷新且撤销失败仍本地退出，旧浏览器入口阻断', async () => {
+    const manager = new OrgAuthManager()
+    seedSession(manager, {
+      authMode: 'management-java',
+      accountKind: 'management',
+      issuerId: 'server',
+      authOrigin: 'https://management.example',
+      userId: '7',
+      officialUserId: '',
+      groupId: '2',
+      tenantId: 'tenant',
+      displayName: 'Alice',
+      phone: '',
+      role: 'member',
+      accessToken: 'raw-token',
+      expiresAt: null
+    })
+    const network = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({ code: 10008 })))
+    vi.stubGlobal('fetch', network)
+    expect((await manager.getValidSession())?.authMode).toBe('management-java')
+    expect(network).not.toHaveBeenCalled()
+    const result = await manager.logout()
+    expect(result.revocationWarning).toBeTruthy()
+    expect(await manager.getValidSession()).toBeNull()
+    expect(network.mock.calls[0][0]).toBe('https://management.example/api/v1/auth/logout')
+    await expect(manager.startLogin()).rejects.toThrow(/用户名|密码/)
+  })
+  it('在线授权企业变化立即废弃旧租约', async () => {
+    const manager = new OrgAuthManager()
+    seedSession(manager, {
+      authMode: 'management-java',
+      accountKind: 'management',
+      issuerId: 'server',
+      authOrigin: 'https://management.example',
+      userId: '7',
+      officialUserId: '',
+      groupId: '2',
+      tenantId: 'tenant',
+      displayName: 'Alice',
+      phone: '',
+      role: 'member',
+      accessToken: 'raw-token',
+      expiresAt: null
+    })
+    const lease = manager.acquireLease()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              code: 200,
+              data: { serverInstanceId: 'server', id: '7', tenantId: 'other', groupId: '2', roleCode: 'member' }
+            })
+          )
+      )
+    )
+    await expect(manager.verifyOnlineAuthority()).rejects.toThrow()
+    expect(() => manager.assertLease(lease)).toThrow(/stale|unavailable/)
+  })
   beforeEach(() => {
     vi.clearAllMocks()
     authConfig.mode = 'official-direct'
@@ -164,37 +226,65 @@ describe('OrgAuthManager C3 组织可用性标记', () => {
 
   it('rejects runtime identity changes instead of switching accounts', async () => {
     const manager = new OrgAuthManager()
-    seedSession(manager, { ...managementSession, expiresAt: Number.MAX_SAFE_INTEGER })
+    seedSession(manager, {
+      authMode: 'management-java',
+      accountKind: 'management',
+      issuerId: 'server',
+      authOrigin: 'https://management.example',
+      userId: '7',
+      officialUserId: '',
+      groupId: '2',
+      tenantId: 'tenant',
+      displayName: 'Alice',
+      phone: '',
+      role: 'member',
+      accessToken: 'raw-token',
+      expiresAt: null
+    })
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(
         new Response(
           JSON.stringify({
-            server_instance_id: 'other-server',
-            user: { id: 7, group_id: 2, role: 'member', status: 'active' }
+            code: 200,
+            data: { serverInstanceId: 'other-server', id: '7', groupId: '2', tenantId: 'tenant', roleCode: 'member' }
           })
         )
       )
     )
-    await expect(manager.verifyOnlineAuthority()).rejects.toThrow(/identity/)
+    await expect(manager.verifyOnlineAuthority()).rejects.toThrow(/在线身份/)
     expect((await manager.getValidSession())?.issuerId).toBe('server')
   })
 
   it('rejects runtime authorization changes without overwriting the stored context', async () => {
     const manager = new OrgAuthManager()
-    seedSession(manager, { ...managementSession, expiresAt: Number.MAX_SAFE_INTEGER })
+    seedSession(manager, {
+      authMode: 'management-java',
+      accountKind: 'management',
+      issuerId: 'server',
+      authOrigin: 'https://management.example',
+      userId: '7',
+      officialUserId: '',
+      groupId: '2',
+      tenantId: 'tenant',
+      displayName: 'Alice',
+      phone: '',
+      role: 'member',
+      accessToken: 'raw-token',
+      expiresAt: null
+    })
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(
         new Response(
           JSON.stringify({
-            server_instance_id: 'server',
-            user: { id: 7, group_id: 3, role: 'member', status: 'active' }
+            code: 200,
+            data: { serverInstanceId: 'server', id: '7', groupId: '3', tenantId: 'tenant', roleCode: 'member' }
           })
         )
       )
     )
-    await expect(manager.verifyOnlineAuthority()).rejects.toThrow(/authorization/)
+    await expect(manager.verifyOnlineAuthority()).rejects.toThrow(/企业授权/)
     expect((await manager.getValidSession())?.groupId).toBe('2')
   })
 
@@ -240,20 +330,41 @@ describe('OrgAuthManager C3 组织可用性标记', () => {
   })
 
   it('rejects authority validation that finishes after logout without saving it', async () => {
-    const response = deferred<{
-      server_instance_id: string
-      user: { id: number; group_id: number; role: string; status: string }
-    }>()
+    const response = deferred<Response>()
     const save = vi.fn()
     const store = { save, clear: vi.fn().mockResolvedValue(undefined) }
     const manager = new OrgAuthManager({ credentialStore: store as unknown as OrgCredentialStore })
-    seedSession(manager, { ...managementSession, expiresAt: Number.MAX_SAFE_INTEGER })
-    vi.spyOn(manager.apiClient, 'getCurrentUser').mockReturnValue(response.promise)
+    seedSession(manager, {
+      authMode: 'management-java',
+      accountKind: 'management',
+      issuerId: 'server',
+      authOrigin: 'https://management.example',
+      userId: '7',
+      officialUserId: '',
+      groupId: '2',
+      tenantId: 'tenant',
+      displayName: 'Alice',
+      phone: '',
+      role: 'member',
+      accessToken: 'raw-token',
+      expiresAt: null
+    })
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => response.promise)
+    )
     vi.spyOn(manager.apiClient, 'revoke').mockResolvedValue(undefined)
     const validation = manager.revalidateAuthority()
     const rejected = expect(validation).rejects.toThrow(/stale|epoch/)
     await manager.logout()
-    response.resolve({ server_instance_id: 'server', user: { id: 7, group_id: 2, role: 'member', status: 'active' } })
+    response.resolve(
+      new Response(
+        JSON.stringify({
+          code: 200,
+          data: { serverInstanceId: 'server', id: '7', groupId: '2', tenantId: 'tenant', roleCode: 'member' }
+        })
+      )
+    )
     await rejected
     expect(await manager.getValidSession()).toBeNull()
     expect(save).not.toHaveBeenCalled()
@@ -275,11 +386,33 @@ describe('OrgAuthManager C3 组织可用性标记', () => {
       })
     }
     const manager = new OrgAuthManager({ credentialStore: store as unknown as OrgCredentialStore })
-    seedSession(manager, { ...managementSession, expiresAt: Number.MAX_SAFE_INTEGER })
-    vi.spyOn(manager.apiClient, 'getCurrentUser').mockResolvedValue({
-      server_instance_id: 'server',
-      user: { id: 7, group_id: 2, role: 'member', status: 'active' }
+    seedSession(manager, {
+      authMode: 'management-java',
+      accountKind: 'management',
+      issuerId: 'server',
+      authOrigin: 'https://management.example',
+      userId: '7',
+      officialUserId: '',
+      groupId: '2',
+      tenantId: 'tenant',
+      displayName: 'Alice',
+      phone: '',
+      role: 'member',
+      accessToken: 'raw-token',
+      expiresAt: null
     })
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              code: 200,
+              data: { serverInstanceId: 'server', id: '7', groupId: '2', tenantId: 'tenant', roleCode: 'member' }
+            })
+          )
+      )
+    )
     vi.spyOn(manager.apiClient, 'revoke').mockResolvedValue(undefined)
     const validating = manager.revalidateAuthority()
     const outcome = validating.catch((error: unknown) => error)
@@ -293,7 +426,7 @@ describe('OrgAuthManager C3 组织可用性标记', () => {
     expect(await outcome).toBeInstanceOf(Error)
   })
 
-  it('does not publish login after its credential save is overtaken by logout', async () => {
+  /* it('does not publish login after its credential save is overtaken by logout', async () => {
     const writing = deferred<void>()
     const release = deferred<void>()
     let persisted: OrgSession | null = null
@@ -376,6 +509,20 @@ describe('OrgAuthManager C3 组织可用性标记', () => {
     expect(manager.getStatus().phase).toBe('authorizing')
   })
 
+  */
+  it.each(['meacowork://auth/callback?code=old', 'meacowork://auth/sso/callback?token=old'])(
+    '旧回调不得建立会话：%s',
+    async (url) => {
+      const manager = new OrgAuthManager()
+      const network = vi.fn()
+      vi.stubGlobal('fetch', network)
+      await expect(manager.handleAuthCallback(new URL(url))).rejects.toThrow('旧登录回调已停用')
+      await manager.logout()
+      await expect(manager.handleAuthCallback(new URL(url))).rejects.toThrow('旧登录回调已停用')
+      expect(await manager.getValidSession()).toBeNull()
+      expect(network).not.toHaveBeenCalled()
+    }
+  )
   // copy 模式下，登出只结束目录访问会话，不改变已复制到本地的资源状态。
   it('logout 不改变已安装资源的可用性', async () => {
     const mgr = new OrgAuthManager()
@@ -384,7 +531,7 @@ describe('OrgAuthManager C3 组织可用性标记', () => {
     expect(stateStoreMock.markAvailable).not.toHaveBeenCalled()
   })
 
-  it('登录成功不改变已安装资源的可用性', async () => {
+  /* it('登录成功不改变已安装资源的可用性', async () => {
     const mgr = new OrgAuthManager()
     // 走私有路径太绕：直接验证 doFinishLogin 逻辑不可行，改用 fetch mock 走完整回调
     const fetchMock = vi.fn().mockResolvedValue({
@@ -448,5 +595,5 @@ describe('OrgAuthManager C3 组织可用性标记', () => {
     expect(profileSession.completeAuthentication).toHaveBeenCalled()
     expect(manager['switching']).toBe(false)
     expect(manager.getStatus().phase).toBe('signed-in')
-  })
+  }) */
 })

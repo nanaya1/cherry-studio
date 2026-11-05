@@ -4,8 +4,9 @@ import {
   type ProfileAuthorizationContext
 } from '@main/core/profiles'
 
+import { normalizeJavaMe } from './JavaAuthClient'
 import type { OrgSession } from './OrgCredentialStore'
-import type { OrgAuthMode, OrgCurrentUser } from './types'
+import type { JavaAuthProfile, JavaMeData, OrgAuthMode, OrgCurrentUser } from './types'
 
 export interface ProfileAuthBrokerApi {
   // 原 getServerIdentity() 已停用：modern 的 /api/currentuser 同时返回 server_instance_id 与 user。
@@ -131,6 +132,53 @@ export class ProfileAuthBroker {
         expiresAt: tokens.expiresAt
       }
     }
+  }
+
+  /**
+   * [enterprise] Java Sa-Token 原生认证构造：不要求 status（活跃性由 Java 鉴权保证），
+   * 但要求有效 tenantId 与 role；groupId 允许真实 null。tenantId 写入可变授权上下文，
+   * 不进入 profile 主键（主键仍是 serverInstanceId + userId + accountKind）。
+   */
+  javaManagement(currentUser: JavaMeData, accessToken: string): CompletedAuthentication {
+    const profile = normalizeJavaMe(currentUser)
+    const checkedAt = new Date().toISOString()
+    return {
+      identity: normalizeAuthenticatedSubject('management-java', profile.serverInstanceId, profile.userId),
+      authorizationContext: {
+        tenantId: profile.tenantId,
+        groupId: profile.groupId,
+        role: profile.roleCode,
+        checkedAt
+      },
+      session: {
+        authMode: 'management-java',
+        accountKind: 'management',
+        issuerId: profile.serverInstanceId,
+        authOrigin: this.managementAuthOrigin,
+        userId: profile.userId,
+        officialUserId: '',
+        groupId: profile.groupId,
+        tenantId: profile.tenantId,
+        displayName: profile.username,
+        phone: '',
+        role: profile.roleCode,
+        // status: '',
+        accessToken,
+        // refreshToken: '',
+        // expiresAt: 0
+        expiresAt: null
+      }
+    }
+  }
+
+  async javaRevalidate(
+    getJavaProfile: () => Promise<JavaAuthProfile>,
+    accessToken: string,
+    generation = this.currentGeneration
+  ): Promise<CompletedAuthentication> {
+    const profile = await getJavaProfile()
+    this.assertGeneration(generation)
+    return this.javaManagement({ ...profile, id: profile.userId }, accessToken)
   }
 
   private assertGeneration(generation: number): void {

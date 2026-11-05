@@ -1,4 +1,4 @@
-import { session } from 'electron'
+/* import { session } from 'electron'
 import { v4 as uuidv4 } from 'uuid'
 
 import {
@@ -12,19 +12,25 @@ import {
 } from '@main/core/profiles'
 import { runAuthSessionOperation, getProfileAuthSession, cookieToSetDetails } from '@main/core/profiles'
 
+*/
+import type { ProfileSessionService } from '@main/core/profiles'
+
+import { JavaAuthClient } from './JavaAuthClient'
 import { ORG_SERVER_BASE_URL } from './OrgApiClient'
 import { PasswordProfileLogin } from './PasswordProfileLogin'
-import { ProfileAuthBroker } from './ProfileAuthBroker'
+// import { ProfileAuthBroker } from './ProfileAuthBroker'
 
 export function createPasswordProfileLogin(
-  profileSession: ProfileSessionService,
-  sessions = session
+  profileSession: ProfileSessionService
+  // sessions = session
 ): PasswordProfileLogin {
   const baseUrl = ORG_SERVER_BASE_URL
   if (!baseUrl) throw new Error('Management server is not configured')
   return new PasswordProfileLogin({
     baseUrl,
-    createTemporarySession: () => sessions.fromPartition(`profile-login-${uuidv4()}`),
+    // MEA:enterprise-java-auth 不创建或复制 Cookie；safeStorage 仍由原事务提交。
+    client: new JavaAuthClient({ baseUrl, publicKeyBase64: import.meta.env.MAIN_VITE_ORG_RSA_PUBLIC_KEY }),
+    /* createTemporarySession: () => sessions.fromPartition(`profile-login-${uuidv4()}`),
     clearTemporary: async (temporary) => {
       await clearAllowedCookies(temporary as CookieSessionPort, baseUrl, ['sid'])
     },
@@ -97,6 +103,7 @@ export function createPasswordProfileLogin(
         throw error
       }
     },
+    */
     completeAuthentication: (authentication) => profileSession.completeAuthentication(authentication)
   })
 }

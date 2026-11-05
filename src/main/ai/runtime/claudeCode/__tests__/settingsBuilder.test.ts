@@ -15,6 +15,7 @@ import type * as UserDataSqliteGuard from '@main/ai/toolApproval/userDataSqliteG
 import { BrowserSessionService } from '@main/features/browser'
 import type * as FileUtils from '@main/utils/file'
 import { KB_MANAGE_TOOL_NAME } from '@shared/ai/builtinTools'
+import { BuiltinMcpServerNames } from '@shared/utils/mcp'
 
 const APPROVAL_REQUIRED_RUNTIME_NAMES = listBuiltinToolPolicies({ approval: 'required' }).map(toMcpRuntimeName)
 const BYPASSABLE_APPROVAL_REQUIRED_RUNTIME_NAMES = listBuiltinToolPolicies({
@@ -539,6 +540,23 @@ describe('buildClaudeCodeSessionSettings', () => {
     }
   })
 
+  it('excludes Java managed skills from the native Skill whitelist', async () => {
+    mocks.listSkills.mockResolvedValue([
+      { id: 'java', folderName: 'isolated', isEnabled: true, sourceUrl: `java-resource:${'a'.repeat(32)}:skill:1` },
+      { id: 'local', folderName: 'ordinary', isEnabled: true }
+    ])
+    const settings = await buildClaudeCodeSessionSettings(
+      {
+        id: 'session-1',
+        agentId: 'agent-1',
+        workspace: { type: 'user', path: '/workspace/project' }
+      } as never,
+      {} as never
+    )
+    expect(settings.skills).toContain('ordinary')
+    expect(settings.skills).not.toContain('isolated')
+  })
+
   async function runSkillDependencyHook(hookName: 'toolGuardHook' | 'skillDependencyAdvisoryHook') {
     const settings = await buildClaudeCodeSessionSettings(
       {
@@ -870,7 +888,8 @@ describe('buildClaudeCodeSessionSettings', () => {
     )
     const agent = { ...mocks.getAgent(), mcps: ['legacy-browser', 'remote-browser'] }
     const snapshot = new Map([
-      ['legacy-browser', { id: 'legacy-browser', name: '@cherry/browser', type: 'inMemory' }],
+      // ['legacy-browser', { id: 'legacy-browser', name: '@cherry/browser', type: 'inMemory' }],
+      ['legacy-browser', { id: 'legacy-browser', name: BuiltinMcpServerNames.browser, type: 'inMemory' }],
       [
         'remote-browser',
         { id: 'remote-browser', name: '@cherry/browser', type: 'streamableHttp', baseUrl: 'https://example.com/mcp' }

@@ -51,7 +51,8 @@ function businessContext(over: Partial<ProfileLaunchContext> = {}): ProfileLaunc
   }
 }
 
-function bearerSession(over: Partial<OrgSession> = {}): OrgSession {
+// function bearerSession(over: Partial<OrgSession> = {}): OrgSession {
+function bearerSession(over: Partial<Exclude<OrgSession, { authMode: 'management-java' }>> = {}): OrgSession {
   return {
     authMode: 'management-oauth',
     accountKind: 'management',
@@ -102,7 +103,7 @@ describe('verifyBusinessCandidate through the runtime', () => {
     vi.unstubAllGlobals()
   })
 
-  it('verifies a Bearer candidate and opens the business profile', async () => {
+  /* it('verifies a Bearer candidate and opens the business profile', async () => {
     mocks.credentialLoad.mockResolvedValue(bearerSession())
     fetchMock.mockResolvedValue(currentUserResponse())
 
@@ -112,6 +113,35 @@ describe('verifyBusinessCandidate through the runtime', () => {
     expect(mocks.fromPath).not.toHaveBeenCalled()
   })
 
+  */
+  it('Java 会话以专用 me 验证后进入业务空间', async () => {
+    mocks.credentialLoad.mockResolvedValue({
+      authMode: 'management-java',
+      accountKind: 'management',
+      issuerId: 'inst-1',
+      authOrigin: 'inst-1',
+      userId: 'u-1',
+      officialUserId: '',
+      groupId: null,
+      tenantId: 'tenant',
+      role: 'member',
+      displayName: null,
+      phone: '',
+      accessToken: 'raw',
+      expiresAt: null
+    })
+    fetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          code: 200,
+          data: { serverInstanceId: 'inst-1', id: 'u-1', tenantId: 'tenant', groupId: null, roleCode: 'member' }
+        })
+      )
+    )
+    const result = await verifyBusinessCandidate(businessContext())
+    expect(result.kind).toBe('verified')
+    expect(mocks.sessionFetch).not.toHaveBeenCalled()
+  })
   it('fails closed when the stored session is missing', async () => {
     mocks.credentialLoad.mockResolvedValue(null)
 
@@ -140,7 +170,9 @@ describe('verifyBusinessCandidate through the runtime', () => {
 
     expect(result.kind).toBe('failed')
     if (result.kind !== 'failed') throw new Error('Expected failed verification')
-    expect(result.reason).toMatch(/401/)
+    // expect(result.reason).toMatch(/401/)
+    expect(result.reason).toMatch(/旧会话/)
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   it('verifies a Cookie candidate through the Electron session fetch', async () => {
@@ -149,8 +181,10 @@ describe('verifyBusinessCandidate through the runtime', () => {
 
     const result = await verifyBusinessCandidate(businessContext())
 
-    expect(result.kind).toBe('verified')
-    expect(mocks.sessionFetch).toHaveBeenCalledOnce()
+    // expect(result.kind).toBe('verified')
+    // expect(mocks.sessionFetch).toHaveBeenCalledOnce()
+    expect(result.kind).toBe('failed')
+    expect(mocks.sessionFetch).not.toHaveBeenCalled()
     expect(fetchMock).not.toHaveBeenCalled()
   })
 })

@@ -6,7 +6,16 @@
  * mock 掉 auth/apiClient/SkillService/OrgStateStore，只测编排逻辑。
  * 每个用例新建实例（避免 catalogCache 跨用例泄漏）。
  */
+import { createHash } from 'node:crypto'
+// import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
+import AdmZip from 'adm-zip'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+import { application } from '@application'
 
 const { authMock, apiMock, skillServiceMock, stateStoreMock, agentGlobalSkillServiceMock } = vi.hoisted(() => ({
   authMock: {
@@ -16,10 +25,13 @@ const { authMock, apiMock, skillServiceMock, stateStoreMock, agentGlobalSkillSer
   },
   apiMock: {
     listSkills: vi.fn(),
-    reportLifecycle: vi.fn()
+    reportLifecycle: vi.fn(),
+    javaResources: { listSkills: vi.fn(), readFile: vi.fn(), reportLifecycle: vi.fn() }
   },
   skillServiceMock: {
     installSkillDir: vi.fn(),
+    installJavaResource: vi.fn(),
+    getInstalledSkillDirectory: vi.fn(),
     list: vi.fn(),
     uninstall: vi.fn()
   },
@@ -40,7 +52,9 @@ const { authMock, apiMock, skillServiceMock, stateStoreMock, agentGlobalSkillSer
     markDeleted: vi.fn(),
     clearDeleted: vi.fn(),
     deletedHash: vi.fn(),
-    recordSkillEntitlement: vi.fn()
+    recordSkillEntitlement: vi.fn(),
+    reconcileJavaResources: vi.fn(),
+    isSkillAllowed: vi.fn()
   }
 }))
 
@@ -80,21 +94,227 @@ function makeItem(slug: string, contentHash: string, version = '1.0.0') {
 
 describe('OrgSkillCatalog C1/C2/C4', () => {
   let catalog: OrgSkillCatalog
+  let tempRoot: string
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.resetAllMocks()
+    tempRoot = await mkdtemp(join(tmpdir(), 'java-catalog-test-'))
+    vi.spyOn(application, 'getPath').mockReturnValue(tempRoot)
     vi.stubEnv('MAIN_VITE_ORG_SERVER_BASE_URL', 'http://127.0.0.1:3000')
     // 重置默认实现（resetAllMocks 会清掉 mockReturnValue）
     apiMock.reportLifecycle.mockResolvedValue(undefined)
+    stateStoreMock.isSkillAllowed.mockReturnValue(true)
     stateStoreMock.snapshot.mockReturnValue({})
     agentGlobalSkillServiceMock.listAll.mockReturnValue([])
     catalog = new OrgSkillCatalog(authMock as never)
     ;(catalog as unknown as { auth: unknown }).auth = { ...authMock, apiClient: apiMock }
   })
 
-  afterEach(() => {
+  afterEach(async () => {
+    await rm(tempRoot, { recursive: true, force: true })
     vi.restoreAllMocks()
     vi.unstubAllEnvs()
+  })
+
+  it.each(['', 'same/'])('Java ZIP %s布局按稳定键安装并记录实际摘要，上报失败不回滚', async (prefix) => {
+    const zip = new AdmZip()
+    zip.addFile(`${prefix}SKILL.md`, Buffer.from('---\nname: same\n---\n内容'))
+    const bytes = zip.toBuffer()
+    const hash = createHash('sha256').update(bytes).digest('hex')
+    authMock.acquireLease.mockReturnValue({
+      generation: 1,
+      issuerId: '9a38eaa8-d367-41b3-b8e2-90cebef54422',
+      groupId: 'group',
+      userId: 'user'
+    })
+    apiMock.javaResources.listSkills.mockResolvedValue([
+      {
+        id: '1',
+        tenantId: null,
+        slug: 'same',
+        name: '同名',
+        description: '',
+        version: '1',
+        contentHash: hash,
+        packageFileCode: 'private-file',
+        iconFileCode: null,
+        categories: [],
+        tags: []
+      }
+    ])
+    apiMock.javaResources.readFile.mockResolvedValue({ bytes, contentType: 'application/zip' })
+    apiMock.javaResources.reportLifecycle.mockRejectedValue(new Error('上报失败'))
+    skillServiceMock.installJavaResource.mockResolvedValue({ id: 'local-id', folderName: 'isolated' })
+    const key = `java-resource:${'9a38eaa8-d367-41b3-b8e2-90cebef54422'}:skill:1`
+    await expect(catalog.installResource(key)).resolves.toBeUndefined()
+    expect(stateStoreMock.upsert).toHaveBeenCalledWith(
+      key,
+      expect.objectContaining({ skillId: 'local-id', contentHash: hash, version: '1' })
+    )
+    expect(apiMock.javaResources.reportLifecycle).toHaveBeenCalledWith({
+      id: '1',
+      eventId: expect.stringMatching(/^[a-f0-9]{32}$/),
+      event: 'install',
+      version: '1',
+      contentHash: hash
+    })
+  })
+
+  it.each(['hash', 'multiple', 'layout', 'stale'])('Java ZIP 拒绝%s错误且不创建安装记录', async (failure) => {
+    const zip = new AdmZip()
+    zip.addFile('SKILL.md', Buffer.from('---\nname: same\n---\n内容'))
+    if (failure === 'multiple') zip.addFile('other/SKILL.md', Buffer.from('---\nname: other\n---'))
+    if (failure === 'layout') {
+      zip.deleteFile('SKILL.md')
+      zip.addFile('wrong/SKILL.md', Buffer.from('内容'))
+    }
+    const bytes = zip.toBuffer()
+    const hash = createHash('sha256').update(bytes).digest('hex')
+    authMock.acquireLease.mockReturnValue({
+      generation: 1,
+      issuerId: '9a38eaa8-d367-41b3-b8e2-90cebef54422',
+      groupId: 'group',
+      userId: 'user'
+    })
+    apiMock.javaResources.listSkills.mockResolvedValue([
+      { id: '1', slug: 'same', contentHash: failure === 'hash' ? '0'.repeat(64) : hash, packageFileCode: 'file' }
+    ])
+    apiMock.javaResources.readFile.mockImplementation(async () => {
+      if (failure === 'stale')
+        authMock.assertLease.mockImplementation(() => {
+          throw new Error('租约失效')
+        })
+      return { bytes, contentType: 'application/zip' }
+    })
+    await expect(
+      catalog.installResource(`java-resource:${'9a38eaa8-d367-41b3-b8e2-90cebef54422'}:skill:1`)
+    ).rejects.toThrow()
+    expect(skillServiceMock.installJavaResource).not.toHaveBeenCalled()
+    expect(stateStoreMock.upsert).not.toHaveBeenCalled()
+    expect(apiMock.javaResources.reportLifecycle).not.toHaveBeenCalled()
+  })
+
+  it('Java技能激活按稳定键取内容并上报实际安装版本，不误选同名资源', async () => {
+    const key = `java-resource:${'9a38eaa8-d367-41b3-b8e2-90cebef54422'}:skill:1`
+    const other = `java-resource:${'9a38eaa8-d367-41b3-b8e2-90cebef54422'}:skill:2`
+    authMock.acquireLease.mockReturnValue({
+      generation: 1,
+      issuerId: '9a38eaa8-d367-41b3-b8e2-90cebef54422',
+      groupId: 'group',
+      userId: 'user'
+    })
+    stateStoreMock.get.mockReturnValue({
+      skillId: 'one',
+      folderName: 'isolated',
+      version: 'installed',
+      contentHash: 'hash'
+    })
+    skillServiceMock.list.mockResolvedValue([
+      { id: 'two', name: 'same', sourceUrl: other, isEnabled: true },
+      { id: 'one', name: 'same', sourceUrl: key, isEnabled: true }
+    ])
+    skillServiceMock.getInstalledSkillDirectory.mockReturnValue(tempRoot)
+    await writeFile(join(tempRoot, 'SKILL.md'), '---\nname: same\n---\n正确内容')
+    apiMock.javaResources.listSkills.mockResolvedValue([{ id: '1' }])
+    const result = await catalog.activateResource(key, 'agent')
+    expect(result.content).toContain('正确内容')
+    expect(result.directory).toBe(tempRoot)
+    expect(apiMock.javaResources.reportLifecycle).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: '1',
+        event: 'exec',
+        version: 'installed',
+        contentHash: 'hash'
+      })
+    )
+  })
+
+  it('激活授权请求期间取消后不加载正文或上报exec', async () => {
+    const key = `java-resource:${'9a38eaa8-d367-41b3-b8e2-90cebef54422'}:skill:1`
+    const controller = new AbortController()
+    authMock.acquireLease.mockReturnValue({
+      generation: 1,
+      issuerId: '9a38eaa8-d367-41b3-b8e2-90cebef54422',
+      groupId: 'group',
+      userId: 'user'
+    })
+    apiMock.javaResources.listSkills.mockImplementation(async () => {
+      controller.abort()
+      return [{ id: '1' }]
+    })
+    stateStoreMock.get.mockReturnValue({ skillId: 'one', version: '1', contentHash: 'hash' })
+    skillServiceMock.list.mockResolvedValue([{ id: 'one', sourceUrl: key, isEnabled: true }])
+    skillServiceMock.getInstalledSkillDirectory.mockReturnValue(tempRoot)
+    await writeFile(join(tempRoot, 'SKILL.md'), '不得返回的内容')
+    await expect(catalog.activateResource(key, 'agent', controller.signal)).rejects.toThrow()
+    expect(apiMock.javaResources.reportLifecycle).not.toHaveBeenCalled()
+    expect(skillServiceMock.getInstalledSkillDirectory).not.toHaveBeenCalled()
+  })
+
+  it('激活上报等待期间撤权也不返回正文', async () => {
+    const key = `java-resource:${'9a38eaa8-d367-41b3-b8e2-90cebef54422'}:skill:1`
+    authMock.acquireLease.mockReturnValue({
+      generation: 1,
+      issuerId: '9a38eaa8-d367-41b3-b8e2-90cebef54422',
+      groupId: 'group',
+      userId: 'user'
+    })
+    apiMock.javaResources.listSkills.mockResolvedValue([{ id: '1' }])
+    stateStoreMock.get.mockReturnValue({ skillId: 'one', version: '1', contentHash: 'hash' })
+    skillServiceMock.list.mockResolvedValue([{ id: 'one', sourceUrl: key, isEnabled: true }])
+    skillServiceMock.getInstalledSkillDirectory.mockReturnValue(tempRoot)
+    await writeFile(join(tempRoot, 'SKILL.md'), '不得返回的内容')
+    apiMock.javaResources.reportLifecycle.mockImplementation(async () => {
+      stateStoreMock.isSkillAllowed.mockReturnValue(false)
+    })
+    await expect(catalog.activateResource(key, 'agent')).rejects.toThrow('技能无权访问')
+  })
+
+  it.each(['revoked', 'disabled', 'stale', 'entitlement'])('Java技能激活拒绝%s且不发送exec', async (failure) => {
+    const key = `java-resource:${'9a38eaa8-d367-41b3-b8e2-90cebef54422'}:skill:1`
+    authMock.acquireLease.mockReturnValue({
+      generation: 1,
+      issuerId: '9a38eaa8-d367-41b3-b8e2-90cebef54422',
+      groupId: 'group',
+      userId: 'user'
+    })
+    apiMock.javaResources.listSkills.mockResolvedValue(failure === 'revoked' ? [] : [{ id: '1' }])
+    stateStoreMock.get.mockReturnValue({ skillId: 'one', folderName: 'isolated', version: '1', contentHash: 'hash' })
+    skillServiceMock.list.mockResolvedValue([{ id: 'one', sourceUrl: key, isEnabled: failure !== 'disabled' }])
+    skillServiceMock.getInstalledSkillDirectory.mockReturnValue(tempRoot)
+    await writeFile(join(tempRoot, 'SKILL.md'), '内容')
+    if (failure === 'entitlement') stateStoreMock.isSkillAllowed.mockReturnValue(false)
+    if (failure === 'stale')
+      authMock.assertLease.mockImplementation(() => {
+        throw new Error('租约失效')
+      })
+    await expect(catalog.activateResource(key, 'agent')).rejects.toThrow()
+    expect(apiMock.javaResources.reportLifecycle).not.toHaveBeenCalled()
+  })
+
+  it('Java卸载只操作可信映射的本地实体且不发送deleted事件', async () => {
+    const key = `java-resource:${'9a38eaa8-d367-41b3-b8e2-90cebef54422'}:skill:1`
+    const other = `java-resource:${'9a38eaa8-d367-41b3-b8e2-90cebef54422'}:skill:2`
+    stateStoreMock.get.mockReturnValue({ skillId: 'local-one', folderName: 'isolated-one' })
+    agentGlobalSkillServiceMock.listAll.mockReturnValue([
+      { id: 'local-one', sourceUrl: key },
+      { id: 'local-two', sourceUrl: other },
+      { id: 'ordinary', sourceUrl: null }
+    ])
+    await catalog.removeResource(key)
+    expect(skillServiceMock.uninstall).toHaveBeenCalledWith('local-one')
+    expect(skillServiceMock.uninstall).toHaveBeenCalledTimes(1)
+    expect(stateStoreMock.remove).toHaveBeenCalledWith(key)
+    expect(apiMock.javaResources.reportLifecycle).not.toHaveBeenCalled()
+    expect(apiMock.reportLifecycle).not.toHaveBeenCalled()
+  })
+
+  it('Java卸载拒绝与可信来源不一致的本地映射', async () => {
+    const key = `java-resource:${'9a38eaa8-d367-41b3-b8e2-90cebef54422'}:skill:1`
+    stateStoreMock.get.mockReturnValue({ skillId: 'ordinary', folderName: 'same' })
+    agentGlobalSkillServiceMock.listAll.mockReturnValue([{ id: 'ordinary', sourceUrl: null }])
+    await expect(catalog.removeResource(key)).rejects.toThrow()
+    expect(skillServiceMock.uninstall).not.toHaveBeenCalled()
   })
 
   it('目录仅接受组织服务端技能图标路径并转换为绝对 URL', async () => {
@@ -486,9 +706,9 @@ describe('OrgSkillCatalog C1/C2/C4', () => {
       }
     })
     const hash = (await import('node:crypto')).createHash('sha256').update(tarball).digest('hex')
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(stream, { status: 200, headers: { 'content-type': 'application/gzip' } })
-    )
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(stream, { status: 200, headers: { 'content-type': 'application/gzip' } }))
     vi.stubGlobal('fetch', fetchMock)
 
     await (catalog as unknown as { downloadWithHash: (i: unknown, d: string) => Promise<void> }).downloadWithHash(

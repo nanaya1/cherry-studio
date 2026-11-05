@@ -13,12 +13,13 @@ export interface OrgSkillFacet {
 }
 
 export interface OrgSkillItem {
+  resourceKey: string
   slug: string
   name: string
   description: string
   version: string
   contentHash: string
-  downloadUrl: string
+  // downloadUrl: string // Java 文件标识不进入渲染层。
   iconUrl?: string | null
   categories?: OrgSkillFacet[]
   tags?: OrgSkillFacet[]
@@ -54,15 +55,15 @@ export function useOrgSkills(enabled: boolean) {
       // [enterprise] 目录响应携带 installedSlugs（原解构注释保留）
       // const { skills: list } = await ipcApi.request('enterprise.skills.list')
       // force: 用户主动刷新必须穿透主进程目录 TTL 缓存（管理台启停后立即生效）
-      const { skills: list, installedSlugs: installed } = await ipcApi.request('enterprise.skills.list', {
-        force: true
-      })
+      // const { skills: list, installedSlugs: installed } = await ipcApi.request('enterprise.skills.list', { force: true })
+      // MEA:enterprise-java-resources 安装状态仅按稳定资源键匹配。
+      const { skills: list, installedKeys: installed } = await ipcApi.request('enterprise.skills.list_resources')
       if (requestId !== requestRef.current) return
       setSkills(list)
       setInstalledSlugs(new Set(installed))
       // [enterprise] C2：并行查询停用列表（查询失败不影响目录展示）
       try {
-        const { disabled } = await ipcApi.request('enterprise.skills.listDisabled')
+        const { disabled } = await ipcApi.request('enterprise.skills.list_disabled')
         if (requestId !== requestRef.current) return
         setDisabledSlugs(disabled)
       } catch {
@@ -87,7 +88,8 @@ export function useOrgSkills(enabled: boolean) {
     async (slug: string): Promise<boolean> => {
       setInstalling((current) => new Set(current).add(slug))
       try {
-        await ipcApi.request('enterprise.skills.install', { slug })
+        // await ipcApi.request('enterprise.skills.install', { slug })
+        await ipcApi.request('enterprise.skills.install_resource', { resourceKey: slug })
         // [enterprise] 安装成功即时标记「已安装」（不等 refetch）
         setInstalledSlugs((current) => new Set(current).add(slug))
         // 刷新 SQLite 列表与文件系统增强目录（useInvalidateSkills 同时覆盖两者）
@@ -112,7 +114,8 @@ export function useOrgSkills(enabled: boolean) {
   const remove = useCallback(
     async (slug: string): Promise<boolean> => {
       try {
-        await ipcApi.request('enterprise.skills.reportDeleted', { slug })
+        // await ipcApi.request('enterprise.skills.report_deleted', { slug })
+        await ipcApi.request('enterprise.skills.remove_resource', { resourceKey: slug })
         // [enterprise] 卸载成功即时移除「已安装」标记
         setInstalledSlugs((current) => {
           const next = new Set(current)

@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next'
 import { Button, Tabs, TabsContent, TabsList, TabsTrigger } from '@cherrystudio/ui'
 import {
   // OrgSkillCatalogView,
+  OrgSkillCatalogView,
   RecommendedSkillCatalogView,
   SkillCatalogDialogs,
   SkillCatalogHeaderActions,
@@ -14,6 +15,7 @@ import {
 import { ResourceCatalogSearchInput } from '@renderer/components/resourceCatalog/ResourceCatalogSearchInput'
 import { useResourceCatalogController } from '@renderer/hooks/resourceCatalog'
 // import { useOrgAccountSession } from '@renderer/hooks/useOrgAccountSession'
+import { useOrgAccountSession } from '@renderer/hooks/useOrgAccountSession'
 
 interface SkillsConnectorsPageProps {
   connectorView: ReactNode
@@ -35,6 +37,10 @@ export default function SkillsConnectorsPage({ connectorView }: SkillsConnectors
   const [skillView, setSkillView] = useState<SkillView>('recommended')
   const [recommendedSearch, setRecommendedSearch] = useState('')
   // const { status: accountStatus } = useOrgAccountSession()
+  const { status: accountStatus } = useOrgAccountSession()
+  // MEA:enterprise-java-resources 仅恢复Java公共目录，不恢复其他市场。
+  const showPublicCatalog = accountStatus?.phase === 'signed-in' && accountStatus.authMode === 'management-java'
+  const [orgSubTab, setOrgSubTab] = useState<'recommended' | 'org'>('recommended')
   // 原条件仅检查部署模式，未登录也会显示组织目录并触发 401。
   // const showPublicCatalog =
   //   accountStatus?.phase === 'signed-in' &&
@@ -132,7 +138,32 @@ export default function SkillsConnectorsPage({ connectorView }: SkillsConnectors
                 </TabsContent>
               ) : null}
             </Tabs> */}
-            <RecommendedSkillCatalogView search={recommendedSearch} onViewInstalled={() => setSkillView('installed')} />
+            {/* <RecommendedSkillCatalogView search={recommendedSearch} onViewInstalled={() => setSkillView('installed')} /> */}
+            {showPublicCatalog ? (
+              <Tabs
+                value={orgSubTab}
+                onValueChange={(value) => setOrgSubTab(value as 'recommended' | 'org')}
+                className="flex min-h-0 flex-1 flex-col">
+                <TabsList className="mx-6 h-11 shrink-0 justify-start gap-6 rounded-none bg-transparent p-0">
+                  <TabsTrigger value="recommended">{t('workspace.skill_catalog.recommended')}</TabsTrigger>
+                  <TabsTrigger value="org">{t('workspace.skill_catalog.org')}</TabsTrigger>
+                </TabsList>
+                <TabsContent value="recommended" className="flex min-h-0 flex-1 flex-col">
+                  <RecommendedSkillCatalogView
+                    search={recommendedSearch}
+                    onViewInstalled={() => setSkillView('installed')}
+                  />
+                </TabsContent>
+                <TabsContent value="org" className="flex min-h-0 flex-1 flex-col">
+                  <OrgSkillCatalogView search={recommendedSearch} />
+                </TabsContent>
+              </Tabs>
+            ) : (
+              <RecommendedSkillCatalogView
+                search={recommendedSearch}
+                onViewInstalled={() => setSkillView('installed')}
+              />
+            )}
           </>
         ) : (
           <SkillCatalogView controller={skillController} secondary showDialogs={false} />

@@ -8,7 +8,8 @@ import { OrgCredentialStore, type OrgCredentialWriteResult, type OrgSession } fr
 
 const roots: string[] = []
 
-function session(overrides: Partial<OrgSession> = {}): OrgSession {
+// function session(overrides: Partial<OrgSession> = {}): OrgSession {
+function session(overrides: Partial<Exclude<OrgSession, { authMode: 'management-java' }>> = {}): OrgSession {
   return {
     authMode: 'management-oauth',
     accountKind: 'management',

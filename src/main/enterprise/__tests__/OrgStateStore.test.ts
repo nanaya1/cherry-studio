@@ -46,6 +46,55 @@ import { CloudKnowledgeRecovery, type CloudRecovery } from '../CloudKnowledgeRec
 describe('OrgStateStore', () => {
   let tmp: string
 
+  it.each([undefined, 'not_sent', 'intent_saved'] as const)(
+    '同步删除状态 %s 落盘重载且历史记录不推断未发送',
+    (cleanupDeleteState) => {
+      const store = new OrgStateStore()
+      const operation = {
+        itemId: 'i',
+        fileName: '旧文件',
+        kind: 'delete' as const,
+        remoteFileId: 'remote',
+        newFileId: null,
+        hash: null,
+        phase: 'cleanup_pending' as const,
+        error: null,
+        ...(cleanupDeleteState ? { cleanupDeleteState } : {})
+      }
+      store.setShareAssociation('cleanup', {
+        shareId: 'space',
+        files: [],
+        completion: 'completed',
+        manifest: { entries: [], state: 'unknown', lastSyncedAt: null, operations: [operation] }
+      })
+      expect(new OrgStateStore().getShareAssociation('cleanup')!.manifest!.operations[0]).toEqual(operation)
+    }
+  )
+
+  it('只对有Java稳定映射的连接器执行即时远端复核', () => {
+    const store = new OrgStateStore()
+    const key = `java-resource:${'a'.repeat(32)}:mcp:7`
+    store.upsertConnector(key, { mcpId: 'controlled', baseUrl: 'https://example.test' })
+    expect(store.javaConnectorResourceKey('controlled')).toBe(key)
+    expect(store.javaConnectorResourceKey('ordinary')).toBeNull()
+  })
+
+  it('Java目录复核按稳定来源撤权且不修改普通本地资源或其他同名资源', () => {
+    const store = new OrgStateStore()
+    const issuerId = 'a'.repeat(32)
+    const lease = { issuerId, groupId: null, tenantId: '9', generation: 1 }
+    const first = `java-resource:${issuerId}:skill:1`
+    const second = `java-resource:${issuerId}:skill:2`
+    store.recordSkillEntitlement(first, { ...lease, resourceId: '1', entitlement: 'active' })
+    store.recordSkillEntitlement(second, { ...lease, resourceId: '2', entitlement: 'active' })
+    store.reconcileJavaResources('skill', [second], lease)
+    expect(store.isSkillAllowed(first, lease)).toBe(false)
+    expect(store.isSkillAllowed(second, lease)).toBe(true)
+    expect(store.isSkillAllowed('file:///ordinary/SKILL.md', lease)).toBe(true)
+    store.reconcileJavaResources('skill', [first, second], lease)
+    expect(store.isSkillAllowed(first, lease)).toBe(true)
+  })
+
   beforeEach(async () => {
     const actual = await vi.importActual<typeof NodeFs>('node:fs')
     vi.mocked(renameSync).mockReset().mockImplementation(actual.renameSync)
@@ -59,6 +108,39 @@ describe('OrgStateStore', () => {
   afterEach(() => {
     rmSync(tmp, { recursive: true, force: true })
     vi.clearAllMocks()
+  })
+
+  it('Java 技能按完整稳定键复核授权，不放行未知或畸形来源', () => {
+    const store = new OrgStateStore()
+    const key = `java-resource:${'a'.repeat(32)}:skill:1`
+    const other = `java-resource:${'a'.repeat(32)}:skill:2`
+    const lease = { issuerId: 'a'.repeat(32), groupId: null, tenantId: 'tenant', generation: 1 }
+    expect(store.isSkillAllowed(key, lease)).toBe(false)
+    expect(store.isSkillAllowed('java-resource:invalid', lease)).toBe(false)
+    store.recordSkillEntitlement(key, { ...lease, resourceId: '1', entitlement: 'active' })
+    expect(new OrgStateStore().isSkillAllowed(key, lease)).toBe(true)
+    expect(store.isSkillAllowed(other, lease)).toBe(false)
+    expect(store.isSkillAllowed(key, { ...lease, generation: 2 })).toBe(false)
+    expect(store.isSkillAllowed('local-skill', null)).toBe(true)
+  })
+
+  it('Java 连接器映射缺少授权时拒绝运行，普通连接器不受影响', () => {
+    const store = new OrgStateStore()
+    const key = `java-resource:${'a'.repeat(32)}:mcp:1`
+    const lease = { issuerId: 'a'.repeat(32), groupId: null, generation: 1 }
+    store.upsertConnector(key, { mcpId: 'controlled', baseUrl: 'https://example.test' })
+    expect(store.isConnectorAllowed('controlled', lease)).toBe(false)
+    expect(store.connectorIdsDeniedBy(lease)).toContain('controlled')
+    expect(store.isConnectorAllowed('ordinary', null)).toBe(true)
+  })
+
+  it('租户变化拒绝持久化的旧资源授权', () => {
+    const store = new OrgStateStore()
+    const lease = { issuerId: 'server', groupId: null, tenantId: 'tenant-a', generation: 1 }
+    store.recordSkillEntitlement('skill', { ...lease, resourceId: 'skill', entitlement: 'active' })
+    const restarted = new OrgStateStore()
+    expect(restarted.isSkillAllowed('org-skill:skill', lease)).toBe(true)
+    expect(restarted.isSkillAllowed('org-skill:skill', { ...lease, tenantId: 'tenant-b' })).toBe(false)
   })
 
   it('首次回滚task与unknown删除日志真实落盘，重启保留且不清其他账号', () => {

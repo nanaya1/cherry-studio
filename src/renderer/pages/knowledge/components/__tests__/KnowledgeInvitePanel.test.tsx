@@ -28,7 +28,12 @@ it('输入自动远程模糊查询，下拉选中后才允许发送且原始id�
   expect(screen.getByRole('button', { name: 'Send invitation' })).toBeDisabled()
   await user.type(screen.getByRole('combobox'), 'ali')
   await user.click(await screen.findByRole('option', { name: 'alice' }))
-  expect(request).toHaveBeenCalledWith('enterprise.knowledge.collaborators', { keyword: 'ali', page: 1, pageSize: 50 })
+  expect(request).toHaveBeenCalledWith('enterprise.knowledge.collaborators', {
+    baseId: 'local',
+    keyword: 'ali',
+    page: 1,
+    pageSize: 50
+  })
   expect(request.mock.calls.some(([route]) => route === 'enterprise.knowledge.share')).toBe(false)
   await user.click(screen.getByRole('button', { name: 'Send invitation' }))
   expect(await screen.findByRole('status')).toHaveTextContent('Invitation sent')

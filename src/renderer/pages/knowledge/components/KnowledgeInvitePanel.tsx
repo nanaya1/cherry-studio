@@ -62,6 +62,7 @@ export default function KnowledgeInvitePanel({
     const timer = setTimeout(async () => {
       try {
         const result = await ipcApi.request('enterprise.knowledge.collaborators', {
+          baseId,
           keyword: keyword.trim(),
           page: 1,
           pageSize: 50
@@ -78,7 +79,7 @@ export default function KnowledgeInvitePanel({
       cancelled = true
       clearTimeout(timer)
     }
-  }, [keyword])
+  }, [baseId, keyword])
   const invite = async () => {
     if (busy || lock.current || !selected || sent.includes(selected.id)) return
     const recipient = selected

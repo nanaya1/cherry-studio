@@ -1,5 +1,5 @@
 import type { StartupCurrentUserTransport } from '@main/enterprise/orgCurrentUserTransport'
-import type { OrgCurrentUser, OrgSession } from '@main/enterprise/types'
+import type { JavaAuthProfile, OrgCurrentUser, OrgSession } from '@main/enterprise/types'
 
 /**
  * ProfileStartupVerifier gates business startup on a live online identity check.
@@ -9,7 +9,8 @@ import { computeIdentityDigest } from './ProfileIdentity'
 import type { ProfileLaunchContext } from './ProfilePrebootCoordinator'
 
 export type StartupVerificationResult =
-  | { kind: 'verified'; currentUser: OrgCurrentUser; session: OrgSession }
+  // | { kind: 'verified'; currentUser: OrgCurrentUser; session: OrgSession }
+  | { kind: 'verified'; currentUser: OrgCurrentUser | JavaAuthProfile; session: OrgSession }
   | { kind: 'failed'; reason: string; failureContext: ProfileLaunchContext }
 
 export interface VerifyCandidateProfileParams {
@@ -42,7 +43,34 @@ export async function verifyCandidateProfile(params: VerifyCandidateProfileParam
     return fail('official account kind cannot launch business; management login required')
   }
 
-  let currentUser: OrgCurrentUser
+  // MEA:enterprise-java-auth 历史 Token 不发送给 Java，必须重新输入密码。
+  if (session.authMode !== 'management-java') return fail('旧会话需要重新输入用户名和密码')
+  try {
+    if (!transport.getCurrentJavaProfile) return fail('缺少企业认证传输')
+    const profile = await transport.getCurrentJavaProfile()
+    const digest = computeIdentityDigest({
+      kind: 'authenticated',
+      accountKind: 'management',
+      issuerId: profile.serverInstanceId,
+      subjectId: profile.userId
+    })
+    if (
+      digest !== context.identityDigest ||
+      profile.userId !== session.userId ||
+      profile.serverInstanceId !== session.issuerId
+    )
+      return fail('在线身份与本地账号不一致，请重新登录')
+    if (
+      profile.tenantId !== session.tenantId ||
+      profile.groupId !== session.groupId ||
+      profile.roleCode !== session.role
+    )
+      return fail('企业授权已变化，请重新登录')
+    return { kind: 'verified', currentUser: profile, session }
+  } catch (error) {
+    return fail(`企业会话验证失败：${errorMessage(error)}`)
+  }
+  /* let currentUser: OrgCurrentUser
   try {
     currentUser = await transport.getCurrentUser()
   } catch (error) {
@@ -80,5 +108,5 @@ export async function verifyCandidateProfile(params: VerifyCandidateProfileParam
     return fail('live identity does not match the stored session')
   }
 
-  return { kind: 'verified', currentUser, session }
+  return { kind: 'verified', currentUser, session } */
 }

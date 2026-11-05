@@ -6,7 +6,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   install: vi.fn(),
-  refetchMcpServers: vi.fn()
+  refetchMcpServers: vi.fn(),
+  installedKeys: new Set<string>(),
+  mcpServers: [{ id: 'local', name: 'Weather' }]
 }))
 
 vi.mock('@renderer/hooks/useOrgConnectors', () => ({
@@ -14,6 +16,8 @@ vi.mock('@renderer/hooks/useOrgConnectors', () => ({
     connectors: [
       {
         slug: 'weather',
+        resourceKey: `java-resource:${'a'.repeat(32)}:mcp:1`,
+        configurationError: null,
         name: 'Weather',
         description: 'Weather connector',
         type: 'sse',
@@ -25,13 +29,14 @@ vi.mock('@renderer/hooks/useOrgConnectors', () => ({
     error: null,
     install: mocks.install,
     installing: new Set<string>(),
+    installedKeys: mocks.installedKeys,
     refetch: vi.fn()
   })
 }))
 
 vi.mock('@renderer/hooks/useMcpServer', () => ({
   useMcpServers: () => ({
-    mcpServers: [],
+    mcpServers: mocks.mcpServers,
     refetch: mocks.refetchMcpServers
   })
 }))
@@ -61,7 +66,7 @@ describe('OrgConnectorList', () => {
 
     await user.click(screen.getByRole('button', { name: 'settings.mcp.install' }))
 
-    await waitFor(() => expect(mocks.install).toHaveBeenCalledWith('weather'))
+    await waitFor(() => expect(mocks.install).toHaveBeenCalledWith(`java-resource:${'a'.repeat(32)}:mcp:1`))
     expect(mocks.refetchMcpServers).toHaveBeenCalledOnce()
   })
 })

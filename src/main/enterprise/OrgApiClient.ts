@@ -9,6 +9,9 @@ import { finished } from 'node:stream/promises'
 
 import { loggerService } from '@logger'
 
+import { JavaAuthClient } from './JavaAuthClient'
+import { JavaKnowledgeClient } from './JavaKnowledgeClient'
+import { JavaResourceClient } from './JavaResourceClient'
 import type {
   OrgConnectorCatalogItem,
   OrgCurrentUser,
@@ -51,16 +54,21 @@ function resolveOfficialApiBaseUrl(): string {
   }
 }
 
-export type OrgAuthMode = 'management-exchange' | 'management-oauth' | 'management-cookie' | 'official-direct'
+// export type OrgAuthMode = 'management-exchange' | 'management-oauth' | 'management-cookie' | 'official-direct'
+import type { OrgAuthMode } from './types'
+export type { OrgAuthMode } from './types'
 export const ORG_SERVER_BASE_URL = resolveOrgServerBaseUrl()
 export const OFFICIAL_LOGIN_CONFIGURED = Boolean(import.meta.env.MAIN_VITE_OFFICIAL_LOGIN_URL?.trim())
-export const ORG_AUTH_MODE: OrgAuthMode = OFFICIAL_LOGIN_CONFIGURED
+// MEA:enterprise-java-auth 认证不再回退官网或 OAuth。
+export const ORG_AUTH_MODE: OrgAuthMode = 'management-java'
+/* export const ORG_AUTH_MODE: OrgAuthMode = OFFICIAL_LOGIN_CONFIGURED
   ? ORG_SERVER_BASE_URL
     ? 'management-exchange'
     : 'official-direct'
   : ORG_SERVER_BASE_URL
     ? 'management-oauth'
     : 'official-direct'
+*/
 export const OFFICIAL_API_BASE_URL = resolveOfficialApiBaseUrl()
 
 export function getOrgApiBaseUrl(): string {
@@ -85,8 +93,33 @@ export class OrgApiClient {
   // 原同步裸取：constructor(private readonly getSession: () => OrgSession | null) {}
   constructor(
     private readonly getValidSession: () => Promise<OrgSession | null>,
-    private readonly cookieFetch?: (url: string, init: RequestInit) => Promise<Response>
+    private readonly cookieFetch?: (url: string, init: RequestInit) => Promise<Response>,
+    private readonly onResourceSessionExpired: () => void | Promise<void> = () => undefined
   ) {}
+
+  get javaResources(): JavaResourceClient {
+    return new JavaResourceClient({
+      baseUrl: getOrgApiBaseUrl(),
+      getAccessToken: async () => {
+        const session = await this.getValidSession()
+        if (!session || session.authMode !== 'management-java') throw new Error('请重新登录企业账号')
+        return session.accessToken
+      },
+      onSessionExpired: this.onResourceSessionExpired
+    })
+  }
+
+  get javaKnowledge(): JavaKnowledgeClient {
+    return new JavaKnowledgeClient({
+      baseUrl: getOrgApiBaseUrl(),
+      getAccessToken: async () => {
+        const session = await this.getValidSession()
+        if (!session || session.authMode !== 'management-java') throw new Error('请重新登录企业账号')
+        return session.accessToken
+      },
+      onSessionExpired: this.onResourceSessionExpired
+    })
+  }
 
   private async shareHttpError(response: Response): Promise<never> {
     let message = `账户服务请求失败 (${response.status})`
@@ -473,6 +506,11 @@ export class OrgApiClient {
   }
 
   async revoke(refreshToken: string, logoutSession?: OrgSession): Promise<unknown> {
+    if (logoutSession?.authMode === 'management-java') {
+      const success = await new JavaAuthClient({ baseUrl: logoutSession.authOrigin }).logout(logoutSession.accessToken)
+      if (!success) throw new Error('远端注销未确认')
+      return
+    }
     if (logoutSession) {
       const init = {
         method: 'POST',

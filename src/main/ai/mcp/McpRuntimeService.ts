@@ -258,14 +258,26 @@ export class McpRuntimeService extends BaseService {
     }
   }
 
-  private assertOrgConnectorAllowed(serverId: string): void {
+  private async assertOrgConnectorAllowed(serverId: string): Promise<void> {
+    if (orgStateStore.javaConnectorResourceKey(serverId)) {
+      try {
+        await application.get('EnterprisePlugin').connectors.refreshResourceAuthority()
+      } catch {
+        await this.stopServer(serverId)
+        throw new Error('企业连接器权限验证失败，请联网后重试')
+      }
+    }
     if (!orgStateStore.isConnectorAllowed(serverId, this.currentOrgLease())) {
-      throw new Error('Enterprise connector entitlement is unavailable or stale')
+      await this.stopServer(serverId)
+      // throw new Error('Enterprise connector entitlement is unavailable or stale')
+      throw new Error('企业连接器已失去授权，请刷新目录或重新登录')
     }
   }
 
   async stopUnauthorizedOrgConnectors(): Promise<void> {
-    await Promise.allSettled(orgStateStore.connectorIdsDeniedBy(this.currentOrgLease()).map((serverId) => this.stopServer(serverId)))
+    await Promise.allSettled(
+      orgStateStore.connectorIdsDeniedBy(this.currentOrgLease()).map((serverId) => this.stopServer(serverId))
+    )
   }
 
   public setServerStatus(serverId: string, state: McpRuntimeState, error?: unknown): void {
@@ -389,7 +401,7 @@ export class McpRuntimeService extends BaseService {
   }
 
   private async getOrCreateClient(server: McpServer): Promise<Client> {
-    this.assertOrgConnectorAllowed(server.id)
+    await this.assertOrgConnectorAllowed(server.id)
     if (this.stopping || this.isStopped || this.isDestroyed) {
       throw new Error('MCP runtime is stopping')
     }
@@ -1119,7 +1131,7 @@ export class McpRuntimeService extends BaseService {
             }
           }
         }
-        this.assertOrgConnectorAllowed(server.id)
+        // await this.assertOrgConnectorAllowed(server.id)
         const sourcePolicy = this.getLatestSourcePolicy(server)
         if (isMcpToolDisabledBySource(sourcePolicy, { name })) {
           throw new Error(`MCP tool is disabled: ${name}`)
@@ -1133,7 +1145,15 @@ export class McpRuntimeService extends BaseService {
         // leaving it installed would accumulate a closure per tool call.
         let handleAbort: (() => void) | undefined
         const client = await Promise.race([
-          this.getOrCreateClient(server),
+          // this.getOrCreateClient(server),
+          (async () => {
+            await this.assertOrgConnectorAllowed(server.id)
+            if (effectiveSignal.aborted) throw getAbortReason(effectiveSignal)
+            const ready = await this.getOrCreateClient(server)
+            if (orgStateStore.javaConnectorResourceKey(server.id)) await this.assertOrgConnectorAllowed(server.id)
+            if (effectiveSignal.aborted) throw getAbortReason(effectiveSignal)
+            return ready
+          })(),
           new Promise<never>((_, reject) => {
             handleAbort = (): void => reject(getAbortReason(effectiveSignal))
             if (effectiveSignal.aborted) return handleAbort()

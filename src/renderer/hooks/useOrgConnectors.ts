@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { loggerService } from '@logger'
 import { ipcApi } from '@renderer/ipc'
@@ -11,7 +11,11 @@ export interface OrgConnectorItem {
   name: string
   description: string
   // 目录 v2 与管理台快速创建对齐：stdio/sse/streamableHttp（旧服务端恒为 sse）
-  type: 'stdio' | 'sse' | 'streamableHttp'
+  type: 'stdio' | 'sse' | 'streamableHttp' | null
+  resourceKey: string
+  tenantId: string | null
+  iconUrl: string | null
+  configurationError: string | null
   baseUrl: string
   config: Record<string, unknown>
 }
@@ -25,36 +29,51 @@ export function useOrgConnectors(enabled: boolean) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [installing, setInstalling] = useState<Set<string>>(() => new Set())
+  const [installedKeys, setInstalledKeys] = useState<Set<string>>(() => new Set())
+  const requestGeneration = useRef(0)
 
   const refetch = useCallback(async () => {
+    const generation = ++requestGeneration.current
     if (!enabled) {
       setConnectors([])
+      setInstalledKeys(new Set())
       setError(null)
+      setLoading(false)
       return
     }
     setLoading(true)
     setError(null)
     try {
-      const { connectors: list } = await ipcApi.request('enterprise.connectors.list')
+      // const { connectors: list } = await ipcApi.request('enterprise.connectors.list')
+      const { connectors: list, installedKeys: keys } = await ipcApi.request('enterprise.connectors.list_resources')
+      if (generation !== requestGeneration.current) return
       setConnectors(list)
+      setInstalledKeys(new Set(keys))
     } catch (cause) {
+      if (generation !== requestGeneration.current) return
       const message = orgConnectorErrorMessage(cause)
       logger.warn('Failed to list org connectors', { error: message })
       setConnectors([])
       setError(message)
     } finally {
-      setLoading(false)
+      if (generation === requestGeneration.current) setLoading(false)
     }
   }, [enabled])
 
   useEffect(() => {
     void refetch()
+    return () => {
+      requestGeneration.current += 1
+    }
   }, [refetch])
 
   const install = useCallback(async (slug: string): Promise<void> => {
     setInstalling((current) => new Set(current).add(slug))
     try {
-      await ipcApi.request('enterprise.connectors.install', { slug })
+      // await ipcApi.request('enterprise.connectors.install', { slug })
+      const generation = requestGeneration.current
+      await ipcApi.request('enterprise.connectors.install_resource', { resourceKey: slug })
+      if (generation === requestGeneration.current) setInstalledKeys((current) => new Set(current).add(slug))
     } finally {
       setInstalling((current) => {
         const next = new Set(current)
@@ -64,5 +83,5 @@ export function useOrgConnectors(enabled: boolean) {
     }
   }, [])
 
-  return { connectors, loading, error, install, installing, refetch }
+  return { connectors, loading, error, install, installing, installedKeys, refetch }
 }

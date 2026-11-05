@@ -1,20 +1,28 @@
 import { execFile } from 'node:child_process'
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 /**
  * [enterprise] T0 企业扩展 - 技能目录：企业下发 → hash 校验 → 复用 SkillService 安装
  * 生命周期事件上报（install/exec）走 OrgApiClient。
  * C1/C2/C4 扩展：启动扫描自动更新、停用拦截（TTL 缓存）、删除上报、状态记录（OrgStateStore）。
  */
 import { createReadStream } from 'node:fs'
-import { mkdir, rm, writeFile } from 'node:fs/promises'
+// import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 
+import { application } from '@application'
 import { agentGlobalSkillService } from '@data/services/AgentGlobalSkillService'
 import { loggerService } from '@logger'
+import {
+  extractZip,
+  assertSkillDirectoryWithinLimits,
+  validateRepositorySkillDirectory
+} from '@main/ai/skills/skillArchive'
 import { profileSwitchFence } from '@main/core/profiles'
 
+import { javaResourceKey, parseJavaResourceKey } from './JavaResourceIdentity'
 import { getOrgApiBaseUrl } from './OrgApiClient'
 import type { OrgAuthManager } from './OrgAuthManager'
 import { orgStateStore } from './OrgStateStore'
@@ -52,6 +60,192 @@ export class OrgSkillCatalog {
   protected tarExtract: typeof execFileAsync = execFileAsync
 
   constructor(private readonly auth: OrgAuthManager) {}
+
+  // MEA:enterprise-java-resources 文件标识仅留在主进程，渲染层使用稳定资源键。
+  async listResources() {
+    await this.auth.revalidateAuthority()
+    const lease = this.auth.acquireLease()
+    const items = await this.auth.apiClient.javaResources.listSkills()
+    this.auth.assertLease(lease)
+    const result = await Promise.all(
+      items.map(async ({ packageFileCode: _package, iconFileCode, ...item }) => {
+        void _package
+        return {
+          ...item,
+          resourceKey: javaResourceKey(lease.issuerId, 'skill', item.id),
+          iconUrl: iconFileCode ? await this.auth.apiClient.javaResources.readIcon(iconFileCode) : null
+        }
+      })
+    )
+    this.auth.assertLease(lease)
+    return result
+  }
+
+  async refreshResourceAuthority(): Promise<void> {
+    await this.auth.revalidateAuthority()
+    const lease = this.auth.acquireLease()
+    try {
+      const items = await this.auth.apiClient.javaResources.listSkills()
+      this.auth.assertLease(lease)
+      profileSwitchFence.assertWritable()
+      orgStateStore.reconcileJavaResources(
+        'skill',
+        items.map((item) => javaResourceKey(lease.issuerId, 'skill', item.id)),
+        lease
+      )
+    } catch (error) {
+      this.auth.assertLease(lease)
+      profileSwitchFence.assertWritable()
+      orgStateStore.reconcileJavaResources('skill', [], lease, false)
+      throw error
+    }
+  }
+
+  installedResourceKeys(): string[] {
+    return agentGlobalSkillService
+      .listAll()
+      .map((skill) => skill.sourceUrl)
+      .filter((key): key is string => parseJavaResourceKey(key)?.resourceType === 'skill')
+  }
+
+  async installResource(resourceKey: string): Promise<void> {
+    profileSwitchFence.assertWritable()
+    const source = parseJavaResourceKey(resourceKey)
+    if (source?.resourceType !== 'skill') throw new Error('技能来源标识无效')
+    await this.auth.revalidateAuthority()
+    const lease = this.auth.acquireLease()
+    if (source.serverInstanceId !== lease.issuerId) throw new Error('技能来源与当前服务不符')
+    const items = await this.auth.apiClient.javaResources.listSkills()
+    this.auth.assertLease(lease)
+    const item = items.find((entry) => entry.id === source.resourceId)
+    if (!item) throw new Error('技能不存在或无权访问')
+    const { bytes } = await this.auth.apiClient.javaResources.readFile(item.packageFileCode)
+    this.auth.assertLease(lease)
+    const contentHash = createHash('sha256').update(bytes).digest('hex')
+    if (contentHash !== item.contentHash) throw new Error('技能包摘要校验失败')
+    const tempRoot = application.getPath('feature.agents.skills.install.temp')
+    await mkdir(tempRoot, { recursive: true })
+    const workDir = await mkdtemp(join(tempRoot, 'java-skill-'))
+    try {
+      const zipPath = join(workDir, 'package.zip')
+      const extractDir = join(workDir, 'extract')
+      await writeFile(zipPath, bytes)
+      await mkdir(extractDir)
+      await extractZip(zipPath, extractDir)
+      const entries = await readdir(extractDir, { withFileTypes: true })
+      let skillDir: string
+      if (entries.some((entry) => entry.isFile() && entry.name === 'SKILL.md')) {
+        skillDir = extractDir
+      } else if (entries.length === 1 && entries[0].isDirectory() && entries[0].name === item.slug) {
+        skillDir = join(extractDir, entries[0].name)
+      } else {
+        throw new Error('技能包必须包含唯一的根目录或标识目录 SKILL.md')
+      }
+      const tree = await readdir(extractDir, { withFileTypes: true, recursive: true })
+      if (tree.some((entry) => entry.isSymbolicLink())) throw new Error('技能包不允许符号链接')
+      if (tree.filter((entry) => entry.isFile() && entry.name.toLowerCase() === 'skill.md').length !== 1) {
+        throw new Error('技能包包含多个技能或缺少 SKILL.md')
+      }
+      await validateRepositorySkillDirectory(extractDir, skillDir)
+      await assertSkillDirectoryWithinLimits(skillDir)
+      const assertAuthority = () => {
+        this.auth.assertLease(lease)
+        profileSwitchFence.assertWritable()
+      }
+      assertAuthority()
+      const { skillService } = await import('@main/ai/skills/SkillService')
+      const installed = await skillService.installJavaResource(skillDir, resourceKey, assertAuthority, {
+        displayName: item.name,
+        displayNameEn: '',
+        description: item.description,
+        descriptionEn: ''
+      })
+      assertAuthority()
+      orgStateStore.upsert(resourceKey, {
+        skillId: installed.id,
+        folderName: installed.folderName,
+        version: item.version,
+        contentHash
+      })
+      orgStateStore.recordSkillEntitlement(resourceKey, {
+        issuerId: lease.issuerId,
+        groupId: lease.groupId,
+        tenantId: lease.tenantId,
+        generation: lease.generation,
+        resourceId: item.id,
+        entitlement: 'active'
+      })
+      try {
+        await this.auth.apiClient.javaResources.reportLifecycle({
+          id: item.id,
+          eventId: randomUUID().replaceAll('-', ''),
+          event: 'install',
+          version: item.version,
+          contentHash
+        })
+      } catch {
+        logger.warn('技能安装完成，生命周期上报失败')
+      }
+    } finally {
+      await rm(workDir, { recursive: true, force: true })
+    }
+  }
+
+  // MEA:enterprise-java-resources 显式激活才计入 exec，目录展示及普通文件读取不计入。
+  async activateResource(
+    resourceKey: string,
+    agentId: string,
+    signal?: AbortSignal
+  ): Promise<{ content: string; directory: string }> {
+    signal?.throwIfAborted()
+    const source = parseJavaResourceKey(resourceKey)
+    if (source?.resourceType !== 'skill' || !agentId) throw new Error('技能来源标识无效')
+    await this.auth.revalidateAuthority()
+    const lease = this.auth.acquireLease()
+    const visible = await this.auth.apiClient.javaResources.listSkills()
+    signal?.throwIfAborted()
+    this.auth.assertLease(lease)
+    if (!visible.some((item) => item.id === source.resourceId)) throw new Error('技能无权访问')
+    if (source.serverInstanceId !== lease.issuerId) throw new Error('技能来源与当前服务不符')
+    const { skillService } = await import('@main/ai/skills/SkillService')
+    const state = orgStateStore.get(resourceKey)
+    const local = (await skillService.list({ agentId })).find(
+      (skill) => skill.id === state?.skillId && skill.sourceUrl === resourceKey && skill.isEnabled
+    )
+    if (!state || !local) throw new Error('技能未启用或无权访问')
+    const directory = skillService.getInstalledSkillDirectory(local)
+    const content = await readFile(join(directory, 'SKILL.md'), { encoding: 'utf8', signal })
+    signal?.throwIfAborted()
+    this.auth.assertLease(lease)
+    if (!orgStateStore.isSkillAllowed(resourceKey, lease)) throw new Error('技能无权访问')
+    try {
+      await this.auth.apiClient.javaResources.reportLifecycle({
+        id: source.resourceId,
+        eventId: randomUUID().replaceAll('-', ''),
+        event: 'exec',
+        version: state.version,
+        contentHash: state.contentHash
+      })
+    } catch {
+      logger.warn('技能激活生命周期上报失败')
+    }
+    signal?.throwIfAborted()
+    this.auth.assertLease(lease)
+    if (!orgStateStore.isSkillAllowed(resourceKey, lease)) throw new Error('技能无权访问')
+    return { content, directory }
+  }
+
+  async removeResource(resourceKey: string): Promise<void> {
+    profileSwitchFence.assertWritable()
+    const source = parseJavaResourceKey(resourceKey)
+    if (source?.resourceType !== 'skill') throw new Error('技能来源标识无效')
+    const state = orgStateStore.get(resourceKey)
+    const local = agentGlobalSkillService.listAll().find((skill) => skill.id === state?.skillId)
+    if (!state || !local || local.sourceUrl !== resourceKey) throw new Error('技能来源与本地记录不符')
+    const { skillService } = await import('@main/ai/skills/SkillService')
+    await skillService.uninstall(local.id)
+    orgStateStore.remove(resourceKey)
+  }
 
   async list(force = false): Promise<OrgSkillCatalogItem[]> {
     void force

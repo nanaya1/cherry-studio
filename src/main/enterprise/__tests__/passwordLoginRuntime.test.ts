@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-const state = vi.hoisted(() => ({ temporary: null as any, target: null as any }))
+/* const state = vi.hoisted(() => ({ temporary: null as any, target: null as any }))
 const sessions = { fromPartition: () => state.temporary, fromPath: () => state.target } as any
 vi.mock('../OrgApiClient', () => ({ ORG_SERVER_BASE_URL: 'https://example.test' }))
 import { createPasswordProfileLogin } from '../passwordLoginRuntime'
@@ -86,5 +86,48 @@ describe('password login cookie preparation', () => {
     expect(committed).toBe(false)
     expect(state.target.value()).toBe('old')
     expect(state.temporary.value()).toBe('')
+  })
+})
+*/
+
+const client = vi.hoisted(() => ({ login: vi.fn(), fetchMe: vi.fn() }))
+vi.mock('../OrgApiClient', () => ({ ORG_SERVER_BASE_URL: 'https://example.test' }))
+vi.mock('../JavaAuthClient', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  JavaAuthClient: class {
+    login = client.login
+    fetchMe = client.fetchMe
+  }
+}))
+import { createPasswordProfileLogin } from '../passwordLoginRuntime'
+
+describe('Java 登录运行时', () => {
+  it('将复验的原始令牌和 null 分组交给原 profile 事务', async () => {
+    client.login.mockResolvedValue({ accessToken: 'raw-token', tenantId: 'tenant' })
+    client.fetchMe.mockResolvedValue({
+      serverInstanceId: 'server',
+      userId: '7',
+      tenantId: 'tenant',
+      groupId: null,
+      roleCode: 'member',
+      username: 'alice'
+    })
+    let saved: any
+    const login = createPasswordProfileLogin({
+      completeAuthentication: async (auth: any) => {
+        await auth.prepareTargetSession('/profiles/target')
+        saved = auth.session
+        return { kind: 'relaunching' }
+      }
+    } as any)
+    await expect(login.login('alice', 'secret')).resolves.toEqual({ kind: 'relaunching' })
+    expect(saved).toMatchObject({
+      authMode: 'management-java',
+      accessToken: 'raw-token',
+      groupId: null,
+      tenantId: 'tenant',
+      expiresAt: null
+    })
+    expect(saved).not.toHaveProperty('status')
   })
 })

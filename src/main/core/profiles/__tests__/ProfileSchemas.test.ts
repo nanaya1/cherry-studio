@@ -30,6 +30,13 @@ const profileRecord = {
 } as const
 
 describe('ProfileSchemas', () => {
+  it('持久化真实 null 分组及租户且保留旧授权可读', () => {
+    const authorizationContext = { tenantId: 'tenant', groupId: null, role: 'member' }
+    expect(ProfileRecordV1Schema.parse({ ...profileRecord, authorizationContext }).authorizationContext).toEqual(
+      authorizationContext
+    )
+    expect(ProfileRecordV1Schema.parse(profileRecord)).toEqual(profileRecord)
+  })
   it('parses every fixed v1 control-plane document', () => {
     expect(InstallationRecordV1Schema.parse({ version: 1, deviceInstallId: UUID, createdAt: ISO_TIME })).toEqual({
       version: 1,

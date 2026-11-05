@@ -170,7 +170,8 @@ export const OrgKnowledgeMemberSchema = z.strictObject({
   userId: z.number().int(),
   username: z.string(),
   role: z.string(),
-  joinedAt: z.string(),
+  // joinedAt: z.string(),
+  joinedAt: z.string().optional(),
   status: z.string().nullable(),
   expiresAt: z.string().nullable()
 })
@@ -205,7 +206,8 @@ export const OrgKnowledgeInvitationSchema = z.strictObject({
   spaceId: z.string(),
   name: z.string(),
   inviter: z.string().nullable(),
-  role: z.string(),
+  // role: z.string(),
+  role: z.string().optional(),
   expires: z.string().nullable()
 })
 export type OrgKnowledgeInvitation = z.infer<typeof OrgKnowledgeInvitationSchema>
@@ -236,7 +238,8 @@ export const OrgKnowledgeShareSchema = z.strictObject({
   id: shareOrgId,
   spaceId: shareOrgId,
   shareCode: OrgKnowledgeShareCodeSchema,
-  shareType: z.number().int().min(1).max(3),
+  // shareType: z.number().int().min(1).max(3),
+  shareType: z.number().int().min(1).max(3).optional(),
   hasPassword: z.boolean(),
   maxViews: z.number().int().positive().safe().nullable(),
   viewCount: z.number().int().nonnegative().safe(),
@@ -314,6 +317,8 @@ export const OrgKnowledgeSyncManifestSchema = z.strictObject({
       newFileId: z.string().nullable(),
       hash: z.string().nullable(),
       phase: z.enum(['writing', 'verifying', 'cleanup_pending', 'complete', 'failure']),
+      // 缺字段的历史 cleanup_pending 无法证明尚未发送，恢复时只能只读核对。
+      cleanupDeleteState: z.enum(['not_sent', 'intent_saved']).optional(),
       error: z.string().nullable()
     })
   )

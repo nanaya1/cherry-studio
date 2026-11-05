@@ -3,8 +3,10 @@ import type { Tool } from '@modelcontextprotocol/sdk/types.js'
 import { CallToolRequestSchema, ErrorCode, ListToolsRequestSchema, McpError } from '@modelcontextprotocol/sdk/types.js'
 import { net } from 'electron'
 
+import { application } from '@application'
 import { loggerService } from '@logger'
 import { skillService } from '@main/ai/skills/SkillService'
+import { parseJavaResourceKey } from '@main/enterprise/JavaResourceIdentity'
 import { buildGithubSkillResult, searchSkillMarketplaces } from '@shared/utils/skillMarketplace'
 
 const logger = loggerService.withContext('McpServer:Skills')
@@ -78,11 +80,31 @@ class SkillsServer {
   }
 
   private setupHandlers() {
-    this.mcpServer.server.setRequestHandler(ListToolsRequestSchema, async () => ({
-      tools: [SEARCH_TOOL, INSTALL_TOOL]
-    }))
+    // this.mcpServer.server.setRequestHandler(ListToolsRequestSchema, async () => ({
+    //   tools: [SEARCH_TOOL, INSTALL_TOOL]
+    // }))
+    this.mcpServer.server.setRequestHandler(ListToolsRequestSchema, async () => {
+      const skills = (await skillService.list({ agentId: this.agentId })).filter(
+        (skill) => skill.isEnabled && parseJavaResourceKey(skill.sourceUrl)?.resourceType === 'skill'
+      )
+      const activation: Tool[] = skills.length
+        ? [
+            {
+              name: 'activate_java_skill',
+              description: `按 resource_key 激活企业技能，在线验证权限后返回技能指令；激活不代表后续任务执行成功。可用技能：${JSON.stringify(skills.map((skill) => ({ resource_key: skill.sourceUrl, name: skill.displayName ?? skill.name, description: skill.description })))}`,
+              inputSchema: {
+                type: 'object',
+                properties: { resource_key: { type: 'string', enum: skills.map((skill) => skill.sourceUrl!) } },
+                required: ['resource_key']
+              }
+            }
+          ]
+        : []
+      return { tools: [SEARCH_TOOL, INSTALL_TOOL, ...activation] }
+    })
 
-    this.mcpServer.server.setRequestHandler(CallToolRequestSchema, async (request) => {
+    // this.mcpServer.server.setRequestHandler(CallToolRequestSchema, async (request) => {
+    this.mcpServer.server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
       const toolName = request.params.name
       const args = (request.params.arguments ?? {}) as Record<string, string | undefined>
 
@@ -90,6 +112,14 @@ class SkillsServer {
         switch (toolName) {
           case 'search_skills':
             return await this.searchSkills(args)
+          case 'activate_java_skill': {
+            const activated = await application
+              .get('EnterprisePlugin')
+              .skills.activateResource(args.resource_key ?? '', this.agentId, extra.signal)
+            return {
+              content: [{ type: 'text' as const, text: `技能目录：${activated.directory}\n\n${activated.content}` }]
+            }
+          }
           case 'install_skill':
             return await this.installSkill(args)
           default:

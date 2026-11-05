@@ -2,7 +2,12 @@ import { createHash } from 'node:crypto'
 
 export type AuthenticatedAccountKind = 'management' | 'official'
 // export type AuthenticatedAuthMode = 'management-exchange' | 'management-oauth' | 'official-direct'
-export type AuthenticatedAuthMode = 'management-exchange' | 'management-oauth' | 'management-cookie' | 'official-direct'
+export type AuthenticatedAuthMode =
+  | 'management-exchange'
+  | 'management-oauth'
+  | 'management-cookie'
+  | 'official-direct'
+  | 'management-java'
 
 export type ProfileIdentity =
   | { kind: 'signed-out'; bootstrapId: 'signed-out' }

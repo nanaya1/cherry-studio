@@ -5,7 +5,8 @@ import { MockMainCacheServiceUtils } from '@test-mocks/main/CacheService'
 import { mockMainLoggerService } from '@test-mocks/MainLoggerService'
 import open from 'open'
 import sharp from 'sharp'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+// import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { BaseService } from '@main/core/lifecycle'
 import { orgStateStore } from '@main/enterprise/OrgStateStore'
@@ -19,9 +20,15 @@ const mcpCatalogMock = vi.hoisted(() => ({
   refreshTools: vi.fn().mockResolvedValue(undefined)
 }))
 
+const enterpriseMock = vi.hoisted(() => ({ refreshResourceAuthority: vi.fn() }))
+
 vi.mock('@application', async () => {
   const { mockApplicationFactory } = await import('@test-mocks/main/application')
-  return mockApplicationFactory({ McpCatalogService: mcpCatalogMock } as Record<string, unknown>)
+  // return mockApplicationFactory({ McpCatalogService: mcpCatalogMock } as Record<string, unknown>)
+  return mockApplicationFactory({
+    McpCatalogService: mcpCatalogMock,
+    EnterprisePlugin: { connectors: enterpriseMock }
+  } as Record<string, unknown>)
 })
 
 const getByIdMock = vi.fn<(id: string) => McpServer>()
@@ -611,6 +618,9 @@ describe('McpRuntimeService stale client cleanup (issue #18144)', () => {
   })
 })
 
+// 失败断言也必须还原授权桩，避免污染后续普通连接器用例。
+afterEach(() => vi.restoreAllMocks())
+
 describe('McpRuntimeService.callTool cancellation', () => {
   const server = { id: 'server-1', name: 'srv', isActive: true } as McpServer
 
@@ -644,7 +654,7 @@ describe('McpRuntimeService.callTool cancellation', () => {
     const allowed = vi.spyOn(orgStateStore, 'isConnectorAllowed').mockReturnValue(false)
     const connect = vi.spyOn(service as any, 'connectClient')
 
-    await expect((service as any).getOrCreateClient(server)).rejects.toThrow(/entitlement/i)
+    await expect((service as any).getOrCreateClient(server)).rejects.toThrow(/已失去授权/)
 
     expect(connect).not.toHaveBeenCalled()
     allowed.mockRestore()
@@ -655,11 +665,72 @@ describe('McpRuntimeService.callTool cancellation', () => {
     const allowed = vi.spyOn(orgStateStore, 'isConnectorAllowed').mockReturnValue(false)
     const getClient = vi.spyOn(service as any, 'getOrCreateClient')
 
-    await expect(service.callTool({ serverId: server.id, name: 'tool', args: {} })).rejects.toThrow(/entitlement/i)
+    await expect(service.callTool({ serverId: server.id, name: 'tool', args: {} })).rejects.toThrow(/已失去授权/)
 
     expect(getClient).not.toHaveBeenCalled()
     allowed.mockRestore()
   })
+
+  it('blocks a cached tool client when online revalidation revokes only this resource', async () => {
+    const service = new McpRuntimeService()
+    const callTool = vi.fn()
+    vi.spyOn(orgStateStore, 'javaConnectorResourceKey').mockReturnValue(`java-resource:${'a'.repeat(32)}:mcp:1`)
+    let allowed = true
+    vi.spyOn(orgStateStore, 'isConnectorAllowed').mockImplementation(() => allowed)
+    enterpriseMock.refreshResourceAuthority.mockImplementationOnce(async () => {
+      allowed = false
+    })
+    vi.spyOn(service as any, 'getOrCreateClient').mockResolvedValue({ callTool })
+
+    await expect(service.callTool({ serverId: server.id, name: 'tool', args: {} })).rejects.toThrow('已失去授权')
+    expect(callTool).not.toHaveBeenCalled()
+  })
+
+  it('blocks an enterprise tool on network failure without invoking its cached client', async () => {
+    const service = new McpRuntimeService()
+    const callTool = vi.fn()
+    vi.spyOn(orgStateStore, 'javaConnectorResourceKey').mockReturnValue(`java-resource:${'a'.repeat(32)}:mcp:1`)
+    vi.spyOn(orgStateStore, 'isConnectorAllowed').mockReturnValue(true)
+    enterpriseMock.refreshResourceAuthority.mockRejectedValueOnce(new Error('offline'))
+    vi.spyOn(service as any, 'getOrCreateClient').mockResolvedValue({ callTool })
+
+    await expect(service.callTool({ serverId: server.id, name: 'tool', args: {} })).rejects.toThrow('权限验证失败')
+    expect(callTool).not.toHaveBeenCalled()
+  })
+
+  it('revalidates enterprise authority after asynchronous client initialization', async () => {
+    const service = new McpRuntimeService()
+    const callTool = vi.fn().mockResolvedValue({ content: [] })
+    vi.spyOn(orgStateStore, 'javaConnectorResourceKey').mockReturnValue(`java-resource:${'a'.repeat(32)}:mcp:1`)
+    let allowed = true
+    vi.spyOn(orgStateStore, 'isConnectorAllowed').mockImplementation(() => allowed)
+    enterpriseMock.refreshResourceAuthority.mockResolvedValue(undefined)
+    vi.spyOn(service as any, 'getOrCreateClient').mockImplementation(async () => {
+      allowed = false
+      return { callTool }
+    })
+    await expect(service.callTool({ serverId: server.id, name: 'tool', args: {} })).rejects.toThrow('已失去授权')
+    expect(callTool).not.toHaveBeenCalled()
+  })
+
+  it('releases a cancelled enterprise call while its authority request is pending', async () => {
+    const service = new McpRuntimeService()
+    vi.spyOn(orgStateStore, 'javaConnectorResourceKey').mockReturnValue(`java-resource:${'a'.repeat(32)}:mcp:1`)
+    enterpriseMock.refreshResourceAuthority.mockImplementationOnce(() => new Promise(() => {}))
+    const getClient = vi.spyOn(service as any, 'getOrCreateClient')
+    const controller = new AbortController()
+    const call = service.callTool({
+      serverId: server.id,
+      name: 'tool',
+      args: {},
+      callId: 'pending-acl',
+      signal: controller.signal
+    })
+    controller.abort(new Error('cancelled during ACL'))
+    await expect(call).rejects.toThrow('cancelled during ACL')
+    expect(getClient).not.toHaveBeenCalled()
+    expect((service as any).activeToolCalls.has('pending-acl')).toBe(false)
+  }, 1500)
 
   it('aborts the client call and clears the active call when the external signal aborts', async () => {
     const service = new McpRuntimeService()

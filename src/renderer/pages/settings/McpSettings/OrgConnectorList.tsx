@@ -23,8 +23,8 @@ interface OrgConnectorListProps {
 const OrgConnectorList: FC<OrgConnectorListProps> = ({ variant = 'catalog' }) => {
   const { t } = useTranslation()
   // const { connectors, loading, error, install, installing, refetch } = useOrgConnectors(variant === 'catalog')
-  const { connectors, loading, error, install, installing } = useOrgConnectors(variant === 'catalog')
-  const { mcpServers, refetch: refetchMcpServers } = useMcpServers()
+  const { connectors, loading, error, install, installing, installedKeys } = useOrgConnectors(variant === 'catalog')
+  const { refetch: refetchMcpServers } = useMcpServers()
   // const [searchText, setSearchText] = useState('')
   const [searchText] = useState('')
 
@@ -43,7 +43,9 @@ const OrgConnectorList: FC<OrgConnectorListProps> = ({ variant = 'catalog' }) =>
   }, [connectors, searchText])
 
   // 轮询安装状态太重；这里以「同名 MCP 服务器已存在」视为已安装（与内置列表的判定一致）
-  const isInstalled = (name: string) => mcpServers.some((s) => s.name === name)
+  // const isInstalled = (name: string) => mcpServers.some((s) => s.name === name)
+  // MEA:enterprise-java-resources 同名本地连接器不代表当前来源已安装。
+  const isInstalled = (resourceKey: string) => installedKeys.has(resourceKey)
 
   const handleInstall = async (slug: string) => {
     try {
@@ -84,11 +86,12 @@ const OrgConnectorList: FC<OrgConnectorListProps> = ({ variant = 'catalog' }) =>
       ) : (
         <div className="grid @[1120px]/mcp-discover:grid-cols-4 @[560px]/mcp-discover:grid-cols-2 @[840px]/mcp-discover:grid-cols-3 grid-cols-1 gap-3">
           {filteredConnectors.map((connector) => {
-            const installed = isInstalled(connector.name)
-            const logoUrl = typeof connector.config.logoUrl === 'string' ? connector.config.logoUrl : ''
+            const installed = isInstalled(connector.resourceKey)
+            // const logoUrl = typeof connector.config.logoUrl === 'string' ? connector.config.logoUrl : ''
+            const logoUrl = connector.iconUrl ?? ''
             return (
               <div
-                key={connector.slug}
+                key={connector.resourceKey}
                 className={cn(
                   'group relative flex min-h-28 min-w-0 flex-col rounded-lg border border-border-subtle bg-card p-3.5 transition-[background-color,border-color,box-shadow] hover:border-border-strong hover:bg-background-subtle hover:shadow-sm focus-visible:border-ring focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50'
                   // 已安装状态由右上角勾选表达，不再覆盖卡片背景色。
@@ -140,11 +143,11 @@ const OrgConnectorList: FC<OrgConnectorListProps> = ({ variant = 'catalog' }) =>
                       type="button"
                       variant="ghost"
                       size="icon-sm"
-                      disabled={installing.has(connector.slug)}
+                      disabled={installing.has(connector.resourceKey)}
                       aria-label={t('settings.mcp.install')}
                       className="size-7 rounded-md text-muted-foreground shadow-none hover:bg-muted hover:text-foreground hover:shadow-none"
-                      onClick={() => void handleInstall(connector.slug)}>
-                      {installing.has(connector.slug) ? (
+                      onClick={() => void handleInstall(connector.resourceKey)}>
+                      {installing.has(connector.resourceKey) ? (
                         <LoaderCircle size={14} className="animate-spin" />
                       ) : (
                         <Download size={14} />

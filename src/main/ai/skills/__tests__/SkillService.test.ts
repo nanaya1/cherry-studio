@@ -169,6 +169,56 @@ describe('SkillService', () => {
     ])
   }
 
+  describe('Java 来源隔离安装', () => {
+    it('同名公共和企业技能分目录且不覆盖本地技能，重复安装保留ID', async () => {
+      const root = await createTempDir('java-skill-install-')
+      const source = path.join(root, 'source')
+      await fs.promises.mkdir(source)
+      await fs.promises.writeFile(path.join(source, 'SKILL.md'), '---\nname: same\n---\n内容')
+      vi.mocked(parseSkillMetadata).mockResolvedValue({ name: 'same', filename: 'same', description: '描述' } as never)
+      vi.mocked(findSkillMdPath).mockImplementation(async (dir) => path.join(dir, 'SKILL.md'))
+      const getPath = vi
+        .spyOn(application, 'getPath')
+        .mockImplementation((key: string) => path.join(root, key === 'feature.agents.skills' ? 'library' : 'mirror'))
+      try {
+        const service = new SkillService()
+        const local = await service.installFromDirectory({ directoryPath: source })
+        const first = await service.installJavaResource(source, `java-resource:${'a'.repeat(32)}:skill:1`, () => {})
+        const second = await service.installJavaResource(source, `java-resource:${'a'.repeat(32)}:skill:2`, () => {})
+        const again = await service.installJavaResource(source, first.sourceUrl!, () => {})
+        const concurrent = await Promise.all([
+          service.installJavaResource(source, first.sourceUrl!, () => {}),
+          service.installJavaResource(source, first.sourceUrl!, () => {})
+        ])
+        expect(concurrent.map((skill) => skill.id)).toEqual([first.id, first.id])
+        expect(new Set([local.folderName, first.folderName, second.folderName]).size).toBe(3)
+        expect(again.id).toBe(first.id)
+        expect(agentGlobalSkillService.listAll()).toHaveLength(3)
+        await service.linkMirror(first.folderName)
+        expect(fs.existsSync(path.join(root, 'mirror', first.folderName))).toBe(false)
+        expect(fs.existsSync(path.join(root, 'mirror', second.folderName))).toBe(false)
+        expect(await fs.promises.readFile(path.join(root, 'library', local.folderName, 'SKILL.md'), 'utf8')).toContain(
+          '内容'
+        )
+      } finally {
+        getPath.mockRestore()
+      }
+    })
+
+    it('租约失效时拒绝落盘和创建记录', async () => {
+      const source = await createTempDir('java-skill-stale-')
+      await fs.promises.writeFile(path.join(source, 'SKILL.md'), '---\nname: same\n---')
+      vi.mocked(parseSkillMetadata).mockResolvedValue({ name: 'same', filename: 'same' } as never)
+      const service = new SkillService()
+      await expect(
+        service.installJavaResource(source, `java-resource:${'a'.repeat(32)}:skill:1`, () => {
+          throw new Error('租约失效')
+        })
+      ).rejects.toThrow('租约失效')
+      expect(agentGlobalSkillService.listAll()).toHaveLength(0)
+    })
+  })
+
   describe('catalog scopes', () => {
     it('resolves registered Skill icons and rejects symlinks outside the Skill directory', async () => {
       await seedSkills()

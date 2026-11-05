@@ -184,7 +184,18 @@ export class EnterprisePlugin extends BaseService {
     if (context?.mode === 'business' && context.kind === 'authenticated') {
       const monitor = new ProfileOnlineMonitor({
         gate: profileBusinessAccessGate,
-        verify: () => this.auth.verifyOnlineAuthority(),
+        // verify: () => this.auth.verifyOnlineAuthority(),
+        verify: async () => {
+          await this.auth.verifyOnlineAuthority()
+          try {
+            await Promise.allSettled([
+              this.skills.refreshResourceAuthority(),
+              this.connectors.refreshResourceAuthority()
+            ])
+          } finally {
+            await application.get('McpRuntimeService').stopUnauthorizedOrgConnectors()
+          }
+        },
         onBlocked: (reason) => {
           logger.warn('Business access blocked', { reason })
           void this.stopBlockedProfile(reason).catch((error: unknown) => {
@@ -196,8 +207,9 @@ export class EnterprisePlugin extends BaseService {
       this.registerDisposable(() => monitor.stop())
       monitor.start()
     }
-    const migratedSkills = this.skills.migrateLegacyCopies()
-    const migratedConnectors = this.connectors.migrateLegacyCopies()
-    logger.info('enterprise copy mode ready', { migratedSkills, migratedConnectors })
+    // MEA:enterprise-java-resources 启动不改写历史资源来源。
+    // const migratedSkills = this.skills.migrateLegacyCopies()
+    // const migratedConnectors = this.connectors.migrateLegacyCopies()
+    // logger.info('enterprise copy mode ready', { migratedSkills, migratedConnectors })
   }
 }

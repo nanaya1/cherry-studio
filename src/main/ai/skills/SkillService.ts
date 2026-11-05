@@ -9,6 +9,7 @@ import { application } from '@application'
 import { agentGlobalSkillService } from '@data/services/AgentGlobalSkillService'
 import { loggerService } from '@logger'
 import { isWin } from '@main/core/platform'
+import { javaResourceFolderName, parseJavaResourceKey } from '@main/enterprise/JavaResourceIdentity'
 import { orgStateStore } from '@main/enterprise/OrgStateStore'
 import { runPathMutationExclusive } from '@main/services/file'
 import { isOutsidePath, isPathInside } from '@main/utils/file'
@@ -59,6 +60,8 @@ interface CatalogDisplayMetadata {
 }
 
 interface SkillInstallProvenance {
+  isolatedFolderName?: string
+  assertAuthority?: () => void
   namespace?: string | null
   catalogSkillId?: string | null
   catalogVersion?: string | null
@@ -558,6 +561,21 @@ export class SkillService {
   // Core install logic
   // ===========================================================================
 
+  // MEA:enterprise-java-resources 只允许主进程可信来源生成隔离目录，不开放任意目录覆盖。
+  installJavaResource(
+    skillDir: string,
+    resourceKey: string,
+    assertAuthority: () => void,
+    catalogDisplayMetadata?: CatalogDisplayMetadata
+  ): Promise<InstalledSkill> {
+    if (parseJavaResourceKey(resourceKey)?.resourceType !== 'skill') throw new Error('技能来源标识无效')
+    return this.installSkillDir(skillDir, 'local', resourceKey, {
+      isolatedFolderName: javaResourceFolderName(resourceKey),
+      assertAuthority,
+      catalogDisplayMetadata
+    })
+  }
+
   private installSkillDir(
     skillDir: string,
     source: string,
@@ -575,11 +593,14 @@ export class SkillService {
     sourceUrl: string | null,
     provenance: SkillInstallProvenance = {}
   ): Promise<InstalledSkill> {
+    provenance.assertAuthority?.()
     const metadata = await parseSkillMetadata(skillDir, path.basename(skillDir), 'skills')
 
     const skillsRoot = path.resolve(application.getPath('feature.agents.skills'))
     const isInPlace = path.resolve(path.dirname(skillDir)) === skillsRoot
-    const folderName = isInPlace ? path.basename(skillDir) : sanitizeFolderName(metadata.filename)
+    // const folderName = isInPlace ? path.basename(skillDir) : sanitizeFolderName(metadata.filename)
+    const folderName =
+      provenance.isolatedFolderName ?? (isInPlace ? path.basename(skillDir) : sanitizeFolderName(metadata.filename))
 
     const existing = this.findCatalogSkillCaseInsensitive(folderName)
     if (existing) {
@@ -616,8 +637,23 @@ export class SkillService {
     const destPath = this.getSkillStoragePath(destFolderName)
 
     await fs.promises.mkdir(path.dirname(destPath), { recursive: true })
-    await this.installer.install(skillDir, destPath)
-    await this.linkMirror(destFolderName)
+    // await this.installer.install(skillDir, destPath)
+    if (provenance.assertAuthority) {
+      provenance.assertAuthority()
+      const prepared = await this.installer.prepareInstall(skillDir, destPath)
+      try {
+        provenance.assertAuthority()
+        await prepared.commit()
+      } catch (error) {
+        await prepared.rollback()
+        throw error
+      }
+    } else {
+      await this.installer.install(skillDir, destPath)
+    }
+    // await this.linkMirror(destFolderName)
+    if (sourceUrl?.startsWith('java-resource:')) await this.unlinkMirror(destFolderName)
+    else await this.linkMirror(destFolderName)
 
     const tags = metadata.tags ?? []
     const displayMetadata = provenance.catalogDisplayMetadata ?? {
@@ -760,6 +796,12 @@ export class SkillService {
         folderName,
         error: error instanceof Error ? error.message : String(error)
       })
+      return
+    }
+
+    // Java 技能通过稳定键显式激活，不能再由 SDK 按同名原生发现。
+    if (catalogSkill?.sourceUrl?.startsWith('java-resource:')) {
+      await this.unlinkMirror(folderName)
       return
     }
 

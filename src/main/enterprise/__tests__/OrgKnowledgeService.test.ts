@@ -14,7 +14,11 @@ vi.mock('node:fs', async (original) => ({
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { OrgApiClient, OrgApiHttpError } from '../OrgApiClient'
+import { JavaKnowledgeError } from '../JavaKnowledgeClient'
+// import { OrgApiClient, OrgApiHttpError } from '../OrgApiClient'
+import { OrgApiHttpError } from '../OrgApiClient'
+import { OrgAuthManager } from '../OrgAuthManager'
+import { orgSessionSchema, type OrgSession } from '../OrgCredentialStore'
 import { orgStateStore } from '../OrgStateStore'
 
 vi.mock('../KnowledgeSourceBindings', () => ({
@@ -93,6 +97,7 @@ vi.mock('../OrgStateStore', () => ({
   }
 }))
 
+/* 旧 HTTP 测试桩保留；迁移用例禁止经旧路由模拟 Java。
 function makeApiClient() {
   return {
     request: vi.fn(),
@@ -100,6 +105,103 @@ function makeApiClient() {
     requestMultipart: vi.fn(),
     requestText: vi.fn(),
     requestBytes: vi.fn().mockResolvedValue(Buffer.from('%PDF-1.7'))
+  }
+}
+*/
+const uploadFileId = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+const uploadFolderId = 'dddddddddddddddddddddddddddddddd'
+
+function makeApiClient() {
+  // const legacy = () => {
+  const legacy: (path: string, init?: RequestInit) => Promise<unknown> = () => {
+    throw new Error('禁止调用旧知识库协议')
+  }
+  const uploads: Array<{ fileName: string; chunks: any[]; original: boolean; parentId: string | null }> = []
+  const space = { id: codeSpaceId, name: '库', category: 'OWNED', allowLocalFileUpload: true }
+  const consumeUpload = async (
+    _url: string,
+    type: string,
+    size: number,
+    body: any,
+    guard: any,
+    signal?: AbortSignal
+  ) => {
+    guard()
+    const reset = vi.fn()
+    const chunks: Buffer[] = []
+    for await (const bytes of body(reset, signal ?? new AbortController().signal)) chunks.push(Buffer.from(bytes))
+    const buffer = Buffer.concat(chunks)
+    expect(buffer.byteLength).toBe(size)
+    expect(reset).toHaveBeenCalled()
+    const form = await new Response(buffer, { headers: { 'Content-Type': type } }).formData()
+    expect(form.get('id')).toBe(codeSpaceId)
+    uploads.push({
+      fileName: String(form.get('fileName')),
+      chunks: JSON.parse(await (form.get('chunksFile') as File).text()),
+      original: form.has('file'),
+      parentId: form.get('parentId') as string | null
+    })
+    return {
+      knowledgeId: codeSpaceId,
+      fileId: uploads.length === 1 ? uploadFileId : 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      chunkCount: uploads.at(-1)!.chunks.length
+    }
+  }
+  return {
+    request: vi.fn(legacy),
+    requestFileMultipart: vi.fn(legacy),
+    requestMultipart: vi.fn(legacy),
+    requestText: vi.fn(legacy),
+    requestBytes: vi.fn(legacy),
+    uploads,
+    consumeUpload,
+    javaKnowledge: {
+      createLocalShare: vi.fn(async (_name: string, _mode: boolean, guard: any) => {
+        guard()
+        return space
+      }),
+      createFolder: vi.fn(async (_id: string, name: string, parentId: string | undefined, guard: any) => {
+        guard()
+        return { knowledgeId: codeSpaceId, fileId: uploadFolderId, name, parentId: parentId ?? null, directory: true }
+      }),
+      getSpace: vi.fn(async () => space),
+      getCatalog: vi.fn(async () => [space]),
+      getFile: vi.fn(async (_id: string, fileId: string) => {
+        const uploaded = uploads[fileId === uploadFileId ? 0 : 1]
+        return {
+          knowledgeId: codeSpaceId,
+          fileId,
+          name: uploaded?.fileName ?? 'a.txt',
+          parentId: uploaded?.parentId ?? null,
+          directory: fileId === uploadFolderId,
+          hasOriginalFile: uploaded?.original ?? true,
+          fileHash: uploaded?.original ? createHash('sha256').update('file-bytes').digest('hex') : null,
+          parseStatus: 'ready'
+        }
+      }),
+      listFiles: vi.fn(async () => ({ items: [] as any[], total: 0, page: 1, pageSize: 100 })),
+      listChunks: vi.fn(async (_id?: string, fileId?: string) => {
+        const uploaded = uploads[fileId === uploadFileId ? 0 : 1]
+        const items = (uploaded?.chunks ?? []).map((chunk, index) => ({
+          knowledgeId: codeSpaceId,
+          fileId,
+          chunkId: index.toString(16).padStart(32, '0'),
+          content: chunk.content,
+          chunkIndex: chunk.metadata.chunk_index
+        }))
+        return { items, total: items.length, page: 1, pageSize: 100 }
+      }),
+      uploadMultipart: vi.fn(consumeUpload),
+      download: vi.fn(async () => ({ bytes: Buffer.from('file-bytes') })),
+      removeSpace: vi.fn(async (_id: string, guard: any) => {
+        guard()
+      }),
+      listOperations: vi.fn(async () => ({ items: [] as any[], total: 0 })),
+      confirmOperation: vi.fn(async (_id: number, guard: any) => {
+        guard()
+        return null
+      })
+    }
   }
 }
 
@@ -133,6 +235,7 @@ function settleKnowledgeJob(type: string, baseId = 'local-1'): void {
 
 function makeService(apiClient: ReturnType<typeof makeApiClient>) {
   const service = new OrgKnowledgeService({ apiClient, ...auth } as never)
+  /* 旧 client 注入保留，Java 用例直接使用 apiClient.javaKnowledge。
   vi.spyOn((service as any).client, 'getSpace').mockImplementation(async (...args: unknown[]) => ({
     id: String(args[0]),
     name: '库',
@@ -151,7 +254,8 @@ function makeService(apiClient: ReturnType<typeof makeApiClient>) {
       return { id, space_id: 'space', name: '文件', is_dir: false, has_original_file: true }
     return getFile(id)
   })
-  vi.spyOn(service as any, 'verifyFirstShareFile').mockResolvedValue(undefined)
+  */
+  // vi.spyOn(service as any, 'verifyFirstShareFile').mockResolvedValue(undefined)
   service.initialize(shareJobs as never)
   shareJobs.enqueue.mockImplementation(async (_type, input) => {
     const handler = [...shareJobs.registerHandler.mock.calls].reverse().find(([type]) => type === _type)![1]
@@ -175,57 +279,75 @@ function makeService(apiClient: ReturnType<typeof makeApiClient>) {
 }
 
 describe('云端文件删除', () => {
-  const baseId = encodeOrgId('space')
-  const fileId = encodeOrgId('f')
+  const knowledgeId = '11111111-1111-4111-8111-111111111111'
+  const rawFileId = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+  const baseId = encodeOrgId(knowledgeId)
+  const fileId = encodeOrgId(rawFileId)
 
   function setup(owned = true) {
-    const api = makeApiClient()
-    const service = makeService(api)
-    vi.spyOn((service as any).client, 'getCatalog').mockResolvedValue({
-      owned: owned ? [{ id: 'space', my_role: 'owner' }] : [],
-      public: [],
-      shared: []
+    // 旧 /api/kb/v1/files/:id 删除改为 Java knowledgeId/fileId 双重归属校验。
+    const javaKnowledge = {
+      getCatalog: vi.fn().mockResolvedValue([{ id: knowledgeId, category: owned ? 'OWNED' : 'SHARED' }]),
+      getFile: vi.fn().mockResolvedValue({ knowledgeId, fileId: rawFileId, directory: false }),
+      removeFile: vi.fn(async (_knowledgeId, _fileId, beforeSend) => beforeSend())
+    }
+    const legacy = vi.fn(() => {
+      throw new Error('禁止调用旧知识库协议')
     })
-    api.request.mockResolvedValue({ deleted: 1 })
-    return { api, service }
+    const service = new OrgKnowledgeService({ ...auth, apiClient: { javaKnowledge, request: legacy } } as never)
+    return { javaKnowledge, legacy, service }
   }
 
   it('跨端所有者按真实文件ID删除云端文件，不依赖本地分享记录', async () => {
-    const { api, service } = setup()
+    const { javaKnowledge, legacy, service } = setup()
     await expect(service.deleteFile({ baseId, fileId })).resolves.toEqual({ ok: true })
-    expect(api.request).toHaveBeenCalledWith(
-      '/api/kb/v1/files/f',
-      expect.objectContaining({ method: 'DELETE' }),
-      expect.any(Function)
-    )
+    expect(javaKnowledge.getFile).toHaveBeenCalledExactlyOnceWith(knowledgeId, rawFileId)
+    expect(javaKnowledge.removeFile).toHaveBeenCalledExactlyOnceWith(knowledgeId, rawFileId, expect.any(Function))
+    expect(legacy).not.toHaveBeenCalled()
     expect(orgStateStore.clearShare).not.toHaveBeenCalled()
+    service.dispose()
   })
 
   it('拒绝非所有者删除', async () => {
-    const { api, service } = setup(false)
+    const { javaKnowledge, legacy, service } = setup(false)
     await expect(service.deleteFile({ baseId, fileId })).rejects.toMatchObject({ code: E.ORGKB_FORBIDDEN })
-    expect(api.request).not.toHaveBeenCalled()
+    expect(javaKnowledge.getFile).not.toHaveBeenCalled()
+    expect(javaKnowledge.removeFile).not.toHaveBeenCalled()
+    expect(legacy).not.toHaveBeenCalled()
+    service.dispose()
   })
 
   it('拒绝把其他空间的文件ID放入当前库删除', async () => {
-    const { api, service } = setup()
-    vi.mocked((service as any).client.getFile).mockResolvedValue({ id: 'f', space_id: 'other', is_dir: false })
+    const { javaKnowledge, legacy, service } = setup()
+    javaKnowledge.getFile.mockResolvedValue({
+      fileId: rawFileId,
+      knowledgeId: '22222222-2222-4222-8222-222222222222',
+      directory: false
+    })
     await expect(service.deleteFile({ baseId, fileId })).rejects.toMatchObject({ code: E.ORGKB_FORBIDDEN })
-    expect(api.request).not.toHaveBeenCalled()
+    expect(javaKnowledge.removeFile).not.toHaveBeenCalled()
+    expect(legacy).not.toHaveBeenCalled()
+    service.dispose()
   })
 
   it('目录使用相同删除接口，由上游级联；服务端拒绝时保留错误', async () => {
-    const { api, service } = setup()
-    vi.mocked((service as any).client.getFile).mockResolvedValue({ id: 'f', space_id: 'space', is_dir: true })
-    api.request.mockRejectedValue(new OrgApiHttpError(403, '拒绝删除'))
-    await expect(service.deleteFile({ baseId, fileId })).rejects.toMatchObject({ status: 403 })
+    const { javaKnowledge, legacy, service } = setup()
+    javaKnowledge.getFile.mockResolvedValue({ fileId: rawFileId, knowledgeId, directory: true })
+    const error = new JavaKnowledgeError(403, '拒绝删除')
+    javaKnowledge.removeFile.mockRejectedValue(error)
+    await expect(service.deleteFile({ baseId, fileId })).rejects.toBe(error)
+    expect(javaKnowledge.removeFile).toHaveBeenCalledExactlyOnceWith(knowledgeId, rawFileId, expect.any(Function))
+    expect(legacy).not.toHaveBeenCalled()
+    service.dispose()
   })
 
   it('恢复中的库拒绝删除', async () => {
-    const { api, service } = setup()
+    const { javaKnowledge, legacy, service } = setup()
     vi.mocked(orgStateStore.getCloudRecovery).mockReturnValue({ phase: 'restoring' } as never)
     await expect(service.deleteFile({ baseId, fileId })).rejects.toMatchObject({ code: E.ORGKB_FORBIDDEN })
-    expect(api.request).not.toHaveBeenCalled()
+    expect(javaKnowledge.removeFile).not.toHaveBeenCalled()
+    expect(legacy).not.toHaveBeenCalled()
+    service.dispose()
   })
 })
 
@@ -242,122 +364,477 @@ const codeShare = {
   revoked_at: null,
   created_at: '2026-10-15T00:00:00Z'
 }
-const codeCatalog = { public: [], shared: [], owned: [{ id: codeSpaceId, name: '副本', my_role: 'owner' }] }
+// const codeCatalog = { public: [], shared: [], owned: [{ id: codeSpaceId, name: '副本', my_role: 'owner' }] }
+
+const javaFileId = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+const javaChunkId = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+const javaShareId = 'c357f93f572b4c16868bc2f43c20a88e'
+const javaOtherId = 'dddddddddddddddddddddddddddddddd'
+const javaShare = {
+  knowledgeId: codeSpaceId,
+  shareId: javaShareId,
+  shareCode: 'AbCd_123',
+  receivable: true,
+  hasPassword: true,
+  maxViews: null,
+  viewCount: 0,
+  expiresAt: null,
+  revokedAt: null,
+  createTime: '2026-10-15T00:00:00Z'
+}
+const javaSpace = {
+  id: codeSpaceId,
+  name: '副本',
+  category: 'OWNED',
+  ownerId: 7,
+  description: null,
+  visibility: null,
+  allowLocalFileUpload: true,
+  canDownload: true,
+  createTime: '2026-10-15T00:00:00Z',
+  updateTime: '2026-10-15T00:00:00Z'
+}
+const javaFile = {
+  knowledgeId: codeSpaceId,
+  fileId: javaFileId,
+  name: 'T',
+  directory: false,
+  parentId: null,
+  hasOriginalFile: true,
+  parseStatus: 'ready',
+  mimeType: 'text/plain',
+  fileHash: null,
+  createTime: javaSpace.createTime,
+  updateTime: javaSpace.updateTime
+}
+const javaMember = {
+  userId: 5,
+  showName: 'x',
+  role: 'viewer',
+  status: 'pending',
+  expiresAt: null,
+  activeTenantMember: true
+}
+
+function makeJavaApi() {
+  // 旧 request 路由桩不再参与迁移用例，直接 mock 真实 Java 方法与 camelCase VO。
+  // const legacy = () => {
+  const legacy: (path: string, init?: RequestInit) => Promise<unknown> = () => {
+    throw new Error('禁止调用旧知识库协议')
+  }
+  return {
+    request: vi.fn(legacy),
+    requestText: vi.fn(legacy),
+    requestBytes: vi.fn(legacy),
+    javaKnowledge: {
+      getCatalog: vi.fn().mockResolvedValue([javaSpace]),
+      listFiles: vi.fn().mockResolvedValue({ items: [javaFile], total: 1, page: 1, pageSize: 20 }),
+      getFile: vi.fn().mockResolvedValue(javaFile),
+      preview: vi.fn().mockResolvedValue({ bytes: Buffer.from('%PDF-1.7'), contentType: 'application/pdf' }),
+      read: vi.fn().mockResolvedValue({ knowledgeId: codeSpaceId, fileId: javaFileId, content: '解析正文' }),
+      listChunks: vi.fn(),
+      search: vi.fn(),
+      listShares: vi.fn().mockResolvedValue([]),
+      createShare: vi.fn().mockResolvedValue(javaShare),
+      revokeShare: vi.fn().mockResolvedValue(undefined),
+      receiveShare: vi.fn(),
+      listMembers: vi.fn().mockResolvedValue([]),
+      addMember: vi.fn().mockResolvedValue(javaMember),
+      removeMember: vi.fn().mockResolvedValue(undefined),
+      listInvitations: vi.fn(),
+      acceptInvitation: vi.fn(),
+      declineInvitation: vi.fn().mockResolvedValue(undefined),
+      renameSpace: vi.fn()
+    }
+  }
+}
+
+function makeJavaService(api: ReturnType<typeof makeJavaApi>) {
+  return new OrgKnowledgeService({ ...auth, apiClient: api } as never)
+}
 
 describe('云端 Office 预览', () => {
+  const knowledgeId = '11111111-1111-4111-8111-111111111111'
+  const fileId = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+
+  function setup(extension: string, contentType: string, bytes: Buffer) {
+    const javaKnowledge = {
+      getFile: vi.fn().mockResolvedValue({
+        knowledgeId,
+        fileId,
+        name: `报告.${extension}`,
+        directory: false,
+        hasOriginalFile: true,
+        mimeType: null
+      }),
+      preview: vi.fn().mockResolvedValue({ bytes, contentType }),
+      read: vi.fn().mockResolvedValue({ knowledgeId, fileId, content: 'Office 解析正文' })
+    }
+    const legacy = vi.fn(() => {
+      throw new Error('禁止调用旧预签名协议')
+    })
+    const service = new OrgKnowledgeService({ ...auth, apiClient: { javaKnowledge, request: legacy } } as never)
+    return { javaKnowledge, legacy, service }
+  }
+
+  // 原预签名 URL 契约已被 Java 鉴权字节流取代，仍校验原文字节且不向界面暴露地址。
   it.each([
     ['docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 25 * 1024 * 1024],
     ['xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 20 * 1024 * 1024],
     ['pptx', 'application/vnd.openxmlformats-officedocument.presentationml.presentation', 25 * 1024 * 1024]
-  ])('有下载权限的 inline %s 通过预签名 URL 返回 base64', async (extension, mimeType, maxBytes) => {
-    const api = makeApiClient()
-    const service = makeService(api)
+  ])('有下载权限的 inline %s 通过 Java 鉴权字节流返回 base64', async (extension, mimeType, maxBytes) => {
     const bytes = Buffer.from(`office-${extension}`)
-    vi.spyOn((service as any).client, 'getFile').mockResolvedValue({ id: 'f', is_dir: false, has_original_file: true })
-    vi.spyOn((service as any).client, 'getPreviewUrl').mockResolvedValue({
-      kind: 'inline',
-      url: `https://minio.example.test/${extension}?signature=secret`,
-      file_name: `报告.${extension}`,
-      mime_type: mimeType
-    })
-    const fetchPreview = vi
-      .spyOn((service as any).client, 'fetchPresignedPreviewBytes')
-      .mockImplementation(async (_url, limit) => {
-        expect(limit).toBe(maxBytes)
-        return bytes
-      })
-
-    await expect(service.preview({ fileId: 'orgkb:Zg' })).resolves.toMatchObject({
+    const { javaKnowledge, legacy, service } = setup(extension, mimeType, bytes)
+    const params = { baseId: encodeOrgId(knowledgeId), fileId: encodeOrgId(fileId) }
+    await expect(service.preview(params)).resolves.toEqual({
       kind: 'inline',
       fileName: `报告.${extension}`,
       mimeType,
       base64: bytes.toString('base64'),
       content: ''
     })
-    expect(fetchPreview).toHaveBeenCalledWith(expect.stringContaining(`/${extension}?signature=secret`), maxBytes)
-    expect(api.requestText).not.toHaveBeenCalled()
-    expect(api.requestBytes).not.toHaveBeenCalled()
+    expect(javaKnowledge.preview).toHaveBeenCalledExactlyOnceWith(knowledgeId, fileId)
+    expect(javaKnowledge.read).not.toHaveBeenCalled()
+    expect(legacy).not.toHaveBeenCalled()
+    javaKnowledge.preview.mockResolvedValue({ bytes: Buffer.alloc(maxBytes + 1), contentType: mimeType })
+    await expect(service.preview(params)).rejects.toMatchObject({ code: E.ORGKB_BAD_INPUT })
     service.dispose()
   })
 
-  it('无下载权限的 Office kind=text 仍返回文本', async () => {
-    const api = makeApiClient()
-    const service = makeService(api)
-    vi.spyOn((service as any).client, 'getFile').mockResolvedValue({ id: 'f', is_dir: false, has_original_file: true })
-    vi.spyOn((service as any).client, 'getPreviewUrl').mockResolvedValue({
-      kind: 'text',
-      url: null,
-      file_name: '报告.docx',
-      mime_type: null
+  it('原件能力撤销时拒绝 Office 预览且不读取正文', async () => {
+    // Java 不返回旧 kind=text 权限降级元信息，必须先确认原件能力，不能绕过权限读取。
+    const { javaKnowledge, legacy, service } = setup('docx', 'text/plain', Buffer.from('解析正文'))
+    javaKnowledge.getFile.mockResolvedValue({
+      knowledgeId,
+      fileId,
+      name: '报告.docx',
+      directory: false,
+      hasOriginalFile: false,
+      mimeType: null
     })
-    api.requestText.mockResolvedValue('解析正文')
-
-    await expect(service.preview({ fileId: 'orgkb:Zg' })).resolves.toMatchObject({ kind: 'text', content: '解析正文' })
-    expect(api.requestText).toHaveBeenCalledWith('/api/kb/v1/files/f/preview')
+    await expect(
+      service.preview({ baseId: encodeOrgId(knowledgeId), fileId: encodeOrgId(fileId) })
+    ).rejects.toMatchObject({ code: E.ORGKB_FORBIDDEN })
+    expect(javaKnowledge.preview).not.toHaveBeenCalled()
+    expect(javaKnowledge.read).not.toHaveBeenCalled()
+    expect(legacy).not.toHaveBeenCalled()
     service.dispose()
   })
 
-  it.each(['doc', 'xls', 'ppt'])('旧格式 %s 的 inline 仍返回文本', async (extension) => {
-    const api = makeApiClient()
-    const service = makeService(api)
-    vi.spyOn((service as any).client, 'getFile').mockResolvedValue({ id: 'f', is_dir: false, has_original_file: true })
-    vi.spyOn((service as any).client, 'getPreviewUrl').mockResolvedValue({
-      kind: 'inline',
-      url: 'https://minio.example.test/object',
-      file_name: `报告.${extension}`,
-      mime_type: null
-    })
-    api.requestText.mockResolvedValue('旧格式正文')
-
-    await expect(service.preview({ fileId: 'orgkb:Zg' })).resolves.toMatchObject({
+  it.each(['doc', 'xls', 'ppt'])('旧格式 %s 仍返回解析文本而非活动二进制', async (extension) => {
+    const { javaKnowledge, legacy, service } = setup(extension, 'application/octet-stream', Buffer.from('old-office'))
+    javaKnowledge.read.mockResolvedValue({ knowledgeId, fileId, content: '旧格式正文' })
+    await expect(service.preview({ baseId: encodeOrgId(knowledgeId), fileId: encodeOrgId(fileId) })).resolves.toEqual({
       kind: 'text',
+      fileName: `报告.${extension}`,
+      mimeType: 'application/octet-stream',
       content: '旧格式正文'
     })
-    expect(api.requestBytes).not.toHaveBeenCalled()
+    expect(javaKnowledge.read).toHaveBeenCalledExactlyOnceWith(knowledgeId, fileId)
+    expect(legacy).not.toHaveBeenCalled()
     service.dispose()
   })
 
-  it.each(['docx', 'xlsx', 'pptx'])('Office %s 缺少预签名 URL 时显示解析正文', async (extension) => {
-    const api = makeApiClient()
-    const service = makeService(api)
-    vi.spyOn((service as any).client, 'getFile').mockResolvedValue({ id: 'f', is_dir: false, has_original_file: true })
-    vi.spyOn((service as any).client, 'getPreviewUrl').mockResolvedValue({
-      kind: 'inline',
-      url: null,
-      file_name: `报告.${extension}`,
-      mime_type: null
-    })
-    api.requestText.mockResolvedValue('Office 解析正文')
-
-    await expect(service.preview({ fileId: 'orgkb:Zg' })).resolves.toMatchObject({
+  it.each(['docx', 'xlsx', 'pptx'])('Office %s 字节类型无法确认时显示解析正文', async (extension) => {
+    // Java 不再提供预签名 URL；缺少可信媒体类型时保留原安全降级意图。
+    const { javaKnowledge, legacy, service } = setup(extension, '', Buffer.from('unknown-office'))
+    await expect(service.preview({ baseId: encodeOrgId(knowledgeId), fileId: encodeOrgId(fileId) })).resolves.toEqual({
       kind: 'text',
+      fileName: `报告.${extension}`,
+      mimeType: null,
       content: 'Office 解析正文'
     })
-    expect(api.requestText).toHaveBeenCalledWith('/api/kb/v1/files/f/preview')
-    expect(api.requestBytes).not.toHaveBeenCalled()
+    expect(javaKnowledge.read).toHaveBeenCalledExactlyOnceWith(knowledgeId, fileId)
+    expect(legacy).not.toHaveBeenCalled()
     service.dispose()
   })
 })
 
+// describe('catalog 跨端分享证据', () => {
+//   function setup(shares: unknown = [], members: unknown = []) {
+//     const api = makeApiClient()
+//     api.request.mockImplementation(async (path) => {
+//       if (path.includes('/shares')) return shares
+//       if (path.includes('/members')) return members
+//       return codeCatalog
+//     })
+//     return { api, service: makeService(api) }
+//   }
+//
+//   it('将云端空间更新时间映射为详情可用的 updatedAt', async () => {
+//     const updatedAt = '2026-10-17T00:00:00Z'
+//     const { service } = setup()
+//     vi.spyOn((service as any).client, 'getCatalog').mockResolvedValue({
+//       public: [{ id: 'public', name: '公共', updated_at: updatedAt }],
+//       shared: [],
+//       owned: []
+//     })
+//     try {
+//       expect((await service.catalog()).public[0].updatedAt).toBe(updatedAt)
+//     } finally {
+//       service.dispose()
+//     }
+//   })
+//
+//   it.each([
+//     { name: 'active', patch: {}, expected: true },
+//     { name: 'expired', patch: { expires_at: '2000-01-01T00:00:00Z' }, expected: false },
+//     { name: 'revoked', patch: { revoked_at: '2026-01-01T00:00:00Z' }, expected: false },
+//     { name: 'exhausted', patch: { max_views: 1, view_count: 1 }, expected: false },
+//     { name: 'over-limit', patch: { max_views: 1, view_count: 2 }, expected: false },
+//     { name: 'below-limit', patch: { max_views: 2, view_count: 1 }, expected: true },
+//     { name: 'other-type', patch: { share_type: 2 }, expected: false },
+//     { name: 'future', patch: { expires_at: '2099-01-01T00:00:00Z' }, expected: true },
+//     { name: 'wrong-space', patch: { space_id: codeShare.id }, expected: undefined }
+//   ])('分享码 $name 不改变本机完成态', async ({ patch, expected }) => {
+//     const { service } = setup([{ ...codeShare, ...patch }])
+//     try {
+//       expect((await service.catalog()).owned[0]).toMatchObject({ hasShareEvidence: expected, shareCompleted: false })
+//     } finally {
+//       service.dispose()
+//     }
+//   })
+//
+//   it.each([
+//     { status: 'active', expected: true },
+//     { status: 'accepted', expected: true },
+//     { status: 'pending', expected: true },
+//     { status: 'invited', expected: true },
+//     { status: 'expired', expected: false },
+//     { status: 'removed', expected: false },
+//     { status: 'declined', expected: false },
+//     { status: 'unknown', expected: false }
+//   ])('指定人记录 $status 是独立证据而非 completion', async ({ status, expected }) => {
+//     const { service } = setup([], [{ user_id: 42, role: 'viewer', joined_at: codeShare.created_at, status }])
+//     try {
+//       expect((await service.catalog()).owned[0]).toMatchObject({ hasShareEvidence: expected, shareCompleted: false })
+//     } finally {
+//       service.dispose()
+//     }
+//   })
+//
+//   it.each([
+//     { role: 'owner', status: 'active' },
+//     { role: 'admin', status: 'active' },
+//     { role: 'unknown', status: 'active' },
+//     { role: 'viewer', status: 'active', expires_at: '2000-01-01T00:00:00Z' }
+//   ])('owner 或过期成员不能证已分享：%j', async (patch) => {
+//     const { service } = setup([], [{ user_id: 42, joined_at: codeShare.created_at, ...patch }])
+//     try {
+//       expect((await service.catalog()).owned[0]).toMatchObject({ hasShareEvidence: false, shareCompleted: false })
+//     } finally {
+//       service.dispose()
+//     }
+//   })
+//
+//   it('到期时间等于当前时间的分享码和 viewer 都不再有效', async () => {
+//     vi.useFakeTimers()
+//     vi.setSystemTime(new Date('2026-10-17T12:00:00Z'))
+//     const expires_at = new Date().toISOString()
+//     const { service } = setup(
+//       [{ ...codeShare, expires_at }],
+//       [{ user_id: 42, role: 'viewer', joined_at: codeShare.created_at, expires_at }]
+//     )
+//     try {
+//       expect((await service.catalog()).owned[0].hasShareEvidence).toBe(false)
+//     } finally {
+//       service.dispose()
+//       vi.useRealTimers()
+//     }
+//   })
+//
+//   it('仅补查非 public 的 owned，不从公共只读成员或 owner/admin 身份推导分享', async () => {
+//     const { api, service } = setup()
+//     api.request.mockResolvedValue({
+//       public: [{ id: 'public-owner', name: '公共所有者', my_role: 'owner' }],
+//       shared: [{ id: 'shared-admin', name: '管理员可读', my_role: 'admin' }],
+//       owned: []
+//     })
+//     try {
+//       const catalog = await service.catalog()
+//       expect(catalog.owned).toEqual([])
+//       expect(catalog.public).toHaveLength(1)
+//       expect(catalog.shared).toHaveLength(1)
+//       expect(api.request).toHaveBeenCalledTimes(1)
+//     } finally {
+//       service.dispose()
+//     }
+//   })
+//
+//   it('本人不是指定人分享证据', async () => {
+//     auth.acquireLease.mockReturnValue({ ...lease, userId: '42' })
+//     const { service } = setup([], [{ user_id: 42, role: 'viewer', joined_at: codeShare.created_at, status: 'active' }])
+//     try {
+//       expect((await service.catalog()).owned[0]).toMatchObject({ hasShareEvidence: false })
+//     } finally {
+//       service.dispose()
+//     }
+//   })
+//
+//   it('失败隔离并保留 public/shared 和 owned 基础资料，单路成功仍可提供证据', async () => {
+//     const { api, service } = setup()
+//     api.request.mockImplementation(async (path) => {
+//       if (path.includes('/shares')) throw new Error('offline')
+//       if (path.includes('/members')) return []
+//       return { ...codeCatalog, public: [{ id: 'public', name: '公共' }], shared: [{ id: 'shared', name: '收到' }] }
+//     })
+//     try {
+//       const catalog = await service.catalog()
+//       expect(catalog.public).toHaveLength(1)
+//       expect(catalog.shared).toHaveLength(1)
+//       expect(catalog.owned[0].name).toBe('副本')
+//       expect(catalog.owned[0]).not.toHaveProperty('hasShareEvidence', true)
+//       expect(catalog.owned[0].hasShareEvidence).toBeUndefined()
+//       api.request.mockImplementation(async (path) => {
+//         if (path.includes('/shares')) return [codeShare]
+//         if (path.includes('/members')) throw new Error('offline')
+//         return codeCatalog
+//       })
+//       expect((await service.catalog()).owned[0].hasShareEvidence).toBe(true)
+//     } finally {
+//       service.dispose()
+//     }
+//   })
+//
+//   it.each(['shares', 'members'] as const)('可选 %s 查询 401 即使另一条有正证据仍抛出', async (denied) => {
+//     const { api, service } = setup()
+//     api.request.mockImplementation(async (path) => {
+//       if (path.includes(`/${denied}`)) throw new OrgApiHttpError(401, 'denied')
+//       if (path.includes('/shares')) return [codeShare]
+//       if (path.includes('/members')) return [{ user_id: 42, role: 'viewer', joined_at: codeShare.created_at }]
+//       return codeCatalog
+//     })
+//     try {
+//       await expect(service.catalog()).rejects.toMatchObject({ status: 401 })
+//     } finally {
+//       service.dispose()
+//     }
+//   })
+//
+//   it.each(['shares', 'members'] as const)('可选 %s 查询 403 保留目录且证据未知，另一条正证据仍有效', async (denied) => {
+//     const { api, service } = setup()
+//     let positive = false
+//     api.request.mockImplementation(async (path) => {
+//       if (path.includes(`/${denied}`)) throw new OrgApiHttpError(403, '可选证据无权限')
+//       if (path.includes('/shares')) return positive ? [codeShare] : []
+//       if (path.includes('/members'))
+//         return positive ? [{ user_id: 42, role: 'viewer', joined_at: codeShare.created_at }] : []
+//       return { ...codeCatalog, public: [{ id: 'public', name: '公共' }], shared: [{ id: 'shared', name: '收到' }] }
+//     })
+//     try {
+//       const catalog = await service.catalog()
+//       expect(catalog.public).toHaveLength(1)
+//       expect(catalog.shared).toHaveLength(1)
+//       expect(catalog.owned[0]).toMatchObject({ name: '副本', hasShareEvidence: undefined, shareCompleted: false })
+//       positive = true
+//       expect((await service.catalog()).owned[0].hasShareEvidence).toBe(true)
+//     } finally {
+//       service.dispose()
+//     }
+//   })
+//
+//   it.each([401, 403])('基础 catalog 授权错误 %s 仍阻断且不发起补查询', async (status) => {
+//     const { api, service } = setup()
+//     api.request.mockRejectedValue(new OrgApiHttpError(status, '目录无权限'))
+//     try {
+//       await expect(service.catalog()).rejects.toMatchObject({ status })
+//       expect(api.request).toHaveBeenCalledTimes(1)
+//     } finally {
+//       service.dispose()
+//     }
+//   })
+//
+//   it('证据查询中 lease 失效不能返回旧身份 catalog', async () => {
+//     const { api, service } = setup()
+//     api.request.mockImplementation(async (path) => {
+//       if (path.includes('/shares')) {
+//         auth.assertLease.mockImplementation(() => {
+//           throw new Error('stale')
+//         })
+//         return [codeShare]
+//       }
+//       if (path.includes('/members')) return []
+//       return codeCatalog
+//     })
+//     try {
+//       await expect(service.catalog()).rejects.toMatchObject({ code: E.ORGKB_UNAUTHORIZED })
+//     } finally {
+//       service.dispose()
+//     }
+//   })
+//
+//   it('本机 completed 仍可证已分享且不依赖跨端查询', async () => {
+//     const key = JSON.stringify([lease.issuerId, lease.userId, lease.groupId, 'local-completed'])
+//     vi.mocked(orgStateStore.getShareAssociations).mockReturnValue({
+//       [key]: { shareId: codeSpaceId, completion: 'completed', files: [] }
+//     })
+//     const { api, service } = setup()
+//     try {
+//       expect((await service.catalog()).owned[0]).toMatchObject({
+//         localBaseId: 'local-completed',
+//         shareCompleted: true,
+//         hasShareEvidence: true
+//       })
+//       expect(api.request).toHaveBeenCalledTimes(1)
+//     } finally {
+//       service.dispose()
+//     }
+//   })
+//
+//   it('证据请求均带超时信号，超时按未知保留基础目录', async () => {
+//     const { api, service } = setup()
+//     api.request.mockImplementation(async (path, init) => {
+//       if (path.includes('/shares') || path.includes('/members')) {
+//         expect(init.signal).toBeInstanceOf(AbortSignal)
+//         throw new DOMException('timeout', 'TimeoutError')
+//       }
+//       return codeCatalog
+//     })
+//     try {
+//       expect((await service.catalog()).owned[0]).toMatchObject({ name: '副本', hasShareEvidence: undefined })
+//     } finally {
+//       service.dispose()
+//     }
+//   })
+//
+//   it('多个 owned 限制查询并发且不逐库串行', async () => {
+//     const { api, service } = setup()
+//     let active = 0
+//     let maxActive = 0
+//     api.request.mockImplementation(async (path) => {
+//       if (path.includes('/shares') || path.includes('/members')) {
+//         active++
+//         maxActive = Math.max(maxActive, active)
+//         await new Promise((resolve) => setTimeout(resolve, 1))
+//         active--
+//         return []
+//       }
+//       return { public: [], shared: [], owned: Array.from({ length: 10 }, (_, i) => ({ id: `s-${i}`, name: `库${i}` })) }
+//     })
+//     try {
+//       expect((await service.catalog()).owned).toHaveLength(10)
+//       expect(maxActive).toBeGreaterThan(1)
+//       expect(maxActive).toBeLessThanOrEqual(4)
+//     } finally {
+//       service.dispose()
+//     }
+//   })
+// })
+//
 describe('catalog 跨端分享证据', () => {
   function setup(shares: unknown = [], members: unknown = []) {
-    const api = makeApiClient()
-    api.request.mockImplementation(async (path) => {
-      if (path.includes('/shares')) return shares
-      if (path.includes('/members')) return members
-      return codeCatalog
-    })
-    return { api, service: makeService(api) }
+    const api = makeJavaApi()
+    api.javaKnowledge.listShares.mockResolvedValue(shares)
+    api.javaKnowledge.listMembers.mockResolvedValue(members)
+    return { api, service: makeJavaService(api) }
   }
 
   it('将云端空间更新时间映射为详情可用的 updatedAt', async () => {
     const updatedAt = '2026-10-17T00:00:00Z'
     const { service } = setup()
-    vi.spyOn((service as any).client, 'getCatalog').mockResolvedValue({
-      public: [{ id: 'public', name: '公共', updated_at: updatedAt }],
-      shared: [],
-      owned: []
-    })
+    vi.mocked((service as any).auth.apiClient.javaKnowledge.getCatalog).mockResolvedValue([
+      { ...javaSpace, category: 'PUBLIC', updateTime: updatedAt }
+    ])
     try {
       expect((await service.catalog()).public[0].updatedAt).toBe(updatedAt)
     } finally {
@@ -366,17 +843,17 @@ describe('catalog 跨端分享证据', () => {
   })
 
   it.each([
-    { name: 'active', patch: {}, expected: true },
-    { name: 'expired', patch: { expires_at: '2000-01-01T00:00:00Z' }, expected: false },
-    { name: 'revoked', patch: { revoked_at: '2026-01-01T00:00:00Z' }, expected: false },
-    { name: 'exhausted', patch: { max_views: 1, view_count: 1 }, expected: false },
-    { name: 'over-limit', patch: { max_views: 1, view_count: 2 }, expected: false },
-    { name: 'below-limit', patch: { max_views: 2, view_count: 1 }, expected: true },
-    { name: 'other-type', patch: { share_type: 2 }, expected: false },
-    { name: 'future', patch: { expires_at: '2099-01-01T00:00:00Z' }, expected: true },
-    { name: 'wrong-space', patch: { space_id: codeShare.id }, expected: undefined }
+    { name: 'active', patch: { receivable: true }, expected: true },
+    { name: 'expired', patch: { receivable: false, expiresAt: '2000-01-01T00:00:00Z' }, expected: false },
+    { name: 'revoked', patch: { receivable: false, revokedAt: '2026-01-01T00:00:00Z' }, expected: false },
+    { name: 'exhausted', patch: { receivable: false, maxViews: 1, viewCount: 1 }, expected: false },
+    { name: 'over-limit', patch: { receivable: false, maxViews: 1, viewCount: 2 }, expected: false },
+    { name: 'below-limit', patch: { maxViews: 2, viewCount: 1 }, expected: true },
+    { name: 'other-type', patch: { receivable: false }, expected: false },
+    { name: 'future', patch: { expiresAt: '2099-01-01T00:00:00Z' }, expected: true },
+    { name: 'wrong-space', patch: { receivable: false, knowledgeId: codeShare.id }, expected: false }
   ])('分享码 $name 不改变本机完成态', async ({ patch, expected }) => {
-    const { service } = setup([{ ...codeShare, ...patch }])
+    const { service } = setup([{ ...javaShare, ...patch }])
     try {
       expect((await service.catalog()).owned[0]).toMatchObject({ hasShareEvidence: expected, shareCompleted: false })
     } finally {
@@ -394,7 +871,10 @@ describe('catalog 跨端分享证据', () => {
     { status: 'declined', expected: false },
     { status: 'unknown', expected: false }
   ])('指定人记录 $status 是独立证据而非 completion', async ({ status, expected }) => {
-    const { service } = setup([], [{ user_id: 42, role: 'viewer', joined_at: codeShare.created_at, status }])
+    const { service } = setup(
+      [],
+      [{ activeTenantMember: true, userId: 42, role: 'viewer', createTime: javaShare.createTime, status }]
+    )
     try {
       expect((await service.catalog()).owned[0]).toMatchObject({ hasShareEvidence: expected, shareCompleted: false })
     } finally {
@@ -406,9 +886,12 @@ describe('catalog 跨端分享证据', () => {
     { role: 'owner', status: 'active' },
     { role: 'admin', status: 'active' },
     { role: 'unknown', status: 'active' },
-    { role: 'viewer', status: 'active', expires_at: '2000-01-01T00:00:00Z' }
+    { role: 'viewer', status: 'active', expiresAt: '2000-01-01T00:00:00Z' }
   ])('owner 或过期成员不能证已分享：%j', async (patch) => {
-    const { service } = setup([], [{ user_id: 42, joined_at: codeShare.created_at, ...patch }])
+    const { service } = setup(
+      [],
+      [{ activeTenantMember: true, userId: 42, createTime: javaShare.createTime, ...patch }]
+    )
     try {
       expect((await service.catalog()).owned[0]).toMatchObject({ hasShareEvidence: false, shareCompleted: false })
     } finally {
@@ -419,10 +902,10 @@ describe('catalog 跨端分享证据', () => {
   it('到期时间等于当前时间的分享码和 viewer 都不再有效', async () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-10-17T12:00:00Z'))
-    const expires_at = new Date().toISOString()
+    const expiresAt = new Date().toISOString()
     const { service } = setup(
-      [{ ...codeShare, expires_at }],
-      [{ user_id: 42, role: 'viewer', joined_at: codeShare.created_at, expires_at }]
+      [{ ...javaShare, expiresAt, receivable: false }],
+      [{ activeTenantMember: true, userId: 42, role: 'viewer', createTime: javaShare.createTime, expiresAt }]
     )
     try {
       expect((await service.catalog()).owned[0].hasShareEvidence).toBe(false)
@@ -434,17 +917,18 @@ describe('catalog 跨端分享证据', () => {
 
   it('仅补查非 public 的 owned，不从公共只读成员或 owner/admin 身份推导分享', async () => {
     const { api, service } = setup()
-    api.request.mockResolvedValue({
-      public: [{ id: 'public-owner', name: '公共所有者', my_role: 'owner' }],
-      shared: [{ id: 'shared-admin', name: '管理员可读', my_role: 'admin' }],
-      owned: []
-    })
+    api.javaKnowledge.getCatalog.mockResolvedValue([
+      { ...javaSpace, category: 'PUBLIC' },
+      { ...javaSpace, id: javaOtherId, category: 'SHARED' }
+    ])
     try {
       const catalog = await service.catalog()
       expect(catalog.owned).toEqual([])
       expect(catalog.public).toHaveLength(1)
       expect(catalog.shared).toHaveLength(1)
-      expect(api.request).toHaveBeenCalledTimes(1)
+      expect(api.javaKnowledge.getCatalog).toHaveBeenCalledTimes(1)
+      expect(api.javaKnowledge.listShares).not.toHaveBeenCalled()
+      expect(api.javaKnowledge.listMembers).not.toHaveBeenCalled()
     } finally {
       service.dispose()
     }
@@ -452,7 +936,10 @@ describe('catalog 跨端分享证据', () => {
 
   it('本人不是指定人分享证据', async () => {
     auth.acquireLease.mockReturnValue({ ...lease, userId: '42' })
-    const { service } = setup([], [{ user_id: 42, role: 'viewer', joined_at: codeShare.created_at, status: 'active' }])
+    const { service } = setup(
+      [],
+      [{ activeTenantMember: true, userId: 42, role: 'viewer', createTime: javaShare.createTime, status: 'active' }]
+    )
     try {
       expect((await service.catalog()).owned[0]).toMatchObject({ hasShareEvidence: false })
     } finally {
@@ -462,11 +949,12 @@ describe('catalog 跨端分享证据', () => {
 
   it('失败隔离并保留 public/shared 和 owned 基础资料，单路成功仍可提供证据', async () => {
     const { api, service } = setup()
-    api.request.mockImplementation(async (path) => {
-      if (path.includes('/shares')) throw new Error('offline')
-      if (path.includes('/members')) return []
-      return { ...codeCatalog, public: [{ id: 'public', name: '公共' }], shared: [{ id: 'shared', name: '收到' }] }
-    })
+    api.javaKnowledge.getCatalog.mockResolvedValue([
+      javaSpace,
+      { ...javaSpace, category: 'PUBLIC' },
+      { ...javaSpace, id: javaOtherId, category: 'SHARED' }
+    ])
+    api.javaKnowledge.listShares.mockRejectedValue(new Error('offline'))
     try {
       const catalog = await service.catalog()
       expect(catalog.public).toHaveLength(1)
@@ -474,11 +962,8 @@ describe('catalog 跨端分享证据', () => {
       expect(catalog.owned[0].name).toBe('副本')
       expect(catalog.owned[0]).not.toHaveProperty('hasShareEvidence', true)
       expect(catalog.owned[0].hasShareEvidence).toBeUndefined()
-      api.request.mockImplementation(async (path) => {
-        if (path.includes('/shares')) return [codeShare]
-        if (path.includes('/members')) throw new Error('offline')
-        return codeCatalog
-      })
+      api.javaKnowledge.listShares.mockResolvedValue([javaShare])
+      api.javaKnowledge.listMembers.mockRejectedValue(new Error('offline'))
       expect((await service.catalog()).owned[0].hasShareEvidence).toBe(true)
     } finally {
       service.dispose()
@@ -487,14 +972,13 @@ describe('catalog 跨端分享证据', () => {
 
   it.each(['shares', 'members'] as const)('可选 %s 查询 401 即使另一条有正证据仍抛出', async (denied) => {
     const { api, service } = setup()
-    api.request.mockImplementation(async (path) => {
-      if (path.includes(`/${denied}`)) throw new OrgApiHttpError(401, 'denied')
-      if (path.includes('/shares')) return [codeShare]
-      if (path.includes('/members')) return [{ user_id: 42, role: 'viewer', joined_at: codeShare.created_at }]
-      return codeCatalog
-    })
+    api.javaKnowledge.listShares.mockResolvedValue([javaShare])
+    api.javaKnowledge.listMembers.mockResolvedValue([{ ...javaMember, status: 'active' }])
+    api.javaKnowledge[denied === 'shares' ? 'listShares' : 'listMembers'].mockRejectedValue(
+      new JavaKnowledgeError(10008, 'denied')
+    )
     try {
-      await expect(service.catalog()).rejects.toMatchObject({ status: 401 })
+      await expect(service.catalog()).rejects.toMatchObject({ code: 10008 })
     } finally {
       service.dispose()
     }
@@ -503,13 +987,18 @@ describe('catalog 跨端分享证据', () => {
   it.each(['shares', 'members'] as const)('可选 %s 查询 403 保留目录且证据未知，另一条正证据仍有效', async (denied) => {
     const { api, service } = setup()
     let positive = false
-    api.request.mockImplementation(async (path) => {
-      if (path.includes(`/${denied}`)) throw new OrgApiHttpError(403, '可选证据无权限')
-      if (path.includes('/shares')) return positive ? [codeShare] : []
-      if (path.includes('/members'))
-        return positive ? [{ user_id: 42, role: 'viewer', joined_at: codeShare.created_at }] : []
-      return { ...codeCatalog, public: [{ id: 'public', name: '公共' }], shared: [{ id: 'shared', name: '收到' }] }
-    })
+    api.javaKnowledge.getCatalog.mockResolvedValue([
+      javaSpace,
+      { ...javaSpace, category: 'PUBLIC' },
+      { ...javaSpace, id: javaOtherId, category: 'SHARED' }
+    ])
+    const success = denied === 'shares' ? api.javaKnowledge.listMembers : api.javaKnowledge.listShares
+    success.mockImplementation(async () =>
+      positive ? (denied === 'shares' ? [{ ...javaMember, status: 'active' }] : [javaShare]) : []
+    )
+    api.javaKnowledge[denied === 'shares' ? 'listShares' : 'listMembers'].mockRejectedValue(
+      new JavaKnowledgeError(403, '无权限')
+    )
     try {
       const catalog = await service.catalog()
       expect(catalog.public).toHaveLength(1)
@@ -524,10 +1013,12 @@ describe('catalog 跨端分享证据', () => {
 
   it.each([401, 403])('基础 catalog 授权错误 %s 仍阻断且不发起补查询', async (status) => {
     const { api, service } = setup()
-    api.request.mockRejectedValue(new OrgApiHttpError(status, '目录无权限'))
+    api.javaKnowledge.getCatalog.mockRejectedValue(new JavaKnowledgeError(status, '目录无权限'))
     try {
-      await expect(service.catalog()).rejects.toMatchObject({ status })
-      expect(api.request).toHaveBeenCalledTimes(1)
+      await expect(service.catalog()).rejects.toMatchObject({ code: status })
+      expect(api.javaKnowledge.getCatalog).toHaveBeenCalledTimes(1)
+      expect(api.javaKnowledge.listShares).not.toHaveBeenCalled()
+      expect(api.javaKnowledge.listMembers).not.toHaveBeenCalled()
     } finally {
       service.dispose()
     }
@@ -535,15 +1026,11 @@ describe('catalog 跨端分享证据', () => {
 
   it('证据查询中 lease 失效不能返回旧身份 catalog', async () => {
     const { api, service } = setup()
-    api.request.mockImplementation(async (path) => {
-      if (path.includes('/shares')) {
-        auth.assertLease.mockImplementation(() => {
-          throw new Error('stale')
-        })
-        return [codeShare]
-      }
-      if (path.includes('/members')) return []
-      return codeCatalog
+    api.javaKnowledge.listShares.mockImplementation(async () => {
+      auth.assertLease.mockImplementation(() => {
+        throw new Error('stale')
+      })
+      return [javaShare]
     })
     try {
       await expect(service.catalog()).rejects.toMatchObject({ code: E.ORGKB_UNAUTHORIZED })
@@ -564,21 +1051,19 @@ describe('catalog 跨端分享证据', () => {
         shareCompleted: true,
         hasShareEvidence: true
       })
-      expect(api.request).toHaveBeenCalledTimes(1)
+      expect(api.javaKnowledge.getCatalog).toHaveBeenCalledTimes(1)
+      expect(api.javaKnowledge.listShares).not.toHaveBeenCalled()
+      expect(api.javaKnowledge.listMembers).not.toHaveBeenCalled()
     } finally {
       service.dispose()
     }
   })
 
-  it('证据请求均带超时信号，超时按未知保留基础目录', async () => {
+  it('Java 证据请求超时按未知保留基础目录', async () => {
     const { api, service } = setup()
-    api.request.mockImplementation(async (path, init) => {
-      if (path.includes('/shares') || path.includes('/members')) {
-        expect(init.signal).toBeInstanceOf(AbortSignal)
-        throw new DOMException('timeout', 'TimeoutError')
-      }
-      return codeCatalog
-    })
+    // 旧 HTTP signal 由 Java 客户端管理；服务层仍保证超时不伪造未分享。
+    api.javaKnowledge.listShares.mockRejectedValue(new DOMException('timeout', 'TimeoutError'))
+    api.javaKnowledge.listMembers.mockRejectedValue(new DOMException('timeout', 'TimeoutError'))
     try {
       expect((await service.catalog()).owned[0]).toMatchObject({ name: '副本', hasShareEvidence: undefined })
     } finally {
@@ -590,16 +1075,21 @@ describe('catalog 跨端分享证据', () => {
     const { api, service } = setup()
     let active = 0
     let maxActive = 0
-    api.request.mockImplementation(async (path) => {
-      if (path.includes('/shares') || path.includes('/members')) {
-        active++
-        maxActive = Math.max(maxActive, active)
-        await new Promise((resolve) => setTimeout(resolve, 1))
-        active--
-        return []
-      }
-      return { public: [], shared: [], owned: Array.from({ length: 10 }, (_, i) => ({ id: `s-${i}`, name: `库${i}` })) }
-    })
+    const query = async () => {
+      active++
+      maxActive = Math.max(maxActive, active)
+      await new Promise((resolve) => setTimeout(resolve, 1))
+      active--
+      return []
+    }
+    api.javaKnowledge.listShares.mockImplementation(query)
+    api.javaKnowledge.listMembers.mockImplementation(query)
+    api.javaKnowledge.getCatalog.mockResolvedValue(
+      Array.from({ length: 10 }, (_, i) => ({
+        ...javaSpace,
+        id: `${String(i).padStart(8, '0')}-1111-4111-8111-111111111111`
+      }))
+    )
     try {
       expect((await service.catalog()).owned).toHaveLength(10)
       expect(maxActive).toBeGreaterThan(1)
@@ -626,7 +1116,8 @@ describe('取消整个分享', () => {
     vi.mocked(orgStateStore.getShareAssociations).mockImplementation(() => (association ? { [key]: association } : {}))
     const ks = {
       createBase: vi.fn(async () => ({ id: 'recovered' })),
-      deleteBase: vi.fn(async (_id: string) => {}),
+      // deleteBase: vi.fn(async (_id: string) => {}),
+      deleteBase: vi.fn<(id: string) => Promise<void>>(async () => {}),
       listBasesForDiscovery: vi.fn(() => ({ items: [{ id: 'recovered' }, { id: 'local-1' }] })),
       addItems: vi.fn(),
       getFilePath: vi.fn(() => '/managed/file.txt')
@@ -634,11 +1125,13 @@ describe('取消整个分享', () => {
     vi.mocked(application.get).mockReturnValue(ks as never)
     recoveryItems.getItemsByBaseId.mockReturnValue([])
     const api = makeApiClient()
+    /* 旧恢复 HTTP 路由由 Java getCatalog/listFiles/removeSpace 替代。
     api.request.mockImplementation(async (path, init) => {
       if (init?.method === 'DELETE') return undefined
       if (path.includes('/files')) return { folders: [], files: [], total: 0 }
       return codeCatalog
     })
+    */
     const service = makeService(api)
     return { api, service, ks }
   }
@@ -647,13 +1140,15 @@ describe('取消整个分享', () => {
     await service.unsharePreview({ baseId: 'local-1' })
   }
 
+  /* 旧 mock 违反同源契约：真实 manager 的 getValidSession/assertLease 同读 this.session，身份变化必使旧 lease 失效。
   it.each(['switch', 'wrong-session'])('%s 真实 DELETE 传输在凭据获取期间阻断异账号', async (mode) => {
+    vi.mocked(application.get).mockReturnValue({} as never)
     let switched = false
     const fetcher = vi.fn(async () => new Response(null, { status: 204 }))
     vi.stubGlobal('fetch', fetcher)
     const apiClient = new OrgApiClient(async () => {
       if (mode === 'switch') switched = true
-      return { ...lease, userId: 'other', accessToken: 'other-token' } as never
+      return { ...lease, userId: 'other', accessToken: 'other-token', authMode: 'management-java' } as never
     })
     const service = new OrgKnowledgeService({
       apiClient,
@@ -663,7 +1158,9 @@ describe('取消整个分享', () => {
       }
     } as never)
     try {
-      await expect((service as any).client.deleteShareSpace(codeSpaceId)).rejects.toMatchObject({
+      // await expect((service as any).client.deleteShareSpace(codeSpaceId)).rejects.toMatchObject({
+      const { recovery } = (service as any).recoveryContext(encodeOrgId(codeSpaceId), lease)
+      await expect(recovery.ports.deleteSpace()).rejects.toMatchObject({
         code: E.ORGKB_UNAUTHORIZED
       })
       expect(fetcher).not.toHaveBeenCalled()
@@ -672,6 +1169,68 @@ describe('取消整个分享', () => {
       service.dispose()
     }
   })
+
+  */
+  it.each(['account', 'tenant', 'generation'] as const)(
+    '%s 变化时真实 DELETE 传输在凭据 await 后拒绝旧授权且绝不发送',
+    async (change) => {
+      vi.mocked(application.get).mockReturnValue({} as never)
+      const fetcher = vi.fn(async () => new Response(null, { status: 204 }))
+      vi.stubGlobal('fetch', fetcher)
+      const manager = new OrgAuthManager()
+      const state = manager as unknown as { session: OrgSession; generation: number }
+      state.session = orgSessionSchema.parse({
+        authMode: 'management-java',
+        accountKind: 'management',
+        issuerId: lease.issuerId,
+        authOrigin: lease.issuerId,
+        userId: lease.userId,
+        officialUserId: '',
+        groupId: lease.groupId,
+        tenantId: 'tenant-1',
+        displayName: '测试账号',
+        phone: '',
+        role: 'member',
+        accessToken: 'current-token',
+        expiresAt: null
+      })
+      const requestLease = manager.acquireLease()
+      const credentialsStarted = Promise.withResolvers<void>()
+      const credentialsReady = Promise.withResolvers<void>()
+      const getValidSession = manager.getValidSession.bind(manager)
+      const credentials = vi.spyOn(manager, 'getValidSession').mockImplementation(async () => {
+        credentialsStarted.resolve()
+        await credentialsReady.promise
+        return getValidSession()
+      })
+      const service = new OrgKnowledgeService(manager)
+      try {
+        const { recovery } = (service as any).recoveryContext(encodeOrgId(codeSpaceId), requestLease)
+        const deletion = recovery.ports.deleteSpace()
+        const rejected = expect(deletion).rejects.toMatchObject({ code: E.ORGKB_UNAUTHORIZED })
+        await credentialsStarted.promise
+        expect(() => manager.assertLease(requestLease)).not.toThrow()
+        expect(fetcher).not.toHaveBeenCalled()
+        if (change === 'account') {
+          state.session = orgSessionSchema.parse({ ...state.session, userId: 'other', accessToken: 'other-token' })
+        } else if (change === 'tenant') {
+          state.session = orgSessionSchema.parse({ ...state.session, tenantId: 'tenant-2' })
+        } else {
+          state.generation++
+        }
+        expect(() => manager.assertLease(requestLease)).toThrow('enterprise authorization lease is stale')
+        credentialsReady.resolve()
+        await rejected
+        expect(await credentials.mock.results[0].value).toEqual(state.session)
+        expect(fetcher).not.toHaveBeenCalled()
+      } finally {
+        credentialsReady.resolve()
+        credentials.mockRestore()
+        vi.unstubAllGlobals()
+        service.dispose()
+      }
+    }
+  )
 
   it('cleanup_local 只能续作已确认成功的删除，旧 ready 日志不得触发云端请求', async () => {
     const { api, service } = setup()
@@ -688,9 +1247,10 @@ describe('取消整个分享', () => {
 
   it('删除直接使用可信本机副本，不扫描下载或创建恢复库', async () => {
     const { api, service, ks } = setup()
-    const original = api.request.getMockImplementation()!
-    api.request.mockImplementation(async (path, init) => {
-      if (init?.method === 'DELETE') {
+    // 旧 DELETE 回调的写前日志断言移至 Java removeSpace 发送边界。
+    const original = api.javaKnowledge.removeSpace.getMockImplementation()!
+    api.javaKnowledge.removeSpace.mockImplementation(async (id, guard) => {
+      {
         expect(orgStateStore.getCloudRecovery('')).toMatchObject({
           phase: 'delete-unknown',
           localCopies: ['local-1'],
@@ -698,7 +1258,7 @@ describe('取消整个分享', () => {
         })
         expect(ks.deleteBase).not.toHaveBeenCalled()
       }
-      return original(path, init)
+      return original(id, guard)
     })
     await expect(
       service.unshare({ baseId: encodeOrgId(codeSpaceId), confirmDevicesStopped: true, deleteLocal: true })
@@ -731,17 +1291,18 @@ describe('取消整个分享', () => {
     })
     expect(ks.createBase).not.toHaveBeenCalled()
     expect(ks.deleteBase).not.toHaveBeenCalled()
-    expect(api.request.mock.calls.filter(([, init]) => init?.method === 'DELETE')).toHaveLength(1)
+    // expect(api.request.mock.calls.filter(([, init]) => init?.method === 'DELETE')).toHaveLength(1)
+    expect(api.javaKnowledge.removeSpace).toHaveBeenCalledTimes(1)
     service.dispose()
   })
 
   it('取消返回真正恢复库 ID，确认远端成功前不删除本机', async () => {
     const { api, service, ks } = setup()
     await prepare(service)
-    const original = api.request.getMockImplementation()!
-    api.request.mockImplementation(async (path, init) => {
-      if (init?.method === 'DELETE') expect(ks.deleteBase).not.toHaveBeenCalled()
-      return original(path, init)
+    // 旧 DELETE 前禁止本地删除的断言映射到 Java 发送边界。
+    api.javaKnowledge.removeSpace.mockImplementation(async (_id, guard) => {
+      guard()
+      expect(ks.deleteBase).not.toHaveBeenCalled()
     })
     await expect(
       service.unshare({ baseId: 'local-1', confirmDevicesStopped: true, deleteLocal: true })
@@ -760,19 +1321,17 @@ describe('取消整个分享', () => {
     await service.unshare({ baseId: encodeOrgId(codeSpaceId) })
     expect(ks.deleteBase).toHaveBeenCalledWith('recovered')
     expect(ks.deleteBase).toHaveBeenCalledWith('local-1')
-    expect(api.request.mock.calls.filter(([, init]) => init?.method === 'DELETE')).toHaveLength(1)
+    // expect(api.request.mock.calls.filter(([, init]) => init?.method === 'DELETE')).toHaveLength(1)
+    expect(api.javaKnowledge.removeSpace).toHaveBeenCalledTimes(1)
     service.dispose()
   })
 
   it('远端确认后解除关联，状态恢复未分享并清理首传进度', async () => {
     const { api, service } = setup()
-    api.request.mockImplementation(async (_path, init) => {
-      if (init?.method === 'DELETE') {
-        expect(orgStateStore.getShareAssociation(key)).toBeDefined()
-        return undefined
-      }
-      if (_path.includes('/files')) return { folders: [], files: [], total: 0 }
-      return codeCatalog
+    // 旧 DELETE 成功前仍保留关联；Java removeSpace 同样必须满足。
+    api.javaKnowledge.removeSpace.mockImplementation(async (_id, guard) => {
+      guard()
+      expect(orgStateStore.getShareAssociation(key)).toBeDefined()
     })
     await prepare(service)
     await expect(service.unshare({ baseId: 'local-1', confirmDevicesStopped: true })).resolves.toEqual({
@@ -786,13 +1345,14 @@ describe('取消整个分享', () => {
 
   it.each([403, 404, 500])('远端失败 %s 时保留绑定允许重试', async (status) => {
     const { api, service } = setup()
-    api.request.mockImplementation(async (_path, init) => {
-      if (init?.method === 'DELETE') throw new Error(`HTTP ${status}`)
-      if (_path.includes('/files')) return { folders: [], files: [], total: 0 }
-      return codeCatalog
-    })
+    // 旧 HTTP 失败改为 Java 响应错误，保留关联且禁止盲目重放。
+    api.javaKnowledge.removeSpace.mockRejectedValue(new JavaKnowledgeError(status, `HTTP ${status}`))
     await prepare(service)
-    await expect(service.unshare({ baseId: 'local-1', confirmDevicesStopped: true })).rejects.toThrow(`HTTP ${status}`)
+    // await expect(service.unshare({ baseId: 'local-1', confirmDevicesStopped: true })).rejects.toThrow(`HTTP ${status}`)
+    await expect(service.unshare({ baseId: 'local-1', confirmDevicesStopped: true })).rejects.toThrow('待核查')
+    expect(orgStateStore.getCloudRecovery('')).toMatchObject({ phase: 'delete-unknown' })
+    await expect(service.unshare({ baseId: 'local-1', confirmDevicesStopped: true })).rejects.toThrow('云端空间仍存在')
+    expect(api.javaKnowledge.removeSpace).toHaveBeenCalledTimes(1)
     expect(orgStateStore.getShareAssociation(key)).toBeDefined()
     expect(orgStateStore.clearShare).not.toHaveBeenCalled()
     service.dispose()
@@ -800,15 +1360,12 @@ describe('取消整个分享', () => {
 
   it('删除期间账号变化不能清除关联', async () => {
     const { api, service } = setup()
-    api.request.mockImplementation(async (_path, init) => {
-      if (init?.method === 'DELETE') {
-        auth.assertLease.mockImplementation(() => {
-          throw new Error('session changed')
-        })
-        return undefined
-      }
-      if (_path.includes('/files')) return { folders: [], files: [], total: 0 }
-      return codeCatalog
+    // 旧删除响应边界切号迁移到 Java removeSpace。
+    api.javaKnowledge.removeSpace.mockImplementation(async (_id, guard) => {
+      guard()
+      auth.assertLease.mockImplementation(() => {
+        throw new Error('session changed')
+      })
     })
     await prepare(service)
     await expect(service.unshare({ baseId: 'local-1', confirmDevicesStopped: true })).rejects.toMatchObject({
@@ -843,9 +1400,23 @@ describe('取消整个分享', () => {
       file_hash: null,
       updated_at: 'today'
     }
-    api.request.mockImplementation(async (path, init) => {
-      if (init?.method === 'DELETE') return undefined
-      return path.includes('/files') ? { folders: [], files: [remote], total: 1 } : codeCatalog
+    // 旧缺失原件 files 场景改走 Java listFiles。
+    api.javaKnowledge.listFiles.mockResolvedValue({
+      items: [
+        {
+          knowledgeId: remote.space_id,
+          fileId: remote.id,
+          parentId: remote.parent_id,
+          name: remote.name,
+          directory: remote.is_dir,
+          hasOriginalFile: remote.has_original_file,
+          fileHash: remote.file_hash,
+          updateTime: remote.updated_at
+        }
+      ],
+      total: 1,
+      page: 1,
+      pageSize: 100
     })
     const baseId = encodeOrgId(codeSpaceId)
     expect((await service.unsharePreview({ baseId })).missing).toEqual([{ id: 'f', name: '缺失.txt' }])
@@ -880,9 +1451,24 @@ describe('取消整个分享', () => {
       file_hash: null,
       updated_at: 'today'
     }
-    api.request.mockImplementation(async (path) =>
-      path.includes('/files') ? { folders: [], files: [remote], total: 1 } : codeCatalog
-    )
+    // 旧 files HTTP VO 的安全场景保留，Java 返回 camelCase 文件记录。
+    api.javaKnowledge.listFiles.mockResolvedValue({
+      items: [
+        {
+          knowledgeId: remote.space_id,
+          fileId: remote.id,
+          parentId: remote.parent_id,
+          name: remote.name,
+          directory: remote.is_dir,
+          hasOriginalFile: remote.has_original_file,
+          fileHash: remote.file_hash,
+          updateTime: remote.updated_at
+        }
+      ],
+      total: 1,
+      page: 1,
+      pageSize: 100
+    })
     ks.addItems.mockImplementation(async () => {
       recoveryItems.getItemsByBaseId.mockReturnValue([{ id: 'restored' }])
     })
@@ -909,9 +1495,8 @@ describe('取消整个分享', () => {
       } as never)
     } else {
       vi.mocked(orgStateStore.getShareAssociations).mockReturnValue({})
-      vi.spyOn((service as any).client, 'downloadOriginal').mockImplementation(async (_id: unknown, path: unknown) => {
-        await writeFile(path as string, 'file-bytes')
-      })
+      // 旧 downloadOriginal 写文件由 Java download 字节交给 service 落盘。
+      api.javaKnowledge.download.mockResolvedValue({ bytes: Buffer.from('file-bytes') })
       vi.mocked(application.getPath).mockReturnValue(join(root, 'download-'))
     }
     const remote = {
@@ -924,9 +1509,24 @@ describe('取消整个分享', () => {
       file_hash: mode === 'download-hash' ? hash : null,
       updated_at: 'today'
     }
-    api.request.mockImplementation(async (path) =>
-      path.includes('/files') ? { folders: [], files: [remote], total: 1 } : codeCatalog
-    )
+    // 旧 files HTTP VO 的安全场景保留，Java 返回 camelCase 文件记录。
+    api.javaKnowledge.listFiles.mockResolvedValue({
+      items: [
+        {
+          knowledgeId: remote.space_id,
+          fileId: remote.id,
+          parentId: remote.parent_id,
+          name: remote.name,
+          directory: remote.is_dir,
+          hasOriginalFile: remote.has_original_file,
+          fileHash: remote.file_hash,
+          updateTime: remote.updated_at
+        }
+      ],
+      total: 1,
+      page: 1,
+      pageSize: 100
+    })
     ks.addItems.mockImplementation(async (_baseId?: unknown, items?: unknown) => {
       const path = (items as Array<{ data: { path: string } }>)[0].data.path
       // 在真实磁盘上于源校验后修改字节，再复制到保持稳定的目标。
@@ -972,9 +1572,24 @@ describe('取消整个分享', () => {
       file_hash: null,
       updated_at: 'today'
     }
-    api.request.mockImplementation(async (path) =>
-      path.includes('/files') ? { folders: [], files: [remote], total: 1 } : codeCatalog
-    )
+    // 旧 files HTTP VO 的安全场景保留，Java 返回 camelCase 文件记录。
+    api.javaKnowledge.listFiles.mockResolvedValue({
+      items: [
+        {
+          knowledgeId: remote.space_id,
+          fileId: remote.id,
+          parentId: remote.parent_id,
+          name: remote.name,
+          directory: remote.is_dir,
+          hasOriginalFile: remote.has_original_file,
+          fileHash: remote.file_hash,
+          updateTime: remote.updated_at
+        }
+      ],
+      total: 1,
+      page: 1,
+      pageSize: 100
+    })
     expect((await service.unsharePreview({ baseId: 'local-1' })).missing).toEqual([{ id: 'f', name: '资料.txt' }])
     expect(ks.addItems).not.toHaveBeenCalled()
     service.dispose()
@@ -982,8 +1597,9 @@ describe('取消整个分享', () => {
 
   it('恢复日志引用的本地知识库被删除后创建新库并重新导入', async () => {
     const { api, service, ks } = setup()
-    const client = (service as any).client
-    vi.spyOn(client, 'downloadOriginal').mockResolvedValue(undefined)
+    // const client = (service as any).client; downloadOriginal 由 Java download 返回真实字节替代。
+    const client = api.javaKnowledge
+    client.download.mockResolvedValue({ bytes: Buffer.from('file-bytes') })
     vi.mocked(application.getPath).mockReturnValue('/tmp/knowledge-recovery-')
     const remote = {
       id: 'f',
@@ -995,9 +1611,24 @@ describe('取消整个分享', () => {
       file_hash: null,
       updated_at: 'today'
     }
-    api.request.mockImplementation(async (path) =>
-      path.includes('/files') ? { folders: [], files: [remote], total: 1 } : codeCatalog
-    )
+    // 旧 files HTTP VO 的安全场景保留，Java 返回 camelCase 文件记录。
+    api.javaKnowledge.listFiles.mockResolvedValue({
+      items: [
+        {
+          knowledgeId: remote.space_id,
+          fileId: remote.id,
+          parentId: remote.parent_id,
+          name: remote.name,
+          directory: remote.is_dir,
+          hasOriginalFile: remote.has_original_file,
+          fileHash: remote.file_hash,
+          updateTime: remote.updated_at
+        }
+      ],
+      total: 1,
+      page: 1,
+      pageSize: 100
+    })
     ks.createBase.mockResolvedValueOnce({ id: 'recovered' }).mockResolvedValueOnce({ id: 'replacement-recovery' })
     ks.addItems
       .mockImplementationOnce(async () => {
@@ -1021,8 +1652,9 @@ describe('取消整个分享', () => {
 
   it('恢复日志引用的本地条目被删除后重新导入', async () => {
     const { api, service, ks } = setup()
-    const client = (service as any).client
-    vi.spyOn(client, 'downloadOriginal').mockResolvedValue(undefined)
+    // const client = (service as any).client; downloadOriginal 由 Java download 返回真实字节替代。
+    const client = api.javaKnowledge
+    client.download.mockResolvedValue({ bytes: Buffer.from('file-bytes') })
     vi.mocked(application.getPath).mockReturnValue('/tmp/knowledge-recovery-')
     const remote = {
       id: 'f',
@@ -1034,9 +1666,24 @@ describe('取消整个分享', () => {
       file_hash: null,
       updated_at: 'today'
     }
-    api.request.mockImplementation(async (path) =>
-      path.includes('/files') ? { folders: [], files: [remote], total: 1 } : codeCatalog
-    )
+    // 旧 files HTTP VO 的安全场景保留，Java 返回 camelCase 文件记录。
+    api.javaKnowledge.listFiles.mockResolvedValue({
+      items: [
+        {
+          knowledgeId: remote.space_id,
+          fileId: remote.id,
+          parentId: remote.parent_id,
+          name: remote.name,
+          directory: remote.is_dir,
+          hasOriginalFile: remote.has_original_file,
+          fileHash: remote.file_hash,
+          updateTime: remote.updated_at
+        }
+      ],
+      total: 1,
+      page: 1,
+      pageSize: 100
+    })
     ks.addItems
       .mockImplementationOnce(async () => {
         recoveryItems.getItemsByBaseId.mockReturnValue([{ id: 'deleted' }])
@@ -1057,8 +1704,9 @@ describe('取消整个分享', () => {
 
   it('云端原件导入托管库后等待解析；解析完成重试不重复导入', async () => {
     const { api, service, ks } = setup()
-    const client = (service as any).client
-    vi.spyOn(client, 'downloadOriginal').mockResolvedValue(undefined)
+    // const client = (service as any).client; downloadOriginal 由 Java download 返回真实字节替代。
+    const client = api.javaKnowledge
+    client.download.mockResolvedValue({ bytes: Buffer.from('file-bytes') })
     vi.mocked(application.getPath).mockReturnValue('/tmp/knowledge-recovery-')
     const remote = {
       id: 'f',
@@ -1070,20 +1718,43 @@ describe('取消整个分享', () => {
       file_hash: null,
       updated_at: 'today'
     }
-    api.request.mockImplementation(async (path) =>
-      path.includes('/files') ? { folders: [], files: [remote], total: 1 } : codeCatalog
-    )
+    // 旧 files HTTP VO 的安全场景保留，Java 返回 camelCase 文件记录。
+    api.javaKnowledge.listFiles.mockResolvedValue({
+      items: [
+        {
+          knowledgeId: remote.space_id,
+          fileId: remote.id,
+          parentId: remote.parent_id,
+          name: remote.name,
+          directory: remote.is_dir,
+          hasOriginalFile: remote.has_original_file,
+          fileHash: remote.file_hash,
+          updateTime: remote.updated_at
+        }
+      ],
+      total: 1,
+      page: 1,
+      pageSize: 100
+    })
     ks.addItems.mockImplementation(async () => {
       recoveryItems.getItemsByBaseId.mockReturnValue([{ id: 'downloaded' }])
     })
     recoveryItems.getById.mockReturnValue({ baseId: 'recovered', type: 'file', status: 'pending' })
-    await expect(service.unsharePreview({ baseId: 'local-1' })).rejects.toThrow('解析')
-    await expect(service.unshare({ baseId: 'local-1', confirmDevicesStopped: true })).rejects.toThrow()
-    expect(api.request.mock.calls.some(([, init]) => init?.method === 'DELETE')).toBe(false)
+    // await expect(service.unsharePreview({ baseId: 'local-1' })).rejects.toThrow('解析')
+    // await expect(service.unshare({ baseId: 'local-1', confirmDevicesStopped: true })).rejects.toThrow()
+    // 解析异步不阻塞恢复；字节指纹和可信映射仍须固化，预检不得删除云端。
+    await expect(service.unsharePreview({ baseId: 'local-1' })).resolves.toMatchObject({ localBaseId: 'recovered' })
+    expect(orgStateStore.getCloudRecovery('')).toMatchObject({
+      phase: 'ready',
+      restored: { f: 'downloaded' },
+      expectedHashes: { f: createHash('sha256').update('file-bytes').digest('hex') }
+    })
+    expect(api.javaKnowledge.removeSpace).not.toHaveBeenCalled()
     recoveryItems.getById.mockReturnValue({ baseId: 'recovered', type: 'file', status: 'completed' })
     await service.unsharePreview({ baseId: 'local-1' })
-    expect(client.downloadOriginal).toHaveBeenCalledTimes(1)
-    expect(basename(client.downloadOriginal.mock.calls[0][1])).toBe('资料.txt')
+    // 旧 basename(downloadOriginal 的目标路径) 映射为 addItems 的托管路径；下载身份须包含库与文件。
+    expect(client.download).toHaveBeenCalledExactlyOnceWith(codeSpaceId, 'f')
+    expect(basename(ks.addItems.mock.calls[0][1][0].data.path)).toBe('资料.txt')
     expect(ks.addItems).toHaveBeenCalledWith('recovered', [
       expect.objectContaining({ data: expect.objectContaining({ path: expect.stringMatching(/资料\.txt$/) }) })
     ])
@@ -1093,7 +1764,8 @@ describe('取消整个分享', () => {
 
   it('下载失败阻断DELETE并保留恢复日志', async () => {
     const { api, service } = setup()
-    vi.spyOn((service as any).client, 'downloadOriginal').mockRejectedValue(new Error('下载断流'))
+    // vi.spyOn((service as any).client, 'downloadOriginal').mockRejectedValue(new Error('下载断流'))
+    api.javaKnowledge.download.mockRejectedValue(new Error('下载断流'))
     vi.mocked(application.getPath).mockReturnValue('/tmp/knowledge-recovery-')
     const remote = {
       id: 'f',
@@ -1105,9 +1777,24 @@ describe('取消整个分享', () => {
       file_hash: null,
       updated_at: 'today'
     }
-    api.request.mockImplementation(async (path) =>
-      path.includes('/files') ? { folders: [], files: [remote], total: 1 } : codeCatalog
-    )
+    // 旧 files HTTP VO 的安全场景保留，Java 返回 camelCase 文件记录。
+    api.javaKnowledge.listFiles.mockResolvedValue({
+      items: [
+        {
+          knowledgeId: remote.space_id,
+          fileId: remote.id,
+          parentId: remote.parent_id,
+          name: remote.name,
+          directory: remote.is_dir,
+          hasOriginalFile: remote.has_original_file,
+          fileHash: remote.file_hash,
+          updateTime: remote.updated_at
+        }
+      ],
+      total: 1,
+      page: 1,
+      pageSize: 100
+    })
     await expect(service.unsharePreview({ baseId: 'local-1' })).rejects.toThrow('下载断流')
     await expect(
       service.unshare({ baseId: 'local-1', confirmMissing: true, confirmDevicesStopped: true })
@@ -1122,13 +1809,12 @@ describe('取消整个分享', () => {
   it('取消期间拒绝重复取消与再次分享', async () => {
     const { api, service } = setup()
     let finish!: () => void
-    api.request.mockImplementation(async (_path, init) => {
-      if (init?.method === 'DELETE')
-        return new Promise<void>((resolve) => {
-          finish = resolve
-        })
-      if (_path.includes('/files')) return { folders: [], files: [], total: 0 }
-      return codeCatalog
+    // 旧悬挂 DELETE 改为悬挂 Java removeSpace，保留并发互斥场景。
+    api.javaKnowledge.removeSpace.mockImplementation(async (_id, guard) => {
+      guard()
+      return new Promise<void>((resolve) => {
+        finish = resolve
+      })
     })
     await prepare(service)
     const pending = service.unshare({ baseId: 'local-1', confirmDevicesStopped: true })
@@ -1149,7 +1835,33 @@ describe('旧同步停用', () => {
       '已停用'
     )
     expect(shareJobs.enqueue).not.toHaveBeenCalled()
-    expect(api.requestMultipart).not.toHaveBeenCalled()
+    // expect(api.requestMultipart).not.toHaveBeenCalled()
+    expect(api.javaKnowledge.uploadMultipart).not.toHaveBeenCalled()
+    expect(api.javaKnowledge.removeSpace).not.toHaveBeenCalled()
+    // 历史清理日志仅供核查；已停用的 push 无论是否保存发送意图都不得重放。
+    for (const cleanupDeleteState of ['not_sent', 'intent_saved', undefined]) {
+      const association = {
+        shareId: codeSpaceId,
+        completion: 'incomplete',
+        files: [],
+        manifest: {
+          state: 'unknown',
+          entries: [],
+          lastSyncedAt: null,
+          operations: [
+            { kind: 'delete', phase: 'cleanup_pending', remoteFileId: encodeOrgId(uploadFileId), cleanupDeleteState }
+          ]
+        }
+      }
+      vi.mocked(orgStateStore.getShareAssociation).mockReturnValue(association as never)
+      await expect(service.syncApply({ baseId: 'local-1', planId: 'old', confirmDeletes: true })).rejects.toThrow(
+        '已停用'
+      )
+      expect(association.manifest.operations[0].cleanupDeleteState).toBe(cleanupDeleteState)
+      expect(shareJobs.enqueue).not.toHaveBeenCalled()
+      expect(api.javaKnowledge.uploadMultipart).not.toHaveBeenCalled()
+      expect(api.javaKnowledge.removeSpace).not.toHaveBeenCalled()
+    }
     service.dispose()
   })
 })
@@ -1159,7 +1871,7 @@ describe('云端追加文件安全边界', () => {
     vi.useFakeTimers()
     const service = makeService(makeApiClient())
     const key = JSON.stringify([lease.issuerId, lease.userId, lease.groupId, 'local-1'])
-    const association = { shareId: 'space', completion: 'completed' as const, files: [] }
+    const association = { shareId: /* 'space' */ codeSpaceId, completion: 'completed' as const, files: [] }
     vi.mocked(orgStateStore.getShareAssociations).mockReturnValue({ [key]: association })
     vi.mocked(orgStateStore.getShareAssociation).mockReturnValue(association)
     vi.spyOn(service as any, 'assertRealOwner').mockResolvedValue(undefined)
@@ -1167,7 +1879,7 @@ describe('云端追加文件安全边界', () => {
       listBasesForDiscovery: () => ({ items: [{ id: 'local-1' }] })
     } as never)
     const upload = vi.spyOn(service, 'uploadAddedFiles')
-    await service.prepareAddedFiles(encodeOrgId('space'))
+    await service.prepareAddedFiles(encodeOrgId(/* 'space' */ codeSpaceId))
     expect(await service.uploadStatus('local-1')).toMatchObject({ phase: 'completed' })
     settleKnowledgeJob('knowledge.index-documents')
     await vi.advanceTimersByTimeAsync(3000)
@@ -1177,7 +1889,7 @@ describe('云端追加文件安全边界', () => {
 
   it('同名冲突和添加失败均不登记自动追加', async () => {
     const service = makeService(makeApiClient())
-    const association = { shareId: 'space', completion: 'completed' as const, files: [] }
+    const association = { shareId: /* 'space' */ codeSpaceId, completion: 'completed' as const, files: [] }
     vi.mocked(orgStateStore.getShareAssociation).mockReturnValue(association)
     vi.spyOn(service as any, 'assertRealOwner').mockResolvedValue(undefined)
     const addItems = vi
@@ -1186,11 +1898,11 @@ describe('云端追加文件安全边界', () => {
       .mockRejectedValueOnce(new Error('添加失败'))
     vi.mocked(application.get).mockReturnValue({ addItems } as never)
     const items = [{ type: 'note' as const, data: { source: '新资料', content: '正文' } }]
-    expect(await service.addFiles(encodeOrgId('space'), 'local-1', items, 'detect')).toMatchObject({
+    expect(await service.addFiles(encodeOrgId(/* 'space' */ codeSpaceId), 'local-1', items, 'detect')).toMatchObject({
       status: 'conflicts'
     })
     expect(await service.uploadStatus('local-1')).toMatchObject({ phase: 'completed' })
-    await expect(service.addFiles(encodeOrgId('space'), 'local-1', items)).rejects.toThrow('添加失败')
+    await expect(service.addFiles(encodeOrgId(/* 'space' */ codeSpaceId), 'local-1', items)).rejects.toThrow('添加失败')
     expect(await service.uploadStatus('local-1')).toMatchObject({ phase: 'completed' })
     service.dispose()
   })
@@ -1198,7 +1910,7 @@ describe('云端追加文件安全边界', () => {
     const api = makeApiClient()
     const service = makeService(api)
     const key = JSON.stringify([lease.issuerId, lease.userId, lease.groupId, 'local-1'])
-    const association = { shareId: 'space', completion: 'completed' as const, files: [] }
+    const association = { shareId: /* 'space' */ codeSpaceId, completion: 'completed' as const, files: [] }
     vi.mocked(orgStateStore.getShareAssociations).mockReturnValue({ [key]: association })
     vi.mocked(orgStateStore.getShareAssociation).mockReturnValue(association)
     vi.spyOn(service as any, 'assertRealOwner').mockResolvedValue(undefined)
@@ -1207,17 +1919,19 @@ describe('云端追加文件安全边界', () => {
     } as never)
     const upload = vi
       .spyOn(service, 'uploadAddedFiles')
-      .mockResolvedValue({ shareId: 'space', completion: 'completed', files: [] })
-    expect(await service.prepareAddedFiles(encodeOrgId('space'))).toEqual({ localBaseId: 'local-1' })
+      .mockResolvedValue({ shareId: /* 'space' */ codeSpaceId, completion: 'completed', files: [] })
+    expect(await service.prepareAddedFiles(encodeOrgId(/* 'space' */ codeSpaceId))).toEqual({ localBaseId: 'local-1' })
     expect(await service.uploadStatus('local-1')).toMatchObject({ phase: 'completed' })
     const addItems = vi.fn().mockResolvedValue({ status: 'added', items: [{ id: 'new-file' }] })
     vi.mocked(application.get).mockReturnValue({ addItems } as never)
-    await service.addFiles(encodeOrgId('space'), 'local-1', [
+    await service.addFiles(encodeOrgId(/* 'space' */ codeSpaceId), 'local-1', [
       { type: 'note', data: { source: '新资料', content: '正文' } }
     ])
     expect(await service.uploadStatus('local-1')).toMatchObject({ phase: 'preparing' })
     // 即使解析完成事件早于添加返回，也必须由提交端主动启动。
-    await vi.waitFor(() => expect(upload).toHaveBeenCalledWith(encodeOrgId('space'), 'local-1'), { timeout: 3000 })
+    await vi.waitFor(() => expect(upload).toHaveBeenCalledWith(encodeOrgId(/* 'space' */ codeSpaceId), 'local-1'), {
+      timeout: 3000
+    })
     service.dispose()
   })
 
@@ -1226,19 +1940,19 @@ describe('云端追加文件安全边界', () => {
     const api = makeApiClient()
     const service = makeService(api)
     const key = JSON.stringify([lease.issuerId, lease.userId, lease.groupId, 'local-1'])
-    const association = { shareId: 'space', completion: 'completed' as const, files: [] }
+    const association = { shareId: /* 'space' */ codeSpaceId, completion: 'completed' as const, files: [] }
     vi.mocked(orgStateStore.getShareAssociations).mockReturnValue({ [key]: association })
     vi.spyOn(service as any, 'assertRealOwner').mockResolvedValue(undefined)
     vi.mocked(application.get).mockReturnValue({
       listBasesForDiscovery: () => ({ items: [{ id: 'local-1' }] })
     } as never)
     const upload = vi.spyOn(service, 'uploadAddedFiles')
-    await service.prepareAddedFiles(encodeOrgId('space'))
+    await service.prepareAddedFiles(encodeOrgId(/* 'space' */ codeSpaceId))
     vi.mocked(orgStateStore.getShareAssociation).mockReturnValue(association)
     vi.mocked(application.get).mockReturnValue({
       addItems: vi.fn().mockResolvedValue({ status: 'added', items: [{ id: 'new-file' }] })
     } as never)
-    await service.addFiles(encodeOrgId('space'), 'local-1', [
+    await service.addFiles(encodeOrgId(/* 'space' */ codeSpaceId), 'local-1', [
       { type: 'note', data: { source: '新资料', content: '正文' } }
     ])
     shareJobs.list.mockResolvedValueOnce([{ id: 'still-parsing' }])
@@ -1256,7 +1970,12 @@ describe('云端追加文件安全边界', () => {
     const api = makeApiClient()
     const service = makeService(api)
     vi.spyOn(service as any, 'assertRealOwner').mockResolvedValue(undefined)
-    let association: any = { shareId: 'space', completion: 'incomplete', pendingAddition: true, files: [] }
+    let association: any = {
+      shareId: /* 'space' */ codeSpaceId,
+      completion: 'incomplete',
+      pendingAddition: true,
+      files: []
+    }
     vi.mocked(orgStateStore.getShareAssociation).mockImplementation(() => association)
     vi.mocked(orgStateStore.setShareAssociation).mockImplementation((_key, value) => {
       association = value
@@ -1270,16 +1989,17 @@ describe('云端追加文件安全边界', () => {
         { id: `chunk-${id}`, itemId: id, content: id, metadata: { source: `${id}.txt`, chunkIndex: 0 } }
       ]
     } as never)
-    api.requestMultipart.mockImplementation(async (_path, form) => ({
-      share_id: 'space',
-      file_id: `remote-${form.get('file').name}`,
-      chunk_count: 1
+    // 旧按文件名生成远端 ID 改为真实 hex32；仍逐批断言可信映射不丢失。
+    api.javaKnowledge.uploadMultipart.mockImplementation(async (...args) => ({
+      ...(await api.consumeUpload(...args)),
+      fileId: api.uploads.length === 1 ? uploadFileId : 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
     }))
-    await service.uploadAddedFiles(encodeOrgId('space'), 'managed')
+    await service.uploadAddedFiles(encodeOrgId(codeSpaceId), 'managed')
     items.push({ id: 'second', type: 'file', status: 'completed', data: { source: 'second.txt' } })
-    const result = await service.uploadAddedFiles(encodeOrgId('space'), 'managed')
+    const result = await service.uploadAddedFiles(encodeOrgId(codeSpaceId), 'managed')
     expect(result.completion).toBe('completed')
-    expect(api.requestFileMultipart.mock.calls.map(([, entry]) => entry.fileName)).toEqual(['first.txt', 'second.txt'])
+    // expect(api.requestFileMultipart.mock.calls.map(([, entry]) => entry.fileName)).toEqual(['first.txt', 'second.txt'])
+    expect(api.uploads.map((entry) => entry.fileName)).toEqual(['first.txt', 'second.txt'])
     expect(association.manifest.entries).toHaveLength(2)
     service.dispose()
   })
@@ -1287,12 +2007,9 @@ describe('云端追加文件安全边界', () => {
     const api = makeApiClient()
     const service = makeService(api)
     vi.spyOn(service as any, 'assertRealOwner').mockResolvedValue(undefined)
-    vi.mocked((service as any).client.getSpace).mockResolvedValue({
-      id: 'space',
-      name: '库',
-      allow_local_file_upload: mode
-    })
-    await expect(service.uploadAddedFiles(encodeOrgId('space'), 'managed', true)).rejects.toThrow('策略未确认')
+    // 旧 allow_local_file_upload 未知策略对应 Java allowLocalFileUpload。
+    api.javaKnowledge.getSpace.mockResolvedValue({ id: codeSpaceId, name: '库', allowLocalFileUpload: mode } as never)
+    await expect(service.uploadAddedFiles(encodeOrgId(codeSpaceId), 'managed', true)).rejects.toThrow('策略未确认')
     expect(api.requestFileMultipart).not.toHaveBeenCalled()
     service.dispose()
   })
@@ -1300,7 +2017,7 @@ describe('云端追加文件安全边界', () => {
     const api = makeApiClient()
     const service = makeService(api)
     vi.spyOn(service as any, 'assertRealOwner').mockResolvedValue(undefined)
-    let association: any = { shareId: 'space', completion: 'incomplete', files: [] }
+    let association: any = { shareId: /* 'space' */ codeSpaceId, completion: 'incomplete', files: [] }
     vi.mocked(orgStateStore.getShareAssociation).mockImplementation(() => association)
     vi.mocked(orgStateStore.setShareAssociation).mockImplementation((_key, value) => {
       association = value
@@ -1316,19 +2033,19 @@ describe('云端追加文件安全边界', () => {
       ]
     } as never)
     api.requestMultipart.mockResolvedValue({ share_id: 'space', file_id: 'trusted-file', chunk_count: 1 })
-    vi.mocked((service as any).client.getSpace).mockResolvedValue({
-      id: 'space',
-      name: '库',
-      allow_local_file_upload: false
-    })
-    const result = await service.uploadAddedFiles(encodeOrgId('space'), 'managed', true)
+    // 旧只传分块策略映射到 Java allowLocalFileUpload。
+    api.javaKnowledge.getSpace.mockResolvedValue({ id: codeSpaceId, name: '库', allowLocalFileUpload: false } as never)
+    const result = await service.uploadAddedFiles(encodeOrgId(codeSpaceId), 'managed', true)
     expect(result.completion).toBe('completed')
-    expect(api.requestFileMultipart.mock.calls[0][1]).toMatchObject({ uploadOriginal: false, fileName: '资料.txt' })
+    // expect(api.requestFileMultipart.mock.calls[0][1]).toMatchObject({ uploadOriginal: false, fileName: '资料.txt' })
+    expect(api.uploads[0]).toMatchObject({ original: false, fileName: '资料.txt' })
     expect(association.manifest.entries).toEqual([
-      expect.objectContaining({ itemId: 'new-item', fileId: 'trusted-file' })
+      // expect.objectContaining({ itemId: 'new-item', fileId: 'trusted-file' })
+      expect.objectContaining({ itemId: 'new-item', fileId: uploadFileId })
     ])
-    await service.uploadAddedFiles(encodeOrgId('space'), 'managed', false)
-    expect(api.requestFileMultipart).toHaveBeenCalledTimes(1)
+    await service.uploadAddedFiles(encodeOrgId(codeSpaceId), 'managed', false)
+    // expect(api.requestFileMultipart).toHaveBeenCalledTimes(1)
+    expect(api.javaKnowledge.uploadMultipart).toHaveBeenCalledTimes(1)
     expect(api.request).not.toHaveBeenCalled()
     service.dispose()
   })
@@ -1338,14 +2055,14 @@ describe('云端追加文件安全边界', () => {
     const service = makeService(api)
     vi.spyOn(service as any, 'assertRealOwner').mockResolvedValue(undefined)
     vi.mocked(orgStateStore.getShareAssociation).mockReturnValue({
-      shareId: 'space',
+      shareId: /* 'space' */ codeSpaceId,
       completion: 'incomplete',
       files: []
     })
     vi.mocked(application.get).mockReturnValue({
       listRootItems: () => [{ id: 'pending', type: 'file', status: 'processing' }]
     } as never)
-    await expect(service.uploadAddedFiles(encodeOrgId('space'), 'managed', false)).rejects.toThrow('无法完整共享')
+    await expect(service.uploadAddedFiles(encodeOrgId(codeSpaceId), 'managed', false)).rejects.toThrow('无法完整共享')
     expect(api.requestFileMultipart).not.toHaveBeenCalled()
     expect(api.request).not.toHaveBeenCalled()
   })
@@ -1385,6 +2102,7 @@ describe('同步安全边界', () => {
       listItemChunks: async () => chunks
     } as never)
     const api = makeApiClient()
+    /* 旧同步 HTTP 桩保留；首传使用 makeApiClient 的 Java 接口。
     const remoteItem = {
       id: 'remote-item',
       base_id: codeSpaceId,
@@ -1425,6 +2143,7 @@ describe('同步安全边界', () => {
       }
     })
     api.requestMultipart.mockResolvedValue({ share_id: codeSpaceId, file_id: 'new-file', chunk_count: 1 })
+    */
     return {
       api,
       service: makeService(api),
@@ -1445,9 +2164,9 @@ describe('同步安全边界', () => {
     settleKnowledgeJob('knowledge.delete-subtree')
     await vi.advanceTimersByTimeAsync(5_000)
     expect(s.api.requestMultipart).not.toHaveBeenCalled()
-    expect(s.api.request.mock.calls.some(([, options]) => ['POST', 'PUT', 'DELETE'].includes(options?.method))).toBe(
-      false
-    )
+    expect(
+      s.api.request.mock.calls.some(([, options]) => ['POST', 'PUT', 'DELETE'].includes(options?.method ?? ''))
+    ).toBe(false)
     expect(s.get().manifest.entries).toEqual([])
     s.service.dispose()
   })
@@ -1554,7 +2273,7 @@ describe('同步安全边界', () => {
     const saved = vi.mocked(orgStateStore.setShareAssociation).mock.calls.at(-1)![1] as any
     expect(saved.manifest).toMatchObject({
       state: 'shared',
-      entries: [{ itemId: 'i1', fileName: '原名.txt', fileId: 'new-file' }]
+      entries: [{ itemId: 'i1', fileName: '原名.txt', fileId: /* 'new-file' */ uploadFileId }]
     })
     expect(saved.manifest.entries[0].hash).toBe(createHash('sha256').update('file-bytes').digest('hex'))
     expect(replaceKnowledgeSourceBindings).toHaveBeenCalledWith('local-1', encodeOrgId(codeSpaceId))
@@ -1842,49 +2561,228 @@ describe('同步安全边界', () => {
   })
 })
 
+// describe('分享码授权与结果', () => {
+//   beforeEach(() => vi.mocked(orgStateStore.getShareAssociations).mockReturnValue({}))
+//
+//   // 仅允许本地关联副本，历史 owned 空间不能绕过来源约束。
+//   it('本地关联副本须有可信 owner，创建只读码并编码两个 ID', async () => {
+//     vi.mocked(orgStateStore.getShareAssociations).mockReturnValue({
+//       [JSON.stringify([lease.issuerId, lease.userId, lease.groupId, 'local'])]: {
+//         shareId: codeSpaceId,
+//         completion: 'completed',
+//         files: [{ fileName: 'a', status: 'success', fileId: encodeOrgId('f'), chunkCount: 1, error: null }]
+//       }
+//     })
+//     const api = makeApiClient()
+//     api.request.mockResolvedValueOnce(codeCatalog).mockResolvedValueOnce(codeShare)
+//     const result = await makeService(api).createShareCode({
+//       baseId: encodeOrgId(codeSpaceId),
+//       expireDays: 7,
+//       password: 'pass',
+//       maxViews: 2
+//     })
+//     expect(result).toEqual({
+//       id: encodeOrgId(codeShare.id),
+//       spaceId: encodeOrgId(codeSpaceId),
+//       shareCode: 'AbCd_123',
+//       shareType: 1,
+//       hasPassword: true,
+//       maxViews: null,
+//       viewCount: 0,
+//       expiresAt: null,
+//       revokedAt: null,
+//       createdAt: codeShare.created_at
+//     })
+//     expect(JSON.parse(api.request.mock.calls[1][1].body)).toEqual({
+//       share_type: 1,
+//       expire_days: 7,
+//       password: 'pass',
+//       max_views: 2
+//     })
+//   })
+//
+//   it('本人完整副本允许永久只读分享且状态按账号隔离', async () => {
+//     vi.mocked(orgStateStore.getShareAssociations).mockReturnValue({
+//       [JSON.stringify([lease.issuerId, lease.userId, lease.groupId, 'local'])]: {
+//         shareId: codeSpaceId,
+//         completion: 'completed',
+//         files: [{ fileName: 'a', status: 'success', fileId: encodeOrgId('f'), chunkCount: 1, error: null }]
+//       },
+//       [JSON.stringify([lease.issuerId, 'other', lease.groupId, 'local'])]: {
+//         shareId: codeSpaceId,
+//         completion: 'incomplete',
+//         files: []
+//       }
+//     })
+//     const api = makeApiClient()
+//     api.request.mockResolvedValueOnce(codeCatalog).mockResolvedValueOnce(codeShare)
+//     expect(
+//       (await makeService(api).createShareCode({ baseId: encodeOrgId(codeSpaceId), expireDays: null })).shareCode
+//     ).toBe('AbCd_123')
+//     expect(JSON.parse(api.request.mock.calls[1][1].body)).toEqual({ share_type: 1, expire_days: null })
+//   })
+//
+//   it('授权校验后切号不继续创建', async () => {
+//     const api = makeApiClient()
+//     api.request.mockImplementation(async () => {
+//       auth.assertLease.mockImplementation(() => {
+//         throw new Error('stale')
+//       })
+//       return codeCatalog
+//     })
+//     await expect(
+//       makeService(api).createShareCode({ baseId: encodeOrgId(codeSpaceId), expireDays: 7 })
+//     ).rejects.toMatchObject({ code: E.ORGKB_UNAUTHORIZED })
+//     expect(api.request.mock.calls).toHaveLength(1)
+//   })
+//
+//   it.each([{ expireDays: 366 }, { password: 'bad' }, { maxViews: Number.MAX_SAFE_INTEGER + 1 }])(
+//     '直接服务调用拒绝无效分享参数',
+//     async (patch) => {
+//       const api = makeApiClient()
+//       await expect(
+//         makeService(api).createShareCode({ baseId: encodeOrgId(codeSpaceId), expireDays: 7, ...patch })
+//       ).rejects.toMatchObject({ code: E.ORGKB_BAD_INPUT })
+//       expect(api.request.mock.calls).toHaveLength(0)
+//     }
+//   )
+//
+//   it.each(['incomplete', 'unconfirmed', 'completed'] as const)(
+//     '本机副本状态 %s 不允许未成功文件绕过',
+//     async (completion) => {
+//       vi.mocked(orgStateStore.getShareAssociations).mockReturnValue({
+//         [JSON.stringify([lease.issuerId, lease.userId, lease.groupId, 'local'])]: {
+//           shareId: codeSpaceId,
+//           completion,
+//           files: [{ fileName: 'a', status: 'unknown', fileId: null, chunkCount: null, error: null }]
+//         }
+//       })
+//       const api = makeApiClient()
+//       api.request.mockResolvedValue(codeCatalog)
+//       await expect(
+//         makeService(api).createShareCode({ baseId: encodeOrgId(codeSpaceId), expireDays: null })
+//       ).rejects.toMatchObject({ code: E.ORGKB_SHARE_INCOMPLETE })
+//       expect(api.request.mock.calls.filter((c) => c[1]?.method === 'POST')).toHaveLength(0)
+//     }
+//   )
+//
+//   it.each([
+//     { public: [{ id: codeSpaceId, name: '公共', my_role: 'owner' }], shared: [], owned: codeCatalog.owned },
+//     { public: [], shared: [], owned: [{ id: codeSpaceId, name: '无 owner' }] },
+//     { public: [], shared: [{ id: codeSpaceId, name: '成员', my_role: 'admin' }], owned: [] }
+//   ])('拒绝公共、成员和 owner 不明的空间', async (catalog) => {
+//     const api = makeApiClient()
+//     api.request.mockResolvedValue(catalog)
+//     await expect(
+//       makeService(api).createShareCode({ baseId: encodeOrgId(codeSpaceId), expireDays: 7 })
+//     ).rejects.toMatchObject({ code: E.ORGKB_FORBIDDEN })
+//   })
+//
+//   it('网络结果未知只发一次创建请求，提示 UI 查询列表', async () => {
+//     vi.mocked(orgStateStore.getShareAssociations).mockReturnValue({
+//       [JSON.stringify([lease.issuerId, lease.userId, lease.groupId, 'local'])]: {
+//         shareId: codeSpaceId,
+//         completion: 'completed',
+//         files: [{ fileName: 'a', status: 'success', fileId: encodeOrgId('f'), chunkCount: 1, error: null }]
+//       }
+//     })
+//     const api = makeApiClient()
+//     api.request.mockResolvedValueOnce(codeCatalog).mockRejectedValueOnce(new TypeError('fetch failed secret'))
+//     await expect(
+//       makeService(api).createShareCode({ baseId: encodeOrgId(codeSpaceId), expireDays: null })
+//     ).rejects.toMatchObject({ code: E.ORGKB_SHARE_CREATE_UNKNOWN })
+//     expect(api.request.mock.calls.filter((c) => c[1]?.method === 'POST')).toHaveLength(1)
+//   })
+//
+//   it('直接领取返回原样名称和编码 baseId，不先消费公开访问', async () => {
+//     const api = makeApiClient()
+//     api.request.mockResolvedValue({
+//       id: codeSpaceId,
+//       name: ' 原样名称 ',
+//       space_kind: 'online',
+//       access_sources: ['share']
+//     })
+//     expect(await makeService(api).receiveShare({ shareCode: 'AbCd_123', password: 'pass' })).toEqual({
+//       baseId: encodeOrgId(codeSpaceId),
+//       name: ' 原样名称 '
+//     })
+//     expect(api.request.mock.calls).toEqual([
+//       ['/api/kb/v1/shares/AbCd_123/receive', expect.objectContaining({ method: 'POST', body: '{"password":"pass"}' })]
+//     ])
+//   })
+//
+//   it('切号后丢弃分享列表', async () => {
+//     const api = makeApiClient()
+//     api.request.mockImplementation(async () => {
+//       auth.assertLease.mockImplementation(() => {
+//         throw new Error('stale')
+//       })
+//       return [codeShare]
+//     })
+//     await expect(makeService(api).shares({ baseId: encodeOrgId(codeSpaceId) })).rejects.toMatchObject({
+//       code: E.ORGKB_UNAUTHORIZED
+//     })
+//   })
+//
+//   it('吊销编码 ID，支持 204', async () => {
+//     const api = makeApiClient()
+//     api.request.mockResolvedValue(undefined)
+//     expect(
+//       await makeService(api).revokeShare({ baseId: encodeOrgId(codeSpaceId), shareId: encodeOrgId(codeShare.id) })
+//     ).toEqual({ ok: true })
+//     expect(api.request.mock.calls[0]).toEqual([
+//       `/api/kb/v1/spaces/${codeSpaceId}/shares/${codeShare.id}`,
+//       { method: 'DELETE' },
+//       expect.any(Function)
+//     ])
+//   })
+// })
+//
 describe('分享码授权与结果', () => {
-  beforeEach(() => vi.mocked(orgStateStore.getShareAssociations).mockReturnValue({}))
+  beforeEach(() => {
+    auth.acquireLease.mockReturnValue({ ...lease, userId: '7' })
+    vi.mocked(orgStateStore.getShareAssociations).mockReturnValue({})
+  })
 
   // 仅允许本地关联副本，历史 owned 空间不能绕过来源约束。
   it('本地关联副本须有可信 owner，创建只读码并编码两个 ID', async () => {
     vi.mocked(orgStateStore.getShareAssociations).mockReturnValue({
-      [JSON.stringify([lease.issuerId, lease.userId, lease.groupId, 'local'])]: {
+      [JSON.stringify([lease.issuerId, '7', lease.groupId, 'local'])]: {
         shareId: codeSpaceId,
         completion: 'completed',
         files: [{ fileName: 'a', status: 'success', fileId: encodeOrgId('f'), chunkCount: 1, error: null }]
       }
     })
-    const api = makeApiClient()
-    api.request.mockResolvedValueOnce(codeCatalog).mockResolvedValueOnce(codeShare)
-    const result = await makeService(api).createShareCode({
+    const api = makeJavaApi()
+    api.javaKnowledge.getCatalog.mockResolvedValue([javaSpace])
+    api.javaKnowledge.createShare.mockResolvedValue(javaShare)
+    const result = await makeJavaService(api).createShareCode({
       baseId: encodeOrgId(codeSpaceId),
       expireDays: 7,
       password: 'pass',
       maxViews: 2
     })
     expect(result).toEqual({
-      id: encodeOrgId(codeShare.id),
+      id: encodeOrgId(javaShareId),
       spaceId: encodeOrgId(codeSpaceId),
       shareCode: 'AbCd_123',
-      shareType: 1,
       hasPassword: true,
       maxViews: null,
       viewCount: 0,
       expiresAt: null,
       revokedAt: null,
-      createdAt: codeShare.created_at
+      createdAt: javaShare.createTime
     })
-    expect(JSON.parse(api.request.mock.calls[1][1].body)).toEqual({
-      share_type: 1,
-      expire_days: 7,
-      password: 'pass',
-      max_views: 2
-    })
+    expect(api.javaKnowledge.createShare).toHaveBeenCalledExactlyOnceWith(
+      codeSpaceId,
+      { expireDays: 7, password: 'pass', maxViews: 2 },
+      expect.any(Function)
+    )
   })
 
   it('本人完整副本允许永久只读分享且状态按账号隔离', async () => {
     vi.mocked(orgStateStore.getShareAssociations).mockReturnValue({
-      [JSON.stringify([lease.issuerId, lease.userId, lease.groupId, 'local'])]: {
+      [JSON.stringify([lease.issuerId, '7', lease.groupId, 'local'])]: {
         shareId: codeSpaceId,
         completion: 'completed',
         files: [{ fileName: 'a', status: 'success', fileId: encodeOrgId('f'), chunkCount: 1, error: null }]
@@ -1895,36 +2793,43 @@ describe('分享码授权与结果', () => {
         files: []
       }
     })
-    const api = makeApiClient()
-    api.request.mockResolvedValueOnce(codeCatalog).mockResolvedValueOnce(codeShare)
+    const api = makeJavaApi()
+    api.javaKnowledge.getCatalog.mockResolvedValue([javaSpace])
+    api.javaKnowledge.createShare.mockResolvedValue(javaShare)
     expect(
-      (await makeService(api).createShareCode({ baseId: encodeOrgId(codeSpaceId), expireDays: null })).shareCode
+      (await makeJavaService(api).createShareCode({ baseId: encodeOrgId(codeSpaceId), expireDays: null })).shareCode
     ).toBe('AbCd_123')
-    expect(JSON.parse(api.request.mock.calls[1][1].body)).toEqual({ share_type: 1, expire_days: null })
+    expect(api.javaKnowledge.createShare).toHaveBeenCalledExactlyOnceWith(
+      codeSpaceId,
+      { expireDays: null, password: undefined, maxViews: undefined },
+      expect.any(Function)
+    )
   })
 
   it('授权校验后切号不继续创建', async () => {
-    const api = makeApiClient()
-    api.request.mockImplementation(async () => {
+    const api = makeJavaApi()
+    api.javaKnowledge.getCatalog.mockImplementation(async () => {
       auth.assertLease.mockImplementation(() => {
         throw new Error('stale')
       })
-      return codeCatalog
+      return [javaSpace]
     })
     await expect(
-      makeService(api).createShareCode({ baseId: encodeOrgId(codeSpaceId), expireDays: 7 })
+      makeJavaService(api).createShareCode({ baseId: encodeOrgId(codeSpaceId), expireDays: 7 })
     ).rejects.toMatchObject({ code: E.ORGKB_UNAUTHORIZED })
-    expect(api.request.mock.calls).toHaveLength(1)
+    expect(api.javaKnowledge.getCatalog).toHaveBeenCalledTimes(1)
+    expect(api.javaKnowledge.createShare).not.toHaveBeenCalled()
   })
 
   it.each([{ expireDays: 366 }, { password: 'bad' }, { maxViews: Number.MAX_SAFE_INTEGER + 1 }])(
     '直接服务调用拒绝无效分享参数',
     async (patch) => {
-      const api = makeApiClient()
+      const api = makeJavaApi()
       await expect(
-        makeService(api).createShareCode({ baseId: encodeOrgId(codeSpaceId), expireDays: 7, ...patch })
+        makeJavaService(api).createShareCode({ baseId: encodeOrgId(codeSpaceId), expireDays: 7, ...patch })
       ).rejects.toMatchObject({ code: E.ORGKB_BAD_INPUT })
-      expect(api.request.mock.calls).toHaveLength(0)
+      expect(api.javaKnowledge.getCatalog).not.toHaveBeenCalled()
+      expect(api.javaKnowledge.createShare).not.toHaveBeenCalled()
     }
   )
 
@@ -1932,90 +2837,87 @@ describe('分享码授权与结果', () => {
     '本机副本状态 %s 不允许未成功文件绕过',
     async (completion) => {
       vi.mocked(orgStateStore.getShareAssociations).mockReturnValue({
-        [JSON.stringify([lease.issuerId, lease.userId, lease.groupId, 'local'])]: {
+        [JSON.stringify([lease.issuerId, '7', lease.groupId, 'local'])]: {
           shareId: codeSpaceId,
           completion,
           files: [{ fileName: 'a', status: 'unknown', fileId: null, chunkCount: null, error: null }]
         }
       })
-      const api = makeApiClient()
-      api.request.mockResolvedValue(codeCatalog)
+      const api = makeJavaApi()
+      api.javaKnowledge.getCatalog.mockResolvedValue([javaSpace])
       await expect(
-        makeService(api).createShareCode({ baseId: encodeOrgId(codeSpaceId), expireDays: null })
+        makeJavaService(api).createShareCode({ baseId: encodeOrgId(codeSpaceId), expireDays: null })
       ).rejects.toMatchObject({ code: E.ORGKB_SHARE_INCOMPLETE })
-      expect(api.request.mock.calls.filter((c) => c[1]?.method === 'POST')).toHaveLength(0)
+      expect(api.javaKnowledge.createShare).not.toHaveBeenCalled()
     }
   )
 
   it.each([
-    { public: [{ id: codeSpaceId, name: '公共', my_role: 'owner' }], shared: [], owned: codeCatalog.owned },
-    { public: [], shared: [], owned: [{ id: codeSpaceId, name: '无 owner' }] },
-    { public: [], shared: [{ id: codeSpaceId, name: '成员', my_role: 'admin' }], owned: [] }
-  ])('拒绝公共、成员和 owner 不明的空间', async (catalog) => {
-    const api = makeApiClient()
-    api.request.mockResolvedValue(catalog)
+    { catalog: [{ ...javaSpace, category: 'PUBLIC' }, javaSpace] },
+    { catalog: [{ ...javaSpace, ownerId: null }] },
+    { catalog: [{ ...javaSpace, category: 'SHARED' }] }
+  ])('拒绝公共、成员和 owner 不明的空间', async ({ catalog }) => {
+    const api = makeJavaApi()
+    api.javaKnowledge.getCatalog.mockResolvedValue(catalog)
     await expect(
-      makeService(api).createShareCode({ baseId: encodeOrgId(codeSpaceId), expireDays: 7 })
+      makeJavaService(api).createShareCode({ baseId: encodeOrgId(codeSpaceId), expireDays: 7 })
     ).rejects.toMatchObject({ code: E.ORGKB_FORBIDDEN })
   })
 
   it('网络结果未知只发一次创建请求，提示 UI 查询列表', async () => {
     vi.mocked(orgStateStore.getShareAssociations).mockReturnValue({
-      [JSON.stringify([lease.issuerId, lease.userId, lease.groupId, 'local'])]: {
+      [JSON.stringify([lease.issuerId, '7', lease.groupId, 'local'])]: {
         shareId: codeSpaceId,
         completion: 'completed',
         files: [{ fileName: 'a', status: 'success', fileId: encodeOrgId('f'), chunkCount: 1, error: null }]
       }
     })
-    const api = makeApiClient()
-    api.request.mockResolvedValueOnce(codeCatalog).mockRejectedValueOnce(new TypeError('fetch failed secret'))
+    const api = makeJavaApi()
+    api.javaKnowledge.createShare.mockRejectedValue(new TypeError('fetch failed secret'))
     await expect(
-      makeService(api).createShareCode({ baseId: encodeOrgId(codeSpaceId), expireDays: null })
+      makeJavaService(api).createShareCode({ baseId: encodeOrgId(codeSpaceId), expireDays: null })
     ).rejects.toMatchObject({ code: E.ORGKB_SHARE_CREATE_UNKNOWN })
-    expect(api.request.mock.calls.filter((c) => c[1]?.method === 'POST')).toHaveLength(1)
+    expect(api.javaKnowledge.createShare).toHaveBeenCalledTimes(1)
   })
 
   it('直接领取返回原样名称和编码 baseId，不先消费公开访问', async () => {
-    const api = makeApiClient()
-    api.request.mockResolvedValue({
-      id: codeSpaceId,
-      name: ' 原样名称 ',
-      space_kind: 'online',
-      access_sources: ['share']
-    })
-    expect(await makeService(api).receiveShare({ shareCode: 'AbCd_123', password: 'pass' })).toEqual({
+    const api = makeJavaApi()
+    api.javaKnowledge.receiveShare.mockResolvedValue({ ...javaSpace, name: ' 原样名称 ' })
+    expect(await makeJavaService(api).receiveShare({ shareCode: 'AbCd_123', password: 'pass' })).toEqual({
       baseId: encodeOrgId(codeSpaceId),
       name: ' 原样名称 '
     })
-    expect(api.request.mock.calls).toEqual([
-      ['/api/kb/v1/shares/AbCd_123/receive', expect.objectContaining({ method: 'POST', body: '{"password":"pass"}' })]
-    ])
+    expect(api.javaKnowledge.receiveShare).toHaveBeenCalledExactlyOnceWith(
+      { shareCode: 'AbCd_123', password: 'pass' },
+      expect.any(Function)
+    )
+    expect(api.request).not.toHaveBeenCalled()
   })
 
   it('切号后丢弃分享列表', async () => {
-    const api = makeApiClient()
-    api.request.mockImplementation(async () => {
+    const api = makeJavaApi()
+    api.javaKnowledge.listShares.mockImplementation(async () => {
       auth.assertLease.mockImplementation(() => {
         throw new Error('stale')
       })
-      return [codeShare]
+      return [javaShare]
     })
-    await expect(makeService(api).shares({ baseId: encodeOrgId(codeSpaceId) })).rejects.toMatchObject({
+    await expect(makeJavaService(api).shares({ baseId: encodeOrgId(codeSpaceId) })).rejects.toMatchObject({
       code: E.ORGKB_UNAUTHORIZED
     })
   })
 
   it('吊销编码 ID，支持 204', async () => {
-    const api = makeApiClient()
-    api.request.mockResolvedValue(undefined)
+    const api = makeJavaApi()
+    api.javaKnowledge.revokeShare.mockResolvedValue(undefined)
     expect(
-      await makeService(api).revokeShare({ baseId: encodeOrgId(codeSpaceId), shareId: encodeOrgId(codeShare.id) })
+      await makeJavaService(api).revokeShare({ baseId: encodeOrgId(codeSpaceId), shareId: encodeOrgId(javaShareId) })
     ).toEqual({ ok: true })
-    expect(api.request.mock.calls[0]).toEqual([
-      `/api/kb/v1/spaces/${codeSpaceId}/shares/${codeShare.id}`,
-      { method: 'DELETE' },
+    expect(api.javaKnowledge.revokeShare).toHaveBeenCalledExactlyOnceWith(
+      codeSpaceId,
+      javaShareId,
       expect.any(Function)
-    ])
+    )
   })
 })
 
@@ -2023,7 +2925,8 @@ describe('云端生命周期上传契约', () => {
   it('仅分块上传不要求远端原件hash，但必须核对可信文件归属和完整分块', async () => {
     const api = makeApiClient()
     const service = makeService(api)
-    vi.mocked((service as any).verifyFirstShareFile).mockRestore()
+    // vi.mocked((service as any).verifyFirstShareFile).mockRestore()
+    /* 旧条目目录核验保留，Java 直接按知识库和文件 ID 核验正文。
     const client = (service as any).client
     vi.spyOn(client, 'getFile').mockResolvedValue({
       id: 'f',
@@ -2041,6 +2944,32 @@ describe('云端生命周期上传契约', () => {
       total: 1,
       next_cursor: null
     })
+    */
+    const client = api.javaKnowledge
+    client.getFile.mockResolvedValue({
+      knowledgeId: codeSpaceId,
+      fileId: uploadFileId,
+      name: 'a.txt',
+      directory: false,
+      parentId: null,
+      fileHash: null,
+      hasOriginalFile: false,
+      parseStatus: 'ready'
+    })
+    client.listChunks.mockResolvedValue({
+      items: [
+        {
+          knowledgeId: codeSpaceId,
+          fileId: uploadFileId,
+          chunkId: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+          content: '正文',
+          chunkIndex: 0
+        }
+      ],
+      total: 1,
+      page: 1,
+      pageSize: 100
+    })
     const entry = {
       fileName: 'a.txt',
       hash: 'local-hash',
@@ -2048,319 +2977,722 @@ describe('云端生命周期上传契约', () => {
       uploadOriginal: false,
       chunks: [{ content: '正文', metadata: { chunk_index: 0 } }]
     }
-    await expect((service as any).verifyFirstShareFile('s', 'f', entry, lease)).resolves.toBeUndefined()
-    client.getFile.mockResolvedValue({ id: 'f', space_id: 'other', name: 'a.txt', is_dir: false })
-    await expect((service as any).verifyFirstShareFile('s', 'f', entry, lease)).rejects.toThrow()
+    // await expect((service as any).verifyFirstShareFile('s', 'f', entry, lease)).resolves.toBeUndefined()
+    // client.getFile.mockResolvedValue({ id: 'f', space_id: 'other', name: 'a.txt', is_dir: false })
+    // await expect((service as any).verifyFirstShareFile('s', 'f', entry, lease)).rejects.toThrow()
+    await expect(
+      (service as any).verifyFirstShareFile(codeSpaceId, uploadFileId, entry, lease)
+    ).resolves.toBeUndefined()
+    // client.getFile.mockResolvedValue({ ...(await client.getFile(codeSpaceId, uploadFileId)), knowledgeId: javaSpace })
+    client.getFile.mockResolvedValue({ ...(await client.getFile(codeSpaceId, uploadFileId)), knowledgeId: javaOtherId })
+    await expect((service as any).verifyFirstShareFile(codeSpaceId, uploadFileId, entry, lease)).rejects.toThrow('归属')
     service.dispose()
   })
 })
 
+// describe('OrgKnowledgeService catalog/items', () => {
+//   it.each([false, undefined])('原件能力%j时直接preview也禁止读取内容', async (hasOriginal) => {
+//     const api = makeApiClient()
+//     const service = makeService(api)
+//     vi.mocked((service as any).client.getFile).mockResolvedValue({
+//       id: 'f',
+//       space_id: 'space',
+//       is_dir: false,
+//       has_original_file: hasOriginal
+//     })
+//     await expect(service.preview({ baseId: encodeOrgId(/* 'space' */ codeSpaceId), fileId: encodeOrgId('f') })).rejects.toThrow(
+//       '原件不可用'
+//     )
+//     expect(api.requestText).not.toHaveBeenCalled()
+//     expect(api.requestBytes).not.toHaveBeenCalled()
+//     service.dispose()
+//   })
+//   it('未完成首传的云端副本不能标记为已分享，仍保留本地关联供恢复', async () => {
+//     vi.mocked(orgStateStore.getShareAssociations).mockReturnValueOnce({
+//       [JSON.stringify(['server-1', 'u', 'g', 'local-1'])]: {
+//         shareId: /* 's1' */ codeSpaceId,
+//         completion: 'incomplete',
+//         files: []
+//       }
+//     })
+//     const api = makeApiClient()
+//     api.request.mockResolvedValue({ public: [], shared: [], owned: [{ id: 's1', name: '上传失败' }] })
+//     const result = await makeService(api).catalog()
+//     expect(result.owned[0]).toMatchObject({ localBaseId: 'local-1', shareCompleted: false })
+//   })
+//   it('目录只返回当前身份上下文的本地关联，不按名称匹配', async () => {
+//     vi.mocked(orgStateStore.getShareAssociations).mockReturnValueOnce({
+//       [JSON.stringify(['server-1', 'u', 'g', 'local-1'])]: { shareId: /* 's1' */ codeSpaceId, completion: 'completed', files: [] },
+//       [JSON.stringify(['server-1', 'other', 'g', 'local-2'])]: { shareId: 's2', completion: 'completed', files: [] }
+//     })
+//     const api = makeApiClient()
+//     api.request.mockResolvedValue({
+//       public: [],
+//       shared: [],
+//       owned: [
+//         { id: 's1', name: '同名' },
+//         { id: 's2', name: '同名' }
+//       ]
+//     })
+//     const result = await makeService(api).catalog()
+//     expect(result.owned[0].localBaseId).toBe('local-1')
+//     expect(result.owned[1].localBaseId).toBeUndefined()
+//   })
+//   it('encodes server ids into orgkb: ids', async () => {
+//     const api = makeApiClient()
+//     api.request.mockResolvedValue({
+//       public: [],
+//       shared: [],
+//       owned: [{ id: 'space-1', name: 'Owned', description: null, document_count: 3 }]
+//     })
+//     const svc = makeService(api)
+//     const catalog = await svc.catalog()
+//     expect(catalog.owned[0].id.startsWith('orgkb:')).toBe(true)
+//     expect(catalog.owned[0].documentCount).toBe(3)
+//   })
+//
+//   it('listItems rejects non-orgkb id with BAD_INPUT', async () => {
+//     const svc = makeService(makeApiClient())
+//     await expect(svc.listItems('not-orgkb')).rejects.toBeInstanceOf(OrgKnowledgeError)
+//     await expect(svc.listItems('not-orgkb')).rejects.toMatchObject({ code: E.ORGKB_BAD_INPUT })
+//   })
+//
+//   it('listItems decodes and re-encodes, mapping field names', async () => {
+//     const api = makeApiClient()
+//     const rawBase = 'space-9'
+//     api.request.mockResolvedValue({
+//       items: [
+//         {
+//           id: 'it-1',
+//           base_id: rawBase,
+//           group_id: null,
+//           error: null,
+//           data: { source: 'a.txt', file_id: 'source-file' },
+//           type: 'file',
+//           title: 'T',
+//           status: 'completed',
+//           document_id: 'doc-1',
+//           created_at: '2026-10-15T00:00:00Z',
+//           updated_at: '2026-10-15T00:00:00Z'
+//         }
+//       ],
+//       total: 1
+//     })
+//     const svc = makeService(api)
+//     vi.mocked((svc as any).client.getFile).mockResolvedValue({
+//       id: 'source-file',
+//       space_id: rawBase,
+//       name: 'T',
+//       is_dir: false,
+//       has_original_file: true
+//     })
+//     const page = await svc.listItems(encodeOrgId(rawBase))
+//     expect(page.items[0].id.startsWith('orgkb:')).toBe(true)
+//     expect(page.items[0].documentId?.startsWith('orgkb:')).toBe(true)
+//     expect(page.items[0].title).toBe('T')
+//     expect(page.items[0].fileId).toBe(encodeOrgId('source-file'))
+//   })
+//
+//   it('缺少显式映射时仅接受文件接口确认的同一标识', async () => {
+//     const api = makeApiClient()
+//     api.request
+//       .mockResolvedValueOnce({
+//         items: [
+//           {
+//             id: 'item',
+//             base_id: 'base',
+//             group_id: null,
+//             type: 'file',
+//             title: '文件',
+//             status: 'completed',
+//             error: null,
+//             document_id: 'doc',
+//             data: { source: 'a.pdf' },
+//             created_at: '2026-10-15T00:00:00Z',
+//             updated_at: '2026-10-15T00:00:00Z'
+//           }
+//         ],
+//         total: 1
+//       })
+//       .mockResolvedValueOnce({ id: 'doc', is_dir: false })
+//       .mockResolvedValueOnce({ id: 'doc', space_id: 'base', name: '文件', is_dir: false, has_original_file: true })
+//     const page = await makeService(api).listItems(encodeOrgId('base'))
+//     expect(page.items[0].fileId).toBe(encodeOrgId('doc'))
+//     expect(api.request).toHaveBeenLastCalledWith('/api/kb/v1/files/doc', { signal: expect.any(AbortSignal) })
+//   })
+//
+//   it.each(['explicit', 'resolved'])('列表从真实文件补原件能力：%s 映射', async (mapping) => {
+//     const api = makeApiClient()
+//     const svc = makeService(api)
+//     const client = (svc as any).client
+//     vi.spyOn(client, 'listItems').mockResolvedValue({
+//       items: [
+//         {
+//           id: 'item',
+//           base_id: 'base',
+//           type: 'file',
+//           title: '文件',
+//           document_id: 'doc',
+//           data: mapping === 'explicit' ? { file_id: 'source' } : {},
+//           status: 'completed'
+//         }
+//       ],
+//       total: 1
+//     })
+//     vi.spyOn(client, 'resolveFileId').mockResolvedValue('source')
+//     vi.mocked(client.getFile).mockResolvedValue({
+//       id: 'source',
+//       space_id: 'base',
+//       is_dir: false,
+//       has_original_file: true
+//     })
+//     const page = await svc.listItems(encodeOrgId('base'))
+//     expect(page.items[0]).toMatchObject({ fileId: encodeOrgId('source'), hasOriginalFile: true })
+//     expect(client.getFile).toHaveBeenCalledWith('source')
+//     svc.dispose()
+//   })
+//
+//   it.each(['id', 'space', 'directory', 'item-space', 'false', 'missing'])(
+//     '列表不信任条目原件能力且拒绝不匹配文件：%s',
+//     async (mismatch) => {
+//       const svc = makeService(makeApiClient())
+//       const client = (svc as any).client
+//       vi.spyOn(client, 'listItems').mockResolvedValue({
+//         items: [
+//           {
+//             id: 'item',
+//             base_id: mismatch === 'item-space' ? 'other' : 'base',
+//             type: 'file',
+//             title: '文件',
+//             document_id: 'doc',
+//             data: { file_id: 'source' },
+//             has_original_file: true,
+//             status: 'completed'
+//           }
+//         ],
+//         total: 1
+//       })
+//       vi.mocked(client.getFile).mockResolvedValue({
+//         id: mismatch === 'id' ? 'other' : 'source',
+//         space_id: mismatch === 'space' ? 'other' : 'base',
+//         is_dir: mismatch === 'directory',
+//         has_original_file: mismatch === 'missing' ? undefined : mismatch !== 'false'
+//       })
+//       const item = (await svc.listItems(encodeOrgId('base'))).items[0]
+//       expect(item.hasOriginalFile).not.toBe(true)
+//       if (!['false', 'missing'].includes(mismatch)) expect(item.fileId).toBeNull()
+//       svc.dispose()
+//     }
+//   )
+//
+//   it.each([403, 404, 422, 500, 'protocol'] as const)(
+//     '附加文件查询失败仍返回已授权列表且能力保持未知：%s',
+//     async (failure) => {
+//       const api = makeApiClient()
+//       const svc = makeService(api)
+//       const item = (id: string) => ({
+//         id,
+//         base_id: 'base',
+//         group_id: null,
+//         type: 'file',
+//         title: id,
+//         status: 'completed',
+//         error: null,
+//         document_id: `document-${id}`,
+//         data: { file_id: id, has_original_file: true },
+//         created_at: '2026-10-15T00:00:00Z',
+//         updated_at: '2026-10-15T00:00:00Z'
+//       })
+//       api.request.mockImplementation(async (path: string) => {
+//         if (path.includes('/items')) return { items: [item('bad'), item('good')], total: 2, next_cursor: 'page-2' }
+//         if (path.endsWith('/bad')) {
+//           if (failure !== 'protocol') throw new OrgApiHttpError(failure, '文件元信息不可用')
+//           return { id: 'bad', space_id: 'base', name: 'bad', is_dir: false, parse_status: 2 }
+//         }
+//         return { id: 'good', space_id: 'base', name: 'good', is_dir: false, has_original_file: true }
+//       })
+//       const page = await svc.listItems(encodeOrgId('base'))
+//       expect(page.total).toBe(2)
+//       expect(page.nextCursor).toBe('page-2')
+//       expect(page.items[0]).toMatchObject({ title: 'bad', fileId: null })
+//       expect(page.items[0].hasOriginalFile).toBeUndefined()
+//       expect(page.items[1]).toMatchObject({ fileId: encodeOrgId('good'), hasOriginalFile: true })
+//       svc.dispose()
+//     }
+//   )
+//
+//   it.each(['list-forbidden', 'file-unauthorized', 'lease', 'unexpected'])(
+//     '列表及身份错误保持阻断：%s',
+//     async (failure) => {
+//       const api = makeApiClient()
+//       const svc = makeService(api)
+//       const error = failure === 'unexpected' ? new Error('unexpected') : new OrgApiHttpError(401, '会话失效')
+//       api.request.mockImplementation(async (path: string) => {
+//         if (failure === 'list-forbidden') throw new OrgApiHttpError(403, '列表无权限')
+//         if (path.includes('/items'))
+//           return {
+//             items: [
+//               {
+//                 id: 'item',
+//                 base_id: 'base',
+//                 group_id: null,
+//                 type: 'file',
+//                 title: '文件',
+//                 status: 'completed',
+//                 error: null,
+//                 document_id: 'doc',
+//                 data: { file_id: 'source' },
+//                 created_at: '2026-10-15T00:00:00Z',
+//                 updated_at: '2026-10-15T00:00:00Z'
+//               }
+//             ],
+//             total: 1
+//           }
+//         if (failure === 'lease')
+//           auth.assertLease.mockImplementation(() => {
+//             throw new Error('stale')
+//           })
+//         throw error
+//       })
+//       if (failure === 'lease')
+//         await expect(svc.listItems(encodeOrgId('base'))).rejects.toMatchObject({ code: E.ORGKB_UNAUTHORIZED })
+//       else if (failure === 'list-forbidden')
+//         await expect(svc.listItems(encodeOrgId('base'))).rejects.toMatchObject({ status: 403 })
+//       else await expect(svc.listItems(encodeOrgId('base'))).rejects.toBe(error)
+//       svc.dispose()
+//     }
+//   )
+//
+//   it('inline HTML 仅回传纯文本，不作为可执行预览', async () => {
+//     const api = makeApiClient()
+//     api.request.mockResolvedValue({ kind: 'inline', file_name: 'a.html', mime_type: 'text/html; charset=utf-8' })
+//     api.requestText.mockResolvedValue('<script>alert(1)</script>')
+//     expect(await makeService(api).preview({ baseId: encodeOrgId(/* 'space' */ codeSpaceId), fileId: encodeOrgId('f') })).toMatchObject({
+//       kind: 'text',
+//       content: '<script>alert(1)</script>'
+//     })
+//     expect(api.requestBytes).not.toHaveBeenCalled()
+//   })
+//
+//   it('不获取不受支持的活动图片类型', async () => {
+//     const api = makeApiClient()
+//     api.request.mockResolvedValue({ kind: 'inline', file_name: 'a.svg', mime_type: 'image/svg+xml' })
+//     expect(
+//       await makeService(api).preview({ baseId: encodeOrgId(/* 'space' */ codeSpaceId), fileId: encodeOrgId('f') })
+//     ).not.toHaveProperty('base64')
+//     expect(api.requestBytes).not.toHaveBeenCalled()
+//   })
+//
+//   it('账号切换后丢弃已到达的目录响应', async () => {
+//     const api = makeApiClient()
+//     vi.mocked(api.request).mockImplementation(async () => {
+//       auth.assertLease.mockImplementation(() => {
+//         throw new Error('stale')
+//       })
+//       return { public: [], shared: [], owned: [] }
+//     })
+//     await expect(makeService(api).catalog()).rejects.toMatchObject({ code: E.ORGKB_UNAUTHORIZED })
+//   })
+//
+//   it('text 预览调用鉴权 preview 接口，不依赖签名 URL', async () => {
+//     const api = makeApiClient()
+//     vi.mocked(api.request).mockResolvedValue({ kind: 'text', file_name: 'a.docx' })
+//     vi.mocked(api.requestText).mockResolvedValue('解析正文')
+//     expect(await makeService(api).preview({ baseId: encodeOrgId(/* 'space' */ codeSpaceId), fileId: encodeOrgId('f:1') })).toMatchObject({
+//       content: '解析正文'
+//     })
+//     expect(api.requestText).toHaveBeenCalledWith('/api/kb/v1/files/f%3A1/preview')
+//   })
+//
+//   it.each([
+//     ['说明.md', null],
+//     ['说明.MD', 'application/octet-stream'],
+//     ['说明.markdown', undefined],
+//     ['说明', 'application/markdown']
+//   ])('Markdown 原件在 MIME 缺失或非 text 类型时仍可预览：%s / %s', async (fileName, mimeType) => {
+//     const api = makeApiClient()
+//     api.request.mockResolvedValue({ kind: 'inline', file_name: fileName, mime_type: mimeType })
+//     api.requestText.mockResolvedValue('# 云端文档\n\n正文内容')
+//
+//     await expect(
+//       makeService(api).preview({ baseId: encodeOrgId(/* 'space' */ codeSpaceId), fileId: encodeOrgId('f') })
+//     ).resolves.toMatchObject({
+//       kind: 'text',
+//       fileName,
+//       content: '# 云端文档\n\n正文内容'
+//     })
+//     expect(api.requestText).toHaveBeenCalledWith('/api/kb/v1/files/f/preview')
+//   })
+//
+//   it.each(['txt', 'mdx', 'csv', 'html', 'htm', 'epub', 'draftsexport'])(
+//     '上传范围内的 %s 在通用二进制 MIME 下仍提供文本预览',
+//     async (extension) => {
+//       const api = makeApiClient()
+//       api.request.mockResolvedValue({
+//         kind: 'inline',
+//         file_name: `资料.${extension.toUpperCase()}`,
+//         mime_type: 'application/octet-stream'
+//       })
+//       api.requestText.mockResolvedValue('可阅读正文 <script>不执行</script>')
+//       await expect(
+//         makeService(api).preview({ baseId: encodeOrgId(/* 'space' */ codeSpaceId), fileId: encodeOrgId('f') })
+//       ).resolves.toMatchObject({
+//         kind: 'text',
+//         content: '可阅读正文 <script>不执行</script>'
+//       })
+//     }
+//   )
+//
+//   it.each(['%PDF-1.7\n', '<html>伪装 PDF</html>'])('PDF 通用二进制 MIME 必须核对文件头：%s', async (content) => {
+//     const api = makeApiClient()
+//     api.request.mockResolvedValue({ kind: 'inline', file_name: '资料.PDF', mime_type: 'application/octet-stream' })
+//     api.requestBytes.mockResolvedValue(Buffer.from(content))
+//     const result = await makeService(api).preview({ baseId: encodeOrgId(/* 'space' */ codeSpaceId), fileId: encodeOrgId('f') })
+//     if (content.startsWith('%PDF-'))
+//       expect(result).toMatchObject({
+//         kind: 'inline',
+//         mimeType: 'application/pdf',
+//         base64: Buffer.from(content).toString('base64')
+//       })
+//     else expect(result).not.toHaveProperty('base64')
+//     expect(api.requestText).not.toHaveBeenCalled()
+//   })
+//
+//   it('预览元信息到达后切号，不继续获取正文', async () => {
+//     const api = makeApiClient()
+//     api.request.mockImplementation(async () => {
+//       auth.assertLease.mockImplementation(() => {
+//         throw new Error('stale')
+//       })
+//       return { kind: 'text', file_name: 'a.docx' }
+//     })
+//     await expect(
+//       makeService(api).preview({ baseId: encodeOrgId(/* 'space' */ codeSpaceId), fileId: encodeOrgId('f') })
+//     ).rejects.toMatchObject({
+//       code: E.ORGKB_UNAUTHORIZED
+//     })
+//     expect(api.requestText).not.toHaveBeenCalled()
+//   })
+//
+//   it('PDF 返回原文字节供应用内渲染，不透传会触发下载的预签名地址', async () => {
+//     const api = makeApiClient()
+//     api.request.mockResolvedValue({
+//       kind: 'inline',
+//       file_name: 'a.pdf',
+//       mime_type: 'application/pdf',
+//       url: 'https://storage.example/a.pdf?signature=test'
+//     })
+//     expect(await makeService(api).preview({ baseId: encodeOrgId(/* 'space' */ codeSpaceId), fileId: encodeOrgId('f') })).toMatchObject({
+//       kind: 'inline',
+//       mimeType: 'application/pdf',
+//       base64: Buffer.from('%PDF-1.7').toString('base64')
+//     })
+//     expect(api.requestBytes).toHaveBeenCalledWith('/api/kb/v1/files/f/preview')
+//   })
+//
+//   it.each(['javascript:alert(1)', 'file:///tmp/a.pdf', 'https://user:pass@storage.example/a.pdf'])(
+//     '拒绝不安全预览地址 %s',
+//     async (url) => {
+//       const api = makeApiClient()
+//       api.request.mockResolvedValue({ kind: 'inline', file_name: 'a.pdf', mime_type: 'application/pdf', url })
+//       await expect(
+//         makeService(api).preview({ baseId: encodeOrgId(/* 'space' */ codeSpaceId), fileId: encodeOrgId('f') })
+//       ).rejects.toThrow()
+//     }
+//   )
+//
+//   it('MIME 缺失时仅在 PDF 文件名与文件头一致后提供原文预览', async () => {
+//     const api = makeApiClient()
+//     api.request.mockResolvedValue({ kind: 'inline', file_name: '研究.PDF', mime_type: null })
+//     api.requestBytes.mockResolvedValue(Buffer.from('%PDF-1.7\n'))
+//     expect(await makeService(api).preview({ baseId: encodeOrgId(/* 'space' */ codeSpaceId), fileId: encodeOrgId('f') })).toMatchObject({
+//       kind: 'inline',
+//       mimeType: 'application/pdf',
+//       base64: Buffer.from('%PDF-1.7\n').toString('base64')
+//     })
+//   })
+//
+//   it.each([
+//     ['fake.pdf', '<html>not a PDF</html>'],
+//     ['wrong.png', '%PDF-1.7\n'],
+//     ['empty.pdf', '']
+//   ])('MIME 缺失且文件名与内容不符时不提供预览：%s', async (fileName, content) => {
+//     const api = makeApiClient()
+//     api.request.mockResolvedValue({ kind: 'inline', file_name: fileName, mime_type: null })
+//     api.requestBytes.mockResolvedValue(Buffer.from(content))
+//     const result = await makeService(api).preview({ baseId: encodeOrgId(/* 'space' */ codeSpaceId), fileId: encodeOrgId('f') })
+//     expect(result.mimeType).toBeNull()
+//     expect(result).not.toHaveProperty('base64')
+//   })
+//
+//   it('inline 预览不泄漏签名地址或将二进制当文本读取', async () => {
+//     const api = makeApiClient()
+//     api.request.mockResolvedValue({
+//       kind: 'inline',
+//       file_name: 'a.pdf',
+//       mime_type: 'application/pdf',
+//       // url: 'https://signed/f'
+//       url: null
+//     })
+//     expect(await makeService(api).preview({ baseId: encodeOrgId(/* 'space' */ codeSpaceId), fileId: encodeOrgId('f') })).toEqual({
+//       kind: 'inline',
+//       fileName: 'a.pdf',
+//       mimeType: 'application/pdf',
+//       content: '',
+//       base64: Buffer.from('%PDF-1.7').toString('base64')
+//     })
+//     expect(api.requestBytes).toHaveBeenCalledWith('/api/kb/v1/files/f/preview')
+//     expect(api.requestText).not.toHaveBeenCalled()
+//   })
+//
+//   it('拒绝直接服务调用中超过30天的邀请且不发请求', async () => {
+//     const api = makeApiClient()
+//     await expect(
+//       makeService(api).invite({ baseId: encodeOrgId('s'), userId: 1, expireDays: 31 })
+//     ).rejects.toMatchObject({ code: E.ORGKB_BAD_INPUT })
+//     expect(api.request).not.toHaveBeenCalled()
+//   })
+//
+//   it('preview fetches content server-side without exposing the URL', async () => {
+//     const api = makeApiClient()
+//     api.request.mockResolvedValue({
+//       kind: 'text',
+//       url: 'https://signed/f',
+//       file_name: 'a.txt',
+//       mime_type: 'text/plain'
+//     })
+//     vi.mocked(api.requestText).mockResolvedValue('hello')
+//     const svc = makeService(api)
+//     const preview = await svc.preview({ baseId: encodeOrgId(/* 'space' */ codeSpaceId), fileId: encodeOrgId('f-1') })
+//     expect(preview.content).toBe('hello')
+//     expect(preview.kind).toBe('text')
+//     expect((preview as Record<string, unknown>).url).toBeUndefined()
+//     vi.unstubAllGlobals()
+//   })
+// })
+//
 describe('OrgKnowledgeService catalog/items', () => {
-  it.each([false, undefined])('原件能力%j时直接preview也禁止读取内容', async (hasOriginal) => {
-    const api = makeApiClient()
-    const service = makeService(api)
-    vi.mocked((service as any).client.getFile).mockResolvedValue({
-      id: 'f',
-      space_id: 'space',
-      is_dir: false,
-      has_original_file: hasOriginal
-    })
-    await expect(service.preview({ fileId: encodeOrgId('f') })).rejects.toThrow('原件不可用')
-    expect(api.requestText).not.toHaveBeenCalled()
-    expect(api.requestBytes).not.toHaveBeenCalled()
-    service.dispose()
+  const baseId = encodeOrgId(codeSpaceId)
+  const fileId = encodeOrgId(javaFileId)
+  function setup() {
+    const api = makeJavaApi()
+    return { api, java: api.javaKnowledge, svc: makeJavaService(api) }
+  }
+
+  it.each([false, undefined])('原件能力%j时直接preview也禁止读取内容', async (hasOriginalFile) => {
+    const { java, svc } = setup()
+    java.getFile.mockResolvedValue({ ...javaFile, hasOriginalFile })
+    await expect(svc.preview({ baseId, fileId })).rejects.toMatchObject({ code: E.ORGKB_FORBIDDEN })
+    expect(java.preview).not.toHaveBeenCalled()
+    expect(java.read).not.toHaveBeenCalled()
   })
+
   it('未完成首传的云端副本不能标记为已分享，仍保留本地关联供恢复', async () => {
-    vi.mocked(orgStateStore.getShareAssociations).mockReturnValueOnce({
-      [JSON.stringify(['server-1', 'u', 'g', 'local-1'])]: {
-        shareId: 's1',
+    vi.mocked(orgStateStore.getShareAssociations).mockReturnValue({
+      [JSON.stringify([lease.issuerId, lease.userId, lease.groupId, 'local-1'])]: {
+        shareId: codeSpaceId,
         completion: 'incomplete',
         files: []
       }
     })
-    const api = makeApiClient()
-    api.request.mockResolvedValue({ public: [], shared: [], owned: [{ id: 's1', name: '上传失败' }] })
-    const result = await makeService(api).catalog()
-    expect(result.owned[0]).toMatchObject({ localBaseId: 'local-1', shareCompleted: false })
+    const { svc } = setup()
+    expect((await svc.catalog()).owned[0]).toMatchObject({ localBaseId: 'local-1', shareCompleted: false })
   })
+
   it('目录只返回当前身份上下文的本地关联，不按名称匹配', async () => {
-    vi.mocked(orgStateStore.getShareAssociations).mockReturnValueOnce({
-      [JSON.stringify(['server-1', 'u', 'g', 'local-1'])]: { shareId: 's1', completion: 'completed', files: [] },
-      [JSON.stringify(['server-1', 'other', 'g', 'local-2'])]: { shareId: 's2', completion: 'completed', files: [] }
+    vi.mocked(orgStateStore.getShareAssociations).mockReturnValue({
+      [JSON.stringify([lease.issuerId, lease.userId, lease.groupId, 'local-1'])]: {
+        shareId: codeSpaceId,
+        completion: 'completed',
+        files: []
+      },
+      [JSON.stringify([lease.issuerId, 'other', lease.groupId, 'local-2'])]: {
+        shareId: javaOtherId,
+        completion: 'completed',
+        files: []
+      }
     })
-    const api = makeApiClient()
-    api.request.mockResolvedValue({
-      public: [],
-      shared: [],
-      owned: [
-        { id: 's1', name: '同名' },
-        { id: 's2', name: '同名' }
-      ]
-    })
-    const result = await makeService(api).catalog()
+    const { java, svc } = setup()
+    java.getCatalog.mockResolvedValue([javaSpace, { ...javaSpace, id: javaOtherId }])
+    const result = await svc.catalog()
     expect(result.owned[0].localBaseId).toBe('local-1')
     expect(result.owned[1].localBaseId).toBeUndefined()
   })
+
   it('encodes server ids into orgkb: ids', async () => {
-    const api = makeApiClient()
-    api.request.mockResolvedValue({
-      public: [],
-      shared: [],
-      owned: [{ id: 'space-1', name: 'Owned', description: null, document_count: 3 }]
-    })
-    const svc = makeService(api)
-    const catalog = await svc.catalog()
-    expect(catalog.owned[0].id.startsWith('orgkb:')).toBe(true)
-    expect(catalog.owned[0].documentCount).toBe(3)
+    const { svc } = setup()
+    expect((await svc.catalog()).owned[0]).toMatchObject({ id: baseId, name: '副本' })
+    // Java 目录没有 document_count，不再伪造文档总数。
+    expect((await svc.catalog()).owned[0].documentCount).toBeUndefined()
   })
 
   it('listItems rejects non-orgkb id with BAD_INPUT', async () => {
-    const svc = makeService(makeApiClient())
+    const { java, svc } = setup()
     await expect(svc.listItems('not-orgkb')).rejects.toBeInstanceOf(OrgKnowledgeError)
     await expect(svc.listItems('not-orgkb')).rejects.toMatchObject({ code: E.ORGKB_BAD_INPUT })
+    expect(java.listFiles).not.toHaveBeenCalled()
   })
 
   it('listItems decodes and re-encodes, mapping field names', async () => {
-    const api = makeApiClient()
-    const rawBase = 'space-9'
-    api.request.mockResolvedValue({
+    const { java, svc } = setup()
+    const page = await svc.listItems(baseId)
+    expect(page).toEqual({
       items: [
         {
-          id: 'it-1',
-          base_id: rawBase,
-          group_id: null,
-          error: null,
-          data: { source: 'a.txt', file_id: 'source-file' },
+          id: fileId,
+          baseId,
           type: 'file',
           title: 'T',
           status: 'completed',
-          document_id: 'doc-1',
-          created_at: '2026-10-15T00:00:00Z',
-          updated_at: '2026-10-15T00:00:00Z'
+          parentId: null,
+          documentId: fileId,
+          hasOriginalFile: true,
+          fileId,
+          createdAt: javaSpace.createTime,
+          updatedAt: javaSpace.updateTime
         }
       ],
-      total: 1
+      total: 1,
+      nextCursor: null
     })
-    const svc = makeService(api)
-    vi.mocked((svc as any).client.getFile).mockResolvedValue({
-      id: 'source-file',
-      space_id: rawBase,
-      name: 'T',
-      is_dir: false,
-      has_original_file: true
+    expect(java.listFiles).toHaveBeenCalledExactlyOnceWith(codeSpaceId, { page: 1 })
+  })
+
+  it('listItems 保留目录层级和处理中状态，按服务端分页计算下一页', async () => {
+    const { java, svc } = setup()
+    java.listFiles.mockResolvedValue({
+      items: [
+        { ...javaFile, directory: true, hasOriginalFile: false },
+        { ...javaFile, fileId: javaOtherId, parentId: javaFileId, parseStatus: 'processing' }
+      ],
+      total: 5,
+      page: 2,
+      pageSize: 2
     })
-    const page = await svc.listItems(encodeOrgId(rawBase))
-    expect(page.items[0].id.startsWith('orgkb:')).toBe(true)
-    expect(page.items[0].documentId?.startsWith('orgkb:')).toBe(true)
-    expect(page.items[0].title).toBe('T')
-    expect(page.items[0].fileId).toBe(encodeOrgId('source-file'))
+    const page = await svc.listItems(baseId, '2')
+    expect(page).toMatchObject({ total: 5, nextCursor: '3' })
+    expect(page.items).toMatchObject([
+      { id: fileId, type: 'directory', documentId: null, hasOriginalFile: false, status: 'completed' },
+      { id: encodeOrgId(javaOtherId), type: 'file', parentId: fileId, status: 'processing' }
+    ])
+    expect(java.listFiles).toHaveBeenCalledExactlyOnceWith(codeSpaceId, { page: 2 })
   })
 
   it('缺少显式映射时仅接受文件接口确认的同一标识', async () => {
-    const api = makeApiClient()
-    api.request
-      .mockResolvedValueOnce({
-        items: [
-          {
-            id: 'item',
-            base_id: 'base',
-            group_id: null,
-            type: 'file',
-            title: '文件',
-            status: 'completed',
-            error: null,
-            document_id: 'doc',
-            data: { source: 'a.pdf' },
-            created_at: '2026-10-15T00:00:00Z',
-            updated_at: '2026-10-15T00:00:00Z'
-          }
-        ],
-        total: 1
-      })
-      .mockResolvedValueOnce({ id: 'doc', is_dir: false })
-      .mockResolvedValueOnce({ id: 'doc', space_id: 'base', name: '文件', is_dir: false, has_original_file: true })
-    const page = await makeService(api).listItems(encodeOrgId('base'))
-    expect(page.items[0].fileId).toBe(encodeOrgId('doc'))
-    expect(api.request).toHaveBeenLastCalledWith('/api/kb/v1/files/doc', { signal: expect.any(AbortSignal) })
+    const { java, svc } = setup()
+    // Java 文件列表即权威文件 VO，无旧 item/document/file 二次解析。
+    expect((await svc.listItems(baseId)).items[0]).toMatchObject({ id: fileId, documentId: fileId, fileId })
+    expect(java.getFile).not.toHaveBeenCalled()
   })
 
-  it.each(['explicit', 'resolved'])('列表从真实文件补原件能力：%s 映射', async (mapping) => {
-    const api = makeApiClient()
-    const svc = makeService(api)
-    const client = (svc as any).client
-    vi.spyOn(client, 'listItems').mockResolvedValue({
-      items: [
-        {
-          id: 'item',
-          base_id: 'base',
-          type: 'file',
-          title: '文件',
-          document_id: 'doc',
-          data: mapping === 'explicit' ? { file_id: 'source' } : {},
-          status: 'completed'
-        }
-      ],
-      total: 1
+  it.each([true, false])('列表保留权威文件原件能力：%s', async (hasOriginalFile) => {
+    const { java, svc } = setup()
+    java.listFiles.mockResolvedValue({
+      items: [{ ...javaFile, hasOriginalFile }],
+      total: 1,
+      page: 1,
+      pageSize: 20
     })
-    vi.spyOn(client, 'resolveFileId').mockResolvedValue('source')
-    vi.mocked(client.getFile).mockResolvedValue({
-      id: 'source',
-      space_id: 'base',
-      is_dir: false,
-      has_original_file: true
-    })
-    const page = await svc.listItems(encodeOrgId('base'))
-    expect(page.items[0]).toMatchObject({ fileId: encodeOrgId('source'), hasOriginalFile: true })
-    expect(client.getFile).toHaveBeenCalledWith('source')
-    svc.dispose()
+    expect((await svc.listItems(baseId)).items[0]).toMatchObject({ fileId, hasOriginalFile })
   })
 
   it.each(['id', 'space', 'directory', 'item-space', 'false', 'missing'])(
     '列表不信任条目原件能力且拒绝不匹配文件：%s',
-    async (mismatch) => {
-      const svc = makeService(makeApiClient())
-      const client = (svc as any).client
-      vi.spyOn(client, 'listItems').mockResolvedValue({
-        items: [
-          {
-            id: 'item',
-            base_id: mismatch === 'item-space' ? 'other' : 'base',
-            type: 'file',
-            title: '文件',
-            document_id: 'doc',
-            data: { file_id: 'source' },
-            has_original_file: true,
-            status: 'completed'
-          }
-        ],
-        total: 1
-      })
-      vi.mocked(client.getFile).mockResolvedValue({
-        id: mismatch === 'id' ? 'other' : 'source',
-        space_id: mismatch === 'space' ? 'other' : 'base',
-        is_dir: mismatch === 'directory',
-        has_original_file: mismatch === 'missing' ? undefined : mismatch !== 'false'
-      })
-      const item = (await svc.listItems(encodeOrgId('base'))).items[0]
-      expect(item.hasOriginalFile).not.toBe(true)
-      if (!['false', 'missing'].includes(mismatch)) expect(item.fileId).toBeNull()
-      svc.dispose()
+    async (mode) => {
+      const { java, svc } = setup()
+      // Java 客户端负责归属协议校验；服务不再吞掉权威列表错误。
+      if (['false', 'missing', 'directory'].includes(mode)) {
+        java.listFiles.mockResolvedValue({
+          items: [
+            {
+              ...javaFile,
+              directory: mode === 'directory',
+              hasOriginalFile: mode === 'missing' ? undefined : false
+            }
+          ],
+          total: 1,
+          page: 1,
+          pageSize: 20
+        })
+        expect((await svc.listItems(baseId)).items[0].hasOriginalFile).toBe(false)
+        if (mode === 'directory') expect((await svc.listItems(baseId)).items[0].documentId).toBeNull()
+      } else {
+        const error = new JavaKnowledgeError(422, '文件归属不匹配')
+        java.listFiles.mockRejectedValue(error)
+        await expect(svc.listItems(baseId)).rejects.toBe(error)
+      }
+      expect(java.getFile).not.toHaveBeenCalled()
     }
   )
 
-  it.each([403, 404, 422, 500, 'protocol'] as const)(
-    '附加文件查询失败仍返回已授权列表且能力保持未知：%s',
-    async (failure) => {
-      const api = makeApiClient()
-      const svc = makeService(api)
-      const item = (id: string) => ({
-        id,
-        base_id: 'base',
-        group_id: null,
-        type: 'file',
-        title: id,
-        status: 'completed',
-        error: null,
-        document_id: `document-${id}`,
-        data: { file_id: id, has_original_file: true },
-        created_at: '2026-10-15T00:00:00Z',
-        updated_at: '2026-10-15T00:00:00Z'
-      })
-      api.request.mockImplementation(async (path: string) => {
-        if (path.includes('/items')) return { items: [item('bad'), item('good')], total: 2, next_cursor: 'page-2' }
-        if (path.endsWith('/bad')) {
-          if (failure !== 'protocol') throw new OrgApiHttpError(failure, '文件元信息不可用')
-          return { id: 'bad', space_id: 'base', name: 'bad', is_dir: false, parse_status: 2 }
-        }
-        return { id: 'good', space_id: 'base', name: 'good', is_dir: false, has_original_file: true }
-      })
-      const page = await svc.listItems(encodeOrgId('base'))
-      expect(page.total).toBe(2)
-      expect(page.nextCursor).toBe('page-2')
-      expect(page.items[0]).toMatchObject({ title: 'bad', fileId: null })
-      expect(page.items[0].hasOriginalFile).toBeUndefined()
-      expect(page.items[1]).toMatchObject({ fileId: encodeOrgId('good'), hasOriginalFile: true })
-      svc.dispose()
-    }
-  )
+  it.each([403, 404, 422, 500, 'protocol'] as const)('权威文件列表失败不伪造已授权目录：%s', async (failure) => {
+    const { java, svc } = setup()
+    // 旧附加查询已经合并到 Java listFiles，失败必须阻断，不能伪造能力。
+    const error = new JavaKnowledgeError(failure === 'protocol' ? 422 : failure, '文件元信息不可用')
+    java.listFiles.mockRejectedValue(error)
+    await expect(svc.listItems(baseId)).rejects.toBe(error)
+  })
 
   it.each(['list-forbidden', 'file-unauthorized', 'lease', 'unexpected'])(
     '列表及身份错误保持阻断：%s',
     async (failure) => {
-      const api = makeApiClient()
-      const svc = makeService(api)
-      const error = failure === 'unexpected' ? new Error('unexpected') : new OrgApiHttpError(401, '会话失效')
-      api.request.mockImplementation(async (path: string) => {
-        if (failure === 'list-forbidden') throw new OrgApiHttpError(403, '列表无权限')
-        if (path.includes('/items'))
-          return {
-            items: [
-              {
-                id: 'item',
-                base_id: 'base',
-                group_id: null,
-                type: 'file',
-                title: '文件',
-                status: 'completed',
-                error: null,
-                document_id: 'doc',
-                data: { file_id: 'source' },
-                created_at: '2026-10-15T00:00:00Z',
-                updated_at: '2026-10-15T00:00:00Z'
-              }
-            ],
-            total: 1
-          }
+      const { java, svc } = setup()
+      const error =
+        failure === 'unexpected'
+          ? new Error('unexpected')
+          : new JavaKnowledgeError(failure === 'list-forbidden' ? 403 : 10008, '无权限')
+      java.listFiles.mockImplementation(async () => {
         if (failure === 'lease')
           auth.assertLease.mockImplementation(() => {
             throw new Error('stale')
           })
         throw error
       })
-      if (failure === 'lease')
-        await expect(svc.listItems(encodeOrgId('base'))).rejects.toMatchObject({ code: E.ORGKB_UNAUTHORIZED })
-      else if (failure === 'list-forbidden')
-        await expect(svc.listItems(encodeOrgId('base'))).rejects.toMatchObject({ status: 403 })
-      else await expect(svc.listItems(encodeOrgId('base'))).rejects.toBe(error)
-      svc.dispose()
+      if (failure === 'lease') await expect(svc.listItems(baseId)).rejects.toMatchObject({ code: E.ORGKB_UNAUTHORIZED })
+      else await expect(svc.listItems(baseId)).rejects.toBe(error)
     }
   )
 
-  it('inline HTML 仅回传纯文本，不作为可执行预览', async () => {
-    const api = makeApiClient()
-    api.request.mockResolvedValue({ kind: 'inline', file_name: 'a.html', mime_type: 'text/html; charset=utf-8' })
-    api.requestText.mockResolvedValue('<script>alert(1)</script>')
-    expect(await makeService(api).preview({ fileId: encodeOrgId('f') })).toMatchObject({
-      kind: 'text',
-      content: '<script>alert(1)</script>'
-    })
-    expect(api.requestBytes).not.toHaveBeenCalled()
-  })
-
-  it('不获取不受支持的活动图片类型', async () => {
-    const api = makeApiClient()
-    api.request.mockResolvedValue({ kind: 'inline', file_name: 'a.svg', mime_type: 'image/svg+xml' })
-    expect(await makeService(api).preview({ fileId: encodeOrgId('f') })).not.toHaveProperty('base64')
-    expect(api.requestBytes).not.toHaveBeenCalled()
-  })
-
   it('账号切换后丢弃已到达的目录响应', async () => {
-    const api = makeApiClient()
-    vi.mocked(api.request).mockImplementation(async () => {
+    const { java, svc } = setup()
+    java.getCatalog.mockImplementation(async () => {
       auth.assertLease.mockImplementation(() => {
         throw new Error('stale')
       })
-      return { public: [], shared: [], owned: [] }
+      return [javaSpace]
     })
-    await expect(makeService(api).catalog()).rejects.toMatchObject({ code: E.ORGKB_UNAUTHORIZED })
+    await expect(svc.catalog()).rejects.toMatchObject({ code: E.ORGKB_UNAUTHORIZED })
+  })
+
+  function previewSetup(
+    name: string,
+    contentType: string | null | undefined,
+    content = '可阅读正文 <script>不执行</script>'
+  ) {
+    const built = setup()
+    built.java.getFile.mockResolvedValue({ ...javaFile, name, mimeType: null })
+    built.java.preview.mockResolvedValue({ bytes: Buffer.from(content), contentType })
+    built.java.read.mockResolvedValue({ knowledgeId: codeSpaceId, fileId: javaFileId, content })
+    return { ...built, preview: () => built.svc.preview({ baseId, fileId }) }
+  }
+
+  it('inline HTML 仅回传纯文本，不作为可执行预览', async () => {
+    const s = previewSetup('a.html', 'text/html; charset=utf-8', '<script>alert(1)</script>')
+    expect(await s.preview()).toMatchObject({ kind: 'text', content: '<script>alert(1)</script>' })
+    expect(await s.preview()).not.toHaveProperty('base64')
+  })
+
+  it('不获取不受支持的活动图片类型', async () => {
+    const s = previewSetup('a.svg', 'image/svg+xml')
+    expect(await s.preview()).not.toHaveProperty('base64')
+    expect(s.java.read).toHaveBeenCalledWith(codeSpaceId, javaFileId)
   })
 
   it('text 预览调用鉴权 preview 接口，不依赖签名 URL', async () => {
-    const api = makeApiClient()
-    vi.mocked(api.request).mockResolvedValue({ kind: 'text', file_name: 'a.docx' })
-    vi.mocked(api.requestText).mockResolvedValue('解析正文')
-    expect(await makeService(api).preview({ fileId: encodeOrgId('f:1') })).toMatchObject({ content: '解析正文' })
-    expect(api.requestText).toHaveBeenCalledWith('/api/kb/v1/files/f%3A1/preview')
+    const s = previewSetup('a.txt', 'text/plain', '解析正文')
+    expect(await s.preview()).toMatchObject({ kind: 'text', content: '解析正文' })
+    expect(s.java.preview).toHaveBeenCalledExactlyOnceWith(codeSpaceId, javaFileId)
+    expect(s.api.requestText).not.toHaveBeenCalled()
   })
 
   it.each([
@@ -2368,95 +3700,70 @@ describe('OrgKnowledgeService catalog/items', () => {
     ['说明.MD', 'application/octet-stream'],
     ['说明.markdown', undefined],
     ['说明', 'application/markdown']
-  ])('Markdown 原件在 MIME 缺失或非 text 类型时仍可预览：%s / %s', async (fileName, mimeType) => {
-    const api = makeApiClient()
-    api.request.mockResolvedValue({ kind: 'inline', file_name: fileName, mime_type: mimeType })
-    api.requestText.mockResolvedValue('# 云端文档\n\n正文内容')
-
-    await expect(makeService(api).preview({ fileId: encodeOrgId('f') })).resolves.toMatchObject({
-      kind: 'text',
-      fileName,
-      content: '# 云端文档\n\n正文内容'
-    })
-    expect(api.requestText).toHaveBeenCalledWith('/api/kb/v1/files/f/preview')
+  ])('Markdown 原件在 MIME 缺失或非 text 类型时仍可预览：%s / %s', async (name, mime) => {
+    // const s = previewSetup(name!, mime, '# 云端文档\n\n正文内容')
+    const s = previewSetup(name, mime, '# 云端文档\n\n正文内容')
+    expect(await s.preview()).toMatchObject({ kind: 'text', fileName: name, content: '# 云端文档\n\n正文内容' })
   })
 
   it.each(['txt', 'mdx', 'csv', 'html', 'htm', 'epub', 'draftsexport'])(
     '上传范围内的 %s 在通用二进制 MIME 下仍提供文本预览',
-    async (extension) => {
-      const api = makeApiClient()
-      api.request.mockResolvedValue({
-        kind: 'inline',
-        file_name: `资料.${extension.toUpperCase()}`,
-        mime_type: 'application/octet-stream'
-      })
-      api.requestText.mockResolvedValue('可阅读正文 <script>不执行</script>')
-      await expect(makeService(api).preview({ fileId: encodeOrgId('f') })).resolves.toMatchObject({
-        kind: 'text',
-        content: '可阅读正文 <script>不执行</script>'
-      })
+    async (ext) => {
+      const s = previewSetup(`资料.${ext.toUpperCase()}`, 'application/octet-stream')
+      expect(await s.preview()).toMatchObject({ kind: 'text', content: '可阅读正文 <script>不执行</script>' })
     }
   )
 
   it.each(['%PDF-1.7\n', '<html>伪装 PDF</html>'])('PDF 通用二进制 MIME 必须核对文件头：%s', async (content) => {
-    const api = makeApiClient()
-    api.request.mockResolvedValue({ kind: 'inline', file_name: '资料.PDF', mime_type: 'application/octet-stream' })
-    api.requestBytes.mockResolvedValue(Buffer.from(content))
-    const result = await makeService(api).preview({ fileId: encodeOrgId('f') })
+    const s = previewSetup('资料.PDF', 'application/octet-stream', content)
     if (content.startsWith('%PDF-'))
-      expect(result).toMatchObject({
+      expect(await s.preview()).toMatchObject({
         kind: 'inline',
         mimeType: 'application/pdf',
         base64: Buffer.from(content).toString('base64')
       })
-    else expect(result).not.toHaveProperty('base64')
-    expect(api.requestText).not.toHaveBeenCalled()
+    else expect(await s.preview()).not.toHaveProperty('base64')
+    expect(s.api.requestText).not.toHaveBeenCalled()
   })
 
   it('预览元信息到达后切号，不继续获取正文', async () => {
-    const api = makeApiClient()
-    api.request.mockImplementation(async () => {
+    const s = previewSetup('a.txt', 'text/plain')
+    s.java.getFile.mockImplementation(async () => {
       auth.assertLease.mockImplementation(() => {
         throw new Error('stale')
       })
-      return { kind: 'text', file_name: 'a.docx' }
+      return javaFile
     })
-    await expect(makeService(api).preview({ fileId: encodeOrgId('f') })).rejects.toMatchObject({
-      code: E.ORGKB_UNAUTHORIZED
-    })
-    expect(api.requestText).not.toHaveBeenCalled()
+    await expect(s.preview()).rejects.toMatchObject({ code: E.ORGKB_UNAUTHORIZED })
+    expect(s.java.preview).not.toHaveBeenCalled()
+    expect(s.java.read).not.toHaveBeenCalled()
   })
 
   it('PDF 返回原文字节供应用内渲染，不透传会触发下载的预签名地址', async () => {
-    const api = makeApiClient()
-    api.request.mockResolvedValue({
+    const s = previewSetup('a.pdf', 'application/pdf', '%PDF-1.7')
+    expect(await s.preview()).toEqual({
       kind: 'inline',
-      file_name: 'a.pdf',
-      mime_type: 'application/pdf',
-      url: 'https://storage.example/a.pdf?signature=test'
-    })
-    expect(await makeService(api).preview({ fileId: encodeOrgId('f') })).toMatchObject({
-      kind: 'inline',
+      fileName: 'a.pdf',
       mimeType: 'application/pdf',
+      content: '',
       base64: Buffer.from('%PDF-1.7').toString('base64')
     })
-    expect(api.requestBytes).toHaveBeenCalledWith('/api/kb/v1/files/f/preview')
+    expect(s.api.requestBytes).not.toHaveBeenCalled()
   })
 
   it.each(['javascript:alert(1)', 'file:///tmp/a.pdf', 'https://user:pass@storage.example/a.pdf'])(
-    '拒绝不安全预览地址 %s',
+    '不消费旧协议的不安全预览地址 %s',
     async (url) => {
-      const api = makeApiClient()
-      api.request.mockResolvedValue({ kind: 'inline', file_name: 'a.pdf', mime_type: 'application/pdf', url })
-      await expect(makeService(api).preview({ fileId: encodeOrgId('f') })).rejects.toThrow()
+      const s = previewSetup('a.pdf', 'application/pdf', '%PDF-1.7')
+      s.java.preview.mockResolvedValue({ bytes: Buffer.from('%PDF-1.7'), contentType: 'application/pdf', url })
+      expect(await s.preview()).not.toHaveProperty('url')
+      expect(s.api.request).not.toHaveBeenCalled()
     }
   )
 
   it('MIME 缺失时仅在 PDF 文件名与文件头一致后提供原文预览', async () => {
-    const api = makeApiClient()
-    api.request.mockResolvedValue({ kind: 'inline', file_name: '研究.PDF', mime_type: null })
-    api.requestBytes.mockResolvedValue(Buffer.from('%PDF-1.7\n'))
-    expect(await makeService(api).preview({ fileId: encodeOrgId('f') })).toMatchObject({
+    const s = previewSetup('研究.PDF', null, '%PDF-1.7\n')
+    expect(await s.preview()).toMatchObject({
       kind: 'inline',
       mimeType: 'application/pdf',
       base64: Buffer.from('%PDF-1.7\n').toString('base64')
@@ -2467,71 +3774,276 @@ describe('OrgKnowledgeService catalog/items', () => {
     ['fake.pdf', '<html>not a PDF</html>'],
     ['wrong.png', '%PDF-1.7\n'],
     ['empty.pdf', '']
-  ])('MIME 缺失且文件名与内容不符时不提供预览：%s', async (fileName, content) => {
-    const api = makeApiClient()
-    api.request.mockResolvedValue({ kind: 'inline', file_name: fileName, mime_type: null })
-    api.requestBytes.mockResolvedValue(Buffer.from(content))
-    const result = await makeService(api).preview({ fileId: encodeOrgId('f') })
-    expect(result.mimeType).toBeNull()
-    expect(result).not.toHaveProperty('base64')
+  ])('文件名与字节不一致时不提供二进制预览：%s', async (name, content) => {
+    expect(await previewSetup(name, null, content).preview()).not.toHaveProperty('base64')
   })
 
   it('inline 预览不泄漏签名地址或将二进制当文本读取', async () => {
-    const api = makeApiClient()
-    api.request.mockResolvedValue({
-      kind: 'inline',
-      file_name: 'a.pdf',
-      mime_type: 'application/pdf',
-      // url: 'https://signed/f'
-      url: null
-    })
-    expect(await makeService(api).preview({ fileId: encodeOrgId('f') })).toEqual({
-      kind: 'inline',
-      fileName: 'a.pdf',
-      mimeType: 'application/pdf',
-      content: '',
-      base64: Buffer.from('%PDF-1.7').toString('base64')
-    })
-    expect(api.requestBytes).toHaveBeenCalledWith('/api/kb/v1/files/f/preview')
-    expect(api.requestText).not.toHaveBeenCalled()
+    const s = previewSetup('a.pdf', 'application/pdf', '%PDF-1.7')
+    expect(await s.preview()).not.toHaveProperty('url')
+    expect(s.java.read).not.toHaveBeenCalled()
+    expect(s.api.requestText).not.toHaveBeenCalled()
   })
 
   it('拒绝直接服务调用中超过30天的邀请且不发请求', async () => {
-    const api = makeApiClient()
-    await expect(
-      makeService(api).invite({ baseId: encodeOrgId('s'), userId: 1, expireDays: 31 })
-    ).rejects.toMatchObject({ code: E.ORGKB_BAD_INPUT })
-    expect(api.request).not.toHaveBeenCalled()
+    const { java, svc } = setup()
+    await expect(svc.invite({ baseId, userId: 1, expireDays: 31 })).rejects.toMatchObject({ code: E.ORGKB_BAD_INPUT })
+    expect(java.getCatalog).not.toHaveBeenCalled()
+    expect(java.addMember).not.toHaveBeenCalled()
   })
 
   it('preview fetches content server-side without exposing the URL', async () => {
-    const api = makeApiClient()
-    api.request.mockResolvedValue({
-      kind: 'text',
-      url: 'https://signed/f',
-      file_name: 'a.txt',
-      mime_type: 'text/plain'
-    })
-    vi.mocked(api.requestText).mockResolvedValue('hello')
-    const svc = makeService(api)
-    const preview = await svc.preview({ fileId: encodeOrgId('f-1') })
-    expect(preview.content).toBe('hello')
-    expect(preview.kind).toBe('text')
-    expect((preview as Record<string, unknown>).url).toBeUndefined()
-    vi.unstubAllGlobals()
+    const s = previewSetup('a.txt', 'text/plain', 'hello')
+    const result = await s.preview()
+    expect(result).toMatchObject({ kind: 'text', content: 'hello' })
+    expect(result).not.toHaveProperty('url')
+    expect(s.api.request).not.toHaveBeenCalled()
   })
+})
+
+describe('OrgKnowledgeService chunks/search/read/shares/members/invitations', () => {
+  const baseId = encodeOrgId(codeSpaceId)
+  const documentId = encodeOrgId(javaFileId)
+  const chunkId = encodeOrgId(javaChunkId)
+  const invitationId = encodeOrgId(javaOtherId)
+  function setup() {
+    const api = makeJavaApi()
+    return { api, java: api.javaKnowledge, svc: makeJavaService(api) }
+  }
+
+  it('chunks 编码文件及分块 ID，保留索引并按服务端页大小计算游标', async () => {
+    const { java, svc } = setup()
+    java.listChunks.mockResolvedValue({
+      items: [{ knowledgeId: codeSpaceId, fileId: javaFileId, chunkId: javaChunkId, chunkIndex: 0, content: '正文' }],
+      total: 3,
+      page: 1,
+      pageSize: 1
+    })
+    expect(await svc.listChunks(baseId, documentId)).toEqual({
+      chunks: [
+        { id: chunkId, itemId: documentId, documentId, content: '正文', chunkIndex: 0, metadata: { chunkIndex: 0 } }
+      ],
+      total: 3,
+      nextCursor: '2'
+    })
+    expect(java.listChunks).toHaveBeenCalledExactlyOnceWith(codeSpaceId, javaFileId, 1)
+  })
+
+  it.each([null, undefined])('chunks 缺少索引 %j 时拒绝伪造顺序', async (chunkIndex) => {
+    const { java, svc } = setup()
+    java.listChunks.mockResolvedValue({
+      items: [{ knowledgeId: codeSpaceId, fileId: javaFileId, chunkId: javaChunkId, chunkIndex, content: '正文' }],
+      total: 1,
+      page: 1,
+      pageSize: 20
+    })
+    await expect(svc.listChunks(baseId, documentId)).rejects.toMatchObject({ code: E.ORGKB_PROTOCOL })
+  })
+
+  it.each(['0', '-1', 'not-page', '1.5'])('items/chunks 非法分页 %s 不发送请求', async (cursor) => {
+    const { java, svc } = setup()
+    await expect(svc.listItems(baseId, cursor)).rejects.toMatchObject({ code: E.ORGKB_BAD_INPUT })
+    await expect(svc.listChunks(baseId, documentId, cursor)).rejects.toMatchObject({ code: E.ORGKB_BAD_INPUT })
+    expect(java.listFiles).not.toHaveBeenCalled()
+    expect(java.listChunks).not.toHaveBeenCalled()
+  })
+
+  it('search 编解码空间/文件/分块并透传检索选项，保留零分', async () => {
+    const { java, svc } = setup()
+    java.search.mockResolvedValue({
+      hits: [
+        {
+          knowledgeId: codeSpaceId,
+          fileId: javaFileId,
+          chunkId: javaChunkId,
+          title: null,
+          content: '命中正文',
+          score: 0
+        }
+      ]
+    })
+    expect(await svc.search({ baseIds: [baseId], query: '关键词', topK: 3, rerank: false })).toEqual({
+      chunks: [{ baseId, documentId, chunkId, title: '', content: '命中正文', score: 0 }]
+    })
+    expect(java.search).toHaveBeenCalledExactlyOnceWith({
+      knowledgeIds: [codeSpaceId],
+      query: '关键词',
+      topK: 3,
+      rerank: false
+    })
+  })
+
+  it.each(['knowledgeId', 'fileId', 'chunkId', 'score'])('search 缺少 %s 不伪造检索命中', async (field) => {
+    const { java, svc } = setup()
+    java.search.mockResolvedValue({
+      hits: [
+        {
+          knowledgeId: codeSpaceId,
+          fileId: javaFileId,
+          chunkId: javaChunkId,
+          score: 0.7,
+          content: '命中',
+          [field]: null
+        }
+      ]
+    })
+    await expect(svc.search({ baseIds: [baseId], query: '关键词' })).rejects.toMatchObject({ code: E.ORGKB_PROTOCOL })
+  })
+
+  it.each([null, javaChunkId])('read 按真实文件与可选分块读取，不猜旧 document 映射：%s', async (rawChunk) => {
+    const { java, svc } = setup()
+    java.read.mockResolvedValue({
+      knowledgeId: codeSpaceId,
+      fileId: javaFileId,
+      content: '完整正文',
+      title: '标题',
+      totalChars: 100,
+      truncated: true
+    })
+    expect(await svc.read({ baseId, documentId, chunkId: rawChunk ? encodeOrgId(rawChunk) : null })).toEqual({
+      documentId,
+      title: '标题',
+      content: '完整正文',
+      totalChars: 100,
+      truncated: true
+    })
+    expect(java.read).toHaveBeenCalledExactlyOnceWith(codeSpaceId, javaFileId, rawChunk ?? undefined)
+  })
+
+  it('read 可选元信息缺失不虚构标题或总字符数', async () => {
+    const { svc } = setup()
+    expect(await svc.read({ baseId, documentId })).toEqual({
+      documentId,
+      title: '',
+      content: '解析正文',
+      totalChars: null,
+      truncated: false
+    })
+  })
+
+  it('shares 映射完整管理字段而不伪造旧 shareType', async () => {
+    const { java, api, svc } = setup()
+    java.listShares.mockResolvedValue([javaShare])
+    expect(await svc.shares({ baseId })).toEqual({
+      shares: [
+        {
+          id: encodeOrgId(javaShareId),
+          spaceId: baseId,
+          shareCode: 'AbCd_123',
+          hasPassword: true,
+          maxViews: null,
+          viewCount: 0,
+          expiresAt: null,
+          revokedAt: null,
+          createdAt: javaShare.createTime
+        }
+      ]
+    })
+    expect(java.listShares).toHaveBeenCalledExactlyOnceWith(codeSpaceId)
+    expect(api.request).not.toHaveBeenCalled()
+  })
+
+  it.each(['knowledgeId', 'shareId', 'shareCode', 'hasPassword', 'viewCount', 'createTime'])(
+    'shares 必需字段 %s 缺失或空间不符时拒绝输出',
+    async (field) => {
+      const { java, svc } = setup()
+      java.listShares.mockResolvedValue([{ ...javaShare, [field]: field === 'knowledgeId' ? javaOtherId : undefined }])
+      await expect(svc.shares({ baseId })).rejects.toMatchObject({ code: E.ORGKB_PROTOCOL })
+    }
+  )
+
+  it('members 保留服务端身份状态和过期时间，不伪造 joinedAt', async () => {
+    const { java, svc } = setup()
+    java.listMembers.mockResolvedValue([{ ...javaMember, status: 'active', expiresAt: '2099-01-01T00:00:00Z' }])
+    expect(await svc.members({ baseId })).toEqual({
+      members: [{ userId: 5, username: 'x', role: 'viewer', status: 'active', expiresAt: '2099-01-01T00:00:00Z' }]
+    })
+    expect(java.listMembers).toHaveBeenCalledExactlyOnceWith(codeSpaceId)
+  })
+
+  it('invitations 编码邀请与空间 ID，保留真实邀请人及期限', async () => {
+    const { java, svc } = setup()
+    java.listInvitations.mockResolvedValue([
+      { invitationId: javaOtherId, knowledgeId: codeSpaceId, name: '收到的库', inviterId: 9, expiresAt: null }
+    ])
+    expect(await svc.invitations()).toEqual({
+      invitations: [{ id: invitationId, spaceId: baseId, name: '收到的库', inviter: '9', expires: null }]
+    })
+  })
+
+  it('accept 使用解码邀请 ID 返回成员结果', async () => {
+    const { java, svc } = setup()
+    java.acceptInvitation.mockResolvedValue({ ...javaMember, status: 'active' })
+    expect(await svc.accept({ invitationId })).toEqual({
+      userId: 5,
+      username: 'x',
+      role: 'viewer',
+      status: 'active',
+      expiresAt: null
+    })
+    expect(java.acceptInvitation).toHaveBeenCalledExactlyOnceWith(javaOtherId, expect.any(Function))
+  })
+
+  it('decline 使用解码邀请 ID 并支持空响应', async () => {
+    const { java, svc } = setup()
+    expect(await svc.decline({ invitationId })).toEqual({ ok: true })
+    expect(java.declineInvitation).toHaveBeenCalledExactlyOnceWith(javaOtherId, expect.any(Function))
+  })
+
+  it('removeMember 使用真实空间与数值用户 ID 并支持空响应', async () => {
+    const { java, svc } = setup()
+    expect(await svc.removeMember({ baseId, userId: 5 })).toEqual({ ok: true })
+    expect(java.removeMember).toHaveBeenCalledExactlyOnceWith(codeSpaceId, 5, expect.any(Function))
+  })
+
+  it.each(['chunks', 'search', 'read', 'shares', 'members', 'invitations', 'accept', 'decline', 'removeMember'])(
+    '%s 请求返回期间切号不回传旧身份结果',
+    async (operation) => {
+      const { java, svc } = setup()
+      const stale = async () => {
+        auth.assertLease.mockImplementation(() => {
+          throw new Error('stale')
+        })
+        return []
+      }
+      const actions: Record<string, () => Promise<unknown>> = {
+        chunks: () => svc.listChunks(baseId, documentId),
+        search: () => svc.search({ baseIds: [baseId], query: 'q' }),
+        read: () => svc.read({ baseId, documentId }),
+        shares: () => svc.shares({ baseId }),
+        members: () => svc.members({ baseId }),
+        invitations: () => svc.invitations(),
+        accept: () => svc.accept({ invitationId }),
+        decline: () => svc.decline({ invitationId }),
+        removeMember: () => svc.removeMember({ baseId, userId: 5 })
+      }
+      const methods = {
+        chunks: java.listChunks,
+        search: java.search,
+        read: java.read,
+        shares: java.listShares,
+        members: java.listMembers,
+        invitations: java.listInvitations,
+        accept: java.acceptInvitation,
+        decline: java.declineInvitation,
+        removeMember: java.removeMember
+      }
+      methods[operation as keyof typeof methods].mockImplementation(stale)
+      await expect(actions[operation]()).rejects.toMatchObject({ code: E.ORGKB_UNAUTHORIZED })
+    }
+  )
 })
 
 describe('OrgKnowledgeService share', () => {
   it('注册不恢复的共享任务并通过 JobManager 返回已保存结果', async () => {
-    const result = { shareId: 'space', files: [], completion: 'completed' as const }
+    const result = { shareId: /* 'space' */ codeSpaceId, files: [], completion: 'completed' as const }
     vi.mocked(orgStateStore.getShareAssociation).mockReturnValue(result)
     const service = makeService(makeApiClient())
     expect(shareJobs.registerHandler).toHaveBeenLastCalledWith(
       'enterprise.knowledge-share',
       expect.objectContaining({ recovery: 'abandon', execute: expect.any(Function) })
     )
-    await expect(service.share('local-1')).resolves.toMatchObject({ shareId: encodeOrgId('space') })
+    await expect(service.share('local-1')).resolves.toMatchObject({ shareId: encodeOrgId(/* 'space' */ codeSpaceId) })
     expect(shareJobs.enqueue).not.toHaveBeenCalled()
   })
 
@@ -2589,9 +4101,16 @@ describe('OrgKnowledgeService share', () => {
       ]) as never
     )
     api.request.mockResolvedValue({ share_id: 'space' })
+    /* 旧请求回调在响应后取消；Java 桩先消费实际流，再在响应边界取消。
     api.requestMultipart.mockImplementation(async () => {
       controller.abort(new Error('已取消'))
       return { share_id: 'space', file_id: 'file', chunk_count: 1 }
+    })
+    */
+    api.javaKnowledge.uploadMultipart.mockImplementation(async (...args) => {
+      const result = await api.consumeUpload(...args)
+      controller.abort(new Error('已取消'))
+      return result
     })
     const handler = shareJobs.registerHandler.mock.calls.at(-1)![1]
     const ctx = {
@@ -2601,9 +4120,10 @@ describe('OrgKnowledgeService share', () => {
       reportProgress: vi.fn()
     }
     await expect(handler.execute(ctx)).rejects.toThrow('已取消')
-    expect(api.requestMultipart).toHaveBeenCalledTimes(1)
+    // expect(api.requestMultipart).toHaveBeenCalledTimes(1)
+    expect(api.javaKnowledge.uploadMultipart).toHaveBeenCalledTimes(1)
     expect(orgStateStore.setShareAssociation).toHaveBeenLastCalledWith('key', {
-      shareId: 'space',
+      shareId: /* 'space' */ codeSpaceId,
       completion: 'incomplete',
       manifest: expect.objectContaining({ state: 'incomplete' }),
       files: [expect.objectContaining({ status: 'success' }), expect.objectContaining({ status: 'unknown' })]
@@ -2619,29 +4139,32 @@ describe('OrgKnowledgeService share', () => {
       stored = structuredClone(value)
     })
     const api = makeApiClient()
-    api.request.mockResolvedValue({ share_id: 's1' })
-    if (status === 'success') api.requestMultipart.mockResolvedValue({ share_id: 's1', file_id: 'f1', chunk_count: 1 })
-    else if (status === 'failure') {
-      const { OrgApiHttpError } = await import('../OrgApiClient')
-      api.requestMultipart.mockRejectedValue(new OrgApiHttpError(403, 'forbidden'))
-    } else api.requestMultipart.mockRejectedValue(new TypeError('network'))
+    // api.request.mockResolvedValue({ share_id: 's1' })
+    api.javaKnowledge.createLocalShare.mockResolvedValue({ id: codeSpaceId, allowLocalFileUpload: true } as never)
+    // 旧 requestMultipart 的 success/HTTP403/network 分支对应 Java 流式传输结果。
+    if (status === 'failure')
+      api.javaKnowledge.uploadMultipart.mockRejectedValue(new JavaKnowledgeError(403, 'forbidden'))
+    else if (status === 'unknown') api.javaKnowledge.uploadMultipart.mockRejectedValue(new TypeError('network'))
     const first = await makeService(api).share('local-1')
     if (status !== 'success') {
       await expect(makeService(api).share('local-1', true)).rejects.toThrow('首次分享已中断')
-      expect(api.requestMultipart).toHaveBeenCalledTimes(1)
+      // expect(api.requestMultipart).toHaveBeenCalledTimes(1)
+      expect(api.javaKnowledge.uploadMultipart).toHaveBeenCalledTimes(1)
       return
     }
     const reopened = await makeService(api).share('local-1', true)
     expect(reopened.completion).toEqual(first.completion)
     expect(reopened.files[0].status).toBe(status)
     expect(reopened).toHaveProperty('completion', status === 'success' ? 'completed' : 'incomplete')
-    expect(api.requestMultipart).toHaveBeenCalledTimes(1)
-    expect(api.request).toHaveBeenCalledTimes(1)
+    // expect(api.requestMultipart).toHaveBeenCalledTimes(1)
+    expect(api.javaKnowledge.uploadMultipart).toHaveBeenCalledTimes(1)
+    // expect(api.request).toHaveBeenCalledTimes(1)
+    expect(api.javaKnowledge.createLocalShare).toHaveBeenCalledTimes(1)
   })
 
   it('旧共享关联标记为未确认', async () => {
     vi.mocked(orgStateStore.getShareAssociation).mockReturnValue({
-      shareId: 's1',
+      shareId: /* 's1' */ codeSpaceId,
       completion: 'unconfirmed',
       files: []
     })
@@ -2653,8 +4176,10 @@ describe('OrgKnowledgeService share', () => {
       kind === 'processing' ? { id: 'bad', type: 'file', status: 'processing' } : { id: 'bad', type: kind }
     vi.mocked(application.get).mockReturnValue(fakeKS([{ id: 'ok', type: 'file' }, unsupported] as never) as never)
     const api = makeApiClient()
-    api.request.mockResolvedValue({ share_id: 's1' })
-    api.requestMultipart.mockResolvedValue({ share_id: 's1', file_id: 'f1', chunk_count: 1 })
+    // api.request.mockResolvedValue({ share_id: 's1' })
+    api.javaKnowledge.createLocalShare.mockResolvedValue({ id: codeSpaceId, allowLocalFileUpload: true } as never)
+    // api.requestMultipart.mockResolvedValue({ share_id: 's1', file_id: 'f1', chunk_count: 1 })
+    api.javaKnowledge.uploadMultipart.mockImplementation(api.consumeUpload)
     await expect(makeService(api).share('local-1')).rejects.toThrow(/bad/)
     expect(api.request).not.toHaveBeenCalled()
   })
@@ -2665,7 +4190,8 @@ describe('OrgKnowledgeService share', () => {
       { id: 'nested', type: kind === 'processing' ? 'file' : kind, status: kind === 'processing' ? kind : 'completed' }
     ] as never)
     const api = makeApiClient()
-    api.request.mockResolvedValue({ share_id: 's1' })
+    // api.request.mockResolvedValue({ share_id: 's1' })
+    api.javaKnowledge.createLocalShare.mockResolvedValue({ id: codeSpaceId, allowLocalFileUpload: true } as never)
     api.requestMultipart.mockResolvedValue({ share_id: 's1', file_id: 'f', chunk_count: 1 })
     await expect(makeService(api).share('local-1')).rejects.toThrow(/nested/)
     expect(api.request).not.toHaveBeenCalled()
@@ -2695,14 +4221,18 @@ describe('OrgKnowledgeService share', () => {
       name === 'KnowledgeService' ? (ks as never) : (undefined as never)
     )
     const api = makeApiClient()
-    api.request.mockResolvedValue({ share_id: 's1' })
-    api.requestMultipart.mockResolvedValue({ share_id: 's1', file_id: 'f1', chunk_count: 1 })
+    // api.request.mockResolvedValue({ share_id: 's1' })
+    api.javaKnowledge.createLocalShare.mockResolvedValue({ id: codeSpaceId, allowLocalFileUpload: true } as never)
+    // api.requestMultipart.mockResolvedValue({ share_id: 's1', file_id: 'f1', chunk_count: 1 })
+    api.javaKnowledge.uploadMultipart.mockImplementation(api.consumeUpload)
     const svc = makeService(api)
     const result = await svc.share('local-1')
     expect(result.shareId.startsWith('orgkb:')).toBe(true)
     expect(result.files[0].status).toBe('success')
-    expect(result.files[0].fileId).toBe(encodeOrgId('f1'))
-    expect(api.requestMultipart).toHaveBeenCalled()
+    // expect(result.files[0].fileId).toBe(encodeOrgId('f1'))
+    expect(result.files[0].fileId).toBe(encodeOrgId(uploadFileId))
+    // expect(api.requestMultipart).toHaveBeenCalled()
+    expect(api.javaKnowledge.uploadMultipart).toHaveBeenCalled()
   })
 
   it('原文件不可读时不创建远端空间', async () => {
@@ -2731,9 +4261,11 @@ describe('OrgKnowledgeService share', () => {
     vi.mocked(api.request).mockResolvedValue({ share_id: 's1' })
     vi.mocked(api.requestMultipart).mockResolvedValue({ share_id: 's1', file_id: 'f1', chunk_count: 1 })
     const result = await makeService(api).share('local-1')
-    expect(result.files[0].fileId).toBe(encodeOrgId('f1'))
-    const form = vi.mocked(api.requestMultipart).mock.calls[0][1]
-    expect(JSON.parse(String(form.get('chunks')))).toEqual([
+    // expect(result.files[0].fileId).toBe(encodeOrgId('f1'))
+    expect(result.files[0].fileId).toBe(encodeOrgId(uploadFileId))
+    // const form = vi.mocked(api.requestMultipart).mock.calls[0][1]
+    // expect(JSON.parse(String(form.get('chunks')))).toEqual([
+    expect(api.uploads[0].chunks).toEqual([
       {
         chunk_id: 'c1',
         item_id: 'i1',
@@ -2744,18 +4276,20 @@ describe('OrgKnowledgeService share', () => {
     ])
     expect(orgStateStore.setShareAssociation).toHaveBeenCalledWith(
       JSON.stringify(['server-1', 'u', 'g', 'local-1']),
-      expect.objectContaining({ shareId: 's1', completion: 'completed', files: expect.any(Array) })
+      // expect.objectContaining({ shareId: /* 's1' */ codeSpaceId, completion: 'completed', files: expect.any(Array) })
+      expect.objectContaining({ shareId: codeSpaceId, completion: 'completed', files: expect.any(Array) })
     )
   })
 
   it('创建空间期间切换账号后不写关联也不上传', async () => {
     vi.mocked(application.get).mockReturnValue(fakeKS([{ id: 'i1', type: 'file' }]) as never)
     const api = makeApiClient()
-    vi.mocked(api.request).mockImplementation(async () => {
+    // 旧创建空间 HTTP 回调迁移为 Java 创建响应边界切号。
+    api.javaKnowledge.createLocalShare.mockImplementation(async () => {
       auth.assertLease.mockImplementation(() => {
         throw new Error('stale')
       })
-      return { share_id: 's1' }
+      return { id: codeSpaceId, allowLocalFileUpload: true } as never
     })
     await expect(makeService(api).share('local-1')).rejects.toMatchObject({ code: E.ORGKB_UNAUTHORIZED })
     expect(orgStateStore.setShareAssociation).not.toHaveBeenCalled()
@@ -2770,15 +4304,19 @@ describe('OrgKnowledgeService share', () => {
       ]) as never
     )
     const api = makeApiClient()
-    api.request.mockResolvedValue({ share_id: 's1' })
-    api.requestMultipart.mockImplementation(async () => {
+    // api.request.mockResolvedValue({ share_id: 's1' })
+    api.javaKnowledge.createLocalShare.mockResolvedValue({ id: codeSpaceId, allowLocalFileUpload: true } as never)
+    // 旧上传响应回调迁移为 Java 流消费后切号。
+    api.javaKnowledge.uploadMultipart.mockImplementation(async (...args) => {
+      const result = await api.consumeUpload(...args)
       auth.assertLease.mockImplementation(() => {
         throw new Error('stale')
       })
-      return { share_id: 's1', file_id: 'f1', chunk_count: 1 }
+      return result
     })
     await expect(makeService(api).share('local-1')).rejects.toMatchObject({ code: E.ORGKB_UNAUTHORIZED })
-    expect(api.requestMultipart).toHaveBeenCalledTimes(1)
+    // expect(api.requestMultipart).toHaveBeenCalledTimes(1)
+    expect(api.javaKnowledge.uploadMultipart).toHaveBeenCalledTimes(1)
   })
 
   it('保留部分成功并区分明确失败与结果未知，不重试上传', async () => {
@@ -2791,14 +4329,22 @@ describe('OrgKnowledgeService share', () => {
     )
     const { OrgApiHttpError } = await import('../OrgApiClient')
     const api = makeApiClient()
-    api.request.mockResolvedValue({ share_id: 's1' })
+    // api.request.mockResolvedValue({ share_id: 's1' })
+    api.javaKnowledge.createLocalShare.mockResolvedValue({ id: codeSpaceId, allowLocalFileUpload: true } as never)
+    /* 旧 HTTP 状态分支保留。
     api.requestMultipart
       .mockResolvedValueOnce({ share_id: 's1', file_id: 'f1', chunk_count: 1 })
       .mockRejectedValueOnce(new OrgApiHttpError(403, 'forbidden'))
       .mockRejectedValueOnce(new TypeError('network'))
+    */
+    api.javaKnowledge.uploadMultipart
+      .mockImplementationOnce(api.consumeUpload)
+      .mockRejectedValueOnce(new OrgApiHttpError(403, 'forbidden'))
+      .mockRejectedValueOnce(new TypeError('network'))
     const result = await makeService(api).share('local-1')
     expect(result.files.map((file) => file.status)).toEqual(['success', 'failure', 'failure'])
-    expect(api.requestMultipart).toHaveBeenCalledTimes(2)
+    // expect(api.requestMultipart).toHaveBeenCalledTimes(2)
+    expect(api.javaKnowledge.uploadMultipart).toHaveBeenCalledTimes(2)
   })
 
   it('does not re-register an existing association', async () => {
@@ -2808,12 +4354,13 @@ describe('OrgKnowledgeService share', () => {
     )
     const stateStore = await import('../OrgStateStore')
     vi.mocked(stateStore.orgStateStore.getShareAssociation).mockReturnValue({
-      shareId: 's1',
+      shareId: /* 's1' */ codeSpaceId,
       completion: 'unconfirmed',
       files: []
     })
     const api = makeApiClient()
-    api.requestMultipart.mockResolvedValue({ share_id: 's1', file_id: 'f1', chunk_count: 1 })
+    // api.requestMultipart.mockResolvedValue({ share_id: 's1', file_id: 'f1', chunk_count: 1 })
+    api.javaKnowledge.uploadMultipart.mockImplementation(api.consumeUpload)
     const svc = makeService(api)
     await svc.share('local-1')
     expect(api.request).not.toHaveBeenCalledWith(expect.stringContaining('local-share/spaces'), expect.anything())
@@ -2829,13 +4376,18 @@ describe('OrgKnowledgeService share', () => {
       stored = typeof id === 'string' ? { shareId: id, completion: 'unconfirmed', files: [] } : structuredClone(id)
     })
     const api = makeApiClient()
-    api.request.mockResolvedValue({ share_id: 's1' })
-    api.requestMultipart.mockResolvedValue({ share_id: 's1', file_id: 'f1', chunk_count: 1 })
+    // api.request.mockResolvedValue({ share_id: 's1' })
+    api.javaKnowledge.createLocalShare.mockResolvedValue({ id: codeSpaceId, allowLocalFileUpload: true } as never)
+    // api.requestMultipart.mockResolvedValue({ share_id: 's1', file_id: 'f1', chunk_count: 1 })
+    api.javaKnowledge.uploadMultipart.mockImplementation(api.consumeUpload)
     const svc = makeService(api)
     const results = await Promise.all([svc.share('local-1'), svc.share('local-1')])
-    expect(results.map((result) => result.shareId)).toEqual([encodeOrgId('s1'), encodeOrgId('s1')])
-    expect(api.requestMultipart).toHaveBeenCalledTimes(1)
-    expect(api.request).toHaveBeenCalledTimes(1)
+    // expect(results.map((result) => result.shareId)).toEqual([encodeOrgId('s1'), encodeOrgId('s1')])
+    expect(results.map((result) => result.shareId)).toEqual([encodeOrgId(codeSpaceId), encodeOrgId(codeSpaceId)])
+    // expect(api.requestMultipart).toHaveBeenCalledTimes(1)
+    expect(api.javaKnowledge.uploadMultipart).toHaveBeenCalledTimes(1)
+    // expect(api.request).toHaveBeenCalledTimes(1)
+    expect(api.javaKnowledge.createLocalShare).toHaveBeenCalledTimes(1)
   })
 
   it('目录中的嵌套叶子分别上传原文件及对应分块', async () => {
@@ -2860,174 +4412,428 @@ describe('OrgKnowledgeService share', () => {
     ks.getFilePath = vi.fn().mockReturnValueOnce('/mock/leaf1.txt').mockReturnValueOnce('/mock/leaf2.txt')
     vi.mocked(application.get).mockReturnValue(ks as never)
     const api = makeApiClient()
-    api.request.mockResolvedValue({ share_id: 's1' })
-    api.requestMultipart.mockResolvedValue({ share_id: 's1', file_id: 'f1', chunk_count: 1 })
+    // api.request.mockResolvedValue({ share_id: 's1' })
+    api.javaKnowledge.createLocalShare.mockResolvedValue({ id: codeSpaceId, allowLocalFileUpload: true } as never)
+    // api.requestMultipart.mockResolvedValue({ share_id: 's1', file_id: 'f1', chunk_count: 1 })
+    api.javaKnowledge.uploadMultipart.mockImplementation(api.consumeUpload)
+    /* 旧 folders 路由保留，对应 Java createFolder/getFile。
     api.request.mockImplementation(async (path: string) => {
       if (path.endsWith('/folders')) return { folder_id: 'folder-id', name: 'a.txt', space_id: 's1', parent_id: null }
       if (path.endsWith('/files/folder-id'))
         return { id: 'folder-id', name: 'a.txt', space_id: 's1', parent_id: null, is_dir: true }
       return { share_id: 's1' }
     })
+    */
+    // api.javaKnowledge.getFile.mockResolvedValue({ knowledgeId: codeSpaceId, fileId: uploadFolderId, name: 'a.txt', parentId: null, directory: true } as never)
+    const getFile = api.javaKnowledge.getFile.getMockImplementation()!
+    api.javaKnowledge.getFile.mockImplementation(async (id, fileId) =>
+      fileId === uploadFolderId
+        ? ({
+            knowledgeId: codeSpaceId,
+            fileId: uploadFolderId,
+            name: 'a.txt',
+            parentId: null,
+            directory: true
+          } as never)
+        : getFile(id, fileId)
+    )
     const result = await makeService(api).share('local-1')
     expect(result.files.map((file) => file.fileName)).toEqual(['leaf1.txt', 'leaf2.txt'])
     expect(
-      api.requestMultipart.mock.calls.map(([, form]) => JSON.parse(String(form.get('chunks')))[0].document_id)
+      // api.requestMultipart.mock.calls.map(([, form]) => JSON.parse(String(form.get('chunks')))[0].document_id)
+      api.uploads.map((upload) => upload.chunks[0].document_id)
     ).toEqual(['leaf1', 'leaf2'])
   })
 })
 
 describe('OrgKnowledgeService collaborators', () => {
+  const knowledgeId = '11111111-1111-4111-8111-111111111111'
+  function setup() {
+    const memberOptions = vi.fn().mockResolvedValue({ items: [], total: 0, page: 2, pageSize: 20 })
+    const legacy = vi.fn(() => {
+      throw new Error('禁止旧协作者接口')
+    })
+    const service = new OrgKnowledgeService({
+      ...auth,
+      apiClient: { javaKnowledge: { memberOptions }, request: legacy }
+    } as never)
+    return { service, memberOptions, legacy }
+  }
+
   it('过滤本人并原样回传服务端 total（不虚构/扣减）', async () => {
-    auth.acquireLease.mockReturnValue({ generation: 1, issuerId: 'server-1', groupId: 'g', userId: '7' })
-    const api = makeApiClient()
-    api.request.mockResolvedValue({
+    auth.acquireLease.mockReturnValue({ ...lease, userId: '7' })
+    const { service, memberOptions, legacy } = setup()
+    memberOptions.mockResolvedValue({
+      items: [
+        { userId: 3, username: 'alice', showName: null },
+        { userId: 7, username: 'me', showName: null },
+        { userId: 9, username: 'carol', showName: null }
+      ],
+      total: 100,
+      page: 1,
+      pageSize: 20
+    })
+    const result = await service.collaborators({ baseId: encodeOrgId(knowledgeId) })
+    expect(result).toEqual({
       items: [
         { id: 3, username: 'alice' },
-        { id: 7, username: 'me' },
         { id: 9, username: 'carol' }
       ],
       total: 100,
       page: 1,
       pageSize: 20
     })
-    const result = await makeService(api).collaborators({})
-    expect(result.items).toEqual([
-      { id: 3, username: 'alice' },
-      { id: 9, username: 'carol' }
-    ])
-    expect(result.total).toBe(100)
-    expect(api.request).toHaveBeenCalledWith('/api/collaborators')
+    expect(memberOptions).toHaveBeenCalledExactlyOnceWith(
+      { knowledgeId, keyword: undefined, page: undefined, pageSize: undefined },
+      expect.any(Function)
+    )
+    expect(legacy).not.toHaveBeenCalled()
+    service.dispose()
   })
 
-  it('透传 keyword/page/pageSize 到 /api/collaborators', async () => {
-    const api = makeApiClient()
-    api.request.mockResolvedValue({ items: [], total: 0, page: 2, pageSize: 20 })
-    await makeService(api).collaborators({ keyword: 'bo', page: 2, pageSize: 20 })
-    expect(api.request).toHaveBeenCalledWith('/api/collaborators?keyword=bo&page=2&pageSize=20')
+  it('透传 knowledgeId/keyword/page/pageSize 到 Java memberOptions', async () => {
+    // 旧全局 /api/collaborators 已由按知识库鉴权的 memberOptions 取代。
+    const { service, memberOptions, legacy } = setup()
+    await expect(
+      service.collaborators({ baseId: encodeOrgId(knowledgeId), keyword: 'bo', page: 2, pageSize: 20 })
+    ).resolves.toEqual({ items: [], total: 0, page: 2, pageSize: 20 })
+    expect(memberOptions).toHaveBeenCalledExactlyOnceWith(
+      { knowledgeId, keyword: 'bo', page: 2, pageSize: 20 },
+      expect.any(Function)
+    )
+    expect(legacy).not.toHaveBeenCalled()
+    service.dispose()
+  })
+
+  it('本地面板只使用当前身份已完成关联，不按名称猜测 knowledgeId', async () => {
+    const { service, memberOptions, legacy } = setup()
+    vi.mocked(orgStateStore.getShareAssociation).mockReturnValue({
+      shareId: knowledgeId,
+      completion: 'completed',
+      files: []
+    })
+    await service.collaborators({ baseId: 'local-1', keyword: 'bo', page: 2, pageSize: 20 })
+    expect(orgStateStore.getShareAssociation).toHaveBeenCalledWith(
+      JSON.stringify([lease.issuerId, lease.userId, lease.groupId, 'local-1'])
+    )
+    expect(memberOptions).toHaveBeenCalledExactlyOnceWith(
+      { knowledgeId, keyword: 'bo', page: 2, pageSize: 20 },
+      expect.any(Function)
+    )
+    expect(legacy).not.toHaveBeenCalled()
+    service.dispose()
+  })
+
+  it.each([
+    undefined,
+    { shareId: knowledgeId, completion: 'incomplete', files: [] },
+    {
+      shareId: knowledgeId,
+      completion: 'completed',
+      files: [{ status: 'unknown', fileId: null }]
+    }
+  ])('缺失或不可信本地关联禁止查询候选人：%j', async (association) => {
+    const { service, memberOptions, legacy } = setup()
+    vi.mocked(orgStateStore.getShareAssociation).mockReturnValue(association as never)
+    await expect(service.collaborators({ baseId: 'local-1' })).rejects.toMatchObject({ code: E.ORGKB_SHARE_INCOMPLETE })
+    expect(memberOptions).not.toHaveBeenCalled()
+    expect(legacy).not.toHaveBeenCalled()
+    service.dispose()
   })
 })
 
+// describe('OrgKnowledgeService invite（本地 baseId）', () => {
+//   // const space = 'space-1'：Java 标识使用真实 UUID，不再走旧 members HTTP 路由。
+//   const space = codeSpaceId
+//   const association = { shareId: space, completion: 'completed' as const, files: [], manifest: {} as never }
+//   function mockApi(members: unknown[], addMemberResult?: unknown) {
+//     const api = makeJavaApi()
+//     api.javaKnowledge.listMembers.mockResolvedValue(members)
+//     api.javaKnowledge.addMember.mockResolvedValue(addMemberResult ?? javaMember)
+//     return api
+//   }
+//
+//   // 原用例拒绝所有远端 ID；本人云端库现在按服务端所有权授权。
+//   it('跨端本人云端库无需本地关联即可邀请', async () => {
+//     const api = mockApi([])
+//     await expect(makeService(api).invite({ baseId: encodeOrgId(space), userId: 5 })).resolves.toMatchObject({
+//       userId: 5,
+//       status: 'pending'
+//     })
+//     expect(api.request).toHaveBeenCalledWith(
+//       `/api/kb/v1/spaces/${space}/members`,
+//       expect.objectContaining({ method: 'POST', body: expect.stringContaining('"user_id":5') })
+//     )
+//   })
+//
+//   it('远端 ID 仍不能绕过本机已知的未完成上传', async () => {
+//     vi.mocked(orgStateStore.getShareAssociations).mockReturnValue({
+//       [JSON.stringify(['server-1', 'u', 'g', 'local-1'])]: { ...association, completion: 'incomplete' }
+//     })
+//     const api = mockApi([])
+//     await expect(makeService(api).invite({ baseId: encodeOrgId(space), userId: 5 })).rejects.toMatchObject({
+//       code: E.ORGKB_SHARE_INCOMPLETE
+//     })
+//     expect(api.request).not.toHaveBeenCalledWith(
+//       expect.stringContaining('/members'),
+//       expect.objectContaining({ method: 'POST' })
+//     )
+//   })
+//
+//   it('使用当前账号的共享关联发送邀请', async () => {
+//     const key = JSON.stringify(['server-1', 'u', 'g', 'local-1'])
+//     vi.mocked(orgStateStore.getShareAssociation).mockImplementation((storedKey) =>
+//       storedKey === key ? association : undefined
+//     )
+//     const api = mockApi([])
+//     await expect(makeService(api).invite({ baseId: 'local-1', userId: 5 })).resolves.toMatchObject({
+//       userId: 5
+//     })
+//   })
+//
+//   it.each([
+//     ['server-2', 'u', 'g', 'local-1'],
+//     ['server-1', 'other-user', 'g', 'local-1'],
+//     ['server-1', 'u', 'other-group', 'local-1']
+//   ])('拒绝其他身份上下文的关联 %s/%s/%s', async (issuerId, userId, groupId, baseId) => {
+//     const key = JSON.stringify([issuerId, userId, groupId, baseId])
+//     vi.mocked(orgStateStore.getShareAssociation).mockImplementation((storedKey) =>
+//       storedKey === key || storedKey === baseId ? association : undefined
+//     )
+//     const api = mockApi([])
+//     await expect(makeService(api).invite({ baseId, userId: 5 })).rejects.toMatchObject({
+//       code: E.ORGKB_BAD_INPUT
+//     })
+//     expect(api.request).not.toHaveBeenCalled()
+//   })
+//
+//   it('缺少本地已完成关联时拒绝且不发请求', async () => {
+//     const api = makeApiClient()
+//     vi.mocked(orgStateStore.getShareAssociation).mockReturnValue(undefined)
+//     await expect(makeService(api).invite({ baseId: 'local-1', userId: 2 })).rejects.toMatchObject({
+//       code: E.ORGKB_BAD_INPUT
+//     })
+//     expect(api.request).not.toHaveBeenCalled()
+//   })
+//
+//   it('本地关联未完成时拒绝', async () => {
+//     const api = makeApiClient()
+//     vi.mocked(orgStateStore.getShareAssociation).mockReturnValue({
+//       shareId: space,
+//       completion: 'incomplete',
+//       files: [],
+//       manifest: {} as never
+//     })
+//     await expect(makeService(api).invite({ baseId: 'local-1', userId: 2 })).rejects.toMatchObject({
+//       code: E.ORGKB_BAD_INPUT
+//     })
+//     expect(api.request).not.toHaveBeenCalled()
+//   })
+//
+//   it('非本人 owner 空间被拒', async () => {
+//     const api = makeApiClient()
+//     vi.mocked(orgStateStore.getShareAssociation).mockReturnValue(association)
+//     api.request.mockResolvedValue({ public: [], shared: [], owned: [{ id: space, name: 'n', my_role: 'admin' }] })
+//     await expect(makeService(api).invite({ baseId: 'local-1', userId: 2 })).rejects.toMatchObject({
+//       code: E.ORGKB_FORBIDDEN
+//     })
+//     expect(api.request).not.toHaveBeenCalledWith(expect.stringContaining('/members'), expect.anything())
+//   })
+//
+//   it('邀请本人被拒', async () => {
+//     auth.acquireLease.mockReturnValue({ generation: 1, issuerId: 'server-1', groupId: 'g', userId: '2' })
+//     const api = mockApi([])
+//     vi.mocked(orgStateStore.getShareAssociation).mockReturnValue(association)
+//     await expect(makeService(api).invite({ baseId: 'local-1', userId: 2 })).rejects.toMatchObject({
+//       code: E.ORGKB_BAD_INPUT
+//     })
+//   })
+//
+//   it('已有 active 成员时阻止重复邀请', async () => {
+//     const api = mockApi([
+//       {
+//         user_id: 5,
+//         username: 'x',
+//         role: 'viewer',
+//         joined_at: '2026-01-01T00:00:00Z',
+//         status: 'active',
+//         expires_at: null
+//       }
+//     ])
+//     vi.mocked(orgStateStore.getShareAssociation).mockReturnValue(association)
+//     await expect(makeService(api).invite({ baseId: 'local-1', userId: 5 })).rejects.toMatchObject({
+//       code: E.ORGKB_MEMBER_EXISTS
+//     })
+//     expect(api.request).not.toHaveBeenCalledWith(
+//       expect.stringContaining('/members'),
+//       expect.objectContaining({ method: 'POST' })
+//     )
+//   })
+//
+//   it('已有 pending 成员时同样阻止', async () => {
+//     const api = mockApi([
+//       {
+//         user_id: 5,
+//         username: 'x',
+//         role: 'viewer',
+//         joined_at: '2026-01-01T00:00:00Z',
+//         status: 'pending',
+//         expires_at: null
+//       }
+//     ])
+//     vi.mocked(orgStateStore.getShareAssociation).mockReturnValue(association)
+//     await expect(makeService(api).invite({ baseId: 'local-1', userId: 5 })).rejects.toMatchObject({
+//       code: E.ORGKB_MEMBER_EXISTS
+//     })
+//   })
+//
+//   it('expired 成员可重新邀请', async () => {
+//     const api = mockApi([
+//       {
+//         user_id: 5,
+//         username: 'x',
+//         role: 'viewer',
+//         joined_at: '2026-01-01T00:00:00Z',
+//         status: 'expired',
+//         expires_at: null
+//       }
+//     ])
+//     vi.mocked(orgStateStore.getShareAssociation).mockReturnValue(association)
+//     const result = await makeService(api).invite({ baseId: 'local-1', userId: 5 })
+//     expect(result).toMatchObject({ userId: 5, status: 'pending' })
+//     expect(api.request).toHaveBeenCalledWith(
+//       `/api/kb/v1/spaces/${space}/members`,
+//       expect.objectContaining({ method: 'POST', body: expect.stringContaining('"user_id":5') })
+//     )
+//   })
+//
+//   it('removed 成员可重新邀请', async () => {
+//     const api = mockApi([
+//       {
+//         user_id: 5,
+//         username: 'x',
+//         role: 'viewer',
+//         joined_at: '2026-01-01T00:00:00Z',
+//         status: 'removed',
+//         expires_at: null
+//       }
+//     ])
+//     vi.mocked(orgStateStore.getShareAssociation).mockReturnValue(association)
+//     const result = await makeService(api).invite({ baseId: 'local-1', userId: 5 })
+//     expect(result).toMatchObject({ userId: 5 })
+//   })
+//
+//   it('无现成成员时正常发起邀请', async () => {
+//     const api = mockApi([])
+//     vi.mocked(orgStateStore.getShareAssociation).mockReturnValue(association)
+//     const result = await makeService(api).invite({ baseId: 'local-1', userId: 5 })
+//     expect(result).toMatchObject({ userId: 5, status: 'pending' })
+//   })
+// })
+//
 describe('OrgKnowledgeService invite（本地 baseId）', () => {
-  const space = 'space-1'
+  beforeEach(() => auth.acquireLease.mockReturnValue({ ...lease, userId: '7' }))
+  // const space = 'space-1'：Java 标识使用真实 UUID，不再走旧 members HTTP 路由。
+  const space = codeSpaceId
   const association = { shareId: space, completion: 'completed' as const, files: [], manifest: {} as never }
-  function ownerCatalog() {
-    return { public: [], shared: [], owned: [{ id: space, name: 'n', my_role: 'owner' }] }
-  }
   function mockApi(members: unknown[], addMemberResult?: unknown) {
-    const api = makeApiClient()
-    api.request.mockImplementation(async (path: string, options?: { method?: string }) => {
-      if (path.includes('/catalog')) return ownerCatalog()
-      if (path.includes('/members')) {
-        if (options?.method === 'POST')
-          return (
-            addMemberResult ?? {
-              user_id: 5,
-              username: 'x',
-              role: 'viewer',
-              joined_at: '2026-01-01T00:00:00Z',
-              status: 'pending',
-              expires_at: null
-            }
-          )
-        return members
-      }
-      return {}
-    })
+    const api = makeJavaApi()
+    api.javaKnowledge.listMembers.mockResolvedValue(members)
+    api.javaKnowledge.addMember.mockResolvedValue(addMemberResult ?? javaMember)
     return api
   }
 
   // 原用例拒绝所有远端 ID；本人云端库现在按服务端所有权授权。
   it('跨端本人云端库无需本地关联即可邀请', async () => {
     const api = mockApi([])
-    await expect(makeService(api).invite({ baseId: encodeOrgId(space), userId: 5 })).resolves.toMatchObject({
+    await expect(makeJavaService(api).invite({ baseId: encodeOrgId(space), userId: 5 })).resolves.toMatchObject({
       userId: 5,
       status: 'pending'
     })
-    expect(api.request).toHaveBeenCalledWith(
-      `/api/kb/v1/spaces/${space}/members`,
-      expect.objectContaining({ method: 'POST', body: expect.stringContaining('"user_id":5') })
-    )
+    expect(api.javaKnowledge.addMember).toHaveBeenCalledWith(space, 5, undefined, expect.any(Function))
   })
 
   it('远端 ID 仍不能绕过本机已知的未完成上传', async () => {
     vi.mocked(orgStateStore.getShareAssociations).mockReturnValue({
-      [JSON.stringify(['server-1', 'u', 'g', 'local-1'])]: { ...association, completion: 'incomplete' }
+      [JSON.stringify(['server-1', '7', 'g', 'local-1'])]: { ...association, completion: 'incomplete' }
     })
     const api = mockApi([])
-    await expect(makeService(api).invite({ baseId: encodeOrgId(space), userId: 5 })).rejects.toMatchObject({
+    await expect(makeJavaService(api).invite({ baseId: encodeOrgId(space), userId: 5 })).rejects.toMatchObject({
       code: E.ORGKB_SHARE_INCOMPLETE
     })
-    expect(api.request).not.toHaveBeenCalledWith(
-      expect.stringContaining('/members'),
-      expect.objectContaining({ method: 'POST' })
-    )
+    expect(api.javaKnowledge.addMember).not.toHaveBeenCalled()
   })
 
   it('使用当前账号的共享关联发送邀请', async () => {
-    const key = JSON.stringify(['server-1', 'u', 'g', 'local-1'])
+    const key = JSON.stringify(['server-1', '7', 'g', 'local-1'])
     vi.mocked(orgStateStore.getShareAssociation).mockImplementation((storedKey) =>
       storedKey === key ? association : undefined
     )
     const api = mockApi([])
-    await expect(makeService(api).invite({ baseId: 'local-1', userId: 5 })).resolves.toMatchObject({
+    await expect(makeJavaService(api).invite({ baseId: 'local-1', userId: 5 })).resolves.toMatchObject({
       userId: 5
     })
   })
 
   it.each([
-    ['server-2', 'u', 'g', 'local-1'],
+    ['server-2', '7', 'g', 'local-1'],
     ['server-1', 'other-user', 'g', 'local-1'],
-    ['server-1', 'u', 'other-group', 'local-1']
+    ['server-1', '7', 'other-group', 'local-1']
   ])('拒绝其他身份上下文的关联 %s/%s/%s', async (issuerId, userId, groupId, baseId) => {
     const key = JSON.stringify([issuerId, userId, groupId, baseId])
     vi.mocked(orgStateStore.getShareAssociation).mockImplementation((storedKey) =>
       storedKey === key || storedKey === baseId ? association : undefined
     )
     const api = mockApi([])
-    await expect(makeService(api).invite({ baseId, userId: 5 })).rejects.toMatchObject({
+    await expect(makeJavaService(api).invite({ baseId, userId: 5 })).rejects.toMatchObject({
       code: E.ORGKB_BAD_INPUT
     })
-    expect(api.request).not.toHaveBeenCalled()
+    expect(api.javaKnowledge.getCatalog).not.toHaveBeenCalled()
+    expect(api.javaKnowledge.addMember).not.toHaveBeenCalled()
   })
 
   it('缺少本地已完成关联时拒绝且不发请求', async () => {
-    const api = makeApiClient()
+    const api = makeJavaApi()
     vi.mocked(orgStateStore.getShareAssociation).mockReturnValue(undefined)
-    await expect(makeService(api).invite({ baseId: 'local-1', userId: 2 })).rejects.toMatchObject({
+    await expect(makeJavaService(api).invite({ baseId: 'local-1', userId: 2 })).rejects.toMatchObject({
       code: E.ORGKB_BAD_INPUT
     })
-    expect(api.request).not.toHaveBeenCalled()
+    expect(api.javaKnowledge.getCatalog).not.toHaveBeenCalled()
+    expect(api.javaKnowledge.addMember).not.toHaveBeenCalled()
   })
 
   it('本地关联未完成时拒绝', async () => {
-    const api = makeApiClient()
+    const api = makeJavaApi()
     vi.mocked(orgStateStore.getShareAssociation).mockReturnValue({
       shareId: space,
       completion: 'incomplete',
       files: [],
       manifest: {} as never
     })
-    await expect(makeService(api).invite({ baseId: 'local-1', userId: 2 })).rejects.toMatchObject({
+    await expect(makeJavaService(api).invite({ baseId: 'local-1', userId: 2 })).rejects.toMatchObject({
       code: E.ORGKB_BAD_INPUT
     })
-    expect(api.request).not.toHaveBeenCalled()
+    expect(api.javaKnowledge.getCatalog).not.toHaveBeenCalled()
+    expect(api.javaKnowledge.addMember).not.toHaveBeenCalled()
   })
 
   it('非本人 owner 空间被拒', async () => {
-    const api = makeApiClient()
+    const api = makeJavaApi()
     vi.mocked(orgStateStore.getShareAssociation).mockReturnValue(association)
-    api.request.mockResolvedValue({ public: [], shared: [], owned: [{ id: space, name: 'n', my_role: 'admin' }] })
-    await expect(makeService(api).invite({ baseId: 'local-1', userId: 2 })).rejects.toMatchObject({
+    api.javaKnowledge.getCatalog.mockResolvedValue([{ ...javaSpace, ownerId: 99 }])
+    await expect(makeJavaService(api).invite({ baseId: 'local-1', userId: 2 })).rejects.toMatchObject({
       code: E.ORGKB_FORBIDDEN
     })
-    expect(api.request).not.toHaveBeenCalledWith(expect.stringContaining('/members'), expect.anything())
+    expect(api.javaKnowledge.listMembers).not.toHaveBeenCalled()
+    expect(api.javaKnowledge.addMember).not.toHaveBeenCalled()
   })
 
   it('邀请本人被拒', async () => {
     auth.acquireLease.mockReturnValue({ generation: 1, issuerId: 'server-1', groupId: 'g', userId: '2' })
     const api = mockApi([])
+    api.javaKnowledge.getCatalog.mockResolvedValue([{ ...javaSpace, ownerId: 2 }])
     vi.mocked(orgStateStore.getShareAssociation).mockReturnValue(association)
-    await expect(makeService(api).invite({ baseId: 'local-1', userId: 2 })).rejects.toMatchObject({
+    await expect(makeJavaService(api).invite({ baseId: 'local-1', userId: 2 })).rejects.toMatchObject({
       code: E.ORGKB_BAD_INPUT
     })
   })
@@ -3035,37 +4841,34 @@ describe('OrgKnowledgeService invite（本地 baseId）', () => {
   it('已有 active 成员时阻止重复邀请', async () => {
     const api = mockApi([
       {
-        user_id: 5,
-        username: 'x',
+        userId: 5,
+        showName: 'x',
         role: 'viewer',
-        joined_at: '2026-01-01T00:00:00Z',
+        createTime: '2026-01-01T00:00:00Z',
         status: 'active',
-        expires_at: null
+        expiresAt: null
       }
     ])
     vi.mocked(orgStateStore.getShareAssociation).mockReturnValue(association)
-    await expect(makeService(api).invite({ baseId: 'local-1', userId: 5 })).rejects.toMatchObject({
+    await expect(makeJavaService(api).invite({ baseId: 'local-1', userId: 5 })).rejects.toMatchObject({
       code: E.ORGKB_MEMBER_EXISTS
     })
-    expect(api.request).not.toHaveBeenCalledWith(
-      expect.stringContaining('/members'),
-      expect.objectContaining({ method: 'POST' })
-    )
+    expect(api.javaKnowledge.addMember).not.toHaveBeenCalled()
   })
 
   it('已有 pending 成员时同样阻止', async () => {
     const api = mockApi([
       {
-        user_id: 5,
-        username: 'x',
+        userId: 5,
+        showName: 'x',
         role: 'viewer',
-        joined_at: '2026-01-01T00:00:00Z',
+        createTime: '2026-01-01T00:00:00Z',
         status: 'pending',
-        expires_at: null
+        expiresAt: null
       }
     ])
     vi.mocked(orgStateStore.getShareAssociation).mockReturnValue(association)
-    await expect(makeService(api).invite({ baseId: 'local-1', userId: 5 })).rejects.toMatchObject({
+    await expect(makeJavaService(api).invite({ baseId: 'local-1', userId: 5 })).rejects.toMatchObject({
       code: E.ORGKB_MEMBER_EXISTS
     })
   })
@@ -3073,84 +4876,200 @@ describe('OrgKnowledgeService invite（本地 baseId）', () => {
   it('expired 成员可重新邀请', async () => {
     const api = mockApi([
       {
-        user_id: 5,
-        username: 'x',
+        userId: 5,
+        showName: 'x',
         role: 'viewer',
-        joined_at: '2026-01-01T00:00:00Z',
+        createTime: '2026-01-01T00:00:00Z',
         status: 'expired',
-        expires_at: null
+        expiresAt: null
       }
     ])
     vi.mocked(orgStateStore.getShareAssociation).mockReturnValue(association)
-    const result = await makeService(api).invite({ baseId: 'local-1', userId: 5 })
+    const result = await makeJavaService(api).invite({ baseId: 'local-1', userId: 5 })
     expect(result).toMatchObject({ userId: 5, status: 'pending' })
-    expect(api.request).toHaveBeenCalledWith(
-      `/api/kb/v1/spaces/${space}/members`,
-      expect.objectContaining({ method: 'POST', body: expect.stringContaining('"user_id":5') })
-    )
+    expect(api.javaKnowledge.addMember).toHaveBeenCalledWith(space, 5, undefined, expect.any(Function))
   })
 
   it('removed 成员可重新邀请', async () => {
     const api = mockApi([
       {
-        user_id: 5,
-        username: 'x',
+        userId: 5,
+        showName: 'x',
         role: 'viewer',
-        joined_at: '2026-01-01T00:00:00Z',
+        createTime: '2026-01-01T00:00:00Z',
         status: 'removed',
-        expires_at: null
+        expiresAt: null
       }
     ])
     vi.mocked(orgStateStore.getShareAssociation).mockReturnValue(association)
-    const result = await makeService(api).invite({ baseId: 'local-1', userId: 5 })
+    const result = await makeJavaService(api).invite({ baseId: 'local-1', userId: 5 })
     expect(result).toMatchObject({ userId: 5 })
   })
 
   it('无现成成员时正常发起邀请', async () => {
     const api = mockApi([])
     vi.mocked(orgStateStore.getShareAssociation).mockReturnValue(association)
-    const result = await makeService(api).invite({ baseId: 'local-1', userId: 5 })
+    const result = await makeJavaService(api).invite({ baseId: 'local-1', userId: 5 })
     expect(result).toMatchObject({ userId: 5, status: 'pending' })
   })
 })
 
+// describe('OrgKnowledgeService createShareCode 本地关联约束', () => {
+//   beforeEach(() => auth.acquireLease.mockReturnValue({ ...lease, userId: '7' }))
+//   it('追加资料暂存不阻断已有云端库生成码', async () => {
+//     vi.mocked(orgStateStore.getShareAssociations).mockReturnValue({
+//       [JSON.stringify([lease.issuerId, lease.userId, lease.groupId, 'pending'])]: {
+//         shareId: codeSpaceId,
+//         completion: 'incomplete',
+//         files: [],
+//         pendingAddition: true
+//       }
+//     })
+//     const api = makeApiClient()
+//     api.request.mockResolvedValueOnce(codeCatalog).mockResolvedValueOnce(codeShare)
+//     await expect(
+//       makeService(api).createShareCode({ baseId: encodeOrgId(codeSpaceId), expireDays: 7 })
+//     ).resolves.toMatchObject({ shareCode: 'AbCd_123' })
+//   })
+//
+//   // 原用例要求本地关联；跨端 owner 现在直接管理已有云端库。
+//   it('无本地关联的本人云端库可生成分享码', async () => {
+//     const api = makeApiClient()
+//     api.request.mockResolvedValueOnce(codeCatalog).mockResolvedValueOnce(codeShare)
+//     vi.mocked(orgStateStore.getShareAssociations).mockReturnValue({})
+//     await expect(
+//       makeService(api).createShareCode({ baseId: encodeOrgId(codeSpaceId), expireDays: 7 })
+//     ).resolves.toMatchObject({ shareCode: 'AbCd_123', spaceId: encodeOrgId(codeSpaceId) })
+//   })
+// })
+//
 describe('OrgKnowledgeService createShareCode 本地关联约束', () => {
+  beforeEach(() => auth.acquireLease.mockReturnValue({ ...lease, userId: '7' }))
   it('追加资料暂存不阻断已有云端库生成码', async () => {
     vi.mocked(orgStateStore.getShareAssociations).mockReturnValue({
-      [JSON.stringify([lease.issuerId, lease.userId, lease.groupId, 'pending'])]: {
+      [JSON.stringify([lease.issuerId, '7', lease.groupId, 'pending'])]: {
         shareId: codeSpaceId,
         completion: 'incomplete',
         files: [],
         pendingAddition: true
       }
     })
-    const api = makeApiClient()
-    api.request.mockResolvedValueOnce(codeCatalog).mockResolvedValueOnce(codeShare)
+    const api = makeJavaApi()
+    api.javaKnowledge.createShare.mockResolvedValue(javaShare)
     await expect(
-      makeService(api).createShareCode({ baseId: encodeOrgId(codeSpaceId), expireDays: 7 })
+      makeJavaService(api).createShareCode({ baseId: encodeOrgId(codeSpaceId), expireDays: 7 })
     ).resolves.toMatchObject({ shareCode: 'AbCd_123' })
   })
 
   // 原用例要求本地关联；跨端 owner 现在直接管理已有云端库。
   it('无本地关联的本人云端库可生成分享码', async () => {
-    const api = makeApiClient()
-    api.request.mockResolvedValueOnce(codeCatalog).mockResolvedValueOnce(codeShare)
+    const api = makeJavaApi()
+    api.javaKnowledge.createShare.mockResolvedValue(javaShare)
     vi.mocked(orgStateStore.getShareAssociations).mockReturnValue({})
     await expect(
-      makeService(api).createShareCode({ baseId: encodeOrgId(codeSpaceId), expireDays: 7 })
+      makeJavaService(api).createShareCode({ baseId: encodeOrgId(codeSpaceId), expireDays: 7 })
     ).resolves.toMatchObject({ shareCode: 'AbCd_123', spaceId: encodeOrgId(codeSpaceId) })
   })
 })
 
+// describe('重命名已分享本地知识库同步云端', () => {
+//   const key = JSON.stringify([lease.issuerId, lease.userId, lease.groupId, 'local-1'])
+//
+//   function setup(association: any) {
+//     vi.mocked(orgStateStore.getShareAssociation).mockImplementation(() => association)
+//     const api = makeApiClient()
+//     api.request.mockResolvedValue(codeCatalog)
+//     const service = makeService(api)
+//     const renameSpace = vi.spyOn((service as any).client, 'renameSpace')
+//     return { api, service, renameSpace }
+//   }
+//
+//   it('无本地关联时不触碰云端（空操作）', async () => {
+//     const { service, renameSpace } = setup(undefined)
+//     await expect(service.renameSharedBase('local-1', '新名')).resolves.toBeUndefined()
+//     expect(renameSpace).not.toHaveBeenCalled()
+//   })
+//
+//   it('有 completed 关联时仅按绑定 spaceId 改名并校验响应', async () => {
+//     const { service, renameSpace } = setup({ shareId: codeSpaceId, completion: 'completed', files: [] })
+//     renameSpace.mockResolvedValue({ id: codeSpaceId, name: '新名' })
+//     await expect(service.renameSharedBase('local-1', '新名')).resolves.toBeUndefined()
+//     // 必须按已绑定关联的 spaceId 而非任意名称认领云端。
+//     expect(renameSpace).toHaveBeenCalledWith(codeSpaceId, '新名')
+//   })
+//
+//   it('原始云端 UUID 且无本机副本时按 owned 目录直接改名', async () => {
+//     const { service, renameSpace } = setup(undefined)
+//     renameSpace.mockResolvedValue({ id: codeSpaceId, name: '新名' })
+//     await expect(service.renameSharedBase(codeSpaceId, '新名')).resolves.toBeUndefined()
+//     expect(renameSpace).toHaveBeenCalledWith(codeSpaceId, '新名')
+//   })
+//
+//   it('owned 目录缺少 owner 字段时仍允许云端改名', async () => {
+//     const api = makeApiClient()
+//     api.request.mockResolvedValue({ public: [], shared: [], owned: [{ id: codeSpaceId, name: '副本' }] })
+//     const service = makeService(api)
+//     const renameSpace = vi.spyOn((service as any).client, 'renameSpace').mockResolvedValue({
+//       id: codeSpaceId,
+//       name: '新名'
+//     })
+//     await expect(service.renameSharedBase(codeSpaceId, '新名')).resolves.toBeUndefined()
+//     expect(renameSpace).toHaveBeenCalledWith(codeSpaceId, '新名')
+//   })
+//
+//   it('取消分享期间拒绝重命名且不下发云端请求', async () => {
+//     const { service, renameSpace } = setup({ shareId: codeSpaceId, completion: 'completed', files: [] })
+//     vi.mocked(application.get).mockReturnValue({} as never)
+//     const ownerCheck = Promise.withResolvers<typeof codeCatalog>()
+//     const getCatalog = vi.spyOn((service as any).client, 'getCatalog').mockReturnValueOnce(ownerCheck.promise)
+//     const cancelling = service.unshare({ baseId: 'local-1' })
+//     const cancelled = expect(cancelling).rejects.toMatchObject({ status: 403 })
+//     try {
+//       await vi.waitFor(() => expect(getCatalog).toHaveBeenCalled())
+//       await expect(service.renameSharedBase('local-1', '新名')).rejects.toMatchObject({ code: E.ORGKB_SHARE_FAILED })
+//       expect(renameSpace).not.toHaveBeenCalled()
+//     } finally {
+//       ownerCheck.reject(new OrgApiHttpError(403, '取消分享校验失败'))
+//       await cancelled
+//       service.dispose()
+//     }
+//   })
+//
+//   it('初传进行中拒绝重命名同一库', async () => {
+//     const { service, renameSpace } = setup({ shareId: codeSpaceId, completion: 'completed', files: [] })
+//     ;(service as any).firstShareActive = { key, name: '旧名' }
+//     await expect(service.renameSharedBase('local-1', '新名')).rejects.toMatchObject({ code: E.ORGKB_SHARE_FAILED })
+//     expect(renameSpace).not.toHaveBeenCalled()
+//     ;(service as any).firstShareActive = undefined
+//   })
+//
+//   it('云端返回 id/name 不一致时拒绝', async () => {
+//     const { service, renameSpace } = setup({ shareId: codeSpaceId, completion: 'completed', files: [] })
+//     renameSpace.mockResolvedValue({ id: codeSpaceId, name: '其它' })
+//     await expect(service.renameSharedBase('local-1', '新名')).rejects.toMatchObject({ code: E.ORGKB_PROTOCOL })
+//     expect(renameSpace).toHaveBeenCalledWith(codeSpaceId, '新名')
+//   })
+//
+//   it('锁内会话失效不提交改名', async () => {
+//     const { service, renameSpace } = setup({ shareId: codeSpaceId, completion: 'completed', files: [] })
+//     renameSpace.mockResolvedValue({ id: codeSpaceId, name: '新名' })
+//     auth.assertLease.mockImplementation(() => {
+//       throw new Error('session changed')
+//     })
+//     await expect(service.renameSharedBase('local-1', '新名')).rejects.toMatchObject({ code: E.ORGKB_UNAUTHORIZED })
+//     expect(renameSpace).not.toHaveBeenCalled()
+//   })
+// })
 describe('重命名已分享本地知识库同步云端', () => {
-  const key = JSON.stringify([lease.issuerId, lease.userId, lease.groupId, 'local-1'])
+  beforeEach(() => auth.acquireLease.mockReturnValue({ ...lease, userId: '7' }))
+  const key = JSON.stringify([lease.issuerId, '7', lease.groupId, 'local-1'])
 
   function setup(association: any) {
     vi.mocked(orgStateStore.getShareAssociation).mockImplementation(() => association)
-    const api = makeApiClient()
-    api.request.mockResolvedValue(codeCatalog)
-    const service = makeService(api)
-    const renameSpace = vi.spyOn((service as any).client, 'renameSpace')
+    const api = makeJavaApi()
+    api.javaKnowledge.getCatalog.mockResolvedValue([javaSpace])
+    const service = makeJavaService(api)
+    const renameSpace = api.javaKnowledge.renameSpace
     return { api, service, renameSpace }
   }
 
@@ -3165,33 +5084,33 @@ describe('重命名已分享本地知识库同步云端', () => {
     renameSpace.mockResolvedValue({ id: codeSpaceId, name: '新名' })
     await expect(service.renameSharedBase('local-1', '新名')).resolves.toBeUndefined()
     // 必须按已绑定关联的 spaceId 而非任意名称认领云端。
-    expect(renameSpace).toHaveBeenCalledWith(codeSpaceId, '新名')
+    expect(renameSpace).toHaveBeenCalledWith(codeSpaceId, '新名', expect.any(Function))
   })
 
   it('原始云端 UUID 且无本机副本时按 owned 目录直接改名', async () => {
     const { service, renameSpace } = setup(undefined)
     renameSpace.mockResolvedValue({ id: codeSpaceId, name: '新名' })
     await expect(service.renameSharedBase(codeSpaceId, '新名')).resolves.toBeUndefined()
-    expect(renameSpace).toHaveBeenCalledWith(codeSpaceId, '新名')
+    expect(renameSpace).toHaveBeenCalledWith(codeSpaceId, '新名', expect.any(Function))
   })
 
   it('owned 目录缺少 owner 字段时仍允许云端改名', async () => {
-    const api = makeApiClient()
-    api.request.mockResolvedValue({ public: [], shared: [], owned: [{ id: codeSpaceId, name: '副本' }] })
-    const service = makeService(api)
-    const renameSpace = vi.spyOn((service as any).client, 'renameSpace').mockResolvedValue({
+    const api = makeJavaApi()
+    api.javaKnowledge.getCatalog.mockResolvedValue([{ ...javaSpace, ownerId: null }])
+    const service = makeJavaService(api)
+    const renameSpace = api.javaKnowledge.renameSpace.mockResolvedValue({
       id: codeSpaceId,
       name: '新名'
     })
     await expect(service.renameSharedBase(codeSpaceId, '新名')).resolves.toBeUndefined()
-    expect(renameSpace).toHaveBeenCalledWith(codeSpaceId, '新名')
+    expect(renameSpace).toHaveBeenCalledWith(codeSpaceId, '新名', expect.any(Function))
   })
 
   it('取消分享期间拒绝重命名且不下发云端请求', async () => {
-    const { service, renameSpace } = setup({ shareId: codeSpaceId, completion: 'completed', files: [] })
+    const { api, service, renameSpace } = setup({ shareId: codeSpaceId, completion: 'completed', files: [] })
     vi.mocked(application.get).mockReturnValue({} as never)
-    const ownerCheck = Promise.withResolvers<typeof codeCatalog>()
-    const getCatalog = vi.spyOn((service as any).client, 'getCatalog').mockReturnValueOnce(ownerCheck.promise)
+    const ownerCheck = Promise.withResolvers<(typeof javaSpace)[]>()
+    const getCatalog = api.javaKnowledge.getCatalog.mockReturnValueOnce(ownerCheck.promise)
     const cancelling = service.unshare({ baseId: 'local-1' })
     const cancelled = expect(cancelling).rejects.toMatchObject({ status: 403 })
     try {
@@ -3217,7 +5136,7 @@ describe('重命名已分享本地知识库同步云端', () => {
     const { service, renameSpace } = setup({ shareId: codeSpaceId, completion: 'completed', files: [] })
     renameSpace.mockResolvedValue({ id: codeSpaceId, name: '其它' })
     await expect(service.renameSharedBase('local-1', '新名')).rejects.toMatchObject({ code: E.ORGKB_PROTOCOL })
-    expect(renameSpace).toHaveBeenCalledWith(codeSpaceId, '新名')
+    expect(renameSpace).toHaveBeenCalledWith(codeSpaceId, '新名', expect.any(Function))
   })
 
   it('锁内会话失效不提交改名', async () => {

@@ -1,12 +1,25 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { application } from '@application'
+import { JavaKnowledgeError } from '@main/enterprise/JavaKnowledgeClient'
 import { OrgApiHttpError } from '@main/enterprise/OrgApiClient'
 import { OrgKnowledgeError } from '@main/enterprise/OrgKnowledgeService'
 import { enterpriseKnowledgeErrorCodes as E } from '@shared/ipc/errors/enterpriseKnowledge'
 import { IpcError } from '@shared/ipc/errors/IpcError'
 
 import { enterpriseKnowledgeHandlers } from '../enterpriseKnowledge'
+
+// 处理器只依赖领域错误类型；隔离业务服务依赖图，业务契约由 Service 测试覆盖。
+vi.mock('@main/enterprise/OrgKnowledgeService', () => ({
+  OrgKnowledgeError: class OrgKnowledgeError extends Error {
+    constructor(
+      public readonly code: string,
+      message: string
+    ) {
+      super(message)
+    }
+  }
+}))
 
 const ctx = { senderId: 'w1' }
 
@@ -17,6 +30,7 @@ describe('enterpriseKnowledgeHandlers', () => {
     syncStatus: vi.fn(),
     catalog: vi.fn(),
     listItems: vi.fn(),
+    listDirectoryItems: vi.fn(),
     listChunks: vi.fn(),
     search: vi.fn(),
     read: vi.fn(),
@@ -96,6 +110,25 @@ describe('enterpriseKnowledgeHandlers', () => {
     ).rejects.toMatchObject({ code: E.ORGKB_SHARE_CREATE_UNKNOWN, message: '刷新列表' })
   })
 
+  it.each([
+    [10008, E.ORGKB_UNAUTHORIZED],
+    [10007, E.ORGKB_FORBIDDEN]
+  ])('Java业务错误 %s 保留领域错误', async (code, expected) => {
+    fakeKnowledge.preview.mockRejectedValue(new JavaKnowledgeError(Number(code)))
+    await expect(
+      enterpriseKnowledgeHandlers['enterprise.knowledge.preview']({ baseId: 'orgkb:base', fileId: 'orgkb:file' }, ctx)
+    ).rejects.toMatchObject({ code: expected })
+  })
+
+  it('预览保留知识库与文件双重归属', async () => {
+    fakeKnowledge.preview.mockResolvedValue({ kind: 'text', fileName: 'a', mimeType: 'text/plain', content: '正文' })
+    await enterpriseKnowledgeHandlers['enterprise.knowledge.preview'](
+      { baseId: 'orgkb:base', fileId: 'orgkb:file' },
+      ctx
+    )
+    expect(fakeKnowledge.preview).toHaveBeenCalledWith({ baseId: 'orgkb:base', fileId: 'orgkb:file' })
+  })
+
   it('catalog delegates to the service and returns its result', async () => {
     fakeKnowledge.catalog.mockResolvedValue({ public: [], shared: [], owned: [] })
     const result = await enterpriseKnowledgeHandlers['enterprise.knowledge.catalog'](undefined, ctx)
@@ -104,7 +137,8 @@ describe('enterpriseKnowledgeHandlers', () => {
   })
 
   it('maps OrgKnowledgeError (BAD_INPUT) to IpcError', async () => {
-    fakeKnowledge.listItems.mockRejectedValue(new OrgKnowledgeError(E.ORGKB_BAD_INPUT, 'bad id'))
+    // fakeKnowledge.listItems.mockRejectedValue(new OrgKnowledgeError(E.ORGKB_BAD_INPUT, 'bad id'))
+    fakeKnowledge.listDirectoryItems.mockRejectedValue(new OrgKnowledgeError(E.ORGKB_BAD_INPUT, 'bad id'))
     await expect(
       enterpriseKnowledgeHandlers['enterprise.knowledge.items']({ baseId: 'x' }, ctx)
     ).rejects.toBeInstanceOf(IpcError)
@@ -136,10 +170,9 @@ describe('enterpriseKnowledgeHandlers', () => {
   it('collaborators delegates and returns service result', async () => {
     const result = { items: [{ id: 2, username: 'bob' }], total: 5, page: 1, pageSize: 20 }
     fakeKnowledge.collaborators.mockResolvedValue(result)
-    expect(await enterpriseKnowledgeHandlers['enterprise.knowledge.collaborators']({ keyword: 'bo' }, ctx)).toEqual(
-      result
-    )
-    expect(fakeKnowledge.collaborators).toHaveBeenCalledWith({ keyword: 'bo' })
+    const input = { baseId: 'orgkb:base', keyword: 'bo', page: 2, pageSize: 20 }
+    expect(await enterpriseKnowledgeHandlers['enterprise.knowledge.collaborators'](input, ctx)).toEqual(result)
+    expect(fakeKnowledge.collaborators).toHaveBeenCalledWith(input)
   })
 
   it('invite delegates with local baseId', async () => {

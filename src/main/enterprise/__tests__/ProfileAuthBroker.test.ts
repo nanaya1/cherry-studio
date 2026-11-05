@@ -28,6 +28,17 @@ const tokens = {
 }
 
 describe('ProfileAuthBroker authoritative identity', () => {
+  it('Java 会话无 status、refresh 和本地期限，租户不改变身份主键', () => {
+    const { broker } = setup()
+    const me = { serverInstanceId: 'instance', id: 'user', tenantId: 't1', roleCode: 'member', groupId: null }
+    const first = broker.javaManagement(me, 'raw')
+    const second = broker.javaManagement({ ...me, tenantId: 't2' }, 'raw')
+    expect(first.identity).toEqual(second.identity)
+    expect(first.authorizationContext).toMatchObject({ tenantId: 't1', groupId: null })
+    expect(first.session).not.toHaveProperty('status')
+    expect(first.session).not.toHaveProperty('refreshToken')
+    expect(first.session.expiresAt).toBeNull()
+  })
   it('normalizes numeric management user and group ids from modern', async () => {
     const { api, broker } = setup()
     api.getCurrentUser.mockResolvedValue({

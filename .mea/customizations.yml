@@ -8,6 +8,70 @@ policy:
   require_tests: true
   preserve_original_code_by_comment: true
 customizations:
+  - id: enterprise-java-resources
+    title: Java 资源稳定身份与隔离安装
+    owner: main
+    behavior: Java 目录使用原生 token 传输及服务实例、资源类型、资源ID稳定键；实例接受32位十六进制及带横杠UUID并原样保留，目录与安装卸载IPC规则一致；新连接器安装绑定实际本地ID与租约，重复安装保留本地配置，不按名称认领普通资源。Java技能及连接器缺少可信授权时拒绝运行；保留旧字段，不迁移历史资源。安装和公共UI完整接线尚在实施。
+    markers:
+      - MEA:enterprise-java-resources
+    touchpoints:
+      - src/main/enterprise/JavaResourceClient.ts
+      - src/main/enterprise/JavaResourceIdentity.ts
+      - src/main/enterprise/OrgApiClient.ts
+      - src/main/enterprise/OrgMcpCatalog.ts
+      - src/main/enterprise/OrgSkillCatalog.ts
+      - src/main/enterprise/OrgStateStore.ts
+      - src/main/ai/skills/SkillService.ts
+      - src/shared/ipc/schemas/enterprise.ts
+      - src/main/ipc/handlers/enterprise.ts
+      - src/renderer/hooks/useOrgConnectors.ts
+      - src/renderer/hooks/useOrgSkills.ts
+      - src/renderer/components/resourceCatalog/catalog/OrgSkillCatalogView.tsx
+      - src/renderer/pages/workspace/SkillsConnectorsPage.tsx
+      - src/renderer/pages/settings/McpSettings/OrgConnectorList.tsx
+      - src/renderer/pages/settings/McpSettings/McpCatalog.tsx
+    tests:
+      - src/main/enterprise/__tests__/JavaResourceClient.test.ts
+      - src/main/enterprise/__tests__/JavaResourceIdentity.test.ts
+      - src/main/enterprise/__tests__/OrgApiClient.javaResources.test.ts
+      - src/main/enterprise/__tests__/OrgMcpCatalog.test.ts
+      - src/main/enterprise/__tests__/OrgSkillCatalog.test.ts
+      - src/renderer/hooks/__tests__/useOrgSkills.test.ts
+      - src/renderer/components/resourceCatalog/catalog/__tests__/OrgSkillCatalogView.test.tsx
+      - src/renderer/pages/workspace/SkillsConnectorsPage.test.tsx
+      - src/main/enterprise/__tests__/OrgStateStore.test.ts
+      - src/main/ai/skills/__tests__/SkillService.test.ts
+      - src/shared/ipc/schemas/__tests__/enterprise.test.ts
+      - src/renderer/pages/settings/McpSettings/__tests__/OrgConnectorList.test.tsx
+      - src/renderer/pages/settings/McpSettings/__tests__/McpCatalog.test.tsx
+  - id: enterprise-java-auth
+    title: Java 原生密码认证与旧会话重登
+    owner: main
+    behavior: 用户名明文、密码使用构建公钥 RSA PKCS1Padding；认证专用 token 头，不改旧业务 Bearer。Java 会话无 status 与刷新期限，tenant 仅属授权上下文；历史凭据和 OAuth 回调要求重登，保留 profile 事务与账号主键。
+    markers:
+      - MEA:enterprise-java-auth
+    touchpoints:
+      - src/main/enterprise/JavaAuthClient.ts
+      - src/main/enterprise/PasswordProfileLogin.ts
+      - src/main/enterprise/passwordLoginRuntime.ts
+      - src/main/enterprise/ProfileAuthBroker.ts
+      - src/main/enterprise/OrgAuthManager.ts
+      - src/main/enterprise/OrgCredentialStore.ts
+      - src/main/enterprise/orgCurrentUserTransport.ts
+      - src/main/enterprise/OrgStateStore.ts
+      - src/main/enterprise/OrgApiClient.ts
+      - src/main/core/profiles/ProfileStartupVerifier.ts
+      - src/main/core/profiles/ProfileSchemas.ts
+      - src/main/core/profiles/ProfileIdentity.ts
+      - src/shared/ipc/schemas/enterprise.ts
+    tests:
+      - src/main/enterprise/__tests__/JavaAuthClient.test.ts
+      - src/main/enterprise/__tests__/PasswordProfileLogin.test.ts
+      - src/main/enterprise/__tests__/passwordLoginRuntime.test.ts
+      - src/main/enterprise/__tests__/OrgAuthManager.test.ts
+      - src/main/enterprise/__tests__/OrgStateStore.test.ts
+      - src/main/enterprise/__tests__/orgCurrentUserTransport.test.ts
+      - src/main/core/profiles/__tests__/ProfileStartupVerifier.test.ts
   - id: second-instance-window-reveal
     title: 二次启动不得显示隐藏预热窗口
     owner: main

@@ -139,7 +139,10 @@ export async function captureDshConnectionSnapshot(
     enabledApiKeys: apiKeys,
     effectiveLanguage,
     additionalSkillPaths: [
-      ...enabledSkills.map((skill) => skillService.getSkillDirectory(skill.folderName)),
+      // ...enabledSkills.map((skill) => skillService.getSkillDirectory(skill.folderName)),
+      ...enabledSkills
+        .filter((skill) => !skill.sourceUrl?.startsWith('java-resource:'))
+        .map((skill) => skillService.getSkillDirectory(skill.folderName)),
       ...workspaceSkillPaths
     ],
     mcpServerSnapshots,

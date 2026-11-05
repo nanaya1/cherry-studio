@@ -1,4 +1,5 @@
 import { application } from '@application'
+import { JavaKnowledgeError } from '@main/enterprise/JavaKnowledgeClient'
 import { OrgApiHttpError } from '@main/enterprise/OrgApiClient'
 import { OrgKnowledgeProtocolError } from '@main/enterprise/OrgKnowledgeClient'
 import { OrgKnowledgeError } from '@main/enterprise/OrgKnowledgeService'
@@ -14,6 +15,15 @@ import type { IpcHandlersFor } from '@shared/ipc/types'
 function mapError(e: unknown): never {
   if (e instanceof IpcError) throw e
   if (e instanceof OrgKnowledgeError) throw new IpcError(e.code, e.message)
+  if (e instanceof JavaKnowledgeError) {
+    const code =
+      e.code === 10008
+        ? enterpriseKnowledgeErrorCodes.ORGKB_UNAUTHORIZED
+        : e.code === 10007
+          ? enterpriseKnowledgeErrorCodes.ORGKB_FORBIDDEN
+          : enterpriseKnowledgeErrorCodes.ORGKB_SERVER_ERROR
+    throw new IpcError(code, e.message)
+  }
   if (e instanceof OrgKnowledgeProtocolError)
     throw new IpcError(enterpriseKnowledgeErrorCodes.ORGKB_PROTOCOL, e.message)
   if (e instanceof OrgApiHttpError) {
@@ -72,7 +82,8 @@ export const enterpriseKnowledgeHandlers: IpcHandlersFor<typeof enterpriseKnowle
     guard(() => plugin().knowledge.search({ baseIds, query, topK, rerank })),
   'enterprise.knowledge.read': ({ baseId, documentId, chunkId }) =>
     guard(() => plugin().knowledge.read({ baseId, documentId, chunkId: chunkId ?? null })),
-  'enterprise.knowledge.preview': ({ fileId }) => guard(() => plugin().knowledge.preview({ fileId })),
+  // 'enterprise.knowledge.preview': ({ fileId }) => guard(() => plugin().knowledge.preview({ fileId })),
+  'enterprise.knowledge.preview': ({ baseId, fileId }) => guard(() => plugin().knowledge.preview({ baseId, fileId })),
   'enterprise.knowledge.upload_status': ({ baseId }) => guard(() => plugin().knowledge.uploadStatus(baseId)),
   'enterprise.knowledge.upload_verify': ({ baseId }) => guard(() => plugin().knowledge.share(baseId, true)),
   // 'enterprise.knowledge.share': ({ baseId }) => guard(() => plugin().knowledge.share(baseId)),
@@ -86,8 +97,8 @@ export const enterpriseKnowledgeHandlers: IpcHandlersFor<typeof enterpriseKnowle
   'enterprise.knowledge.revoke_share': (params) => guard(() => plugin().knowledge.revokeShare(params)),
   'enterprise.knowledge.receive_share': (params) => guard(() => plugin().knowledge.receiveShare(params)),
   'enterprise.knowledge.members': ({ baseId }) => guard(() => plugin().knowledge.members({ baseId })),
-  'enterprise.knowledge.collaborators': ({ keyword, page, pageSize }) =>
-    guard(() => plugin().knowledge.collaborators({ keyword, page, pageSize })),
+  'enterprise.knowledge.collaborators': ({ baseId, keyword, page, pageSize }) =>
+    guard(() => plugin().knowledge.collaborators({ baseId, keyword, page, pageSize })),
   'enterprise.knowledge.invite': ({ baseId, userId, expireDays }) =>
     guard(() => plugin().knowledge.invite({ baseId, userId, expireDays })),
   'enterprise.knowledge.invitations': () => guard(() => plugin().knowledge.invitations()),

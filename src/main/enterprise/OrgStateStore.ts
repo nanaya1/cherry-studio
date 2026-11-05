@@ -17,6 +17,7 @@ import { AbsoluteFilePathSchema } from '@shared/types/file'
 
 import { cloudRecoverySchema, type CloudRecovery } from './CloudKnowledgeRecovery'
 import { firstShareStateSchema, type FirstShareState } from './FirstShareUpload'
+import { parseJavaResourceKey } from './JavaResourceIdentity'
 
 const shareAssociationSchema = z.union([
   z.string().transform((shareId) => ({ shareId, files: [], completion: 'unconfirmed' as const })),
@@ -47,6 +48,7 @@ export type OrgConnectorState = z.infer<typeof connectorStateSchema>
 const entitlementSchema = z.strictObject({
   issuerId: z.string(),
   groupId: z.string().nullable(),
+  tenantId: z.string().nullable().optional(),
   resourceId: z.string(),
   entitlement: z.enum(['active', 'disabled', 'revoked']),
   generation: z.number().int().nonnegative(),
@@ -54,7 +56,8 @@ const entitlementSchema = z.strictObject({
 })
 
 export type OrgResourceEntitlement = z.infer<typeof entitlementSchema>
-export type OrgAuthorizationLease = Pick<OrgResourceEntitlement, 'issuerId' | 'groupId' | 'generation'>
+// export type OrgAuthorizationLease = Pick<OrgResourceEntitlement, 'issuerId' | 'groupId' | 'generation'>
+export type OrgAuthorizationLease = Pick<OrgResourceEntitlement, 'issuerId' | 'groupId' | 'tenantId' | 'generation'>
 
 const fileSchema = z.object({
   skills: z.record(z.string(), skillStateSchema).default({}),
@@ -235,6 +238,25 @@ export class OrgStateStore {
     this.persist()
   }
 
+  reconcileJavaResources(
+    resourceType: 'skill' | 'mcp',
+    visibleKeys: string[],
+    lease: OrgAuthorizationLease,
+    available = true
+  ): void {
+    this.ensureLoaded()
+    const visible = new Set(visibleKeys)
+    const entries = resourceType === 'skill' ? this.data!.skillEntitlements : this.data!.connectorEntitlements
+    for (const [key, entitlement] of Object.entries(entries)) {
+      const source = parseJavaResourceKey(key)
+      if (source?.resourceType !== resourceType || source.serverInstanceId !== lease.issuerId) continue
+      const sameContext = entitlement.groupId === lease.groupId && entitlement.tenantId === lease.tenantId
+      entitlement.entitlement = available && sameContext && visible.has(key) ? 'active' : 'disabled'
+      if (entitlement.entitlement === 'active') entitlement.generation = lease.generation
+    }
+    this.persist()
+  }
+
   invalidateEntitlements(generation: number): void {
     this.ensureLoaded()
     for (const state of Object.values(this.data!.skillEntitlements)) {
@@ -247,24 +269,59 @@ export class OrgStateStore {
   }
 
   isSkillAllowed(sourceUrl: string | null | undefined, lease: OrgAuthorizationLease | null): boolean {
+    // MEA:enterprise-java-resources Java 来源只接受稳定键和明确授权，不按展示名认领。
+    if (sourceUrl?.startsWith('java-resource:')) {
+      this.ensureLoaded()
+      const source = parseJavaResourceKey(sourceUrl)
+      const entitlement = this.data!.skillEntitlements[sourceUrl]
+      return Boolean(
+        source?.resourceType === 'skill' &&
+        source.serverInstanceId === lease?.issuerId &&
+        entitlement?.resourceId === source.resourceId &&
+        this.matchesLease(entitlement, lease)
+      )
+    }
     const slug = sourceUrl?.match(/^org-skill:(.+)$/)?.[1]
     if (!slug) return true
     this.ensureLoaded()
     return this.matchesLease(this.data!.skillEntitlements[slug], lease)
   }
 
+  javaConnectorResourceKey(mcpId: string): string | null {
+    this.ensureLoaded()
+    return (
+      Object.entries(this.data!.connectors).find(
+        ([key, state]) => parseJavaResourceKey(key)?.resourceType === 'mcp' && state.mcpId === mcpId
+      )?.[0] ?? null
+    )
+  }
+
   isConnectorAllowed(mcpId: string, lease: OrgAuthorizationLease | null): boolean {
     this.ensureLoaded()
     const entitlement = Object.values(this.data!.connectorEntitlements).find((entry) => entry.localResourceId === mcpId)
-    if (!entitlement) return true
+    // if (!entitlement) return true
+    if (!entitlement) {
+      return !Object.entries(this.data!.connectors).some(
+        ([key, state]) => key.startsWith('java-resource:') && state.mcpId === mcpId
+      )
+    }
     return this.matchesLease(entitlement, lease)
   }
 
   connectorIdsDeniedBy(lease: OrgAuthorizationLease | null): string[] {
     this.ensureLoaded()
-    return Object.values(this.data!.connectorEntitlements)
-      .filter((entitlement) => entitlement.localResourceId && !this.matchesLease(entitlement, lease))
-      .map((entitlement) => entitlement.localResourceId!)
+    // return Object.values(this.data!.connectorEntitlements)
+    //   .filter((entitlement) => entitlement.localResourceId && !this.matchesLease(entitlement, lease))
+    //   .map((entitlement) => entitlement.localResourceId!)
+    const candidates = new Set([
+      ...Object.values(this.data!.connectorEntitlements).flatMap((entry) =>
+        entry.localResourceId ? [entry.localResourceId] : []
+      ),
+      ...Object.entries(this.data!.connectors)
+        .filter(([key]) => key.startsWith('java-resource:'))
+        .map(([, state]) => state.mcpId)
+    ])
+    return [...candidates].filter((id) => !this.isConnectorAllowed(id, lease))
   }
 
   private matchesLease(entitlement: OrgResourceEntitlement | undefined, lease: OrgAuthorizationLease | null): boolean {
@@ -274,6 +331,7 @@ export class OrgStateStore {
       entitlement.entitlement === 'active' &&
       entitlement.issuerId === lease.issuerId &&
       entitlement.groupId === lease.groupId &&
+      entitlement.tenantId === lease.tenantId &&
       entitlement.generation === lease.generation
     )
   }

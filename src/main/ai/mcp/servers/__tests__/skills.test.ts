@@ -2,9 +2,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { installMock, toggleMock } = vi.hoisted(() => ({ installMock: vi.fn(), toggleMock: vi.fn() }))
 const fetchMock = vi.hoisted(() => vi.fn())
+const listSkillsMock = vi.hoisted(() => vi.fn().mockResolvedValue([]))
+const enterpriseSkills = vi.hoisted(() => ({ activateResource: vi.fn() }))
+vi.mock('@application', async () => {
+  const { mockApplicationFactory } = await import('@test-mocks/main/application')
+  return mockApplicationFactory({ EnterprisePlugin: { skills: enterpriseSkills } } as Record<string, unknown>)
+})
 
 vi.mock('@main/ai/skills/SkillService', () => ({
-  skillService: { install: installMock, toggle: toggleMock }
+  // skillService: { install: installMock, toggle: toggleMock }
+  skillService: { install: installMock, toggle: toggleMock, list: listSkillsMock }
 }))
 vi.mock('electron', () => ({ net: { fetch: fetchMock } }))
 
@@ -48,6 +55,34 @@ describe('SkillsServer', () => {
   it('exposes exactly search_skills and install_skill', async () => {
     const result = await listTools(createServer())
     expect(result.tools.map((t: any) => t.name)).toEqual(['search_skills', 'install_skill'])
+  })
+
+  it('exposes enabled Java skills by distinct stable keys without loading their instructions', async () => {
+    const keys = [1, 2].map((id) => `java-resource:${'a'.repeat(32)}:skill:${id}`)
+    listSkillsMock.mockResolvedValueOnce(
+      keys.map((sourceUrl) => ({ sourceUrl, isEnabled: true, name: 'same', description: '说明' }))
+    )
+    const result = await listTools(createServer())
+    const activation = result.tools.find((tool: any) => tool.name === 'activate_java_skill')
+    expect(activation.inputSchema.properties.resource_key.enum).toEqual(keys)
+    expect(enterpriseSkills.activateResource).not.toHaveBeenCalled()
+  })
+
+  it('activates a Java skill by exact resource key in the current agent scope', async () => {
+    const resourceKey = `java-resource:${'a'.repeat(32)}:skill:1`
+    enterpriseSkills.activateResource.mockResolvedValue({ content: '企业技能正文', directory: '/skills/isolated' })
+    const result = await callTool(createServer('current-agent'), 'activate_java_skill', { resource_key: resourceKey })
+    expect(result.isError).toBeFalsy()
+    expect(result.content[0].text).toContain('企业技能正文')
+    expect(result.content[0].text).toContain('/skills/isolated')
+    expect(enterpriseSkills.activateResource).toHaveBeenCalledWith(resourceKey, 'current-agent', undefined)
+  })
+
+  it('does not return skill instructions when Java activation is denied', async () => {
+    enterpriseSkills.activateResource.mockRejectedValue(new Error('技能无权访问'))
+    const result = await callTool(createServer(), 'activate_java_skill', { resource_key: 'invalid' })
+    expect(result.isError).toBe(true)
+    expect(result.content[0].text).toContain('技能无权访问')
   })
 
   describe('search_skills', () => {

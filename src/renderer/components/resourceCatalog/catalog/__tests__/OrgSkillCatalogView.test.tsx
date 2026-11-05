@@ -29,6 +29,7 @@ function orgSkill(
   facets: { categories?: Array<{ code: string; name: string }>; tags?: Array<{ code: string; name: string }> } = {}
 ) {
   return {
+    resourceKey: `java-resource:${'a'.repeat(32)}:skill:${slug === 'a' ? 1 : slug === 'b' ? 2 : 3}`,
     slug,
     name,
     description: `${name} description`,
@@ -92,7 +93,7 @@ describe('OrgSkillCatalogView', () => {
       installing: new Set(),
       refetch: vi.fn(),
       disabledSlugs: [],
-      installedSlugs: new Set(['a']),
+      installedSlugs: new Set([orgSkill('a', '').resourceKey]),
       remove: vi.fn()
     })
     render(<OrgSkillCatalogView />)
@@ -119,7 +120,7 @@ describe('OrgSkillCatalogView', () => {
     render(<OrgSkillCatalogView />)
 
     await user.click(screen.getByRole('button', { name: 'library.org_skill.install' }))
-    expect(install).toHaveBeenCalledWith('a')
+    expect(install).toHaveBeenCalledWith(orgSkill('a', '').resourceKey)
   })
 
   it('shows the disabled-notice state with remove action for org-disabled skills', () => {
@@ -130,14 +131,45 @@ describe('OrgSkillCatalogView', () => {
       install: vi.fn(),
       installing: new Set(),
       refetch: vi.fn(),
-      disabledSlugs: ['a'],
-      installedSlugs: new Set(['a']),
+      disabledSlugs: [orgSkill('a', '').resourceKey],
+      installedSlugs: new Set([orgSkill('a', '').resourceKey]),
       remove: vi.fn()
     })
     render(<OrgSkillCatalogView />)
 
     expect(screen.getAllByText('library.org_skill.disabled_badge').length).toBeGreaterThan(0)
     expect(screen.getByRole('button', { name: 'library.org_skill.remove' })).toBeVisible()
+  })
+
+  it('卸载处理中只禁用目标稳定键的按钮，同slug资源保持可操作', async () => {
+    const user = userEvent.setup()
+    const first = orgSkill('a', '技能A')
+    const second = { ...orgSkill('b', '技能B'), slug: first.slug }
+    let finish!: () => void
+    const remove = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve
+        })
+    )
+    mocks.useOrgSkills.mockReturnValue({
+      skills: [first, second],
+      loading: false,
+      error: null,
+      install: vi.fn(),
+      installing: new Set(),
+      refetch: vi.fn(),
+      disabledSlugs: [first.resourceKey, second.resourceKey],
+      installedSlugs: new Set([first.resourceKey, second.resourceKey]),
+      remove
+    })
+    render(<OrgSkillCatalogView />)
+    const buttons = screen.getAllByRole('button', { name: 'library.org_skill.remove' })
+    await user.click(buttons[0])
+    expect(buttons[0]).toBeDisabled()
+    expect(buttons[1]).not.toBeDisabled()
+    expect(remove).toHaveBeenCalledWith(first.resourceKey)
+    finish()
   })
 
   it('shows the error state and keeps retry available', () => {

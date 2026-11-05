@@ -24,7 +24,7 @@ export function useOrgAccountSession(enabled = true) {
     setLoadState('ready')
     // [enterprise] C3：登录态变化时同步查询不可用标记（登出置位 / 重登恢复）
     ipcApi
-      .request('enterprise.status.orgUnavailable')
+      .request('enterprise.status.org_unavailable')
       .then((res) => setOrgUnavailable(res.unavailable))
       .catch(() => setOrgUnavailable(false))
   }, [])

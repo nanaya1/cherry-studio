@@ -1,7 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { createReadStream } from 'node:fs'
-import { readFile, stat, mkdtemp, rm } from 'node:fs/promises'
+// import { readFile, stat, mkdtemp, rm } from 'node:fs/promises'
+import { readFile, writeFile, stat, mkdtemp, rm } from 'node:fs/promises'
 // import { basename } from 'node:path'
+// import { basename, extname, join } from 'node:path'
 import { basename, extname, join } from 'node:path'
 
 import { fileTypeFromBuffer } from 'file-type'
@@ -20,6 +22,7 @@ import {
   type OrgKnowledgeShare,
   type OrgKnowledgeCatalog,
   type OrgKnowledgeChunkPage,
+  type OrgKnowledgeCollaborator,
   type OrgKnowledgeInvitationList,
   type OrgKnowledgeItemPage,
   type OrgKnowledgeMember,
@@ -56,6 +59,16 @@ import {
   type FirstShareProgress,
   type FirstSharePlan
 } from './FirstShareUpload'
+import { JavaKnowledgeError } from './JavaKnowledgeClient'
+import type {
+  JavaKnowledgeCategory,
+  JavaKnowledgeMember,
+  JavaKnowledgeMemberOption,
+  JavaKnowledgeShare,
+  JavaKnowledgeSpace,
+  JavaKnowledgeClient
+} from './JavaKnowledgeClient'
+import { uploadJavaKnowledgeFile } from './JavaKnowledgeUpload'
 import {
   captureKnowledgeSourceBindings,
   removeKnowledgeSourceBindings,
@@ -63,7 +76,8 @@ import {
 } from './KnowledgeSourceBindings'
 import { OrgApiHttpError } from './OrgApiClient'
 import type { OrgAuthManager } from './OrgAuthManager'
-import { OrgKnowledgeClient, OrgKnowledgeProtocolError } from './OrgKnowledgeClient'
+// import { OrgKnowledgeClient, OrgKnowledgeProtocolError } from './OrgKnowledgeClient'
+// import { OrgKnowledgeClient } from './OrgKnowledgeClient'
 import { orgStateStore } from './OrgStateStore'
 
 type Lease = ReturnType<OrgAuthManager['acquireLease']>
@@ -110,7 +124,11 @@ export class OrgKnowledgeError extends Error {
 }
 
 export class OrgKnowledgeService {
-  private readonly client: OrgKnowledgeClient
+  // private readonly client: OrgKnowledgeClient
+  /** Java 原生知识库客户端（写链路迁移目标）；与旧 OrgKnowledgeClient 并存，逐步切换。 */
+  private get javaKnowledge(): JavaKnowledgeClient {
+    return this.auth.apiClient.javaKnowledge
+  }
   private readonly shareMutex = new KeyedMutex()
   // private jobs!: Pick<JobManager, 'registerHandler' | 'enqueue' | 'list' | 'onJobSettled'>
   private readonly syncPlans = new Map<string, SyncPlan>()
@@ -303,6 +321,7 @@ export class OrgKnowledgeService {
 
   constructor(private readonly auth: OrgAuthManager) {
     // this.client = new OrgKnowledgeClient(auth.apiClient)
+    /* MEA:enterprise-knowledge-page 活跃调用已迁移 Java，保留旧客户端初始化供回溯。
     this.client = new OrgKnowledgeClient(auth.apiClient, () => {
       const lease = this.acquireLease()
       return (session) => {
@@ -314,6 +333,7 @@ export class OrgKnowledgeService {
           throw new OrgKnowledgeError(E.ORGKB_UNAUTHORIZED, '写入凭据与原操作身份不匹配')
       }
     })
+    */
   }
 
   private acquireLease(): Lease {
@@ -347,6 +367,14 @@ export class OrgKnowledgeService {
     return raw
   }
 
+  /** Java 写调用前的账号租约守卫：在 token 解析完成后、发请求前执行（beforeSend），账号切换即中止。 */
+  private writeGuard(lease: Lease): () => void {
+    return () => {
+      this.assertLease(lease)
+    }
+  }
+
+  /*
   async catalog(): Promise<OrgKnowledgeCatalog> {
     const lease = this.acquireLease()
     const raw = await this.checked(() => this.client.getCatalog(), lease)
@@ -426,6 +454,7 @@ export class OrgKnowledgeService {
       } catch (error) {
         this.assertLease(lease)
         if (
+          (error instanceof JavaKnowledgeError && error.code === 10008) ||
           (error instanceof OrgKnowledgeError && error.code === E.ORGKB_UNAUTHORIZED) ||
           (error instanceof OrgApiHttpError && error.status === 401)
         )
@@ -464,7 +493,122 @@ export class OrgKnowledgeService {
     if (shares === true || members === true) return true
     return shares === false && members === false ? false : undefined
   }
+  */
 
+  async catalog(): Promise<OrgKnowledgeCatalog> {
+    const lease = this.acquireLease()
+    // Java 原生目录：服务端按 category 严格分桶（PUBLIC/OWNED/SHARED），不再使用旧协议的 visibility。
+    const raw = await this.checked(() => this.auth.apiClient.javaKnowledge.getCatalog(), lease)
+    const associations = orgStateStore.getShareAssociations()
+    const localBaseId = (spaceId: string) => {
+      for (const [key, association] of Object.entries(associations)) {
+        if (association.shareId !== spaceId) continue
+        try {
+          const [issuerId, userId, groupId, baseId] = JSON.parse(key)
+          if (
+            issuerId === lease.issuerId &&
+            userId === lease.userId &&
+            groupId === lease.groupId &&
+            typeof baseId === 'string'
+          )
+            return baseId
+        } catch {
+          continue
+        }
+      }
+      return undefined
+    }
+    const toBase = (b: JavaKnowledgeSpace) => ({
+      id: encodeOrgId(b.id),
+      name: b.name,
+      description: b.description ?? null,
+      updatedAt: b.updateTime ?? undefined,
+      documentCount: undefined,
+      allowLocalFileUpload: b.allowLocalFileUpload ?? undefined,
+      canDownload: b.canDownload ?? undefined,
+      localBaseId: undefined as string | undefined,
+      shareCompleted: false,
+      hasShareEvidence: undefined as boolean | undefined
+    })
+    // 服务端 category 严格分桶；visibility 不再用于分桶。
+    const bucket = (category: JavaKnowledgeCategory | null) =>
+      raw.filter((space) => space.category === category).map(toBase)
+    const ownedRaw = raw.filter((space) => space.category === 'OWNED')
+    const owned = ownedRaw.map((base) => {
+      const id = localBaseId(base.id)
+      const association = id ? associations[this.syncKey(id, lease)] : undefined
+      return {
+        ...toBase(base),
+        localBaseId: id,
+        shareCompleted: association?.completion === 'completed'
+      }
+    })
+    // owned 归属由 catalog 上游校验；最多两个库并发补查跨端证据，普通失败只使证据未知。
+    let next = 0
+    await Promise.all(
+      Array.from({ length: Math.min(2, owned.length) }, async () => {
+        while (next < owned.length) {
+          const index = next++
+          const base = owned[index]
+          if (base.shareCompleted) {
+            base.hasShareEvidence = true
+            continue
+          }
+          base.hasShareEvidence = await this.catalogJavaEvidence(ownedRaw[index].id, lease)
+        }
+      })
+    )
+    this.assertLease(lease)
+    return {
+      public: bucket('PUBLIC'),
+      shared: bucket('SHARED'),
+      owned
+    }
+  }
+
+  // 旧 catalogShareEvidence（旧协议 listShares/listMembers 证据）已停用，改由 catalogJavaEvidence 走 Java 客户端。
+  private async catalogJavaEvidence(spaceId: string, lease: Lease): Promise<boolean | undefined> {
+    const query = async (operation: () => Promise<boolean>): Promise<boolean | undefined> => {
+      try {
+        return await this.checked(operation, lease)
+      } catch (error) {
+        this.assertLease(lease)
+        if (
+          (error instanceof JavaKnowledgeError && error.code === 10008) ||
+          (error instanceof OrgKnowledgeError && error.code === E.ORGKB_UNAUTHORIZED) ||
+          (error instanceof OrgApiHttpError && error.status === 401)
+        )
+          throw error
+        logger.warn('catalog share evidence unavailable', {
+          reason: error instanceof OrgApiHttpError ? error.status : 'network-or-protocol'
+        })
+        return undefined
+      }
+    }
+    const [shares, members] = await Promise.all([
+      query(async () => {
+        const records = await this.auth.apiClient.javaKnowledge.listShares(spaceId)
+        // 任一可领取的分享即构成跨端分享证据。
+        return records.some((share) => share.receivable)
+      }),
+      query(async () => {
+        const records = await this.auth.apiClient.javaKnowledge.listMembers(spaceId)
+        // 非本人、有效 viewer 且租户生效的成员即构成跨端分享证据。
+        return records.some(
+          (member) =>
+            String(member.userId) !== lease.userId &&
+            member.role === 'viewer' &&
+            isLiveMemberStatus(member.status) &&
+            member.activeTenantMember === true &&
+            (!member.expiresAt || Date.parse(member.expiresAt) > Date.now())
+        )
+      })
+    ])
+    if (shares === true || members === true) return true
+    return shares === false && members === false ? false : undefined
+  }
+
+  /*
   async listItems(baseId: string, cursor?: string | null): Promise<OrgKnowledgeItemPage> {
     const rawBase = this.decodeId(baseId, 'baseId')
     const lease = this.acquireLease()
@@ -515,7 +659,47 @@ export class OrgKnowledgeService {
       nextCursor: raw.next_cursor ?? null
     }
   }
+  */
 
+  async listItems(baseId: string, cursor?: string | null): Promise<OrgKnowledgeItemPage> {
+    const rawBase = this.decodeId(baseId, 'baseId')
+    const lease = this.acquireLease()
+    // 数字 cursor 必须正整数；Java 文件列表按 page/pageSize 分页，next 由 page*pageSize<total 推导。
+    const pageNumber = cursor ? Number(cursor) : 1
+    if (!Number.isInteger(pageNumber) || pageNumber < 1) {
+      throw new OrgKnowledgeError(E.ORGKB_BAD_INPUT, '非法目录分页')
+    }
+    const page = await this.checked(
+      () => this.auth.apiClient.javaKnowledge.listFiles(rawBase, { page: pageNumber }),
+      lease
+    )
+    this.assertLease(lease)
+    return {
+      items: page.items.map((file) => ({
+        // Java 文件 id 同时作 item/documentId；目录 documentId 为 null。
+        id: encodeOrgId(file.fileId),
+        baseId: encodeOrgId(file.knowledgeId),
+        type: file.directory ? 'directory' : 'file',
+        title: file.name,
+        // ready 映射为 completed，其余 parseStatus 原样保留，不伪造完成。
+        status: file.directory
+          ? 'completed'
+          : file.parseStatus === 'ready'
+            ? 'completed'
+            : (file.parseStatus ?? 'pending'),
+        parentId: file.parentId ? encodeOrgId(file.parentId) : null,
+        documentId: file.directory ? null : encodeOrgId(file.fileId),
+        hasOriginalFile: file.hasOriginalFile ?? false,
+        fileId: encodeOrgId(file.fileId),
+        createdAt: file.createTime ?? '',
+        updatedAt: file.updateTime ?? ''
+      })),
+      total: page.total,
+      nextCursor: page.page * page.pageSize < page.total ? String(page.page + 1) : null
+    }
+  }
+
+  /*
   async listDirectoryItems(
     baseId: string,
     cursor?: string | null,
@@ -568,7 +752,64 @@ export class OrgKnowledgeService {
       nextCursor: entries.length < page.total ? String(pageNumber + 1) : null
     }
   }
+  */
 
+  async listDirectoryItems(
+    baseId: string,
+    cursor?: string | null,
+    parentId?: string | null
+  ): Promise<OrgKnowledgeItemPage> {
+    const rawBase = this.decodeId(baseId, 'baseId')
+    const lease = this.acquireLease()
+    const rawParent = parentId ? this.decodeId(parentId, 'parentId') : null
+    const pageNumber = cursor ? Number(cursor) : 1
+    if (!Number.isInteger(pageNumber) || pageNumber < 1) throw new OrgKnowledgeError(E.ORGKB_BAD_INPUT, '非法目录分页')
+    // Java 文件列表按 rootOnly 或 parentId 取单一层，并校验 parent 归属。
+    const page = await this.checked(
+      () =>
+        this.auth.apiClient.javaKnowledge.listFiles(rawBase, {
+          page: pageNumber,
+          rootOnly: !rawParent,
+          parentId: rawParent ?? undefined
+        }),
+      lease
+    )
+    if (page.items.some((file) => file.knowledgeId !== rawBase)) {
+      throw new OrgKnowledgeError(E.ORGKB_PROTOCOL, '目录文件归属不匹配')
+    }
+    if (rawParent) {
+      if (page.items.some((file) => file.parentId !== rawParent)) {
+        throw new OrgKnowledgeError(E.ORGKB_PROTOCOL, '目录文件归属不匹配')
+      }
+    } else if (page.items.some((file) => file.parentId !== null)) {
+      throw new OrgKnowledgeError(E.ORGKB_PROTOCOL, '目录文件归属不匹配')
+    }
+    this.assertLease(lease)
+    const entries = page.items
+    return {
+      items: entries.map((file) => ({
+        id: encodeOrgId(file.fileId),
+        baseId: encodeOrgId(file.knowledgeId),
+        type: file.directory ? 'directory' : 'file',
+        title: file.name,
+        status: file.directory
+          ? 'completed'
+          : file.parseStatus === 'ready'
+            ? 'completed'
+            : (file.parseStatus ?? 'pending'),
+        parentId: file.parentId ? encodeOrgId(file.parentId) : null,
+        documentId: file.directory ? null : encodeOrgId(file.fileId),
+        hasOriginalFile: file.hasOriginalFile ?? false,
+        fileId: encodeOrgId(file.fileId),
+        createdAt: file.createTime ?? '',
+        updatedAt: file.updateTime ?? ''
+      })),
+      total: page.total,
+      nextCursor: page.page * page.pageSize < page.total ? String(page.page + 1) : null
+    }
+  }
+
+  /*
   async listChunks(baseId: string, itemId: string, cursor?: string | null): Promise<OrgKnowledgeChunkPage> {
     const rawBase = this.decodeId(baseId, 'baseId')
     const rawItem = this.decodeId(itemId, 'itemId')
@@ -586,7 +827,40 @@ export class OrgKnowledgeService {
       nextCursor: raw.next_cursor ?? null
     }
   }
+  */
 
+  async listChunks(baseId: string, itemId: string, cursor?: string | null): Promise<OrgKnowledgeChunkPage> {
+    const rawBase = this.decodeId(baseId, 'baseId')
+    const rawItem = this.decodeId(itemId, 'itemId')
+    const lease = this.acquireLease()
+    const pageNumber = cursor ? Number(cursor) : 1
+    if (!Number.isInteger(pageNumber) || pageNumber < 1) throw new OrgKnowledgeError(E.ORGKB_BAD_INPUT, '非法分块分页')
+    const page = await this.checked(
+      () => this.auth.apiClient.javaKnowledge.listChunks(rawBase, rawItem, pageNumber),
+      lease
+    )
+    this.assertLease(lease)
+    return {
+      chunks: page.items.map((c) => {
+        // 缺失 chunkIndex 视为协议错误，不伪造。
+        if (c.chunkIndex === null || c.chunkIndex === undefined) {
+          throw new OrgKnowledgeError(E.ORGKB_PROTOCOL, '分块缺少 chunkIndex')
+        }
+        return {
+          id: encodeOrgId(c.chunkId),
+          itemId: encodeOrgId(c.fileId),
+          documentId: encodeOrgId(c.fileId),
+          content: c.content,
+          chunkIndex: c.chunkIndex,
+          metadata: { chunkIndex: c.chunkIndex }
+        }
+      }),
+      total: page.total,
+      nextCursor: page.page * page.pageSize < page.total ? String(page.page + 1) : null
+    }
+  }
+
+  /*
   async search(params: {
     baseIds: string[]
     query: string
@@ -606,7 +880,50 @@ export class OrgKnowledgeService {
       }))
     }
   }
+  */
 
+  async search(params: {
+    baseIds: string[]
+    query: string
+    topK?: number
+    rerank?: boolean
+  }): Promise<OrgKnowledgeSearchResult> {
+    const lease = this.acquireLease()
+    const rawBases = params.baseIds.map((id) => this.decodeId(id, 'baseId'))
+    const raw = await this.checked(
+      () =>
+        this.auth.apiClient.javaKnowledge.search({
+          knowledgeIds: rawBases,
+          query: params.query,
+          topK: params.topK,
+          rerank: params.rerank
+        }),
+      lease
+    )
+    this.assertLease(lease)
+    return {
+      chunks: raw.hits.map((hit) => {
+        // 缺少必要字段视为协议错误，不伪造 id/score。
+        if (!hit.chunkId || !hit.knowledgeId || !hit.fileId) {
+          throw new OrgKnowledgeError(E.ORGKB_PROTOCOL, '检索命中缺少必要字段')
+        }
+        if (hit.score === null || hit.score === undefined) {
+          throw new OrgKnowledgeError(E.ORGKB_PROTOCOL, '检索命中缺少必要字段')
+        }
+        // 正文 title 可空映射为 ''，不虚构。
+        return {
+          chunkId: encodeOrgId(hit.chunkId),
+          baseId: encodeOrgId(hit.knowledgeId),
+          documentId: encodeOrgId(hit.fileId),
+          title: hit.title ?? '',
+          content: hit.content ?? '',
+          score: hit.score
+        }
+      })
+    }
+  }
+
+  /*
   async read(params: { baseId: string; documentId: string; chunkId?: string | null }): Promise<OrgKnowledgeReadResult> {
     const baseId = this.decodeId(params.baseId, 'baseId')
     const documentId = this.decodeId(params.documentId, 'documentId')
@@ -620,22 +937,47 @@ export class OrgKnowledgeService {
       truncated: raw.truncated
     }
   }
+  */
+
+  async read(params: { baseId: string; documentId: string; chunkId?: string | null }): Promise<OrgKnowledgeReadResult> {
+    const lease = this.acquireLease()
+    const baseId = this.decodeId(params.baseId, 'baseId')
+    const documentId = this.decodeId(params.documentId, 'documentId')
+    const chunkId = params.chunkId ? this.decodeId(params.chunkId, 'chunkId') : null
+    const raw = await this.checked(
+      () => this.auth.apiClient.javaKnowledge.read(baseId, documentId, chunkId ?? undefined),
+      lease
+    )
+    this.assertLease(lease)
+    return {
+      documentId: encodeOrgId(raw.fileId),
+      title: raw.title ?? '',
+      content: raw.content,
+      totalChars: raw.totalChars ?? null,
+      truncated: raw.truncated ?? false
+    }
+  }
 
   async deleteFile(params: { baseId: string; fileId: string }): Promise<{ ok: true }> {
     const spaceId = this.decodeId(params.baseId, 'baseId')
     const fileId = this.decodeId(params.fileId, 'fileId')
     const lease = this.acquireLease()
     await this.assertRealOwner(spaceId, lease)
-    const file = await this.checked(() => this.client.getFile(fileId), lease)
-    if (file.id !== fileId || file.space_id !== spaceId)
+    // const file = await this.checked(() => this.client.getFile(fileId), lease)
+    // if (file.id !== fileId || file.space_id !== spaceId)
+    // MEA:enterprise-knowledge-page 删除前通过 Java 校验文件与空间双重归属。
+    const file = await this.checked(() => this.javaKnowledge.getFile(spaceId, fileId), lease)
+    if (file.fileId !== fileId || file.knowledgeId !== spaceId)
       throw new OrgKnowledgeError(E.ORGKB_FORBIDDEN, '文件不属于当前知识库')
     const recoveryKey = JSON.stringify([lease.issuerId, lease.userId, 'recovery', spaceId])
     if (this.unsharing.has(recoveryKey) || orgStateStore.getCloudRecovery(recoveryKey))
       throw new OrgKnowledgeError(E.ORGKB_FORBIDDEN, '该云端库已进入恢复流程，不能删除资料')
-    await this.checked(() => this.client.deleteFile(fileId), lease)
+    // await this.checked(() => this.client.deleteFile(fileId), lease)
+    await this.checked(() => this.javaKnowledge.removeFile(spaceId, fileId, this.writeGuard(lease)), lease)
     return { ok: true }
   }
 
+  /*
   async preview(params: { fileId: string }): Promise<OrgKnowledgePreview> {
     const fileId = this.decodeId(params.fileId, 'fileId')
     const lease = this.acquireLease()
@@ -756,10 +1098,72 @@ export class OrgKnowledgeService {
     return { kind: preview.kind, fileName: preview.file_name, mimeType, content: '' }
   }
 
+  */
+
+  async preview(params: { baseId?: string; fileId: string }): Promise<OrgKnowledgePreview> {
+    if (!params.baseId) throw new OrgKnowledgeError(E.ORGKB_BAD_INPUT, '预览缺少知识库归属')
+    const baseId = this.decodeId(params.baseId, 'baseId')
+    const fileId = this.decodeId(params.fileId, 'fileId')
+    const lease = this.acquireLease()
+    const client = this.auth.apiClient.javaKnowledge
+    const file = await this.checked(() => client.getFile(baseId, fileId), lease)
+    if (file.knowledgeId !== baseId || file.fileId !== fileId || file.directory || file.hasOriginalFile !== true)
+      throw new OrgKnowledgeError(E.ORGKB_FORBIDDEN, '原件不可用或能力已变化')
+    const original = await this.checked(() => client.preview(baseId, fileId), lease)
+    // const mimeType = original.contentType || file.mimeType || null
+    let mimeType = (original.contentType || file.mimeType)?.split(';')[0].trim().toLowerCase() || null
+    const extension = extname(file.name).toLowerCase()
+    const office: Record<string, readonly [string, number]> = {
+      '.docx': ['application/vnd.openxmlformats-officedocument.wordprocessingml.document', 25 * 1024 * 1024],
+      '.xlsx': ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 20 * 1024 * 1024],
+      '.pptx': ['application/vnd.openxmlformats-officedocument.presentationml.presentation', 25 * 1024 * 1024]
+    }
+    const officeType = office[extension]
+    if (officeType && original.bytes.length > officeType[1])
+      throw new OrgKnowledgeError(E.ORGKB_BAD_INPUT, '文件超过应用内预览大小限制')
+    if (!mimeType || mimeType === 'application/octet-stream') {
+      const expected = new Map([
+        ['.pdf', 'application/pdf'],
+        ['.png', 'image/png'],
+        ['.jpg', 'image/jpeg'],
+        ['.jpeg', 'image/jpeg'],
+        ['.gif', 'image/gif'],
+        ['.webp', 'image/webp'],
+        ['.avif', 'image/avif'],
+        ['.bmp', 'image/bmp']
+      ]).get(extension)
+      const detected = await fileTypeFromBuffer(original.bytes).catch(() => undefined)
+      this.assertLease(lease)
+      if (expected && detected?.mime === expected) mimeType = expected
+      else if (officeType && detected?.mime === officeType[0]) mimeType = officeType[0]
+      else if (/^\.(txt|md|markdown|mdx|csv|html?|draftsexport|json)$/.test(extension)) mimeType = 'text/plain'
+    }
+    if (mimeType?.startsWith('text/') || ['application/json', 'application/markdown'].includes(mimeType ?? ''))
+      return { kind: 'text', fileName: file.name, mimeType, content: original.bytes.toString('utf8') }
+    const inlineTypes = [
+      'application/pdf',
+      'image/png',
+      'image/jpeg',
+      'image/gif',
+      'image/webp',
+      'image/avif',
+      'image/bmp',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+    ]
+    if (mimeType && inlineTypes.includes(mimeType))
+      return { kind: 'inline', fileName: file.name, mimeType, content: '', base64: original.bytes.toString('base64') }
+    const text = await this.checked(() => client.read(baseId, fileId), lease)
+    return { kind: 'text', fileName: file.name, mimeType, content: text.content }
+  }
+
   async shares(params: { baseId: string }): Promise<{ shares: OrgKnowledgeShare[] }> {
     const spaceId = this.decodeId(params.baseId, 'baseId')
-    const raw = await this.checked(() => this.client.listShares(spaceId))
-    if (raw.some((share) => share.space_id !== spaceId)) throw new OrgKnowledgeError(E.ORGKB_PROTOCOL, '分享空间不匹配')
+    // MEA:enterprise-knowledge-page 写链路迁移：listShares 走 Java 原生客户端（归属已在客户端校验）。
+    const raw = await this.checked(() => this.javaKnowledge.listShares(spaceId))
+    if (raw.some((share) => share.knowledgeId !== spaceId))
+      throw new OrgKnowledgeError(E.ORGKB_PROTOCOL, '分享空间不匹配')
     return { shares: raw.map(toShare) }
   }
 
@@ -773,12 +1177,13 @@ export class OrgKnowledgeService {
       throw new OrgKnowledgeError(E.ORGKB_BAD_INPUT, '分享设置无效')
     const spaceId = this.decodeId(params.baseId, 'baseId')
     const lease = this.acquireLease()
-    const catalog = await this.checked(() => this.client.getCatalog(), lease)
-    const owned = catalog.owned.find((space) => space.id === spaceId)
+    // MEA:enterprise-knowledge-page 写链路迁移：owner 校验走 Java 原生目录。
+    const catalog = await this.checked(() => this.javaKnowledge.getCatalog(), lease)
+    const owned = catalog.find((space) => space.id === spaceId && space.category === 'OWNED')
     if (
-      catalog.public.some((space) => space.id === spaceId) ||
+      catalog.some((space) => space.category === 'PUBLIC' && space.id === spaceId) ||
       !owned ||
-      !(owned.my_role === 'owner' || (owned.owner_id !== undefined && String(owned.owner_id) === lease.userId))
+      owned.ownerId !== Number(lease.userId)
     ) {
       throw new OrgKnowledgeError(E.ORGKB_FORBIDDEN, '仅允许分享本人拥有的非公共知识库')
     }
@@ -821,14 +1226,21 @@ export class OrgKnowledgeService {
             associations.some(([key]) => this.unsharing.has(key) || !orgStateStore.getShareAssociations()[key])
           )
             throw new OrgKnowledgeError(E.ORGKB_SHARE_FAILED, '共享状态已变化，请刷新后再试')
-          return this.client.createShareCode(spaceId, params)
+          // MEA:enterprise-knowledge-page 写链路迁移：createShare 走 Java 原生客户端。
+          return this.javaKnowledge.createShare(
+            spaceId,
+            { password: params.password, maxViews: params.maxViews, expireDays: params.expireDays },
+            this.writeGuard(lease)
+          )
         })
       } catch (error) {
-        if (error instanceof OrgApiHttpError && error.status < 500) throw error
+        // if (error instanceof OrgApiHttpError && error.status < 500) throw error
+        if (error instanceof JavaKnowledgeError || error instanceof OrgKnowledgeError) throw error
         throw new OrgKnowledgeError(E.ORGKB_SHARE_CREATE_UNKNOWN, '创建分享码结果未知，请刷新分享列表核查后再操作')
       }
     }, lease)
-    if (raw.space_id !== spaceId || raw.share_type !== 1)
+    // MEA:enterprise-knowledge-page 写链路迁移：Java 响应以 knowledgeId/shareId 双重归属校验，无需 share_type。
+    if (raw.knowledgeId !== spaceId || !raw.shareId)
       throw new OrgKnowledgeError(E.ORGKB_SHARE_CREATE_UNKNOWN, '创建分享码响应异常，请刷新分享列表核查')
     return toShare(raw)
   }
@@ -836,33 +1248,61 @@ export class OrgKnowledgeService {
   async revokeShare(params: { baseId: string; shareId: string }): Promise<{ ok: true }> {
     const spaceId = this.decodeId(params.baseId, 'baseId')
     const shareId = this.decodeId(params.shareId, 'shareId')
-    await this.checked(() => this.client.revokeShare(spaceId, shareId))
+    // MEA:enterprise-knowledge-page 写链路迁移：revokeShare 走 Java 原生客户端。
+    const lease = this.acquireLease()
+    await this.checked(() => this.javaKnowledge.revokeShare(spaceId, shareId, this.writeGuard(lease)), lease)
     return { ok: true }
   }
 
   async receiveShare(params: { shareCode: string; password?: string }): Promise<{ baseId: string; name: string }> {
     if (!OrgKnowledgeReceiveShareInputSchema.safeParse(params).success)
       throw new OrgKnowledgeError(E.ORGKB_BAD_INPUT, '分享码或提取码格式无效')
-    const raw = await this.checked(() => this.client.receiveShare(params))
+    // MEA:enterprise-knowledge-page 写链路迁移：receiveShare 走 Java 原生客户端。
+    const lease = this.acquireLease()
+    const raw = await this.checked(() => this.javaKnowledge.receiveShare(params, this.writeGuard(lease)), lease)
     return { baseId: encodeOrgId(raw.id), name: raw.name }
   }
 
   async members(params: { baseId: string }): Promise<OrgKnowledgeMemberList> {
     const spaceId = this.decodeId(params.baseId, 'baseId')
-    const raw = await this.checked(() => this.client.listMembers(spaceId))
+    // MEA:enterprise-knowledge-page 写链路迁移：listMembers 走 Java 原生客户端。
+    const raw = await this.checked(() => this.javaKnowledge.listMembers(spaceId))
     return { members: raw.map(toMember) }
   }
 
+  // MEA:enterprise-knowledge-page 写链路迁移：collaborators 现需 baseId（Java memberOptions 强制 knowledgeId）。
+  // 旧 IPC 路由 enterprise.knowledge.collaborators 输入无 baseId，需主代理在 shared IPC schema 增加 baseId 并让 UI 传入。
   async collaborators(params: {
+    baseId: string
     keyword?: string
     page?: number
     pageSize?: number
   }): Promise<OrgKnowledgeCollaboratorList> {
+    // const knowledgeId = this.decodeId(params.baseId, 'baseId')
     const lease = this.acquireLease()
-    const raw = await this.checked(() => this.client.listCollaborators(params), lease)
-    // [enterprise] 过滤本人：邀请列表不应包含当前登录用户；total 直接回传服务端真实计数，不虚构/扣减。
+    // MEA:enterprise-knowledge-page 本地面板仅解析当前身份下已完成的共享关联，不猜测或创建云端库。
+    const remote = isOrgId(params.baseId)
+    const association = remote ? undefined : orgStateStore.getShareAssociation(this.syncKey(params.baseId, lease))
+    if (
+      !remote &&
+      (!association ||
+        association.completion !== 'completed' ||
+        association.files.some((file) => file.status !== 'success'))
+    )
+      throw new OrgKnowledgeError(E.ORGKB_SHARE_INCOMPLETE, '该本地知识库尚未完成共享关联，无法查询协作者')
+    const knowledgeId = remote ? this.decodeId(params.baseId, 'baseId') : association!.shareId
+    // MEA:enterprise-knowledge-page 写链路迁移：memberOptions 走 Java 原生客户端（knowledgeId 必填）。
+    const raw = await this.checked(
+      () =>
+        this.javaKnowledge.memberOptions(
+          { knowledgeId, keyword: params.keyword, page: params.page, pageSize: params.pageSize },
+          this.writeGuard(lease)
+        ),
+      lease
+    )
+    // [enterprise] 过滤本人：成员可选项不应包含当前登录用户；total 直接回传服务端真实计数，不虚构/扣减。
     const selfId = lease.userId
-    const items = raw.items.filter((collaborator) => String(collaborator.id) !== selfId)
+    const items = raw.items.filter((collaborator) => String(collaborator.userId) !== selfId).map(toCollaborator)
     return { items, total: raw.total, page: raw.page, pageSize: raw.pageSize }
   }
 
@@ -925,8 +1365,9 @@ export class OrgKnowledgeService {
       throw new OrgKnowledgeError(E.ORGKB_BAD_INPUT, '不能邀请本人')
     }
     // 拉取最新 members，阻止仍生效（active/pending 等）的重复邀请；expired/removed 按实际契约放行。
-    const members = await this.checked(() => this.client.listMembers(spaceId), lease)
-    const existing = members.find((member) => member.user_id === params.userId)
+    // MEA:enterprise-knowledge-page 写链路迁移：listMembers 走 Java 原生客户端。
+    const members = await this.checked(() => this.javaKnowledge.listMembers(spaceId), lease)
+    const existing = members.find((member) => member.userId === params.userId)
     if (existing && isLiveMemberStatus(existing.status)) {
       throw new OrgKnowledgeError(E.ORGKB_MEMBER_EXISTS, '该用户已是成员或邀请待处理，不能重复邀请')
     }
@@ -947,38 +1388,51 @@ export class OrgKnowledgeService {
         )
       )
         throw new OrgKnowledgeError(E.ORGKB_SHARE_FAILED, '共享状态已变化，请刷新后再试')
-      return toMember(await this.checked(() => this.client.addMember(spaceId, params.userId, params.expireDays), lease))
+      // MEA:enterprise-knowledge-page 写链路迁移：addMember 走 Java 原生客户端。
+      return toMember(
+        await this.checked(
+          () => this.javaKnowledge.addMember(spaceId, params.userId, params.expireDays, this.writeGuard(lease)),
+          lease
+        )
+      )
     })
   }
 
   async invitations(): Promise<OrgKnowledgeInvitationList> {
-    const raw = await this.checked(() => this.client.listInvitations())
+    // MEA:enterprise-knowledge-page 写链路迁移：listInvitations 走 Java 原生客户端。
+    const raw = await this.checked(() => this.javaKnowledge.listInvitations())
     return {
       invitations: raw.map((inv) => ({
-        id: encodeOrgId(inv.id),
-        spaceId: encodeOrgId(inv.space_id),
-        name: inv.name,
-        inviter: inv.inviter == null ? null : String(inv.inviter),
-        role: inv.role,
-        expires: inv.expires
+        id: encodeOrgId(inv.invitationId),
+        spaceId: encodeOrgId(inv.knowledgeId),
+        name: inv.name ?? '',
+        inviter: inv.inviterId == null ? null : String(inv.inviterId),
+        // [enterprise] Java 邀请 VO 无 role 字段，IPC 输出要求 role；不可伪造，缺失字段须由主代理调整 schema。
+        expires: inv.expiresAt
       }))
     }
   }
 
   async accept(params: { invitationId: string }): Promise<OrgKnowledgeMember> {
     const id = this.decodeId(params.invitationId, 'invitationId')
-    return toMember(await this.checked(() => this.client.acceptInvitation(id)))
+    // MEA:enterprise-knowledge-page 写链路迁移：acceptInvitation 走 Java 原生客户端。
+    const lease = this.acquireLease()
+    return toMember(await this.checked(() => this.javaKnowledge.acceptInvitation(id, this.writeGuard(lease)), lease))
   }
 
   async decline(params: { invitationId: string }): Promise<{ ok: true }> {
     const id = this.decodeId(params.invitationId, 'invitationId')
-    await this.checked(() => this.client.declineInvitation(id))
+    // MEA:enterprise-knowledge-page 写链路迁移：declineInvitation 走 Java 原生客户端。
+    const lease = this.acquireLease()
+    await this.checked(() => this.javaKnowledge.declineInvitation(id, this.writeGuard(lease)), lease)
     return { ok: true }
   }
 
   async removeMember(params: { baseId: string; userId: number }): Promise<{ ok: true }> {
     const spaceId = this.decodeId(params.baseId, 'baseId')
-    await this.checked(() => this.client.removeMember(spaceId, params.userId))
+    // MEA:enterprise-knowledge-page 写链路迁移：removeMember 走 Java 原生客户端。
+    const lease = this.acquireLease()
+    await this.checked(() => this.javaKnowledge.removeMember(spaceId, params.userId, this.writeGuard(lease)), lease)
     return { ok: true }
   }
 
@@ -1055,7 +1509,7 @@ export class OrgKnowledgeService {
       status: changes.length ? 'pending' : 'shared',
       changes,
       warnings: cleanupOnly
-        ? ['仅清理已记录旧副本，不重复上传；DELETE 为软删除，索引失效时间未承诺']
+        ? ['仅清理已记录旧副本，不重复上传；删除意图已保存或历史发送状态不明时仅只读核对，禁止重发；索引失效时间未承诺']
         : changes.some((change) => change.kind === 'delete' || change.kind === 'update')
           ? ['更新为非原子操作，新副本验证后软删除旧版；目录不可见不代表索引即时失效，索引失效时间未承诺']
           : []
@@ -1128,12 +1582,13 @@ export class OrgKnowledgeService {
   }
 
   private async syncOwner(shareId: string, lease: Lease): Promise<void> {
-    const catalog = await this.checked(() => this.client.getCatalog(), lease)
-    const owned = catalog.owned.find((space) => space.id === shareId)
+    // MEA:enterprise-knowledge-page 写链路迁移：owner 校验走 Java 原生目录。
+    const catalog = await this.checked(() => this.javaKnowledge.getCatalog(), lease)
+    const owned = catalog.find((space) => space.id === shareId && space.category === 'OWNED')
     if (
-      catalog.public.some((space) => space.id === shareId) ||
+      catalog.some((space) => space.category === 'PUBLIC' && space.id === shareId) ||
       !owned ||
-      !(owned.my_role === 'owner' || (owned.owner_id !== undefined && String(owned.owner_id) === lease.userId))
+      owned.ownerId !== Number(lease.userId)
     )
       throw new OrgKnowledgeError(E.ORGKB_FORBIDDEN, '仅允许同步本人拥有的关联空间')
   }
@@ -1256,25 +1711,31 @@ export class OrgKnowledgeService {
       let status: 'success' | 'failure' | 'unknown' = 'unknown'
       try {
         if (old?.fileId && !pendingOperation) {
-          const remote = await this.checked(() => this.client.getFile(old.fileId!), lease)
-          if (remote.id !== old.fileId || remote.space_id !== association.shareId || remote.is_dir)
+          // const remote = await this.checked(() => this.client.getFile(old.fileId!), lease)
+          const remote = await this.checked(() => this.javaKnowledge.getFile(association.shareId, old.fileId!), lease)
+          if (remote.fileId !== old.fileId || remote.knowledgeId !== association.shareId || remote.directory)
             throw new OrgKnowledgeError(E.ORGKB_FORBIDDEN, '远端文件不属于关联空间')
         }
         if (pendingOperation || change.kind === 'delete') {
-          if (change.kind === 'update') {
-            if (!operation.newFileId || operation.newFileId === old!.fileId)
-              throw new Error('新旧文件映射未确认，禁止删除')
-            const replacement = await this.checked(() => this.client.getFile(operation.newFileId!), lease)
+          if (change.kind === 'update' && (!operation.newFileId || operation.newFileId === old!.fileId))
+            throw new Error('新旧文件映射未确认，禁止删除')
+          if (change.kind === 'update' && operation.cleanupDeleteState === 'not_sent') {
+            // const replacement = await this.checked(() => this.client.getFile(operation.newFileId!), lease)
+            const replacement = await this.checked(
+              () => this.javaKnowledge.getFile(association.shareId, operation.newFileId!),
+              lease
+            )
             if (
-              replacement.id !== operation.newFileId ||
-              replacement.space_id !== association.shareId ||
-              replacement.is_dir
+              replacement.fileId !== operation.newFileId ||
+              replacement.knowledgeId !== association.shareId ||
+              replacement.directory
             )
               throw new Error('新副本归属未确认，禁止清理')
           }
           operation.phase = 'cleanup_pending'
+          if (!pendingOperation) operation.cleanupDeleteState = 'not_sent'
           persist()
-          await this.cleanupSyncFile(association.shareId, old!.fileId!, lease, active)
+          await this.cleanupSyncFile(association.shareId, old!.fileId!, lease, active, operation, persist)
           if (change.kind === 'delete') {
             manifest.entries = manifest.entries.filter((candidate) => candidate !== old)
           } else {
@@ -1283,16 +1744,22 @@ export class OrgKnowledgeService {
             old!.hash = operation.hash!
           }
         } else if (change.kind === 'rename') {
-          const renamed = await this.checked(() => this.client.renameFile(old!.fileId!, change.fileName), lease)
+          // const renamed = await this.checked(() => this.client.renameFile(old!.fileId!, change.fileName), lease)
+          const renamed = await this.checked(
+            () =>
+              this.javaKnowledge.renameFile(association.shareId, old!.fileId!, change.fileName, this.writeGuard(lease)),
+            lease
+          )
           if (
-            renamed.id !== old!.fileId ||
-            renamed.space_id !== association.shareId ||
+            renamed.fileId !== old!.fileId ||
+            renamed.knowledgeId !== association.shareId ||
             renamed.name !== change.fileName ||
-            renamed.is_dir
+            renamed.directory
           )
             throw new Error('重命名结果未确认')
           old!.fileName = change.fileName
         } else {
+          /* 原表单上传保留，追加改为 Java 流式原件与预计算分块。
           const form = new FormData()
           form.append('file', new Blob([new Uint8Array(entry!.buffer)]), entry!.fileName)
           // form.append('chunks', JSON.stringify(entry!.chunks))
@@ -1302,6 +1769,18 @@ export class OrgKnowledgeService {
             'chunks.json'
           )
           const uploaded = await this.checked(() => this.client.uploadShareFile(association.shareId, form), lease)
+          */
+          const result = await uploadJavaKnowledgeFile(this.javaKnowledge, {
+            knowledgeId: association.shareId,
+            signal,
+            fileName: entry!.fileName,
+            chunks: entry!.chunks,
+            filePath: application.get('KnowledgeService').getFilePath(entry!.itemId),
+            fileSize: entry!.buffer.length,
+            expectedHash: createHash('sha256').update(entry!.buffer).digest('hex'),
+            beforeSend: active
+          })
+          const uploaded = { file_id: result.fileId, share_id: result.knowledgeId, chunk_count: result.chunkCount }
           operation.newFileId = uploaded.file_id
           operation.phase = 'verifying'
           persist()
@@ -1310,10 +1789,11 @@ export class OrgKnowledgeService {
           await this.verifySyncFile(association.shareId, uploaded.file_id, entry!, lease)
           if (change.kind === 'update') {
             operation.phase = 'cleanup_pending'
+            operation.cleanupDeleteState = 'not_sent'
             // operation.error = '新副本可查询，旧副本索引失效契约未确认，保留旧新映射'
             if (uploaded.file_id === old!.fileId) throw new Error('新旧文件 ID 相同，禁止删除')
             persist()
-            await this.cleanupSyncFile(association.shareId, old!.fileId!, lease, active)
+            await this.cleanupSyncFile(association.shareId, old!.fileId!, lease, active, operation, persist)
             old!.fileId = uploaded.file_id
             old!.fileName = entry!.fileName
             old!.hash = operation.hash!
@@ -1339,7 +1819,7 @@ export class OrgKnowledgeService {
           (error instanceof OrgKnowledgeError && error.code === E.ORGKB_FORBIDDEN)
         ) {
           if (operation.phase !== 'cleanup_pending' && !operation.newFileId) operation.phase = 'failure'
-          if (operation.phase === 'failure' || operation.phase === 'cleanup_pending') status = 'failure'
+          if (operation.phase === 'failure') status = 'failure'
         }
       }
       manifest.state = status === 'unknown' ? 'unknown' : 'pending'
@@ -1370,84 +1850,142 @@ export class OrgKnowledgeService {
     return { status, files, shareId: encodeOrgId(association.shareId) }
   }
 
-  private async cleanupSyncFile(shareId: string, fileId: string, lease: Lease, active: () => void): Promise<void> {
+  private async cleanupSyncFile(
+    shareId: string,
+    fileId: string,
+    lease: Lease,
+    active: () => void,
+    operation: OrgKnowledgeSyncManifest['operations'][number],
+    persist: () => void
+  ): Promise<void> {
     active()
     await this.syncOwner(shareId, lease)
-    let exists = true
-    try {
-      const file = await this.checked(() => this.client.getFile(fileId), lease)
-      if (file.id !== fileId || file.space_id !== shareId || file.is_dir)
+    const readOnly = operation.cleanupDeleteState !== 'not_sent'
+    if (!readOnly) {
+      const file = await this.checked(() => this.javaKnowledge.getFile(shareId, fileId), lease)
+      if (file.fileId !== fileId || file.knowledgeId !== shareId || file.directory)
         throw new OrgKnowledgeError(E.ORGKB_FORBIDDEN, '远端文件不属于关联空间')
-    } catch (error) {
-      if (!(error instanceof OrgApiHttpError) || error.status !== 404) throw error
-      exists = false
+      await this.checked(
+        () =>
+          this.javaKnowledge.removeFile(shareId, fileId, () => {
+            active()
+            operation.cleanupDeleteState = 'intent_saved'
+            persist()
+            active()
+          }),
+        lease
+      )
     }
-    active()
-    if (exists) await this.checked(() => this.client.deleteFile(fileId), lease)
-    let cursor: string | null | undefined
+    let count = 0
+    let total: number | undefined
     const seen = new Set<string>()
-    do {
+    for (let page = 1; ; page++) {
       active()
-      const page = await this.checked(() => this.client.listItems(shareId, cursor), lease)
-      for (const item of page.items) {
-        if (item.base_id !== shareId) throw new Error('目录空间归属未确认')
-        if (item.id === fileId || item.data.file_id === fileId || item.document_id === fileId)
-          throw new Error('软删除后旧文件仍在目录中可见')
-        if (item.type === 'file' && !item.data.file_id && item.document_id) {
-          const resolved = await this.checked(() => this.client.resolveFileId(item.document_id!), lease)
-          if (!resolved || resolved === fileId) throw new Error('目录文件映射未确认')
-        }
+      const result = await this.checked(() => this.javaKnowledge.listFiles(shareId, { page, pageSize: 100 }), lease)
+      if (total !== undefined && total !== result.total) throw new Error('云端目录统计已变化')
+      total = result.total
+      if (result.items.some((entry) => entry.fileId === fileId)) throw new Error('删除后旧文件仍在目录中可见')
+      for (const entry of result.items) {
+        if (entry.knowledgeId !== shareId || seen.has(entry.fileId)) throw new Error('云端目录归属或分页未确认')
+        seen.add(entry.fileId)
       }
-      cursor = page.next_cursor
-      if (cursor && seen.has(cursor)) throw new Error('目录分页未确认')
-      if (cursor) seen.add(cursor)
-    } while (cursor)
-    // 这里只核查目录不可见；软删除不代表搜索索引即时失效。
+      count += result.items.length
+      if (count > total) throw new Error('云端目录统计未确认')
+      if (count === total) break
+      if (!result.items.length) throw new Error('云端目录分页不完整')
+    }
+    // 文件详情错误没有可靠的缺失契约；目录不可见也不是原生文件删除确认，不能猜测成功。
+    if (readOnly) throw new Error('旧文件本次目录不可见，但删除结果缺少可靠确认，保留待核对；禁止重发删除')
+    //     let exists = true
+    //     try {
+    //       const file = await this.checked(() => this.client.getFile(fileId), lease)
+    //       if (file.id !== fileId || file.space_id !== shareId || file.is_dir)
+    //         throw new OrgKnowledgeError(E.ORGKB_FORBIDDEN, '远端文件不属于关联空间')
+    //     } catch (error) {
+    //       if (!(error instanceof OrgApiHttpError) || error.status !== 404) throw error
+    //       exists = false
+    //     }
+    //     active()
+    //     if (exists) await this.checked(() => this.client.deleteFile(fileId), lease)
+    //     let cursor: string | null | undefined
+    //     const seen = new Set<string>()
+    //     do {
+    //       active()
+    //       const page = await this.checked(() => this.client.listItems(shareId, cursor), lease)
+    //       for (const item of page.items) {
+    //         if (item.base_id !== shareId) throw new Error('目录空间归属未确认')
+    //         if (item.id === fileId || item.data.file_id === fileId || item.document_id === fileId)
+    //           throw new Error('软删除后旧文件仍在目录中可见')
+    //         if (item.type === 'file' && !item.data.file_id && item.document_id) {
+    //           const resolved = await this.checked(() => this.client.resolveFileId(item.document_id!), lease)
+    //           if (!resolved || resolved === fileId) throw new Error('目录文件映射未确认')
+    //         }
+    //       }
+    //       cursor = page.next_cursor
+    //       if (cursor && seen.has(cursor)) throw new Error('目录分页未确认')
+    //       if (cursor) seen.add(cursor)
+    //     } while (cursor)
+    //     // 这里只核查目录不可见；软删除不代表搜索索引即时失效。
   }
 
   private async verifySyncFile(shareId: string, fileId: string, entry: ShareEntry, lease: Lease): Promise<void> {
-    const file = await this.checked(() => this.client.getFile(fileId), lease)
-    if (
-      file.id !== fileId ||
-      file.space_id !== shareId ||
-      file.is_dir ||
-      file.name !== entry.fileName ||
-      file.file_hash !== createHash('sha256').update(entry.buffer).digest('hex')
+    await this.verifyFirstShareFile(
+      shareId,
+      fileId,
+      {
+        itemId: entry.itemId,
+        fileName: entry.fileName,
+        path: '',
+        size: entry.buffer.length,
+        hash: createHash('sha256').update(entry.buffer).digest('hex'),
+        fingerprint: '',
+        chunks: entry.chunks,
+        uploadOriginal: true
+      },
+      lease
     )
-      throw new Error('文件元信息或哈希未确认')
-    let cursor: string | null | undefined
-    const seen = new Set<string>()
-    do {
-      const page = await this.checked(() => this.client.listItems(shareId, cursor), lease)
-      const item = page.items.find(
-        (candidate) =>
-          candidate.base_id === shareId &&
-          candidate.type === 'file' &&
-          (candidate.data.file_id === fileId || candidate.document_id === fileId)
-      )
-      if (item) {
-        const visible = await this.checked(() => this.client.getItem(shareId, item.id), lease)
-        if (
-          visible.id !== item.id ||
-          visible.base_id !== shareId ||
-          visible.status !== 'completed' ||
-          !(visible.data.file_id === fileId || visible.document_id === fileId)
-        )
-          throw new Error('知识条目未确认')
-        const chunks = await this.checked(() => this.client.listChunks(shareId, item.id), lease)
-        if (
-          chunks.total !== entry.chunks.length ||
-          !chunks.chunks.length ||
-          chunks.chunks.some((chunk) => chunk.item_id !== item.id)
-        )
-          throw new Error('知识分块未确认')
-        return
-      }
-      cursor = page.next_cursor
-      if (cursor && seen.has(cursor)) throw new Error('目录分页未确认')
-      if (cursor) seen.add(cursor)
-    } while (cursor)
-    throw new Error('新文件尚未出现在知识目录')
+    //     const file = await this.checked(() => this.client.getFile(fileId), lease)
+    //     if (
+    //       file.id !== fileId ||
+    //       file.space_id !== shareId ||
+    //       file.is_dir ||
+    //       file.name !== entry.fileName ||
+    //       file.file_hash !== createHash('sha256').update(entry.buffer).digest('hex')
+    //     )
+    //       throw new Error('文件元信息或哈希未确认')
+    //     let cursor: string | null | undefined
+    //     const seen = new Set<string>()
+    //     do {
+    //       const page = await this.checked(() => this.client.listItems(shareId, cursor), lease)
+    //       const item = page.items.find(
+    //         (candidate) =>
+    //           candidate.base_id === shareId &&
+    //           candidate.type === 'file' &&
+    //           (candidate.data.file_id === fileId || candidate.document_id === fileId)
+    //       )
+    //       if (item) {
+    //         const visible = await this.checked(() => this.client.getItem(shareId, item.id), lease)
+    //         if (
+    //           visible.id !== item.id ||
+    //           visible.base_id !== shareId ||
+    //           visible.status !== 'completed' ||
+    //           !(visible.data.file_id === fileId || visible.document_id === fileId)
+    //         )
+    //           throw new Error('知识条目未确认')
+    //         const chunks = await this.checked(() => this.client.listChunks(shareId, item.id), lease)
+    //         if (
+    //           chunks.total !== entry.chunks.length ||
+    //           !chunks.chunks.length ||
+    //           chunks.chunks.some((chunk) => chunk.item_id !== item.id)
+    //         )
+    //           throw new Error('知识分块未确认')
+    //         return
+    //       }
+    //       cursor = page.next_cursor
+    //       if (cursor && seen.has(cursor)) throw new Error('目录分页未确认')
+    //       if (cursor) seen.add(cursor)
+    //     } while (cursor)
+    //     throw new Error('新文件尚未出现在知识目录')
   }
 
   async prepareAddedFiles(baseId: string): Promise<{ localBaseId: string }> {
@@ -1482,7 +2020,8 @@ export class OrgKnowledgeService {
       }
     }
     // const base = await ks.createBase({ name: '云端新增资料（仅本机待上传）', embeddingModelId: null, dimensions: null })
-    const space = await this.checked(() => this.client.getSpace(spaceId), lease)
+    // const space = await this.checked(() => this.client.getSpace(spaceId), lease)
+    const space = await this.checked(() => this.javaKnowledge.getSpace(spaceId), lease)
     const base = await ks.createBase({ name: space.name, embeddingModelId: null, dimensions: null })
     this.assertLease(lease)
     orgStateStore.setShareAssociation(this.syncKey(base.id, lease), {
@@ -1528,10 +2067,11 @@ export class OrgKnowledgeService {
     const lease = this.acquireLease()
     const spaceId = this.decodeId(baseId, '知识库')
     await this.assertRealOwner(spaceId, lease)
-    const space = await this.checked(() => this.client.getSpace(spaceId), lease)
-    if (space.id !== spaceId || typeof space.allow_local_file_upload !== 'boolean')
+    // const space = await this.checked(() => this.client.getSpace(spaceId), lease)
+    const space = await this.checked(() => this.javaKnowledge.getSpace(spaceId), lease)
+    if (space.id !== spaceId || typeof space.allowLocalFileUpload !== 'boolean')
       throw new Error('空间源文件上传策略未确认')
-    const uploadOriginal = space.allow_local_file_upload
+    const uploadOriginal = space.allowLocalFileUpload
     const recoveryKey = JSON.stringify([lease.issuerId, lease.userId, 'recovery', spaceId])
     if (this.unsharing.has(recoveryKey) || orgStateStore.getCloudRecovery(recoveryKey))
       throw new Error('该云端库已进入恢复流程，不能新增资料')
@@ -1639,12 +2179,13 @@ export class OrgKnowledgeService {
     if (!saved) {
       const association = orgStateStore.getShareAssociation(key)
       if (!association) return null
-      const space = await this.checked(() => this.client.getSpace(association.shareId), lease)
-      if (space.id !== association.shareId || typeof space.allow_local_file_upload !== 'boolean')
+      // const space = await this.checked(() => this.client.getSpace(association.shareId), lease)
+      const space = await this.checked(() => this.javaKnowledge.getSpace(association.shareId), lease)
+      if (space.id !== association.shareId || typeof space.allowLocalFileUpload !== 'boolean')
         throw new Error('空间源文件上传策略未确认')
       return {
         phase: association.completion === 'completed' ? 'completed' : 'paused',
-        uploadOriginal: space.allow_local_file_upload,
+        uploadOriginal: space.allowLocalFileUpload,
         totalBytes: 0,
         uploadedBytes: 0,
         completedFiles: 0,
@@ -1711,8 +2252,8 @@ export class OrgKnowledgeService {
         // 按真实 owner 取消（允许 public 空间），不依赖同步 owner 校验的 public 拒绝；最小新校验。
         await this.assertRealOwner(current.shareId, lease)
         // 仅 204 成功后清除本地绑定与首传记录；失败（超时/403/404）保留绑定不假定成功。
-        // await this.client.deleteShareSpace(current.shareId)
-        await this.checked(() => this.client.deleteShareSpace(current.shareId), lease)
+        // MEA:enterprise-knowledge-page 写链路迁移：deleteShareSpace 走 Java 原生 removeSpace（不得旧端点）。
+        await this.checked(() => this.javaKnowledge.removeSpace(current.shareId, this.writeGuard(lease)), lease)
         this.clearLocalShare(key)
         return { ok: true }
       })
@@ -1735,8 +2276,9 @@ export class OrgKnowledgeService {
     if (!remoteBaseId && localKey) {
       const association = orgStateStore.getShareAssociation(localKey)
       if (!association) {
-        const catalog = await this.checked(() => this.client.getCatalog(), lease)
-        if (catalog.owned.some((base) => base.id === baseId)) {
+        // const catalog = await this.checked(() => this.client.getCatalog(), lease)
+        const catalog = await this.checked(() => this.javaKnowledge.getCatalog(), lease)
+        if (catalog.some((base) => base.id === baseId && base.category === 'OWNED')) {
           // 原始云端 UUID 无本机副本时，转为纯远端改名，不能再走本地关联空操作。
           remoteBaseId = baseId
           localKey = null
@@ -1757,7 +2299,11 @@ export class OrgKnowledgeService {
       if (!spaceId) return
       if (localKey && !association) return
       await this.assertRealOwner(spaceId, lease)
-      const result = await this.checked(() => this.client.renameSpace(spaceId, name), lease)
+      // const result = await this.checked(() => this.client.renameSpace(spaceId, name), lease)
+      const result = await this.checked(
+        () => this.javaKnowledge.renameSpace(spaceId, name, this.writeGuard(lease)),
+        lease
+      )
       if (result.id !== spaceId || result.name !== name) {
         throw new OrgKnowledgeError(E.ORGKB_PROTOCOL, '重命名响应异常，已拒绝')
       }
@@ -1780,9 +2326,33 @@ export class OrgKnowledgeService {
         let count = 0
         let total = Infinity
         for (let page = 1; count < total; page++) {
-          const list = await this.checked(() => this.client.listRecoveryFiles(spaceId, parentId, page), lease)
+          // const list = await this.checked(() => this.client.listRecoveryFiles(spaceId, parentId, page), lease)
+          const list = await this.checked(
+            () =>
+              this.javaKnowledge.listFiles(spaceId, {
+                page,
+                pageSize: 100,
+                ...(parentId ? { parentId } : { rootOnly: true })
+              }),
+            lease
+          )
+          if (total !== Infinity && total !== list.total) throw new Error('云端目录统计已变化')
           total = list.total
-          const entries = [...list.folders, ...list.files]
+          // const entries = [...list.folders, ...list.files]
+          const entries: RecoveryFile[] = list.items.map((file) => {
+            if (!file.directory && typeof file.hasOriginalFile !== 'boolean') throw new Error('云端原件状态未知')
+            if (!file.updateTime) throw new Error('云端文件版本未确认')
+            return {
+              id: file.fileId,
+              space_id: file.knowledgeId,
+              parent_id: file.parentId,
+              name: file.name,
+              is_dir: file.directory,
+              has_original_file: file.hasOriginalFile === true,
+              file_hash: file.fileHash,
+              updated_at: file.updateTime
+            }
+          })
           if (!entries.length && count < total) throw new Error('云端目录分页不完整')
           for (const entry of entries) {
             if (seen.has(entry.id) || entry.space_id !== spaceId || entry.parent_id !== parentId)
@@ -1834,8 +2404,9 @@ export class OrgKnowledgeService {
           .map(([localKey]) => String(JSON.parse(localKey)[3]))
           .filter((localBaseId) => localBaseId !== encodeOrgId(spaceId)),
       createBase: async () => {
-        const catalog = await this.checked(() => this.client.getCatalog(), lease)
-        const space = catalog.owned.find((entry) => entry.id === spaceId)
+        // MEA:enterprise-knowledge-page 写链路迁移：owner 校验走 Java 原生目录。
+        const catalog = await this.checked(() => this.javaKnowledge.getCatalog(), lease)
+        const space = catalog.find((entry) => entry.id === spaceId && entry.category === 'OWNED')
         if (!space) throw new Error('云端空间不可用')
         const base = await ks.createBase({ name: space.name, embeddingModelId: null, dimensions: null })
         return base.id
@@ -1890,7 +2461,10 @@ export class OrgKnowledgeService {
             // 下载目录本身已随机隔离，保留原名供知识库导入生成正确的 relativePath。
             const downloadedPath = join(temp!, recoveredFileName)
             source = downloadedPath
-            await this.checked(() => this.client.downloadOriginal(file.id, source!), lease)
+            // await this.checked(() => this.client.downloadOriginal(file.id, source!), lease)
+            const downloaded = await this.checked(() => this.javaKnowledge.download(spaceId, file.id), lease)
+            active()
+            await writeFile(source, downloaded.bytes, { flag: 'wx' })
             /* 原下载校验仅在远端带hash时执行。
             if (file.file_hash) {
               const hash = createHash('sha256')
@@ -1939,16 +2513,21 @@ export class OrgKnowledgeService {
         }
       },
       checkSpace: async () => {
-        const catalog = await this.checked(() => this.client.getCatalog(), lease)
-        return catalog.owned.some((entry) => entry.id === spaceId)
+        // MEA:enterprise-knowledge-page 写链路迁移：checkSpace 走 Java 原生目录。
+        const catalog = await this.checked(() => this.javaKnowledge.getCatalog(), lease)
+        if (catalog.some((entry) => entry.id === spaceId && entry.category === 'OWNED')) return true
+        return !(await this.confirmJavaDeletion(spaceId, lease))
       },
       // deleteSpace: () => this.client.deleteShareSpace(spaceId),
+      // MEA:enterprise-knowledge-page 写链路迁移：deleteSpace 走 Java 原生 removeSpace（不得旧端点）。
       deleteSpace: () => {
         active()
-        return this.client.deleteShareSpace(spaceId)
+        return this.javaKnowledge.removeSpace(spaceId, this.writeGuard(lease))
       },
       deleteLocalBase: async (localBaseId) => {
         active()
+        // 普通恢复取消分享只解除关联；未经明确勾选删除本机，不删除既有副本。
+        if (!orgStateStore.getCloudRecovery(key)?.deleteLocal) return
         const exists = ks
           .listBasesForDiscovery({ limit: 1, scope: { kind: 'restricted', baseIds: [localBaseId] } })
           .items.some((base) => base.id === localBaseId)
@@ -1967,6 +2546,34 @@ export class OrgKnowledgeService {
       }
     })
     return { recovery, key, spaceId }
+  }
+
+  private async confirmJavaDeletion(spaceId: string, lease: Lease): Promise<boolean> {
+    const matches: Array<{ id: number }> = []
+    let count = 0
+    let total: number | undefined
+    for (let page = 1; ; page++) {
+      const result = await this.checked(() => this.javaKnowledge.listOperations(page, this.writeGuard(lease)), lease)
+      if (total !== undefined && total !== result.total) throw new Error('操作记录分页已变化')
+      total = result.total
+      for (const operation of result.items) {
+        if (
+          operation.knowledgeId === spaceId &&
+          ['DELETING', 'DELETE_UNCONFIRMED', 'DELETED'].includes(operation.operationState ?? '')
+        )
+          matches.push(operation)
+      }
+      count += result.items.length
+      if (count >= total) break
+      if (!result.items.length) throw new Error('操作记录分页不完整')
+    }
+    if (matches.length !== 1) throw new Error('没有唯一可信的删除操作绑定，结果需人工核查')
+    const confirmed = await this.checked(
+      () => this.javaKnowledge.confirmOperation(matches[0].id, this.writeGuard(lease)),
+      lease
+    )
+    if (confirmed !== null) throw new Error('删除结果未确认')
+    return true
   }
 
   private async runRecovery<T>(
@@ -2056,6 +2663,7 @@ export class OrgKnowledgeService {
   async unsharePreview({ baseId }: { baseId: string }) {
     const lease = this.acquireLease()
     return this.runRecovery(baseId, lease, async ({ recovery, key, spaceId }) => {
+      if (orgStateStore.getCloudRecovery(key)?.phase === 'delete-unknown') await recovery.confirmDeleteResult()
       const saved = orgStateStore.getCloudRecovery(key)
       if (saved?.phase !== 'deleted' && saved?.phase !== 'local-cleanup' && saved?.phase !== 'completed')
         await this.assertRealOwner(spaceId, lease)
@@ -2082,6 +2690,7 @@ export class OrgKnowledgeService {
   }): Promise<{ ok: boolean; localBaseId: string }> {
     const lease = this.acquireLease()
     return this.runRecovery(baseId, lease, async ({ recovery, key, spaceId }) => {
+      if (orgStateStore.getCloudRecovery(key)?.phase === 'delete-unknown') await recovery.confirmDeleteResult()
       const saved = orgStateStore.getCloudRecovery(key)
       if (saved?.phase !== 'deleted' && saved?.phase !== 'local-cleanup' && saved?.phase !== 'completed')
         await this.assertRealOwner(spaceId, lease)
@@ -2107,13 +2716,9 @@ export class OrgKnowledgeService {
   }
 
   private async assertRealOwner(shareId: string, lease: Lease): Promise<void> {
-    const catalog = await this.checked(() => this.client.getCatalog(), lease)
-    const owned = catalog.owned.find((space) => space.id === shareId)
-    // 原 owner 字段校验保留：catalog.owned 已是服务端按当前账号归属返回的权威分类。
-    // if (
-    //   !owned ||
-    //   !(owned.my_role === 'owner' || (owned.owner_id !== undefined && String(owned.owner_id) === lease.userId))
-    // ) {
+    // MEA:enterprise-knowledge-page 写链路迁移：owner 校验走 Java 原生目录。
+    const catalog = await this.checked(() => this.javaKnowledge.getCatalog(), lease)
+    const owned = catalog.find((space) => space.id === shareId && space.category === 'OWNED')
     if (!owned) {
       throw new OrgKnowledgeError(E.ORGKB_FORBIDDEN, '仅允许操作本人拥有的关联空间')
     }
@@ -2138,7 +2743,17 @@ export class OrgKnowledgeService {
       return
     saved.cleanup ??= { phase: 'pending', error: null }
     orgStateStore.setFirstShareUpload(key, saved)
-    if (saved.cleanup.phase === 'intent' || saved.cleanup.phase === 'unknown') return
+    // if (saved.cleanup.phase === 'intent' || saved.cleanup.phase === 'unknown') return
+    if (saved.cleanup.phase === 'intent' || saved.cleanup.phase === 'unknown') {
+      if (!saved.shareId) return
+      try {
+        await this.confirmJavaDeletion(saved.shareId, lease)
+        saved.cleanup = { phase: 'deleted', error: null }
+        orgStateStore.setFirstShareUpload(key, saved)
+      } catch {
+        return
+      }
+    }
     if (!saved.taskId || saved.createdByTask !== saved.taskId || !saved.shareId) {
       saved.cleanup = { phase: 'unknown', error: '创建结果或任务归属未知，请联系管理员核查' }
       orgStateStore.setFirstShareUpload(key, saved)
@@ -2165,7 +2780,8 @@ export class OrgKnowledgeService {
       saved.cleanup = { phase: 'intent', error: null }
       orgStateStore.setFirstShareUpload(key, saved)
       // 不用 checked 包裹成功响应：切号后仍须先在原 key 记录删除结果。
-      await this.client.deleteShareSpace(saved.shareId)
+      // await this.client.deleteShareSpace(saved.shareId)
+      await this.javaKnowledge.removeSpace(saved.shareId, this.writeGuard(lease))
       saved.cleanup = { phase: 'deleted', error: null }
       orgStateStore.setFirstShareUpload(key, saved)
       this.assertLease(lease)
@@ -2207,6 +2823,11 @@ export class OrgKnowledgeService {
     }
     if (residual?.cleanup && existing?.completion !== 'completed') {
       return this.shareMutex.runExclusive(key, async () => {
+        if (verifyOnly && residual.creation !== 'created') {
+          // 无操作ID或可信 knowledgeId 时只展示核对入口，绝不按名称认领创建结果。
+          await this.checked(() => this.javaKnowledge.listOperations(1, this.writeGuard(lease)), lease)
+          throw new OrgKnowledgeError(E.ORGKB_SHARE_INCOMPLETE, '创建操作缺少可靠绑定，需按原生操作ID人工核查')
+        }
         await this.rollbackFirstShare(key, localBaseId, lease)
         throw new OrgKnowledgeError(E.ORGKB_SHARE_INCOMPLETE, '首次分享已中断，请查看清理状态后重新分享')
       })
@@ -2224,8 +2845,9 @@ export class OrgKnowledgeService {
       // if (existing.completion === 'completed')
       //   replaceKnowledgeSourceBindings(localBaseId, encodeOrgId(existing.shareId))
       // return Promise.resolve({ ...existing, shareId: encodeOrgId(existing.shareId) })
-      return this.checked(() => this.client.getSpace(existing.shareId), lease).then((space) => {
-        if (space.id !== existing.shareId || typeof space.allow_local_file_upload !== 'boolean')
+      // return this.checked(() => this.client.getSpace(existing.shareId), lease).then((space) => {
+      return this.checked(() => this.javaKnowledge.getSpace(existing.shareId), lease).then((space) => {
+        if (space.id !== existing.shareId || typeof space.allowLocalFileUpload !== 'boolean')
           throw new Error('空间源文件上传策略未确认')
         if (existing.completion === 'completed')
           replaceKnowledgeSourceBindings(localBaseId, encodeOrgId(existing.shareId))
@@ -2264,37 +2886,72 @@ export class OrgKnowledgeService {
         createShareSpace: async (name, mode) => {
           active()
           // 首传成功响应先由写前日志固化到原账号 key，再由 active 中断会话。
-          const created = await this.client.createShareSpace(name, mode)
-          createdByTask = created.share_id
-          return created
+          // const created = await this.client.createShareSpace(name, mode)
+          const created = await this.javaKnowledge.createLocalShare(name, mode, this.writeGuard(lease))
+          createdByTask = created.id
+          return { share_id: created.id }
         },
         verifyPolicy: async (shareId, mode, createdNow) => {
-          const space = await this.checked(() => this.client.getSpace(shareId), lease)
+          // const space = await this.checked(() => this.client.getSpace(shareId), lease)
+          const space = await this.checked(() => this.javaKnowledge.getSpace(shareId), lease)
           if (
             space.id !== shareId ||
-            typeof space.allow_local_file_upload !== 'boolean' ||
-            (mode && !space.allow_local_file_upload) ||
-            (createdNow && mode !== space.allow_local_file_upload)
+            typeof space.allowLocalFileUpload !== 'boolean' ||
+            (mode && !space.allowLocalFileUpload) ||
+            (createdNow && mode !== space.allowLocalFileUpload)
           )
             throw new Error('空间源文件上传策略未确认或已变化')
         },
         createShareFolder: (shareId, folder, parentId) => {
           active()
-          return this.client.createShareFolder(shareId, folder, parentId)
+          // return this.client.createShareFolder(shareId, folder, parentId)
+          return this.javaKnowledge
+            .createFolder(shareId, folder.fileName, parentId ?? undefined, this.writeGuard(lease))
+            .then((file) => ({
+              folder_id: file.fileId,
+              name: file.name,
+              space_id: file.knowledgeId,
+              parent_id: file.parentId
+            }))
         },
         verifyFolder: async (shareId, folderId, folder, parentId) => {
-          const remote = await this.checked(() => this.client.getFile(folderId), lease)
+          // const remote = await this.checked(() => this.client.getFile(folderId), lease)
+          const remote = await this.checked(() => this.javaKnowledge.getFile(shareId, folderId), lease)
           if (
-            remote.id !== folderId ||
-            remote.space_id !== shareId ||
-            !remote.is_dir ||
+            remote.fileId !== folderId ||
+            remote.knowledgeId !== shareId ||
+            !remote.directory ||
             remote.name !== folder.fileName.trim() ||
-            remote.parent_id !== parentId
+            remote.parentId !== parentId
           )
             throw new Error('远端目录名称或归属尚未确认')
         },
-        uploadShareStream: (shareId, entry, report) => {
+        uploadShareStream: async (shareId, entry, report) => {
           active()
+          const result = await uploadJavaKnowledgeFile(this.javaKnowledge, {
+            knowledgeId: shareId,
+            signal: controller.signal,
+            fileName: entry.fileName,
+            chunks: entry.chunks,
+            filePath: entry.path,
+            fileSize: entry.size,
+            parentId: entry.parentId,
+            expectedHash: entry.hash,
+            uploadOriginal: entry.uploadOriginal,
+            progress: (bytes) => {
+              active()
+              controller.signal.throwIfAborted()
+              report(bytes)
+            },
+            beforeSend: () => {
+              active()
+              controller.signal.throwIfAborted()
+            }
+          })
+          // 进度由上传流报告，避免完成后将元数据模式的逻辑字节重置为 0。
+          // report(entry.uploadOriginal === false ? 0 : entry.size)
+          return { share_id: result.knowledgeId, file_id: result.fileId, chunk_count: result.chunkCount }
+          /* 原流式传输保留，Java 上传不重试未知结果。
           return this.client.uploadShareStream(
             shareId,
             entry,
@@ -2309,6 +2966,7 @@ export class OrgKnowledgeService {
             },
             controller.signal
           )
+          */
         },
         verify: (shareId, fileId, entry) => this.verifyFirstShareFile(shareId, fileId, entry, lease)
       }
@@ -2341,10 +2999,11 @@ export class OrgKnowledgeService {
               if (savedState && typeof mode !== 'boolean') {
                 if (!savedState.shareId || savedState.creation !== 'created')
                   throw new Error('首传模式及空间未知，禁止重建')
-                const space = await this.checked(() => this.client.getSpace(savedState.shareId!), lease)
-                if (space.id !== savedState.shareId || typeof space.allow_local_file_upload !== 'boolean')
+                // const space = await this.checked(() => this.client.getSpace(savedState.shareId!), lease)
+                const space = await this.checked(() => this.javaKnowledge.getSpace(savedState.shareId!), lease)
+                if (space.id !== savedState.shareId || typeof space.allowLocalFileUpload !== 'boolean')
                   throw new Error('空间源文件上传策略未确认')
-                mode = space.allow_local_file_upload
+                mode = space.allowLocalFileUpload
               }
               if (savedState && typeof mode === 'boolean' && savedState.uploadOriginal === undefined) {
                 savedState.uploadOriginal = mode
@@ -2565,80 +3224,122 @@ export class OrgKnowledgeService {
     entry: FirstShareEntry,
     lease: Lease
   ): Promise<void> {
-    const file = await this.checked(() => this.client.getFile(fileId), lease)
+    const file = await this.checked(() => this.javaKnowledge.getFile(shareId, fileId), lease)
     if (
-      file.id !== fileId ||
-      file.space_id !== shareId ||
-      file.is_dir ||
-      (entry.parentId !== undefined && (entry.parentId ? file.parent_id !== entry.parentId : file.parent_id != null)) ||
-      // file.file_hash !== entry.hash ||
-      (entry.uploadOriginal !== false && file.file_hash !== entry.hash) ||
-      file.name !== entry.fileName
+      file.fileId !== fileId ||
+      file.knowledgeId !== shareId ||
+      file.directory ||
+      file.parseStatus !== 'ready' ||
+      file.name !== entry.fileName ||
+      (entry.parentId !== undefined && file.parentId !== (entry.parentId || null)) ||
+      (entry.uploadOriginal !== false && (file.fileHash !== entry.hash || file.hasOriginalFile !== true))
     )
-      throw new Error('远端文件哈希或归属尚未确认')
-    let cursor: string | null | undefined
-    const seen = new Set<string>()
-    do {
-      const page = await this.checked(() => this.client.listItems(shareId, cursor), lease)
-      const item = page.items.find(
-        (candidate) =>
-          candidate.base_id === shareId && (candidate.data.file_id === fileId || candidate.document_id === fileId)
+      throw new Error('远端文件哈希、状态或归属尚未确认')
+    const local = entry.chunks as Array<{ content: string; metadata: { chunk_index: number } }>
+    const chunks = [] as Awaited<ReturnType<JavaKnowledgeClient['listChunks']>>['items']
+    let total: number | undefined
+    for (let page = 1; ; page++) {
+      const next = await this.checked(() => this.javaKnowledge.listChunks(shareId, fileId, page), lease)
+      if (total !== undefined && next.total !== total) throw new Error('远端分块统计已变化')
+      total = next.total
+      chunks.push(...next.items)
+      if (chunks.length >= total) break
+      if (!next.items.length) throw new Error('远端分块分页不完整')
+    }
+    const ids = new Set<string>()
+    const unmatched = [...chunks]
+    const complete = local.every((chunk) => {
+      const index = unmatched.findIndex(
+        (remote) =>
+          remote.knowledgeId === shareId &&
+          remote.fileId === fileId &&
+          remote.content === chunk.content &&
+          remote.chunkIndex === chunk.metadata.chunk_index
       )
-      if (item) {
-        const visible = await this.checked(() => this.client.getItem(shareId, item.id), lease)
-        const chunks = await this.checked(() => this.client.listChunks(shareId, item.id), lease)
-        const chunkCursors = new Set<string>()
-        let chunkCursor = chunks.next_cursor
-        while (chunkCursor) {
-          if (chunkCursors.has(chunkCursor)) throw new Error('远端分块分页未确认')
-          chunkCursors.add(chunkCursor)
-          const next = await this.checked(() => this.client.listChunks(shareId, item.id, chunkCursor), lease)
-          if (next.total !== chunks.total) throw new Error('远端分块统计已变化')
-          chunks.chunks.push(...next.chunks)
-          chunkCursor = next.next_cursor
-        }
-        const local = entry.chunks as Array<{ content: string; metadata: { chunk_index: number } }>
-        // MEA:enterprise-knowledge-page 每个远端分块只能匹配一次，避免重复本地分块掩盖缺失正文。
-        const unmatched = [...chunks.chunks]
-        const complete = local.every((chunk) => {
-          const index = unmatched.findIndex(
-            (remote) =>
-              remote.item_id === item.id &&
-              remote.content === chunk.content &&
-              remote.metadata.chunk_index === chunk.metadata.chunk_index
-          )
-          if (index < 0) return false
-          unmatched.splice(index, 1)
-          return true
-        })
-        if (
-          visible.id !== item.id ||
-          (visible.data.file_id !== fileId && visible.document_id !== fileId) ||
-          visible.status !== 'completed' ||
-          visible.base_id !== shareId ||
-          chunks.total !== local.length ||
-          chunks.chunks.length !== local.length ||
-          /* 原逐项存在性判断保留，改用上方一对一匹配。
-          local.some(
-            (chunk) =>
-              !chunks.chunks.some(
-                (remote) =>
-                  remote.item_id === item.id &&
-                  remote.content === chunk.content &&
-                  remote.metadata.chunk_index === chunk.metadata.chunk_index
-              )
-          )
-          */
-          !complete
-        )
-          throw new Error('远端分块尚未完整确认')
-        return
-      }
-      cursor = page.next_cursor
-      if (cursor && seen.has(cursor)) throw new Error('远端目录分页未确认')
-      if (cursor) seen.add(cursor)
-    } while (cursor)
-    throw new Error('远端文件尚未出现在知识目录')
+      if (index < 0) return false
+      const [remote] = unmatched.splice(index, 1)
+      if (ids.has(remote.chunkId)) return false
+      ids.add(remote.chunkId)
+      return true
+    })
+    if (!complete || total !== local.length || chunks.length !== local.length || unmatched.length)
+      throw new Error('远端分块尚未完整确认')
+
+    // 原条目目录核验保留，Java 以 fileId 与正文分页直接核验。
+    //     const file = await this.checked(() => this.client.getFile(fileId), lease)
+    //     if (
+    //       file.id !== fileId ||
+    //       file.space_id !== shareId ||
+    //       file.is_dir ||
+    //       (entry.parentId !== undefined && (entry.parentId ? file.parent_id !== entry.parentId : file.parent_id != null)) ||
+    //       // file.file_hash !== entry.hash ||
+    //       (entry.uploadOriginal !== false && file.file_hash !== entry.hash) ||
+    //       file.name !== entry.fileName
+    //     )
+    //       throw new Error('远端文件哈希或归属尚未确认')
+    //     let cursor: string | null | undefined
+    //     const seen = new Set<string>()
+    //     do {
+    //       const page = await this.checked(() => this.client.listItems(shareId, cursor), lease)
+    //       const item = page.items.find(
+    //         (candidate) =>
+    //           candidate.base_id === shareId && (candidate.data.file_id === fileId || candidate.document_id === fileId)
+    //       )
+    //       if (item) {
+    //         const visible = await this.checked(() => this.client.getItem(shareId, item.id), lease)
+    //         const chunks = await this.checked(() => this.client.listChunks(shareId, item.id), lease)
+    //         const chunkCursors = new Set<string>()
+    //         let chunkCursor = chunks.next_cursor
+    //         while (chunkCursor) {
+    //           if (chunkCursors.has(chunkCursor)) throw new Error('远端分块分页未确认')
+    //           chunkCursors.add(chunkCursor)
+    //           const next = await this.checked(() => this.client.listChunks(shareId, item.id, chunkCursor), lease)
+    //           if (next.total !== chunks.total) throw new Error('远端分块统计已变化')
+    //           chunks.chunks.push(...next.chunks)
+    //           chunkCursor = next.next_cursor
+    //         }
+    //         const local = entry.chunks as Array<{ content: string; metadata: { chunk_index: number } }>
+    //         // MEA:enterprise-knowledge-page 每个远端分块只能匹配一次，避免重复本地分块掩盖缺失正文。
+    //         const unmatched = [...chunks.chunks]
+    //         const complete = local.every((chunk) => {
+    //           const index = unmatched.findIndex(
+    //             (remote) =>
+    //               remote.item_id === item.id &&
+    //               remote.content === chunk.content &&
+    //               remote.metadata.chunk_index === chunk.metadata.chunk_index
+    //           )
+    //           if (index < 0) return false
+    //           unmatched.splice(index, 1)
+    //           return true
+    //         })
+    //         if (
+    //           visible.id !== item.id ||
+    //           (visible.data.file_id !== fileId && visible.document_id !== fileId) ||
+    //           visible.status !== 'completed' ||
+    //           visible.base_id !== shareId ||
+    //           chunks.total !== local.length ||
+    //           chunks.chunks.length !== local.length ||
+    //           /* 原逐项存在性判断保留，改用上方一对一匹配。
+    //           local.some(
+    //             (chunk) =>
+    //               !chunks.chunks.some(
+    //                 (remote) =>
+    //                   remote.item_id === item.id &&
+    //                   remote.content === chunk.content &&
+    //                   remote.metadata.chunk_index === chunk.metadata.chunk_index
+    //               )
+    //           )
+    //           */
+    //           !complete
+    //         )
+    //           throw new Error('远端分块尚未完整确认')
+    //         return
+    //       }
+    //       cursor = page.next_cursor
+    //       if (cursor && seen.has(cursor)) throw new Error('远端目录分页未确认')
+    //       if (cursor) seen.add(cursor)
+    //     } while (cursor)
+    //     throw new Error('远端文件尚未出现在知识目录')
   }
 
   private async createShare(
@@ -2664,8 +3365,12 @@ export class OrgKnowledgeService {
     if (!plan.length) throw new OrgKnowledgeError(E.ORGKB_SHARE_NO_CONTENT, '该知识库没有可导出的已完成文件或分块')
     assertActive()
     // 服务端创建与本地关联落盘之间仍有崩溃窗口；OpenAPI 无创建幂等契约，无法保证重试不重复创建。
-    const created = await this.checked(() => this.client.createShareSpace(base.name), lease)
-    const shareId = created.share_id
+    // const created = await this.checked(() => this.client.createShareSpace(base.name), lease)
+    const created = await this.checked(
+      () => this.javaKnowledge.createLocalShare(base.name, true, this.writeGuard(lease)),
+      lease
+    )
+    const shareId = created.id
     const files: OrgKnowledgeShareResult['files'] = plan.map((entry) => ({
       fileName: entry.fileName,
       status: 'unknown',
@@ -2700,6 +3405,7 @@ export class OrgKnowledgeService {
     for (const [index, entry] of plan.entries()) {
       // this.assertLease(lease)
       assertActive()
+      /* 原排队入口表单保留，实际上传走 Java 原生流。
       const form = new FormData()
       form.append(
         'file',
@@ -2708,8 +3414,21 @@ export class OrgKnowledgeService {
       )
       // form.append('chunks', JSON.stringify(entry.chunks))
       form.append('chunks_file', new Blob([JSON.stringify(entry.chunks)], { type: 'application/json' }), 'chunks.json')
+      */
       try {
-        const result = await this.checked(() => this.client.uploadShareFile(shareId, form), lease)
+        // const result = await this.checked(() => this.client.uploadShareFile(shareId, form), lease)
+        const uploaded = await uploadJavaKnowledgeFile(this.javaKnowledge, {
+          knowledgeId: shareId,
+          signal: ctx.signal,
+          fileName: entry.fileName,
+          chunks: entry.chunks,
+          filePath: ks.getFilePath(entry.itemId),
+          fileSize: entry.buffer.length,
+          expectedHash: createHash('sha256').update(entry.buffer).digest('hex'),
+          beforeSend: assertActive
+        })
+        const result = { share_id: uploaded.knowledgeId, file_id: uploaded.fileId, chunk_count: uploaded.chunkCount }
+        await this.verifySyncFile(shareId, result.file_id, entry, lease)
         if (result.share_id !== shareId || result.chunk_count !== entry.chunks.length) throw new Error('上传响应未确认')
         manifest.entries[index].fileId = result.file_id
         files[index] = {
@@ -2818,36 +3537,47 @@ export class OrgKnowledgeService {
   }
 }
 
-function toShare(share: Awaited<ReturnType<OrgKnowledgeClient['createShareCode']>>): OrgKnowledgeShare {
+function toShare(share: JavaKnowledgeShare): OrgKnowledgeShare {
+  // Java 列表读客户端允许精简证据 VO，管理输出不可将缺失字段补造成有效分享。
+  if (
+    !share.shareId ||
+    !share.shareCode ||
+    typeof share.hasPassword !== 'boolean' ||
+    typeof share.viewCount !== 'number' ||
+    !Number.isSafeInteger(share.viewCount) ||
+    !share.createTime
+  )
+    throw new OrgKnowledgeError(E.ORGKB_PROTOCOL, '分享管理响应缺少必要字段')
   return {
-    id: encodeOrgId(share.id),
-    spaceId: encodeOrgId(share.space_id),
-    shareCode: share.share_code,
-    shareType: share.share_type,
-    hasPassword: share.has_password,
-    maxViews: share.max_views,
-    viewCount: share.view_count,
-    expiresAt: share.expires_at,
-    revokedAt: share.revoked_at,
-    createdAt: share.created_at
+    id: encodeOrgId(share.shareId),
+    spaceId: encodeOrgId(share.knowledgeId),
+    shareCode: share.shareCode ?? '',
+    // [enterprise] shareType 在 Java 响应中无等价字段（Java 分享均为只读，无 share_type）；
+    // 不可伪造，缺失字段须由主代理调整 IPC schema（移除 shareType 或明确 Java 恒为 1）。
+    hasPassword: share.hasPassword ?? false,
+    maxViews: share.maxViews ?? null,
+    viewCount: share.viewCount ?? 0,
+    expiresAt: share.expiresAt ?? null,
+    revokedAt: share.revokedAt ?? null,
+    createdAt: share.createTime ?? ''
   }
 }
 
-function toMember(m: {
-  user_id: number
-  username: string
-  role: string
-  joined_at: string
-  status: string
-  expires_at?: string | null
-}): OrgKnowledgeMember {
+function toMember(m: JavaKnowledgeMember): OrgKnowledgeMember {
   return {
-    userId: m.user_id,
-    username: m.username,
+    userId: m.userId,
+    username: m.showName ?? '',
     role: m.role,
-    joinedAt: m.joined_at,
-    status: m.status,
-    expiresAt: m.expires_at ?? null
+    // [enterprise] Java 成员 VO 无 joinedAt（仅 status/expiresAt）；不可伪造，缺失字段须由主代理调整 IPC schema。
+    status: m.status ?? null,
+    expiresAt: m.expiresAt
+  }
+}
+
+function toCollaborator(option: JavaKnowledgeMemberOption): OrgKnowledgeCollaborator {
+  return {
+    id: option.userId,
+    username: option.username ?? option.showName ?? ''
   }
 }
 

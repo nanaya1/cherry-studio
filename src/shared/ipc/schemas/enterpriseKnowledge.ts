@@ -127,7 +127,8 @@ export const enterpriseKnowledgeRequestSchemas = {
     output: OrgKnowledgeReadResultSchema
   }),
   'enterprise.knowledge.preview': defineRoute({
-    input: z.strictObject({ fileId: orgId }),
+    // input: z.strictObject({ fileId: orgId }),
+    input: z.strictObject({ baseId: orgId, fileId: orgId }),
     output: OrgKnowledgePreviewSchema
   }),
   // 分享：输入为本地知识库 uuid，主进程读取其所属原文件与 chunks，不接收渲染进程路径/URL/Authorization。
@@ -187,12 +188,13 @@ export const enterpriseKnowledgeRequestSchemas = {
     output: OrgKnowledgeMemberListSchema
   }),
   /**
-   * [enterprise] 可邀请协作者（全局 active 用户）。输入仅 keyword/page/pageSize，分页与
+   * [enterprise] 可邀请协作者。输入为面板实际 baseId 及 keyword/page/pageSize，分页与
    * 过滤全部由服务端完成；主进程只做会话鉴权与本人过滤，不虚构 total（原样回传服务端计数）。
    * 不使用 /api/users（含敏感信息且仅管理员可见）。
    */
   'enterprise.knowledge.collaborators': defineRoute({
     input: z.strictObject({
+      baseId: z.string().min(1),
       keyword: z.string().trim().max(64).optional(),
       page: z.number().int().positive().max(1000).optional(),
       pageSize: z.number().int().positive().max(50).optional()

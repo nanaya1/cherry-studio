@@ -45,7 +45,8 @@ export default function McpCatalog() {
   // 原条件仅检查部署模式，未登录也会显示组织目录并触发 401。
   const showPublicCatalog =
     accountStatus?.phase === 'signed-in' &&
-    (accountStatus.authMode === 'management-exchange' || accountStatus.authMode === 'management-oauth')
+    // (accountStatus.authMode === 'management-exchange' || accountStatus.authMode === 'management-oauth')
+    accountStatus.authMode === 'management-java'
   // const [activeTab, setActiveTab] = useState<CatalogTab>('discover')
   const [activeTab, setActiveTab] = useState<CatalogTab>('builtin')
   const [discoverTab, setDiscoverTab] = useState<DiscoverTab>('builtin')
@@ -106,6 +107,11 @@ export default function McpCatalog() {
               {t('workspace.skillsConnectors.sources.org')}
             </TabsTrigger>
           ) : null} */}
+          {showPublicCatalog ? (
+            <TabsTrigger value="org" className={primaryTabClassName}>
+              {t('workspace.skillsConnectors.sources.org')}
+            </TabsTrigger>
+          ) : null}
           {/* <TabsTrigger value="providers" className={primaryTabClassName}>
             {t('settings.mcp.providers')}
           </TabsTrigger> */}
@@ -137,7 +143,9 @@ export default function McpCatalog() {
       )}
 
       {/* [enterprise] 停用组织连接器目录内容，保留原实现以便恢复。 */}
-      {showExtendedCatalog && showPublicCatalog ? (
+      {/* MEA:enterprise-java-resources 仅恢复公共入口，其他扩展目录继续停用。 */}
+      {/* {showExtendedCatalog && showPublicCatalog ? ( */}
+      {showPublicCatalog ? (
         <TabsContent value="org" className="min-h-0 flex-1">
           <Scrollbar className="@container/mcp-discover h-full px-6 py-5">
             <OrgConnectorList variant="catalog" />

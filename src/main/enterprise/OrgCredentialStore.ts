@@ -12,18 +12,29 @@ import { AbsoluteFilePathSchema } from '@shared/types/file'
 
 const logger = loggerService.withContext('OrgCredentialStore')
 
-export const orgSessionSchema = z
+// export const orgSessionSchema = z
+const legacyOrgSessionSchema = z
   .strictObject({
-    authMode: z.enum(['management-exchange', 'management-oauth', 'management-cookie', 'official-direct']),
+    authMode: z.enum([
+      'management-exchange',
+      'management-oauth',
+      'management-cookie',
+      'official-direct'
+      // [enterprise] Java Sa-Token 原生认证：token 头而非 Bearer，无 status/refresh/expires。
+      // 'management-java'
+    ]),
     accountKind: z.enum(['management', 'official']),
     issuerId: z.string().min(1),
     authOrigin: z.string().min(1),
     userId: z.string().min(1),
     officialUserId: z.string(),
     groupId: z.string().nullable(),
+    // [enterprise] Java 路径必需的企业租户标识；旧会话可缺省（重登后写入真实上下文）。
+    tenantId: z.string().optional(),
     displayName: z.string().nullable(),
     phone: z.string(),
     role: z.string(),
+    // [enterprise] Java 路径不携带 status；以空字符串表达"由 Java 鉴权保证"，不写 active 占位。
     status: z.string(),
     // Cookie sessions (password login) carry no access token: the sid lives in
     // the isolated Electron session cookie jar, not in this encrypted file.
@@ -37,6 +48,23 @@ export const orgSessionSchema = z
     }
   })
 
+// MEA:enterprise-java-auth 用独立分支表达无状态占位、无刷新和未知本地期限。
+const javaOrgSessionSchema = z.strictObject({
+  authMode: z.literal('management-java'),
+  accountKind: z.literal('management'),
+  issuerId: z.string().min(1),
+  authOrigin: z.string().min(1),
+  userId: z.string().min(1),
+  officialUserId: z.string(),
+  groupId: z.string().nullable(),
+  tenantId: z.string().min(1),
+  displayName: z.string().nullable(),
+  phone: z.string(),
+  role: z.string().min(1),
+  accessToken: z.string().min(1),
+  expiresAt: z.null()
+})
+export const orgSessionSchema = z.union([javaOrgSessionSchema, legacyOrgSessionSchema])
 export type OrgSession = z.infer<typeof orgSessionSchema>
 
 const legacyFileSchema = z.strictObject({ session: orgSessionSchema })
@@ -101,9 +129,7 @@ export class OrgCredentialStore {
     const envelope = encryptedFileSchema.safeParse(decoded)
     if (!envelope.success) return null
     this.assertEncryptionAvailable()
-    return orgSessionSchema.parse(
-      JSON.parse(this.crypto.decryptString(Buffer.from(envelope.data.payload, 'base64')))
-    )
+    return orgSessionSchema.parse(JSON.parse(this.crypto.decryptString(Buffer.from(envelope.data.payload, 'base64'))))
   }
 
   async save(session: OrgSession): Promise<OrgCredentialWriteResult> {

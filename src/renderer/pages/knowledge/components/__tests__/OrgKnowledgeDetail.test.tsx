@@ -382,7 +382,8 @@ describe('组织知识库只读详情', () => {
     expect(screen.queryByText(base.name)).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Chunks' })).not.toBeInTheDocument()
     expect(document.querySelector('iframe')).toBeNull()
-    expect(request).toHaveBeenCalledWith('enterprise.knowledge.preview', { fileId: item.fileId })
+    // expect(request).toHaveBeenCalledWith('enterprise.knowledge.preview', { fileId: item.fileId })
+    expect(request).toHaveBeenCalledWith('enterprise.knowledge.preview', { baseId: base.id, fileId: item.fileId })
   })
 
   it.each(officeFormats)(

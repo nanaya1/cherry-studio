@@ -413,7 +413,10 @@ export async function buildSkillWhitelist(
       skillService.list({ agentId: agent.id }),
       skillService.listLocalFolderNames(cwd)
     ])
-    const enabledNames = installedSkills.filter((skill) => skill.isEnabled).map((skill) => skill.folderName)
+    // const enabledNames = installedSkills.filter((skill) => skill.isEnabled).map((skill) => skill.folderName)
+    const enabledNames = installedSkills
+      .filter((skill) => skill.isEnabled && !skill.sourceUrl?.startsWith('java-resource:'))
+      .map((skill) => skill.folderName)
     names = [...enabledNames, ...workspaceNames, ...bundledNames]
   }
 

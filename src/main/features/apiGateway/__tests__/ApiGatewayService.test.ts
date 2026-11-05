@@ -20,23 +20,33 @@ const {
   mockPreferenceSet,
   mockPreferenceSetMultiple,
   captured
-} = vi.hoisted(() => ({
-  mockStart: vi.fn(),
-  mockStop: vi.fn(),
-  mockRebind: vi.fn(),
-  mockSetShared: vi.fn(),
-  mockGetActiveUsageContext: vi.fn(),
-  mockPreferenceSet: vi.fn<(key: string, value: boolean | string) => Promise<void>>(),
-  mockPreferenceSetMultiple: vi.fn<(updates: Record<string, unknown>) => Promise<void>>(),
-  captured: {
-    prefHandler: undefined as ((enabled: boolean | null) => void) | undefined,
-    enabledPreference: false as boolean | null,
+} = vi.hoisted(() => {
+  const captured: {
+    prefHandler: ((enabled: boolean | null) => void) | undefined
+    enabledPreference: boolean | null
+    hostPreference: string
+    portPreference: number
+    ipv6Addresses: string[]
+    ipv6Listening: boolean
+  } = {
+    prefHandler: undefined,
+    enabledPreference: false,
     hostPreference: '127.0.0.1',
     portPreference: 23333,
-    ipv6Addresses: [] as string[],
+    ipv6Addresses: [],
     ipv6Listening: true
   }
-}))
+  return {
+    mockStart: vi.fn(),
+    mockStop: vi.fn(),
+    mockRebind: vi.fn(),
+    mockSetShared: vi.fn(),
+    mockGetActiveUsageContext: vi.fn(),
+    mockPreferenceSet: vi.fn<(key: string, value: boolean | string) => Promise<void>>(),
+    mockPreferenceSetMultiple: vi.fn<(updates: Record<string, unknown>) => Promise<void>>(),
+    captured
+  }
+})
 
 vi.mock('../server', () => ({
   ApiGateway: vi.fn(function ApiGatewayMock(endpoint: { host: string; port: number }) {

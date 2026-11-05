@@ -15,7 +15,10 @@ const ProfileDisplayV1Schema = z.strictObject({
 })
 
 const ProfileAuthorizationContextV1Schema = z.strictObject({
-  groupId: z.string().optional(),
+  // groupId: z.string().optional(),
+  // MEA:enterprise-java-auth 无分组合法，租户仅属于授权上下文。
+  groupId: z.string().nullable().optional(),
+  tenantId: z.string().min(1).optional(),
   role: z.string().optional(),
   status: z.string().optional(),
   checkedAt: isoDateTimeSchema.optional()

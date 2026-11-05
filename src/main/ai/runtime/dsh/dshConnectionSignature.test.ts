@@ -164,6 +164,15 @@ describe('captureDshConnectionSnapshot', () => {
     }
   })
 
+  it('keeps Java skill instructions out of native discovery to require explicit activation', async () => {
+    mocks.listSkills.mockResolvedValue([
+      { id: 'java', folderName: 'isolated', isEnabled: true, sourceUrl: `java-resource:${'a'.repeat(32)}:skill:1` },
+      { id: 'local', folderName: 'ordinary', isEnabled: true }
+    ])
+    const snapshot = await captureDshConnectionSnapshot('session-1', agent.id, 'provider::model')
+    expect(snapshot.additionalSkillPaths).toEqual(['/skills/ordinary'])
+  })
+
   it('returns the exact provider, model, skills, MCP, and channel facts signed by the snapshot', async () => {
     mocks.listSkills.mockResolvedValue([{ id: 'skill-1', folderName: 'pdf', isEnabled: true }])
     mocks.listLocalSkillPaths.mockResolvedValue(['/workspace/.agents/skills/review'])

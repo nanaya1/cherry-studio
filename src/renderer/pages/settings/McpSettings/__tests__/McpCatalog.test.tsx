@@ -11,7 +11,7 @@ const { orgSessionMock } = vi.hoisted(() => ({
 }))
 
 vi.mock('@renderer/hooks/useOrgAccountSession', () => ({
-  useOrgAccountSession: () => ({ status: { authMode: orgSessionMock.authMode } })
+  useOrgAccountSession: () => ({ status: { authMode: orgSessionMock.authMode, phase: 'signed-in' } })
 }))
 
 vi.mock('@renderer/hooks/useMcpServer', () => ({
@@ -100,6 +100,15 @@ afterEach(() => {
 })
 
 describe('McpCatalog', () => {
+  it('Java 登录仅恢复公共目录，不恢复市场和服务商', async () => {
+    orgSessionMock.authMode = 'management-java'
+    render(<McpCatalog />)
+    expect(screen.getByRole('tab', { name: 'Organization' })).toBeVisible()
+    expect(screen.queryByRole('tab', { name: 'Marketplaces' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('tab', { name: 'Providers' })).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('tab', { name: 'Organization' }))
+    expect(screen.getByText('organization catalog')).toBeVisible()
+  })
   // 上游原契约按登录模式显示发现、公共、服务商与我的 MCP，并允许在发现页切换市场。
   // MEA 连接器目录只保留内置服务器与我的 MCP 两个入口。
   it('only presents built-in servers and My MCP', async () => {

@@ -91,7 +91,11 @@ function DocumentView({ baseId, target, onBack }: { baseId: string; target: Docu
         do {
           if (seen.has(nextCursor)) throw new Error(t('common.error'))
           seen.add(nextCursor)
-          const page = await ipcApi.request('enterprise.knowledge.items', { baseId, cursor: nextCursor, parentId: null })
+          const page = await ipcApi.request('enterprise.knowledge.items', {
+            baseId,
+            cursor: nextCursor,
+            parentId: null
+          })
           fileId = page.items.find((item) => item.documentId === target.documentId)?.fileId ?? undefined
           nextCursor = page.nextCursor
         } while (!fileId && nextCursor)
@@ -105,7 +109,8 @@ function DocumentView({ baseId, target, onBack }: { baseId: string; target: Docu
       if (!fileId) return { mode: 'unavailable' as const }
       return {
         mode: 'preview' as const,
-        value: await ipcApi.request('enterprise.knowledge.preview', { fileId })
+        // value: await ipcApi.request('enterprise.knowledge.preview', { fileId })
+        value: await ipcApi.request('enterprise.knowledge.preview', { baseId, fileId })
       }
     }
     return {
@@ -479,11 +484,7 @@ function OrgKnowledgeDetailSession({
       clearInterval(timer)
     }
   }, [addedBaseId, additionSubmitted, refresh, t])
-  const currentPageItems = data?.items ?? []
-  const visibleItems = useMemo(
-    () => directoryItems ?? currentPageItems,
-    [currentPageItems, directoryItems]
-  )
+  const visibleItems = useMemo(() => directoryItems ?? data?.items ?? [], [data?.items, directoryItems])
   const readOnlyItems = useMemo(() => visibleItems.map(toReadOnlyKnowledgeItem), [visibleItems])
   const enterDirectory = useCallback(
     async (item: OrgKnowledgeItem) => {

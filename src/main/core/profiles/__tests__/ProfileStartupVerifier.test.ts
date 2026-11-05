@@ -23,7 +23,7 @@ function businessContext(over: Partial<ProfileLaunchContext> = {}): ProfileLaunc
   }
 }
 
-function session(over: Partial<OrgSession> = {}): OrgSession {
+function session(over: Partial<Exclude<OrgSession, { authMode: 'management-java' }>> = {}): OrgSession {
   return {
     authMode: 'management-oauth',
     accountKind: 'management',
@@ -60,6 +60,18 @@ function run(args: {
   transportError?: string
 }): Promise<StartupVerificationResult> {
   const transport = {
+    getCurrentJavaProfile: vi.fn().mockImplementation(async () => {
+      if (args.transportError) throw new Error(args.transportError)
+      const value = args.currentUser ?? currentUser()
+      return {
+        serverInstanceId: value.server_instance_id,
+        userId: String(value.user.id),
+        groupId: value.user.group_id,
+        tenantId: 'tenant',
+        roleCode: value.user.role,
+        username: null
+      }
+    }),
     getCurrentUser: vi.fn().mockImplementation(async () => {
       if (args.transportError) throw new Error(args.transportError)
       return args.currentUser ?? currentUser()
@@ -76,13 +88,84 @@ function run(args: {
           subjectId: 'u-1'
         })
       }),
-    session: args.session === undefined ? session() : args.session,
+    // session: args.session === undefined ? session() : args.session,
+    session:
+      args.session === undefined
+        ? {
+            authMode: 'management-java',
+            accountKind: 'management',
+            issuerId: 'inst-1',
+            authOrigin: 'inst-1',
+            userId: 'u-1',
+            officialUserId: '',
+            groupId: 'g-1',
+            tenantId: 'tenant',
+            role: 'member',
+            displayName: null,
+            phone: '',
+            accessToken: 'raw',
+            expiresAt: null
+          }
+        : args.session,
     transport,
     buildFailureContext: () => signedOut
   })
 }
 
 describe('ProfileStartupVerifier identity gate', () => {
+  it('旧凭据在任何网络验证之前要求重登', async () => {
+    const transport = { getCurrentUser: vi.fn() }
+    const result = await verifyCandidateProfile({
+      context: businessContext(),
+      session: session(),
+      transport,
+      buildFailureContext: () => signedOut
+    })
+    expect(result.kind).toBe('failed')
+    expect(transport.getCurrentUser).not.toHaveBeenCalled()
+  })
+  it('Java 无 status 会话以真实 me 身份通过且企业变化阻断', async () => {
+    const candidate: OrgSession = {
+      authMode: 'management-java',
+      accountKind: 'management',
+      issuerId: 'inst-1',
+      authOrigin: 'inst-1',
+      userId: 'u-1',
+      officialUserId: '',
+      groupId: null,
+      tenantId: 'tenant',
+      displayName: null,
+      phone: '',
+      role: 'member',
+      accessToken: 'raw',
+      expiresAt: null
+    }
+    const live = {
+      serverInstanceId: 'inst-1',
+      userId: 'u-1',
+      tenantId: 'tenant',
+      groupId: null,
+      roleCode: 'member',
+      username: null
+    }
+    const transport = { getCurrentUser: vi.fn(), getCurrentJavaProfile: vi.fn(async () => live) }
+    const args = {
+      context: businessContext({
+        identityDigest: computeIdentityDigest({
+          kind: 'authenticated',
+          accountKind: 'management',
+          issuerId: 'inst-1',
+          subjectId: 'u-1'
+        })
+      }),
+      session: candidate,
+      transport,
+      buildFailureContext: () => signedOut
+    }
+    expect((await verifyCandidateProfile(args)).kind).toBe('verified')
+    transport.getCurrentJavaProfile.mockResolvedValueOnce({ ...live, tenantId: 'other' })
+    expect((await verifyCandidateProfile(args)).kind).toBe('failed')
+  })
   it('verifies when the live identity matches the candidate profile digest', async () => {
     const result = await run({})
 
@@ -114,7 +197,7 @@ describe('ProfileStartupVerifier identity gate', () => {
     expect(result.reason).toMatch(/401/)
   })
 
-  it('fails closed when the account is not active', async () => {
+  /* it('fails closed when the account is not active', async () => {
     const result = await run({
       currentUser: currentUser({ user: { id: 'u-1', group_id: 'g-1', role: 'member', status: 'inactive' } })
     })
@@ -122,7 +205,7 @@ describe('ProfileStartupVerifier identity gate', () => {
     expect(result.kind).toBe('failed')
     if (result.kind !== 'failed') throw new Error('Expected failed verification')
     expect(result.reason).toMatch(/not active/i)
-  })
+  }) */
 
   it('fails closed when the live server instance differs from the stored one', async () => {
     const result = await run({
@@ -139,7 +222,7 @@ describe('ProfileStartupVerifier identity gate', () => {
 
     expect(result.kind).toBe('failed')
     if (result.kind !== 'failed') throw new Error('Expected failed verification')
-    expect(result.reason).toMatch(/digest|stored session/i)
+    expect(result.reason).toMatch(/在线身份与本地账号不一致/)
   })
 
   it('fails closed when the live user id differs from the stored one', async () => {
@@ -157,7 +240,7 @@ describe('ProfileStartupVerifier identity gate', () => {
 
     expect(result.kind).toBe('failed')
     if (result.kind !== 'failed') throw new Error('Expected failed verification')
-    expect(result.reason).toMatch(/digest|stored session/i)
+    expect(result.reason).toMatch(/在线身份与本地账号不一致/)
   })
 
   it('fails closed when the candidate profile is not authenticated', async () => {
@@ -186,7 +269,22 @@ describe('ProfileStartupVerifier identity gate', () => {
           subjectId: '7'
         })
       }),
-      session: session({ userId: '7' }),
+      // session: session({ userId: '7' }),
+      session: {
+        authMode: 'management-java',
+        accountKind: 'management',
+        issuerId: 'inst-1',
+        authOrigin: 'inst-1',
+        userId: '7',
+        officialUserId: '',
+        groupId: 'g-1',
+        tenantId: 'tenant',
+        role: 'member',
+        displayName: null,
+        phone: '',
+        accessToken: 'raw',
+        expiresAt: null
+      },
       currentUser: currentUser({ user: { id: 7, group_id: 'g-1', role: 'member', status: 'active' } })
     })
 

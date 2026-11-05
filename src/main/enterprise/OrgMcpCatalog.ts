@@ -10,6 +10,7 @@ import { profileSwitchFence } from '@main/core/profiles'
 import type { CreateMcpServerDto } from '@shared/data/api/schemas/mcpServers'
 import { UpdateMcpServerSchema } from '@shared/data/api/schemas/mcpServers'
 
+import { javaResourceKey, parseJavaResourceKey } from './JavaResourceIdentity'
 import type { OrgAuthManager } from './OrgAuthManager'
 import { orgStateStore } from './OrgStateStore'
 import type { OrgConnectorCatalogItem } from './types'
@@ -43,6 +44,95 @@ function toCreateDto(item: OrgConnectorCatalogItem): CreateMcpServerDto {
 export class OrgMcpCatalog {
   constructor(private readonly auth: OrgAuthManager) {}
 
+  // MEA:enterprise-java-resources 原生目录不执行旧名称匹配、自动安装或凭据同步。
+  async listResources() {
+    await this.auth.revalidateAuthority()
+    const lease = this.auth.acquireLease()
+    const items = await this.auth.apiClient.javaResources.listConnectors()
+    this.auth.assertLease(lease)
+    const result = await Promise.all(
+      items.map(async ({ iconFileCode, ...item }) => ({
+        ...item,
+        resourceKey: javaResourceKey(lease.issuerId, 'mcp', item.id),
+        iconUrl: iconFileCode ? await this.auth.apiClient.javaResources.readIcon(iconFileCode) : null
+      }))
+    )
+    this.auth.assertLease(lease)
+    return result
+  }
+
+  async refreshResourceAuthority(): Promise<void> {
+    await this.auth.revalidateAuthority()
+    const lease = this.auth.acquireLease()
+    try {
+      const items = await this.auth.apiClient.javaResources.listConnectors()
+      this.auth.assertLease(lease)
+      profileSwitchFence.assertWritable()
+      orgStateStore.reconcileJavaResources(
+        'mcp',
+        items.filter((item) => !item.configurationError).map((item) => javaResourceKey(lease.issuerId, 'mcp', item.id)),
+        lease
+      )
+    } catch (error) {
+      this.auth.assertLease(lease)
+      profileSwitchFence.assertWritable()
+      orgStateStore.reconcileJavaResources('mcp', [], lease, false)
+      throw error
+    }
+  }
+
+  installedResourceKeys(): string[] {
+    return Object.entries(orgStateStore.snapshotConnectors())
+      .filter(
+        ([key, state]) => parseJavaResourceKey(key)?.resourceType === 'mcp' && mcpServerService.getByIdSafe(state.mcpId)
+      )
+      .map(([key]) => key)
+  }
+
+  async installResource(resourceKey: string): Promise<void> {
+    profileSwitchFence.assertWritable()
+    const source = parseJavaResourceKey(resourceKey)
+    if (source?.resourceType !== 'mcp') throw new Error('连接器来源标识无效')
+    await this.auth.revalidateAuthority()
+    const lease = this.auth.acquireLease()
+    const items = await this.listResources()
+    this.auth.assertLease(lease)
+    if (source.serverInstanceId !== lease.issuerId) throw new Error('连接器来源与当前服务不符')
+    const item = items.find((entry) => entry.resourceKey === resourceKey)
+    if (!item) throw new Error('连接器不存在或无权访问')
+    if (item.configurationError || !item.type) throw new Error(item.configurationError || '连接器类型无效')
+    const config = UpdateMcpServerSchema.safeParse(item.config)
+    if (!config.success) throw new Error('连接器配置不可用，请联系管理员')
+    const dto: CreateMcpServerDto = {
+      ...config.data,
+      name: item.name,
+      description: item.description,
+      type: item.type,
+      baseUrl: item.baseUrl || undefined,
+      logoUrl: undefined,
+      isActive: false,
+      isTrusted: false,
+      trustedAt: undefined,
+      installSource: 'manual',
+      tags: Array.from(new Set([...(config.data.tags ?? []), 'org']))
+    }
+    this.auth.assertLease(lease)
+    profileSwitchFence.assertWritable()
+    const existing = orgStateStore.getConnector(resourceKey)
+    const current = existing && mcpServerService.getByIdSafe(existing.mcpId)
+    const mcpId = current ? current.id : mcpServerService.create(dto).id
+    orgStateStore.upsertConnector(resourceKey, { mcpId, baseUrl: item.baseUrl })
+    orgStateStore.recordConnectorEntitlement(resourceKey, {
+      issuerId: lease.issuerId,
+      groupId: lease.groupId,
+      tenantId: lease.tenantId,
+      generation: lease.generation,
+      resourceId: source.resourceId,
+      localResourceId: mcpId,
+      entitlement: 'active'
+    })
+  }
+
   async list(): Promise<OrgConnectorCatalogItem[]> {
     await this.auth.revalidateAuthority()
     const lease = this.auth.acquireLease()
@@ -52,7 +142,10 @@ export class OrgMcpCatalog {
     return connectors
   }
 
-  private backfillCopyTags(catalog: OrgConnectorCatalogItem[], lease: ReturnType<OrgAuthManager['acquireLease']>): void {
+  private backfillCopyTags(
+    catalog: OrgConnectorCatalogItem[],
+    lease: ReturnType<OrgAuthManager['acquireLease']>
+  ): void {
     const local = mcpServerService.list({}).items
     for (const server of local) {
       if (server.installSource !== 'manual' || server.tags?.includes('org')) continue

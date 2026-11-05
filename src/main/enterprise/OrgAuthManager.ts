@@ -1,7 +1,7 @@
-import { createHash, randomBytes } from 'node:crypto'
+// import { createHash, randomBytes } from 'node:crypto'
 
 // import { session as electronSession, shell } from 'electron'
-import { shell } from 'electron'
+// import { shell } from 'electron'
 
 import { application } from '@application'
 import { loggerService } from '@logger'
@@ -17,18 +17,21 @@ import {
 } from '@main/core/profiles'
 import { runAuthSessionOperation, getProfileAuthSession } from '@main/core/profiles'
 
-import { OrgApiClient, ORG_AUTH_MODE, OFFICIAL_API_BASE_URL, ORG_SERVER_BASE_URL } from './OrgApiClient'
+// import { OrgApiClient, ORG_AUTH_MODE, OFFICIAL_API_BASE_URL, ORG_SERVER_BASE_URL } from './OrgApiClient'
+import { OrgApiClient, ORG_AUTH_MODE, ORG_SERVER_BASE_URL } from './OrgApiClient'
 import type { OrgCredentialStore, OrgSession } from './OrgCredentialStore'
 import { createStartupCurrentUserTransport } from './orgCurrentUserTransport'
-import { orgStateStore } from './OrgStateStore'
-import { ProfileAuthBroker, type CompletedAuthentication } from './ProfileAuthBroker'
-import { parseOrgAuthCallback, type OrgAuthPhase } from './types'
+// import { orgStateStore } from './OrgStateStore'
+// import { ProfileAuthBroker, type CompletedAuthentication } from './ProfileAuthBroker'
+import { ProfileAuthBroker } from './ProfileAuthBroker'
+// import { parseOrgAuthCallback, type OrgAuthPhase } from './types'
+import type { OrgAuthPhase } from './types'
 
 const logger = loggerService.withContext('OrgAuthManager')
-const OFFICIAL_LOGIN_URL = import.meta.env.MAIN_VITE_OFFICIAL_LOGIN_URL?.trim() || 'https://mro.xuelangyun.com/login'
-const CLIENT_ID = 'meacowork-desktop'
-const REDIRECT_URI = 'meacowork://auth/callback'
-const PENDING_TTL_MS = 10 * 60 * 1000
+// const OFFICIAL_LOGIN_URL = import.meta.env.MAIN_VITE_OFFICIAL_LOGIN_URL?.trim() || 'https://mro.xuelangyun.com/login'
+// const CLIENT_ID = 'meacowork-desktop'
+// const REDIRECT_URI = 'meacowork://auth/callback'
+// const PENDING_TTL_MS = 10 * 60 * 1000
 const TOKEN_EXPIRY_MARGIN_MS = 60 * 1000
 
 class SessionRefreshError extends Error {
@@ -74,6 +77,11 @@ export class OrgAuthManager {
         const context = getProfileLaunchContext()
         if (!context || context.kind !== 'authenticated') throw new Error('No authenticated cookie profile')
         return getProfileAuthSession(context.profileRoot).fetch(url, init)
+      },
+      () => {
+        ++this.generation
+        this.epoch.advanceAuth()
+        profileBusinessAccessGate.recordVerificationFailure('企业会话已失效，请重新登录')
       }
     )
     this.broker = new ProfileAuthBroker(this.apiClient, ORG_SERVER_BASE_URL ?? 'management')
@@ -95,18 +103,18 @@ export class OrgAuthManager {
       this.epoch.assertCurrent(snapshot)
     }
     if (!stored) return
+    if (stored.authMode !== 'management-java') return
     // const expectedOrigin = ORG_AUTH_MODE === 'official-direct' ? OFFICIAL_API_BASE_URL : ORG_SERVER_BASE_URL
-    const expectedOrigin =
+    /* const expectedOrigin =
       stored.authMode === 'management-cookie'
         ? ORG_SERVER_BASE_URL
         : ORG_AUTH_MODE === 'official-direct'
           ? OFFICIAL_API_BASE_URL
-          : ORG_SERVER_BASE_URL
+          : ORG_SERVER_BASE_URL */
     // if (stored.authMode !== ORG_AUTH_MODE || stored.authOrigin !== expectedOrigin) {
-    if (
-      (stored.authMode !== ORG_AUTH_MODE && stored.authMode !== 'management-cookie') ||
-      stored.authOrigin !== expectedOrigin
-    ) {
+    // 原模式选择保留：历史会话不再放行。
+    // if ((stored.authMode !== ORG_AUTH_MODE && stored.authMode !== 'management-cookie') || stored.authOrigin !== expectedOrigin) {
+    if (stored.authOrigin !== ORG_SERVER_BASE_URL) {
       // await this.dependencies.credentialStore.clear()
       await this.mutateCredentials(() => this.dependencies!.credentialStore.clear())
       return
@@ -137,7 +145,8 @@ export class OrgAuthManager {
     if (this.dependencies?.profileSession && this.switching) throw new Error('Profile transition requires restart')
     // profileSwitchFence.assertTaskStartAllowed()
     ;(this.dependencies?.fence ?? profileSwitchFence).assertTaskStartAllowed()
-    let authorizationUrl = OFFICIAL_LOGIN_URL
+    throw new Error('浏览器登录已停用，请使用用户名和密码登录')
+    /* let authorizationUrl = OFFICIAL_LOGIN_URL
     const generation = ++this.generation
     this.epoch.advanceAuth()
     this.broker.invalidate()
@@ -168,11 +177,14 @@ export class OrgAuthManager {
       if (this.pending === pending) this.pending = null
       this.emitStatus()
       throw error
-    }
+    } */
   }
 
   async handleAuthCallback(url: URL): Promise<void> {
-    const callback = parseOrgAuthCallback(url)
+    // MEA:enterprise-java-auth 旧深链不得恢复任何会话。
+    void url
+    throw new Error('旧登录回调已停用，请使用用户名和密码登录')
+    /* const callback = parseOrgAuthCallback(url)
     const pending = this.pending
     if (!callback || !pending || Date.now() - pending.createdAt > PENDING_TTL_MS) {
       this.pending = null
@@ -222,7 +234,7 @@ export class OrgAuthManager {
       this.switching = false
       this.emitStatus()
       throw error
-    }
+    } */
   }
 
   async logout(): Promise<{ state: 'switching' | 'signed-out'; revocationWarning: string | null }> {
@@ -237,7 +249,15 @@ export class OrgAuthManager {
     profileBusinessAccessGate.recordVerificationFailure('Logout requested')
     this.session = null
     let revocationWarning: string | null = null
-    if (current?.accountKind === 'management' && current.refreshToken) {
+    if (current?.authMode === 'management-java') {
+      try {
+        await this.apiClient.revoke('', current)
+      } catch {
+        revocationWarning = '远端注销未确认，已退出本地账号'
+      }
+    }
+    // if (current?.accountKind === 'management' && current.refreshToken) {
+    if (current?.authMode !== 'management-java' && current?.accountKind === 'management' && current.refreshToken) {
       try {
         await this.apiClient.revoke(current.refreshToken, current)
       } catch (error) {
@@ -287,6 +307,7 @@ export class OrgAuthManager {
   async getValidSession(): Promise<OrgSession | null> {
     if (!this.session) return null
     if (
+      this.session.authMode !== 'management-java' &&
       this.session.authMode !== 'official-direct' &&
       this.session.authMode !== 'management-cookie' &&
       Date.now() >= this.session.expiresAt - TOKEN_EXPIRY_MARGIN_MS
@@ -307,20 +328,32 @@ export class OrgAuthManager {
         current.authMode === 'management-cookie' && context ? getProfileAuthSession(context.profileRoot) : undefined
     })
     const broker = new ProfileAuthBroker(transport, current.authOrigin)
-    const completed = await broker.revalidateManagement(
+    /* const completed = await broker.revalidateManagement(
       current.authMode as 'management-exchange' | 'management-oauth' | 'management-cookie',
       current
-    )
+    ) */
+    if (current.authMode !== 'management-java' || !transport.getCurrentJavaProfile)
+      throw new Error('旧会话需要重新登录')
+    const completed = await broker.javaRevalidate(() => transport.getCurrentJavaProfile!(), current.accessToken)
     this.epoch.assertCurrent(snapshot)
     if (completed.session.userId !== current.userId || completed.session.issuerId !== current.issuerId) {
-      throw new Error('Runtime identity changed; explicit login is required')
+      ++this.generation
+      this.epoch.advanceAuth()
+      profileBusinessAccessGate.recordVerificationFailure('在线身份已变化')
+      // throw new Error('Runtime identity changed; explicit login is required')
+      throw new Error('在线身份已变化，请重新登录')
     }
     if (
       completed.session.groupId !== current.groupId ||
       completed.session.role !== current.role ||
-      completed.session.status !== current.status
+      // completed.session.status !== current.status
+      completed.session.tenantId !== current.tenantId
     ) {
-      throw new Error('Runtime authorization changed; restart is required')
+      ++this.generation
+      this.epoch.advanceAuth()
+      profileBusinessAccessGate.recordVerificationFailure('企业授权已变化')
+      // throw new Error('Runtime authorization changed; restart is required')
+      throw new Error('企业授权已变化，请重新登录')
     }
   }
 
@@ -328,21 +361,28 @@ export class OrgAuthManager {
     const current = this.session
     if (!current || current.accountKind !== 'management') return
     const snapshot = this.epoch.snapshot()
-    const completed = await this.broker.revalidateManagement(
+    /* const completed = await this.broker.revalidateManagement(
       current.authMode as 'management-exchange' | 'management-oauth' | 'management-cookie',
       current
-    )
+    ) */
+    if (current.authMode !== 'management-java') throw new Error('旧会话需要重新登录')
+    const transport = createStartupCurrentUserTransport(current)
+    const completed = await this.broker.javaRevalidate(() => transport.getCurrentJavaProfile!(), current.accessToken)
     this.epoch.assertCurrent(snapshot)
     const userChanged = completed.session.userId !== current.userId || completed.session.issuerId !== current.issuerId
     const authorizationChanged =
       completed.session.groupId !== current.groupId ||
       completed.session.role !== current.role ||
-      completed.session.status !== current.status
-    if ((userChanged || authorizationChanged) && getProfileLaunchContext()?.mode === 'business') {
+      // completed.session.status !== current.status
+      completed.session.tenantId !== current.tenantId
+    // if ((userChanged || authorizationChanged) && getProfileLaunchContext()?.mode === 'business') {
+    if (userChanged || authorizationChanged) {
+      ++this.generation
+      this.epoch.advanceAuth()
       profileBusinessAccessGate.recordVerificationFailure('Runtime identity or authorization changed')
       throw new Error('Runtime identity or authorization changed; restart is required')
     }
-    if (userChanged && this.dependencies?.profileSession) {
+    /* if (userChanged && this.dependencies?.profileSession) {
       this.switching = true
       const result = await this.dependencies.profileSession.completeAuthentication(completed)
       if (result.kind !== 'relaunching' && result.kind !== 'activated') {
@@ -360,19 +400,21 @@ export class OrgAuthManager {
         completed.identity,
         completed.authorizationContext
       )
-    }
+    } */
     this.epoch.assertCurrent(snapshot)
     this.session = completed.session
     // await this.dependencies?.credentialStore.save(completed.session)
     await this.mutateCredentials(async () => this.dependencies?.credentialStore.save(completed.session))
   }
 
-  acquireLease(): { generation: number; issuerId: string; groupId: string | null; userId: string } {
+  // acquireLease(): { generation: number; issuerId: string; groupId: string | null; userId: string } {
+  acquireLease(): { generation: number; issuerId: string; groupId: string | null; tenantId?: string; userId: string } {
     if (!this.session || this.switching) throw new Error('enterprise session is unavailable')
     return {
       generation: this.generation,
       issuerId: this.session.issuerId,
       groupId: this.session.groupId,
+      tenantId: this.session.tenantId,
       userId: this.session.userId
     }
   }
@@ -383,12 +425,14 @@ export class OrgAuthManager {
       current.generation !== lease.generation ||
       current.issuerId !== lease.issuerId ||
       current.groupId !== lease.groupId ||
+      current.tenantId !== lease.tenantId ||
       current.userId !== lease.userId
     ) {
       throw new Error('enterprise authorization lease is stale')
     }
   }
 
+  /* 原 OAuth 交换链路停用，保留以便回溯。
   private async exchangeAndValidate(
     callback: NonNullable<ReturnType<typeof parseOrgAuthCallback>>,
     pending: PendingAuth
@@ -500,6 +544,8 @@ export class OrgAuthManager {
     }
   }
 
+  */
+
   private async refreshSession(): Promise<void> {
     this.refreshing ||= this.doRefresh().finally(() => (this.refreshing = null))
     return this.refreshing
@@ -507,7 +553,8 @@ export class OrgAuthManager {
 
   private async doRefresh(): Promise<void> {
     const current = this.session
-    if (!current || current.authMode === 'official-direct') return
+    // if (!current || current.authMode === 'official-direct') return
+    if (!current || current.authMode === 'official-direct' || current.authMode === 'management-java') return
     const snapshot = this.epoch.snapshot()
     try {
       const response = await fetch(`${this.requireManagementBaseUrl()}/api/auth/token/refresh`, {

@@ -71,9 +71,12 @@ export function OrgSkillCatalogView({ search = '' }: OrgSkillCatalogViewProps) {
   }, [skills, categoryFilter, search])
 
   const handleInstall = async (skill: OrgSkillItem) => {
-    if (installing.has(skill.slug) || installedSlugs.has(skill.slug)) return
+    // if (installing.has(skill.slug) || installedSlugs.has(skill.slug)) return
+    // MEA:enterprise-java-resources 同名资源的操作与状态仅按稳定键隔离。
+    if (installing.has(skill.resourceKey) || installedSlugs.has(skill.resourceKey)) return
     try {
-      await install(skill.slug)
+      // await install(skill.slug)
+      await install(skill.resourceKey)
       toast.success(t('library.org_skill.install_success', { name: skill.name }))
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : String(cause))
@@ -81,9 +84,12 @@ export function OrgSkillCatalogView({ search = '' }: OrgSkillCatalogViewProps) {
   }
 
   const handleRemove = async (skill: OrgSkillItem) => {
-    setRemoving((current) => new Set(current).add(skill.slug))
+    // setRemoving((current) => new Set(current).add(skill.slug))
+    if (removing.has(skill.resourceKey)) return
+    setRemoving((current) => new Set(current).add(skill.resourceKey))
     try {
-      await remove(skill.slug)
+      // await remove(skill.slug)
+      await remove(skill.resourceKey)
       toast.success(t('library.org_skill.remove_success', { name: skill.name }))
       await refetch()
     } catch (cause) {
@@ -91,7 +97,8 @@ export function OrgSkillCatalogView({ search = '' }: OrgSkillCatalogViewProps) {
     } finally {
       setRemoving((current) => {
         const next = new Set(current)
-        next.delete(skill.slug)
+        // next.delete(skill.slug)
+        next.delete(skill.resourceKey)
         return next
       })
     }
@@ -170,14 +177,19 @@ export function OrgSkillCatalogView({ search = '' }: OrgSkillCatalogViewProps) {
       ) : (
         <div className="grid grid-cols-1 gap-3 overflow-y-auto pb-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
           {visibleSkills.map((skill, index) => {
-            const busy = installing.has(skill.slug)
-            const isInstalled = installedSlugs.has(skill.slug)
-            const isDisabled = disabledSlugs.includes(skill.slug)
-            const isRemoving = removing.has(skill.slug)
+            // const busy = installing.has(skill.slug)
+            // const isInstalled = installedSlugs.has(skill.slug)
+            // const isDisabled = disabledSlugs.includes(skill.slug)
+            // const isRemoving = removing.has(skill.slug)
+            const busy = installing.has(skill.resourceKey)
+            const isInstalled = installedSlugs.has(skill.resourceKey)
+            const isDisabled = disabledSlugs.includes(skill.resourceKey)
+            const isRemoving = removing.has(skill.resourceKey)
             const [bg, fg] = FALLBACK_COLORS[index % FALLBACK_COLORS.length]
+            // 原卡片 key={skill.slug}，同名资源改用稳定键。
             return (
               <article
-                key={skill.slug}
+                key={skill.resourceKey}
                 className="group relative flex min-w-0 flex-col rounded-lg border bg-background p-4 transition-colors duration-150 hover:border-border-strong hover:bg-accent/30">
                 {isDisabled ? (
                   <Tooltip

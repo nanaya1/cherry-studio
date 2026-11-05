@@ -3,6 +3,9 @@ import { describe, expect, it } from 'vitest'
 import { enterpriseKnowledgeRequestSchemas } from '../../../ipc/schemas/enterpriseKnowledge'
 import {
   OrgKnowledgeCatalogSchema,
+  OrgKnowledgeMemberSchema,
+  OrgKnowledgeInvitationSchema,
+  OrgKnowledgeShareSchema,
   OrgKnowledgeUploadProgressSchema,
   OrgKnowledgeItemPageSchema,
   OrgKnowledgeShareFileResultSchema,
@@ -158,6 +161,35 @@ describe('分享码 IPC 契约', () => {
   })
 })
 
+describe('Java VO 缺失字段契约', () => {
+  const member = { userId: 1, username: '用户', role: 'viewer', status: 'active', expiresAt: null }
+  const invitation = { id: 'i', spaceId: 'b', name: '知识库', inviter: null, expires: null }
+  const share = {
+    id: encodeOrgId('s'),
+    spaceId: encodeOrgId('b'),
+    shareCode: 'AbCd_123',
+    hasPassword: false,
+    maxViews: null,
+    viewCount: 0,
+    expiresAt: null,
+    revokedAt: null,
+    createdAt: '2026-11-04T00:00:00Z'
+  }
+
+  it('接受真实缺失字段且不补造值，仍保留旧字段与校验', () => {
+    expect(OrgKnowledgeMemberSchema.parse(member)).toEqual(member)
+    expect(OrgKnowledgeInvitationSchema.parse(invitation)).toEqual(invitation)
+    expect(OrgKnowledgeShareSchema.parse(share)).toEqual(share)
+    expect(OrgKnowledgeMemberSchema.parse({ ...member, joinedAt: '原时间' }).joinedAt).toBe('原时间')
+    expect(OrgKnowledgeInvitationSchema.parse({ ...invitation, role: 'viewer' }).role).toBe('viewer')
+    expect(OrgKnowledgeShareSchema.parse({ ...share, shareType: 1 }).shareType).toBe(1)
+    expect(OrgKnowledgeMemberSchema.safeParse({ ...member, joinedAt: 0 }).success).toBe(false)
+    expect(OrgKnowledgeInvitationSchema.safeParse({ ...invitation, role: 0 }).success).toBe(false)
+    expect(OrgKnowledgeShareSchema.safeParse({ ...share, shareType: 4 }).success).toBe(false)
+    expect(OrgKnowledgeMemberSchema.safeParse({ ...member, role: undefined }).success).toBe(false)
+  })
+})
+
 describe('IPC 契约 schema', () => {
   it('邀请接受本地或云端 baseId 且有效期最多30天', () => {
     const invite = enterpriseKnowledgeRequestSchemas['enterprise.knowledge.invite'].input
@@ -169,12 +201,20 @@ describe('IPC 契约 schema', () => {
     expect(search.safeParse({ baseIds: [encodeOrgId('b')], query: '  ' }).success).toBe(false)
   })
 
-  it('collaborators 输入仅 keyword/page/pageSize 且 pageSize 不超过50', () => {
+  it('collaborators 必须携带实际 baseId 且 pageSize 不超过50', () => {
     const collaborators = enterpriseKnowledgeRequestSchemas['enterprise.knowledge.collaborators'].input
-    expect(collaborators.safeParse({ keyword: 'a', page: 1, pageSize: 20 }).success).toBe(true)
-    expect(collaborators.safeParse({}).success).toBe(true)
-    expect(collaborators.safeParse({ pageSize: 51 }).success).toBe(false)
-    expect(collaborators.safeParse({ keyword: 'x'.repeat(65) }).success).toBe(false)
+    const baseId = encodeOrgId('b')
+    expect(collaborators.parse({ baseId, keyword: 'a', page: 1, pageSize: 20 })).toEqual({
+      baseId,
+      keyword: 'a',
+      page: 1,
+      pageSize: 20
+    })
+    expect(collaborators.safeParse({ baseId: 'local-uuid' }).success).toBe(true)
+    expect(collaborators.safeParse({}).success).toBe(false)
+    expect(collaborators.safeParse({ baseId: '' }).success).toBe(false)
+    expect(collaborators.safeParse({ baseId, pageSize: 51 }).success).toBe(false)
+    expect(collaborators.safeParse({ baseId, keyword: 'x'.repeat(65) }).success).toBe(false)
     const out = enterpriseKnowledgeRequestSchemas['enterprise.knowledge.collaborators'].output
     expect(out.safeParse({ items: [{ id: 1, username: 'u' }], total: 9, page: 1, pageSize: 20 }).success).toBe(true)
     expect(out.safeParse({ items: [{ id: 1 }], total: 9, page: 1, pageSize: 20 }).success).toBe(false)
