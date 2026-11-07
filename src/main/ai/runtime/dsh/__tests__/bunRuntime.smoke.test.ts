@@ -21,7 +21,7 @@ import { DshStreamAdapter } from '../dshStreamAdapter'
 it.skipIf(process.env.CHERRY_DSH_SMOKE !== '1')(
   'boots bundled Bun, decodes an image, runs a sandboxed shell and spawns a child',
   async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), 'cherry-dsh-smoke-'))
+    const root = await mkdtemp(path.join(os.tmpdir(), 'meacowork-dsh-smoke-'))
     const packagedRoot = process.env.CHERRY_DSH_SMOKE_UNPACKED
     const resources = packagedRoot ? path.join(packagedRoot, 'resources/binaries') : path.resolve('resources/binaries')
     const runtimeDir = packagedRoot ? path.join(root, 'node_modules/@cherrystudio/dsh-bridge/dist/runtime') : undefined

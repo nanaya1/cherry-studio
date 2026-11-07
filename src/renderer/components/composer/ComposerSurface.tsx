@@ -350,7 +350,7 @@ function DeferredComposerSurface(props: ComposerSurfaceProps) {
         <div className="flex min-w-0 flex-1 items-center overflow-hidden">{leftControls}</div>
         <div className="flex flex-row items-center gap-1.5">
           {sendAccessoryElement}
-          {sendAction}
+          {!props.hideSendAction && sendAction}
         </div>
       </div>
     </div>

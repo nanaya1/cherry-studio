@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { ToolArgsTable } from '../shared/ArgsTable'
 import { ToolHeader } from '../shared/GenericTools'
 import type { ToolDisclosureItem } from '../shared/ToolDisclosure'
+import { useToolDisplayName } from '../shared/ToolDisplayNames'
 
 interface UnknownToolProps {
   toolName: string
@@ -52,7 +53,8 @@ function extractMcpContent(
 export function UnknownToolRenderer({ toolName, input, output }: UnknownToolProps): ToolDisclosureItem {
   const { t } = useTranslation()
   const isMcpTool = toolName.startsWith('mcp__')
-  const displayName = getToolDisplayName(toolName)
+  // const displayName = getToolDisplayName(toolName)
+  const displayName = useToolDisplayName(toolName) ?? getToolDisplayName(toolName)
 
   const getToolDescription = (name: string) => {
     if (name.startsWith('mcp__')) {

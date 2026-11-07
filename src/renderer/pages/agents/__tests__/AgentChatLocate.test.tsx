@@ -1,12 +1,23 @@
+import { MockUseDataApiUtils } from '@test-mocks/renderer/useDataApi'
 import { render, screen, waitFor } from '@testing-library/react'
+import { userEvent } from '@testing-library/user-event'
 import type * as MotionReact from 'motion/react'
 import type { ComponentProps, PropsWithChildren, ReactNode } from 'react'
 import type * as ReactI18next from 'react-i18next'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type * as ChatPrimitives from '@renderer/components/chat/primitives'
+import { useActiveSession } from '@renderer/hooks/agent/useSession'
+import type { AgentSessionEntity } from '@shared/data/api/schemas/agentSessions'
 
 import AgentChat from '../AgentChat'
+import { useAgentFilePreviewActive } from '../components/AgentRightPane'
+
+vi.mock('../components/AgentRightPane', async (original) => ({
+  ...(await original<typeof import('../components/AgentRightPane')>()),
+  useAgentFilePreviewActive: vi.fn(() => false)
+}))
+import { useAgentConversationBootstrap } from '../useAgentConversationBootstrap'
 
 vi.mock('@cherrystudio/ui', async (importOriginal) => ({
   ...(await importOriginal()),
@@ -163,7 +174,8 @@ vi.mock('@renderer/components/composer/ComposerDockTransitionFrame', () => ({
 }))
 
 vi.mock('@renderer/components/composer/variants/AgentComposer', () => ({
-  default: () => <div />,
+  // default: () => <div />,
+  default: () => <textarea aria-label="任务消息输入" />,
   AgentHomeComposer: () => <div />,
   MissingAgentHomeComposer: () => <div />
 }))
@@ -252,13 +264,17 @@ const agentSessionPartsMocks = vi.hoisted(() => ({
   }
 }))
 
-vi.mock('@renderer/data/hooks/useDataApi', () => ({
-  useInvalidateCache: () => vi.fn()
-}))
+// vi.mock('@renderer/data/hooks/useDataApi', () => ({
+//   useInvalidateCache: () => vi.fn()
+// }))
 
-vi.mock('@renderer/hooks/agent/useSession', () => ({
-  useActiveSession: () => activeSessionMocks.result,
-  useUpdateSession: () => ({ updateSession: vi.fn() })
+// vi.mock('@renderer/hooks/agent/useSession', () => ({
+//   useActiveSession: () => activeSessionMocks.result,
+//   useUpdateSession: () => ({ updateSession: vi.fn() })
+// }))
+// MEA:industrial-video 使用真实 session 解析，避免 mock 掩盖详情入口过滤。
+vi.mock('../../industrialVideo/IndustrialVideoTaskPanel', () => ({
+  default: () => null
 }))
 
 vi.mock('@renderer/hooks/useAgentSessionParts', () => ({
@@ -294,7 +310,8 @@ vi.mock('@renderer/utils/agentSession', () => ({
   buildAgentSessionTopicId: (sessionId: string) => `agent-session:${sessionId}`
 }))
 
-vi.mock('@renderer/components/chat/messages/agentMessageListAdapter', () => ({
+// vi.mock('@renderer/components/chat/messages/agentMessageListAdapter', () => ({
+vi.mock('../messages/agentMessageListAdapter', () => ({
   locateAgentMessageInList: (...args: unknown[]) => agentSessionPartsMocks.locateAgentMessageInList(...args)
 }))
 
@@ -308,7 +325,14 @@ vi.mock('../components/AgentChatNavbar', () => ({
 }))
 
 vi.mock('../components/AgentSessionMessages', () => ({
-  default: ({ sessionId }: { sessionId: string }) => <div data-testid="agent-messages" data-session-id={sessionId} />
+  // default: ({ sessionId }: { sessionId: string }) => <div data-testid="agent-messages" data-session-id={sessionId} />,
+  default: ({ sessionId, messages }: { sessionId: string; messages: Array<{ id: string }> }) => (
+    <section aria-label="任务消息" data-testid="agent-messages" data-session-id={sessionId}>
+      {messages.map((message) => (
+        <article key={message.id}>{message.id}</article>
+      ))}
+    </section>
+  )
 }))
 
 vi.mock('@renderer/components/chat/citations/CitationsPanel', () => ({
@@ -374,6 +398,54 @@ describe('AgentChat locate pending message', () => {
         }
       }
     })
+  })
+
+  // 最小复现：按视频 sessionId 打开详情；修复前 session 被过滤，消息区和 composer 同时消失。
+  it('工业视频 session 按精确 ID 加载后保留普通消息区和 composer', () => {
+    const video: AgentSessionEntity = {
+      id: 'video-session-1',
+      agentId: 'agent-1',
+      featureKind: 'industrial-video',
+      name: '工业视频任务',
+      workspaceId: 'workspace-video',
+      workspace: {
+        id: 'workspace-video',
+        name: '视频工作区',
+        path: '/tmp/video-workspace',
+        type: 'system',
+        orderKey: 'a0',
+        createdAt: '2026-11-06T00:00:00Z',
+        updatedAt: '2026-11-06T00:00:00Z'
+      },
+      orderKey: 'a0',
+      isNameManuallyEdited: false,
+      lastActivityAt: '2026-11-06T00:00:00Z',
+      createdAt: '2026-11-06T00:00:00Z',
+      updatedAt: '2026-11-06T00:00:00Z'
+    }
+    MockUseDataApiUtils.mockQueryResult('/agent-sessions/:sessionId', { data: video, isLoading: false })
+    agentSessionPartsMocks.result.messages = [{ id: 'video-request', role: 'user', parts: [] }]
+
+    function VideoSessionDetail() {
+      const { session, isLoading, sessionSource } = useActiveSession({
+        activeSessionId: video.id,
+        setActiveSessionId: activeSessionMocks.result.setActiveSessionId
+      })
+      const bootstrap = useAgentConversationBootstrap({
+        session: session ?? null,
+        sessionLoading: isLoading,
+        sessionSource
+      })
+      return <AgentChat conversationBootstrap={bootstrap} />
+    }
+
+    render(<VideoSessionDetail />)
+
+    expect(screen.getByRole('region', { name: '任务消息' })).toHaveAttribute('data-session-id', video.id)
+    expect(screen.getByText('video-request')).toBeVisible()
+    expect(screen.getByRole('textbox', { name: '任务消息输入' })).toBeVisible()
+    expect(screen.queryByRole('region', { name: '工业视频修改' })).not.toBeInTheDocument()
+    expect(screen.queryByTestId('conversation-center-state')).not.toBeInTheDocument()
   })
 
   it('keeps pending locate requests while session history is still loading', () => {
@@ -547,5 +619,56 @@ describe('AgentChat locate pending message', () => {
 
     await waitFor(() => expect(screen.getByTestId('agent-right-pane')).toHaveAttribute('data-open', 'true'))
     expect(screen.getByTestId('agent-right-pane')).toBe(rightPane)
+  })
+
+  it('工业视频任务详情顶部用成片预览开关替换原资源面板工具栏', async () => {
+    const user = userEvent.setup()
+    const video: AgentSessionEntity = {
+      id: 'video-session-toggle',
+      agentId: 'agent-1',
+      featureKind: 'industrial-video',
+      name: '工业视频任务',
+      workspaceId: 'workspace-video',
+      workspace: {
+        id: 'workspace-video',
+        name: '视频工作区',
+        path: '/tmp/video-workspace',
+        type: 'system',
+        orderKey: 'a0',
+        createdAt: '2026-11-06T00:00:00Z',
+        updatedAt: '2026-11-06T00:00:00Z'
+      },
+      orderKey: 'a0',
+      isNameManuallyEdited: false,
+      lastActivityAt: '2026-11-06T00:00:00Z',
+      createdAt: '2026-11-06T00:00:00Z',
+      updatedAt: '2026-11-06T00:00:00Z'
+    }
+    MockUseDataApiUtils.mockQueryResult('/agent-sessions/:sessionId', { data: video, isLoading: false })
+    const view = render(
+      <AgentChat conversationBootstrap={createConversationBootstrap(video)} showResourceListControls />
+    )
+    const toggle = screen.getByRole('button', { name: 'industrial_video.preview.toggle' })
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    await user.click(toggle)
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    await user.click(toggle)
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.queryByRole('button', { name: 'agent.right_pane.tabs.files' })).not.toBeInTheDocument()
+    vi.mocked(useAgentFilePreviewActive).mockReturnValue(true)
+    view.rerender(<AgentChat conversationBootstrap={createConversationBootstrap(video)} showResourceListControls />)
+    expect(screen.queryByRole('button', { name: 'industrial_video.preview.toggle' })).not.toBeInTheDocument()
+    vi.mocked(useAgentFilePreviewActive).mockReturnValue(false)
+    view.rerender(<AgentChat conversationBootstrap={createConversationBootstrap(video)} showResourceListControls />)
+    expect(screen.getByRole('button', { name: 'industrial_video.preview.toggle' })).toHaveAttribute(
+      'aria-expanded',
+      'true'
+    )
+  })
+
+  it('普通会话顶部保留原资源面板工具栏（不被成片预览开关替换）', () => {
+    render(<AgentChat {...activeSessionProps()} showResourceListControls />)
+    expect(screen.queryByRole('button', { name: 'industrial_video.preview.toggle' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'agent.right_pane.tabs.files' })).toBeInTheDocument()
   })
 })

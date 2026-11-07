@@ -106,6 +106,48 @@ describe('AgentSessionService', () => {
     })
   }
 
+  it('persists video classification and keeps ordinary sessions compatible', async () => {
+    const ordinary = await createSession('ordinary')
+    const video = agentSessionService.create({
+      agentId: 'agent-session-test',
+      name: 'video',
+      featureKind: 'industrial-video',
+      workspace: { type: 'system' }
+    })
+    expect(ordinary.featureKind).toBe('general')
+    expect(agentSessionService.getById(video.id).featureKind).toBe('industrial-video')
+    agentSessionService.update(video.id, { name: 'renamed' })
+    expect(agentSessionService.getById(video.id).featureKind).toBe('industrial-video')
+  })
+
+  it('never reuses or purges empty sessions from another feature', () => {
+    const target = { agentId: 'agent-session-test', workspace: { type: 'system' as const } }
+    const ordinary = agentSessionService.reuseOrCreatePlaceholderWithImpact(target)
+    const video = agentSessionService.reuseOrCreatePlaceholderWithImpact({
+      ...target,
+      featureKind: 'industrial-video'
+    })
+    expect(video.session.id).not.toBe(ordinary.session.id)
+    expect(video.deletedDuplicateSessionIds).toEqual([])
+    expect(agentSessionService.reuseOrCreatePlaceholderWithImpact(target).session.id).toBe(ordinary.session.id)
+    expect(
+      agentSessionService.reuseOrCreatePlaceholderWithImpact({ ...target, featureKind: 'industrial-video' }).session.id
+    ).not.toBe(video.session.id)
+    expect(agentSessionService.getById(video.session.id).id).toBe(video.session.id)
+    expect(agentSessionService.getById(ordinary.session.id).featureKind).toBe('general')
+  })
+
+  it('isolates empty video sessions in a shared user workspace', async () => {
+    const workspace = await createWorkspace('feature-isolation')
+    const target = { agentId: 'agent-session-test', workspace: { type: 'user' as const, workspaceId: workspace.id } }
+    const ordinary = agentSessionService.reuseOrCreatePlaceholderWithImpact(target)
+    const video = agentSessionService.reuseOrCreatePlaceholderWithImpact({ ...target, featureKind: 'industrial-video' })
+    expect(video.session.id).not.toBe(ordinary.session.id)
+    expect(video.session.workspaceId).toBe(ordinary.session.workspaceId)
+    expect(agentSessionService.reuseOrCreatePlaceholderWithImpact(target).session.id).toBe(ordinary.session.id)
+    expect(agentSessionService.getById(video.session.id).featureKind).toBe('industrial-video')
+  })
+
   it('orders matching sessions and exposes timestamps by conversation activity', async () => {
     const workspace = await createWorkspace('search')
     await dbh.db.insert(agentSessionTable).values([
@@ -356,6 +398,23 @@ describe('AgentSessionService', () => {
   })
 
   describe('getLatestActive', () => {
+    it('按分类恢复最近会话，未指定分类时保持历史兼容', async () => {
+      const workspace = await createWorkspace('latest-feature')
+      await dbh.db.insert(agentSessionTable).values([
+        { id: 'general-last', name: '普通', workspaceId: workspace.id, orderKey: 'a0', lastActivityAt: 100 },
+        {
+          id: 'video-last',
+          name: '视频',
+          workspaceId: workspace.id,
+          orderKey: 'a1',
+          lastActivityAt: 200,
+          featureKind: 'industrial-video'
+        }
+      ])
+      expect(agentSessionService.getLatestActive()?.id).toBe('video-last')
+      expect(agentSessionService.getLatestActive({ featureKind: 'general' })?.id).toBe('general-last')
+      expect(agentSessionService.getLatestActive({ featureKind: 'industrial-video' })?.id).toBe('video-last')
+    })
     it('returns the globally most-recently-active session, independent of orderKey and updatedAt', async () => {
       const workspace = await createWorkspace('latest')
       // `active-latest` has the largest orderKey (oldest-created → last under `orderKey ASC` paging) yet

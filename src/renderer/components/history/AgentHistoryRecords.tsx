@@ -1,4 +1,4 @@
-import { Bot } from 'lucide-react'
+import { Bot, Video } from 'lucide-react'
 import { type ReactElement, type ReactNode, useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -276,7 +276,14 @@ const AgentHistoryRecords = ({
       getUpdatedAt: (session: SessionListItem) => session.lastActivityAt,
       getSourceLabel: (session: SessionListItem) =>
         (session.agentId ? agentById.get(session.agentId)?.name : undefined) ?? unknownAgentLabel,
-      renderAvatar: () => <Bot size={14} className="text-foreground" />,
+      // renderAvatar: () => <Bot size={14} className="text-foreground" />,
+      // MEA:industrial-video 历史记录与侧栏使用相同任务类型标识。
+      renderAvatar: (session: SessionListItem) =>
+        session.featureKind === 'industrial-video' ? (
+          <Video role="img" aria-label={t('industrial_video.title')} size={14} className="text-foreground" />
+        ) : (
+          <Bot size={14} className="text-foreground" />
+        ),
       rowHeight: 32,
       getSelectLabel: (session: SessionListItem) => `${t('common.select')} ${session.name || t('common.unnamed')}`,
       getRowActions: (session: SessionListItem, openRename: (id: string, name: string) => void) => {

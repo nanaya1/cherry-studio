@@ -13,6 +13,7 @@ import { getAppLanguage } from '@main/i18n'
 import type { Message, MessageData, UIMessage } from '@shared/data/types/message'
 import { parseUniqueModelId, type UniqueModelId, UniqueModelIdSchema } from '@shared/data/types/model'
 import type { Topic } from '@shared/data/types/topic'
+import { readCherryMeta } from '@shared/data/types/uiParts'
 import {
   buildFirstUserMessageTitle,
   normalizeConversationTitle,
@@ -89,11 +90,16 @@ function getMainTextContentFromMessage(message: Message): string {
 }
 
 function getMainTextContentFromMessageData(data: MessageData | undefined): string {
-  return getParts(data)
-    .filter((part) => part.type === 'text' && typeof part.text === 'string')
-    .map((part) => part.text?.trim())
-    .filter(Boolean)
-    .join('\n\n')
+  // return getParts(data).filter((part) => part.type === 'text' && typeof part.text === 'string')
+  // 展示投影标记的文本属于执行上下文，不参与命名，也不使用设置摘要代替原始需求。
+  return (
+    (data?.parts ?? [])
+      .filter((part) => part.type === 'text' && readCherryMeta(part)?.displayText === undefined)
+      // .map((part) => part.text?.trim())
+      .map((part) => (part.type === 'text' ? part.text?.trim() : ''))
+      .filter(Boolean)
+      .join('\n\n')
+  )
 }
 
 function getMainTextContentFromUiMessage(message: UIMessage): string {
@@ -275,18 +281,21 @@ export class TopicNamingService {
    *
    * @param agentId    Agent id, used for failure logging context only.
    * @param sessionId  Cherry Studio session id.
-   * @param userText   Plain text of the persisted user turn, extracted by
-   *                   AgentSessionRuntimeService from the saved user message.
+   * @param userText   Persisted user message data (preserves context metadata),
+   *                   or plain text for callers without message parts.
    * @param finalMessage Accumulated assistant UIMessage for this turn.
    */
   maybeRenameAgentSession(
     agentId: string,
     sessionId: string,
-    userText: string,
+    // userText: string,
+    userText: string | MessageData,
     finalMessage: UIMessage
   ): Promise<void> {
+    const namingText = typeof userText === 'string' ? userText : getMainTextContentFromMessageData(userText)
     return trackNamingWrite(`agent-session:${sessionId}`, () =>
-      this.doMaybeRenameAgentSession(agentId, sessionId, userText, finalMessage)
+      // this.doMaybeRenameAgentSession(agentId, sessionId, userText, finalMessage)
+      this.doMaybeRenameAgentSession(agentId, sessionId, namingText, finalMessage)
     )
   }
 

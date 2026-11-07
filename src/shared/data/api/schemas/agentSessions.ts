@@ -25,9 +25,13 @@ import {
  */
 export const SessionNameEntitySchema = z.string().max(255)
 
+export const AgentSessionFeatureKindSchema = z.enum(['general', 'industrial-video'])
+
 export const AgentSessionEntitySchema = z.strictObject({
   id: z.string(),
   agentId: z.string().nullable(),
+  /** Omitted by older cached entities; persisted sessions always return a classification. */
+  featureKind: AgentSessionFeatureKindSchema.optional(),
   /** May be empty for an untitled placeholder session, matching topic.name semantics. */
   name: SessionNameEntitySchema,
   isNameManuallyEdited: z.boolean(),
@@ -49,6 +53,7 @@ export type AgentSessionEntity = z.infer<typeof AgentSessionEntitySchema>
 // Create requires a real `agentId` — orphans only happen via cascade, never on insert.
 export const CreateAgentSessionSchema = z.strictObject({
   agentId: z.string().min(1),
+  featureKind: AgentSessionFeatureKindSchema.optional(),
   name: SessionNameEntitySchema,
   description: z.string().optional(),
   workspace: AgentSessionWorkspaceSourceSchema
@@ -89,13 +94,16 @@ export type ListAgentSessionsQuery = z.output<typeof ListAgentSessionsQuerySchem
 
 /** Optional owner scope for `GET /agent-sessions/latest`; omitted means global latest. */
 export const LatestAgentSessionQuerySchema = z.strictObject({
-  agentId: z.string().min(1).optional()
+  agentId: z.string().min(1).optional(),
+  // MEA:industrial-video 不指定分类仍保持原有全分类查询。
+  featureKind: AgentSessionFeatureKindSchema.optional()
 })
 export type LatestAgentSessionQuery = z.infer<typeof LatestAgentSessionQuerySchema>
 
 /** Exact creation target for atomically reusing or creating an empty session. */
 export const ReuseOrCreateAgentSessionSchema = z.strictObject({
   agentId: z.string().min(1),
+  featureKind: AgentSessionFeatureKindSchema.optional(),
   workspace: AgentSessionWorkspaceSourceSchema,
   excludeSessionId: z.string().min(1).optional()
 })

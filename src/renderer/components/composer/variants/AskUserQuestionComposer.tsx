@@ -4,7 +4,10 @@ import { useTranslation } from 'react-i18next'
 
 import { Button, Checkbox, Textarea } from '@cherrystudio/ui'
 import { loggerService } from '@logger'
+import { useChatLayoutMode } from '@renderer/components/chat/layout/ChatLayoutModeContext'
+import NarrowLayout, { NARROW_LAYOUT_SIDE_PADDING_PX } from '@renderer/components/chat/layout/NarrowLayout'
 import type { MessageToolApprovalInput } from '@renderer/components/chat/messages/types'
+import { usePreference } from '@renderer/data/hooks/usePreference'
 import { toast } from '@renderer/services/toast'
 import { cn } from '@renderer/utils/style'
 
@@ -36,11 +39,14 @@ export function createAskUserQuestionComposerOverride({
   return {
     id: `ask-user-question:${request.approvalId}`,
     priority: 100,
+    placement: 'above',
     render: ({ className }) => <AskUserQuestionComposer request={request} onRespond={onRespond} className={className} />
   }
 }
 
 export default function AskUserQuestionComposer({ request, onRespond, className }: AskUserQuestionComposerProps) {
+  const [narrowMode] = usePreference('chat.narrow_mode')
+  const { railGutterPx } = useChatLayoutMode()
   const { t } = useTranslation()
   const questions = request.input.questions
   // Answers are restored from the cache so a remount (switching conversations and
@@ -213,11 +219,16 @@ export default function AskUserQuestionComposer({ request, onRespond, className 
   if (!currentQuestion) return null
 
   return (
-    <div
+    <NarrowLayout
       data-composer-viewport-inset-target=""
-      // pointer-events-auto: the composer dock stack is click-through; override
-      // composers re-enable interaction on their own root.
-      className={cn('pointer-events-auto relative z-2 flex flex-col px-4.5 pt-0 pb-4.5', className)}>
+      narrowMode={narrowMode}
+      withSidePadding
+      // 原 px-4.5 铺满布局停用，与工具审批共用输入框限宽和侧栏留白。
+      className={cn('pointer-events-auto relative z-2 flex flex-col pt-0 pb-3', className)}
+      style={{
+        paddingLeft: NARROW_LAYOUT_SIDE_PADDING_PX + railGutterPx,
+        paddingRight: NARROW_LAYOUT_SIDE_PADDING_PX + railGutterPx
+      }}>
       <div
         className="rounded-[17px] border-[0.5px] border-border p-2.5 backdrop-blur"
         style={{ backgroundColor: 'color-mix(in srgb, var(--background) 88%, transparent)' }}>
@@ -362,6 +373,6 @@ export default function AskUserQuestionComposer({ request, onRespond, className 
           </Button>
         </div>
       </div>
-    </div>
+    </NarrowLayout>
   )
 }

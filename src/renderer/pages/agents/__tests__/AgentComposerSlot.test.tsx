@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import NarrowLayout from '@renderer/components/chat/layout/NarrowLayout'
 import type { AgentSessionEntity } from '@shared/data/api/schemas/agentSessions'
 
 import AgentComposerSlot from '../AgentComposerSlot'
@@ -23,7 +24,11 @@ vi.mock('@renderer/components/composer/ConversationComposerSlot', () => ({
 vi.mock('@renderer/components/composer/variants/AgentComposer', () => ({
   default: (props: any) => {
     agentComposerPropsMock.last = props
-    return <div data-testid="agent-composer" />
+    return (
+      <NarrowLayout narrowMode={props.forceNarrowLayout} withSidePadding data-testid="agent-composer">
+        <textarea aria-label="Task reply" />
+      </NarrowLayout>
+    )
   },
   MissingAgentHomeComposer: ({
     onAgentChange,
@@ -113,6 +118,18 @@ describe('AgentComposerSlot', () => {
     render(<AgentComposerSlot {...baseProps} />)
 
     expect(agentComposerPropsMock.last?.compactWhenSingleLine).toBe(maximized)
+  })
+
+  it('caps the industrial video composer without changing ordinary task layout', () => {
+    const { rerender } = render(
+      <AgentComposerSlot {...baseProps} session={{ ...session, featureKind: 'industrial-video' }} />
+    )
+
+    // Prevent the video input from stretching to the left edge of a wide task viewport.
+    expect(screen.getByTestId('agent-composer')).toHaveClass('mx-auto', 'max-w-[calc(800px+3rem)]')
+
+    rerender(<AgentComposerSlot {...baseProps} />)
+    expect(screen.getByTestId('agent-composer')).toHaveClass('max-w-full')
   })
 
   it('lets an unlinked session select an active agent', async () => {

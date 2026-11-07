@@ -102,6 +102,30 @@ describe('useActiveSession', () => {
 
   const setActiveSessionId = vi.fn()
 
+  it.each(['query', 'initial', 'pending'] as const)(
+    // 'never exposes a video session to the general Agent runtime via %s',
+    '工业视频 session 通过 %s 来源可进入普通任务详情',
+    (source) => {
+      const video = createSession({ featureKind: 'industrial-video' })
+      MockUseDataApiUtils.mockQueryResult('/agent-sessions/:sessionId', {
+        data: source === 'query' ? video : undefined,
+        isLoading: false
+      })
+      const { result } = renderHook(() =>
+        useActiveSession({
+          activeSessionId: video.id,
+          setActiveSessionId,
+          initialSession: source === 'initial' ? video : null
+        })
+      )
+      if (source === 'pending') act(() => result.current.selectSession(video.id, video))
+      // expect(result.current.session).toBeUndefined()
+      expect(result.current.session).toBe(video)
+      expect(result.current.sessionSource).toBe(source === 'query' ? 'query' : 'pending')
+      expect(result.current.isLoading).toBe(false)
+    }
+  )
+
   it('ignores query data that does not match the active session id', () => {
     MockUseDataApiUtils.mockQueryResult('/agent-sessions/:sessionId', {
       data: createSession({ id: 'session-1' }),

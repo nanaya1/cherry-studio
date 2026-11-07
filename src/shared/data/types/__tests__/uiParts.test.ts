@@ -7,7 +7,7 @@ import {
   CherryFileMetaSchema,
   CherryReasoningMetaSchema,
   CherryTextMetaSchema,
-  CherryToolMetaSchema,
+  MeacoworkToolMetaSchema,
   createClearContextPart,
   type DiagnosisResult,
   getKnowledgeBaseIdsFromParts,
@@ -39,6 +39,14 @@ function dataErrorPart(cherry?: Record<string, unknown>): Extract<CherryMessageP
 // ============================================================================
 
 describe('CherryTextMetaSchema', () => {
+  it('preserves display-only text through persistence without replacing model context', () => {
+    const part = { type: 'text' as const, text: 'execution context', providerMetadata: { cherry: { displayText: '' } } }
+    const restored = JSON.parse(JSON.stringify(part)) as TextUIPart
+    expect(readCherryMeta(restored)?.displayText).toBe('')
+    expect(restored.text).toBe('execution context')
+    expect(CherryTextMetaSchema.parse({ displayText: '视频设置：30 秒' })).toEqual({ displayText: '视频设置：30 秒' })
+  })
+
   it('accepts references as array of anything', () => {
     expect(CherryTextMetaSchema.safeParse({ references: [{ category: 'citation' }] }).success).toBe(true)
     expect(CherryTextMetaSchema.safeParse({}).success).toBe(true)
@@ -60,9 +68,9 @@ describe('CherryReasoningMetaSchema', () => {
   })
 })
 
-describe('CherryToolMetaSchema', () => {
+describe('MeacoworkToolMetaSchema', () => {
   it('accepts transport/toolName/tool', () => {
-    const ok = CherryToolMetaSchema.safeParse({
+    const ok = MeacoworkToolMetaSchema.safeParse({
       transport: 'claude-agent',
       toolName: 'web_search',
       tool: { serverId: 's1', serverName: 'search', type: 'mcp' }
@@ -70,7 +78,7 @@ describe('CherryToolMetaSchema', () => {
     expect(ok.success).toBe(true)
   })
   it('rejects tool.type outside the enum', () => {
-    const bad = CherryToolMetaSchema.safeParse({ tool: { type: 'pluggable' } })
+    const bad = MeacoworkToolMetaSchema.safeParse({ tool: { type: 'pluggable' } })
     expect(bad.success).toBe(false)
   })
 })
@@ -200,7 +208,7 @@ describe('readCherryMeta', () => {
     expect(meta?.startedAt).toBe(1780913860106)
   })
 
-  it('reads CherryToolMeta from a tool-foo part with transport and tool', () => {
+  it('reads MeacoworkToolMeta from a tool-foo part with transport and tool', () => {
     const part = {
       type: 'tool-fetch_url',
       toolCallId: 'tc1',
@@ -215,7 +223,7 @@ describe('readCherryMeta', () => {
     })
   })
 
-  it('reads CherryToolMeta from a dynamic-tool part', () => {
+  it('reads MeacoworkToolMeta from a dynamic-tool part', () => {
     const part = {
       type: 'dynamic-tool',
       toolName: 'x',

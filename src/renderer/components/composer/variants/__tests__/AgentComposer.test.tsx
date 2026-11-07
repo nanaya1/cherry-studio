@@ -751,6 +751,54 @@ function getQueueDock(): any {
 }
 
 describe('AgentComposer', () => {
+  it('limits industrial-video controls to file upload without model or tool accessories', async () => {
+    render(
+      <AgentComposer
+        agentId="agent-1"
+        sessionId="session-1"
+        sendMessage={mocks.sendMessage}
+        stop={mocks.stop}
+        isStreaming={false}
+        attachmentOnly
+      />
+    )
+    const controls = within(screen.getByTestId('composer-left-controls'))
+    expect(controls.getAllByRole('button')).toHaveLength(1)
+    expect(controls.getByRole('button', { name: 'industrial_video.upload' })).toBeInTheDocument()
+    expect(screen.getByTestId('composer-send-accessory')).toBeEmptyDOMElement()
+    window.api.file.select = vi.fn().mockResolvedValueOnce([])
+    fireEvent.click(controls.getByRole('button', { name: 'industrial_video.upload' }))
+    await waitFor(() =>
+      expect(window.api.file.select).toHaveBeenCalledWith({ properties: ['openFile', 'multiSelections'] })
+    )
+  })
+
+  it('keeps industrial-video drafts out of both queue and steer while streaming', async () => {
+    const props = {
+      agentId: 'agent-1',
+      sessionId: 'session-1',
+      sendMessage: mocks.sendMessage,
+      stop: mocks.stop,
+      isStreaming: true,
+      attachmentOnly: true
+    }
+    const { rerender } = render(<AgentComposer {...props} />)
+    act(() => mocks.surfaceProps?.onTextChange('video revision'))
+    await act(async () => {
+      await mocks.surfaceProps?.onSendDraft({ text: 'video revision', tokens: [] })
+      await mocks.surfaceProps?.onSendDraft({ text: 'video revision', tokens: [] }, { steer: true })
+    })
+    expect(mocks.sendMessage).not.toHaveBeenCalled()
+    expect(getQueueDock()).toBeFalsy()
+    expect(mocks.surfaceProps?.text).toBe('video revision')
+    rerender(<AgentComposer {...props} isStreaming={false} />)
+    expect(mocks.sendMessage).not.toHaveBeenCalled()
+    await act(async () => {
+      await mocks.surfaceProps?.onSendDraft({ text: 'video revision', tokens: [] })
+    })
+    expect(mocks.sendMessage).toHaveBeenCalledWith({ text: 'video revision' }, expect.anything())
+  })
+
   beforeEach(() => {
     // The `@` panel's entity-reference merge hits these paths; the mock factory has no
     // canned data for them, so default both to empty results.
@@ -5268,7 +5316,9 @@ describe('AgentComposer', () => {
     )
 
     const leftControls = screen.getByTestId('composer-left-controls')
-    expect(within(leftControls).queryByRole('button', { name: 'agent.settings.permissionMode.title' })).not.toBeInTheDocument()
+    expect(
+      within(leftControls).queryByRole('button', { name: 'agent.settings.permissionMode.title' })
+    ).not.toBeInTheDocument()
 
     const belowControls = screen.getByTestId('composer-below-controls')
     const permissionButton = within(belowControls).getByRole('button', { name: 'agent.settings.permissionMode.title' })

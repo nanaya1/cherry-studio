@@ -33,6 +33,7 @@ function StatefulComposer({ onMount, onUnmount }: { onMount: () => void; onUnmou
 const permissionOverride: ComposerOverride = {
   id: 'tool-permission:approval-1',
   priority: 90,
+  placement: 'above',
   render: () => <button type="button">permission override</button>
 }
 
@@ -80,6 +81,11 @@ describe('ComposerCore', () => {
     view.rerender(renderComposer([permissionOverride], onMount, onUnmount))
 
     expect(screen.getByRole('button', { name: 'permission override' })).toBeInTheDocument()
+    // 审批在输入框上方，输入框可见但不可交互，且不丢失草稿。
+    expect(primaryLayer).not.toHaveClass('invisible', 'absolute')
+    expect(primaryLayer).toHaveAttribute('inert')
+    const overrideLayer = view.container.querySelector('[data-composer-override-layer]')!
+    expect(overrideLayer.compareDocumentPosition(primaryLayer!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(view.container.querySelector('textarea')).toBe(input)
     expect(onMount).toHaveBeenCalledTimes(1)
     expect(onUnmount).not.toHaveBeenCalled()

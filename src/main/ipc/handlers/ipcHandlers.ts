@@ -21,6 +21,7 @@ import { externalAppHandlers } from './externalApp'
 import { fileHandlers } from './file'
 import { fileProcessingHandlers } from './fileProcessing'
 import { hermesDashboardHandlers } from './hermesDashboard'
+import { industrialVideoHandlers } from './industrialVideo'
 import { knowledgeHandlers } from './knowledge'
 import { localModelHandlers } from './localModel'
 import { mcpHandlers } from './mcp'
@@ -77,6 +78,7 @@ export const ipcHandlers: IpcHandlersFor<IpcRequestSchemas> = {
   ...fileHandlers,
   ...fileProcessingHandlers,
   ...hermesDashboardHandlers,
+  ...industrialVideoHandlers,
   ...knowledgeHandlers,
   ...localModelHandlers,
   ...mcpHandlers,

@@ -341,12 +341,12 @@ describe('DshBridgeServer', () => {
       harness.transport.request('tool/call', {
         sessionId: SESSION_ID,
         callId: 'tool-1',
-        name: 'mcp__cherry-tools__web_search',
+        name: 'mcp__meacowork-tools__web_search',
         args: { query: 'Cherry Studio' }
       })
-    ).resolves.toEqual({ text: 'mcp__cherry-tools__web_search:ok', data: { query: 'Cherry Studio' } })
+    ).resolves.toEqual({ text: 'mcp__meacowork-tools__web_search:ok', data: { query: 'Cherry Studio' } })
     expect(onToolCall).toHaveBeenCalledWith(
-      'mcp__cherry-tools__web_search',
+      'mcp__meacowork-tools__web_search',
       { query: 'Cherry Studio' },
       expect.any(AbortSignal)
     )
@@ -356,7 +356,7 @@ describe('DshBridgeServer', () => {
       harness.transport.request('tool/call', {
         sessionId: SESSION_ID,
         callId: 'tool-2',
-        name: 'mcp__cherry-tools__web_search',
+        name: 'mcp__meacowork-tools__web_search',
         args: {}
       })
     ).rejects.toThrow('provider unavailable')

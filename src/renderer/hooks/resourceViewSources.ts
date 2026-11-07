@@ -53,11 +53,20 @@ export function useRawAgentSessionsSource({ enabled }: { enabled?: boolean } = {
     return result.session
   }, [])
   const reuseOrCreateSession = useCallback(
-    async (agentId: string, workspace: AgentSessionWorkspaceSource, excludeSessionId?: string) => {
+    // MEA:industrial-video 保留原签名以追踪分类参数扩展，普通任务调用不变。
+    // async (agentId: string, workspace: AgentSessionWorkspaceSource, excludeSessionId?: string) => {
+    async (
+      agentId: string,
+      workspace: AgentSessionWorkspaceSource,
+      excludeSessionId?: string,
+      featureKind?: 'industrial-video'
+    ) => {
       return ipcApi.request('ai.agent.session.reuse_or_create', {
         agentId,
         workspace,
-        ...(excludeSessionId ? { excludeSessionId } : {})
+        ...(excludeSessionId ? { excludeSessionId } : {}),
+        // MEA:industrial-video 不传分类时保持普通任务的既有行为。
+        ...(featureKind ? { featureKind } : {})
       })
     },
     []

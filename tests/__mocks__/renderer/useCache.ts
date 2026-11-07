@@ -11,6 +11,7 @@ import type {
   UseCacheSchema
 } from '@shared/data/cache/cacheSchemas'
 import { DefaultRendererPersistCache, DefaultUseCache, DefaultSharedCache } from '@shared/data/cache/cacheSchemas'
+import { getRendererPersistCacheDefault } from '@shared/data/cache/templateKey'
 
 /**
  * Mock useCache hooks for testing
@@ -252,7 +253,7 @@ export const mockUsePersistCache = vi.fn(
     // Get current value
     let currentValue = mockPersistCache.get(key)
     if (currentValue === undefined) {
-      currentValue = initValue ?? DefaultRendererPersistCache[key]
+      currentValue = initValue ?? getRendererPersistCacheDefault(key)
       if (currentValue !== undefined) {
         mockPersistCache.set(key, currentValue)
       }
@@ -261,7 +262,7 @@ export const mockUsePersistCache = vi.fn(
     // Mock setValue function (mirrors production functional-updater handling)
     const setValue = vi.fn((value: SetAction<RendererPersistCacheSchema[K]>) => {
       if (typeof value === 'function') {
-        const prev = (mockPersistCache.get(key) ?? DefaultRendererPersistCache[key]) as RendererPersistCacheSchema[K]
+        const prev = (mockPersistCache.get(key) ?? getRendererPersistCacheDefault(key)) as RendererPersistCacheSchema[K]
         mockPersistCache.set(key, value(prev))
       } else {
         mockPersistCache.set(key, value)
@@ -360,7 +361,7 @@ export const MockUseCacheUtils = {
    * Get persist cache value
    */
   getPersistCacheValue: <K extends RendererPersistCacheKey>(key: K): RendererPersistCacheSchema[K] => {
-    return mockPersistCache.get(key) ?? DefaultRendererPersistCache[key]
+    return mockPersistCache.get(key) ?? getRendererPersistCacheDefault(key)
   },
 
   /**
@@ -457,7 +458,7 @@ export const MockUseCacheUtils = {
       }
 
       // Default behavior for other keys
-      const defaultValue = mockPersistCache.get(cacheKey) ?? initValue ?? DefaultRendererPersistCache[cacheKey]
+      const defaultValue = mockPersistCache.get(cacheKey) ?? initValue ?? getRendererPersistCacheDefault(cacheKey)
       return [defaultValue, vi.fn()]
     }) as never)
   },

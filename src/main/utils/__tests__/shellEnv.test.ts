@@ -216,7 +216,7 @@ describe('shellEnv – Windows registry PATH', () => {
   })
 
   it('lists the mise shims dir only once despite appending and prepending it', async () => {
-    // appendCherryToolDirsToPath() adds the shims dir, then mergeBinaryExecutionEnv()
+    // appendMeacoworkToolDirsToPath() adds the shims dir, then mergeBinaryExecutionEnv()
     // prepends it again — the merge step must dedup so it does not appear twice.
     mockRegistryPaths({ system: 'C:\\Windows' })
 

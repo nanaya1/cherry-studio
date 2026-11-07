@@ -16,7 +16,7 @@ import type { HookCallback, HookInput, HookJSONOutput } from '@anthropic-ai/clau
 import { application } from '@application'
 import { loggerService } from '@logger'
 import { wrapSteerReminder } from '@main/ai/steerReminder'
-import { CHERRY_MCP_SERVER, toMcpRuntimeName } from '@main/ai/toolApproval/builtinToolPolicy'
+import { MEACOWORK_MCP_SERVER, toMcpRuntimeName } from '@main/ai/toolApproval/builtinToolPolicy'
 import { evaluateToolGuards } from '@main/ai/toolApproval/toolGuards'
 import { MOVE_TO_TRASH_TOOL_NAME } from '@main/ai/tools/moveToTrash'
 import { SAVE_ATTACHMENT_TOOL_NAME } from '@main/ai/tools/saveAttachment'
@@ -36,8 +36,8 @@ const EXIT_PLAN_MODE_TOOL_NAME = 'ExitPlanMode'
 // the native edit tools, plus the assistant-files MCP tools (referenced by runtime name).
 const RUN_BREAK_TOOLS: ReadonlySet<string> = new Set([
   ...BASH_RUN_BREAK_TOOLS,
-  toMcpRuntimeName({ serverName: CHERRY_MCP_SERVER.ASSISTANT_FILES, toolName: SAVE_ATTACHMENT_TOOL_NAME }),
-  toMcpRuntimeName({ serverName: CHERRY_MCP_SERVER.ASSISTANT_FILES, toolName: MOVE_TO_TRASH_TOOL_NAME })
+  toMcpRuntimeName({ serverName: MEACOWORK_MCP_SERVER.ASSISTANT_FILES, toolName: SAVE_ATTACHMENT_TOOL_NAME }),
+  toMcpRuntimeName({ serverName: MEACOWORK_MCP_SERVER.ASSISTANT_FILES, toolName: MOVE_TO_TRASH_TOOL_NAME })
 ])
 
 const sessionState = () => application.get('ClaudeCodeSessionStateService')

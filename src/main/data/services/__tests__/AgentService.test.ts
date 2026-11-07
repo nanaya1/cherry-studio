@@ -767,6 +767,65 @@ describe('AgentService', () => {
     })
   })
 
+  describe('industrial-video internal marker protection', () => {
+    it('rejects ordinary agent creation with the internal marker', () => {
+      const error = captureError(() =>
+        createAgentForTest({
+          type: 'claude-code',
+          name: 'Forged Internal Agent',
+          model: TEST_MODEL_ID,
+          configuration: { internal_kind: 'industrial-video' }
+        })
+      )
+
+      expect(error).toMatchObject({ code: ErrorCode.INVALID_OPERATION })
+    })
+
+    it('allows only the trusted orchestration path to create an internal agent', () => {
+      const created = agentService.createAgentWithId(
+        'agent_internal_trusted',
+        {
+          type: 'claude-code',
+          name: 'Trusted Internal Agent',
+          model: TEST_MODEL_ID,
+          configuration: { internal_kind: 'industrial-video' }
+        },
+        { allowIndustrialVideoInternal: true }
+      )
+
+      expect(created.configuration?.internal_kind).toBe('industrial-video')
+    })
+
+    it('rejects adding the internal marker through ordinary updates', () => {
+      const created = createAgentForTest({
+        type: 'claude-code',
+        name: 'Ordinary Agent',
+        model: TEST_MODEL_ID
+      })
+
+      const error = captureError(() =>
+        agentService.updateAgent(created.id, { configuration: { internal_kind: 'industrial-video' } })
+      )
+
+      expect(error).toMatchObject({ code: ErrorCode.INVALID_OPERATION })
+      expect(agentService.getAgent(created.id)?.configuration?.internal_kind).toBeUndefined()
+    })
+
+    it('rejects removing the internal marker through ordinary updates', async () => {
+      const internal = await insertAgent({
+        id: 'agent_internal_protected',
+        configuration: { internal_kind: 'industrial-video' }
+      })
+
+      const error = captureError(() =>
+        agentService.updateAgent(internal.id, { configuration: { internal_kind: undefined } })
+      )
+
+      expect(error).toMatchObject({ code: ErrorCode.INVALID_OPERATION })
+      expect(agentService.getAgent(internal.id)?.configuration?.internal_kind).toBe('industrial-video')
+    })
+  })
+
   describe('default agent MCP exclusions', () => {
     it('rejects client attempts to write the server-owned exclusion list', () => {
       const agent = agentService.ensureBuiltinAgent({
@@ -1908,6 +1967,25 @@ describe('AgentService', () => {
       expect(ids1.some((id) => ids2.includes(id))).toBe(false)
     })
 
+    it('hides industrial-video internal agents without changing direct lookup', async () => {
+      const ordinary = await insertAgent({ id: 'agent_visible', name: 'Visible Agent' })
+      const internal = await insertAgent({
+        id: 'agent_internal_video',
+        name: 'Internal Video Agent',
+        configuration: { internal_kind: 'industrial-video' }
+      })
+
+      const { agents, total } = agentService.listAgents()
+
+      expect(agents.map((agent) => agent.id)).toContain(ordinary.id)
+      expect(agents.map((agent) => agent.id)).not.toContain(internal.id)
+      expect(total).toBe(1)
+      expect(agentService.getAgent(internal.id)).toEqual(expect.objectContaining({ id: internal.id }))
+      expect(agentService.listAgents({ ids: [internal.id] }).agents).toEqual([
+        expect.objectContaining({ id: internal.id })
+      ])
+    })
+
     it('sorts by name ascending when sortBy=name and sortOrder=asc', async () => {
       await insertAgent({ name: 'Zebra' })
       await insertAgent({ name: 'Alpha' })
@@ -2042,6 +2120,17 @@ describe('AgentService', () => {
   })
 
   describe('search', () => {
+    it('does not expose industrial-video internal agents', async () => {
+      await insertAgent({ id: 'agent_visible_search', name: 'Needle Visible' })
+      await insertAgent({
+        id: 'agent_internal_search',
+        name: 'Needle Internal',
+        configuration: { internal_kind: 'industrial-video' }
+      })
+
+      expect(agentService.search({ q: 'Needle', limit: 5 }).map((item) => item.id)).toEqual(['agent_visible_search'])
+    })
+
     it('returns lean navigation items ordered by updatedAt', async () => {
       await insertAgent({
         id: 'agent_search_old',

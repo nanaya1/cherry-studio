@@ -3,5 +3,7 @@ export {
   AgentRightPane,
   AgentTaskProgressCapsule,
   useAgentRightPaneActions,
+  useAgentVideoFilePreviewActive,
+  useAgentFilePreviewActive,
   useOptionalAgentFileNavigation
 } from './AgentRightPane'

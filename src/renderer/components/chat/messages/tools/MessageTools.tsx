@@ -1,5 +1,6 @@
 import type { McpToolResponse, NormalToolResponse } from '@renderer/types/mcpTool'
 import type { McpTool } from '@renderer/types/tool'
+import { isMeacoworkToolsServerName } from '@shared/ai/meacoworkTools'
 
 import { agentInlineResultPresentationRegistry, isReportArtifactsToolResponse, MessageChannelConfigTool } from './agent'
 import { isChannelAuthQrToolResponse } from './channelConfigTool'
@@ -12,17 +13,18 @@ interface Props {
 }
 
 /**
- * In-process cherry / agent-memory tools are MCP-typed but have dedicated cards (web search,
+ * In-process MEA Cowork / agent-memory tools are MCP-typed but have dedicated cards (web search,
  * knowledge, memory) — route them through `chooseTool` instead of the generic MCP renderer.
  * Other MCP servers keep the generic card.
  */
-const DEDICATED_AGENT_SERVERS = new Set(['cherry-tools', 'agent-memory'])
+const DEDICATED_AGENT_SERVERS = new Set(['agent-memory'])
 
 function rendersThroughChooseTool(toolResponse: McpToolResponse | NormalToolResponse): boolean {
   const tool = toolResponse.tool
   if (tool.type !== 'mcp') return true
   return (
-    DEDICATED_AGENT_SERVERS.has((tool as McpTool).serverId) &&
+    (isMeacoworkToolsServerName((tool as McpTool).serverId) ||
+      DEDICATED_AGENT_SERVERS.has((tool as McpTool).serverId)) &&
     canRenderMessageToolResponse(toolResponse as NormalToolResponse)
   )
 }

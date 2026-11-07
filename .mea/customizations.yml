@@ -8,6 +8,66 @@ policy:
   require_tests: true
   preserve_original_code_by_comment: true
 customizations:
+  - id: industrial-video
+    # 保留普通工具链；新任务可选专用编排，按会话固定模式，服务端审核与计费仍须用户确认。
+    title: 工业视频任务分类、独立导航与本地资料前置分析
+    owner: renderer
+    # 原行为要求生产服务未接入时明确提示；前后端并行后改为静默禁用制作入口。
+    behavior: 复用 AgentSession 持久化 featureKind，普通与视频任务创建和空白复用隔离；所有 sessionId 入口在挂载前按分类分流，视频页面不挂载普通 Agent 运行时。创建区按最终原型使用紧凑弹出设置、附件菜单、Logo 与三个仅填入需求的示例，生产未接入时禁用开始制作，不显示开发占位提示或伪造成功。侧栏、任务列表及历史记录显示视频图标，不改变删除机制。
+    # 真实 /app/industrial-video 直接复用原型创建区；浏览与默认模型加载不建任务，首次需求或设置编辑单次创建并迁移最新安全草稿，失败保留输入、显式重试，不重挂载编辑器。
+    # 普通 agentId 入口仅恢复 general 最近任务，无普通任务时沿用普通创建路径；显式 sessionId 视频任务仍按分类分流。
+    # 资料输出复用受控临时文件 API；移除和切会话取消解析，晚返回任务不得遗留；润色与分析互斥，源内容或设置变化清除旧分析。
+    # 会话安全草稿仅缓存需求、模型 ID 和设置；视频无消息任务不复用或清理，资料及 Logo 重开需重选；示例不提交，实际设置快照与 600 秒门禁接前置分析。
+    # Logo 上传生成 logo-UUID 合法句柄并保留图片后缀，草稿/界面保留原文件名；解析沿用上传响应句柄，兼容中文、特殊字符及超长文件名。
+    markers:
+      - MEA:industrial-video
+    touchpoints:
+      - src/shared/data/api/schemas/agentSessions.ts
+      - src/shared/data/cache/cacheSchemas.ts
+      - src/shared/data/cache/cacheValueTypes.ts
+      - src/shared/data/cache/templateKey.ts
+      - src/renderer/data/CacheService.ts
+      - src/renderer/utils/conversationEntry.ts
+      - src/main/data/db/schemas/agentSession.ts
+      - src/main/data/services/AgentSessionService.ts
+      - src/renderer/routes/app/agents.tsx
+      - src/renderer/routes/app/agents_.industrial-video.tsx
+      - src/renderer/pages/industrialVideo
+      - src/shared/ipc/schemas/fileProcessing.ts
+      - src/main/ipc/handlers/fileProcessing.ts
+      - src/renderer/components/resourceCatalog/dialogs/components/PromptPolishActions.tsx
+      - src/renderer/routes/app/industrial-video.tsx
+      - src/renderer/components/app/Sidebar.tsx
+      - src/renderer/hooks/resourceViewSources.ts
+      - src/renderer/hooks/agent/useSession.ts
+      - src/renderer/pages/agents/components/SessionItem.tsx
+      - src/renderer/components/history/AgentHistoryRecords.tsx
+      - src/renderer/routeTree.gen.ts
+      - src/renderer/i18n/locales
+    tests:
+      - src/renderer/components/app/__tests__/Sidebar.test.tsx
+      - src/renderer/pages/industrialVideo/NewIndustrialVideoPage.test.tsx
+      - src/renderer/pages/industrialVideo/IndustrialVideoSettingsForm.test.tsx
+      - src/renderer/pages/industrialVideo/industrialVideoSettings.test.ts
+      - src/renderer/pages/industrialVideo/industrialVideoWorkflow.test.ts
+      - src/renderer/pages/industrialVideo/industrialVideoOrchestration.test.ts
+      - src/renderer/pages/industrialVideo/IndustrialVideoOrchestratedTask.test.tsx
+      - src/renderer/pages/industrialVideo/industrialVideoMaterials.test.ts
+      - src/renderer/pages/industrialVideo/IndustrialVideoMaterial.test.ts
+      - src/shared/ipc/schemas/__tests__/fileProcessing.test.ts
+      - src/main/ipc/handlers/__tests__/fileProcessing.test.ts
+      - src/renderer/components/resourceCatalog/dialogs/components/__tests__/PromptPolishActions.model.test.tsx
+      - src/renderer/pages/industrialVideo/IndustrialVideoComposer.test.tsx
+      - src/renderer/pages/industrialVideo/IndustrialVideoComposer.context.test.tsx
+      - src/renderer/pages/industrialVideo/useIndustrialVideoAnalysis.test.ts
+      - src/shared/data/api/schemas/agentSessions.test.ts
+      - src/main/data/services/__tests__/AgentSessionService.test.ts
+      - src/renderer/routes/app/__tests__/conversation-entry.test.ts
+      - src/renderer/utils/__tests__/conversationEntry.test.ts
+      - src/renderer/hooks/agent/__tests__/useSession.test.ts
+      - src/renderer/pages/agents/components/__tests__/SessionItem.test.tsx
+      - src/renderer/components/history/__tests__/HistoryRecordsView.agent.test.tsx
+
   - id: product-identity
     title: MEA application identity and protocol
     owner: main

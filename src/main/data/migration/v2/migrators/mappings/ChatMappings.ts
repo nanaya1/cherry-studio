@@ -65,7 +65,7 @@ import type {
   SerializedErrorData,
   TextUIPart
 } from '@shared/data/types/message'
-import type { CherryDataPartTypes, CherryToolMeta } from '@shared/data/types/uiParts'
+import type { CherryDataPartTypes, MeacoworkToolMeta } from '@shared/data/types/uiParts'
 import { createClearContextPart, withCherryMeta } from '@shared/data/types/uiParts'
 import { AbsoluteFilePathSchema, type Base64String } from '@shared/types/file'
 
@@ -870,7 +870,7 @@ async function transformSingleBlockToPart(
       const rawToolType = raw?.tool?.type
       const toolType =
         rawToolType === 'mcp' || rawToolType === 'builtin' || rawToolType === 'provider' ? rawToolType : undefined
-      const toolMetadata: CherryToolMeta['tool'] | undefined = raw?.tool
+      const toolMetadata: MeacoworkToolMeta['tool'] | undefined = raw?.tool
         ? {
             ...(toolType ? { type: toolType } : {}),
             ...(raw.tool.serverId ? { serverId: raw.tool.serverId } : {}),

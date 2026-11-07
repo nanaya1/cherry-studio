@@ -10,6 +10,7 @@ import type { IpcHandlersFor } from '@shared/ipc/types'
  * (contrast window.ts).
  */
 export const fileProcessingHandlers: IpcHandlersFor<typeof fileProcessingRequestSchemas> = {
+  'file_processing.cancel_job': async ({ jobId }) => application.get('JobManager').cancel(jobId),
   'file_processing.start_job': async (input) =>
     application.get('FileProcessingService').startJob({ ...input, file: input.file }),
   'file_processing.list_available_processors': async () =>

@@ -8,11 +8,11 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { CLI_INSTALL_TOOL_NAME, CLI_LIST_TOOL_NAME, CLI_SEARCH_TOOL_NAME } from '@main/ai/mcp/servers/cherryCliTools'
+import { CLI_INSTALL_TOOL_NAME, CLI_LIST_TOOL_NAME, CLI_SEARCH_TOOL_NAME } from '@main/ai/mcp/servers/meacoworkCliTools'
 import {
   findBuiltinToolPolicy,
   listBuiltinToolPolicies,
-  toCherryBuiltinRuntimeName,
+  toMeacoworkBuiltinRuntimeName,
   toMcpRuntimeName
 } from '@main/ai/toolApproval/builtinToolPolicy'
 import { SESSION_CREATE_TOOL_NAME } from '@shared/ai/agentSessionDelivery'
@@ -83,11 +83,11 @@ describe('createClaudeAgentToolPolicySnapshot — live disabledTools', () => {
 
   it('honors disabledTools for notify and config autonomy tools', async () => {
     const snapshot = await createClaudeAgentToolPolicySnapshot(
-      makeAgent(['mcp__cherry-tools__notify', 'mcp__cherry-tools__config'])
+      makeAgent(['mcp__meacowork-tools__notify', 'mcp__meacowork-tools__config'])
     )
-    expect(snapshot.isDisabled('mcp__cherry-tools__notify')).toBe(true)
-    expect(snapshot.isDisabled('mcp__cherry-tools__config')).toBe(true)
-    expect(snapshot.isDisabled('mcp__cherry-tools__cron')).toBe(false)
+    expect(snapshot.isDisabled('mcp__meacowork-tools__notify')).toBe(true)
+    expect(snapshot.isDisabled('mcp__meacowork-tools__config')).toBe(true)
+    expect(snapshot.isDisabled('mcp__meacowork-tools__cron')).toBe(false)
   })
 
   it('keeps prior MCP descriptors when a later server listing fails', async () => {
@@ -196,33 +196,33 @@ describe('createClaudeAgentToolPolicySnapshot — auto-allow prefix + approval e
 
   it('auto-approves an injected tool matching an auto-allow prefix', async () => {
     const snapshot = await createClaudeAgentToolPolicySnapshot(makeAgent(), {
-      autoAllowRuntimeNamePrefixes: ['mcp__cherry-tools__']
+      autoAllowRuntimeNamePrefixes: ['mcp__meacowork-tools__']
     })
-    expect(snapshot.resolve('mcp__cherry-tools__kb_search')).toMatchObject({ approval: 'auto' })
+    expect(snapshot.resolve('mcp__meacowork-tools__kb_search')).toMatchObject({ approval: 'auto' })
   })
 
   it('requires approval for an excepted tool even though it matches the auto-allow prefix', async () => {
     const snapshot = await createClaudeAgentToolPolicySnapshot(makeAgent(), {
-      autoAllowRuntimeNamePrefixes: ['mcp__cherry-tools__'],
-      autoAllowRuntimeNameExceptions: ['mcp__cherry-tools__kb_manage']
+      autoAllowRuntimeNamePrefixes: ['mcp__meacowork-tools__'],
+      autoAllowRuntimeNameExceptions: ['mcp__meacowork-tools__kb_manage']
     })
     // kb_manage mutates the knowledge base — it must prompt, not auto-approve, despite the prefix.
-    expect(snapshot.resolve('mcp__cherry-tools__kb_manage')).toMatchObject({ approval: 'prompt' })
+    expect(snapshot.resolve('mcp__meacowork-tools__kb_manage')).toMatchObject({ approval: 'prompt' })
     // A sibling read tool under the same prefix is still auto-approved.
-    expect(snapshot.resolve('mcp__cherry-tools__kb_read')).toMatchObject({ approval: 'auto' })
+    expect(snapshot.resolve('mcp__meacowork-tools__kb_read')).toMatchObject({ approval: 'auto' })
   })
 
   it('auto-approves the merged autonomy tools while kb_manage still prompts', async () => {
-    // The former standalone `cherry` server's cron/notify/config now live under cherry-tools and
+    // The former standalone `cherry` server's cron/notify/config now live under meacowork-tools and
     // must stay auto-approved; the mutating kb_manage carve-out must survive the merge.
     const snapshot = await createClaudeAgentToolPolicySnapshot(makeAgent(), {
-      autoAllowRuntimeNamePrefixes: ['mcp__cherry-tools__'],
-      autoAllowRuntimeNameExceptions: ['mcp__cherry-tools__kb_manage']
+      autoAllowRuntimeNamePrefixes: ['mcp__meacowork-tools__'],
+      autoAllowRuntimeNameExceptions: ['mcp__meacowork-tools__kb_manage']
     })
-    expect(snapshot.resolve('mcp__cherry-tools__cron')).toMatchObject({ approval: 'auto' })
-    expect(snapshot.resolve('mcp__cherry-tools__notify')).toMatchObject({ approval: 'auto' })
-    expect(snapshot.resolve('mcp__cherry-tools__config')).toMatchObject({ approval: 'auto' })
-    expect(snapshot.resolve('mcp__cherry-tools__kb_manage')).toMatchObject({ approval: 'prompt' })
+    expect(snapshot.resolve('mcp__meacowork-tools__cron')).toMatchObject({ approval: 'auto' })
+    expect(snapshot.resolve('mcp__meacowork-tools__notify')).toMatchObject({ approval: 'auto' })
+    expect(snapshot.resolve('mcp__meacowork-tools__config')).toMatchObject({ approval: 'auto' })
+    expect(snapshot.resolve('mcp__meacowork-tools__kb_manage')).toMatchObject({ approval: 'prompt' })
   })
 })
 
@@ -236,14 +236,14 @@ describe('createClaudeAgentToolPolicySnapshot — production approval-gate wirin
     mocks.listMcpTools.mockReturnValue([])
   })
 
-  const CHERRY_ONLY_SERVERS: ReadonlySet<string> = new Set(['cherry-tools'])
+  const MEACOWORK_ONLY_SERVERS: ReadonlySet<string> = new Set(['meacowork-tools'])
   const HOST_SERVERS: ReadonlySet<string> = new Set(['assistant', 'assistant-files'])
   // Drive the snapshot with the same derived values settingsBuilder supplies in production.
-  const cherryPolicies = listBuiltinToolPolicies({ mountedServers: CHERRY_ONLY_SERVERS }).filter(
-    (entry) => entry.serverName === 'cherry-tools'
+  const meacoworkPolicies = listBuiltinToolPolicies({ mountedServers: MEACOWORK_ONLY_SERVERS }).filter(
+    (entry) => entry.serverName === 'meacowork-tools'
   )
-  const autoApprovedRuntimeNames = cherryPolicies.filter((entry) => entry.approval === 'auto').map(toMcpRuntimeName)
-  const approvalRequiredRuntimeNames = cherryPolicies
+  const autoApprovedRuntimeNames = meacoworkPolicies.filter((entry) => entry.approval === 'auto').map(toMcpRuntimeName)
+  const approvalRequiredRuntimeNames = meacoworkPolicies
     .filter((entry) => entry.approval === 'required')
     .map(toMcpRuntimeName)
   const productionOptions = {
@@ -252,21 +252,21 @@ describe('createClaudeAgentToolPolicySnapshot — production approval-gate wirin
     autoAllowRuntimeNameExceptions: approvalRequiredRuntimeNames
   }
 
-  it('keeps mutating and read-only Cherry tools classified on their own entries', () => {
-    expect(findBuiltinToolPolicy(toCherryBuiltinRuntimeName(KB_MANAGE_TOOL_NAME), CHERRY_ONLY_SERVERS)?.approval).toBe(
-      'required'
-    )
+  it('keeps mutating and read-only MEA Cowork tools classified on their own entries', () => {
     expect(
-      findBuiltinToolPolicy(toCherryBuiltinRuntimeName(CLI_INSTALL_TOOL_NAME), CHERRY_ONLY_SERVERS)?.approval
+      findBuiltinToolPolicy(toMeacoworkBuiltinRuntimeName(KB_MANAGE_TOOL_NAME), MEACOWORK_ONLY_SERVERS)?.approval
     ).toBe('required')
     expect(
-      findBuiltinToolPolicy(toCherryBuiltinRuntimeName(SESSION_CREATE_TOOL_NAME), CHERRY_ONLY_SERVERS)
+      findBuiltinToolPolicy(toMeacoworkBuiltinRuntimeName(CLI_INSTALL_TOOL_NAME), MEACOWORK_ONLY_SERVERS)?.approval
+    ).toBe('required')
+    expect(
+      findBuiltinToolPolicy(toMeacoworkBuiltinRuntimeName(SESSION_CREATE_TOOL_NAME), MEACOWORK_ONLY_SERVERS)
     ).toMatchObject({
       approval: 'required',
       bypassApproval: 'enforce'
     })
     for (const name of [CLI_LIST_TOOL_NAME, CLI_SEARCH_TOOL_NAME, TO_MARKDOWN_TOOL_NAME]) {
-      expect(findBuiltinToolPolicy(toCherryBuiltinRuntimeName(name), CHERRY_ONLY_SERVERS)?.approval).toBe('auto')
+      expect(findBuiltinToolPolicy(toMeacoworkBuiltinRuntimeName(name), MEACOWORK_ONLY_SERVERS)?.approval).toBe('auto')
     }
   })
 
@@ -292,9 +292,9 @@ describe('createClaudeAgentToolPolicySnapshot — production approval-gate wirin
     }
   })
 
-  it('does not auto-approve future cherry-tools by prefix under the real wiring', async () => {
+  it('does not auto-approve future meacowork-tools by prefix under the real wiring', async () => {
     const snapshot = await createClaudeAgentToolPolicySnapshot(makeAgent(), productionOptions)
 
-    expect(snapshot.resolve('mcp__cherry-tools__future_mutator')).toBeUndefined()
+    expect(snapshot.resolve('mcp__meacowork-tools__future_mutator')).toBeUndefined()
   })
 })

@@ -394,7 +394,7 @@ describe('toolResponse adapter', () => {
     expect((response.tool as any).serverName).toBe('8171b5f3-c666-4ead-b2ab-bb9ac244af57')
   })
 
-  it('uses migrated cherry tool metadata from callProviderMetadata before name fallbacks', () => {
+  it('uses migrated legacy provider metadata from callProviderMetadata before name fallbacks', () => {
     const part = {
       type: 'dynamic-tool',
       toolName: 'WebSearch',

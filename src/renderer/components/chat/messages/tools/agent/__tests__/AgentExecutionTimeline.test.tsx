@@ -65,15 +65,15 @@ describe('AgentExecutionTimeline', () => {
     })
   })
 
-  it('only enables Session cards for the Cherry tools server', () => {
+  it('only enables Session cards for the MEA Cowork tools server', () => {
     const response = toolResponse('Task', { ok: true, sessionId: 'not-a-cherry-session' })
     response.tool = { id: 'session_create', name: 'session_create', type: 'mcp', serverId: 'tmux' } as never
 
     const { rerender } = render(<AgentExecutionTimeline toolResponse={response} />)
-    expect(cardProps.current).toMatchObject({ isCherrySessionTool: false })
+    expect(cardProps.current).toMatchObject({ isMeacoworkSessionTool: false })
 
     response.tool = { ...response.tool, serverId: 'cherry-tools' } as never
     rerender(<AgentExecutionTimeline toolResponse={response} />)
-    expect(cardProps.current).toMatchObject({ isCherrySessionTool: true })
+    expect(cardProps.current).toMatchObject({ isMeacoworkSessionTool: true })
   })
 })

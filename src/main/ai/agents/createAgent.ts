@@ -9,13 +9,16 @@ import { createAgentDataDirectory, removeAgentDataDirectory } from './agentDataD
 
 const logger = loggerService.withContext('CreateAgent')
 
-export async function createAgent(request: CreateAgentCommand) {
+export async function createAgent(
+  request: CreateAgentCommand,
+  options: { allowIndustrialVideoInternal?: boolean } = {}
+) {
   const agentId = uuidv4()
   const agentsDataRoot = application.getPath('feature.agents.data')
   await createAgentDataDirectory(agentsDataRoot, agentId)
 
   try {
-    const agent = agentService.createAgentWithId(agentId, request)
+    const agent = agentService.createAgentWithId(agentId, request, options)
     // Wait for the creation event’s provisioning; failure remains non-fatal and per-agent.
     try {
       await application.get('AgentJobsService').waitForHeartbeat(agent.id)

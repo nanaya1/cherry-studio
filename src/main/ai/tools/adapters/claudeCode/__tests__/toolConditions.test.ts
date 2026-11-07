@@ -40,25 +40,25 @@ describe('resolveDisallowedTools', () => {
 
   it('honors user opt-outs for notify and config autonomy tools', () => {
     const disallowed = new Set(
-      resolveDisallowedTools({ disabledTools: ['mcp__cherry-tools__notify', 'mcp__cherry-tools__config'] })
+      resolveDisallowedTools({ disabledTools: ['mcp__meacowork-tools__notify', 'mcp__meacowork-tools__config'] })
     )
-    expect(disallowed.has('mcp__cherry-tools__notify')).toBe(true)
-    expect(disallowed.has('mcp__cherry-tools__config')).toBe(true)
+    expect(disallowed.has('mcp__meacowork-tools__notify')).toBe(true)
+    expect(disallowed.has('mcp__meacowork-tools__config')).toBe(true)
   })
 
   it('disabling the "Knowledge Search" toggle also revokes kb_list and kb_read (they dependsOn kb_search)', () => {
     // kb_read returns whole documents and kb_list browses every base — strictly more than kb_search's
     // chunks — so the visible kb_search toggle must honestly cover them, not leave read access reachable.
     const enabled = new Set(resolveDisallowedTools({}))
-    expect(enabled.has('mcp__cherry-tools__kb_list')).toBe(false)
-    expect(enabled.has('mcp__cherry-tools__kb_read')).toBe(false)
+    expect(enabled.has('mcp__meacowork-tools__kb_list')).toBe(false)
+    expect(enabled.has('mcp__meacowork-tools__kb_read')).toBe(false)
 
-    const disallowed = new Set(resolveDisallowedTools({ disabledTools: ['mcp__cherry-tools__kb_search'] }))
-    expect(disallowed.has('mcp__cherry-tools__kb_search')).toBe(true)
-    expect(disallowed.has('mcp__cherry-tools__kb_list')).toBe(true)
-    expect(disallowed.has('mcp__cherry-tools__kb_read')).toBe(true)
+    const disallowed = new Set(resolveDisallowedTools({ disabledTools: ['mcp__meacowork-tools__kb_search'] }))
+    expect(disallowed.has('mcp__meacowork-tools__kb_search')).toBe(true)
+    expect(disallowed.has('mcp__meacowork-tools__kb_list')).toBe(true)
+    expect(disallowed.has('mcp__meacowork-tools__kb_read')).toBe(true)
     // kb_manage has its own toggle and is independent of the search toggle.
-    expect(disallowed.has('mcp__cherry-tools__kb_manage')).toBe(false)
+    expect(disallowed.has('mcp__meacowork-tools__kb_manage')).toBe(false)
   })
 
   it('ignores a disabledTools entry for a non-user tool', () => {
@@ -80,7 +80,7 @@ describe('resolveDisallowedTools', () => {
   it('treats predicate-gated tools as enabled when no ctx is supplied', () => {
     const disallowed = new Set(resolveDisallowedTools({}))
     expect(disallowed.has('EnterWorktree')).toBe(false)
-    expect(disallowed.has('mcp__cherry-tools__notify')).toBe(false)
+    expect(disallowed.has('mcp__meacowork-tools__notify')).toBe(false)
   })
 
   it('disables worktree tools without .git but keeps notify available (self-degrades when no channels)', () => {
@@ -90,8 +90,8 @@ describe('resolveDisallowedTools', () => {
     expect(disallowed.has('ExitWorktree')).toBe(true)
     // notify is no longer channel-gated: it reports "no connected channels" at call time instead of
     // being hard-disabled, so an agent can add its first channel and notify in the same session.
-    expect(disallowed.has('mcp__cherry-tools__notify')).toBe(false)
-    expect(disallowed.has('mcp__cherry-tools__config')).toBe(false)
+    expect(disallowed.has('mcp__meacowork-tools__notify')).toBe(false)
+    expect(disallowed.has('mcp__meacowork-tools__config')).toBe(false)
   })
 
   it('enables worktree tools with .git and keeps notify/config available', () => {
@@ -99,7 +99,7 @@ describe('resolveDisallowedTools', () => {
     const disallowed = new Set(resolveDisallowedTools({}, { cwd: '/ws' }))
     expect(disallowed.has('EnterWorktree')).toBe(false)
     expect(disallowed.has('ExitWorktree')).toBe(false)
-    expect(disallowed.has('mcp__cherry-tools__notify')).toBe(false)
-    expect(disallowed.has('mcp__cherry-tools__config')).toBe(false)
+    expect(disallowed.has('mcp__meacowork-tools__notify')).toBe(false)
+    expect(disallowed.has('mcp__meacowork-tools__config')).toBe(false)
   })
 })

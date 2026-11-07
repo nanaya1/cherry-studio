@@ -26,9 +26,9 @@ const PI_BUILTIN_TOOL_NAMES = ['read', 'bash', 'edit', 'write']
 const MANAGED_BASH_TOOL = { name: 'bash' }
 const CODE_MODE_TOOL_NAMES = ['tool_search', 'tool_describe', 'tool_call', 'tool_exec']
 const AUTONOMY_TOOL_NAMES = [
-  'mcp__cherry-tools__cron',
-  'mcp__cherry-tools__notify',
-  'mcp__cherry-tools__config',
+  'mcp__meacowork-tools__cron',
+  'mcp__meacowork-tools__notify',
+  'mcp__meacowork-tools__config',
   'mcp__agent-memory__memory'
 ]
 
@@ -381,7 +381,7 @@ beforeEach(() => {
     }
   )
   mocks.ensureAgentDataDirectory.mockResolvedValue(AGENT_DATA_PATH)
-  mocks.buildAgentMcpServers.mockReturnValue({ 'cherry-tools': { name: 'cherry-tools', instance: {} } })
+  mocks.buildAgentMcpServers.mockReturnValue({ 'meacowork-tools': { name: 'meacowork-tools', instance: {} } })
   mocks.warmMcpToolCatalogs.mockResolvedValue(undefined)
   mocks.buildMcpToolDefinitions.mockResolvedValue({
     tools: AUTONOMY_TOOL_NAMES.map((name) => ({ name })),
@@ -1863,7 +1863,7 @@ describe('PiRuntimeConnection', () => {
       expect(mocks.buildAgentMcpServers).toHaveBeenCalledWith(
         expect.anything(),
         expect.anything(),
-        new Set(['cherry-tools', 'agent-memory', 'browser', 'skills', 'mcp-manager']),
+        new Set(['meacowork-tools', 'agent-memory', 'browser', 'skills', 'mcp-manager']),
         expect.any(Map),
         null,
         AGENT_DATA_PATH,
@@ -1962,7 +1962,7 @@ describe('PiRuntimeConnection', () => {
       expect(mocks.buildAgentMcpServers).toHaveBeenCalledWith(
         agentSession,
         expect.objectContaining({ id: 'agent-1' }),
-        new Set(['cherry-tools', 'agent-memory', 'browser', 'skills', 'mcp-manager']),
+        new Set(['meacowork-tools', 'agent-memory', 'browser', 'skills', 'mcp-manager']),
         expect.any(Map),
         null,
         AGENT_DATA_PATH,
@@ -2034,7 +2034,7 @@ describe('PiRuntimeConnection', () => {
       expect(mocks.buildAgentMcpServers).toHaveBeenCalledWith(
         agentSession,
         expect.objectContaining({ id: 'agent-1' }),
-        new Set(['cherry-tools', 'agent-memory', 'skills', 'mcp-manager']),
+        new Set(['meacowork-tools', 'agent-memory', 'skills', 'mcp-manager']),
         expect.any(Map),
         { id: 'chan-1', type: 'telegram' },
         AGENT_DATA_PATH,

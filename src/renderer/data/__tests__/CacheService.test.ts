@@ -10,6 +10,10 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { createIndustrialVideoSettings } from '@renderer/pages/industrialVideo/industrialVideoSettings'
+
+import { CacheService } from '../CacheService'
+
 // Undo the global mock from renderer.setup.ts — we want the REAL CacheService
 vi.unmock('@data/CacheService')
 
@@ -39,11 +43,39 @@ afterEach(() => {
 })
 
 async function createService() {
-  const { CacheService } = await import('../CacheService')
   return new CacheService()
 }
 
 describe('renderer CacheService equality semantics', () => {
+  it('独立会话键在延迟跨窗口同步后保留双方草稿，并可重启恢复', async () => {
+    localStorage.clear()
+    const left = await createService()
+    const leftSync = onSync.mock.calls.at(-1)![0]
+    const right = await createService()
+    const rightSync = onSync.mock.calls.at(-1)![0]
+    const settings = createIndustrialVideoSettings('marketing')
+    const a = { requirement: '甲', modelId: null, settings }
+    const b = { requirement: '乙', modelId: null, settings }
+    expect(left.getPersist('industrial_video.session_draft.session-a')).toBeNull()
+    left.setPersist('industrial_video.session_draft.session-a', a)
+    const leftMessage = broadcastSync.mock.calls.at(-1)![0]
+    right.setPersist('industrial_video.session_draft.session-b', b)
+    const rightMessage = broadcastSync.mock.calls.at(-1)![0]
+    leftSync(rightMessage)
+    rightSync(leftMessage)
+    expect(left.getPersist('industrial_video.session_draft.session-b')).toEqual(b)
+    expect(right.getPersist('industrial_video.session_draft.session-a')).toEqual(a)
+    left.cleanup()
+    right.cleanup()
+    const restored = await createService()
+    expect(restored.getPersist('industrial_video.session_draft.session-a')).toEqual(a)
+    expect(restored.getPersist('industrial_video.session_draft.session-b')).toEqual(b)
+    restored.deletePersist('industrial_video.session_draft.session-a')
+    expect(restored.getPersist('industrial_video.session_draft.session-a')).toBeNull()
+    expect(restored.getPersist('industrial_video.session_draft.session-b')).toEqual(b)
+    restored.cleanup()
+    localStorage.clear()
+  })
   describe('setInternal (memory cache)', () => {
     it('skips subscriber notification when object value has same content (new reference)', async () => {
       const service = await createService()

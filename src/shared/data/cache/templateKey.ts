@@ -1,5 +1,18 @@
-import type { SharedCacheSchema } from './cacheSchemas'
-import { DefaultSharedCache } from './cacheSchemas'
+import type { RendererPersistCacheSchema, SharedCacheSchema } from './cacheSchemas'
+import { DefaultRendererPersistCache, DefaultSharedCache, type RendererPersistCacheKey } from './cacheSchemas'
+
+// MEA:industrial-video persist 复用同一模板匹配规则，不改变值合并语义。
+export function findMatchingRendererPersistCacheSchemaKey(key: string): RendererPersistCacheKey | undefined {
+  const keys = Object.keys(DefaultRendererPersistCache) as RendererPersistCacheKey[]
+  return keys.find(
+    (schemaKey) => schemaKey === key || (isTemplateKey(schemaKey) && templateToRegex(schemaKey).test(key))
+  )
+}
+
+export function getRendererPersistCacheDefault<K extends RendererPersistCacheKey>(key: K) {
+  const schemaKey = findMatchingRendererPersistCacheSchemaKey(key)
+  return (schemaKey === undefined ? undefined : DefaultRendererPersistCache[schemaKey]) as RendererPersistCacheSchema[K]
+}
 
 /**
  * Checks if a schema key is a template key (contains `${...}` placeholder).

@@ -1421,7 +1421,7 @@ export class JobManager extends BaseService {
     // pause AND the armed callback's gate suppresses the enqueue — the cron
     // path would return true having persisted nothing, silently dropping an
     // explicit request (pause-window callers include an AI turn settling
-    // through cherryAutonomyTools). The fallback row lands `pending` at rest
+    // through meacoworkAutonomyTools). The fallback row lands `pending` at rest
     // and dispatches on release; `true` keeps meaning "row persisted".
     const triggered = this.isAutonomySuspended
       ? false

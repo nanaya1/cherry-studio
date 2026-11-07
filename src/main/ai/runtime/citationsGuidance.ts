@@ -1,14 +1,14 @@
 /**
  * Runtime-neutral inline-citation guidance for agent sessions, appended to the system prompt
  * only for the lookup tools the agent can actually call (web unless the user
- * disabled both cherry-tools web lookups; kb only when the resolved knowledge
+ * disabled both meacowork-tools web lookups; kb only when the resolved knowledge
  * scope is non-empty — a static binding or a per-turn composer selection).
  * Mirrors the assistant-path `CITATIONS_SYSTEM_PROMPT`
  * (`../aiSdk/prompts/citations.ts`); the `[cite:id]` markers are resolved by
  * the renderer against the tool results of the message and earlier turns.
  */
 
-import { toCherryBuiltinRuntimeName } from '@main/ai/toolApproval/builtinToolPolicy'
+import { toMeacoworkBuiltinRuntimeName } from '@main/ai/toolApproval/builtinToolPolicy'
 import {
   KB_READ_TOOL_NAME,
   KB_SEARCH_TOOL_NAME,
@@ -16,12 +16,12 @@ import {
   WEB_SEARCH_TOOL_NAME
 } from '@shared/ai/builtinTools'
 
-// The agent calls these tools under their cherry-tools runtime names, so that is what the prompt
+// The agent calls these tools under their meacowork-tools runtime names, so that is what the prompt
 // must quote — the bare `web_search` would not match anything it can invoke.
-const CHERRY_WEB_SEARCH_RUNTIME_NAME = toCherryBuiltinRuntimeName(WEB_SEARCH_TOOL_NAME)
-const CHERRY_WEB_FETCH_RUNTIME_NAME = toCherryBuiltinRuntimeName(WEB_FETCH_TOOL_NAME)
-const CHERRY_KB_SEARCH_RUNTIME_NAME = toCherryBuiltinRuntimeName(KB_SEARCH_TOOL_NAME)
-const CHERRY_KB_READ_RUNTIME_NAME = toCherryBuiltinRuntimeName(KB_READ_TOOL_NAME)
+const MEACOWORK_WEB_SEARCH_RUNTIME_NAME = toMeacoworkBuiltinRuntimeName(WEB_SEARCH_TOOL_NAME)
+const MEACOWORK_WEB_FETCH_RUNTIME_NAME = toMeacoworkBuiltinRuntimeName(WEB_FETCH_TOOL_NAME)
+const MEACOWORK_KB_SEARCH_RUNTIME_NAME = toMeacoworkBuiltinRuntimeName(KB_SEARCH_TOOL_NAME)
+const MEACOWORK_KB_READ_RUNTIME_NAME = toMeacoworkBuiltinRuntimeName(KB_READ_TOOL_NAME)
 
 export interface CitationsGuidanceOptions {
   web: boolean
@@ -31,8 +31,8 @@ export interface CitationsGuidanceOptions {
 export function buildCitationsGuidance({ web, kb }: CitationsGuidanceOptions): string | undefined {
   if (!web && !kb) return undefined
   const tools = [
-    ...(web ? [`\`${CHERRY_WEB_SEARCH_RUNTIME_NAME}\` / \`${CHERRY_WEB_FETCH_RUNTIME_NAME}\``] : []),
-    ...(kb ? [`\`${CHERRY_KB_SEARCH_RUNTIME_NAME}\` / \`${CHERRY_KB_READ_RUNTIME_NAME}\``] : [])
+    ...(web ? [`\`${MEACOWORK_WEB_SEARCH_RUNTIME_NAME}\` / \`${MEACOWORK_WEB_FETCH_RUNTIME_NAME}\``] : []),
+    ...(kb ? [`\`${MEACOWORK_KB_SEARCH_RUNTIME_NAME}\` / \`${MEACOWORK_KB_READ_RUNTIME_NAME}\``] : [])
   ].join(' and ')
   return `## Citations
 

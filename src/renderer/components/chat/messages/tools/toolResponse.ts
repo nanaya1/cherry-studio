@@ -59,7 +59,7 @@ export function getCanonicalToolName(part: CherryMessagePart): string | undefine
   const toolPart = part as unknown as ToolResponsePart
   const toolName = getToolName(toolPart).trim()
   if (!toolName) return undefined
-  return hasCherryTransport(toolPart.callProviderMetadata)
+  return hasMeacoworkTransport(toolPart.callProviderMetadata)
     ? (CHERRY_RUNTIME_TOOL_RENDER_NAMES.get(toolName) ?? toolName)
     : toolName
 }
@@ -98,7 +98,7 @@ function isLegacyAgentToolName(toolName: string): boolean {
   return AGENT_TOOL_NAMES.has(toolName) || toolName.startsWith(AGENT_MCP_TOOLS_PREFIX)
 }
 
-function extractCherryToolMetadataFrom(metadata: unknown): ToolMetadata | undefined {
+function extractMeacoworkToolMetadataFrom(metadata: unknown): ToolMetadata | undefined {
   if (!isRecord(metadata)) return undefined
   const cherry = isRecord(metadata.cherry) ? metadata.cherry : undefined
   const tool = cherry && isRecord(cherry.tool) ? cherry.tool : undefined
@@ -112,13 +112,13 @@ function extractCherryToolMetadataFrom(metadata: unknown): ToolMetadata | undefi
   }
 }
 
-function extractCherryToolMetadata(part: ToolResponsePart): ToolMetadata | undefined {
+function extractMeacoworkToolMetadata(part: ToolResponsePart): ToolMetadata | undefined {
   const resultProviderMetadata = 'resultProviderMetadata' in part ? part.resultProviderMetadata : undefined
   const toolMetadata = 'toolMetadata' in part ? part.toolMetadata : undefined
   return (
-    extractCherryToolMetadataFrom(toolMetadata) ??
-    extractCherryToolMetadataFrom(part.callProviderMetadata) ??
-    extractCherryToolMetadataFrom(resultProviderMetadata)
+    extractMeacoworkToolMetadataFrom(toolMetadata) ??
+    extractMeacoworkToolMetadataFrom(part.callProviderMetadata) ??
+    extractMeacoworkToolMetadataFrom(resultProviderMetadata)
   )
 }
 
@@ -138,7 +138,7 @@ function extractParentToolUseId(part: ToolResponsePart): string | undefined {
   return extractParentToolCallIdFrom(part.callProviderMetadata) ?? extractParentToolCallIdFrom(resultProviderMetadata)
 }
 
-function hasCherryTransport(metadata: ProviderMetadata | undefined): boolean {
+function hasMeacoworkTransport(metadata: ProviderMetadata | undefined): boolean {
   if (!isRecord(metadata)) return false
   const cherry = isRecord(metadata.cherry) ? metadata.cherry : undefined
   return typeof cherry?.transport === 'string' && CHERRY_AGENT_TRANSPORTS.has(cherry.transport)
@@ -146,14 +146,14 @@ function hasCherryTransport(metadata: ProviderMetadata | undefined): boolean {
 
 function resolveToolType(part: ToolResponsePart, toolName: string, metadata?: ToolMetadata): ToolType {
   if (isMetaToolName(toolName)) return 'builtin'
-  if (AGENT_TOOL_NAMES.has(toolName) && hasCherryTransport(part.callProviderMetadata)) return 'provider'
-  if (PI_RUNTIME_BUILTIN_TOOL_NAMES.has(toolName) && hasCherryTransport(part.callProviderMetadata)) return 'provider'
+  if (AGENT_TOOL_NAMES.has(toolName) && hasMeacoworkTransport(part.callProviderMetadata)) return 'provider'
+  if (PI_RUNTIME_BUILTIN_TOOL_NAMES.has(toolName) && hasMeacoworkTransport(part.callProviderMetadata)) return 'provider'
   if (metadata?.type) return metadata.type
   if (parseFunctionCallToolName(toolName)) return 'mcp'
   if (toolName === GENERATE_IMAGE_TOOL_NAME) return 'builtin'
   if (toolPartWasProviderExecuted(part)) return 'provider'
   if (hasProviderMetadata(part, 'claude-code')) return 'provider'
-  if (hasCherryTransport(part.callProviderMetadata)) return 'provider'
+  if (hasMeacoworkTransport(part.callProviderMetadata)) return 'provider'
   if (part.type === 'dynamic-tool' && isLegacyAgentToolName(toolName)) return 'provider'
   if (part.type === 'dynamic-tool') return 'mcp'
   if (toolName.startsWith('builtin_')) return 'builtin'
@@ -218,8 +218,8 @@ export function buildToolResponseFromPart(part: CherryMessagePart, fallbackId?: 
   const status = mapPartStateToStatus(toolPart.state, approval?.approved)
 
   const { response: rawResponse, metadata: outputMetadata } = extractOutputMetadata(toolPart.output)
-  const cherryMetadata = extractCherryToolMetadata(toolPart)
-  const metadata = outputMetadata ?? cherryMetadata
+  const meacoworkMetadata = extractMeacoworkToolMetadata(toolPart)
+  const metadata = outputMetadata ?? meacoworkMetadata
   const toolType = resolveToolType(toolPart, toolName, metadata)
   const response = status === 'error' ? normalizeErrorOutput(toolPart) : rawResponse
   const parentToolUseId = extractParentToolUseId(toolPart)

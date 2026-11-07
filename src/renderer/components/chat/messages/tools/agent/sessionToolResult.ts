@@ -4,6 +4,11 @@ import {
   SESSION_SEARCH_TOOL_NAME,
   SESSION_SEND_TOOL_NAME
 } from '@shared/ai/agentSessionDelivery'
+import {
+  isMeacoworkToolsServerName,
+  normalizeMeacoworkToolRuntimeName,
+  toMeacoworkToolRuntimeName
+} from '@shared/ai/meacoworkTools'
 
 import type { ToolResponseLike } from '../toolResponse'
 
@@ -28,23 +33,31 @@ export interface SessionToolTarget {
 /** session_search may return many matches; that many cards keep the reply readable. */
 export const MAX_SESSION_SEARCH_RESULT_CARDS = 3
 
+function isSessionToolName(toolName: string | undefined, expectedToolName: string): boolean {
+  return (
+    toolName === expectedToolName ||
+    (toolName !== undefined &&
+      normalizeMeacoworkToolRuntimeName(toolName) === toMeacoworkToolRuntimeName(expectedToolName))
+  )
+}
+
 function isSessionCreateToolName(toolName: string | undefined): boolean {
-  return toolName === SESSION_CREATE_TOOL_NAME || toolName === `mcp__cherry-tools__${SESSION_CREATE_TOOL_NAME}`
+  return isSessionToolName(toolName, SESSION_CREATE_TOOL_NAME)
 }
 
 function isSessionSendToolName(toolName: string | undefined): boolean {
-  return toolName === SESSION_SEND_TOOL_NAME || toolName === `mcp__cherry-tools__${SESSION_SEND_TOOL_NAME}`
+  return isSessionToolName(toolName, SESSION_SEND_TOOL_NAME)
 }
 
 function isSessionSearchToolName(toolName: string | undefined): boolean {
-  return toolName === SESSION_SEARCH_TOOL_NAME || toolName === `mcp__cherry-tools__${SESSION_SEARCH_TOOL_NAME}`
+  return isSessionToolName(toolName, SESSION_SEARCH_TOOL_NAME)
 }
 
 function isSessionReadToolName(toolName: string | undefined): boolean {
-  return toolName === SESSION_READ_TOOL_NAME || toolName === `mcp__cherry-tools__${SESSION_READ_TOOL_NAME}`
+  return isSessionToolName(toolName, SESSION_READ_TOOL_NAME)
 }
 
-export function isCherrySessionToolResponse(toolResponse: ToolResponseLike): boolean {
+export function isMeacoworkSessionToolResponse(toolResponse: ToolResponseLike): boolean {
   const { tool } = toolResponse
   const isSessionTool =
     isSessionCreateToolName(tool.name) ||
@@ -52,7 +65,7 @@ export function isCherrySessionToolResponse(toolResponse: ToolResponseLike): boo
     isSessionSearchToolName(tool.name) ||
     isSessionReadToolName(tool.name)
   if (!isSessionTool) return false
-  return tool.type !== 'mcp' || ('serverId' in tool && tool.serverId === 'cherry-tools')
+  return tool.type !== 'mcp' || ('serverId' in tool && isMeacoworkToolsServerName(tool.serverId))
 }
 
 export interface SessionSendResult {
@@ -163,7 +176,7 @@ export function parseSessionReadResult(value: unknown): SessionReadResult | unde
 }
 
 export function getSessionToolTargets(toolResponse: ToolResponseLike): SessionToolTarget[] {
-  if (!isCherrySessionToolResponse(toolResponse)) return []
+  if (!isMeacoworkSessionToolResponse(toolResponse)) return []
   const toolName = toolResponse.tool.name
   const args = toolResponse.arguments
   const input = isRecord(args) ? args : undefined

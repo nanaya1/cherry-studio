@@ -16,6 +16,18 @@ export default function ComposerCore({ fallback, className }: ComposerCoreProps)
   const primaryFocusTargetRef = useRef<HTMLElement | null>(null)
   const primaryHadFocusRef = useRef(false)
   const activeOverrideId = activeOverride?.id ?? null
+  const showPrimary = activeOverride?.placement === 'above'
+  const overrideLayer = activeOverride ? (
+    <div
+      key={activeOverride.id}
+      data-composer-override-layer=""
+      data-composer-active-layer=""
+      className="relative w-full">
+      <ComposerLayerActiveProvider value={layerActive}>
+        {activeOverride.render({ className })}
+      </ComposerLayerActiveProvider>
+    </div>
+  ) : null
 
   useLayoutEffect(() => {
     const previousOverrideId = previousOverrideIdRef.current
@@ -51,6 +63,7 @@ export default function ComposerCore({ fallback, className }: ComposerCoreProps)
       data-composer-core=""
       data-composer-active-override={activeOverrideId ?? undefined}
       className="relative w-full">
+      {showPrimary ? overrideLayer : null}
       <div
         ref={primaryLayerRef}
         data-composer-primary-layer=""
@@ -58,7 +71,10 @@ export default function ComposerCore({ fallback, className }: ComposerCoreProps)
         inert={Boolean(activeOverride)}
         aria-hidden={activeOverride ? true : undefined}
         className={
-          activeOverride ? 'pointer-events-none invisible absolute inset-x-0 bottom-0 w-full' : 'relative w-full'
+          // 编辑仍使用原替换模式；工具审批和选项提问保留下方输入框。
+          activeOverride && !showPrimary
+            ? 'pointer-events-none invisible absolute inset-x-0 bottom-0 w-full'
+            : 'relative w-full'
         }
         onFocusCapture={(event) => {
           if (activeOverride) return
@@ -74,17 +90,8 @@ export default function ComposerCore({ fallback, className }: ComposerCoreProps)
         <ComposerLayerActiveProvider value={layerActive && !activeOverride}>{fallback}</ComposerLayerActiveProvider>
       </div>
 
-      {activeOverride ? (
-        <div
-          key={activeOverride.id}
-          data-composer-override-layer=""
-          data-composer-active-layer=""
-          className="relative w-full">
-          <ComposerLayerActiveProvider value={layerActive}>
-            {activeOverride.render({ className })}
-          </ComposerLayerActiveProvider>
-        </div>
-      ) : null}
+      {/* 原覆盖层的渲染内容移至 overrideLayer，保留替换模式的位置。 */}
+      {!showPrimary ? overrideLayer : null}
     </div>
   )
 }

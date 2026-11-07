@@ -103,6 +103,7 @@ function rowToSession(row: JoinedSessionRow): AgentSessionEntity {
     id: clean.id,
     // agentId is legitimately nullable (orphans only via cascade) — preserve T | null.
     agentId: row.session.agentId,
+    featureKind: row.session.featureKind,
     name: clean.name,
     isNameManuallyEdited: clean.isNameManuallyEdited,
     description: clean.description,
@@ -321,6 +322,7 @@ export class AgentSessionService {
       id,
       type,
       agentId: dto.agentId,
+      featureKind: dto.featureKind ?? 'general',
       name: dto.name,
       description: dto.description,
       workspaceId,
@@ -543,7 +545,16 @@ export class AgentSessionService {
       .from(sessionsTable)
       .innerJoin(agentWorkspaceTable, eq(sessionsTable.workspaceId, agentWorkspaceTable.id))
       .leftJoin(agentsTable, and(eq(sessionsTable.agentId, agentsTable.id), isNull(agentsTable.deletedAt)))
-      .where(and(conversationFilter, isNull(sessionsTable.deletedAt), ownerFilter))
+      // MEA:industrial-video 分类仅在调用者显式指定时生效。
+      // .where(and(conversationFilter, isNull(sessionsTable.deletedAt), ownerFilter))
+      .where(
+        and(
+          conversationFilter,
+          isNull(sessionsTable.deletedAt),
+          ownerFilter,
+          query.featureKind ? eq(sessionsTable.featureKind, query.featureKind) : undefined
+        )
+      )
       .orderBy(desc(sessionsTable.lastActivityAt), asc(sessionsTable.id))
       .limit(1)
       .all()
@@ -584,6 +595,9 @@ export class AgentSessionService {
               and(
                 conversationFilter,
                 eq(sessionsTable.agentId, dto.agentId),
+                eq(sessionsTable.featureKind, dto.featureKind ?? 'general'),
+                // MEA:industrial-video 视频草稿在渲染端缓存，不能按无消息判空复用或清理。
+                dto.featureKind === 'industrial-video' ? sql`0 = 1` : undefined,
                 isNull(sessionsTable.deletedAt),
                 workspaceFilter,
                 dto.excludeSessionId ? notInArray(sessionsTable.id, [dto.excludeSessionId]) : undefined,
@@ -626,6 +640,7 @@ export class AgentSessionService {
 
           this.createTx(tx, reservedId, {
             agentId: dto.agentId,
+            featureKind: dto.featureKind,
             name: '',
             workspace: dto.workspace
           })
@@ -937,6 +952,7 @@ export class AgentSessionService {
     tx: DbOrTx,
     values: {
       type: AgentSessionType
+      featureKind?: SessionRow['featureKind']
       id: string
       agentId: string
       name: string

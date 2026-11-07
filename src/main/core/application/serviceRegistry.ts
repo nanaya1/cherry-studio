@@ -30,6 +30,7 @@ import { WindowManager } from '@main/core/window/WindowManager'
 // [enterprise] T0 企业扩展插件
 import { EnterprisePlugin } from '@main/enterprise/EnterprisePlugin'
 import { ApiGatewayService } from '@main/features/apiGateway/ApiGatewayService'
+import { IndustrialVideoService } from '@main/features/industrialVideo/IndustrialVideoService'
 import { BrowserSessionService } from '@main/features/browser'
 import { FileProcessingService, TesseractRuntimeService } from '@main/features/fileProcessing'
 import { KnowledgeService, KnowledgeVectorStoreService } from '@main/features/knowledge'
@@ -183,6 +184,7 @@ export const services = {
   RemoteKnowledgeService,
   MiniAppRuntimeService,
   ApiGatewayService,
+  IndustrialVideoService,
   AppUpdaterService,
   AutoBackupService,
   ProviderRegistryUpdaterService,

@@ -67,7 +67,7 @@ const kbGrepOutput = (id: string) => ({
   ]
 })
 
-const dynamicMcpPart = (toolName: string, content: unknown, serverName = 'cherry-tools'): CherryMessagePart =>
+const dynamicMcpPart = (toolName: string, content: unknown, serverName = 'meacowork-tools'): CherryMessagePart =>
   ({
     type: 'dynamic-tool',
     toolName,
@@ -110,8 +110,10 @@ describe('resolveMessageCitations', () => {
     expect(mc.byId.get('kzz-1')).toMatchObject({ number: 3, title: 'One.md', url: '', type: 'knowledge' })
   })
 
-  it('resolves agent dynamic-tool parts with MCP-wrapped output', () => {
-    const mc = resolveMessageCitations([dynamicMcpPart('mcp__cherry-tools__kb_search', kbResults('qqq'))])
+  it.each(['meacowork-tools', 'cherry-tools'])('resolves %s agent dynamic-tool citations', (serverName) => {
+    const mc = resolveMessageCitations([
+      dynamicMcpPart(`mcp__${serverName}__kb_search`, kbResults('qqq'), serverName)
+    ])
     expect(mc.byId.get('qqq-1')).toMatchObject({ type: 'knowledge', content: 'kb chunk' })
   })
 

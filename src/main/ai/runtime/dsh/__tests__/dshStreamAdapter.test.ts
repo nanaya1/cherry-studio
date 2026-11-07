@@ -384,14 +384,14 @@ describe('DshStreamAdapter', () => {
         turn: 1,
         step: 1,
         callId: callId('c1'),
-        name: 'mcp__cherry-tools__web_search',
+        name: 'mcp__meacowork-tools__web_search',
         arguments: '{}'
       })
     )
 
     expect(chunks[0]).toMatchObject({
       providerMetadata: {
-        cherry: { tool: { type: 'mcp', name: 'web_search', serverId: 'cherry-tools', serverName: 'cherry-tools' } }
+        cherry: { tool: { type: 'mcp', name: 'web_search', serverId: 'meacowork-tools', serverName: 'meacowork-tools' } }
       }
     })
   })

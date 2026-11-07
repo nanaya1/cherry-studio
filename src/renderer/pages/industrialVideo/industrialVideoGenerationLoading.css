@@ -1,0 +1,62 @@
+.ivideo-loading-stage {
+  background-image: radial-gradient(
+    ellipse at center,
+    color-mix(in srgb, var(--primary) 7%, transparent),
+    transparent 72%
+  );
+}
+.ivideo-loading .ivideo-frame {
+  animation: ivideo-frame-float 3.6s ease-in-out infinite;
+}
+.ivideo-loading .ivideo-scan {
+  animation: ivideo-scan-pass 3.6s ease-in-out infinite;
+}
+.ivideo-loading .ivideo-signal {
+  animation: ivideo-signal-pass 2.4s ease-in-out infinite;
+}
+.ivideo-loading[data-animating='false'] svg * {
+  animation: none;
+}
+@keyframes ivideo-frame-float {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+@keyframes ivideo-scan-pass {
+  0%,
+  100% {
+    transform: translateX(-110px);
+    opacity: 0;
+  }
+  15%,
+  85% {
+    opacity: 1;
+  }
+  90% {
+    transform: translateX(110px);
+    opacity: 0;
+  }
+}
+@keyframes ivideo-signal-pass {
+  0% {
+    transform: translateX(-115px);
+    opacity: 0;
+  }
+  20%,
+  80% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(115px);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ivideo-loading svg * {
+    animation: none !important;
+  }
+}

@@ -19,7 +19,7 @@ function toolResponse(name: string, serverId?: string) {
 }
 
 describe('getSessionToolTargets', () => {
-  it('matches Cherry Session tools by exact identity', () => {
+  it('matches MEA Cowork Session tools by exact identity', () => {
     expect(getSessionToolTargets(toolResponse('session_create'))).toMatchObject([
       {
         renderKey: 'call-session_create',
@@ -27,10 +27,11 @@ describe('getSessionToolTargets', () => {
         sessionName: 'Research session'
       }
     ])
+    expect(getSessionToolTargets(toolResponse('session_create', 'meacowork-tools'))).toHaveLength(1)
     expect(getSessionToolTargets(toolResponse('session_create', 'cherry-tools'))).toHaveLength(1)
   })
 
-  it("does not treat another MCP server's same-named tool as a Cherry Session action", () => {
+  it("does not treat another MCP server's same-named tool as a MEA Cowork Session action", () => {
     expect(getSessionToolTargets(toolResponse('session_create', 'tmux'))).toEqual([])
   })
 

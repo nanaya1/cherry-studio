@@ -1,0 +1,1 @@
+ALTER TABLE `agent_session` ADD `feature_kind` text DEFAULT 'general' NOT NULL;

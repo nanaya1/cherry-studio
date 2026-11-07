@@ -262,6 +262,51 @@ describe('TopicNamingService', () => {
     )
   })
 
+  it('excludes display-projected execution context from initial and summary session names', async () => {
+    const data = {
+      parts: [
+        { type: 'text' as const, text: '生成用户操作视频' },
+        {
+          type: 'text' as const,
+          text: '{"settings":{"duration":30}}',
+          providerMetadata: { cherry: { displayText: '视频设置：30 秒' } }
+        },
+        {
+          type: 'text' as const,
+          text: '使用 ivideo_ 工具完成工作流',
+          providerMetadata: { cherry: { displayText: '' } }
+        }
+      ]
+    }
+    mocks.getSession.mockReturnValue({ id: 'session-1', agentId: 'agent-1', name: '', isNameManuallyEdited: false })
+    const service = createService()
+    service.maybeRenameAgentSessionFromFirstUserMessage('session-1', data)
+    expect(mocks.updateSession).toHaveBeenCalledWith('session-1', {
+      name: '生成用户操作视频',
+      isNameManuallyEdited: false
+    })
+    mocks.getSession.mockReturnValue({
+      id: 'session-1',
+      agentId: 'agent-1',
+      name: '生成用户操作视频',
+      isNameManuallyEdited: false
+    })
+    await service.maybeRenameAgentSession('agent-1', 'session-1', data, {
+      role: 'assistant',
+      parts: [{ type: 'text', text: '已准备分镜' }]
+    } as never)
+    const request = JSON.stringify(mocks.generateText.mock.calls[0]?.[0])
+    expect(request).toContain('生成用户操作视频')
+    expect(request).not.toContain('settings')
+    expect(request).not.toContain('视频设置')
+    expect(request).not.toContain('ivideo_')
+    expect(mocks.updateSession).toHaveBeenLastCalledWith('session-1', {
+      name: 'Generated Title',
+      isNameManuallyEdited: false
+    })
+    expect(data.parts[2].text).toBe('使用 ivideo_ 工具完成工作流')
+  })
+
   it('uses the quick assistant model for agent session summary naming', async () => {
     mocks.getSession.mockReturnValue({
       id: 'session-1',

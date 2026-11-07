@@ -11,6 +11,32 @@ const ui = (role: UIMessage['role'], parts: UIMessage['parts'], id = 'm'): UIMes
 // toModelMessages runs the exact Agent.stream order; these guard each step so deleting
 // one (coalesce, ignoreIncompleteToolCalls, the empty-content placeholder) fails a test.
 describe('toModelMessages', () => {
+  it('retains execution context when user text has a display-only summary', async () => {
+    const model = await toModelMessages([
+      ui('user', [
+        { type: 'text', text: '生成用户操作视频' },
+        {
+          type: 'text',
+          text: '{"settings":{"duration":30}}',
+          providerMetadata: { cherry: { displayText: '视频设置：30 秒' } }
+        },
+        {
+          type: 'text',
+          text: '使用 ivideo_ 工具，付费生成前等待用户确认',
+          providerMetadata: { cherry: { displayText: '' } }
+        }
+      ])
+    ])
+    expect(model[0]).toMatchObject({
+      role: 'user',
+      content: [
+        { type: 'text', text: '生成用户操作视频' },
+        { type: 'text', text: '{"settings":{"duration":30}}' },
+        { type: 'text', text: '使用 ivideo_ 工具，付费生成前等待用户确认' }
+      ]
+    })
+  })
+
   it('keeps knowledge scope out of provider messages', async () => {
     const model = await toModelMessages([
       ui('user', [

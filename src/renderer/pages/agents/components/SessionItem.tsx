@@ -1,4 +1,4 @@
-import { Archive, PinIcon } from 'lucide-react'
+import { Archive, PinIcon, Video } from 'lucide-react'
 import type { MouseEvent } from 'react'
 import { memo, useCallback, useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -128,7 +128,10 @@ const SessionItem = ({
           : null
   const hasStreamIndicator = conversationRowStatus !== null && conversationRowStatus !== 'approval'
   const showPinAction = !rowState.renaming && !!onTogglePin
-  const showLeadingSlot = reserveLeadingIconSlot || !!channelIcon
+  // const showLeadingSlot = reserveLeadingIconSlot || !!channelIcon
+  // MEA:industrial-video 侧栏隐藏普通图标时仍保留任务类型标识。
+  const isIndustrialVideo = session.featureKind === 'industrial-video'
+  const showLeadingSlot = isIndustrialVideo || reserveLeadingIconSlot || !!channelIcon
   const startInlineEdit = useCallback(() => actions.startRename(session.id), [actions, session.id])
   const startMenuEdit = useCallback(() => onOpenRenameDialog(session), [onOpenRenameDialog, session])
   const handleDelete = useCallback(() => onDelete(session.id), [onDelete, session.id])
@@ -258,7 +261,10 @@ const SessionItem = ({
       title={sessionName}>
       {showLeadingSlot && (
         <ResourceList.ItemLeadingSlot className={cn('relative', !rowState.renaming && channelIcon && 'rounded-sm')}>
-          {!rowState.renaming && channelIcon ? (
+          {isIndustrialVideo && !rowState.renaming && (
+            <Video role="img" aria-label={t('industrial_video.title')} size={14} />
+          )}
+          {!isIndustrialVideo && !rowState.renaming && channelIcon ? (
             <img
               src={channelIcon}
               alt=""

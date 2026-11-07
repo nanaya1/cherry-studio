@@ -1,5 +1,5 @@
 import { arrayMove } from '@dnd-kit/sortable'
-import { CalendarClock, Plus, Puzzle, Shapes, Wrench } from 'lucide-react'
+import { CalendarClock, Plus, Puzzle, Shapes, Video, Wrench } from 'lucide-react'
 import type { Ref } from 'react'
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -376,6 +376,13 @@ export default function Sidebar({
         onOpen: () => navigateRouteTab('/app/new-task', t('workspace.newTask.title'))
       },
       {
+        key: 'workspace:industrial-video',
+        label: t('industrial_video.title'),
+        renderIcon: (size: number) => <Video size={size} />,
+        isActive: () => pathname === '/app/industrial-video' || pathname === '/app/agents/industrial-video',
+        onOpen: () => navigateRouteTab('/app/industrial-video', t('industrial_video.title'))
+      },
+      {
         key: 'workspace:toolbox',
         label: t('workspace.toolbox.title'),
         renderIcon: (size: number) => <Wrench size={size} />,
@@ -500,9 +507,21 @@ export default function Sidebar({
     const byKey = new Map(entries.map((entry) => [entry.key, entry]))
     const pickApp = (id: SidebarAppId) => byKey.get(`app:${id}`) ?? null
 
-    return [resourcesEntry, pickApp('translate'), pickApp('paintings'), pickApp('knowledge')].filter(
-      (entry): entry is ResolvedSidebarEntry => entry !== null
-    )
+    // MEA:industrial-video 入口已移至新建任务下方，不写入 SidebarFavorite 持久化列表。
+    // const industrialVideoEntry: ResolvedSidebarEntry = {
+    //   key: 'workspace:industrial-video',
+    //   label: t('industrial_video.title'),
+    //   renderIcon: (size: number) => <Video size={size} />,
+    //   isActive: () => pathname === '/app/industrial-video' || pathname === '/app/agents/industrial-video',
+    //   onOpen: () => navigateRouteTab('/app/industrial-video', t('industrial_video.title'))
+    // }
+    // return [resourcesEntry, industrialVideoEntry, pickApp('translate'), pickApp('paintings'), pickApp('knowledge')].filter(
+    return [
+      resourcesEntry,
+      pickApp('translate'),
+      pickApp('paintings'),
+      pickApp('knowledge')
+    ].filter((entry): entry is ResolvedSidebarEntry => entry !== null)
   }, [entries, navigateRouteTab, pathname, t])
 
   // A single drag reorders the whole mixed list. arrayMove yields the new entry

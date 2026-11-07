@@ -1,9 +1,11 @@
 import { application } from '@application'
+import { agentSessionTable } from '@data/db/schemas/agentSession'
 import type { DbOrTx } from '@data/db/types'
 import { agentService } from '@data/services/AgentService'
 import { agentSessionService } from '@data/services/AgentSessionService'
 import { agentTaskService } from '@data/services/AgentTaskService'
 import { loggerService } from '@logger'
+import { inArray } from 'drizzle-orm'
 import { KeyedMutex } from '@main/core/concurrency/KeyedMutex'
 import { BaseService, DependsOn, type Disposable, Injectable, Phase, ServicePhase } from '@main/core/lifecycle'
 import type { AgentSessionMessageEntity } from '@shared/data/api/schemas/agentSessionMessages'
@@ -318,12 +320,30 @@ export class AgentLifecycleService extends BaseService {
     targetState: 'active' | 'trashed' = 'trashed'
   ): Promise<{ deletedIds: string[] }> {
     const deleteSessions = async () => {
+      const internalAgentIds = permanent
+        ? application
+            .get('DbService')
+            .getDb()
+            .select({ agentId: agentSessionTable.agentId })
+            .from(agentSessionTable)
+            .where(inArray(agentSessionTable.id, ids))
+            .all()
+            .flatMap(({ agentId }) => (agentId ? [agentId] : []))
+            .filter((agentId) => agentService.getAgent(agentId)?.configuration?.internal_kind === 'industrial-video')
+        : []
       const result = agentSessionService.deleteByIdsWithImpact(ids, {
         permanent,
         ...(targetState === 'active' ? { targetState } : {})
       })
       await this.finishDeletion(result.deletedIds, result.deliveryResults)
       await this.removePurgedSystemWorkspaces(result.purgedSystemWorkspacePaths)
+      for (const agentId of new Set(internalAgentIds)) {
+        if (agentSessionService.listIdsByAgent(agentId).length === 0) {
+          await this.agentLocks.runExclusive(agentId, () =>
+            this.deleteAgentInternal(agentId, false, true, 'active')
+          )
+        }
+      }
       return { deletedIds: result.deletedIds }
     }
     if (permanent && targetState === 'trashed')

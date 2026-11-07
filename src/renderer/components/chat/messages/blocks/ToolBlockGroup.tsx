@@ -24,6 +24,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@c
 import { ErrorBoundary } from '@renderer/components/ErrorBoundary'
 import { SESSION_CREATE_TOOL_NAME } from '@shared/ai/agentSessionDelivery'
 import { PROVIDER_WEB_SEARCH_TOOL_NAME } from '@shared/ai/builtinTools'
+import { normalizeMeacoworkToolRuntimeName, toMeacoworkToolRuntimeName } from '@shared/ai/meacoworkTools'
 import type { CherryMessagePart } from '@shared/data/types/message'
 
 import { useMessageDisclosureState } from '../hooks/useMessageDisclosureState'
@@ -76,7 +77,7 @@ function getToolHeaderCandidateKey(candidate: ToolHeaderCandidate): string {
 
 const TOOL_GROUP_ICON_BY_NAME: Record<string, LucideIcon> = {
   [SESSION_CREATE_TOOL_NAME]: GitBranchPlus,
-  [`mcp__cherry-tools__${SESSION_CREATE_TOOL_NAME}`]: GitBranchPlus,
+  [toMeacoworkToolRuntimeName(SESSION_CREATE_TOOL_NAME)]: GitBranchPlus,
   [AgentToolsType.Agent]: Sparkles,
   [AgentToolsType.Bash]: SquareTerminal,
   [AgentToolsType.BashOutput]: SquareTerminal,
@@ -235,7 +236,9 @@ function getMcpToolGroupPresentation(
 
 export function getToolGroupIcon(tool: ToolGroupTool | undefined, toolArguments?: unknown): LucideIcon {
   return (
-    (tool && TOOL_GROUP_ICON_BY_NAME[tool.name]) || getMcpToolGroupPresentation(tool, toolArguments)?.icon || Wrench
+    (tool && TOOL_GROUP_ICON_BY_NAME[normalizeMeacoworkToolRuntimeName(tool.name)]) ||
+    getMcpToolGroupPresentation(tool, toolArguments)?.icon ||
+    Wrench
   )
 }
 

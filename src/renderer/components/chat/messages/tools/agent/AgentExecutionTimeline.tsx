@@ -11,7 +11,7 @@ import { isToolPartAwaitingApproval } from '../toolResponse'
 import { AgentToolCallCard } from './AgentToolCallCard'
 import { AskUserQuestionCard } from './AskUserQuestionCard'
 import { NavigateToolInline } from './NavigateTool'
-import { isCherrySessionToolResponse } from './sessionToolResult'
+import { isMeacoworkSessionToolResponse } from './sessionToolResult'
 import { getSubagentTaskStatus } from './subagentStatus'
 
 export function AgentExecutionTimeline({ toolResponse }: { toolResponse: NormalToolResponse }) {
@@ -72,7 +72,7 @@ export function AgentExecutionTimeline({ toolResponse }: { toolResponse: NormalT
         isStreaming={isLoading}
         status={effectiveStatus}
         hasError={effectiveStatus === 'error'}
-        isCherrySessionTool={isCherrySessionToolResponse(toolResponse)}
+        isMeacoworkSessionTool={isMeacoworkSessionToolResponse(toolResponse)}
         openFlowOnClick={isSubagentTool}
         showInlineDetails={!isSubagentTool}
       />

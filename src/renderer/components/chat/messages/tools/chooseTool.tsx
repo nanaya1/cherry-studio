@@ -29,7 +29,7 @@ const AgentExecutionTimeline = React.lazy(async () => {
   const module = await import('./agent/AgentExecutionTimeline')
   return { default: module.AgentExecutionTimeline }
 })
-/** cherry-tools that carry short wire names rather than the `mcp__` prefix. */
+/** Built-in tools that carry short wire names rather than the `mcp__` prefix. */
 const CHERRY_AGENT_TOOL_NAMES = new Set([
   'web_fetch',
   KB_SEARCH_TOOL_NAME,
@@ -59,7 +59,7 @@ export function chooseTool(toolResponse: NormalToolResponse): React.ReactNode | 
     return <MessageMetaTool toolResponse={toolResponse} />
   }
 
-  // In-process cherry-tools (web/knowledge/memory) carry short wire names, not the `mcp__` prefix.
+  // In-process built-in tools (web/knowledge/memory) carry short wire names, not the `mcp__` prefix.
   if (toolName === KB_SEARCH_TOOL_NAME) {
     return <MessageKnowledgeSearchToolTitle toolResponse={toolResponse} />
   }

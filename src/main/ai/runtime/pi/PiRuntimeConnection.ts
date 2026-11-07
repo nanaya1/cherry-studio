@@ -311,10 +311,10 @@ export class PiRuntimeConnection implements AgentRuntimeConnection {
       const isToolEnabled = (serverName: string, toolName: string) =>
         !this.disabledTools.has(buildPiMcpToolName(serverName, toolName))
       const citationsGuidance = buildCitationsGuidance({
-        web: isToolEnabled('cherry-tools', WEB_SEARCH_TOOL_NAME) || isToolEnabled('cherry-tools', WEB_FETCH_TOOL_NAME),
+        web: isToolEnabled('meacowork-tools', WEB_SEARCH_TOOL_NAME) || isToolEnabled('meacowork-tools', WEB_FETCH_TOOL_NAME),
         kb:
           (resolveAgentCapabilities(agent).allKnowledgeBases || knowledgeBaseScope.length > 0) &&
-          (isToolEnabled('cherry-tools', KB_SEARCH_TOOL_NAME) || isToolEnabled('cherry-tools', KB_READ_TOOL_NAME))
+          (isToolEnabled('meacowork-tools', KB_SEARCH_TOOL_NAME) || isToolEnabled('meacowork-tools', KB_READ_TOOL_NAME))
       })
       const prompt = await buildAgentRuntimePrompt({
         workspacePath,

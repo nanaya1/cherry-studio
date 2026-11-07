@@ -38,7 +38,7 @@ import { canonicalizePathForContainment } from '@main/utils/file'
 import { rtkRewrite } from '@main/utils/rtk'
 import { PI_BUILTIN_TOOLS } from '@shared/ai/piBuiltinTools'
 import type { AgentPermissionMode } from '@shared/data/api/schemas/agents'
-import type { CherryToolMeta } from '@shared/data/types/uiParts'
+import type { MeacoworkToolMeta } from '@shared/data/types/uiParts'
 
 import type { AgentRuntimeEvent } from '../types'
 import { PI_TRANSPORT } from './piStreamAdapter'
@@ -224,7 +224,7 @@ export function createPiToolAuthorizer(ctx: PiApprovalContext): PiToolAuthorizer
             toolName,
             input: { ...input },
             presentation,
-            providerMetadata: { cherry: { transport: PI_TRANSPORT, toolName } satisfies CherryToolMeta }
+            providerMetadata: { cherry: { transport: PI_TRANSPORT, toolName } satisfies MeacoworkToolMeta }
           }
         })
       })

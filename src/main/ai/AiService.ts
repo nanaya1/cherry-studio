@@ -7,6 +7,7 @@ import {
   isToolUIPart,
   type LanguageModelUsage,
   type ModelMessage,
+  type UIMessage,
   type UIMessageChunk
 } from 'ai'
 
@@ -63,6 +64,7 @@ import { createAiUsagePlugin } from './hooks/billingHook'
 import { resolveAttachmentBudget } from './messages/attachmentBudget'
 import { prepareChatMessages } from './messages/attachmentRouting'
 import { resolveMediaCapabilities, resolveToolResultMediaCapabilities } from './messages/messageCapabilities'
+import { toModelMessages } from './messages/messageRules'
 import { applyHttpTrace } from './observability'
 import { resolveProviderAiSdkConfig } from './provider/config'
 import { hasImageTransport, resolveImageTransport } from './provider/custom/imageTransportRegistry'
@@ -85,6 +87,7 @@ import {
 import { skillService } from './skills/SkillService'
 import { type MessageRuntimeTimingSink, WebContentsListener } from './streamManager'
 import { resolveModelTokenDialect } from './tokens/dialect'
+import { toolApprovalRegistry } from './toolApproval/ToolApprovalRegistry'
 import { registerBuiltinTools } from './tools/adapters/aiSdk/builtin/registerBuiltinTools'
 import type {
   AiChatRequest,
@@ -102,6 +105,54 @@ import { routeToEndpoint } from './utils/provider'
 import { createAiUsageCaptureContext } from './utils/usageCapture'
 
 const logger = loggerService.withContext('AiService')
+
+const INDUSTRIAL_VIDEO_REVIEW_QUESTION = '脚本与分镜是否确认？'
+const INDUSTRIAL_VIDEO_REVIEW_APPROVE = '脚本与分镜没问题，开始生成视频'
+
+function normalizeIndustrialVideoReviewText(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  return value.replaceAll('?', '？').replaceAll(',', '，').replaceAll(/\s+/g, '')
+}
+
+function isIndustrialVideoReviewAnswer(
+  pending: { toolName: string; originalInput: Record<string, unknown> },
+  updatedInput: Record<string, unknown>
+): boolean {
+  if (pending.toolName !== 'AskUserQuestion') return false
+  const questions = pending.originalInput.questions
+  const question = Array.isArray(questions) ? questions[0] : undefined
+  if (!question || typeof question !== 'object' || Array.isArray(question)) return false
+  const prompt = question as Record<string, unknown>
+  const options = Array.isArray(prompt.options) ? prompt.options : []
+  const labels = options.flatMap((option) =>
+    option &&
+    typeof option === 'object' &&
+    !Array.isArray(option) &&
+    typeof (option as Record<string, unknown>).label === 'string'
+      ? [(option as Record<string, unknown>).label]
+      : []
+  )
+  if (
+    normalizeIndustrialVideoReviewText(prompt.question) !==
+      normalizeIndustrialVideoReviewText(INDUSTRIAL_VIDEO_REVIEW_QUESTION) ||
+    !labels.some(
+      (label) =>
+        normalizeIndustrialVideoReviewText(label) ===
+        normalizeIndustrialVideoReviewText(INDUSTRIAL_VIDEO_REVIEW_APPROVE)
+    )
+  ) {
+    return false
+  }
+
+  const answers = updatedInput.answers
+  if (!answers || typeof answers !== 'object' || Array.isArray(answers)) return false
+  return Object.entries(answers as Record<string, unknown>).some(
+    ([question, answer]) =>
+      normalizeIndustrialVideoReviewText(question) ===
+        normalizeIndustrialVideoReviewText(INDUSTRIAL_VIDEO_REVIEW_QUESTION) &&
+      normalizeIndustrialVideoReviewText(answer) === normalizeIndustrialVideoReviewText(INDUSTRIAL_VIDEO_REVIEW_APPROVE)
+  )
+}
 
 /**
  * Max concurrent `doEmbed` batches for `embedMany`. AI SDK defaults to
@@ -291,6 +342,8 @@ export interface AiGenerateRequest extends AiChatRequest {
   system?: string
   prompt?: string
   messages?: ModelMessage[]
+  /** UI messages retain managed FileUIPart metadata for the standard attachment routing pipeline. */
+  uiMessages?: UIMessage[]
 }
 
 // ── SDK extensions ─────────────────────────────────────────────────
@@ -402,6 +455,8 @@ export interface AiRerankResult {
 @ServicePhase(Phase.WhenReady)
 @DependsOn(['McpRuntimeService', 'McpCatalogService', 'AiStreamManager', 'JobManager'])
 export class AiService extends BaseService {
+  private readonly industrialVideoReviewResponses = new Set<string>()
+
   // Per-request AbortControllers for the cancellable one-shot routes (`ai.image.generate`,
   // `ai.text.generate`), paired with their `*.abort` routes. Key is the renderer-generated
   // requestId. Entries are self-cleaning via `runWithAbort`'s `finally` block; abort on an
@@ -443,6 +498,103 @@ export class AiService extends BaseService {
     payload: AiToolApprovalRespondRequest,
     senderWc: Electron.WebContents | undefined
   ): Promise<AiToolApprovalRespondResponse> {
+    const pending = toolApprovalRegistry.peek(payload.approvalId)
+    let updatedInput = payload.updatedInput
+    if (pending && payload.approved && updatedInput && isIndustrialVideoReviewAnswer(pending, updatedInput)) {
+      if (this.industrialVideoReviewResponses.has(payload.approvalId)) {
+        throw new Error('该工业视频审核正在处理中，请勿重复提交。')
+      }
+      this.industrialVideoReviewResponses.add(payload.approvalId)
+      try {
+        logger.info('Processing industrial-video trusted review answer', {
+          approvalId: payload.approvalId,
+          sessionId: pending.sessionId,
+          hasTrustedContext: Boolean(pending.trustedContext)
+        })
+        const industrialVideoService = application.get('IndustrialVideoService')
+        const record = industrialVideoService.getRecords({ sessionId: pending.sessionId })
+        const trustedContext = pending.trustedContext
+        if (
+          !record?.run ||
+          trustedContext?.kind !== 'industrial-video-review' ||
+          typeof trustedContext.run !== 'string' ||
+          typeof trustedContext.reviewVersion !== 'string' ||
+          record.run !== trustedContext.run
+        ) {
+          throw new Error('工业视频审核任务已变化，请重新读取审核快照。')
+        }
+        const reviewedSnapshot = { run: trustedContext.run, reviewVersion: trustedContext.reviewVersion }
+        const currentSnapshot = await industrialVideoService.reviewSnapshotGet({
+          sessionId: pending.sessionId,
+          run: record.run,
+          reviewType: 'script_and_storyboard'
+        })
+        if (currentSnapshot.review_version !== reviewedSnapshot.reviewVersion) {
+          logger.warn('Industrial-video review version changed before confirmation', {
+            approvalId: payload.approvalId,
+            sessionId: pending.sessionId,
+            run: record.run,
+            reviewedVersion: reviewedSnapshot.reviewVersion,
+            currentVersion: currentSnapshot.review_version
+          })
+          throw new Error('工业视频审核版本已变化，请重新查看脚本与分镜。')
+        }
+        logger.info('Submitting industrial-video trusted review confirmation', {
+          approvalId: payload.approvalId,
+          sessionId: pending.sessionId,
+          run: record.run,
+          reviewVersion: reviewedSnapshot.reviewVersion
+        })
+        const receipt = await industrialVideoService.reviewConfirm({
+          sessionId: pending.sessionId,
+          run: record.run,
+          reviewType: 'script_and_storyboard',
+          expectedReviewVersion: reviewedSnapshot.reviewVersion
+        })
+        if (!receipt.generation_allowed) {
+          logger.warn('Industrial-video trusted review did not open generation', {
+            approvalId: payload.approvalId,
+            sessionId: pending.sessionId,
+            run: record.run,
+            reviewVersion: receipt.review_version,
+            remainingBlockers: receipt.remaining_blockers
+          })
+          throw new Error('脚本与分镜审核完成，但服务端仍未开放视频生成。')
+        }
+        logger.info('Industrial-video trusted review confirmed', {
+          approvalId: payload.approvalId,
+          sessionId: pending.sessionId,
+          run: record.run,
+          reviewVersion: receipt.review_version
+        })
+        const answers = updatedInput.answers as Record<string, unknown>
+        const answerQuestion =
+          Object.keys(answers).find(
+            (question) =>
+              normalizeIndustrialVideoReviewText(question) ===
+              normalizeIndustrialVideoReviewText(INDUSTRIAL_VIDEO_REVIEW_QUESTION)
+          ) ?? INDUSTRIAL_VIDEO_REVIEW_QUESTION
+        updatedInput = {
+          ...updatedInput,
+          answers: {
+            ...answers,
+            [answerQuestion]:
+              `${INDUSTRIAL_VIDEO_REVIEW_APPROVE}\n\n` +
+              `系统可信审核已通过（审核版本：${receipt.review_version}）。` +
+              // '请继续调用 ivideo_estimate，不要再次询问脚本与分镜确认。'
+              // '不要调用费用预估；等待用户单独确认开始生成，不要自动生成，也不要再次询问脚本与分镜确认。'
+              '不要调用费用预估；保持制作参数与已审核分镜不变，立即调用 ivideo_start 启动视频生成，不要等待单独确认，也不要再次询问脚本与分镜确认。'
+          },
+          metadata: {
+            reviewConfirmed: true,
+            confirmedReviewVersion: receipt.review_version
+          }
+        }
+      } finally {
+        this.industrialVideoReviewResponses.delete(payload.approvalId)
+      }
+    }
+
     // Claude-Agent path: the runtime settles any persisted interaction card, then unblocks
     // the exact `canUseTool` invocation that issued this approval id.
     const dispatched = application.get('AgentSessionRuntimeService').respondToolApproval(
@@ -450,7 +602,7 @@ export class AiService extends BaseService {
       {
         approved: payload.approved,
         reason: payload.reason,
-        updatedInput: payload.updatedInput
+        updatedInput
       },
       payload.anchorId
     )
@@ -794,6 +946,9 @@ export class AiService extends BaseService {
     const signal = request.requestOptions?.signal
 
     const repairUsagePlugins: { current?: AiPlugin[] } = {}
+    const attachmentRequest = request.uiMessages
+      ? ({ ...request, messages: request.uiMessages } as unknown as AsInProcessChat<AiChatRequest>)
+      : request
     const {
       sdkConfig,
       credentialReceipt,
@@ -805,8 +960,9 @@ export class AiService extends BaseService {
       model,
       assistant,
       hookParts,
-      nativeFileSupport
-    } = await this.buildAgentParamsFor(request, signal, extraFeatures, () => repairUsagePlugins.current ?? [])
+      nativeFileSupport,
+      fileAttachments
+    } = await this.buildAgentParamsFor(attachmentRequest, signal, extraFeatures, () => repairUsagePlugins.current ?? [])
     const usageContext = createCaptureContext({
       provider,
       model,
@@ -822,6 +978,37 @@ export class AiService extends BaseService {
       ? (repairOptions: Parameters<NonNullable<typeof options.repairToolCall>>[0]) =>
           activeRepairToolCall!(repairOptions)
       : undefined
+
+    // One-shot attachment calls use the same capability-aware preparation as chat,
+    // but keep their isolated one-shot conversation and never create a topic.
+    const mediaCapabilities = resolveMediaCapabilities(model)
+    const preparedUiMessages = request.uiMessages
+      ? await prepareChatMessages(request.uiMessages, {
+          attachments: fileAttachments,
+          nativeSupport: nativeFileSupport,
+          isToolCapable: isFunctionCallingModel(model),
+          budget: fileAttachments.length
+            ? ((await resolveAttachmentBudget({
+                provider,
+                model,
+                system: request.system ?? system,
+                tools,
+                maxOutputTokens: options.maxOutputTokens,
+                messages: request.uiMessages,
+                mediaCapabilities
+              })) ?? undefined)
+            : undefined,
+          signal
+        })
+      : undefined
+    const preparedMessages = preparedUiMessages
+      ? await toModelMessages(
+          preparedUiMessages,
+          mediaCapabilities,
+          tools,
+          resolveToolResultMediaCapabilities(mediaCapabilities, resolveModelTokenDialect(provider, model))
+        )
+      : (request.messages ?? [])
 
     // An explicit per-request `maxRetries: 0` disables retry for this request.
     let wrapModel: ReturnType<typeof createRetryableWrap>
@@ -852,7 +1039,7 @@ export class AiService extends BaseService {
           signal,
           primaryUniqueModelId: model.id,
           primaryHasTools: !!tools && Object.keys(tools).length > 0,
-          requiredNativeFileSupport: resolveRequiredNativeFileSupport(request.messages, nativeFileSupport),
+          requiredNativeFileSupport: resolveRequiredNativeFileSupport(preparedMessages, nativeFileSupport),
           extraFeatures,
           retryPolicy,
           createUsagePlugin: ({ provider, model, sdkModelId, credentialReceipt }) =>
@@ -879,7 +1066,6 @@ export class AiService extends BaseService {
     // Same media gating as the streaming path — `agent.generate` hands `ModelMessage[]` to the
     // SDK as-is, so without these the structured tool-result media the converter produces would
     // be JSON/base64-encoded or rejected on OpenAI/Ollama, diverging from `stream`.
-    const mediaCapabilities = resolveMediaCapabilities(model)
     const agent = new Agent({
       providerId: sdkConfig.providerId,
       providerSettings: sdkConfig.providerSettings,
@@ -898,7 +1084,7 @@ export class AiService extends BaseService {
     })
 
     // prompt and messages are mutually exclusive in AI SDK; preserve that.
-    return agent.generate(request.prompt ? { prompt: request.prompt } : { messages: request.messages ?? [] }, signal)
+    return agent.generate(request.prompt ? { prompt: request.prompt } : { messages: preparedMessages }, signal)
   }
 
   // ── Image generation ──

@@ -1,4 +1,5 @@
 import { MockCacheUtils } from '@test-mocks/renderer/CacheService'
+import { mockPreferenceState } from '@test-mocks/renderer/PreferenceService'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type * as ReactI18next from 'react-i18next'
@@ -7,7 +8,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { toast } from '@renderer/services/toast'
 import type { CherryMessagePart } from '@shared/data/types/message'
 
-import AskUserQuestionComposer, { type AskUserQuestionComposerRequest } from '../AskUserQuestionComposer'
+import { ComposerContextProvider } from '../../ComposerContext'
+import ComposerCore from '../../ComposerCore'
+import AskUserQuestionComposer, {
+  type AskUserQuestionComposerRequest,
+  createAskUserQuestionComposerOverride
+} from '../AskUserQuestionComposer'
 
 vi.mock('react-i18next', async (importOriginal) => ({
   ...(await importOriginal<typeof ReactI18next>()),
@@ -76,6 +82,40 @@ describe('AskUserQuestionComposer', () => {
   // one test's draft into the next one.
   beforeEach(() => {
     MockCacheUtils.resetMocks()
+  })
+
+  it.each([true, false])('matches the input column width when narrow mode is %s', (narrowMode) => {
+    mockPreferenceState.set('chat.narrow_mode', narrowMode)
+    const { container } = render(<AskUserQuestionComposer request={makeRequest()} onRespond={vi.fn()} />)
+    // 限宽与侧边留白是确认框和输入框左右对齐的布局契约。
+    expect(container.firstElementChild).toHaveClass(narrowMode ? 'max-w-[calc(800px+3rem)]' : 'max-w-full')
+    expect(container.firstElementChild).toHaveStyle({ paddingLeft: '24px', paddingRight: '24px' })
+  })
+
+  it('keeps the draft visible and inert below the question until it closes', () => {
+    const override = createAskUserQuestionComposerOverride({ request: makeRequest(), onRespond: vi.fn() })
+    const fallback = <textarea aria-label="message draft" defaultValue="unsent draft" />
+    const view = render(
+      <ComposerContextProvider value={{ overrides: [override] }}>
+        <ComposerCore fallback={fallback} />
+      </ComposerContextProvider>
+    )
+    const draft = screen.getByDisplayValue('unsent draft')
+    const primary = draft.closest('[data-composer-primary-layer]')!
+    const panel = screen.getByRole('heading', { name: 'Choose logger' })
+    // 提问不能再替换或隐藏原输入框，DOM顺序保证提问在上方。
+    expect(primary).not.toHaveClass('invisible', 'absolute')
+    expect(primary).toHaveAttribute('inert')
+    expect(panel.compareDocumentPosition(draft) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+
+    view.rerender(
+      <ComposerContextProvider value={{ overrides: [] }}>
+        <ComposerCore fallback={fallback} />
+      </ComposerContextProvider>
+    )
+    expect(screen.getByRole('textbox', { name: 'message draft' })).toBe(draft)
+    expect(draft).toHaveValue('unsent draft')
+    expect(primary).not.toHaveAttribute('inert')
   })
 
   it('keeps the full question visible instead of clamping it to one line', () => {

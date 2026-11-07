@@ -448,7 +448,7 @@ describe('transformBlocksToParts', () => {
     })
   })
 
-  it('does not write cherry tool metadata when raw tool identity is absent', async () => {
+  it('does not write legacy provider metadata when raw tool identity is absent', async () => {
     const { parts } = await transformBlocksToParts([
       block('tool', {
         toolId: 'call-simple',

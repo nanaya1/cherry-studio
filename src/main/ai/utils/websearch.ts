@@ -16,7 +16,7 @@ import type { AppProviderId } from '../types'
 export type AppWebSearchPluginConfig = WebSearchToolConfigMap & { moonshot?: KimiFormulaCredentials }
 
 /** Inputs for provider-builtin web-search plugin configuration. */
-export interface CherryWebSearchConfig {
+export interface MeacoworkWebSearchConfig {
   maxResults: number
   excludeDomains: string[]
 }
@@ -103,7 +103,7 @@ function mapMaxResultToOpenAIContextSize(
 
 export function buildProviderBuiltinWebSearchConfig(
   providerId: AppProviderId,
-  webSearchConfig: CherryWebSearchConfig,
+  webSearchConfig: MeacoworkWebSearchConfig,
   model?: Model,
   provider?: Provider,
   serving?: KimiFormulaCredentials

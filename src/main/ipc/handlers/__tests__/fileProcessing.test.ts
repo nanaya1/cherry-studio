@@ -5,6 +5,7 @@ vi.mock('@application', () => ({ application: { get: appGetMock } }))
 
 import { fileProcessingHandlers } from '../fileProcessing'
 
+const cancelJob = vi.fn()
 const fileProcessingService = {
   startJob: vi.fn(),
   listAvailableProcessors: vi.fn(),
@@ -14,6 +15,7 @@ const fileProcessingService = {
 beforeEach(() => {
   vi.clearAllMocks()
   appGetMock.mockImplementation((name: string) => {
+    if (name === 'JobManager') return { cancel: cancelJob }
     if (name === 'FileProcessingService') return fileProcessingService
     throw new Error(`Unexpected application.get(${name})`)
   })
@@ -26,6 +28,16 @@ const ctx = { senderId: 'w1' }
 type In<R extends keyof typeof fileProcessingHandlers> = Parameters<(typeof fileProcessingHandlers)[R]>[0]
 
 describe('fileProcessingHandlers', () => {
+  it('取消归属任务并保留取消超时结果与失败', async () => {
+    cancelJob.mockResolvedValueOnce({ outcome: 'timed-out' }).mockRejectedValueOnce(new Error('任务不存在'))
+    await expect(fileProcessingHandlers['file_processing.cancel_job']({ jobId: 'job-1' }, ctx)).resolves.toEqual({
+      outcome: 'timed-out'
+    })
+    expect(cancelJob).toHaveBeenCalledWith('job-1')
+    await expect(fileProcessingHandlers['file_processing.cancel_job']({ jobId: 'missing' }, ctx)).rejects.toThrow(
+      '任务不存在'
+    )
+  })
   it('start_job forwards the input and returns the JobSnapshot', async () => {
     const input = {
       feature: 'image_to_text',

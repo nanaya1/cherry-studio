@@ -6,6 +6,7 @@ import { Button, Tooltip } from '@cherrystudio/ui'
 import { loggerService } from '@logger'
 import { toast } from '@renderer/services/toast'
 import { fetchGenerate } from '@renderer/utils/aiGeneration'
+import type { Model } from '@shared/data/types/model'
 
 const logger = loggerService.withContext('PromptPolishActions')
 const PROTECTED_PROMPT_TOKEN_PATTERN = /\{\{[^{}\r\n]+\}\}|\$\{[^{}\r\n]+\}/g
@@ -19,10 +20,12 @@ type RestoreState = {
 type PromptPolishActionsProps = {
   value: string
   fallbackSource?: string
+  model?: Model
   emptyValueSystemPrompt: string
   existingValueSystemPrompt: string
   onChange: (value: string) => void
   disabled?: boolean
+  onRunningChange?: (running: boolean) => void
 }
 
 function getProtectedPromptTokens(value: string): string[] {
@@ -42,9 +45,11 @@ function preservesProtectedPromptTokens(original: string, polished: string): boo
 export function PromptPolishActions({
   value,
   fallbackSource,
+  model,
   emptyValueSystemPrompt,
   existingValueSystemPrompt,
   onChange,
+  onRunningChange,
   disabled = false
 }: PromptPolishActionsProps) {
   const { t } = useTranslation()
@@ -61,6 +66,8 @@ export function PromptPolishActions({
   const actionLabel = t(usesFallback ? 'library.config.prompt.generate' : 'library.config.prompt.polish')
   const generationSourceRef = useRef(generationSource)
   const onChangeRef = useRef(onChange)
+  const onRunningChangeRef = useRef(onRunningChange)
+  onRunningChangeRef.current = onRunningChange
 
   useLayoutEffect(() => {
     valueRef.current = value
@@ -72,6 +79,7 @@ export function PromptPolishActions({
   useEffect(() => {
     return () => {
       requestIdRef.current += 1
+      if (inFlightRef.current) onRunningChangeRef.current?.(false)
       if (timeoutRef.current) clearTimeout(timeoutRef.current)
       abortControllerRef.current?.abort(new DOMException('Prompt polish cancelled', 'AbortError'))
     }
@@ -96,6 +104,7 @@ export function PromptPolishActions({
       timeoutRef.current = null
     }
     setRunning(false)
+    onRunningChangeRef.current?.(false)
     controller.abort(reason)
     return true
   }
@@ -131,6 +140,7 @@ export function PromptPolishActions({
     requestIdRef.current = requestId
     abortControllerRef.current = controller
     setRunning(true)
+    onRunningChangeRef.current?.(true)
     setRestoreState(null)
     timeoutRef.current = setTimeout(() => {
       if (stopActiveRequest(controller, new DOMException(t('error.request_timeout'), 'TimeoutError'))) {
@@ -142,6 +152,8 @@ export function PromptPolishActions({
       const polished = await fetchGenerate({
         prompt: requestSystemPrompt,
         content: source,
+        // 未指定模型时保留原请求结构，由 fetchGenerate 使用默认模型。
+        ...(model ? { model } : {}),
         throwOnError: true,
         signal: controller.signal
       })
@@ -192,6 +204,7 @@ export function PromptPolishActions({
         abortControllerRef.current = null
         inFlightRef.current = false
         setRunning(false)
+        onRunningChangeRef.current?.(false)
       }
     }
   }

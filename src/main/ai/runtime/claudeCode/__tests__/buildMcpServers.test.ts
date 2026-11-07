@@ -165,7 +165,7 @@ function makeSession(path: string, type: 'user' | 'system' = 'user'): AgentSessi
   } as unknown as AgentSessionEntity
 }
 
-const WITHOUT_HOST_TOOLS: ReadonlySet<string> = new Set(['cherry-tools', 'agent-memory', 'skills', 'mcp-manager'])
+const WITHOUT_HOST_TOOLS: ReadonlySet<string> = new Set(['meacowork-tools', 'agent-memory', 'skills', 'mcp-manager'])
 const WITH_HOST_TOOLS: ReadonlySet<string> = new Set([...WITHOUT_HOST_TOOLS, 'assistant', 'assistant-files'])
 
 describe('resolveMountedMcpServers', () => {
@@ -173,7 +173,7 @@ describe('resolveMountedMcpServers', () => {
     const mounted = resolveMountedMcpServers({ type: 'claude-code', configuration: {} } as never, {
       channelLinked: false
     })
-    expect([...mounted].sort()).toEqual(['agent-memory', 'cherry-tools', 'mcp-manager', 'skills'])
+    expect([...mounted].sort()).toEqual(['agent-memory', 'meacowork-tools', 'mcp-manager', 'skills'])
   })
 
   it('drops the skills and mcp-manager servers for Cherry Support while keeping its host servers', () => {
@@ -197,22 +197,22 @@ describe('resolveMountedMcpServers', () => {
 })
 
 describe('adjustAllowedToolsForMcp', () => {
-  it('lists auto-approved cherry-tools + agent-memory for every agent, excluding the mutating kb_manage', () => {
+  it('lists auto-approved meacowork-tools + agent-memory for every agent, excluding the mutating kb_manage', () => {
     const allowed = adjustAllowedToolsForMcp(WITHOUT_HOST_TOOLS, [])
     expect(allowed).toEqual(
       expect.arrayContaining([
-        'mcp__cherry-tools__kb_search',
-        'mcp__cherry-tools__kb_list',
-        'mcp__cherry-tools__cron',
-        'mcp__cherry-tools__notify',
-        'mcp__cherry-tools__config',
+        'mcp__meacowork-tools__kb_search',
+        'mcp__meacowork-tools__kb_list',
+        'mcp__meacowork-tools__cron',
+        'mcp__meacowork-tools__notify',
+        'mcp__meacowork-tools__config',
         'mcp__agent-memory__memory'
       ])
     )
     // The mutating kb_manage tool must NOT be pre-approved by the SDK allowlist — it requires
     // per-call approval via canUseTool. A bare wildcard would silently re-include it.
-    expect(allowed).not.toContain('mcp__cherry-tools__kb_manage')
-    expect(allowed).not.toContain('mcp__cherry-tools__*')
+    expect(allowed).not.toContain('mcp__meacowork-tools__kb_manage')
+    expect(allowed).not.toContain('mcp__meacowork-tools__*')
     // read-only skill search is auto-approved; the mutating install_skill stays on per-call approval.
     expect(allowed).toContain('mcp__skills__search_skills')
     expect(allowed).not.toContain('mcp__skills__install_skill')
@@ -224,14 +224,14 @@ describe('adjustAllowedToolsForMcp', () => {
     const allowed = adjustAllowedToolsForMcp(WITH_HOST_TOOLS, [])
     expect(allowed).toEqual(
       expect.arrayContaining([
-        'mcp__cherry-tools__kb_search',
-        'mcp__cherry-tools__kb_list',
+        'mcp__meacowork-tools__kb_search',
+        'mcp__meacowork-tools__kb_list',
         'mcp__assistant__navigate',
         'mcp__assistant__product_info'
       ])
     )
-    expect(allowed).not.toContain('mcp__cherry-tools__kb_manage')
-    expect(allowed).not.toContain('mcp__cherry-tools__*')
+    expect(allowed).not.toContain('mcp__meacowork-tools__kb_manage')
+    expect(allowed).not.toContain('mcp__meacowork-tools__*')
     expect(allowed).not.toContain('mcp__assistant__apply_setting')
     expect(allowed).not.toContain('mcp__assistant__create_agent')
     // diagnose reads local logs/source/config — it must go through per-call approval, so neither
@@ -244,16 +244,16 @@ describe('adjustAllowedToolsForMcp', () => {
   })
 
   it('removes an exact disabled tool without affecting sibling auto-approvals', () => {
-    const allowed = adjustAllowedToolsForMcp(WITHOUT_HOST_TOOLS, ['mcp__cherry-tools__web_fetch'])
+    const allowed = adjustAllowedToolsForMcp(WITHOUT_HOST_TOOLS, ['mcp__meacowork-tools__web_fetch'])
 
-    expect(allowed).not.toContain('mcp__cherry-tools__web_fetch')
-    expect(allowed).toContain('mcp__cherry-tools__web_search')
+    expect(allowed).not.toContain('mcp__meacowork-tools__web_fetch')
+    expect(allowed).toContain('mcp__meacowork-tools__web_search')
   })
 
-  it.each(['mcp__cherry-tools', 'mcp__cherry-tools__*'])('removes server-wide disabled tools for %s', (rule) => {
+  it.each(['mcp__meacowork-tools', 'mcp__meacowork-tools__*'])('removes server-wide disabled tools for %s', (rule) => {
     const allowed = adjustAllowedToolsForMcp(WITHOUT_HOST_TOOLS, [rule])
 
-    expect(allowed.some((toolName) => toolName.startsWith('mcp__cherry-tools__'))).toBe(false)
+    expect(allowed.some((toolName) => toolName.startsWith('mcp__meacowork-tools__'))).toBe(false)
     expect(allowed).toContain('mcp__agent-memory__memory')
   })
 
@@ -276,7 +276,7 @@ describe('buildMcpServers', () => {
 
   it('injects the agent-memory and skills servers for every agent (REGRESSION agents-jobs-3)', async () => {
     const result = buildMcpServers(session, agent, WITHOUT_HOST_TOOLS, undefined, undefined, '/data/Agents/agent-1')
-    expect(Object.keys(result ?? {})).toEqual(expect.arrayContaining(['cherry-tools', 'agent-memory', 'skills']))
+    expect(Object.keys(result ?? {})).toEqual(expect.arrayContaining(['meacowork-tools', 'agent-memory', 'skills']))
     expect(mockMemoryConstructor).toHaveBeenCalledWith('agent-1', '/data/Agents/agent-1')
   })
 
@@ -286,17 +286,17 @@ describe('buildMcpServers', () => {
     expect(buildMcpServers(session, agent, sealed)?.['mcp-manager']).toBeUndefined()
   })
 
-  it('injects cherry-tools for every session; the standalone cherry server and exa are gone', async () => {
+  it('injects meacowork-tools for every session; the standalone cherry server and exa are gone', async () => {
     const result = buildMcpServers(session, agent, WITHOUT_HOST_TOOLS)
-    expect(result?.['cherry-tools']).toBeDefined()
+    expect(result?.['meacowork-tools']).toBeDefined()
     expect(result?.cherry).toBeUndefined()
     expect(result?.exa).toBeUndefined()
   })
 
-  async function cherryToolNames(result: ReturnType<typeof buildMcpServers>): Promise<string[]> {
+  async function meacoworkToolNames(result: ReturnType<typeof buildMcpServers>): Promise<string[]> {
     if (!result) throw new Error('buildMcpServers returned no servers')
     const instance = (
-      result['cherry-tools'] as unknown as {
+      result['meacowork-tools'] as unknown as {
         instance: {
           server: {
             _requestHandlers: Map<string, (req: unknown, extra: unknown) => Promise<{ tools: Array<{ name: string }> }>>
@@ -310,24 +310,24 @@ describe('buildMcpServers', () => {
     return listed.tools.map((tool) => tool.name)
   }
 
-  it('hides the kb_* tools from cherry-tools when the agent has no bound knowledge base', async () => {
+  it('hides the kb_* tools from meacowork-tools when the agent has no bound knowledge base', async () => {
     mockGetAgent.mockReturnValue(agent)
-    const names = await cherryToolNames(buildMcpServers(session, agent, WITHOUT_HOST_TOOLS))
+    const names = await meacoworkToolNames(buildMcpServers(session, agent, WITHOUT_HOST_TOOLS))
     expect(names).toContain('web_search')
     expect(names).not.toContain('kb_search')
     expect(names).not.toContain('kb_manage')
   })
 
-  it('exposes the kb_* tools from cherry-tools when the agent is bound to a knowledge base', async () => {
+  it('exposes the kb_* tools from meacowork-tools when the agent is bound to a knowledge base', async () => {
     const boundAgent = { id: 'agent-1', mcps: [], knowledgeBaseIds: ['kb_a'] } as unknown as AgentEntity
     mockGetAgent.mockReturnValue(boundAgent)
-    const names = await cherryToolNames(buildMcpServers(session, boundAgent, WITHOUT_HOST_TOOLS))
+    const names = await meacoworkToolNames(buildMcpServers(session, boundAgent, WITHOUT_HOST_TOOLS))
     expect(names).toEqual(expect.arrayContaining(['kb_search', 'kb_read', 'kb_list', 'kb_manage']))
   })
 
   it('exposes the kb_* tools from a frozen composer selection when the Agent has no binding', async () => {
     mockGetAgent.mockReturnValue(agent)
-    const names = await cherryToolNames(
+    const names = await meacoworkToolNames(
       buildMcpServers(session, agent, WITHOUT_HOST_TOOLS, undefined, undefined, undefined, ['kb-selected'])
     )
 
@@ -343,7 +343,7 @@ describe('buildMcpServers', () => {
     } as unknown as AgentEntity
     mockGetAgent.mockReturnValue(assistant)
 
-    const names = await cherryToolNames(buildMcpServers(session, assistant, WITH_HOST_TOOLS))
+    const names = await meacoworkToolNames(buildMcpServers(session, assistant, WITH_HOST_TOOLS))
 
     expect(names).toEqual(
       expect.arrayContaining(['kb_search', 'kb_read', 'kb_list', 'kb_manage', 'cli_list', 'cli_search', 'cli_install'])
@@ -360,10 +360,10 @@ describe('buildMcpServers', () => {
     mockGetAgent.mockReturnValue(assistant)
     const servers = buildMcpServers(session, assistant, WITH_HOST_TOOLS)
 
-    expect(await cherryToolNames(servers)).toContain('kb_search')
+    expect(await meacoworkToolNames(servers)).toContain('kb_search')
 
     mockGetAgent.mockReturnValue(undefined)
-    expect(await cherryToolNames(servers)).not.toContain('kb_search')
+    expect(await meacoworkToolNames(servers)).not.toContain('kb_search')
   })
 
   /** Run kb_list through the server and report the id set the scope closure handed to the core. */
@@ -371,7 +371,7 @@ describe('buildMcpServers', () => {
     if (!result) throw new Error('buildMcpServers returned no servers')
     mockListOrOutlineKnowledge.mockReset().mockResolvedValue({ bases: [] })
     const instance = (
-      result['cherry-tools'] as unknown as {
+      result['meacowork-tools'] as unknown as {
         instance: {
           server: { _requestHandlers: Map<string, (req: unknown, extra: unknown) => Promise<unknown>> }
         }
@@ -416,17 +416,17 @@ describe('buildMcpServers', () => {
       'kb-selected'
     ])
 
-    expect(await cherryToolNames(servers)).toContain('kb_search')
-    expect(await cherryToolNames(servers)).not.toContain('kb_search')
+    expect(await meacoworkToolNames(servers)).toContain('kb_search')
+    expect(await meacoworkToolNames(servers)).not.toContain('kb_search')
   })
 
-  it('re-reads knowledge bindings for an already-created cherry-tools server', async () => {
+  it('re-reads knowledge bindings for an already-created meacowork-tools server', async () => {
     const boundAgent = { id: 'agent-1', mcps: [], knowledgeBaseIds: ['kb_a'] } as unknown as AgentEntity
     mockGetAgent.mockReturnValueOnce(boundAgent).mockReturnValueOnce({ ...boundAgent, knowledgeBaseIds: [] })
     const servers = buildMcpServers(session, boundAgent, WITHOUT_HOST_TOOLS)
 
-    expect(await cherryToolNames(servers)).toContain('kb_read')
-    expect(await cherryToolNames(servers)).not.toContain('kb_read')
+    expect(await meacoworkToolNames(servers)).toContain('kb_read')
+    expect(await meacoworkToolNames(servers)).not.toContain('kb_read')
   })
 
   it('injects assistant file tools only for Cherry Assistant sessions', () => {

@@ -1,8 +1,10 @@
-import { Settings2, Terminal, ToolCase } from 'lucide-react'
+// import { Settings2, Terminal, ToolCase } from 'lucide-react'
+import { Plus, Settings2, Terminal, ToolCase } from 'lucide-react'
 import React, { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { Tooltip } from '@cherrystudio/ui'
+// import { Tooltip } from '@cherrystudio/ui'
+import { Button, Tooltip } from '@cherrystudio/ui'
 import { loggerService } from '@logger'
 import { AgentContextUsageSummary } from '@renderer/components/chat/agent/AgentContextUsageSummary'
 import { ContextUsageMeter } from '@renderer/components/chat/contextUsage'
@@ -76,6 +78,7 @@ import {
   resolveSendShortcut,
   resolveSteerShortcut
 } from '@renderer/utils/input'
+import { toComposerAttachments } from '@renderer/utils/message/composerAttachment'
 import type { ComposerAttachment } from '@renderer/utils/message/composerAttachment'
 import { resolveReasoningEffortForModel } from '@renderer/utils/model'
 import type { ComposerQueuedMessagePayload } from '@shared/ai/transport'
@@ -339,6 +342,8 @@ type Props = {
   isStreaming: boolean
   sendDisabled?: boolean
   compactWhenSingleLine?: boolean
+  attachmentOnly?: boolean
+  forceNarrowLayout?: boolean
   launchOptions?: AgentComposerLaunchOptions
 }
 
@@ -371,6 +376,7 @@ const AgentComposerRoot = ({
   isStreaming,
   sendDisabled = false,
   compactWhenSingleLine = false,
+  attachmentOnly = false,
   launchOptions,
   renderControls,
   forceNarrowLayout = false,
@@ -507,6 +513,7 @@ const AgentComposerRoot = ({
         isStreaming={isStreaming}
         sendDisabled={sendDisabled}
         compactWhenSingleLine={compactWhenSingleLine}
+        attachmentOnly={attachmentOnly}
         launchOptions={launchOptions}
         renderControls={renderControls}
         forceNarrowLayout={forceNarrowLayout}
@@ -552,6 +559,7 @@ interface InnerProps {
   isStreaming: boolean
   sendDisabled: boolean
   compactWhenSingleLine: boolean
+  attachmentOnly?: boolean
   launchOptions?: AgentComposerLaunchOptions
   renderControls: AgentComposerControlsRenderer
   forceNarrowLayout?: boolean
@@ -792,6 +800,7 @@ const AgentComposerInner = ({
   isStreaming,
   sendDisabled,
   compactWhenSingleLine,
+  attachmentOnly = false,
   launchOptions,
   renderControls,
   forceNarrowLayout = false,
@@ -1641,6 +1650,7 @@ const AgentComposerInner = ({
   const handleSendDraft = useCallback(
     async (draft: ComposerSerializedDraft, options?: { steer?: boolean }) => {
       if (sendDisabled) return
+      if (attachmentOnly && isStreaming) return
       if (directSendInFlightRef.current) return
       if (!model) {
         toast.error(t('code.model_required'))
@@ -1673,6 +1683,7 @@ const AgentComposerInner = ({
       }
     },
     [
+      attachmentOnly,
       buildQueuedPayload,
       clearCurrentDraft,
       enqueueFollowup,
@@ -1780,32 +1791,60 @@ const AgentComposerInner = ({
     ]
   )
 
-  const controlSlots = renderControls({
-    agent,
-    model,
-    workspace,
-    workspaceId,
-    workspaceWarning,
-    selectAgentLabel: t('chat.alerts.select_agent'),
-    selectModelLabel: t('button.select_model'),
-    selectWorkspaceLabel: t('agent.session.workspace_selector.placeholder'),
-    agentChanging,
-    showAgentControl,
-    showModelControl: !modelControlInSendAccessory,
-    toolShortcutsBeforeContextControls,
-    agentTriggerMode: canChangeAgent ? 'selector' : 'edit',
-    shouldAutoSelectCreatedAgent: true,
-    topBarPortalAvailable,
-    topBarPortalIconOnly,
-    canChangeModel,
-    onModelSelect: handleModelSelect,
-    modelFilter: agentModelFilter,
-    isModelDisabled,
-    renderQuickPanelShortcuts,
-    onAgentChange: handleAgentChange,
-    onWorkspaceChange,
-    workspaceChanging
-  })
+  const uploadScope = useRef(sessionId)
+  useEffect(() => {
+    uploadScope.current = sessionId
+    return () => {
+      uploadScope.current = ''
+    }
+  }, [sessionId])
+  const uploadFiles = async () => {
+    try {
+      const selected = await window.api.file.select({ properties: ['openFile', 'multiSelections'] })
+      if (selected && uploadScope.current === sessionId)
+        setFiles([...filesRef.current, ...toComposerAttachments(selected)])
+    } catch (error) {
+      logger.error('Failed to select industrial video attachments', error as Error)
+      toast.error(error instanceof Error ? error.message : String(error))
+    }
+  }
+  const attachmentControl = () => (
+    <Button variant="ghost" size="icon" aria-label={t('industrial_video.upload')} onClick={() => void uploadFiles()}>
+      <Plus size={18} />
+    </Button>
+  )
+
+  const controlSlots = attachmentOnly
+    ? {
+        renderLeftControls: attachmentControl,
+        renderCompactControls: attachmentControl
+      }
+    : renderControls({
+        agent,
+        model,
+        workspace,
+        workspaceId,
+        workspaceWarning,
+        selectAgentLabel: t('chat.alerts.select_agent'),
+        selectModelLabel: t('button.select_model'),
+        selectWorkspaceLabel: t('agent.session.workspace_selector.placeholder'),
+        agentChanging,
+        showAgentControl,
+        showModelControl: !modelControlInSendAccessory,
+        toolShortcutsBeforeContextControls,
+        agentTriggerMode: canChangeAgent ? 'selector' : 'edit',
+        shouldAutoSelectCreatedAgent: true,
+        topBarPortalAvailable,
+        topBarPortalIconOnly,
+        canChangeModel,
+        onModelSelect: handleModelSelect,
+        modelFilter: agentModelFilter,
+        isModelDisabled,
+        renderQuickPanelShortcuts,
+        onAgentChange: handleAgentChange,
+        onWorkspaceChange,
+        workspaceChanging
+      })
 
   const sendAccessory: ComposerSurfaceProps['sendAccessory'] = (
     <>
@@ -1858,10 +1897,13 @@ const AgentComposerInner = ({
           onTokensChange={handleTokensChange}
           resolveKnowledgeBaseMarker={resolveKnowledgeBaseMarker}
           resolveSkillMarker={resolveSkillMarker}
-          placeholder={placeholderText}
+          // placeholder={placeholderText}
+          placeholder={attachmentOnly ? '补充要求或回复确认,输入框的"+"可继续添加文件...' : placeholderText}
           sendMessageShortcut={sendMessageShortcut}
-          steerShortcut={isStreaming ? resolvedSteerShortcut : undefined}
+          // steerShortcut={isStreaming ? resolvedSteerShortcut : undefined}
+          steerShortcut={isStreaming && !attachmentOnly ? resolvedSteerShortcut : undefined}
           sendDisabled={
+            (attachmentOnly && isStreaming) ||
             sendDisabled ||
             isDirectSending ||
             hasPendingReference ||
@@ -1872,7 +1914,8 @@ const AgentComposerInner = ({
           sendBlockedReason={
             sendDisabled || isDirectSending || hasPendingReference ? t('common.loading') : missingModelMessage
           }
-          isLoading={isStreaming}
+          // isLoading={isStreaming}
+          isLoading={attachmentOnly ? false : isStreaming}
           onSendDraft={handleSendDraft}
           editingState={
             launchOptions?.editing ? { ...launchOptions.editing, cancelDisabled: isDirectSending } : undefined
@@ -1905,12 +1948,14 @@ const AgentComposerInner = ({
               ) : undefined}
             </>
           }
-          supportedExts={supportedExts}
+          // supportedExts={supportedExts}
+          supportedExts={attachmentOnly ? ['*'] : supportedExts}
           setFiles={setFiles}
           filesCount={files.length}
           isExpanded={isExpanded}
           onExpandedChange={setIsExpanded}
-          quickPanelEnabled={config.enableQuickPanel ?? true}
+          // quickPanelEnabled={config.enableQuickPanel ?? true}
+          quickPanelEnabled={attachmentOnly ? false : (config.enableQuickPanel ?? true)}
           enableDragDrop={config.enableDragDrop ?? true}
           enableSpellCheck={enableSpellCheck}
           fontSize={fontSize}
@@ -1925,7 +1970,8 @@ const AgentComposerInner = ({
           rootPanelLeadingItems={rootPanelNewSessionItems}
           onRootPanelOpen={handleRootPanelOpen}
           onToolLauncherSelect={(launcher, options) => dispatchLauncher(launcher, options)}
-          sendAccessory={sendAccessory}
+          // sendAccessory={sendAccessory}
+          sendAccessory={attachmentOnly ? undefined : sendAccessory}
           compactWhenSingleLine={compactWhenSingleLine}
           deferQuickPanel={deferQuickPanel}
           {...controlSlots}

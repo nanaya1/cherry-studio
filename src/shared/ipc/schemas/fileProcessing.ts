@@ -43,6 +43,11 @@ const startJobInputSchema = z
 // ── Request: renderer→main calls (zod values, always parsed) ──
 export const fileProcessingRequestSchemas = {
   'file_processing.start_job': defineRoute({ input: startJobInputSchema, output: JobSnapshotSchema }),
+  // MEA:industrial-video 解析任务生命周期仍通过正规 IPC 校验。
+  'file_processing.cancel_job': defineRoute({
+    input: z.object({ jobId: z.string().trim().min(1) }).strict(),
+    output: z.object({ outcome: z.enum(['cancelled', 'timed-out', 'not-cancellable']) }).strict()
+  }),
   'file_processing.list_available_processors': defineRoute({
     input: z.void(),
     output: ListAvailableFileProcessorsResultSchema

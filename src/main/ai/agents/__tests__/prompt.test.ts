@@ -130,15 +130,15 @@ describe('PromptBuilder', () => {
     const { context: result } = await builder.buildPromptParts(posix('/workspace'))
 
     // The autonomy / memory-handbook / web-search handbook headings and their
-    // tool-strategy text ship lazily via the `cherry-tool-guide` builtin skill,
+    // tool-strategy text ship lazily via the `meacowork-tool-guide` builtin skill,
     // not baked into every prompt.
     expect(result).not.toContain('## Autonomy Tools')
     expect(result).not.toContain('## Agent Memory')
     expect(result).not.toContain('## Web Search Strategy')
-    expect(result).not.toContain('mcp__cherry-tools__cron')
-    expect(result).not.toContain('mcp__cherry-tools__notify')
-    expect(result).not.toContain('mcp__cherry-tools__web_search')
-    expect(result).not.toContain('mcp__cherry-tools__web_fetch')
+    expect(result).not.toContain('mcp__meacowork-tools__cron')
+    expect(result).not.toContain('mcp__meacowork-tools__notify')
+    expect(result).not.toContain('mcp__meacowork-tools__web_search')
+    expect(result).not.toContain('mcp__meacowork-tools__web_fetch')
 
     // The runtime storage contract stays: the Memories section and its memory
     // safety boundaries must survive the handbook removal.

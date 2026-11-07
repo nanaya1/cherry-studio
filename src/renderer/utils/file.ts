@@ -89,7 +89,8 @@ export function removeSpecialCharactersForFileName(str: string): string {
  */
 export async function isSupportedFile(filePath: string, supportExts: Set<string>): Promise<boolean> {
   try {
-    if (supportExts.has(getFileExtension(filePath))) {
+    // 原条件：supportExts.has(getFileExtension(filePath))；仅显式 '*' 放开选入，不承诺解析。
+    if (supportExts.has('*') || supportExts.has(getFileExtension(filePath))) {
       return true
     }
 

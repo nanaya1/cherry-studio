@@ -43,7 +43,7 @@ import { skillService } from '@main/ai/skills/SkillService'
 import {
   findBuiltinToolPolicy,
   listBuiltinToolPolicies,
-  toCherryBuiltinRuntimeName,
+  toMeacoworkBuiltinRuntimeName,
   toMcpRuntimeName
 } from '@main/ai/toolApproval/builtinToolPolicy'
 import { toolApprovalRegistry } from '@main/ai/toolApproval/ToolApprovalRegistry'
@@ -60,7 +60,7 @@ import { claudeToolRequiresUserInteraction } from '@shared/ai/claudecode/toolReg
 import type { AgentEntity } from '@shared/data/api/schemas/agents'
 import type { AgentSessionEntity } from '@shared/data/api/schemas/agentSessions'
 import type { Provider } from '@shared/data/types/provider'
-import type { CherryToolMeta } from '@shared/data/types/uiParts'
+import type { MeacoworkToolMeta } from '@shared/data/types/uiParts'
 import { isExternalCliProvider } from '@shared/utils/provider'
 
 import { AgentsMdLoader } from './AgentsMdLoader'
@@ -92,6 +92,30 @@ const sessionState = () => application.get('ClaudeCodeSessionStateService')
 
 const OUT_OF_TURN_APPROVAL_DENIAL =
   'This tool call arrived after its turn had already ended, so no one can approve it. Request it again in your next turn if you still need it.'
+// 仅工业视频会话的准备及成品下载免逐次授权；生成及未来新增工具不自动放行。
+// 启动生成也默认确认，脚本与分镜审核仍由服务端校验。
+const INDUSTRIAL_VIDEO_PREPARATION_TOOLS = new Set(
+  [
+    'ivideo_run_create',
+    'ivideo_parse',
+    'ivideo_context',
+    'ivideo_storyboard_get',
+    'ivideo_storyboard_submit',
+    'ivideo_review_snapshot_get',
+    'ivideo_status',
+    'ivideo_estimate',
+    'ivideo_download',
+    'ivideo_start'
+  ].map((toolName) => `mcp__meacowork-tools__${toolName}`)
+)
+
+const INDUSTRIAL_VIDEO_REVIEW_QUESTION = '脚本与分镜是否确认？'
+const INDUSTRIAL_VIDEO_REVIEW_APPROVE = '脚本与分镜没问题，开始生成视频'
+
+function normalizeIndustrialVideoReviewText(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  return value.replaceAll('?', '？').replaceAll(',', '，').replaceAll(/\s+/g, '')
+}
 
 // Claude has no cleanup-off value while transcript persistence remains enabled.
 // Cherry owns transcript retention through Agent Session purge and orphan reconciliation.
@@ -486,13 +510,13 @@ async function buildToolPermissions(
   const approvalRequiredTools = approvalRequiredRuntimeNames(mountedServers)
 
   const toolPolicySnapshot = await sessionState().ensureToolPolicySnapshot(session.id, agent, {
-    // cherry-tools is injected for every session. Auto-allowing these explicit tools (no per-call
+    // meacowork-tools is injected for every session. Auto-allowing these explicit tools (no per-call
     // approval) is a deliberate decision (matches feat/chat-page): the READ tools have no side
     // effects in the main process — web_search/web_fetch read the network,
     // kb_search/kb_read/kb_list read the user's knowledge bases, report_artifacts only records a
     // declaration. The autonomy tools (cron/notify/config) also stay auto-approved — they were
     // blanket-allowed as the standalone `cherry` server before the merge. Keep this an explicit
-    // allowlist so a future cherry-tools addition does not become auto-approved by prefix.
+    // allowlist so a future meacowork-tools addition does not become auto-approved by prefix.
     autoAllowRuntimeNames: listBuiltinToolPolicies({ approval: 'auto', mountedServers }).map(toMcpRuntimeName),
     // Side-effecting and local-data-reading built-in tools must still prompt for approval.
     autoAllowRuntimeNameExceptions: approvalRequiredTools,
@@ -530,7 +554,75 @@ async function buildToolPermissions(
       return { behavior: 'deny', message: HEADLESS_INTERACTIVE_TOOL_DENIAL }
     }
 
+    const questions = Array.isArray(input.questions) ? input.questions : []
+    const firstQuestion = questions[0]
+    let trustedContext: Record<string, unknown> | undefined
+    if (
+      toolName === ASK_USER_QUESTION_TOOL_NAME &&
+      session.featureKind === 'industrial-video' &&
+      firstQuestion &&
+      typeof firstQuestion === 'object' &&
+      !Array.isArray(firstQuestion) &&
+      normalizeIndustrialVideoReviewText((firstQuestion as Record<string, unknown>).question) ===
+        normalizeIndustrialVideoReviewText(INDUSTRIAL_VIDEO_REVIEW_QUESTION)
+    ) {
+      const industrialVideoService = application.get('IndustrialVideoService')
+      const confirmed = industrialVideoService.getConfirmedReview({ sessionId: session.id })
+      const record = industrialVideoService.getRecords({ sessionId: session.id })
+      if (confirmed && record?.run === confirmed.run) {
+        return {
+          behavior: 'allow',
+          updatedInput: {
+            ...input,
+            answers: {
+              [INDUSTRIAL_VIDEO_REVIEW_QUESTION]:
+                `${INDUSTRIAL_VIDEO_REVIEW_APPROVE}\n\n` +
+                `系统可信审核已通过（审核版本：${confirmed.reviewVersion}）。` +
+                // '请继续调用 ivideo_estimate，不要再次询问脚本与分镜确认。'
+                // '不要调用费用预估；等待用户单独确认开始生成，不要自动生成，也不要再次询问脚本与分镜确认。'
+                '不要调用费用预估；保持制作参数与已审核分镜不变，立即调用 ivideo_start 启动视频生成，不要等待单独确认，也不要再次询问脚本与分镜确认。'
+            }
+          }
+        }
+      }
+      const reviewedSnapshot = industrialVideoService.getPendingReviewSnapshot({ sessionId: session.id })
+      if (!record?.run || !reviewedSnapshot || record.run !== reviewedSnapshot.run) {
+        logger.warn('Industrial-video review question has no bindable snapshot', {
+          sessionId: session.id,
+          hasRecordRun: Boolean(record?.run),
+          hasReviewedSnapshot: Boolean(reviewedSnapshot),
+          runMatches: Boolean(record?.run && reviewedSnapshot && record.run === reviewedSnapshot.run)
+        })
+        return {
+          behavior: 'deny',
+          message:
+            '当前没有可绑定的脚本与分镜审核版本。请先调用 ivideo_review_snapshot_get 重新读取审核快照，再发起一次确认；不要重复当前确认问题。'
+        }
+      }
+      trustedContext = {
+        kind: 'industrial-video-review',
+        run: reviewedSnapshot.run,
+        reviewVersion: reviewedSnapshot.reviewVersion
+      }
+      logger.info('Binding industrial-video review snapshot to approval', {
+        sessionId: session.id,
+        toolUseId: opts.toolUseID,
+        run: reviewedSnapshot.run,
+        reviewVersion: reviewedSnapshot.reviewVersion
+      })
+    }
+
     const access = snapshot.resolve(toolName, input)
+    if (
+      session.featureKind === 'industrial-video' &&
+      mountedServers.has('meacowork-tools') &&
+      INDUSTRIAL_VIDEO_PREPARATION_TOOLS.has(toolName) &&
+      !snapshot.isDisabled(toolName) &&
+      opts.matchedAskRule === undefined &&
+      !approvalHoldsInThisMode
+    ) {
+      return { behavior: 'allow', updatedInput: input }
+    }
     // AskUserQuestion produces user-authored tool input; it is not an operation that a permission
     // mode can meaningfully approve on the user's behalf. Keep it on the response path even when
     // bypassPermissions marks every ordinary tool as auto-approved.
@@ -588,6 +680,7 @@ async function buildToolPermissions(
         toolCallId: opts.toolUseID,
         toolName,
         originalInput: input,
+        trustedContext,
         presentation,
         signal: opts.signal,
         resolve: (decision) => resolve(decisionToPermissionResult(decision, input))
@@ -600,7 +693,10 @@ async function buildToolPermissions(
         input,
         presentation,
         providerMetadata: {
-          cherry: { transport: AGENT_RUNTIME_CAPABILITIES['claude-code'].transport, toolName } satisfies CherryToolMeta
+          cherry: {
+            transport: AGENT_RUNTIME_CAPABILITIES['claude-code'].transport,
+            toolName
+          } satisfies MeacoworkToolMeta
         }
       })
     })
@@ -640,7 +736,7 @@ export async function buildSystemPrompt(
 ): Promise<ClaudeCodeSettings['systemPrompt']> {
   const canReadAllKnowledgeBases = resolveAgentCapabilities(agent).allKnowledgeBases
   const unavailableTools = new Set(disallowedTools)
-  const isLookupEnabled = (toolName: string) => !unavailableTools.has(toCherryBuiltinRuntimeName(toolName))
+  const isLookupEnabled = (toolName: string) => !unavailableTools.has(toMeacoworkBuiltinRuntimeName(toolName))
   const citationsGuidance = buildCitationsGuidance({
     web: isLookupEnabled(WEB_SEARCH_TOOL_NAME) || isLookupEnabled(WEB_FETCH_TOOL_NAME),
     kb:
@@ -675,8 +771,8 @@ export async function buildSystemPrompt(
 
 /**
  * Auto-approve allowlist for injected built-in MCP servers, so the
- * cherry-tools/agent-memory/assistant tools pass without per-call approval.
- * The auto-approved cherry-tools and assistant tools are listed explicitly (not a wildcard) so the
+ * meacowork-tools/agent-memory/assistant tools pass without per-call approval.
+ * The auto-approved meacowork-tools and assistant tools are listed explicitly (not a wildcard) so the
  * sensitive tools (mutating kb_manage, local-data-reading diagnose) are excluded from the SDK
  * pre-approval and routed through per-call approval via canUseTool.
  */

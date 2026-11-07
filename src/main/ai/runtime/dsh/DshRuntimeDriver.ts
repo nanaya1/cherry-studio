@@ -17,7 +17,7 @@ import type {
   AgentSessionRuntimeDriver,
   OrphanSessionReclaimOptions
 } from '../types'
-import { buildDshCherryToolName, DSH_AUTO_APPROVED_BRIDGED_TOOLS } from './DshCherryToolBridge'
+import { buildDshMeacoworkToolName, DSH_AUTO_APPROVED_BRIDGED_TOOLS } from './DshMeacoworkToolBridge'
 import { forkDshSession } from './dshFork'
 import { DshRuntimeConnection } from './DshRuntimeConnection'
 import { parseDshForkCheckpoint } from './forkCheckpoint'
@@ -75,7 +75,7 @@ export class DshRuntimeDriver implements AgentSessionRuntimeDriver {
       const server = mcpServerService.findByIdOrName(idOrName)
       if (!server) return []
       return catalog.listTools(server.id, { includeDisabled: false }).map((tool) => {
-        const id = buildDshCherryToolName(server.name, tool.name)
+        const id = buildDshMeacoworkToolName(server.name, tool.name)
         return {
           id,
           name: tool.name,

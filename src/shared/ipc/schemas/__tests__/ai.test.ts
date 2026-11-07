@@ -26,6 +26,24 @@ describe('ai IPC schemas — uniqueModelId validation', () => {
     expect(genText.safeParse({ prompt: 'hi' }).success).toBe(true)
   })
 
+  it('accepts one-shot UI messages so renderer attachments reach main for file routing', () => {
+    expect(
+      genText.safeParse({
+        uniqueModelId: 'openai::gpt-4o',
+        uiMessages: [
+          {
+            id: 'message-1',
+            role: 'user',
+            parts: [
+              { type: 'text', text: '分析资料' },
+              { type: 'file', mediaType: 'text/plain', url: 'file:///tmp/manual.txt', filename: 'manual.txt' }
+            ]
+          }
+        ]
+      }).success
+    ).toBe(true)
+  })
+
   it('validates the nested payload uniqueModelId for ai.image.generate', () => {
     const input = (uniqueModelId: string) => ({
       requestId: 'r1',

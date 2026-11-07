@@ -26,14 +26,16 @@ import type { McpToolResponse, NormalToolResponse } from '@renderer/types/mcpToo
 import type { McpTool } from '@renderer/types/tool'
 import { SESSION_CREATE_TOOL_NAME } from '@shared/ai/agentSessionDelivery'
 import { PROVIDER_WEB_SEARCH_TOOL_NAME } from '@shared/ai/builtinTools'
+import { normalizeMeacoworkToolRuntimeName, toMeacoworkToolRuntimeName } from '@shared/ai/meacoworkTools'
 
 import { PlaceholderShimmerText } from '../blocks/PlaceholderShimmerText'
 import { useOptionalMessageListUi } from '../MessageListProvider'
 import { AgentToolsType, TO_MARKDOWN_RUNTIME_TOOL_NAME } from './shared/agentToolTypes'
 import { type ToolStatus, ToolStatusIndicator, useIsStreaming } from './shared/GenericTools'
+import { getMcpToolRuntimeName, useToolDisplayName } from './shared/ToolDisplayNames'
 
 type Translate = (key: string, options?: Record<string, string>) => string
-const SESSION_CREATE_RUNTIME_TOOL_NAME = `mcp__cherry-tools__${SESSION_CREATE_TOOL_NAME}`
+const SESSION_CREATE_RUNTIME_TOOL_NAME = toMeacoworkToolRuntimeName(SESSION_CREATE_TOOL_NAME)
 export interface ToolActivity {
   label: string
   description?: string
@@ -93,10 +95,11 @@ export const TOOL_HEADER_UI: Record<string, { icon: ReactNode; labelKey?: string
   [TO_MARKDOWN_RUNTIME_TOOL_NAME]: { icon: <FileType size={14} />, labelKey: 'message.tools.labels.toMarkdown' }
 }
 
-const getAgentToolIcon = (toolName: string): ReactNode => TOOL_HEADER_UI[toolName]?.icon ?? <Wrench size={14} />
+const getAgentToolIcon = (toolName: string): ReactNode =>
+  TOOL_HEADER_UI[normalizeMeacoworkToolRuntimeName(toolName)]?.icon ?? <Wrench size={14} />
 
 const getAgentToolLabel = (toolName: string, t: Translate): string => {
-  const labelKey = TOOL_HEADER_UI[toolName]?.labelKey
+  const labelKey = TOOL_HEADER_UI[normalizeMeacoworkToolRuntimeName(toolName)]?.labelKey
   return labelKey ? t(labelKey) : toolName
 }
 
@@ -610,6 +613,7 @@ const McpToolHeader: FC<McpToolHeaderProps> = ({
   const { t } = useTranslation()
   const { isToolAutoApproved } = useOptionalMessageListUi() ?? {}
   const autoApproved = isToolAutoApproved?.(tool) ?? false
+  const displayName = useToolDisplayName(getMcpToolRuntimeName(tool))
   const isIconBreathing = variant === 'collapse-label' && isActiveStatus(status)
 
   return (
@@ -620,11 +624,13 @@ const McpToolHeader: FC<McpToolHeaderProps> = ({
         </span>
         {shimmer ? (
           <PlaceholderShimmerText className="name min-w-0 max-w-full truncate">
-            {tool.serverName} : {tool.name}
+            {/* {tool.serverName} : {tool.name} */}
+            {displayName ?? `${tool.serverName} : ${tool.name}`}
           </PlaceholderShimmerText>
         ) : (
           <span className="name min-w-0 max-w-full truncate">
-            {tool.serverName} : {tool.name}
+            {/* {tool.serverName} : {tool.name} */}
+            {displayName ?? `${tool.serverName} : ${tool.name}`}
           </span>
         )}
         {autoApproved && (

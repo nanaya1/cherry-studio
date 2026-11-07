@@ -35,8 +35,8 @@ const policy = (overrides: Partial<BridgePolicy> = {}): BridgePolicy => ({
 const planPolicy = (overrides: Partial<BridgePolicy> = {}): BridgePolicy =>
   policy({
     permissionMode: 'plan',
-    autoApprovedTools: ['subagent', 'mcp__cherry-tools__web_search'],
-    planSafeTools: ['todo_write', 'exit_plan_mode', 'list_agents', 'mcp__cherry-tools__web_search'],
+    autoApprovedTools: ['subagent', 'mcp__meacowork-tools__web_search'],
+    planSafeTools: ['todo_write', 'exit_plan_mode', 'list_agents', 'mcp__meacowork-tools__web_search'],
     ...overrides
   })
 
@@ -137,10 +137,10 @@ describe('decideToolCall', () => {
       'approval-required first-party tool allows (bypass is the explicit opt-out of per-call approval)',
       policy({
         permissionMode: 'bypassPermissions',
-        autoApprovedTools: ['mcp__cherry-tools__kb_manage'],
-        approvalRequiredTools: ['mcp__cherry-tools__kb_manage']
+        autoApprovedTools: ['mcp__meacowork-tools__kb_manage'],
+        approvalRequiredTools: ['mcp__meacowork-tools__kb_manage']
       }),
-      'mcp__cherry-tools__kb_manage',
+      'mcp__meacowork-tools__kb_manage',
       {},
       'allow'
     ],
@@ -149,10 +149,10 @@ describe('decideToolCall', () => {
       'non-bypassable delegation still asks',
       policy({
         permissionMode: 'bypassPermissions',
-        approvalRequiredTools: ['mcp__cherry-tools__session_send'],
-        nonBypassableApprovalTools: ['mcp__cherry-tools__session_send']
+        approvalRequiredTools: ['mcp__meacowork-tools__session_send'],
+        nonBypassableApprovalTools: ['mcp__meacowork-tools__session_send']
       }),
-      'mcp__cherry-tools__session_send',
+      'mcp__meacowork-tools__session_send',
       {},
       'ask'
     ],
@@ -160,18 +160,18 @@ describe('decideToolCall', () => {
       'default',
       'approval-required beats auto-approval outside bypass',
       policy({
-        autoApprovedTools: ['mcp__cherry-tools__kb_manage'],
-        approvalRequiredTools: ['mcp__cherry-tools__kb_manage']
+        autoApprovedTools: ['mcp__meacowork-tools__kb_manage'],
+        approvalRequiredTools: ['mcp__meacowork-tools__kb_manage']
       }),
-      'mcp__cherry-tools__kb_manage',
+      'mcp__meacowork-tools__kb_manage',
       {},
       'ask'
     ],
     [
       'default',
       'auto-approved first-party tool allows',
-      policy({ autoApprovedTools: ['mcp__cherry-tools__web_search'] }),
-      'mcp__cherry-tools__web_search',
+      policy({ autoApprovedTools: ['mcp__meacowork-tools__web_search'] }),
+      'mcp__meacowork-tools__web_search',
       {},
       'allow'
     ],
@@ -179,10 +179,10 @@ describe('decideToolCall', () => {
       'default',
       'disabled beats first-party auto approval',
       policy({
-        disabledTools: ['mcp__cherry-tools__web_search'],
-        autoApprovedTools: ['mcp__cherry-tools__web_search']
+        disabledTools: ['mcp__meacowork-tools__web_search'],
+        autoApprovedTools: ['mcp__meacowork-tools__web_search']
       }),
-      'mcp__cherry-tools__web_search',
+      'mcp__meacowork-tools__web_search',
       {},
       'deny'
     ],
@@ -219,7 +219,7 @@ describe('decideToolCall', () => {
       ['read outside the roots denies (never asks)', 'read', { file_path: path.join(outside, 'secret.txt') }, 'deny'],
       ['plan-safe builtin allows', 'todo_write', { todos: [] }, 'allow'],
       ['exit_plan_mode allows', 'exit_plan_mode', { plan: '# P' }, 'allow'],
-      ['auto-approved bridged tool listed plan-safe allows', 'mcp__cherry-tools__web_search', {}, 'allow'],
+      ['auto-approved bridged tool listed plan-safe allows', 'mcp__meacowork-tools__web_search', {}, 'allow'],
       ['edit denies', 'edit', { file_path: 'inside.txt' }, 'deny'],
       ['write denies', 'write', { file_path: 'sub/new.txt' }, 'deny'],
       ['bash denies', 'bash', { command: 'ls' }, 'deny'],
@@ -251,8 +251,8 @@ describe('decideDelegatedToolCall', () => {
     ['bypass still allows bash', policy({ permissionMode: 'bypassPermissions' }), 'bash', { command: 'ls' }, 'allow'],
     [
       'bypass lifts approval-required for the delegated child too (no dead-end deny)',
-      policy({ permissionMode: 'bypassPermissions', approvalRequiredTools: ['mcp__cherry-tools__kb_manage'] }),
-      'mcp__cherry-tools__kb_manage',
+      policy({ permissionMode: 'bypassPermissions', approvalRequiredTools: ['mcp__meacowork-tools__kb_manage'] }),
+      'mcp__meacowork-tools__kb_manage',
       {},
       'allow'
     ],
@@ -260,10 +260,10 @@ describe('decideDelegatedToolCall', () => {
       'non-bypassable delegation denies in the delegated child under bypass',
       policy({
         permissionMode: 'bypassPermissions',
-        approvalRequiredTools: ['mcp__cherry-tools__session_send'],
-        nonBypassableApprovalTools: ['mcp__cherry-tools__session_send']
+        approvalRequiredTools: ['mcp__meacowork-tools__session_send'],
+        nonBypassableApprovalTools: ['mcp__meacowork-tools__session_send']
       }),
-      'mcp__cherry-tools__session_send',
+      'mcp__meacowork-tools__session_send',
       {},
       'deny'
     ],

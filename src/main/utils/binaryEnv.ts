@@ -22,7 +22,7 @@ import { isWin } from '@main/core/platform'
  * on Windows, where the shims dir must stay ahead of the system PATH.
  *
  * The single home for this canonicalization: both `mergeBinaryExecutionEnv`
- * here and `shellEnv.appendCherryToolDirsToPath` run it back-to-back on the
+ * here and `shellEnv.appendMeacoworkToolDirsToPath` run it back-to-back on the
  * same PATH during shell capture, so they must agree byte-for-byte.
  */
 export function dedupePathSegments(segments: string[]): string[] {

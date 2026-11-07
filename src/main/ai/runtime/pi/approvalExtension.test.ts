@@ -303,7 +303,7 @@ describe('createPiApprovalExtension — policy + approval gate', () => {
   })
 
   it('runs an always-prompt tool with no approval under bypassPermissions', async () => {
-    const toolName = 'mcp__cherry-tools__kb_manage'
+    const toolName = 'mcp__meacowork-tools__kb_manage'
     const { handler, emitted } = buildGate({
       getPermissionMode: () => 'bypassPermissions',
       approvalRequiredTools: new Set([toolName])
@@ -313,7 +313,7 @@ describe('createPiApprovalExtension — policy + approval gate', () => {
   })
 
   it('runs an always-prompt tool unattended under bypassPermissions instead of failing closed', async () => {
-    const toolName = 'mcp__cherry-tools__kb_manage'
+    const toolName = 'mcp__meacowork-tools__kb_manage'
     const { handler, emitted } = buildGate({
       getPermissionMode: () => 'bypassPermissions',
       getInteractionState: () => ({ userResponse: 'unavailable' }),
@@ -326,7 +326,7 @@ describe('createPiApprovalExtension — policy + approval gate', () => {
   })
 
   it('still requests live approval for a non-bypassable delegation tool under bypassPermissions', async () => {
-    const toolName = 'mcp__cherry-tools__session_send'
+    const toolName = 'mcp__meacowork-tools__session_send'
     const { handler, emitted } = buildGate({
       getPermissionMode: () => 'bypassPermissions',
       approvalRequiredTools: new Set([toolName]),
@@ -341,7 +341,7 @@ describe('createPiApprovalExtension — policy + approval gate', () => {
   })
 
   it('blocks a non-bypassable delegation tool headlessly under bypassPermissions', async () => {
-    const toolName = 'mcp__cherry-tools__session_create'
+    const toolName = 'mcp__meacowork-tools__session_create'
     const { handler, emitted } = buildGate({
       getPermissionMode: () => 'bypassPermissions',
       getInteractionState: () => ({ userResponse: 'unavailable' }),
@@ -370,7 +370,7 @@ describe('createPiApprovalExtension — policy + approval gate', () => {
   })
 
   it('does not suggest bypass for an always-prompt tool in an unattended turn', async () => {
-    const toolName = 'mcp__cherry-tools__kb_manage'
+    const toolName = 'mcp__meacowork-tools__kb_manage'
     const { handler, emitted } = buildGate({
       getInteractionState: () => ({ userResponse: 'unavailable' }),
       approvalRequiredTools: new Set([toolName])
@@ -458,7 +458,7 @@ describe('createPiApprovalExtension — policy + approval gate', () => {
     })
 
     it('still gates an always-prompt tool', async () => {
-      const toolName = 'mcp__cherry-tools__kb_manage'
+      const toolName = 'mcp__meacowork-tools__kb_manage'
       const { handler, emitted } = buildAutoGate({ approvalRequiredTools: new Set([toolName]) })
       void handler(toolEvent(toolName, {}), extCtx)
       await flush()

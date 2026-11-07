@@ -519,8 +519,8 @@ export type { GenerateImageOutput, GenerateImageOutputItem } from './generateIma
 export { GENERATE_IMAGE_TOOL_NAME, generateImageOutputItemSchema, generateImageOutputSchema } from './generateImageTool'
 
 // ── agent autonomy tools (cron / notify / config) ────────────────
-// Hosted by the same in-process `cherry-tools` MCP server as the tools above. Their input schemas
-// are plain JSON Schema `Tool` definitions in `src/main/ai/mcp/servers/cherryAutonomyTools.ts`;
+// Hosted by the same in-process `meacowork-tools` MCP server as the tools above. Their input schemas
+// are plain JSON Schema `Tool` definitions in `src/main/ai/mcp/servers/meacoworkAutonomyTools.ts`;
 // only the names are shared (the approval policy references them).
 
 export const CRON_TOOL_NAME = 'cron'

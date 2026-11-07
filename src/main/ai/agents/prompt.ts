@@ -113,7 +113,7 @@ ${sections}`
  * whether the base should be the SDK preset or an explicit `system.md`, plus
  * separate Cherry-owned context (bootstrap instructions when needed, and the
  * agent data files SOUL.md / USER.md / FACT.md). Tool-usage guidance (autonomy, memory, web) is not
- * injected here — it ships lazily via the default-enabled `cherry-tool-guide`
+ * injected here — it ships lazily via the default-enabled `meacowork-tool-guide`
  * builtin skill.
  *
  * Memory files layout:

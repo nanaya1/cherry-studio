@@ -15,13 +15,14 @@ vi.mock('@renderer/components/chat/messages/blocks/ImageBlock', () => ({
 
 const { MessageChannelConfigTool } = await import('../MessageChannelConfigTool')
 
-function response(output: unknown): NormalToolResponse {
+function response(output: unknown, serverName = 'meacowork-tools'): NormalToolResponse {
+  const runtimeName = `mcp__${serverName}__config`
   return {
     id: 'config-call',
     toolCallId: 'config-call',
     tool: {
-      id: 'mcp__cherry-tools__config',
-      name: 'mcp__cherry-tools__config',
+      id: runtimeName,
+      name: runtimeName,
       type: 'mcp'
     },
     arguments: { action: 'add_channel', type: 'wechat', name: 'WeChat', auth_mode: 'qr' },
@@ -48,6 +49,16 @@ describe('MessageChannelConfigTool', () => {
       'data:image/png;base64,BASE64'
     )
     expect(screen.getByTestId('tool-details')).not.toHaveTextContent('BASE64')
+  })
+
+  it('keeps rendering historical cherry-tools channel QR results', () => {
+    render(
+      <MessageChannelConfigTool
+        toolResponse={response({ content: [{ type: 'image', data: 'LEGACY', mimeType: 'image/png' }] }, 'cherry-tools')}
+      />
+    )
+
+    expect(screen.getByRole('img')).toHaveAttribute('src', 'data:image/png;base64,LEGACY')
   })
 
   it('uses the standard config tool renderer when no QR code is returned', () => {

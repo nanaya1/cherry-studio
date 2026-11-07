@@ -455,6 +455,7 @@ describe('app Sidebar', () => {
 
     expect(getSidebarProps().navigationEntries?.map((entry) => entry.label)).toEqual([
       'New task',
+      'industrial_video.title',
       'workspace.toolbox.title',
       'Skills & Connectors',
       'Scheduled Tasks'
@@ -674,6 +675,23 @@ describe('app Sidebar', () => {
 
     await user.click(screen.getByRole('button', { name: 'close-feedback' }))
     expect(screen.getByTestId('feedback-shell')).toHaveAttribute('data-open', 'false')
+  })
+
+  it('opens industrial video below New Task without persisting a sidebar favorite', () => {
+    render(<Sidebar />)
+    const navigationEntries = getSidebarProps().navigationEntries ?? []
+    const entry = navigationEntries.find((item) => item.key === 'workspace:industrial-video')
+    expect(navigationEntries.map((item) => item.key)).toEqual([
+      'workspace:new-task',
+      'workspace:industrial-video',
+      'workspace:toolbox',
+      'workspace:skills-connectors',
+      'workspace:scheduled-tasks'
+    ])
+    expect(entry).toBeDefined()
+    act(() => entry?.onOpen())
+    expect(mocks.updateTab).toHaveBeenCalledWith('chat', expect.objectContaining({ url: '/app/industrial-video' }))
+    expect(mocks.setSidebarFavorites).not.toHaveBeenCalled()
   })
 
   it('supplies sidebar entries in visible preference order', () => {

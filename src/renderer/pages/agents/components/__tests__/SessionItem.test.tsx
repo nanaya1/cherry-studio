@@ -38,6 +38,7 @@ vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string) =>
       ({
+        'industrial_video.title': 'Industrial video',
         'common.cancel': 'Cancel',
         'common.archive': 'Archive',
         'recycle_bin.move.confirm_action': 'Move to Recycle Bin',
@@ -100,6 +101,24 @@ sessionMenuActions.exportMenuOptions = {
 }
 
 describe('SessionItem', () => {
+  it('identifies video tasks even when the sidebar hides ordinary leading icons', () => {
+    const video = { ...session, featureKind: 'industrial-video' as const }
+    const Provider = ResourceList.Provider<AgentSessionEntity>
+    render(
+      <Provider items={[video]}>
+        <SessionItem
+          session={video}
+          reserveLeadingIconSlot={false}
+          sessionMenuActions={sessionMenuActions}
+          onDelete={vi.fn()}
+          onOpenRenameDialog={vi.fn()}
+          onPress={vi.fn()}
+        />
+      </Provider>
+    )
+    expect(screen.getByRole('img', { name: 'Industrial video' })).toBeInTheDocument()
+  })
+
   it('archives through the hover action without requesting permanent deletion', async () => {
     const user = userEvent.setup()
     const onDelete = vi.fn()

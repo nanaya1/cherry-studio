@@ -490,6 +490,24 @@ describe('MessagePartsRenderer', () => {
   })
 
   describe('leaf rendering', () => {
+    it('shows the user requirement and settings summary without exposing execution context', () => {
+      const parts: CherryMessagePart[] = [
+        { type: 'text', text: '生成用户操作视频' },
+        {
+          type: 'text',
+          text: '{"settings":{"duration":30}}',
+          providerMetadata: { cherry: { displayText: '视频设置：30 秒 · 16:9 · 1080P' } }
+        },
+        { type: 'text', text: '使用 ivideo_ 工具完成工作流', providerMetadata: { cherry: { displayText: '' } } }
+      ]
+      renderParts(parts, msg({ role: 'user' }))
+      expect(screen.getByText('生成用户操作视频')).toBeInTheDocument()
+      expect(screen.getByText('视频设置：30 秒 · 16:9 · 1080P')).toBeInTheDocument()
+      expect(screen.queryByText(/"settings"/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/ivideo_/)).not.toBeInTheDocument()
+      expect(parts[1]).toMatchObject({ text: '{"settings":{"duration":30}}' })
+    })
+
     it('does not rerender unrelated message content when another message becomes active', () => {
       const firstMessage = msg({ id: 'msg-1' })
       const secondMessage = msg({ id: 'msg-2' })

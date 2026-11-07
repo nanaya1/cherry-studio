@@ -12,6 +12,9 @@ export const agentSessionTable = sqliteTable(
     type: text({ enum: ['conversation', 'background'] })
       .notNull()
       .default('conversation'),
+    featureKind: text({ enum: ['general', 'industrial-video'] })
+      .notNull()
+      .default('general'),
     agentId: text().references(() => agentTable.id, { onDelete: 'set null' }),
     name: text().notNull(),
     // Whether the name was manually edited by user.

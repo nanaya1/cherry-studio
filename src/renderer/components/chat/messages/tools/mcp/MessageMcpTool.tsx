@@ -21,6 +21,7 @@ import { ArgKey, ArgsSection, ArgsSectionTitle, ArgsTable, ArgValue, ResponseSec
 import { getEffectiveStatus, SkeletonSpan, ToolStatusIndicator, TruncatedIndicator } from '../shared/GenericTools'
 import { ToolApprovalOutcome } from '../shared/ToolApprovalOutcome'
 import { ToolDisclosure, type ToolDisclosureItem } from '../shared/ToolDisclosure'
+import { getMcpToolRuntimeName, useToolDisplayName, useToolResultAttachments } from '../shared/ToolDisplayNames'
 import { truncateOutput } from '../shared/truncateOutput'
 
 interface Props {
@@ -51,6 +52,9 @@ const MessageMcpTool: FC<Props> = ({ toolResponse }) => {
 
   // Use the unified approval hook
   const { id, tool, status, response, partialArguments } = toolResponse
+  const runtimeName = getMcpToolRuntimeName(tool)
+  const displayName = useToolDisplayName(runtimeName)
+  const attachments = useToolResultAttachments()
   const approval = useToolApproval(toolResponse, tool)
   const autoApproved = isToolAutoApproved?.(tool) ?? false
   const isDone = status === 'done'
@@ -113,7 +117,8 @@ const MessageMcpTool: FC<Props> = ({ toolResponse }) => {
           <TitleContent>
             <ToolName className="min-w-0 items-center gap-1">
               <span className="truncate">
-                {tool.serverName} : {tool.name}
+                {/* {tool.serverName} : {tool.name} */}
+                {displayName ?? `${tool.serverName} : ${tool.name}`}
               </span>
             </ToolName>
             <TitleActions>
@@ -174,6 +179,7 @@ const MessageMcpTool: FC<Props> = ({ toolResponse }) => {
         items={getDisclosureItems()}
       />
       <ToolApprovalOutcome approval={toolResponse.approval} />
+      {isDone && !response?.isError && attachments?.(runtimeName, response)}
     </ToolContainer>
   )
 }

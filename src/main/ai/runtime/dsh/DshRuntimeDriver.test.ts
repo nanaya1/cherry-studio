@@ -58,8 +58,8 @@ describe('DshRuntimeDriver.listAvailableTools', () => {
     ])
   })
 
-  it('auto-approves safe Cherry tools but keeps sensitive Cherry tools prompt-gated', async () => {
-    mocks.findByIdOrName.mockReturnValue({ id: 'cherry-id', name: 'cherry-tools' })
+  it('auto-approves safe MEA Cowork tools but keeps sensitive MEA Cowork tools prompt-gated', async () => {
+    mocks.findByIdOrName.mockReturnValue({ id: 'cherry-id', name: 'meacowork-tools' })
     mocks.listTools.mockReturnValue([
       { name: 'web_search', description: 'Search the web' } as McpTool,
       { name: 'kb_manage', description: 'Manage knowledge' } as McpTool
@@ -67,8 +67,8 @@ describe('DshRuntimeDriver.listAvailableTools', () => {
 
     const tools = await new DshRuntimeDriver().listAvailableTools(['cherry-id'])
 
-    expect(tools.find((tool) => tool.id === 'mcp__cherry-tools__web_search')?.approval).toBe('auto')
-    expect(tools.find((tool) => tool.id === 'mcp__cherry-tools__kb_manage')?.approval).toBe('prompt')
+    expect(tools.find((tool) => tool.id === 'mcp__meacowork-tools__web_search')?.approval).toBe('auto')
+    expect(tools.find((tool) => tool.id === 'mcp__meacowork-tools__kb_manage')?.approval).toBe('prompt')
   })
 
   it('skips MCP server ids that no longer resolve', async () => {

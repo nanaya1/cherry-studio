@@ -19,13 +19,17 @@ type PendingApproval = {
   toolCallId: string
   toolName: string
   originalInput: Record<string, unknown>
+  trustedContext?: Record<string, unknown>
   presentation: 'stream' | 'message'
   resolve: (decision: DispatchDecision) => void
   signal?: AbortSignal
   abortListener?: () => void
 }
 
-type ApprovalRegistration = Pick<PendingApproval, 'sessionId' | 'toolCallId' | 'presentation'>
+type ApprovalRegistration = Pick<
+  PendingApproval,
+  'sessionId' | 'toolCallId' | 'toolName' | 'originalInput' | 'trustedContext' | 'presentation'
+>
 type PendingApprovalRegistration = Omit<PendingApproval, 'abortListener' | 'presentation'> & {
   presentation?: PendingApproval['presentation']
 }
@@ -77,6 +81,9 @@ class ToolApprovalRegistry {
     return {
       sessionId: entry.sessionId,
       toolCallId: entry.toolCallId,
+      toolName: entry.toolName,
+      originalInput: entry.originalInput,
+      trustedContext: entry.trustedContext,
       presentation: entry.presentation
     }
   }
@@ -91,6 +98,9 @@ class ToolApprovalRegistry {
     return {
       sessionId: entry.sessionId,
       toolCallId: entry.toolCallId,
+      toolName: entry.toolName,
+      originalInput: entry.originalInput,
+      trustedContext: entry.trustedContext,
       presentation: entry.presentation
     }
   }

@@ -871,7 +871,7 @@ describe('ClaudeCodeStreamAdapter', () => {
           type: 'mcp_tool_use',
           id: 'mcp-search',
           name: 'web_search',
-          server_name: 'cherry-tools',
+          server_name: 'meacowork-tools',
           input: { query: 'Cherry Studio' }
         }
       })
@@ -895,7 +895,7 @@ describe('ClaudeCodeStreamAdapter', () => {
       toolCallId: 'mcp-search',
       output: {
         content: results,
-        metadata: { type: 'mcp', name: 'web_search', serverName: 'cherry-tools', serverId: 'cherry-tools' }
+        metadata: { type: 'mcp', name: 'web_search', serverName: 'meacowork-tools', serverId: 'meacowork-tools' }
       }
     })
   })
@@ -911,7 +911,7 @@ describe('ClaudeCodeStreamAdapter', () => {
           type: 'mcp_tool_use',
           id: 'mcp-image',
           name: 'config',
-          server_name: 'cherry-tools',
+          server_name: 'meacowork-tools',
           input: {}
         }
       })
@@ -944,7 +944,7 @@ describe('ClaudeCodeStreamAdapter', () => {
           { type: 'text', text: 'QR code generated' },
           { type: 'image', data: 'iVBORw0KGgo=', mimeType: 'image/png' }
         ],
-        metadata: { type: 'mcp', serverName: 'cherry-tools', serverId: 'cherry-tools' }
+        metadata: { type: 'mcp', serverName: 'meacowork-tools', serverId: 'meacowork-tools' }
       }
     })
   })

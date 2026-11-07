@@ -1,4 +1,4 @@
-import type { EmbeddingModelUsage, LanguageModelUsage, ModelMessage } from 'ai'
+import type { EmbeddingModelUsage, LanguageModelUsage, ModelMessage, UIMessage } from 'ai'
 import * as z from 'zod'
 
 import { imageParamsSchema } from '@cherrystudio/provider-registry'
@@ -194,7 +194,9 @@ export const aiRequestSchemas = {
       serviceTier: ServiceTierSelectionSchema.optional(),
       system: z.string().optional(),
       prompt: z.string().optional(),
-      messages: z.array(z.custom<ModelMessage>()).optional()
+      messages: z.array(z.custom<ModelMessage>()).optional(),
+      // One-shot attachment calls keep UI message metadata until main has routed files.
+      uiMessages: z.array(z.custom<UIMessage>()).optional()
     }),
     output: z.object({ text: z.string(), usage: z.custom<LanguageModelUsage>().optional() })
   }),
@@ -324,6 +326,10 @@ export const aiRequestSchemas = {
   'ai.agent.create': defineRoute({
     input: CreateAgentCommandSchema,
     output: AgentEntitySchema
+  }),
+  'ai.agent.industrial_video_session.create': defineRoute({
+    input: z.strictObject({ modelId: UniqueModelIdSchema, agentType: AgentEntitySchema.shape.type }),
+    output: z.strictObject({ sessionId: z.string().min(1) })
   }),
   'ai.agent.restore': defineRoute({
     input: z.object({ agentId: z.string() }),

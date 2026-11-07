@@ -56,7 +56,7 @@ import {
   useMessageRenderConfig
 } from '../MessageListProvider'
 import {
-  isCherrySessionToolResponse,
+  isMeacoworkSessionToolResponse,
   isReportArtifactsToolResponse,
   MessageReportArtifacts,
   SessionResultCards,
@@ -685,6 +685,13 @@ function renderPart(
 
     case 'text': {
       const cherryMeta = getCherryMeta(part)
+      if (message.role === 'user' && cherryMeta?.displayText !== undefined) {
+        return cherryMeta.displayText ? (
+          <p key={partId} className="text-xs whitespace-pre-wrap text-muted-foreground">
+            {cherryMeta.displayText}
+          </p>
+        ) : null
+      }
       const references = cherryMeta?.references as ContentReference[] | undefined
       let converted = references ? referenceCitationsCache.get(references) : undefined
       if (references && !converted) {
@@ -1526,7 +1533,7 @@ const MessagePartsRendererContent = React.memo(function MessagePartsRendererCont
         ? []
         : buildToolRenderItems(partEntries, message.id, true)
             .map((item) => item.toolResponse)
-            .filter(isCherrySessionToolResponse),
+            .filter(isMeacoworkSessionToolResponse),
     [isActiveTurnProcessing, message.id, partEntries]
   )
   const nextReadOnlyFilePreviews = useMemo(() => getReadOnlyFileTokenPreviews(messageParts), [messageParts])

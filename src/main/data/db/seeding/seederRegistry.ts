@@ -9,6 +9,7 @@ import { DefaultAssistantSeeder } from './seeders/defaultAssistantSeeder'
 import { LegacyFileCleanupPolicySeeder } from './seeders/legacyFileCleanupPolicySeeder'
 import { LocalModelSeeder } from './seeders/LocalModelSeeder'
 import { LongTextPastePreferenceUpgradeSeeder } from './seeders/longTextPastePreferenceUpgradeSeeder'
+import { MeacoworkToolsProtocolUpgradeSeeder } from './seeders/meacoworkToolsProtocolUpgradeSeeder'
 import { MiniAppSeeder } from './seeders/miniAppSeeder'
 import { PreferenceSeeder } from './seeders/preferenceSeeder'
 import { PresetProviderSeeder } from './seeders/presetProviderSeeder'
@@ -25,6 +26,7 @@ import { XuelangDefaultModelSeeder } from './seeders/xuelangDefaultModelSeeder'
  */
 export const seeders: ISeeder[] = [
   new BrowserCapabilityUpgradeSeeder(),
+  new MeacoworkToolsProtocolUpgradeSeeder(),
   new LegacyFileCleanupPolicySeeder(),
   new XuelangDefaultModelSeeder(),
   new CherryAiDefaultModelSeeder(),

@@ -5,6 +5,8 @@ import { useTranslation } from 'react-i18next'
 
 import { Button, Kbd, Textarea } from '@cherrystudio/ui'
 import { loggerService } from '@logger'
+import { useChatLayoutMode } from '@renderer/components/chat/layout/ChatLayoutModeContext'
+import NarrowLayout, { NARROW_LAYOUT_SIDE_PADDING_PX } from '@renderer/components/chat/layout/NarrowLayout'
 import { getToolGroupIcon, getToolGroupSemanticTitle } from '@renderer/components/chat/messages/blocks/ToolBlockGroup'
 import { isValidAgentToolsType, renderTool, UnknownToolRenderer } from '@renderer/components/chat/messages/tools/agent'
 import { AgentToolsType } from '@renderer/components/chat/messages/tools/shared/agentToolTypes'
@@ -13,6 +15,7 @@ import { ToolDisclosure, type ToolDisclosureItem } from '@renderer/components/ch
 import type { ToolResponseLike } from '@renderer/components/chat/messages/tools/toolResponse'
 import type { MessageToolApprovalInput } from '@renderer/components/chat/messages/types'
 import Scrollbar from '@renderer/components/Scrollbar'
+import { usePreference } from '@renderer/data/hooks/usePreference'
 import { toast } from '@renderer/services/toast'
 import type { McpToolResponse, NormalToolResponse } from '@renderer/types/mcpTool'
 import { cn } from '@renderer/utils/style'
@@ -79,6 +82,7 @@ export function createPermissionRequestComposerOverride({
   return {
     id: `tool-permission:${request.approvalId}`,
     priority: 90,
+    placement: 'above',
     render: ({ className }) => (
       <PermissionRequestComposer request={request} onRespond={onRespond} className={className} />
     )
@@ -159,6 +163,8 @@ function PermissionPreviewHeader({ toolName, description }: { toolName: string; 
 }
 
 export default function PermissionRequestComposer({ request, onRespond, className }: PermissionRequestComposerProps) {
+  const [narrowMode] = usePreference('chat.narrow_mode')
+  const { railGutterPx } = useChatLayoutMode()
   const { t } = useTranslation()
   const [submittingApprovalId, setSubmittingApprovalId] = useState<string | null>(null)
   const [rejectionDraft, setRejectionDraft] = useState({ approvalId: request.approvalId, value: '' })
@@ -221,11 +227,16 @@ export default function PermissionRequestComposer({ request, onRespond, classNam
   useHotkeys('esc', () => void deny(), { preventDefault: true, ignoreEventWhen: isHandledElsewhere }, [deny])
 
   return (
-    <div
+    <NarrowLayout
       data-composer-viewport-inset-target=""
-      // pointer-events-auto: the composer dock stack is click-through; override
-      // composers re-enable interaction on their own root.
-      className={cn('pointer-events-auto relative z-2 flex flex-col px-4.5 pt-0 pb-4.5', className)}>
+      narrowMode={narrowMode}
+      withSidePadding
+      // 原 px-4.5 铺满布局停用，复用输入框的限宽和侧栏留白。
+      className={cn('pointer-events-auto relative z-2 flex flex-col pt-0 pb-3', className)}
+      style={{
+        paddingLeft: NARROW_LAYOUT_SIDE_PADDING_PX + railGutterPx,
+        paddingRight: NARROW_LAYOUT_SIDE_PADDING_PX + railGutterPx
+      }}>
       <div
         className="rounded-[17px] border-[0.5px] border-border p-2.5 shadow-[0_1px_5px_rgba(15,23,42,0.05)] backdrop-blur dark:shadow-[0_1px_5px_rgba(0,0,0,0.14)]"
         style={{ backgroundColor: 'color-mix(in srgb, var(--background) 88%, transparent)' }}>
@@ -288,6 +299,6 @@ export default function PermissionRequestComposer({ request, onRespond, classNam
           </Button>
         </div>
       </div>
-    </div>
+    </NarrowLayout>
   )
 }

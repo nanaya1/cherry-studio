@@ -316,6 +316,19 @@ function useAgentRightPaneRuntime(): AgentRightPaneRuntime {
   return value
 }
 
+export function useAgentFilePreviewActive(): boolean {
+  const fileState = use(AgentRightPaneFileStateContext)
+  const panelState = useRightPanelState()
+  return panelState.isActive('files') && Boolean(fileState?.previewFileSelection)
+}
+
+export function useAgentVideoFilePreviewActive(): boolean {
+  const fileState = use(AgentRightPaneFileStateContext)
+  const panelState = useRightPanelState()
+  const path = fileState?.previewFileSelection?.filePath
+  return panelState.isActive('files') && Boolean(path && /\.(mp4|webm|mov|m4v)$/i.test(path))
+}
+
 function useAgentRightPaneFileState(): AgentRightPaneFileState {
   const value = use(AgentRightPaneFileStateContext)
   if (!value) throw new Error('useAgentRightPaneFileState must be used within <AgentRightPane.Scope>')

@@ -3266,10 +3266,16 @@ export class AgentSessionRuntimeService extends BaseService {
       throw new Error(`Cannot create persistence listener without an active turn: ${entry.sessionId}`)
     }
     const { assistantMessageId, modelId } = currentTurn
-    const userText = extractMessageText(userMessage)
+    // const userText = extractMessageText(userMessage)
     const afterPersist = currentTurn.shouldAutoName
       ? async (finalMessage: CherryUIMessage) => {
-          await topicNamingService.maybeRenameAgentSession(entry.agentId, entry.sessionId, userText, finalMessage)
+          // await topicNamingService.maybeRenameAgentSession(entry.agentId, entry.sessionId, userText, finalMessage)
+          await topicNamingService.maybeRenameAgentSession(
+            entry.agentId,
+            entry.sessionId,
+            userMessage.data,
+            finalMessage
+          )
         }
       : undefined
     return new PersistenceListener({
@@ -3489,11 +3495,12 @@ function createSyntheticUserMessage(sessionId: string): AgentSessionMessageEntit
   }
 }
 
-function extractMessageText(message: AgentSessionMessageEntity): string {
-  return (
-    message.data?.parts
-      ?.filter((part): part is { type: 'text'; text: string } => part.type === 'text' && 'text' in part)
-      .map((part) => part.text)
-      .join('\n') ?? ''
-  )
-}
+// 命名直接传递消息元数据，停用丢失上下文标记的纯文本提取。
+// function extractMessageText(message: AgentSessionMessageEntity): string {
+//   return (
+//     message.data?.parts
+//       ?.filter((part): part is { type: 'text'; text: string } => part.type === 'text' && 'text' in part)
+//       .map((part) => part.text)
+//       .join('\n') ?? ''
+//   )
+// }

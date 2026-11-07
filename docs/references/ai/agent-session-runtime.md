@@ -12,7 +12,7 @@ sources:
   - src/main/ai/runtime/agentPrompt.ts
   - src/main/ai/toolApproval/userDataSqliteGuard.ts
   - src/main/ai/messages/readConversation.ts
-  - src/main/ai/mcp/servers/cherryAutonomyTools.ts
+  - src/main/ai/mcp/servers/meacoworkAutonomyTools.ts
   - packages/dsh-bridge/src/plugin.ts
 ---
 
@@ -92,7 +92,7 @@ The common materializer owns Cherry policy content, semantic authority, and the 
 5. context required when `system.md` replaces a native base;
 6. linked-channel security policy;
 7. citation markers for the lookup tools the runtime actually exposes;
-8. final-deliverable declaration through `mcp__cherry-tools__report_artifacts`;
+8. final-deliverable declaration through `mcp__meacowork-tools__report_artifacts`;
 9. the effective agent reply language (global `agent.language` default + per-agent `configuration.language` override, when set — otherwise no language constraint; `getEffectiveAgentLanguage` with `AgentLanguageSchema` single-line validation).
 
 Built-in Agent resolution and provisioning are part of this common path: an empty DB instruction field resolves the current localized bundled definition, the Assistant has a minimal fail-safe role if that bundle is unavailable, and persona/memory files are initialized under the Agent data directory before `PromptBuilder` reads them. A non-empty DB instruction remains user-owned. Prompt variables such as `{{username}}` and `{{model_name}}` are resolved identically for every runtime.
@@ -210,7 +210,7 @@ enters the runtime's process-local follow-up queue.
 
 ### Tool contract
 
-Each `cherry-tools` instance receives its trusted `agentId` and `sessionId` from `settingsBuilder`
+Each `meacowork-tools` instance receives its trusted `agentId` and `sessionId` from `settingsBuilder`
 and exposes the session tools below:
 
 - `session_list` — deterministically enumerate visible Sessions and filter by Agent;
@@ -645,7 +645,7 @@ Allowed in v1:
   duplicate normalized tool identity is different — it makes approval/routing
   ambiguous, so startup closes all bridge clients and fails materialization.
   The approval extension still distinguishes Cherry-owned
-  safe tools, Cherry tools that always require approval, and third-party MCP
+  safe tools, MEA Cowork tools that always require approval, and third-party MCP
   tools; `disabledTools` hard-blocks every class.
 - New pi agents start in `acceptEdits`: reads and writes inside the selected
   workspace and current agent data directory do not prompt repeatedly. Shell,

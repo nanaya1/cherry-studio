@@ -56,14 +56,14 @@ import { resolveDshBunRuntime } from './bunRuntime'
 import { buildDshCompositionYaml, resolveDshRuntimeBinPath } from './compositionBuilder'
 import { DshBridgeServer, type DshBridgeServerOptions } from './DshBridgeServer'
 import {
-  buildDshCherryToolBridge,
-  buildDshCherryToolName,
+  buildDshMeacoworkToolBridge,
+  buildDshMeacoworkToolName,
   DSH_APPROVAL_REQUIRED_BRIDGED_TOOLS,
   DSH_AUTO_APPROVED_BRIDGED_TOOLS,
   DSH_NON_BYPASSABLE_APPROVAL_BRIDGED_TOOLS,
-  type DshCherryToolBridge,
+  type DshMeacoworkToolBridge,
   warmDshMcpToolCatalogs
-} from './DshCherryToolBridge'
+} from './DshMeacoworkToolBridge'
 import { DshSubagentCoordinator, type DshSubagentSink } from './dshChildFlow'
 import {
   captureDshConnectionSnapshot,
@@ -129,7 +129,7 @@ export class DshRuntimeConnection implements AgentRuntimeConnection {
   })
   private readonly subagents: DshSubagentCoordinator
   private bridge?: DshBridgeServer
-  private toolBridge?: DshCherryToolBridge
+  private toolBridge?: DshMeacoworkToolBridge
   private traceRecorder?: DshTraceRecorder
   private traceContext?: AgentRuntimeTraceContext
   private client?: HarnessClient
@@ -339,12 +339,12 @@ export class DshRuntimeConnection implements AgentRuntimeConnection {
 
     const knowledgeBaseScope = resolveKnowledgeBaseScope(agent.knowledgeBaseIds, this.input.knowledgeBaseIds)
     const isToolEnabled = (serverName: string, toolName: string) =>
-      !this.disabledTools.has(buildDshCherryToolName(serverName, toolName))
+      !this.disabledTools.has(buildDshMeacoworkToolName(serverName, toolName))
     const citationsGuidance = buildCitationsGuidance({
-      web: isToolEnabled('cherry-tools', WEB_SEARCH_TOOL_NAME) || isToolEnabled('cherry-tools', WEB_FETCH_TOOL_NAME),
+      web: isToolEnabled('meacowork-tools', WEB_SEARCH_TOOL_NAME) || isToolEnabled('meacowork-tools', WEB_FETCH_TOOL_NAME),
       kb:
         (resolveAgentCapabilities(agent).allKnowledgeBases || knowledgeBaseScope.length > 0) &&
-        (isToolEnabled('cherry-tools', KB_SEARCH_TOOL_NAME) || isToolEnabled('cherry-tools', KB_READ_TOOL_NAME))
+        (isToolEnabled('meacowork-tools', KB_SEARCH_TOOL_NAME) || isToolEnabled('meacowork-tools', KB_READ_TOOL_NAME))
     })
     const prompt = await buildAgentRuntimePrompt({
       workspacePath,
@@ -387,7 +387,7 @@ export class DshRuntimeConnection implements AgentRuntimeConnection {
         browserEnabled: application.get('PreferenceService').get('app.browser.agent_control.enabled'),
         channelLinked: snapshot.linkedChannel !== null
       })
-      const toolBridge = await buildDshCherryToolBridge(
+      const toolBridge = await buildDshMeacoworkToolBridge(
         buildAgentMcpServers(
           session,
           agent,
@@ -755,7 +755,7 @@ export class DshRuntimeConnection implements AgentRuntimeConnection {
       this.bridge = undefined
       const toolBridge = this.toolBridge
       this.toolBridge = undefined
-      await toolBridge?.close().catch((error) => logger.warn('dsh Cherry tool bridge close failed', { error }))
+      await toolBridge?.close().catch((error) => logger.warn('dsh MEA Cowork tool bridge close failed', { error }))
       if (this.compositionPath) {
         await rm(this.compositionPath, { force: true }).catch(() => undefined)
         this.compositionPath = undefined

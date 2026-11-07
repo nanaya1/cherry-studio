@@ -76,7 +76,7 @@ const DSH_BUILTIN_COMMANDS = [
   { command: '/goal', description: 'Set or manage the session goal: [<objective>|edit <objective>|pause|resume|clear]' }
 ] as const satisfies readonly SlashCommand[]
 
-const dshCherryTools = () =>
+const dshMeacoworkTools = () =>
   claudeUserFacingTools()
     .filter((tool) => tool.name.startsWith('mcp__'))
     .map((tool) => ({
@@ -176,7 +176,7 @@ export const AGENT_RUNTIME_CAPABILITIES = {
         descriptionKey: `agent.tools.builtin.${tool.name}.description`,
         category: tool.category
       })),
-      ...dshCherryTools()
+      ...dshMeacoworkTools()
     ]
   }
 } as const satisfies Record<AgentType, AgentRuntimeCapabilities>

@@ -24,7 +24,7 @@ import type {
 } from '@cherrystudio/dsh-bridge'
 import { loggerService } from '@logger'
 import { toolApprovalRegistry } from '@main/ai/toolApproval/ToolApprovalRegistry'
-import type { CherryToolMeta } from '@shared/data/types/uiParts'
+import type { MeacoworkToolMeta } from '@shared/data/types/uiParts'
 
 import type { AgentRuntimeEvent } from '../types'
 import { loadDshSdkProtocol } from './dshSdk'
@@ -64,8 +64,8 @@ export interface DshBridgeServerOptions {
 
 /** macOS `sun_path` caps at ~104 chars, so the socket lives in tmpdir — NEVER under userData. */
 function createBridgeSocketPath(): string {
-  if (process.platform === 'win32') return `\\\\.\\pipe\\cherry-dsh-${randomUUID()}`
-  return path.join(os.tmpdir(), `cherry-dsh-${randomUUID().slice(0, 8)}.sock`)
+  if (process.platform === 'win32') return `\\\\.\\pipe\\meacowork-dsh-${randomUUID()}`
+  return path.join(os.tmpdir(), `meacowork-dsh-${randomUUID().slice(0, 8)}.sock`)
 }
 
 export class DshBridgeServer {
@@ -351,7 +351,7 @@ export class DshBridgeServer {
             toolName,
             input: { ...input },
             presentation,
-            providerMetadata: { cherry: { transport: DSH_TRANSPORT, toolName } satisfies CherryToolMeta }
+            providerMetadata: { cherry: { transport: DSH_TRANSPORT, toolName } satisfies MeacoworkToolMeta }
           }
         },
         { sessionId: ask.sessionId, seq: ask.sessionEventSeq }
@@ -413,7 +413,7 @@ export class DshBridgeServer {
             input: { ...input },
             presentation,
             providerMetadata: {
-              cherry: { transport: DSH_TRANSPORT, toolName: 'exit_plan_mode' } satisfies CherryToolMeta
+              cherry: { transport: DSH_TRANSPORT, toolName: 'exit_plan_mode' } satisfies MeacoworkToolMeta
             }
           }
         },

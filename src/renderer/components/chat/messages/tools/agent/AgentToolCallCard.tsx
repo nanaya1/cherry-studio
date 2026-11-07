@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { Button, Tooltip } from '@cherrystudio/ui'
 import { cn } from '@renderer/utils/style'
 import { SESSION_CREATE_TOOL_NAME, SESSION_SEND_TOOL_NAME } from '@shared/ai/agentSessionDelivery'
+import { normalizeMeacoworkToolRuntimeName, toMeacoworkToolRuntimeName } from '@shared/ai/meacoworkTools'
 
 import { useOptionalMessageListActions } from '../../MessageListProvider'
 import {
@@ -14,6 +15,7 @@ import {
 } from '../shared/agentToolTypes'
 import { type ToolStatus, ToolStatusIndicator } from '../shared/GenericTools'
 import type { ToolDisclosureItem } from '../shared/ToolDisclosure'
+import { useToolResultAttachments } from '../shared/ToolDisplayNames'
 import { extractToolErrorText } from '../toolError'
 import { AgentToolDisclosure, AgentToolDisclosureLabel } from './AgentToolDisclosure'
 import { SessionCreateTool } from './SessionCreateTool'
@@ -56,7 +58,7 @@ export function AgentToolCallCard({
   isStreaming = false,
   status,
   hasError = false,
-  isCherrySessionTool = false,
+  isMeacoworkSessionTool = false,
   openFlowOnClick = false,
   showInlineDetails = true
 }: {
@@ -67,22 +69,26 @@ export function AgentToolCallCard({
   isStreaming?: boolean
   status?: ToolStatus
   hasError?: boolean
-  isCherrySessionTool?: boolean
+  isMeacoworkSessionTool?: boolean
   openFlowOnClick?: boolean
   showInlineDetails?: boolean
 }) {
   const actions = useOptionalMessageListActions()
+  const renderAttachments = useToolResultAttachments()
   const { t } = useTranslation()
+  const normalizedToolName = toolName ? normalizeMeacoworkToolRuntimeName(toolName) : undefined
   const renderedItem =
-    isCherrySessionTool &&
-    (toolName === SESSION_CREATE_TOOL_NAME || toolName === `mcp__cherry-tools__${SESSION_CREATE_TOOL_NAME}`)
+    isMeacoworkSessionTool &&
+    (toolName === SESSION_CREATE_TOOL_NAME ||
+      normalizedToolName === toMeacoworkToolRuntimeName(SESSION_CREATE_TOOL_NAME))
       ? SessionCreateTool({ input, output, hasError, isStreaming, status })
-      : isCherrySessionTool &&
-          (toolName === SESSION_SEND_TOOL_NAME || toolName === `mcp__cherry-tools__${SESSION_SEND_TOOL_NAME}`)
+      : isMeacoworkSessionTool &&
+          (toolName === SESSION_SEND_TOOL_NAME ||
+            normalizedToolName === toMeacoworkToolRuntimeName(SESSION_SEND_TOOL_NAME))
         ? SessionSendTool({ input, output, hasError, isStreaming, status })
         : isValidAgentToolsType(toolName)
           ? renderTool(toolName, input ?? {}, output, hasError)
-          : toolName === TO_MARKDOWN_RUNTIME_TOOL_NAME
+          : normalizedToolName === TO_MARKDOWN_RUNTIME_TOOL_NAME
             ? ToMarkdownTool({ input, output })
             : UnknownToolRenderer({ toolName: toolName ?? 'Tool', input, output })
   const openToolFlow =
@@ -173,14 +179,17 @@ export function AgentToolCallCard({
     showInlineDetails && renderedItem.children !== undefined && renderedItem.children !== null
 
   return (
-    <AgentToolDisclosure
-      className="w-full max-w-full rounded-none border-0 bg-transparent"
-      defaultActiveKey={isStreaming && toolName === AgentToolsType.Workflow ? [String(renderedItem.key)] : []}
-      isStreaming={isStreaming}
-      item={toolContentItem}
-      onOpenDetails={openToolFlow}
-      stateId={toolCallId}
-      showInlineDetails={canShowInlineDetails}
-    />
+    <>
+      <AgentToolDisclosure
+        className="w-full max-w-full rounded-none border-0 bg-transparent"
+        defaultActiveKey={isStreaming && toolName === AgentToolsType.Workflow ? [String(renderedItem.key)] : []}
+        isStreaming={isStreaming}
+        item={toolContentItem}
+        onOpenDetails={openToolFlow}
+        stateId={toolCallId}
+        showInlineDetails={canShowInlineDetails}
+      />
+      {!hasError && status === 'done' && renderAttachments?.(toolName ?? '', output)}
+    </>
   )
 }

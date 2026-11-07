@@ -88,7 +88,7 @@ function readAgentTaskJobInputTemplate(value: unknown): AgentTaskJobInputTemplat
 
 /**
  * Sole command owner for agent scheduled tasks — the renderer (IpcApi
- * `ai.agent.task.*`) and MCP (`cherryAutonomyTools`) both mutate through this
+ * `ai.agent.task.*`) and MCP (`meacoworkAutonomyTools`) both mutate through this
  * service; reads stay on `AgentTaskService` / DataApi. Owns the composition of
  * JobManager's transactional schedule primitives with the channel-subscription
  * writes: mutate inside one `withWriteTx`, then sync the timer on the
@@ -545,7 +545,7 @@ export class AgentJobsService extends BaseService {
    * sweep's tolerant identity would read as a heartbeat row: `AgentTaskService`
    * would hide the task and `runAgentTask` would run `heartbeat.md` under the
    * heartbeat toggle instead of the task's own prompt. Guarded here rather than
-   * in `agentTaskFormSchema` because MCP's `cherryAutonomyTools` calls this
+   * in `agentTaskFormSchema` because MCP's `meacoworkAutonomyTools` calls this
    * service directly.
    */
   private assertPromptNotReserved(prompt: string | undefined): void {

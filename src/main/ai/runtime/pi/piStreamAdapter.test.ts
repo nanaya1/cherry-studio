@@ -208,7 +208,7 @@ describe('PiStreamAdapter', () => {
   })
 
   it('preserves a report_artifacts declaration for runtime-neutral renderer projection', async () => {
-    const toolName = 'mcp__cherry-tools__report_artifacts'
+    const toolName = 'mcp__meacowork-tools__report_artifacts'
     const input = {
       artifacts: [{ path: 'dist/report.md', description: 'Final report' }],
       summary: 'Created the report'
@@ -253,7 +253,7 @@ describe('PiStreamAdapter', () => {
   })
 
   /**
-   * pi's code mode is unconditional, so cherry-tools is never a tool name of its own — every call
+   * pi's code mode is unconditional, so meacowork-tools is never a tool name of its own — every call
    * arrives as `tool_call`, returning the target's MCP result verbatim. The renderer resolves
    * `[cite:id]` markers by validating that output against `webSearchOutputSchema`, which a content
    * block array never matches, so without the unwrap the markers stay literal.
@@ -266,7 +266,7 @@ describe('PiStreamAdapter', () => {
           type: 'tool_execution_start',
           toolCallId: 'm2',
           toolName: PI_TOOL_CALL_TOOL_NAME,
-          args: { name: 'mcp__cherry-tools__web_search', params: { query: 'x' } }
+          args: { name: 'mcp__meacowork-tools__web_search', params: { query: 'x' } }
         },
         {
           type: 'tool_execution_end',

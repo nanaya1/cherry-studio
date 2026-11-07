@@ -338,12 +338,22 @@ export class AgentService {
    * Create primitive for main-process command orchestration. The caller owns
    * non-data side effects and supplies the already-reserved id.
    */
-  createAgentWithId(id: string, req: AgentCreateInput): AgentEntity {
+  createAgentWithId(
+    id: string,
+    req: AgentCreateInput,
+    options: { allowIndustrialVideoInternal?: boolean } = {}
+  ): AgentEntity {
     // Reserved capability identity — see getBuiltinRole. Seeding writes via createAgentTx.
     if (getBuiltinRole(req.configuration) !== undefined) {
       throw DataApiErrorFactory.invalidOperation(
         'create agent',
         'configuration.builtin_role is reserved for system agents'
+      )
+    }
+    if (req.configuration?.internal_kind === 'industrial-video' && !options.allowIndustrialVideoInternal) {
+      throw DataApiErrorFactory.invalidOperation(
+        'create agent',
+        'configuration.internal_kind is reserved for industrial-video orchestration'
       )
     }
     const mcps = req.mcps ?? []
@@ -647,6 +657,10 @@ export class AgentService {
     const conditions: SQL[] = [
       options.inTrash === true ? isNotNull(agentsTable.deletedAt) : isNull(agentsTable.deletedAt)
     ]
+    // MEA:industrial-video 精确 ID 查询供内部会话恢复；普通列表和搜索不暴露内部 Agent。
+    if (!options.ids) {
+      conditions.push(sql`COALESCE(json_extract(${agentsTable.configuration}, '$.internal_kind'), '') != 'industrial-video'`)
+    }
     if (options.ids) conditions.push(inArray(agentsTable.id, options.ids))
     if (options.search) {
       conditions.push(buildAgentSearchPredicate(options.search))
@@ -724,7 +738,11 @@ export class AgentService {
 
   search(options: { q: string; limit: number; updatedAtFrom?: number }): AgentEntitySearchItem[] {
     const database = application.get('DbService').getDb()
-    const conditions: SQL[] = [isNull(agentsTable.deletedAt), buildAgentSearchPredicate(options.q)]
+    const conditions: SQL[] = [
+      isNull(agentsTable.deletedAt),
+      buildAgentSearchPredicate(options.q),
+      sql`COALESCE(json_extract(${agentsTable.configuration}, '$.internal_kind'), '') != 'industrial-video'`
+    ]
     if (options.updatedAtFrom !== undefined) {
       conditions.push(gte(agentsTable.updatedAt, options.updatedAtFrom))
     }
@@ -824,6 +842,18 @@ export class AgentService {
             const persistedConfiguration = removeUntrustedSupportRole(current.id, current.configuration)
             const existingRole = getBuiltinRole(persistedConfiguration)
             const incomingRole = getBuiltinRole(configurationPatch)
+            const existingInternalKind = persistedConfiguration?.internal_kind
+            const incomingInternalKind = configurationPatch?.internal_kind
+            if (
+              configurationPatch !== undefined &&
+              Object.prototype.hasOwnProperty.call(configurationPatch, 'internal_kind') &&
+              incomingInternalKind !== existingInternalKind
+            ) {
+              throw DataApiErrorFactory.invalidOperation(
+                'update agent',
+                'configuration.internal_kind is reserved for industrial-video orchestration'
+              )
+            }
             if (incomingRole !== undefined && incomingRole !== existingRole) {
               throw DataApiErrorFactory.invalidOperation(
                 'update agent',

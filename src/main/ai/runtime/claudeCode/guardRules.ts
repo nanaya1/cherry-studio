@@ -19,7 +19,7 @@ import { resolveBrowserToolPermission } from '@main/ai/toolApproval/browserToolP
 import {
   findBuiltinToolPolicy,
   listBuiltinToolPolicies,
-  toCherryBuiltinRuntimeName,
+  toMeacoworkBuiltinRuntimeName,
   toMcpRuntimeName
 } from '@main/ai/toolApproval/builtinToolPolicy'
 import { detectGlobalInstall } from '@main/ai/toolApproval/dependencyGuard'
@@ -195,7 +195,7 @@ const CROSS_CUTTING_TOOL_GUARD_RULES: readonly ToolGuardRule[] = [
   },
   {
     id: 'headless-config-mutation',
-    match: { tool: toCherryBuiltinRuntimeName(CONFIG_TOOL_NAME), when: mutatingConfigAction },
+    match: { tool: toMeacoworkBuiltinRuntimeName(CONFIG_TOOL_NAME), when: mutatingConfigAction },
     headless: {
       predicate: 'turn-headless',
       reason:

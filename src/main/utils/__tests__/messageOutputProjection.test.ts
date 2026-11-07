@@ -29,8 +29,8 @@ const largeAgentWebSearch = {
   metadata: {
     type: 'mcp',
     name: 'web_search',
-    serverName: 'cherry-tools',
-    serverId: 'cherry-tools'
+    serverName: 'meacowork-tools',
+    serverId: 'meacowork-tools'
   }
 }
 const manyAgentWebSearch = {
@@ -140,7 +140,7 @@ describe('message tool-output projection', () => {
     expect(projected.output.skeleton?.content[0].content.length).toBeLessThan(
       largeAgentWebSearch.content[0].content.length
     )
-    expect(projected.output.skeleton?.metadata).toMatchObject({ name: 'web_search', serverId: 'cherry-tools' })
+    expect(projected.output.skeleton?.metadata).toMatchObject({ name: 'web_search', serverId: 'meacowork-tools' })
   })
 
   it('keeps a citation skeleton for legacy agent lookup metadata without a tool name', () => {
@@ -149,8 +149,8 @@ describe('message tool-output projection', () => {
         content: largeAgentWebSearch.content,
         metadata: {
           type: 'mcp',
-          serverName: 'cherry-tools',
-          serverId: 'cherry-tools'
+          serverName: 'meacowork-tools',
+          serverId: 'meacowork-tools'
         }
       }),
       TOPIC_ID,
@@ -161,8 +161,8 @@ describe('message tool-output projection', () => {
 
     expect(projected.output.skeleton?.metadata).toEqual({
       type: 'mcp',
-      serverName: 'cherry-tools',
-      serverId: 'cherry-tools'
+      serverName: 'meacowork-tools',
+      serverId: 'meacowork-tools'
     })
   })
 

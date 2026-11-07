@@ -63,7 +63,7 @@ describe('isPermanentDeletionToolName', () => {
     expect(isPermanentDeletionToolName(toolName)).toBe(true)
   })
 
-  it.each(['Bash', 'mcp__assistant-files__move_to_trash', 'mcp__cherry-tools__kb_manage'])(
+  it.each(['Bash', 'mcp__assistant-files__move_to_trash', 'mcp__meacowork-tools__kb_manage'])(
     'does not misclassify %s',
     (toolName) => {
       expect(isPermanentDeletionToolName(toolName)).toBe(false)

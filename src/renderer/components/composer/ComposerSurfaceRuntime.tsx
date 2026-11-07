@@ -167,6 +167,8 @@ export interface ComposerSurfaceProps {
   enableSpellCheck: boolean
   editable?: boolean
   fontSize: number
+  /** Optional feature-specific cap for the editor before the user expands it. */
+  collapsedMaxHeight?: string
   narrowMode: boolean
   /** Opts this composer into the China-edition AI-generated content disclaimer. */
   showAiDisclaimer?: boolean
@@ -207,6 +209,8 @@ export interface ComposerSurfaceProps {
     unifiedPanelControl?: ComposerUnifiedPanelControl
   ) => React.ReactNode
   sendAccessory?: React.ReactNode | ComposerSurfaceSendAccessoryRenderer
+  /** Hide the built-in send action when a feature supplies its own explicit primary action. */
+  hideSendAction?: boolean
   deferQuickPanel?: boolean
   initialTextSelection?: { start: number; end: number }
   deferredIntent?: ComposerDeferredIntent
@@ -516,6 +520,7 @@ export default function ComposerSurfaceRuntime({
   enableSpellCheck,
   editable = true,
   fontSize,
+  collapsedMaxHeight,
   narrowMode,
   railGutterPx,
   onFocus,
@@ -541,6 +546,7 @@ export default function ComposerSurfaceRuntime({
   compactWhenSingleLine = false,
   renderCompactControls,
   sendAccessory,
+  hideSendAction = false,
   deferQuickPanel = false,
   initialTextSelection,
   deferredIntent,
@@ -750,6 +756,7 @@ export default function ComposerSurfaceRuntime({
     toggleExpanded: toggleEditorExpanded
   } = useComposerEditorFrameSizing({
     fontSize,
+    collapsedMaxHeight,
     isExpanded,
     onExpandedChange,
     focusEditor,
@@ -2353,7 +2360,7 @@ export default function ComposerSurfaceRuntime({
           <div data-ui="part:composer-actions" className="flex shrink-0 flex-row items-center gap-1.5">
             {compactControls}
             {sendAccessoryElement}
-            {sendAction}
+            {!hideSendAction && sendAction}
           </div>
         ) : null}
       </div>
@@ -2366,7 +2373,7 @@ export default function ComposerSurfaceRuntime({
           <div className="flex min-w-0 flex-1 items-center overflow-hidden">{leftControls}</div>
           <div className="flex flex-row items-center gap-1.5">
             {sendAccessoryElement}
-            {sendAction}
+            {!hideSendAction && sendAction}
           </div>
         </div>
       ) : null}

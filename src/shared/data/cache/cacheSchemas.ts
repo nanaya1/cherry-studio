@@ -3,7 +3,7 @@ import type { JobProgress, JobSnapshot } from '@shared/data/api/schemas/jobs'
 import type { LocalModelStatusSnapshots } from '@shared/data/presets/localModel'
 import type { ChannelStatus } from '@shared/data/types/channel'
 import type { MiniAppRegion, TransientMiniApp } from '@shared/data/types/miniApp'
-import type { Currency } from '@shared/data/types/model'
+import type { Currency, UniqueModelId } from '@shared/data/types/model'
 import type { AutoBackupEvent, AutoBackupType } from '@shared/types/backup'
 import type { AbsoluteFilePath } from '@shared/types/file'
 import type { ManagedToolStatusState } from '@shared/types/managedTool'
@@ -411,7 +411,20 @@ export const DefaultSharedCache: SharedCacheSchema = {
  * Persist cache schema defining allowed keys and their value types
  * This ensures type safety and prevents key conflicts
  */
-export type RendererPersistCacheSchema = {
+// MEA:industrial-video 复用现有模板类型工具，persist 保留按具体键索引的契约。
+// export type RendererPersistCacheSchema = {
+export type RendererPersistCachePatterns = {
+  'industrial_video.last_model_id': UniqueModelId | null
+  // MEA:industrial-video 只保存安全草稿，不包含附件、解析全文或活动任务。
+  // MEA:industrial-video 未发布整表键不迁移，避免跨窗口覆盖其他会话。
+  // 'industrial_video.session_drafts': Record<string, CacheValueTypes.CacheIndustrialVideoDraft>
+  'industrial_video.session_draft.${sessionId}': CacheValueTypes.CacheIndustrialVideoDraft | null
+  // MEA:industrial-video 准备阶段活动状态（资料分析 + 首次 parse），按 session 索引。
+  // 与 session_draft 同步写入；非 failed/submitted 的既有任务存在时应拒绝新建，避免重启或多窗口重复。
+  'industrial_video.preparation.${sessionId}': CacheValueTypes.CacheIndustrialVideoPreparation | null
+  // MEA:industrial-video 专用编排的专用修改收件箱（用户提交的修改意见），按 session 索引。
+  // 仅追加文本与时间，写入即触发推进，绝不进入普通聊天通道，避免双链竞争。
+  'industrial_video.revision.${sessionId}': CacheValueTypes.CacheIndustrialVideoRevisionStore | null
   'ui.browser.import_prompt_hidden': boolean
   'ui.tab.pinned_tabs': CacheValueTypes.Tab[]
   // Open (unpinned) tabs and the active tab id, persisted so the tab session is restored on
@@ -479,7 +492,18 @@ export type RendererPersistCacheSchema = {
   'ui.screenshot.annotation_font_size': number
 }
 
-export const DefaultRendererPersistCache: RendererPersistCacheSchema = {
+export type RendererPersistCacheSchema = {
+  [K in keyof RendererPersistCachePatterns as ProcessKey<K>]: RendererPersistCachePatterns[K]
+}
+
+// MEA:industrial-video 默认表仍覆盖全部 schema 定义；具体键通过模板解析默认值。
+// export const DefaultRendererPersistCache: RendererPersistCacheSchema = {
+export const DefaultRendererPersistCache: RendererPersistCacheSchema & RendererPersistCachePatterns = {
+  'industrial_video.last_model_id': null,
+  // 'industrial_video.session_drafts': {},
+  'industrial_video.session_draft.${sessionId}': null,
+  'industrial_video.preparation.${sessionId}': null,
+  'industrial_video.revision.${sessionId}': null,
   'ui.browser.import_prompt_hidden': false,
   'ui.tab.pinned_tabs': [],
   'ui.tab.normal_tabs': [],
@@ -547,13 +571,20 @@ export type MainPersistCacheSchema = {
   // a @main enum (no reverse import), so the key type is `string`; the
   // windowBoundsTracker is the sole writer and controls which keys appear.
   'window.bounds': Record<string, CacheValueTypes.WindowBoundsState>
+  // MEA:industrial-video 主机侧制作记录（按 agent session 索引）。仅保存
+  // run/job_id/state/每轮意图与 unknown 提交，绝不写入服务 base URL 或 token。
+  'industrial_video.records': Record<string, CacheValueTypes.IndustrialVideoProductionRecord>
+  // Explicit single-user mode only; never synchronized to renderer or enterprise identity.
+  'industrial_video.local_actor': string
 }
 
 export const DefaultMainPersistCache: MainPersistCacheSchema = {
   'browser.favicons': {},
   'backup.auto_sync.last_attempt_times': { webdav: null, s3: null, local: null, nutstore: null },
   'internal.persist_probe': 0,
-  'window.bounds': {}
+  'window.bounds': {},
+  'industrial_video.records': {},
+  'industrial_video.local_actor': ''
 }
 
 // ============================================================================
@@ -561,7 +592,7 @@ export const DefaultMainPersistCache: MainPersistCacheSchema = {
 // ============================================================================
 
 /**
- * Key type for renderer persist cache (fixed keys only)
+ * renderer persist 具体键类型（固定键及展开后的模板键）。
  */
 export type RendererPersistCacheKey = keyof RendererPersistCacheSchema
 

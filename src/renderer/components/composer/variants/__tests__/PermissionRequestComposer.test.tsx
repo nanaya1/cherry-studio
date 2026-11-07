@@ -1,3 +1,4 @@
+import { mockPreferenceState } from '@test-mocks/renderer/PreferenceService'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type * as ReactI18next from 'react-i18next'
@@ -86,6 +87,14 @@ function makeRequest(overrides: Partial<PermissionRequestComposerRequest> = {}):
 }
 
 describe('PermissionRequestComposer', () => {
+  it.each([true, false])('matches the input column width when narrow mode is %s', (narrowMode) => {
+    mockPreferenceState.set('chat.narrow_mode', narrowMode)
+    const { container } = render(<PermissionRequestComposer request={makeRequest()} onRespond={vi.fn()} />)
+    // 与输入框保持相同的 800px 内容限宽和 24px 两侧留白。
+    expect(container.firstElementChild).toHaveClass(narrowMode ? 'max-w-[calc(800px+3rem)]' : 'max-w-full')
+    expect(container.firstElementChild).toHaveStyle({ paddingLeft: '24px', paddingRight: '24px' })
+  })
+
   it('marks the root panel as a composer viewport inset target', () => {
     const { container } = render(<PermissionRequestComposer request={makeRequest()} onRespond={vi.fn()} />)
 

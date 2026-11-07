@@ -36,7 +36,7 @@ export interface ClaudeToolDescriptorDef {
   /** Other tools this one requires — if any is disabled, this tool is disabled too (transitively). */
   dependsOn?: readonly string[]
   /** Set for in-process MCP tools — the server hosting this tool (drives injection). */
-  mcpServer?: 'cherry-tools' | 'agent-memory' | 'skills'
+  mcpServer?: 'meacowork-tools' | 'agent-memory' | 'skills'
   /** Tool is unavailable unless the agent has at least one bound knowledge base. */
   requiresKnowledgeScope?: true
   /** The tool cannot complete meaningfully without a live user's response. */
@@ -45,7 +45,7 @@ export interface ClaudeToolDescriptorDef {
 
 /**
  * The registry. Keys are stable friendly identifiers; `name` is the runtime tool name.
- * For SDK tools key === name; for MCP tools key is friendly (e.g. `CherryWebSearch`).
+ * For SDK tools key === name; for MCP tools key is friendly (e.g. `MeacoworkWebSearch`).
  */
 const CLAUDE_TOOL_REGISTRY = {
   // ── shell ────────────────────────────────────────────────────────
@@ -251,7 +251,7 @@ const CLAUDE_TOOL_REGISTRY = {
   },
 
   // ── context (external / persistent context) ──────────────────────
-  // Native Web* are replaced by the cherry-tools equivalents below.
+  // Native Web* are replaced by the meacowork-tools equivalents below.
   WebSearch: {
     name: 'WebSearch',
     category: 'context',
@@ -266,106 +266,175 @@ const CLAUDE_TOOL_REGISTRY = {
   },
 
   // ── in-process MCP tools ─────────────────────────────────────────
-  // cherry-tools (always injected today)
-  CherryWebSearch: {
-    name: 'mcp__cherry-tools__web_search',
+  // meacowork-tools (always injected today)
+  MeacoworkWebSearch: {
+    name: 'mcp__meacowork-tools__web_search',
     category: 'context',
     exposure: 'user',
     description: 'Searches the web via your configured provider',
-    mcpServer: 'cherry-tools'
+    mcpServer: 'meacowork-tools'
   },
-  CherryWebFetch: {
-    name: 'mcp__cherry-tools__web_fetch',
+  MeacoworkWebFetch: {
+    name: 'mcp__meacowork-tools__web_fetch',
     category: 'context',
     exposure: 'user',
     description: 'Fetches and reads a web page',
-    mcpServer: 'cherry-tools'
+    mcpServer: 'meacowork-tools'
   },
-  CherryKbSearch: {
-    name: 'mcp__cherry-tools__kb_search',
+  MeacoworkKbSearch: {
+    name: 'mcp__meacowork-tools__kb_search',
     category: 'context',
     exposure: 'user',
     description: 'Searches your knowledge bases',
-    mcpServer: 'cherry-tools',
+    mcpServer: 'meacowork-tools',
     requiresKnowledgeScope: true
   },
   // Lists the bases, or outlines one base's structure when given a baseId. No separate toggle, but it
   // follows the visible "Knowledge Search" toggle (dependsOn kb_search): disabling search also revokes
   // browsing, so the user-facing toggle honestly covers all knowledge-base read access.
-  CherryKbList: {
-    name: 'mcp__cherry-tools__kb_list',
+  MeacoworkKbList: {
+    name: 'mcp__meacowork-tools__kb_list',
     category: 'context',
     exposure: 'internal',
     description: 'Lists your knowledge bases, or outlines one base’s structure',
-    dependsOn: ['mcp__cherry-tools__kb_search'],
-    mcpServer: 'cherry-tools',
+    dependsOn: ['mcp__meacowork-tools__kb_search'],
+    mcpServer: 'meacowork-tools',
     requiresKnowledgeScope: true
   },
   // Deep-read tool (infrastructure the agent reaches for after a search) — internal, no separate
   // toggle. It returns whole documents (more than kb_search's chunks), so it follows the visible
   // "Knowledge Search" toggle (dependsOn kb_search): disabling search also revokes document reads.
-  CherryKbRead: {
-    name: 'mcp__cherry-tools__kb_read',
+  MeacoworkKbRead: {
+    name: 'mcp__meacowork-tools__kb_read',
     category: 'context',
     exposure: 'internal',
     description: 'Reads a knowledge base document, or greps within it',
-    dependsOn: ['mcp__cherry-tools__kb_search'],
-    mcpServer: 'cherry-tools',
+    dependsOn: ['mcp__meacowork-tools__kb_search'],
+    mcpServer: 'meacowork-tools',
     requiresKnowledgeScope: true
   },
   // The one mutating KB tool (add/delete/refresh sources) — exposed as its own toggle so the user
   // can see and disable write access; it still requires per-call approval at runtime.
-  CherryKbManage: {
-    name: 'mcp__cherry-tools__kb_manage',
+  MeacoworkKbManage: {
+    name: 'mcp__meacowork-tools__kb_manage',
     category: 'context',
     exposure: 'user',
     description: 'Adds, deletes, or refreshes knowledge base documents',
-    mcpServer: 'cherry-tools',
+    mcpServer: 'meacowork-tools',
     requiresKnowledgeScope: true
   },
   // Converts a local document (pdf/office/epub/csv/…) the ordinary text tools cannot read. Its own
   // toggle because it reads local files outside the workspace, so disabling Read must not leave a
   // second, unrelated door open.
-  CherryToMarkdown: {
-    name: 'mcp__cherry-tools__to_markdown',
+  MeacoworkToMarkdown: {
+    name: 'mcp__meacowork-tools__to_markdown',
     category: 'file',
     exposure: 'user',
     description: 'Markdown is easier for the agent to read',
-    mcpServer: 'cherry-tools'
+    mcpServer: 'meacowork-tools'
   },
-  // agent autonomy / channels (hosted by cherry-tools). notify needs a connected channel to do anything.
-  CherryCron: {
-    name: 'mcp__cherry-tools__cron',
+  // agent autonomy / channels (hosted by meacowork-tools). notify needs a connected channel to do anything.
+  MeacoworkCron: {
+    name: 'mcp__meacowork-tools__cron',
     category: 'orchestration',
     exposure: 'user',
     description: 'Manages the in-app scheduler',
-    mcpServer: 'cherry-tools'
+    mcpServer: 'meacowork-tools'
   },
   // notify is user-exposed and NOT channel-gated: it self-degrades at call time (reports "no connected
-  // channels") when the agent has none — see cherryAutonomyTools.ts sendNotification. Do not re-add a
+  // channels") when the agent has none — see meacoworkAutonomyTools.ts sendNotification. Do not re-add a
   // channel enable-predicate, or an agent can't notify in the same run it uses config to add its first channel.
-  CherryNotify: {
-    name: 'mcp__cherry-tools__notify',
+  MeacoworkNotify: {
+    name: 'mcp__meacowork-tools__notify',
     category: 'orchestration',
     exposure: 'user',
     description: 'Sends a notification through a connected channel',
-    mcpServer: 'cherry-tools'
+    mcpServer: 'meacowork-tools'
   },
-  CherryConfig: {
-    name: 'mcp__cherry-tools__config',
+  MeacoworkConfig: {
+    name: 'mcp__meacowork-tools__config',
     category: 'orchestration',
     exposure: 'user',
     description: 'Inspects and manages this agent configuration and channels',
-    mcpServer: 'cherry-tools'
+    mcpServer: 'meacowork-tools'
   },
-  // media (image generation). Hosted by cherry-tools; requires per-call approval and returns a
+  // media (image generation). Hosted by meacowork-tools; requires per-call approval and returns a
   // "configure a painting model" note at runtime when none is set (see builtinToolPolicy.ts).
-  CherryGenerateImage: {
-    name: 'mcp__cherry-tools__generate_image',
+  MeacoworkGenerateImage: {
+    name: 'mcp__meacowork-tools__generate_image',
     category: 'media',
     exposure: 'user',
     description: 'Generates an image from a text prompt using your configured painting model',
-    mcpServer: 'cherry-tools'
+    mcpServer: 'meacowork-tools'
+  },
+  // industrial-video (controlled video production). Hosted by meacowork-tools; surfaced only to
+  // industrial-video sessions (the server gates them by session featureKind), so they stay hidden
+  // from the general catalog and never affect general sessions. The model drives the full pipeline
+  // (run_create → parse → context → storyboard_get → storyboard_submit → estimate → start → status →
+  // download) through these named operations; there is intentionally NO generic HTTP / confirm tool,
+  // and review approval is enforced server-side on start.
+  IndustrialVideoRunCreate: {
+    name: 'mcp__meacowork-tools__ivideo_run_create',
+    category: 'media',
+    exposure: 'internal',
+    description: 'Creates an industrial-video production run',
+    mcpServer: 'meacowork-tools'
+  },
+  IndustrialVideoContext: {
+    name: 'mcp__meacowork-tools__ivideo_context',
+    category: 'media',
+    exposure: 'internal',
+    description: 'Reads the planning context for a video run',
+    mcpServer: 'meacowork-tools'
+  },
+  IndustrialVideoStoryboardGet: {
+    name: 'mcp__meacowork-tools__ivideo_storyboard_get',
+    category: 'media',
+    exposure: 'internal',
+    description: 'Reads a video run storyboard',
+    mcpServer: 'meacowork-tools'
+  },
+  IndustrialVideoStoryboardSubmit: {
+    name: 'mcp__meacowork-tools__ivideo_storyboard_submit',
+    category: 'media',
+    exposure: 'internal',
+    description: 'Submits an edited video storyboard',
+    mcpServer: 'meacowork-tools'
+  },
+  IndustrialVideoParse: {
+    name: 'mcp__meacowork-tools__ivideo_parse',
+    category: 'media',
+    exposure: 'internal',
+    description: 'Parses video planning inputs into a job',
+    mcpServer: 'meacowork-tools'
+  },
+  IndustrialVideoEstimate: {
+    name: 'mcp__meacowork-tools__ivideo_estimate',
+    category: 'media',
+    exposure: 'internal',
+    description: 'Read-only fee/range pre-check for a video run',
+    mcpServer: 'meacowork-tools'
+  },
+  IndustrialVideoStart: {
+    name: 'mcp__meacowork-tools__ivideo_start',
+    category: 'media',
+    exposure: 'internal',
+    description: 'Starts video generation for a run',
+    mcpServer: 'meacowork-tools'
+  },
+  IndustrialVideoStatus: {
+    name: 'mcp__meacowork-tools__ivideo_status',
+    category: 'media',
+    exposure: 'internal',
+    description: 'Polls a video generation/assembly job',
+    mcpServer: 'meacowork-tools'
+  },
+  IndustrialVideoDownload: {
+    name: 'mcp__meacowork-tools__ivideo_download',
+    category: 'media',
+    exposure: 'internal',
+    description: 'Downloads a finished video artifact',
+    mcpServer: 'meacowork-tools'
   },
   // agent-memory (cross-session memory)
   AgentMemory: {
@@ -408,7 +477,7 @@ export const isMcpTool = (def: ClaudeToolDescriptorDef): boolean => def.mcpServe
 
 /**
  * MCP wire names of the in-process knowledge-base tools (kb_search / kb_read / kb_list /
- * kb_manage). The edit-dialog catalog uses this set; cherryKnowledgeTools maintains the
+ * kb_manage). The edit-dialog catalog uses this set; meacoworkKnowledgeTools maintains the
  * corresponding bare runtime names, with a drift test keeping the two surfaces aligned.
  */
 export const CLAUDE_KNOWLEDGE_TOOL_NAMES: ReadonlySet<string> = new Set(
@@ -450,16 +519,25 @@ export interface ClaudeUserFacingTool {
 
 /** Friendly labels for MCP wire tools whose `name` is an opaque `mcp__server__wire` id. */
 const MCP_TOOL_LABELS: Record<string, string> = {
-  'mcp__cherry-tools__web_search': 'Web Search',
-  'mcp__cherry-tools__web_fetch': 'Web Fetch',
-  'mcp__cherry-tools__kb_search': 'Knowledge Search',
-  'mcp__cherry-tools__kb_manage': 'Manage Knowledge',
-  'mcp__cherry-tools__to_markdown': 'File to Markdown',
+  'mcp__meacowork-tools__web_search': 'Web Search',
+  'mcp__meacowork-tools__web_fetch': 'Web Fetch',
+  'mcp__meacowork-tools__kb_search': 'Knowledge Search',
+  'mcp__meacowork-tools__kb_manage': 'Manage Knowledge',
+  'mcp__meacowork-tools__to_markdown': 'File to Markdown',
   'mcp__agent-memory__memory': 'Memory',
-  'mcp__cherry-tools__cron': 'Scheduler',
-  'mcp__cherry-tools__notify': 'Notify',
-  'mcp__cherry-tools__config': 'Configuration',
-  'mcp__cherry-tools__generate_image': 'Generate Image'
+  'mcp__meacowork-tools__cron': 'Scheduler',
+  'mcp__meacowork-tools__notify': 'Notify',
+  'mcp__meacowork-tools__config': 'Configuration',
+  'mcp__meacowork-tools__generate_image': 'Generate Image',
+  'mcp__meacowork-tools__ivideo_run_create': 'Video Run Create',
+  'mcp__meacowork-tools__ivideo_context': 'Video Planning Context',
+  'mcp__meacowork-tools__ivideo_storyboard_get': 'Video Storyboard Get',
+  'mcp__meacowork-tools__ivideo_storyboard_submit': 'Video Storyboard Submit',
+  'mcp__meacowork-tools__ivideo_parse': 'Video Parse',
+  'mcp__meacowork-tools__ivideo_estimate': 'Video Estimate',
+  'mcp__meacowork-tools__ivideo_start': 'Video Start',
+  'mcp__meacowork-tools__ivideo_status': 'Video Status',
+  'mcp__meacowork-tools__ivideo_download': 'Video Download'
 }
 
 /**

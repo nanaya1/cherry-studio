@@ -83,6 +83,22 @@ describe('resolveChatEntryTopicId', () => {
 })
 
 describe('resolveAgentEntrySessionId', () => {
+  it('忽略旧最近键中的视频会话，并仅回退普通分类', async () => {
+    mocks.getPersist.mockReturnValue('video-last')
+    mocks.get
+      .mockResolvedValueOnce({ id: 'video-last', featureKind: 'industrial-video' })
+      .mockResolvedValueOnce({ session: { id: 'general-last' } })
+
+    await expect(resolveAgentEntrySessionId()).resolves.toBe('general-last')
+    expect(mocks.get).toHaveBeenLastCalledWith('/agent-sessions/latest', { query: { featureKind: 'general' } })
+  })
+
+  it('无最近键时只恢复普通分类', async () => {
+    mocks.getPersist.mockReturnValue(null)
+    mocks.get.mockResolvedValue({ session: { id: 'general-last' } })
+    await expect(resolveAgentEntrySessionId()).resolves.toBe('general-last')
+    expect(mocks.get).toHaveBeenCalledWith('/agent-sessions/latest', { query: { featureKind: 'general' } })
+  })
   it('resolves the last-used session when it still exists', async () => {
     mocks.getPersist.mockReturnValue('session-last')
     mocks.get.mockResolvedValue({ id: 'session-last' })
@@ -97,7 +113,7 @@ describe('resolveAgentEntrySessionId', () => {
     mocks.get.mockRejectedValueOnce(notFoundError()).mockResolvedValueOnce({ session: { id: 'session-latest' } })
 
     await expect(resolveAgentEntrySessionId()).resolves.toBe('session-latest')
-    expect(mocks.get).toHaveBeenNthCalledWith(2, '/agent-sessions/latest')
+    expect(mocks.get).toHaveBeenNthCalledWith(2, '/agent-sessions/latest', { query: { featureKind: 'general' } })
   })
 
   it('returns null when no sessions exist', async () => {
@@ -133,11 +149,30 @@ describe('resolveChatEntryTopicIdForAssistant', () => {
 })
 
 describe('resolveAgentEntrySessionIdForAgent', () => {
+  it.each([true, false])('同 agent 最新为视频、存在较早普通任务=%s 时只恢复普通任务', async (hasGeneral) => {
+    const sessions = [
+      { id: 'video-newest', agentId: 'agent-1', featureKind: 'industrial-video' },
+      ...(hasGeneral ? [{ id: 'general-older', agentId: 'agent-1', featureKind: 'general' }] : [])
+    ]
+    mocks.get.mockImplementation(async (_path, options) => ({
+      session:
+        sessions.find(
+          (session) =>
+            session.agentId === options.query.agentId &&
+            (!options.query.featureKind || session.featureKind === options.query.featureKind)
+        ) ?? null
+    }))
+
+    await expect(resolveAgentEntrySessionIdForAgent('agent-1')).resolves.toBe(hasGeneral ? 'general-older' : null)
+  })
+
   it('resolves the latest session of the given agent', async () => {
     mocks.get.mockResolvedValue({ session: { id: 'session-agent' } })
 
     await expect(resolveAgentEntrySessionIdForAgent('agent-1')).resolves.toBe('session-agent')
-    expect(mocks.get).toHaveBeenCalledWith('/agent-sessions/latest', { query: { agentId: 'agent-1' } })
+    expect(mocks.get).toHaveBeenCalledWith('/agent-sessions/latest', {
+      query: { agentId: 'agent-1', featureKind: 'general' }
+    })
     expect(mocks.get).toHaveBeenCalledTimes(1)
   })
 

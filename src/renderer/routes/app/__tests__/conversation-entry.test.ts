@@ -1,5 +1,7 @@
+import { MockDataApiUtils } from '@test-mocks/renderer/DataApiService'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { dataApiService } from '@data/DataApiService'
 import type { AgentRouteSearch } from '@renderer/pages/agents/routeSearch'
 import type { ChatRouteSearch } from '@renderer/pages/home/routeSearch'
 
@@ -15,7 +17,12 @@ vi.mock('@renderer/pages/home/HomePage', () => ({ default: () => null }))
 vi.mock('@renderer/utils/conversationEntry', () => mocks)
 
 import { Route as AgentRoute } from '../agents'
+import { Route as VideoRoute } from '../agents_.industrial-video'
 import { Route as ChatRoute } from '../chat'
+
+const videoBeforeLoad = VideoRoute.options.beforeLoad as unknown as (args: {
+  search: { sessionId?: string }
+}) => Promise<unknown>
 
 type EntryBeforeLoad<TSearch> = (args: { search: TSearch }) => Promise<void>
 
@@ -24,6 +31,8 @@ const agentBeforeLoad = AgentRoute.options.beforeLoad as EntryBeforeLoad<AgentRo
 
 beforeEach(() => {
   vi.clearAllMocks()
+  MockDataApiUtils.resetMocks()
+  vi.mocked(dataApiService.get).mockResolvedValue({ id: 'session-a', featureKind: 'general' })
   mocks.resolveChatEntryTopicId.mockResolvedValue(null)
   mocks.resolveAgentEntrySessionId.mockResolvedValue(null)
   mocks.resolveChatEntryTopicIdForAssistant.mockResolvedValue(null)
@@ -31,6 +40,53 @@ beforeEach(() => {
 })
 
 describe('conversation entry route guards', () => {
+  it.each(['session', 'latest', 'agent'] as const)(
+    'redirects industrial video before mounting the Agent loop from %s entry',
+    async (entry) => {
+      vi.mocked(dataApiService.get).mockResolvedValue({
+        id: 'video-1',
+        featureKind: 'industrial-video'
+      })
+      mocks.resolveAgentEntrySessionId.mockResolvedValue('video-1')
+      mocks.resolveAgentEntrySessionIdForAgent.mockResolvedValue('video-1')
+      const search = entry === 'session' ? { sessionId: 'video-1' } : entry === 'agent' ? { agentId: 'agent-1' } : {}
+
+      if (entry === 'session') {
+        await expect(agentBeforeLoad({ search })).resolves.toBeUndefined()
+      } else {
+        await expect(agentBeforeLoad({ search })).rejects.toMatchObject({
+          options: { to: '/app/agents', search: { sessionId: 'video-1' }, replace: true }
+        })
+      }
+    }
+  )
+
+  it('opens persisted video tasks on their isolated route', async () => {
+    const session = { id: 'video-1', featureKind: 'industrial-video' }
+    vi.mocked(dataApiService.get).mockResolvedValue(session)
+    await expect(videoBeforeLoad({ search: { sessionId: 'video-1' } })).rejects.toMatchObject({
+      options: { to: '/app/agents', search: { sessionId: 'video-1' }, replace: true }
+    })
+    await expect(agentBeforeLoad({ search: { sessionId: 'video-1' } })).resolves.toBeUndefined()
+  })
+
+  it('does not open the video page without a persisted task id', async () => {
+    await expect(videoBeforeLoad({ search: {} })).rejects.toMatchObject({
+      options: { to: '/app/agents', replace: true }
+    })
+  })
+
+  it.each([undefined, 'general'] as const)('keeps %s sessions on the ordinary Agent route', async (featureKind) => {
+    vi.mocked(dataApiService.get).mockResolvedValue({ id: 'session-a', featureKind })
+    await expect(agentBeforeLoad({ search: { sessionId: 'session-a' } })).resolves.toBeUndefined()
+  })
+
+  it('returns general sessions mistakenly opened on the video route to their original route', async () => {
+    await expect(videoBeforeLoad({ search: { sessionId: 'session-a' } })).rejects.toMatchObject({
+      options: { to: '/app/agents', search: { sessionId: 'session-a' }, replace: true }
+    })
+  })
+
   it('resolves the entry target for a bare chat entry', async () => {
     mocks.resolveChatEntryTopicId.mockResolvedValue('topic-last')
 

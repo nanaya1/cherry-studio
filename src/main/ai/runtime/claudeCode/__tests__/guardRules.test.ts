@@ -7,7 +7,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { application } from '@application'
 import {
   listBuiltinToolPolicies,
-  toCherryBuiltinRuntimeName,
+  toMeacoworkBuiltinRuntimeName,
   toMcpRuntimeName
 } from '@main/ai/toolApproval/builtinToolPolicy'
 import { evaluateToolGuards, type ToolGuardContext, validateToolGuardRules } from '@main/ai/toolApproval/toolGuards'
@@ -33,7 +33,7 @@ import { approvalRequiredRuntimeNames, CLAUDE_TOOL_GUARD_RULES, HEADLESS_INTERAC
 
 const INTERACTIVE = { currentTurn: 'interactive', userResponse: 'stream' } as const
 const HEADLESS = { currentTurn: 'headless', userResponse: 'unavailable' } as const
-const WITHOUT_HOST_TOOLS: ReadonlySet<string> = new Set(['cherry-tools', 'agent-memory', 'skills', 'mcp-manager'])
+const WITHOUT_HOST_TOOLS: ReadonlySet<string> = new Set(['meacowork-tools', 'agent-memory', 'skills', 'mcp-manager'])
 const WITH_HOST_TOOLS: ReadonlySet<string> = new Set([...WITHOUT_HOST_TOOLS, 'assistant', 'assistant-files'])
 const NON_ASSISTANT_APPROVAL_REQUIRED_RUNTIME_NAMES = listBuiltinToolPolicies({
   approval: 'required',
@@ -97,7 +97,7 @@ describe('CLAUDE_TOOL_GUARD_RULES', () => {
     )
 
     it('wins the fold over an approval-required ask (deny beats ask)', async () => {
-      const toolName = toCherryBuiltinRuntimeName(KB_MANAGE_TOOL_NAME)
+      const toolName = toMeacoworkBuiltinRuntimeName(KB_MANAGE_TOOL_NAME)
       const decision = await evaluate(makeCtx({ toolName, isDisabled: () => true }))
       expect(decision?.ruleId).toBe('disabled-tool')
       expect(decision?.effect).toBe('deny')
@@ -266,7 +266,7 @@ describe('CLAUDE_TOOL_GUARD_RULES', () => {
   })
 
   describe('headless-config-mutation', () => {
-    const configTool = toCherryBuiltinRuntimeName('config')
+    const configTool = toMeacoworkBuiltinRuntimeName('config')
 
     it('denies mutating actions on headless turns, bypass included', async () => {
       for (const mode of ['default', 'bypassPermissions'] as const) {
@@ -468,7 +468,7 @@ describe('CLAUDE_TOOL_GUARD_RULES', () => {
   })
 
   describe('approval-required', () => {
-    const kbManage = toCherryBuiltinRuntimeName(KB_MANAGE_TOOL_NAME)
+    const kbManage = toMeacoworkBuiltinRuntimeName(KB_MANAGE_TOOL_NAME)
 
     it.each(['default', 'acceptEdits'] as const)('asks under %s', async (mode) => {
       const decision = await evaluate(makeCtx({ toolName: kbManage, permissionMode: mode }))
@@ -509,7 +509,7 @@ describe('CLAUDE_TOOL_GUARD_RULES', () => {
   })
 
   describe('non-bypassable-approval', () => {
-    const sessionSend = toCherryBuiltinRuntimeName(SESSION_SEND_TOOL_NAME)
+    const sessionSend = toMeacoworkBuiltinRuntimeName(SESSION_SEND_TOOL_NAME)
 
     it('requires live approval under bypassPermissions', async () => {
       await expect(

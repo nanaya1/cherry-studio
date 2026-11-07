@@ -66,6 +66,28 @@ describe('useFileDragDrop', () => {
     })
   })
 
+  it.each(['文件', '路径文本'])('显式通配将未知格式的%s拖入转为附件', async (source) => {
+    const path = '/tmp/archive.zip'
+    const file = { ...createFileMetadata(path), ext: '.zip', type: FILE_TYPE.OTHER }
+    let files: ComposerAttachment[] = []
+    const setFiles = (updater: (prev: ComposerAttachment[]) => ComposerAttachment[]) => {
+      files = updater(files)
+    }
+    mocks.request.mockResolvedValue({ kind: 'file', type: 'other' })
+    fileApi.get.mockResolvedValue(file)
+    fileApi.getPathForFile.mockReturnValue(path)
+    const { result } = renderHook(() => useFileDragDrop({ supportedExts: ['*'], setFiles, enabled: true, t }))
+
+    await act(async () => {
+      await result.current.handleDrop?.(
+        source === '文件' ? createDropEvent('', [{ name: 'archive.zip' } as File]) : createDropEvent(path)
+      )
+    })
+
+    expect(files).toEqual([expect.objectContaining({ path, origin_name: 'archive.zip' })])
+    expect(toast.info).not.toHaveBeenCalled()
+  })
+
   it('extracts a single local path from dropped text', () => {
     expect(getSingleDroppedPathFromText('  /Users/jd/Notes/a.md  ')).toBe('/Users/jd/Notes/a.md')
     expect(getSingleDroppedPathFromText('"file:///Users/jd/Notes/a.md"')).toBe('/Users/jd/Notes/a.md')

@@ -1,3 +1,5 @@
+import { MEACOWORK_TOOLS_SERVER_NAME } from '@shared/ai/meacoworkTools'
+
 import {
   BUILTIN_TOOL_POLICY_ENTRIES,
   type BuiltinToolApproval,
@@ -11,7 +13,7 @@ export type {
   BuiltinToolBypassApproval,
   BuiltinToolPolicyEntry
 } from './builtinToolPolicyRegistry'
-export { CHERRY_MCP_SERVER } from './builtinToolPolicyRegistry'
+export { MEACOWORK_MCP_SERVER } from './builtinToolPolicyRegistry'
 
 const BUILTIN_TOOL_POLICY_BY_RUNTIME_NAME = new Map(
   BUILTIN_TOOL_POLICY_ENTRIES.map((entry) => [toMcpRuntimeName(entry), entry])
@@ -60,6 +62,6 @@ export function toMcpRuntimeName(ref: Pick<BuiltinToolPolicyEntry, 'serverName' 
 }
 
 /** Convenience for the non-policy citation call site. */
-export function toCherryBuiltinRuntimeName(toolName: string): string {
-  return toMcpRuntimeName({ serverName: 'cherry-tools', toolName })
+export function toMeacoworkBuiltinRuntimeName(toolName: string): string {
+  return toMcpRuntimeName({ serverName: MEACOWORK_TOOLS_SERVER_NAME, toolName })
 }

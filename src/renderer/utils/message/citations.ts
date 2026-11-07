@@ -7,7 +7,7 @@
  * - `tool-web_search` / `tool-web_fetch` / `tool-kb_search` / `tool-kb_read`
  *   results (assistant runtime), including the same tools called through
  *   `tool_invoke` (deferred)
- *   or the `cherry-tools` in-process MCP server (agent runtime, `dynamic-tool`
+ *   or the built-in tools in-process MCP server (agent runtime, `dynamic-tool`
  *   parts). Result ids ("3f2a1b9c-2") are minted per lookup call in the main
  *   process (`citationIds.ts`) and echoed back by the model as `[cite:id]`.
  * - `source-url` parts from provider-native web search, keyed by their
@@ -47,6 +47,7 @@ import {
   WEB_SEARCH_TOOL_NAME,
   webSearchOutputSchema
 } from '@shared/ai/builtinTools'
+import { isMeacoworkToolsServerName } from '@shared/ai/meacoworkTools'
 import { PI_TOOL_CALL_TOOL_NAME } from '@shared/ai/piBuiltinTools'
 import { parseFunctionCallToolName } from '@shared/ai/tools/mcpToolName'
 import { isDeferredToolOutput, isPersistedToolOutput } from '@shared/ai/transport'
@@ -79,7 +80,6 @@ const CITABLE_TOOL_NAMES: ReadonlySet<string> = new Set([
   KB_SEARCH_TOOL_NAME,
   KB_READ_TOOL_NAME
 ])
-const CHERRY_TOOLS_MCP_SERVER = 'cherry-tools'
 const TOOL_INVOKE_TOOL_NAME = 'tool_invoke'
 
 type ToolResponsePart = ToolUIPart<UITools> | DynamicToolUIPart
@@ -105,16 +105,16 @@ function sourceIdToNumber(sourceId: unknown): number | undefined {
   return Number.isFinite(value) && value >= 0 ? value + 1 : undefined
 }
 
-/** `mcp__cherry-tools__web_search` → `web_search`; null for any other server or tool. */
-function citableCherryToolName(wireName: string): string | null {
+/** A built-in tools runtime name → its tool name; null for any other server or tool. */
+function citableMeacoworkToolName(wireName: string): string | null {
   const parsed = parseFunctionCallToolName(wireName)
-  if (!parsed || parsed.serverPart !== CHERRY_TOOLS_MCP_SERVER) return null
+  if (!parsed || !isMeacoworkToolsServerName(parsed.serverPart)) return null
   return CITABLE_TOOL_NAMES.has(parsed.toolPart) ? parsed.toolPart : null
 }
 
 /**
  * The builtin lookup tool a part's completed output belongs to, across all
- * four wire shapes (static AI-SDK part, tool_invoke wrapper, cherry-tools
+ * four wire shapes (static AI-SDK part, tool_invoke wrapper, MEA Cowork tools
  * MCP dynamic-tool, pi's tool_call wrapper). Third-party MCP tools that happen
  * to share a name are deliberately excluded.
  */
@@ -129,9 +129,9 @@ function resolveCitableToolName(part: CherryMessagePart): string | null {
 
     const partMetadata = readCherryMeta(part)?.tool
     const outputMetadata = extractOutputMetadata((toolPart as { output?: unknown }).output).metadata
-    const belongsToCherryTools = (metadata: ToolMetadata | typeof partMetadata | undefined) =>
-      metadata?.serverId === CHERRY_TOOLS_MCP_SERVER || metadata?.serverName === CHERRY_TOOLS_MCP_SERVER
-    return belongsToCherryTools(partMetadata) || belongsToCherryTools(outputMetadata) ? rawName : null
+    const belongsToMeacoworkTools = (metadata: ToolMetadata | typeof partMetadata | undefined) =>
+      isMeacoworkToolsServerName(metadata?.serverId) || isMeacoworkToolsServerName(metadata?.serverName)
+    return belongsToMeacoworkTools(partMetadata) || belongsToMeacoworkTools(outputMetadata) ? rawName : null
   }
 
   if (rawName === TOOL_INVOKE_TOOL_NAME) {
@@ -144,10 +144,10 @@ function resolveCitableToolName(part: CherryMessagePart): string | null {
   // in the input rather than the part's own name — the `tool_invoke` shape with an MCP-style name.
   if (rawName === PI_TOOL_CALL_TOOL_NAME) {
     const input = toolPart.input
-    return isRecord(input) && typeof input.name === 'string' ? citableCherryToolName(input.name) : null
+    return isRecord(input) && typeof input.name === 'string' ? citableMeacoworkToolName(input.name) : null
   }
 
-  return citableCherryToolName(rawName)
+  return citableMeacoworkToolName(rawName)
 }
 
 /**

@@ -1,6 +1,45 @@
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { formatFileSize, getFileDirectory, getFileExtension, removeSpecialCharactersForFileName } from '../file'
+import { ipcApi } from '@renderer/ipc'
+
+import {
+  formatFileSize,
+  getFileDirectory,
+  getFileExtension,
+  isSupportedFile,
+  removeSpecialCharactersForFileName
+} from '../file'
+
+vi.mock('@renderer/ipc', () => ({ ipcApi: { request: vi.fn() } }))
+
+// 防止通配能力默认放开其他页面，同时保留原有扩展名及文本兜底。
+describe('isSupportedFile', () => {
+  beforeEach(() => {
+    vi.mocked(ipcApi.request).mockReset()
+  })
+
+  it.each([{ extensions: [] }, { extensions: ['.pdf'] }])(
+    '扩展列表 $extensions 拒绝未知二进制格式',
+    async ({ extensions }) => {
+      vi.mocked(ipcApi.request).mockResolvedValue({ kind: 'file', type: 'other' })
+      await expect(isSupportedFile('/tmp/archive.zip', new Set(extensions))).resolves.toBe(false)
+    }
+  )
+
+  it('仍允许显式支持的扩展名', async () => {
+    await expect(isSupportedFile('/tmp/manual.PDF', new Set(['.pdf']))).resolves.toBe(true)
+  })
+
+  it('仍允许元数据识别为文本的未知扩展名', async () => {
+    vi.mocked(ipcApi.request).mockResolvedValue({ kind: 'file', type: 'text' })
+    await expect(isSupportedFile('/tmp/manual.custom', new Set(['.pdf']))).resolves.toBe(true)
+  })
+
+  it.each(['/tmp/archive.zip', '/tmp/model.step', '/tmp/noextension'])('显式通配允许 %s 选入', async (path) => {
+    vi.mocked(ipcApi.request).mockResolvedValue({ kind: 'file', type: 'other' })
+    await expect(isSupportedFile(path, new Set(['*']))).resolves.toBe(true)
+  })
+})
 
 describe('file', () => {
   describe('getFileDirectory', () => {

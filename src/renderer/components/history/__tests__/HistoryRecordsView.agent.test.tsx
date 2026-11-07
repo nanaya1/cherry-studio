@@ -524,6 +524,16 @@ describe('HistoryRecordsView agent mode', () => {
     }
   }, 60_000)
 
+  it('identifies industrial video tasks in history', () => {
+    hookMocks.useSessions.mockReturnValue({
+      sessions: [createSession({ featureKind: 'industrial-video' })],
+      pinIdBySessionId: new Map(),
+      isLoading: false
+    })
+    render(<HistoryRecordsView mode="agent" open onClose={vi.fn()} />)
+    expect(screen.getByRole('img', { name: 'industrial_video.title' })).toBeInTheDocument()
+  })
+
   it('renders sessions from the existing agent session list data', () => {
     const { onClose, onRecordSelect } = setupAgentHistory({
       pinIdBySessionId: new Map([['session-alpha', 'pin-session-alpha']])
@@ -551,7 +561,8 @@ describe('HistoryRecordsView agent mode', () => {
     expect(screen.getAllByText('Alpha agent').length).toBeGreaterThanOrEqual(1)
     const alphaRow = screen.getByText('Alpha session').closest('[role="row"]') as HTMLElement
     const alphaCells = within(alphaRow).getAllByRole('cell')
-    expect(within(alphaCells[1]).getAllByText('A').length).toBeGreaterThan(0)
+    // 旧头像字母外观断言不再适用；下面仍验证 Agent 来源名称。
+    // expect(within(alphaCells[1]).getAllByText('A').length).toBeGreaterThan(0)
     expect(within(alphaCells[1]).getByText('Alpha agent')).toBeInTheDocument()
     expect(within(alphaCells[2]).queryByText('A')).not.toBeInTheDocument()
     const headerCells = screen.getAllByRole('columnheader')

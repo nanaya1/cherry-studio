@@ -20,7 +20,7 @@ Two invariants hold for every operation:
 ## When to use which tool
 
 - Only need to *read* a document to summarize or answer questions → use
-  `mcp__cherry-tools__to_markdown` instead (see the cherry-tool-guide skill); it is
+  `mcp__meacowork-tools__to_markdown` instead (see the meacowork-tool-guide skill); it is
   lossy but built for reading.
 - The user wants a *file* out — an extracted range, a converted fragment, an edited
   copy → this skill.

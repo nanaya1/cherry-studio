@@ -162,6 +162,8 @@ export interface CherryTextMeta {
   references?: unknown[]
   /** Composer inline token display snapshot — on user TextUIPart by convention. */
   composer?: ComposerMessageSnapshot
+  /** User-message display projection; empty hides context without changing model input. */
+  displayText?: string
 }
 
 /** Cherry metadata on a ReasoningUIPart. */
@@ -173,7 +175,7 @@ export interface CherryReasoningMeta {
 }
 
 /** Cherry metadata on a ToolUIPart / DynamicToolUIPart. */
-export interface CherryToolMeta {
+export interface MeacoworkToolMeta {
   /** Approval bridge transport. */
   transport?: string
   /** Tool name (used by approval bridge before the part has been finalized). */
@@ -231,7 +233,7 @@ export type CherryMetaForPartType<T extends string> = T extends 'text'
   : T extends 'reasoning'
     ? CherryReasoningMeta
     : T extends `tool-${string}` | 'dynamic-tool'
-      ? CherryToolMeta
+      ? MeacoworkToolMeta
       : T extends 'file'
         ? CherryFileMeta
         : T extends 'data-error'
@@ -239,11 +241,11 @@ export type CherryMetaForPartType<T extends string> = T extends 'text'
           : Record<string, never>
 
 /**
- * @deprecated Use `CherryTextMeta` / `CherryReasoningMeta` / `CherryToolMeta` / `CherryFileMeta`
+ * @deprecated Use `CherryTextMeta` / `CherryReasoningMeta` / `MeacoworkToolMeta` / `CherryFileMeta`
  * directly, or `CherryMetaForPartType<P['type']>` in generic positions. Retained for one PR
  * cycle to keep external imports compiling.
  */
-export type CherryProviderMetadata = CherryTextMeta & CherryReasoningMeta & CherryToolMeta & CherryFileMeta
+export type CherryProviderMetadata = CherryTextMeta & CherryReasoningMeta & MeacoworkToolMeta & CherryFileMeta
 
 // ============================================================================
 // Zod schemas — runtime validation at the read boundary
@@ -289,7 +291,9 @@ const ComposerMessageSnapshotSchema: z.ZodType<ComposerMessageSnapshot> = z.obje
 
 export const CherryTextMetaSchema: z.ZodType<CherryTextMeta> = z.object({
   references: z.array(z.unknown()).optional(),
-  composer: ComposerMessageSnapshotSchema.optional()
+  // composer: ComposerMessageSnapshotSchema.optional()
+  composer: ComposerMessageSnapshotSchema.optional(),
+  displayText: z.string().optional()
 })
 
 export const CherryReasoningMetaSchema: z.ZodType<CherryReasoningMeta> = z.object({
@@ -297,7 +301,7 @@ export const CherryReasoningMetaSchema: z.ZodType<CherryReasoningMeta> = z.objec
   startedAt: z.number().optional()
 })
 
-export const CherryToolMetaSchema: z.ZodType<CherryToolMeta> = z.object({
+export const MeacoworkToolMetaSchema: z.ZodType<MeacoworkToolMeta> = z.object({
   transport: z.string().optional(),
   toolName: z.string().optional(),
   tool: z
@@ -338,7 +342,7 @@ export const KnowledgeScopePartDataSchema: z.ZodType<KnowledgeScopePartData> = z
 const SCHEMA_BY_PART_TYPE: ReadonlyArray<readonly [(t: string) => boolean, z.ZodTypeAny]> = [
   [(t) => t === 'text', CherryTextMetaSchema],
   [(t) => t === 'reasoning', CherryReasoningMetaSchema],
-  [(t) => t === 'dynamic-tool' || t.startsWith('tool-'), CherryToolMetaSchema],
+  [(t) => t === 'dynamic-tool' || t.startsWith('tool-'), MeacoworkToolMetaSchema],
   [(t) => t === 'file', CherryFileMetaSchema],
   [(t) => t === 'data-error', CherryErrorMetaSchema]
 ]

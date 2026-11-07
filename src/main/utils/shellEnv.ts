@@ -22,14 +22,14 @@ export function getPathFromEnvironment(env: Record<string, string | undefined>):
  * Ensures Cherry-managed tool directories are appended to the user's PATH while
  * preserving the original key casing and avoiding duplicate segments.
  */
-const appendCherryToolDirsToPath = (env: Record<string, string>) => {
+const appendMeacoworkToolDirsToPath = (env: Record<string, string>) => {
   const pathSeparator = isWin ? ';' : ':'
-  const cherryToolDirs = getBinarySearchDirs()
+  const meacoworkToolDirs = getBinarySearchDirs()
   // Bundled MinGit as a last-resort git: appended after the managed tool dirs so
   // it lands at the very tail, letting any spawned process (agent, CLI) resolve a
   // bare `git` with no system git — while system/mise/PATH git always win ahead.
   const bundledGitDir = getBundledGitDir()
-  const tailDirs = bundledGitDir ? [...cherryToolDirs, bundledGitDir] : cherryToolDirs
+  const tailDirs = bundledGitDir ? [...meacoworkToolDirs, bundledGitDir] : meacoworkToolDirs
   const pathKeys = Object.keys(env).filter((key) => key.toLowerCase() === 'path')
   const canonicalPathKey = pathKeys[0] || (isWin ? 'Path' : 'PATH')
   const existingPathValue = env[canonicalPathKey] || env.PATH || ''
@@ -350,7 +350,7 @@ export async function getRawShellEnv(signal?: AbortSignal): Promise<Record<strin
 
 export async function getShellEnv(signal?: AbortSignal): Promise<Record<string, string>> {
   const env = await getRawShellEnv(signal)
-  appendCherryToolDirsToPath(env)
+  appendMeacoworkToolDirsToPath(env)
   applyBinaryExecutionEnv(env)
   return env
 }
@@ -374,7 +374,7 @@ export async function refreshShellEnv(): Promise<Record<string, string>> {
     // lookups hit the filesystem live; logged so the reuse is observable.
     logger.debug('refreshShellEnv reusing in-flight shell capture instead of re-spawning')
     const env = { ...(await inflight) }
-    appendCherryToolDirsToPath(env)
+    appendMeacoworkToolDirsToPath(env)
     applyBinaryExecutionEnv(env)
     return env
   }

@@ -18,6 +18,7 @@ import {
   WEB_SEARCH_TOOL_NAME,
   webSearchOutputSchema
 } from '@shared/ai/builtinTools'
+import { isMeacoworkToolsServerName } from '@shared/ai/meacoworkTools'
 import {
   type DeferredToolOutput,
   type DeferredToolResultRef,
@@ -30,7 +31,6 @@ import type { CherryMessagePart } from '@shared/data/types/message'
 /** Serialized UTF-8 size at or below which a result travels inline. */
 export const DEFER_TOOL_OUTPUT_BYTES = 32 * 1024
 
-const CHERRY_TOOLS_MCP_SERVER = 'cherry-tools'
 const CITABLE_TOOL_NAMES: ReadonlySet<string> = new Set([
   WEB_SEARCH_TOOL_NAME,
   WEB_FETCH_TOOL_NAME,
@@ -112,11 +112,12 @@ function toCitationSkeleton(output: unknown): unknown | undefined {
 
   const metadata = output.metadata
   const toolName = typeof metadata.name === 'string' ? metadata.name : undefined
-  const belongsToCherryTools =
-    metadata.serverId === CHERRY_TOOLS_MCP_SERVER || metadata.serverName === CHERRY_TOOLS_MCP_SERVER
+  const belongsToMeacoworkTools =
+    isMeacoworkToolsServerName(typeof metadata.serverId === 'string' ? metadata.serverId : undefined) ||
+    isMeacoworkToolsServerName(typeof metadata.serverName === 'string' ? metadata.serverName : undefined)
   // Older agent messages predate MCP output names. Their Cherry Tools server id or name plus
   // a citable payload schema is sufficient; the renderer still gates on the part's tool name.
-  if (metadata.type !== 'mcp' || !belongsToCherryTools || (toolName && !CITABLE_TOOL_NAMES.has(toolName))) {
+  if (metadata.type !== 'mcp' || !belongsToMeacoworkTools || (toolName && !CITABLE_TOOL_NAMES.has(toolName))) {
     return undefined
   }
 

@@ -450,7 +450,7 @@ describe('createPiCodeModeTools', () => {
   })
 
   it('does not execute a nested tool denied by the Pi approval policy', async () => {
-    const name = 'mcp__cherry-tools__kb_manage'
+    const name = 'mcp__meacowork-tools__kb_manage'
     const inner = tool({ name })
     const authorize = vi.fn<PiToolAuthorizer>(async () => ({ block: true, reason: 'User denied permission.' }))
     const exec = codeModeTools([inner], new Set(), authorize).find((item) => item.name === PI_TOOL_EXEC_TOOL_NAME)!

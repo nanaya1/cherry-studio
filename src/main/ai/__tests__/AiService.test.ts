@@ -12,6 +12,7 @@ import { isGatewayRoutableModel } from '@shared/utils/model'
 
 import type * as ImageTransportRegistryModule from '../provider/custom/imageTransportRegistry'
 import type * as ListModelsModule from '../provider/listModels'
+import { toolApprovalRegistry } from '../toolApproval/ToolApprovalRegistry'
 import type { AiStreamRequest } from '../types/requests'
 import type * as CustomFetchModule from '../utils/customFetch'
 import { makeProvider } from './fixtures/provider'
@@ -970,7 +971,131 @@ describe('AiService tool approval', () => {
   }
 
   beforeEach(() => {
+    toolApprovalRegistry.clear('test-reset')
     vi.clearAllMocks()
+  })
+
+  it('原生工业视频问答确认先完成可信审核，再恢复 Agent 工具调用', async () => {
+    const resolve = vi.fn()
+    toolApprovalRegistry.register({
+      approvalId: 'industrial-review-1',
+      sessionId: 'session-1',
+      toolCallId: 'ask-review-1',
+      toolName: 'AskUserQuestion',
+      originalInput: {
+        questions: [
+          {
+            question: '脚本与分镜是否确认?',
+            header: '审核',
+            options: [{ label: '脚本与分镜没问题,开始生成视频' }, { label: '我要修改脚本或分镜' }],
+            multiSelect: false
+          }
+        ]
+      },
+      trustedContext: { kind: 'industrial-video-review', run: 'run-1', reviewVersion: 'review-7' },
+      resolve
+    })
+    const reviewSnapshotGet = vi.fn().mockResolvedValue({ review_version: 'review-7' })
+    const reviewConfirm = vi.fn().mockResolvedValue({
+      generation_allowed: true,
+      review_version: 'review-8',
+      remaining_blockers: []
+    })
+    const respondToolApproval = vi.fn((approvalId, decision) => {
+      const dispatched = toolApprovalRegistry.dispatch(approvalId, decision)
+      return Boolean(dispatched)
+    })
+    mockApplicationGet.mockImplementation((name: string) => {
+      if (name === 'AgentSessionRuntimeService') return { respondToolApproval }
+      if (name === 'IndustrialVideoService') {
+        return {
+          getRecords: () => ({ run: 'run-1' }),
+          reviewSnapshotGet,
+          reviewConfirm
+        }
+      }
+      if (name === 'AiStreamManager') return { resolveToolApproval: vi.fn() }
+      return undefined
+    })
+
+    const result = await getApprovalHandler()(fakeEvent(), {
+      approvalId: 'industrial-review-1',
+      approved: true,
+      updatedInput: {
+        questions: [],
+        answers: { '脚本与分镜是否确认?': '脚本与分镜没问题,开始生成视频' }
+      }
+    })
+
+    expect(result).toEqual({ ok: true })
+    expect(reviewSnapshotGet).toHaveBeenCalledWith({
+      sessionId: 'session-1',
+      run: 'run-1',
+      reviewType: 'script_and_storyboard'
+    })
+    expect(reviewConfirm).toHaveBeenCalledWith({
+      sessionId: 'session-1',
+      run: 'run-1',
+      reviewType: 'script_and_storyboard',
+      expectedReviewVersion: 'review-7'
+    })
+    expect(resolve).toHaveBeenCalledWith(
+      expect.objectContaining({
+        approved: true,
+        updatedInput: expect.objectContaining({
+          answers: {
+            '脚本与分镜是否确认?':
+              '脚本与分镜没问题，开始生成视频\n\n系统可信审核已通过（审核版本：review-8）。不要调用费用预估；保持制作参数与已审核分镜不变，立即调用 ivideo_start 启动视频生成，不要等待单独确认，也不要再次询问脚本与分镜确认。'
+          },
+          metadata: expect.objectContaining({ reviewConfirmed: true, confirmedReviewVersion: 'review-8' })
+        })
+      })
+    )
+  })
+
+  it('原生工业视频问答选择修改时不执行可信审核', async () => {
+    const resolve = vi.fn()
+    toolApprovalRegistry.register({
+      approvalId: 'industrial-review-revise',
+      sessionId: 'session-1',
+      toolCallId: 'ask-review-2',
+      toolName: 'AskUserQuestion',
+      originalInput: {
+        questions: [
+          {
+            question: '脚本与分镜是否确认？',
+            header: '审核',
+            options: [{ label: '脚本与分镜没问题，开始生成视频' }, { label: '我要修改脚本或分镜' }],
+            multiSelect: false
+          }
+        ]
+      },
+      trustedContext: { kind: 'industrial-video-review', run: 'run-1', reviewVersion: 'review-7' },
+      resolve
+    })
+    const reviewConfirm = vi.fn()
+    const respondToolApproval = vi.fn((approvalId, decision) =>
+      Boolean(toolApprovalRegistry.dispatch(approvalId, decision))
+    )
+    mockApplicationGet.mockImplementation((name: string) => {
+      if (name === 'AgentSessionRuntimeService') return { respondToolApproval }
+      if (name === 'IndustrialVideoService') return { reviewConfirm }
+      return undefined
+    })
+
+    const updatedInput = {
+      questions: [],
+      answers: { '脚本与分镜是否确认？': '我要修改脚本或分镜' }
+    }
+    const result = await getApprovalHandler()(fakeEvent(), {
+      approvalId: 'industrial-review-revise',
+      approved: true,
+      updatedInput
+    })
+
+    expect(result).toEqual({ ok: true })
+    expect(reviewConfirm).not.toHaveBeenCalled()
+    expect(resolve).toHaveBeenCalledWith({ approved: true, updatedInput })
   })
 
   it('takes the Claude-Agent fast-path when the live registry dispatches the decision', async () => {

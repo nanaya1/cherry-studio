@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
   listBuiltinToolPolicies,
-  toCherryBuiltinRuntimeName,
+  toMeacoworkBuiltinRuntimeName,
   toMcpRuntimeName
 } from '@main/ai/toolApproval/builtinToolPolicy'
 import type * as UserDataSqliteGuard from '@main/ai/toolApproval/userDataSqliteGuard'
@@ -25,7 +25,7 @@ const NON_BYPASSABLE_APPROVAL_REQUIRED_RUNTIME_NAMES = listBuiltinToolPolicies({
   approval: 'required',
   bypassApproval: 'enforce'
 }).map(toMcpRuntimeName)
-const NON_HOST_MCP_SERVERS: ReadonlySet<string> = new Set(['cherry-tools', 'agent-memory', 'skills', 'mcp-manager'])
+const NON_HOST_MCP_SERVERS: ReadonlySet<string> = new Set(['meacowork-tools', 'agent-memory', 'skills', 'mcp-manager'])
 const NON_ASSISTANT_APPROVAL_REQUIRED_RUNTIME_NAMES = listBuiltinToolPolicies({
   approval: 'required',
   mountedServers: NON_HOST_MCP_SERVERS
@@ -1666,14 +1666,14 @@ describe('buildClaudeCodeSessionSettings', () => {
     const settings = await buildClaudeCodeSessionSettings(session as never, {} as never)
 
     expect(settings.disallowedTools).toEqual(expect.arrayContaining(['Bash', 'Read']))
-    // The injected cherry-tools/agent-memory servers are always pre-approved via the allowlist.
+    // The injected meacowork-tools/agent-memory servers are always pre-approved via the allowlist.
     expect(settings.allowedTools).toEqual(
-      expect.arrayContaining(['mcp__cherry-tools__cron', 'mcp__agent-memory__memory'])
+      expect.arrayContaining(['mcp__meacowork-tools__cron', 'mcp__agent-memory__memory'])
     )
   })
 
   it('does not auto-approve disabled MCP tools', async () => {
-    const disabledTools = ['mcp__cherry-tools__web_fetch', 'mcp__agent-memory__memory']
+    const disabledTools = ['mcp__meacowork-tools__web_fetch', 'mcp__agent-memory__memory']
     mocks.getAgent.mockReturnValue({
       id: 'agent-1',
       type: 'claude-code',
@@ -1693,7 +1693,7 @@ describe('buildClaudeCodeSessionSettings', () => {
 
     expect(settings.disallowedTools).toEqual(expect.arrayContaining(disabledTools))
     for (const toolName of disabledTools) expect(settings.allowedTools).not.toContain(toolName)
-    expect(settings.allowedTools).toContain('mcp__cherry-tools__web_search')
+    expect(settings.allowedTools).toContain('mcp__meacowork-tools__web_search')
   })
 
   it('appends web-only citation guidance to the system prompt by default', async () => {
@@ -1707,8 +1707,8 @@ describe('buildClaudeCodeSessionSettings', () => {
 
     const systemPrompt = systemPromptText(settings.systemPrompt)
     expect(systemPrompt).toContain('## Citations')
-    expect(systemPrompt).toContain('mcp__cherry-tools__web_search')
-    expect(systemPrompt).not.toContain('mcp__cherry-tools__kb_search')
+    expect(systemPrompt).toContain('mcp__meacowork-tools__web_search')
+    expect(systemPrompt).not.toContain('mcp__meacowork-tools__kb_search')
   })
 
   it('includes kb_search in citation guidance when the agent has bound knowledge bases', async () => {
@@ -1729,7 +1729,7 @@ describe('buildClaudeCodeSessionSettings', () => {
 
     const settings = await buildClaudeCodeSessionSettings(session as never, {} as never)
 
-    expect(systemPromptText(settings.systemPrompt)).toContain('mcp__cherry-tools__kb_search')
+    expect(systemPromptText(settings.systemPrompt)).toContain('mcp__meacowork-tools__kb_search')
   })
 
   // The kb_* tools are exposed from the resolved scope, so an unbound Agent still gets them from the
@@ -1754,7 +1754,7 @@ describe('buildClaudeCodeSessionSettings', () => {
       knowledgeBaseIds: ['kb-selected']
     })
 
-    expect(systemPromptText(settings.systemPrompt)).toContain('mcp__cherry-tools__kb_search')
+    expect(systemPromptText(settings.systemPrompt)).toContain('mcp__meacowork-tools__kb_search')
   })
 
   it('omits citation guidance when both web tools are disabled and no knowledge base is bound', async () => {
@@ -1764,7 +1764,7 @@ describe('buildClaudeCodeSessionSettings', () => {
       model: 'anthropic::claude-sonnet',
       mcps: [],
       allowedTools: [],
-      disabledTools: ['mcp__cherry-tools__web_search', 'mcp__cherry-tools__web_fetch'],
+      disabledTools: ['mcp__meacowork-tools__web_search', 'mcp__meacowork-tools__web_fetch'],
       configuration: {}
     })
     const session = {
@@ -1786,7 +1786,11 @@ describe('buildClaudeCodeSessionSettings', () => {
       mcps: [],
       allowedTools: [],
       knowledgeBaseIds: ['kb-1'],
-      disabledTools: ['mcp__cherry-tools__web_search', 'mcp__cherry-tools__web_fetch', 'mcp__cherry-tools__kb_search'],
+      disabledTools: [
+        'mcp__meacowork-tools__web_search',
+        'mcp__meacowork-tools__web_fetch',
+        'mcp__meacowork-tools__kb_search'
+      ],
       configuration: {}
     })
     const session = {
@@ -1797,7 +1801,7 @@ describe('buildClaudeCodeSessionSettings', () => {
 
     const settings = await buildClaudeCodeSessionSettings(session as never, {} as never)
 
-    expect(settings.disallowedTools).toEqual(expect.arrayContaining(['mcp__cherry-tools__kb_read']))
+    expect(settings.disallowedTools).toEqual(expect.arrayContaining(['mcp__meacowork-tools__kb_read']))
     expect(systemPromptText(settings.systemPrompt)).not.toContain('## Citations')
   })
 
@@ -1867,7 +1871,7 @@ describe('buildClaudeCodeSessionSettings', () => {
     expect(settings.disallowedTools ?? []).not.toEqual(
       expect.arrayContaining(['AskUserQuestion', 'EnterPlanMode', 'ExitPlanMode'])
     )
-    expect(settings.disallowedTools ?? []).not.toContain('mcp__cherry-tools__notify')
+    expect(settings.disallowedTools ?? []).not.toContain('mcp__meacowork-tools__notify')
   })
 
   it('denies interactive no-responder tools at tool fire time for the current headless turn', async () => {
@@ -2221,7 +2225,7 @@ describe('buildClaudeCodeSessionSettings', () => {
           hook(
             {
               hook_event_name: 'PreToolUse',
-              tool_name: 'mcp__cherry-tools__config',
+              tool_name: 'mcp__meacowork-tools__config',
               tool_input: { action }
             } as never,
             'tool-use-1',
@@ -2412,6 +2416,281 @@ describe('buildClaudeCodeSessionSettings', () => {
         providerMetadata: { cherry: { transport: 'claude-agent', toolName: 'AskUserQuestion' } }
       })
     )
+  })
+
+  it.each([
+    'ivideo_run_create',
+    'ivideo_parse',
+    'ivideo_context',
+    'ivideo_storyboard_get',
+    'ivideo_storyboard_submit',
+    'ivideo_review_snapshot_get',
+    'ivideo_status',
+    'ivideo_estimate',
+    'ivideo_download',
+    'ivideo_start'
+  ])('auto-allows industrial-video workflow tools only in its dedicated feature scope: %s', async (name) => {
+    const toolName = `mcp__meacowork-tools__${name}`
+    for (const featureKind of [undefined, 'industrial-video']) {
+      const settings = await buildClaudeCodeSessionSettings(
+        {
+          id: 'session-1',
+          agentId: 'agent-1',
+          featureKind,
+          workspace: { type: 'user', path: '/workspace/project' }
+        } as never,
+        {} as never
+      )
+      const emit = vi.fn()
+      settings.approvalEmitter!.emit = emit
+      const pending = settings.canUseTool!(toolName, { run: 'run-1' }, {
+        signal: { aborted: false },
+        toolUseID: 'prepare-1'
+      } as never)
+      if (featureKind === 'industrial-video') {
+        expect(await pending).toEqual({ behavior: 'allow', updatedInput: { run: 'run-1' } })
+        expect(emit).not.toHaveBeenCalled()
+      } else {
+        expect(emit).toHaveBeenCalledWith(expect.objectContaining({ toolName }))
+      }
+    }
+  })
+
+  // 下载改为专属会话自动放行，生成和未知工具仍需授权。
+  // it.each(['ivideo_start', 'ivideo_download', 'ivideo_future_tool'])(
+  // 启动生成改为专属会话自动确认，未知工具仍需授权。
+  // it.each(['ivideo_start', 'ivideo_future_tool'])(
+  it.each(['ivideo_future_tool'])(
+    'keeps industrial-video non-preparation tools on the existing approval path: %s',
+    async (name) => {
+      const settings = await buildClaudeCodeSessionSettings(
+        {
+          id: 'session-1',
+          agentId: 'agent-1',
+          featureKind: 'industrial-video',
+          workspace: { type: 'user', path: '/workspace/project' }
+        } as never,
+        {} as never
+      )
+      const emit = vi.fn()
+      settings.approvalEmitter!.emit = emit
+      void settings.canUseTool!(`mcp__meacowork-tools__${name}`, {}, {
+        signal: { aborted: false },
+        toolUseID: 'restricted-1'
+      } as never)
+      expect(emit).toHaveBeenCalledWith(expect.objectContaining({ toolName: `mcp__meacowork-tools__${name}` }))
+    }
+  )
+
+  // it('preserves explicit ask rules for industrial-video preparation', async () => {
+  // it.each(['ivideo_storyboard_submit', 'ivideo_download'])(
+  it.each(['ivideo_storyboard_submit', 'ivideo_download', 'ivideo_start'])(
+    'preserves explicit ask rules for industrial-video: %s',
+    async (name) => {
+      const settings = await buildClaudeCodeSessionSettings(
+        {
+          id: 'session-1',
+          agentId: 'agent-1',
+          featureKind: 'industrial-video',
+          workspace: { type: 'user', path: '/workspace/project' }
+        } as never,
+        {} as never
+      )
+      const emit = vi.fn()
+      settings.approvalEmitter!.emit = emit
+      // void settings.canUseTool!('mcp__meacowork-tools__ivideo_storyboard_submit', {}, {
+      void settings.canUseTool!(`mcp__meacowork-tools__${name}`, {}, {
+        signal: { aborted: false },
+        toolUseID: 'explicit-ask',
+        matchedAskRule: 'explicit-user-rule'
+      } as never)
+      expect(emit).toHaveBeenCalledWith(
+        // expect.objectContaining({ toolName: 'mcp__meacowork-tools__ivideo_storyboard_submit' })
+        expect.objectContaining({ toolName: `mcp__meacowork-tools__${name}` })
+      )
+    }
+  )
+
+  it('does not auto-allow a disabled industrial-video start tool', async () => {
+    const toolName = 'mcp__meacowork-tools__ivideo_start'
+    mocks.createToolPolicySnapshot.mockResolvedValue({
+      resolve: vi.fn(() => 'deny'),
+      isDisabled: vi.fn((name: string) => name === toolName),
+      getPermissionMode: vi.fn(() => undefined),
+      update: vi.fn(),
+      setPermissionMode: vi.fn()
+    })
+    const settings = await buildClaudeCodeSessionSettings(
+      {
+        id: 'session-1',
+        agentId: 'agent-1',
+        featureKind: 'industrial-video',
+        workspace: { type: 'user', path: '/workspace/project' }
+      } as never,
+      {} as never
+    )
+    const emit = vi.fn()
+    settings.approvalEmitter!.emit = emit
+    void settings.canUseTool!(toolName, { run: 'run-1' }, {
+      signal: { aborted: false },
+      toolUseID: 'disabled-start'
+    } as never)
+    expect(emit).toHaveBeenCalledWith(expect.objectContaining({ toolName }))
+  })
+
+  it('binds the reviewed industrial-video version to the pending confirmation card', async () => {
+    const getInteractionState = vi.fn(() => ({ currentTurn: 'interactive', userResponse: 'stream' }))
+    mocks.applicationGet.mockImplementation((name: string) => {
+      if (name === 'PreferenceService') return { get: vi.fn(() => undefined) }
+      if (name === 'McpCatalogService') return { listTools: vi.fn(async () => []) }
+      if (name === 'AgentSessionRuntimeService') return { getInteractionState }
+      if (name === 'IndustrialVideoService') {
+        return {
+          getConfirmedReview: () => null,
+          getPendingReviewSnapshot: () => ({ run: 'run-1', reviewVersion: 'review-7' }),
+          getRecords: () => ({ run: 'run-1' })
+        }
+      }
+      throw new Error(`Unexpected application.get(${name})`)
+    })
+    const settings = await buildClaudeCodeSessionSettings(
+      {
+        id: 'session-1',
+        agentId: 'agent-1',
+        featureKind: 'industrial-video',
+        workspace: { type: 'user', path: '/workspace/project' }
+      } as never,
+      {} as never
+    )
+    const emit = vi.fn()
+    settings.approvalEmitter!.emit = emit
+    const input = {
+      questions: [
+        {
+          question: '脚本与分镜是否确认?',
+          header: '审核',
+          options: [{ label: '脚本与分镜没问题,开始生成视频' }, { label: '我要修改脚本或分镜' }],
+          multiSelect: false
+        }
+      ]
+    }
+
+    void settings.canUseTool?.('AskUserQuestion', input, {
+      signal: { aborted: false },
+      toolUseID: 'tool-use-review'
+    } as never)
+
+    expect(mocks.approvalRegister).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: 'session-1',
+        originalInput: input,
+        trustedContext: { kind: 'industrial-video-review', run: 'run-1', reviewVersion: 'review-7' }
+      })
+    )
+    expect(emit).toHaveBeenCalledOnce()
+  })
+
+  it('rejects an industrial-video confirmation card when no reviewed version can be bound', async () => {
+    const getInteractionState = vi.fn(() => ({ currentTurn: 'interactive', userResponse: 'stream' }))
+    mocks.applicationGet.mockImplementation((name: string) => {
+      if (name === 'PreferenceService') return { get: vi.fn(() => undefined) }
+      if (name === 'McpCatalogService') return { listTools: vi.fn(async () => []) }
+      if (name === 'AgentSessionRuntimeService') return { getInteractionState }
+      if (name === 'IndustrialVideoService') {
+        return {
+          getConfirmedReview: () => null,
+          getPendingReviewSnapshot: () => null,
+          getRecords: () => ({ run: 'run-1' })
+        }
+      }
+      throw new Error(`Unexpected application.get(${name})`)
+    })
+    const settings = await buildClaudeCodeSessionSettings(
+      {
+        id: 'session-1',
+        agentId: 'agent-1',
+        featureKind: 'industrial-video',
+        workspace: { type: 'user', path: '/workspace/project' }
+      } as never,
+      {} as never
+    )
+    const emit = vi.fn()
+    settings.approvalEmitter!.emit = emit
+
+    const result = await settings.canUseTool?.(
+      'AskUserQuestion',
+      {
+        questions: [
+          {
+            question: '脚本与分镜是否确认？',
+            header: '审核',
+            options: [{ label: '脚本与分镜没问题，开始生成视频' }, { label: '我要修改脚本或分镜' }],
+            multiSelect: false
+          }
+        ]
+      },
+      { signal: { aborted: false }, toolUseID: 'tool-use-review-missing-version' } as never
+    )
+
+    expect(result).toEqual({
+      behavior: 'deny',
+      message:
+        '当前没有可绑定的脚本与分镜审核版本。请先调用 ivideo_review_snapshot_get 重新读取审核快照，再发起一次确认；不要重复当前确认问题。'
+    })
+    expect(mocks.approvalRegister).not.toHaveBeenCalled()
+    expect(emit).not.toHaveBeenCalled()
+  })
+
+  it('does not ask for an industrial-video review again after trusted confirmation', async () => {
+    const getInteractionState = vi.fn(() => ({ currentTurn: 'interactive', userResponse: 'stream' }))
+    mocks.applicationGet.mockImplementation((name: string) => {
+      if (name === 'PreferenceService') return { get: vi.fn(() => undefined) }
+      if (name === 'McpCatalogService') return { listTools: vi.fn(async () => []) }
+      if (name === 'AgentSessionRuntimeService') return { getInteractionState }
+      if (name === 'IndustrialVideoService') {
+        return {
+          getConfirmedReview: () => ({ run: 'run-1', reviewVersion: 'review-8' }),
+          getRecords: () => ({ run: 'run-1' })
+        }
+      }
+      throw new Error(`Unexpected application.get(${name})`)
+    })
+    const session = {
+      id: 'session-1',
+      agentId: 'agent-1',
+      featureKind: 'industrial-video',
+      workspace: { type: 'user', path: '/workspace/project' }
+    }
+    const settings = await buildClaudeCodeSessionSettings(session as never, {} as never)
+    const emit = vi.fn()
+    settings.approvalEmitter!.emit = emit
+
+    const result = await settings.canUseTool?.(
+      'AskUserQuestion',
+      {
+        questions: [
+          {
+            question: '脚本与分镜是否确认？',
+            header: '审核',
+            options: [{ label: '脚本与分镜没问题，开始生成视频' }, { label: '我要修改脚本或分镜' }],
+            multiSelect: false
+          }
+        ]
+      },
+      { signal: { aborted: false }, toolUseID: 'tool-use-review-repeat' } as never
+    )
+
+    expect(result).toEqual({
+      behavior: 'allow',
+      updatedInput: expect.objectContaining({
+        answers: {
+          '脚本与分镜是否确认？':
+            '脚本与分镜没问题，开始生成视频\n\n系统可信审核已通过（审核版本：review-8）。不要调用费用预估；保持制作参数与已审核分镜不变，立即调用 ivideo_start 启动视频生成，不要等待单独确认，也不要再次询问脚本与分镜确认。'
+        }
+      })
+    })
+    expect(mocks.approvalRegister).not.toHaveBeenCalled()
+    expect(emit).not.toHaveBeenCalled()
   })
 
   it('does not emit an approval request when registration settles synchronously', async () => {
@@ -2622,13 +2901,13 @@ describe('buildClaudeCodeSessionSettings', () => {
       workspacePath: '/workspace/project'
     })
 
-    const cherryServer = (settings.mcpServers?.['cherry-tools'] as any)?.instance
+    const cherryServer = (settings.mcpServers?.['meacowork-tools'] as any)?.instance
     const handlers = cherryServer.server._requestHandlers
     const listed = await handlers.get('tools/list')({ method: 'tools/list', params: {} }, {})
     expect(listed.tools.map((tool: { name: string }) => tool.name)).toEqual(
       expect.arrayContaining(['kb_search', 'kb_read', 'kb_list', 'kb_manage', 'cli_list', 'cli_search', 'cli_install'])
     )
-    expect(systemPromptText(settings.systemPrompt)).toContain('mcp__cherry-tools__kb_search')
+    expect(systemPromptText(settings.systemPrompt)).toContain('mcp__meacowork-tools__kb_search')
   })
 
   it('exposes CLI management tools to a normal Agent session', async () => {
@@ -2639,7 +2918,7 @@ describe('buildClaudeCodeSessionSettings', () => {
     }
 
     const settings = await buildClaudeCodeSessionSettings(session as never, {} as never)
-    const cherryServer = (settings.mcpServers?.['cherry-tools'] as any)?.instance
+    const cherryServer = (settings.mcpServers?.['meacowork-tools'] as any)?.instance
     const handlers = cherryServer.server._requestHandlers
     const listed = await handlers.get('tools/list')({ method: 'tools/list', params: {} }, {})
 
@@ -2694,7 +2973,7 @@ describe('buildClaudeCodeSessionSettings', () => {
       notificationContext
     })
 
-    const cherryServer = (settings.mcpServers?.['cherry-tools'] as any)?.instance
+    const cherryServer = (settings.mcpServers?.['meacowork-tools'] as any)?.instance
     const listed = await cherryServer.server._requestHandlers.get('tools/list')(
       { method: 'tools/list', params: {} },
       {}
@@ -2794,7 +3073,7 @@ describe('buildClaudeCodeSessionSettings', () => {
       } as never)
     ).resolves.toMatchObject({ behavior: 'allow' })
 
-    const cherryServer = (settings.mcpServers?.['cherry-tools'] as any)?.instance
+    const cherryServer = (settings.mcpServers?.['meacowork-tools'] as any)?.instance
     const listed = await cherryServer.server._requestHandlers.get('tools/list')(
       { method: 'tools/list', params: {} },
       {}
@@ -2928,11 +3207,11 @@ describe('buildClaudeCodeSessionSettings', () => {
     // snapshot. The agentTools test proves those options gate kb_manage; this proves the adapter
     // actually supplies the derived boundary format.
     const exceptions = NON_ASSISTANT_APPROVAL_REQUIRED_RUNTIME_NAMES
-    expect(exceptions).toContain(toCherryBuiltinRuntimeName(KB_MANAGE_TOOL_NAME))
+    expect(exceptions).toContain(toMeacoworkBuiltinRuntimeName(KB_MANAGE_TOOL_NAME))
     expect(mocks.createToolPolicySnapshot).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
-        autoAllowRuntimeNames: expect.arrayContaining(['mcp__cherry-tools__notify']),
+        autoAllowRuntimeNames: expect.arrayContaining(['mcp__meacowork-tools__notify']),
         autoAllowRuntimeNameExceptions: exceptions
       })
     )
@@ -3175,7 +3454,7 @@ describe('buildClaudeCodeSessionSettings', () => {
         const emit = vi.fn()
         settings.approvalEmitter!.emit = emit
 
-        void settings.canUseTool!(toCherryBuiltinRuntimeName(toolName), { target_session_id: 'target' }, {
+        void settings.canUseTool!(toMeacoworkBuiltinRuntimeName(toolName), { target_session_id: 'target' }, {
           signal: { aborted: false },
           toolUseID: 'tu-bg-delegation',
           agentID: 'subagent-1'
@@ -3189,7 +3468,9 @@ describe('buildClaudeCodeSessionSettings', () => {
             presentation: 'message'
           })
         )
-        expect(emit).toHaveBeenCalledWith(expect.objectContaining({ toolName: toCherryBuiltinRuntimeName(toolName) }))
+        expect(emit).toHaveBeenCalledWith(
+          expect.objectContaining({ toolName: toMeacoworkBuiltinRuntimeName(toolName) })
+        )
       }
     )
 

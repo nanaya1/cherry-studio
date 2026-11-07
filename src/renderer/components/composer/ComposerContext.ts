@@ -8,6 +8,8 @@ export type ComposerOverrideRenderInput = {
 export type ComposerOverride = {
   id: string
   priority?: number
+  /** 上置时保留输入框可见，仍暂停其交互与快捷键。 */
+  placement?: 'above'
   render: (input: ComposerOverrideRenderInput) => ReactNode
 }
 

@@ -39,15 +39,15 @@ function toolResponse(overrides: Partial<NormalToolResponse>): NormalToolRespons
   }
 }
 
-function mcpToolResponse(response: unknown): McpToolResponse {
+function mcpToolResponse(response: unknown, serverName = 'meacowork-tools'): McpToolResponse {
   return {
     id: 'tc-agent',
     tool: {
-      id: 'cherry-tools__generate_image',
+      id: `${serverName}__generate_image`,
       name: 'generate_image',
       type: 'mcp',
-      serverId: 'cherry-tools',
-      serverName: 'cherry-tools',
+      serverId: serverName,
+      serverName,
       inputSchema: { type: 'object', properties: {}, required: [] }
     },
     toolCallId: 'tc-agent',
@@ -87,16 +87,19 @@ describe('MessageGenerateImageToolTitle', () => {
     expect(screen.getAllByTestId('image-block')).toHaveLength(1)
   })
 
-  it('renders agent MCP image blocks without resolving FileEntry paths', () => {
+  it.each(['meacowork-tools', 'cherry-tools'])('renders %s MCP image blocks without resolving FileEntry paths', (serverName) => {
     render(
       <MessageGenerateImageToolTitle
-        toolResponse={mcpToolResponse({
-          content: [
-            { type: 'text', text: 'Generated image' },
-            { type: 'image', data: 'iVBORw0KGgo=', mimeType: 'image/png' }
-          ],
-          metadata: { type: 'mcp', serverId: 'cherry-tools', serverName: 'cherry-tools' }
-        })}
+        toolResponse={mcpToolResponse(
+          {
+            content: [
+              { type: 'text', text: 'Generated image' },
+              { type: 'image', data: 'iVBORw0KGgo=', mimeType: 'image/png' }
+            ],
+            metadata: { type: 'mcp', serverId: serverName, serverName }
+          },
+          serverName
+        )}
       />
     )
 

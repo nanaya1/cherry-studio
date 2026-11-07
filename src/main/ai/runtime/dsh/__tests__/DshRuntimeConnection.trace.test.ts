@@ -134,13 +134,13 @@ vi.mock('../DshBridgeServer', () => ({
     }
   })
 }))
-vi.mock('../DshCherryToolBridge', () => ({
-  buildDshCherryToolBridge: vi.fn().mockResolvedValue({
+vi.mock('../DshMeacoworkToolBridge', () => ({
+  buildDshMeacoworkToolBridge: vi.fn().mockResolvedValue({
     tools: [],
     callTool: vi.fn(),
     close: vi.fn().mockResolvedValue(undefined)
   }),
-  buildDshCherryToolName: (server: string, tool: string) => `mcp__${server}__${tool}`,
+  buildDshMeacoworkToolName: (server: string, tool: string) => `mcp__${server}__${tool}`,
   warmDshMcpToolCatalogs: vi.fn().mockResolvedValue(undefined),
   DSH_AUTO_APPROVED_BRIDGED_TOOLS: new Set<string>(),
   DSH_APPROVAL_REQUIRED_BRIDGED_TOOLS: new Set<string>(),
@@ -185,7 +185,7 @@ vi.mock('@main/ai/runtime/citationsGuidance', () => ({ buildCitationsGuidance: v
 vi.mock('@main/ai/steerReminder', () => ({ wrapSteerReminder: vi.fn((text: string) => text) }))
 
 const { DshBridgeServer } = await import('../DshBridgeServer')
-const { buildDshCherryToolBridge } = await import('../DshCherryToolBridge')
+const { buildDshMeacoworkToolBridge } = await import('../DshMeacoworkToolBridge')
 const { DshRuntimeConnection } = await import('../DshRuntimeConnection')
 const { DshRuntimeDriver } = await import('../DshRuntimeDriver')
 
@@ -536,7 +536,7 @@ describe('DshRuntimeConnection tracing', () => {
   it.each([false, true])('cleans up after a bridge disconnect (client close fails: %s)', async (closeFails) => {
     const onClosed = vi.fn()
     const connection = await new DshRuntimeConnection(connectInput, onClosed).start()
-    const toolBridge = await vi.mocked(buildDshCherryToolBridge).mock.results.at(-1)!.value
+    const toolBridge = await vi.mocked(buildDshMeacoworkToolBridge).mock.results.at(-1)!.value
     vi.mocked(toolBridge.close).mockClear()
     vi.mocked(rm).mockClear()
     const failure = new Error('client close failed')

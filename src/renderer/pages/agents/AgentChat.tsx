@@ -1,10 +1,12 @@
+import { PanelRightClose, PanelRightOpen } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { Checkbox, ConfirmDialog } from '@cherrystudio/ui'
+import { Button, Checkbox, ConfirmDialog } from '@cherrystudio/ui'
 import { usePreference } from '@data/hooks/usePreference'
 import { ChatLayoutModeProvider } from '@renderer/components/chat/layout/ChatLayoutModeContext'
+import { ToolDisplayNamesContext } from '@renderer/components/chat/messages/tools/shared/ToolDisplayNames'
 import type { MessageStreamingLayers } from '@renderer/components/chat/messages/types'
 import {
   type ResourcePaneConfig,
@@ -46,11 +48,28 @@ import type { AgentSessionEntity } from '@shared/data/api/schemas/agentSessions'
 import type { CherryMessagePart, CherryUIMessage } from '@shared/data/types/message'
 import type { Model } from '@shared/data/types/model'
 
+import IndustrialVideoAgentComposerSlot from '../industrialVideo/IndustrialVideoAgentComposerSlot'
+// 回退工业视频 Agent 专用输入，恢复原输入及确认流程。
+// import IndustrialVideoAgentInput from '../industrialVideo/IndustrialVideoAgentInput'
+import {
+  // IndustrialVideoLegacyPanel,
+  IndustrialVideoTaskSurface,
+  IndustrialVideoTaskComposer
+} from '../industrialVideo/IndustrialVideoOrchestratedTask'
+import { IndustrialVideoReviewFilesProvider } from '../industrialVideo/IndustrialVideoReviewFiles'
+import IndustrialVideoTaskPanel from '../industrialVideo/IndustrialVideoTaskPanel'
+import { INDUSTRIAL_VIDEO_TOOL_DISPLAY_NAMES } from '../industrialVideo/industrialVideoToolDisplayNames'
 import AgentChatMain from './AgentChatMain'
 import AgentComposerSlot from './AgentComposerSlot'
 import { AgentChatNavbar } from './components/AgentChatNavbar'
 import AgentCitationsPanel from './components/AgentCitationsPanel'
-import { type AgentFileNavigationRequest, AgentRightPane, AgentTaskProgressCapsule } from './components/AgentRightPane'
+import {
+  type AgentFileNavigationRequest,
+  AgentRightPane,
+  AgentTaskProgressCapsule,
+  useAgentVideoFilePreviewActive,
+  useAgentFilePreviewActive
+} from './components/AgentRightPane'
 import { ApiGatewayRequiredDialog } from './components/ApiGatewayRequiredDialog'
 import { locateAgentMessageInList } from './messages/agentMessageListAdapter'
 import type { CreateAgentSessionDefaults } from './types'
@@ -85,6 +104,24 @@ function AgentTopBarControls(props: AgentTopBarControlsProps) {
   const { iconOnly } = useConversationTopBarPortalLayout()
 
   return <AgentConversationControls {...props} side="bottom" iconOnly={iconOnly} />
+}
+
+// MEA: 工业视频任务详情顶部整块成片预览面板展开/收起开关。
+function IndustrialVideoPreviewToggle({ open, onToggle }: { open: boolean; onToggle: (open: boolean) => void }) {
+  const { t } = useTranslation()
+  const filePreviewActive = useAgentFilePreviewActive()
+  if (filePreviewActive) return null
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      aria-label={t('industrial_video.preview.toggle')}
+      aria-expanded={open}
+      onClick={() => onToggle(!open)}>
+      {open ? <PanelRightClose className="size-4" /> : <PanelRightOpen className="size-4" />}
+      {/* <span>{open ? t('industrial_video.preview.collapse') : t('industrial_video.preview.expand')}</span> */}
+    </Button>
+  )
 }
 
 interface AgentChatProps {
@@ -196,6 +233,16 @@ const AgentChat = ({
   const [modelSwitchConfirmOpen, setModelSwitchConfirmOpen] = useState(false)
   const [skipModelSwitchConfirmation, setSkipModelSwitchConfirmation] = useState(false)
   const [sessionAgentChanging, setSessionAgentChanging] = useState(false)
+  // 工业视频成片预览面板：按 session id 隔离，默认展开。
+  const [previewOpenBySession, setPreviewOpenBySession] = useState<Record<string, boolean>>({})
+  const previewOpen = currentSessionId ? (previewOpenBySession[currentSessionId] ?? true) : true
+  const setSessionPreviewOpen = useCallback(
+    (open: boolean) => {
+      if (!currentSessionId) return
+      setPreviewOpenBySession((prev) => ({ ...prev, [currentSessionId]: open }))
+    },
+    [currentSessionId]
+  )
 
   const sessionSnapshot = conversationBootstrap.session
   const visibleAgentId = sessionSnapshot?.agentId ?? null
@@ -383,14 +430,28 @@ const AgentChat = ({
     runtimeUiMessages,
     sessionTopicId
   ])
+  // MEA: 工业视频任务详情顶部隐藏原资源面板计数与快捷入口，改为成片预览整块展开/收起按钮。
+  // const rightPaneTools =
+  //   !centerSurface && (sessionSnapshot || resourcePane) ? (
+  //     <>
+  //       {resourcePaneCount && <ResourcePaneCountButton {...resourcePaneCount} />}
+  //       <AgentRightPane.Shortcuts
+  //         browserEnabled={!!activeAgent && !activeAgent.disabledTools?.includes(BROWSER_TOOL_GROUP)}
+  //       />
+  //     </>
+  //   ) : undefined
   const rightPaneTools =
     !centerSurface && (sessionSnapshot || resourcePane) ? (
-      <>
-        {resourcePaneCount && <ResourcePaneCountButton {...resourcePaneCount} />}
-        <AgentRightPane.Shortcuts
-          browserEnabled={!!activeAgent && !activeAgent.disabledTools?.includes(BROWSER_TOOL_GROUP)}
-        />
-      </>
+      sessionSnapshot?.featureKind === 'industrial-video' ? (
+        <IndustrialVideoPreviewToggle open={previewOpen} onToggle={setSessionPreviewOpen} />
+      ) : (
+        <>
+          {resourcePaneCount && <ResourcePaneCountButton {...resourcePaneCount} />}
+          <AgentRightPane.Shortcuts
+            browserEnabled={!!activeAgent && !activeAgent.disabledTools?.includes(BROWSER_TOOL_GROUP)}
+          />
+        </>
+      )
     ) : undefined
   let topBar: ReactNode
   let center: ReactNode
@@ -505,6 +566,8 @@ const AgentChat = ({
         onCreateEmptySession={sessionAgentId && onCreateEmptySession ? handleCreateEmptySession : undefined}
         composerLaunchOptions={composerLaunchOptions}
         openDiagnosticReport={canReviewDiagnosticReport ? openDiagnosticReport : undefined}
+        previewOpen={previewOpen}
+        onPreviewOpenChange={setSessionPreviewOpen}
       />
     )
   }
@@ -606,6 +669,8 @@ interface AgentChatSessionCenterProps {
   onCreateEmptySession?: () => void | Promise<unknown>
   composerLaunchOptions?: AgentComposerLaunchOptions
   openDiagnosticReport?: (description?: string) => void
+  previewOpen?: boolean
+  onPreviewOpenChange?: (open: boolean) => void
 }
 
 const AgentChatSessionCenter = ({
@@ -625,33 +690,52 @@ const AgentChatSessionCenter = ({
   onOpenCitationsPanel,
   onCreateEmptySession,
   composerLaunchOptions,
-  openDiagnosticReport
+  openDiagnosticReport,
+  previewOpen,
+  onPreviewOpenChange
 }: AgentChatSessionCenterProps) => {
+  const filePreviewActive = useAgentVideoFilePreviewActive()
+  const ComposerSlot = session.featureKind === 'industrial-video' ? IndustrialVideoAgentComposerSlot : AgentComposerSlot
   const composer = (
     <div className="flex w-full flex-col">
       {!isMultiSelectMode && <AgentTaskProgressCapsule />}
-      <AgentComposerSlot
-        editBusy={runtime.editBusy}
-        agentId={agentId}
-        activeAgent={activeAgent}
-        activeModel={activeModel}
-        workspaceWarning={workspaceWarning}
-        isMultiSelectMode={isMultiSelectMode}
-        session={session}
-        sessionId={runtime.sessionId}
-        sendMessage={runtime.sendMessage}
-        stop={runtime.stop}
-        isStreaming={runtime.isPending}
-        sendDisabled={composerPending}
-        onAgentChange={onAgentChange}
-        agentChanging={agentChanging}
-        onCreateEmptySession={onCreateEmptySession}
-        composerContext={runtime.composerContext}
-        composerLaunchOptions={composerLaunchOptions}
-        editing={runtime.editing}
-        cancelEditing={runtime.cancelEditing}
-        resendEditedMessage={runtime.resendEditedMessage}
-      />
+      {/* 停用普通 Agent 底部工业视频任务面板；任务进度与文件信息由消息流展示。 */}
+      {/* {session.featureKind === 'industrial-video' && (
+        <IndustrialVideoLegacyPanel key={session.id} sessionId={session.id} />
+      )} */}
+      <IndustrialVideoTaskComposer sessionId={session.id}>
+        {/* <IndustrialVideoAgentInput
+          sessionId={session.id}
+          composerContext={runtime.composerContext}
+          enabled={session.featureKind === 'industrial-video' && !isMultiSelectMode}
+          blocked={composerPending || runtime.isPending || !agentId}
+          sendMessage={runtime.sendMessage}> */}
+        {/* 原普通入口保留，工业视频只切换配置宿主。 */}
+        <ComposerSlot
+          key={session.featureKind === 'industrial-video' ? session.id : undefined}
+          editBusy={runtime.editBusy}
+          agentId={agentId}
+          activeAgent={activeAgent}
+          activeModel={activeModel}
+          workspaceWarning={workspaceWarning}
+          isMultiSelectMode={isMultiSelectMode}
+          session={session}
+          sessionId={runtime.sessionId}
+          sendMessage={runtime.sendMessage}
+          stop={runtime.stop}
+          isStreaming={runtime.isPending}
+          sendDisabled={composerPending}
+          onAgentChange={onAgentChange}
+          agentChanging={agentChanging}
+          onCreateEmptySession={onCreateEmptySession}
+          composerContext={runtime.composerContext}
+          composerLaunchOptions={composerLaunchOptions}
+          editing={runtime.editing}
+          cancelEditing={runtime.cancelEditing}
+          resendEditedMessage={runtime.resendEditedMessage}
+        />
+        {/* </IndustrialVideoAgentInput> */}
+      </IndustrialVideoTaskComposer>
     </div>
   )
   const messageList = (
@@ -679,7 +763,7 @@ const AgentChatSessionCenter = ({
   )
   const main = (
     <div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden">
-      {isEmptyConversation && (
+      {isEmptyConversation && session.featureKind !== 'industrial-video' && (
         <div className="pointer-events-none absolute inset-0 z-10">
           <ConversationGreeting
             avatar={activeAgent ? getAgentAvatarFromConfiguration(activeAgent.configuration) : undefined}
@@ -687,7 +771,23 @@ const AgentChatSessionCenter = ({
           />
         </div>
       )}
-      {messageList}
+      {/* {messageList} */}
+      {session.featureKind === 'industrial-video' ? (
+        <IndustrialVideoTaskSurface
+          sessionId={session.id}
+          previewOpen={previewOpen}
+          filePreviewActive={filePreviewActive}
+          onPreviewOpenChange={onPreviewOpenChange}
+          preview={<IndustrialVideoTaskPanel sessionId={session.id} dedicated />}>
+          <ToolDisplayNamesContext value={INDUSTRIAL_VIDEO_TOOL_DISPLAY_NAMES}>
+            <IndustrialVideoReviewFilesProvider workspace={session.workspace?.path}>
+              {messageList}
+            </IndustrialVideoReviewFilesProvider>
+          </ToolDisplayNamesContext>
+        </IndustrialVideoTaskSurface>
+      ) : (
+        messageList
+      )}
       <ApiGatewayRequiredDialog sessionId={runtime.sessionId} />
     </div>
   )

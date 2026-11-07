@@ -17,6 +17,7 @@ import { Route as AppChatRouteImport } from './routes/app/chat'
 import { Route as AppCodeRouteImport } from './routes/app/code'
 import { Route as AppFilePreviewRouteImport } from './routes/app/file-preview'
 import { Route as AppFilesRouteImport } from './routes/app/files'
+import { Route as AppIndustrialVideoRouteImport } from './routes/app/industrial-video'
 import { Route as AppKnowledgeRouteImport } from './routes/app/knowledge'
 import { Route as AppLaunchpadRouteImport } from './routes/app/launchpad'
 import { Route as AppNewTaskRouteImport } from './routes/app/new-task'
@@ -58,6 +59,7 @@ import { Route as SettingsSkillsRouteImport } from './routes/settings/skills'
 import { Route as SettingsSystemRouteImport } from './routes/settings/system'
 import { Route as SettingsUsageRouteImport } from './routes/settings/usage'
 import { Route as SettingsWebsearchRouteImport } from './routes/settings/websearch'
+import { Route as AppAgentsIndustrialVideoRouteImport } from './routes/app/agents_.industrial-video'
 import { Route as AppMiniAppIndexRouteImport } from './routes/app/mini-app.index'
 import { Route as AppMiniAppAppIdRouteImport } from './routes/app/mini-app/$appId'
 import { Route as AppPaintingsIndexRouteImport } from './routes/app/paintings.index'
@@ -115,6 +117,11 @@ const AppFilePreviewRoute = AppFilePreviewRouteImport.update({
 const AppFilesRoute = AppFilesRouteImport.update({
   id: '/files',
   path: '/files',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppIndustrialVideoRoute = AppIndustrialVideoRouteImport.update({
+  id: '/industrial-video',
+  path: '/industrial-video',
   getParentRoute: () => AppRoute,
 } as any)
 const AppKnowledgeRoute = AppKnowledgeRouteImport.update({
@@ -324,6 +331,12 @@ const SettingsWebsearchRoute = SettingsWebsearchRouteImport.update({
   path: '/websearch',
   getParentRoute: () => SettingsRoute,
 } as any)
+const AppAgentsIndustrialVideoRoute =
+  AppAgentsIndustrialVideoRouteImport.update({
+    id: '/agents_/industrial-video',
+    path: '/agents/industrial-video',
+    getParentRoute: () => AppRoute,
+  } as any)
 const AppMiniAppIndexRoute = AppMiniAppIndexRouteImport.update({
   id: '/mini-app/',
   path: '/mini-app/',
@@ -427,6 +440,7 @@ export interface FileRoutesByFullPath {
   '/app/code': typeof AppCodeRoute
   '/app/file-preview': typeof AppFilePreviewRoute
   '/app/files': typeof AppFilesRoute
+  '/app/industrial-video': typeof AppIndustrialVideoRoute
   '/app/knowledge': typeof AppKnowledgeRoute
   '/app/launchpad': typeof AppLaunchpadRoute
   '/app/new-task': typeof AppNewTaskRoute
@@ -468,6 +482,7 @@ export interface FileRoutesByFullPath {
   '/settings/usage': typeof SettingsUsageRoute
   '/settings/websearch': typeof SettingsWebsearchRoute
   '/settings/': typeof SettingsIndexRoute
+  '/app/agents/industrial-video': typeof AppAgentsIndustrialVideoRoute
   '/app/mini-app/$appId': typeof AppMiniAppAppIdRoute
   '/app/paintings/$': typeof AppPaintingsSplatRoute
   '/app/scheduled-tasks/$taskId': typeof AppScheduledTasksTaskIdRoute
@@ -495,6 +510,7 @@ export interface FileRoutesByTo {
   '/app/code': typeof AppCodeRoute
   '/app/file-preview': typeof AppFilePreviewRoute
   '/app/files': typeof AppFilesRoute
+  '/app/industrial-video': typeof AppIndustrialVideoRoute
   '/app/knowledge': typeof AppKnowledgeRoute
   '/app/launchpad': typeof AppLaunchpadRoute
   '/app/new-task': typeof AppNewTaskRoute
@@ -532,6 +548,7 @@ export interface FileRoutesByTo {
   '/settings/usage': typeof SettingsUsageRoute
   '/settings/websearch': typeof SettingsWebsearchRoute
   '/settings': typeof SettingsIndexRoute
+  '/app/agents/industrial-video': typeof AppAgentsIndustrialVideoRoute
   '/app/mini-app/$appId': typeof AppMiniAppAppIdRoute
   '/app/paintings/$': typeof AppPaintingsSplatRoute
   '/app/scheduled-tasks/$taskId': typeof AppScheduledTasksTaskIdRoute
@@ -561,6 +578,7 @@ export interface FileRoutesById {
   '/app/code': typeof AppCodeRoute
   '/app/file-preview': typeof AppFilePreviewRoute
   '/app/files': typeof AppFilesRoute
+  '/app/industrial-video': typeof AppIndustrialVideoRoute
   '/app/knowledge': typeof AppKnowledgeRoute
   '/app/launchpad': typeof AppLaunchpadRoute
   '/app/new-task': typeof AppNewTaskRoute
@@ -602,6 +620,7 @@ export interface FileRoutesById {
   '/settings/usage': typeof SettingsUsageRoute
   '/settings/websearch': typeof SettingsWebsearchRoute
   '/settings/': typeof SettingsIndexRoute
+  '/app/agents_/industrial-video': typeof AppAgentsIndustrialVideoRoute
   '/app/mini-app/$appId': typeof AppMiniAppAppIdRoute
   '/app/paintings/$': typeof AppPaintingsSplatRoute
   '/app/scheduled-tasks/$taskId': typeof AppScheduledTasksTaskIdRoute
@@ -632,6 +651,7 @@ export interface FileRouteTypes {
     | '/app/code'
     | '/app/file-preview'
     | '/app/files'
+    | '/app/industrial-video'
     | '/app/knowledge'
     | '/app/launchpad'
     | '/app/new-task'
@@ -673,6 +693,7 @@ export interface FileRouteTypes {
     | '/settings/usage'
     | '/settings/websearch'
     | '/settings/'
+    | '/app/agents/industrial-video'
     | '/app/mini-app/$appId'
     | '/app/paintings/$'
     | '/app/scheduled-tasks/$taskId'
@@ -700,6 +721,7 @@ export interface FileRouteTypes {
     | '/app/code'
     | '/app/file-preview'
     | '/app/files'
+    | '/app/industrial-video'
     | '/app/knowledge'
     | '/app/launchpad'
     | '/app/new-task'
@@ -737,6 +759,7 @@ export interface FileRouteTypes {
     | '/settings/usage'
     | '/settings/websearch'
     | '/settings'
+    | '/app/agents/industrial-video'
     | '/app/mini-app/$appId'
     | '/app/paintings/$'
     | '/app/scheduled-tasks/$taskId'
@@ -765,6 +788,7 @@ export interface FileRouteTypes {
     | '/app/code'
     | '/app/file-preview'
     | '/app/files'
+    | '/app/industrial-video'
     | '/app/knowledge'
     | '/app/launchpad'
     | '/app/new-task'
@@ -806,6 +830,7 @@ export interface FileRouteTypes {
     | '/settings/usage'
     | '/settings/websearch'
     | '/settings/'
+    | '/app/agents_/industrial-video'
     | '/app/mini-app/$appId'
     | '/app/paintings/$'
     | '/app/scheduled-tasks/$taskId'
@@ -887,6 +912,13 @@ declare module '@tanstack/react-router' {
       path: '/files'
       fullPath: '/app/files'
       preLoaderRoute: typeof AppFilesRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/industrial-video': {
+      id: '/app/industrial-video'
+      path: '/industrial-video'
+      fullPath: '/app/industrial-video'
+      preLoaderRoute: typeof AppIndustrialVideoRouteImport
       parentRoute: typeof AppRoute
     }
     '/app/knowledge': {
@@ -1176,6 +1208,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsWebsearchRouteImport
       parentRoute: typeof SettingsRoute
     }
+    '/app/agents_/industrial-video': {
+      id: '/app/agents_/industrial-video'
+      path: '/agents/industrial-video'
+      fullPath: '/app/agents/industrial-video'
+      preLoaderRoute: typeof AppAgentsIndustrialVideoRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/app/mini-app/': {
       id: '/app/mini-app/'
       path: '/mini-app'
@@ -1325,6 +1364,7 @@ interface AppRouteChildren {
   AppCodeRoute: typeof AppCodeRoute
   AppFilePreviewRoute: typeof AppFilePreviewRoute
   AppFilesRoute: typeof AppFilesRoute
+  AppIndustrialVideoRoute: typeof AppIndustrialVideoRoute
   AppKnowledgeRoute: typeof AppKnowledgeRoute
   AppLaunchpadRoute: typeof AppLaunchpadRoute
   AppNewTaskRoute: typeof AppNewTaskRoute
@@ -1335,6 +1375,7 @@ interface AppRouteChildren {
   AppSkillsConnectorsRoute: typeof AppSkillsConnectorsRoute
   AppToolboxRoute: typeof AppToolboxRoute
   AppTranslateRoute: typeof AppTranslateRoute
+  AppAgentsIndustrialVideoRoute: typeof AppAgentsIndustrialVideoRoute
   AppMiniAppAppIdRoute: typeof AppMiniAppAppIdRoute
   AppPaintingsSplatRoute: typeof AppPaintingsSplatRoute
   AppMiniAppIndexRoute: typeof AppMiniAppIndexRoute
@@ -1348,6 +1389,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppCodeRoute: AppCodeRoute,
   AppFilePreviewRoute: AppFilePreviewRoute,
   AppFilesRoute: AppFilesRoute,
+  AppIndustrialVideoRoute: AppIndustrialVideoRoute,
   AppKnowledgeRoute: AppKnowledgeRoute,
   AppLaunchpadRoute: AppLaunchpadRoute,
   AppNewTaskRoute: AppNewTaskRoute,
@@ -1358,6 +1400,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppSkillsConnectorsRoute: AppSkillsConnectorsRoute,
   AppToolboxRoute: AppToolboxRoute,
   AppTranslateRoute: AppTranslateRoute,
+  AppAgentsIndustrialVideoRoute: AppAgentsIndustrialVideoRoute,
   AppMiniAppAppIdRoute: AppMiniAppAppIdRoute,
   AppPaintingsSplatRoute: AppPaintingsSplatRoute,
   AppMiniAppIndexRoute: AppMiniAppIndexRoute,

@@ -10,8 +10,9 @@ import type {
   SharedCacheSchema,
   UseCacheKey
 } from '@shared/data/cache/cacheSchemas'
-import { DefaultRendererPersistCache, DefaultSharedCache } from '@shared/data/cache/cacheSchemas'
+import { DefaultSharedCache } from '@shared/data/cache/cacheSchemas'
 import type { CacheEntry, CacheSubscriber } from '@shared/data/cache/cacheTypes'
+import { getRendererPersistCacheDefault } from '@shared/data/cache/templateKey'
 
 /**
  * Local mirror of production's `CacheSetStateAction` — importing it from
@@ -253,7 +254,7 @@ export const createMockCacheService = (
       if (persistCache.has(key)) {
         return persistCache.get(key) as RendererPersistCacheSchema[K]
       }
-      return DefaultRendererPersistCache[key] as RendererPersistCacheSchema[K]
+      return getRendererPersistCacheDefault(key) as RendererPersistCacheSchema[K]
     }),
 
     setPersist: vi.fn(

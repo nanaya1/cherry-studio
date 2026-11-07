@@ -179,8 +179,14 @@ export const useActiveSession = ({ activeSessionId, setActiveSessionId, initialS
   const resolvedInitialSession =
     !isNotFound && activeSessionId && initialSession?.id === activeSessionId ? initialSession : undefined
   const fallbackSession = resolvedPendingSession ?? resolvedInitialSession
-  const session = querySession ?? fallbackSession
-  const sessionSource: AgentSessionSource = querySession ? 'query' : fallbackSession ? 'pending' : 'none'
+  // const session = querySession ?? fallbackSession
+  // MEA:industrial-video 路由切换完成前也不能向普通 Agent 暴露视频任务。
+  const candidateSession = querySession ?? fallbackSession
+  // const session = candidateSession?.featureKind === 'industrial-video' ? undefined : candidateSession
+  // MEA:industrial-video 视频任务复用普通详情，按 ID 解析后保留消息和输入框。
+  const session = candidateSession
+  // const sessionSource: AgentSessionSource = querySession ? 'query' : fallbackSession ? 'pending' : 'none'
+  const sessionSource: AgentSessionSource = !session ? 'none' : querySession ? 'query' : 'pending'
 
   // Set the active id and its optimistic session together. `entity` may be null to move to an id
   // whose row is fetched by query (e.g. history/global-search reveal), or the id may be null to clear.

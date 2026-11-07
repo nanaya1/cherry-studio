@@ -149,6 +149,13 @@ describe('deferred ComposerSurface', () => {
     expect(mocks.runtimeLoads).toBe(0)
   })
 
+  it('can hide the built-in send action when a feature supplies its own primary action', () => {
+    render(<Harness hideSendAction sendAccessory={<button type="button">开始制作</button>} />)
+
+    expect(screen.getByRole('button', { name: '开始制作' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Send' })).not.toBeInTheDocument()
+  })
+
   it('shows the AI-generated content disclaimer only in the CN edition', () => {
     vi.stubGlobal('__APP_EDITION__', 'global')
     const view = render(<Harness showAiDisclaimer />)

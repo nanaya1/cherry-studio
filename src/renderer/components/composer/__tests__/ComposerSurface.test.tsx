@@ -1081,6 +1081,17 @@ describe('ComposerSurface', () => {
     expect(editor).not.toHaveClass('flex')
   })
 
+  it('allows a feature to cap the collapsed editor while preserving internal scrolling', () => {
+    render(<ComposerSurface {...baseProps} collapsedMaxHeight="min(180px, 28vh)" />)
+
+    const editorContent = screen.getByTestId('editor-content')
+    const editor = screen.getByTestId('composer-editor')
+
+    expect(editorContent.style.getPropertyValue('--composer-editor-max-height')).toBe('min(180px, 28vh)')
+    expect(editorContent.style.getPropertyValue('--composer-editor-overflow-y')).toBe('auto')
+    expect(editor).toHaveClass('overflow-auto')
+  })
+
   it('uses state-specific viewport-relative max heights and only fixes height when expanded', async () => {
     render(<Harness />)
 

@@ -49,6 +49,7 @@ import type {
 import * as z from 'zod'
 
 import { TO_MARKDOWN_TOOL_NAME } from '@shared/ai/builtinTools'
+import { toMeacoworkToolRuntimeName } from '@shared/ai/meacoworkTools'
 
 import type { ToolDisclosureItem } from './ToolDisclosure'
 
@@ -227,8 +228,8 @@ export function isAskUserQuestionToolName(toolName: unknown): boolean {
   return toolName === AgentToolsType.AskUserQuestion || toolName === 'builtin_AskUserQuestion'
 }
 
-/** cherry-tools document converter — an MCP tool, so it is keyed by its runtime wire name. */
-export const TO_MARKDOWN_RUNTIME_TOOL_NAME = `mcp__cherry-tools__${TO_MARKDOWN_TOOL_NAME}`
+/** Built-in document converter — an MCP tool, so it is keyed by its runtime wire name. */
+export const TO_MARKDOWN_RUNTIME_TOOL_NAME = toMeacoworkToolRuntimeName(TO_MARKDOWN_TOOL_NAME)
 
 /**
  * Whether an `Agent`/`Task` result is a launch receipt for a subagent that is still running. A

@@ -97,9 +97,9 @@ function generateImageInlinePart(images: Array<{ data: string; mimeType?: string
 }
 
 /** Agent-session transport shape: an output over the limit arrives as a deferred ref. */
-function generateImageDeferredPart(toolCallId = 'call-1') {
+function generateImageDeferredPart(toolCallId = 'call-1', serverName = 'meacowork-tools') {
   return {
-    type: 'tool-mcp__cherry-tools__generate_image',
+    type: `tool-mcp__${serverName}__generate_image`,
     toolCallId,
     state: 'output-available',
     input: {},
@@ -240,18 +240,21 @@ describe('collectExportableImages', () => {
     expect(refs.map((r) => r.key)).toEqual(['file:///data/Files/a.png', 'file:///data/Files/b.png'])
   })
 
-  it('recognizes the mcp-prefixed agent generate_image tool name', async () => {
-    mockPhysicalPaths({ 'gen-9': '/data/Files/gen-9.png' })
-    const part = {
-      ...generateImagePart([{ id: 'gen-9', name: 'a.png' }]),
-      type: 'tool-mcp__cherry-tools__generate_image'
+  it.each(['meacowork-tools', 'cherry-tools'])(
+    'recognizes the %s-prefixed agent generate_image tool name',
+    async (serverName) => {
+      mockPhysicalPaths({ 'gen-9': '/data/Files/gen-9.png' })
+      const part = {
+        ...generateImagePart([{ id: 'gen-9', name: 'a.png' }]),
+        type: `tool-mcp__${serverName}__generate_image`
+      }
+      const message = view([part], 'assistant')
+
+      const { refs } = await collectExportableImages([message])
+
+      expect(refs).toEqual([{ key: 'gen-9', url: 'file:///data/Files/gen-9.png', filename: 'a.png' }])
     }
-    const message = view([part], 'assistant')
-
-    const { refs } = await collectExportableImages([message])
-
-    expect(refs).toEqual([{ key: 'gen-9', url: 'file:///data/Files/gen-9.png', filename: 'a.png' }])
-  })
+  )
 
   it('collects MCP inline generate_image payloads as data URLs (render parity)', async () => {
     const raw = PNG_1PX.slice('data:image/png;base64,'.length)

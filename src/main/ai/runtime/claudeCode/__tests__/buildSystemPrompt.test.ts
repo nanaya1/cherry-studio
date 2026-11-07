@@ -1,5 +1,5 @@
 /**
- * The `cherry-tools` MCP server (injected into every Claude Code session by buildMcpServers)
+ * The `meacowork-tools` MCP server (injected into every Claude Code session by buildMcpServers)
  * exposes `report_artifacts`. buildSystemPrompt MUST append REPORT_ARTIFACTS_PROMPT so the model
  * is told to call that tool at task completion — otherwise it is a dangling, never-invoked tool.
  */
@@ -62,8 +62,8 @@ vi.mock('@main/i18n', () => ({
   t: vi.fn((key: string) => key)
 }))
 
-vi.mock('@main/ai/mcp/servers/cherryBuiltinTools', () => ({
-  default: vi.fn(() => ({ mcpServer: { id: 'cherry-tools' } }))
+vi.mock('@main/ai/mcp/servers/meacoworkBuiltinTools', () => ({
+  default: vi.fn(() => ({ mcpServer: { id: 'meacowork-tools' } }))
 }))
 
 vi.mock('@data/services/AgentChannelService', () => ({

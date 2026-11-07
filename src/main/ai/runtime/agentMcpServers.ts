@@ -10,11 +10,12 @@ import { createMcpBridgeServer } from '@main/ai/mcp/createMcpBridgeServer'
 import AgentMemoryServer from '@main/ai/mcp/servers/agentMemory'
 import AssistantServer from '@main/ai/mcp/servers/assistant'
 import { AssistantFileToolsServer } from '@main/ai/mcp/servers/AssistantFileToolsServer'
-import CherryBuiltinToolsServer from '@main/ai/mcp/servers/cherryBuiltinTools'
 import McpManagerServer from '@main/ai/mcp/servers/mcpManager'
+import MeacoworkBuiltinToolsServer from '@main/ai/mcp/servers/meacoworkBuiltinTools'
 import SkillsServer from '@main/ai/mcp/servers/skills'
-import { CHERRY_MCP_SERVER } from '@main/ai/toolApproval/builtinToolPolicy'
+import { MEACOWORK_MCP_SERVER } from '@main/ai/toolApproval/builtinToolPolicy'
 import { resolveKnowledgeBaseScope } from '@main/ai/utils/knowledgeScope'
+import { MEACOWORK_TOOLS_SERVER_NAME } from '@shared/ai/meacoworkTools'
 import type { AgentChannelEntity } from '@shared/data/api/schemas/agentChannels'
 import type { AgentEntity } from '@shared/data/api/schemas/agents'
 import type { AgentSessionEntity } from '@shared/data/api/schemas/agentSessions'
@@ -79,9 +80,9 @@ export function buildAgentMcpServers(
     }
   }
 
-  if (mountedServers.has(CHERRY_MCP_SERVER.BROWSER)) {
+  if (mountedServers.has(MEACOWORK_MCP_SERVER.BROWSER)) {
     servers.browser = {
-      name: CHERRY_MCP_SERVER.BROWSER,
+      name: MEACOWORK_MCP_SERVER.BROWSER,
       instance: application
         .get('BrowserSessionService')
         .createAgentMcpServer({ agentId: agent.id, sessionId: session.id })
@@ -89,12 +90,13 @@ export function buildAgentMcpServers(
   }
 
   const workspaceSource = toWorkspaceSource(session)
-  servers['cherry-tools'] = {
-    name: CHERRY_MCP_SERVER.CHERRY_TOOLS,
-    instance: new CherryBuiltinToolsServer({
+  servers[MEACOWORK_TOOLS_SERVER_NAME] = {
+    name: MEACOWORK_MCP_SERVER.MEACOWORK_TOOLS,
+    instance: new MeacoworkBuiltinToolsServer({
       agentId: agent.id,
       agentDataPath,
       sessionId: session.id,
+      featureKind: session.featureKind,
       workspaceSource,
       workspacePath: session.workspace.path,
       trustedNotifyChannels: notificationContext.channels,
@@ -107,28 +109,28 @@ export function buildAgentMcpServers(
     }).mcpServer
   }
   servers['agent-memory'] = {
-    name: CHERRY_MCP_SERVER.AGENT_MEMORY,
+    name: MEACOWORK_MCP_SERVER.AGENT_MEMORY,
     instance: new AgentMemoryServer(agent.id, agentDataPath).mcpServer
   }
-  if (mountedServers.has(CHERRY_MCP_SERVER.SKILLS)) {
-    servers.skills = { name: CHERRY_MCP_SERVER.SKILLS, instance: new SkillsServer(agent.id).mcpServer }
+  if (mountedServers.has(MEACOWORK_MCP_SERVER.SKILLS)) {
+    servers.skills = { name: MEACOWORK_MCP_SERVER.SKILLS, instance: new SkillsServer(agent.id).mcpServer }
   }
-  if (mountedServers.has(CHERRY_MCP_SERVER.MCP_MANAGER)) {
+  if (mountedServers.has(MEACOWORK_MCP_SERVER.MCP_MANAGER)) {
     servers['mcp-manager'] = {
-      name: CHERRY_MCP_SERVER.MCP_MANAGER,
+      name: MEACOWORK_MCP_SERVER.MCP_MANAGER,
       instance: new McpManagerServer(agent.id).mcpServer
     }
   }
 
-  if (mountedServers.has(CHERRY_MCP_SERVER.ASSISTANT)) {
+  if (mountedServers.has(MEACOWORK_MCP_SERVER.ASSISTANT)) {
     servers.assistant = {
-      name: CHERRY_MCP_SERVER.ASSISTANT,
+      name: MEACOWORK_MCP_SERVER.ASSISTANT,
       instance: new AssistantServer(agent.model ?? undefined, hostTools?.tools).mcpServer
     }
   }
-  if (mountedServers.has(CHERRY_MCP_SERVER.ASSISTANT_FILES)) {
+  if (mountedServers.has(MEACOWORK_MCP_SERVER.ASSISTANT_FILES)) {
     servers['assistant-files'] = {
-      name: CHERRY_MCP_SERVER.ASSISTANT_FILES,
+      name: MEACOWORK_MCP_SERVER.ASSISTANT_FILES,
       instance: new AssistantFileToolsServer({
         sessionId: session.id,
         workspacePath: session.workspace.path

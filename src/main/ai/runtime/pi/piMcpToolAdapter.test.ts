@@ -111,12 +111,12 @@ describe('buildMcpToolDefinitions', () => {
 
     const bridge = await buildMcpToolDefinitions({
       github: { name: 'github', instance: external },
-      'cherry-tools': { name: 'cherry-tools', instance: builtin }
+      'meacowork-tools': { name: 'meacowork-tools', instance: builtin }
     })
 
     expect(bridge.tools.map((definition) => definition.name)).toEqual([
       'mcp__github__search_issues',
-      'mcp__cherry-tools__kb_search'
+      'mcp__meacowork-tools__kb_search'
     ])
     await bridge.close()
   })

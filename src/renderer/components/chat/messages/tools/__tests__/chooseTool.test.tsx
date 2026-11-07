@@ -104,7 +104,7 @@ describe('chooseTool', () => {
     expect(await testIdOf(chooseTool(response as NormalToolResponse))).toBe('agent-card')
   })
 
-  it('returns null for an unknown non-Cherry tool', async () => {
+  it('returns null for an unknown non-MEA Cowork tool', async () => {
     expect(await testIdOf(chooseTool(resp('totally_unknown_tool', 'builtin')))).toBeNull()
   })
 })

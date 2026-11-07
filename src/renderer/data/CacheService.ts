@@ -37,6 +37,11 @@ import type {
   CacheSyncMessage,
   CacheTierSummary
 } from '@shared/data/cache/cacheTypes'
+import {
+  findMatchingRendererPersistCacheSchemaKey,
+  getRendererPersistCacheDefault,
+  isTemplateKey
+} from '@shared/data/cache/templateKey'
 
 const STORAGE_PERSIST_KEY = 'cs_cache_persist'
 
@@ -632,7 +637,8 @@ export class CacheService {
     }
 
     // Fallback to default value if somehow missing
-    const defaultValue = DefaultRendererPersistCache[key]
+    // MEA:industrial-video 原默认值 DefaultRendererPersistCache[key] 不解析具体模板实例。
+    const defaultValue = getRendererPersistCacheDefault(key)
     this.persistCache.set(key, defaultValue)
     this.schedulePersistSave()
     logger.warn(`Missing persist cache key "${key}", using default value`)
@@ -690,7 +696,8 @@ export class CacheService {
    * @returns True if the effective value differs from the schema default
    */
   hasPersist<K extends RendererPersistCacheKey>(key: K): boolean {
-    return !isEqual(this.getPersist(key), DefaultRendererPersistCache[key])
+    // return !isEqual(this.getPersist(key), DefaultRendererPersistCache[key])
+    return !isEqual(this.getPersist(key), getRendererPersistCacheDefault(key))
   }
 
   /**
@@ -704,7 +711,8 @@ export class CacheService {
    * @param key - Persist cache key to reset
    */
   deletePersist<K extends RendererPersistCacheKey>(key: K): void {
-    this.setPersist(key, DefaultRendererPersistCache[key])
+    // this.setPersist(key, DefaultRendererPersistCache[key])
+    this.setPersist(key, getRendererPersistCacheDefault(key))
   }
 
   // ============ Hook Reference Management ============
@@ -1051,7 +1059,8 @@ export class CacheService {
   private loadPersistCache(): void {
     // First, initialize with default values
     for (const [key, defaultValue] of Object.entries(DefaultRendererPersistCache)) {
-      this.persistCache.set(key as RendererPersistCacheKey, defaultValue)
+      // MEA:industrial-video 模板仅为实例提供默认值，不作为实际存储键。
+      if (!isTemplateKey(key)) this.persistCache.set(key as RendererPersistCacheKey, defaultValue)
     }
 
     try {
@@ -1066,10 +1075,14 @@ export class CacheService {
       const data = JSON.parse(stored)
 
       // Only load keys that exist in schema, overriding defaults
-      const schemaKeys = Object.keys(DefaultRendererPersistCache) as RendererPersistCacheKey[]
-      for (const key of schemaKeys) {
-        if (key in data) {
-          this.persistCache.set(key, data[key])
+      // MEA:industrial-video 原来仅枚举固定 schema 键，会丢弃重启后的具体会话键。
+      // const schemaKeys = Object.keys(DefaultRendererPersistCache) as RendererPersistCacheKey[]
+      // for (const key of schemaKeys) {
+      //   if (key in data) this.persistCache.set(key, data[key])
+      // }
+      for (const key of Object.keys(data)) {
+        if (!isTemplateKey(key) && findMatchingRendererPersistCacheSchemaKey(key)) {
+          this.persistCache.set(key as RendererPersistCacheKey, data[key])
         }
       }
 

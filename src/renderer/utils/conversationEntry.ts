@@ -38,14 +38,19 @@ export async function resolveAgentEntrySessionId(): Promise<string | null> {
   const lastUsedSessionId = cacheService.getPersist('ui.agent.last_used_session_id')
   if (lastUsedSessionId) {
     try {
-      await dataApiService.get(`/agent-sessions/${lastUsedSessionId}`)
-      return lastUsedSessionId
+      // MEA:industrial-video 普通裸入口忽略旧最近键中的视频会话。
+      // await dataApiService.get(`/agent-sessions/${lastUsedSessionId}`)
+      // return lastUsedSessionId
+      const session = await dataApiService.get(`/agent-sessions/${lastUsedSessionId}`)
+      if (session.featureKind !== 'industrial-video') return lastUsedSessionId
     } catch (error) {
       if (!isDataApiNotFoundError(error)) throw error
     }
   }
 
-  const { session } = await dataApiService.get('/agent-sessions/latest')
+  // MEA:industrial-video 仅普通裸入口限定分类，其他历史入口保持原契约。
+  // const { session } = await dataApiService.get('/agent-sessions/latest')
+  const { session } = await dataApiService.get('/agent-sessions/latest', { query: { featureKind: 'general' } })
   return session?.id ?? null
 }
 
@@ -61,6 +66,8 @@ export async function resolveChatEntryTopicIdForAssistant(assistantId: string): 
 }
 
 export async function resolveAgentEntrySessionIdForAgent(agentId: string): Promise<string | null> {
-  const { session } = await dataApiService.get('/agent-sessions/latest', { query: { agentId } })
+  // MEA:industrial-video 普通 agentId 入口仅恢复普通任务，显式 sessionId 仍按分类分流。
+  // const { session } = await dataApiService.get('/agent-sessions/latest', { query: { agentId } })
+  const { session } = await dataApiService.get('/agent-sessions/latest', { query: { agentId, featureKind: 'general' } })
   return session?.id ?? null
 }

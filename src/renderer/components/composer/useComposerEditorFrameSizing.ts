@@ -21,6 +21,7 @@ const COMPOSER_EDITOR_RESIZE_KEYBOARD_STEP = 16
 
 type ComposerEditorFrameSizingOptions = {
   fontSize: number
+  collapsedMaxHeight?: string
   isExpanded: boolean
   onExpandedChange: (expanded: boolean) => void
   focusEditor: () => void
@@ -81,6 +82,7 @@ function getComposerEditorContentStyle(
   fontSize: number,
   isExpanded: boolean,
   manualEditorFrameHeight: number | null,
+  collapsedMaxHeight = COMPOSER_EDITOR_COLLAPSED_MAX_HEIGHT,
   compact = false
 ): ComposerEditorContentStyle {
   const minHeight = compact ? getCompactComposerEditorMinHeight(fontSize) : getComposerEditorMinHeight(fontSize)
@@ -92,7 +94,7 @@ function getComposerEditorContentStyle(
       ? COMPOSER_EDITOR_EXPANDED_MAX_HEIGHT
       : manualEditorFrameHeight !== null
         ? `${manualEditorFrameHeight}px`
-        : COMPOSER_EDITOR_COLLAPSED_MAX_HEIGHT
+        : collapsedMaxHeight
 
   return {
     height: compact ? minHeight : hasCustomHeight ? '100%' : undefined,
@@ -109,6 +111,7 @@ function getComposerEditorContentStyle(
 
 export function useComposerEditorFrameSizing({
   fontSize,
+  collapsedMaxHeight = COMPOSER_EDITOR_COLLAPSED_MAX_HEIGHT,
   isExpanded,
   onExpandedChange,
   focusEditor,
@@ -313,8 +316,8 @@ export function useComposerEditorFrameSizing({
   )
 
   const editorContentStyle = useMemo<ComposerEditorContentStyle>(
-    () => getComposerEditorContentStyle(fontSize, isExpanded, manualHeight),
-    [fontSize, isExpanded, manualHeight]
+    () => getComposerEditorContentStyle(fontSize, isExpanded, manualHeight, collapsedMaxHeight),
+    [collapsedMaxHeight, fontSize, isExpanded, manualHeight]
   )
   const compactFrameStyle = useMemo<CSSProperties>(
     () => ({
@@ -326,8 +329,8 @@ export function useComposerEditorFrameSizing({
     [compactMinHeight]
   )
   const compactEditorContentStyle = useMemo<ComposerEditorContentStyle>(
-    () => getComposerEditorContentStyle(fontSize, false, null, true),
-    [fontSize]
+    () => getComposerEditorContentStyle(fontSize, false, null, collapsedMaxHeight, true),
+    [collapsedMaxHeight, fontSize]
   )
 
   return {

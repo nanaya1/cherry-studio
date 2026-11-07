@@ -1,6 +1,32 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, expectTypeOf, it } from 'vitest'
 
-import { findMatchingSharedCacheSchemaKey, isTemplateKey, templateToRegex } from '../templateKey'
+import {
+  DefaultRendererPersistCache,
+  type RendererPersistCacheKey,
+  type RendererPersistCacheSchema
+} from '../cacheSchemas'
+import type { CacheIndustrialVideoDraft } from '../cacheValueTypes'
+import {
+  findMatchingRendererPersistCacheSchemaKey,
+  findMatchingSharedCacheSchemaKey,
+  getRendererPersistCacheDefault,
+  isTemplateKey,
+  templateToRegex
+} from '../templateKey'
+
+it('renderer persist 会话模板提供 null 默认值和精确草稿类型', () => {
+  expect(DefaultRendererPersistCache['industrial_video.session_draft.${sessionId}']).toBeNull()
+  expect(findMatchingRendererPersistCacheSchemaKey('industrial_video.session_draft.session-a')).toBe(
+    'industrial_video.session_draft.${sessionId}'
+  )
+  expect(getRendererPersistCacheDefault('industrial_video.session_draft.session-a')).toBeNull()
+  expect(findMatchingRendererPersistCacheSchemaKey('industrial_video.session_draft.')).toBeUndefined()
+  expect(findMatchingRendererPersistCacheSchemaKey('industrial_video.session_draft.session.a')).toBeUndefined()
+  expectTypeOf<'industrial_video.session_draft.session-a'>().toExtend<RendererPersistCacheKey>()
+  expectTypeOf<
+    RendererPersistCacheSchema['industrial_video.session_draft.session-a']
+  >().toEqualTypeOf<CacheIndustrialVideoDraft | null>()
+})
 
 describe('isTemplateKey', () => {
   it('returns true when key contains ${...} placeholder', () => {
