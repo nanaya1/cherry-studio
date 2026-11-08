@@ -1,5 +1,5 @@
 import type { FC } from 'react'
-import { memo, useCallback, useMemo } from 'react'
+import { memo, useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { useTemporaryValue } from '@renderer/hooks/useTemporaryValue'
@@ -11,6 +11,7 @@ import { useMessageParts } from '../blocks/MessagePartsContext'
 import { useOptionalMessageCaptureLease } from '../list/MessageCaptureLeaseContext'
 import {
   useMessageListActions,
+  useMessageListMeta,
   useMessageListSelection,
   useMessageListUi,
   useMessagePriorCitationParts,
@@ -27,7 +28,7 @@ import {
   resolveMessageMenuBarTranslationItems
 } from './messageMenuBarActions'
 import { MessageMenuBarToolbarAction } from './MessageMenuBarToolbar'
-import MessageTokens from './MessageTokens'
+import MessageTokens, { MessageUsageDialog } from './MessageTokens'
 
 interface Props {
   message: MessageListItem
@@ -59,6 +60,9 @@ const MessageMenuBar: FC<Props> = (props) => {
   } = props
   const { t } = useTranslation()
   const actions = useMessageListActions()
+  const displayPolicy = useMessageListMeta().actionDisplayPolicy
+  const [usageOpen, setUsageOpen] = useState(false)
+  const onViewUsage = useCallback(() => setUsageOpen(true), [])
   const selection = useMessageListSelection()
   const messageUi = useMessageListUi()
   const renderConfig = useMessageRenderConfig()
@@ -89,11 +93,16 @@ const MessageMenuBar: FC<Props> = (props) => {
   const isSelectedForContext = !!message.isActiveBranch
 
   const softHoverBg = isBubbleStyle && !isLastMessage
-  const showMessageTokens = variant === 'footer' && (!isBubbleStyle || isAssistantMessage)
+  // const showMessageTokens = variant === 'footer' && (!isBubbleStyle || isAssistantMessage)
+  // MEA:industrial-video 用量可折叠到更多菜单。
+  const showMessageTokens =
+    !displayPolicy?.collapseUsage && variant === 'footer' && (!isBubbleStyle || isAssistantMessage)
   const isUserBubbleStyleMessage = variant === 'footer' && isBubbleStyle && isUserMessage
 
   const actionContext = useMemo<MessageMenuBarActionContext>(
     () => ({
+      displayPolicy,
+      onViewUsage,
       actions,
       message,
       messageParts,
@@ -123,6 +132,8 @@ const MessageMenuBar: FC<Props> = (props) => {
       t
     }),
     [
+      displayPolicy,
+      onViewUsage,
       actions,
       copied,
       hasTranslationBlocks,
@@ -186,6 +197,13 @@ const MessageMenuBar: FC<Props> = (props) => {
         ))}
       </div>
       {showMessageTokens && <MessageTokens message={message} />}
+      {usageOpen && displayPolicy?.collapseUsage && (
+        <MessageUsageDialog
+          message={message}
+          title={displayPolicy.usageLabel ?? ''}
+          onClose={() => setUsageOpen(false)}
+        />
+      )}
     </>
   )
 }

@@ -1,4 +1,4 @@
-import { render } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import type React from 'react'
 import type { ReactNode } from 'react'
 import { describe, expect, it, vi } from 'vitest'
@@ -14,8 +14,22 @@ import {
 } from '../../types'
 
 vi.mock('../MessageMenuBarToolbar', () => ({
-  MessageMenuBarToolbarAction: ({ action }: { action: { id: string } }) => (
-    <button className="message-action-button" type="button">
+  MessageMenuBarToolbarAction: ({
+    action,
+    menuActions,
+    executeAction
+  }: {
+    action: { id: string }
+    menuActions: Array<{ id: string; label: string }>
+    executeAction: (action: unknown) => void
+  }) => (
+    <button
+      className="message-action-button"
+      type="button"
+      onClick={() => {
+        const usage = action.id === 'usage' ? action : menuActions.find(({ id }) => id === 'usage')
+        if (usage) executeAction(usage)
+      }}>
       {action.id}
     </button>
   )
@@ -84,7 +98,11 @@ const assistantMessage = {
   }
 } as MessageListItem
 
-function renderWithProvider(children: ReactNode, renderConfig: Partial<typeof defaultMessageRenderConfig> = {}) {
+function renderWithProvider(
+  children: ReactNode,
+  renderConfig: Partial<typeof defaultMessageRenderConfig> = {},
+  actionDisplayPolicy?: MessageListProviderValue['meta']['actionDisplayPolicy']
+) {
   const value: MessageListProviderValue = {
     state: {
       topic,
@@ -124,6 +142,7 @@ function renderWithProvider(children: ReactNode, renderConfig: Partial<typeof de
       locateMessage: vi.fn()
     },
     meta: {
+      actionDisplayPolicy,
       selectionLayer: false
     }
   }
@@ -132,6 +151,26 @@ function renderWithProvider(children: ReactNode, renderConfig: Partial<typeof de
 }
 
 describe('MessageMenuBar', () => {
+  it('不显示底部 tokens 和更多，并可从平铺按钮打开原用量详情', () => {
+    const { container } = renderWithProvider(
+      <MessageMenuBar
+        message={assistantMessage}
+        isLastMessage
+        isAssistantMessage
+        isProcessing={false}
+        messageContainerRef={{ current: null } as unknown as React.RefObject<HTMLDivElement>}
+      />,
+      {},
+      { toolbar: ['copy', 'delete', 'usage'], menu: [], collapseUsage: true, usageLabel: '查看用量' }
+    )
+    expect(container.querySelector('.message-tokens')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'more-menu' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'usage' }))
+    expect(screen.getByRole('dialog')).toHaveTextContent('查看用量')
+    expect(screen.getByRole('dialog')).toHaveTextContent('10 Tokens')
+    expect(screen.getByRole('dialog')).toHaveTextContent('32 Tokens')
+  })
+
   it('shows assistant token usage in the bubble footer toolbar regardless of the estimated-tokens setting', () => {
     const { container } = renderWithProvider(
       <MessageMenuBar

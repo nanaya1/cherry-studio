@@ -6,6 +6,7 @@ import {
   CirclePause,
   CopyPlus,
   FilePenLine,
+  Info,
   Languages,
   ListChecks,
   Menu,
@@ -40,7 +41,7 @@ import { createActionRegistry } from '../../actions/actionRegistry'
 import type { ActionAvailabilityInput, ActionDescriptor, ResolvedAction } from '../../actions/actionTypes'
 import { messageExportTargets } from '../messageExportTargets'
 import type { MessageListActions, MessageListItem, MessageListSelectionState } from '../types'
-import type { MessageMenuConfig } from '../types'
+import type { MessageActionDisplayPolicy, MessageMenuConfig } from '../types'
 import { getMessageListItemModelName } from '../utils/messageListItem'
 import {
   renderDeleteToolbarAction,
@@ -50,6 +51,8 @@ import {
 } from './MessageMenuBarToolbarRenderers'
 
 export interface MessageMenuBarActionContext {
+  displayPolicy?: MessageActionDisplayPolicy
+  onViewUsage?: () => void
   actions: MessageListActions
   message: MessageListItem
   messageParts: CherryMessagePart[]
@@ -340,7 +343,9 @@ registerCommand('message.useful', ({ message, onSelectContext }) => {
 registerToolbarAction({
   id: 'user-edit',
   commandId: 'message.edit',
-  label: ({ t, actions }) => actions.editLabel ?? t('common.edit'),
+  // MEA:industrial-video 允许适配器覆盖操作文案。
+  // label: ({ t, actions }) => actions.editLabel ?? t('common.edit'),
+  label: ({ t, actions, displayPolicy }) => displayPolicy?.editLabel ?? actions.editLabel ?? t('common.edit'),
   icon: <EditIcon size={15} />,
   availability: toolbarAvailability('user-edit', (context) => context.isUserMessage && canStartEditing(context))
 })
@@ -429,10 +434,11 @@ registerToolbarAction({
   commandId: 'message.delete',
   label: ({ t }) => t('common.delete'),
   icon: <DeleteIcon size={15} />,
-  confirm: ({ menuConfig, t }) =>
-    menuConfig.confirmDeleteMessage
+  // MEA:industrial-video 平铺删除仍强制确认消息删除边界。
+  confirm: ({ menuConfig, displayPolicy, t }) =>
+    menuConfig.confirmDeleteMessage || !!displayPolicy?.deleteConfirmation
       ? {
-          title: t('message.message.delete.content'),
+          title: displayPolicy?.deleteConfirmation ?? t('message.message.delete.content'),
           confirmText: t('common.delete'),
           destructive: true
         }
@@ -457,13 +463,20 @@ registerToolbarAction({
   renderToolbar: renderMoreMenuToolbarAction,
   label: ({ t }) => t('chat.message.more'),
   icon: <Menu size={19} />,
-  availability: toolbarAvailability('more-menu', ({ isUserMessage }) => !isUserMessage)
+  // availability: toolbarAvailability('more-menu', ({ isUserMessage }) => !isUserMessage)
+  // MEA:industrial-video 用户更多入口由通用展示策略开放。
+  availability: toolbarAvailability(
+    'more-menu',
+    ({ isUserMessage, displayPolicy }) => !isUserMessage || !!displayPolicy?.moreMenuForUser
+  )
 })
 
 registerAction({
   id: 'edit',
   commandId: 'message.edit',
-  label: ({ t, actions }) => actions.editLabel ?? t('common.edit'),
+  // MEA:industrial-video 允许适配器覆盖操作文案。
+  // label: ({ t, actions }) => actions.editLabel ?? t('common.edit'),
+  label: ({ t, actions, displayPolicy }) => displayPolicy?.editLabel ?? actions.editLabel ?? t('common.edit'),
   icon: <FilePenLine size={15} />,
   group: 'write',
   order: 10,
@@ -598,6 +611,41 @@ registerAction({
   ]
 })
 
+// MEA:industrial-video 菜单删除复用原删除命令与可用性，不触及任务或成片。
+registerAction({
+  id: 'menu.delete',
+  commandId: 'message.delete',
+  label: ({ t }) => t('common.delete'),
+  icon: <DeleteIcon size={15} />,
+  surface: 'menu',
+  order: 300,
+  danger: true,
+  confirm: ({ displayPolicy, t }) => ({
+    title: displayPolicy?.deleteConfirmation ?? t('message.message.delete.content'),
+    confirmText: t('common.delete'),
+    destructive: true
+  }),
+  availability: (context) => {
+    if (!context.displayPolicy?.menu.includes('menu.delete')) return false
+    return (
+      messageMenuBarActionRegistry.resolve(context, 'toolbar').find(({ id }) => id === 'delete')?.availability ?? false
+    )
+  }
+})
+
+registerCommand('message.usage', ({ onViewUsage }) => onViewUsage?.())
+registerAction({
+  id: 'usage',
+  commandId: 'message.usage',
+  label: ({ displayPolicy }) => displayPolicy?.usageLabel ?? '',
+  icon: <Info size={15} />,
+  // surface: 'menu',
+  surface: 'toolbar',
+  order: 310,
+  availability: ({ displayPolicy, message, isAssistantMessage, onViewUsage }) =>
+    !!displayPolicy?.collapseUsage && isAssistantMessage && !!message.stats && !!onViewUsage
+})
+
 export function resolveMessageMenuBarTranslationItems(
   context: MessageMenuBarActionContext
 ): MessageMenuBarTranslationItem[] {
@@ -692,16 +740,34 @@ export function resolveMessageMenuBarTranslationItems(
 export function resolveMessageMenuBarToolbarActions(
   context: MessageMenuBarActionContext
 ): MessageMenuBarResolvedToolbarAction[] {
-  return messageMenuBarActionRegistry.resolve(context, 'toolbar').map((action) => {
-    const renderToolbar = toolbarRenderers.get(action.id)
-    return renderToolbar ? { ...action, renderToolbar } : action
-  })
+  // return messageMenuBarActionRegistry.resolve(context, 'toolbar').map((action) => {
+  // MEA:industrial-video 共享层只解释通用白名单，不识别页面类型。
+  return messageMenuBarActionRegistry
+    .resolve(context, 'toolbar')
+    .filter((action) => !context.displayPolicy || context.displayPolicy.toolbar.includes(action.id))
+    .sort((a, b) =>
+      context.displayPolicy
+        ? context.displayPolicy.toolbar.indexOf(a.id) - context.displayPolicy.toolbar.indexOf(b.id)
+        : 0
+    )
+    .map((action) => {
+      const renderToolbar = toolbarRenderers.get(action.id)
+      return renderToolbar ? { ...action, renderToolbar } : action
+    })
 }
 
 export function resolveMessageMenuBarMenuActions(context: MessageMenuBarActionContext): MessageMenuBarResolvedAction[] {
-  return messageMenuBarActionRegistry
-    .resolve(context, 'menu')
-    .filter((action) => !!action.commandId || action.children.length > 0)
+  return (
+    messageMenuBarActionRegistry
+      .resolve(context, 'menu')
+      // .filter((action) => !!action.commandId || action.children.length > 0)
+      // MEA:industrial-video 子菜单同样遵循白名单，避免笔记等入口漏出。
+      .flatMap(function filterAction(action): MessageMenuBarResolvedAction[] {
+        if (context.displayPolicy && !context.displayPolicy.menu.includes(action.id)) return []
+        const children = action.children.flatMap(filterAction)
+        return action.commandId || children.length > 0 ? [{ ...action, children }] : []
+      })
+  )
 }
 
 export async function executeMessageMenuBarAction(

@@ -2,7 +2,7 @@ import type { FC, MouseEvent } from 'react'
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { HoverCard, HoverCardContent, HoverCardTrigger } from '@cherrystudio/ui'
+import { Dialog, DialogContent, DialogTitle, HoverCard, HoverCardContent, HoverCardTrigger } from '@cherrystudio/ui'
 import { useInfiniteFlatItems, useInfiniteQuery } from '@renderer/data/hooks/useDataApi'
 
 import { useMessageListActions, useMessageListMeta } from '../MessageListProvider'
@@ -28,14 +28,18 @@ function UserMessageTokens({ label, onLocate }: { label: string; onLocate: () =>
 function AssistantMessageTokens({
   label,
   message,
-  onLocate
+  onLocate,
+  dialog
 }: {
   label: string
   message: MessageListItem
   onLocate: () => void
+  dialog?: { title: string; onClose: () => void }
 }) {
   const [showMoreDetails, setShowMoreDetails] = useState(false)
-  const [isDetailsOpen, setIsDetailsOpen] = useState(false)
+  // const [isDetailsOpen, setIsDetailsOpen] = useState(false)
+  // MEA:industrial-video 弹窗复用悬浮详情的数据查询与分页。
+  const [isDetailsOpen, setIsDetailsOpen] = useState(!!dialog)
   const [isDetailsDismissed, setIsDetailsDismissed] = useState(false)
   const contentId = useId()
   const messageKind = useMessageListMeta().aiUsageMessageKind ?? 'chat'
@@ -100,6 +104,23 @@ function AssistantMessageTokens({
     loadNext()
   }, [hasNext, isDetailsVisible, isRefreshing, loadNext, pages.length, showMoreDetails])
 
+  if (dialog) {
+    return (
+      <Dialog open onOpenChange={(open) => !open && dialog.onClose()}>
+        <DialogContent>
+          <DialogTitle>{dialog.title}</DialogTitle>
+          <MessageTokenDetailsCard
+            message={message}
+            records={records}
+            showMoreDetails={showMoreDetails}
+            isLoadingDetails={isLoading || isRefreshing}
+            onShowMoreDetailsChange={setShowMoreDetails}
+          />
+        </DialogContent>
+      </Dialog>
+    )
+  }
+
   return (
     <HoverCard open={isDetailsVisible} onOpenChange={handleDetailsOpenChange} openDelay={200} closeDelay={100}>
       <HoverCardTrigger asChild>
@@ -132,6 +153,18 @@ function AssistantMessageTokens({
       </HoverCardContent>
     </HoverCard>
   )
+}
+
+export function MessageUsageDialog({
+  message,
+  title,
+  onClose
+}: {
+  message: MessageListItem
+  title: string
+  onClose: () => void
+}) {
+  return <AssistantMessageTokens label="" message={message} onLocate={() => undefined} dialog={{ title, onClose }} />
 }
 
 const MessageTokens: FC<MessageTokensProps> = ({ message }) => {

@@ -95,6 +95,7 @@ export function locateAgentMessageInList(topicId: string, messageId: string, hig
 }
 
 interface AgentMessageListParams {
+  featureKind?: 'general' | 'industrial-video'
   topic: Topic
   messages: CherryUIMessage[]
   partsByMessageId: Record<string, CherryMessagePart[]>
@@ -161,6 +162,7 @@ const requireWorkspaceFilePath = (workspacePath: string | undefined, rawPath: st
 }
 
 export function useAgentMessageListProviderValue({
+  featureKind,
   topic,
   messages,
   partsByMessageId,
@@ -549,9 +551,25 @@ export function useAgentMessageListProviderValue({
       userProfile: headerCapabilities.userProfile,
       assistantProfile,
       imageExportFileName: topic.name,
-      aiUsageMessageKind: 'agent-session'
+      aiUsageMessageKind: 'agent-session',
+      // MEA:industrial-video 业务分类只在适配器转换为共享展示策略。
+      actionDisplayPolicy:
+        featureKind === 'industrial-video'
+          ? {
+              // toolbar: ['copy', 'user-edit', 'more-menu'],
+              // menu: ['menu.delete', 'usage'],
+              // moreMenuForUser: true,
+              toolbar: ['copy', 'user-edit', 'delete', 'usage'],
+              menu: [],
+              collapseUsage: true,
+              editLabel: t('industrial_video.message.edit'),
+              deleteConfirmation: t('industrial_video.message.delete_confirmation'),
+              usageLabel: t('industrial_video.message.usage')
+            }
+          : undefined
     }),
-    [assistantProfile, headerCapabilities.userProfile, topic.name]
+    // [assistantProfile, headerCapabilities.userProfile, topic.name]
+    [assistantProfile, headerCapabilities.userProfile, topic.name, featureKind, t]
   )
 
   return useMemo(() => ({ state, actions, meta }), [actions, meta, state])

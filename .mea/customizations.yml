@@ -23,6 +23,7 @@ customizations:
     # job 运行态按已确认提交恢复 parse/video/assemble 阶段，解析不得误作生成；成片按生成回执识别，设置版本不跨 run 继承。
     # runtime 拒绝工业 enqueue/steer；每轮固定 token 绑定连接、发送和 MCP，审核绑定 epoch，跨轮关闭旧连接。
     # 可信发送 parts 延迟至 parse 提取文本并全量上传图片/视频；成片 parse 建新 run，不支持的附件类型明确阻塞。
+    # 消息操作仅工业视频按通用 display policy 平铺：用户复制/修改需求/删除，助手复制/删除/查看用量（有数据）；无更多及笔记入口，删除确认不取消任务或删除成片，用量弹窗复用原详情。
     markers:
       - MEA:industrial-video
     touchpoints:
@@ -37,6 +38,13 @@ customizations:
       - src/renderer/routes/app/agents.tsx
       - src/renderer/routes/app/agents_.industrial-video.tsx
       - src/renderer/pages/industrialVideo
+      - src/renderer/pages/agents/components/AgentSessionMessages.tsx
+      - src/renderer/pages/agents/messages/agentMessageListAdapter.tsx
+      - src/renderer/components/chat/messages/types.ts
+      - src/renderer/components/chat/messages/frame/messageMenuBarActions.tsx
+      - src/renderer/components/chat/messages/frame/MessageMenuBar.tsx
+      - src/renderer/components/chat/messages/frame/MessageMenuBarToolbarRenderers.tsx
+      - src/renderer/components/chat/messages/frame/MessageTokens.tsx
       - src/main/features/industrialVideo/IndustrialVideoRevision.ts
       - src/main/features/industrialVideo/IndustrialVideoService.ts
       - src/shared/ipc/schemas/fileProcessing.ts
@@ -52,6 +60,9 @@ customizations:
       - src/renderer/i18n/locales
     tests:
       - src/renderer/components/app/__tests__/Sidebar.test.tsx
+      - src/renderer/components/chat/messages/frame/__tests__/messageMenuBarActions.test.tsx
+      - src/renderer/components/chat/messages/frame/__tests__/MessageMenuBar.test.tsx
+      - src/renderer/pages/agents/messages/__tests__/agentMessageEditing.test.tsx
       - src/renderer/pages/industrialVideo/NewIndustrialVideoPage.test.tsx
       - src/renderer/pages/industrialVideo/IndustrialVideoSettingsForm.test.tsx
       - src/renderer/pages/industrialVideo/industrialVideoSettings.test.ts

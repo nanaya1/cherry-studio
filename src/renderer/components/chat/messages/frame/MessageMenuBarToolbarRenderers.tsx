@@ -174,25 +174,44 @@ const MessageActionMenuPopover = ({
   onAction: (action: MessageMenuBarResolvedAction) => void | Promise<void>
   onOpenChange?: (open: boolean) => void
 }) => {
+  const [pendingAction, setPendingAction] = useState<MessageMenuBarResolvedAction | null>(null)
   const extraItems = useMemo(
     () =>
       actionsToCommandMenuExtraItems(actions, (action) => {
-        void onAction(action)
+        // void onAction(action)
+        // MEA:industrial-video 菜单命令也必须经过已解析的确认对话框。
+        if (action.confirm) setPendingAction(action)
+        else void onAction(action)
       }),
     [actions, onAction]
   )
 
   return (
-    <CommandPopupMenu
-      location="webcontents.context"
-      extraItems={extraItems}
-      align={align}
-      side="top"
-      onOpenChange={onOpenChange}
-      deferActionsUntilClosed
-      contentClassName="[-webkit-app-region:no-drag]">
-      {children}
-    </CommandPopupMenu>
+    <>
+      <CommandPopupMenu
+        location="webcontents.context"
+        extraItems={extraItems}
+        align={align}
+        side="top"
+        onOpenChange={onOpenChange}
+        deferActionsUntilClosed
+        contentClassName="[-webkit-app-region:no-drag]">
+        {children}
+      </CommandPopupMenu>
+      {pendingAction?.confirm && (
+        <ConfirmDialog
+          open
+          title={pendingAction.confirm.title}
+          confirmText={pendingAction.confirm.confirmText}
+          destructive={pendingAction.confirm.destructive}
+          onOpenChange={(open) => !open && setPendingAction(null)}
+          onConfirm={() => {
+            void onAction(pendingAction)
+            setPendingAction(null)
+          }}
+        />
+      )}
+    </>
   )
 }
 

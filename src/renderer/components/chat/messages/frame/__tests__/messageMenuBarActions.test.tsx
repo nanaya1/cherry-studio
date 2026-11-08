@@ -136,6 +136,102 @@ import {
   renderTranslateToolbarAction
 } from '../MessageMenuBarToolbarRenderers'
 
+describe('消息操作显示策略', () => {
+  const displayPolicy = {
+    toolbar: ['copy', 'user-edit', 'delete', 'usage'],
+    menu: [],
+    moreMenuForUser: true,
+    collapseUsage: true,
+    editLabel: '修改需求',
+    deleteConfirmation: '仅删除聊天消息，不取消任务或删除成片'
+  }
+
+  it.each([true, false])('按角色平铺工具栏且无更多菜单：用户=%s', (isUserMessage) => {
+    const context = createActionContext({
+      displayPolicy,
+      isUserMessage,
+      isAssistantMessage: !isUserMessage,
+      startEditingMessage: vi.fn(),
+      actions: {
+        copyText: vi.fn(),
+        deleteMessage: vi.fn(),
+        editMessage: vi.fn(),
+        exportToNotes: vi.fn(),
+        regenerateMessage: vi.fn(),
+        startMessageBranch: vi.fn()
+      }
+    })
+    const toolbar = resolveMessageMenuBarToolbarActions(context)
+    expect(toolbar.map(({ id }) => id).sort()).toEqual(
+      (isUserMessage ? ['copy', 'user-edit', 'delete'] : ['copy', 'delete']).sort()
+    )
+    if (isUserMessage) expect(toolbar.find(({ id }) => id === 'user-edit')?.label).toBe('修改需求')
+    const menu = resolveMessageMenuBarMenuActions(context)
+    expect(menu).toEqual([])
+    expect(toolbar.find(({ id }) => id === 'delete')?.confirm?.title).toBe(displayPolicy.deleteConfirmation)
+  })
+
+  it.each([true, false])('只有助手有用量时显示平铺用量按钮：用户=%s', (isUserMessage) => {
+    const context = createActionContext({
+      displayPolicy: { ...displayPolicy, usageLabel: '查看用量' },
+      isUserMessage,
+      isAssistantMessage: !isUserMessage,
+      onViewUsage: vi.fn(),
+      actions: { copyText: vi.fn(), deleteMessage: vi.fn(), editMessage: vi.fn() },
+      startEditingMessage: vi.fn()
+    })
+    context.message = { ...context.message, stats: { inputTokens: 10 } } as any
+    const ids = resolveMessageMenuBarToolbarActions(context).map(({ id }) => id)
+    expect(ids).toEqual(isUserMessage ? ['copy', 'user-edit', 'delete'] : ['copy', 'delete', 'usage'])
+    context.message = { ...context.message, stats: undefined }
+    expect(resolveMessageMenuBarToolbarActions(context).map(({ id }) => id)).not.toContain('usage')
+  })
+
+  it('平铺删除沿用删除可用性且执行原消息删除命令', async () => {
+    const deleteMessage = vi.fn()
+    const context = createActionContext({ displayPolicy, actions: { deleteMessage } })
+    expect(await executeMessageMenuBarAction('delete', context)).toBe(true)
+    expect(deleteMessage).toHaveBeenCalledWith('message-1', { modelName: undefined })
+    context.actions.getMessageDeleteAvailability = () => ({ enabled: false, reason: 'processing' }) as any
+    expect(resolveMessageMenuBarToolbarActions(context).find(({ id }) => id === 'delete')?.availability.enabled).toBe(
+      false
+    )
+    expect(await executeMessageMenuBarAction('delete', context)).toBe(false)
+    expect(deleteMessage).toHaveBeenCalledTimes(1)
+  })
+
+  it('点击更多中的删除先显示范围确认，不直接删除', () => {
+    const context = createActionContext({
+      displayPolicy: { ...displayPolicy, toolbar: ['more-menu'], menu: ['menu.delete'] },
+      actions: { deleteMessage: vi.fn() }
+    })
+    const executeAction = vi.fn()
+    const action = resolveMessageMenuBarToolbarActions(context).find(({ id }) => id === 'more-menu')!
+    render(
+      <>
+        {renderMoreMenuToolbarAction({
+          action,
+          actionContext: context,
+          executeAction,
+          menuActions: resolveMessageMenuBarMenuActions(context),
+          softHoverBg: false,
+          translationItems: []
+        })}
+      </>
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'chat.message.more' }))
+    fireEvent.click(screen.getByRole('button', { name: 'common.delete' }))
+    expect(screen.getByRole('dialog')).toHaveTextContent(displayPolicy.deleteConfirmation)
+    expect(executeAction).not.toHaveBeenCalled()
+  })
+
+  it('无策略时用户不新增更多菜单，也不新增菜单删除', () => {
+    const context = createActionContext({ isUserMessage: true, actions: { deleteMessage: vi.fn() } })
+    expect(resolveMessageMenuBarToolbarActions(context).map(({ id }) => id)).not.toContain('more-menu')
+    expect(resolveMessageMenuBarMenuActions(context).map(({ id }) => id)).not.toContain('menu.delete')
+  })
+})
+
 const t = ((key: string) => key) as any
 
 function createActionContext(overrides: Partial<MessageMenuBarActionContext> = {}): MessageMenuBarActionContext {

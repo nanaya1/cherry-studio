@@ -450,7 +450,18 @@ export interface MessageListActions {
   regenerateMessage?: (messageId: string) => void | Promise<void>
 }
 
+export interface MessageActionDisplayPolicy {
+  toolbar: readonly string[]
+  menu: readonly string[]
+  moreMenuForUser?: boolean
+  collapseUsage?: boolean
+  editLabel?: string
+  deleteConfirmation?: string
+  usageLabel?: string
+}
+
 export interface MessageListMeta {
+  actionDisplayPolicy?: MessageActionDisplayPolicy
   selectionLayer: boolean
   userProfile?: MessageUserProfile
   assistantProfile?: MessageUserProfile

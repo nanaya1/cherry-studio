@@ -130,6 +130,7 @@ const AgentSessionMessages = ({
   const diagnosticReport = useMemo(() => ({ location: 'agent' }), [])
 
   const messageList = useAgentMessageListProviderValue({
+    featureKind: session?.featureKind,
     topic: derivedTopic,
     messages,
     partsByMessageId,
