@@ -69,6 +69,32 @@ describe('CLAUDE_TOOL_GUARD_RULES', () => {
     mocks.evaluateUserDataSqliteGuard.mockResolvedValue(undefined)
   })
 
+  it.each([
+    'Bash',
+    'Read',
+    'Write',
+    'Skill',
+    'Agent',
+    'mcp__external__generate',
+    'mcp__meacowork-tools__ivideo_unknown'
+  ])('denies industrial-video tool bypass through %s even with Full Access', async (toolName) => {
+    const decision = await evaluate(
+      makeCtx({ toolName, featureKind: 'industrial-video', permissionMode: 'bypassPermissions' })
+    )
+    expect(decision).toMatchObject({ effect: 'deny', ruleId: 'industrial-video-boundary' })
+  })
+
+  it.each(['mcp__meacowork-tools__ivideo_context', 'mcp__cherry-tools__ivideo_status'])(
+    'preserves exact industrial business tool %s',
+    async (toolName) => {
+      expect(await evaluate(makeCtx({ toolName, featureKind: 'industrial-video' }))).toBeUndefined()
+    }
+  )
+
+  it('does not constrain ordinary task tools with the industrial boundary', async () => {
+    expect(await evaluate(makeCtx({ toolName: 'Bash', permissionMode: 'bypassPermissions' }))).toBeUndefined()
+  })
+
   it('is structurally valid', () => {
     expect(validateToolGuardRules(CLAUDE_TOOL_GUARD_RULES)).toEqual([])
   })

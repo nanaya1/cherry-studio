@@ -36,6 +36,7 @@ const ASSISTANT_APPROVAL_REQUIRED_RUNTIME_NAMES = listBuiltinToolPolicies({ appr
 
 const mocks = vi.hoisted(() => ({
   getAgent: vi.fn(),
+  getSession: vi.fn(),
   getBuiltinAgentPluginDirectory: vi.fn(),
   loadBuiltinAgentDefinition: vi.fn(),
   createAssistantServer: vi.fn(function () {
@@ -104,6 +105,10 @@ vi.mock('@logger', () => ({
 vi.mock('@main/ai/toolApproval/userDataSqliteGuard', async (importOriginal) => ({
   ...(await importOriginal<typeof UserDataSqliteGuard>()),
   evaluateUserDataSqliteGuard: vi.fn(async () => undefined)
+}))
+
+vi.mock('@data/services/AgentSessionService', () => ({
+  agentSessionService: { getById: mocks.getSession }
 }))
 
 vi.mock('@data/services/AgentService', () => ({
@@ -296,6 +301,7 @@ describe('buildClaudeCodeSessionSettings', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    mocks.getSession.mockReset()
     mocks.approvalRegister.mockReturnValue(true)
     mocks.resolveRequire.mockImplementation((specifier: string) => {
       if (specifier === '@anthropic-ai/claude-agent-sdk') return '/sdk/index.js'
@@ -2305,6 +2311,52 @@ describe('buildClaudeCodeSessionSettings', () => {
       }
     }
   )
+
+  it('mounts only the industrial business MCP for industrial sessions', async () => {
+    const session = {
+      id: 'session-1',
+      agentId: 'agent-1',
+      featureKind: 'industrial-video',
+      workspace: { type: 'user', path: '/workspace/project' }
+    }
+    const settings = await buildClaudeCodeSessionSettings(session as never, {} as never)
+    expect(Object.keys(settings.mcpServers ?? {})).toEqual(['meacowork-tools'])
+    expect(systemPromptText(settings.systemPrompt)).toContain('工业视频受控制作')
+  })
+
+  it('enforces live industrial identity on a warm Full Access connection', async () => {
+    const session = {
+      id: 'session-1',
+      agentId: 'agent-1',
+      workspace: { type: 'user', path: '/workspace/project' }
+    }
+    const settings = await buildClaudeCodeSessionSettings(session as never, {} as never)
+    mocks.getSession.mockReturnValue({ ...session, featureKind: 'industrial-video' })
+    sessionStateService.getToolPolicySnapshot(session.id)?.setPermissionMode('bypassPermissions')
+    const denied = await settings.canUseTool?.('Bash', { command: 'true' }, {
+      signal: new AbortController().signal,
+      toolUseID: 'industrial-bypass'
+    } as never)
+    expect(denied).toMatchObject({ behavior: 'deny' })
+    const results = await Promise.all(
+      (settings.hooks?.PreToolUse?.[0]?.hooks ?? []).map((hook) =>
+        hook(
+          {
+            hook_event_name: 'PreToolUse',
+            tool_name: 'mcp__external__generate',
+            tool_input: {}
+          } as never,
+          'industrial-bypass',
+          { signal: new AbortController().signal }
+        )
+      )
+    )
+    expect(results).toContainEqual(
+      expect.objectContaining({
+        hookSpecificOutput: expect.objectContaining({ permissionDecision: 'deny' })
+      })
+    )
+  })
 
   it('uses the live permission mode when a warm session switches to bypassPermissions', async () => {
     let permissionMode = 'default'

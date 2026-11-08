@@ -184,7 +184,15 @@ export interface IndustrialVideoRound {
   detail?: Record<string, unknown>
 }
 
+export interface IndustrialVideoControl {
+  epoch: number
+  phase: 'idle' | 'active' | 'stopping' | 'stopped' | 'reconcile_required'
+  stopRequested: boolean
+}
+
 export interface IndustrialVideoProductionRecord {
+  /** 可选以兼容旧记录；停止或可信新轮入口首次写入，未知意图仍阻塞新轮。 */
+  control?: IndustrialVideoControl
   sessionId: string
   /** Latest confirmed production version (count of confirmed versions). */
   version: number

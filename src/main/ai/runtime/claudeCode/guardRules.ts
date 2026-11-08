@@ -25,6 +25,10 @@ import {
 import { detectGlobalInstall } from '@main/ai/toolApproval/dependencyGuard'
 import type { GuardHit, ToolGuardContext, ToolGuardRule } from '@main/ai/toolApproval/toolGuards'
 import { evaluateUserDataSqliteGuard, USER_DATA_SQLITE_GUARD_REASON } from '@main/ai/toolApproval/userDataSqliteGuard'
+import {
+  INDUSTRIAL_VIDEO_BOUNDARY_REASON,
+  isIndustrialVideoToolAllowed
+} from '@main/features/industrialVideo/industrialVideoExecutionPolicy'
 import { CONFIG_TOOL_NAME } from '@shared/ai/builtinTools'
 import { claudeToolRequiresUserInteraction } from '@shared/ai/claudecode/toolRegistry'
 import { imageExts } from '@shared/utils/file'
@@ -131,6 +135,15 @@ const matchesRequiredApproval = (ctx: ToolGuardContext, bypassApproval: 'lift' |
 }
 
 const CROSS_CUTTING_TOOL_GUARD_RULES: readonly ToolGuardRule[] = [
+  {
+    id: 'industrial-video-boundary',
+    bypassBehavior: 'enforce',
+    match: {
+      when: (ctx) => (ctx.featureKind === 'industrial-video' && !isIndustrialVideoToolAllowed(ctx.toolName) ? {} : null)
+    },
+    effect: 'deny',
+    reason: INDUSTRIAL_VIDEO_BOUNDARY_REASON
+  },
   {
     id: 'browser-tool-disabled',
     bypassBehavior: 'enforce',

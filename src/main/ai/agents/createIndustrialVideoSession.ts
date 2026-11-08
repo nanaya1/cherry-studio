@@ -1,8 +1,12 @@
 import { application } from '@application'
 import { agentSessionService } from '@data/services/AgentSessionService'
 import { loggerService } from '@logger'
-import { AGENT_WORKSPACE_TYPE } from '@shared/data/api/schemas/agentWorkspaces'
+import {
+  assertIndustrialVideoRuntime,
+  INDUSTRIAL_VIDEO_PRODUCTION_PROMPT
+} from '@main/features/industrialVideo/industrialVideoExecutionPolicy'
 import type { AgentType } from '@shared/data/api/schemas/agents'
+import { AGENT_WORKSPACE_TYPE } from '@shared/data/api/schemas/agentWorkspaces'
 import type { UniqueModelId } from '@shared/data/types/model'
 
 import { createAgent } from './createAgent'
@@ -13,11 +17,13 @@ export async function createIndustrialVideoSession(
   modelId: UniqueModelId,
   agentType: AgentType
 ): Promise<{ sessionId: string }> {
+  assertIndustrialVideoRuntime('industrial-video', agentType)
   const agent = await createAgent(
     {
       type: agentType,
       name: 'Industrial Video',
-      instructions: 'You are an industrial video planning and production assistant.',
+      // instructions: 'You are an industrial video planning and production assistant.',
+      instructions: INDUSTRIAL_VIDEO_PRODUCTION_PROMPT,
       model: modelId,
       configuration: { internal_kind: 'industrial-video' }
     },

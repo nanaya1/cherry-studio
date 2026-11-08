@@ -1474,6 +1474,101 @@ describe('AgentSessionRuntimeService', () => {
     })
   })
 
+  it('工业发送进入原轮上下文，停止后不向连接发消息', async () => {
+    const service = new AgentSessionRuntimeService()
+    service.beginTurn(baseTurnInput)
+    const entry = getEntry(service)
+    const turn = (service as any).currentTurn(entry)
+    const token = Object.freeze({ sessionId: 'session-1', epoch: 7 })
+    turn.industrialExecution = token
+    const send = vi.fn(async () => undefined)
+    vi.spyOn(service as any, 'currentConnection').mockReturnValue({ send })
+    vi.spyOn(service as any, 'refreshTurnTraceContext').mockResolvedValue(undefined)
+    let stopped = true
+    const withExecution = vi.fn((_token, fn) => fn())
+    const original = mocks.applicationGet.getMockImplementation()!
+    mocks.applicationGet.mockImplementation((name) =>
+      name === 'IndustrialVideoService'
+        ? {
+            assertExecution: () => {
+              if (stopped) throw new Error('IVIDEO_STOPPED')
+            },
+            withExecution,
+            prepareUserParts: vi.fn(async () => undefined)
+          }
+        : original(name)
+    )
+    await expect((service as any).admitTurn(entry, turn)).rejects.toThrow('IVIDEO_STOPPED')
+    expect(send).not.toHaveBeenCalled()
+    stopped = false
+    await (service as any).admitTurn(entry, turn)
+    expect(withExecution).toHaveBeenCalledWith(token, expect.any(Function))
+    expect(send).toHaveBeenCalledTimes(1)
+  })
+
+  it.each(['success', 'error', 'paused'] as const)('工业轮次 %s 持久化终态通知释放，之前仍保持 busy', (status) => {
+    const service = new AgentSessionRuntimeService()
+    const handle = service.beginTurn(baseTurnInput)
+    const entry = getEntry(service)
+    const token = Object.freeze({ sessionId: 'session-1', epoch: 7 })
+    ;(service as any).currentTurn(entry).industrialExecution = token
+    const releaseRound = vi.fn()
+    const original = mocks.applicationGet.getMockImplementation()!
+    mocks.applicationGet.mockImplementation((name) => name === 'IndustrialVideoService' ? { releaseRound } : original(name))
+    expect(service.isSessionBusy('session-1')).toBe(true)
+    service.markTurnTerminal('session-1', status, 'old-turn')
+    expect(releaseRound).not.toHaveBeenCalled()
+    service.markTurnTerminal('session-1', status, handle.turnId)
+    expect(releaseRound).toHaveBeenCalledWith(token)
+    expect(service.isSessionBusy('session-1')).toBe(false)
+  })
+
+  it('工业连接失败在终态持久化后释放且 renderer 不再 busy', async () => {
+    const service = new AgentSessionRuntimeService()
+    const handle = service.beginTurn(baseTurnInput)
+    const entry = getEntry(service)
+    const token = Object.freeze({ sessionId: 'session-1', epoch: 7 })
+    ;(service as any).currentTurn(entry).industrialExecution = token
+    const releaseRound = vi.fn()
+    const original = mocks.applicationGet.getMockImplementation()!
+    mocks.applicationGet.mockImplementation((name) => name === 'IndustrialVideoService' ? { releaseRound } : original(name))
+    vi.spyOn(service as any, 'ensureConnection').mockRejectedValue(new Error('连接失败'))
+    const stream = service.openTurnStream({ sessionId: 'session-1', turnId: handle.turnId, signal: handle.abortController.signal })
+    const reader = stream.getReader()
+    await reader.read()
+    await expect(reader.read()).rejects.toThrow('连接失败')
+    expect(service.isSessionBusy('session-1')).toBe(true)
+    expect(releaseRound).not.toHaveBeenCalled()
+    service.markTurnTerminal('session-1', 'error', handle.turnId)
+    expect(releaseRound).toHaveBeenCalledWith(token)
+    expect(service.isSessionBusy('session-1')).toBe(false)
+  })
+
+  it('工业会话拒绝 enqueue，不转成 steer 或排队', () => {
+    const service = new AgentSessionRuntimeService()
+    service.beginTurn(baseTurnInput)
+    mocks.getSessionById.mockReturnValue({ featureKind: 'industrial-video' })
+    try {
+      expect(() => service.enqueueUserMessage('session-1', { data: { parts: [] } } as never)).toThrow('IVIDEO_BUSY')
+      expect(service.inspect('session-1')?.pendingMessageCount).toBe(0)
+    } finally {
+      mocks.getSessionById.mockReset()
+    }
+  })
+
+  it.each(['pi', 'dsh'])('rejects an unguarded industrial runtime connection: %s', async (agentType) => {
+    const service = new AgentSessionRuntimeService()
+    service.beginTurn(baseTurnInput)
+    const entry = getEntry(service)
+    entry.agentType = agentType
+    mocks.getSessionById.mockReturnValue({ id: 'session-1', agentId: 'agent-1', featureKind: 'industrial-video' })
+    try {
+      await expect((service as any).connect(entry, {}, 'attempt-industrial')).rejects.toThrow('Claude Code')
+    } finally {
+      mocks.getSessionById.mockReset()
+    }
+  })
+
   it('aborts the current turn controller before the stream starts', () => {
     const service = new AgentSessionRuntimeService()
     const handle = service.beginTurn(baseTurnInput)

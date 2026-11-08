@@ -96,6 +96,17 @@ afterEach(() => {
 })
 
 describe('工业视频准备任务 runner', () => {
+  it('资料失败或附件缺少可读来源时保留草稿，不静默提交部分资料', async () => {
+    for (const draft of [
+      baseDraft({ materials: [{ id: 'm', name: '待解析资料', status: 'failed' }] }),
+      baseDraft({ attachments: [{ ...baseDraft().attachments![0], path: undefined }] })
+    ]) {
+      await startIndustrialVideoPreparation('incomplete', { draft }, '分析资料')
+      expect(cacheService.getPersist('industrial_video.preparation.incomplete')?.stage).toBe('failed')
+      expect(channelCalls('industrial_video.parse')).toHaveLength(0)
+      expect(channelCalls('industrial_video.run_create')).toHaveLength(0)
+    }
+  })
   it.each(['industrial_video.run_create', 'industrial_video.parse'])(
     '诊断 %s 失败且不泄露正文、路径和原始错误数据',
     async (failedOperation) => {
@@ -200,10 +211,16 @@ describe('工业视频准备任务 runner', () => {
       ]
     })
     await startIndustrialVideoPreparation('with-materials', { draft }, 'system-prompt')
-    const parseArgs = channelCalls('industrial_video.parse')[0][1] as Record<string, unknown>
+    // const parseArgs = channelCalls('industrial_video.parse')[0][1] as Record<string, unknown>
     // media 仍只含两个本地附件，知识库材料不进入上传 media。
-    expect(parseArgs.media).toHaveLength(2)
-    expect(cacheService.getPersist('industrial_video.preparation.with-materials')?.stage).toBe('submitted')
+    // expect(parseArgs.media).toHaveLength(2)
+    // expect(cacheService.getPersist('industrial_video.preparation.with-materials')?.stage).toBe('submitted')
+    // 失败材料不能再被静默跳过，必须保留全量草稿让用户处理。
+    expect(channelCalls('industrial_video.parse')).toHaveLength(0)
+    expect(cacheService.getPersist('industrial_video.preparation.with-materials')).toMatchObject({
+      stage: 'failed',
+      input: draft
+    })
   })
 
   it('失败保留输入与错误信息，且 Promise 正常 resolve（不自动重试）', async () => {

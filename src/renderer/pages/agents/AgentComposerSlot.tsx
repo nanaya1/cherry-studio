@@ -27,6 +27,8 @@ interface AgentComposerSlotProps {
   isStreaming: boolean
   sendDisabled: boolean
   attachmentOnly?: boolean
+  taskBusy?: boolean
+  taskStopping?: boolean
   onAgentChange?: (agentId: string | null) => void | Promise<void>
   agentChanging?: boolean
   onCreateEmptySession?: () => void | Promise<unknown>
@@ -51,6 +53,8 @@ function AgentComposerSlot({
   isStreaming,
   sendDisabled,
   attachmentOnly,
+  taskBusy,
+  taskStopping,
   onAgentChange,
   agentChanging,
   onCreateEmptySession,
@@ -90,6 +94,8 @@ function AgentComposerSlot({
         resolvedWorkspaceWarning={workspaceWarning ?? null}
         externalContextControls
         attachmentOnly={attachmentOnly}
+        taskBusy={taskBusy}
+        taskStopping={taskStopping}
         forceNarrowLayout={session.featureKind === 'industrial-video'}
         canChangeModel={!isEditing}
         sendMessage={isEditing ? resendEditedMessage : sendMessage}

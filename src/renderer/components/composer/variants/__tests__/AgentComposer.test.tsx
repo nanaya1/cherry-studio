@@ -763,16 +763,124 @@ describe('AgentComposer', () => {
       />
     )
     const controls = within(screen.getByTestId('composer-left-controls'))
-    expect(controls.getAllByRole('button')).toHaveLength(1)
-    expect(controls.getByRole('button', { name: 'industrial_video.upload' })).toBeInTheDocument()
+    expect(controls.getByRole('button', { name: 'industrial_video.add_material' })).toBeInTheDocument()
     expect(screen.getByTestId('composer-send-accessory')).toBeEmptyDOMElement()
     window.api.file.select = vi.fn().mockResolvedValueOnce([])
-    fireEvent.click(controls.getByRole('button', { name: 'industrial_video.upload' }))
+    fireEvent.click(controls.getByRole('button', { name: 'industrial_video.add_material' }))
+    expect(await screen.findByRole('button', { name: 'industrial_video.local_knowledge' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'industrial_video.upload' }))
     await waitFor(() =>
       expect(window.api.file.select).toHaveBeenCalledWith({ properties: ['openFile', 'multiSelections'] })
     )
   })
 
+  it('工业详情直接进入 Agent 分析链，不额外调用独立文本分析', async () => {
+    render(
+      <AgentComposer
+        agentId="agent-1"
+        sessionId="session-1"
+        sendMessage={mocks.sendMessage}
+        stop={mocks.stop}
+        isStreaming={false}
+        attachmentOnly
+      />
+    )
+    act(() => mocks.surfaceProps?.onTextChange('压到20秒，其他不变'))
+    await act(async () => {
+      await mocks.surfaceProps?.onSendDraft({ text: '压到20秒，其他不变', tokens: [] })
+    })
+    expect(mocks.ipcApiRequest.mock.calls.some(([route]) => route === 'ai.text.generate')).toBe(false)
+    expect(mocks.sendMessage).toHaveBeenCalledWith(
+      { text: '压到20秒，其他不变' },
+      expect.objectContaining({ body: expect.objectContaining({ sessionId: 'session-1' }) })
+    )
+  })
+
+  /* 独立分析分支停用；保留旧测试供回溯。
+  it('暂停前置分析后恢复发送按钮，迟到结果不能发送且保留草稿', async () => {
+    let finish!: (value: { text: string }) => void
+    const original = mocks.ipcApiRequest.getMockImplementation()
+    mocks.ipcApiRequest.mockImplementation((route, input) =>
+      route === 'ai.text.generate'
+        ? new Promise<{ text: string }>((resolve) => {
+            finish = resolve
+          })
+        : original?.(route, input)
+    )
+    render(
+      <AgentComposer
+        agentId="agent-1"
+        sessionId="session-1"
+        sendMessage={mocks.sendMessage}
+        stop={mocks.stop}
+        isStreaming={false}
+        attachmentOnly
+      />
+    )
+    act(() => mocks.surfaceProps?.onTextChange('补充说明'))
+    let sending: unknown
+    act(() => {
+      sending = mocks.surfaceProps?.onSendDraft({ text: '补充说明', tokens: [] })
+    })
+    await waitFor(() => expect(mocks.surfaceProps?.isLoading).toBe(true))
+    await act(async () => {
+      await mocks.surfaceProps?.onPause?.()
+    })
+    expect(mocks.ipcApiRequest).toHaveBeenCalledWith(
+      'ai.text.abort',
+      expect.objectContaining({ requestId: expect.any(String) })
+    )
+    expect(mocks.surfaceProps?.isLoading).toBe(false)
+    await act(async () => {
+      finish({ text: '迟到分析' })
+      await sending
+    })
+    expect(mocks.sendMessage).not.toHaveBeenCalled()
+    expect(mocks.surfaceProps?.text).toBe('补充说明')
+  })
+
+  it('工业资料分析失败保留草稿，重试成功才发送且不回退模型', async () => {
+    const analyze = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('analysis unavailable'))
+      .mockResolvedValueOnce({ text: '资料分析结果' })
+    const original = mocks.ipcApiRequest.getMockImplementation()
+    mocks.ipcApiRequest.mockImplementation((route, input) =>
+      route === 'ai.text.generate' ? analyze(input) : original?.(route, input)
+    )
+    render(
+      <AgentComposer
+        agentId="agent-1"
+        sessionId="session-1"
+        sendMessage={mocks.sendMessage}
+        stop={mocks.stop}
+        isStreaming={false}
+        attachmentOnly
+      />
+    )
+    act(() => mocks.surfaceProps?.onTextChange('补充说明'))
+    await act(async () => {
+      await mocks.surfaceProps?.onSendDraft({ text: '补充说明', tokens: [] })
+    })
+    expect(mocks.sendMessage).not.toHaveBeenCalled()
+    expect(mocks.surfaceProps?.text).toBe('补充说明')
+    expect(analyze).toHaveBeenCalledTimes(1)
+    expect(analyze).toHaveBeenLastCalledWith(expect.objectContaining({ uniqueModelId: model.id }))
+    await act(async () => {
+      await mocks.surfaceProps?.onSendDraft({ text: '补充说明', tokens: [] })
+    })
+    expect(mocks.sendMessage).toHaveBeenCalledWith(
+      { text: '补充说明' },
+      expect.objectContaining({
+        body: expect.objectContaining({
+          userMessageParts: expect.arrayContaining([expect.objectContaining({ type: 'text', text: '资料分析结果' })])
+        })
+      })
+    )
+    expect(mocks.surfaceProps?.text).toBe('')
+  })
+
+  */
   it('keeps industrial-video drafts out of both queue and steer while streaming', async () => {
     const props = {
       agentId: 'agent-1',
@@ -883,6 +991,7 @@ describe('AgentComposer', () => {
           }
           return { kind: 'file', mime: 'text/markdown', size: 1, mtime: 0 }
         }
+        if (route === 'ai.text.generate') return { text: '资料分析结果' }
         if (route !== 'file.batch_get_metadata') return {}
         return Object.fromEntries(
           (input.items ?? []).map((item) => [item.key, { kind: 'file', mime: 'text/markdown', size: 1, mtime: 0 }])
@@ -4648,6 +4757,48 @@ describe('AgentComposer', () => {
     fireEvent.click(screen.getByText('send'))
 
     expect(mocks.sendMessage).not.toHaveBeenCalled()
+  })
+
+  it('工业任务在 Agent 空闲时保持停止入口，停止中忽略再次暂停且不排队', async () => {
+    const props = {
+      agentId: 'agent-1',
+      sessionId: 'session-1',
+      sendMessage: mocks.sendMessage,
+      stop: mocks.stop,
+      isStreaming: false,
+      attachmentOnly: true,
+      taskBusy: true
+    }
+    const { rerender } = render(<AgentComposer {...props} />)
+    expect(mocks.surfaceProps?.isLoading).toBe(true)
+    expect(mocks.surfaceProps?.sendDisabled).toBe(true)
+    fireEvent.click(screen.getByText('pause'))
+    expect(mocks.stop).toHaveBeenCalledTimes(1)
+    rerender(<AgentComposer {...props} taskStopping />)
+    await act(async () => {
+      await mocks.surfaceProps?.onPause()
+      await mocks.surfaceProps?.onSendDraft({ text: 'revision', tokens: [] })
+      await mocks.surfaceProps?.onSendDraft({ text: 'revision', tokens: [] }, { steer: true })
+    })
+    expect(mocks.stop).toHaveBeenCalledTimes(1)
+    expect(mocks.sendMessage).not.toHaveBeenCalled()
+    expect(getQueueDock()).toBeFalsy()
+  })
+
+  it('attachmentOnly 在流式期间也显示停止而不是发送', () => {
+    render(
+      <AgentComposer
+        agentId="agent-1"
+        sessionId="session-1"
+        sendMessage={mocks.sendMessage}
+        stop={mocks.stop}
+        isStreaming
+        attachmentOnly
+      />
+    )
+    expect(mocks.surfaceProps?.isLoading).toBe(true)
+    fireEvent.click(screen.getByText('pause'))
+    expect(mocks.stop).toHaveBeenCalledTimes(1)
   })
 
   it('calls the active stream stop handler when paused', () => {

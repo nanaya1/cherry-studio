@@ -1,16 +1,22 @@
+import { AsyncLocalStorage } from 'node:async_hooks'
 // import { createHmac } from 'node:crypto'
 import { createHmac, randomUUID } from 'node:crypto'
+import { mkdtemp, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
 
 import { application } from '@application'
+import { materializeNativeFilePart } from '@main/ai/messages/fileProcessor'
 import { BaseService, Injectable, Phase, ServicePhase } from '@main/core/lifecycle'
 import { agentSessionService } from '@main/data/services/AgentSessionService'
 import { agentWorkspaceService } from '@main/data/services/AgentWorkspaceService'
 import type { AgentSessionEntity } from '@shared/data/api/schemas/agentSessions'
 import type {
+  IndustrialVideoControl,
   IndustrialVideoProductionRecord,
   IndustrialVideoProductionState,
   IndustrialVideoRound
 } from '@shared/data/cache/cacheValueTypes'
+import type { UIMessage } from '@shared/data/types/message'
 import { IpcError } from '@shared/ipc/errors/IpcError'
 
 import {
@@ -24,6 +30,11 @@ import {
 } from './IndustrialVideoClient'
 import { IndustrialVideoDownloader } from './IndustrialVideoDownload'
 import { canSubmitIndustrialVideo } from './industrialVideoRecovery'
+import {
+  getIndustrialVideoInput,
+  mergeIndustrialVideoInput,
+  type IndustrialVideoInput
+} from './IndustrialVideoRevision'
 
 const DEFAULT_TIMEOUT_MS = 30_000
 const PERSIST_KEY = 'industrial_video.records' as const
@@ -295,6 +306,167 @@ export class IndustrialVideoService extends BaseService {
     return chained
   }
 
+  private readonly executionContext = new AsyncLocalStorage<Readonly<{ sessionId: string; epoch: number }>>()
+
+  /** 可信 runtime 须捕获 beginRound 返回值并绑定连接；旧连接不得读取最新代次。 */
+  withExecution<T>(token: Readonly<{ sessionId: string; epoch: number }>, fn: () => T): T {
+    return this.executionContext.run(token, fn)
+  }
+
+  /** 仅在可信连接构建期间捕获；工具回调不得改读持久化的最新代次。 */
+  getExecutionToken(): Readonly<{ sessionId: string; epoch: number }> | undefined {
+    return this.executionContext.getStore()
+  }
+
+  assertExecution(token: Readonly<{ sessionId: string; epoch: number }>): void {
+    this.withExecution(token, () => this.assertExecutionOpen(token.sessionId, token.epoch))
+  }
+
+  private readonly userInputs = new Map<
+    string,
+    {
+      epoch: number
+      parts: UIMessage['parts']
+      prepared?: Promise<IndustrialVideoInput>
+      revision?: Promise<string>
+    }
+  >()
+
+  /** 仅接收 runtime 保存的真实用户消息；模型工具不可写入此入口。 */
+  async prepareUserParts(input: { sessionId: string; parts: UIMessage['parts'] }): Promise<void> {
+    const token = this.getExecutionToken()
+    if (!token || token.sessionId !== input.sessionId) throw new IpcError('IVIDEO_STOPPED', '缺少可信轮次。')
+    this.assertExecution(token)
+    this.userInputs.set(input.sessionId, { epoch: token.epoch, parts: structuredClone(input.parts) })
+  }
+
+  private async prepareParseInput(sessionId: string): Promise<IndustrialVideoInput> {
+    const pending = this.userInputs.get(sessionId)
+    const token = this.getExecutionToken()
+    if (!pending || !token || token.sessionId !== sessionId || pending.epoch !== token.epoch) return {}
+    pending.prepared ??= (async () => {
+      const texts: NonNullable<IndustrialVideoInput['texts']> = []
+      const media: NonNullable<IndustrialVideoInput['media']> = []
+      for (const part of pending.parts) {
+        this.assertExecution(token)
+        if (part.type === 'text' && part.text.trim()) texts.push({ text: part.text })
+        if (part.type !== 'file') continue
+        const file = await materializeNativeFilePart(part)
+        this.assertExecution(token)
+        const match = file?.url.match(/^data:([^;,]+);base64,([A-Za-z0-9+/=\r\n]+)$/)
+        if (!match) throw new IpcError('IVIDEO_MATERIAL_INVALID', '附件无法完整读取，未提交解析。')
+        // if (/^text\//.test(match[1])) {
+        if (match[1].startsWith('text/')) {
+          texts.push({ text: Buffer.from(match[2], 'base64').toString('utf8'), title: part.filename })
+        } else if (/^(image|video)\//.test(match[1])) {
+          const caption = part.filename ?? 'attachment'
+          const uploaded = await this.upload({ sessionId, name: caption, content: Buffer.from(match[2], 'base64') })
+          this.assertExecution(token)
+          media.push({ name: uploaded.name, caption })
+        } else {
+          throw new IpcError('IVIDEO_MATERIAL_INVALID', '该附件类型尚未接通可信文本提取，请转换后重新发送。')
+        }
+      }
+      return { texts, media }
+    })()
+    return pending.prepared
+  }
+
+  private invalidateReviews(sessionId: string): void {
+    this.pendingReviewSnapshots.delete(sessionId)
+    this.confirmedReviews.delete(sessionId)
+  }
+
+  private assertExecutionOpen(sessionId: string, epoch?: number): void {
+    const control = this.getRecord(sessionId)?.control
+    const token = this.executionContext.getStore()
+    if (
+      control?.stopRequested ||
+      (token && (token.sessionId !== sessionId || token.epoch !== control?.epoch || control.phase !== 'active')) ||
+      (epoch !== undefined && epoch !== (control?.epoch ?? 0)) ||
+      (control?.phase === 'active' && (!token || token.sessionId !== sessionId || token.epoch !== control.epoch))
+    ) {
+      throw new IpcError('IVIDEO_STOPPED', '当前执行权限已失效；请核实任务后明确开始新一轮。')
+    }
+  }
+
+  private hasUnresolvedSubmission(record: IndustrialVideoProductionRecord): boolean {
+    return (
+      record.unknownSubmissions.length > 0 ||
+      record.rounds
+        .filter((round) => !['job_cancel', 'review_confirm', 'review_snapshot_get'].includes(round.operation))
+        .at(-1)?.outcome === 'intended'
+    )
+  }
+
+  /** 仅供可信主进程用户提交入口调用；不得作为模型工具或通用 IPC 暴露。 */
+  beginRound(input: { sessionId: string }): Readonly<{ sessionId: string; epoch: number }> {
+    this.validateSession(input.sessionId)
+    const record = this.getRecord(input.sessionId) ?? this.newRecord(input.sessionId)
+    if (
+      (record.control?.phase === 'active' && !['done', 'failed'].includes(record.state)) ||
+      this.hasUnresolvedSubmission(record) ||
+      (record.jobId && !['done', 'failed'].includes(record.state)) ||
+      (record.control?.stopRequested && record.control.phase !== 'stopped')
+    ) {
+      throw new IpcError('IVIDEO_RECONCILE_REQUIRED', '当前任务尚未证实结束，不能开始新一轮。')
+    }
+    record.control = { epoch: (record.control?.epoch ?? 0) + 1, phase: 'active', stopRequested: false }
+    this.invalidateReviews(input.sessionId)
+    this.saveRecord(record)
+    return Object.freeze({ sessionId: input.sessionId, epoch: record.control.epoch })
+  }
+
+  /** 终态持久化后仅释放未进入业务活动的可信轮次。 */
+  releaseRound(token: Readonly<{ sessionId: string; epoch: number }>): void {
+    const record = this.getRecord(token.sessionId)
+    if (
+      !record?.control ||
+      record.control.epoch !== token.epoch ||
+      record.control.phase !== 'active' ||
+      record.control.stopRequested ||
+      record.jobId ||
+      !['idle', 'done', 'failed'].includes(record.state) ||
+      this.hasUnresolvedSubmission(record)
+    ) {
+      return
+    }
+    record.control = { ...record.control, phase: 'idle' }
+    this.saveRecord(record)
+  }
+
+  /** 先同步持久化门禁，再取消已绑定活动任务；不等待业务长锁。 */
+  async stop(input: { sessionId: string }): Promise<IndustrialVideoControl> {
+    this.validateSession(input.sessionId)
+    const record = this.getRecord(input.sessionId) ?? this.newRecord(input.sessionId)
+    const activeJob = record.jobId && !['done', 'failed', 'canceled'].includes(record.state) ? record.jobId : null
+    const unresolved = this.hasUnresolvedSubmission(record) || !!activeJob || record.state === 'canceled'
+    record.control = {
+      epoch: (record.control?.epoch ?? 0) + (record.control?.stopRequested ? 0 : 1),
+      stopRequested: true,
+      phase: unresolved ? 'reconcile_required' : 'stopped'
+    }
+    this.saveRecord(record)
+    this.invalidateReviews(input.sessionId)
+    // if (activeJob) await this.jobCancel({ sessionId: input.sessionId, jobId: activeJob })
+    // return { ...this.getRecord(input.sessionId)!.control! }
+    const control = { ...record.control }
+    // 门禁回执不等待远端取消；迟到失败不得覆盖已对账的终态或新轮。
+    if (activeJob) {
+      void this.jobCancel({ sessionId: input.sessionId, jobId: activeJob })
+        .catch(() => {
+          const latest = this.getRecord(input.sessionId)
+          if (latest?.control?.epoch === control.epoch && latest.control.phase === 'reconcile_required') {
+            latest.control = { ...latest.control, phase: 'reconcile_required' }
+            this.saveRecord(latest)
+          }
+        })
+        // 门禁已同步持久化；后台持久化异常也不能产生未处理的 rejection。
+        .catch(() => undefined)
+    }
+    return control
+  }
+
   // ── Config resolution ──
 
   /** Read the trusted service config from the main process env. `null` = unconfigured. */
@@ -376,6 +548,15 @@ export class IndustrialVideoService extends BaseService {
     if (record.run && record.run !== run) {
       throw new IpcError('IVIDEO_RUN_INVALID', 'Run does not belong to this session.')
     }
+  }
+
+  private assertReadableRun(sessionId: string, run: string, record: IndustrialVideoProductionRecord | null): void {
+    if (
+      record?.run === run ||
+      record?.rounds.some((round) => round.operation === 'run_create' && round.outcome === 'ok' && round.run === run)
+    )
+      return
+    this.assertRunBelongs(sessionId, run, null)
   }
 
   private assertJobBelongs(_sessionId: string, jobId: string, record: IndustrialVideoProductionRecord | null): void {
@@ -484,6 +665,18 @@ export class IndustrialVideoService extends BaseService {
     }
   }
 
+  private hasCompletedVideo(record: IndustrialVideoProductionRecord | null): boolean {
+    if (record?.state !== 'done' || !record.run || !record.jobId) return false
+    return record.rounds.some(
+      (round) =>
+        round.run === record.run &&
+        round.jobId === record.jobId &&
+        round.outcome === 'ok' &&
+        ['video_start', 'assemble'].includes(round.operation) &&
+        ['generating', 'assembling'].includes(round.state)
+    )
+  }
+
   // ── Write orchestration (intent → call → confirm / unknown) ──
 
   private async guardWrite<T>(input: {
@@ -502,15 +695,25 @@ export class IndustrialVideoService extends BaseService {
       detail?: Record<string, unknown>
     }
   }): Promise<T> {
+    const epoch = this.getRecord(input.sessionId)?.control?.epoch ?? 0
     return this.withSessionLock(input.sessionId, async () => {
       this.validateSession(input.sessionId)
+      this.assertExecutionOpen(input.sessionId, epoch)
       const record = this.getRecord(input.sessionId)
       if (input.requireRun !== undefined) this.assertRunBelongs(input.sessionId, input.requireRun, record)
       if (input.requireJob) this.assertJobBelongs(input.sessionId, input.requireJob, record)
+      // if (input.operation === 'storyboard_submit' && record?.state === 'done') {
+      if (input.operation === 'storyboard_submit' && this.hasCompletedVideo(record)) {
+        throw new IpcError(
+          'IVIDEO_REVISION_REQUIRED',
+          '成片不可原地修改：请先调用 parse 创建返修新 run，提交新分镜后重新审核。'
+        )
+      }
       this.assertSubmittable(input.sessionId, record, input.gatedByActiveJob ?? false)
 
       const base = record?.version ?? 0
       const version = input.operation === 'run_create' ? base + 1 : base
+      this.invalidateReviews(input.sessionId)
       // 1. Persist intent before the request (an `intended` round).
       this.appendRound(input.sessionId, {
         version,
@@ -545,6 +748,9 @@ export class IndustrialVideoService extends BaseService {
           jobId: patch.jobId ?? null,
           state: patch.state ?? input.state
         })
+        if (this.getRecord(input.sessionId)?.control?.stopRequested && patch.jobId) {
+          await this.jobCancel({ sessionId: input.sessionId, jobId: patch.jobId })
+        }
         return { ...result.data }
       }
 
@@ -582,7 +788,8 @@ export class IndustrialVideoService extends BaseService {
   }): Promise<T> {
     this.validateSession(input.sessionId)
     const record = this.getRecord(input.sessionId)
-    if (input.requireRun !== undefined) this.assertRunBelongs(input.sessionId, input.requireRun, record)
+    // if (input.requireRun !== undefined) this.assertRunBelongs(input.sessionId, input.requireRun, record)
+    if (input.requireRun !== undefined) this.assertReadableRun(input.sessionId, input.requireRun!, record)
     const result = await input.doCall()
     if (result.ok) return { ...result.data }
     const error = result.error
@@ -609,6 +816,7 @@ export class IndustrialVideoService extends BaseService {
         throw new IpcError('IVIDEO_JOB_INVALID', 'No run is associated with this session.')
       }
 
+      const pollEpoch = record.control?.epoch ?? 0
       const result = await input.doCall()
       if (!result.ok) {
         const error = result.error
@@ -628,12 +836,38 @@ export class IndustrialVideoService extends BaseService {
       // Ownership is proven by the server: only act on a job whose `run` matches the
       // session's run. We never infer/auto-claim a task from `run` alone.
       const jobRun = typeof result.data.run === 'string' ? result.data.run : undefined
-      if (jobRun && jobRun === record.run) {
-        if (newState) updated.state = newState
+      // 同 run 不证明属于某次提交；只更新已绑定 job，未知项按精确 jobId 对账。
+      // if (jobRun && jobRun === record.run) {
+      if (jobRun === record.run && input.jobId === record.jobId && (updated.control?.epoch ?? 0) === pollEpoch) {
+        // if (newState) updated.state = newState
+        // MEA:industrial-video worker 的运行状态不区分阶段，按该 job 的提交回执恢复解析/生成/合成阶段。
+        const jobRound = updated.rounds.findLast(
+          (round) =>
+            round.run === jobRun &&
+            round.jobId === input.jobId &&
+            round.outcome === 'ok' &&
+            ['parse', 'video_start', 'assemble'].includes(round.operation)
+        )
+        if (newState) updated.state = newState === 'generating' ? (jobRound?.state ?? newState) : newState
         updated.jobId = input.jobId
-        // Reconcile: a successful, run-matching job_get clears the unconfirmed
-        // submissions for that run so the caller can proceed (no auto-claim).
-        updated.unknownSubmissions = updated.unknownSubmissions.filter((u) => u.run !== jobRun)
+        // updated.unknownSubmissions = updated.unknownSubmissions.filter((u) => u.run !== jobRun)
+        updated.unknownSubmissions = updated.unknownSubmissions.filter(
+          (round) => round.run !== jobRun || round.jobId !== input.jobId
+        )
+      }
+      if (
+        updated.control?.stopRequested &&
+        jobRun === updated.run &&
+        input.jobId === updated.jobId &&
+        (updated.control?.epoch ?? 0) === pollEpoch
+      ) {
+        updated.control = {
+          ...updated.control,
+          phase:
+            !this.hasUnresolvedSubmission(updated) && ['done', 'failed'].includes(updated.state)
+              ? 'stopped'
+              : 'reconcile_required'
+        }
       }
       this.saveRecord(updated)
 
@@ -648,16 +882,83 @@ export class IndustrialVideoService extends BaseService {
     return { configured: this.deps.resolveConfig() !== null }
   }
 
+  async snapshotSave(input: {
+    sessionId: string
+    run: string
+    script: string
+    storyboard: string
+  }): Promise<{ scriptPath: string; storyboardPath: string }> {
+    const session = this.validateSession(input.sessionId)
+    this.assertRunBelongs(input.sessionId, input.run, this.getRecord(input.sessionId))
+    const snapshot = await this.reviewSnapshotGet({ sessionId: input.sessionId, run: input.run })
+    if (typeof snapshot.script !== 'string' || !snapshot.storyboard || typeof snapshot.storyboard !== 'object') {
+      throw new IpcError('IVIDEO_REVIEW_INVALID', '服务端未返回可保存的真实脚本与分镜。')
+    }
+    const directory = await mkdtemp(join(this.deps.getWorkspacePath(session.workspaceId), '审核-'))
+    const scriptPath = join(directory, '脚本.md')
+    const storyboardPath = join(directory, '分镜脚本.md')
+    await writeFile(scriptPath, snapshot.script, { encoding: 'utf8', flag: 'wx' })
+    await writeFile(
+      storyboardPath,
+      `审核版本：${snapshot.review_version}\n\n\`\`\`json\n${JSON.stringify(snapshot.storyboard, null, 2)}\n\`\`\`\n`,
+      { encoding: 'utf8', flag: 'wx' }
+    )
+    return { scriptPath, storyboardPath }
+  }
+
   async runCreate(input: { sessionId: string; baseName: string; prefix?: string | null }): Promise<{ run: string }> {
     const client = this.createClient(this.requireConfig())
+    let parentRun: string | null = null
     const data = await this.guardWrite({
       sessionId: input.sessionId,
       operation: 'run_create',
       state: 'idle',
       run: null,
       gatedByActiveJob: false,
-      doCall: () => client.runCreate({ base_name: input.baseName, prefix: input.prefix ?? null }),
-      onSuccess: (d) => ({ run: d.run, state: 'idle' })
+      // doCall: () => client.runCreate({ base_name: input.baseName, prefix: input.prefix ?? null }),
+      // onSuccess: (d) => ({ run: d.run, state: 'idle' })
+      // MEA:industrial-video 新 run 覆盖活动指针前，先保存旧任务真实回执与完整输入。
+      doCall: async () => {
+        const previous = this.getRecord(input.sessionId)
+        parentRun = previous?.run ?? null
+        if (previous?.run && previous.jobId) {
+          const epoch = previous.control?.epoch ?? 0
+          const job = await client.jobGet({ job_id: previous.jobId })
+          if (!job.ok || job.data.run !== previous.run || !['done', 'failed'].includes(String(job.data.status))) {
+            return {
+              ok: false,
+              requestId: job.requestId,
+              error: {
+                category: 'http',
+                operation: 'run_create',
+                requestId: job.requestId,
+                status: 409,
+                outcomeUnknown: false,
+                message: '旧版本任务尚未证实结束，未创建返修版本。'
+              }
+            }
+          }
+          this.assertExecutionOpen(input.sessionId, epoch)
+          const latest = this.getRecord(input.sessionId)!
+          latest.rounds = [
+            ...latest.rounds,
+            {
+              version: previous.version,
+              operation: 'revision_archive',
+              run: previous.run,
+              jobId: previous.jobId,
+              state: previous.state,
+              requestId: job.requestId,
+              at: Date.now(),
+              outcome: 'ok',
+              detail: { job: job.data, inputSnapshot: getIndustrialVideoInput(previous) }
+            }
+          ]
+          this.saveRecord(latest)
+        }
+        return client.runCreate({ base_name: input.baseName, prefix: input.prefix ?? null })
+      },
+      onSuccess: (d) => ({ run: d.run, state: 'idle', detail: { parentRun } })
     })
     return { run: data.run }
   }
@@ -679,8 +980,31 @@ export class IndustrialVideoService extends BaseService {
     withAudio?: boolean | null
     expectedSettingsVersion?: number | null
   }): Promise<{ jobId: string; effectiveSettings?: Record<string, unknown>; settingsVersion?: number }> {
+    this.validateSession(input.sessionId)
     const client = this.createClient(this.requireConfig())
-    const run = input.run ?? null
+    // const run = input.run ?? null
+    // MEA:industrial-video 真实用户发送触发返修，新 run 不复用旧成片写入口。
+    let run = input.run ?? null
+    const pending = this.userInputs.get(input.sessionId)
+    const token = this.getExecutionToken()
+    const record = this.getRecord(input.sessionId)
+    if (run) this.assertRunBelongs(input.sessionId, run, record)
+    // if (pending && pending.epoch === token?.epoch && record?.run && record.jobId && record.state === 'done') {
+    if (pending && pending.epoch === token?.epoch && this.hasCompletedVideo(record)) {
+      pending.revision ??= this.runCreate({ sessionId: input.sessionId, baseName: 'revision' }).then(
+        (result) => result.run
+      )
+      run = await pending.revision
+    } else if (pending?.epoch === token?.epoch && pending?.revision) {
+      run = await pending.revision
+    }
+    const userInput = await this.prepareParseInput(input.sessionId)
+    const changes = { ...input } as Partial<typeof input>
+    delete changes.sessionId
+    delete changes.run
+    // const validated = mergeIndustrialVideoInput({}, changes as IndustrialVideoInput)
+    const validated = mergeIndustrialVideoInput(changes as IndustrialVideoInput, userInput)
+    let snapshot: IndustrialVideoInput = {}
     const data = await this.guardWrite({
       sessionId: input.sessionId,
       operation: 'parse',
@@ -688,19 +1012,29 @@ export class IndustrialVideoService extends BaseService {
       run,
       requireRun: run,
       gatedByActiveJob: true,
-      doCall: () =>
-        client.videoStart({
+      // doCall: () => client.videoStart({ stage: 'parse', run, texts: input.texts as never, media: input.media as never,
+      //   logo: input.logo as never, voice: input.voice ?? null, aspect_ratio: input.aspectRatio ?? null,
+      //   style: input.style ?? null, ...buildVideoStartSettings(input) }),
+      // onSuccess: (d) => ({ jobId: d.job_id, state: 'parsing' })
+      // MEA:industrial-video 全量输入在会话写锁内合并，避免并发素材覆盖。
+      doCall: () => {
+        snapshot = mergeIndustrialVideoInput(getIndustrialVideoInput(this.getRecord(input.sessionId)), validated)
+        // 设置版本是本次请求的并发校验凭据，不是可跨 run 继承的制作资料。
+        // 保留素材/参数快照，但只转发本次显式提供的版本，避免新 run 携带旧 run 版本。
+        snapshot.expectedSettingsVersion = validated.expectedSettingsVersion
+        return client.videoStart({
           stage: 'parse',
           run,
-          texts: input.texts as never,
-          media: input.media as never,
-          logo: input.logo as never,
-          voice: input.voice ?? null,
-          aspect_ratio: input.aspectRatio ?? null,
-          style: input.style ?? null,
-          ...buildVideoStartSettings(input)
-        }),
-      onSuccess: (d) => ({ jobId: d.job_id, state: 'parsing' })
+          texts: snapshot.texts,
+          media: snapshot.media,
+          logo: snapshot.logo,
+          voice: snapshot.voice ?? null,
+          aspect_ratio: snapshot.aspectRatio ?? null,
+          style: snapshot.style ?? null,
+          ...buildVideoStartSettings(snapshot)
+        })
+      },
+      onSuccess: (d) => ({ jobId: d.job_id, state: 'parsing', detail: { inputSnapshot: snapshot } })
     })
     return {
       jobId: data.job_id,
@@ -718,7 +1052,9 @@ export class IndustrialVideoService extends BaseService {
       reviewType: IndustrialVideoReviewType
     ) => Promise<IndustrialVideoResult<T>>
   ): Promise<T> {
+    const epoch = this.getRecord(request.sessionId)?.control?.epoch ?? 0
     return this.withSessionLock(request.sessionId, async () => {
+      this.assertExecutionOpen(request.sessionId, epoch)
       const session = this.validateSession(request.sessionId)
       const record = this.getRecord(request.sessionId)
       this.assertRunBelongs(request.sessionId, request.run, record)
@@ -741,8 +1077,32 @@ export class IndustrialVideoService extends BaseService {
       if (typeof assertion !== 'string' || !assertion.trim()) {
         throw new IpcError('IVIDEO_REVIEW_AUTH_UNAVAILABLE', '未接通可信身份签发')
       }
+      this.assertExecutionOpen(request.sessionId, epoch)
       const result = await call(this.createClient(this.requireConfig()), assertion, reviewType)
-      if (result.ok) return result.data
+      // if (result.ok) return result.data
+      if (result.ok) {
+        const control = this.getRecord(request.sessionId)?.control
+        if (control?.stopRequested || (control?.epoch ?? 0) !== epoch) {
+          const latest = this.getRecord(request.sessionId)!
+          latest.rounds = [
+            ...latest.rounds,
+            {
+              version: latest.version,
+              operation: request.operation,
+              run: request.run,
+              jobId: null,
+              state: latest.state,
+              requestId: result.requestId,
+              at: Date.now(),
+              outcome: 'ok',
+              detail: { receipt: result.data, invalidated: true, epoch }
+            }
+          ]
+          this.saveRecord(latest)
+        }
+        this.assertExecutionOpen(request.sessionId, epoch)
+        return result.data
+      }
       const error = result.error
       throw new IpcError('IVIDEO_HTTP_ERROR', error.message, {
         category: error.category,
@@ -757,11 +1117,13 @@ export class IndustrialVideoService extends BaseService {
   }
 
   async reviewSnapshotGet(input: IndustrialVideoReviewInput): Promise<ReviewSnapshot> {
+    const epoch = this.getRecord(input.sessionId)?.control?.epoch ?? 0
     const snapshot = await this.guardReview(
       { ...input, operation: 'review_snapshot_get' },
       (client, assertion, reviewType) =>
         client.reviewSnapshotGet({ run: input.run, host_assertion: assertion, review_type: reviewType })
     )
+    this.assertExecutionOpen(input.sessionId, epoch)
     if ((input.reviewType ?? 'script_and_storyboard') === 'script_and_storyboard') {
       this.pendingReviewSnapshots.set(input.sessionId, { run: input.run, reviewVersion: snapshot.review_version })
       const confirmed = this.confirmedReviews.get(input.sessionId)
@@ -783,6 +1145,7 @@ export class IndustrialVideoService extends BaseService {
   }
 
   async reviewConfirm(input: IndustrialVideoReviewInput & { expectedReviewVersion: string }): Promise<ReviewReceipt> {
+    const epoch = this.getRecord(input.sessionId)?.control?.epoch ?? 0
     const receipt = await this.guardReview({ ...input, operation: 'review_confirm' }, (client, assertion, reviewType) =>
       client.reviewConfirm({
         run: input.run,
@@ -791,6 +1154,7 @@ export class IndustrialVideoService extends BaseService {
         expected_review_version: input.expectedReviewVersion
       })
     )
+    this.assertExecutionOpen(input.sessionId, epoch)
     if (receipt.generation_allowed && (input.reviewType ?? 'script_and_storyboard') === 'script_and_storyboard') {
       this.confirmedReviews.set(input.sessionId, { run: input.run, reviewVersion: receipt.review_version })
     }
@@ -990,17 +1354,40 @@ export class IndustrialVideoService extends BaseService {
 
   async jobCancel(input: { sessionId: string; jobId: string }): Promise<Record<string, unknown>> {
     const client = this.createClient(this.requireConfig())
-    return this.guardWrite({
-      sessionId: input.sessionId,
-      operation: 'job_cancel',
-      state: 'canceled',
-      run: null,
-      requireJob: input.jobId,
-      gatedByActiveJob: false,
-      doCall: () => client.jobCancel({ job_id: input.jobId }),
-      // 取消仅终止任务，不能抹去当前制作版本的归属。
-      onSuccess: () => ({ run: this.getRecord(input.sessionId)?.run, jobId: input.jobId, state: 'canceled' })
-    })
+    // return this.guardWrite({
+    //   sessionId: input.sessionId, operation: 'job_cancel', state: 'canceled', run: null,
+    //   requireJob: input.jobId, gatedByActiveJob: false,
+    //   doCall: () => client.jobCancel({ job_id: input.jobId }),
+    //   onSuccess: () => ({ run: this.getRecord(input.sessionId)?.run, jobId: input.jobId, state: 'canceled' })
+    // })
+    // MEA:industrial-video 取消独立于提交门禁；回执不代表 worker 已终止。
+    this.validateSession(input.sessionId)
+    const record = this.getRecord(input.sessionId)
+    this.assertJobBelongs(input.sessionId, input.jobId, record)
+    const epoch = record?.control?.epoch ?? 0
+    const result = await client.jobCancel({ job_id: input.jobId })
+    const latest = this.getRecord(input.sessionId)!
+    latest.rounds = [
+      ...latest.rounds,
+      {
+        version: record!.version,
+        operation: 'job_cancel',
+        run: record!.run,
+        jobId: input.jobId,
+        state: record!.state,
+        requestId: result.requestId,
+        at: Date.now(),
+        outcome: result.ok ? 'ok' : 'unknown',
+        detail: result.ok ? { receipt: result.data } : { error: result.error.message }
+      }
+    ]
+    if (latest.control?.stopRequested && latest.control.epoch === epoch && latest.control.phase !== 'stopped') {
+      latest.control = { ...latest.control, phase: 'reconcile_required' }
+    }
+    this.saveRecord(latest)
+    if (!result.ok)
+      throw new IpcError('IVIDEO_HTTP_ERROR', result.error.message, { operation: 'job_cancel', outcomeUnknown: true })
+    return { ...result.data }
   }
 
   async mediaUpload(input: {
@@ -1066,6 +1453,7 @@ export class IndustrialVideoService extends BaseService {
    */
   async upload(input: { sessionId: string; name: string; content: Uint8Array }): Promise<{ name: string }> {
     this.validateSession(input.sessionId)
+    this.assertExecutionOpen(input.sessionId)
     const client = this.createClient(this.requireConfig())
     const result = await client.upload({ name: input.name, content: input.content })
     if (!result.ok) {
@@ -1116,7 +1504,8 @@ export class IndustrialVideoService extends BaseService {
   }): Promise<{ filePath: string; size: number }> {
     const session = this.validateSession(input.sessionId)
     const record = this.getRecord(input.sessionId)
-    this.assertRunBelongs(input.sessionId, input.run, record)
+    // this.assertRunBelongs(input.sessionId, input.run, record)
+    this.assertReadableRun(input.sessionId, input.run, record)
 
     // The real workspace directory comes from the trusted WorkspaceService, never
     // a renderer-controlled value (which would be a path-injection vector).

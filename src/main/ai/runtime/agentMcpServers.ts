@@ -61,6 +61,23 @@ export function buildAgentMcpServers(
     linkedChannelSnapshot === undefined ? notificationContext.sourceChannel !== null : linkedChannelSnapshot !== null
   const hostTools = resolveHostTools(agent, { channelLinked })
 
+  if (session.featureKind === 'industrial-video') {
+    return {
+      [MEACOWORK_TOOLS_SERVER_NAME]: {
+        name: MEACOWORK_MCP_SERVER.MEACOWORK_TOOLS,
+        instance: new MeacoworkBuiltinToolsServer({
+          agentId: agent.id,
+          agentDataPath,
+          sessionId: session.id,
+          featureKind: session.featureKind,
+          workspaceSource: toWorkspaceSource(session),
+          workspacePath: session.workspace.path,
+          getKnowledgeBaseIds: () => []
+        }).mcpServer
+      }
+    }
+  }
+
   for (const mcpId of agent.mcps ?? []) {
     try {
       const serverSnapshot = mcpServerSnapshots?.get(mcpId)

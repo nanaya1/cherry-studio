@@ -119,8 +119,18 @@ const ivReviewInputShape = {
   reviewType: z.enum(['sources', 'script_and_storyboard']).default('script_and_storyboard')
 }
 
+export const industrialVideoControlSchema = z.object({
+  epoch: z.number().int().nonnegative(),
+  phase: z.enum(['idle', 'active', 'stopping', 'stopped', 'reconcile_required']),
+  stopRequested: z.boolean()
+})
+
 // ── Request: renderer → main calls (zod values, always parsed) ──
 export const industrialVideoRequestSchemas = {
+  'industrial_video.stop': defineRoute({
+    input: z.object({ sessionId: sessionIdField }).strict(),
+    output: industrialVideoControlSchema
+  }),
   'industrial_video.review_snapshot_get': defineRoute({
     input: z.object(ivReviewInputShape).strict(),
     output: z.union([industrialVideoReviewDocumentsSchema, industrialVideoReviewSourcesSchema])
@@ -530,6 +540,7 @@ export const industrialVideoRequestSchemas = {
             outcome: z.enum(['intended', 'ok', 'error', 'unknown'])
           })
         ),
+        control: industrialVideoControlSchema.optional(),
         updatedAt: z.number()
       })
       .nullable()

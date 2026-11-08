@@ -152,6 +152,13 @@ async function runPreparation(
 
   let operation = 'industrial_video.config_status'
   try {
+    // MEA:industrial-video 全量资料不允许静默跳过失败来源或无路径附件。
+    if (draft.materials?.some((material) => material.status !== 'ready')) {
+      throw new Error('资料尚未全部就绪，请处理失败或解析中的资料后重新发送。')
+    }
+    if (draft.attachments?.some((attachment) => !attachment.path)) {
+      throw new Error('附件缺少可读取的来源，请重新选择附件后发送。')
+    }
     // 1) 服务配置检查
     const configured = await ipcApi.request('industrial_video.config_status')
     if (!configured || !configured.configured) {

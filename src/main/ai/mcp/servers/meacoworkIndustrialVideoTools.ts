@@ -153,7 +153,9 @@ const DownloadSchema = z.strictObject({
 
 const WORKFLOW_HINT =
   // '流程：run_create → parse → context → 客户端按 storyboard_schema 编写分镜 → storyboard_submit → review_snapshot_get → AskUserQuestion → 可信审核通过 → estimate → 用户确认生成及费用 → start → status → download。' +
-  '流程：run_create → parse → context → 客户端按 storyboard_schema 编写分镜 → storyboard_submit → review_snapshot_get → AskUserQuestion → 可信审核通过 → start → status → download。' +
+  // 默认使用已有在线预览，下载不属于自动制作步骤。
+  // '流程：run_create → parse → context → 客户端按 storyboard_schema 编写分镜 → storyboard_submit → review_snapshot_get → AskUserQuestion → 可信审核通过 → start → status → download。' +
+  '流程：run_create → parse → context → 客户端按 storyboard_schema 编写分镜 → storyboard_submit → review_snapshot_get → AskUserQuestion → 可信审核通过 → start → status → 在线预览。仅在用户明确要求下载时调用 ivideo_download。' +
   'reviewRequired 时必须调用 ivideo_review_snapshot_get 读取真实脚本、分镜和 review_version，再调用原生 AskUserQuestion；问题必须是“脚本与分镜是否确认？”，选项必须是“脚本与分镜没问题，开始生成视频”和“我要修改脚本或分镜”。' +
   // '不得调用 start 探测或绕过批准；AskUserQuestion 的回答明确包含“系统可信审核已通过”后才可 estimate，且不得再次询问脚本与分镜确认；未获批准不得报告为生成中。'
   '不得调用 start 探测或绕过批准；必须通过原生 AskUserQuestion 取得用户确认并绑定 metadata.reviewVersion。' +
@@ -262,7 +264,11 @@ function getService() {
 }
 
 export class MeacoworkIndustrialVideoTools {
-  constructor(private readonly context: MeacoworkIndustrialVideoContext) {}
+  private readonly executionToken: Readonly<{ sessionId: string; epoch: number }> | undefined
+
+  constructor(private readonly context: MeacoworkIndustrialVideoContext) {
+    this.executionToken = getService().getExecutionToken()
+  }
 
   tools(): Tool[] {
     return [...IVIDEO_TOOLS]
@@ -304,6 +310,21 @@ export class MeacoworkIndustrialVideoTools {
   }
 
   async call(toolName: string, args: unknown, signal?: AbortSignal): Promise<CallToolResult> {
+    try {
+      const service = getService()
+      const token = this.executionToken
+      if (!token || token.sessionId !== this.context.sessionId) {
+        throw new IpcError('IVIDEO_STOPPED', '该连接没有可信执行轮次，请重新发送。')
+      }
+      service.assertExecution(token)
+      return await service.withExecution(token, () => this.callAuthorized(toolName, args, signal))
+    } catch (error) {
+      if (isAbortError(error)) throw error
+      return errorResult(error)
+    }
+  }
+
+  private async callAuthorized(toolName: string, args: unknown, signal?: AbortSignal): Promise<CallToolResult> {
     try {
       if (signal?.aborted) {
         throw Object.assign(new Error('aborted'), { name: 'AbortError' })
@@ -387,7 +408,7 @@ export class MeacoworkIndustrialVideoTools {
             media: a.media,
             logo: a.logo
           })
-          return okResult(data)
+          return okResult({ ...data, run: service.getRecords({ sessionId })?.run ?? a.run })
         }
         case 'ivideo_estimate': {
           const a = EstimateOrStartSchema.parse(args)

@@ -14,6 +14,7 @@
 import type { HookCallback, HookInput, HookJSONOutput } from '@anthropic-ai/claude-agent-sdk'
 
 import { application } from '@application'
+import { agentSessionService } from '@data/services/AgentSessionService'
 import { loggerService } from '@logger'
 import { wrapSteerReminder } from '@main/ai/steerReminder'
 import { MEACOWORK_MCP_SERVER, toMcpRuntimeName } from '@main/ai/toolApproval/builtinToolPolicy'
@@ -92,11 +93,24 @@ export function buildClaudeCodeHooks(ctx: ClaudeCodeHookContext): ClaudeCodeSett
     // Live state by id at fire-time: mode and disabled-set follow mid-session agent updates on warm
     // connections; a missing snapshot means no disabled set yet (canUseTool separately fails closed).
     const snapshot = sessionState().getToolPolicySnapshot(sessionId)
+    let featureKind: string | undefined
+    try {
+      featureKind = agentSessionService.getById(sessionId)?.featureKind
+    } catch {
+      return {
+        hookSpecificOutput: {
+          hookEventName: 'PreToolUse',
+          permissionDecision: 'deny',
+          permissionDecisionReason: 'Session identity is unavailable.'
+        }
+      }
+    }
     const decision = await evaluateToolGuards(CLAUDE_TOOL_GUARD_RULES, {
       toolName,
       input: toolInput,
       permissionMode: snapshot?.getPermissionMode(),
       builtinRole: ctx.builtinRole,
+      featureKind,
       mountedServers: ctx.mountedServers,
       pluginDirectories: ctx.pluginDirectories,
       cwd,

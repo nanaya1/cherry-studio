@@ -30,6 +30,7 @@ export interface ToolGuardContext {
   readonly input: Readonly<Record<string, unknown>> | undefined
   readonly permissionMode: AgentPermissionMode | undefined
   readonly builtinRole: string | undefined
+  readonly featureKind?: string
   /** Cherry-owned MCP servers mounted for this session (not role-derivable). */
   readonly mountedServers: ReadonlySet<string>
   /** Loaded plugin directories by manifest name, for conditions that resolve plugin-owned files. */

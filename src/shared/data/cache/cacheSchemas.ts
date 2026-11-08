@@ -573,6 +573,7 @@ export type MainPersistCacheSchema = {
   'window.bounds': Record<string, CacheValueTypes.WindowBoundsState>
   // MEA:industrial-video 主机侧制作记录（按 agent session 索引）。仅保存
   // run/job_id/state/每轮意图与 unknown 提交，绝不写入服务 base URL 或 token。
+  // 停止控制与制作记录同次持久化；cancel 回执不清除 unknown 提交。
   'industrial_video.records': Record<string, CacheValueTypes.IndustrialVideoProductionRecord>
   // Explicit single-user mode only; never synchronized to renderer or enterprise identity.
   'industrial_video.local_actor': string

@@ -96,7 +96,9 @@ const makeUnrestrictedKnowledgeTools = () =>
     getKnowledgeBaseIds: () => []
   })
 const callMeacoworkBuiltinTool = (name: string, args: unknown, sig: AbortSignal, allowedIds: string[] = KB_SCOPE) =>
-  KB_TOOL_NAMES.has(name) ? makeKnowledgeTools(allowedIds).call(name, args) : callMeacoworkBuiltinToolRaw(name, args, sig)
+  KB_TOOL_NAMES.has(name)
+    ? makeKnowledgeTools(allowedIds).call(name, args)
+    : callMeacoworkBuiltinToolRaw(name, args, sig)
 const listMeacoworkBuiltinTools = (allowedIds: string[] = KB_SCOPE) => [
   ...listMeacoworkBuiltinToolsRaw(),
   ...makeKnowledgeTools(allowedIds).tools()
@@ -373,7 +375,9 @@ describe('meacoworkBuiltinTools', () => {
   })
 
   it('rejects kb_read outside the bound scope without reading the document', async () => {
-    const result = await callMeacoworkBuiltinTool('kb_read', { baseId: 'b2', conceptId: 'docs/intro.md' }, signal, ['b1'])
+    const result = await callMeacoworkBuiltinTool('kb_read', { baseId: 'b2', conceptId: 'docs/intro.md' }, signal, [
+      'b1'
+    ])
 
     expect(textOf(result)).toContain('not available')
     expect(kbReadConcept).not.toHaveBeenCalled()
@@ -746,6 +750,24 @@ describe('MeacoworkBuiltinToolsServer autonomy tool registration', () => {
     trustedNotifyChannels: [{ id: 'channel-1', type: 'telegram' as const }],
     getKnowledgeBaseIds: () => KB_SCOPE
   }
+
+  it('limits industrial sessions to business tools and rejects direct external generation', async () => {
+    const server = new MeacoworkBuiltinToolsServer({ ...agentContext, featureKind: 'industrial-video' })
+    const handlers = (server.mcpServer.server as any)._requestHandlers
+    const result = await handlers.get('tools/list')({ method: 'tools/list', params: {} }, {})
+    const names = result.tools.map((tool: any) => tool.name)
+    expect(names).toContain('ivideo_start')
+    expect(names).not.toEqual(expect.arrayContaining(['generate_image']))
+    expect(names).not.toContain('web_fetch')
+    expect(names).not.toContain('cli_install')
+    const denied = await handlers.get('tools/call')(
+      { method: 'tools/call', params: { name: 'generate_image', arguments: { prompt: 'bypass' } } },
+      { signal }
+    )
+    expect(denied.isError).toBe(true)
+    expect(textOf(denied)).toContain('工业视频')
+    expect(generateImage).not.toHaveBeenCalled()
+  })
 
   it('exposes the stateless tools plus cron/notify/config', async () => {
     const server = new MeacoworkBuiltinToolsServer(agentContext)

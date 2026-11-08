@@ -1,4 +1,7 @@
 import { createHmac } from 'node:crypto'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 import { net } from 'electron'
 import type { Mock, Mocked } from 'vitest'
@@ -132,6 +135,395 @@ function makeService(
   return { service, store }
 }
 
+describe('工业视频可信轮次释放', () => {
+  it('仅澄清未制作的轮次结束后可再次发送，旧轮回调不能释放新轮', () => {
+    const { service } = makeService(makeClient(), makeSession())
+    const token = service.beginRound({ sessionId: 's1' })
+    service.releaseRound(token)
+    expect(service.getRecords({ sessionId: 's1' })?.control).toEqual({
+      epoch: token.epoch,
+      phase: 'idle',
+      stopRequested: false
+    })
+    expect(() => service.assertExecution(token)).toThrow('当前执行权限已失效')
+    const next = service.beginRound({ sessionId: 's1' })
+    expect(() => service.assertExecution(token)).toThrow('当前执行权限已失效')
+    service.releaseRound(token)
+    expect(service.getRecords({ sessionId: 's1' })?.control?.epoch).toBe(next.epoch)
+    expect(service.getRecords({ sessionId: 's1' })?.control?.phase).toBe('active')
+  })
+
+  it('释放后旧工具回调不能在空闲期或新轮复活', async () => {
+    const client = makeClient()
+    const { service } = makeService(client, makeSession())
+    const token = service.beginRound({ sessionId: 's1' })
+    service.releaseRound(token)
+    await expect(
+      service.withExecution(token, () => service.runCreate({ sessionId: 's1', baseName: '澄清' }))
+    ).rejects.toThrow('当前执行权限已失效')
+    service.beginRound({ sessionId: 's1' })
+    await expect(
+      service.withExecution(token, () => service.runCreate({ sessionId: 's1', baseName: '澄清' }))
+    ).rejects.toThrow('当前执行权限已失效')
+    expect(client.runCreate).not.toHaveBeenCalled()
+  })
+
+  it('请求仍在途时保留门禁，确认结束后才可释放', async () => {
+    let resolve!: (value: IndustrialVideoResult<{ run: string }>) => void
+    const client = makeClient({
+      runCreate: vi.fn(
+        () =>
+          new Promise((done) => {
+            resolve = done
+          })
+      )
+    })
+    const { service } = makeService(client, makeSession())
+    const token = service.beginRound({ sessionId: 's1' })
+    const pending = service.withExecution(token, () => service.runCreate({ sessionId: 's1', baseName: '澄清' }))
+    await vi.waitFor(() => expect(client.runCreate).toHaveBeenCalled())
+    service.releaseRound(token)
+    expect(service.getRecords({ sessionId: 's1' })?.control?.phase).toBe('active')
+    expect(() => service.beginRound({ sessionId: 's1' })).toThrow('尚未证实结束')
+    resolve(ok({ run: 'r1' }))
+    await pending
+    service.releaseRound(token)
+    expect(() => service.beginRound({ sessionId: 's1' })).not.toThrow()
+  })
+
+  it('仅创建 run 未提交业务任务的轮次可以释放，不改变制作记录', async () => {
+    const { service } = makeService(makeClient(), makeSession())
+    const token = service.beginRound({ sessionId: 's1' })
+    await service.withExecution(token, () => service.runCreate({ sessionId: 's1', baseName: '澄清' }))
+    const before = structuredClone(service.getRecords({ sessionId: 's1' }))!
+    service.releaseRound(token)
+    expect(service.getRecords({ sessionId: 's1' })).toMatchObject({
+      ...before,
+      updatedAt: expect.any(Number),
+      control: { ...before.control!, phase: 'idle' }
+    })
+    expect(() => service.beginRound({ sessionId: 's1' })).not.toThrow()
+  })
+
+  it.each([
+    'job',
+    'unknown',
+    'intended',
+    'parsing',
+    'planning',
+    'storyboard_submitted',
+    'confirming',
+    'generating',
+    'assembling',
+    'blocked',
+    'canceled',
+    'stop'
+  ])('不释放业务活动或停止门禁：%s', (activity) => {
+    const { service } = makeService(makeClient(), makeSession())
+    const token = service.beginRound({ sessionId: 's1' })
+    const record = service.getRecords({ sessionId: 's1' })!
+    if (activity === 'job') record.jobId = 'j1'
+    else if (activity === 'stop') record.control = { ...record.control!, stopRequested: true, phase: 'stopping' }
+    else if (activity === 'unknown' || activity === 'intended') {
+      const round: IndustrialVideoProductionRecord['rounds'][number] = {
+        version: 1,
+        operation: 'parse',
+        run: null,
+        jobId: null,
+        state: 'parsing' as const,
+        requestId: '',
+        at: 0,
+        // outcome: activity as 'unknown' | 'intended'
+        outcome: activity
+      }
+      record.rounds.push(round)
+      if (activity === 'unknown') record.unknownSubmissions.push(round)
+    } else record.state = activity as IndustrialVideoProductionRecord['state']
+    const before = structuredClone(record)
+    service.releaseRound(token)
+    expect(service.getRecords({ sessionId: 's1' })).toEqual(before)
+    expect(() => service.beginRound({ sessionId: 's1' })).toThrow('尚未证实结束')
+  })
+})
+
+describe('工业视频成片分镜提交保护', () => {
+  const input = {
+    sessionId: 's1',
+    run: 'r1',
+    storyboard: { video_title: '返修分镜' },
+    expectedInputFingerprint: 'fp',
+    expectedStoryboardSha256: 'sha'
+  }
+
+  it.each([false, true])('成片直接提交拒绝且不发出任何网络请求（可信轮次：%s）', async (trusted) => {
+    const client = makeClient()
+    const { service } = makeService(client, makeSession())
+    await service.runCreate({ sessionId: 's1', baseName: '初版' })
+    await service.videoStart({ sessionId: 's1', run: 'r1' })
+    await service.jobGet({ sessionId: 's1', jobId: 'j1' })
+    const token = trusted ? service.beginRound({ sessionId: 's1' }) : null
+    const before = structuredClone(service.getRecords({ sessionId: 's1' }))
+    vi.clearAllMocks()
+
+    await expect(
+      token ? service.withExecution(token, () => service.storyboardSubmit(input)) : service.storyboardSubmit(input)
+    ).rejects.toMatchObject({
+      code: 'IVIDEO_REVISION_REQUIRED',
+      message: expect.stringMatching(/parse.*新\s*run.*重新审核/)
+    })
+    for (const method of Object.values(client)) expect(method).not.toHaveBeenCalled()
+    expect(service.getRecords({ sessionId: 's1' })).toEqual(before)
+  })
+
+  it('parse 创建返修新 run 后可提交新分镜，旧 run 仍拒绝写入', async () => {
+    const client = makeClient({ storyboardSubmit: vi.fn(async () => ok({ submitted: true, review_required: true })) })
+    const { service } = makeService(client, makeSession())
+    await service.runCreate({ sessionId: 's1', baseName: '初版' })
+    await service.parse({ sessionId: 's1', run: 'r1', texts: [{ text: '原资料' }] })
+    await service.jobGet({ sessionId: 's1', jobId: 'j1' })
+    await service.videoStart({ sessionId: 's1', run: 'r1' })
+    await service.jobGet({ sessionId: 's1', jobId: 'j1' })
+    client.runCreate.mockResolvedValue(ok({ run: 'r2', raw: { run: 'r2' } }))
+    const token = service.beginRound({ sessionId: 's1' })
+    await service.withExecution(token, async () => {
+      await service.prepareUserParts({ sessionId: 's1', parts: [{ type: 'text', text: '修改分镜' }] })
+      await service.parse({ sessionId: 's1', run: 'r1' })
+      expect(service.getRecords({ sessionId: 's1' })?.run).toBe('r2')
+      vi.clearAllMocks()
+      const before = structuredClone(service.getRecords({ sessionId: 's1' }))
+      await expect(service.storyboardSubmit(input)).rejects.toMatchObject({ code: 'IVIDEO_RUN_INVALID' })
+      for (const method of Object.values(client)) expect(method).not.toHaveBeenCalled()
+      expect(service.getRecords({ sessionId: 's1' })).toEqual(before)
+      await expect(service.storyboardSubmit({ ...input, run: 'r2' })).resolves.toEqual({
+        submitted: true,
+        reviewRequired: true
+      })
+      expect(client.storyboardSubmit).toHaveBeenCalledExactlyOnceWith({
+        run: 'r2',
+        storyboard: input.storyboard,
+        expected_input_fingerprint: 'fp',
+        expected_storyboard_sha256: 'sha'
+      })
+    })
+  })
+
+  it.each(['queued', 'running', 'processing'])('解析任务 %s 不应被误判为视频生成而拦截首次分镜', async (status) => {
+    const client = makeClient({ jobGet: vi.fn(async () => ok({ run: 'r1', status })) })
+    const { service } = makeService(client, makeSession())
+    await service.runCreate({ sessionId: 's1', baseName: '新任务' })
+    await service.parse({ sessionId: 's1', run: 'r1', texts: [{ text: '资料' }] })
+    await service.jobGet({ sessionId: 's1', jobId: 'j1' })
+    expect(service.getRecords({ sessionId: 's1' })?.state).toBe('parsing')
+    await expect(service.storyboardSubmit(input)).resolves.toEqual({ submitted: true, reviewRequired: false })
+  })
+
+  it.each(['videoStart', 'assemble'] as const)('真实 %s 任务运行中仍禁止重复提交分镜', async (operation) => {
+    const client = makeClient({ jobGet: vi.fn(async () => ok({ run: 'r1', status: 'running' })) })
+    const { service } = makeService(client, makeSession())
+    await service.runCreate({ sessionId: 's1', baseName: '新任务' })
+    await service[operation]({ sessionId: 's1', run: 'r1' })
+    await service.jobGet({ sessionId: 's1', jobId: 'j1' })
+    expect(service.getRecords({ sessionId: 's1' })?.state).toBe(operation === 'assemble' ? 'assembling' : 'generating')
+    await expect(service.storyboardSubmit(input)).rejects.toMatchObject({ code: 'IVIDEO_SUBMISSION_UNKNOWN' })
+    expect(client.storyboardSubmit).not.toHaveBeenCalled()
+  })
+
+  it('素材解析 done 后首次提交分镜不应被当作成片返修', async () => {
+    const client = makeClient()
+    const { service } = makeService(client, makeSession())
+    await service.runCreate({ sessionId: 's1', baseName: '新任务' })
+    await service.parse({ sessionId: 's1', run: 'r1', texts: [{ text: '资料' }] })
+    await service.jobGet({ sessionId: 's1', jobId: 'j1' })
+    expect(service.getRecords({ sessionId: 's1' })?.state).toBe('done')
+    await expect(service.storyboardSubmit(input)).resolves.toEqual({ submitted: true, reviewRequired: false })
+    expect(client.storyboardSubmit).toHaveBeenCalledTimes(1)
+  })
+
+  it('未成片的旧 dedicated 调用仍可提交分镜', async () => {
+    const client = makeClient()
+    const { service } = makeService(client, makeSession())
+    await service.runCreate({ sessionId: 's1', baseName: '初版' })
+    await expect(service.storyboardSubmit(input)).resolves.toEqual({ submitted: true, reviewRequired: false })
+    expect(client.storyboardSubmit).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([
+    [
+      '不存在',
+      () => {
+        throw new Error('not found')
+      }
+    ],
+    ['功能错误', () => makeSession({ featureKind: 'chat' as never })],
+    ['无工作区', () => makeSession({ workspaceId: null as never })]
+  ] as const)('parse 优先返回 session 校验错误：%s', async (_label, getSession) => {
+    const client = makeClient()
+    const { service } = makeService(client, getSession)
+    await expect(service.parse({ sessionId: 's1', run: 'r1' })).rejects.toMatchObject({
+      code: 'IVIDEO_SESSION_INVALID'
+    })
+    for (const method of Object.values(client)) expect(method).not.toHaveBeenCalled()
+  })
+})
+
+describe('工业视频可信发送资料', () => {
+  it.each([undefined, 0, 2])('新 run 不继承旧设置版本，保留本次显式版本 %s', async (expectedSettingsVersion) => {
+    const client = makeClient()
+    const { service } = makeService(client, makeSession())
+    await service.runCreate({ sessionId: 's1', baseName: '初版' })
+    await service.parse({ sessionId: 's1', run: 'r1', texts: [{ text: '原资料' }], expectedSettingsVersion: 7 })
+    await service.jobGet({ sessionId: 's1', jobId: 'j1' })
+    client.runCreate.mockResolvedValue(ok({ run: 'r2', raw: { run: 'r2' } }))
+    await service.runCreate({ sessionId: 's1', baseName: '返修' })
+    await service.parse({ sessionId: 's1', run: 'r2', texts: [{ text: '补充资料' }], expectedSettingsVersion })
+    const request = client.videoStart.mock.calls.at(-1)?.[0]
+    expect(request?.expected_settings_version).toBe(expectedSettingsVersion)
+    expect(request?.texts).toEqual([{ text: '原资料' }, { text: '补充资料' }])
+  })
+
+  it('发送附件全部上传后进入 parse，成片返修自动使用新 run', async () => {
+    const upload = vi.fn(async ({ name }) => ok({ name: `uploaded-${name}` }))
+    const client = makeClient({ upload })
+    const { service } = makeService(client, makeSession())
+    await service.runCreate({ sessionId: 's1', baseName: '初版' })
+    await service.parse({ sessionId: 's1', run: 'r1', texts: [{ text: '原资料' }] })
+    await service.jobGet({ sessionId: 's1', jobId: 'j1' })
+    await service.videoStart({ sessionId: 's1', run: 'r1' })
+    await service.jobGet({ sessionId: 's1', jobId: 'j1' })
+    client.runCreate.mockResolvedValue(ok({ run: 'r2', raw: { run: 'r2' } }))
+    const execution = service.beginRound({ sessionId: 's1' })
+    await service.withExecution(execution, async () => {
+      await service.prepareUserParts({
+        sessionId: 's1',
+        parts: [
+          { type: 'text', text: '压缩到20秒' },
+          { type: 'file', filename: '甲.png', mediaType: 'image/png', url: 'data:image/png;base64,YQ==' },
+          { type: 'file', filename: '乙.mp4', mediaType: 'video/mp4', url: 'data:video/mp4;base64,Yg==' }
+        ]
+      })
+      const parsed = await service.parse({ sessionId: 's1', run: 'r1', targetDurationS: 20 })
+      expect(parsed.jobId).toBe('j1')
+    })
+    expect(upload).toHaveBeenCalledTimes(2)
+    expect(client.videoStart).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        run: 'r2',
+        target_duration_s: 20,
+        texts: [{ text: '原资料' }, { text: '压缩到20秒' }],
+        media: [
+          { name: 'uploaded-甲.png', caption: '甲.png' },
+          { name: 'uploaded-乙.mp4', caption: '乙.mp4' }
+        ]
+      })
+    )
+  })
+})
+
+describe('工业视频返修快照', () => {
+  it('保存的是服务端真实审核文件而非渲染进程伪造内容，重复保存不覆盖用户稿', async () => {
+    const workspace = await mkdtemp(join(tmpdir(), 'ivideo-review-'))
+    try {
+      const client = makeClient({
+        reviewSnapshotGet: vi.fn(async () =>
+          ok({
+            review_version: 'v1',
+            generation_allowed: false,
+            remaining_blockers: [],
+            script: '真实脚本',
+            storyboard: { video_title: '产品', scenes: [] }
+          })
+        )
+      })
+      const { service } = makeService(client, makeSession(), { workspacePath: workspace })
+      service.setReviewAuthorizationProvider({ authorize: async () => 'trusted' })
+      await service.runCreate({ sessionId: 's1', baseName: '产品' })
+      const input = { sessionId: 's1', run: 'r1', script: '伪造脚本', storyboard: '伪造分镜' }
+      const files = await service.snapshotSave(input)
+      expect(await readFile(files.scriptPath, 'utf8')).toBe('真实脚本')
+      expect(await readFile(files.storyboardPath, 'utf8')).toContain('产品')
+      const next = await service.snapshotSave(input)
+      expect(next.scriptPath).not.toBe(files.scriptPath)
+    } finally {
+      await rm(workspace, { recursive: true, force: true })
+    }
+  })
+  it('parse 持久化全量输入，新增素材不会覆盖旧素材', async () => {
+    const client = makeClient()
+    const { service } = makeService(client, makeSession())
+    await service.runCreate({ sessionId: 's1', baseName: '初版' })
+    await service.parse({
+      sessionId: 's1',
+      run: 'r1',
+      texts: [{ text: '原文' }],
+      media: [{ name: 'old.png', caption: '旧图' }],
+      targetDurationS: 30
+    })
+    await service.parse({ sessionId: 's1', run: 'r1', media: [{ name: 'new.png', caption: '新图' }] })
+    expect(client.videoStart.mock.calls.at(-1)?.[0]).toMatchObject({
+      texts: [{ text: '原文' }],
+      media: [
+        { name: 'old.png', caption: '旧图' },
+        { name: 'new.png', caption: '新图' }
+      ],
+      target_duration_s: 30
+    })
+    expect(service.getRecords({ sessionId: 's1' })?.rounds.at(-1)?.detail?.inputSnapshot).toMatchObject({
+      targetDurationS: 30,
+      media: [
+        { name: 'old.png', caption: '旧图' },
+        { name: 'new.png', caption: '新图' }
+      ]
+    })
+  })
+
+  it('新 run 请求前先保存已完成版本的精确任务产物，返修记录关联 parentRun', async () => {
+    const client = makeClient({
+      jobGet: vi.fn(async () => ok({ run: 'r1', status: 'done', artifacts: [{ path: 'r1/final.mp4', size: 123 }] }))
+    })
+    const { service } = makeService(client, makeSession())
+    await service.runCreate({ sessionId: 's1', baseName: '初版' })
+    await service.parse({ sessionId: 's1', run: 'r1', texts: [{ text: '原始资料' }] })
+    await service.jobGet({ sessionId: 's1', jobId: 'j1' })
+    client.runCreate.mockImplementationOnce(async () => {
+      expect(
+        service
+          .getRecords({ sessionId: 's1' })
+          ?.rounds.some((round) => round.operation === 'revision_archive' && round.detail?.job)
+      ).toBe(true)
+      return ok({ run: 'r2' }) as never
+    })
+    await service.runCreate({ sessionId: 's1', baseName: '返修' })
+    const record = service.getRecords({ sessionId: 's1' })!
+    expect(record.rounds.at(-1)?.detail).toMatchObject({ parentRun: 'r1' })
+    expect(record.rounds.find((round) => round.operation === 'revision_archive')?.detail).toMatchObject({
+      job: { artifacts: [{ path: 'r1/final.mp4', size: 123 }] }
+    })
+    await service.parse({ sessionId: 's1', run: 'r2', texts: [{ text: '改为20秒' }], targetDurationS: 20 })
+    expect(client.videoStart.mock.calls.at(-1)?.[0]).toMatchObject({
+      run: 'r2',
+      texts: [{ text: '原始资料' }, { text: '改为20秒' }],
+      target_duration_s: 20
+    })
+  })
+
+  it('返修保留旧 run 只读权限，但不得写旧 run 或读取外部 run', async () => {
+    const client = makeClient()
+    const { service } = makeService(client, makeSession())
+    await service.runCreate({ sessionId: 's1', baseName: '初版' })
+    client.runCreate.mockResolvedValueOnce(ok({ run: 'r2', raw: {} }))
+    await service.runCreate({ sessionId: 's1', baseName: '返修' })
+    await expect(service.artifactRead({ sessionId: 's1', run: 'r1', path: 'final.mp4' })).resolves.toMatchObject({
+      content: 'hello'
+    })
+    await expect(service.videoStart({ sessionId: 's1', run: 'r1' })).rejects.toMatchObject({
+      code: 'IVIDEO_RUN_INVALID'
+    })
+    await expect(service.artifactRead({ sessionId: 's1', run: 'foreign', path: 'final.mp4' })).rejects.toMatchObject({
+      code: 'IVIDEO_RUN_INVALID'
+    })
+  })
+})
+
 // ── Suite ───────────────────────────────────────────────────────────────────────
 
 describe('IndustrialVideoService', () => {
@@ -148,6 +540,189 @@ describe('IndustrialVideoService', () => {
   afterEach(() => {
     vi.restoreAllMocks()
     vi.unstubAllEnvs()
+  })
+
+  describe('停止闭环', () => {
+    it('可信新轮仅接受绑定凭据；旧轮与直接调用不能借用最新代次', async () => {
+      const { service } = makeService(client, session)
+      await service.runCreate({ sessionId: 's1', baseName: 'demo' })
+      const first = service.beginRound({ sessionId: 's1' })
+      await service.stop({ sessionId: 's1' })
+      const second = service.beginRound({ sessionId: 's1' })
+      await expect(
+        service.withExecution(first, () => service.parse({ sessionId: 's1', run: 'r1' }))
+      ).rejects.toMatchObject({ code: 'IVIDEO_STOPPED' })
+      await expect(service.parse({ sessionId: 's1', run: 'r1' })).rejects.toMatchObject({ code: 'IVIDEO_STOPPED' })
+      await service.withExecution(second, () => service.parse({ sessionId: 's1', run: 'r1' }))
+      expect(client.videoStart).toHaveBeenCalledTimes(1)
+    })
+
+    it.each(['成功', '拒绝'] as const)('取消迟到%s不能覆盖先完成的任务；停止门禁跨服务重建保留', async (outcome) => {
+      const canceled = Promise.withResolvers<IndustrialVideoResult<Record<string, unknown>>>()
+      client.jobCancel.mockReturnValue(canceled.promise)
+      const { service, store } = makeService(client, session)
+      await service.runCreate({ sessionId: 's1', baseName: 'demo' })
+      await service.parse({ sessionId: 's1', run: 'r1' })
+      const stop = service.stop({ sessionId: 's1' })
+      await service.jobGet({ sessionId: 's1', jobId: 'j1' })
+      expect(service.getRecords({ sessionId: 's1' })).toMatchObject({ state: 'done', control: { phase: 'stopped' } })
+      await expect(stop).resolves.toMatchObject({ stopRequested: true, phase: 'reconcile_required' })
+      if (outcome === '成功') canceled.resolve(ok({ canceled: true }))
+      else canceled.reject(new Error('迟到的取消失败'))
+      await canceled.promise.catch(() => undefined)
+      await Promise.resolve()
+      await vi.waitFor(() => {
+        if (outcome === '成功') {
+          expect(service.getRecords({ sessionId: 's1' })?.rounds.at(-1)).toMatchObject({
+            operation: 'job_cancel',
+            outcome: 'ok',
+            detail: { receipt: { canceled: true } }
+          })
+        }
+        expect(service.getRecords({ sessionId: 's1' })?.control?.phase).toBe('stopped')
+      })
+      expect(service.getRecords({ sessionId: 's1' })).toMatchObject({
+        state: 'done',
+        control: { stopRequested: true, phase: 'stopped' }
+      })
+      const rebuilt = makeService(client, session).service
+      rebuilt.setTestDeps({
+        resolveConfig: () => ({ baseUrl: 'http://svc', token: 't', timeoutMs: 1000 }),
+        getSession: () => session,
+        createClient: () => client,
+        getPersist: () => store['industrial_video.records'] as Record<string, IndustrialVideoProductionRecord>,
+        setPersist: (key, value) => {
+          store[key] = value
+        }
+      })
+      await expect(rebuilt.videoStart({ sessionId: 's1', run: 'r1' })).rejects.toMatchObject({ code: 'IVIDEO_STOPPED' })
+      expect(rebuilt.beginRound({ sessionId: 's1' }).epoch).toBeGreaterThan(1)
+    })
+
+    it.each(['失败回执', '请求拒绝'] as const)('取消%s仍返回停止回执，保留门禁归属并允许重试', async (failure) => {
+      const { service, store } = makeService(client, session)
+      const persist = vi.fn((key: string, value: unknown) => {
+        store[key] = value
+      })
+      service.setTestDeps({
+        resolveConfig: () => ({ baseUrl: 'http://svc', token: 't', timeoutMs: 1000 }),
+        getSession: () => session,
+        createClient: () => client,
+        getPersist: () => store['industrial_video.records'] as Record<string, IndustrialVideoProductionRecord>,
+        setPersist: persist
+      })
+      await service.runCreate({ sessionId: 's1', baseName: 'demo' })
+      await service.parse({ sessionId: 's1', run: 'r1' })
+      const canceled = Promise.withResolvers<IndustrialVideoResult<Record<string, unknown>>>()
+      client.jobCancel.mockReturnValueOnce(canceled.promise)
+      const stop = service.stop({ sessionId: 's1' })
+      const received = vi.fn()
+      void stop.then(received, received)
+      await vi.waitFor(() => expect(received).toHaveBeenCalled())
+      await expect(stop).resolves.toMatchObject({ stopRequested: true, phase: 'reconcile_required' })
+      persist.mockClear()
+      if (failure === '失败回执') canceled.resolve(fail())
+      else canceled.reject(new Error('取消请求失败'))
+      await vi.waitFor(() => {
+        expect(persist).toHaveBeenCalled()
+        if (failure === '失败回执') {
+          expect(service.getRecords({ sessionId: 's1' })?.rounds.at(-1)).toMatchObject({
+            operation: 'job_cancel',
+            outcome: 'unknown'
+          })
+        }
+        expect(service.getRecords({ sessionId: 's1' })?.control?.phase).toBe('reconcile_required')
+      })
+      expect(service.getRecords({ sessionId: 's1' })).toMatchObject({
+        run: 'r1',
+        jobId: 'j1',
+        control: { stopRequested: true, phase: 'reconcile_required' }
+      })
+      await service.jobCancel({ sessionId: 's1', jobId: 'j1' })
+      await expect(service.assemble({ sessionId: 's1', run: 'r1' })).rejects.toMatchObject({ code: 'IVIDEO_STOPPED' })
+    })
+
+    it('取消一直挂起也立即返回已持久化门禁，封锁后续写入和新轮', async () => {
+      const { service, store } = makeService(client, session)
+      await service.runCreate({ sessionId: 's1', baseName: 'demo' })
+      await service.parse({ sessionId: 's1', run: 'r1' })
+      client.jobCancel.mockReturnValueOnce(new Promise(() => {}))
+      const stop = service.stop({ sessionId: 's1' })
+      expect((store['industrial_video.records'] as Record<string, IndustrialVideoProductionRecord>).s1).toMatchObject({
+        run: 'r1',
+        jobId: 'j1',
+        state: 'parsing',
+        control: { stopRequested: true, phase: 'reconcile_required' }
+      })
+      const received = vi.fn()
+      void stop.then(received, received)
+      await vi.waitFor(() => expect(received).toHaveBeenCalled())
+      await expect(stop).resolves.toMatchObject({ stopRequested: true, phase: 'reconcile_required' })
+      await expect(service.assemble({ sessionId: 's1', run: 'r1' })).rejects.toMatchObject({ code: 'IVIDEO_STOPPED' })
+      expect(() => service.beginRound({ sessionId: 's1' })).toThrow()
+      expect(client.jobCancel).toHaveBeenCalledTimes(1)
+      expect(client.videoStart).toHaveBeenCalledTimes(1)
+    })
+
+    it('start 未返回时立即落停止门禁，迟到 job 记账并取消，排队写入不发出', async () => {
+      const started = Promise.withResolvers<void>()
+      const response = Promise.withResolvers<Awaited<ReturnType<IndustrialVideoClient['videoStart']>>>()
+      client.videoStart.mockImplementationOnce(() => {
+        started.resolve()
+        return response.promise
+      })
+      const { service } = makeService(client, session)
+      await service.runCreate({ sessionId: 's1', baseName: 'demo' })
+      const start = service.videoStart({ sessionId: 's1', run: 'r1' })
+      await started.promise
+      const queued = service.assemble({ sessionId: 's1', run: 'r1' })
+      const rejected = expect(queued).rejects.toMatchObject({ code: 'IVIDEO_STOPPED' })
+      await service.stop({ sessionId: 's1' })
+      expect(service.getRecords({ sessionId: 's1' })?.control).toMatchObject({
+        stopRequested: true,
+        phase: 'reconcile_required'
+      })
+      response.resolve(ok({ job_id: 'late-job', raw: {} }))
+      await start
+      await rejected
+      expect(client.jobCancel).toHaveBeenCalledWith({ job_id: 'late-job' })
+      expect(service.getRecords({ sessionId: 's1' })).toMatchObject({ jobId: 'late-job', state: 'generating' })
+      expect(client.videoStart).toHaveBeenCalledTimes(1)
+    })
+
+    it('未知提交不阻止取消已知 job，cancel 回执和 canceled 状态都不证明 worker 已退出', async () => {
+      const { service, store } = makeService(client, session)
+      await service.runCreate({ sessionId: 's1', baseName: 'demo' })
+      await service.parse({ sessionId: 's1', run: 'r1' })
+      const records = store['industrial_video.records'] as Record<string, IndustrialVideoProductionRecord>
+      records.s1.unknownSubmissions = [{ ...records.s1.rounds.at(-1)!, outcome: 'unknown', jobId: null }]
+      await service.stop({ sessionId: 's1' })
+      expect(client.jobCancel).toHaveBeenCalledWith({ job_id: 'j1' })
+      client.jobGet.mockResolvedValue(ok({ run: 'r1', status: 'canceled' }))
+      await service.jobGet({ sessionId: 's1', jobId: 'j1' })
+      expect(service.getRecords({ sessionId: 's1' })?.unknownSubmissions).toHaveLength(1)
+      expect(service.getRecords({ sessionId: 's1' })?.control?.phase).toBe('reconcile_required')
+      expect(() => service.beginRound({ sessionId: 's1' })).toThrow()
+    })
+
+    it('停止使迟到审核确认失效，不重新授予生成权限', async () => {
+      const entered = Promise.withResolvers<void>()
+      const receipt = Promise.withResolvers<IndustrialVideoResult<any>>()
+      client.reviewConfirm = vi.fn(() => {
+        entered.resolve()
+        return receipt.promise
+      })
+      const { service } = makeService(client, session)
+      service.setReviewAuthorizationProvider({ authorize: async () => 'trusted' })
+      await service.runCreate({ sessionId: 's1', baseName: 'demo' })
+      const confirm = service.reviewConfirm({ sessionId: 's1', run: 'r1', expectedReviewVersion: 'v1' })
+      const rejected = expect(confirm).rejects.toMatchObject({ code: 'IVIDEO_STOPPED' })
+      await entered.promise
+      await service.stop({ sessionId: 's1' })
+      receipt.resolve(ok({ review_version: 'v1', generation_allowed: true, remaining_blockers: [] }))
+      await rejected
+      expect(service.getConfirmedReview({ sessionId: 's1' })).toBeNull()
+    })
   })
 
   describe('config & session validation', () => {
@@ -371,7 +946,8 @@ describe('IndustrialVideoService', () => {
       await service.runCreate({ sessionId: 's1', baseName: 'demo' })
       const { jobId } = await service.parse({ sessionId: 's1', run: 'r1' })
       await service.jobCancel({ sessionId: 's1', jobId })
-      expect(service.getRecords({ sessionId: 's1' })).toMatchObject({ run: 'r1', state: 'canceled' })
+      // expect(service.getRecords({ sessionId: 's1' })).toMatchObject({ run: 'r1', state: 'canceled' })
+      expect(service.getRecords({ sessionId: 's1' })).toMatchObject({ run: 'r1', state: 'parsing' })
       await expect(service.storyboardGet({ sessionId: 's1', run: 'r1' })).resolves.toBeDefined()
     })
     it('run_create seeds the run and a v1 production-version round', async () => {
@@ -509,7 +1085,7 @@ describe('IndustrialVideoService', () => {
   })
 
   describe('reconciliation via job_list + job_get (never auto-claim by run)', () => {
-    it('job_get reconciles an unknown submission when the server confirms the job belongs to our run', async () => {
+    it('job_get cannot clear an unknown submission merely because its run matches', async () => {
       const c = makeClient({
         videoStart: vi
           .fn()
@@ -531,11 +1107,11 @@ describe('IndustrialVideoService', () => {
       const data = await service.jobGet({ sessionId: 's1', jobId: 'jX' })
       expect(data.status).toBe('done')
       const rec = (store['industrial_video.records'] as any).s1
-      expect(rec.unknownSubmissions.length).toBe(0)
-      expect(rec.jobId).toBe('jX')
-      expect(rec.state).toBe('done')
-      // now a new submit is allowed
-      await expect(service.videoStart({ sessionId: 's1', run: 'r1' })).resolves.toMatchObject({ jobId: 'j2' })
+      expect(rec.unknownSubmissions.length).toBe(1)
+      expect(rec.jobId).toBeNull()
+      await expect(service.videoStart({ sessionId: 's1', run: 'r1' })).rejects.toMatchObject({
+        code: 'IVIDEO_SUBMISSION_UNKNOWN'
+      })
     })
 
     it('job_get for a job whose run does NOT match ours does not mutate state or clear unknowns', async () => {
@@ -562,7 +1138,8 @@ describe('IndustrialVideoService', () => {
       await service.runCreate({ sessionId: 's1', baseName: 'demo' })
       await service.parse({ sessionId: 's1', run: 'r1', texts: [{ text: 'x' }] }) // job j1, state parsing
       await service.jobGet({ sessionId: 's1', jobId: 'j1' })
-      expect((store['industrial_video.records'] as any).s1.state).toBe('generating')
+      // expect((store['industrial_video.records'] as any).s1.state).toBe('generating')
+      expect((store['industrial_video.records'] as any).s1.state).toBe('parsing')
       expect(c.jobCancel).not.toHaveBeenCalled()
     })
 
@@ -598,13 +1175,15 @@ describe('IndustrialVideoService', () => {
       })
     })
 
-    it('persists a cancellation round and moves to canceled without extra cancel calls', async () => {
+    // it('persists a cancellation round and moves to canceled without extra cancel calls', async () => {
+    it('保存取消回执但保留真实任务状态', async () => {
       const { service, store } = makeService(client, session)
       await service.runCreate({ sessionId: 's1', baseName: 'demo' })
       await service.parse({ sessionId: 's1', run: 'r1', texts: [{ text: 'x' }] }) // job j1
       await service.jobCancel({ sessionId: 's1', jobId: 'j1' })
       const rec = (store['industrial_video.records'] as any).s1
-      expect(rec.state).toBe('canceled')
+      // expect(rec.state).toBe('canceled')
+      expect(rec.state).toBe('parsing')
       expect(rec.rounds.at(-1)).toMatchObject({ operation: 'job_cancel', jobId: 'j1', outcome: 'ok' })
       // only the one explicit cancel was sent
       expect(client.jobCancel).toHaveBeenCalledTimes(1)
@@ -745,7 +1324,10 @@ describe('IndustrialVideoService', () => {
       const { service, store } = makeService(client, session)
       await service.runCreate({ sessionId: 's1', baseName: 'demo' })
       const rec = (store['industrial_video.records'] as any).s1
-      rec.run = 'other' // tamper so r1 no longer belongs
+      // rec.run = 'other' // tamper so r1 no longer belongs
+      // 历史成功登记的 r1 仍属本会话；同时移除登记才代表外部 run。
+      rec.run = 'other'
+      rec.rounds = []
       await expect(service.downloadArtifact({ sessionId: 's1', run: 'r1', path: 'f/m.mp4' })).rejects.toMatchObject({
         code: 'IVIDEO_RUN_INVALID'
       })

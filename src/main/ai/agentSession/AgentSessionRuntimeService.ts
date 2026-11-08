@@ -26,6 +26,7 @@ import {
   Phase,
   ServicePhase
 } from '@main/core/lifecycle'
+import { assertIndustrialVideoRuntime } from '@main/features/industrialVideo/industrialVideoExecutionPolicy'
 import { topicNamingService } from '@main/services/TopicNamingService'
 import { AGENT_SESSION_API_RETRY_CACHE_KEY, type AgentSessionApiRetryInfo } from '@shared/ai/agentSessionApiRetry'
 import {
@@ -199,6 +200,7 @@ export interface AgentSessionInteractionState {
 }
 
 type AgentSessionTurn = {
+  industrialExecution?: Readonly<{ sessionId: string; epoch: number }>
   forkAnchor?: RuntimeForkAnchor
   turnId: string
   /** True when the user message arrived as a steer — admission wraps it in a system-reminder. */
@@ -594,7 +596,15 @@ export class AgentSessionRuntimeService extends BaseService {
     const userMessage = input.userMessage ?? createSyntheticUserMessage(input.sessionId)
     const messageSnapshot = input.messageSnapshot ? structuredClone(input.messageSnapshot) : undefined
     const existing = this.entries.get(input.sessionId)
+    const industrial = agentSessionService.getById(input.sessionId)?.featureKind === 'industrial-video'
+    if (industrial && existing && this.runtimeStatus(existing) !== 'idle') {
+      throw new Error('IVIDEO_BUSY: 当前工业视频轮次尚未结束。')
+    }
+    const industrialExecution = industrial
+      ? application.get('IndustrialVideoService').beginRound({ sessionId: input.sessionId })
+      : undefined
     const turn: AgentSessionTurn = {
+      ...(industrialExecution ? { industrialExecution } : {}),
       turnId,
       assistantMessageId: input.assistantMessageId,
       userMessage,
@@ -938,6 +948,10 @@ export class AgentSessionRuntimeService extends BaseService {
       fastMode?: boolean
     } = {}
   ): void {
+    // MEA:industrial-video 工业提交必须显式开始新轮，禁止转成 steer 或后台排队。
+    if (agentSessionService.getById(sessionId)?.featureKind === 'industrial-video') {
+      throw new Error('IVIDEO_BUSY: 工业视频不支持排队或插入消息，请待当前任务结束后明确发送新一轮。')
+    }
     const entry = this.entries.get(sessionId)
     if (!entry) return
 
@@ -1035,6 +1049,9 @@ export class AgentSessionRuntimeService extends BaseService {
     if (completedTurn) this.markFlowMessagePersisted(entry, completedTurn.assistantMessageId)
     if (completedTurn) {
       this.applyRuntimeStateEvent(entry, { type: 'turn-terminal', turn: completedTurn, status })
+      if (completedTurn.industrialExecution) {
+        application.get('IndustrialVideoService').releaseRound(completedTurn.industrialExecution)
+      }
       this._onTurnTerminal.fire({
         sessionId: entry.sessionId,
         assistantMessageId: completedTurn.assistantMessageId,
@@ -1640,6 +1657,14 @@ export class AgentSessionRuntimeService extends BaseService {
       const target = this.connectionTarget(entry)
       const connection = this.currentConnection(entry)
       if (connection) {
+        const execution = this.currentTurn(entry)?.industrialExecution
+        if (execution && this.industrialConnectionTokens.get(connection) !== execution) {
+          await this.closeRuntimeConnection(connection, entry.sessionId)
+          if (this.currentConnection(entry) === connection) {
+            this.applyRuntimeStateEvent(entry, { type: 'connection-disconnected', connection })
+          }
+          continue
+        }
         // A connection carrying a live SDK stream is NEVER reconciled here: closing it would drop
         // the stream. The execution admission phase is load-bearing — the steer continuation (A2)
         // is pre-admitted and `flush-transition` moves it to a normal turn BEFORE openTurnStream reaches
@@ -1746,30 +1771,42 @@ export class AgentSessionRuntimeService extends BaseService {
     return false
   }
 
+  private readonly industrialConnectionTokens = new WeakMap<
+    AgentRuntimeConnection,
+    Readonly<{ sessionId: string; epoch: number }>
+  >()
+
   private async connect(
     entry: AgentSessionRuntimeEntry,
     target: AgentSessionConnectionTarget,
     attemptId: string
   ): Promise<boolean> {
+    assertIndustrialVideoRuntime(agentSessionService.getById(entry.sessionId)?.featureKind, entry.agentType)
     const driver = runtimeDriverRegistry.getAgentSessionDriver(entry.agentType)
     if (!driver) throw new Error(`Unsupported agent runtime type: ${entry.agentType}`)
 
     this.hydrateResumeToken(entry)
     if (!this.isCurrentEntry(entry)) return false
 
-    const connection = await driver.connect({
-      sessionId: entry.sessionId,
-      agentId: entry.agentId,
-      modelId: target.modelId,
-      reasoningEffort: target.reasoningEffort,
-      serviceTier: target.serviceTier,
-      knowledgeBaseIds: target.knowledgeBaseIds,
-      fastMode: target.fastMode,
-      resumeToken: entry.lastResumeToken,
-      trace: this.sessionTraceContext(entry, target.modelId),
-      nativeSessionId: agentSessionMessageService.getNativeSessionId(entry.sessionId),
-      onSteerInjected: (inputs) => this.reserveSteerContinuation(entry, inputs)
-    })
+    const execution = this.currentTurn(entry)?.industrialExecution
+    const connect = () =>
+      driver.connect({
+        sessionId: entry.sessionId,
+        agentId: entry.agentId,
+        modelId: target.modelId,
+        reasoningEffort: target.reasoningEffort,
+        serviceTier: target.serviceTier,
+        knowledgeBaseIds: target.knowledgeBaseIds,
+        fastMode: target.fastMode,
+        resumeToken: entry.lastResumeToken,
+        trace: this.sessionTraceContext(entry, target.modelId),
+        nativeSessionId: agentSessionMessageService.getNativeSessionId(entry.sessionId),
+        onSteerInjected: (inputs) => this.reserveSteerContinuation(entry, inputs)
+      })
+    const connection = await (execution
+      ? application.get('IndustrialVideoService').withExecution(execution, connect)
+      : connect())
+    if (execution) this.industrialConnectionTokens.set(connection, execution)
     if (!this.isCurrentEntry(entry) || !this.connectionTargetEquals(entry, target)) {
       await this.closeRuntimeConnection(connection, entry.sessionId)
       return false
@@ -2591,16 +2628,28 @@ export class AgentSessionRuntimeService extends BaseService {
   private async admitTurn(entry: AgentSessionRuntimeEntry, turn: AgentSessionTurn): Promise<void> {
     if (!this.isCurrentEntry(entry) || this.currentTurn(entry) !== turn || !this.isTurnLive(entry, turn)) return
     if (isAgentSessionRuntimeTurnAdmitted(entry.runtimeState, turn)) return
+    const execution = turn.industrialExecution
+    if (execution) application.get('IndustrialVideoService').assertExecution(execution)
     this.applyRuntimeStateEvent(entry, { type: 'turn-admitted', turn })
     // A fresh request starts clean — drop any retry status left over from the previous turn.
     this.clearApiRetry(entry)
     await this.refreshTurnTraceContext(entry, turn)
     const connection = this.currentConnection(entry)
     if (!connection) throw new Error('Agent runtime connection unavailable')
-    await connection.send({
-      message: turn.userMessage,
-      systemReminder: turn.systemReminder === true
-    })
+    // await connection.send({ message: turn.userMessage, systemReminder: turn.systemReminder === true })
+    // MEA:industrial-video 发送触发的异步工具链继承固定轮次，不读取后续新轮身份。
+    const send = () => connection.send({ message: turn.userMessage, systemReminder: turn.systemReminder === true })
+    if (execution) {
+      const service = application.get('IndustrialVideoService')
+      service.assertExecution(execution)
+      await service.withExecution(execution, async () => {
+        await service.prepareUserParts({ sessionId: entry.sessionId, parts: turn.userMessage.data.parts ?? [] })
+        service.assertExecution(execution)
+        await send()
+      })
+    } else {
+      await send()
+    }
   }
 
   private deliverRuntimeChunk(entry: AgentSessionRuntimeEntry, chunk: UIMessageChunk): boolean {

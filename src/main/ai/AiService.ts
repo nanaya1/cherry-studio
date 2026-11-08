@@ -519,16 +519,23 @@ export class AiService extends BaseService {
           trustedContext?.kind !== 'industrial-video-review' ||
           typeof trustedContext.run !== 'string' ||
           typeof trustedContext.reviewVersion !== 'string' ||
+          typeof trustedContext.executionEpoch !== 'number' ||
+          trustedContext.executionEpoch !== record.control?.epoch ||
+          record.control?.stopRequested ||
           record.run !== trustedContext.run
         ) {
           throw new Error('工业视频审核任务已变化，请重新读取审核快照。')
         }
         const reviewedSnapshot = { run: trustedContext.run, reviewVersion: trustedContext.reviewVersion }
-        const currentSnapshot = await industrialVideoService.reviewSnapshotGet({
-          sessionId: pending.sessionId,
-          run: record.run,
-          reviewType: 'script_and_storyboard'
-        })
+        const execution = Object.freeze({ sessionId: pending.sessionId, epoch: trustedContext.executionEpoch })
+        industrialVideoService.assertExecution(execution)
+        const currentSnapshot = await industrialVideoService.withExecution(execution, () =>
+          industrialVideoService.reviewSnapshotGet({
+            sessionId: pending.sessionId,
+            run: record.run!,
+            reviewType: 'script_and_storyboard'
+          })
+        )
         if (currentSnapshot.review_version !== reviewedSnapshot.reviewVersion) {
           logger.warn('Industrial-video review version changed before confirmation', {
             approvalId: payload.approvalId,
@@ -545,12 +552,15 @@ export class AiService extends BaseService {
           run: record.run,
           reviewVersion: reviewedSnapshot.reviewVersion
         })
-        const receipt = await industrialVideoService.reviewConfirm({
-          sessionId: pending.sessionId,
-          run: record.run,
-          reviewType: 'script_and_storyboard',
-          expectedReviewVersion: reviewedSnapshot.reviewVersion
-        })
+        const receipt = await industrialVideoService.withExecution(execution, () =>
+          industrialVideoService.reviewConfirm({
+            sessionId: pending.sessionId,
+            run: record.run!,
+            reviewType: 'script_and_storyboard',
+            expectedReviewVersion: reviewedSnapshot.reviewVersion
+          })
+        )
+        industrialVideoService.assertExecution(execution)
         if (!receipt.generation_allowed) {
           logger.warn('Industrial-video trusted review did not open generation', {
             approvalId: payload.approvalId,

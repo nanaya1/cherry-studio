@@ -27,6 +27,11 @@ vi.mock('@renderer/components/composer/variants/AgentComposer', () => ({
     return (
       <NarrowLayout narrowMode={props.forceNarrowLayout} withSidePadding data-testid="agent-composer">
         <textarea aria-label="Task reply" />
+        {props.taskBusy && (
+          <button type="button" disabled={props.taskStopping}>
+            停止任务
+          </button>
+        )}
       </NarrowLayout>
     )
   },
@@ -99,6 +104,15 @@ describe('AgentComposerSlot', () => {
     })
     expect(agentComposerPropsMock.last?.onAgentChange).toBeUndefined()
     expect(agentComposerPropsMock.last?.onWorkspaceChange).toBeUndefined()
+  })
+
+  it('透传任务停止状态，普通任务默认不受影响', () => {
+    const { rerender } = render(<AgentComposerSlot {...baseProps} taskBusy taskStopping />)
+    expect(screen.getByRole('button', { name: '停止任务' })).toBeDisabled()
+    rerender(<AgentComposerSlot {...baseProps} taskBusy />)
+    expect(screen.getByRole('button', { name: '停止任务' })).toBeEnabled()
+    rerender(<AgentComposerSlot {...baseProps} />)
+    expect(screen.queryByRole('button', { name: '停止任务' })).not.toBeInTheDocument()
   })
 
   it('forwards one-shot launch options to the real composer', () => {

@@ -251,17 +251,23 @@ export class MeacoworkBuiltinToolsServer {
       { capabilities: { tools: {} } }
     )
     this.mcpServer.server.setRequestHandler(ListToolsRequestSchema, async () => ({
-      tools: [
-        ...listMeacoworkBuiltinTools(),
-        ...knowledge.tools(),
-        ...autonomy.tools(),
-        ...cli.tools(),
-        ...documents.tools(),
-        ...(industrialVideo ? industrialVideo.tools() : [])
-      ]
+      tools: industrialVideo
+        ? industrialVideo.tools()
+        : [
+            ...listMeacoworkBuiltinTools(),
+            ...knowledge.tools(),
+            ...autonomy.tools(),
+            ...cli.tools(),
+            ...documents.tools()
+            // 工业工具由上方专属分支提供，普通会话不装配。
+            // ...(industrialVideo ? industrialVideo.tools() : [])
+          ]
     }))
     this.mcpServer.server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
       const { name } = request.params
+      if (industrialVideo && !industrialVideo.handles(name)) {
+        return { content: [{ type: 'text', text: '工业视频会话只允许工业视频业务工具。' }], isError: true }
+      }
       if (cli.handles(name)) {
         return cli.call(name, request.params.arguments)
       }

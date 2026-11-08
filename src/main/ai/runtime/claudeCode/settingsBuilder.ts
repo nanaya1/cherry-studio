@@ -16,6 +16,7 @@ import type { CanUseTool, Options, PermissionResult, SdkPluginConfig } from '@an
 
 import { application } from '@application'
 import { agentService } from '@data/services/AgentService'
+import { agentSessionService } from '@data/services/AgentSessionService'
 import { loggerService } from '@logger'
 import { ensureAgentDataDirectory } from '@main/ai/agents/agentDataDirectory'
 import { resolveAgentCapabilities, resolveMountedMcpServers } from '@main/ai/agents/builtin/builtinAgentCapabilities'
@@ -49,6 +50,11 @@ import {
 import { toolApprovalRegistry } from '@main/ai/toolApproval/ToolApprovalRegistry'
 import { type ClaudeToolContext, resolveDisallowedTools } from '@main/ai/tools/adapters/claudeCode/toolConditions'
 import { resolveKnowledgeBaseScope } from '@main/ai/utils/knowledgeScope'
+import {
+  INDUSTRIAL_VIDEO_BOUNDARY_REASON,
+  INDUSTRIAL_VIDEO_PRODUCTION_PROMPT,
+  isIndustrialVideoToolAllowed
+} from '@main/features/industrialVideo/industrialVideoExecutionPolicy'
 import { AGENT_RUNTIME_CAPABILITIES } from '@shared/ai/agentRuntimeCapabilities'
 import {
   KB_READ_TOOL_NAME,
@@ -234,6 +240,11 @@ export async function buildClaudeCodeSessionSettings(
   // `emit` per-stream (see AgentSessionRuntimeService's stream adapter setup).
   // `dispose` drops any approval still pending for this session when the
   // stream exits abnormally.
+  // MEA:industrial-video 标记连接轮次；跨轮重建由 runtime 的连接 token 比较保证。
+  if (session.featureKind === 'industrial-video') {
+    const token = application.get('IndustrialVideoService').getExecutionToken()
+    env.MEA_INDUSTRIAL_EXECUTION = token ? `${token.sessionId}:${token.epoch}` : 'unbound'
+  }
   const approvalEmitter = sessionState().getToolApprovalEmitterHolder(session.id)
   const steerHolder = sessionState().getSteerHolder(session.id)
   const agentsMdLoader = await AgentsMdLoader.create(cwd)
@@ -261,7 +272,8 @@ export async function buildClaudeCodeSessionSettings(
     knowledgeBaseScope,
     disallowedTools,
     agentsMdContext,
-    options?.effectiveLanguage
+    options?.effectiveLanguage,
+    session.featureKind
   )
 
   // 6. MCP servers (session + built-in)
@@ -523,9 +535,32 @@ async function buildToolPermissions(
     conditionContext
   })
 
+  const industrialExecution =
+    session.featureKind === 'industrial-video'
+      ? application.get('IndustrialVideoService').getExecutionToken()
+      : undefined
   const canUseTool: CanUseTool = async (toolName, input, opts) => {
     if (opts.signal.aborted) {
       return { behavior: 'deny', message: 'Tool request was cancelled' }
+    }
+
+    let featureKind: string | undefined
+    try {
+      featureKind = agentSessionService.getById(session.id)?.featureKind
+    } catch {
+      return { behavior: 'deny', message: 'Session identity is unavailable.' }
+    }
+    if (featureKind === 'industrial-video' && !isIndustrialVideoToolAllowed(toolName)) {
+      return { behavior: 'deny', message: INDUSTRIAL_VIDEO_BOUNDARY_REASON }
+    }
+
+    if (featureKind === 'industrial-video') {
+      if (!industrialExecution) return { behavior: 'deny', message: '工业视频连接尚未绑定可信轮次。' }
+      try {
+        application.get('IndustrialVideoService').assertExecution(industrialExecution)
+      } catch {
+        return { behavior: 'deny', message: '工业视频执行轮次已失效。' }
+      }
     }
 
     // ExitPlanMode's normalized plan arrives here after the raw streamed `{}` input. Surface it
@@ -601,6 +636,7 @@ async function buildToolPermissions(
       }
       trustedContext = {
         kind: 'industrial-video-review',
+        executionEpoch: industrialExecution?.epoch,
         run: reviewedSnapshot.run,
         reviewVersion: reviewedSnapshot.reviewVersion
       }
@@ -732,7 +768,8 @@ export async function buildSystemPrompt(
   /** Root-scoped AGENTS.md instructions; nested scopes are injected lazily by a PreToolUse hook. */
   agentsMdContext?: string,
   /** Materialized effective language; when omitted the preference is read live. */
-  effectiveLanguage?: string | null
+  effectiveLanguage?: string | null,
+  featureKind?: AgentSessionEntity['featureKind']
 ): Promise<ClaudeCodeSettings['systemPrompt']> {
   const canReadAllKnowledgeBases = resolveAgentCapabilities(agent).allKnowledgeBases
   const unavailableTools = new Set(disallowedTools)
@@ -757,6 +794,10 @@ export async function buildSystemPrompt(
     customBaseContext,
     effectiveLanguage
   })
+
+  if (featureKind === 'industrial-video') {
+    prompt.append += `\n\n${INDUSTRIAL_VIDEO_PRODUCTION_PROMPT}`
+  }
 
   // Rebuilding and resuming must apply changed Cherry instructions without waiting for compaction.
   if (prompt.base.kind === 'native') {

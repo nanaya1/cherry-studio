@@ -1,10 +1,12 @@
 // import { Settings2, Terminal, ToolCase } from 'lucide-react'
-import { Plus, Settings2, Terminal, ToolCase } from 'lucide-react'
+// import { Plus, Settings2, Terminal, ToolCase } from 'lucide-react'
+import { Settings2, Terminal, ToolCase } from 'lucide-react'
 import React, { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 // import { Tooltip } from '@cherrystudio/ui'
-import { Button, Tooltip } from '@cherrystudio/ui'
+// import { Button, Tooltip } from '@cherrystudio/ui'
+import { Tooltip } from '@cherrystudio/ui'
 import { loggerService } from '@logger'
 import { AgentContextUsageSummary } from '@renderer/components/chat/agent/AgentContextUsageSummary'
 import { ContextUsageMeter } from '@renderer/components/chat/contextUsage'
@@ -136,6 +138,7 @@ import { emptyActions, type ProviderActionHandlers } from './shared/composerProv
 import { buildComposerQueuedPayload, getComposerHistoryText } from './shared/composerQueuedPayload'
 import { useComposerQuoteInsertion } from './shared/composerQuote'
 import { type ComposerToolbarCustomTool, ComposerToolbarShortcuts } from './shared/ComposerToolbarShortcuts'
+import { IndustrialVideoMaterialControl } from './shared/IndustrialVideoMaterialControl'
 import { useComposerFileCapabilities } from './shared/useComposerFileCapabilities'
 import { useComposerKnowledgeBaseScope } from './shared/useComposerKnowledgeBaseScope'
 import { useComposerSelectionReferenceInsertion } from './shared/useComposerSelectionReferenceInsertion'
@@ -343,6 +346,8 @@ type Props = {
   sendDisabled?: boolean
   compactWhenSingleLine?: boolean
   attachmentOnly?: boolean
+  taskBusy?: boolean
+  taskStopping?: boolean
   forceNarrowLayout?: boolean
   launchOptions?: AgentComposerLaunchOptions
 }
@@ -377,6 +382,8 @@ const AgentComposerRoot = ({
   sendDisabled = false,
   compactWhenSingleLine = false,
   attachmentOnly = false,
+  taskBusy = false,
+  taskStopping = false,
   launchOptions,
   renderControls,
   forceNarrowLayout = false,
@@ -514,6 +521,8 @@ const AgentComposerRoot = ({
         sendDisabled={sendDisabled}
         compactWhenSingleLine={compactWhenSingleLine}
         attachmentOnly={attachmentOnly}
+        taskBusy={taskBusy}
+        taskStopping={taskStopping}
         launchOptions={launchOptions}
         renderControls={renderControls}
         forceNarrowLayout={forceNarrowLayout}
@@ -560,6 +569,8 @@ interface InnerProps {
   sendDisabled: boolean
   compactWhenSingleLine: boolean
   attachmentOnly?: boolean
+  taskBusy?: boolean
+  taskStopping?: boolean
   launchOptions?: AgentComposerLaunchOptions
   renderControls: AgentComposerControlsRenderer
   forceNarrowLayout?: boolean
@@ -801,6 +812,8 @@ const AgentComposerInner = ({
   sendDisabled,
   compactWhenSingleLine,
   attachmentOnly = false,
+  taskBusy = false,
+  taskStopping = false,
   launchOptions,
   renderControls,
   forceNarrowLayout = false,
@@ -1282,14 +1295,23 @@ const AgentComposerInner = ({
   useComposerQuoteInsertion(actionsRef)
   useComposerSelectionReferenceInsertion(actionsRef, sessionTopicId)
 
+  // const analysisRequest = useRef<string | null>(null)
+  // const [analyzingMaterials, setAnalyzingMaterials] = useState(false)
   const abortAgentSession = useCallback(async () => {
+    if (taskStopping) return
     logger.info('Aborting agent session', { sessionTopicId })
     try {
+      // 独立分析已停用；统一中断工业 Agent 的任务链。
+      // const requestId = analysisRequest.current
+      // analysisRequest.current = null
+      // setAnalyzingMaterials(false)
+      // if (requestId) await ipcApi.request('ai.text.abort', { requestId })
       await chatStop()
     } catch (error) {
       logger.error('Failed to abort agent session', { sessionTopicId, error })
     }
-  }, [chatStop, sessionTopicId])
+    // }, [chatStop, sessionTopicId])
+  }, [chatStop, sessionTopicId, taskStopping])
 
   const handleAgentChange = useCallback(
     async (nextAgentId: string | null) => {
@@ -1517,18 +1539,47 @@ const AgentComposerInner = ({
           const index = initialDraft.files.findIndex((file) => file.fileTokenSourceId === attachment.fileTokenSourceId)
           return index >= 0 ? originals[index] : undefined
         })
-        const addedParts = await buildAgentFilePartsForAttachments(
-          attachments.filter((_, index) => !retainedParts[index]),
-          accessiblePaths
-        )
+        // const addedParts = await buildAgentFilePartsForAttachments(
+        //   attachments.filter((_, index) => !retainedParts[index]),
+        //   accessiblePaths
+        // )
+        const addedAttachments = attachments.filter((_, index) => !retainedParts[index])
+        const addedParts = attachmentOnly
+          ? await buildFilePartsForAttachments(addedAttachments)
+          : await buildAgentFilePartsForAttachments(addedAttachments, accessiblePaths)
         let addedIndex = 0
         const fileParts = retainedParts.map((part) => part ?? addedParts[addedIndex++])
+        /* 详情与新建统一由工业 Agent 分析原始资料，不再重复调用独立模型。
+        const analysisParts: CherryMessagePart[] = []
+        if (attachmentOnly) {
+          if (!model) throw new Error(t('industrial_video.select_model'))
+          if (analysisRequest.current) return false
+          const requestId = crypto.randomUUID()
+          analysisRequest.current = requestId
+          setAnalyzingMaterials(true)
+          const response = await ipcApi.request('ai.text.generate', {
+            requestId,
+            uniqueModelId: model.id,
+            reasoningEffort: 'none',
+            system: t('industrial_video.analysis_prompt'),
+            uiMessages: [{ id: crypto.randomUUID(), role: 'user', parts: [...payload.userMessageParts, ...fileParts] }]
+          })
+          if (analysisRequest.current !== requestId || uploadScope.current !== sessionId) return false
+          analysisRequest.current = null
+          setAnalyzingMaterials(false)
+          if (!response.text.trim()) throw new Error(t('industrial_video.empty_analysis'))
+          analysisParts.push({ type: 'text', text: response.text })
+        }
+        */
         const sent = await chatSendMessage(
           { text: payload.text },
           {
             body: {
               agentId,
               sessionId,
+              // userMessageParts: [...payload.userMessageParts, ...fileParts],
+              // 原独立分析会丢弃非媒体原件；统一保留完整附件交给 Agent。
+              // userMessageParts: [...payload.userMessageParts, ...analysisParts, ...filteredFileParts],
               userMessageParts: [...payload.userMessageParts, ...fileParts],
               reasoningEffort: payload.reasoningEffort,
               serviceTier: payload.serviceTier,
@@ -1542,14 +1593,19 @@ const AgentComposerInner = ({
         launchOptions?.onSent?.()
         return true
       } catch (error: unknown) {
+        // analysisRequest.current = null
+        // setAnalyzingMaterials(false)
         logger.warn('Failed to send message:', error as Error)
-        toast.error(t('chat.input.send_failed'))
+        // toast.error(t('chat.input.send_failed'))
+        toast.error(attachmentOnly && error instanceof Error ? error.message : t('chat.input.send_failed'))
         return false
       }
     },
     [
       accessiblePaths,
       agentId,
+      attachmentOnly,
+      model,
       chatSendMessage,
       initialDraft.files,
       launchOptions,
@@ -1649,7 +1705,8 @@ const AgentComposerInner = ({
 
   const handleSendDraft = useCallback(
     async (draft: ComposerSerializedDraft, options?: { steer?: boolean }) => {
-      if (sendDisabled) return
+      // if (sendDisabled) return
+      if (sendDisabled || taskBusy || taskStopping) return
       if (attachmentOnly && isStreaming) return
       if (directSendInFlightRef.current) return
       if (!model) {
@@ -1692,6 +1749,8 @@ const AgentComposerInner = ({
       sendDisabled,
       sendQueuedPayload,
       t,
+      taskBusy,
+      taskStopping,
       workspaceWarning
     ]
   )
@@ -1808,10 +1867,42 @@ const AgentComposerInner = ({
       toast.error(error instanceof Error ? error.message : String(error))
     }
   }
+  // const attachmentControl = () => (
+  //   <Button variant="ghost" size="icon" aria-label={t('industrial_video.upload')} onClick={() => void uploadFiles()}>
+  //     <Plus size={18} />
+  //   </Button>
+  // )
+  const addIndustrialKnowledge = async (itemId: string, name: string) => {
+    try {
+      const path = await ipcApi.request('knowledge.get_file_path', { itemId })
+      if (!path) throw new Error(t('industrial_video.missing_path'))
+      const normalizedPath = AbsoluteFilePathSchema.parse(path)
+      const metadata = await ipcApi.request('file.get_metadata', createFilePathHandle(normalizedPath))
+      if (!metadata || metadata.kind !== 'file') throw new Error(t('industrial_video.missing_path'))
+      if (uploadScope.current !== sessionId) return
+      const extIndex = name.lastIndexOf('.')
+      setFiles([
+        ...filesRef.current,
+        {
+          fileTokenSourceId: crypto.randomUUID(),
+          path: normalizedPath,
+          name: extIndex > 0 ? name.slice(0, extIndex) : name,
+          origin_name: name,
+          ext: extIndex > 0 ? name.slice(extIndex) : '',
+          size: metadata.size,
+          type: 'other'
+        }
+      ])
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : String(error))
+    }
+  }
   const attachmentControl = () => (
-    <Button variant="ghost" size="icon" aria-label={t('industrial_video.upload')} onClick={() => void uploadFiles()}>
-      <Plus size={18} />
-    </Button>
+    <IndustrialVideoMaterialControl
+      disabled={taskBusy || taskStopping || isDirectSending}
+      onUpload={uploadFiles}
+      onKnowledge={addIndustrialKnowledge}
+    />
   )
 
   const controlSlots = attachmentOnly
@@ -1903,6 +1994,8 @@ const AgentComposerInner = ({
           // steerShortcut={isStreaming ? resolvedSteerShortcut : undefined}
           steerShortcut={isStreaming && !attachmentOnly ? resolvedSteerShortcut : undefined}
           sendDisabled={
+            taskBusy ||
+            taskStopping ||
             (attachmentOnly && isStreaming) ||
             sendDisabled ||
             isDirectSending ||
@@ -1915,7 +2008,9 @@ const AgentComposerInner = ({
             sendDisabled || isDirectSending || hasPendingReference ? t('common.loading') : missingModelMessage
           }
           // isLoading={isStreaming}
-          isLoading={attachmentOnly ? false : isStreaming}
+          // isLoading={attachmentOnly ? false : isStreaming}
+          // isLoading={isStreaming || taskBusy || taskStopping || analyzingMaterials}
+          isLoading={isStreaming || taskBusy || taskStopping}
           onSendDraft={handleSendDraft}
           editingState={
             launchOptions?.editing ? { ...launchOptions.editing, cancelDisabled: isDirectSending } : undefined

@@ -18,6 +18,10 @@ import * as z from 'zod'
 const { agentSessionGetByIdMock, ivServiceMock, loggerErrorMock, loggerWarnMock } = vi.hoisted(() => ({
   agentSessionGetByIdMock: vi.fn(),
   ivServiceMock: {
+    getExecutionToken: vi.fn(() => Object.freeze({ sessionId: 's1', epoch: 1 })),
+    assertExecution: vi.fn(),
+    withExecution: vi.fn((_token: unknown, fn: () => unknown) => fn()),
+    getRecords: vi.fn(),
     runCreate: vi.fn(),
     planningContextGet: vi.fn(),
     storyboardGet: vi.fn(),
@@ -99,6 +103,22 @@ describe('MeacoworkIndustrialVideoTools — visibility & contract', () => {
     vi.clearAllMocks()
     agentSessionGetByIdMock.mockReturnValue(makeSession())
     for (const fn of Object.values(ivServiceMock)) (fn as Mock).mockReset()
+    ivServiceMock.getExecutionToken.mockReturnValue(Object.freeze({ sessionId: SESSION_ID, epoch: 1 }))
+    ivServiceMock.withExecution.mockImplementation((_token, fn) => fn())
+  })
+
+  it('旧轮工具不能借用新轮权限发起写请求', async () => {
+    const token = Object.freeze({ sessionId: SESSION_ID, epoch: 1 })
+    ivServiceMock.getExecutionToken.mockReturnValue(token)
+    ivServiceMock.assertExecution.mockImplementation(() => {
+      throw new IpcError('IVIDEO_STOPPED', '旧轮已失效')
+    })
+    const provider = makeTools()
+    ivServiceMock.runCreate.mockResolvedValue({ run: 'unexpected' })
+    const result = await provider.call('ivideo_run_create', { baseName: '返修' })
+    expect(jsonOf(result)).toMatchObject({ ok: false, error: { code: 'IVIDEO_STOPPED' } })
+    expect(ivServiceMock.runCreate).not.toHaveBeenCalled()
+    ivServiceMock.assertExecution.mockReset()
   })
 
   it('exposes only the production operations plus the read-only review snapshot (no confirm surface)', () => {
@@ -151,7 +171,9 @@ describe('MeacoworkIndustrialVideoTools — visibility & contract', () => {
 
   it('可信审核后跳过估价直接启动生成，不再要求费用确认', () => {
     for (const tool of makeTools().tools()) {
-      expect(tool.description).toContain('可信审核通过 → start → status → download')
+      // 默认在线预览，下载不得成为制作流程的自动尾步。
+      expect(tool.description).toContain('可信审核通过 → start → status → 在线预览')
+      expect(tool.description).toContain('仅在用户明确要求下载时')
       expect(tool.description).toContain('不要调用 ivideo_estimate')
       expect(tool.description).toContain('立即调用 ivideo_start')
       expect(tool.description).not.toContain('用户确认生成及费用')
@@ -276,6 +298,8 @@ describe('MeacoworkIndustrialVideoTools — routing to the trusted service', () 
     vi.clearAllMocks()
     agentSessionGetByIdMock.mockReturnValue(makeSession())
     for (const fn of Object.values(ivServiceMock)) (fn as Mock).mockReset()
+    ivServiceMock.getExecutionToken.mockReturnValue(Object.freeze({ sessionId: SESSION_ID, epoch: 1 }))
+    ivServiceMock.withExecution.mockImplementation((_token, fn) => fn())
   })
 
   it('ivideo_run_create calls runCreate with the injected sessionId (no token, no supplied sessionId)', async () => {
@@ -475,6 +499,8 @@ describe('MeacoworkIndustrialVideoTools — call-time re-validation', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     for (const fn of Object.values(ivServiceMock)) (fn as Mock).mockReset()
+    ivServiceMock.getExecutionToken.mockReturnValue(Object.freeze({ sessionId: SESSION_ID, epoch: 1 }))
+    ivServiceMock.withExecution.mockImplementation((_token, fn) => fn())
   })
 
   it('rejects when the active runtime no longer owns the session (agentId mismatch)', async () => {
@@ -511,6 +537,8 @@ describe('MeacoworkIndustrialVideoTools — structured failure, never leaks the 
     vi.clearAllMocks()
     agentSessionGetByIdMock.mockReturnValue(makeSession())
     for (const fn of Object.values(ivServiceMock)) (fn as Mock).mockReset()
+    ivServiceMock.getExecutionToken.mockReturnValue(Object.freeze({ sessionId: SESSION_ID, epoch: 1 }))
+    ivServiceMock.withExecution.mockImplementation((_token, fn) => fn())
   })
 
   it('turns a service IpcError into a structured error result and never exposes the token', async () => {
