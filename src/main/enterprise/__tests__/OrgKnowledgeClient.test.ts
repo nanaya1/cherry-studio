@@ -14,6 +14,71 @@ function makeApiClient(
 }
 
 describe('OrgKnowledgeClient', () => {
+  it.each(['pending', 'parsing', 'parsed', 'indexing', 'ready', 'failed', null, undefined])(
+    '目录文件响应保留解析状态%s并兼容旧响应与目录null',
+    async (parseStatus) => {
+      const file = {
+        id: 'file',
+        space_id: 'space',
+        parent_id: null,
+        name: '文件',
+        is_dir: false,
+        updated_at: '',
+        ...(parseStatus === undefined ? {} : { parse_status: parseStatus })
+      }
+      const request = vi.fn().mockResolvedValue({
+        folders: [{ ...file, id: 'folder', is_dir: true, parse_status: null }],
+        files: [file],
+        total: 2,
+        page: 1,
+        page_size: 100
+      })
+      const result = await new OrgKnowledgeClient(makeApiClient({ request })).listSpaceFiles('space', null, 1)
+      expect(result.files[0].parse_status).toBe(parseStatus)
+      expect(result.folders[0].is_dir).toBe(true)
+    }
+  )
+
+  it.each(['completed', 'unknown', '', 1])('目录文件响应拒绝非法解析状态%s', async (parseStatus) => {
+    const request = vi.fn().mockResolvedValue({
+      folders: [],
+      files: [
+        {
+          id: 'file',
+          space_id: 'space',
+          parent_id: null,
+          name: '文件',
+          is_dir: false,
+          updated_at: '',
+          parse_status: parseStatus
+        }
+      ],
+      total: 1,
+      page: 1,
+      page_size: 100
+    })
+    await expect(
+      new OrgKnowledgeClient(makeApiClient({ request })).listSpaceFiles('space', null, 1)
+    ).rejects.toBeInstanceOf(OrgKnowledgeProtocolError)
+  })
+
+  it('目录文件列表允许按解析状态筛选，默认不携带状态过滤', async () => {
+    const request = vi.fn().mockResolvedValue({ folders: [], files: [], total: 0, page: 2, page_size: 100 })
+    const client = new OrgKnowledgeClient(makeApiClient({ request }))
+    await client.listSpaceFiles('space', 'parent', 2, 'ready', 20)
+    expect(Object.fromEntries(new URL(request.mock.calls[0][0], 'https://example.test').searchParams)).toEqual({
+      parent_id: 'parent',
+      page: '2',
+      page_size: '20',
+      parse_status: 'ready'
+    })
+    await client.listSpaceFiles('space', null, 1)
+    await client.listRecoveryFiles('space', null, 1)
+    for (const [path] of request.mock.calls.slice(1)) {
+      expect(new URL(path, 'https://example.test').searchParams.has('parse_status')).toBe(false)
+      expect(new URL(path, 'https://example.test').searchParams.get('page_size')).toBe('100')
+    }
+  })
   it('根据部署模式选择 modern 代理或知识库直连路径', () => {
     expect(getKnowledgeSpacePath('space id', true)).toBe('/api/kb/v1/spaces/space%20id')
     expect(getKnowledgeSpacePath('space id', false)).toBe('/api/v1/spaces/space%20id')

@@ -382,6 +382,18 @@ describe('DataSourcePanel', () => {
     })
   })
 
+  it('只读公共空列表不显示上传引导或添加按钮，可编辑空列表仍保留入口', () => {
+    const props = { items: [], isLoading: false, updatedAt: '', onAdd: vi.fn(), onDelete: vi.fn(), onReindex: vi.fn() }
+    const { rerender } = render(<DataSourcePanel {...props} readOnly allowAdd={false} />)
+    expect(screen.getByText('暂无数据源')).toBeInTheDocument()
+    expect(screen.queryByText('上传第一个数据源')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '文件' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '目录导入' })).not.toBeInTheDocument()
+    rerender(<DataSourcePanel {...props} />)
+    expect(screen.getByText('上传第一个数据源')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '文件' })).toBeInTheDocument()
+  })
+
   it('shows local model download progress and hides every add-source entry until ready', () => {
     mockUseLocalModel.mockReturnValue({ status: 'downloading', percent: 42 })
     const props = {

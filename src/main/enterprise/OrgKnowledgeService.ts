@@ -536,14 +536,21 @@ export class OrgKnowledgeService {
   async listDirectoryItems(
     baseId: string,
     cursor?: string | null,
-    parentId?: string | null
+    parentId?: string | null,
+    // _publicLibrary = false,
+    publicLibrary = false,
+    pageSize?: number,
+    statusFilter?: 'pending' | 'parsing' | 'parsed' | 'indexing' | 'ready' | 'failed'
   ): Promise<OrgKnowledgeItemPage> {
     const rawBase = this.decodeId(baseId, 'baseId')
     const lease = this.acquireLease()
     const rawParent = parentId ? this.decodeId(parentId, 'parentId') : null
     const pageNumber = cursor ? Number(cursor) : 1
     if (!Number.isInteger(pageNumber) || pageNumber < 1) throw new OrgKnowledgeError(E.ORGKB_BAD_INPUT, '非法目录分页')
-    const page = await this.checked(() => this.client.listSpaceFiles(rawBase, rawParent, pageNumber), lease)
+    const page = await this.checked(
+      () => this.client.listSpaceFiles(rawBase, rawParent, pageNumber, statusFilter, pageSize),
+      lease
+    )
     if (page.folders.some((file) => file.space_id !== rawBase || file.parent_id !== rawParent))
       throw new OrgKnowledgeError(E.ORGKB_PROTOCOL, '目录文件归属不匹配')
     if (page.files.some((file) => file.space_id !== rawBase || file.parent_id !== rawParent))
@@ -572,7 +579,10 @@ export class OrgKnowledgeService {
           baseId: encodeOrgId(rawBase),
           type: file.is_dir ? 'directory' : 'file',
           title: file.name,
-          status: item?.status ?? 'completed',
+          // status: item?.status ?? 'completed',
+          // MEA:enterprise-knowledge-page 公共文件忠实使用files解析状态，未知不得显示就绪；目录与管理保持原行为。
+          status: publicLibrary && !file.is_dir ? (file.parse_status ?? 'pending') : (item?.status ?? 'completed'),
+          ...(publicLibrary && !file.is_dir ? { error: file.error_message ?? null } : {}),
           parentId: file.parent_id ? encodeOrgId(file.parent_id) : null,
           documentId: item?.document_id ? encodeOrgId(item.document_id) : file.is_dir ? null : encodeOrgId(file.id),
           hasOriginalFile: file.has_original_file,
@@ -582,7 +592,7 @@ export class OrgKnowledgeService {
         }
       }),
       total: page.total,
-      nextCursor: entries.length < page.total ? String(pageNumber + 1) : null
+      nextCursor: entries.length > 0 && page.page * page.page_size < page.total ? String(page.page + 1) : null
     }
   }
 

@@ -174,6 +174,210 @@ function makeService(apiClient: ReturnType<typeof makeApiClient>) {
   return service
 }
 
+describe('公共目录分页', () => {
+  it.each([
+    ['pending', 'pending'],
+    ['parsing', 'parsing'],
+    ['parsed', 'parsed'],
+    ['indexing', 'indexing'],
+    ['ready', 'ready'],
+    ['ready', 'ready', 'failed'],
+    ['failed', 'failed'],
+    [null, 'pending'],
+    [undefined, 'pending']
+  ])(
+    '公共文件解析状态%s不被过期item或缺失item覆盖（期望%s，旧状态%s）',
+    async (parseStatus, expected, itemStatus = 'completed') => {
+      const api = makeApiClient()
+      const service = makeService(api)
+      api.request.mockImplementation(async (path: string) =>
+        path.includes('/files')
+          ? {
+              folders: [
+                {
+                  id: 'folder',
+                  space_id: 'space',
+                  parent_id: null,
+                  name: '目录',
+                  is_dir: true,
+                  parse_status: null,
+                  updated_at: ''
+                }
+              ],
+              files: ['stale', 'missing'].map((id) => ({
+                id,
+                space_id: 'space',
+                parent_id: null,
+                name: id,
+                is_dir: false,
+                updated_at: '',
+                error_message: id === 'stale' ? '解析服务返回：不支持此文件内容' : null,
+                ...(parseStatus === undefined ? {} : { parse_status: parseStatus })
+              })),
+              total: 3,
+              page: 1,
+              page_size: 100
+            }
+          : {
+              items: [
+                {
+                  id: 'item',
+                  base_id: 'space',
+                  group_id: null,
+                  type: 'file',
+                  title: '旧标题',
+                  status: itemStatus,
+                  error: null,
+                  document_id: 'stale',
+                  data: { file_id: 'stale' },
+                  created_at: '2026-10-17T00:00:00Z',
+                  updated_at: '2026-10-17T00:00:00Z'
+                }
+              ],
+              total: 1
+            }
+      )
+      try {
+        const result = await service.listDirectoryItems(encodeOrgId('space'), null, null, true)
+        expect(result.items.map(({ title, status }) => ({ title, status }))).toEqual([
+          { title: '目录', status: 'completed' },
+          { title: 'stale', status: expected },
+          { title: 'missing', status: expected }
+        ])
+        expect(result.items[1].error).toBe('解析服务返回：不支持此文件内容')
+        expect(result.items[2].error).toBeNull()
+      } finally {
+        service.dispose()
+      }
+    }
+  )
+
+  it('非公共管理保留item状态及缺失item的既有就绪回退', async () => {
+    const api = makeApiClient()
+    const service = makeService(api)
+    api.request.mockImplementation(async (path: string) =>
+      path.includes('/files')
+        ? {
+            folders: [],
+            files: ['stale', 'missing'].map((id) => ({
+              id,
+              space_id: 'space',
+              parent_id: null,
+              name: id,
+              is_dir: false,
+              parse_status: 'failed',
+              updated_at: ''
+            })),
+            total: 2,
+            page: 1,
+            page_size: 100
+          }
+        : {
+            items: [
+              {
+                id: 'item',
+                base_id: 'space',
+                group_id: null,
+                type: 'file',
+                title: '文件',
+                status: 'processing',
+                error: null,
+                document_id: 'stale',
+                data: { file_id: 'stale' },
+                created_at: '2026-10-17T00:00:00Z',
+                updated_at: '2026-10-17T00:00:00Z'
+              }
+            ],
+            total: 1
+          }
+    )
+    try {
+      const result = await service.listDirectoryItems(encodeOrgId('space'))
+      expect(result.items.map((item) => item.status)).toEqual(['processing', 'completed'])
+    } finally {
+      service.dispose()
+    }
+  })
+
+  it.each([
+    ['public', true],
+    ['public', false],
+    ['owned', true],
+    ['shared', true]
+  ] as const)('%s分类浏览标记%s不按解析状态过滤', async (category, publicLibrary) => {
+    const api = makeApiClient()
+    const service = makeService(api)
+    api.request.mockImplementation(async (path: string) => {
+      if (path.includes('/catalog'))
+        return { public: [], owned: [], shared: [], [category]: [{ id: 'space', name: '库' }] }
+      if (path.includes('/files'))
+        return {
+          folders: [{ id: 'folder', space_id: 'space', parent_id: null, name: '空目录', is_dir: true, updated_at: '' }],
+          files: [],
+          total: 1,
+          page: 1,
+          page_size: 100
+        }
+      return { items: [], total: 0 }
+    })
+    try {
+      const result = await service.listDirectoryItems(
+        encodeOrgId('space'),
+        null,
+        null,
+        publicLibrary,
+        publicLibrary ? 20 : undefined
+      )
+      const path = api.request.mock.calls.find(([url]) => url.includes('/files'))![0]
+      expect(new URL(path, 'https://example.test').searchParams.has('parse_status')).toBe(false)
+      expect(new URL(path, 'https://example.test').searchParams.get('page_size')).toBe(publicLibrary ? '20' : '100')
+      expect(result.items.map((entry) => entry.title)).toEqual(['空目录'])
+      expect(result.nextCursor).toBeNull()
+    } finally {
+      service.dispose()
+    }
+  })
+
+  it.each([
+    [1, 100, 201, '2', 100],
+    [2, 100, 201, '3', 100],
+    [2, 1, 101, null, 100],
+    [2, 100, 200, null, 100],
+    [3, 1, 201, null, 100],
+    [3, 0, 201, null, 100],
+    [1, 0, 0, null, 100],
+    [2, 20, 128, '3', 20],
+    [7, 8, 128, null, 20],
+    [3, 28, 128, null, 50]
+  ])('第%s页%s条、总数%s时游标为%s', async (page, count, total, nextCursor, responsePageSize) => {
+    const api = makeApiClient()
+    const service = makeService(api)
+    api.request.mockImplementation(async (path: string) =>
+      path.includes('/files')
+        ? {
+            folders: [],
+            files: Array.from({ length: count }, (_, index) => ({
+              id: `file-${index}`,
+              space_id: 'space',
+              parent_id: null,
+              name: '文件',
+              is_dir: false,
+              updated_at: ''
+            })),
+            total,
+            page,
+            page_size: responsePageSize
+          }
+        : { items: [], total: 0 }
+    )
+    try {
+      expect((await service.listDirectoryItems(encodeOrgId('space'), String(page))).nextCursor).toBe(nextCursor)
+    } finally {
+      service.dispose()
+    }
+  })
+})
+
 describe('云端文件删除', () => {
   const baseId = encodeOrgId('space')
   const fileId = encodeOrgId('f')

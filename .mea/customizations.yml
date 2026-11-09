@@ -8,6 +8,28 @@ policy:
   require_tests: true
   preserve_original_code_by_comment: true
 customizations:
+  - id: public-knowledge-status-filter
+    title: 公共知识库全量浏览与状态筛选
+    owner: enterprise
+    behavior: 公共分类浏览不再默认携带parse_status=ready，按当前parent_id请求当前层级的全部目录数据；文件表格上方提供状态筛选，筛选值通过IPC贯通到files请求，仅影响当前层级数据，进入子目录后沿用筛选条件并按该目录的直接子项筛选；默认每页5条，可选5/10/20/50/100，通过可选pageSize贯通IPC与files请求，省略仍为100；真实IpcApi_Request注册入口必须接受cursor:null、数值5/10/20/50/100、statusFilter:null及六种解析状态，拒绝字符串页大小和非法状态，回归不得绕过生产注册表；dev:watch必须将--watch传给electron-vite，以同步重建主进程和preload，避免界面与主进程协议不一致；单行紧凑总数、页大小选择器、前后箭头和高亮数字页码，多页省略号且可直接跳页，无跳转输入，不自动遍历目录；非虚拟文件行区域以min-h-0与flex-1约束高度并独立overflow-auto滚动，父容器overflow-hidden阻止行内容覆盖分页；表头与分页不随文件行滚动；分页在表格下方独占整行且整组靠右，总数、页大小与页码之间使用两条独立且统一 h-4 w-px 尺寸的竖分隔线；仅页大小Select实例禁用弹层动画和转场，保留键盘与焦点行为，开关不得请求知识库，改选仅请求一次并回首页。页大小变化及进出目录回首页，分类/权限变化重置会话，旧响应不得回退页码，刷新空页回首页；终页按响应page_size和total判断。owned/shared管理、预览遍历、恢复下载不使用状态过滤，不扩展根目录parent_id既有语义。
+    markers:
+      - MEA:public-knowledge-status-filter
+    touchpoints:
+      - package.json
+      - src/main/enterprise/OrgKnowledgeClient.ts
+      - src/main/enterprise/OrgKnowledgeService.ts
+      - src/main/ipc/handlers/enterpriseKnowledge.ts
+      - src/shared/ipc/schemas/enterpriseKnowledge.ts
+      - src/renderer/pages/knowledge/KnowledgePage.tsx
+      - src/renderer/pages/knowledge/components/OrgKnowledgeDetail.tsx
+      - src/renderer/pages/knowledge/panels/dataSource/DataSourcePanel.tsx
+      - src/renderer/pages/knowledge/panels/dataSource/KnowledgeItemList.tsx
+    tests:
+      - src/main/enterprise/__tests__/OrgKnowledgeClient.test.ts
+      - src/main/enterprise/__tests__/OrgKnowledgeService.test.ts
+      - src/renderer/pages/knowledge/components/__tests__/OrgKnowledgeDetail.test.tsx
+      - src/renderer/pages/knowledge/__tests__/OrgKnowledgeNavigation.test.tsx
+      - src/main/ipc/handlers/__tests__/enterpriseKnowledge.test.ts
   - id: local-knowledge-file-batches
     title: 本地知识库文件多选100个并串行分批接收
     owner: renderer
@@ -64,8 +86,12 @@ customizations:
     # 切库同步本机路由与云端选中，详情独立会话清理预览/目录/页码；旧refresh和取消分享回调不能覆盖新库。
     # 主进程列表校验全部条目base_id匹配请求库，跨库响应按协议错误阻断而非静默展示。
     # 首次分享失败改为task可信空间补偿：先持久cleanup再停止流，owner/lease校验DELETE，unknown不重放；保留本机资料，追加及completed不回滚。
+    # 公共浏览文件忠实使用files.parse_status六状态，缺省/null回退pending且不得显示就绪；目录及非公共管理保持既有状态行为。
+    # files.error_message经共享条目error透传，失败状态使用既有Tooltip按纯文本显示，缺省/null不生成错误原因。
+    # 只读且不可添加的公共空列表仅显示暂无数据源，不展示上传引导或添加快捷按钮；可编辑列表保留原入口。
+    # OrgKnowledgeClient真实解析覆盖六状态、缺省/null及非法值；OrgKnowledgeService覆盖过期completed/无item、目录与非公共管理回归。
     owner: main
-    behavior: 文档标识经显式文件映射或文件元信息校验后用于预览；主进程鉴权限量读取，渲染进程以纯文本、图片或沙箱 PDF 展示。首次分享递归stat原文件总量（含子目录），逐文件流式上传；2026-10-17最新约定暂不设置客户端总容量上限，取代此前2GiB及临时20MiB限制，OrgKnowledgeService.buildFirstSharePlan及FirstShareUpload.run两处旧检查和抛错均保留为注释，服务端仍可限制容量且错误处理保持不变；客户端原子互斥且同库复用，列表可重开字节进度详情。创建及文件请求前持久化intent，响应归属和分块数校验后保存fileId并核对哈希和完整分块，未知结果暂停且不得盲目重传或重建库；Cookie流式请求不手设Content-Length，传输结束关闭源流；上传连续5分钟无字节进展或服务器响应时中止并清理源流，创建库和远端核对请求30秒超时，未知结果不重放且finally释放全局忙碌槽；全部确认前禁止分享码和邀请。分享码与人员邀请弹窗重开时隐藏历史completed进度、上传说明及复用文件成功结果，本会话新上传或未完成恢复仍展示进度与完成反馈，不清理持久化记录。后续旧manifest推送已停用；本机任务不得自动写云端，云端owner新增文件先托管解析再上传到同space并保留可信fileId。分享完成迁移助手与智能体知识源，取消时先恢复可用本地资料，下载故障阻断删除；缺失资料与其他设备停止操作须明确确认，未知DELETE持久化且不重发，可信删除后回绑本地。
+    behavior: 公共浏览文件忠实透传files.parse_status的pending/parsing/parsed/indexing/ready/failed六状态，缺省或null回退pending，不被旧item.completed或缺失item误标就绪；目录与非公共管理保持原状态行为，根目录过滤不变。文档标识经显式文件映射或文件元信息校验后用于预览；主进程鉴权限量读取，渲染进程以纯文本、图片或沙箱 PDF 展示。首次分享递归stat原文件总量（含子目录），逐文件流式上传；2026-10-17最新约定暂不设置客户端总容量上限，取代此前2GiB及临时20MiB限制，OrgKnowledgeService.buildFirstSharePlan及FirstShareUpload.run两处旧检查和抛错均保留为注释，服务端仍可限制容量且错误处理保持不变；客户端原子互斥且同库复用，列表可重开字节进度详情。创建及文件请求前持久化intent，响应归属和分块数校验后保存fileId并核对哈希和完整分块，未知结果暂停且不得盲目重传或重建库；Cookie流式请求不手设Content-Length，传输结束关闭源流；上传连续5分钟无字节进展或服务器响应时中止并清理源流，创建库和远端核对请求30秒超时，未知结果不重放且finally释放全局忙碌槽；全部确认前禁止分享码和邀请。分享码与人员邀请弹窗重开时隐藏历史completed进度、上传说明及复用文件成功结果，本会话新上传或未完成恢复仍展示进度与完成反馈，不清理持久化记录。后续旧manifest推送已停用；本机任务不得自动写云端，云端owner新增文件先托管解析再上传到同space并保留可信fileId。分享完成迁移助手与智能体知识源，取消时先恢复可用本地资料，下载故障阻断删除；缺失资料与其他设备停止操作须明确确认，未知DELETE持久化且不重发，可信删除后回绑本地。
     markers:
       - MEA:enterprise-knowledge-page
     touchpoints:

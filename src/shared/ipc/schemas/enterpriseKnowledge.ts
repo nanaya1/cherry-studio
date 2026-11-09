@@ -102,7 +102,15 @@ export const enterpriseKnowledgeRequestSchemas = {
   }),
   'enterprise.knowledge.catalog': defineRoute({ input: z.void(), output: OrgKnowledgeCatalogSchema }),
   'enterprise.knowledge.items': defineRoute({
-    input: z.strictObject({ baseId: orgId, cursor, parentId: orgId.nullable().optional() }),
+    input: z.strictObject({
+      baseId: orgId,
+      cursor,
+      parentId: orgId.nullable().optional(),
+      publicLibrary: z.boolean().optional(),
+      // MEA:public-knowledge-status-filter 与公共列表的全部页大小选项保持一致。
+      pageSize: z.union([z.literal(5), z.literal(10), z.literal(20), z.literal(50), z.literal(100)]).optional(),
+      statusFilter: z.enum(['pending', 'parsing', 'parsed', 'indexing', 'ready', 'failed']).nullable().optional()
+    }),
     output: OrgKnowledgeItemPageSchema
   }),
   'enterprise.knowledge.delete_file': defineRoute({

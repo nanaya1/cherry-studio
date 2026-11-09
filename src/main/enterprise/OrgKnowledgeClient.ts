@@ -366,27 +366,40 @@ export class OrgKnowledgeClient {
     )
   }
 
-  async listSpaceFiles(spaceId: string, parentId: string | null, page: number) {
+  async listSpaceFiles(
+    spaceId: string,
+    parentId: string | null,
+    page: number,
+    parseStatus?: 'pending' | 'parsing' | 'parsed' | 'indexing' | 'ready' | 'failed',
+    pageSize = 100
+  ) {
     return parseOrThrow(
       z.object({
-        folders: z.array(z.object({
-          id: z.string().min(1),
-          space_id: z.string().min(1),
-          parent_id: z.string().nullable(),
-          name: z.string(),
-          is_dir: z.literal(true),
-          has_original_file: z.boolean().default(false),
-          updated_at: z.string()
-        })),
-        files: z.array(z.object({
-          id: z.string().min(1),
-          space_id: z.string().min(1),
-          parent_id: z.string().nullable(),
-          name: z.string(),
-          is_dir: z.literal(false),
-          has_original_file: z.boolean().default(false),
-          updated_at: z.string()
-        })),
+        folders: z.array(
+          z.object({
+            id: z.string().min(1),
+            space_id: z.string().min(1),
+            parent_id: z.string().nullable(),
+            name: z.string(),
+            is_dir: z.literal(true),
+            has_original_file: z.boolean().default(false),
+            updated_at: z.string()
+          })
+        ),
+        files: z.array(
+          z.object({
+            id: z.string().min(1),
+            space_id: z.string().min(1),
+            parent_id: z.string().nullable(),
+            name: z.string(),
+            is_dir: z.literal(false),
+            // MEA:enterprise-knowledge-page 公共浏览以文件解析状态为准，兼容旧响应缺省或null。
+            parse_status: z.enum(['pending', 'parsing', 'parsed', 'indexing', 'ready', 'failed']).nullable().optional(),
+            error_message: z.string().nullable().optional(),
+            has_original_file: z.boolean().default(false),
+            updated_at: z.string()
+          })
+        ),
         total: z.number().int().nonnegative(),
         page: z.number().int().positive(),
         page_size: z.number().int().positive()
@@ -395,7 +408,8 @@ export class OrgKnowledgeClient {
         this.url(`${getKnowledgeSpacePath(spaceId)}/files`, {
           parent_id: parentId ?? undefined,
           page,
-          page_size: 100
+          page_size: pageSize,
+          parse_status: parseStatus
         }),
         { signal: AbortSignal.timeout(30_000) }
       ),
