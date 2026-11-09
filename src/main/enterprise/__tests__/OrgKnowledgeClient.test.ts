@@ -14,6 +14,25 @@ function makeApiClient(
 }
 
 describe('OrgKnowledgeClient', () => {
+  it.each([undefined, null, 'https://minio.example.test/report.preview.pdf?signature=preview'])(
+    '新预览接口保留原文地址与可选预览件地址 %s',
+    async (previewUrl) => {
+      const response = {
+        kind: 'inline',
+        url: 'https://minio.example.test/report.docx?signature=original',
+        ...(previewUrl === undefined ? {} : { minio_preview_url: previewUrl }),
+        file_name: '报告.docx',
+        mime_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+      }
+      const request = vi.fn().mockImplementation(async (path) => {
+        if (path !== '/api/kb/v1/files/file%2Fid/preview-url') throw new Error('Unexpected preview endpoint')
+        return response
+      })
+      const result = await new OrgKnowledgeClient(makeApiClient({ request })).getPreviewUrl('file/id')
+      expect(result).toEqual(response)
+    }
+  )
+
   it.each(['pending', 'parsing', 'parsed', 'indexing', 'ready', 'failed', null, undefined])(
     '目录文件响应保留解析状态%s并兼容旧响应与目录null',
     async (parseStatus) => {

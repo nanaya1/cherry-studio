@@ -686,12 +686,35 @@ export class OrgKnowledgeService {
       'image/bmp'
     ]
     let previewUrl: string | undefined
-    if (preview.kind === 'inline' && preview.url) {
-      const parsed = new URL(preview.url)
+    // if (preview.kind === 'inline' && preview.url) {
+    //   const parsed = new URL(preview.url)
+    // MEA:enterprise-knowledge-page 预览件与原件分离，优先读取服务端生成的预览件。
+    const inlineUrl = preview.minio_preview_url || preview.url
+    if (preview.kind === 'inline' && inlineUrl) {
+      const parsed = new URL(inlineUrl)
       if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password) {
         throw new OrgKnowledgeError(E.ORGKB_PROTOCOL, '预览地址无效')
       }
       previewUrl = parsed.href
+    }
+    if (
+      previewUrl &&
+      preview.minio_preview_url &&
+      (mimeType === 'application/pdf' || new URL(previewUrl).pathname.toLowerCase().endsWith('.pdf'))
+    ) {
+      const bytes = await this.checked(
+        () => this.client.fetchPresignedPreviewBytes(previewUrl, 25 * 1024 * 1024),
+        lease
+      )
+      const detected = await fileTypeFromBuffer(bytes).catch(() => undefined)
+      if (detected?.mime !== 'application/pdf') throw new OrgKnowledgeError(E.ORGKB_PROTOCOL, '预览文件不是有效的 PDF')
+      return {
+        kind: 'inline',
+        fileName: preview.file_name,
+        mimeType: 'application/pdf',
+        content: '',
+        base64: bytes.toString('base64')
+      }
     }
     // PDF 交给应用内 PDF.js；仅图片直接引用临时地址。
     if (previewUrl && mimeType && mimeType !== 'application/pdf' && inlineTypes.includes(mimeType)) {

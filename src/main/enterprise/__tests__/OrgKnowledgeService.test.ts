@@ -449,6 +449,62 @@ const codeShare = {
 const codeCatalog = { public: [], shared: [], owned: [{ id: codeSpaceId, name: '副本', my_role: 'owner' }] }
 
 describe('云端 Office 预览', () => {
+  it.each(['docx', 'xlsx', 'pptx', 'doc', 'pdf'])(
+    '%s 优先显示 MinIO PDF 预览件，不把原件 MIME 用于 PDF',
+    async (extension) => {
+      const api = makeApiClient()
+      const service = makeService(api)
+      const bytes = Buffer.from('%PDF-1.7\npreview')
+      vi.spyOn((service as any).client, 'getFile').mockResolvedValue({
+        id: 'f',
+        is_dir: false,
+        has_original_file: true
+      })
+      vi.spyOn((service as any).client, 'getPreviewUrl').mockResolvedValue({
+        kind: 'inline',
+        url: `https://minio.example.test/report.${extension}?signature=original`,
+        minio_preview_url: 'https://minio.example.test/report.preview.pdf?signature=preview',
+        file_name: `报告.${extension}`,
+        mime_type: extension === 'pdf' ? 'application/pdf' : 'application/octet-stream'
+      })
+      vi.spyOn((service as any).client, 'fetchPresignedPreviewBytes').mockImplementation(async (url) => {
+        if (url !== 'https://minio.example.test/report.preview.pdf?signature=preview')
+          throw new Error('Original file must not be fetched')
+        return bytes
+      })
+      await expect(service.preview({ fileId: 'orgkb:Zg' })).resolves.toEqual({
+        kind: 'inline',
+        fileName: `报告.${extension}`,
+        mimeType: 'application/pdf',
+        content: '',
+        base64: bytes.toString('base64')
+      })
+      expect(api.requestText).not.toHaveBeenCalled()
+      expect(api.requestBytes).not.toHaveBeenCalled()
+      service.dispose()
+    }
+  )
+
+  it.each([
+    ['javascript:alert(1)', '%PDF-1.7\npreview'],
+    ['https://user:password@minio.example.test/preview.pdf', '%PDF-1.7\npreview'],
+    ['https://minio.example.test/preview.pdf', '<html>not a PDF</html>']
+  ])('拒绝不安全或伪装为 PDF 的预览件 %s', async (url, content) => {
+    const api = makeApiClient()
+    const service = makeService(api)
+    vi.spyOn((service as any).client, 'getFile').mockResolvedValue({ id: 'f', is_dir: false, has_original_file: true })
+    vi.spyOn((service as any).client, 'getPreviewUrl').mockResolvedValue({
+      kind: 'inline',
+      url: 'https://minio.example.test/report.docx',
+      minio_preview_url: url,
+      file_name: '报告.docx',
+      mime_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    })
+    vi.spyOn((service as any).client, 'fetchPresignedPreviewBytes').mockResolvedValue(Buffer.from(content))
+    await expect(service.preview({ fileId: 'orgkb:Zg' })).rejects.toMatchObject({ code: E.ORGKB_PROTOCOL })
+    service.dispose()
+  })
+
   it.each([
     ['docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 25 * 1024 * 1024],
     ['xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 20 * 1024 * 1024],

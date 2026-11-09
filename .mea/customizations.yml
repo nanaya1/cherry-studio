@@ -77,6 +77,8 @@ customizations:
     # 原件上传默认开启，两个分享入口透传uploadOriginal；核对按文件恢复持久模式，缺省true。
     # 首次模式库级写前持久化并携带allow_local_file_upload创建；恢复隐藏选择，追加实时读取策略，未知拒绝上传。
     # 原件入口严格按每文件has_original_file展示；直接预览复核能力，策略与下载权限独立透传。
+    # 预览元数据经/api/kb/v1/files/:id/preview-url账户网关转发到上游/api/v1，保留scope=client；minio_preview_url优先于原文url，PDF预览件校验文件头后以PDF.js展示，保留原名及旧响应回退。
+    # OrgKnowledgeClient覆盖新路径和可选预览字段；OrgKnowledgeService覆盖Office/PDF预览件优先、安全地址及伪PDF拒绝。
     # 关闭原件仍核对可信身份、目录和一对一完整分块；首次计划仍读取本机原件hash作为副本身份。
     # P1：知识库DELETE凭据获取前后校验原租约/session身份且不401重放；恢复先固化expectedHashes再核对导入目标。
     # 删除模式不扫描/下载/恢复：先固化当前账号可信副本，DELETE成功后才清受管本机库、分组及失效引用；未知禁止重发，失败仅本机续作。

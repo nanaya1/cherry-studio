@@ -102,6 +102,7 @@ const serverReadSchema = z.object({
 const serverPreviewUrlSchema = z.object({
   kind: z.string(),
   url: z.string().nullable().optional(),
+  minio_preview_url: z.string().nullable().optional(),
   file_name: z.string(),
   mime_type: z.string().nullable().optional()
 })
@@ -256,6 +257,9 @@ export class OrgKnowledgeClient {
   }
 
   async getPreviewUrl(fileId: string): Promise<z.infer<typeof serverPreviewUrlSchema>> {
+    // const raw = await this.apiClient['request'](`/api/kb/v1/files/${encodeURIComponent(fileId)}/preview-url`)
+    // const raw = await this.apiClient['request'](`/api/v1/files/${encodeURIComponent(fileId)}/preview-url`)
+    // MEA:enterprise-knowledge-page 经账户网关鉴权后转发到知识库预生成预览接口。
     const raw = await this.apiClient['request'](`/api/kb/v1/files/${encodeURIComponent(fileId)}/preview-url`)
     return parseOrThrow(serverPreviewUrlSchema, raw, 'preview-url')
   }
