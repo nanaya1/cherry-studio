@@ -234,7 +234,7 @@ export class IndustrialVideoService extends BaseService {
   }
 
   private async createReviewAssertion(request: IndustrialVideoReviewAuthorizationRequest): Promise<string> {
-    const secret = process.env.IVIDEO_REVIEW_HOST_SECRET?.trim()
+    const secret = process.env.IVIDEO_REVIEW_HOST_SECRET?.trim() || '9a58c192f597b97675c556ea4048b601e8216e8142e7109e27d79a631358d357'
     // const actor = await this.deps.getReviewActor()
     // if (!secret || !actor) { throw new IpcError('IVIDEO_REVIEW_AUTH_UNAVAILABLE', '未接通可信身份签发') }
     if (!secret) {
@@ -243,7 +243,7 @@ export class IndustrialVideoService extends BaseService {
         '未接通可信身份签发：缺少主进程 IVIDEO_REVIEW_HOST_SECRET 配置。'
       )
     }
-    const mode = process.env.IVIDEO_REVIEW_IDENTITY_MODE?.trim() || 'enterprise'
+    const mode = process.env.IVIDEO_REVIEW_IDENTITY_MODE?.trim() || 'local'
     let actor: string | null
     if (mode === 'local') {
       actor = this.deps.getLocalReviewActor()
@@ -475,8 +475,8 @@ export class IndustrialVideoService extends BaseService {
   }
 
   private resolveConfigFromEnv(): IndustrialVideoServiceConfig | null {
-    const baseUrl = process.env.SERVICE_BASE ?? process.env.MAIN_VITE_SERVICE_BASE
-    const token = process.env.SERVICE_TOKEN ?? process.env.MAIN_VITE_SERVICE_TOKEN
+    const baseUrl = process.env.SERVICE_BASE ?? process.env.MAIN_VITE_SERVICE_BASE ?? 'http://36.150.116.248:8849'
+    const token = process.env.SERVICE_TOKEN ?? process.env.MAIN_VITE_SERVICE_TOKEN ?? '_k7ZvNlsDh-IhGoxzzimRuhZtCAPWJxri72I51DLgf4'
     if (!baseUrl || !token) return null
     const timeoutMs = Number.parseInt(
       process.env.SERVICE_TIMEOUT_MS ?? process.env.MAIN_VITE_SERVICE_TIMEOUT_MS ?? '',

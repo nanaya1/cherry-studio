@@ -1,5 +1,6 @@
 // import { ChevronDown, ImagePlus, LoaderCircle, Play, Plus, ScanText, Send, X } from 'lucide-react'
-import { ChevronDown, ImagePlus, LoaderCircle, Play, ScanText, Send, X } from 'lucide-react'
+// import { ChevronDown, ImagePlus, LoaderCircle, Play, ScanText, Send, X } from 'lucide-react'
+import { ChevronDown, ImagePlus, LoaderCircle, Play, Send, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -231,7 +232,8 @@ function IndustrialVideoSessionComposer({
       production.record.state
     )
   )
-  const [preparingAnalysis, setPreparingAnalysis] = useState(false)
+  // const [preparingAnalysis, setPreparingAnalysis] = useState(false)
+  const [preparingAnalysis] = useState(false)
   const analysisBusy = preparingAnalysis || analysis.running
   const polishDisabled = analysisBusy || submitting || productionRunning
   // const busy = polishing || analysis.running || submitting || productionRunning
@@ -405,6 +407,8 @@ function IndustrialVideoSessionComposer({
     sourceCount: readyMaterials.length,
     duration: currentSettings.duration
   })
+  // 前置分析按钮已停用，保留其辅助逻辑以便恢复。
+  /*
   const buildAnalysisInput = async () => {
     const attachments = readyMaterials.map((material) => {
       const existing = files.find((file) => file.fileTokenSourceId === material.id)
@@ -445,6 +449,7 @@ function IndustrialVideoSessionComposer({
       if (active.current) setPreparingAnalysis(false)
     }
   }
+  */
   const canResolveSession = Boolean(sessionId || ensureSession)
   // 已有准备任务且未处于可重做状态（failed/submitted）时禁用入口，避免重复提交。
   // const prepRecord = sessionId ? cacheService.getPersist(`industrial_video.preparation.${sessionId}`) : undefined

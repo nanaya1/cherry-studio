@@ -248,8 +248,8 @@ export default function IndustrialVideoSettingsForm({
               ])}
               {choices('voice', [
                 // 部署版请求枚举暂不接受女声，服务端补齐后恢复。
-                // ['温柔女声', t('industrial_video.voice.gentle_female')],
-                // ['知性女声', t('industrial_video.voice.knowledge_female')],
+                ['温柔女声', t('industrial_video.voice.gentle_female')],
+                ['知性女声', t('industrial_video.voice.knowledge_female')],
                 ['阳光男声', t('industrial_video.voice.sunny_male')],
                 ['沉稳男声', t('industrial_video.voice.male')],
                 ['正式男声', t('industrial_video.voice.formal_male')],
