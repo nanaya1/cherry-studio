@@ -175,6 +175,127 @@ function makeService(apiClient: ReturnType<typeof makeApiClient>) {
 }
 
 describe('公共目录分页', () => {
+  it.each([null, 'requested-parent'])(
+    '公共状态筛选接受同库跨目录文件并保留真实parentId（请求目录%s）',
+    async (parentId) => {
+      const api = makeApiClient()
+      const service = makeService(api)
+      const parents = [null, 'folder-a', 'folder-b']
+      api.request.mockImplementation(async (path: string) =>
+        path.includes('/files')
+          ? {
+              folders: [],
+              files: parents.map((parent, index) => ({
+                id: `file-${index}`,
+                space_id: 'space',
+                parent_id: parent,
+                name: `文件${index}`,
+                is_dir: false,
+                parse_status: 'ready',
+                updated_at: ''
+              })),
+              total: 3,
+              page: 1,
+              page_size: 20
+            }
+          : { items: [], total: 0 }
+      )
+      try {
+        const result = await service.listDirectoryItems(
+          encodeOrgId('space'),
+          null,
+          parentId ? encodeOrgId(parentId) : null,
+          true,
+          20,
+          'ready'
+        )
+        expect(result.items.map(({ fileId, baseId, parentId }) => ({ fileId, baseId, parentId }))).toEqual(
+          parents.map((parent, index) => ({
+            fileId: encodeOrgId(`file-${index}`),
+            baseId: encodeOrgId('space'),
+            parentId: parent ? encodeOrgId(parent) : null
+          }))
+        )
+      } finally {
+        service.dispose()
+      }
+    }
+  )
+
+  it.each([
+    {
+      label: '公共筛选跨库文件',
+      publicLibrary: true,
+      statusFilter: 'ready',
+      isDir: false,
+      space: 'other-space',
+      parent: 'requested-parent'
+    },
+    {
+      label: '公共无筛选错父目录文件',
+      publicLibrary: true,
+      statusFilter: undefined,
+      isDir: false,
+      space: 'space',
+      parent: 'other-parent'
+    },
+    {
+      label: '非公共有筛选错父目录文件',
+      publicLibrary: false,
+      statusFilter: 'ready',
+      isDir: false,
+      space: 'space',
+      parent: 'other-parent'
+    },
+    {
+      label: '非公共无筛选错父目录文件',
+      publicLibrary: false,
+      statusFilter: undefined,
+      isDir: false,
+      space: 'space',
+      parent: 'other-parent'
+    },
+    {
+      label: '公共筛选错父目录文件夹',
+      publicLibrary: true,
+      statusFilter: 'ready',
+      isDir: true,
+      space: 'space',
+      parent: 'other-parent'
+    },
+    {
+      label: '公共筛选跨库文件夹',
+      publicLibrary: true,
+      statusFilter: 'ready',
+      isDir: true,
+      space: 'other-space',
+      parent: 'requested-parent'
+    }
+  ] as const)('目录归属安全校验仍拒绝：%j', async ({ publicLibrary, statusFilter, isDir, space, parent }) => {
+    const api = makeApiClient()
+    const service = makeService(api)
+    const entry = { id: 'entry', space_id: space, parent_id: parent, name: '条目', is_dir: isDir, updated_at: '' }
+    api.request.mockImplementation(async (path: string) =>
+      path.includes('/files')
+        ? { folders: isDir ? [entry] : [], files: isDir ? [] : [entry], total: 1, page: 1, page_size: 20 }
+        : { items: [], total: 0 }
+    )
+    try {
+      await expect(
+        service.listDirectoryItems(
+          encodeOrgId('space'),
+          null,
+          encodeOrgId('requested-parent'),
+          publicLibrary,
+          20,
+          statusFilter
+        )
+      ).rejects.toMatchObject({ code: E.ORGKB_PROTOCOL })
+    } finally {
+      service.dispose()
+    }
+  })
+
   it.each([
     ['pending', 'pending'],
     ['parsing', 'parsing'],

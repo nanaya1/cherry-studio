@@ -11,7 +11,8 @@ customizations:
   - id: public-knowledge-status-filter
     title: 公共知识库全量浏览与状态筛选
     owner: enterprise
-    behavior: 公共分类浏览不再默认携带parse_status=ready，按当前parent_id请求当前层级的全部目录数据；文件表格上方提供状态筛选，筛选值通过IPC贯通到files请求，仅影响当前层级数据，进入子目录后沿用筛选条件并按该目录的直接子项筛选；默认每页5条，可选5/10/20/50/100，通过可选pageSize贯通IPC与files请求，省略仍为100；真实IpcApi_Request注册入口必须接受cursor:null、数值5/10/20/50/100、statusFilter:null及六种解析状态，拒绝字符串页大小和非法状态，回归不得绕过生产注册表；dev:watch必须将--watch传给electron-vite，以同步重建主进程和preload，避免界面与主进程协议不一致；单行紧凑总数、页大小选择器、前后箭头和高亮数字页码，多页省略号且可直接跳页，无跳转输入，不自动遍历目录；非虚拟文件行区域以min-h-0与flex-1约束高度并独立overflow-auto滚动，父容器overflow-hidden阻止行内容覆盖分页；表头与分页不随文件行滚动；分页在表格下方独占整行且整组靠右，总数、页大小与页码之间使用两条独立且统一 h-4 w-px 尺寸的竖分隔线；仅页大小Select实例禁用弹层动画和转场，保留键盘与焦点行为，开关不得请求知识库，改选仅请求一次并回首页。页大小变化及进出目录回首页，分类/权限变化重置会话，旧响应不得回退页码，刷新空页回首页；终页按响应page_size和total判断。owned/shared管理、预览遍历、恢复下载不使用状态过滤，不扩展根目录parent_id既有语义。
+    # 原约定：状态筛选仅影响当前层级，进入子目录后按直接子项筛选；服务端实际返回跨目录平铺files。
+    behavior: 公共分类浏览不再默认携带parse_status=ready，无筛选时保留当前parent_id层级校验；文件表格上方提供状态筛选，筛选值通过IPC贯通到files请求，进入子目录后沿用筛选条件；仅publicLibrary且有statusFilter时接受同库跨目录平铺files并保留真实parentId，所有files仍严格校验space_id，无筛选或非公共管理仍严格校验files父目录，folders始终严格校验同库及父目录而不推定平铺；默认每页5条，可选5/10/20/50/100，通过可选pageSize贯通IPC与files请求，省略仍为100；真实IpcApi_Request注册入口必须接受cursor:null、数值5/10/20/50/100、statusFilter:null及六种解析状态，拒绝字符串页大小和非法状态，回归不得绕过生产注册表；dev:watch必须将--watch传给electron-vite，以同步重建主进程和preload，避免界面与主进程协议不一致；单行紧凑总数、页大小选择器、前后箭头和高亮数字页码，多页省略号且可直接跳页，无跳转输入，不自动遍历目录；非虚拟文件行区域以min-h-0与flex-1约束高度并独立overflow-auto滚动，父容器overflow-hidden阻止行内容覆盖分页；表头与分页不随文件行滚动；分页在表格下方独占整行且整组靠右，总数、页大小与页码之间使用两条独立且统一 h-4 w-px 尺寸的竖分隔线；仅页大小Select实例禁用弹层动画和转场，保留键盘与焦点行为，开关不得请求知识库，改选仅请求一次并回首页。页大小变化及进出目录回首页，分类/权限变化重置会话，旧响应不得回退页码，刷新空页回首页；终页按响应page_size和total判断。owned/shared管理、预览遍历、恢复下载不使用状态过滤，不扩展根目录parent_id既有语义。
     markers:
       - MEA:public-knowledge-status-filter
     touchpoints:

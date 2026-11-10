@@ -553,7 +553,12 @@ export class OrgKnowledgeService {
     )
     if (page.folders.some((file) => file.space_id !== rawBase || file.parent_id !== rawParent))
       throw new OrgKnowledgeError(E.ORGKB_PROTOCOL, '目录文件归属不匹配')
-    if (page.files.some((file) => file.space_id !== rawBase || file.parent_id !== rawParent))
+    // MEA:public-knowledge-status-filter 公共状态筛选返回跨目录文件，但仍须校验同库归属。
+    if (
+      page.files.some(
+        (file) => file.space_id !== rawBase || (!(publicLibrary && statusFilter) && file.parent_id !== rawParent)
+      )
+    )
       throw new OrgKnowledgeError(E.ORGKB_PROTOCOL, '目录文件归属不匹配')
     const byFileId = new Map<string, Awaited<ReturnType<OrgKnowledgeClient['listItems']>>['items'][number]>()
     let itemCursor: string | null | undefined
