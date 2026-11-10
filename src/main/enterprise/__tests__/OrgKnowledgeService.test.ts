@@ -570,12 +570,34 @@ const codeShare = {
 const codeCatalog = { public: [], shared: [], owned: [{ id: codeSpaceId, name: '副本', my_role: 'owner' }] }
 
 describe('云端 Office 预览', () => {
+  it.each(['http', 'https'])('%s PDF MIME 预览件返回规范化 URL，无需扩展名', async (protocol) => {
+    const api = makeApiClient()
+    const service = makeService(api)
+    vi.spyOn((service as any).client, 'getFile').mockResolvedValue({ id: 'f', is_dir: false, has_original_file: true })
+    vi.spyOn((service as any).client, 'getPreviewUrl').mockResolvedValue({
+      kind: 'inline',
+      minio_preview_url: `${protocol}://MINIO.example.test/a/../object?signature=test`,
+      file_name: '报告.docx',
+      mime_type: 'application/pdf; charset=binary'
+    })
+    const fetchPreview = vi.spyOn((service as any).client, 'fetchPresignedPreviewBytes')
+    await expect(service.preview({ fileId: 'orgkb:Zg' })).resolves.toEqual({
+      kind: 'inline',
+      fileName: '报告.docx',
+      mimeType: 'application/pdf',
+      content: '',
+      url: `${protocol}://minio.example.test/object?signature=test`
+    })
+    expect(fetchPreview).not.toHaveBeenCalled()
+    expect(api.requestBytes).not.toHaveBeenCalled()
+    service.dispose()
+  })
   it.each(['docx', 'xlsx', 'pptx', 'doc', 'pdf'])(
     '%s 优先显示 MinIO PDF 预览件，不把原件 MIME 用于 PDF',
     async (extension) => {
       const api = makeApiClient()
       const service = makeService(api)
-      const bytes = Buffer.from('%PDF-1.7\npreview')
+      const fetchPreview = vi.spyOn((service as any).client, 'fetchPresignedPreviewBytes')
       vi.spyOn((service as any).client, 'getFile').mockResolvedValue({
         id: 'f',
         is_dir: false,
@@ -588,18 +610,14 @@ describe('云端 Office 预览', () => {
         file_name: `报告.${extension}`,
         mime_type: extension === 'pdf' ? 'application/pdf' : 'application/octet-stream'
       })
-      vi.spyOn((service as any).client, 'fetchPresignedPreviewBytes').mockImplementation(async (url) => {
-        if (url !== 'https://minio.example.test/report.preview.pdf?signature=preview')
-          throw new Error('Original file must not be fetched')
-        return bytes
-      })
       await expect(service.preview({ fileId: 'orgkb:Zg' })).resolves.toEqual({
         kind: 'inline',
         fileName: `报告.${extension}`,
         mimeType: 'application/pdf',
         content: '',
-        base64: bytes.toString('base64')
+        url: 'https://minio.example.test/report.preview.pdf?signature=preview'
       })
+      expect(fetchPreview).not.toHaveBeenCalled()
       expect(api.requestText).not.toHaveBeenCalled()
       expect(api.requestBytes).not.toHaveBeenCalled()
       service.dispose()
@@ -607,10 +625,12 @@ describe('云端 Office 预览', () => {
   )
 
   it.each([
-    ['javascript:alert(1)', '%PDF-1.7\npreview'],
-    ['https://user:password@minio.example.test/preview.pdf', '%PDF-1.7\npreview'],
-    ['https://minio.example.test/preview.pdf', '<html>not a PDF</html>']
-  ])('拒绝不安全或伪装为 PDF 的预览件 %s', async (url, content) => {
+    'javascript:alert(1)',
+    'file:///preview.pdf',
+    'ftp://minio.example.test/preview.pdf',
+    'https://user:password@minio.example.test/preview.pdf',
+    'http://user@minio.example.test/preview.pdf'
+  ])('拒绝不安全的 PDF 预览地址 %s', async (url) => {
     const api = makeApiClient()
     const service = makeService(api)
     vi.spyOn((service as any).client, 'getFile').mockResolvedValue({ id: 'f', is_dir: false, has_original_file: true })
@@ -621,8 +641,10 @@ describe('云端 Office 预览', () => {
       file_name: '报告.docx',
       mime_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
     })
-    vi.spyOn((service as any).client, 'fetchPresignedPreviewBytes').mockResolvedValue(Buffer.from(content))
+    const fetchPreview = vi.spyOn((service as any).client, 'fetchPresignedPreviewBytes')
     await expect(service.preview({ fileId: 'orgkb:Zg' })).rejects.toMatchObject({ code: E.ORGKB_PROTOCOL })
+    expect(fetchPreview).not.toHaveBeenCalled()
+    expect(api.requestBytes).not.toHaveBeenCalled()
     service.dispose()
   })
 

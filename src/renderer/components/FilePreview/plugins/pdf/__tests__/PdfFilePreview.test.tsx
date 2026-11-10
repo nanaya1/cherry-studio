@@ -275,6 +275,78 @@ async function flushPdfEffects() {
 }
 
 describe('PdfFilePreview', () => {
+  it('URL 加载不携带认证、不使用本地 range，切换后忽略旧结果并销毁任务', async () => {
+    let resolveOld!: (value: typeof mocks.pdfDocument) => void
+    const oldDestroy = vi.fn().mockResolvedValue(undefined)
+    mocks.getDocument.mockReturnValueOnce({
+      promise: new Promise((resolve) => {
+        resolveOld = resolve
+      }),
+      destroy: oldDestroy
+    })
+    const { rerender, unmount } = render(
+      <PdfFilePreview fileName="预览.docx" url="https://minio.example.test/one.pdf" />
+    )
+    expect(mocks.getDocument).toHaveBeenLastCalledWith({
+      url: 'https://minio.example.test/one.pdf',
+      withCredentials: false,
+      CMapReaderFactory: PdfjsBundledCMapReaderFactory,
+      StandardFontDataFactory: PdfjsBundledStandardFontDataFactory
+    })
+    rerender(<PdfFilePreview fileName="预览.docx" url="https://minio.example.test/two.pdf" />)
+    await act(flushPdfEffects)
+    expect(oldDestroy).toHaveBeenCalledTimes(1)
+    expect(mocks.getDocument.mock.calls.at(-1)?.[0].url).toBe('https://minio.example.test/two.pdf')
+    await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument())
+    const staleDocument = { ...mocks.pdfDocument, numPages: 99 }
+    await act(async () => {
+      resolveOld(staleDocument)
+      await flushPdfEffects()
+    })
+    expect(mocks.pdfViewerSetDocument).not.toHaveBeenCalledWith(staleDocument)
+    expect(mocks.rangeTransportInstances).toHaveLength(0)
+    unmount()
+    expect(mocks.loadingTaskDestroy).toHaveBeenCalledTimes(1)
+    expect(mocks.pdfViewerCleanup).toHaveBeenCalled()
+  })
+
+  it('URL 切换为 base64 再切为本地路径时保留各自输入与清理契约', async () => {
+    const { rerender } = render(<PdfFilePreview fileName="paper.pdf" url="https://minio.example.test/paper.pdf" />)
+    await act(flushPdfEffects)
+    rerender(<PdfFilePreview fileName="paper.pdf" base64="JVBERi0=" />)
+    await act(flushPdfEffects)
+    const bytesInput = mocks.getDocument.mock.calls.at(-1)?.[0]
+    expect(bytesInput.data).toEqual(new Uint8Array([37, 80, 68, 70, 45]))
+    expect(bytesInput).not.toHaveProperty('url')
+    rerender(
+      <PdfFilePreview
+        filePath={filePath}
+        fileName="paper.pdf"
+        metadata={{ size: 1024, modifiedAt: 1 }}
+        refreshKey={0}
+      />
+    )
+    await act(flushPdfEffects)
+    const localInput = mocks.getDocument.mock.calls.at(-1)?.[0]
+    expect(localInput.range).toBe(mocks.rangeTransportInstances[0])
+    expect(localInput).not.toHaveProperty('url')
+    expect(localInput).not.toHaveProperty('data')
+    expect(mocks.loadingTaskDestroy).toHaveBeenCalledTimes(2)
+  })
+
+  it('远程加载错误不向日志泄露签名地址，并显示错误状态', async () => {
+    const url = 'https://minio.example.test/preview.pdf?signature=secret'
+    const logError = vi.spyOn(mockRendererLoggerService, 'error').mockImplementation(() => {})
+    mocks.getDocument.mockReturnValueOnce({
+      promise: Promise.reject(new Error(url)),
+      destroy: mocks.loadingTaskDestroy
+    })
+    render(<PdfFilePreview fileName="预览.pdf" url={url} />)
+    expect(await screen.findByRole('alert')).toHaveTextContent('file_preview.load_error.title')
+    expect(logError).toHaveBeenCalled()
+    expect(logError.mock.calls.map((args) => args.map(String).join(' ')).join(' ')).not.toContain('signature=secret')
+    logError.mockRestore()
+  })
   it('共享 PDF 字节使用同一查看器渲染，无需本地路径或浏览器插件', async () => {
     render(<PdfFilePreview fileName="shared.pdf" base64="JVBERi0=" />)
     await act(flushPdfEffects)

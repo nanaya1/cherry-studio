@@ -78,8 +78,8 @@ customizations:
     # 原件上传默认开启，两个分享入口透传uploadOriginal；核对按文件恢复持久模式，缺省true。
     # 首次模式库级写前持久化并携带allow_local_file_upload创建；恢复隐藏选择，追加实时读取策略，未知拒绝上传。
     # 原件入口严格按每文件has_original_file展示；直接预览复核能力，策略与下载权限独立透传。
-    # 预览元数据经/api/kb/v1/files/:id/preview-url账户网关转发到上游/api/v1，保留scope=client；minio_preview_url优先于原文url，PDF预览件校验文件头后以PDF.js展示，保留原名及旧响应回退。
-    # OrgKnowledgeClient覆盖新路径和可选预览字段；OrgKnowledgeService覆盖Office/PDF预览件优先、安全地址及伪PDF拒绝。
+    # 预览元数据经/api/kb/v1/files/:id/preview-url账户网关转发到上游/api/v1，保留scope=client；minio_preview_url优先于原文url，仅PDF预览件返回经HTTP(S)/无userinfo校验的规范化URL，由PDF.js加载(withCredentials:false、无企业auth)，不在主进程下载转Base64；保留授权/lease、原名及旧响应回退，原件URL/Base64、图片和Office路线不变。
+    # OrgKnowledgeClient覆盖新路径和可选预览字段；OrgKnowledgeService覆盖PDF预览件免下载、HTTP/HTTPS规范化与非法协议/userinfo拒绝及原件回归；PdfFilePreview覆盖URL/Base64/本地range切换销毁、竞态和错误日志不泄露签名URL，OrgKnowledgeDetail覆盖PDF路由与非PDF隔离。
     # 关闭原件仍核对可信身份、目录和一对一完整分块；首次计划仍读取本机原件hash作为副本身份。
     # P1：知识库DELETE凭据获取前后校验原租约/session身份且不401重放；恢复先固化expectedHashes再核对导入目标。
     # 删除模式不扫描/下载/恢复：先固化当前账号可信副本，DELETE成功后才清受管本机库、分组及失效引用；未知禁止重发，失败仅本机续作。
@@ -98,6 +98,7 @@ customizations:
     markers:
       - MEA:enterprise-knowledge-page
     touchpoints:
+      - src/renderer/components/FilePreview/plugins/pdf/PdfFilePreview.tsx
       - src/main/enterprise/CloudKnowledgeRecovery.ts
       - src/main/enterprise/KnowledgeSourceBindings.ts
       - src/main/data/services/AssistantService.ts
@@ -141,6 +142,7 @@ customizations:
       - src/renderer/pages/knowledge/sections/KnowledgePageNavigatorSection.tsx
       - src/renderer/pages/knowledge/utils/sharing.ts
     tests:
+      - src/renderer/components/FilePreview/plugins/pdf/__tests__/PdfFilePreview.test.tsx
       - src/main/enterprise/__tests__/CloudKnowledgeRecovery.test.ts
       - src/main/enterprise/__tests__/KnowledgeSourceBindings.test.ts
       - src/main/enterprise/__tests__/FirstShareUpload.test.ts

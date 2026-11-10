@@ -229,8 +229,15 @@ function DocumentView({ baseId, target, onBack }: { baseId: string; target: Docu
           ) : data?.mode === 'preview' ? (
             <>
               {/* 文件名统一显示在预览标题栏。 */}
-              {data.value.kind === 'inline' && data.value.base64 && data.value.mimeType === 'application/pdf' ? (
-                <PdfFilePreview fileName={data.value.fileName} base64={data.value.base64} />
+              {/* 原 PDF 分支仅接收 base64；预览件 URL 与原件内存输入互斥。 */}
+              {data.value.kind === 'inline' &&
+              (data.value.url || data.value.base64) &&
+              data.value.mimeType === 'application/pdf' ? (
+                data.value.url ? (
+                  <PdfFilePreview fileName={data.value.fileName} url={data.value.url} />
+                ) : (
+                  <PdfFilePreview fileName={data.value.fileName} base64={data.value.base64!} />
+                )
               ) : data.value.kind === 'inline' &&
                 (data.value.url || data.value.base64) &&
                 ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/avif', 'image/bmp'].includes(

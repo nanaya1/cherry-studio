@@ -707,18 +707,13 @@ export class OrgKnowledgeService {
       preview.minio_preview_url &&
       (mimeType === 'application/pdf' || new URL(previewUrl).pathname.toLowerCase().endsWith('.pdf'))
     ) {
-      const bytes = await this.checked(
-        () => this.client.fetchPresignedPreviewBytes(previewUrl, 25 * 1024 * 1024),
-        lease
-      )
-      const detected = await fileTypeFromBuffer(bytes).catch(() => undefined)
-      if (detected?.mime !== 'application/pdf') throw new OrgKnowledgeError(E.ORGKB_PROTOCOL, '预览文件不是有效的 PDF')
+      // MEA:enterprise-knowledge-page PDF 预览件由 PDF.js 直接加载，原件下载路线保持不变。
       return {
         kind: 'inline',
         fileName: preview.file_name,
         mimeType: 'application/pdf',
         content: '',
-        base64: bytes.toString('base64')
+        url: previewUrl
       }
     }
     // PDF 交给应用内 PDF.js；仅图片直接引用临时地址。

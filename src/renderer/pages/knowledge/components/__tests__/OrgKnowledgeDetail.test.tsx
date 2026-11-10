@@ -33,8 +33,8 @@ vi.mock('@renderer/components/VirtualList', () => ({
   )
 }))
 vi.mock('@renderer/components/FilePreview/plugins/pdf/PdfFilePreview', () => ({
-  default: ({ fileName, base64 }: { fileName: string; base64: string }) => (
-    <div title={fileName} data-pdf-base64={base64} />
+  default: ({ fileName, base64, url }: { fileName: string; base64?: string; url?: string }) => (
+    <div title={fileName} data-pdf-base64={base64} data-pdf-url={url} />
   )
 }))
 
@@ -792,16 +792,36 @@ describe('组织知识库只读详情', () => {
             fileName: item.title,
             mimeType: 'application/pdf',
             content: '',
-            url: 'https://storage.example/document.pdf?signature=test',
-            base64: 'JVBERi0='
+            url: 'https://storage.example/document.pdf?signature=test'
           }
         : original(route, input)
     )
     const user = userEvent.setup()
     render(<OrgKnowledgeDetail base={base} owned={false} />)
     await user.click(await screen.findByText(item.title))
-    await waitFor(() => expect(screen.getByTitle(item.title)).toHaveAttribute('data-pdf-base64', 'JVBERi0='))
+    await waitFor(() =>
+      expect(screen.getByTitle(item.title)).toHaveAttribute(
+        'data-pdf-url',
+        'https://storage.example/document.pdf?signature=test'
+      )
+    )
+    expect(screen.getByTitle(item.title)).not.toHaveAttribute('data-pdf-base64')
     expect(document.querySelector('iframe')).toBeNull()
+  })
+
+  it.each(['image/png', 'text/plain'])('非 PDF 的 %s URL 不进入 PDF 查看器', async (mimeType) => {
+    const original = request.getMockImplementation()!
+    request.mockImplementation(async (route, input) =>
+      route === 'enterprise.knowledge.preview'
+        ? { kind: 'inline', fileName: '其他文件', mimeType, content: '文本内容', url: 'https://storage.example/object' }
+        : original(route, input)
+    )
+    const user = userEvent.setup()
+    render(<OrgKnowledgeDetail base={base} owned={false} />)
+    await user.click(await screen.findByText(item.title))
+    if (mimeType === 'image/png') expect(await screen.findByRole('img', { name: '其他文件' })).toBeInTheDocument()
+    else expect(await screen.findByRole('status')).toHaveTextContent(i18n.t('knowledge.org.preview_unavailable'))
+    expect(screen.queryByTitle('其他文件')).not.toBeInTheDocument()
   })
 
   it('请求失败后可刷新恢复', async () => {
