@@ -75,6 +75,7 @@ export default function ComposerDockTransitionFrame({
     if (!node) return
     let observer: ResizeObserver | null = null
     let observedInsetTarget: HTMLElement | null = null
+    let observedScroller: HTMLElement | null = null
 
     const updateInset = () => {
       if (!isDocked || !hasComposer) {
@@ -107,6 +108,11 @@ export default function ComposerDockTransitionFrame({
       const composerRect = node.getBoundingClientRect()
       const rootRect = root.getBoundingClientRect()
       const scroller = root.querySelector<HTMLElement>('[data-message-virtual-list-scroller]')
+      if (observer && scroller !== observedScroller) {
+        if (observedScroller) observer.unobserve(observedScroller)
+        if (scroller) observer.observe(scroller)
+        observedScroller = scroller
+      }
       const scrollerRect = scroller?.getBoundingClientRect()
       const scrollerClientWidth = scroller?.clientWidth ?? 0
       const nextBottomOverlayInsets = {
@@ -136,8 +142,9 @@ export default function ComposerDockTransitionFrame({
     observer = new ResizeObserver(updateInset)
     if (rootRef.current) observer.observe(rootRef.current)
     observer.observe(node)
-    const scroller = rootRef.current?.querySelector<HTMLElement>('[data-message-virtual-list-scroller]')
-    if (scroller) observer.observe(scroller)
+    // const scroller = rootRef.current?.querySelector<HTMLElement>('[data-message-virtual-list-scroller]')
+    // if (scroller) observer.observe(scroller)
+    // Follow the live viewport when loading or a session switch replaces the message list.
     updateInset()
 
     const mutationObserver = typeof MutationObserver === 'undefined' ? null : new MutationObserver(updateInset)
@@ -147,7 +154,11 @@ export default function ComposerDockTransitionFrame({
       subtree: true
     })
 
+    const viewportObserver = typeof MutationObserver === 'undefined' ? null : new MutationObserver(updateInset)
+    if (rootRef.current) viewportObserver?.observe(rootRef.current, { childList: true, subtree: true })
+
     return () => {
+      viewportObserver?.disconnect()
       mutationObserver?.disconnect()
       observer?.disconnect()
     }

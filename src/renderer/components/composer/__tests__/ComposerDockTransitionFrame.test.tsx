@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useChatBottomOverlayInset } from '@renderer/components/chat/layout/ChatViewportInsetContext'
@@ -222,6 +222,53 @@ describe('ComposerDockTransitionFrame', () => {
       const dockLayer = container.querySelector<HTMLElement>('[data-composer-dock-layer]')
       expect(dockLayer).toHaveStyle({ paddingInlineStart: '8px', paddingInlineEnd: '24px' })
     })
+  })
+
+  it('recenters the composer after a replacement message viewport expands when the preview closes', async () => {
+    const observers: { callback: ResizeObserverCallback; targets: Set<Element> }[] = []
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        entry: (typeof observers)[number]
+        constructor(callback: ResizeObserverCallback) {
+          this.entry = { callback, targets: new Set() }
+          observers.push(this.entry)
+        }
+        observe(target: Element) {
+          this.entry.targets.add(target)
+        }
+        unobserve(target: Element) {
+          this.entry.targets.delete(target)
+        }
+        disconnect() {
+          this.entry.targets.clear()
+        }
+      }
+    )
+    let viewportWidth = 608
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(function (this: HTMLElement) {
+      return this.hasAttribute('data-message-virtual-list-scroller') ? viewportWidth : 1020
+    })
+    const props = { placement: 'docked' as const, composer: <div data-composer-inputbar="" /> }
+    const { container, rerender } = render(<ComposerDockTransitionFrame {...props} main={<div key="loading" />} />)
+    try {
+      rerender(
+        <ComposerDockTransitionFrame {...props} main={<div key="messages" data-message-virtual-list-scroller="" />} />
+      )
+      const dock = container.querySelector('[data-composer-dock-layer]')
+      // The dock must track the current message viewport, including one mounted after loading.
+      await waitFor(() => expect(dock).toHaveStyle({ paddingInlineStart: '8px', paddingInlineEnd: '404px' }))
+      viewportWidth = 988
+      const viewport = container.querySelector('[data-message-virtual-list-scroller]')!
+      act(() => {
+        for (const observer of observers) {
+          if (observer.targets.has(viewport)) observer.callback([], {} as ResizeObserver)
+        }
+      })
+      await waitFor(() => expect(dock).toHaveStyle({ paddingInlineStart: '8px', paddingInlineEnd: '24px' }))
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 
   it('lifts the composer dock layer above a full-area overlay only when elevated', () => {
