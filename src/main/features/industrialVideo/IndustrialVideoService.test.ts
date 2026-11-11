@@ -205,6 +205,53 @@ describe('工业视频可信轮次释放', () => {
     expect(() => service.beginRound({ sessionId: 's1' })).not.toThrow()
   })
 
+  it.each(['ready', 'job', 'unknown', 'intended', 'old_epoch', 'stop', 'wrong_run', 'missing_receipt'])(
+    '审核返回修改后的轮次释放：%s',
+    async (condition) => {
+      const { service } = makeService(makeClient(), makeSession())
+      const token = service.beginRound({ sessionId: 's1' })
+      await service.withExecution(token, async () => {
+        await service.runCreate({ sessionId: 's1', baseName: '审核修改' })
+        await service.parse({ sessionId: 's1', run: 'r1', texts: [{ text: '螺母' }] })
+        await service.jobGet({ sessionId: 's1', jobId: 'j1' })
+        await service.storyboardSubmit({
+          sessionId: 's1',
+          run: 'r1',
+          storyboard: { video_title: '待修改' },
+          expectedInputFingerprint: 'fp',
+          expectedStoryboardSha256: ''
+        })
+      })
+      const record = service.getRecords({ sessionId: 's1' })!
+      expect(record).toMatchObject({ state: 'storyboard_submitted', jobId: null })
+      const receipt = record.rounds.findLast((round) => round.operation === 'storyboard_submit')!
+      if (condition === 'job') record.jobId = 'active-job'
+      else if (condition === 'old_epoch') record.control!.epoch += 1
+      else if (condition === 'stop') record.control!.stopRequested = true
+      else if (condition === 'wrong_run') receipt.run = 'other-run'
+      else if (condition === 'missing_receipt') record.rounds = []
+      else if (condition === 'unknown' || condition === 'intended') {
+        const unresolved = { ...receipt, operation: 'parse', outcome: condition }
+        record.rounds.push(unresolved)
+        if (condition === 'unknown') record.unknownSubmissions.push(unresolved)
+      }
+      const before = structuredClone(record)
+      service.releaseRound(token)
+      if (condition === 'ready') {
+        expect(service.getRecords({ sessionId: 's1' })).toEqual({
+          ...before,
+          updatedAt: expect.any(Number),
+          control: { ...before.control!, phase: 'idle' }
+        })
+        expect(() => service.assertExecution(token)).toThrow('当前执行权限已失效')
+        expect(() => service.beginRound({ sessionId: 's1' })).not.toThrow()
+      } else {
+        expect(service.getRecords({ sessionId: 's1' })).toEqual(before)
+        expect(() => service.beginRound({ sessionId: 's1' })).toThrow('尚未证实结束')
+      }
+    }
+  )
+
   it.each([
     'job',
     'unknown',

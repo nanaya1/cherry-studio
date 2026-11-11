@@ -420,13 +420,21 @@ export class IndustrialVideoService extends BaseService {
   /** 终态持久化后仅释放未进入业务活动的可信轮次。 */
   releaseRound(token: Readonly<{ sessionId: string; epoch: number }>): void {
     const record = this.getRecord(token.sessionId)
+    // 分镜提交后的审核退回只结束本轮，不改变制作记录或批准状态。
+    const awaitingRevision =
+      record?.state === 'storyboard_submitted' &&
+      record.run !== null &&
+      record.rounds.some(
+        (round) => round.run === record.run && round.operation === 'storyboard_submit' && round.outcome === 'ok'
+      )
     if (
       !record?.control ||
       record.control.epoch !== token.epoch ||
       record.control.phase !== 'active' ||
       record.control.stopRequested ||
       record.jobId ||
-      !['idle', 'done', 'failed'].includes(record.state) ||
+      // !['idle', 'done', 'failed'].includes(record.state) ||
+      (!['idle', 'done', 'failed'].includes(record.state) && !awaitingRevision) ||
       this.hasUnresolvedSubmission(record)
     ) {
       return

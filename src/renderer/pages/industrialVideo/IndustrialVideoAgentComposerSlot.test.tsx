@@ -102,6 +102,21 @@ describe('industrial video server execution guard', () => {
     expect(request).toHaveBeenCalledTimes(2)
   })
 
+  it('审核返回修改并释放轮次后，暂停消失且允许发送修改意见', async () => {
+    state.record = {
+      state: 'storyboard_submitted',
+      unknownSubmissions: [],
+      control: { phase: 'active', stopRequested: false }
+    }
+    const { rerender } = render(<IndustrialVideoAgentComposerSlot {...baseProps} />)
+    await screen.findByRole('button', { name: 'stop' })
+    expect(screen.getByRole('button', { name: 'send' })).toBeDisabled()
+    state.record.control!.phase = 'idle'
+    rerender(<IndustrialVideoAgentComposerSlot {...baseProps} />)
+    await waitFor(() => expect(screen.getByRole('button', { name: 'send' })).toBeEnabled())
+    expect(screen.queryByRole('button', { name: 'stop' })).not.toBeInTheDocument()
+  })
+
   it('已完成的 active 记录不再阻塞后续发送', async () => {
     state.record = { state: 'done', unknownSubmissions: [], control: { phase: 'active', stopRequested: false } }
     render(<IndustrialVideoAgentComposerSlot {...baseProps} />)
