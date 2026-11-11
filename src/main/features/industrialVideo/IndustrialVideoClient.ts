@@ -491,7 +491,11 @@ export class IndustrialVideoClient {
       }
     }
 
-    const url = `${this.baseUrl}/upload?name=${encodeURIComponent(params.name)}`
+    // const url = `${this.baseUrl}/upload?name=${encodeURIComponent(params.name)}`
+    // MEA:industrial-video 在统一出口保护素材句柄，原文件名仍由调用方用于展示。
+    const extension = params.name.match(/\.[A-Za-z0-9]{1,16}$/)?.[0] ?? ''
+    const uploadName = /^[A-Za-z0-9._-]{1,120}$/.test(params.name) ? params.name : `media-${randomUUID()}${extension}`
+    const url = `${this.baseUrl}/upload?name=${encodeURIComponent(uploadName)}`
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), this.timeoutMs)
 

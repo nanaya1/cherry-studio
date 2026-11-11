@@ -430,6 +430,43 @@ describe('IndustrialVideoClient', () => {
       if (result.ok) expect(result.data).toEqual({ name: 'front.png' })
     })
 
+    it.each([
+      ['网络配置重置｜Windows_11_操作示意.mp4', '.mp4'],
+      ['screen recording (1).MP4', '.MP4'],
+      [`${'a'.repeat(121)}.mov`, '.mov'],
+      ['素材🎬', ''],
+      ['素材.非法后缀', '']
+    ])('uploads %s using a safe handle while preserving bytes and the server response', async (name, extension) => {
+      fetchMock.mockResolvedValueOnce(jsonResponse({ ok: true, name: 'server-canonical-handle' }))
+      const params = { name, content: BYTES }
+      const result = await client.upload(params)
+
+      const handle = new URL(String(fetchMock.mock.calls[0][0])).searchParams.get('name')!
+      expect(handle).toMatch(/^[A-Za-z0-9._-]{1,120}$/)
+      expect(handle).not.toBe(name)
+      expect(extension ? handle.endsWith(extension) : !handle.includes('.')).toBe(true)
+      expect(result).toMatchObject({ ok: true, data: { name: 'server-canonical-handle' } })
+      expect(params.name).toBe(name)
+      expect(new Uint8Array(fetchMock.mock.calls[0][1]?.body as ArrayBuffer)).toEqual(BYTES)
+    })
+
+    it.each(['clip_01-v2.mp4', `${'a'.repeat(116)}.mp4`, 'logo-1234.png'])(
+      'preserves the already valid handle %s',
+      async (name) => {
+        fetchMock.mockResolvedValueOnce(jsonResponse({ name }))
+        expect(await client.upload({ name, content: BYTES })).toMatchObject({ ok: true, data: { name } })
+        expect(new URL(String(fetchMock.mock.calls[0][0])).searchParams.get('name')).toBe(name)
+      }
+    )
+
+    it.each(['', '   '])('rejects an empty upload name %j without sending', async (name) => {
+      expect(await client.upload({ name, content: BYTES })).toMatchObject({
+        ok: false,
+        error: { category: 'validation' }
+      })
+      expect(fetchMock).not.toHaveBeenCalled()
+    })
+
     it('rejects content larger than 500 MiB (524288000 bytes) before sending', async () => {
       const result = await client.upload({ name: 'big.bin', content: new Uint8Array(524288001) })
       expect(result.ok).toBe(false)

@@ -19,6 +19,7 @@ customizations:
     # 资料输出复用受控临时文件 API；移除和切会话取消解析，晚返回任务不得遗留；润色与分析互斥，源内容或设置变化清除旧分析。
     # 会话安全草稿仅缓存需求、模型 ID 和设置；视频无消息任务不复用或清理，资料及 Logo 重开需重选；示例不提交，实际设置快照与 600 秒门禁接前置分析。
     # Logo 上传生成 logo-UUID 合法句柄并保留图片后缀，草稿/界面保留原文件名；解析沿用上传响应句柄，兼容中文、特殊字符及超长文件名。
+    # 统一 /upload 出口将非法素材名转换为 media-UUID 加安全扩展名（ASCII 字母数字且最多16位），合法的1–120字符句柄原样保留；页面与Agent上传均覆盖，原名、字节及服务端响应句柄不改写。
     # parse 在主进程保存并合并全量输入；返修新 run 前归档真实任务产物，历史 run 仅开放只读，审核文件重新取可信快照。
     # job 运行态按已确认提交恢复 parse/video/assemble 阶段，解析不得误作生成；成片按生成回执识别，设置版本不跨 run 继承。
     # runtime 拒绝工业 enqueue/steer；每轮固定 token 绑定连接、发送和 MCP，审核绑定 epoch，跨轮关闭旧连接。
@@ -45,6 +46,7 @@ customizations:
       - src/renderer/components/chat/messages/frame/MessageMenuBar.tsx
       - src/renderer/components/chat/messages/frame/MessageMenuBarToolbarRenderers.tsx
       - src/renderer/components/chat/messages/frame/MessageTokens.tsx
+      - src/main/features/industrialVideo/IndustrialVideoClient.ts
       - src/main/features/industrialVideo/IndustrialVideoRevision.ts
       - src/main/features/industrialVideo/IndustrialVideoService.ts
       - src/shared/ipc/schemas/fileProcessing.ts
@@ -67,6 +69,7 @@ customizations:
       - src/renderer/pages/industrialVideo/IndustrialVideoSettingsForm.test.tsx
       - src/renderer/pages/industrialVideo/industrialVideoSettings.test.ts
       - src/renderer/pages/industrialVideo/industrialVideoWorkflow.test.ts
+      - src/main/features/industrialVideo/IndustrialVideoClient.test.ts
       - src/main/features/industrialVideo/IndustrialVideoRevision.test.ts
       - src/main/features/industrialVideo/IndustrialVideoService.test.ts
       - src/renderer/pages/industrialVideo/industrialVideoPreparation.test.ts
