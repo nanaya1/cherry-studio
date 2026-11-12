@@ -11,7 +11,12 @@ import { USER_DATA_RELOCATION_VALIDATION_REASONS } from '../../types/userDataRel
 import { defineRoute } from '../define'
 
 const relocationInspectionSchema = z.discriminatedUnion('valid', [
-  z.object({ valid: z.literal(true), targetEmpty: z.boolean() }),
+  z.object({
+    valid: z.literal(true),
+    targetEmpty: z.boolean(),
+    copyRequired: z.boolean().optional(),
+    sourcePath: z.string().optional()
+  }),
   z.object({ valid: z.literal(false), reason: z.enum(USER_DATA_RELOCATION_VALIDATION_REASONS) })
 ])
 

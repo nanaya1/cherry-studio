@@ -3951,6 +3951,7 @@
   "settings.data.app_data.new_path": "新しいパス",
   "settings.data.app_data.open": "オープンフォルダー",
   "settings.data.app_data.original_path": "元のパス",
+  "settings.data.app_data.packaged_only": "データディレクトリの変更はパッケージ版アプリでのみ利用でき、開発実行では利用できません。",
   "settings.data.app_data.path_change_failed": "データフォルダーの変更に失敗しました",
   "settings.data.app_data.restart_notice": "変更を適用するには、アプリを再起動する必要があります。",
   "settings.data.app_data.select": "フォルダーを変更",

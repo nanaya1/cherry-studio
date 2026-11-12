@@ -3951,6 +3951,7 @@
   "settings.data.app_data.new_path": "Новый путь",
   "settings.data.app_data.open": "Открыть каталог",
   "settings.data.app_data.original_path": "Исходный путь",
+  "settings.data.app_data.packaged_only": "Изменение каталога данных доступно только в упакованном приложении, но не в режиме разработки.",
   "settings.data.app_data.path_change_failed": "Не удалось изменить каталог данных",
   "settings.data.app_data.restart_notice": "Для применения изменений может потребоваться несколько перезапусков приложения",
   "settings.data.app_data.select": "Изменить каталог",

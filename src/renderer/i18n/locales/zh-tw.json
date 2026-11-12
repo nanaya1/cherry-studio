@@ -3951,6 +3951,7 @@
   "settings.data.app_data.new_path": "新路徑",
   "settings.data.app_data.open": "開啟目錄",
   "settings.data.app_data.original_path": "原始路徑",
+  "settings.data.app_data.packaged_only": "僅封裝應用程式支援變更資料目錄，開發執行模式不支援此操作。",
   "settings.data.app_data.path_change_failed": "資料目錄變更失敗",
   "settings.data.app_data.restart_notice": "變更資料目錄後可能需要重新啟動應用程式才能生效",
   "settings.data.app_data.select": "變更目錄",

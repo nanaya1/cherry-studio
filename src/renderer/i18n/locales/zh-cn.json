@@ -3951,6 +3951,7 @@
   "settings.data.app_data.new_path": "新路径",
   "settings.data.app_data.open": "打开目录",
   "settings.data.app_data.original_path": "原始路径",
+  "settings.data.app_data.packaged_only": "仅打包应用支持更改数据目录，开发运行不支持此操作。",
   "settings.data.app_data.path_change_failed": "数据目录更改失败",
   "settings.data.app_data.restart_notice": "应用可能会重启多次以应用更改",
   "settings.data.app_data.select": "修改目录",

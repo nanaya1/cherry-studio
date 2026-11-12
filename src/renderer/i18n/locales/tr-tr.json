@@ -3951,6 +3951,7 @@
   "settings.data.app_data.new_path": "Yeni Yol",
   "settings.data.app_data.open": "Dizini Aç",
   "settings.data.app_data.original_path": "Özgün Yol",
+  "settings.data.app_data.packaged_only": "Veri dizini yalnızca paketlenmiş uygulamada değiştirilebilir, geliştirme modunda değiştirilemez.",
   "settings.data.app_data.path_change_failed": "Veri dizini değiştirilemedi",
   "settings.data.app_data.restart_notice": "Değişikliklerin uygulanması için uygulamanın birkaç kez yeniden başlatılması gerekebilir",
   "settings.data.app_data.select": "Dizini Değiştir",

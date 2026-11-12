@@ -3951,6 +3951,7 @@
   "settings.data.app_data.new_path": "Nueva ruta",
   "settings.data.app_data.open": "Abrir carpeta",
   "settings.data.app_data.original_path": "Ruta original",
+  "settings.data.app_data.packaged_only": "Solo se puede cambiar el directorio de datos en la aplicación empaquetada, no en modo de desarrollo.",
   "settings.data.app_data.path_change_failed": "Error al cambiar la carpeta de datos",
   "settings.data.app_data.restart_notice": "La aplicación podría reiniciarse varias veces para aplicar los cambios",
   "settings.data.app_data.select": "Cambiar carpeta",

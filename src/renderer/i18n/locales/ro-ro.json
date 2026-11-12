@@ -3951,6 +3951,7 @@
   "settings.data.app_data.new_path": "Cale nouă",
   "settings.data.app_data.open": "Director Deschis",
   "settings.data.app_data.original_path": "Cale originală",
+  "settings.data.app_data.packaged_only": "Schimbarea directorului de date este disponibilă doar în aplicația împachetată, nu în modul de dezvoltare.",
   "settings.data.app_data.path_change_failed": "Schimbarea directorului de date a eșuat",
   "settings.data.app_data.restart_notice": "Aplicația poate necesita repornirea de mai multe ori pentru a aplica modificările",
   "settings.data.app_data.select": "Modifică directorul",

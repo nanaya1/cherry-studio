@@ -8,6 +8,26 @@ policy:
   require_tests: true
   preserve_original_code_by_comment: true
 customizations:
+  - id: data-root-relocation-safety
+    title: 数据目录复制迁移与失败恢复安全
+    owner: main
+    behavior: inspect和request按可信profile的dataRoot共用保护树和空目标规则；保留packaged限制并在选择目录前明确提示开发运行不支持。复制使用可写非截断句柄真实sync；已有空目标提升前复检且仅非递归rmdir，非空及链接不得覆盖。提升前携带任务归属，清理只删除同任务工件。请求先持久化且失败恢复内存，不替换未完成任务；提交失败持久failed并仅在原锁定源可用时交回正常启动恢复，不前置严格registry校验掩盖原有恢复流程；提交后保留新根和cleanup-pending。界面仅显示固定诊断码及本地化原因，不泄露原始路径异常。生成schema不手改。同步预检与异步执行共用被检查路径所属卷根至叶子的链接检查（包含卷根及UNC share根），不得将跨盘relative绝对结果拆分拼到源盘；覆盖同盘、C到D、D到C、空或缺失目标、junction拒绝与提交失败恢复，failed仅由新UI请求按既有语义覆盖。
+    markers:
+      - MEA:data-root-relocation-safety
+    touchpoints:
+      - src/main/services/dataRootRelocation.ts
+      - src/main/services/userDataRelocation/index.ts
+      - src/shared/types/userDataRelocation.ts
+      - src/shared/ipc/schemas/app.ts
+      - src/main/ipc/handlers/app.ts
+      - src/main/main.ts
+      - src/renderer/pages/settings/DataSettings/BasicDataSettings.tsx
+      - src/renderer/i18n/locales
+    tests:
+      - src/main/services/__tests__/dataRootRelocation.test.ts
+      - src/main/services/__tests__/dataRootRelocation.bootConfig.test.ts
+      - src/main/ipc/handlers/__tests__/app.test.ts
+      - src/renderer/pages/settings/DataSettings/__tests__/BasicDataSettings.test.tsx
   - id: profile-logout-robustness
     title: 退出登录主动取消 MCP 并仅在清理失败时自动重启
     owner: main

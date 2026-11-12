@@ -3951,6 +3951,7 @@
   "settings.data.app_data.new_path": "Novo Caminho",
   "settings.data.app_data.open": "Pasta Aberto",
   "settings.data.app_data.original_path": "Caminho Original",
+  "settings.data.app_data.packaged_only": "A alteração do diretório de dados só está disponível na aplicação empacotada, não no modo de desenvolvimento.",
   "settings.data.app_data.path_change_failed": "Falha ao alterar a pasta de dados",
   "settings.data.app_data.restart_notice": "A aplicação pode reiniciar várias vezes para aplicar as alterações",
   "settings.data.app_data.select": "Modificar Pasta",

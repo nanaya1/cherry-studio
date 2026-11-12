@@ -3951,6 +3951,7 @@
   "settings.data.app_data.new_path": "Νέα διαδρομή",
   "settings.data.app_data.open": "Ανοιχτός Κατάλογος",
   "settings.data.app_data.original_path": "Αρχική διαδρομή",
+  "settings.data.app_data.packaged_only": "Η αλλαγή του καταλόγου δεδομένων διατίθεται μόνο στη συσκευασμένη εφαρμογή, όχι σε λειτουργία ανάπτυξης.",
   "settings.data.app_data.path_change_failed": "Η αλλαγή του καταλόγου δεδομένων απέτυχε",
   "settings.data.app_data.restart_notice": "Η εφαρμογή μπορεί να επανεκκινήσει πολλές φορές για να εφαρμοστούν οι αλλαγές",
   "settings.data.app_data.select": "Αλλαγή καταλόγου",

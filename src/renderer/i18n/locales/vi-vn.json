@@ -3951,6 +3951,7 @@
   "settings.data.app_data.new_path": "Đường dẫn mới",
   "settings.data.app_data.open": "Mở thư mục",
   "settings.data.app_data.original_path": "Đường dẫn ban đầu",
+  "settings.data.app_data.packaged_only": "Chỉ có thể đổi thư mục dữ liệu trong ứng dụng đã đóng gói, không hỗ trợ khi chạy ở chế độ phát triển.",
   "settings.data.app_data.path_change_failed": "Không thể thay đổi thư mục dữ liệu",
   "settings.data.app_data.restart_notice": "Ứng dụng có thể cần khởi động lại nhiều lần để áp dụng các thay đổi",
   "settings.data.app_data.select": "Sửa đổi thư mục",

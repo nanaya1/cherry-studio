@@ -3951,6 +3951,7 @@
   "settings.data.app_data.new_path": "Neuer Pfad",
   "settings.data.app_data.open": "Offenes Verzeichnis",
   "settings.data.app_data.original_path": "Ursprünglicher Pfad",
+  "settings.data.app_data.packaged_only": "Das Datenverzeichnis kann nur in der gepackten App geändert werden, nicht im Entwicklungsmodus.",
   "settings.data.app_data.path_change_failed": "Datenverzeichnisänderung fehlgeschlagen",
   "settings.data.app_data.restart_notice": "Anwendung kann mehrmals neu starten um Änderungen anzuwenden",
   "settings.data.app_data.select": "Verzeichnis ändern",

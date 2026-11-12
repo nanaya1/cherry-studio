@@ -3951,6 +3951,7 @@
   "settings.data.app_data.new_path": "Nouveau chemin",
   "settings.data.app_data.open": "Ouvrir le dossier",
   "settings.data.app_data.original_path": "Chemin d'origine",
+  "settings.data.app_data.packaged_only": "Le répertoire de données ne peut être modifié que dans l’application empaquetée, pas en mode développement.",
   "settings.data.app_data.path_change_failed": "Échec de la modification du répertoire de données",
   "settings.data.app_data.restart_notice": "L'application pourrait redémarrer plusieurs fois pour appliquer les modifications",
   "settings.data.app_data.select": "Modifier le répertoire",
