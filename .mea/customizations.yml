@@ -9,7 +9,8 @@ policy:
   preserve_original_code_by_comment: true
 customizations:
   - id: industrial-video
-    # 保留普通工具链；新任务可选专用编排，按会话固定模式，服务端审核与计费仍须用户确认。
+    # 原约定：保留普通工具链；新任务可选专用编排，按会话固定模式，服务端审核与计费仍须用户确认。
+    # 当前统一使用普通工具链，不再持久化 execution_mode；服务端审核、计费确认及未知提交门禁保持不变。
     title: 工业视频任务分类、独立导航与本地资料前置分析
     owner: renderer
     # 原行为要求生产服务未接入时明确提示；前后端并行后改为静默禁用制作入口。

@@ -32,7 +32,10 @@ it('会话切换立即撤销旧绑定，迟到响应不能把新会话切回旧�
   const view = renderHook(({ id }) => useIndustrialVideoExecutionMode(id), { initialProps: { id: 'old' } })
   view.rerender({ id: 'new' })
   expect(view.result.current.ready).toBe(false)
-  await waitFor(() => expect(view.result.current.mode).toBe('structured-action'))
+  // 旧 execution_mode 字段不能恢复已停用的专用链路。
+  // await waitFor(() => expect(view.result.current.mode).toBe('structured-action'))
+  await waitFor(() => expect(view.result.current.mode).toBe('native'))
   await act(async () => resolveOld({ execution_mode: 'native' } as never))
-  expect(view.result.current).toMatchObject({ ready: true, mode: 'structured-action' })
+  // expect(view.result.current).toMatchObject({ ready: true, mode: 'structured-action' })
+  expect(view.result.current).toMatchObject({ ready: true, mode: 'native' })
 })
