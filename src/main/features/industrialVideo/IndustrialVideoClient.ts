@@ -33,6 +33,7 @@ export type IndustrialVideoOperation =
   | 'capabilities_get'
   | 'workbench_open'
   | 'workbench_get'
+  | 'tts_options_get'
 
 export interface IndustrialVideoClientConfig {
   /** Base service URL, e.g. http://127.0.0.1:8848. Never read from renderer config. */
@@ -240,6 +241,25 @@ export interface ArtifactReadParams {
   run: string
   path: string
   max_chars?: number
+}
+
+/** tts_options_get 无筛选入参，返回服务端完整语言音色目录。 */
+export type TtsOptionsGetParams = Record<string, never>
+/** 单语言条目；default_voice 为该语言下的默认语音 id。 */
+export interface TtsOptionsLanguage {
+  id: string
+  default_voice: string
+}
+/** 单语音条目：id 为服务端动态非空语音 id，language 为所属语言；其余字段原样保留。 */
+export interface TtsOptionsVoice {
+  id: string
+  language: string
+  [key: string]: unknown
+}
+/** tts_options_get 归一化目录（voices.py 契约）。 */
+export interface TtsOptions {
+  languages: TtsOptionsLanguage[]
+  voices: TtsOptionsVoice[]
 }
 export interface ArtifactReadResult {
   type: string
@@ -590,6 +610,36 @@ export class IndustrialVideoClient {
   async workbenchGet(params: { run: string }): Promise<IndustrialVideoResult<VideoApiRecord>> {
     const result = await this.call('workbench_get', { run: params.run })
     return this.refine(result, (data) => data)
+  }
+
+  /**
+   * 读取服务端语音/语言目录（voices.py 的 tts_options_get）。对服务端字段名做容错：
+   * default_voice/defaultVoice、language/lang 任一均可；其余字段原样保留，输出严格归一为
+   * { languages: [{id,default_voice}], voices: [{id,language,...}] }。
+   */
+  async ttsOptionsGet(_params: TtsOptionsGetParams): Promise<IndustrialVideoResult<TtsOptions>> {
+    const result = await this.call('tts_options_get', {})
+    return this.refine(result, (data) => {
+      const languagesIn = Array.isArray(data.languages) ? data.languages.filter(isRecord) : []
+      const voicesIn = Array.isArray(data.voices) ? data.voices.filter(isRecord) : []
+      const languages: TtsOptionsLanguage[] = languagesIn.map((l) => ({
+        id: typeof l.id === 'string' ? l.id : '',
+        default_voice:
+          typeof l.default_voice === 'string'
+            ? l.default_voice
+            : typeof l.defaultVoice === 'string'
+              ? l.defaultVoice
+              : ''
+      }))
+      const voices: TtsOptionsVoice[] = voicesIn.map((v) => ({
+        id: typeof v.id === 'string' ? v.id : '',
+        language: typeof v.language === 'string' ? v.language : typeof v.lang === 'string' ? v.lang : '',
+        ...Object.fromEntries(
+          Object.entries(v).filter(([k]) => k !== 'id' && k !== 'language' && k !== 'lang')
+        )
+      }))
+      return { languages, voices }
+    })
   }
 
   private async call(

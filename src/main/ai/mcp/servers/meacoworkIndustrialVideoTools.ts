@@ -21,21 +21,26 @@ export interface MeacoworkIndustrialVideoContext {
 }
 
 // ── Contract constants mirrored exactly from `IndustrialVideoService` ─────────
-// `IndustrialVideoVoice` is a `type`-only export there, so the fixed voice enum is re-listed here;
-// it is the verbatim COWORK_HTTP_GUIDE §17.1 set the server rejects anything outside of (422).
+// 原固定六中文语音（COWORK_HTTP_GUIDE §17.1）已停用：服务端现支持动态非空 voice id，MCP 不再枚举限制。
+// 原枚举保留核对：Xiaoxiao/Xiaoyi/Yunxi/Yunjian/Yunyang/YunxiaNeural。
+// const INDUSTRIAL_VIDEO_VOICES = ['zh-CN-XiaoxiaoNeural','zh-CN-XiaoyiNeural','zh-CN-YunxiNeural','zh-CN-YunjianNeural','zh-CN-YunyangNeural','zh-CN-YunxiaNeural'] as const
 
-const INDUSTRIAL_VIDEO_VOICES = [
-  'zh-CN-XiaoxiaoNeural',
-  'zh-CN-XiaoyiNeural',
-  'zh-CN-YunxiNeural',
-  'zh-CN-YunjianNeural',
-  'zh-CN-YunyangNeural',
-  'zh-CN-YunxiaNeural'
+/** 叙事风格 canonical 值（按真实服务端 voices.py 核对：auto/industrial/modern/technology/wuxia/historical/ceo_drama/humor/emotional）。 */
+const INDUSTRIAL_VIDEO_NARRATIVE_STYLES = [
+  'auto',
+  'industrial',
+  'modern',
+  'technology',
+  'wuxia',
+  'historical',
+  'ceo_drama',
+  'humor',
+  'emotional'
 ] as const
 
 /** Settings block shared by `parse` / `estimate` / `start` — field names match the Service contract. */
 const videoSettingsFields = {
-  voice: z.enum(INDUSTRIAL_VIDEO_VOICES).optional(),
+  voice: z.string().min(1).optional(),
   aspectRatio: z.enum(['16:9', '9:16', '1:1']).optional(),
   style: z.enum(['marketing', 'training']).optional(),
   targetDurationS: z.number().nullable().optional(),
@@ -44,7 +49,9 @@ const videoSettingsFields = {
   subtitleEnabled: z.boolean().nullable().optional(),
   backgroundMusicEnabled: z.boolean().nullable().optional(),
   withAudio: z.boolean().nullable().optional(),
-  expectedSettingsVersion: z.number().int().optional()
+  expectedSettingsVersion: z.number().int().optional(),
+  language: z.string().min(1).optional(),
+  narrativeStyle: z.enum(INDUSTRIAL_VIDEO_NARRATIVE_STYLES).optional()
 } as const
 
 // ── Per-operation input schemas (strict: only the declared Service fields) ───
@@ -149,6 +156,8 @@ const DownloadSchema = z.strictObject({
   expectedSize: z.number().int().optional()
 })
 
+const TtsOptionsGetSchema = z.strictObject({})
+
 // ── Tool metadata ────────────────────────────────────────────────────────────
 
 const WORKFLOW_HINT =
@@ -239,6 +248,13 @@ const IVIDEO_TOOLS: readonly Tool[] = [
       'Download one finished artifact into this session’s trusted workspace (path comes from a status/job result). ' +
       WORKFLOW_HINT,
     inputSchema: toMcpInputSchema(DownloadSchema)
+  },
+  {
+    name: 'ivideo_tts_options_get',
+    description:
+      '读取服务端语音/语言目录（tts_options_get）。返回 languages[{id,default_voice}] 与 voices[{id,language,...}]，用于规划阶段选择多语言与叙事风格语音；narrativeStyle 缺省时按服务端现有风格返回。' +
+      WORKFLOW_HINT,
+    inputSchema: toMcpInputSchema(TtsOptionsGetSchema)
   }
 ]
 
@@ -414,7 +430,9 @@ export class MeacoworkIndustrialVideoTools {
             expectedSettingsVersion: a.expectedSettingsVersion,
             texts: a.texts,
             media: a.media,
-            logo: a.logo
+            logo: a.logo,
+            language: a.language ?? null,
+            narrativeStyle: a.narrativeStyle ?? null
           })
           return okResult({ ...data, run: service.getRecords({ sessionId })?.run ?? a.run })
         }
@@ -432,7 +450,9 @@ export class MeacoworkIndustrialVideoTools {
             subtitleEnabled: a.subtitleEnabled,
             backgroundMusicEnabled: a.backgroundMusicEnabled,
             withAudio: a.withAudio,
-            expectedSettingsVersion: a.expectedSettingsVersion
+            expectedSettingsVersion: a.expectedSettingsVersion,
+            language: a.language ?? null,
+            narrativeStyle: a.narrativeStyle ?? null
           })
           return okResult(data)
         }
@@ -502,6 +522,11 @@ export class MeacoworkIndustrialVideoTools {
             expectedSize: a.expectedSize
           })
           return okResult(data)
+        }
+        case 'ivideo_tts_options_get': {
+          TtsOptionsGetSchema.parse(args)
+          const data = await service.ttsOptionsGet({ sessionId })
+          return okResult({ languages: data.languages, voices: data.voices })
         }
         default:
           return errorResult(new IpcError('MCP_TOOL_NOT_FOUND', `Unknown industrial-video tool: ${toolName}`))
