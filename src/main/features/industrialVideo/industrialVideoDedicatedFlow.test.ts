@@ -36,13 +36,23 @@ function fixture(
     return { ok: true }
   })
   const review = vi.fn<() => Promise<boolean>>(async () => false)
-  const workbenchOpen = vi.fn<(run: string, embed: boolean) => Promise<{ workbenchUrl: string }>>(
-    async (run) => ({ workbenchUrl: `https://wb.example/${run}` })
-  )
-  const workbenchGet = vi.fn<(run: string) => Promise<{ approved: boolean; generatable: boolean; blockers: string[]; raw: Record<string, unknown> }>>(
-    async () => ({ approved: false, generatable: false, blockers: [], raw: {} })
-  )
-  const deps = { model, call, getRecord: () => record, review, workbenchOpen, workbenchGet, signal: new AbortController().signal }
+  const workbenchOpen = vi.fn<(run: string, embed: boolean) => Promise<{ workbenchUrl: string }>>(async (run) => ({
+    workbenchUrl: `https://wb.example/${run}`
+  }))
+  const workbenchGet = vi.fn<
+    (
+      run: string
+    ) => Promise<{ approved: boolean; generatable: boolean; blockers: string[]; raw: Record<string, unknown> }>
+  >(async () => ({ approved: false, generatable: false, blockers: [], raw: {} }))
+  const deps = {
+    model,
+    call,
+    getRecord: () => record,
+    review,
+    workbenchOpen,
+    workbenchGet,
+    signal: new AbortController().signal
+  }
   return {
     deps,
     calls,
@@ -126,7 +136,12 @@ describe('工业专属固定编排', () => {
   it('生成意图按服务端工作台已批准且可生成时 submit 一次', async () => {
     const f = fixture([{ intent: 'generate' }])
     f.setRecord({ run: 'r1', jobId: null, rounds: [], unknownSubmissions: [] })
-    f.workbenchGet.mockResolvedValue({ approved: true, generatable: true, blockers: [], raw: { generation_allowed: true } })
+    f.workbenchGet.mockResolvedValue({
+      approved: true,
+      generatable: true,
+      blockers: [],
+      raw: { generation_allowed: true }
+    })
     const original = f.call.getMockImplementation()!
     let generating = false
     f.call.mockImplementation(async (tool) => {
@@ -186,11 +201,14 @@ describe('工业专属固定编排', () => {
     f.setRecord({
       run: 'r1',
       jobId: 'v1',
-      rounds: [{ version: 1, operation: 'video_start', run: 'r1', jobId: 'v1', state: 'generating', requestId: 'r', at: 0, outcome: 'ok' }],
+      // rounds: [{ version: 1, operation: 'video_start', run: 'r1', jobId: 'v1', state: 'generating', requestId: 'r', at: 0, outcome: 'ok' }],
+      rounds: [{ operation: 'video_start', run: 'r1', jobId: 'v1', outcome: 'ok' }],
       unknownSubmissions: []
     })
     const original = f.call.getMockImplementation()!
-    f.call.mockImplementation(async (tool) => (tool === 'ivideo_status' ? { run: 'r1', status: 'done', stage: 'video' } : original(tool)))
+    f.call.mockImplementation(async (tool) =>
+      tool === 'ivideo_status' ? { run: 'r1', status: 'done', stage: 'video' } : original(tool)
+    )
     const text = await runIndustrialVideoDedicatedFlow('生成', f.deps)
     expect(f.workbenchGet).not.toHaveBeenCalled()
     expect(f.calls).not.toContain('ivideo_start')

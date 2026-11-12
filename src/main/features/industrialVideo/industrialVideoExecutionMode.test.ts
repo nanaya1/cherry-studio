@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { BaseService } from '@main/core/lifecycle'
 import type { AgentSessionEntity } from '@shared/data/api/schemas/agentSessions'
 import type { IndustrialVideoProductionRecord } from '@shared/data/cache/cacheValueTypes'
-import { industrialVideoRequestSchemas } from '@shared/ipc/schemas/industrialVideo'
+// import { industrialVideoRequestSchemas } from '@shared/ipc/schemas/industrialVideo'
 
 import { IndustrialVideoService } from './IndustrialVideoService'
 
@@ -47,8 +47,9 @@ function expectCode(fn: () => void, code: string): void {
   expect((thrown as { code?: string }).code).toBe(code)
 }
 
-describe('industrial video trusted execution mode', () => {
-  it('dedicated-flow显式绑定可持久化且不能切换旧模式', () => {
+describe('industrial video round execution guard', () => {
+  // MEA:industrial-video 旧模式绑定已由统一工具链替代，保留历史测试供回溯。
+  /* it('dedicated-flow显式绑定可持久化且不能切换旧模式', () => {
     const { service } = makeService(makeSession())
     service.bindExecutionMode({ sessionId: 's1', mode: 'dedicated-flow' })
     expect(service.getExecutionMode({ sessionId: 's1' })).toBe('dedicated-flow')
@@ -68,7 +69,7 @@ describe('industrial video trusted execution mode', () => {
     const legacy = { ...record }
     delete legacy.execution_mode
     expect(schema.safeParse(legacy).success).toBe(true)
-  })
+  }) */
 
   it('无业务副作用可释放轮次，但未知提交不能被释放或开启新轮', () => {
     const { service } = makeService(makeSession())
@@ -95,7 +96,12 @@ describe('industrial video trusted execution mode', () => {
     expectCode(() => service.beginRound({ sessionId: 's1' }), 'IVIDEO_RECONCILE_REQUIRED')
   })
 
-  it('refuses to bind a non-industrial session (general)', () => {
+  it('refuses to begin a round for a non-industrial session', () => {
+    const { service } = makeService(makeSession({ featureKind: 'general' }))
+    expectCode(() => service.beginRound({ sessionId: 's1' }), 'IVIDEO_SESSION_INVALID')
+  })
+
+  /* it('refuses to bind a non-industrial session (general)', () => {
     const { service } = makeService(makeSession({ featureKind: 'general' }))
     expectCode(
       () => service.bindExecutionMode({ sessionId: 's1', mode: 'structured-action' }),
@@ -120,5 +126,5 @@ describe('industrial video trusted execution mode', () => {
     expectCode(() => service.bindExecutionMode({ sessionId: 's1', mode: 'native' }), 'IVIDEO_MODE_FROZEN')
     // The previously frozen mode survives the rejected attempt.
     expect(service.getExecutionMode({ sessionId: 's1' })).toBe('structured-action')
-  })
+  }) */
 })

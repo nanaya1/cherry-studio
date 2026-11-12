@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react'
 
 import { ipcApi } from '@renderer/ipc'
 import type { IndustrialVideoExecutionMode } from '@shared/ai/industrialVideoExecutionMode'
-import type { IndustrialVideoProductionRecord } from '@shared/data/cache/cacheValueTypes'
+// import type { IndustrialVideoProductionRecord } from '@shared/data/cache/cacheValueTypes'
 
-// MEA:industrial-video 分流只信任 main 绑定；读取完成前不得挂载会自动推进的专用编排。
+// MEA:industrial-video 统一工具链不再读取旧模式绑定，保留记录读取失败时的阻断。
 export function useIndustrialVideoExecutionMode(sessionId?: string) {
   const [binding, setBinding] = useState<{
     sessionId: string
@@ -15,11 +15,12 @@ export function useIndustrialVideoExecutionMode(sessionId?: string) {
     if (!sessionId) return
     let active = true
     void ipcApi.request('industrial_video.get_records', { sessionId }).then(
-      (record) => {
+      () => {
         if (active)
           setBinding({
             sessionId,
-            mode: (record as IndustrialVideoProductionRecord | null)?.execution_mode ?? 'native'
+            // mode: (record as IndustrialVideoProductionRecord | null)?.execution_mode ?? 'native'
+            mode: 'native'
           })
       },
       (cause) => {
