@@ -69,6 +69,24 @@ describe('CallBackServer.waitForAuthCode', () => {
     await expect(server.waitForAuthCode(100)).resolves.toBe('early-code')
   })
 
+  it('cancels authorization waiting without retaining listeners or timers', async () => {
+    const controller = new AbortController()
+    const pending = server.waitForAuthCode(300_000, controller.signal)
+    const assertion = expect(pending).rejects.toThrow('logout')
+    controller.abort(new Error('logout'))
+    await assertion
+    expect(events.listenerCount('auth-code-received')).toBe(0)
+    expect(vi.getTimerCount()).toBe(0)
+    await expect(server.waitForAuthCode(300_000, controller.signal)).rejects.toThrow('logout')
+  })
+
+  it('waits for the real callback listener to close', async () => {
+    const listener = await server.getServer
+    await server.close()
+    expect(listener.listening).toBe(false)
+    expect(listener.address()).toBeNull()
+  })
+
   it('close resolves when listen failed so a bind failure can reject first', async () => {
     const failed = new CallBackServer({ port: 99999, path: '/oauth/callback', events: new EventEmitter() })
     await expect(failed.getServer).rejects.toThrow()

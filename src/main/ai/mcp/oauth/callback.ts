@@ -116,7 +116,15 @@ export class CallBackServer {
 
   async close() {
     // Listen may have failed (getServer rejected) or close may run twice (timeout + finally).
-    await this.server.then((server) => server.close()).catch(() => undefined)
+    // await this.server.then((server) => server.close()).catch(() => undefined)
+    // MEA:profile-logout-robustness 等待监听器真正关闭，而非只发出关闭请求。
+    const server = await this.server.catch(() => undefined)
+    if (server?.listening) {
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()))
+        server.closeAllConnections()
+      })
+    }
   }
 
   /**
@@ -124,18 +132,32 @@ export class CallBackServer {
    * `timeoutMs`. Without the reject path the caller's `await` hangs forever on a
    * cancelled / never-completed callback, leaking the connect attempt and its status.
    */
-  async waitForAuthCode(timeoutMs = 300_000): Promise<string> {
+  // async waitForAuthCode(timeoutMs = 300_000): Promise<string> {
+  async waitForAuthCode(timeoutMs = 300_000, signal?: AbortSignal): Promise<string> {
+    signal?.throwIfAborted()
     if (this.authCode !== undefined) return this.authCode
     return new Promise((resolve, reject) => {
-      const onCode = (code: string) => {
+      const cleanup = () => {
         clearTimeout(timer)
+        this.events.off('auth-code-received', onCode)
+        signal?.removeEventListener('abort', onAbort)
+      }
+      const onCode = (code: string) => {
+        // clearTimeout(timer)
+        cleanup()
         resolve(code)
       }
+      const onAbort = () => {
+        cleanup()
+        reject(signal?.reason)
+      }
       const timer = setTimeout(() => {
-        this.events.off('auth-code-received', onCode)
+        // this.events.off('auth-code-received', onCode)
+        cleanup()
         reject(new Error(`Timed out waiting for OAuth authorization code after ${Math.round(timeoutMs / 1000)}s`))
       }, timeoutMs)
       this.events.once('auth-code-received', onCode)
+      signal?.addEventListener('abort', onAbort, { once: true })
     })
   }
 }

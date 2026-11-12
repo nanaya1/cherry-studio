@@ -1,0 +1,176 @@
+diff --git a/dist/cjs/client/sse.js b/dist/cjs/client/sse.js
+index 8ca8dad652e76c299927f836cf622c0be877e1d4..c367c08c888a9b4dd707380d5e6029db7d265365 100644
+--- a/dist/cjs/client/sse.js
++++ b/dist/cjs/client/sse.js
+@@ -27,7 +27,16 @@ class SSEClientTransport {
+         this._requestInit = opts?.requestInit;
+         this._authProvider = opts?.authProvider;
+         this._fetch = opts?.fetch;
+-        this._fetchWithInit = (0, transport_js_1.createFetchWithInit)(opts?.fetch, opts?.requestInit);
++        // this._fetchWithInit = (0, transport_js_1.createFetchWithInit)(opts?.fetch, opts?.requestInit);
++        // MEA:profile-logout-robustness 关闭必须结束启动等待，并取消 OAuth 网络请求。
++        this._abortController = new AbortController();
++        this._fetchWithInit = (0, transport_js_1.createFetchWithInit)((url, init) => {
++            this._abortController.signal.throwIfAborted();
++            return (this._fetch ?? fetch)(url, {
++                ...init,
++                signal: init?.signal ? AbortSignal.any([init.signal, this._abortController.signal]) : this._abortController.signal
++            });
++        }, opts?.requestInit);
+     }
+     async _authThenStart() {
+         if (!this._authProvider) {
+@@ -49,6 +58,7 @@ class SSEClientTransport {
+         if (result !== 'AUTHORIZED') {
+             throw new auth_js_1.UnauthorizedError();
+         }
++        this._abortController.signal.throwIfAborted();
+         return await this._startOrAuth();
+     }
+     async _commonHeaders() {
+@@ -70,14 +80,21 @@ class SSEClientTransport {
+     }
+     _startOrAuth() {
+         const fetchImpl = (this?._eventSourceInit?.fetch ?? this._fetch ?? fetch);
++        const signal = this._abortController.signal;
++        signal.throwIfAborted();
++        let onAbort;
+         return new Promise((resolve, reject) => {
++            onAbort = () => reject(signal.reason);
++            signal.addEventListener('abort', onAbort, { once: true });
+             this._eventSource = new eventsource_1.EventSource(this._url.href, {
+                 ...this._eventSourceInit,
+                 fetch: async (url, init) => {
+                     const headers = await this._commonHeaders();
++                    signal.throwIfAborted();
+                     headers.set('Accept', 'text/event-stream');
+                     const response = await fetchImpl(url, {
+                         ...init,
++                        signal: init?.signal ? AbortSignal.any([init.signal, signal]) : signal,
+                         headers
+                     });
+                     if (response.status === 401 && response.headers.has('www-authenticate')) {
+@@ -88,7 +105,8 @@ class SSEClientTransport {
+                     return response;
+                 }
+             });
+-            this._abortController = new AbortController();
++            // this._abortController = new AbortController();
++            // MEA:profile-logout-robustness OAuth 重试共用关闭信号，不能复活已关闭连接。
+             this._eventSource.onerror = event => {
+                 if (event.code === 401 && this._authProvider) {
+                     this._authThenStart().then(resolve, reject);
+@@ -129,12 +147,13 @@ class SSEClientTransport {
+                 }
+                 this.onmessage?.(message);
+             };
+-        });
++        }).finally(() => signal.removeEventListener('abort', onAbort));
+     }
+     async start() {
+         if (this._eventSource) {
+             throw new Error('SSEClientTransport already started! If using Client class, note that connect() calls start() automatically.');
+         }
++        this._abortController.signal.throwIfAborted();
+         return await this._startOrAuth();
+     }
+     /**
+@@ -156,7 +175,9 @@ class SSEClientTransport {
+         }
+     }
+     async close() {
+-        this._abortController?.abort();
++        if (this._abortController.signal.aborted) return;
++        this._abortController.abort(new DOMException('SSE transport closed', 'AbortError'));
++        // this._abortController?.abort();
+         this._eventSource?.close();
+         this.onclose?.();
+     }
+diff --git a/dist/esm/client/sse.js b/dist/esm/client/sse.js
+index 58c474156ba4b33090ac092be6f3284e695a7ffd..e9ce84126894b89f99c4e586274f83f5b5aa0b18 100644
+--- a/dist/esm/client/sse.js
++++ b/dist/esm/client/sse.js
+@@ -23,7 +23,16 @@ export class SSEClientTransport {
+         this._requestInit = opts?.requestInit;
+         this._authProvider = opts?.authProvider;
+         this._fetch = opts?.fetch;
+-        this._fetchWithInit = createFetchWithInit(opts?.fetch, opts?.requestInit);
++        // this._fetchWithInit = createFetchWithInit(opts?.fetch, opts?.requestInit);
++        // MEA:profile-logout-robustness 关闭必须结束启动等待，并取消 OAuth 网络请求。
++        this._abortController = new AbortController();
++        this._fetchWithInit = createFetchWithInit((url, init) => {
++            this._abortController.signal.throwIfAborted();
++            return (this._fetch ?? fetch)(url, {
++                ...init,
++                signal: init?.signal ? AbortSignal.any([init.signal, this._abortController.signal]) : this._abortController.signal
++            });
++        }, opts?.requestInit);
+     }
+     async _authThenStart() {
+         if (!this._authProvider) {
+@@ -45,6 +54,7 @@ export class SSEClientTransport {
+         if (result !== 'AUTHORIZED') {
+             throw new UnauthorizedError();
+         }
++        this._abortController.signal.throwIfAborted();
+         return await this._startOrAuth();
+     }
+     async _commonHeaders() {
+@@ -66,14 +76,21 @@ export class SSEClientTransport {
+     }
+     _startOrAuth() {
+         const fetchImpl = (this?._eventSourceInit?.fetch ?? this._fetch ?? fetch);
++        const signal = this._abortController.signal;
++        signal.throwIfAborted();
++        let onAbort;
+         return new Promise((resolve, reject) => {
++            onAbort = () => reject(signal.reason);
++            signal.addEventListener('abort', onAbort, { once: true });
+             this._eventSource = new EventSource(this._url.href, {
+                 ...this._eventSourceInit,
+                 fetch: async (url, init) => {
+                     const headers = await this._commonHeaders();
++                    signal.throwIfAborted();
+                     headers.set('Accept', 'text/event-stream');
+                     const response = await fetchImpl(url, {
+                         ...init,
++                        signal: init?.signal ? AbortSignal.any([init.signal, signal]) : signal,
+                         headers
+                     });
+                     if (response.status === 401 && response.headers.has('www-authenticate')) {
+@@ -84,7 +101,8 @@ export class SSEClientTransport {
+                     return response;
+                 }
+             });
+-            this._abortController = new AbortController();
++            // this._abortController = new AbortController();
++            // MEA:profile-logout-robustness OAuth 重试共用关闭信号，不能复活已关闭连接。
+             this._eventSource.onerror = event => {
+                 if (event.code === 401 && this._authProvider) {
+                     this._authThenStart().then(resolve, reject);
+@@ -125,12 +143,13 @@ export class SSEClientTransport {
+                 }
+                 this.onmessage?.(message);
+             };
+-        });
++        }).finally(() => signal.removeEventListener('abort', onAbort));
+     }
+     async start() {
+         if (this._eventSource) {
+             throw new Error('SSEClientTransport already started! If using Client class, note that connect() calls start() automatically.');
+         }
++        this._abortController.signal.throwIfAborted();
+         return await this._startOrAuth();
+     }
+     /**
+@@ -152,7 +171,9 @@ export class SSEClientTransport {
+         }
+     }
+     async close() {
+-        this._abortController?.abort();
++        if (this._abortController.signal.aborted) return;
++        this._abortController.abort(new DOMException('SSE transport closed', 'AbortError'));
++        // this._abortController?.abort();
+         this._eventSource?.close();
+         this.onclose?.();
+     }
