@@ -24,8 +24,6 @@ export const industrialVideoHandlers: IpcHandlersFor<typeof industrialVideoReque
     application.get('IndustrialVideoService').reviewSnapshotGet(input),
   'industrial_video.review_confirm': async (input) => application.get('IndustrialVideoService').reviewConfirm(input),
   'industrial_video.config_status': async () => application.get('IndustrialVideoService').configStatus(),
-  'industrial_video.tts_options_get': async (input) =>
-    application.get('IndustrialVideoService').ttsOptionsGet({ sessionId: input.sessionId }),
   'industrial_video.run_create': async (input) => application.get('IndustrialVideoService').runCreate(input),
   'industrial_video.parse': async (input) =>
     application.get('IndustrialVideoService').parse({
@@ -44,7 +42,6 @@ export const industrialVideoHandlers: IpcHandlersFor<typeof industrialVideoReque
       backgroundMusicEnabled: input.backgroundMusicEnabled,
       withAudio: input.withAudio,
       expectedSettingsVersion: input.expectedSettingsVersion,
-      language: input.language ?? null,
       narrativeStyle: input.narrativeStyle ?? null
     }),
   'industrial_video.planning_context_get': async (input) =>
@@ -66,7 +63,6 @@ export const industrialVideoHandlers: IpcHandlersFor<typeof industrialVideoReque
       backgroundMusicEnabled: input.backgroundMusicEnabled,
       withAudio: input.withAudio,
       expectedSettingsVersion: input.expectedSettingsVersion,
-      language: input.language ?? null,
       narrativeStyle: input.narrativeStyle ?? null
     }),
   'industrial_video.estimate': async (input) =>
@@ -83,7 +79,6 @@ export const industrialVideoHandlers: IpcHandlersFor<typeof industrialVideoReque
       backgroundMusicEnabled: input.backgroundMusicEnabled,
       withAudio: input.withAudio,
       expectedSettingsVersion: input.expectedSettingsVersion,
-      language: input.language ?? null,
       narrativeStyle: input.narrativeStyle ?? null
     }),
   'industrial_video.assemble': async (input) => application.get('IndustrialVideoService').assemble(input),

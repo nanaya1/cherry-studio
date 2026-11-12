@@ -675,7 +675,6 @@ function IndustrialVideoSessionComposer({
               settings={currentSettings}
               onChange={onSettingsChange}
               logoControl={logoControl}
-              sessionId={sessionId}
             />
           ) : (
             logoControl

@@ -23,10 +23,7 @@ export interface CacheIndustrialVideoSettings {
   ratio: '16:9' | '9:16' | '1:1'
   resolution: '720P' | '1080P'
   style: '工业质感' | '工业写实' | '科技' | '现代' | '武侠' | '古风'
-  language: string
-  // 原固定展示音色联合类型已停用；缓存现保存服务端动态 voice id。
-  // voice: '温柔女声' | '知性女声' | '阳光男声' | '沉稳男声' | '正式男声' | '男孩童声' | '无旁白'
-  voice: string
+  voice: '温柔女声' | '知性女声' | '阳光男声' | '沉稳男声' | '正式男声' | '男孩童声' | '无旁白'
   backgroundMusic: boolean
   subtitle: boolean
   withAudio: boolean

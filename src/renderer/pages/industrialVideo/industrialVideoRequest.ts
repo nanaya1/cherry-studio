@@ -11,8 +11,7 @@ export const INDUSTRIAL_VIDEO_VOICES = {
 
 /** 把展示音色映射为服务端 `voice` ID；`无旁白` 不传 voice（由 `ttsEnabled=false` 表达）。 */
 export function industrialVideoVoiceId(voice: IndustrialVideoVoice) {
-  if (voice === '无旁白') return undefined
-  return INDUSTRIAL_VIDEO_VOICES[voice as keyof typeof INDUSTRIAL_VIDEO_VOICES] ?? voice
+  return voice === '无旁白' ? undefined : INDUSTRIAL_VIDEO_VOICES[voice]
 }
 
 export const INDUSTRIAL_VIDEO_NARRATIVE_STYLES = {
@@ -36,8 +35,8 @@ export function buildIndustrialVideoRequest(run: string, settings: IndustrialVid
     stage: 'video' as const,
     style: settings.type === 'marketing' ? ('marketing' as const) : ('training' as const),
     aspect_ratio: settings.ratio,
-    language: settings.language,
-    voice: industrialVideoVoiceId(settings.voice)
+    language: 'zh-CN',
+    voice: INDUSTRIAL_VIDEO_VOICES[settings.voice]
   }
 }
 
@@ -48,7 +47,6 @@ export interface IndustrialVideoSettingsParams {
   subtitleEnabled: boolean
   backgroundMusicEnabled: boolean
   withAudio: boolean
-  language: string
   narrativeStyle: (typeof INDUSTRIAL_VIDEO_NARRATIVE_STYLES)[IndustrialVideoSettings['style']]
   expectedSettingsVersion?: number
 }
@@ -69,7 +67,6 @@ export function buildIndustrialVideoSettingsParams(
     subtitleEnabled: settings.subtitle,
     backgroundMusicEnabled: settings.backgroundMusic,
     withAudio: settings.withAudio,
-    language: settings.language,
     narrativeStyle: INDUSTRIAL_VIDEO_NARRATIVE_STYLES[settings.style]
   }
   if (typeof expectedSettingsVersion === 'number' && expectedSettingsVersion >= 0) {

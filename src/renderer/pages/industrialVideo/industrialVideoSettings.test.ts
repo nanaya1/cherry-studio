@@ -17,19 +17,12 @@ describe('industrial video input contract', () => {
       ratio: '16:9',
       resolution: '1080P',
       style: '工业质感',
-      language: 'zh-CN',
-      voice: 'zh-CN-YunjianNeural',
+      voice: '沉稳男声',
       backgroundMusic: true,
       subtitle: true,
       withAudio: true
     })
-    expect(assembly).toMatchObject({
-      style: '工业写实',
-      language: 'zh-CN',
-      voice: 'zh-CN-YunjianNeural',
-      backgroundMusic: false,
-      withAudio: true
-    })
+    expect(assembly).toMatchObject({ style: '工业写实', voice: '沉稳男声', backgroundMusic: false, withAudio: true })
     marketing.duration = 90
     expect(createIndustrialVideoSettings('marketing').duration).toBe(30)
   })
@@ -47,20 +40,17 @@ describe('industrial video input contract', () => {
     }
   })
 
-  it.each([
-    ['温柔女声', 'zh-CN-XiaoxiaoNeural'],
-    ['知性女声', 'zh-CN-XiaoyiNeural']
-  ])('maps cached display voice %s to service voice id', (voice, expected) => {
-    expect(normalizeIndustrialVideoSettings({ voice }).voice).toBe(expected)
+  it.each(['温柔女声', '知性女声'])('restores cached unavailable voice %s as a supported voice', (voice) => {
+    expect(normalizeIndustrialVideoSettings({ voice }).voice).toBe('沉稳男声')
   })
 
   it('maps legacy cached voices to current equivalents instead of undefined', () => {
-    expect(normalizeIndustrialVideoVoice('清晰女声')).toBe('zh-CN-XiaoxiaoNeural')
-    expect(normalizeIndustrialVideoVoice('自然中性声')).toBe('zh-CN-YunjianNeural')
-    expect(normalizeIndustrialVideoVoice('阳光男声')).toBe('zh-CN-YunxiNeural')
+    expect(normalizeIndustrialVideoVoice('清晰女声')).toBe('沉稳男声')
+    expect(normalizeIndustrialVideoVoice('自然中性声')).toBe('沉稳男声')
+    expect(normalizeIndustrialVideoVoice('阳光男声')).toBe('阳光男声')
     expect(normalizeIndustrialVideoVoice('无旁白')).toBe('无旁白')
-    expect(normalizeIndustrialVideoVoice('未知音色')).toBe('未知音色')
-    expect(normalizeIndustrialVideoVoice(undefined)).toBe('zh-CN-YunjianNeural')
+    expect(normalizeIndustrialVideoVoice('未知音色')).toBe('沉稳男声')
+    expect(normalizeIndustrialVideoVoice(undefined)).toBe('沉稳男声')
   })
 
   it('clamps unknown cached settings to valid values and keeps withAudio default true', () => {
@@ -71,7 +61,7 @@ describe('industrial video input contract', () => {
       // 缺少 ratio / resolution / style / backgroundMusic / subtitle / withAudio
     })
     expect(normalized.duration).toBe(30)
-    expect(normalized.voice).toBe('zh-CN-XiaoxiaoNeural')
+    expect(normalized.voice).toBe('沉稳男声')
     expect(normalized.withAudio).toBe(true)
     expect(normalized.ratio).toBe('16:9')
   })

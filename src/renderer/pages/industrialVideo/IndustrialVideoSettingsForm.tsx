@@ -1,8 +1,6 @@
 import { ChevronDown } from 'lucide-react'
-import { type ReactNode, useEffect, useId, useMemo, useState } from 'react'
+import { type ReactNode, useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-
-import { ipcApi } from '@renderer/ipc'
 
 import {
   Button,
@@ -27,13 +25,11 @@ import {
 export default function IndustrialVideoSettingsForm({
   settings,
   onChange,
-  logoControl,
-  sessionId
+  logoControl
 }: {
   settings: IndustrialVideoSettings
   onChange: (settings: IndustrialVideoSettings) => void
   logoControl?: ReactNode
-  sessionId?: string
 }) {
   const { t } = useTranslation()
   const id = useId()
@@ -42,25 +38,6 @@ export default function IndustrialVideoSettingsForm({
   const [editingCustomDuration, setEditingCustomDuration] = useState(false)
   const [customDuration, setCustomDuration] = useState(String(settings.duration))
   const [parameterOpen, setParameterOpen] = useState<'ratio' | 'resolution'>()
-  const [ttsOptions, setTtsOptions] = useState<{
-    languages: { id: string; default_voice: string }[]
-    voices: { id: string; language: string; name?: unknown; gender?: unknown }[]
-  }>()
-  useEffect(() => {
-    if (!sessionId) return
-    let active = true
-    void ipcApi
-      .request('industrial_video.tts_options_get', { sessionId })
-      .then((options) => active && setTtsOptions(options))
-      .catch(() => undefined)
-    return () => {
-      active = false
-    }
-  }, [sessionId])
-  const languageVoices = useMemo(
-    () => ttsOptions?.voices.filter((voice) => voice.language === settings.language) ?? [],
-    [settings.language, ttsOptions]
-  )
   const invalidDuration =
     !Number.isInteger(settings.duration) || settings.duration < 1 || settings.duration > MAX_DURATION_SECONDS
   const customDurationValue = Number(customDuration)
@@ -269,45 +246,16 @@ export default function IndustrialVideoSettingsForm({
                 ['武侠', t('industrial_video.style.martial')],
                 ['古风', t('industrial_video.style.classical')]
               ])}
-              <div className="flex flex-col gap-2">
-                <span className="text-xs text-muted-foreground">{t('industrial_video.language')}</span>
-                <div className="flex max-h-28 flex-wrap gap-1.5 overflow-y-auto">
-                  {(ttsOptions?.languages ?? [{ id: 'zh-CN', default_voice: 'zh-CN-YunjianNeural' }]).map((language) => (
-                    <Button
-                      key={language.id}
-                      size="sm"
-                      variant={settings.language === language.id ? 'secondary' : 'ghost'}
-                      aria-pressed={settings.language === language.id}
-                      onClick={() => onChange({ ...settings, language: language.id, voice: language.default_voice })}>
-                      {language.id}
-                    </Button>
-                  ))}
-                </div>
-              </div>
-              <div className="flex flex-col gap-2">
-                <span className="text-xs text-muted-foreground">{t('industrial_video.voice')}</span>
-                <div className="flex max-h-36 flex-col gap-1 overflow-y-auto">
-                  {languageVoices.map((voice) => (
-                    <Button
-                      key={voice.id}
-                      size="sm"
-                      className="justify-start"
-                      variant={settings.voice === voice.id ? 'secondary' : 'ghost'}
-                      aria-pressed={settings.voice === voice.id}
-                      onClick={() => onChange({ ...settings, voice: voice.id })}>
-                      {typeof voice.name === 'string' ? voice.name : voice.id}
-                    </Button>
-                  ))}
-                  <Button
-                    size="sm"
-                    className="justify-start"
-                    variant={settings.voice === '无旁白' ? 'secondary' : 'ghost'}
-                    aria-pressed={settings.voice === '无旁白'}
-                    onClick={() => onChange({ ...settings, voice: '无旁白' })}>
-                    {t('industrial_video.voice.none')}
-                  </Button>
-                </div>
-              </div>
+              {choices('voice', [
+                // 部署版请求枚举暂不接受女声，服务端补齐后恢复。
+                ['温柔女声', t('industrial_video.voice.gentle_female')],
+                ['知性女声', t('industrial_video.voice.knowledge_female')],
+                ['阳光男声', t('industrial_video.voice.sunny_male')],
+                ['沉稳男声', t('industrial_video.voice.male')],
+                ['正式男声', t('industrial_video.voice.formal_male')],
+                ['男孩童声', t('industrial_video.voice.boy')],
+                ['无旁白', t('industrial_video.voice.none')]
+              ])}
               {(['backgroundMusic', 'subtitle', 'withAudio'] as const).map((key) => (
                 <div key={key} className="flex items-center justify-between gap-3">
                   <Label htmlFor={`${id}-${key}`}>

@@ -55,14 +55,25 @@ const ivStoryboardSchema = z
 
 const sessionIdField = z.string().trim().min(1)
 
-// 原固定六中文语音（COWORK_HTTP_GUIDE §17.1）已停用：服务端现支持动态非空 voice id，客户端不再枚举限制。
-// 原枚举保留核对：Xiaoxiao/Xiaoyi/Yunxi/Yunjian/Yunyang/YunxiaNeural。
-// const IV_VOICE_ENUM = ['zh-CN-XiaoxiaoNeural','zh-CN-XiaoyiNeural','zh-CN-YunxiNeural','zh-CN-YunjianNeural','zh-CN-YunyangNeural','zh-CN-YunxiaNeural'] as const
-const ivVoiceSchema = z.string().trim().min(1)
+/**
+ * Fixed voice enum (COWORK_HTTP_GUIDE §17.1). Six Chinese neural voices — the
+ * request contract is fixed; the client never queries a voice/score list. The
+ * server rejects any other value with 422.
+ */
+const ivVoiceSchema = z.enum([
+  'zh-CN-XiaoxiaoNeural',
+  'zh-CN-XiaoyiNeural',
+  'zh-CN-YunxiNeural',
+  'zh-CN-YunjianNeural',
+  'zh-CN-YunyangNeural',
+  'zh-CN-YunxiaNeural'
+])
 
 /**
- * 叙事风格（narrativeStyle）canonical 值，按真实服务端 voices.py 核对：
- * auto/industrial/modern/technology/wuxia/historical/ceo_drama/humor/emotional。
+ * Planning / audio output settings (COWORK_HTTP_GUIDE §17). These are the only
+ * project-output knobs the renderer may submit; each is optional and null/omitted
+ * means "inherit the currently-saved setting" on the server. They are forwarded
+ * verbatim (snake_case) to `video_start` for the `parse`/`video`/`estimate` stages.
  */
 export const ivNarrativeStyleSchema = z.enum([
   'auto',
@@ -75,16 +86,7 @@ export const ivNarrativeStyleSchema = z.enum([
   'humor',
   'emotional'
 ])
-export type IndustrialVideoNarrativeStyle = z.infer<typeof ivNarrativeStyleSchema>
 
-/**
- * Planning / audio output settings (COWORK_HTTP_GUIDE §17). These are the only
- * project-output knobs the renderer may submit; each is optional and null/omitted
- * means "inherit the currently-saved setting" on the server. They are forwarded
- * verbatim (snake_case) to `video_start` for the `parse`/`video`/`estimate` stages.
- * `language` / `narrativeStyle` 同样是规划/叙事参数，按同样规则转发（language→language，
- * narrativeStyle→narrative_style）。
- */
 const ivSettingsShape = {
   targetDurationS: z.number().int().min(1).max(600).nullable().optional(),
   resolution: z.enum(['720P', '1080P']).nullable().optional(),
@@ -93,7 +95,6 @@ const ivSettingsShape = {
   backgroundMusicEnabled: z.boolean().nullable().optional(),
   withAudio: z.boolean().nullable().optional(),
   expectedSettingsVersion: z.number().int().nonnegative().nullable().optional(),
-  language: z.string().min(1).nullable().optional(),
   narrativeStyle: ivNarrativeStyleSchema.nullable().optional()
 }
 
@@ -179,23 +180,6 @@ export const industrialVideoRequestSchemas = {
       })
       .strict(),
     output: z.object({ run: z.string() })
-  }),
-
-  /**
-   * 读取服务端完整语音目录（ivideo/generation/voices.py 的 tts_options_get 契约）。
-   * 输出为类型化目录：languages[{id,default_voice}] 与 voices[{id,language,...}]，
-   * 供渲染层填充语音与语言选择，不暴露任何服务端凭据。
-   */
-  'industrial_video.tts_options_get': defineRoute({
-    input: z
-      .object({
-        sessionId: sessionIdField
-      })
-      .strict(),
-    output: z.object({
-      languages: z.array(z.object({ id: z.string(), default_voice: z.string() })),
-      voices: z.array(z.object({ id: z.string(), language: z.string() }).passthrough())
-    })
   }),
 
   /**

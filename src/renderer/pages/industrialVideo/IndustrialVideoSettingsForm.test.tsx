@@ -24,13 +24,11 @@ function Harness() {
 afterEach(cleanup)
 
 describe('工业视频紧凑设置交互', () => {
-  it('隐藏服务端拒绝的两个女声且默认选中可用音色', async () => {
+  it('恢复固定中文音色且默认选中沉稳男声', async () => {
     render(<Harness />)
     await userEvent.setup().click(screen.getByRole('button', { name: 'industrial_video.appearance' }))
-    expect(screen.queryByRole('button', { name: 'industrial_video.voice.gentle_female' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'industrial_video.voice.knowledge_female' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'industrial_video.voice.male' })).toHaveAttribute('aria-pressed', 'true')
-    for (const voice of ['sunny_male', 'formal_male', 'boy', 'none']) {
+    for (const voice of ['gentle_female', 'knowledge_female', 'sunny_male', 'formal_male', 'boy', 'none']) {
       expect(screen.getByRole('button', { name: `industrial_video.voice.${voice}` })).toBeEnabled()
     }
   })

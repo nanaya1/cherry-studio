@@ -26,7 +26,6 @@ import {
   type IndustrialVideoReviewType,
   type ReviewReceipt,
   type ReviewSnapshot,
-  type TtsOptions,
   type VideoApiRecord,
   IndustrialVideoClient as IndustrialVideoClientImpl
 } from './IndustrialVideoClient'
@@ -55,10 +54,17 @@ function isRecordLike(value: unknown): value is Record<string, unknown> {
 
 type IndustrialVideoOperation = string
 
-// 原固定六中文语音（COWORK_HTTP_GUIDE §17.1）已停用：服务端现支持动态非空 voice id，不再客户端枚举限制。
-// 原枚举保留核对：Xiaoxiao/Xiaoyi/Yunxi/Yunjian/Yunyang/YunxiaNeural。
-// export type IndustrialVideoVoiceEnum = 'zh-CN-XiaoxiaoNeural' | 'zh-CN-XiaoyiNeural' | 'zh-CN-YunxiNeural' | 'zh-CN-YunjianNeural' | 'zh-CN-YunyangNeural' | 'zh-CN-YunxiaNeural'
-export type IndustrialVideoVoice = string
+/**
+ * Fixed voice enum (COWORK_HTTP_GUIDE §17.1). Six Chinese neural voices — the
+ * request contract is fixed and the server rejects anything else with 422.
+ */
+export type IndustrialVideoVoice =
+  | 'zh-CN-XiaoxiaoNeural'
+  | 'zh-CN-XiaoyiNeural'
+  | 'zh-CN-YunxiNeural'
+  | 'zh-CN-YunjianNeural'
+  | 'zh-CN-YunyangNeural'
+  | 'zh-CN-YunxiaNeural'
 
 /** Map a server job `status` string to the host's coarse production state. */
 function mapJobStatus(status: unknown): IndustrialVideoProductionState | null {
@@ -97,7 +103,6 @@ interface VideoStartSettingsInput {
   backgroundMusicEnabled?: boolean | null
   withAudio?: boolean | null
   expectedSettingsVersion?: number | null
-  language?: string | null
   narrativeStyle?: string | null
 }
 
@@ -110,7 +115,6 @@ interface VideoStartSettings {
   background_music_enabled?: boolean | null
   with_audio?: boolean | null
   expected_settings_version?: number | null
-  language?: string | null
   narrative_style?: string | null
 }
 
@@ -123,7 +127,6 @@ function buildVideoStartSettings(input: VideoStartSettingsInput): VideoStartSett
   if (input.backgroundMusicEnabled !== undefined) out.background_music_enabled = input.backgroundMusicEnabled
   if (input.withAudio !== undefined) out.with_audio = input.withAudio
   if (input.expectedSettingsVersion !== undefined) out.expected_settings_version = input.expectedSettingsVersion
-  if (input.language !== undefined) out.language = input.language
   if (input.narrativeStyle !== undefined) out.narrative_style = input.narrativeStyle
   return out
 }
@@ -988,19 +991,6 @@ export class IndustrialVideoService extends BaseService {
     return { configured: this.deps.resolveConfig() !== null }
   }
 
-  /**
-   * 读取服务端完整语音/语言目录（tts_options_get）。只读、不落盘，
-   * 也不覆盖任何已保存参数；归一为类型化目录后交给渲染层。
-   */
-  async ttsOptionsGet(input: { sessionId: string }): Promise<TtsOptions> {
-    const client = this.createClient(this.requireConfig())
-    return this.guardRead({
-      sessionId: input.sessionId,
-      operation: 'tts_options_get',
-      doCall: () => client.ttsOptionsGet({})
-    })
-  }
-
   async snapshotSave(input: {
     sessionId: string
     run: string
@@ -1103,7 +1093,6 @@ export class IndustrialVideoService extends BaseService {
     backgroundMusicEnabled?: boolean | null
     withAudio?: boolean | null
     expectedSettingsVersion?: number | null
-    language?: string | null
     narrativeStyle?: string | null
   }): Promise<{ jobId: string; effectiveSettings?: Record<string, unknown>; settingsVersion?: number }> {
     this.validateSession(input.sessionId)
@@ -1497,7 +1486,6 @@ export class IndustrialVideoService extends BaseService {
     backgroundMusicEnabled?: boolean | null
     withAudio?: boolean | null
     expectedSettingsVersion?: number | null
-    language?: string | null
     narrativeStyle?: string | null
   }): Promise<{
     jobId: string
@@ -1576,7 +1564,6 @@ export class IndustrialVideoService extends BaseService {
     backgroundMusicEnabled?: boolean | null
     withAudio?: boolean | null
     expectedSettingsVersion?: number | null
-    language?: string | null
     narrativeStyle?: string | null
   }): Promise<{
     estimate: Record<string, unknown>

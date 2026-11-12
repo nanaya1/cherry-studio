@@ -501,37 +501,4 @@ describe('IndustrialVideoClient', () => {
     const logged = JSON.stringify([mockMainLoggerService.warn.mock.calls, mockMainLoggerService.error.mock.calls])
     expect(logged).not.toContain(TOKEN)
   })
-
-  it('ttsOptionsGet 归一化 defaultVoice/lang 变体并保留其它字段', async () => {
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse({
-        languages: [
-          { id: 'zh', defaultVoice: 'v-zh' },
-          { id: 'en', default_voice: 'v-en' }
-        ],
-        voices: [
-          { id: 'v-zh', lang: 'zh', label: '中文' },
-          { id: 'v-en', language: 'en', label: 'English' }
-        ]
-      })
-    )
-    const result = await client.ttsOptionsGet({})
-    expect(result.ok).toBe(true)
-    if (!result.ok) throw new Error(result.error.message)
-    expect(result.data.languages).toEqual([
-      { id: 'zh', default_voice: 'v-zh' },
-      { id: 'en', default_voice: 'v-en' }
-    ])
-    expect(result.data.voices).toEqual([
-      { id: 'v-zh', language: 'zh', label: '中文' },
-      { id: 'v-en', language: 'en', label: 'English' }
-    ])
-  })
-
-  it('ttsOptionsGet 读取完整目录且不发送未支持的筛选参数', async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse({ languages: [], voices: [] }))
-    await client.ttsOptionsGet({})
-    expect(fetchMock.mock.calls[0][0]).toBe(`${BASE_URL}/api/video/tts_options_get`)
-    expect(JSON.parse(fetchMock.mock.calls[0][1]?.body as string)).toEqual({})
-  })
 })
