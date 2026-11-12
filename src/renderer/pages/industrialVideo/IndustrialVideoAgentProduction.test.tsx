@@ -10,6 +10,9 @@ import IndustrialVideoAgentProduction from './IndustrialVideoAgentProduction'
 import { IndustrialVideoReviewFilesProvider } from './IndustrialVideoReviewFiles'
 import { useIndustrialVideoProduction } from './useIndustrialVideoProduction'
 
+vi.mock('@renderer/components/WebviewHost', () => ({
+  WebviewHost: ({ src }: { src: string }) => <div data-testid="workbench-browser" data-src={src} />
+}))
 vi.mock('@renderer/ipc', () => ({ ipcApi: { request: vi.fn() } }))
 vi.mock('./useIndustrialVideoProduction', () => ({ useIndustrialVideoProduction: vi.fn() }))
 vi.mock('@renderer/components/FilePreview', () => ({
@@ -43,6 +46,53 @@ it('lets the task toolbar control the preview without polling reopening it', asy
   expect(screen.getByLabelText('成片预览')).toBeVisible()
   await user.click(screen.getByRole('button', { name: '关闭成片预览' }))
   expect(onPreviewOpenChange).toHaveBeenCalledWith(false)
+})
+
+it('工作台交接消息在尚未生成时也能打开已有右侧区域', async () => {
+  const value = production('storyboard_submitted')
+  vi.mocked(useIndustrialVideoProduction).mockReturnValue({
+    ...value,
+    record: { ...value.record!, jobId: null },
+    job: null
+  })
+  function ReviewMessage() {
+    const attachments = useToolResultAttachments()
+    return attachments?.('mcp__meacowork-tools__ivideo_review_snapshot_get', {
+      content: [{ type: 'text', text: '{"ok":true,"workbench_url":"https://example.test/workbench"}' }]
+    })
+  }
+  render(
+    <IndustrialVideoAgentProduction sessionId="s" workbench={<div>服务端工作台内容</div>}>
+      <IndustrialVideoReviewFilesProvider>
+        <ReviewMessage />
+      </IndustrialVideoReviewFilesProvider>
+    </IndustrialVideoAgentProduction>
+  )
+  const link = screen.getByRole('link', { name: '打开脚本工作台' })
+  expect(link).toHaveAttribute('href', 'https://example.test/workbench')
+  expect(screen.queryByTestId('workbench-browser')).toBeNull()
+  await userEvent.click(link)
+  expect(screen.getByTestId('workbench-browser')).toHaveAttribute('data-src', 'https://example.test/workbench')
+  expect(screen.queryByText('服务端工作台内容')).toBeNull()
+  expect(screen.queryByRole('button', { name: '打开服务端工作台' })).toBeNull()
+})
+
+it.each(['canceled', 'cancelled'])('服务端 %s 终态不再显示正在生成', async (status) => {
+  vi.mocked(useIndustrialVideoProduction).mockReturnValue({ ...production(status), job: { run: 'r', status } })
+  render(<IndustrialVideoAgentProduction sessionId="s">消息流</IndustrialVideoAgentProduction>)
+  expect(await screen.findByLabelText('成片预览')).toHaveTextContent('已取消（取消不等于暂停）')
+  expect(screen.queryByText('正在生成分镜视频')).toBeNull()
+})
+
+it('取消待核实时保留真实进度但不宣称已停止或继续生成', async () => {
+  const value = production('generating', { scenes_total: 5, scenes_done: 2 })
+  value.record!.control = { epoch: 1, stopRequested: true, phase: 'reconcile_required' }
+  vi.mocked(useIndustrialVideoProduction).mockReturnValue(value)
+  render(<IndustrialVideoAgentProduction sessionId="s">消息流</IndustrialVideoAgentProduction>)
+  expect(await screen.findByLabelText('成片预览')).toHaveTextContent('已请求取消，正在核实服务端状态')
+  expect(screen.getByLabelText('成片预览')).toHaveTextContent('已完成 2/5 个分镜')
+  expect(screen.queryByText('正在生成分镜视频')).toBeNull()
+  expect(screen.queryByText('任务已停止')).toBeNull()
 })
 
 const refresh = vi.fn(async () => {})

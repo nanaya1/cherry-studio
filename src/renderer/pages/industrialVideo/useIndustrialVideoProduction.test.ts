@@ -30,6 +30,33 @@ beforeEach(() => {
 })
 
 describe('工业视频制作恢复', () => {
+  it('轮询失败保留最后真实进度，重试恢复且不发取消或重提', async () => {
+    let offline = false
+    vi.mocked(ipcApi.request).mockImplementation(async (channel) => {
+      if (channel === 'industrial_video.get_records') return saved('generating') as never
+      if (channel !== 'industrial_video.job_get') throw new Error(`unexpected write: ${channel}`)
+      if (offline) throw new Error('offline')
+      return { run: 'run-1', status: 'running', progress: { scenes_total: 5, scenes_done: 2 } } as never
+    })
+    const { result } = renderHook(() => useIndustrialVideoProduction('session-1'))
+    await waitFor(() => expect(result.current.job?.status).toBe('running'))
+    offline = true
+    await act(async () => result.current.refresh())
+    expect(result.current.error).toBe('offline')
+    expect(result.current.record?.state).toBe('generating')
+    expect(result.current.job?.progress).toEqual({ scenes_total: 5, scenes_done: 2 })
+    expect(result.current.jobError).toBe('')
+    offline = false
+    await act(async () => result.current.refresh())
+    expect(result.current.error).toBe('')
+    expect(result.current.job?.status).toBe('running')
+    expect(
+      vi
+        .mocked(ipcApi.request)
+        .mock.calls.every(([channel]) => ['industrial_video.get_records', 'industrial_video.job_get'].includes(channel))
+    ).toBe(true)
+  })
+
   it('保留失败任务的服务端错误信息和错误码供页面展示', async () => {
     vi.mocked(ipcApi.request).mockImplementation(async (channel) => {
       if (channel === 'industrial_video.get_records') return saved('failed') as never

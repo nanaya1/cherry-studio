@@ -60,7 +60,8 @@ export function IndustrialVideoTaskSurface({
   filePreviewActive?: boolean
   onPreviewOpenChange?: (open: boolean) => void
 }) {
-  const [draft] = usePersistCache(`industrial_video.session_draft.${sessionId}`)
+  // 旧专用页面保留，所有工业会话统一进入通用消息链路。
+  /* const [draft] = usePersistCache(`industrial_video.session_draft.${sessionId}`)
   return draft?.orchestration === 'dedicated' ? (
     <IndustrialVideoOrchestratedTask
       key={sessionId}
@@ -69,9 +70,10 @@ export function IndustrialVideoTaskSurface({
       preview={preview}
       previewOpen={previewOpen}
       filePreviewActive={filePreviewActive}></IndustrialVideoOrchestratedTask>
-  ) : (
-    // children
+  ) : ( */
+  return (
     <IndustrialVideoAgentProduction
+      workbench={preview}
       key={sessionId}
       sessionId={sessionId}
       previewOpen={previewOpen}
@@ -88,8 +90,10 @@ export function IndustrialVideoTaskSurface({
  * 避免同一修改同时进入普通聊天通道与专用编排收件箱造成双链竞争。
  */
 export function IndustrialVideoTaskComposer({ sessionId, children }: { sessionId: string; children: ReactNode }) {
-  const [draft] = usePersistCache(`industrial_video.session_draft.${sessionId}`)
-  return draft?.orchestration === 'dedicated' ? null : children
+  // const [draft] = usePersistCache(`industrial_video.session_draft.${sessionId}`)
+  // return draft?.orchestration === 'dedicated' ? null : children
+  void sessionId
+  return children
 }
 
 /** 非专用会话仍在底部展示 TaskPanel（文档/费用/文件由协作代理负责）；专用会话的 TaskPanel 改挂预览宿主。 */

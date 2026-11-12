@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Button } from '@cherrystudio/ui'
 import { ToolDisclosure } from '@renderer/components/chat/messages/tools/shared/ToolDisclosure'
 import { ToolResultAttachmentsContext } from '@renderer/components/chat/messages/tools/shared/ToolDisplayNames'
+import { WebviewHost } from '@renderer/components/WebviewHost'
 // import { FilePreview } from '@renderer/components/FilePreview'
 import { ipcApi } from '@renderer/ipc'
 // import { normalizeFilePreviewPath } from '@renderer/utils/filePreview'
@@ -14,18 +15,26 @@ import IndustrialVideoGenerationLoading, { readGenerationProgress } from './Indu
 import IndustrialVideoOnlinePreview from './IndustrialVideoOnlinePreview'
 import { useIndustrialVideoProduction } from './useIndustrialVideoProduction'
 
-const terminalLabels: Record<string, string> = { failed: '生成失败', cancelled: '已取消', blocked: '任务已阻塞' }
+// const terminalLabels: Record<string, string> = { failed: '生成失败', cancelled: '已取消', blocked: '任务已阻塞' }
+const terminalLabels: Record<string, string> = {
+  failed: '生成失败',
+  canceled: '已取消（取消不等于暂停）',
+  cancelled: '已取消（取消不等于暂停）',
+  blocked: '任务已阻塞'
+}
 // const count = (value: unknown) => (typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : null)
 
 export default function IndustrialVideoAgentProduction({
   sessionId,
   children,
+  workbench,
   previewOpen,
   filePreviewActive = false,
   onPreviewOpenChange
 }: {
   sessionId: string
   children: ReactNode
+  workbench?: ReactNode
   previewOpen?: boolean
   filePreviewActive?: boolean
   onPreviewOpenChange?: (open: boolean) => void
@@ -39,6 +48,8 @@ export default function IndustrialVideoAgentProduction({
   // MEA: 顶栏开关驱动受控显隐；未受控时保留 standalone 自动打开行为。
   const isControlled = previewOpen !== undefined && onPreviewOpenChange !== undefined
   const [internalOpen, setInternalOpen] = useState(false)
+  const [workbenchPage, setWorkbenchPage] = useState<{ sessionId: string; run: string; url: string } | null>(null)
+  const workbenchUrl = workbenchPage?.sessionId === sessionId && workbenchPage.run === run ? workbenchPage.url : null
   const open = isControlled ? previewOpen : internalOpen
   const setOpen = useCallback(
     (next: boolean) => {
@@ -73,7 +84,7 @@ export default function IndustrialVideoAgentProduction({
   const finalPath = typeof progress?.final === 'string' ? progress.final : ''
   const stale = progress?.final_stale === true
   const artifactKey = `${identity}:${finalPath}`
-  const terminal =
+  /* const terminal =
     terminalLabels[state] ||
     (job?.status === 'failed'
       ? '生成失败'
@@ -81,7 +92,11 @@ export default function IndustrialVideoAgentProduction({
         ? '已取消'
         : job?.status === 'blocked'
           ? '任务已阻塞'
-          : '')
+          : '') */
+  const cancelPending = record?.control?.stopRequested && record.control.phase !== 'stopped'
+  const terminal = cancelPending
+    ? '已请求取消，正在核实服务端状态'
+    : terminalLabels[state] || terminalLabels[String(job?.status)] || ''
   const finished = active && state === 'done' && !stale && !terminal
 
   useEffect(() => {
@@ -163,6 +178,36 @@ export default function IndustrialVideoAgentProduction({
     }
   ]
   const renderSteps = (toolName: string, output: unknown) => {
+    if (
+      workbench &&
+      normalizeMeacoworkToolRuntimeName(toolName) === toMeacoworkToolRuntimeName('ivideo_review_snapshot_get')
+    ) {
+      try {
+        const content = (output as { content?: { type: string; text?: string }[] })?.content
+        const value = JSON.parse(content?.find((part) => part.type === 'text')?.text ?? 'null')
+        if (value?.ok !== true || typeof value.workbench_url !== 'string' || !run || (value.run && value.run !== run))
+          return null
+        const url = new URL(value.workbench_url)
+        if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) return null
+        return (
+          <div className="space-y-2 text-sm">
+            <a
+              href={url.href}
+              className="text-primary underline"
+              onClick={(event) => {
+                event.preventDefault()
+                setWorkbenchPage({ sessionId, run, url: url.href })
+                setOpen(true)
+              }}>
+              打开脚本工作台
+            </a>
+            {typeof value.message === 'string' && <p>{value.message}</p>}
+          </div>
+        )
+      } catch {
+        return null
+      }
+    }
     if (!visible || normalizeMeacoworkToolRuntimeName(toolName) !== toMeacoworkToolRuntimeName('ivideo_start'))
       return null
     try {
@@ -183,7 +228,13 @@ export default function IndustrialVideoAgentProduction({
               <section aria-label="视频制作步骤" className="space-y-3 border-l border-border pl-4 text-sm">
                 <div className="flex items-center justify-between gap-2">
                   <strong>{summary}</strong>
-                  <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setWorkbenchPage(null)
+                      setOpen(true)
+                    }}>
                     查看成片
                   </Button>
                 </div>
@@ -223,19 +274,32 @@ export default function IndustrialVideoAgentProduction({
         <ToolResultAttachmentsContext value={renderSteps}>{children}</ToolResultAttachmentsContext>
       </div>
       {/* {visible && open && ( */}
-      {visible && open && !(finished && filePreviewActive) && (
+      {/* {visible && open && !(finished && filePreviewActive) && ( */}
+      {(visible || Boolean(workbenchUrl)) && open && (Boolean(workbenchUrl) || !(finished && filePreviewActive)) && (
         <aside
           aria-label="成片预览"
           className="flex w-[380px] max-w-[45%] shrink-0 flex-col border-l border-border bg-card">
           <header className="flex items-center justify-between border-b border-border p-3">
-            <strong>成片</strong>
+            {/* <strong>成片</strong> */}
+            <strong>{workbenchUrl ? '脚本工作台' : '成片'}</strong>
             <Button size="sm" variant="ghost" aria-label="关闭成片预览" onClick={() => setOpen(false)}>
               关闭
             </Button>
           </header>
           <div className="min-h-0 flex-1 overflow-auto">
             {/* 原本地 FilePreview 改为服务端签名页面，不再为预览下载。 */}
-            {finished && run && finalPath ? (
+            {/* 工作台入口面板不再挂载，消息链接直接加载服务端网页。 */}
+            {workbenchUrl ? (
+              <WebviewHost
+                key={`${sessionId}:${run}:${workbenchUrl}`}
+                id={`industrial-video-workbench:${sessionId}`}
+                src={workbenchUrl}
+                partition={`industrial-video-workbench:${sessionId}:${run}`}
+                ariaLabel="服务端工作台网页"
+                testId="industrial-video-workbench-guest"
+                className="h-full w-full"
+              />
+            ) : finished && run && finalPath ? (
               <IndustrialVideoOnlinePreview
                 key={artifactKey}
                 sessionId={sessionId}

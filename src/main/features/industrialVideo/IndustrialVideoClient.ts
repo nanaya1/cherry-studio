@@ -31,6 +31,8 @@ export type IndustrialVideoOperation =
   | 'logo_upload'
   | 'upload'
   | 'capabilities_get'
+  | 'workbench_open'
+  | 'workbench_get'
 
 export interface IndustrialVideoClientConfig {
   /** Base service URL, e.g. http://127.0.0.1:8848. Never read from renderer config. */
@@ -557,6 +559,36 @@ export class IndustrialVideoClient {
   /** Empty-args operation used for connectivity checks. */
   async capabilitiesGet(): Promise<IndustrialVideoResult<VideoApiRecord>> {
     const result = await this.call('capabilities_get', {})
+    return this.refine(result, (data) => data)
+  }
+
+  /**
+   * 打开服务端工作台（只读）。返回可信工作台链接；真实响应字段名可能与契约不同，
+   * 这里统一把 workbench_url / url / workbenchUrl 任一归一为 workbenchUrl。
+   */
+  async workbenchOpen(params: { run: string; embed?: boolean }): Promise<IndustrialVideoResult<{ workbenchUrl: string; raw: VideoApiRecord }>> {
+    const body: Record<string, unknown> = { run: params.run }
+    if (params.embed !== undefined) body.embed = params.embed
+    const result = await this.call('workbench_open', body)
+    return this.refine(result, (data) => {
+      const url =
+        typeof data.workbench_url === 'string'
+          ? data.workbench_url
+          : typeof data.url === 'string'
+            ? data.url
+            : typeof data.workbenchUrl === 'string'
+              ? data.workbenchUrl
+              : ''
+      if (url.length === 0) {
+        return this.validationError('workbench_open', result.requestId, 'workbench_open response missing workbench url')
+      }
+      return { workbenchUrl: url, raw: data }
+    })
+  }
+
+  /** 读取服务端工作台最新状态（只读），返回松散的 BusinessObject；归一与判定交由 service 层处理。 */
+  async workbenchGet(params: { run: string }): Promise<IndustrialVideoResult<VideoApiRecord>> {
+    const result = await this.call('workbench_get', { run: params.run })
     return this.refine(result, (data) => data)
   }
 

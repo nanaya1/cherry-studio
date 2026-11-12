@@ -116,7 +116,7 @@ const INDUSTRIAL_VIDEO_PREPARATION_TOOLS = new Set(
 )
 
 const INDUSTRIAL_VIDEO_REVIEW_QUESTION = '脚本与分镜是否确认？'
-const INDUSTRIAL_VIDEO_REVIEW_APPROVE = '脚本与分镜没问题，开始生成视频'
+// const INDUSTRIAL_VIDEO_REVIEW_APPROVE = '脚本与分镜没问题，开始生成视频'
 
 function normalizeIndustrialVideoReviewText(value: unknown): string | null {
   if (typeof value !== 'string') return null
@@ -591,7 +591,8 @@ async function buildToolPermissions(
 
     const questions = Array.isArray(input.questions) ? input.questions : []
     const firstQuestion = questions[0]
-    let trustedContext: Record<string, unknown> | undefined
+    // let trustedContext: Record<string, unknown> | undefined
+    const trustedContext: Record<string, unknown> | undefined = undefined
     if (
       toolName === ASK_USER_QUESTION_TOOL_NAME &&
       session.featureKind === 'industrial-video' &&
@@ -601,7 +602,12 @@ async function buildToolPermissions(
       normalizeIndustrialVideoReviewText((firstQuestion as Record<string, unknown>).question) ===
         normalizeIndustrialVideoReviewText(INDUSTRIAL_VIDEO_REVIEW_QUESTION)
     ) {
-      const industrialVideoService = application.get('IndustrialVideoService')
+      // 工业审核迁移至服务端网页，旧原生审核问题不再进入等待队列。
+      return {
+        behavior: 'deny',
+        message: '脚本与分镜确认已迁移至服务端工作台。请获取工作台链接并结束本轮，不再发起此确认框。'
+      }
+      /* const industrialVideoService = application.get('IndustrialVideoService')
       const confirmed = industrialVideoService.getConfirmedReview({ sessionId: session.id })
       const record = industrialVideoService.getRecords({ sessionId: session.id })
       if (confirmed && record?.run === confirmed.run) {
@@ -645,7 +651,7 @@ async function buildToolPermissions(
         toolUseId: opts.toolUseID,
         run: reviewedSnapshot.run,
         reviewVersion: reviewedSnapshot.reviewVersion
-      })
+      }) */
     }
 
     const access = snapshot.resolve(toolName, input)

@@ -262,8 +262,7 @@ describe('工业视频可信轮次释放', () => {
     'confirming',
     'generating',
     'assembling',
-    'blocked',
-    'canceled',
+    // 'blocked', 'canceled' 已按最新终态契约放开新轮。
     'stop'
   ])('不释放业务活动或停止门禁：%s', (activity) => {
     const { service } = makeService(makeClient(), makeSession())
@@ -341,6 +340,9 @@ describe('工业视频成片分镜提交保护', () => {
       await expect(service.storyboardSubmit(input)).rejects.toMatchObject({ code: 'IVIDEO_RUN_INVALID' })
       for (const method of Object.values(client)) expect(method).not.toHaveBeenCalled()
       expect(service.getRecords({ sessionId: 's1' })).toEqual(before)
+      // 下一次写入会再次查询，必须持续返回当前 run 的真实终态。
+      client.jobGet.mockResolvedValue(ok({ run: 'r2', status: 'done' }))
+      await service.jobGet({ sessionId: 's1', jobId: 'j1' })
       await expect(service.storyboardSubmit({ ...input, run: 'r2' })).resolves.toEqual({
         submitted: true,
         reviewRequired: true
@@ -354,14 +356,27 @@ describe('工业视频成片分镜提交保护', () => {
     })
   })
 
-  it.each(['queued', 'running', 'processing'])('解析任务 %s 不应被误判为视频生成而拦截首次分镜', async (status) => {
+  // 旧契约允许解析期间写入，现按任务终态串行。
+  // it.each(['queued', 'running', 'processing'])('解析任务 %s 不应被误判为视频生成而拦截首次分镜', async (status) => {
+  it.each(['queued', 'running', 'processing'])('解析任务 %s 期间禁止写入但允许读取且不自动取消', async (status) => {
     const client = makeClient({ jobGet: vi.fn(async () => ok({ run: 'r1', status })) })
     const { service } = makeService(client, makeSession())
     await service.runCreate({ sessionId: 's1', baseName: '新任务' })
     await service.parse({ sessionId: 's1', run: 'r1', texts: [{ text: '资料' }] })
     await service.jobGet({ sessionId: 's1', jobId: 'j1' })
     expect(service.getRecords({ sessionId: 's1' })?.state).toBe('parsing')
-    await expect(service.storyboardSubmit(input)).resolves.toEqual({ submitted: true, reviewRequired: false })
+    // await expect(service.storyboardSubmit(input)).resolves.toEqual({ submitted: true, reviewRequired: false })
+    await expect(service.storyboardGet({ sessionId: 's1', run: 'r1' })).resolves.toEqual({ video_title: 't' })
+    await expect(service.parse({ sessionId: 's1', run: 'r1' })).rejects.toMatchObject({
+      code: 'IVIDEO_SUBMISSION_UNKNOWN'
+    })
+    await expect(service.videoStart({ sessionId: 's1', run: 'r1' })).rejects.toMatchObject({
+      code: 'IVIDEO_SUBMISSION_UNKNOWN'
+    })
+    await expect(service.storyboardSubmit(input)).rejects.toMatchObject({ code: 'IVIDEO_SUBMISSION_UNKNOWN' })
+    expect(client.videoStart).toHaveBeenCalledTimes(1)
+    expect(client.storyboardSubmit).not.toHaveBeenCalled()
+    expect(client.jobCancel).not.toHaveBeenCalled()
   })
 
   it.each(['videoStart', 'assemble'] as const)('真实 %s 任务运行中仍禁止重复提交分镜', async (operation) => {
@@ -373,6 +388,38 @@ describe('工业视频成片分镜提交保护', () => {
     expect(service.getRecords({ sessionId: 's1' })?.state).toBe(operation === 'assemble' ? 'assembling' : 'generating')
     await expect(service.storyboardSubmit(input)).rejects.toMatchObject({ code: 'IVIDEO_SUBMISSION_UNKNOWN' })
     expect(client.storyboardSubmit).not.toHaveBeenCalled()
+  })
+
+  it.each(['done', 'failed', 'canceled', 'cancelled', 'blocked'])(
+    '解析任务确认终态 %s 后允许继续写入',
+    async (status) => {
+      const client = makeClient({ jobGet: vi.fn(async () => ok({ run: 'r1', status })) })
+      const { service } = makeService(client, makeSession())
+      await service.runCreate({ sessionId: 's1', baseName: '新任务' })
+      await service.parse({ sessionId: 's1', run: 'r1' })
+      await service.jobGet({ sessionId: 's1', jobId: 'j1' })
+      await expect(service.parse({ sessionId: 's1', run: 'r1' })).resolves.toMatchObject({ jobId: 'j1' })
+      expect(client.videoStart).toHaveBeenCalledTimes(2)
+      expect(client.jobCancel).not.toHaveBeenCalled()
+    }
+  )
+
+  it('解析状态查询失败不能放行写入，终态确认后才允许继续', async () => {
+    const client = makeClient()
+    const { service } = makeService(client, makeSession())
+    await service.runCreate({ sessionId: 's1', baseName: '新任务' })
+    await service.parse({ sessionId: 's1', run: 'r1' })
+    client.jobGet.mockResolvedValueOnce(fail({ outcomeUnknown: false }))
+    await expect(service.jobGet({ sessionId: 's1', jobId: 'j1' })).rejects.toMatchObject({ code: 'IVIDEO_HTTP_ERROR' })
+    client.jobGet.mockResolvedValueOnce(fail({ outcomeUnknown: false }))
+    await expect(service.assemble({ sessionId: 's1', run: 'r1' })).rejects.toMatchObject({
+      code: 'IVIDEO_HTTP_ERROR'
+    })
+    expect(client.videoStart).toHaveBeenCalledTimes(1)
+    await service.jobGet({ sessionId: 's1', jobId: 'j1' })
+    await expect(service.videoStart({ sessionId: 's1', run: 'r1' })).resolves.toMatchObject({ jobId: 'j1' })
+    expect(client.videoStart).toHaveBeenCalledTimes(2)
+    expect(client.jobCancel).not.toHaveBeenCalled()
   })
 
   it('素材解析 done 后首次提交分镜不应被当作成片返修', async () => {
@@ -505,6 +552,7 @@ describe('工业视频返修快照', () => {
       media: [{ name: 'old.png', caption: '旧图' }],
       targetDurationS: 30
     })
+    await service.jobGet({ sessionId: 's1', jobId: 'j1' })
     await service.parse({ sessionId: 's1', run: 'r1', media: [{ name: 'new.png', caption: '新图' }] })
     expect(client.videoStart.mock.calls.at(-1)?.[0]).toMatchObject({
       texts: [{ text: '原文' }],
@@ -1201,6 +1249,70 @@ describe('IndustrialVideoService', () => {
     })
   })
 
+  describe('写入前实时终态校验', () => {
+    it.each(['done', 'failed', 'blocked', 'canceled'])('%s 查询终态后允许下一次写入', async (status) => {
+      const c = makeClient()
+      const { service } = makeService(c, session)
+      await service.runCreate({ sessionId: 's1', baseName: 'demo' })
+      await service.parse({ sessionId: 's1', run: 'r1', texts: [{ text: 'x' }] })
+      c.jobGet.mockResolvedValue(ok({ run: 'r1', status }))
+      await expect(service.parse({ sessionId: 's1', run: 'r1', texts: [{ text: 'next' }] })).resolves.toBeDefined()
+      expect(c.jobGet).toHaveBeenCalledWith({ job_id: 'j1' })
+      expect(c.videoStart).toHaveBeenCalledTimes(2)
+      expect(c.jobCancel).not.toHaveBeenCalled()
+    })
+
+    it.each(['blocked', 'canceled'])('%s 后允许显式创建下一项目', async (status) => {
+      const c = makeClient()
+      const { service } = makeService(c, session)
+      await service.runCreate({ sessionId: 's1', baseName: 'demo' })
+      await service.parse({ sessionId: 's1', run: 'r1' })
+      c.jobGet.mockResolvedValue(ok({ run: 'r1', status }))
+      c.runCreate.mockResolvedValue(ok({ run: 'r2' }))
+      await expect(service.runCreate({ sessionId: 's1', baseName: 'next' })).resolves.toEqual({ run: 'r2' })
+      expect(c.jobCancel).not.toHaveBeenCalled()
+    })
+
+    it.each(['running', 'queued', 'unknown', 'offline', 'foreign'])('%s 拒绝写入且不取消重提', async (status) => {
+      const c = makeClient()
+      const { service } = makeService(c, session)
+      await service.runCreate({ sessionId: 's1', baseName: 'demo' })
+      await service.parse({ sessionId: 's1', run: 'r1', texts: [{ text: 'x' }] })
+      await service.jobGet({ sessionId: 's1', jobId: 'j1' })
+      if (status === 'offline') c.jobGet.mockResolvedValue(fail())
+      else c.jobGet.mockResolvedValue(ok({ run: status === 'foreign' ? 'other' : 'r1', status }))
+      await expect(service.parse({ sessionId: 's1', run: 'r1', texts: [{ text: 'next' }] })).rejects.toThrow()
+      expect(c.videoStart).toHaveBeenCalledTimes(1)
+      expect(c.jobCancel).not.toHaveBeenCalled()
+    })
+
+    it('未知查询状态不能借用旧终态释放停止门禁', async () => {
+      const c = makeClient()
+      const { service, store } = makeService(c, session)
+      await service.runCreate({ sessionId: 's1', baseName: 'demo' })
+      await service.parse({ sessionId: 's1', run: 'r1' })
+      await service.stop({ sessionId: 's1' })
+      const record = (store['industrial_video.records'] as Record<string, IndustrialVideoProductionRecord>).s1
+      record.state = 'canceled'
+      c.jobGet.mockResolvedValue(ok({ run: 'r1', status: 'unknown' }))
+      await service.jobGet({ sessionId: 's1', jobId: 'j1' })
+      expect(service.getRecords({ sessionId: 's1' })?.control?.phase).toBe('reconcile_required')
+    })
+
+    it.each(['blocked', 'canceled'])('%s 查询确认后释放停止门禁及新轮入口', async (status) => {
+      const c = makeClient()
+      const { service } = makeService(c, session)
+      await service.runCreate({ sessionId: 's1', baseName: 'demo' })
+      await service.parse({ sessionId: 's1', run: 'r1', texts: [{ text: 'x' }] })
+      await service.stop({ sessionId: 's1' })
+      expect(service.getRecords({ sessionId: 's1' })?.control?.phase).toBe('reconcile_required')
+      c.jobGet.mockResolvedValue(ok({ run: 'r1', status }))
+      await service.jobGet({ sessionId: 's1', jobId: 'j1' })
+      expect(service.getRecords({ sessionId: 's1' })?.control?.phase).toBe('stopped')
+      expect(() => service.beginRound({ sessionId: 's1' })).not.toThrow()
+    })
+  })
+
   describe('job listing does not auto-claim', () => {
     it('returns the list and changes no production state', async () => {
       const c = makeClient({ jobList: vi.fn(async () => ok({ jobs: [{ job_id: 'j9', run: 'r1' }] })) })
@@ -1280,6 +1392,7 @@ describe('IndustrialVideoService', () => {
       const { service, store } = makeService(client, session)
       await service.runCreate({ sessionId: 's1', baseName: 'demo' }) // v1 run r1
       await service.parse({ sessionId: 's1', run: 'r1', texts: [{ text: 'x' }] }) // v2 job j1
+      await service.jobGet({ sessionId: 's1', jobId: 'j1' })
       await service.videoStart({ sessionId: 's1', run: 'r1' }) // v3 job j1 (same client default)
       const rec = (store['industrial_video.records'] as any).s1
       // run_create + parse + video_start each append an intended+ok pair => 6 rounds

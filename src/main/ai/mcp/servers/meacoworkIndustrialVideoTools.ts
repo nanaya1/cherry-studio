@@ -152,14 +152,18 @@ const DownloadSchema = z.strictObject({
 // ── Tool metadata ────────────────────────────────────────────────────────────
 
 const WORKFLOW_HINT =
-  // '流程：run_create → parse → context → 客户端按 storyboard_schema 编写分镜 → storyboard_submit → review_snapshot_get → AskUserQuestion → 可信审核通过 → estimate → 用户确认生成及费用 → start → status → download。' +
-  // 默认使用已有在线预览，下载不属于自动制作步骤。
-  // '流程：run_create → parse → context → 客户端按 storyboard_schema 编写分镜 → storyboard_submit → review_snapshot_get → AskUserQuestion → 可信审核通过 → start → status → download。' +
-  '流程：run_create → parse → context → 客户端按 storyboard_schema 编写分镜 → storyboard_submit → review_snapshot_get → AskUserQuestion → 可信审核通过 → start → status → 在线预览。仅在用户明确要求下载时调用 ivideo_download。' +
-  'reviewRequired 时必须调用 ivideo_review_snapshot_get 读取真实脚本、分镜和 review_version，再调用原生 AskUserQuestion；问题必须是“脚本与分镜是否确认？”，选项必须是“脚本与分镜没问题，开始生成视频”和“我要修改脚本或分镜”。' +
-  // '不得调用 start 探测或绕过批准；AskUserQuestion 的回答明确包含“系统可信审核已通过”后才可 estimate，且不得再次询问脚本与分镜确认；未获批准不得报告为生成中。'
-  '不得调用 start 探测或绕过批准；必须通过原生 AskUserQuestion 取得用户确认并绑定 metadata.reviewVersion。' +
-  '回答明确包含“系统可信审核已通过”后，保持制作参数与已审核分镜不变，不要调用 ivideo_estimate，立即调用 ivideo_start，不要等待单独确认或再次询问脚本与分镜确认；未获批准不得报告为生成中。'
+  '流程：run_create → parse → context → storyboard_submit → review_snapshot_get 返回工作台链接，然后结束本轮。' +
+  '审核与成本确认均在网页完成，禁止再弹 AskUserQuestion 审核框。用户下一轮发送「开始生成视频」才调用 start；start 会核验服务端最新状态，不满足则回工作台并结束。不得覆盖网页设置，结果未知不重提。'
+
+// const WORKFLOW_HINT =
+// '流程：run_create → parse → context → 客户端按 storyboard_schema 编写分镜 → storyboard_submit → review_snapshot_get → AskUserQuestion → 可信审核通过 → estimate → 用户确认生成及费用 → start → status → download。' +
+// 默认使用已有在线预览，下载不属于自动制作步骤。
+// '流程：run_create → parse → context → 客户端按 storyboard_schema 编写分镜 → storyboard_submit → review_snapshot_get → AskUserQuestion → 可信审核通过 → start → status → download。' +
+// '流程：run_create → parse → context → 客户端按 storyboard_schema 编写分镜 → storyboard_submit → review_snapshot_get → AskUserQuestion → 可信审核通过 → start → status → 在线预览。仅在用户明确要求下载时调用 ivideo_download。' +
+// 'reviewRequired 时必须调用 ivideo_review_snapshot_get 读取真实脚本、分镜和 review_version，再调用原生 AskUserQuestion；问题必须是“脚本与分镜是否确认？”，选项必须是“脚本与分镜没问题，开始生成视频”和“我要修改脚本或分镜”。' +
+// '不得调用 start 探测或绕过批准；AskUserQuestion 的回答明确包含“系统可信审核已通过”后才可 estimate，且不得再次询问脚本与分镜确认；未获批准不得报告为生成中。'
+// '不得调用 start 探测或绕过批准；必须通过原生 AskUserQuestion 取得用户确认并绑定 metadata.reviewVersion。' +
+// '回答明确包含“系统可信审核已通过”后，保持制作参数与已审核分镜不变，不要调用 ivideo_estimate，立即调用 ivideo_start，不要等待单独确认或再次询问脚本与分镜确认；未获批准不得报告为生成中。'
 
 const IVIDEO_TOOLS: readonly Tool[] = [
   {
@@ -189,16 +193,17 @@ const IVIDEO_TOOLS: readonly Tool[] = [
       '提交符合 ivideo_context.storyboard_schema 的完整分镜；每个 scene 至少包含 id、title、duration(5-15秒)、prompt、英文 prompt_en（至少20字符）和 narration。' +
       'prompt_en 必须作为独立字段提交，包含英文字母且不得包含中日韩文字；不得只把英文视觉提示词写进 prompt。禁止空 scene 或空 storyboard。' +
       '首次无分镜时 expectedStoryboardSha256 可为空字符串；必须使用 context 返回的指纹和 SHA。' +
-      '需要审核时按流程读取快照并调用原生 AskUserQuestion；不得代签、猜测审核身份或直接 start。' +
+      // '需要审核时按流程读取快照并调用原生 AskUserQuestion；不得代签、猜测审核身份或直接 start。' +
+      '提交后获取工作台链接并结束本轮；不得代签或在本轮直接 start。' +
       WORKFLOW_HINT,
     inputSchema: toMcpInputSchema(StoryboardSubmitSchema)
   },
   {
     name: 'ivideo_review_snapshot_get',
     description:
-      '只读获取当前 run 的可信脚本与分镜审核快照，返回 review_version、script、storyboard 和 remaining_blockers。' +
-      '不得把读取快照当作确认；必须把 review_version 原样放入后续 AskUserQuestion metadata.reviewVersion。' +
-      WORKFLOW_HINT,
+      // '只读获取当前 run 的可信脚本与分镜审核快照，返回 review_version、script、storyboard 和 remaining_blockers。' +
+      // '不得把读取快照当作确认；必须把 review_version 原样放入后续 AskUserQuestion metadata.reviewVersion。' +
+      '获取当前 run 的服务端工作台入口。输出链接及 message 后结束本轮，不调用本地审核框。' + WORKFLOW_HINT,
     inputSchema: toMcpInputSchema(ReviewSnapshotGetSchema)
   },
   {
@@ -382,12 +387,15 @@ export class MeacoworkIndustrialVideoTools {
         }
         case 'ivideo_review_snapshot_get': {
           const a = ReviewSnapshotGetSchema.parse(args)
-          const data = await service.reviewSnapshotGet({
-            sessionId,
-            run: a.run,
-            reviewType: 'script_and_storyboard'
+          // const data = await service.reviewSnapshotGet({ sessionId, run: a.run, reviewType: 'script_and_storyboard' })
+          const data = await service.workbenchOpen({ sessionId, run: a.run, embed: true })
+          return okResult({
+            run: data.run,
+            workbench_url: data.workbench_url,
+            end_turn: true,
+            message:
+              '打开脚本工作台检查全文和分镜。全文有改动时，先重新生成分镜脚本。确认后，在对话框发送「开始生成视频」。'
           })
-          return okResult(data)
         }
         case 'ivideo_parse': {
           const a = ParseSchema.parse(args)
@@ -430,10 +438,44 @@ export class MeacoworkIndustrialVideoTools {
         }
         case 'ivideo_start': {
           const a = EstimateOrStartSchema.parse(args)
+          const record = service.getRecords({ sessionId })
+          if (record?.run === a.run && record.jobId) {
+            const job = await service.jobGet({ sessionId, jobId: record.jobId })
+            // return okResult({ ...job, jobId: record.jobId, started: false })
+            const terminal = ['done', 'failed', 'blocked', 'canceled', 'cancelled'].includes(String(job.status))
+            if (job.run !== a.run || !terminal) {
+              return okResult({ ...job, jobId: record.jobId, started: false })
+            }
+          }
+          // const latest = await service.workbenchGet({ sessionId, run: a.run })
+          let latest
+          try {
+            latest = await service.workbenchGet({ sessionId, run: a.run })
+          } catch (error) {
+            if (isAbortError(error)) throw error
+            const wb = await service.workbenchOpen({ sessionId, run: a.run, embed: true })
+            return okResult({
+              started: false,
+              end_turn: true,
+              workbench_url: wb.workbench_url,
+              message:
+                '无法确认服务端最新生成条件，本轮未提交生成。请回工作台检查保存和审核状态，确认后重新发送「开始生成视频」。'
+            })
+          }
+          if (!latest.generatable) {
+            const wb = await service.workbenchOpen({ sessionId, run: a.run, embed: true })
+            return okResult({
+              started: false,
+              end_turn: true,
+              workbench_url: wb.workbench_url,
+              message: `请回脚本工作台处理：${latest.blockers.join('；')}。确认后发送「开始生成视频」。`
+            })
+          }
           const data = await service.videoStart({
             sessionId,
-            run: a.run,
-            voice: a.voice,
+            run: a.run
+            // 工作台保存的设置为准，不再用模型参数覆盖。
+            /* voice: a.voice,
             aspectRatio: a.aspectRatio,
             style: a.style,
             targetDurationS: a.targetDurationS,
@@ -442,7 +484,7 @@ export class MeacoworkIndustrialVideoTools {
             subtitleEnabled: a.subtitleEnabled,
             backgroundMusicEnabled: a.backgroundMusicEnabled,
             withAudio: a.withAudio,
-            expectedSettingsVersion: a.expectedSettingsVersion
+            expectedSettingsVersion: a.expectedSettingsVersion */
           })
           return okResult(data)
         }

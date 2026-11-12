@@ -7,7 +7,10 @@ import { Button } from '@cherrystudio/ui'
 import { ipcApi } from '@renderer/ipc'
 import type { industrialVideoReviewDocumentsSchema } from '@shared/ipc/schemas/industrialVideo'
 
-import DedicatedIndustrialVideoReview from './DedicatedIndustrialVideoReview'
+// MEA:industrial-video 专用路径改用服务端工作台（IndustrialVideoWorkbench），不再本地脚本/分镜确认面板。
+// 保留 DedicatedIndustrialVideoReview 组件文件供回滚：取消注释下面两行即可恢复原本地审核。
+// import DedicatedIndustrialVideoReview from './DedicatedIndustrialVideoReview'
+import IndustrialVideoWorkbench from './IndustrialVideoWorkbench'
 import { useIndustrialVideoProduction } from './useIndustrialVideoProduction'
 
 type ReviewSnapshot = z.infer<typeof industrialVideoReviewDocumentsSchema>
@@ -34,7 +37,8 @@ export default function IndustrialVideoTaskPanel({ sessionId, dedicated }: { ses
   }, [refresh])
 
   // MEA:industrial-video 仅专用工作台启用独立审核，普通 Agent 保留原生选择流程。
-  if (dedicated) return <DedicatedIndustrialVideoReview sessionId={sessionId} production={production} />
+  // 回滚：将下行替换为 `return <DedicatedIndustrialVideoReview sessionId={sessionId} production={production} />`
+  if (dedicated) return <IndustrialVideoWorkbench sessionId={sessionId} production={production} />
 
   return (
     <TaskReview key={`${sessionId}:${production.record?.run ?? ''}`} sessionId={sessionId} production={production} />

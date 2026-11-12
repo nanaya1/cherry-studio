@@ -42,7 +42,8 @@ export function IndustrialVideoReviewFilesProvider({
   const parentAttachments = use(ToolResultAttachmentsContext)
   const render = useMemo(
     () => (toolName: string, output: unknown) =>
-      normalizeMeacoworkToolRuntimeName(toolName) === toMeacoworkToolRuntimeName('ivideo_review_snapshot_get') ? (
+      normalizeMeacoworkToolRuntimeName(toolName) === toMeacoworkToolRuntimeName('ivideo_review_snapshot_get') &&
+      readSnapshot(output) ? (
         <IndustrialVideoReviewFiles output={output} workspace={workspace} />
       ) : (
         parentAttachments?.(toolName, output)

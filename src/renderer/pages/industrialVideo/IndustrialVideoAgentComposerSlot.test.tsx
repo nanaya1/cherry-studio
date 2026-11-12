@@ -59,6 +59,13 @@ describe('industrial video server execution guard', () => {
     request.mockReset().mockResolvedValue({ epoch: 1, phase: 'stopped', stopRequested: true })
   })
 
+  it('查询失败仅提示状态暂不可获取，不宣称生成失败', async () => {
+    state.error = 'offline'
+    render(<IndustrialVideoAgentComposerSlot {...baseProps} />)
+    expect(await screen.findByRole('alert')).toHaveTextContent('状态暂时获取失败，正在重试；不代表生成失败。')
+    expect(screen.getByRole('button', { name: 'send' })).toBeDisabled()
+  })
+
   it('先持久化停止门禁再中断 Agent，等待时禁止连点', async () => {
     let resolveGate!: (value: unknown) => void
     request.mockImplementationOnce(
@@ -113,6 +120,13 @@ describe('industrial video server execution guard', () => {
     expect(screen.getByRole('button', { name: 'send' })).toBeDisabled()
     state.record.control!.phase = 'idle'
     rerender(<IndustrialVideoAgentComposerSlot {...baseProps} />)
+    await waitFor(() => expect(screen.getByRole('button', { name: 'send' })).toBeEnabled())
+    expect(screen.queryByRole('button', { name: 'stop' })).not.toBeInTheDocument()
+  })
+
+  it.each(['blocked', 'canceled'])('%s 已核实终态允许用户发起下一轮', async (status) => {
+    state.record = { state: status, unknownSubmissions: [], control: { phase: 'active', stopRequested: false } }
+    render(<IndustrialVideoAgentComposerSlot {...baseProps} />)
     await waitFor(() => expect(screen.getByRole('button', { name: 'send' })).toBeEnabled())
     expect(screen.queryByRole('button', { name: 'stop' })).not.toBeInTheDocument()
   })

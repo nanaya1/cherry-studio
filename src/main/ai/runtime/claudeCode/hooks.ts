@@ -21,6 +21,7 @@ import { MEACOWORK_MCP_SERVER, toMcpRuntimeName } from '@main/ai/toolApproval/bu
 import { evaluateToolGuards } from '@main/ai/toolApproval/toolGuards'
 import { MOVE_TO_TRASH_TOOL_NAME } from '@main/ai/tools/moveToTrash'
 import { SAVE_ATTACHMENT_TOOL_NAME } from '@main/ai/tools/saveAttachment'
+import { industrialVideoTurnHandoff } from '@main/features/industrialVideo/industrialVideoTurnHandoff'
 import { rtkRewrite } from '@main/utils/rtk'
 
 import type { AgentRuntimeUserInput } from '../types'
@@ -319,7 +320,20 @@ export function buildClaudeCodeHooks(ctx: ClaudeCodeHookContext): ClaudeCodeSett
 
   return {
     PreToolUse: [{ hooks: [toolGuardHook, skillDependencyAdvisoryHook, agentsMdHook, rtkRewriteHook, steerHook] }],
-    PostToolUse: [{ hooks: [postToolTimingHook, bashOutcomeHook] }],
+    // PostToolUse: [{ hooks: [postToolTimingHook, bashOutcomeHook] }],
+    PostToolUse: [
+      {
+        hooks: [
+          postToolTimingHook,
+          bashOutcomeHook,
+          async (input) => {
+            if (input.hook_event_name !== 'PostToolUse' || !input.tool_name.startsWith('mcp__meacowork-tools__ivideo_'))
+              return {}
+            return industrialVideoTurnHandoff(agentSessionService.getById(sessionId)?.featureKind, input)
+          }
+        ]
+      }
+    ],
     PostToolUseFailure: [{ hooks: [postToolTimingHook, bashOutcomeHook] }],
     PostToolBatch: [{ hooks: [postToolBatchSteerHook, bashRewriteCleanupHook] }],
     SubagentStop: [{ hooks: [subagentStopHook] }]

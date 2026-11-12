@@ -31,7 +31,8 @@ export default function IndustrialVideoAgentComposerSlot(props: ComponentProps<t
     (!verifiedStopped && ['parsing', 'planning', 'generating', 'assembling'].includes(record?.state ?? '')) ||
     (!verifiedStopped && ['queued', 'running'].includes(String(job?.status ?? ''))) ||
     // ['active', 'stopping', 'reconcile_required'].includes(record?.control?.phase ?? '') ||
-    (record?.control?.phase === 'active' && !['done', 'failed'].includes(record.state)) ||
+    // (record?.control?.phase === 'active' && !['done', 'failed'].includes(record.state)) ||
+    (record?.control?.phase === 'active' && !['done', 'failed', 'blocked', 'canceled'].includes(record.state)) ||
     ['stopping', 'reconcile_required'].includes(record?.control?.phase ?? '') ||
     Boolean(record?.control?.stopRequested && record.control.phase !== 'stopped')
   const stop = async () => {
@@ -86,6 +87,11 @@ export default function IndustrialVideoAgentComposerSlot(props: ComponentProps<t
   return (
     // <AgentComposerSlot {...props} attachmentOnly sendDisabled={props.sendDisabled || props.isStreaming || blocked} />
     <div>
+      {error && (
+        <p role="alert" className="px-3 text-xs text-muted-foreground">
+          状态暂时获取失败，正在重试；不代表生成失败。
+        </p>
+      )}
       {stopped && taskBusy && !taskStopping && !stopFailed && (
         <p role="status" className="px-3 text-xs text-muted-foreground">
           任务已请求停止，正在核实服务端状态，暂不可发送。

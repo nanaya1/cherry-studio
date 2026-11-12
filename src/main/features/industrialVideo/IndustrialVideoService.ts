@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 // import { createHmac } from 'node:crypto'
 import { createHmac, randomUUID } from 'node:crypto'
+// import { loggerService } from '@logger'
 import { mkdtemp, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
@@ -38,6 +39,11 @@ import {
 
 const DEFAULT_TIMEOUT_MS = 30_000
 const PERSIST_KEY = 'industrial_video.records' as const
+// const logger = loggerService.withContext('industrial-video')
+
+function isRecordLike(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
 
 /**
  * Read-only operations that must NEVER change the persisted production state:
@@ -134,6 +140,39 @@ export interface IndustrialVideoReviewInput {
   sessionId: string
   run: string
   reviewType?: IndustrialVideoReviewType
+}
+
+/**
+ * 服务端工作台状态归一结果。
+ * 仅消费真实契约字段，绝不猜测：`generation_status` 是服务端状态机（'ready' 表示可进入生成，
+ * 'blocked' 等表示未满足）；`needs_script_sync` / `document.needs_sync` 是分镜同步状态；
+ * `approved` 来自真实批准读取接口 review_snapshot_get（review:read 断言）的 generation_allowed
+ * 与 remaining_blockers。认证不可用时 approved=false 且 approved_verified=false，并在 blockers 报告真实缺口。
+ */
+export interface WorkbenchStatus {
+  run: string
+  /** 真实 generation_status（服务端状态机）：'ready' 表示可进入生成；'blocked' 等表示未满足。 */
+  generation_status: string
+  /** 真实顶层 needs_script_sync：分镜与全文不一致，需在工作台重新同步分镜。 */
+  needs_script_sync: boolean
+  /** 真实 document.needs_sync：全文已更新，分镜待同步。 */
+  document_needs_sync: boolean
+  /** 经真实批准读取接口（review_snapshot_get, review:read）确认已批准且无条件阻塞。 */
+  approved: boolean
+  /** approved 是否经真实读取确认（false 表示尚未/无法确认，如未接通审核授权）。 */
+  approved_verified: boolean
+  /** 综合判定：generation_status==='ready' 且分镜同步且已批准，可 submit 一次。 */
+  generatable: boolean
+  /** 阻塞原因（面向用户），为空表示无显式阻塞。 */
+  blockers: string[]
+  /** 服务端原始响应，供渲染层/宿主核对。 */
+  raw: Record<string, unknown>
+}
+
+/** 真实批准读取结果（review_snapshot_get）。null 表示读取不可用（认证失败/未接通）。 */
+interface WorkbenchApproval {
+  generation_allowed: boolean
+  remaining_blockers: string[]
 }
 
 export type IndustrialVideoReviewAuthorizationRequest = IndustrialVideoReviewInput & {
@@ -234,7 +273,9 @@ export class IndustrialVideoService extends BaseService {
   }
 
   private async createReviewAssertion(request: IndustrialVideoReviewAuthorizationRequest): Promise<string> {
-    const secret = process.env.IVIDEO_REVIEW_HOST_SECRET?.trim() || '9a58c192f597b97675c556ea4048b601e8216e8142e7109e27d79a631358d357'
+    const secret =
+      process.env.IVIDEO_REVIEW_HOST_SECRET?.trim() ||
+      '9a58c192f597b97675c556ea4048b601e8216e8142e7109e27d79a631358d357'
     // const actor = await this.deps.getReviewActor()
     // if (!secret || !actor) { throw new IpcError('IVIDEO_REVIEW_AUTH_UNAVAILABLE', '未接通可信身份签发') }
     if (!secret) {
@@ -404,9 +445,11 @@ export class IndustrialVideoService extends BaseService {
     this.validateSession(input.sessionId)
     const record = this.getRecord(input.sessionId) ?? this.newRecord(input.sessionId)
     if (
-      (record.control?.phase === 'active' && !['done', 'failed'].includes(record.state)) ||
+      // (record.control?.phase === 'active' && !['done', 'failed'].includes(record.state)) ||
+      (record.control?.phase === 'active' && !['done', 'failed', 'blocked', 'canceled'].includes(record.state)) ||
       this.hasUnresolvedSubmission(record) ||
-      (record.jobId && !['done', 'failed'].includes(record.state)) ||
+      // (record.jobId && !['done', 'failed'].includes(record.state)) ||
+      (record.jobId && !['done', 'failed', 'blocked', 'canceled'].includes(record.state)) ||
       (record.control?.stopRequested && record.control.phase !== 'stopped')
     ) {
       throw new IpcError('IVIDEO_RECONCILE_REQUIRED', '当前任务尚未证实结束，不能开始新一轮。')
@@ -484,7 +527,8 @@ export class IndustrialVideoService extends BaseService {
 
   private resolveConfigFromEnv(): IndustrialVideoServiceConfig | null {
     const baseUrl = process.env.SERVICE_BASE ?? process.env.MAIN_VITE_SERVICE_BASE ?? 'http://36.150.116.248:8849'
-    const token = process.env.SERVICE_TOKEN ?? process.env.MAIN_VITE_SERVICE_TOKEN ?? '_k7ZvNlsDh-IhGoxzzimRuhZtCAPWJxri72I51DLgf4'
+    const token =
+      process.env.SERVICE_TOKEN ?? process.env.MAIN_VITE_SERVICE_TOKEN ?? '_k7ZvNlsDh-IhGoxzzimRuhZtCAPWJxri72I51DLgf4'
     if (!baseUrl || !token) return null
     const timeoutMs = Number.parseInt(
       process.env.SERVICE_TIMEOUT_MS ?? process.env.MAIN_VITE_SERVICE_TIMEOUT_MS ?? '',
@@ -656,6 +700,8 @@ export class IndustrialVideoService extends BaseService {
     record: IndustrialVideoProductionRecord | null,
     gatedByActiveJob: boolean
   ): void {
+    // 活动作业与未知提交只限制写入；网页批准仍由生成前的 workbenchGet 实时读取。
+    // 不依据本地缓存的批准状态放行生成。
     const unknownCount = record?.unknownSubmissions.length ?? 0
     if (unknownCount > 0) {
       throw new IpcError(
@@ -664,9 +710,10 @@ export class IndustrialVideoService extends BaseService {
       )
     }
     const pendingIntent = record?.rounds.at(-1)?.outcome === 'intended'
-    // Only an in-flight generation/assembly job blocks a new submission; ingestion,
-    // planning and storyboard stages must not (the happy path moves through them).
-    const activeJob = gatedByActiveJob && !!record?.jobId && ['generating', 'assembling'].includes(record.state)
+    // 解析也会创建异步任务，必须等状态查询确认终态后才能继续写入。
+    // const activeJob = gatedByActiveJob && !!record?.jobId && ['generating', 'assembling'].includes(record.state)
+    const activeJob =
+      gatedByActiveJob && !!record?.jobId && ['parsing', 'generating', 'assembling'].includes(record.state)
     const ok = canSubmitIndustrialVideo({ pendingIntent, unknownCount, activeJob })
     if (!ok) {
       throw new IpcError('IVIDEO_SUBMISSION_UNKNOWN', 'This session is not in a state to start a new submission.')
@@ -707,7 +754,33 @@ export class IndustrialVideoService extends BaseService {
     return this.withSessionLock(input.sessionId, async () => {
       this.validateSession(input.sessionId)
       this.assertExecutionOpen(input.sessionId, epoch)
-      const record = this.getRecord(input.sessionId)
+      // const record = this.getRecord(input.sessionId)
+      let record = this.getRecord(input.sessionId)
+      if (input.requireRun !== undefined) this.assertRunBelongs(input.sessionId, input.requireRun, record)
+      if (input.requireJob) this.assertJobBelongs(input.sessionId, input.requireJob, record)
+      if (input.operation === 'storyboard_submit' && this.hasCompletedVideo(record)) {
+        throw new IpcError(
+          'IVIDEO_REVISION_REQUIRED',
+          '成片不可原地修改：请先调用 parse 创建返修新 run，提交新分镜后重新审核。'
+        )
+      }
+      if (record?.jobId) {
+        this.assertSubmittable(input.sessionId, record, false)
+        const jobId = record.jobId
+        const job = await this.reconcileJob({
+          sessionId: input.sessionId,
+          jobId,
+          doCall: () => this.createClient(this.requireConfig()).jobGet({ job_id: jobId })
+        })
+        this.assertExecutionOpen(input.sessionId, epoch)
+        if (job.run !== record.run || (job.job_id !== undefined && job.job_id !== jobId)) {
+          throw new IpcError('IVIDEO_JOB_INVALID', '暂时无法确认当前任务归属，请核实后重试。')
+        }
+        if (!['done', 'failed', 'blocked', 'canceled', 'cancelled'].includes(String(job.status))) {
+          throw new IpcError('IVIDEO_SUBMISSION_UNKNOWN', '当前任务尚未确认结束，请等待结束或主动取消后再试。')
+        }
+        record = this.getRecord(input.sessionId)
+      }
       if (input.requireRun !== undefined) this.assertRunBelongs(input.sessionId, input.requireRun, record)
       if (input.requireJob) this.assertJobBelongs(input.sessionId, input.requireJob, record)
       // if (input.operation === 'storyboard_submit' && record?.state === 'done') {
@@ -817,70 +890,80 @@ export class IndustrialVideoService extends BaseService {
     jobId: string
     doCall: () => Promise<IndustrialVideoResult<Record<string, unknown>>>
   }): Promise<Record<string, unknown>> {
-    return this.withSessionLock(input.sessionId, async () => {
-      this.validateSession(input.sessionId)
-      const record = this.getRecord(input.sessionId)
-      if (!record || !record.run) {
-        throw new IpcError('IVIDEO_JOB_INVALID', 'No run is associated with this session.')
-      }
+    return this.withSessionLock(input.sessionId, () => this.reconcileJob(input))
+  }
 
-      const pollEpoch = record.control?.epoch ?? 0
-      const result = await input.doCall()
-      if (!result.ok) {
-        const error = result.error
-        throw new IpcError('IVIDEO_HTTP_ERROR', error.message, {
-          category: error.category,
-          code: error.code,
-          status: error.status,
-          outcomeUnknown: false,
-          operation: 'job_get'
-        })
-      }
+  private async reconcileJob(input: {
+    sessionId: string
+    jobId: string
+    doCall: () => Promise<IndustrialVideoResult<Record<string, unknown>>>
+  }): Promise<Record<string, unknown>> {
+    this.validateSession(input.sessionId)
+    const record = this.getRecord(input.sessionId)
+    if (!record || !record.run) {
+      throw new IpcError('IVIDEO_JOB_INVALID', 'No run is associated with this session.')
+    }
 
-      // Update authoritative state from the job status, but NEVER cancel on exit —
-      // we only persist what the server reports.
-      const newState = mapJobStatus(result.data.status)
-      const updated = this.getRecord(input.sessionId) ?? this.newRecord(input.sessionId)
-      // Ownership is proven by the server: only act on a job whose `run` matches the
-      // session's run. We never infer/auto-claim a task from `run` alone.
-      const jobRun = typeof result.data.run === 'string' ? result.data.run : undefined
-      // 同 run 不证明属于某次提交；只更新已绑定 job，未知项按精确 jobId 对账。
-      // if (jobRun && jobRun === record.run) {
-      if (jobRun === record.run && input.jobId === record.jobId && (updated.control?.epoch ?? 0) === pollEpoch) {
-        // if (newState) updated.state = newState
-        // MEA:industrial-video worker 的运行状态不区分阶段，按该 job 的提交回执恢复解析/生成/合成阶段。
-        const jobRound = updated.rounds.findLast(
-          (round) =>
-            round.run === jobRun &&
-            round.jobId === input.jobId &&
-            round.outcome === 'ok' &&
-            ['parse', 'video_start', 'assemble'].includes(round.operation)
-        )
-        if (newState) updated.state = newState === 'generating' ? (jobRound?.state ?? newState) : newState
-        updated.jobId = input.jobId
-        // updated.unknownSubmissions = updated.unknownSubmissions.filter((u) => u.run !== jobRun)
-        updated.unknownSubmissions = updated.unknownSubmissions.filter(
-          (round) => round.run !== jobRun || round.jobId !== input.jobId
-        )
-      }
-      if (
-        updated.control?.stopRequested &&
-        jobRun === updated.run &&
-        input.jobId === updated.jobId &&
-        (updated.control?.epoch ?? 0) === pollEpoch
-      ) {
-        updated.control = {
-          ...updated.control,
-          phase:
-            !this.hasUnresolvedSubmission(updated) && ['done', 'failed'].includes(updated.state)
-              ? 'stopped'
-              : 'reconcile_required'
-        }
-      }
-      this.saveRecord(updated)
+    const pollEpoch = record.control?.epoch ?? 0
+    const result = await input.doCall()
+    if (!result.ok) {
+      const error = result.error
+      throw new IpcError('IVIDEO_HTTP_ERROR', error.message, {
+        category: error.category,
+        code: error.code,
+        status: error.status,
+        outcomeUnknown: false,
+        operation: 'job_get'
+      })
+    }
 
-      return { ...result.data }
-    })
+    // Update authoritative state from the job status, but NEVER cancel on exit —
+    // we only persist what the server reports.
+    const newState = mapJobStatus(result.data.status)
+    const updated = this.getRecord(input.sessionId) ?? this.newRecord(input.sessionId)
+    // Ownership is proven by the server: only act on a job whose `run` matches the
+    // session's run. We never infer/auto-claim a task from `run` alone.
+    const jobRun = typeof result.data.run === 'string' ? result.data.run : undefined
+    if (result.data.job_id !== undefined && result.data.job_id !== input.jobId) {
+      throw new IpcError('IVIDEO_JOB_INVALID', '服务端返回的任务与当前查询不匹配，请核实后重试。')
+    }
+    // 同 run 不证明属于某次提交；只更新已绑定 job，未知项按精确 jobId 对账。
+    // if (jobRun && jobRun === record.run) {
+    if (jobRun === record.run && input.jobId === record.jobId && (updated.control?.epoch ?? 0) === pollEpoch) {
+      // if (newState) updated.state = newState
+      // MEA:industrial-video worker 的运行状态不区分阶段，按该 job 的提交回执恢复解析/生成/合成阶段。
+      const jobRound = updated.rounds.findLast(
+        (round) =>
+          round.run === jobRun &&
+          round.jobId === input.jobId &&
+          round.outcome === 'ok' &&
+          ['parse', 'video_start', 'assemble'].includes(round.operation)
+      )
+      if (newState) updated.state = newState === 'generating' ? (jobRound?.state ?? newState) : newState
+      updated.jobId = input.jobId
+      // updated.unknownSubmissions = updated.unknownSubmissions.filter((u) => u.run !== jobRun)
+      updated.unknownSubmissions = updated.unknownSubmissions.filter(
+        (round) => round.run !== jobRun || round.jobId !== input.jobId
+      )
+    }
+    if (
+      updated.control?.stopRequested &&
+      jobRun === updated.run &&
+      input.jobId === updated.jobId &&
+      (updated.control?.epoch ?? 0) === pollEpoch
+    ) {
+      updated.control = {
+        ...updated.control,
+        phase:
+          // !this.hasUnresolvedSubmission(updated) && ['done', 'failed'].includes(updated.state)
+          !this.hasUnresolvedSubmission(updated) && ['done', 'failed', 'blocked', 'canceled'].includes(newState ?? '')
+            ? 'stopped'
+            : 'reconcile_required'
+      }
+    }
+    this.saveRecord(updated)
+
+    return { ...result.data }
   }
 
   // ── Public operations (one per typed IPC route) ──
@@ -932,7 +1015,12 @@ export class IndustrialVideoService extends BaseService {
         if (previous?.run && previous.jobId) {
           const epoch = previous.control?.epoch ?? 0
           const job = await client.jobGet({ job_id: previous.jobId })
-          if (!job.ok || job.data.run !== previous.run || !['done', 'failed'].includes(String(job.data.status))) {
+          // if (!job.ok || job.data.run !== previous.run || !['done', 'failed'].includes(String(job.data.status))) {
+          if (
+            !job.ok ||
+            job.data.run !== previous.run ||
+            !['done', 'failed', 'blocked', 'canceled', 'cancelled'].includes(String(job.data.status))
+          ) {
             return {
               ok: false,
               requestId: job.requestId,
@@ -1169,6 +1257,156 @@ export class IndustrialVideoService extends BaseService {
     return receipt
   }
 
+  /**
+   * 将真实 workbench_get 响应与真实批准读取结果收敛为归一状态。
+   * 只依赖真实契约字段：generation_status（状态机）、needs_script_sync / document.needs_sync（同步）、
+   * review_snapshot_get 的 generation_allowed + remaining_blockers（批准）。
+   * 绝不猜测 approved / generatable / generation_allowed 等字段。
+   * 认证不可用时 approval=null，approved=false 且 approved_verified=false，并在 blockers 明确报告真实缺口。
+   */
+  private normalizeWorkbenchStatus(
+    run: string,
+    data: Record<string, unknown>,
+    approval: WorkbenchApproval | null
+  ): WorkbenchStatus {
+    const generationStatus = typeof data.generation_status === 'string' ? data.generation_status : 'unknown'
+    const needsScriptSync = data.needs_script_sync === true
+    const document = isRecordLike(data.document) ? data.document : {}
+    const documentNeedsSync = document.needs_sync === true
+
+    const blockers: string[] = []
+    if (generationStatus !== 'ready') {
+      blockers.push(`生成状态为「${generationStatus}」，尚未满足可生成条件。`)
+    }
+    if (needsScriptSync) {
+      blockers.push('分镜与全文不一致（needs_script_sync），需在工作台重新同步分镜后再审核。')
+    }
+    if (documentNeedsSync) {
+      blockers.push('全文已更新，分镜待同步（document.needs_sync）。')
+    }
+
+    let approved = false
+    let approvedVerified = false
+    if (approval) {
+      approvedVerified = true
+      const remaining = approval.remaining_blockers
+      if (approval.generation_allowed === true && remaining.length === 0) {
+        approved = true
+      } else {
+        for (const b of remaining) blockers.push(`未通过人工批准：${b}。`)
+        if (approval.generation_allowed !== true && remaining.length === 0) {
+          blockers.push('尚未通过人工批准（generation_allowed=false）。')
+        }
+      }
+    } else {
+      // 真实缺口：主进程未接通可信审核授权，无法经 review_snapshot_get 确认人工批准。
+      // 保守拒绝，并明确报告，避免猜测字段而误放行。
+      blockers.push(
+        '无法确认人工批准：主进程未接通可信审核授权（IVIDEO_REVIEW_HOST_SECRET 未配置或 IVIDEO_REVIEW_IDENTITY_MODE 无效），' +
+          'review_snapshot_get 读取不可用。请在工作台完成审核后重试，或在宿主中配置审核授权。'
+      )
+    }
+
+    const scriptSynced = !needsScriptSync && !documentNeedsSync
+    const statusReady = generationStatus === 'ready'
+    const generatable = statusReady && scriptSynced && approved
+    return {
+      run,
+      generation_status: generationStatus,
+      needs_script_sync: needsScriptSync,
+      document_needs_sync: documentNeedsSync,
+      approved,
+      approved_verified: approvedVerified,
+      generatable,
+      blockers,
+      raw: data
+    }
+  }
+
+  /**
+   * 读取真实批准（review_snapshot_get, review:read 断言）。返回 WorkbenchApproval 或 null（认证不可用/读取失败）。
+   * 任何认证或读取异常都保守返回 null，由 normalizeWorkbenchStatus 判定为未确认。
+   */
+  private async readWorkbenchApproval(input: { sessionId: string; run: string }): Promise<WorkbenchApproval | null> {
+    try {
+      const session = this.validateSession(input.sessionId)
+      const assertion = await this.createReviewAssertion({
+        sessionId: input.sessionId,
+        workspaceId: session.workspaceId,
+        run: input.run,
+        reviewType: 'script_and_storyboard',
+        operation: 'review_snapshot_get'
+      })
+      if (typeof assertion !== 'string' || !assertion.trim()) return null
+      const client = this.createClient(this.requireConfig())
+      const result = await client.reviewSnapshotGet({
+        run: input.run,
+        host_assertion: assertion,
+        review_type: 'script_and_storyboard'
+      })
+      if (!result.ok) return null
+      const data = result.data as Record<string, unknown>
+      const remaining = Array.isArray(data.remaining_blockers)
+        ? data.remaining_blockers.map((x) => (typeof x === 'string' ? x : String(x)))
+        : []
+      return { generation_allowed: data.generation_allowed === true, remaining_blockers: remaining }
+    } catch {
+      return null
+    }
+  }
+
+  /**
+   * 打开服务端工作台（只读）。不创建 run、不触发生成。run 未显式传入时取会话已绑定 run，
+   * 并按归属校验；返回归一后的 workbench_url 与原始响应。
+   */
+  async workbenchOpen(input: {
+    sessionId: string
+    run?: string | null
+    embed?: boolean
+  }): Promise<{ workbench_url: string; run: string; raw: Record<string, unknown> }> {
+    const client = this.createClient(this.requireConfig())
+    const record = this.getRecord(input.sessionId)
+    const run = input.run ?? record?.run ?? null
+    return this.guardRead({
+      sessionId: input.sessionId,
+      operation: 'workbench_open',
+      requireRun: run,
+      doCall: async () => {
+        const result = await client.workbenchOpen({ run: run as string, embed: input.embed })
+        if (!result.ok) return result
+        return {
+          ok: true,
+          requestId: result.requestId,
+          data: { workbench_url: result.data.workbenchUrl, run: run as string, raw: result.data.raw }
+        }
+      }
+    })
+  }
+
+  /**
+   * 读取服务端工作台最新状态（只读）；按当前 run 校验归属，返回归一状态。
+   * 同时经真实批准读取接口 review_snapshot_get 确认审批，绝不猜测字段。
+   * 认证不可用时保守判定未批准并报告真实缺口。
+   */
+  async workbenchGet(input: { sessionId: string; run: string }): Promise<WorkbenchStatus> {
+    const client = this.createClient(this.requireConfig())
+    return this.guardRead({
+      sessionId: input.sessionId,
+      operation: 'workbench_get',
+      requireRun: input.run,
+      doCall: async () => {
+        const wbResult = await client.workbenchGet({ run: input.run })
+        if (!wbResult.ok) return wbResult
+        const approval = await this.readWorkbenchApproval({ sessionId: input.sessionId, run: input.run })
+        return {
+          ok: true,
+          requestId: wbResult.requestId,
+          data: this.normalizeWorkbenchStatus(input.run, wbResult.data, approval)
+        }
+      }
+    })
+  }
+
   async planningContextGet(input: { sessionId: string; run: string }): Promise<Record<string, unknown>> {
     const client = this.createClient(this.requireConfig())
     return this.guardRead({
@@ -1242,6 +1480,9 @@ export class IndustrialVideoService extends BaseService {
     // that contract). The fee/range pre-check lives in the dedicated `estimate` route.
     // The server echoes `effective_settings` + receipt flags (§17.2) which we forward.
     const client = this.createClient(this.requireConfig())
+    // 提交前按 run 真实对账：已有进行中的生成/合成任务则拒绝重复提交。
+    // 工作台对账仅由工业专用流程处理，保留其他工业入口原有提交门禁。
+    // await this.assertNoConflictingGenerationJob(input.sessionId, input.run)
     const data = await this.guardWrite({
       sessionId: input.sessionId,
       operation: 'video_start',
@@ -1274,6 +1515,9 @@ export class IndustrialVideoService extends BaseService {
 
   async assemble(input: { sessionId: string; run: string }): Promise<{ jobId: string }> {
     const client = this.createClient(this.requireConfig())
+    // 提交前按 run 真实对账：已有进行中的生成/合成任务则拒绝重复提交。
+    // 工作台对账仅由工业专用流程处理，保留其他工业入口原有提交门禁。
+    // await this.assertNoConflictingGenerationJob(input.sessionId, input.run)
     const data = await this.guardWrite({
       sessionId: input.sessionId,
       operation: 'assemble',
@@ -1360,6 +1604,38 @@ export class IndustrialVideoService extends BaseService {
     })
   }
 
+  /**
+   * 已有生成/合成 job 对账防重复：提交 video_start / assemble 前，按 run 查询真实 job_list，
+   * 若该 run 存在 running / queued / processing 任务则保守拒绝重复提交。
+   * 读取失败（网络/超时）时退化为本地门禁（不阻断），因为 guardWrite 的 assertSubmittable
+   * 已基于本地 record.state 拦截进行中的生成/合成。
+   */
+  /* private async assertNoConflictingGenerationJob(_sessionId: string, run: string): Promise<void> {
+    try {
+      const client = this.createClient(this.requireConfig())
+      const result = await client.jobList({ limit: 200 })
+      if (!result.ok) return
+      const jobs = Array.isArray(result.data.jobs) ? result.data.jobs : []
+      const active = jobs.filter(
+        (j) =>
+          isRecordLike(j) &&
+          j.run === run &&
+          ['running', 'queued', 'processing'].includes(String(j.status))
+      )
+      if (active.length > 0) {
+        throw new IpcError(
+          'IVIDEO_DUPLICATE_JOB',
+          '该 run 已有进行中的生成/合成任务，避免重复提交；请先查询状态或在服务端取消该作业。'
+        )
+      }
+    } catch (error) {
+      if (error instanceof IpcError) throw error
+      // 读取失败退化为本地门禁（fail-open），由 assertSubmittable 兜底。
+      logger.warn('industrial-video 生成前 job_list 对账失败，退化为本地门禁', { run, error: String(error) })
+    }
+  }
+
+  */
   async jobCancel(input: { sessionId: string; jobId: string }): Promise<Record<string, unknown>> {
     const client = this.createClient(this.requireConfig())
     // return this.guardWrite({

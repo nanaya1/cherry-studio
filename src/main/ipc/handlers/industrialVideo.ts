@@ -115,5 +115,7 @@ export const industrialVideoHandlers: IpcHandlersFor<typeof industrialVideoReque
   'industrial_video.logo_upload': async (input) => application.get('IndustrialVideoService').logoUpload(input),
   'industrial_video.upload': async (input) => application.get('IndustrialVideoService').upload(input),
   'industrial_video.snapshot_save': async (input) => application.get('IndustrialVideoService').snapshotSave(input),
-  'industrial_video.get_records': async (input) => application.get('IndustrialVideoService').getRecords(input)
+  'industrial_video.get_records': async (input) => application.get('IndustrialVideoService').getRecords(input),
+  'industrial_video.workbench_open': async (input) => application.get('IndustrialVideoService').workbenchOpen(input),
+  'industrial_video.workbench_get': async (input) => application.get('IndustrialVideoService').workbenchGet(input)
 }

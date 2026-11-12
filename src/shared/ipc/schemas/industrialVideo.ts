@@ -544,5 +544,57 @@ export const industrialVideoRequestSchemas = {
         updatedAt: z.number()
       })
       .nullable()
+  }),
+
+  /**
+   * 打开服务端工作台（只读）。准备完脚本分镜后由主进程调用，返回可信工作台链接，
+   * 供用户在工作台内完成脚本/分镜的审核与重规划（网页内部由服务端负责，主进程不管理）。
+   * 真实响应字段名（如 workbench_url）可能与契约不同，service 层统一 normalize 为 workbench_url。
+   * 校验 run 归属绑定：未显式传入时取当前会话已绑定 run；run 与实际归属不符则拒绝。
+   */
+  'industrial_video.workbench_open': defineRoute({
+    input: z
+      .object({
+        sessionId: sessionIdField,
+        run: z.string().trim().min(1).nullable().optional(),
+        embed: z.boolean().optional()
+      })
+      .strict(),
+    output: z
+      .object({
+        workbench_url: z.string(),
+        run: z.string(),
+        raw: z.record(z.string(), z.unknown()).optional()
+      })
+      .passthrough()
+  }),
+
+  /**
+   * 读取服务端工作台最新状态（只读）。按当前 run 获取真实状态机与批准情况，由主进程在
+   * 下次“生成”意图时读取，作为是否 submit 一次的可信依据。service 层消费真实契约字段：
+   * generation_status（状态机）、needs_script_sync / document.needs_sync（同步）、
+   * approved（来自真实批准读取接口 review_snapshot_get 的 generation_allowed + remaining_blockers），
+   * approved_verified 表示批准是否经真实读取确认；认证不可用时 approved=false 且 approved_verified=false，
+   * blockers 报告真实缺口。raw 始终保留供核对。
+   */
+  'industrial_video.workbench_get': defineRoute({
+    input: z
+      .object({
+        sessionId: sessionIdField,
+        run: z.string().trim().min(1)
+      })
+      .strict(),
+    output: z
+      .object({
+        run: z.string(),
+        generation_status: z.string(),
+        needs_script_sync: z.boolean(),
+        document_needs_sync: z.boolean(),
+        approved: z.boolean(),
+        approved_verified: z.boolean(),
+        generatable: z.boolean(),
+        blockers: z.array(z.string()),
+        raw: z.record(z.string(), z.unknown())
+      })
   })
 }

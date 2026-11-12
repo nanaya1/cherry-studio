@@ -18,6 +18,10 @@ vi.mock('@application', async () => {
   } as never)
 })
 
+vi.mock('@data/services/AgentSessionService', () => ({
+  agentSessionService: { getById: () => ({ featureKind: 'industrial-video' }) }
+}))
+
 import { buildClaudeCodeHooks } from '../hooks'
 
 const SESSION_ID = 'session-steer-test'
@@ -28,7 +32,7 @@ function makeSteer(text: string): AgentRuntimeUserInput {
   } as unknown as AgentRuntimeUserInput
 }
 
-function hooksFor(event: 'PreToolUse' | 'PostToolBatch'): HookCallback[] {
+function hooksFor(event: 'PreToolUse' | 'PostToolBatch' | 'PostToolUse'): HookCallback[] {
   const table = buildClaudeCodeHooks({
     sessionId: SESSION_ID,
     cwd: '/tmp',
@@ -67,6 +71,38 @@ async function fireEvent(
 beforeEach(() => {
   holder.pending = []
   holder.onInjected = undefined
+})
+
+it('registered PostToolUse hooks stop an industrial handoff without draining or closing the session', async () => {
+  const outputs = await Promise.all(
+    hooksFor('PostToolUse').map((hook) =>
+      hook(
+        {
+          hook_event_name: 'PostToolUse',
+          tool_name: 'mcp__meacowork-tools__ivideo_review_snapshot_get',
+          tool_use_id: 'handoff-tool',
+          tool_input: { run: 'r1' },
+          tool_response: {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify({
+                  ok: true,
+                  end_turn: true,
+                  workbench_url: 'https://video.example/workbench',
+                  message: '打开工作台确认后继续。'
+                })
+              }
+            ]
+          }
+        } as never,
+        'handoff-tool',
+        { signal: new AbortController().signal }
+      )
+    )
+  )
+  expect(outputs).toContainEqual({ continue: false, stopReason: '打开工作台确认后继续。' })
+  expect(await fireEvent('PostToolBatch')).toEqual({})
 })
 
 describe('steer injection hooks', () => {
