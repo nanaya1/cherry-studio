@@ -11,7 +11,8 @@ beforeAll(() => {
   const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..', '..')
   const resourceDirs: Record<string, string> = {
     'feature.pdfjs.cmaps': 'cmaps',
-    'feature.pdfjs.standard_fonts': 'standard_fonts'
+    'feature.pdfjs.standard_fonts': 'standard_fonts',
+    'feature.pdfjs.wasm': 'wasm'
   }
   vi.mocked(application.getPath).mockImplementation((key, filename) => {
     const resourceDir = resourceDirs[key]
@@ -35,6 +36,13 @@ describe('pdfjs.resource.read', () => {
       { kind: 'standard_font', name: 'LiberationSans-Regular.ttf' },
       ctx
     )
+
+    expect(result.content).toBeInstanceOf(Uint8Array)
+    expect(result.content.byteLength).toBeGreaterThan(0)
+  })
+
+  it('reads the OpenJPEG decoder from the packaged bundle', async () => {
+    const result = await pdfjsHandlers['pdfjs.resource.read']({ kind: 'wasm', name: 'openjpeg.wasm' }, ctx)
 
     expect(result.content).toBeInstanceOf(Uint8Array)
     expect(result.content.byteLength).toBeGreaterThan(0)
