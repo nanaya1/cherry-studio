@@ -93,13 +93,28 @@ function assertPathHasNoSymlinkSync(target: string): void {
   //   current = path.join(current, segment)
   for (const current of relocationPathAncestors(target)) {
     try {
-      if (fs.lstatSync(current).isSymbolicLink()) {
+      // if (fs.lstatSync(current).isSymbolicLink()) {
+      //   throw new RelocationValidationError('target_protected', 'dataRoot relocation refuses linked paths')
+      // }
+      // MEA:data-root-relocation-safety 放行卷根一级 root 持有的系统链接（macOS /var、/tmp），其余链接仍拒绝。
+      if (fs.lstatSync(current).isSymbolicLink() && !isVolumeRootOwnedSymlink(current)) {
         throw new RelocationValidationError('target_protected', 'dataRoot relocation refuses linked paths')
       }
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return
       throw error
     }
+  }
+}
+
+// MEA:data-root-relocation-safety 仅 macOS/Linux 根目录下 root 持有的系统符号链接视为同一物理位置；用户无法在卷根建链接。
+export function isVolumeRootOwnedSymlink(current: string): boolean {
+  if (process.platform === 'win32') return false
+  if (path.dirname(current) !== path.parse(current).root) return false
+  try {
+    return fs.lstatSync(current).uid === 0
+  } catch {
+    return false
   }
 }
 
@@ -413,8 +428,13 @@ async function assertPathHasNoSymlink(target: string, label: string): Promise<vo
   //   current = path.join(current, segment)
   // MEA:data-root-relocation-safety 不允许共同祖先缩短链接检查范围。
   for (const current of relocationPathAncestors(target)) {
+    // const stat = await fsp.lstat(current)
+    // if (stat.isSymbolicLink()) throw new Error(`dataRoot relocation ${label} cannot contain a symlink`)
+    // MEA:data-root-relocation-safety 与同步预检一致，放行卷根一级 root 持有的系统链接（macOS /var、/tmp）。
     const stat = await fsp.lstat(current)
-    if (stat.isSymbolicLink()) throw new Error(`dataRoot relocation ${label} cannot contain a symlink`)
+    if (stat.isSymbolicLink() && !isVolumeRootOwnedSymlink(current)) {
+      throw new Error(`dataRoot relocation ${label} cannot contain a symlink`)
+    }
   }
 }
 
