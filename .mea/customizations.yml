@@ -8,6 +8,17 @@ policy:
   require_tests: true
   preserve_original_code_by_comment: true
 customizations:
+  - id: remote-knowledge-schema-repair
+    title: 远程知识库历史数据库结构修复
+    owner: main
+    behavior: 启动迁移后幂等补齐 0031_busy_spot 创建的远程知识库服务及 Agent/Assistant 绑定表，使迁移游标已越过 0031 但实际缺表的历史数据库可无损恢复；不得修改已发布的 0031 迁移。
+    markers:
+      - MEA:remote-knowledge-schema-repair
+    touchpoints:
+      - src/main/data/db/applyMigrations.ts
+    tests:
+      - src/main/data/db/__tests__/applyMigrations.test.ts
+
   - id: industrial-video
     # 原约定：保留普通工具链；新任务可选专用编排，按会话固定模式，服务端审核与计费仍须用户确认。
     # 当前统一使用普通工具链，不再持久化 execution_mode；服务端审核、计费确认及未知提交门禁保持不变。
