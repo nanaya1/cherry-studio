@@ -1741,6 +1741,7 @@
   "industrial_video.loading": "Loading…",
   "industrial_video.local_knowledge": "Select local knowledge files",
   "industrial_video.logo": "Logótipo (adicionar ou substituir)",
+  "industrial_video.logo_tooltip": "Após o carregamento, será usado o logótipo especificado; sem carregamento, o vídeo não incluirá logótipo.",
   "industrial_video.marketing": "Marketing video",
   "industrial_video.material_failed": "Parsing failed",
   "industrial_video.material_parsing": "Parsing…",

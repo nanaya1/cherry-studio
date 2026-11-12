@@ -520,6 +520,14 @@ describe('工业视频页面本地资料闭环', () => {
     expect(ipcApi.request).not.toHaveBeenCalledWith('ai.text.generate', expect.anything())
   })
 
+  it('指定 Logo 按钮 hover 显示上传说明 tooltip', async () => {
+    const user = userEvent.setup()
+    render(<IndustrialVideoComposer />)
+    const trigger = screen.getByRole('button', { name: 'industrial_video.logo' })
+    await user.hover(trigger)
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('industrial_video.logo_tooltip')
+  })
+
   it('未选择分析模型时提示选择模型，不发起附件分析', async () => {
     const user = userEvent.setup()
     vi.mocked(readDefaultModel).mockResolvedValueOnce(undefined)

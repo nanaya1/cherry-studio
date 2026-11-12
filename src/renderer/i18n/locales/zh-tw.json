@@ -1741,6 +1741,7 @@
   "industrial_video.loading": "正在加载…",
   "industrial_video.local_knowledge": "选择本地知识库文件",
   "industrial_video.logo": "Logo（新增或替換）",
+  "industrial_video.logo_tooltip": "上傳後將使用指定Logo；不上傳則影片不包含Logo。",
   "industrial_video.marketing": "Marketing video",
   "industrial_video.material_failed": "解析失败",
   "industrial_video.material_parsing": "正在解析…",

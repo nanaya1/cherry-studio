@@ -1741,6 +1741,7 @@
   "industrial_video.loading": "Loading…",
   "industrial_video.local_knowledge": "Select local knowledge files",
   "industrial_video.logo": "ロゴ（追加・変更）",
+  "industrial_video.logo_tooltip": "アップロード後は指定のロゴが使用され、アップロードしない場合、動画にロゴは含まれません。",
   "industrial_video.marketing": "Marketing video",
   "industrial_video.material_failed": "Parsing failed",
   "industrial_video.material_parsing": "Parsing…",

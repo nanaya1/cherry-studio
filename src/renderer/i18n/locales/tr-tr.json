@@ -1741,6 +1741,7 @@
   "industrial_video.loading": "Loading…",
   "industrial_video.local_knowledge": "Select local knowledge files",
   "industrial_video.logo": "Logo (ekle veya değiştir)",
+  "industrial_video.logo_tooltip": "Yüklendikten sonra belirtilen logo kullanılacak; yüklenmezse videoda logo yer almayacaktır.",
   "industrial_video.marketing": "Marketing video",
   "industrial_video.material_failed": "Parsing failed",
   "industrial_video.material_parsing": "Parsing…",

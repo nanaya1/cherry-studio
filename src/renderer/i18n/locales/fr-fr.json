@@ -1741,6 +1741,7 @@
   "industrial_video.loading": "Loading…",
   "industrial_video.local_knowledge": "Select local knowledge files",
   "industrial_video.logo": "Logo (ajouter ou remplacer)",
+  "industrial_video.logo_tooltip": "Une fois téléversé, le logo spécifié sera utilisé ; sans téléversement, la vidéo n'inclura pas de logo.",
   "industrial_video.marketing": "Marketing video",
   "industrial_video.material_failed": "Parsing failed",
   "industrial_video.material_parsing": "Parsing…",

@@ -11,7 +11,8 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  Input
+  Input,
+  Tooltip
   // Popover,
   // PopoverContent,
   // PopoverTrigger
@@ -617,20 +618,22 @@ function IndustrialVideoSessionComposer({
         }}
       />
       <div className="flex min-w-0 items-center gap-1">
-        <Button
-          variant="ghost"
-          size="sm"
-          disabled={busy}
-          aria-label={logo ? `${t('industrial_video.logo')}: ${logo.name}` : t('industrial_video.logo')}
-          className="max-w-40 text-muted-foreground"
-          onClick={() => logoInput.current?.click()}>
-          {logo ? (
-            <img src={logo.source} alt="" className="size-5 shrink-0 rounded object-contain" />
-          ) : (
-            <ImagePlus size={15} />
-          )}
-          {!logo && <span className="truncate">{t('industrial_video.logo')}</span>}
-        </Button>
+        <Tooltip asChild content={t('industrial_video.logo_tooltip')} placement="top" delay={300}>
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={busy}
+            aria-label={logo ? `${t('industrial_video.logo')}: ${logo.name}` : t('industrial_video.logo')}
+            className="max-w-40 text-muted-foreground"
+            onClick={() => logoInput.current?.click()}>
+            {logo ? (
+              <img src={logo.source} alt="" className="size-5 shrink-0 rounded object-contain" />
+            ) : (
+              <ImagePlus size={15} />
+            )}
+            {!logo && <span className="truncate">{t('industrial_video.logo')}</span>}
+          </Button>
+        </Tooltip>
         {logo && (
           <Button
             variant="ghost"

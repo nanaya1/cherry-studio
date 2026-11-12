@@ -1741,6 +1741,7 @@
   "industrial_video.loading": "Loading…",
   "industrial_video.local_knowledge": "Select local knowledge files",
   "industrial_video.logo": "Logo (thêm hoặc thay thế)",
+  "industrial_video.logo_tooltip": "Sau khi tải lên, logo được chỉ định sẽ được sử dụng; nếu không tải lên, video sẽ không có logo.",
   "industrial_video.marketing": "Marketing video",
   "industrial_video.material_failed": "Parsing failed",
   "industrial_video.material_parsing": "Parsing…",

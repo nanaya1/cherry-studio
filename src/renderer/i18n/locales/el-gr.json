@@ -1741,6 +1741,7 @@
   "industrial_video.loading": "Loading…",
   "industrial_video.local_knowledge": "Select local knowledge files",
   "industrial_video.logo": "Λογότυπο (προσθήκη ή αντικατάσταση)",
+  "industrial_video.logo_tooltip": "Μετά τη μεταφόρτωση θα χρησιμοποιηθεί το καθορισμένο λογότυπο· χωρίς μεταφόρτωση, το βίντεο δεν θα περιλαμβάνει λογότυπο.",
   "industrial_video.marketing": "Marketing video",
   "industrial_video.material_failed": "Parsing failed",
   "industrial_video.material_parsing": "Parsing…",
