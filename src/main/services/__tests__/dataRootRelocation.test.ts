@@ -1,3 +1,4 @@
+import fssync from 'node:fs'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -6,7 +7,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { computeIdentityDigest } from '@main/core/profiles'
 
-import { DATA_ROOT_RELOCATION_OWNER, executeDataRootRelocation, relocationPathAncestors } from '../dataRootRelocation'
+import {
+  DATA_ROOT_RELOCATION_OWNER,
+  executeDataRootRelocation,
+  isVolumeRootOwnedSymlink,
+  relocationPathAncestors
+} from '../dataRootRelocation'
 
 const TASK_ID = '11111111-1111-4111-8111-111111111111'
 const PROFILE_A = 'a'.repeat(32)
@@ -258,5 +264,27 @@ describe('dataRoot relocation', () => {
 
     await expect(fs.stat(work)).rejects.toMatchObject({ code: 'ENOENT' })
     await expect(fs.readFile(path.join(target, 'profiles', PROFILE_A, 'a.txt'), 'utf8')).resolves.toBe('a')
+  })
+
+  // MEA:data-root-relocation-safety 系统链接豁免仅限卷根一级 root 持有链接，非根位置与普通用户链接不得豁免。
+  it('exempts only root-owned symlinks directly under a volume root', async () => {
+    const nested = path.join(root, 'link')
+    await fs.symlink(source, nested, 'dir')
+    expect(isVolumeRootOwnedSymlink(nested)).toBe(false)
+    expect(isVolumeRootOwnedSymlink(path.join(path.parse(os.tmpdir()).root, 'nonexistent-link'))).toBe(false)
+    // 卷根本身在测试环境只读，无法创建真实链接；以现有系统链接（macOS /var 等）验证豁免判定。
+    const existingRootLink = fssync
+      .readdirSync(path.parse(os.tmpdir()).root)
+      .map((entry) => path.join(path.parse(os.tmpdir()).root, entry))
+      .find((entry) => {
+        try {
+          return fssync.lstatSync(entry).isSymbolicLink() && fssync.lstatSync(entry).uid === 0
+        } catch {
+          return false
+        }
+      })
+    if (existingRootLink) {
+      expect(isVolumeRootOwnedSymlink(existingRootLink)).toBe(true)
+    }
   })
 })
