@@ -73,13 +73,32 @@ export class CloudKnowledgeRecovery {
     let state = p.load()
     if (state?.phase === 'delete-unknown') throw new Error('云端删除结果待核查，禁止重复删除')
     if (state?.phase === 'deleted' || state?.phase === 'local-cleanup' || state?.phase === 'completed') return state
+    // MEA:enterprise-knowledge-page 取消分享两本地库：优先复用唯一可信原库，避免重复导入与误删。
+    // 本机可决定的原库身份先于云端扫描校验，存在多个视为歧义，禁止自动选取。
+    const copies = [...new Set(p.localCopies())] // 去重：同一本机原库可能从多个关联键重复出现。
+    const credible: string[] = []
+    for (const id of copies) {
+      if (await p.hasBase(id)) {
+        credible.push(id)
+        p.active() // 每个异步校验后刷新租约，避免长扫描期间账号失效。
+      }
+    }
+    if (credible.length > 1) {
+      throw new Error('存在多个本机副本指向同一云端空间，无法唯一确定恢复原库，请先处理冲突')
+    }
+    // 本地已存在的恢复记录若指向不同本机原库，阻断续作，禁止自动删除或迁移。
+    if (state && state.spaceId !== spaceId) throw new Error('恢复空间身份不匹配')
+    if (state && credible.length === 1 && credible[0] !== state.localBaseId) {
+      throw new Error('已有恢复记录指向不同的本机原库，为避免误删请先手动处理原库冲突')
+    }
     const files = await p.scan()
     p.active()
     const snapshot = this.snapshot(files)
     if (!state) {
       state = {
         spaceId,
-        localBaseId: await p.createBase(),
+        // 优先选唯一可信原库；无原库才新建恢复库。
+        localBaseId: credible.length === 1 ? credible[0] : await p.createBase(),
         phase: 'preparing',
         snapshot,
         restored: {},
@@ -89,9 +108,7 @@ export class CloudKnowledgeRecovery {
       }
       p.active()
       p.save(state)
-    }
-    if (state.spaceId !== spaceId) throw new Error('恢复空间身份不匹配')
-    if (!(await p.hasBase(state.localBaseId))) {
+    } else if (credible.length === 0 && !(await p.hasBase(state.localBaseId))) {
       state.localBaseId = await p.createBase()
       state.restored = {}
       state.fingerprints = {}
@@ -120,11 +137,20 @@ export class CloudKnowledgeRecovery {
         if (!state.restored[parent.id]) await restore(parent)
       }
       const restoredItemId = state.restored[file.id]
-      if (restoredItemId && !(await p.hasRestoredItem(state.localBaseId, restoredItemId))) {
-        delete state.restored[file.id]
-        delete state.fingerprints[restoredItemId]
-        delete state.expectedHashes[file.id]
-        p.save(state)
+      if (restoredItemId) {
+        if (await p.hasRestoredItem(state.localBaseId, restoredItemId)) {
+          // 已恢复项重试：必须重新核验指纹与预期哈希，目录允许 fingerprint 为 null。
+          const fingerprint = await p.fingerprint(restoredItemId)
+          if (!file.is_dir && (!state.expectedHashes[file.id] || fingerprint !== state.expectedHashes[file.id]))
+            throw new Error('本地恢复副本已变化，禁止删除云端')
+          if (fingerprint) state.fingerprints[restoredItemId] = fingerprint
+        } else {
+          // 映射项已删除：清除旧恢复记录后重新导入。
+          delete state.restored[file.id]
+          delete state.fingerprints[restoredItemId]
+          delete state.expectedHashes[file.id]
+          p.save(state)
+        }
       }
       if (!state.restored[file.id]) {
         // const itemId = await p.restore(file, state.localBaseId, file.parent_id ? state.restored[file.parent_id] : null)

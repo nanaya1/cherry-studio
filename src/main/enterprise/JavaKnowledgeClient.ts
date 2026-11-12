@@ -3,7 +3,40 @@ import { finished } from 'node:stream/promises'
 
 import * as z from 'zod'
 
+import { loggerService } from '@logger'
+
 import { javaResponseErrorMessage } from './JavaResponseError'
+
+const logger = loggerService.withContext('JavaKnowledgeClient')
+type RequestDiagnostics = { status?: number; code?: number; requestId?: string }
+
+function requestLog(baseUrl: string, path: string, method: string) {
+  const url = new URL(path, baseUrl)
+  const resources: Record<string, string> = {}
+  // 仅记录资源定位字段，不记录任意查询参数、请求头或正文。
+  for (const key of ['scope', 'id', 'knowledgeId', 'fileId', 'chunkId']) {
+    const value = url.searchParams.get(key)
+    if (value && /^[a-zA-Z0-9_-]{1,128}$/.test(value)) resources[key] = value
+  }
+  const metadata = { origin: url.origin, method, path: url.pathname, ...resources }
+  const diagnostics: RequestDiagnostics = {}
+  const started = performance.now()
+  logger.info('knowledge request started', metadata)
+  return {
+    diagnostics,
+    finish(outcome: 'success' | 'failed', aborted: boolean) {
+      const entry = {
+        ...metadata,
+        ...diagnostics,
+        outcome,
+        aborted,
+        durationMs: Math.round(performance.now() - started)
+      }
+      if (outcome === 'success') logger.info('knowledge request completed', entry)
+      else logger.warn('knowledge request completed', entry)
+    }
+  }
+}
 
 export type JavaKnowledgeCategory = 'PUBLIC' | 'OWNED' | 'SHARED'
 export type JavaKnowledgeSpaceKind = 'local' | 'online'
@@ -372,8 +405,14 @@ export class JavaKnowledgeClient {
     this.fetchImpl = options.fetchImpl ?? fetch
   }
 
-  private async unwrap(value: unknown): Promise<unknown> {
+  // private async unwrap(value: unknown): Promise<unknown> {
+  private async unwrap(value: unknown, diagnostics?: RequestDiagnostics): Promise<unknown> {
     const envelope = object(value)
+    if (diagnostics) {
+      if (Number.isInteger(envelope.code)) diagnostics.code = envelope.code as number
+      if (typeof envelope.requestId === 'string' && /^[a-zA-Z0-9_-]{1,128}$/.test(envelope.requestId))
+        diagnostics.requestId = envelope.requestId
+    }
     if (envelope.code === 200) return envelope.data
     if (!Number.isInteger(envelope.code)) throw new Error('知识库响应缺少有效业务状态码')
     if (envelope.code === 10008) await this.options.onSessionExpired()
@@ -393,7 +432,8 @@ export class JavaKnowledgeClient {
   /** 底层传输；beforeSend 在 accessToken 解析完成后、fetch 发起前执行，用于切号租约守卫。上传复用本方法（复用 protected 可见性）。 */
   protected async request<T>(
     path: string,
-    consume: (response: Response) => Promise<T>,
+    // consume: (response: Response) => Promise<T>,
+    consume: (response: Response, diagnostics: RequestDiagnostics) => Promise<T>,
     init: RequestInit = {},
     beforeSend?: () => void
   ): Promise<T> {
@@ -404,6 +444,8 @@ export class JavaKnowledgeClient {
     if (beforeSend) beforeSend()
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), this.options.timeoutMs ?? 30_000)
+    const log = requestLog(this.baseUrl, path, init.method ?? 'GET')
+    let outcome: 'success' | 'failed' = 'failed'
     try {
       const response = await this.fetchImpl(`${this.baseUrl}${path}`, {
         ...init,
@@ -412,21 +454,32 @@ export class JavaKnowledgeClient {
         credentials: 'omit',
         redirect: 'error'
       })
+      log.diagnostics.status = response.status
       if (!response.ok) {
         if (response.status === 401) await this.options.onSessionExpired()
         throw new Error(`知识库请求失败 (${response.status})`)
       }
-      return await consume(response)
+      // return await consume(response)
+      const result = await consume(response, log.diagnostics)
+      outcome = 'success'
+      return result
     } catch (error) {
       if (controller.signal.aborted) throw new Error('知识库请求超时，请重试')
       throw error
     } finally {
       clearTimeout(timeout)
+      log.finish(outcome, controller.signal.aborted)
     }
   }
 
   protected json(path: string, init?: RequestInit, beforeSend?: () => void): Promise<unknown> {
-    return this.request(path, async (response) => this.unwrap(await response.json()), init, beforeSend)
+    // return this.request(path, async (response) => this.unwrap(await response.json()), init, beforeSend)
+    return this.request(
+      path,
+      async (response, diagnostics) => this.unwrap(await response.json(), diagnostics),
+      init,
+      beforeSend
+    )
   }
 
   /**
@@ -475,15 +528,20 @@ export class JavaKnowledgeClient {
       body: Readable.toWeb(source) as ReadableStream<Uint8Array>,
       headers
     }
+    const log = requestLog(this.baseUrl, path, 'POST')
+    let outcome: 'success' | 'failed' = 'failed'
     try {
       const response = await this.fetchImpl(`${this.baseUrl}${path}`, init)
+      log.diagnostics.status = response.status
       resetTimeout()
       if (!response.ok) {
         if (response.status === 401) await this.options.onSessionExpired()
         throw new Error(`知识库上传请求失败 (${response.status})`)
       }
-      const data = await this.unwrap(await response.json())
+      // const data = await this.unwrap(await response.json())
+      const data = await this.unwrap(await response.json(), log.diagnostics)
       controller.signal.throwIfAborted()
+      outcome = 'success'
       return data
     } catch (error) {
       // if (controller.signal.aborted) throw new Error('上传无进展超时，结果需核对')
@@ -491,6 +549,7 @@ export class JavaKnowledgeClient {
       throw error
     } finally {
       clearTimeout(timer)
+      log.finish(outcome, controller.signal.aborted)
       signal?.removeEventListener('abort', abortUpload)
       controller.abort()
       controller.signal.removeEventListener('abort', destroySource)
@@ -499,7 +558,8 @@ export class JavaKnowledgeClient {
     }
   }
 
-  private async consumeStream(response: Response): Promise<JavaKnowledgeStream> {
+  // private async consumeStream(response: Response): Promise<JavaKnowledgeStream> {
+  private async consumeStream(response: Response, diagnostics?: RequestDiagnostics): Promise<JavaKnowledgeStream> {
     const contentType = (response.headers.get('content-type') ?? '').split(';')[0].trim().toLowerCase()
     const bytes = Buffer.from(await response.arrayBuffer())
     // Java 文件流带 Content-Disposition；JSON 原件也可能包含 code 字段。
@@ -522,7 +582,8 @@ export class JavaKnowledgeClient {
         !Array.isArray(value) &&
         Number.isInteger((value as Record<string, unknown>).code)
       ) {
-        await this.unwrap(value)
+        // await this.unwrap(value)
+        await this.unwrap(value, diagnostics)
         throw new Error('知识库文件接口未返回文件内容')
       }
     }
@@ -687,8 +748,10 @@ export class JavaKnowledgeClient {
   async preview(id: string, fileId: string): Promise<JavaKnowledgeStream> {
     if (!KNOWLEDGE_UUID.test(id)) throw new Error('知识库ID格式无效')
     if (!HEX32.test(fileId)) throw new Error('文件ID格式无效')
-    return this.request(`/api/v1/knowledge/file/preview${this.query({ scope: 'client', id, fileId })}`, (response) =>
-      this.consumeStream(response)
+    // return this.request(`/api/v1/knowledge/file/preview${this.query({ scope: 'client', id, fileId })}`, (response) => this.consumeStream(response))
+    return this.request(
+      `/api/v1/knowledge/file/preview${this.query({ scope: 'client', id, fileId })}`,
+      (response, diagnostics) => this.consumeStream(response, diagnostics)
     )
   }
 
@@ -696,8 +759,10 @@ export class JavaKnowledgeClient {
   async download(id: string, fileId: string): Promise<JavaKnowledgeStream> {
     if (!KNOWLEDGE_UUID.test(id)) throw new Error('知识库ID格式无效')
     if (!HEX32.test(fileId)) throw new Error('文件ID格式无效')
-    return this.request(`/api/v1/knowledge/file/download${this.query({ scope: 'client', id, fileId })}`, (response) =>
-      this.consumeStream(response)
+    // return this.request(`/api/v1/knowledge/file/download${this.query({ scope: 'client', id, fileId })}`, (response) => this.consumeStream(response))
+    return this.request(
+      `/api/v1/knowledge/file/download${this.query({ scope: 'client', id, fileId })}`,
+      (response, diagnostics) => this.consumeStream(response, diagnostics)
     )
   }
 

@@ -40,7 +40,8 @@ function setup(files = [file]) {
     checkSpace: vi.fn(async () => true),
     deleteSpace: vi.fn(async () => {}),
     finish: vi.fn(async () => {}),
-    deleteLocalBase: vi.fn(async (_baseId: string) => {}),
+    // deleteLocalBase: vi.fn(async (_baseId: string) => {}),
+    deleteLocalBase: vi.fn<(baseId: string) => Promise<void>>(async () => {}),
     active: () => {}
   }
   return { ports, recovery: new CloudKnowledgeRecovery(ports) }
@@ -197,7 +198,7 @@ describe('取消分享恢复安全契约', () => {
     normal.ports.localCopies.mockReturnValue(['existing'])
     await normal.recovery.prepare('s')
     await normal.recovery.cancel(false, true)
-    expect(normal.ports.finish).toHaveBeenCalledWith('local', undefined)
+    expect(normal.ports.finish).toHaveBeenCalledWith('existing', undefined)
     expect(normal.ports.deleteLocalBase).toHaveBeenCalledWith('existing')
     expect(normal.ports.deleteLocalBase).not.toHaveBeenCalledWith('local')
 
@@ -400,5 +401,97 @@ describe('取消分享恢复安全契约', () => {
     const result = await recovery.prepare('s')
     expect(result.restored).toEqual({ dir: 'dir-local', f: 'f-local' })
     expect(ports.restore.mock.calls[0][0].id).toBe('dir')
+  })
+})
+
+describe('取消分享两本地库原库选择', () => {
+  function setupWithCopies(copies: string[], hasBaseSet = new Set(copies)) {
+    const { ports, recovery } = setup()
+    ports.localCopies.mockReturnValue(copies)
+    ports.hasBase.mockImplementation(async (id: string) => hasBaseSet.has(id))
+    return { ports, recovery }
+  }
+
+  it('优先选择唯一可信原库，不新建恢复库', async () => {
+    const { ports, recovery } = setupWithCopies(['existing'])
+    const state = await recovery.prepare('s')
+    expect(state.localBaseId).toBe('existing')
+    expect(ports.createBase).not.toHaveBeenCalled()
+    expect(ports.restore).toHaveBeenLastCalledWith(file, 'existing', null, expect.any(Function))
+  })
+
+  it('多个可信本机副本视为歧义，禁止自动选取', async () => {
+    const { ports, recovery } = setupWithCopies(['a', 'b'])
+    await expect(recovery.prepare('s')).rejects.toThrow('无法唯一确定')
+    expect(ports.createBase).not.toHaveBeenCalled()
+    expect(ports.scan).not.toHaveBeenCalled()
+  })
+
+  it('无可信原库时才新建恢复库', async () => {
+    const { ports, recovery } = setupWithCopies(['gone'], new Set())
+    const state = await recovery.prepare('s')
+    expect(state.localBaseId).toBe('local')
+    expect(ports.createBase).toHaveBeenCalledTimes(1)
+  })
+
+  it('旧恢复记录指向不同本机原库时阻断续作，禁止删/迁移', async () => {
+    const { ports, recovery } = setupWithCopies([])
+    await recovery.prepare('s')
+    ports.createBase.mockClear()
+    ports.scan.mockClear()
+    // 设备新增一个可信本机副本，与已有恢复记录指向的原库不一致。
+    ports.localCopies.mockReturnValue(['other'])
+    ports.hasBase.mockImplementation(async (id: string) => id === 'other')
+    await expect(recovery.prepare('s')).rejects.toThrow('不同的本机原库')
+    expect(ports.createBase).not.toHaveBeenCalled()
+    expect(ports.deleteLocalBase).not.toHaveBeenCalled()
+    expect(ports.scan).not.toHaveBeenCalled()
+  })
+
+  it('终结状态 deleted 续作不重放', async () => {
+    const { ports, recovery } = setupWithCopies(['existing'])
+    ports.load = () => ({
+      spaceId: 's',
+      localBaseId: 'local',
+      phase: 'deleted',
+      snapshot: '',
+      restored: {},
+      fingerprints: {},
+      expectedHashes: {},
+      missing: []
+    })
+    const state = await recovery.prepare('s')
+    expect(state.phase).toBe('deleted')
+    expect(ports.scan).not.toHaveBeenCalled()
+    expect(ports.createBase).not.toHaveBeenCalled()
+  })
+
+  it('普通取消复用可信原库而非新建，仅清理其余本机副本', async () => {
+    const { ports, recovery } = setupWithCopies(['existing'])
+    await recovery.prepare('s')
+    await recovery.cancel(false, true)
+    expect(ports.finish).toHaveBeenCalledWith('existing', undefined)
+    expect(ports.deleteLocalBase).toHaveBeenCalledWith('existing')
+    expect(ports.deleteLocalBase).not.toHaveBeenCalledWith('local')
+  })
+})
+
+describe('恢复安全加固', () => {
+  it('已恢复项重试重新核验指纹，本地副本变化则阻断删除', async () => {
+    const { ports, recovery } = setup()
+    await recovery.prepare('s')
+    // 重启续作：恢复项已存在，本地副本被修改，指纹与预期不一致。
+    ports.fingerprint.mockResolvedValue('modified-hash')
+    await expect(new CloudKnowledgeRecovery(ports).prepare('s')).rejects.toThrow('已变化')
+    expect(ports.deleteSpace).not.toHaveBeenCalled()
+  })
+
+  it('本地副本列表重复时去重，不误判为多副本歧义', async () => {
+    const { ports, recovery } = setup()
+    ports.localCopies.mockReturnValue(['existing', 'existing'])
+    ports.hasBase.mockResolvedValue(true)
+    const state = await recovery.prepare('s')
+    expect(state.localBaseId).toBe('existing')
+    expect(ports.createBase).not.toHaveBeenCalled()
   })
 })

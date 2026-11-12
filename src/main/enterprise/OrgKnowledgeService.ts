@@ -2436,6 +2436,28 @@ export class OrgKnowledgeService {
       // restore: async (file, localBaseId, parentItemId) => {
       restore: async (file, localBaseId, parentItemId, expectHash) => {
         if (file.is_dir) {
+          // 按同父目录同名称复用唯一目录；文件/目录类型冲突拒绝，禁止覆盖。
+          // 原逻辑（已替换）：直接 createActive + updateStatus 后返回。
+          // const item = knowledgeItemService.createActive(localBaseId, {
+          //   type: 'directory',
+          //   groupId: parentItemId,
+          //   data: { source: file.name }
+          // })
+          // knowledgeItemService.updateStatus(item.id, 'completed')
+          // return item.id
+          const siblings = knowledgeItemService.getItemsByBaseId(localBaseId)
+          const sameName = siblings.filter((i) => i.groupId === parentItemId && i.data?.source === file.name)
+          if (sameName.some((i) => i.type === 'file')) {
+            throw new Error('云端目录与本地同名文件冲突，禁止覆盖')
+          }
+          const dirs = sameName.filter((i) => i.type === 'directory')
+          // 目录同名多个必须拒绝：无法唯一确定复用目标，禁止自动选取。
+          if (dirs.length > 1) throw new Error('目标本地库存在多个同名目录，无法唯一确定，请先处理冲突')
+          const dir = dirs[0]
+          if (dir) {
+            // 复用已有目录：不修改原资料状态，仅作为恢复目标。
+            return dir.id
+          }
           const item = knowledgeItemService.createActive(localBaseId, {
             type: 'directory',
             groupId: parentItemId,
@@ -2452,10 +2474,42 @@ export class OrgKnowledgeService {
             ...(value.manifest?.entries ?? []),
             ...(orgStateStore.getFirstShareUpload(localKey)?.files ?? [])
           ])
-        const mapped = mappings.find(
-          (entry) => entry.fileId === file.id && entry.hash && (!file.file_hash || entry.hash === file.file_hash)
-        )
+        // 先按 fileId 寻找可信映射：远端哈希变更不应使可信映射丢失（否则会按新名误导入）。
+        const byFileId = mappings.filter((entry) => entry.fileId === file.id)
+        // 目标库内映射冲突必拒绝；重复可信映射指向不同 item 视为歧义，拒绝自动认领。
+        const mappedItemIds = [...new Set(byFileId.map((entry) => entry.itemId).filter(Boolean))]
+        if (mappedItemIds.length > 1) throw new Error('可信映射指向多个本地资料，无法唯一确认，请先处理冲突')
+        const mapped = byFileId.find((entry) => entry.hash)
         if (mapped) {
+          // 安全复用原库已有项：确认可信映射项属于目标本地库，避免重复导入或误覆盖。
+          let existing: ReturnType<typeof knowledgeItemService.getById> | undefined
+          try {
+            existing = knowledgeItemService.getById(mapped.itemId)
+          } catch {
+            // 映射项已删除：允许后续按新导入，但仍须同父同名冲突检查。
+            existing = undefined
+          }
+          if (existing && existing.baseId === localBaseId && existing.type === 'file') {
+            try {
+              const candidate = ks.getFilePath(mapped.itemId)
+              const hash = createHash('sha256')
+              for await (const bytes of createReadStream(candidate)) hash.update(bytes)
+              const computed = hash.digest('hex')
+              // 文件可信映射存在但本机字节或远端哈希不匹配：冲突，禁止下载覆盖。
+              if (computed !== mapped.hash) throw new Error('本机副本字节与可信映射冲突，禁止覆盖原库资料')
+              if (file.file_hash && mapped.hash !== file.file_hash)
+                throw new Error('可信映射与云端原件哈希不一致，禁止覆盖原库资料')
+              expectHash(mapped.hash)
+              return mapped.itemId
+            } catch (error) {
+              if (error instanceof Error && /冲突|不一致/.test(error.message)) throw error
+              // 目标已有项路径不可读或已变化：禁止下载覆盖原库资料，必须人工处理。
+              throw new Error('目标本地库已有资料副本不可读或已变化，禁止覆盖原库资料')
+            }
+          }
+          // 跨库或映射项已删除：本机可信副本字节一致时作为导入源；远端哈希已变更则阻断。
+          if (file.file_hash && mapped.hash && mapped.hash !== file.file_hash)
+            throw new Error('可信映射与云端原件哈希不一致，禁止覆盖原库资料')
           try {
             const candidate = ks.getFilePath(mapped.itemId)
             const hash = createHash('sha256')
@@ -2471,6 +2525,11 @@ export class OrgKnowledgeService {
         }
         if (source) expectHash(mapped!.hash)
         if (!source && !file.has_original_file) return null
+        // 所有新增分支统一同父同名冲突检查，禁止覆盖目标本地库已有资料。
+        const sameNameConflict = knowledgeItemService
+          .getItemsByBaseId(localBaseId)
+          .some((i) => i.groupId === parentItemId && i.data?.source === file.name)
+        if (sameNameConflict) throw new Error('目标本地库已存在同名资料，禁止覆盖')
         const temp = source ? undefined : await mkdtemp(application.getPath('sys.temp', 'knowledge-recovery-'))
         try {
           if (!source) {

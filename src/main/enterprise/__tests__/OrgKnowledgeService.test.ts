@@ -1306,7 +1306,7 @@ describe('取消整个分享', () => {
     })
     await expect(
       service.unshare({ baseId: 'local-1', confirmDevicesStopped: true, deleteLocal: true })
-    ).resolves.toMatchObject({ ok: true, localBaseId: 'recovered' })
+    ).resolves.toMatchObject({ ok: true, localBaseId: 'local-1' })
     service.dispose()
   })
 
@@ -1319,7 +1319,7 @@ describe('取消整个分享', () => {
     ).rejects.toThrow('cleanup failed')
     await service.unsharePreview({ baseId: encodeOrgId(codeSpaceId) })
     await service.unshare({ baseId: encodeOrgId(codeSpaceId) })
-    expect(ks.deleteBase).toHaveBeenCalledWith('recovered')
+    // 取消分享两本地库：恢复库即本机原库 local-1，deleteLocal 只清理该原库，不再创建独立 recovered 库。
     expect(ks.deleteBase).toHaveBeenCalledWith('local-1')
     // expect(api.request.mock.calls.filter(([, init]) => init?.method === 'DELETE')).toHaveLength(1)
     expect(api.javaKnowledge.removeSpace).toHaveBeenCalledTimes(1)
@@ -1336,7 +1336,7 @@ describe('取消整个分享', () => {
     await prepare(service)
     await expect(service.unshare({ baseId: 'local-1', confirmDevicesStopped: true })).resolves.toEqual({
       ok: true,
-      localBaseId: 'recovered'
+      localBaseId: 'local-1'
     })
     expect(await service.syncStatus({ baseId: 'local-1' })).toEqual({ state: 'unshared', lastSyncedAt: null })
     expect(orgStateStore.clearShare).toHaveBeenCalledWith(key)
@@ -1475,7 +1475,7 @@ describe('取消整个分享', () => {
     recoveryItems.getById.mockReturnValue({ id: 'restored', baseId: 'recovered', type: 'file', status: 'completed' })
     expect((await service.unsharePreview({ baseId: 'local-1' })).missing).toEqual([])
     expect(ks.getFilePath).toHaveBeenCalledWith('new-local')
-    expect(ks.addItems).toHaveBeenCalledWith('recovered', [expect.objectContaining({ type: 'file' })])
+    expect(ks.addItems).toHaveBeenCalledWith('local-1', [expect.objectContaining({ type: 'file' })])
     service.dispose()
   })
 
@@ -1629,7 +1629,8 @@ describe('取消整个分享', () => {
       page: 1,
       pageSize: 100
     })
-    ks.createBase.mockResolvedValueOnce({ id: 'recovered' }).mockResolvedValueOnce({ id: 'replacement-recovery' })
+    // 取消分享两本地库：首轮预览复用可信原库 local-1（不新建），原库被删后才重建 replacement-recovery。
+    ks.createBase.mockResolvedValueOnce({ id: 'replacement-recovery' })
     ks.addItems
       .mockImplementationOnce(async () => {
         recoveryItems.getItemsByBaseId.mockReturnValue([{ id: 'first-item' }])
@@ -1645,7 +1646,7 @@ describe('取消整个分享', () => {
     await service.unsharePreview({ baseId: 'local-1' })
     ks.listBasesForDiscovery.mockReturnValue({ items: [] })
     await service.unsharePreview({ baseId: 'local-1' })
-    expect(ks.createBase).toHaveBeenCalledTimes(2)
+    expect(ks.createBase).toHaveBeenCalledTimes(1)
     expect(ks.addItems).toHaveBeenLastCalledWith('replacement-recovery', [expect.objectContaining({ type: 'file' })])
     service.dispose()
   })
@@ -1743,7 +1744,7 @@ describe('取消整个分享', () => {
     // await expect(service.unsharePreview({ baseId: 'local-1' })).rejects.toThrow('解析')
     // await expect(service.unshare({ baseId: 'local-1', confirmDevicesStopped: true })).rejects.toThrow()
     // 解析异步不阻塞恢复；字节指纹和可信映射仍须固化，预检不得删除云端。
-    await expect(service.unsharePreview({ baseId: 'local-1' })).resolves.toMatchObject({ localBaseId: 'recovered' })
+    await expect(service.unsharePreview({ baseId: 'local-1' })).resolves.toMatchObject({ localBaseId: 'local-1' })
     expect(orgStateStore.getCloudRecovery('')).toMatchObject({
       phase: 'ready',
       restored: { f: 'downloaded' },
@@ -1755,7 +1756,7 @@ describe('取消整个分享', () => {
     // 旧 basename(downloadOriginal 的目标路径) 映射为 addItems 的托管路径；下载身份须包含库与文件。
     expect(client.download).toHaveBeenCalledExactlyOnceWith(codeSpaceId, 'f')
     expect(basename(ks.addItems.mock.calls[0][1][0].data.path)).toBe('资料.txt')
-    expect(ks.addItems).toHaveBeenCalledWith('recovered', [
+    expect(ks.addItems).toHaveBeenCalledWith('local-1', [
       expect.objectContaining({ data: expect.objectContaining({ path: expect.stringMatching(/资料\.txt$/) }) })
     ])
     expect(ks.addItems).toHaveBeenCalledTimes(1)
@@ -1824,6 +1825,326 @@ describe('取消整个分享', () => {
     finish()
     await pending
     service.dispose()
+  })
+
+  describe('恢复安全复用原库已有项', () => {
+    function buildRecovery(service: OrgKnowledgeService) {
+      return (service as any).recoveryContext(encodeOrgId(codeSpaceId), lease).recovery
+    }
+    const remoteFile = (over: Partial<any> = {}) => ({
+      id: 'f',
+      space_id: codeSpaceId,
+      parent_id: null,
+      name: '资料.txt',
+      is_dir: false,
+      has_original_file: false,
+      file_hash: null,
+      updated_at: 'today',
+      ...over
+    })
+
+    it('可信映射项属于目标本地库且字节一致时直接复用，不重复导入', async () => {
+      const { api, service, ks } = setup()
+      const hash = createHash('sha256').update('file-bytes').digest('hex')
+      vi.mocked(orgStateStore.getShareAssociations).mockReturnValue({
+        [key]: {
+          shareId: codeSpaceId,
+          completion: 'completed',
+          files: [],
+          manifest: {
+            entries: [{ itemId: 'existing', fileId: 'f', fileName: '资料.txt', hash }],
+            operations: [],
+            state: 'shared',
+            lastSyncedAt: null
+          }
+        }
+      } as never)
+      recoveryItems.getById.mockReturnValue({ id: 'existing', baseId: 'local-1', type: 'file', status: 'completed' })
+      recoveryItems.getItemsByBaseId.mockReturnValue([
+        {
+          id: 'existing',
+          baseId: 'local-1',
+          type: 'file',
+          status: 'completed',
+          data: { source: '资料.txt' },
+          groupId: null
+        }
+      ])
+      ks.getFilePath.mockReturnValue('/managed/file.txt')
+      const recovery = buildRecovery(service)
+      let expected = ''
+      const itemId = await recovery.ports.restore(remoteFile(), 'local-1', null, (h) => {
+        expected = h
+      })
+      expect(itemId).toBe('existing')
+      expect(expected).toBe(hash)
+      expect(ks.addItems).not.toHaveBeenCalled()
+      expect(api.javaKnowledge.download).not.toHaveBeenCalled()
+      service.dispose()
+    })
+
+    it('可信映射项不属于目标本地库时退回下载导入，不误认领', async () => {
+      const { api, service, ks } = setup()
+      const hash = createHash('sha256').update('file-bytes').digest('hex')
+      vi.mocked(orgStateStore.getShareAssociations).mockReturnValue({
+        [key]: {
+          shareId: codeSpaceId,
+          completion: 'completed',
+          files: [],
+          manifest: {
+            entries: [{ itemId: 'other-base', fileId: 'f', fileName: '资料.txt', hash }],
+            operations: [],
+            state: 'shared',
+            lastSyncedAt: null
+          }
+        }
+      } as never)
+      recoveryItems.getById.mockReturnValue({ id: 'other-base', baseId: 'another', type: 'file', status: 'completed' })
+      recoveryItems.getItemsByBaseId.mockReturnValue([])
+      ks.getFilePath.mockReturnValue('/managed/file.txt')
+      api.javaKnowledge.download.mockResolvedValue({ bytes: Buffer.from('file-bytes') })
+      vi.mocked(application.getPath).mockReturnValue('/tmp/knowledge-recovery-')
+      ks.addItems.mockImplementation(async () => {
+        recoveryItems.getItemsByBaseId.mockReturnValue([{ id: 'downloaded' }])
+      })
+      const recovery = buildRecovery(service)
+      const itemId = await recovery.ports.restore(remoteFile({ has_original_file: true }), 'local-1', null, () => {})
+      expect(itemId).toBe('downloaded')
+      expect(ks.addItems).toHaveBeenCalledWith('local-1', [expect.objectContaining({ type: 'file' })])
+      service.dispose()
+    })
+
+    it('可信映射项属于目标库但本机字节不匹配时抛冲突，不下载覆盖', async () => {
+      const { api, service, ks } = setup()
+      const hash = createHash('sha256').update('file-bytes').digest('hex')
+      vi.mocked(orgStateStore.getShareAssociations).mockReturnValue({
+        [key]: {
+          shareId: codeSpaceId,
+          completion: 'completed',
+          files: [],
+          manifest: {
+            entries: [{ itemId: 'existing', fileId: 'f', fileName: '资料.txt', hash }],
+            operations: [],
+            state: 'shared',
+            lastSyncedAt: null
+          }
+        }
+      } as never)
+      recoveryItems.getById.mockReturnValue({ id: 'existing', baseId: 'local-1', type: 'file', status: 'completed' })
+      recoveryItems.getItemsByBaseId.mockReturnValue([
+        {
+          id: 'existing',
+          baseId: 'local-1',
+          type: 'file',
+          status: 'completed',
+          data: { source: '资料.txt' },
+          groupId: null
+        }
+      ])
+      ks.getFilePath.mockReturnValue('/managed/file.txt')
+      vi.mocked(createReadStream).mockImplementation(() => Readable.from([Buffer.from('tampered')]) as never)
+      const recovery = buildRecovery(service)
+      await expect(recovery.ports.restore(remoteFile(), 'local-1', null, () => {})).rejects.toThrow('冲突')
+      expect(api.javaKnowledge.download).not.toHaveBeenCalled()
+      expect(ks.addItems).not.toHaveBeenCalled()
+      service.dispose()
+    })
+
+    it('未知云端文件若目标父目录已有同名 item 则抛冲突，不能认领', async () => {
+      const { api, service } = setup()
+      vi.mocked(orgStateStore.getShareAssociations).mockReturnValue({
+        [key]: {
+          shareId: codeSpaceId,
+          completion: 'completed',
+          files: [],
+          manifest: { entries: [], operations: [], state: 'shared', lastSyncedAt: null }
+        }
+      } as never)
+      recoveryItems.getById.mockReturnValue(undefined)
+      recoveryItems.getItemsByBaseId.mockReturnValue([
+        {
+          id: 'same-name',
+          baseId: 'local-1',
+          type: 'file',
+          status: 'completed',
+          data: { source: '资料.txt' },
+          groupId: null
+        }
+      ])
+      const recovery = buildRecovery(service)
+      await expect(
+        recovery.ports.restore(remoteFile({ has_original_file: true }), 'local-1', null, () => {})
+      ).rejects.toThrow('同名')
+      expect(api.javaKnowledge.download).not.toHaveBeenCalled()
+      service.dispose()
+    })
+
+    it('目录按同父同名称复用唯一目录，文件/目录类型冲突拒绝', async () => {
+      const { service } = setup()
+      recoveryItems.getById.mockReturnValue(undefined)
+      recoveryItems.createActive.mockClear()
+      const recovery = buildRecovery(service)
+      const dirFile = remoteFile({ id: 'd', name: '子目录', is_dir: true })
+      recoveryItems.getItemsByBaseId.mockReturnValue([
+        { id: 'dir', type: 'directory', groupId: null, data: { source: '子目录' }, status: 'completed' }
+      ])
+      const reused = await recovery.ports.restore(dirFile, 'local-1', null, () => {})
+      expect(reused).toBe('dir')
+      expect(recoveryItems.createActive).not.toHaveBeenCalled()
+      recoveryItems.getItemsByBaseId.mockReturnValue([
+        { id: 'file-item', type: 'file', groupId: null, data: { source: '子目录' } }
+      ])
+      await expect(recovery.ports.restore(dirFile, 'local-1', null, () => {})).rejects.toThrow('冲突')
+      service.dispose()
+    })
+
+    it('远端哈希变更且可信映射跨库时不应丢失映射并按新名导入', async () => {
+      const { api, service, ks } = setup()
+      const hash = createHash('sha256').update('file-bytes').digest('hex')
+      vi.mocked(orgStateStore.getShareAssociations).mockReturnValue({
+        [key]: {
+          shareId: codeSpaceId,
+          completion: 'completed',
+          files: [],
+          manifest: {
+            entries: [{ itemId: 'other-base-item', fileId: 'f', fileName: '资料.txt', hash }],
+            operations: [],
+            state: 'shared',
+            lastSyncedAt: null
+          }
+        }
+      } as never)
+      recoveryItems.getById.mockReturnValue({
+        id: 'other-base-item',
+        baseId: 'another',
+        type: 'file',
+        status: 'completed'
+      })
+      recoveryItems.getItemsByBaseId.mockReturnValue([])
+      ks.getFilePath.mockReturnValue('/managed/file.txt')
+      api.javaKnowledge.download.mockResolvedValue({ bytes: Buffer.from('file-bytes') })
+      vi.mocked(application.getPath).mockReturnValue('/tmp/knowledge-recovery-')
+      ks.addItems.mockImplementation(async () => {
+        recoveryItems.getItemsByBaseId.mockReturnValue([{ id: 'downloaded' }])
+      })
+      const recovery = buildRecovery(service)
+      // 远端哈希已变更（不同于可信映射 hash），目标库为空：曾经会丢失可信映射并按新名下载导入。
+      await expect(
+        recovery.ports.restore(
+          remoteFile({ has_original_file: true, file_hash: 'changed-remote-hash' }),
+          'local-1',
+          null,
+          () => {}
+        )
+      ).rejects.toThrow('不一致')
+      expect(api.javaKnowledge.download).not.toHaveBeenCalled()
+      service.dispose()
+    })
+
+    it('可信映射项属于目标库但路径不可读时中文冲突阻断，不下载覆盖', async () => {
+      const { api, service, ks } = setup()
+      const hash = createHash('sha256').update('file-bytes').digest('hex')
+      vi.mocked(orgStateStore.getShareAssociations).mockReturnValue({
+        [key]: {
+          shareId: codeSpaceId,
+          completion: 'completed',
+          files: [],
+          manifest: {
+            entries: [{ itemId: 'existing', fileId: 'f', fileName: '资料.txt', hash }],
+            operations: [],
+            state: 'shared',
+            lastSyncedAt: null
+          }
+        }
+      } as never)
+      recoveryItems.getById.mockReturnValue({ id: 'existing', baseId: 'local-1', type: 'file', status: 'completed' })
+      recoveryItems.getItemsByBaseId.mockReturnValue([
+        {
+          id: 'existing',
+          baseId: 'local-1',
+          type: 'file',
+          status: 'completed',
+          data: { source: '资料.txt' },
+          groupId: null
+        }
+      ])
+      ks.getFilePath.mockReturnValue('/managed/file.txt')
+      // 目标已有项路径不可读：读取抛错，不得 catch 后退下载覆盖。
+      vi.mocked(createReadStream).mockImplementation(() => {
+        throw new Error('ENOENT')
+      })
+      const recovery = buildRecovery(service)
+      await expect(recovery.ports.restore(remoteFile(), 'local-1', null, () => {})).rejects.toThrow('禁止覆盖')
+      expect(api.javaKnowledge.download).not.toHaveBeenCalled()
+      expect(ks.addItems).not.toHaveBeenCalled()
+      service.dispose()
+    })
+
+    it('可信映射项已删除且目标库已有同名资料时新导入被同名冲突阻断', async () => {
+      const { api, service } = setup()
+      const hash = createHash('sha256').update('file-bytes').digest('hex')
+      vi.mocked(orgStateStore.getShareAssociations).mockReturnValue({
+        [key]: {
+          shareId: codeSpaceId,
+          completion: 'completed',
+          files: [],
+          manifest: {
+            entries: [{ itemId: 'deleted-item', fileId: 'f', fileName: '资料.txt', hash }],
+            operations: [],
+            state: 'shared',
+            lastSyncedAt: null
+          }
+        }
+      } as never)
+      // 映射项已删除：getById 抛错，允许后续新导入但仍须同父同名冲突检查。
+      recoveryItems.getById.mockImplementation(() => {
+        throw new Error('not found')
+      })
+      recoveryItems.getItemsByBaseId.mockReturnValue([
+        {
+          id: 'same-name',
+          baseId: 'local-1',
+          type: 'file',
+          status: 'completed',
+          data: { source: '资料.txt' },
+          groupId: null
+        }
+      ])
+      const recovery = buildRecovery(service)
+      await expect(
+        recovery.ports.restore(remoteFile({ has_original_file: true }), 'local-1', null, () => {})
+      ).rejects.toThrow('同名')
+      expect(api.javaKnowledge.download).not.toHaveBeenCalled()
+      service.dispose()
+    })
+
+    it('目录同名多个必须拒绝，无法唯一确定复用目标', async () => {
+      const { service } = setup()
+      recoveryItems.getById.mockReturnValue(undefined)
+      const recovery = buildRecovery(service)
+      const dirFile = remoteFile({ id: 'd', name: '子目录', is_dir: true })
+      recoveryItems.getItemsByBaseId.mockReturnValue([
+        { id: 'dir1', type: 'directory', groupId: null, data: { source: '子目录' }, status: 'completed' },
+        { id: 'dir2', type: 'directory', groupId: null, data: { source: '子目录' }, status: 'completed' }
+      ])
+      await expect(recovery.ports.restore(dirFile, 'local-1', null, () => {})).rejects.toThrow('多个同名目录')
+      service.dispose()
+    })
+
+    it('复用已有目录不调用 updateStatus 修改原资料状态', async () => {
+      const { service } = setup()
+      recoveryItems.getById.mockReturnValue(undefined)
+      recoveryItems.updateStatus.mockClear()
+      const recovery = buildRecovery(service)
+      const dirFile = remoteFile({ id: 'd', name: '子目录', is_dir: true })
+      recoveryItems.getItemsByBaseId.mockReturnValue([
+        { id: 'dir', type: 'directory', groupId: null, data: { source: '子目录' }, status: 'completed' }
+      ])
+      const reused = await recovery.ports.restore(dirFile, 'local-1', null, () => {})
+      expect(reused).toBe('dir')
+      expect(recoveryItems.updateStatus).not.toHaveBeenCalled()
+      service.dispose()
+    })
   })
 })
 

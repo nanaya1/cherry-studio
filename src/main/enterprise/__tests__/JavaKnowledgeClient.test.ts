@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from 'vitest'
+import { mockMainLoggerService as logs } from '@test-mocks/MainLoggerService'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { JavaKnowledgeClient } from '../JavaKnowledgeClient'
 
@@ -59,6 +60,124 @@ function setup(responses: Response[]) {
   })
   return { client, fetchImpl, onSessionExpired }
 }
+
+describe('JavaKnowledgeClient 请求日志', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it.each(['detail', 'preview'] as const)('记录 %s 权限拒绝的接口、资源和服务端请求ID', async (endpoint) => {
+    const { client } = setup([envelope(null, 10007, 'req-denied')])
+    await expect(
+      endpoint === 'detail' ? client.getFile(UUID_A, FILE_A) : client.preview(UUID_A, FILE_A)
+    ).rejects.toThrow('无权限')
+    expect(logs.warn).toHaveBeenCalledWith(
+      'knowledge request completed',
+      expect.objectContaining({
+        method: 'GET',
+        path: `/api/v1/knowledge/file/${endpoint}`,
+        scope: 'client',
+        id: UUID_A,
+        fileId: FILE_A,
+        status: 200,
+        code: 10007,
+        requestId: 'req-denied',
+        outcome: 'failed',
+        durationMs: expect.any(Number)
+      })
+    )
+    expect(JSON.stringify([logs.info.mock.calls, logs.warn.mock.calls])).not.toContain('secret-token')
+  })
+
+  it('成功响应记录请求ID但不泄漏查询词、正文和服务端msg', async () => {
+    const { client } = setup([envelope({ chunks: [] }, 200, 'req-search')])
+    await client.search({ knowledgeIds: [UUID_A], query: 'private-query' })
+    expect(logs.info).toHaveBeenCalledWith(
+      'knowledge request completed',
+      expect.objectContaining({
+        method: 'POST',
+        path: '/api/v1/knowledge/search',
+        status: 200,
+        code: 200,
+        requestId: 'req-search',
+        outcome: 'success'
+      })
+    )
+    const serialized = JSON.stringify([logs.info.mock.calls, logs.warn.mock.calls])
+    for (const secret of ['private-query', 'secret-token', '测试响应']) expect(serialized).not.toContain(secret)
+  })
+
+  it('并发响应逆序返回时请求ID不会串到其他资源', async () => {
+    const { client, fetchImpl } = setup([])
+    let resolveFirst!: (response: Response) => void
+    fetchImpl.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveFirst = resolve
+        })
+    )
+    fetchImpl.mockResolvedValueOnce(envelope(null, 10007, 'req-second'))
+    const first = client.getFile(UUID_A, FILE_A).catch((error: unknown) => error)
+    await expect(client.getFile(UUID_B, FILE_A)).rejects.toThrow('req-second')
+    resolveFirst(envelope(null, 10007, 'req-first'))
+    expect(await first).toBeInstanceOf(Error)
+    const completed = logs.warn.mock.calls.map(([, entry]) => entry)
+    expect(completed).toEqual([
+      expect.objectContaining({ id: UUID_B, requestId: 'req-second' }),
+      expect.objectContaining({ id: UUID_A, requestId: 'req-first' })
+    ])
+  })
+
+  it('文件字节不进入日志', async () => {
+    const { client } = setup([new Response('private-file', { headers: { 'content-type': 'text/plain' } })])
+    expect((await client.preview(UUID_A, FILE_A)).bytes.toString()).toBe('private-file')
+    expect(logs.info).toHaveBeenCalledWith(
+      'knowledge request completed',
+      expect.objectContaining({ status: 200, outcome: 'success' })
+    )
+    expect(JSON.stringify(logs.info.mock.calls)).not.toContain('private-file')
+  })
+
+  it('HTTP拒绝记录状态且不读取错误正文', async () => {
+    const response = new Response('private-error-body', { status: 403 })
+    const { client } = setup([response])
+    await expect(client.getFile(UUID_A, FILE_A)).rejects.toThrow('403')
+    expect(response.bodyUsed).toBe(false)
+    expect(logs.warn).toHaveBeenCalledWith(
+      'knowledge request completed',
+      expect.objectContaining({ status: 403, outcome: 'failed' })
+    )
+    expect(JSON.stringify(logs.warn.mock.calls)).not.toContain('private-error-body')
+  })
+
+  it('网络故障保留请求上下文但不输出可能带凭据的异常消息', async () => {
+    const { client, fetchImpl } = setup([])
+    fetchImpl.mockRejectedValueOnce(new Error('secret-token private-network-error'))
+    await expect(client.getFile(UUID_A, FILE_A)).rejects.toThrow('private-network-error')
+    expect(logs.warn).toHaveBeenCalledWith(
+      'knowledge request completed',
+      expect.objectContaining({ path: '/api/v1/knowledge/file/detail', outcome: 'failed' })
+    )
+    expect(JSON.stringify(logs.warn.mock.calls)).not.toContain('secret-token')
+  })
+
+  it('流式上传同样记录业务拒绝且不记录multipart正文', async () => {
+    const { client } = setup([envelope(null, 10007, 'req-upload')])
+    await expect(
+      client.uploadMultipart(
+        `/api/v1/knowledge/file/upload?scope=client&knowledgeId=${UUID_A}&token=private-query-token`,
+        'multipart/form-data; boundary=test',
+        0,
+        async function* () {}
+      )
+    ).rejects.toThrow('无权限')
+    expect(logs.warn).toHaveBeenCalledWith(
+      'knowledge request completed',
+      expect.objectContaining({ method: 'POST', knowledgeId: UUID_A, code: 10007, requestId: 'req-upload' })
+    )
+    const serialized = JSON.stringify([logs.info.mock.calls, logs.warn.mock.calls])
+    expect(serialized).not.toContain('private-query-token')
+    expect(serialized).not.toContain('secret-token')
+  })
+})
 
 describe('JavaKnowledgeClient 传输与鉴权', () => {
   it('无 token 不发出请求', async () => {
