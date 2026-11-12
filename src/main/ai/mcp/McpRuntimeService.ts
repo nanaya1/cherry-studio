@@ -175,7 +175,8 @@ function withCache<T extends unknown[], R>(
   fn: (...args: T) => Promise<R>,
   getCacheKey: (...args: T) => string,
   ttl: number,
-  logPrefix: string
+  logPrefix: string,
+  canCache: () => boolean
 ): CachedFunction<T, R> {
   return async (...args: T): Promise<R> => {
     const cacheKey = getCacheKey(...args)
@@ -191,7 +192,8 @@ function withCache<T extends unknown[], R>(
 
     const start = Date.now()
     const result = await fn(...args)
-    cacheService.set(cacheKey, result, ttl)
+    // cacheService.set(cacheKey, result, ttl)
+    if (canCache()) cacheService.set(cacheKey, result, ttl)
     logger.debug(`${logPrefix} cached`, {
       cacheKey: redactCacheKey(cacheKey),
       ttlMs: ttl,
@@ -221,6 +223,8 @@ export class McpRuntimeService extends BaseService {
   private activeToolCalls: Map<string, Set<AbortController>> = new Map()
   private serverLogs = new ServerLogBuffer(200)
   private stopping = false
+  private connectionAbort = new AbortController()
+  private connectingTransports = new Set<McpTransport>()
   private readonly _onToolListChanged = new Emitter<McpToolListChangedEvent>()
   readonly onToolListChanged: Event<McpToolListChangedEvent> = this._onToolListChanged.event
 
@@ -230,13 +234,29 @@ export class McpRuntimeService extends BaseService {
 
   protected async onInit(): Promise<void> {
     this.stopping = false
+    this.connectionAbort = new AbortController()
   }
 
   protected async onStop(): Promise<void> {
     this.stopping = true
     this.abortActiveToolCalls()
-    await this.waitForPendingClients()
-    await this.closeAllClients()
+    // MEA:profile-logout-robustness 先取消底层等待并关闭连接中 transport，真实清理未完成不得报告成功。
+    this.connectionAbort.abort(new DOMException('MCP runtime is stopping', 'AbortError'))
+    // await this.waitForPendingClients()
+    // await this.closeAllClients()
+    const cleanup = await Promise.allSettled([
+      ...[...this.connectingTransports].map((transport) => transport.close()),
+      this.waitForPendingClients(),
+      this.closeAllClients(),
+      ...this.pendingProbes.values(),
+      ...this.pendingRemovals.values()
+    ])
+    const failures = cleanup.filter((result) => result.status === 'rejected')
+    if (failures.length)
+      throw new AggregateError(
+        failures.map((result) => result.reason),
+        'MCP cleanup failed'
+      )
     this.pendingClients.clear()
     this.pendingProbes.clear()
     this.pendingRemovals.clear()
@@ -273,7 +293,8 @@ export class McpRuntimeService extends BaseService {
   public setServerStatus(serverId: string, state: McpRuntimeState, error?: unknown): void {
     // A late writer racing removal (e.g. a connectivity check's error path) must not
     // resurrect the status entry doRemoveServer deleted for a removed server.
-    if (this.removedServerIds.has(serverId)) {
+    // if (this.removedServerIds.has(serverId)) {
+    if (this.stopping || this.removedServerIds.has(serverId)) {
       return
     }
 
@@ -369,6 +390,7 @@ export class McpRuntimeService extends BaseService {
   }
 
   private emitServerLog(server: McpServer, entry: McpServerLogEntry) {
+    if (this.stopping) return
     const serverKey = this.getServerKey(server)
     this.serverLogs.append(serverKey, entry)
     application
@@ -493,6 +515,7 @@ export class McpRuntimeService extends BaseService {
   }
 
   private async connectClient(server: McpServer, serverKey: string): Promise<Client> {
+    this.connectionAbort.signal.throwIfAborted()
     // Re-checked here as well as in getOrCreateClient: a reconnect arrives after the ping and
     // stale-client cleanup awaits, by which time removeServer may have completed.
     if (this.removedServerIds.has(server.id)) {
@@ -502,6 +525,7 @@ export class McpRuntimeService extends BaseService {
     this.setServerStatus(server.id, 'connecting')
 
     const sdk = await loadMcpClientSdk()
+    this.connectionAbort.signal.throwIfAborted()
     // Create new client instance for each connection
     const client = new sdk.Client({ name: 'MEA Cowork', version: app.getVersion() }, { capabilities: {} })
 
@@ -513,16 +537,37 @@ export class McpRuntimeService extends BaseService {
     })
 
     const args = [...(server.args || [])]
-    const createServerTransport = (typeOverride?: McpServerType) =>
-      createTransport({
+    const transports = new Set<McpTransport>()
+    // const createServerTransport = (typeOverride?: McpServerType) =>
+    //   createTransport({
+    //     sdk,
+    //     server,
+    //     args,
+    //     typeOverride,
+    //     authProvider,
+    //     logger: getServerLogger(server),
+    //     onServerLog: (entry) => this.emitServerLog(server, entry)
+    //   })
+    const createServerTransport = async (typeOverride?: McpServerType) => {
+      this.connectionAbort.signal.throwIfAborted()
+      const transport = await createTransport({
         sdk,
         server,
         args,
         typeOverride,
         authProvider,
         logger: getServerLogger(server),
-        onServerLog: (entry) => this.emitServerLog(server, entry)
+        onServerLog: (entry) => this.emitServerLog(server, entry),
+        signal: this.connectionAbort.signal
       })
+      transports.add(transport)
+      this.connectingTransports.add(transport)
+      if (this.connectionAbort.signal.aborted) {
+        await transport.close()
+        this.connectionAbort.signal.throwIfAborted()
+      }
+      return transport
+    }
 
     try {
       await this.connectWithFallback({ client, server, sdk, authProvider, createServerTransport })
@@ -536,7 +581,8 @@ export class McpRuntimeService extends BaseService {
 
       if (this.stopping || this.isStopped || this.isDestroyed) {
         await client.close()
-        throw new Error('MCP runtime is stopping')
+        // throw new Error('MCP runtime is stopping')
+        throw this.connectionAbort.signal.reason ?? new Error('MCP runtime is stopping')
       }
 
       if (this.removedServerIds.has(server.id)) {
@@ -563,6 +609,12 @@ export class McpRuntimeService extends BaseService {
       })
       return client
     } catch (error) {
+      // MEA:profile-logout-robustness 取消也必须完成资源清理；关闭异常不得伪装成正常取消。
+      const cleanup = await Promise.allSettled([...transports].map((transport) => transport.close()))
+      const failures = cleanup.filter((result) => result.status === 'rejected')
+      if (failures.length) {
+        throw new AggregateError([error, ...failures.map((result) => result.reason)], 'MCP connection cleanup failed')
+      }
       this.setServerStatus(server.id, 'error', error)
       getServerLogger(server).error(`Error activating server ${server.name}`, error as Error)
       this.emitServerLog(server, {
@@ -573,6 +625,8 @@ export class McpRuntimeService extends BaseService {
         source: 'client'
       })
       throw error
+    } finally {
+      for (const transport of transports) this.connectingTransports.delete(transport)
     }
   }
 
@@ -600,7 +654,8 @@ export class McpRuntimeService extends BaseService {
     // that the user explicitly configured. transport.start() latency remains bounded
     // by the underlying fetch / child_process, matching v1.8.4 behavior.
     const connectOptions: RequestOptions = {
-      timeout: Math.max((server.timeout ?? 0) * 1000, MCP_CONNECT_TIMEOUT_FLOOR_MS)
+      timeout: Math.max((server.timeout ?? 0) * 1000, MCP_CONNECT_TIMEOUT_FLOOR_MS),
+      signal: this.connectionAbort.signal
     }
 
     // When no fallback candidates exist (stdio / in-memory), connect with the configured
@@ -610,6 +665,7 @@ export class McpRuntimeService extends BaseService {
 
     let callbackServer: CallBackServer | undefined
     authProvider.prepareAuthorization = async () => {
+      this.connectionAbort.signal.throwIfAborted()
       callbackServer ??= new CallBackServer({
         port: authProvider.config.callbackPort,
         path: authProvider.config.callbackPath,
@@ -617,6 +673,7 @@ export class McpRuntimeService extends BaseService {
       })
       try {
         await callbackServer.getServer
+        this.connectionAbort.signal.throwIfAborted()
       } catch (error) {
         const code = (error as NodeJS.ErrnoException)?.code
         throw new Error(
@@ -633,12 +690,14 @@ export class McpRuntimeService extends BaseService {
       let lastError: unknown
 
       for (let i = 0; i < transportTypes.length; i++) {
+        this.connectionAbort.signal.throwIfAborted()
         const candidateType = transportTypes[i]
         const transport = await createServerTransport(candidateType)
         try {
           await client.connect(transport, connectOptions)
           return
         } catch (error: any) {
+          this.connectionAbort.signal.throwIfAborted()
           if (
             error instanceof Error &&
             isMcpOAuthEnabled(server) &&
@@ -704,7 +763,9 @@ export class McpRuntimeService extends BaseService {
     }, 300000) // 5 minutes timeout
 
     try {
-      const authCode = await callbackServer.waitForAuthCode()
+      // const authCode = await callbackServer.waitForAuthCode()
+      const authCode = await callbackServer.waitForAuthCode(300_000, this.connectionAbort.signal)
+      this.connectionAbort.signal.throwIfAborted()
       getServerLogger(server).debug(`Received auth code`)
 
       await transport.finishAuth(authCode)
@@ -713,9 +774,12 @@ export class McpRuntimeService extends BaseService {
       // The 401 left its transport installed on the client, and the SDK refuses a second
       // connect until it is cleared — close before retrying, as the fallback path does.
       await client.close().catch(() => undefined)
-      await client.connect(await createServerTransport(typeOverride))
+      // await client.connect(await createServerTransport(typeOverride))
+      this.connectionAbort.signal.throwIfAborted()
+      await client.connect(await createServerTransport(typeOverride), { signal: this.connectionAbort.signal })
       getServerLogger(server).debug(`Successfully authenticated`)
     } catch (oauthError) {
+      this.connectionAbort.signal.throwIfAborted()
       getServerLogger(server).error(`OAuth authentication failed`, oauthError as Error)
       throw new Error(
         `OAuth authentication failed: ${oauthError instanceof Error ? oauthError.message : String(oauthError)}`
@@ -832,7 +896,17 @@ export class McpRuntimeService extends BaseService {
   private async waitForPendingClients(): Promise<void> {
     const pending = [...this.pendingClients.values()]
     if (pending.length === 0) return
-    await Promise.allSettled(pending)
+    // await Promise.allSettled(pending)
+    const results = await Promise.allSettled(pending)
+    const failures = results.filter(
+      (result): result is PromiseRejectedResult =>
+        result.status === 'rejected' && !isMcpCancellation(result.reason, this.connectionAbort.signal)
+    )
+    if (failures.length)
+      throw new AggregateError(
+        failures.map((result) => result.reason),
+        'MCP pending cleanup failed'
+      )
   }
 
   private async closeAllClients(): Promise<void> {
@@ -843,6 +917,12 @@ export class McpRuntimeService extends BaseService {
         logger.error(`Failed to close client`, result.reason as Error)
       }
     }
+    const failures = results.filter((result) => result.status === 'rejected')
+    if (failures.length)
+      throw new AggregateError(
+        failures.map((result) => result.reason),
+        'MCP clients failed to close'
+      )
   }
 
   /**
@@ -1258,7 +1338,8 @@ export class McpRuntimeService extends BaseService {
         return `mcp:list_prompts:${serverKey}`
       },
       60 * 60 * 1000, // 60 minutes TTL
-      `[MCP] Prompts from ${server.name}`
+      `[MCP] Prompts from ${server.name}`,
+      () => !this.stopping
     )
     try {
       return await cachedListPrompts(server)
@@ -1349,7 +1430,8 @@ export class McpRuntimeService extends BaseService {
         return `mcp:list_resources:${serverKey}`
       },
       60 * 60 * 1000, // 60 minutes TTL
-      `[MCP] Resources from ${server.name}`
+      `[MCP] Resources from ${server.name}`,
+      () => !this.stopping
     )
     try {
       return await cachedListResources(server)

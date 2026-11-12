@@ -1,3 +1,4 @@
+import { net } from 'electron'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { McpServer } from '@shared/data/types/mcpServer'
@@ -71,6 +72,27 @@ describe('createTransport', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     getResolvedMcpConfig.mockReturnValue(null)
+  })
+
+  it.each(['sse', 'streamableHttp'] as const)('aborts the actual %s network request on logout', async (type) => {
+    const controller = new AbortController()
+    const sdkController = new AbortController()
+    vi.mocked(net.fetch).mockImplementation(
+      (_url, init) =>
+        new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(init.signal?.reason), { once: true })
+        })
+    )
+    const transport = (await create(
+      { type, baseUrl: 'https://mcp.example/mcp' },
+      { signal: controller.signal }
+    )) as unknown as FakeTransport
+    const pending = transport.options.fetch('https://mcp.example/mcp', { signal: sdkController.signal })
+    const assertion = expect(pending).rejects.toThrow('logout')
+    controller.abort(new Error('logout'))
+    await assertion
+    expect(sdkController.signal.aborted).toBe(false)
+    expect(vi.mocked(net.fetch).mock.calls.at(-1)?.[1]?.signal?.aborted).toBe(true)
   })
 
   it('honors in-memory and URL precedence even when a command is also configured', async () => {

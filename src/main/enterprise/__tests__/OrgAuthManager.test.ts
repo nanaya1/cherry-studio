@@ -239,6 +239,44 @@ describe('OrgAuthManager C3 组织可用性标记', () => {
     await logout
   })
 
+  // 捕获完成后的重复退出再次执行撤销或持久化转换、重新开放业务权限的缺陷。
+  it('重复 logout 在转换中及完成后复用同一结果，不重复撤销或转换', async () => {
+    const transition = deferred<{ kind: 'signed-out' }>()
+    let durableIntent = false
+    let transitions = 0
+    let revocations = 0
+    const manager = new OrgAuthManager({
+      credentialStore: {} as never,
+      profileSession: {
+        beginLogout: async () => {
+          durableIntent = true
+        },
+        logout: async () => {
+          transitions++
+          return transition.promise
+        }
+      } as never
+    })
+    seedSession(manager)
+    profileBusinessAccessGate.recordVerificationSuccess()
+    vi.spyOn(manager.apiClient, 'revoke').mockImplementation(async () => {
+      expect(durableIntent).toBe(true)
+      revocations++
+    })
+    const first = manager.logout()
+    await vi.waitFor(() => expect(transitions).toBe(1))
+    expect(manager.logout()).toBe(first)
+    transition.resolve({ kind: 'signed-out' })
+    expect(await first).toEqual({ state: 'switching', revocationWarning: null })
+    expect(manager.logout()).toBe(first)
+    expect(await manager.logout()).toEqual(await first)
+    expect(transitions).toBe(1)
+    expect(revocations).toBe(1)
+    expect(await manager.getValidSession()).toBeNull()
+    expect(profileBusinessAccessGate.isAllowed()).toBe(false)
+    manager.dispose()
+  })
+
   it('keeps a proven identity block terminal for normal retry and never logs out in background', async () => {
     const manager = new OrgAuthManager()
     seedSession(manager, { ...managementSession, expiresAt: Number.MAX_SAFE_INTEGER })

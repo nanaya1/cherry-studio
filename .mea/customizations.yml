@@ -8,6 +8,31 @@ policy:
   require_tests: true
   preserve_original_code_by_comment: true
 customizations:
+  - id: profile-logout-robustness
+    title: 退出登录主动取消 MCP 并仅在清理失败时自动重启
+    owner: main
+    behavior: 正常退出登录保持同进程返回登录页；MCP 停止时先取消网络启动及 OAuth 授权等待、关闭连接中 transport，禁止 fallback 和 ping 后重连及迟到缓存写入，真实等待底层清理完成，不用 race 假成功。底层不可取消时保留外层生命周期超时，signed-out teardown 异常或不 clean 自动 relaunch，不弹 teardown 选择框；记录原异常，relaunch 抛错安全退出且不取消 journal 或回滚 logout intent。持久化、登录损坏和其他恢复边界不自动重启，不改其他服务。
+    markers:
+      - MEA:profile-logout-robustness
+    # 2026-11-12：SDK 1.29.0 SSE start 在 close 后仍 pending；eventsource 吞掉 AbortError。
+    # ESM/CJS 版本化补丁共用终止信号，拒绝全部启动等待并阻止迟到 OAuth 重连，正常 endpoint 语义不变。
+    # 合成集成回归覆盖正常 listTools/echo、OAuth token、长调用取消、新 runtime 重建与停止竞态；不等同真实重登录。
+    touchpoints:
+      - patches/@modelcontextprotocol__sdk@1.29.0.patch
+      - pnpm-workspace.yaml
+      - pnpm-lock.yaml
+      - src/main/ai/mcp/McpRuntimeService.ts
+      - src/main/ai/mcp/mcpTransport.ts
+      - src/main/ai/mcp/oauth/callback.ts
+      - src/main/core/profiles/ProfileSwitchCoordinator.ts
+    tests:
+      - src/main/ai/mcp/__tests__/McpRuntimeService.sse.integration.test.ts
+      - src/main/ai/mcp/__tests__/McpRuntimeService.test.ts
+      - src/main/ai/mcp/__tests__/mcpTransport.test.ts
+      - src/main/ai/mcp/oauth/__tests__/callback.test.ts
+      - src/main/core/profiles/__tests__/ProfileSwitchCoordinator.test.ts
+      - src/main/core/profiles/__tests__/ProfileSessionService.test.ts
+      - src/main/enterprise/__tests__/OrgAuthManager.test.ts
   - id: public-knowledge-status-filter
     title: 公共知识库全量浏览与状态筛选
     owner: enterprise

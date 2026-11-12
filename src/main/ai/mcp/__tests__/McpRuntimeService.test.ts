@@ -134,6 +134,7 @@ const mcpSdkMock = vi.hoisted(() => {
   const streamableHttpTransports: Array<{ url: unknown; opts?: any }> = []
   class StdioClientTransport {
     kind = 'stdio' as const
+    close = vi.fn().mockResolvedValue(undefined)
     stderr = null
     constructor(params: { env?: Record<string, string> }) {
       stdioTransports.push(params)
@@ -222,6 +223,157 @@ function createDeferred<T>(): { promise: Promise<T>; resolve: (value: T) => void
   })
   return { promise, resolve }
 }
+
+describe('McpRuntimeService logout cleanup', () => {
+  beforeEach(() => {
+    BaseService.resetInstances()
+    MockMainCacheServiceUtils.resetMocks()
+  })
+
+  it.each(['abort', 'late-success', 'late-fallback'] as const)(
+    'does not finish cleanup before the underlying connection settles: %s',
+    async (mode) => {
+      const service = new McpRuntimeService()
+      const server = {
+        id: 'logout-mcp',
+        name: 'logout-mcp',
+        type: 'streamableHttp',
+        baseUrl: 'https://mcp.example/mcp',
+        isActive: true
+      } as McpServer
+      getByIdMock.mockReturnValue(server)
+      const entered = createDeferred<void>()
+      const release = createDeferred<void>()
+      let signal: AbortSignal | undefined
+      let transportClose: ReturnType<typeof vi.fn> | undefined
+      const connect = vi
+        .spyOn(mcpSdkMock.Client.prototype, 'connect')
+        .mockImplementation(async (transport, options?: any) => {
+          signal = options?.signal
+          transportClose = (transport as any).close
+          entered.resolve()
+          if (mode === 'abort') {
+            await new Promise<void>((_resolve, reject) =>
+              signal?.addEventListener('abort', () => reject(signal?.reason), { once: true })
+            )
+          } else {
+            await release.promise
+            if (mode === 'late-fallback') throw new mcpSdkMock.StreamableHTTPError(405, 'mismatch')
+          }
+        })
+      try {
+        const pending = service.withClient(server.id, async () => undefined)
+        const assertion = expect(pending).rejects.toThrow(/stopping/)
+        await entered.promise
+        let stopped = false
+        const stop = (service as any).onStop().then(() => {
+          stopped = true
+        })
+        await Promise.resolve()
+        expect(signal?.aborted).toBe(true)
+        expect(transportClose).toHaveBeenCalled()
+        if (mode !== 'abort') expect(stopped).toBe(false)
+        release.resolve()
+        await assertion
+        await stop
+        expect(connect).toHaveBeenCalledOnce()
+        expect((service as any).clients.size).toBe(0)
+        expect(application.get('CacheService').getShared('mcp.status.logout-mcp')).not.toMatchObject({
+          state: 'connected'
+        })
+      } finally {
+        connect.mockRestore()
+      }
+    }
+  )
+
+  it('cancels the OAuth code waiter without reconnecting after logout', async () => {
+    const service = new McpRuntimeService()
+    const entered = createDeferred<void>()
+    callbackServerMock.waitForAuthCode.mockImplementationOnce((_timeout, signal: AbortSignal) => {
+      entered.resolve()
+      return new Promise((_resolve, reject) =>
+        signal.addEventListener('abort', () => reject(signal.reason), { once: true })
+      )
+    })
+    const reconnect = vi.fn()
+    const pending = (service as any).finishOAuth({
+      client: { close: vi.fn(), connect: reconnect },
+      server: { id: 'oauth-logout', name: 'oauth-logout' },
+      transport: { finishAuth: vi.fn() },
+      createServerTransport: vi.fn(),
+      callbackServer: { waitForAuthCode: callbackServerMock.waitForAuthCode }
+    })
+    const assertion = expect(pending).rejects.toThrow('stopping')
+    await entered.promise
+    await (service as any).onStop()
+    await assertion
+    expect(reconnect).not.toHaveBeenCalled()
+  })
+
+  it('does not reconnect after a ping resolves during logout', async () => {
+    const service = new McpRuntimeService()
+    const server = { id: 'ping-logout', name: 'ping-logout', isActive: true } as McpServer
+    getByIdMock.mockReturnValue(server)
+    const ping = createDeferred<boolean>()
+    const entered = createDeferred<void>()
+    ;(service as any).clients.set(service.getServerKey(server), {
+      ping: () => {
+        entered.resolve()
+        return ping.promise
+      },
+      close: async () => undefined
+    })
+    const pending = service.withClient(server.id, async () => undefined)
+    const assertion = expect(pending).rejects.toThrow('stopping')
+    await entered.promise
+    const stop = (service as any).onStop()
+    ping.resolve(false)
+    await assertion
+    await stop
+    expect((service as any).pendingClients.size).toBe(0)
+    expect((service as any).clients.size).toBe(0)
+  })
+
+  it('does not cache a resource list that arrives after logout', async () => {
+    const service = new McpRuntimeService()
+    const server = { id: 'cache-logout', name: 'cache-logout', isActive: true } as McpServer
+    getByIdMock.mockReturnValue(server)
+    const response = createDeferred<{ resources: Array<{ uri: string; name: string }> }>()
+    const entered = createDeferred<void>()
+    ;(service as any).clients.set(service.getServerKey(server), {
+      ping: async () => true,
+      close: async () => undefined,
+      getServerCapabilities: () => ({ resources: {} }),
+      listResources: () => {
+        entered.resolve()
+        return response.promise
+      }
+    })
+    const pending = service.listResources(server.id)
+    await entered.promise
+    await (service as any).onStop()
+    response.resolve({ resources: [{ uri: 'file:///old-account', name: 'old-account' }] })
+    await pending
+    expect(application.get('CacheService').has(`mcp:list_resources:${service.getServerKey(server)}`)).toBe(false)
+  })
+
+  it('does not swallow a pending connection cleanup failure as successful cancellation', async () => {
+    const service = new McpRuntimeService()
+    ;(service as any).pendingClients.set('failed-pending', Promise.reject(new Error('transport close failed')))
+    await expect((service as any).onStop()).rejects.toThrow('MCP cleanup failed')
+  })
+
+  it('rejects cleanup when a connected client cannot close', async () => {
+    const service = new McpRuntimeService()
+    ;(service as any).clients.set('failed-client', {
+      close: async () => {
+        throw new Error('close failed')
+      }
+    })
+    await expect((service as any).onStop()).rejects.toThrow('MCP cleanup failed')
+  })
+})
 
 describe('McpRuntimeService stdio environment', () => {
   beforeEach(() => {
