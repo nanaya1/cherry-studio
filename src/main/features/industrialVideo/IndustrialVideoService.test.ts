@@ -1166,6 +1166,15 @@ describe('IndustrialVideoService', () => {
       expect(rec.state).toBe('failed')
     })
 
+    it('未知提交再次写入时明确提示待确认而非生成失败', async () => {
+      const c = makeClient({ videoStart: vi.fn(async () => fail({ category: 'timeout', outcomeUnknown: true })) })
+      const { service } = makeService(c, session)
+      await service.runCreate({ sessionId: 's1', baseName: 'demo' })
+      await expect(service.videoStart({ sessionId: 's1', run: 'r1' })).rejects.toThrow()
+      await expect(service.videoStart({ sessionId: 's1', run: 'r1' })).rejects.toThrow('提交结果待确认')
+      expect(c.videoStart).toHaveBeenCalledTimes(1)
+    })
+
     it('a persisted unknown blocks the next submission until reconciled', async () => {
       const c = makeClient({ videoStart: vi.fn(async () => fail({ category: 'timeout', outcomeUnknown: true })) })
       const { service } = makeService(c, session)

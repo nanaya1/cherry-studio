@@ -706,7 +706,8 @@ export class IndustrialVideoService extends BaseService {
     if (unknownCount > 0) {
       throw new IpcError(
         'IVIDEO_SUBMISSION_UNKNOWN',
-        'An interrupted submission must be reconciled (job_get / job_list) before retrying.'
+        // 'An interrupted submission must be reconciled (job_get / job_list) before retrying.'
+        '提交结果待确认，不代表生成失败。为避免重复生成或重复计费，核实前不能再次提交；已绑定任务可继续查询，无任务编号请联系服务端核实，不能猜测绑定或自动重发。'
       )
     }
     const pendingIntent = record?.rounds.at(-1)?.outcome === 'intended'
@@ -716,7 +717,13 @@ export class IndustrialVideoService extends BaseService {
       gatedByActiveJob && !!record?.jobId && ['parsing', 'generating', 'assembling'].includes(record.state)
     const ok = canSubmitIndustrialVideo({ pendingIntent, unknownCount, activeJob })
     if (!ok) {
-      throw new IpcError('IVIDEO_SUBMISSION_UNKNOWN', 'This session is not in a state to start a new submission.')
+      // throw new IpcError('IVIDEO_SUBMISSION_UNKNOWN', 'This session is not in a state to start a new submission.')
+      throw new IpcError(
+        'IVIDEO_SUBMISSION_UNKNOWN',
+        pendingIntent
+          ? '提交结果待确认，不代表生成失败。核实前不能再次提交，请联系服务端核实，不能自动重发。'
+          : '当前任务尚未结束，不能再次提交，请先查询任务状态。'
+      )
     }
   }
 
@@ -849,13 +856,21 @@ export class IndustrialVideoService extends BaseService {
       }
       this.appendRound(input.sessionId, finalRound, { failedState: !outcomeUnknown })
       if (outcomeUnknown) this.pushUnknownSubmission(input.sessionId, finalRound)
-      throw new IpcError('IVIDEO_HTTP_ERROR', error.message, {
-        category: error.category,
-        code: error.code,
-        status: error.status,
-        outcomeUnknown,
-        operation: input.operation
-      })
+      // 未知结果不能当作生成失败，原始错误保留供排查。
+      // throw new IpcError('IVIDEO_HTTP_ERROR', error.message, {
+      throw new IpcError(
+        'IVIDEO_HTTP_ERROR',
+        outcomeUnknown
+          ? `提交结果待确认，不代表生成失败；不会自动重发，核实前不能再次提交。${error.message}`
+          : error.message,
+        {
+          category: error.category,
+          code: error.code,
+          status: error.status,
+          outcomeUnknown,
+          operation: input.operation
+        }
+      )
     })
   }
 
