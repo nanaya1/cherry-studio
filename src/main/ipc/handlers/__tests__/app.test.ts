@@ -11,6 +11,7 @@ const {
   requestV1RemigrationMock,
   requestRelocationMock,
   requestDataRootRelocationMock,
+  inspectDataRootMock,
   getProfileLaunchContextMock
 } = vi.hoisted(() => ({
   appGetMock: vi.fn(),
@@ -23,6 +24,7 @@ const {
   requestV1RemigrationMock: vi.fn(),
   requestRelocationMock: vi.fn(),
   requestDataRootRelocationMock: vi.fn(),
+  inspectDataRootMock: vi.fn(),
   getProfileLaunchContextMock: vi.fn()
 }))
 
@@ -37,7 +39,8 @@ vi.mock('@main/core/profiles', () => ({
   getProfileLaunchContext: getProfileLaunchContextMock
 }))
 vi.mock('@main/services/dataRootRelocation', () => ({
-  requestDataRootRelocation: requestDataRootRelocationMock
+  requestDataRootRelocation: requestDataRootRelocationMock,
+  inspectDataRootRelocationTarget: inspectDataRootMock
 }))
 vi.mock('@main/services/profileDataReset', () => ({
   requestDeviceDataReset: vi.fn()
@@ -46,7 +49,8 @@ vi.mock('@main/services/dataReset', () => ({
   requestDataReset: requestDataResetMock,
   requestV1Remigration: requestV1RemigrationMock
 }))
-vi.mock('@main/services/userDataRelocation', () => ({
+vi.mock('@main/services/userDataRelocation', async () => ({
+  RelocationValidationError: (await import('@main/services/userDataRelocation/validation')).RelocationValidationError,
   inspectUserDataRelocationTarget: inspectTargetMock,
   requestUserDataRelocation: requestRelocationMock
 }))
@@ -88,6 +92,55 @@ beforeEach(() => {
 const ctx = { senderId: 'w1' }
 
 describe('appHandlers', () => {
+  it('inspects the same trusted profile dataRoot used by requests', async () => {
+    const context = { mode: 'business', dataRoot: '/root' }
+    getProfileLaunchContextMock.mockReturnValue(context)
+    inspectDataRootMock.mockReturnValue({ valid: false, reason: 'target_not_empty' })
+    await expect(appHandlers['app.user_data_relocation.inspect']({ path: '/target' }, ctx)).resolves.toEqual({
+      valid: false,
+      reason: 'target_not_empty'
+    })
+    expect(inspectDataRootMock).toHaveBeenCalledWith(context, '/target')
+    expect(inspectTargetMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects development inspection before checking filesystem paths', async () => {
+    ;(app as { isPackaged: boolean }).isPackaged = false
+    await expect(appHandlers['app.user_data_relocation.inspect']({ path: '/target' }, ctx)).rejects.toMatchObject({
+      code: 'USER_DATA_RELOCATION_UNAVAILABLE'
+    })
+    expect(inspectTargetMock).not.toHaveBeenCalled()
+    expect(inspectDataRootMock).not.toHaveBeenCalled()
+  })
+
+  it('preserves structured validation reasons across the request boundary', async () => {
+    const { RelocationValidationError } = await import('@main/services/userDataRelocation')
+    getProfileLaunchContextMock.mockReturnValue({ mode: 'business' })
+    requestDataRootRelocationMock.mockImplementationOnce(() => {
+      throw new RelocationValidationError('target_not_empty', 'private/path')
+    })
+    await expect(
+      appHandlers['app.user_data_relocation.request']({ path: '/target', copy: true }, ctx)
+    ).rejects.toMatchObject({
+      code: 'USER_DATA_RELOCATION_INVALID',
+      data: { reason: 'target_not_empty' },
+      message: 'Invalid relocation target'
+    })
+  })
+
+  it('returns a safe persistence error without raw filesystem details', async () => {
+    getProfileLaunchContextMock.mockReturnValue({ mode: 'business' })
+    requestDataRootRelocationMock.mockImplementationOnce(() => {
+      throw new Error('secret/path token=private')
+    })
+    await expect(
+      appHandlers['app.user_data_relocation.request']({ path: '/target', copy: true }, ctx)
+    ).rejects.toMatchObject({
+      code: 'USER_DATA_RELOCATION_PERSIST_FAILED',
+      message: 'USER_DATA_RELOCATION_PERSIST_FAILED'
+    })
+  })
+
   it('inspects relocation targets through the domain validation', async () => {
     const result = await appHandlers['app.user_data_relocation.inspect']({ path: '/new/data' }, ctx)
 

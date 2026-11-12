@@ -1,13 +1,17 @@
-import type fs from 'node:fs'
+import fs from 'node:fs'
 import fsp from 'node:fs/promises'
 import path from 'node:path'
 
 import { v4 as uuidv4 } from 'uuid'
 import * as z from 'zod'
 
+import { loggerService } from '@logger'
 import { getNormalizedExecutablePath } from '@main/core/preboot/userDataLocation'
 import { ProfileRegistry, createProfilePaths, resolveProfileRoot, type ProfileLaunchContext } from '@main/core/profiles'
 import { bootConfigService } from '@main/data/bootConfig'
+import type { UserDataRelocationInspection } from '@shared/types/userDataRelocation'
+
+import { assertRelocationPaths, RelocationValidationError } from './userDataRelocation'
 
 // export const DATA_ROOT_RELOCATION_OWNER = '.cherry-data-root-relocation-owner.json'
 export const DATA_ROOT_RELOCATION_OWNER = '.meacowork-data-root-relocation-owner.json'
@@ -42,10 +46,74 @@ const legacyOwnerSchema = z.strictObject({
   taskId: z.uuid()
 })
 
+const logger = loggerService.withContext('DataRootRelocation')
+
+// MEA:data-root-relocation-safety inspect 与 request 必须校验同一个可信 dataRoot。
+export function inspectDataRootRelocationTarget(
+  context: ProfileLaunchContext,
+  targetPath: string
+): UserDataRelocationInspection {
+  if (context.mode !== 'business' || context.kind === 'signed-out') {
+    return { valid: false, reason: 'source_missing' }
+  }
+  const existing = bootConfigService.get('temp.data_root_relocation')
+  if (existing && existing.status !== 'failed') return { valid: false, reason: 'target_work_conflict' }
+  try {
+    const { targetEmpty } = assertRelocationPaths(context.dataRoot, targetPath)
+    // const validationRoot = commonAncestor(context.dataRoot, targetPath)
+    // assertPathHasNoSymlinkSync(context.dataRoot, validationRoot)
+    // assertPathHasNoSymlinkSync(targetPath, validationRoot)
+    // MEA:data-root-relocation-safety 两端分别从所属卷根检查，不以跨卷共同祖先拼接路径。
+    assertPathHasNoSymlinkSync(context.dataRoot)
+    assertPathHasNoSymlinkSync(targetPath)
+    return targetEmpty
+      ? { valid: true, targetEmpty: true, copyRequired: true, sourcePath: context.dataRoot }
+      : { valid: false, reason: 'target_not_empty' }
+  } catch (error) {
+    if (error instanceof RelocationValidationError) return { valid: false, reason: error.reason }
+    throw error
+  }
+}
+
+// MEA:data-root-relocation-safety 同步预检与异步执行共用卷根遍历，包含根本身及 UNC share 根。
+export function* relocationPathAncestors(target: string, paths: typeof path = path): Generator<string> {
+  const resolved = paths.resolve(target)
+  let current = paths.parse(resolved).root
+  yield current
+  for (const segment of paths.relative(current, resolved).split(paths.sep).filter(Boolean)) {
+    current = paths.join(current, segment)
+    yield current
+  }
+}
+
+// function assertPathHasNoSymlinkSync(target: string, validationRoot: string): void {
+function assertPathHasNoSymlinkSync(target: string): void {
+  // let current = path.resolve(validationRoot)
+  // for (const segment of path.relative(current, path.resolve(target)).split(path.sep).filter(Boolean)) {
+  //   current = path.join(current, segment)
+  for (const current of relocationPathAncestors(target)) {
+    try {
+      if (fs.lstatSync(current).isSymbolicLink()) {
+        throw new RelocationValidationError('target_protected', 'dataRoot relocation refuses linked paths')
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return
+      throw error
+    }
+  }
+}
+
 export function requestDataRootRelocation(context: ProfileLaunchContext, targetPath: string): void {
   if (context.mode !== 'business' || context.kind === 'signed-out') {
-    throw new Error('dataRoot relocation requires an active business profile')
+    // throw new Error('dataRoot relocation requires an active business profile')
+    throw new RelocationValidationError('source_missing', 'dataRoot relocation requires an active business profile')
   }
+  const existing = bootConfigService.get('temp.data_root_relocation')
+  if (existing && existing.status !== 'failed') {
+    throw new RelocationValidationError('target_work_conflict', 'A dataRoot relocation is already pending')
+  }
+  const inspection = inspectDataRootRelocationTarget(context, targetPath)
+  if (!inspection.valid) throw new RelocationValidationError(inspection.reason, 'Invalid dataRoot relocation target')
   const pending: PendingDataRootRelocation = pendingSchema.parse({
     status: 'pending',
     taskId: uuidv4(),
@@ -64,35 +132,78 @@ export function requestDataRootRelocation(context: ProfileLaunchContext, targetP
   }
 }
 
-export async function runDataRootRelocation(): Promise<'skipped' | 'handled'> {
+export async function runDataRootRelocation(lockedDataRoot?: string): Promise<'skipped' | 'handled'> {
   const relocation = bootConfigService.get('temp.data_root_relocation')
   if (!relocation) return 'skipped'
   if (relocation.status === 'cleanup-pending') {
     await finishCommittedRelocationCleanup(cleanupPendingSchema.parse(relocation))
     return 'handled'
   }
-  if (relocation.status !== 'pending') return 'skipped'
-  await executeDataRootRelocation(relocation, commitDataRootRelocation)
-  clearCommittedRelocation()
-  return 'handled'
+  // if (relocation.status !== 'pending') return 'skipped'
+  if (relocation.status === 'failed') {
+    await assertSourceAvailable(relocation.from, lockedDataRoot)
+    return 'skipped'
+  }
+  // await executeDataRootRelocation(relocation, commitDataRootRelocation)
+  // clearCommittedRelocation()
+  // MEA:data-root-relocation-safety 失败停止重放，仅在原锁定根仍可读写时交回正常启动恢复。
+  if (lockedDataRoot && path.resolve(lockedDataRoot) !== path.resolve(relocation.from)) {
+    throw new Error('Relocation source differs from the locked dataRoot')
+  }
+  try {
+    await executeDataRootRelocation(relocation, commitDataRootRelocation)
+    clearCommittedRelocation()
+    return 'handled'
+  } catch (error) {
+    if (bootConfigService.get('temp.data_root_relocation')?.status === 'cleanup-pending') throw error
+    bootConfigService.set('temp.data_root_relocation', {
+      ...relocation,
+      status: 'failed',
+      error: error instanceof Error ? error.message : String(error),
+      failedAt: new Date().toISOString()
+    })
+    bootConfigService.persist()
+    await assertSourceAvailable(relocation.from, lockedDataRoot)
+    logger.error('DataRoot relocation failed; continuing normal source startup recovery', error as Error)
+    return 'skipped'
+  }
+}
+
+async function assertSourceAvailable(source: string, lockedDataRoot?: string): Promise<void> {
+  if (lockedDataRoot && path.resolve(lockedDataRoot) !== path.resolve(source)) {
+    throw new Error('Relocation source differs from the locked dataRoot')
+  }
+  // await assertNotSymlink(source, 'recovery source', path.parse(source).root)
+  await assertNotSymlink(source, 'recovery source')
+  await fsp.access(source, fs.constants.R_OK | fs.constants.W_OK)
+  const profiles = await fsp.lstat(path.join(source, 'profiles'))
+  const registry = await fsp.lstat(path.join(source, 'control', 'profiles.json'))
+  if (!profiles.isDirectory() || profiles.isSymbolicLink() || !registry.isFile() || registry.isSymbolicLink()) {
+    throw new Error('Relocation source structure is unavailable')
+  }
 }
 
 export async function executeDataRootRelocation(
   input: PendingDataRootRelocation,
   commit: (target: string) => void,
-  cleanup: (target: string, work: string) => Promise<void> = cleanupRelocationArtifacts
+  cleanup: (target: string, work: string) => Promise<void> = (target, work) =>
+    cleanupRelocationArtifacts(target, work, input.taskId)
 ): Promise<void> {
   const pending = pendingSchema.parse(input)
   const source = path.resolve(pending.from)
   const target = path.resolve(pending.to)
   assertSeparated(source, target)
-  const pathValidationRoot = commonAncestor(source, target)
-  await assertNotSymlink(source, 'source', pathValidationRoot)
+  // const pathValidationRoot = commonAncestor(source, target)
+  // await assertNotSymlink(source, 'source', pathValidationRoot)
+  await assertNotSymlink(source, 'source')
 
   const { work, payload } = artifactPaths(target, pending.taskId)
+  // await assertPathHasNoSymlink(await nearestExistingAncestor(path.dirname(target)), 'target ancestor', pathValidationRoot)
+  await assertPathHasNoSymlink(await nearestExistingAncestor(path.dirname(target)), 'target ancestor')
   await recoverOwnedPath(work, pending.taskId)
   await recoverOwnedPath(target, pending.taskId)
-  await assertTargetIsSafe(target, pathValidationRoot)
+  /* await assertTargetIsSafe(target, pathValidationRoot) */
+  await assertTargetIsSafe(target)
 
   let promoted = false
   let committed = false
@@ -106,9 +217,22 @@ export async function executeDataRootRelocation(
     )
     await copyDataRoot(source, payload)
     await validateCopiedDataRoot(payload)
-    await renameDurable(payload, target)
+    // await renameDurable(payload, target)
+    // promoted = true
+    // await copyFileDurable(path.join(work, DATA_ROOT_RELOCATION_OWNER), path.join(target, DATA_ROOT_RELOCATION_OWNER))
+    // MEA:data-root-relocation-safety 提升前携带归属标记，空目录仅非递归移除并复检竞态。
+    await copyFileDurable(path.join(work, DATA_ROOT_RELOCATION_OWNER), path.join(payload, DATA_ROOT_RELOCATION_OWNER))
+    /* await assertTargetIsSafe(target, pathValidationRoot) */
+    await assertTargetIsSafe(target)
+    try {
+      await fsp.rmdir(target)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+    }
+    await fsp.rename(payload, target)
     promoted = true
-    await copyFileDurable(path.join(work, DATA_ROOT_RELOCATION_OWNER), path.join(target, DATA_ROOT_RELOCATION_OWNER))
+    await fsyncDirectory(path.dirname(target))
+    await fsyncDirectory(work)
     commit(target)
     committed = true
     await cleanup(target, work)
@@ -132,7 +256,7 @@ function clearCommittedRelocation(): void {
 
 async function finishCommittedRelocationCleanup(relocation: CleanupPendingDataRootRelocation): Promise<void> {
   const { work } = artifactPaths(path.resolve(relocation.to), relocation.taskId)
-  await cleanupRelocationArtifacts(path.resolve(relocation.to), work)
+  await cleanupRelocationArtifacts(path.resolve(relocation.to), work, relocation.taskId)
   clearCommittedRelocation()
 }
 
@@ -156,11 +280,15 @@ function commitDataRootRelocation(target: string): void {
   }
 }
 
-async function cleanupRelocationArtifacts(target: string, work: string): Promise<void> {
+async function cleanupRelocationArtifacts(target: string, work: string, taskId: string): Promise<void> {
+  // const validationRoot = path.parse(target).root
+  // await assertNotSymlink(target, 'committed target', validationRoot)
+  await assertNotSymlink(target, 'committed target')
   await fsp.rm(path.join(target, DATA_ROOT_RELOCATION_OWNER), { force: true })
   await fsp.rm(path.join(target, LEGACY_DATA_ROOT_RELOCATION_OWNER), { force: true })
   await fsyncDirectory(target)
-  await fsp.rm(work, { recursive: true, force: true })
+  // await fsp.rm(work, { recursive: true, force: true })
+  await recoverOwnedPath(work, taskId)
   await fsyncDirectory(path.dirname(work))
 }
 
@@ -191,7 +319,9 @@ async function copyEntryRejectingSymlinks(source: string, target: string): Promi
 
 async function copyFileDurable(source: string, target: string): Promise<void> {
   await fsp.copyFile(source, target)
-  const handle = await fsp.open(target, 'r')
+  // const handle = await fsp.open(target, 'r')
+  // MEA:data-root-relocation-safety Windows fsync 需要可写且不截断的文件句柄。
+  const handle = await fsp.open(target, 'r+')
   try {
     await handle.sync()
   } finally {
@@ -199,12 +329,12 @@ async function copyFileDurable(source: string, target: string): Promise<void> {
   }
 }
 
-async function renameDurable(source: string, target: string): Promise<void> {
-  await fsp.rename(source, target)
-  await fsyncDirectory(path.dirname(target))
-  const sourceParent = path.dirname(source)
-  if (sourceParent !== path.dirname(target)) await fsyncDirectory(sourceParent)
-}
+// async function renameDurable(source: string, target: string): Promise<void> {
+//   await fsp.rename(source, target)
+//   await fsyncDirectory(path.dirname(target))
+//   const sourceParent = path.dirname(source)
+//   if (sourceParent !== path.dirname(target)) await fsyncDirectory(sourceParent)
+// }
 
 async function fsyncDirectory(directory: string): Promise<void> {
   if (process.platform === 'win32') return
@@ -250,29 +380,39 @@ async function validateCopiedDataRoot(dataRoot: string): Promise<void> {
   }
 }
 
-async function assertNotSymlink(target: string, label: string, validationRoot: string): Promise<void> {
-  await assertPathHasNoSymlink(target, label, validationRoot)
+// async function assertNotSymlink(target: string, label: string, validationRoot: string): Promise<void> {
+//   await assertPathHasNoSymlink(target, label, validationRoot)
+async function assertNotSymlink(target: string, label: string): Promise<void> {
+  await assertPathHasNoSymlink(target, label)
   const stat = await fsp.lstat(target)
   if (!stat.isDirectory()) throw new Error(`dataRoot relocation ${label} must be a directory`)
 }
 
-async function assertTargetIsSafe(target: string, validationRoot: string): Promise<void> {
+// async function assertTargetIsSafe(target: string, validationRoot: string): Promise<void> {
+async function assertTargetIsSafe(target: string): Promise<void> {
   try {
     const stat = await fsp.lstat(target)
     if (stat.isSymbolicLink()) throw new Error('dataRoot relocation target cannot be a symlink')
-    throw new Error('dataRoot relocation target must not already exist')
+    // throw new Error('dataRoot relocation target must not already exist')
+    // MEA:data-root-relocation-safety 与 inspect 的已有空目录契约一致，不合并或清空非空目录。
+    if (!stat.isDirectory()) throw new Error('dataRoot relocation target must be a directory')
+    if ((await fsp.readdir(target)).length !== 0) throw new Error('dataRoot relocation target must be empty')
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
   }
   const parent = await nearestExistingAncestor(path.dirname(target))
-  await assertPathHasNoSymlink(parent, 'target ancestor', validationRoot)
+  // await assertPathHasNoSymlink(parent, 'target ancestor', validationRoot)
+  await assertPathHasNoSymlink(parent, 'target ancestor')
 }
 
-async function assertPathHasNoSymlink(target: string, label: string, validationRoot: string): Promise<void> {
-  let current = path.resolve(validationRoot)
-  const relative = path.relative(current, path.resolve(target))
-  for (const segment of relative.split(path.sep).filter(Boolean)) {
-    current = path.join(current, segment)
+// async function assertPathHasNoSymlink(target: string, label: string, validationRoot: string): Promise<void> {
+async function assertPathHasNoSymlink(target: string, label: string): Promise<void> {
+  // let current = path.resolve(validationRoot)
+  // const relative = path.relative(current, path.resolve(target))
+  // for (const segment of relative.split(path.sep).filter(Boolean)) {
+  //   current = path.join(current, segment)
+  // MEA:data-root-relocation-safety 不允许共同祖先缩短链接检查范围。
+  for (const current of relocationPathAncestors(target)) {
     const stat = await fsp.lstat(current)
     if (stat.isSymbolicLink()) throw new Error(`dataRoot relocation ${label} cannot contain a symlink`)
   }
@@ -293,15 +433,15 @@ async function nearestExistingAncestor(candidate: string): Promise<string> {
   }
 }
 
-function commonAncestor(left: string, right: string): string {
-  let current = path.dirname(left)
-  while (!isInside(current, right) && current !== right) {
-    const parent = path.dirname(current)
-    if (parent === current) return current
-    current = parent
-  }
-  return current
-}
+// function commonAncestor(left: string, right: string): string {
+//   let current = path.dirname(left)
+//   while (!isInside(current, right) && current !== right) {
+//     const parent = path.dirname(current)
+//     if (parent === current) return current
+//     current = parent
+//   }
+//   return current
+// }
 
 function assertSeparated(source: string, target: string): void {
   if (source === target || isInside(source, target) || isInside(target, source)) {
@@ -311,7 +451,8 @@ function assertSeparated(source: string, target: string): void {
 
 function isInside(parent: string, child: string): boolean {
   const relative = path.relative(parent, child)
-  return relative !== '' && !relative.startsWith('..') && !path.isAbsolute(relative)
+  // return relative !== '' && !relative.startsWith('..') && !path.isAbsolute(relative)
+  return relative !== '' && relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative)
 }
 
 function artifactPaths(target: string, taskId: string): { work: string; payload: string } {
@@ -321,6 +462,8 @@ function artifactPaths(target: string, taskId: string): { work: string; payload:
 
 async function recoverOwnedPath(target: string, taskId: string): Promise<void> {
   try {
+    const stat = await fsp.lstat(target)
+    if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error('Relocation artifact must not be a symlink')
     let raw: string
     let legacy = false
     try {

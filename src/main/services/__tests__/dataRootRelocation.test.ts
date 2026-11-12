@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { computeIdentityDigest } from '@main/core/profiles'
 
-import { DATA_ROOT_RELOCATION_OWNER, executeDataRootRelocation } from '../dataRootRelocation'
+import { DATA_ROOT_RELOCATION_OWNER, executeDataRootRelocation, relocationPathAncestors } from '../dataRootRelocation'
 
 const TASK_ID = '11111111-1111-4111-8111-111111111111'
 const PROFILE_A = 'a'.repeat(32)
@@ -66,7 +66,74 @@ afterEach(async () => {
   await fs.rm(root, { recursive: true, force: true })
 })
 
+describe('Windows relocation path contract', () => {
+  // MEA:data-root-relocation-safety 使用真实 win32 解析，不 mock relative 的跨盘/UNC 结果。
+  it.each([
+    ['C:/sandbox/source', ['C:\\', 'C:\\sandbox', 'C:\\sandbox\\source']],
+    ['D:/sandbox/target/', ['D:\\', 'D:\\sandbox', 'D:\\sandbox\\target']],
+    ['D:\\sandbox/child\\..\\target', ['D:\\', 'D:\\sandbox', 'D:\\sandbox\\target']],
+    ['C:/', ['C:\\']],
+    ['D:\\', ['D:\\']],
+    ['//server/share/', ['\\\\server\\share\\']],
+    ['//server/share/dir/target', ['\\\\server\\share\\', '\\\\server\\share\\dir', '\\\\server\\share\\dir\\target']],
+    ['//server/other/target', ['\\\\server\\other\\', '\\\\server\\other\\target']]
+  ])('walks only the owning volume for %s', (input, expected) => {
+    expect([...relocationPathAncestors(input, path.win32)]).toEqual(expected)
+  })
+})
+
 describe('dataRoot relocation', () => {
+  it('preserves a target populated during copying instead of merging or deleting it', async () => {
+    const copy = fs.copyFile.bind(fs)
+    const spy = vi.spyOn(fs, 'copyFile').mockImplementationOnce(async (...args) => {
+      await fs.mkdir(target)
+      await fs.writeFile(path.join(target, 'keep.txt'), 'concurrent')
+      return copy(...args)
+    })
+    try {
+      await expect(
+        executeDataRootRelocation({ status: 'pending', taskId: TASK_ID, from: source, to: target }, vi.fn())
+      ).rejects.toThrow('empty')
+      await expect(fs.readFile(path.join(target, 'keep.txt'), 'utf8')).resolves.toBe('concurrent')
+      await expect(fs.readFile(path.join(source, 'profiles', PROFILE_A, 'a.txt'), 'utf8')).resolves.toBe('a')
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  it('preserves concurrent data added after the last empty-directory check', async () => {
+    await fs.mkdir(target)
+    const rmdir = fs.rmdir.bind(fs)
+    const spy = vi.spyOn(fs, 'rmdir').mockImplementationOnce(async (...args) => {
+      await fs.writeFile(path.join(target, 'late.txt'), 'late')
+      return rmdir(...args)
+    })
+    try {
+      await expect(
+        executeDataRootRelocation({ status: 'pending', taskId: TASK_ID, from: source, to: target }, vi.fn())
+      ).rejects.toMatchObject({ code: 'ENOTEMPTY' })
+      await expect(fs.readFile(path.join(target, 'late.txt'), 'utf8')).resolves.toBe('late')
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  it('rejects junction targets and nested ..archive paths without touching their data', async () => {
+    const real = path.join(root, 'real')
+    await fs.mkdir(real)
+    await fs.symlink(real, target, process.platform === 'win32' ? 'junction' : 'dir')
+    await expect(
+      executeDataRootRelocation({ status: 'pending', taskId: TASK_ID, from: source, to: target }, vi.fn())
+    ).rejects.toThrow('symlink')
+    await expect(
+      executeDataRootRelocation(
+        { status: 'pending', taskId: TASK_ID, from: source, to: path.join(source, '..archive') },
+        vi.fn()
+      )
+    ).rejects.toThrow('contain')
+    expect(await fs.readdir(real)).toEqual([])
+  })
+
   it('moves control, all profiles, and shared while excluding singleton and temporary markers', async () => {
     const commit = vi.fn()
     await executeDataRootRelocation({ status: 'pending', taskId: TASK_ID, from: source, to: target }, commit)
