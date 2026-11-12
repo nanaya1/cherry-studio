@@ -10,7 +10,11 @@ import { createFilePathHandle } from '@shared/utils/file'
 
 import PdfFilePreview from '../PdfFilePreview'
 import { PdfRangeTooLargeError } from '../PdfFileRangeTransport'
-import { PdfjsBundledCMapReaderFactory, PdfjsBundledStandardFontDataFactory } from '../pdfjsResourceFactories'
+import {
+  PdfjsBundledCMapReaderFactory,
+  PdfjsBundledStandardFontDataFactory,
+  PdfjsBundledWasmFactory
+} from '../pdfjsResourceFactories'
 
 const mocks = vi.hoisted(() => ({
   eventBusOff: vi.fn(),
@@ -291,7 +295,8 @@ describe('PdfFilePreview', () => {
       url: 'https://minio.example.test/one.pdf',
       withCredentials: false,
       CMapReaderFactory: PdfjsBundledCMapReaderFactory,
-      StandardFontDataFactory: PdfjsBundledStandardFontDataFactory
+      StandardFontDataFactory: PdfjsBundledStandardFontDataFactory,
+      WasmFactory: PdfjsBundledWasmFactory
     })
     rerender(<PdfFilePreview fileName="预览.docx" url="https://minio.example.test/two.pdf" />)
     await act(flushPdfEffects)
@@ -620,7 +625,8 @@ describe('PdfFilePreview', () => {
       disableAutoFetch: true,
       disableStream: true,
       CMapReaderFactory: PdfjsBundledCMapReaderFactory,
-      StandardFontDataFactory: PdfjsBundledStandardFontDataFactory
+      StandardFontDataFactory: PdfjsBundledStandardFontDataFactory,
+      WasmFactory: PdfjsBundledWasmFactory
     })
     expect(mocks.pdfViewerConstructor).toHaveBeenCalledWith(
       expect.objectContaining({

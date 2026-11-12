@@ -132,6 +132,7 @@ export function buildPathRegistry() {
 
     'feature.pdfjs.cmaps': path.join(app.getAppPath(), 'node_modules', 'pdfjs-dist', 'cmaps'),
     'feature.pdfjs.standard_fonts': path.join(app.getAppPath(), 'node_modules', 'pdfjs-dist', 'standard_fonts'),
+    'feature.pdfjs.wasm': path.join(app.getAppPath(), 'node_modules', 'pdfjs-dist', 'wasm'),
 
     // BinaryManager (tool manager)
     'feature.binary.data': appUserDataToolchainMise,

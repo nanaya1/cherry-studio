@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { PdfjsBundledCMapReaderFactory, PdfjsBundledStandardFontDataFactory } from '../pdfjsResourceFactories'
+import {
+  PdfjsBundledCMapReaderFactory,
+  PdfjsBundledStandardFontDataFactory,
+  PdfjsBundledWasmFactory
+} from '../pdfjsResourceFactories'
 
 const { ipcApiRequest } = vi.hoisted(() => ({ ipcApiRequest: vi.fn() }))
 vi.mock('@renderer/ipc', () => ({ ipcApi: { request: ipcApiRequest } }))
@@ -46,6 +50,30 @@ describe('PdfjsBundledStandardFontDataFactory', () => {
   it('rejects an empty filename without touching IPC', async () => {
     const factory = new PdfjsBundledStandardFontDataFactory()
     await expect(factory.fetch({ filename: '' })).rejects.toThrow('Font filename must be specified.')
+    expect(ipcApiRequest).not.toHaveBeenCalled()
+  })
+})
+
+describe('PdfjsBundledWasmFactory', () => {
+  beforeEach(() => {
+    ipcApiRequest.mockReset()
+  })
+
+  it('fetches image decoder bytes over IPC', async () => {
+    const content = new Uint8Array([7, 8, 9])
+    ipcApiRequest.mockResolvedValue({ content })
+
+    const factory = new PdfjsBundledWasmFactory()
+    await expect(factory.fetch({ filename: 'openjpeg.wasm' })).resolves.toBe(content)
+    expect(ipcApiRequest).toHaveBeenCalledWith('pdfjs.resource.read', {
+      kind: 'wasm',
+      name: 'openjpeg.wasm'
+    })
+  })
+
+  it('rejects an empty filename without touching IPC', async () => {
+    const factory = new PdfjsBundledWasmFactory()
+    await expect(factory.fetch({ filename: '' })).rejects.toThrow('Wasm filename must be specified.')
     expect(ipcApiRequest).not.toHaveBeenCalled()
   })
 })
