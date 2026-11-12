@@ -4,9 +4,11 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { net } from 'electron'
+import iconv from 'iconv-lite'
 import type { Mock, Mocked } from 'vitest'
 
 import { BaseService } from '@main/core/lifecycle'
+import { decodeTextWithAutoEncoding } from '@main/utils/legacyFile'
 import type { AgentSessionEntity } from '@shared/data/api/schemas/agentSessions'
 import type { IndustrialVideoProductionRecord } from '@shared/data/cache/cacheValueTypes'
 
@@ -104,7 +106,8 @@ function makeService(
     reviewActor?: string | null
     localActorStore?: { value: string }
     rejectEnterprise?: boolean
-  } = {}
+  } = {},
+  extraDeps: Record<string, unknown> = {}
 ) {
   // Each service instance is guarded by BaseService's singleton; reset so a new
   // instance can be constructed for every test double (one per logical session).
@@ -130,7 +133,8 @@ function makeService(
     setLocalReviewActor: (actor) => {
       if (opts.localActorStore) opts.localActorStore.value = actor
       store['industrial_video.local_actor'] = actor
-    }
+    },
+    ...extraDeps
   })
   return { service, store }
 }
@@ -516,24 +520,25 @@ describe('工业视频可信发送资料', () => {
 describe('工业视频文档附件可信提取', () => {
   const docxMime = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
 
-  function makeDocService() {
+  function makeDocService(extract: (filename: string, base64: string) => Promise<string> = async () => '装配步骤全文') {
     const upload = vi.fn(async ({ name }: { name?: string }) => ok({ name: `uploaded-${name}` }))
     const client = makeClient({ upload })
-    const { service } = makeService(client, makeSession())
-    const extractDocumentText = vi.fn(async () => '装配步骤全文')
-    service.setTestDeps({ extractDocumentText })
+    const extractDocumentText = vi.fn(extract)
+    // setTestDeps 每次从 productionDeps 重新合并，会话与提取依赖必须一次注入。
+    const { service } = makeService(client, makeSession(), {}, { extractDocumentText })
     return { client, service, upload, extractDocumentText }
   }
 
   async function prepareAndParse(
     service: IndustrialVideoService,
-    part: { type: 'file'; filename: string; mediaType: string; url: string }
+    part: { type: 'file'; filename: string; mediaType: string; url: string },
+    modelArgs: { texts?: unknown[]; media?: unknown[] } = {}
   ) {
     await service.runCreate({ sessionId: 's1', baseName: '初版' })
     const execution = service.beginRound({ sessionId: 's1' })
     await service.withExecution(execution, async () => {
       await service.prepareUserParts({ sessionId: 's1', parts: [part] })
-      await service.parse({ sessionId: 's1', run: 'r1' })
+      await service.parse({ sessionId: 's1', run: 'r1', ...modelArgs })
     })
   }
 
@@ -585,12 +590,12 @@ describe('工业视频文档附件可信提取', () => {
     ).rejects.toMatchObject({ code: 'IVIDEO_MATERIAL_INVALID' })
     expect(extractDocumentText).not.toHaveBeenCalled()
     expect(upload).not.toHaveBeenCalled()
-    for (const method of Object.values(client)) expect(method).not.toHaveBeenCalled()
+    // runCreate 已在拒绝前发生；解析（videoStart 携带 parse 输入）不得发生。
+    expect(client.videoStart).not.toHaveBeenCalled()
   })
 
-  it('提取为空或失败时拒绝提交', async () => {
-    const { service, upload } = makeDocService()
-    service.setTestDeps({ extractDocumentText: vi.fn(async () => '') })
+  it('提取为空时拒绝提交', async () => {
+    const { service, upload } = makeDocService(async () => '')
     await expect(
       prepareAndParse(service, {
         type: 'file',
@@ -600,6 +605,215 @@ describe('工业视频文档附件可信提取', () => {
       })
     ).rejects.toMatchObject({ code: 'IVIDEO_MATERIAL_INVALID' })
     expect(upload).not.toHaveBeenCalled()
+  })
+
+  it('提取失败时拒绝提交', async () => {
+    const { service, upload } = makeDocService(async () => {
+      throw new Error('officeparser failed')
+    })
+    await expect(
+      prepareAndParse(service, {
+        type: 'file',
+        filename: '损坏.docx',
+        mediaType: docxMime,
+        url: `data:${docxMime};base64,29vb29vb`
+      })
+    ).rejects.toMatchObject({ code: 'IVIDEO_MATERIAL_INVALID' })
+    expect(upload).not.toHaveBeenCalled()
+  })
+
+  // 服务端契约（ivideo sources/materials.py）：单条 texts ≤20000 字，title 单行 ≤40 字符。
+  function longText(paragraphChars: number[]): string {
+    return paragraphChars.map((n) => '甲'.repeat(n)).join('\n')
+  }
+
+  it('超长提取文本按段落拆成多条 texts，title 带序号且不超限', async () => {
+    const source = longText([6000, 6000, 6000, 6000])
+    const longName = `${'设'.repeat(30)}备维护手册完整修订版.pdf` // 40 字符，加 " 1/2" 后必破 40 上限
+    const { service, client, upload } = makeDocService(async () => source)
+    await prepareAndParse(service, {
+      type: 'file',
+      filename: longName,
+      mediaType: 'application/pdf',
+      url: 'data:application/pdf;base64,29vb29vb'
+    })
+    const call = client.videoStart.mock.calls.at(-1)?.[0] as { texts: { text: string; title: string }[] }
+    expect(call.texts).toHaveLength(2)
+    for (const entry of call.texts) expect(entry.text.length).toBeLessThanOrEqual(20000)
+    expect(call.texts.map((t) => t.text).join('\n')).toBe(source)
+    // 基础名已被截到 40，加序号后整体再截：序号必须保留（辨识拆分次序），基础名尾部让位。
+    for (const t of call.texts) expect(t.title.length).toBeLessThanOrEqual(40)
+    expect(call.texts[0].title.endsWith('1/2')).toBe(true)
+    expect(call.texts[1].title.endsWith('2/2')).toBe(true)
+    expect(call.texts[0].title.startsWith('设'.repeat(30))).toBe(true)
+    expect(upload).not.toHaveBeenCalled()
+  })
+
+  it('单段超限且无段落结构时拒绝并给指引', async () => {
+    const { service, client, upload } = makeDocService(async () => '甲'.repeat(25000))
+    await expect(
+      prepareAndParse(service, {
+        type: 'file',
+        filename: '无结构.docx',
+        mediaType: docxMime,
+        url: `data:${docxMime};base64,29vb29vb`
+      })
+    ).rejects.toMatchObject({ code: 'IVIDEO_MATERIAL_INVALID' })
+    expect(client.videoStart).not.toHaveBeenCalled()
+    expect(upload).not.toHaveBeenCalled()
+  })
+
+  it('长文件名 title 截断至 40 字符', async () => {
+    const filename = `${'长'.repeat(50)}.docx`
+    const { service, client } = makeDocService()
+    await prepareAndParse(service, {
+      type: 'file',
+      filename,
+      mediaType: docxMime,
+      url: `data:${docxMime};base64,29vb29vb`
+    })
+    const call = client.videoStart.mock.calls.at(-1)?.[0] as { texts: { text: string; title: string }[] }
+    expect(call.texts).toHaveLength(1)
+    expect(call.texts[0].title).toBe(filename.slice(0, 40))
+    expect(call.texts[0].title.length).toBeLessThanOrEqual(40)
+  })
+
+  it('text/plain 内联超长同样按段落拆分', async () => {
+    const source = longText([9000, 9000, 9000])
+    // 统一共享分类后 TEXT 分支也走提取依赖，须显式提供提取结果（此前依赖 MIME 直读路径）。
+    const { service, client, extractDocumentText } = makeDocService(async () => source)
+    await prepareAndParse(service, {
+      type: 'file',
+      filename: '工艺说明.txt',
+      mediaType: 'text/plain',
+      url: `data:text/plain;base64,${Buffer.from(source).toString('base64')}`
+    })
+    expect(extractDocumentText).toHaveBeenCalledTimes(1)
+    const call = client.videoStart.mock.calls.at(-1)?.[0] as { texts: { text: string; title: string }[] }
+    expect(call.texts).toHaveLength(2)
+    expect(call.texts.map((t) => t.text).join('\n')).toBe(source)
+    expect(call.texts.map((t) => t.title)).toEqual(['工艺说明.txt 1/2', '工艺说明.txt 2/2'])
+  })
+
+  // 共享分类统一（getFileTypeByExt）：TEXT 类按扩展名分类而非 MIME，编码走自动检测。
+  it('GBK 编码 txt 自动检测解码，不再按 UTF-8 硬解乱码', async () => {
+    const source = '扭矩标准值：120N·m，螺栓预紧力矩见下表。'
+    const gbkBytes = iconv.encode(source, 'gbk')
+    const { service, client, extractDocumentText } = makeDocService(async (_filename, base64) => {
+      // 模拟共享管线行为：base64 → 自动编码解码。
+      return decodeTextWithAutoEncoding(Buffer.from(base64, 'base64')).trim()
+    })
+    await prepareAndParse(service, {
+      type: 'file',
+      filename: '参数表.txt',
+      mediaType: 'text/plain',
+      url: `data:text/plain;base64,${gbkBytes.toString('base64')}`
+    })
+    expect(extractDocumentText).toHaveBeenCalledTimes(1)
+    const call = client.videoStart.mock.calls.at(-1)?.[0] as { texts: { text: string }[] }
+    expect(call.texts[0].text).toBe(source)
+  })
+
+  it.each(['.md', '.csv'])('扩展名 %s 按共享 textExts 分类提取，MIME 不可靠也走提取', async (ext) => {
+    const { service, client, upload, extractDocumentText } = makeDocService(async () => '工序要点')
+    await prepareAndParse(service, {
+      type: 'file',
+      filename: `工艺要点${ext}`,
+      mediaType: 'application/octet-stream',
+      url: 'data:application/octet-stream;base64,29vb29vb'
+    })
+    expect(extractDocumentText).toHaveBeenCalledTimes(1)
+    expect(upload).not.toHaveBeenCalled()
+    const call = client.videoStart.mock.calls.at(-1)?.[0] as { texts: { text: string }[] }
+    expect(call.texts[0].text).toBe('工序要点')
+  })
+
+  it('AUDIO 类（.mp3）按共享分类拒绝，不上传不提取', async () => {
+    const { service, client, upload, extractDocumentText } = makeDocService()
+    await expect(
+      prepareAndParse(service, {
+        type: 'file',
+        filename: '背景音乐.mp3',
+        mediaType: 'audio/mpeg',
+        url: 'data:audio/mpeg;base64,29vb29vb'
+      })
+    ).rejects.toMatchObject({ code: 'IVIDEO_MATERIAL_INVALID' })
+    expect(extractDocumentText).not.toHaveBeenCalled()
+    expect(upload).not.toHaveBeenCalled()
+    expect(client.videoStart).not.toHaveBeenCalled()
+  })
+
+  it('二进制伪装 .json 提取出乱码时被防线拒绝，不提交', async () => {
+    const binary = Buffer.from([0x00, 0x01, 0x02, 0xd8, 0xb4, 0xff, 0xfe, 0x9c, 0x0b])
+    const { service, client, upload, extractDocumentText } = makeDocService(() => binary.toString('latin1'))
+    await expect(
+      prepareAndParse(service, {
+        type: 'file',
+        filename: '伪装参数.json',
+        mediaType: 'application/octet-stream',
+        url: `data:application/octet-stream;base64,${binary.toString('base64')}`
+      })
+    ).rejects.toMatchObject({ code: 'IVIDEO_MATERIAL_INVALID' })
+    expect(extractDocumentText).toHaveBeenCalledTimes(1)
+    expect(upload).not.toHaveBeenCalled()
+    expect(client.videoStart).not.toHaveBeenCalled()
+  })
+
+  // 模型 texts 只允许内联 {text, title?}（客户端附件自动提取，模型拿不到字节）；
+  // 服务端 {name}/{url} 引用需 uploads/ 句柄且限 txt/md/csv/srt/json——模型必然传不出合法句柄。
+  it('模型传入的 {name} 引用条目在合并前被过滤，不发给服务端', async () => {
+    const { service, client } = makeDocService()
+    await prepareAndParse(
+      service,
+      {
+        type: 'file',
+        filename: '装配手册.docx',
+        mediaType: docxMime,
+        url: `data:${docxMime};base64,29vb29vb`
+      },
+      { texts: [{ name: '参数表.txt', title: '参数表' }] as never }
+    )
+    const call = client.videoStart.mock.calls.at(-1)?.[0] as { texts: { text?: string; name?: string }[] }
+    expect(call.texts.every((item) => typeof item.text === 'string' && item.text.trim())).toBe(true)
+    expect(call.texts.some((item) => 'name' in item && !('text' in item))).toBe(false)
+  })
+
+  it('模型传入的内联 texts 正常保留，与提取结果并存', async () => {
+    const { service, client } = makeDocService()
+    await prepareAndParse(
+      service,
+      {
+        type: 'file',
+        filename: '装配手册.docx',
+        mediaType: docxMime,
+        url: `data:${docxMime};base64,29vb29vb`
+      },
+      { texts: [{ text: '品牌口号：工业之美' }] }
+    )
+    const call = client.videoStart.mock.calls.at(-1)?.[0] as { texts: { text: string }[] }
+    expect(call.texts.some((item) => item.text === '品牌口号：工业之美')).toBe(true)
+    expect(call.texts.some((item) => item.text === '装配步骤全文')).toBe(true)
+  })
+
+  it('media 缺 caption 的条目在合并前被过滤（服务端 caption 必填）', async () => {
+    const { service, client, upload } = makeDocService()
+    await prepareAndParse(
+      service,
+      {
+        type: 'file',
+        filename: '甲.png',
+        mediaType: 'image/png',
+        url: 'data:image/png;base64,YQ=='
+      },
+      {
+        media: [{ name: 'uploaded-参考图.jpg' }] as never // 模型引用了句柄但没给 caption
+      }
+    )
+    const call = client.videoStart.mock.calls.at(-1)?.[0] as { media: { name: string; caption: string }[] }
+    // 客户端上传的甲.png 带 caption（文件名兜底），模型的无 caption 条目被过滤
+    expect(call.media.length).toBe(1)
+    expect(call.media[0].caption.trim()).not.toBe('')
+    expect(upload).toHaveBeenCalledTimes(1)
   })
 })
 

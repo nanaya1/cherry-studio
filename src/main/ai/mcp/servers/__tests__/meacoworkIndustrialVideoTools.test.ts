@@ -406,6 +406,9 @@ describe('MeacoworkIndustrialVideoTools — visibility & contract', () => {
     expect(schema.safeParse({ run: 'r-1', texts: ['维护前必须断电'] }).success).toBe(false)
     expect(schema.safeParse({ run: 'r-1', texts: '维护前必须断电' }).success).toBe(false)
     expect(schema.safeParse({ run: 'r-1', texts: [{ name: '资料', content: '维护前必须断电' }] }).success).toBe(false)
+    // {name}/{url} 引用形态已停用：客户端附件自动提取，模型传不出合法 uploads/ 句柄
+    expect(schema.safeParse({ run: 'r-1', texts: [{ name: '参数表.txt', title: '参数表' }] }).success).toBe(false)
+    expect(schema.safeParse({ run: 'r-1', texts: [{ url: 'https://example.com/a.md' }] }).success).toBe(false)
   })
 
   it('advertises object input schemas without a $schema dialect marker', () => {

@@ -6,6 +6,7 @@ import { mkdtemp, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
 import { application } from '@application'
+import { extractDocumentTextFromBytes } from '@main/ai/messages/attachmentTextExtraction'
 import { materializeNativeFilePart } from '@main/ai/messages/fileProcessor'
 import { BaseService, Injectable, Phase, ServicePhase } from '@main/core/lifecycle'
 import { agentSessionService } from '@main/data/services/AgentSessionService'
@@ -19,6 +20,8 @@ import type {
 } from '@shared/data/cache/cacheValueTypes'
 import type { UIMessage } from '@shared/data/types/message'
 import { IpcError } from '@shared/ipc/errors/IpcError'
+import { FILE_TYPE } from '@shared/types/file'
+import { getFileTypeByExt } from '@shared/utils/file'
 
 import {
   type IndustrialVideoClient,
@@ -139,6 +142,78 @@ function extractSettingsVersion(effectiveSettings: VideoApiRecord | undefined): 
   return undefined
 }
 
+// 服务端契约（ivideo sources/materials.py）：单条 texts ≤20000 字，title 单行 ≤40 字符。
+const MAX_TEXT_CHARS = 20_000
+const MAX_TITLE_CHARS = 40
+
+/** 服务端 title 必须单行且 ≤40 字符。 */
+function toServerTitle(filename: string | undefined): string {
+  const raw = (filename ?? '').replace(/\s+/g, ' ').trim()
+  return raw.slice(0, MAX_TITLE_CHARS)
+}
+
+/**
+ * TEXT 分支乱码防线：自动编码解码对任意字节都返回结果（不抛错），二进制伪装成
+ * 共享 textExts 扩展名时会产出乱码文本。替换符/不可打印字符占比超阈值即判定为
+ * 非文本（工业资料不容忍乱码进付费流程，普通任务的 note 降级语义不适用）。
+ * 仅用于工业视频调用方；共享 extractDocumentTextFromBytes 行为不变。
+ */
+function looksLikeGarbledText(text: string): boolean {
+  if (!text) return true
+  const sample = text.slice(0, 2000)
+  const replacementCount = (sample.match(/\uFFFD/g) ?? []).length
+  let controlCount = 0
+  for (const ch of sample) {
+    const code = ch.codePointAt(0) ?? 0
+    // 允许制表/换行/回车；其余 C0 控制符与 C1 区视为二进制痕迹。
+    if (code < 32 && code !== 9 && code !== 10 && code !== 13) controlCount++
+    else if (code >= 127 && code < 160) controlCount++
+  }
+  const badRatio = (replacementCount + controlCount) / sample.length
+  // 阈值 2%：合法文本（含全角符号/表格导出）远低于此；二进制解码残留通常 >10%。
+  return badRatio > 0.02
+}
+
+/**
+ * 超过服务端 20000 字上限的文本按换行段落边界拆成多条 ≤20000 字的 texts
+ * （服务端 ingest_texts 支持多条独立入库，按 sha256 去重）。单个段落自身超限
+ * 时不做机械切断（避免截断扭矩/工序等安全参数），抛错交由调用方拒绝。
+ */
+function splitTextsForServer(text: string, title?: string): { text: string; title?: string }[] {
+  const trimmed = text.trim()
+  if (!trimmed) return []
+  if (trimmed.length <= MAX_TEXT_CHARS) return title ? [{ text: trimmed, title }] : [{ text: trimmed }]
+
+  const paragraphs = trimmed.split('\n')
+  const chunks: string[] = []
+  let current: string[] = []
+  let currentLen = 0
+  for (const para of paragraphs) {
+    if (para.length > MAX_TEXT_CHARS)
+      throw new IpcError(
+        'IVIDEO_MATERIAL_INVALID',
+        '存在单个段落超过 20000 字、无法按段落安全拆分，请在该段落内手动分段后重新发送。'
+      )
+    if (currentLen && currentLen + 1 + para.length > MAX_TEXT_CHARS) {
+      chunks.push(current.join('\n'))
+      current = []
+      currentLen = 0
+    }
+    current.push(para)
+    currentLen = currentLen ? currentLen + 1 + para.length : para.length
+  }
+  if (currentLen) chunks.push(current.join('\n'))
+  if (chunks.length > 50)
+    throw new IpcError('IVIDEO_MATERIAL_INVALID', '提取文本拆分后超过服务端 50 份素材上限，请精简后重新发送。')
+  // 序号后缀必须完整保留（辨识拆分次序）：先按后缀长度截基础名，再拼接。
+  const suffixPad = ` ${chunks.length}/${chunks.length}`.length
+  const baseTitle = (title ?? '').slice(0, MAX_TITLE_CHARS - suffixPad)
+  return chunks.map((chunk, i) => ({
+    text: chunk,
+    title: `${baseTitle} ${i + 1}/${chunks.length}`
+  }))
+}
+
 export interface IndustrialVideoReviewInput {
   sessionId: string
   run: string
@@ -214,6 +289,8 @@ export interface IndustrialVideoServiceDeps {
   getReviewActor: () => Promise<string | null>
   getLocalReviewActor: () => string
   setLocalReviewActor: (actor: string) => void
+  /** Trusted document → text extraction for non-text/non-media attachments (docx/pdf/…). */
+  extractDocumentText: (filename: string, base64: string) => Promise<string | null>
 }
 
 /**
@@ -260,7 +337,9 @@ export class IndustrialVideoService extends BaseService {
     createDownloader: (cfg) => new IndustrialVideoDownloader(cfg),
     getReviewActor: async () => (await application.get('EnterprisePlugin').auth.getValidSession())?.userId ?? null,
     getLocalReviewActor: () => application.get('CacheService').getPersist('industrial_video.local_actor'),
-    setLocalReviewActor: (actor) => application.get('CacheService').setPersist('industrial_video.local_actor', actor)
+    setLocalReviewActor: (actor) => application.get('CacheService').setPersist('industrial_video.local_actor', actor),
+    extractDocumentText: (filename, base64) =>
+      extractDocumentTextFromBytes(base64, (filename.match(/\.([^.]+)$/)?.[1] ?? '').toLowerCase())
   }
   private deps: IndustrialVideoServiceDeps = this.productionDeps
   private readonly pendingReviewSnapshots = new Map<string, { run: string; reviewVersion: string }>()
@@ -398,17 +477,50 @@ export class IndustrialVideoService extends BaseService {
         const file = await materializeNativeFilePart(part)
         this.assertExecution(token)
         const match = file?.url.match(/^data:([^;,]+);base64,([A-Za-z0-9+/=\r\n]+)$/)
-        if (!match) throw new IpcError('IVIDEO_MATERIAL_INVALID', '附件无法完整读取，未提交解析。')
-        // if (/^text\//.test(match[1])) {
-        if (match[1].startsWith('text/')) {
-          texts.push({ text: Buffer.from(match[2], 'base64').toString('utf8'), title: part.filename })
-        } else if (/^(image|video)\//.test(match[1])) {
+        if (!match)
+          throw new IpcError(
+            'IVIDEO_MATERIAL_INVALID',
+            `附件「${part.filename ?? '未命名'}」无法完整读取，未提交解析。`
+          )
+        // if (match[1].startsWith('text/')) {
+        // if (/^(image|video)\//.test(match[1])) {
+        // 原 MIME 优先分流 + 硬编码 SUPPORTED_DOC_EXTS 白名单：与普通任务共享分类（getFileTypeByExt）
+        // 存在分类源不同步、TEXT 类 UTF-8 硬解致 GBK 乱码、白名单与共享 documentExts 重复三类问题。
+        // 现统一为共享分类：仅服务端要求原件的类型（IMAGE/VIDEO）走上传，其余文本类走同一提取管线。
+        const ext = (part.filename?.match(/\.([^.]+)$/)?.[1] ?? '').toLowerCase()
+        const fileType = getFileTypeByExt(ext)
+        if (fileType === FILE_TYPE.IMAGE || fileType === FILE_TYPE.VIDEO) {
           const caption = part.filename ?? 'attachment'
           const uploaded = await this.upload({ sessionId, name: caption, content: Buffer.from(match[2], 'base64') })
           this.assertExecution(token)
           media.push({ name: uploaded.name, caption })
+        } else if (fileType === FILE_TYPE.TEXT || fileType === FILE_TYPE.DOCUMENT) {
+          // TEXT/DOCUMENT 统一走与普通任务相同的提取管线（pdf/doc/officeparser/自动编码检测）。
+          let extracted: string | null
+          try {
+            extracted = await this.deps.extractDocumentText(part.filename ?? '', match[2])
+          } catch {
+            extracted = null
+          }
+          this.assertExecution(token)
+          if (!extracted?.trim())
+            throw new IpcError(
+              'IVIDEO_MATERIAL_INVALID',
+              `附件「${part.filename ?? '未命名'}」无法提取文本（可能为扫描件或不支持的格式），请转换为 txt/md 后重新发送。`
+            )
+          // TEXT 分支乱码防线：自动编码解码对任意字节返回结果，二进制伪装成共享 textExts
+          // 扩展名（.json/.md 等）时会产出乱码——工业资料不容忍乱码进付费流程，直接拒绝。
+          if (fileType === FILE_TYPE.TEXT && looksLikeGarbledText(extracted))
+            throw new IpcError(
+              'IVIDEO_MATERIAL_INVALID',
+              `附件「${part.filename ?? '未命名'}」内容不是可读文本（可能为二进制文件改了扩展名），请提供真实文本文件。`
+            )
+          texts.push(...splitTextsForServer(extracted, toServerTitle(part.filename)))
         } else {
-          throw new IpcError('IVIDEO_MATERIAL_INVALID', '该附件类型尚未接通可信文本提取，请转换后重新发送。')
+          throw new IpcError(
+            'IVIDEO_MATERIAL_INVALID',
+            `附件「${part.filename ?? '未命名'}」类型不支持自动提取文本，请转换为 txt/md/docx/pdf 后重新发送。`
+          )
         }
       }
       return { texts, media }
@@ -1117,6 +1229,25 @@ export class IndustrialVideoService extends BaseService {
     const changes = { ...input } as Partial<typeof input>
     delete changes.sessionId
     delete changes.run
+    // MEA:industrial-video MCP ParseSchema 已限定 texts 为内联 {text,title?}；此处兜底过滤
+    // 模型层的引用/畸形条目：服务端 {name}/{url} 引用需 uploads/ 句柄且限 txt/md/csv/srt/json，
+    // 模型必然传不出合法句柄，混入会让合并 strict 校验整批拒绝（ZodError 原样冒泡）。
+    // media 的 caption 服务端必填（/upload 端点不写 sidecar），缺 caption 的引用条目同样丢弃。
+    if (Array.isArray(changes.texts))
+      changes.texts = changes.texts.filter((item) => {
+        const text = (item as { text?: unknown } | null)?.text
+        return typeof text === 'string' && text.trim().length > 0
+      })
+    if (Array.isArray(changes.media))
+      changes.media = changes.media.filter((item) => {
+        const entry = item as { name?: unknown; caption?: unknown } | null
+        return (
+          typeof entry?.name === 'string' &&
+          entry.name.trim().length > 0 &&
+          typeof entry.caption === 'string' &&
+          entry.caption.trim().length > 0
+        )
+      })
     // const validated = mergeIndustrialVideoInput({}, changes as IndustrialVideoInput)
     const validated = mergeIndustrialVideoInput(changes as IndustrialVideoInput, userInput)
     let snapshot: IndustrialVideoInput = {}

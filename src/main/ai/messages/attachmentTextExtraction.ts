@@ -54,6 +54,31 @@ async function extract(entryId: FileEntryId, ext: string): Promise<string | null
 }
 
 /**
+ * Extract plain text from raw bytes + bare extension (e.g. `docx`). Same
+ * pipeline as {@link extractDocumentText} minus the FileManager/cache layer,
+ * for callers that already hold the bytes (e.g. industrial-video trusted
+ * material intake). Returns `null` for an extensionless binary file; throws
+ * on parser failure.
+ */
+export async function extractDocumentTextFromBytes(base64: string, ext: string): Promise<string | null> {
+  if (ext === 'pdf') return (await extractPdfText(Buffer.from(base64, 'base64'))).trim()
+
+  const buffer = Buffer.from(base64, 'base64')
+  if (ext === 'doc') {
+    const { default: WordExtractor } = await import('word-extractor')
+    const extracted = await new WordExtractor().extract(buffer)
+    return extracted.getBody().trim()
+  }
+  if (OFFICE_PARSER_EXTS.has(ext)) {
+    const { default: officeParser } = await import('officeparser')
+    const text = await officeParser.parseOfficeAsync(buffer, { tempFilesLocation: application.getPath('app.temp') })
+    return text.trim()
+  }
+  if (!ext) return decodeTextBufferIfText(buffer)?.trim() ?? null
+  return decodeTextWithAutoEncoding(buffer).trim()
+}
+
+/**
  * Extract plain text from a file entry. Returns `null` when an extensionless
  * file is detected as binary, and may return an empty string for scanned /
  * image-only docs (the caller emits {@link noExtractableTextNote}). Throws on

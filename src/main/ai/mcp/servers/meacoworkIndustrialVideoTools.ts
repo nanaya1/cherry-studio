@@ -119,28 +119,28 @@ const InlineTextSchema = z.strictObject({
   title: z.string().optional()
 })
 
-const TextReferenceFields = {
-  title: z.string().optional(),
-  knowledge_id: z.string().optional(),
-  document_id: z.string().optional(),
-  revision: z.string().optional(),
-  citation: z.string().optional()
-} as const
+// const TextReferenceFields = {
+//   title: z.string().optional(),
+//   knowledge_id: z.string().optional(),
+//   document_id: z.string().optional(),
+//   revision: z.string().optional(),
+//   citation: z.string().optional()
+// } as const
 
-const TextReferenceSchema = z.union([
-  z.strictObject({ name: z.string().min(1), ...TextReferenceFields }),
-  z.strictObject({ url: z.url(), ...TextReferenceFields })
-])
+// const TextReferenceSchema = z.union([
+//   z.strictObject({ name: z.string().min(1), ...TextReferenceFields }),
+//   z.strictObject({ url: z.url(), ...TextReferenceFields })
+// ])
+// 停用 texts 的 {name}/{url} 引用形态：服务端虽支持（uploads/ + COWORK_SOURCE_ROOT，且限
+// txt/md/csv/srt/json），但客户端附件走本地可信提取（GBK 解码/乱码防线/20000 拆分），
+// txt 等原文件不上传、docx/pdf 不在服务端白名单，模型传引用必然"句柄未找到"且丢失全部提取成果。
 
 const ParseSchema = z.strictObject({
   run: z.string().min(1),
   ...videoSettingsFields,
   // texts: z.array(z.unknown()).nullable().optional(),
-  texts: z
-    .array(z.union([InlineTextSchema, TextReferenceSchema]))
-    .max(50)
-    .nullable()
-    .optional(),
+  // texts: z.array(z.union([InlineTextSchema, TextReferenceSchema])).max(50).nullable().optional(),
+  texts: z.array(InlineTextSchema).max(50).nullable().optional(),
   media: z.array(z.unknown()).nullable().optional(),
   logo: z.unknown().nullable().optional()
 })
@@ -222,7 +222,9 @@ const IVIDEO_TOOLS: readonly Tool[] = [
   {
     name: 'ivideo_parse',
     description:
-      'Parse planning inputs into a job. Inline texts must use { text, title? }; text-file references use { name, title?, ... } or { url, title?, ... }. ' +
+      'Parse planning inputs into a job. texts items must be inline { text, title? } only — ' +
+      'user-attached files are extracted automatically by the client; do NOT pass file names or URLs as references. ' +
+      'media items must use { name, caption } where name is a handle returned by upload and caption is REQUIRED narration text. ' +
       'Do not pass string items or { name, content }. Resolution is exactly 720P or 1080P. ' +
       WORKFLOW_HINT,
     inputSchema: toMcpInputSchema(ParseSchema)
