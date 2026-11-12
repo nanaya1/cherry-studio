@@ -32,6 +32,7 @@ const { agentSessionGetByIdMock, ivServiceMock, loggerErrorMock, loggerWarnMock 
     parse: vi.fn(),
     estimate: vi.fn(),
     videoStart: vi.fn(),
+    ttsOptionsGet: vi.fn(),
     jobGet: vi.fn(),
     downloadArtifact: vi.fn()
   },
@@ -260,7 +261,8 @@ describe('MeacoworkIndustrialVideoTools — visibility & contract', () => {
         'ivideo_start',
         'ivideo_status',
         'ivideo_storyboard_get',
-        'ivideo_storyboard_submit'
+        'ivideo_storyboard_submit',
+        'ivideo_tts_options_get'
       ].sort()
     )
     // The provider only claims its own allowlisted names, not inherited object keys.
@@ -683,5 +685,28 @@ describe('MeacoworkIndustrialVideoTools — structured failure, never leaks the 
     ivServiceMock.runCreate.mockResolvedValue({ run: 'r-1' })
     const result = await makeTools().call('ivideo_run_create', { baseName: 'demo' })
     expect(JSON.stringify(result)).not.toContain('token')
+  })
+
+  it('ivideo_tts_options_get 返回服务端完整语言音色目录', async () => {
+    ivServiceMock.ttsOptionsGet.mockResolvedValue({
+      languages: [{ id: 'zh', default_voice: 'v-zh' }],
+      voices: [{ id: 'v-zh', language: 'zh', label: '中文' }]
+    })
+    const result = await makeTools().call('ivideo_tts_options_get', {})
+    expect(ivServiceMock.ttsOptionsGet).toHaveBeenCalledWith({ sessionId: SESSION_ID })
+    const body = jsonOf(result)
+    expect(body).toMatchObject({
+      ok: true,
+      languages: [{ id: 'zh', default_voice: 'v-zh' }],
+      voices: [{ id: 'v-zh', language: 'zh', label: '中文' }]
+    })
+  })
+
+  it('ivideo_parse 转发 language / narrativeStyle 到 service（snake_case 由 service 负责）', async () => {
+    ivServiceMock.parse.mockResolvedValue({ jobId: 'j1' })
+    await makeTools().call('ivideo_parse', { run: 'r1', language: 'en', narrativeStyle: 'wuxia' })
+    expect(ivServiceMock.parse).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: SESSION_ID, run: 'r1', language: 'en', narrativeStyle: 'wuxia' })
+    )
   })
 })

@@ -55,7 +55,9 @@ describe('industrial video HTTP settings boundary', () => {
       ttsEnabled: true,
       subtitleEnabled: true,
       backgroundMusicEnabled: true,
-      withAudio: true
+      withAudio: true,
+      language: 'zh-CN',
+      narrativeStyle: 'industrial'
     })
     expect(industrialVideoVoiceId(narrated.voice)).toBe('zh-CN-YunjianNeural')
 

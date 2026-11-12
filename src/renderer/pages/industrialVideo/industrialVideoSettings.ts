@@ -7,14 +7,9 @@ export type IndustrialVideoType = 'marketing' | 'assembly'
  * 映射为服务端 `voice` ID（见 COWORK_HTTP_GUIDE §17.1）。`无旁白` 不是音色，而是
  * `ttsEnabled=false` 的语义，不映射任何 `voice` ID。
  */
-export type IndustrialVideoVoice =
-  | '温柔女声'
-  | '知性女声'
-  | '阳光男声'
-  | '沉稳男声'
-  | '正式男声'
-  | '男孩童声'
-  | '无旁白'
+// 原固定展示音色类型已停用；服务端通过 tts_options_get 返回动态 voice id。
+// export type IndustrialVideoVoice = '温柔女声' | '知性女声' | '阳光男声' | '沉稳男声' | '正式男声' | '男孩童声' | '无旁白'
+export type IndustrialVideoVoice = string
 
 export interface IndustrialVideoSettings {
   type: IndustrialVideoType
@@ -22,6 +17,7 @@ export interface IndustrialVideoSettings {
   ratio: '16:9' | '9:16' | '1:1'
   resolution: '720P' | '1080P'
   style: '工业质感' | '工业写实' | '科技' | '现代' | '武侠' | '古风'
+  language: string
   voice: IndustrialVideoVoice
   backgroundMusic: boolean
   subtitle: boolean
@@ -36,8 +32,9 @@ export function createIndustrialVideoSettings(type: IndustrialVideoType): Indust
     ratio: '16:9',
     resolution: '1080P',
     style: type === 'marketing' ? '工业质感' : '工业写实',
+    language: 'zh-CN',
     // voice: type === 'marketing' ? '温柔女声' : '沉稳男声',
-    voice: '沉稳男声',
+    voice: 'zh-CN-YunjianNeural',
     backgroundMusic: type === 'marketing',
     subtitle: true,
     withAudio: true
@@ -58,16 +55,6 @@ export function validateIndustrialVideoInput(input: {
   return null
 }
 
-const ALL_VOICES: readonly IndustrialVideoVoice[] = [
-  '温柔女声',
-  '知性女声',
-  '阳光男声',
-  '沉稳男声',
-  '正式男声',
-  '男孩童声',
-  '无旁白'
-]
-
 /**
  * 旧缓存兼容：早期原型使用 `清晰女声` / `自然中性声`，其音色 ID 已被六款固定音色取代。
  * 老记录读到未知或暂不可用音色时不要变成 `undefined`，缺省回退到沉稳男声。
@@ -78,16 +65,19 @@ const LEGACY_VOICE_COMPAT: Record<string, IndustrialVideoVoice> = {
 }
 
 export function normalizeIndustrialVideoVoice(value: unknown): IndustrialVideoVoice {
-  // 隐藏音色及旧女声草稿回退到部署版可接受的默认值。
-  if (value === '温柔女声' || value === '知性女声' || value === '清晰女声') return '沉稳男声'
-  if (typeof value === 'string' && (ALL_VOICES as readonly string[]).includes(value)) {
-    return value as IndustrialVideoVoice
+  // 旧展示名草稿兼容为服务端 voice id；新目录中的非空 id 直接保留。
+  const legacyVoice = typeof value === 'string' && value in LEGACY_VOICE_COMPAT ? LEGACY_VOICE_COMPAT[value] : value
+  const voiceIds: Record<string, string> = {
+    温柔女声: 'zh-CN-XiaoxiaoNeural',
+    知性女声: 'zh-CN-XiaoyiNeural',
+    阳光男声: 'zh-CN-YunxiNeural',
+    沉稳男声: 'zh-CN-YunjianNeural',
+    正式男声: 'zh-CN-YunyangNeural',
+    男孩童声: 'zh-CN-YunxiaNeural'
   }
-  if (typeof value === 'string' && value in LEGACY_VOICE_COMPAT) {
-    return LEGACY_VOICE_COMPAT[value]
-  }
-  // return '温柔女声'
-  return '沉稳男声'
+  if (legacyVoice === '无旁白') return '无旁白'
+  if (typeof legacyVoice === 'string' && voiceIds[legacyVoice]) return voiceIds[legacyVoice]
+  return typeof legacyVoice === 'string' && legacyVoice.trim() ? legacyVoice : 'zh-CN-YunjianNeural'
 }
 
 const RATIOS = ['16:9', '9:16', '1:1'] as const
@@ -120,6 +110,7 @@ export function normalizeIndustrialVideoSettings(value: unknown): IndustrialVide
     style: STYLES.includes(raw.style as (typeof STYLES)[number])
       ? (raw.style as IndustrialVideoSettings['style'])
       : defaults.style,
+    language: typeof raw.language === 'string' && raw.language.trim() ? raw.language : defaults.language,
     voice: normalizeIndustrialVideoVoice(raw.voice),
     backgroundMusic: typeof raw.backgroundMusic === 'boolean' ? raw.backgroundMusic : defaults.backgroundMusic,
     subtitle: typeof raw.subtitle === 'boolean' ? raw.subtitle : defaults.subtitle,
@@ -137,6 +128,7 @@ export function buildIndustrialVideoPlanningKey(settings: IndustrialVideoSetting
     type: settings.type,
     duration: settings.duration,
     ratio: settings.ratio,
-    style: settings.style
+    style: settings.style,
+    language: settings.language
   })
 }

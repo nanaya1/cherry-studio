@@ -9,6 +9,7 @@ import type { Mock, Mocked } from 'vitest'
 import { BaseService } from '@main/core/lifecycle'
 import type { AgentSessionEntity } from '@shared/data/api/schemas/agentSessions'
 import type { IndustrialVideoProductionRecord } from '@shared/data/cache/cacheValueTypes'
+import { industrialVideoRequestSchemas } from '@shared/ipc/schemas/industrialVideo'
 
 import type { IndustrialVideoClient, IndustrialVideoError, IndustrialVideoResult } from './IndustrialVideoClient'
 import type { IndustrialVideoDownloadErrorCode } from './IndustrialVideoDownload'
@@ -90,6 +91,7 @@ function makeClient(overrides: Partial<Record<keyof IndustrialVideoClient, unkno
     mediaUpload: vi.fn(async (p: { name?: string }) => ok({ name: p.name ?? 'm.png' })),
     logoUpload: vi.fn(async (p: { name?: string }) => ok({ name: p.name ?? 'l.png' })),
     capabilitiesGet: vi.fn(async () => ok({})),
+    ttsOptionsGet: vi.fn(async () => ok({ languages: [], voices: [] })),
     ...overrides
   } as unknown as Mocked<IndustrialVideoClient> & { [K: string]: Mock }
   return client
@@ -1714,6 +1716,74 @@ describe('IndustrialVideoService', () => {
         service.upload({ sessionId: 's1', name: 'big.bin', content: new Uint8Array([1]) })
       ).rejects.toMatchObject({ code: 'IVIDEO_HTTP_ERROR' })
       expect((store['industrial_video.records'] as any).s1.unknownSubmissions.length).toBe(0)
+    })
+  })
+
+  describe('工业视频 tts_options_get 与多语言/叙事风格转发', () => {
+    it('parse 将 language / narrativeStyle 转发为 snake_case 并支持动态 voice id', async () => {
+      const client = makeClient()
+      const { service } = makeService(client, makeSession())
+      await service.runCreate({ sessionId: 's1', baseName: 'demo' })
+      await service.parse({
+        sessionId: 's1',
+        run: 'r1',
+        texts: [{ text: '资料' }],
+        voice: 'dynamic-voice-123',
+        language: 'en',
+        narrativeStyle: 'wuxia'
+      })
+      expect(client.videoStart).toHaveBeenCalledWith(
+        expect.objectContaining({ voice: 'dynamic-voice-123', language: 'en', narrative_style: 'wuxia' })
+      )
+    })
+
+    it('ttsOptionsGet 透传客户端返回的归一化目录', async () => {
+      const client = makeClient({
+        ttsOptionsGet: vi.fn(async () =>
+          ok({
+            languages: [
+              { id: 'zh', default_voice: 'v-zh' },
+              { id: 'en', default_voice: 'v-en' }
+            ],
+            voices: [
+              { id: 'v-zh', language: 'zh', label: '中文' },
+              { id: 'v-en', language: 'en', label: 'English' }
+            ]
+          })
+        )
+      })
+      const { service } = makeService(client, makeSession())
+      const result = await service.ttsOptionsGet({ sessionId: 's1' })
+      expect(result.languages).toEqual([
+        { id: 'zh', default_voice: 'v-zh' },
+        { id: 'en', default_voice: 'v-en' }
+      ])
+      expect(result.voices).toEqual([
+        { id: 'v-zh', language: 'zh', label: '中文' },
+        { id: 'v-en', language: 'en', label: 'English' }
+      ])
+    })
+
+    it('ttsOptionsGet 不发送服务端未支持的筛选参数', async () => {
+      const client = makeClient({ ttsOptionsGet: vi.fn(async () => ok({ languages: [], voices: [] })) })
+      const { service } = makeService(client, makeSession())
+      await service.ttsOptionsGet({ sessionId: 's1' })
+      expect(client.ttsOptionsGet).toHaveBeenCalledWith({})
+    })
+
+    it('IPC schema：parse 接受动态 voice 与合法 narrativeStyle，拒绝非法 narrativeStyle', () => {
+      const parseInput = industrialVideoRequestSchemas['industrial_video.parse'].input
+      expect(
+        parseInput.safeParse({ sessionId: 's1', run: 'r1', voice: 'dynamic-1', narrativeStyle: 'wuxia' }).success
+      ).toBe(true)
+      expect(parseInput.safeParse({ sessionId: 's1', run: 'r1', narrativeStyle: 'bogus' }).success).toBe(false)
+      expect(parseInput.safeParse({ sessionId: 's1', run: 'r1', voice: '' }).success).toBe(false)
+    })
+
+    it('IPC schema：tts_options_get 只接受会话标识', () => {
+      const s = industrialVideoRequestSchemas['industrial_video.tts_options_get']
+      expect(s.input.safeParse({ sessionId: 's1' }).success).toBe(true)
+      expect(s.input.safeParse({ sessionId: 's1', narrativeStyle: 'industrial' }).success).toBe(false)
     })
   })
 })
