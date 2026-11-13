@@ -34,6 +34,7 @@ import {
   IndustrialVideoClient as IndustrialVideoClientImpl
 } from './IndustrialVideoClient'
 import { IndustrialVideoDownloader } from './IndustrialVideoDownload'
+import { validateStoryboard } from './industrialVideoStoryboardSchema'
 import { canSubmitIndustrialVideo } from './industrialVideoRecovery'
 import {
   getIndustrialVideoInput,
@@ -1599,6 +1600,7 @@ export class IndustrialVideoService extends BaseService {
     storyboard: Record<string, unknown>
     expectedInputFingerprint: string
     expectedStoryboardSha256: string
+    expectedDocumentVersion?: number
   }): Promise<{ submitted: boolean; reviewRequired: boolean }> {
     const client = this.createClient(this.requireConfig())
     const data = await this.guardWrite({
@@ -1608,16 +1610,29 @@ export class IndustrialVideoService extends BaseService {
       run: input.run,
       requireRun: input.run,
       gatedByActiveJob: true,
-      doCall: () =>
-        client.storyboardSubmit({
+      doCall: async () => {
+        const context = await this.planningContextGet({ sessionId: input.sessionId, run: input.run })
+        const wireStoryboard = JSON.parse(JSON.stringify(input.storyboard))
+        validateStoryboard((context.storyboard_schema ?? {}) as Record<string, unknown>, wireStoryboard)
+        const document = context.document as { version?: number } | undefined
+        return client.storyboardSubmit({
           run: input.run,
-          storyboard: input.storyboard as never,
+          // storyboard: input.storyboard as never,
+          storyboard: wireStoryboard,
           expected_input_fingerprint: input.expectedInputFingerprint,
-          expected_storyboard_sha256: input.expectedStoryboardSha256
-        }),
+          expected_storyboard_sha256: input.expectedStoryboardSha256,
+          expected_document_version: input.expectedDocumentVersion ?? document?.version
+        })
+      },
       onSuccess: () => ({ state: 'storyboard_submitted' })
     })
-    return { submitted: data.submitted, reviewRequired: data.review_required }
+    // return { submitted: data.submitted, reviewRequired: data.review_required }
+    if (data.submitted !== true) throw new IpcError('IVIDEO_STORYBOARD_NOT_SAVED', '服务端未确认分镜保存；不得推进审核或生成。')
+    const latest = await this.planningContextGet({ sessionId: input.sessionId, run: input.run })
+    if ((latest.planning_completeness as { ready?: boolean } | undefined)?.ready !== true) {
+      throw new IpcError('IVIDEO_STORYBOARD_READBACK_INCOMPLETE', '分镜提交已返回成功，但读回完整性未确认；请读取最新上下文，不得直接重复提交或启动生成。')
+    }
+    return { submitted: true, reviewRequired: data.review_required }
   }
 
   async videoStart(input: {

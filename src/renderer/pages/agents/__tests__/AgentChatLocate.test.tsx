@@ -657,13 +657,10 @@ describe('AgentChat locate pending message', () => {
     expect(screen.queryByRole('button', { name: 'agent.right_pane.tabs.files' })).not.toBeInTheDocument()
     vi.mocked(useAgentFilePreviewActive).mockReturnValue(true)
     view.rerender(<AgentChat conversationBootstrap={createConversationBootstrap(video)} showResourceListControls />)
-    expect(screen.queryByRole('button', { name: 'industrial_video.preview.toggle' })).not.toBeInTheDocument()
-    vi.mocked(useAgentFilePreviewActive).mockReturnValue(false)
-    view.rerender(<AgentChat conversationBootstrap={createConversationBootstrap(video)} showResourceListControls />)
-    expect(screen.getByRole('button', { name: 'industrial_video.preview.toggle' })).toHaveAttribute(
-      'aria-expanded',
-      'true'
-    )
+    const toggleWithFilePreview = screen.getByRole('button', { name: 'industrial_video.preview.toggle' })
+    expect(toggleWithFilePreview).toHaveAttribute('aria-expanded', 'true')
+    await user.click(toggleWithFilePreview)
+    expect(toggleWithFilePreview).toHaveAttribute('aria-expanded', 'false')
   })
 
   it('普通会话顶部保留原资源面板工具栏（不被成片预览开关替换）', () => {

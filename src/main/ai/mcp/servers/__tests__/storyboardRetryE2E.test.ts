@@ -72,7 +72,8 @@ vi.mock('@main/data/services/ProviderService', () => ({
   providerService: { getByProviderId: vi.fn(() => ({ id: 'p' })) }
 }))
 
-const { MeacoworkIndustrialVideoTools } = await import('../meacoworkIndustrialVideoTools')
+// const { MeacoworkIndustrialVideoTools } = await import('../meacoworkIndustrialVideoTools')
+await import('../meacoworkIndustrialVideoTools')
 const { createIndustrialVideoStructuredConnection } = await import(
   '@main/features/industrialVideo/industrialVideoStructuredRuntime'
 )

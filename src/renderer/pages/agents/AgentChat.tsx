@@ -67,8 +67,8 @@ import {
   type AgentFileNavigationRequest,
   AgentRightPane,
   AgentTaskProgressCapsule,
-  useAgentVideoFilePreviewActive,
-  useAgentFilePreviewActive
+  useAgentVideoFilePreviewActive
+  // useAgentFilePreviewActive
 } from './components/AgentRightPane'
 import { ApiGatewayRequiredDialog } from './components/ApiGatewayRequiredDialog'
 import { locateAgentMessageInList } from './messages/agentMessageListAdapter'
@@ -109,8 +109,8 @@ function AgentTopBarControls(props: AgentTopBarControlsProps) {
 // MEA: 工业视频任务详情顶部整块成片预览面板展开/收起开关。
 function IndustrialVideoPreviewToggle({ open, onToggle }: { open: boolean; onToggle: (open: boolean) => void }) {
   const { t } = useTranslation()
-  const filePreviewActive = useAgentFilePreviewActive()
-  if (filePreviewActive) return null
+  // const filePreviewActive = useAgentFilePreviewActive()
+  // if (filePreviewActive) return null
   return (
     <Button
       variant="ghost"

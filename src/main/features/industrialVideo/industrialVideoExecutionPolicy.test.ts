@@ -1,8 +1,15 @@
 import { describe, expect, it } from 'vitest'
 
-import { assertIndustrialVideoRuntime, isIndustrialVideoToolAllowed } from './industrialVideoExecutionPolicy'
+import { assertIndustrialVideoRuntime, INDUSTRIAL_VIDEO_PRODUCTION_PROMPT, isIndustrialVideoToolAllowed } from './industrialVideoExecutionPolicy'
 
 describe('industrial video execution policy', () => {
+  it('要求按字幕任务编写主语言与译文，设置同步不得生成且仍需网页审核', () => {
+    expect(INDUSTRIAL_VIDEO_PRODUCTION_PROMPT).toContain('subtitle_translation_task')
+    expect(INDUSTRIAL_VIDEO_PRODUCTION_PROMPT).toContain('translations')
+    expect(INDUSTRIAL_VIDEO_PRODUCTION_PROMPT).toContain('stage')
+    expect(INDUSTRIAL_VIDEO_PRODUCTION_PROMPT).toContain('不触发收费生成')
+    expect(INDUSTRIAL_VIDEO_PRODUCTION_PROMPT).toContain('网页')
+  })
   it.each(['pi', 'dsh'])('rejects unguarded industrial runtime %s', (runtime) => {
     expect(() => assertIndustrialVideoRuntime('industrial-video', runtime)).toThrow('Claude Code')
   })

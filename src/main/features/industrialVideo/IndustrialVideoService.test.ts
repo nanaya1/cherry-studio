@@ -235,7 +235,11 @@ describe('工业视频可信轮次释放', () => {
       else if (condition === 'wrong_run') receipt.run = 'other-run'
       else if (condition === 'missing_receipt') record.rounds = []
       else if (condition === 'unknown' || condition === 'intended') {
-        const unresolved = { ...receipt, operation: 'parse', outcome: condition }
+        const unresolved: typeof receipt = {
+          ...receipt,
+          operation: 'parse',
+          outcome: condition as 'unknown' | 'intended'
+        }
         record.rounds.push(unresolved)
         if (condition === 'unknown') record.unknownSubmissions.push(unresolved)
       }
@@ -745,7 +749,8 @@ describe('工业视频文档附件可信提取', () => {
 
   it('二进制伪装 .json 提取出乱码时被防线拒绝，不提交', async () => {
     const binary = Buffer.from([0x00, 0x01, 0x02, 0xd8, 0xb4, 0xff, 0xfe, 0x9c, 0x0b])
-    const { service, client, upload, extractDocumentText } = makeDocService(() => binary.toString('latin1'))
+    // const { service, client, upload, extractDocumentText } = makeDocService(() => binary.toString('latin1'))
+    const { service, client, upload, extractDocumentText } = makeDocService(async () => binary.toString('latin1'))
     await expect(
       prepareAndParse(service, {
         type: 'file',
@@ -1581,7 +1586,8 @@ describe('IndustrialVideoService', () => {
       await service.runCreate({ sessionId: 's1', baseName: 'demo' })
       await service.parse({ sessionId: 's1', run: 'r1' })
       c.jobGet.mockResolvedValue(ok({ run: 'r1', status }))
-      c.runCreate.mockResolvedValue(ok({ run: 'r2' }))
+      // c.runCreate.mockResolvedValue(ok({ run: 'r2' }))
+      c.runCreate.mockResolvedValue(ok({ run: 'r2', raw: { run: 'r2' } }))
       await expect(service.runCreate({ sessionId: 's1', baseName: 'next' })).resolves.toEqual({ run: 'r2' })
       expect(c.jobCancel).not.toHaveBeenCalled()
     })

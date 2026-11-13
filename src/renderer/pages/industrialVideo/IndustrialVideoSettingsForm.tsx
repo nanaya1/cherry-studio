@@ -391,6 +391,8 @@ function SubtitleConfig({
   )
 
   const mainLanguageChanged = initialSubtitleLanguage !== settings.subtitleLanguage
+  void duplicate
+  void mainLanguageChanged
 
   return (
     <div className="flex flex-col gap-3">

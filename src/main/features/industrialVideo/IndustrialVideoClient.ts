@@ -213,6 +213,7 @@ export interface StoryboardSubmitParams {
   storyboard: StoryboardInput
   expected_input_fingerprint: string
   expected_storyboard_sha256: string
+  expected_document_version?: number
   [key: string]: unknown
 }
 export interface StoryboardSubmitResult {

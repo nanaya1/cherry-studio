@@ -180,7 +180,7 @@ describe('消息操作显示策略', () => {
       actions: { copyText: vi.fn(), deleteMessage: vi.fn(), editMessage: vi.fn() },
       startEditingMessage: vi.fn()
     })
-    context.message = { ...context.message, stats: { inputTokens: 10 } } as any
+    context.message = { ...context.message, stats: { inputTokens: 10 } }
     const ids = resolveMessageMenuBarToolbarActions(context).map(({ id }) => id)
     expect(ids).toEqual(isUserMessage ? ['copy', 'user-edit', 'delete'] : ['copy', 'delete', 'usage'])
     context.message = { ...context.message, stats: undefined }

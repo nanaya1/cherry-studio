@@ -194,6 +194,17 @@ export default function IndustrialVideoAgentProduction({
     setInternalOpen(true)
   }, [visible, identity, isControlled])
 
+  // MEA:industrial-video 新一轮生成（run/jobId 变化）自动恢复面板，失败期间收起的状态不延续到下一轮；
+  // 首次挂载与同轮轮询刷新不强制打开（沿用受控模式既有契约）。
+  const lastIdentity = useRef('')
+  useEffect(() => {
+    if (!visible) return
+    const previous = lastIdentity.current
+    lastIdentity.current = identity
+    if (!previous || previous === identity || open) return
+    setOpen(true)
+  }, [visible, identity, open, setOpen])
+
   useEffect(() => {
     if (!visible || !run) return
     let alive = true
@@ -268,10 +279,11 @@ export default function IndustrialVideoAgentProduction({
     }
   }, [finished, finalPath, run, sessionId, artifactKey, downloadRetry])
 
-  // 生成结束立即关闭 loading 区域，不等待下载；已打开的脚本工作台不受影响。
+  // MEA:industrial-video 仅成功完成自动关闭 loading 区（转由文件预览区交付）；
+  // 失败/取消/阻塞等终态保持显示死因与进度，用户可用顶栏开关或"关闭"按钮收起后再展开。
   useEffect(() => {
-    if (visible && !generating && !workbenchUrl && open) setOpen(false)
-  }, [visible, generating, workbenchUrl, open, setOpen])
+    if (visible && !generating && !workbenchUrl && open && !terminal && !submissionUnconfirmed) setOpen(false)
+  }, [visible, generating, workbenchUrl, open, setOpen, terminal, submissionUnconfirmed])
 
   const renderArtifact = () => (
     <section aria-label="成片文件" className="space-y-2 rounded-lg border border-border p-3 text-sm">
@@ -283,11 +295,12 @@ export default function IndustrialVideoAgentProduction({
         <Button
           variant="outline"
           title={downloaded.path}
-          onClick={() =>
+          onClick={() => {
+            setOpen(false)
             void Promise.resolve(previewAction.current(downloaded.path!)).catch(() => {
               setDownload({ ...downloaded, error: '文件已下载，但预览失败，请再次点击文件重试' })
             })
-          }>
+          }}>
           {downloaded.path.split(/[/\\\\]/).at(-1)}
         </Button>
       )}
@@ -425,14 +438,16 @@ export default function IndustrialVideoAgentProduction({
   return (
     <div className="flex h-full min-h-0 flex-1">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        {submissionUnconfirmed && (
+        {/* 停用消息区顶部未知提交横幅（2026-11-12 用户确认：不在当前区域额外加报错信息）；
+            提示由失败工具消息本身的文案承载，submissionUnconfirmed 的行为保护不变。 */}
+        {/* {submissionUnconfirmed && (
           <p role="status" aria-label="提交结果待确认" className="px-3 py-2 text-sm text-muted-foreground">
             提交结果待确认，不代表生成失败。为避免重复生成或重复计费，核实前不能再次提交。
             {jobId
               ? '正在查询已绑定任务，但该任务状态不能证明另一笔未知提交已确认。'
               : '尚未获取到本次提交的任务编号，请联系服务端核实；不会自动重发或猜测绑定任务。'}
           </p>
-        )}
+        )} */}
         {finished && (
           <p role="status" aria-label="成片交付状态" className="px-3 py-2 text-sm text-muted-foreground">
             {deliveryText}
@@ -443,7 +458,10 @@ export default function IndustrialVideoAgentProduction({
       {/* {visible && open && ( */}
       {/* {visible && open && !(finished && filePreviewActive) && ( */}
       {/* 成片完成后改在现有文件预览区展示，不保留独立在线预览。 */}
-      {(generating || Boolean(workbenchUrl)) && open && (Boolean(workbenchUrl) || !filePreviewActive || generating) && (
+      {/* 失败/取消/阻塞等终态保持面板可显示（死因与冻结进度），顶栏开关随时可收起/展开。 */}
+      {(generating || Boolean(workbenchUrl) || (open && Boolean(terminal))) &&
+        open &&
+        (Boolean(workbenchUrl) || !filePreviewActive || generating) && (
         <aside
           aria-label="成片预览"
           className="flex w-[380px] max-w-[45%] shrink-0 flex-col border-l border-border bg-card">
