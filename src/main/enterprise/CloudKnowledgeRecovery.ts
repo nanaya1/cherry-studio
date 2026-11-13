@@ -59,6 +59,9 @@ type Ports = {
   active(): void
 }
 
+// MEA:enterprise-knowledge-page 仅透传本地定义的核查提示，不展开网络异常原文。
+export class CloudRecoveryStateError extends Error {}
+
 // MEA:enterprise-knowledge-page 恢复日志在删除前落盘；未知 DELETE 永不自动重放。
 export class CloudKnowledgeRecovery {
   constructor(private readonly ports: Ports) {}
@@ -197,7 +200,8 @@ export class CloudKnowledgeRecovery {
     let exists: boolean
     try {
       exists = await p.checkSpace()
-    } catch {
+    } catch (error) {
+      if (error instanceof CloudRecoveryStateError) throw error
       throw new Error('云端删除结果暂时无法核查，请稍后重试')
     }
     p.active()

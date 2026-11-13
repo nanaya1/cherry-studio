@@ -22,7 +22,8 @@ function setup(files = [file]) {
     scan: vi.fn(async () => files),
     createBase: vi.fn(async () => 'local'),
     localCopies: vi.fn(() => [] as string[]),
-    hasBase: vi.fn(async () => true),
+    // hasBase: vi.fn(async () => true),
+    hasBase: vi.fn<(baseId: string) => Promise<boolean>>(async () => true),
     restore: vi.fn<
       (
         file: RecoveryFile,

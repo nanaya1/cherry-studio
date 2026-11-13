@@ -40,6 +40,7 @@ function requestLog(baseUrl: string, path: string, method: string) {
 
 export type JavaKnowledgeCategory = 'PUBLIC' | 'OWNED' | 'SHARED'
 export type JavaKnowledgeSpaceKind = 'local' | 'online'
+export type JavaKnowledgeLocalShareState = 'ACTIVE' | 'DELETED' | 'LEGACY' | 'UNCONFIRMED'
 export type JavaKnowledgeSearchMode = 'keyword' | 'vector' | 'hybrid'
 
 export interface JavaKnowledgeSpace {
@@ -365,16 +366,17 @@ const knowledgeInvitationVOSchema = z
   })
   .passthrough()
 
-const knowledgeOperationVOSchema = z
-  .object({
-    id: z.number().int(),
-    knowledgeId: z.string().nullable().optional(),
-    creationOrigin: z.string().nullable().optional(),
-    publicState: z.string().nullable().optional(),
-    operationState: z.string().nullable().optional()
-  })
-  .passthrough()
-
+// const knowledgeOperationVOSchema = z
+//   .object({
+//     id: z.number().int(),
+//     knowledgeId: z.string().nullable().optional(),
+//     creationOrigin: z.string().nullable().optional(),
+//     publicState: z.string().nullable().optional(),
+//     operationState: z.string().nullable().optional()
+//   })
+//   .passthrough()
+//
+//
 function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('知识库响应格式无效')
   return value as Record<string, unknown>
@@ -635,6 +637,30 @@ export class JavaKnowledgeClient {
     ) as JavaKnowledgeSpace
     assertAttribution(space.id, id, '详情')
     return space
+  }
+
+  /** MEA:enterprise-knowledge-page 只读核查本人副本，缺失或无权不等于已删除。 */
+  async getLocalShareState(id: string): Promise<JavaKnowledgeLocalShareState> {
+    if (!KNOWLEDGE_UUID.test(id)) throw new Error('知识库ID格式无效')
+    const result = z
+      .object({ id: uuid, state: z.enum(['ACTIVE', 'DELETED', 'LEGACY', 'UNCONFIRMED']) })
+      .parse(object(await this.json(`/api/v1/knowledge/localShare/state${this.query({ id })}`)))
+    assertAttribution(result.id, id, '副本状态')
+    return result.state
+  }
+
+  /** MEA:enterprise-knowledge-page 仅补清理明确删除副本的Java授权，不能转发Space DELETE。 */
+  async finishLocalShareRemoval(id: string, beforeSend?: () => void): Promise<void> {
+    if (!KNOWLEDGE_UUID.test(id)) throw new Error('知识库ID格式无效')
+    await this.json(
+      '/api/v1/knowledge/localShare/finishRemoval',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ id })
+      },
+      beforeSend
+    )
   }
 
   /** 单页文件与目录列表，校验每条记录的知识库归属。 */
@@ -1114,35 +1140,36 @@ export class JavaKnowledgeClient {
     )
   }
 
-  /** 当前企业可核对操作分页（普通成员仅查看本人）。 */
-  async listOperations(page?: number, beforeSend?: () => void): Promise<JavaKnowledgePage<JavaKnowledgeOperation>> {
-    const current = page ?? 1
-    const pageSize = 100
-    const data = this.parsePage(
-      await this.json(
-        `/api/v1/knowledge/operation/page${this.query({ page: current, pageSize })}`,
-        undefined,
-        beforeSend
-      ),
-      '知识库操作'
-    )
-    const items = data.items.map((entry) => knowledgeOperationVOSchema.parse(object(entry)) as JavaKnowledgeOperation)
-    return { items, total: data.total, page: current, pageSize }
-  }
-
-  /** 按操作ID重新核对已保存结果，不重放远端请求；确认删除后 data 为 null。 */
-  async confirmOperation(operationId: number, beforeSend?: () => void): Promise<JavaKnowledgeSpace | null> {
-    if (!Number.isInteger(operationId) || operationId <= 0) throw new Error('操作ID无效')
-    const data = await this.json(
-      '/api/v1/knowledge/operation/confirm',
-      {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ id: operationId })
-      },
-      beforeSend
-    )
-    if (data === null || data === undefined) return null
-    return knowledgeVOSchema.parse(object(data)) as JavaKnowledgeSpace
-  }
+  // MEA:enterprise-knowledge-page 已移除的操作接口保留注释，续作改用副本状态及授权清理。
+  //   /** 当前企业可核对操作分页（普通成员仅查看本人）。 */
+  //   async listOperations(page?: number, beforeSend?: () => void): Promise<JavaKnowledgePage<JavaKnowledgeOperation>> {
+  //     const current = page ?? 1
+  //     const pageSize = 100
+  //     const data = this.parsePage(
+  //       await this.json(
+  //         `/api/v1/knowledge/operation/page${this.query({ page: current, pageSize })}`,
+  //         undefined,
+  //         beforeSend
+  //       ),
+  //       '知识库操作'
+  //     )
+  //     const items = data.items.map((entry) => knowledgeOperationVOSchema.parse(object(entry)) as JavaKnowledgeOperation)
+  //     return { items, total: data.total, page: current, pageSize }
+  //   }
+  //
+  //   /** 按操作ID重新核对已保存结果，不重放远端请求；确认删除后 data 为 null。 */
+  //   async confirmOperation(operationId: number, beforeSend?: () => void): Promise<JavaKnowledgeSpace | null> {
+  //     if (!Number.isInteger(operationId) || operationId <= 0) throw new Error('操作ID无效')
+  //     const data = await this.json(
+  //       '/api/v1/knowledge/operation/confirm',
+  //       {
+  //         method: 'POST',
+  //         headers: { 'content-type': 'application/json' },
+  //         body: JSON.stringify({ id: operationId })
+  //       },
+  //       beforeSend
+  //     )
+  //     if (data === null || data === undefined) return null
+  //     return knowledgeVOSchema.parse(object(data)) as JavaKnowledgeSpace
+  //   }
 }
