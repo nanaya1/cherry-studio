@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { McpCallToolResponse } from '@main/ai/mcp/types'
+import { getTrustedLocalToolTerminalFailure } from '@main/ai/runtime/aiSdk/loop/localToolTerminalOutcome'
 import { createToolInvokeTool } from '@main/ai/tools/adapters/aiSdk/meta/toolInvoke'
 
 import { ToolRegistry } from '../../registry'
@@ -98,6 +99,56 @@ describe('mcpTools execute wrapper', () => {
     })
 
     await expect(execute({ q: 'x' }, { toolCallId: 'call-2' } as any)).rejects.toThrow('boom from server')
+  })
+
+  it('returns a correctable industrial-video storyboard error to the model for repair', async () => {
+    const reg = new ToolRegistry()
+    list.mockReturnValue({ items: [{ ...activeServer('s1'), name: 'meacowork-tools' }] })
+    listTools.mockReturnValue([mcpTool('s1', 'ivideo_storyboard_submit')])
+    await syncMcpToolsToRegistry(reg)
+    const execute = reg.getByName('mcp__s1__ivideo_storyboard_submit')?.tool.execute
+    if (!execute) throw new Error('expected industrial-video storyboard tool')
+
+    getById.mockReturnValue({ ...activeServer('s1'), name: 'meacowork-tools' })
+    const runtimeResult: McpCallToolResponse = {
+      isError: true,
+      content: [
+        {
+          type: 'text',
+          text: '{"ok":false,"error":{"code":"IVIDEO_STORYBOARD_SCHEMA_INVALID","message":"fix scenes[0].state_transition.before"},"repair_task":{"instruction":"modify before retry"}}'
+        }
+      ]
+    }
+    callTool.mockResolvedValue(runtimeResult)
+
+    const output = await execute({}, { toolCallId: 'call-repair' } as any)
+
+    expect(output).toMatchObject(runtimeResult)
+    expect(getTrustedLocalToolTerminalFailure(output)).toBeUndefined()
+  })
+
+  it('turns repeated industrial-video storyboard validation into a trusted terminal result', async () => {
+    const reg = new ToolRegistry()
+    list.mockReturnValue({ items: [{ ...activeServer('s1'), name: 'meacowork-tools' }] })
+    listTools.mockReturnValue([mcpTool('s1', 'ivideo_storyboard_submit')])
+    await syncMcpToolsToRegistry(reg)
+    const execute = reg.getByName('mcp__s1__ivideo_storyboard_submit')?.tool.execute
+    if (!execute) throw new Error('expected industrial-video storyboard tool')
+
+    getById.mockReturnValue({ ...activeServer('s1'), name: 'meacowork-tools' })
+    callTool.mockResolvedValue({
+      isError: true,
+      content: [
+        {
+          type: 'text',
+          text: '{"ok":false,"error":{"code":"IVIDEO_STORYBOARD_RETRY_STOPPED","message":"STOP: invalid storyboard"}}'
+        }
+      ]
+    })
+
+    const output = await execute({}, { toolCallId: 'call-terminal' } as any)
+
+    expect(getTrustedLocalToolTerminalFailure(output)).toEqual({ error: 'STOP: invalid storyboard' })
   })
 
   it('returns the runtime result plus mcp metadata on success', async () => {

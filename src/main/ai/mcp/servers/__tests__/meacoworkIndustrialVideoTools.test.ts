@@ -62,6 +62,15 @@ const { IpcError } = await import('@shared/ipc/errors/IpcError')
 const AGENT_ID = 'agent-1'
 const SESSION_ID = 's1'
 
+// 服务端固定支持的字幕译文语言（COWORK_HTTP_GUIDE §17，storyboard.schema.json translations
+// propertyNames.enum）。translations 仅接受这 8 个语言代码，不得出现其它代码（如 'xx'）。
+const SERVER_SUBTITLE_LANGS = ['zh-CN', 'zh-TW', 'en-US', 'ja-JP', 'ko-KR', 'es-ES', 'fr-FR', 'de-DE'] as const
+
+// 构建覆盖服务端 8 语言、每条均为合法非空译文的 translations 映射。
+function fullTranslations(value = 'translated'): Record<string, string> {
+  return Object.fromEntries(SERVER_SUBTITLE_LANGS.map((lang) => [lang, value]))
+}
+
 function makeSession(overrides: Record<string, unknown> = {}) {
   return {
     id: SESSION_ID,
@@ -75,6 +84,97 @@ function makeSession(overrides: Record<string, unknown> = {}) {
 function makeTools() {
   return new MeacoworkIndustrialVideoTools({ agentId: AGENT_ID, sessionId: SESSION_ID })
 }
+
+it('模型实际工具定义与服务端完整分镜契约逐字段一致', async () => {
+  const { storyboardSchema } = await import('@main/features/industrialVideo/industrialVideoStoryboardSchema')
+  const tool = makeTools()
+    .tools()
+    .find((item) => item.name === 'ivideo_storyboard_submit')!
+  expect(tool.inputSchema.properties?.storyboard).toEqual(storyboardSchema)
+  const scene = (tool.inputSchema.properties?.storyboard as any).properties.scenes.items
+  expect(scene.required).toEqual(
+    expect.arrayContaining([
+      'operation_type',
+      'granularity',
+      'operation_type_options',
+      'granularity_options',
+      'state_transition'
+    ])
+  )
+  expect(scene.properties.state_transition.required).toEqual(
+    expect.arrayContaining(['before', 'after', 'action_en', 'contact_en', 'verification_en', 'source_lines', 'phases'])
+  )
+})
+
+it('三个镜头完整动作字段经工具层传递到服务且不裁剪合法扩展字段', async () => {
+  agentSessionGetByIdMock.mockReturnValue(makeSession())
+  ivServiceMock.storyboardSubmit.mockClear()
+  ivServiceMock.storyboardSubmit.mockResolvedValue({ submitted: true, reviewRequired: true })
+  const board = makeStoryboard()
+  board.scenes = [1, 2, 3].map((id) => ({
+    ...structuredClone(board.scenes[0]),
+    id,
+    scene_uid: `scene-${id}`,
+    media_refs: ['asset-1'],
+    media_notes: { 'asset-1': '设备' }
+  }))
+  const result = await makeTools().call('ivideo_storyboard_submit', {
+    run: 'r1',
+    storyboard: board,
+    expectedInputFingerprint: 'fp',
+    expectedStoryboardSha256: '',
+    expectedDocumentVersion: 7
+  })
+  expect(result.isError).toBeFalsy()
+  expect(ivServiceMock.storyboardSubmit).toHaveBeenCalledWith(
+    expect.objectContaining({ storyboard: board, expectedDocumentVersion: 7 })
+  )
+})
+
+it('空状态首次返回当前模型纠错任务，重复错误停止且不发送服务端', async () => {
+  agentSessionGetByIdMock.mockReturnValue(makeSession())
+  ivServiceMock.storyboardSubmit.mockClear()
+  const tools = makeTools()
+  const board = makeStoryboard()
+  board.scenes[0].state_transition.before = {} as (typeof board.scenes)[0]['state_transition']['before']
+  board.scenes[0].state_transition.after = {} as (typeof board.scenes)[0]['state_transition']['after']
+  const args = { run: 'repair-run', storyboard: board, expectedInputFingerprint: 'fp', expectedStoryboardSha256: '' }
+  const first = await tools.call('ivideo_storyboard_submit', args)
+  expect(first._meta?.industrialVideoValidationError).toBe(true)
+  const task = jsonOf(first).repair_task
+  expect(task).toMatchObject({
+    run: 'repair-run',
+    execution_model: 'current_selected_model',
+    next_operation: 'ivideo_context'
+  })
+  expect(task.candidate_storyboard).toEqual(board)
+  expect(task.validation_error).toContain('state_transition.after')
+  const second = await tools.call('ivideo_storyboard_submit', args)
+  expect(jsonOf(second).error.code).toBe('IVIDEO_STORYBOARD_RETRY_STOPPED')
+  expect(second._meta?.industrialVideoValidationError).toBeUndefined()
+  expect(ivServiceMock.storyboardSubmit).not.toHaveBeenCalled()
+})
+
+it('首次规划向模型交付服务端任务、真实来源和非空状态要求', async () => {
+  agentSessionGetByIdMock.mockReturnValue(makeSession())
+  const context = {
+    client_planning_task: { task: '按来源生成' },
+    source_lines: [{ line: 5, text: '授权资料' }],
+    current_storyboard: null,
+    storyboard_schema: { type: 'object', properties: {} },
+    input_fingerprint: 'fp',
+    expected_storyboard_sha256: '',
+    document: { version: 0 }
+  }
+  ivServiceMock.planningContextGet.mockResolvedValueOnce(context)
+  const result = jsonOf(await makeTools().call('ivideo_context', { run: 'r1' }))
+  expect(result.client_planning_task).toEqual(context.client_planning_task)
+  expect(result.source_lines).toEqual(context.source_lines)
+  expect(result.client_generation_requirements.before_first_submit).toContain('before/after')
+  expect(result.client_generation_requirements.before_first_submit).toContain('不得提交空对象')
+  expect(result.client_generation_requirements.execution_model).toBe('current_selected_model')
+  expect(result.client_generation_requirements).toHaveProperty('state_object_contract')
+})
 
 describe('服务端工作台交接', () => {
   it('生成前状态读取失败时返回工作台并结束，不提交或自动批准', async () => {
@@ -196,6 +296,11 @@ describe('生成入口已有作业分流', () => {
   })
 })
 
+// 服务端完整 STORYBOARD_SCHEMA（storyboard.schema.json）：每个 scene 必填 id/title/duration/
+// prompt/narration + 动作规划五件套（operation_type/granularity/operation_type_options/
+// granularity_options/state_transition），state_transition 必含 before/after/action_en/contact_en/
+// verification_en/source_lines/phases。prompt_en 为可选字段（服务端 schema 未列入 required）。
+// 旧六字段版已升级为完整合法 fixture。
 function makeStoryboard() {
   return {
     video_title: '安全操作',
@@ -206,7 +311,47 @@ function makeStoryboard() {
         duration: 6,
         prompt: '工业车间内静止且已隔离的电机。',
         prompt_en: 'A stationary isolated motor in an industrial workshop.',
-        narration: [{ text: '维护前停机并确认断电。', start: 0, end: 6 }]
+        narration: [{ text: '维护前停机并确认断电。', start: 0, end: 6 }],
+        operation_type: 'inspect',
+        granularity: 'measurement',
+        operation_type_options: ['inspect', 'measure'],
+        granularity_options: ['measurement'],
+        state_transition: {
+          before: { 轴承座: '待测量' },
+          after: { 轴承座: '间隙已确认' },
+          action_en: 'Measure the axial clearance of the seated bearing housing.',
+          contact_en: 'Probe lightly touches the housing shoulder.',
+          verification_en: 'Clearance verified within tolerance.',
+          source_lines: [1],
+          phases: [{ start: 0, end: 6, description_en: 'Probe contact and read clearance.' }]
+        }
+      }
+    ]
+  }
+}
+
+// 服务端 STORYBOARD_SCHEMA 对每个 scene 还要求动作规划五件套 + state_transition 七子字段。
+// 升级后 makeStoryboard 已是完整合法 fixture，此处保留以保持历史引用兼容（等价展开）。
+function makeCompleteStoryboard() {
+  const storyboard = makeStoryboard()
+  return {
+    ...storyboard,
+    scenes: [
+      {
+        ...storyboard.scenes[0],
+        operation_type: 'inspect',
+        granularity: 'measurement',
+        operation_type_options: ['inspect', 'measure'],
+        granularity_options: ['measurement'],
+        state_transition: {
+          before: { 轴承座: '待测量' },
+          after: { 轴承座: '间隙已确认' },
+          action_en: 'Measure the axial clearance of the seated bearing housing.',
+          contact_en: 'Probe lightly touches the housing shoulder.',
+          verification_en: 'Clearance verified within tolerance.',
+          source_lines: [1],
+          phases: [{ start: 0, end: 6, description_en: 'Probe contact and read clearance.' }]
+        }
       }
     ]
   }
@@ -353,11 +498,14 @@ describe('MeacoworkIndustrialVideoTools — visibility & contract', () => {
     expect(schema.safeParse({ ...input, storyboard: { video_title: '安全操作', scenes: [] } }).success).toBe(false)
     expect(schema.safeParse({ ...input, storyboard: { video_title: '安全操作', scenes: [{}] } }).success).toBe(false)
     expect(
-      schema.safeParse({ ...input, storyboard: { video_title: ' ', scenes: makeStoryboard().scenes } }).success
+      schema.safeParse({ ...input, storyboard: { video_title: '', scenes: makeStoryboard().scenes } }).success
     ).toBe(false)
   })
 
-  it('拒绝缺失或非法 prompt_en，避免把英文视觉提示词只写入 prompt', async () => {
+  // 服务端完整 schema 中 prompt_en 为可选字段（未列入 scene.required），不再强制英文或最小长度。
+  // 完整分镜缺省 / 含中文 / 短文本均通过本地与结构校验，不拦截。
+  it('prompt_en 可选：完整分镜缺省或含中文/短文本均通过校验，不再强制英文', async () => {
+    ivServiceMock.storyboardSubmit.mockResolvedValue({ submitted: true, reviewRequired: true })
     const base = makeStoryboard()
     const scene = base.scenes[0]
     const call = (overrides: Record<string, unknown>) =>
@@ -370,12 +518,12 @@ describe('MeacoworkIndustrialVideoTools — visibility & contract', () => {
 
     const missing = await call({ prompt_en: undefined })
     const tooShort = await call({ prompt_en: 'Too short' })
-    const chinese = await call({ prompt_en: 'A detailed visual prompt mixed with 中文内容.' })
+    const chinese = await call({ prompt_en: '一个中文英文适配字段。' })
 
-    expect(missing.isError).toBe(true)
-    expect(tooShort.isError).toBe(true)
-    expect(chinese.isError).toBe(true)
-    expect(ivServiceMock.storyboardSubmit).not.toHaveBeenCalled()
+    expect(jsonOf(missing).ok).toBe(true)
+    expect(jsonOf(tooShort).ok).toBe(true)
+    expect(jsonOf(chinese).ok).toBe(true)
+    expect(ivServiceMock.storyboardSubmit).toHaveBeenCalledTimes(3)
   })
 
   it('明确要求首次规划先按 context schema 编写并提交分镜，再调用 storyboard_get', () => {
@@ -449,6 +597,45 @@ describe('MeacoworkIndustrialVideoTools — routing to the trusted service', () 
     expect(ivServiceMock.planningContextGet).toHaveBeenCalledWith({ sessionId: SESSION_ID, run: 'r-1' })
   })
 
+  // 服务端 get_context 恒全量返回（source_text/source_lines/materials.texts 是同一份 manual.md 的
+  // 多种形态）。包装层瘦身：materials[].text 改为 text_chars 元数据（全文保留在 source_text），
+  // 但 source_lines 保留——它是服务端真实来源行号，供当前模型规划与纠错按行号锚定，不可丢弃。
+  it('ivideo_context 瘦身：去 materials[].text（改 text_chars），保留 source_text 与 source_lines', async () => {
+    ivServiceMock.planningContextGet.mockResolvedValue({
+      input_fingerprint: 'fp',
+      source_text: '第1行\n第2行\n第3行',
+      source_lines: [
+        { line: 1, text: '第1行' },
+        { line: 2, text: '第2行' },
+        { line: 3, text: '第3行' }
+      ],
+      materials: {
+        schema_version: 2,
+        texts: [
+          { id: 'txt_001', title: '参数表.txt', text: '第1行\n第2行\n第3行', sha256: 'abc' },
+          { id: 'txt_002', title: '手册.docx 1/2', text: '第1行', sha256: 'def' }
+        ],
+        media: [{ id: 'img_001', path: 'uploads/a.jpg', caption: '装配图' }],
+        logo: null
+      }
+    })
+    const result = await makeTools().call('ivideo_context', { run: 'r-1' })
+    const data = jsonOf(result)
+    expect(data.ok).toBe(true)
+    expect(data.source_text).toBe('第1行\n第2行\n第3行')
+    // source_lines 保留：服务端真实来源行号，模型按行号规划与纠错。
+    expect(data.source_lines).toEqual([
+      { line: 1, text: '第1行' },
+      { line: 2, text: '第2行' },
+      { line: 3, text: '第3行' }
+    ])
+    expect(data.materials.texts[0]).toEqual({ id: 'txt_001', title: '参数表.txt', sha256: 'abc', text_chars: 11 })
+    expect(data.materials.texts[1]).toEqual({ id: 'txt_002', title: '手册.docx 1/2', sha256: 'def', text_chars: 3 })
+    expect(data.materials.media).toEqual([{ id: 'img_001', path: 'uploads/a.jpg', caption: '装配图' }])
+    // guidance/schema/settings 等其余字段原样保留
+    expect(data.input_fingerprint).toBe('fp')
+  })
+
   it('ivideo_storyboard_get defaults full=true and routes to storyboardGet', async () => {
     ivServiceMock.storyboardGet.mockResolvedValue({ video_title: 't' })
     await makeTools().call('ivideo_storyboard_get', { run: 'r-1' })
@@ -494,7 +681,7 @@ describe('MeacoworkIndustrialVideoTools — routing to the trusted service', () 
     const result = await makeTools().call('ivideo_storyboard_submit', {
       run: 'r-1',
       // storyboard: { scenes: [] },
-      storyboard: makeStoryboard(),
+      storyboard: makeCompleteStoryboard(),
       expectedInputFingerprint: 'fp',
       expectedStoryboardSha256: 'h'
     })
@@ -503,10 +690,89 @@ describe('MeacoworkIndustrialVideoTools — routing to the trusted service', () 
       sessionId: SESSION_ID,
       run: 'r-1',
       // storyboard: { scenes: [] },
-      storyboard: makeStoryboard(),
+      storyboard: makeCompleteStoryboard(),
       expectedInputFingerprint: 'fp',
       expectedStoryboardSha256: 'h'
     })
+  })
+
+  // 服务端完整 schema 通过 z.fromJSONSchema 直接校验：scene 缺动作规划五件套时由 zod 结构校验
+  // 拦截（code=INTERNAL，错误信息以路径列出缺失字段），不发起服务端往返。
+  it('scene 缺动作规划五件套时由 schema 拦截，不调服务端，错误列出缺失字段', async () => {
+    ivServiceMock.storyboardSubmit.mockResolvedValue({ submitted: true })
+    const storyboard = makeStoryboard() // 完整合法 fixture
+    const scene = storyboard.scenes[0] as Record<string, unknown>
+    // 删掉五件套，模拟模型漏填。
+    delete scene.operation_type
+    delete scene.granularity
+    delete scene.operation_type_options
+    delete scene.granularity_options
+    delete scene.state_transition
+    const result = await makeTools().call('ivideo_storyboard_submit', {
+      run: 'r-1',
+      storyboard,
+      expectedInputFingerprint: 'fp',
+      expectedStoryboardSha256: ''
+    })
+    expect(result.isError).toBe(true)
+    const body = jsonOf(result)
+    expect(body.ok).toBe(false)
+    // 完整 schema 升级后，缺字段由 zod 结构校验抛出，归一化为 INTERNAL（不再是本地预校验的
+    // IVIDEO_STORYBOARD_SCHEMA_INVALID）。
+    expect(body.error.code).toBe('IVIDEO_STORYBOARD_SCHEMA_INVALID')
+    expect(body.error.message).toContain('operation_type')
+    expect(body.error.message).toContain('granularity')
+    expect(body.error.message).toContain('state_transition')
+    expect(ivServiceMock.storyboardSubmit).not.toHaveBeenCalled()
+  })
+
+  it('缺字段被拦截后携带可纠错标记，允许模型修改后重提', async () => {
+    ivServiceMock.storyboardSubmit.mockResolvedValue({ submitted: true })
+    const storyboard = makeStoryboard() // 完整合法 fixture
+    const scene = storyboard.scenes[0] as Record<string, unknown>
+    delete scene.operation_type
+    delete scene.granularity
+    delete scene.operation_type_options
+    delete scene.granularity_options
+    delete scene.state_transition
+    const result = await makeTools().call('ivideo_storyboard_submit', {
+      run: 'r-1',
+      storyboard,
+      expectedInputFingerprint: 'fp',
+      expectedStoryboardSha256: ''
+    })
+    expect(result.isError).toBe(true)
+    expect(result._meta?.industrialVideoValidationError).toBe(true)
+  })
+
+  it('state_transition 缺子字段时本地拦截并指出具体子字段', async () => {
+    ivServiceMock.storyboardSubmit.mockResolvedValue({ submitted: true })
+    const storyboard = makeCompleteStoryboard()
+    delete (storyboard.scenes[0] as Record<string, unknown>).operation_type_options
+    ;(storyboard.scenes[0] as Record<string, unknown>).state_transition = {
+      before: { x: '1' },
+      after: { x: '2' },
+      action_en: 'Do it.',
+      contact_en: 'Touch it.',
+      verification_en: 'Done.',
+      source_lines: [1],
+      phases: [{ start: 0, end: 6, description_en: 'Step.' }]
+      // 缺 verification_en 之外——删掉 contact_en 测试子字段报错
+    }
+    delete ((storyboard.scenes[0] as Record<string, unknown>).state_transition as Record<string, unknown>).contact_en
+    const result = await makeTools().call('ivideo_storyboard_submit', {
+      run: 'r-1',
+      storyboard,
+      expectedInputFingerprint: 'fp',
+      expectedStoryboardSha256: ''
+    })
+    expect(result.isError).toBe(true)
+    const body = jsonOf(result)
+    // 完整 schema 升级后，缺子字段由 zod 结构校验抛出，归一化为 INTERNAL。
+    expect(body.error.code).toBe('IVIDEO_STORYBOARD_SCHEMA_INVALID')
+    expect(body.error.message).toContain('operation_type_options')
+    expect(body.error.message).toContain('contact_en')
+    expect(ivServiceMock.storyboardSubmit).not.toHaveBeenCalled()
   })
 
   it('首次提交将空 SHA 原样传递给服务，待审核结果不触发后续生成', async () => {
@@ -514,7 +780,7 @@ describe('MeacoworkIndustrialVideoTools — routing to the trusted service', () 
     const input = {
       run: 'r-1',
       // storyboard: { scenes: [] },
-      storyboard: makeStoryboard(),
+      storyboard: makeCompleteStoryboard(), // 服务端必填字段需齐全，本地预校验才放行
       expectedInputFingerprint: 'fp',
       expectedStoryboardSha256: ''
     }
@@ -551,6 +817,18 @@ describe('MeacoworkIndustrialVideoTools — routing to the trusted service', () 
     })
     expect(jsonOf(result)).not.toHaveProperty('jobId')
     expect(ivServiceMock.jobGet).not.toHaveBeenCalled()
+  })
+
+  it('固定英文音色 MCP 枚举允许并透传，拒绝未知音色', async () => {
+    ivServiceMock.parse.mockResolvedValue({ jobId: 'j-en' })
+    const provider = makeTools()
+    const result = await provider.call('ivideo_parse', { run: 'r-1', voice: 'en-US-JennyNeural', subtitleLanguage: 'en-US', narrationFollowsSubtitles: true })
+    expect(jsonOf(result).ok).toBe(true)
+    expect(ivServiceMock.parse).toHaveBeenCalledWith(expect.objectContaining({ voice: 'en-US-JennyNeural', subtitleLanguage: 'en-US', narrationFollowsSubtitles: true }))
+    ivServiceMock.parse.mockClear()
+    const invalid = await provider.call('ivideo_parse', { run: 'r-1', voice: 'en-US-UnknownNeural' })
+    expect(invalid.isError).toBe(true)
+    expect(ivServiceMock.parse).not.toHaveBeenCalled()
   })
 
   it('ivideo_parse forwards run + settings + payloads to parse', async () => {
@@ -686,5 +964,213 @@ describe('MeacoworkIndustrialVideoTools — structured failure, never leaks the 
     ivServiceMock.runCreate.mockResolvedValue({ run: 'r-1' })
     const result = await makeTools().call('ivideo_run_create', { baseName: 'demo' })
     expect(JSON.stringify(result)).not.toContain('token')
+  })
+})
+
+describe('工业字幕适配（MCP 工具层）', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    agentSessionGetByIdMock.mockReturnValue(makeSession())
+    for (const fn of Object.values(ivServiceMock)) (fn as Mock).mockReset()
+    ivServiceMock.workbenchGet.mockResolvedValue({ generatable: true, blockers: [] })
+    ivServiceMock.getExecutionToken.mockReturnValue(Object.freeze({ sessionId: SESSION_ID, epoch: 1 }))
+    ivServiceMock.withExecution.mockImplementation((_token, fn) => fn())
+  })
+
+  it('ivideo_storyboard_submit 接受 narration text 放宽到 200 字，translations 须覆盖服务端 8 语言', async () => {
+    ivServiceMock.storyboardSubmit.mockResolvedValue({ submitted: true, reviewRequired: false })
+    const longText = '维'.repeat(200)
+    const board = makeCompleteStoryboard()
+    // translations 仅接受服务端 8 语言代码（storyboard.schema.json propertyNames.enum），
+    // 经 z.fromJSONSchema 转换后须提供全部 8 个键。
+    const translations = Object.fromEntries(
+      SERVER_SUBTITLE_LANGS.map((lang) => [
+        lang,
+        lang === 'en-US' ? 'Stop and confirm power off before maintenance.' : 'translated'
+      ])
+    )
+    const result = await makeTools().call('ivideo_storyboard_submit', {
+      run: 'r1',
+      storyboard: {
+        ...board,
+        scenes: [
+          {
+            ...board.scenes[0],
+            narration: [
+              {
+                text: longText,
+                start: 0,
+                end: 6,
+                translations
+              }
+            ]
+          }
+        ]
+      },
+      expectedInputFingerprint: 'fp',
+      expectedStoryboardSha256: 'sha'
+    })
+    expect(jsonOf(result)).toMatchObject({ ok: true, submitted: true })
+    expect(ivServiceMock.storyboardSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        storyboard: expect.objectContaining({
+          scenes: expect.arrayContaining([
+            expect.objectContaining({
+              narration: [
+                {
+                  text: longText,
+                  start: 0,
+                  end: 6,
+                  translations
+                }
+              ]
+            })
+          ])
+        })
+      })
+    )
+  })
+
+  it.each([
+    { text: '维'.repeat(201), start: 0, end: 6 },
+    { text: '维护', start: 0, end: 6, translations: { 'en-US': '' } },
+    { text: '维护', start: 0, end: 6, translations: { 'en-US': '   ' } },
+    { text: '维护', start: 0, end: 6, translations: { 'en-US': 'a'.repeat(501) } },
+    { text: '维护', start: 0, end: 6, translations: { xx: 'translation' } },
+    { text: '维护', start: 0, end: 6, injected: true }
+  ])('拒绝非法旁白或译文，不提交分镜：%j', async (narration) => {
+    const board = makeCompleteStoryboard()
+    const result = await makeTools().call('ivideo_storyboard_submit', {
+      run: 'r1',
+      storyboard: { ...board, scenes: [{ ...board.scenes[0], narration: [narration] }] },
+      expectedInputFingerprint: 'fp',
+      expectedStoryboardSha256: 'sha'
+    })
+    expect(jsonOf(result).ok).toBe(false)
+    expect(ivServiceMock.storyboardSubmit).not.toHaveBeenCalled()
+  })
+
+  // translations 须覆盖服务端 8 语言（z.fromJSONSchema 转换后全部键必填），单条译文 ≤500 字边界通过。
+  it('translations 须覆盖服务端 8 语言且单条 ≤500 字边界，保持旁白 strict', async () => {
+    ivServiceMock.storyboardSubmit.mockResolvedValue({ submitted: true })
+    const board = makeCompleteStoryboard()
+    const narration = [{ text: '维护', start: 0, end: 6, translations: fullTranslations('a'.repeat(500)) }]
+    const result = await makeTools().call('ivideo_storyboard_submit', {
+      run: 'r1',
+      storyboard: { ...board, scenes: [{ ...board.scenes[0], narration }] },
+      expectedInputFingerprint: 'fp',
+      expectedStoryboardSha256: 'sha'
+    })
+    expect(jsonOf(result).ok).toBe(true)
+  })
+
+  it('ivideo_storyboard_submit 拒绝 narration text 超过 200 字', async () => {
+    ivServiceMock.storyboardSubmit.mockResolvedValue({ submitted: true, reviewRequired: false })
+    const tooLong = '维'.repeat(201)
+    const board = makeCompleteStoryboard()
+    const result = await makeTools().call('ivideo_storyboard_submit', {
+      run: 'r1',
+      storyboard: {
+        ...board,
+        scenes: [
+          {
+            ...board.scenes[0],
+            narration: [{ text: tooLong, start: 0, end: 6 }]
+          }
+        ]
+      },
+      expectedInputFingerprint: 'fp',
+      expectedStoryboardSha256: 'sha'
+    })
+    expect(jsonOf(result).ok).toBe(false)
+  })
+
+  it('ivideo_storyboard_submit 拒绝空 translations 译文（非空且 ≤500）', async () => {
+    ivServiceMock.storyboardSubmit.mockResolvedValue({ submitted: true, reviewRequired: false })
+    const board = makeCompleteStoryboard()
+    const result = await makeTools().call('ivideo_storyboard_submit', {
+      run: 'r1',
+      storyboard: {
+        ...board,
+        scenes: [
+          {
+            ...board.scenes[0],
+            narration: [{ text: 'a'.repeat(10), start: 0, end: 6, translations: { 'en-US': '' } }]
+          }
+        ]
+      },
+      expectedInputFingerprint: 'fp',
+      expectedStoryboardSha256: 'sha'
+    })
+    expect(jsonOf(result).ok).toBe(false)
+  })
+
+  it('ivideo_parse 接受字幕 camelCase 字段并转发给 service.parse', async () => {
+    ivServiceMock.parse.mockResolvedValue({ jobId: 'j1' })
+    const result = await makeTools().call('ivideo_parse', {
+      run: 'r1',
+      texts: [{ text: 'x' }],
+      subtitleLanguage: 'en-US',
+      bilingualSubtitles: true,
+      secondSubtitleLanguage: 'ja-JP',
+      narrationFollowsSubtitles: true
+    })
+    expect(jsonOf(result).ok).toBe(true)
+    expect(ivServiceMock.parse).toHaveBeenCalledWith(
+      expect.objectContaining({
+        subtitleLanguage: 'en-US',
+        bilingualSubtitles: true,
+        secondSubtitleLanguage: 'ja-JP',
+        narrationFollowsSubtitles: true
+      })
+    )
+  })
+
+  it('ivideo_start 透传 stage:"plan" 给 service.videoStart（不静默丢弃）', async () => {
+    ivServiceMock.getRecords.mockReturnValue(null)
+    ivServiceMock.videoStart.mockResolvedValue({ jobId: 'j-plan' })
+    ivServiceMock.workbenchGet.mockResolvedValue({ generatable: false, blockers: ['awaiting_script_review'] })
+    const settings = {
+      subtitleLanguage: 'en-US',
+      secondSubtitleLanguage: 'ja-JP',
+      bilingualSubtitles: false,
+      narrationFollowsSubtitles: true,
+      expectedSettingsVersion: 2
+    }
+    const result = await makeTools().call('ivideo_start', { run: 'r1', stage: 'plan', ...settings })
+    expect(jsonOf(result)).toMatchObject({ ok: true, jobId: 'j-plan', started: false })
+    expect(ivServiceMock.videoStart).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        sessionId: SESSION_ID,
+        run: 'r1',
+        stage: 'plan',
+        ...settings
+      })
+    )
+    expect(ivServiceMock.workbenchGet).not.toHaveBeenCalled()
+  })
+
+  it('估算保留字幕设置且不提交任务', async () => {
+    ivServiceMock.estimate.mockResolvedValue({ estimate: { fee: 1 } })
+    const settings = {
+      subtitleLanguage: 'de-DE',
+      secondSubtitleLanguage: 'en-US',
+      bilingualSubtitles: false,
+      narrationFollowsSubtitles: true
+    }
+    expect(jsonOf(await makeTools().call('ivideo_estimate', { run: 'r1', ...settings })).ok).toBe(true)
+    expect(ivServiceMock.estimate).toHaveBeenCalledExactlyOnceWith(expect.objectContaining(settings))
+    expect(ivServiceMock.videoStart).not.toHaveBeenCalled()
+  })
+
+  it('上下文和提交说明明确按翻译任务生成主语言与译文，继续网页审核', () => {
+    for (const name of ['ivideo_context', 'ivideo_storyboard_submit']) {
+      const tool = makeTools()
+        .tools()
+        .find((item) => item.name === name)!
+      expect(tool.description).toContain('subtitle_translation_task')
+      expect(tool.description).toContain('translations')
+      expect(tool.description).toContain('网页')
+    }
   })
 })

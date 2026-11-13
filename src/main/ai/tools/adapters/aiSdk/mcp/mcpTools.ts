@@ -3,7 +3,9 @@ import { type JSONSchema7, type Tool } from 'ai'
 import { application } from '@application'
 import { loggerService } from '@logger'
 import type { McpCallToolResponse } from '@main/ai/mcp/types'
+import { markTrustedLocalToolTerminalFailure } from '@main/ai/runtime/aiSdk'
 import { mcpServerService } from '@main/data/services/McpServerService'
+import { isMeacoworkToolsServerName } from '@shared/ai/meacoworkTools'
 import { isMcpToolForcePromptBySource } from '@shared/ai/tools/mcpSourcePolicy'
 import type { McpServer } from '@shared/data/types/mcpServer'
 import type { McpTool } from '@shared/types/mcp'
@@ -17,6 +19,36 @@ import { mcpResultToTextSummary } from './utils'
 const logger = loggerService.withContext('mcpTools')
 
 const namespaceForServer = (serverId: string) => `mcp:${serverId}`
+const INDUSTRIAL_VIDEO_STORYBOARD_TOOL = 'ivideo_storyboard_submit'
+const INDUSTRIAL_VIDEO_SCHEMA_INVALID = 'IVIDEO_STORYBOARD_SCHEMA_INVALID'
+const INDUSTRIAL_VIDEO_RETRY_STOPPED = 'IVIDEO_STORYBOARD_RETRY_STOPPED'
+
+type IndustrialVideoToolError = { code?: unknown; message?: unknown }
+
+function parseIndustrialVideoToolError(result: McpCallToolResponse): IndustrialVideoToolError | undefined {
+  try {
+    return (JSON.parse(mcpResultToTextSummary(result)) as { error?: IndustrialVideoToolError }).error
+  } catch {
+    return undefined
+  }
+}
+
+function parseIndustrialVideoTerminalFailure(
+  server: McpServer,
+  toolName: string,
+  result: McpCallToolResponse
+): { terminal: true; retryable: false; error: string } | undefined {
+  if (!isMeacoworkToolsServerName(server.name) || toolName !== INDUSTRIAL_VIDEO_STORYBOARD_TOOL) return undefined
+
+  const error = parseIndustrialVideoToolError(result)
+  if (error?.code !== INDUSTRIAL_VIDEO_RETRY_STOPPED || typeof error.message !== 'string') return undefined
+  return { terminal: true, retryable: false, error: error.message }
+}
+
+function isIndustrialVideoCorrectableFailure(server: McpServer, toolName: string, result: McpCallToolResponse): boolean {
+  if (!isMeacoworkToolsServerName(server.name) || toolName !== INDUSTRIAL_VIDEO_STORYBOARD_TOOL) return false
+  return parseIndustrialVideoToolError(result)?.code === INDUSTRIAL_VIDEO_SCHEMA_INVALID
+}
 
 function resolveActiveServerById(serverId: string): McpServer | undefined {
   // Direct point lookup instead of listing every active server on each tool call.
@@ -62,7 +94,11 @@ function createMcpTool(mcpTool: McpTool, forcePrompt: boolean): Tool {
       })
 
       if (result.isError) {
-        throw new Error(mcpResultToTextSummary(result) || 'MCP tool call failed')
+        const terminalFailure = parseIndustrialVideoTerminalFailure(server, mcpTool.name, result)
+        if (terminalFailure) return markTrustedLocalToolTerminalFailure(terminalFailure)
+        if (!isIndustrialVideoCorrectableFailure(server, mcpTool.name, result)) {
+          throw new Error(mcpResultToTextSummary(result) || 'MCP tool call failed')
+        }
       }
 
       // Full McpCallToolResponse for the renderer's ToolUIPart (multimodal
