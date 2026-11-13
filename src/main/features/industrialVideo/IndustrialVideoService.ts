@@ -19,6 +19,7 @@ import type {
   IndustrialVideoRound
 } from '@shared/data/cache/cacheValueTypes'
 import type { UIMessage } from '@shared/data/types/message'
+import type { IndustrialVideoVoiceId as IndustrialVideoVoice } from '@shared/data/industrialVideoVoices'
 import { IpcError } from '@shared/ipc/errors/IpcError'
 import { FILE_TYPE } from '@shared/types/file'
 import { getFileTypeByExt } from '@shared/utils/file'
@@ -61,13 +62,10 @@ type IndustrialVideoOperation = string
  * Fixed voice enum (COWORK_HTTP_GUIDE §17.1). Six Chinese neural voices — the
  * request contract is fixed and the server rejects anything else with 422.
  */
-export type IndustrialVideoVoice =
-  | 'zh-CN-XiaoxiaoNeural'
-  | 'zh-CN-XiaoyiNeural'
-  | 'zh-CN-YunxiNeural'
-  | 'zh-CN-YunjianNeural'
-  | 'zh-CN-YunyangNeural'
-  | 'zh-CN-YunxiaNeural'
+// export type IndustrialVideoVoice =
+//   | 'zh-CN-XiaoxiaoNeural' | 'zh-CN-XiaoyiNeural' | 'zh-CN-YunxiNeural'
+//   | 'zh-CN-YunjianNeural' | 'zh-CN-YunyangNeural' | 'zh-CN-YunxiaNeural'
+export type { IndustrialVideoVoiceId as IndustrialVideoVoice } from '@shared/data/industrialVideoVoices'
 
 /** Map a server job `status` string to the host's coarse production state. */
 function mapJobStatus(status: unknown): IndustrialVideoProductionState | null {
@@ -107,6 +105,11 @@ interface VideoStartSettingsInput {
   withAudio?: boolean | null
   expectedSettingsVersion?: number | null
   narrativeStyle?: string | null
+  /** 工业字幕（§17）：渲染端以 camelCase 提交，主进程转 snake_case。 */
+  subtitleLanguage?: string | null
+  secondSubtitleLanguage?: string | null
+  bilingualSubtitles?: boolean | null
+  narrationFollowsSubtitles?: boolean | null
 }
 
 /** snake_case shape forwarded verbatim to `video_start` (COWORK_HTTP_GUIDE §17). */
@@ -119,6 +122,10 @@ interface VideoStartSettings {
   with_audio?: boolean | null
   expected_settings_version?: number | null
   narrative_style?: string | null
+  subtitle_language?: string | null
+  second_subtitle_language?: string | null
+  bilingual_subtitles?: boolean | null
+  narration_follows_subtitles?: boolean | null
 }
 
 function buildVideoStartSettings(input: VideoStartSettingsInput): VideoStartSettings {
@@ -131,6 +138,11 @@ function buildVideoStartSettings(input: VideoStartSettingsInput): VideoStartSett
   if (input.withAudio !== undefined) out.with_audio = input.withAudio
   if (input.expectedSettingsVersion !== undefined) out.expected_settings_version = input.expectedSettingsVersion
   if (input.narrativeStyle !== undefined) out.narrative_style = input.narrativeStyle
+  // 工业字幕：camelCase → snake_case 原样透传，服务端校验/持久化。
+  if (input.subtitleLanguage !== undefined) out.subtitle_language = input.subtitleLanguage
+  if (input.secondSubtitleLanguage !== undefined) out.second_subtitle_language = input.secondSubtitleLanguage
+  if (input.bilingualSubtitles !== undefined) out.bilingual_subtitles = input.bilingualSubtitles
+  if (input.narrationFollowsSubtitles !== undefined) out.narration_follows_subtitles = input.narrationFollowsSubtitles
   return out
 }
 
@@ -1206,6 +1218,10 @@ export class IndustrialVideoService extends BaseService {
     withAudio?: boolean | null
     expectedSettingsVersion?: number | null
     narrativeStyle?: string | null
+    subtitleLanguage?: string | null
+    secondSubtitleLanguage?: string | null
+    bilingualSubtitles?: boolean | null
+    narrationFollowsSubtitles?: boolean | null
   }): Promise<{ jobId: string; effectiveSettings?: Record<string, unknown>; settingsVersion?: number }> {
     this.validateSession(input.sessionId)
     const client = this.createClient(this.requireConfig())
@@ -1618,6 +1634,12 @@ export class IndustrialVideoService extends BaseService {
     withAudio?: boolean | null
     expectedSettingsVersion?: number | null
     narrativeStyle?: string | null
+    /** 渲染端安全路径：`'plan'` 只保存设置、不付费生成；缺省 `'video'` 为真实生成提交。 */
+    stage?: 'plan' | 'video'
+    subtitleLanguage?: string | null
+    secondSubtitleLanguage?: string | null
+    bilingualSubtitles?: boolean | null
+    narrationFollowsSubtitles?: boolean | null
   }): Promise<{
     jobId: string
     effectiveSettings?: Record<string, unknown>
@@ -1627,6 +1649,12 @@ export class IndustrialVideoService extends BaseService {
     requiresReplan?: boolean
     approvalInvalidated?: boolean
   }> {
+    // 渲染端“只保存设置、不付费生成”的安全路径（stage:'plan'）与原“真实生成提交”
+    // （stage:'video'）共用本入口；stage 透传至服务端，由服务端决定只校验/保存设置
+    // （停在 awaiting_client_plan，不生成视频）还是提交生成任务。stage:'plan' 不把
+    // 会话状态标记为 generating，避免误导为已付费生成。
+    const stage: 'plan' | 'video' = input.stage === 'plan' ? 'plan' : 'video'
+    const state: IndustrialVideoProductionState = stage === 'plan' ? 'planning' : 'generating'
     // Task-submitting path: always returns a `job_id` (old videoStart callers keep
     // that contract). The fee/range pre-check lives in the dedicated `estimate` route.
     // The server echoes `effective_settings` + receipt flags (§17.2) which we forward.
@@ -1637,13 +1665,13 @@ export class IndustrialVideoService extends BaseService {
     const data = await this.guardWrite({
       sessionId: input.sessionId,
       operation: 'video_start',
-      state: 'generating',
+      state,
       run: input.run,
       requireRun: input.run,
       gatedByActiveJob: true,
       doCall: () =>
         client.videoStart({
-          stage: 'video',
+          stage,
           run: input.run,
           estimate_only: false,
           voice: input.voice ?? null,
@@ -1651,7 +1679,7 @@ export class IndustrialVideoService extends BaseService {
           style: input.style ?? null,
           ...buildVideoStartSettings(input)
         }),
-      onSuccess: (d) => ({ jobId: d.job_id, state: 'generating' })
+      onSuccess: (d) => ({ jobId: d.job_id, state })
     })
     return {
       jobId: data.job_id,
@@ -1696,6 +1724,10 @@ export class IndustrialVideoService extends BaseService {
     withAudio?: boolean | null
     expectedSettingsVersion?: number | null
     narrativeStyle?: string | null
+    subtitleLanguage?: string | null
+    secondSubtitleLanguage?: string | null
+    bilingualSubtitles?: boolean | null
+    narrationFollowsSubtitles?: boolean | null
   }): Promise<{
     estimate: Record<string, unknown>
     effectiveSettings?: Record<string, unknown>

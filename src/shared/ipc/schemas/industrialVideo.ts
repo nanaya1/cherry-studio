@@ -1,7 +1,18 @@
 import * as z from 'zod'
+import { INDUSTRIAL_VIDEO_VOICE_IDS } from '@shared/data/industrialVideoVoices'
+
+import { INDUSTRIAL_VIDEO_SUBTITLE_LANGUAGE_CODES } from '@shared/data/cache/cacheValueTypes'
 
 import { defineRoute } from '../define'
 import { uint8ArraySchema } from './common'
+
+/**
+ * 字幕语言固定枚举（服务端 §17 / rendering/subtitles.py 同源）。渲染端只能提交这 8 种，
+ * 主进程原样转 snake_case 透传给 `video_start`；非法值由本 schema 在边界拦截。
+ */
+const ivSubtitleLanguageSchema = z.enum(
+  INDUSTRIAL_VIDEO_SUBTITLE_LANGUAGE_CODES as unknown as [string, ...string[]]
+)
 
 /**
  * Industrial-video IPC schemas — a TYPED ALLOWLIST of the only operations the
@@ -10,9 +21,13 @@ import { uint8ArraySchema } from './common'
  *
  * There is deliberately NO generic `call(operation, args)` route: the renderer
  * cannot hand the main process an arbitrary `operation` string, and each route's
- * input schema restricts the fields that may be forwarded (e.g. the renderer can
- * only request the `parse` / `video` / `assemble` stages via dedicated routes —
- * it cannot smuggle in `stage: 'all'` or `'plan'`, or undocumented settings.
+ * input schema restricts the fields that may be forwarded. Stages are fixed
+ * operationally (`parse` / `video` / `assemble` are dedicated routes); the one
+ * place `stage` is an explicit, renderer-controlled input is `video_start`, where
+ * `stage: 'plan'` is the SAFE "save settings only, no paid generation" path — it
+ * is forwarded verbatim to the server, which validates/persists settings and stops
+ * at `awaiting_client_plan` without generating video. The renderer may NOT smuggle
+ * in any other `stage` value (the enum is closed to `'plan' | 'video'`).
  * `with_audio` and narration are independent settings in the HTTP contract.
  *
  * Inputs are zod values (renderer → main, untrusted, always parsed). Outputs are
@@ -60,14 +75,12 @@ const sessionIdField = z.string().trim().min(1)
  * request contract is fixed; the client never queries a voice/score list. The
  * server rejects any other value with 422.
  */
-const ivVoiceSchema = z.enum([
-  'zh-CN-XiaoxiaoNeural',
-  'zh-CN-XiaoyiNeural',
-  'zh-CN-YunxiNeural',
-  'zh-CN-YunjianNeural',
-  'zh-CN-YunyangNeural',
-  'zh-CN-YunxiaNeural'
-])
+// const ivVoiceSchema = z.enum([
+//   'zh-CN-XiaoxiaoNeural', 'zh-CN-XiaoyiNeural', 'zh-CN-YunxiNeural',
+//   'zh-CN-YunjianNeural', 'zh-CN-YunyangNeural', 'zh-CN-YunxiaNeural'
+// ])
+// MEA:industrial-video 中英音色共用固定白名单，不查询服务端目录。
+const ivVoiceSchema = z.enum(INDUSTRIAL_VIDEO_VOICE_IDS)
 
 /**
  * Planning / audio output settings (COWORK_HTTP_GUIDE §17). These are the only
@@ -95,7 +108,12 @@ const ivSettingsShape = {
   backgroundMusicEnabled: z.boolean().nullable().optional(),
   withAudio: z.boolean().nullable().optional(),
   expectedSettingsVersion: z.number().int().nonnegative().nullable().optional(),
-  narrativeStyle: ivNarrativeStyleSchema.nullable().optional()
+  narrativeStyle: ivNarrativeStyleSchema.nullable().optional(),
+  // 工业字幕：渲染端以 camelCase 提交，主进程转 snake_case 透传（§17）。
+  subtitleLanguage: ivSubtitleLanguageSchema.nullable().optional(),
+  secondSubtitleLanguage: ivSubtitleLanguageSchema.nullable().optional(),
+  bilingualSubtitles: z.boolean().nullable().optional(),
+  narrationFollowsSubtitles: z.boolean().nullable().optional()
 }
 
 /** Shared receipt fields the server returns alongside `effective_settings` (§17.2). */
@@ -263,6 +281,12 @@ export const industrialVideoRequestSchemas = {
         voice: ivVoiceSchema.optional(),
         aspectRatio: z.enum(['16:9', '9:16', '1:1']).optional(),
         style: z.enum(['marketing', 'training']).optional(),
+        /**
+         * 渲染端“只保存设置、不付费生成”的安全路径：`stage: 'plan'` 复用 `video_start`，
+         * 主进程透传，服务端只校验/保存设置（managed 时持久化）并停在 awaiting_client_plan，
+         * 不生成视频、不消耗付费额度。`'video'`（缺省）才是真实生成提交。
+         */
+        stage: z.enum(['plan', 'video']).optional(),
         ...ivSettingsShape
       })
       .strict(),

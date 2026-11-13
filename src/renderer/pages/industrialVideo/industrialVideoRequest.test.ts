@@ -56,13 +56,33 @@ describe('industrial video HTTP settings boundary', () => {
       subtitleEnabled: true,
       backgroundMusicEnabled: true,
       withAudio: true,
-      narrativeStyle: 'industrial'
+      narrativeStyle: 'industrial',
+      subtitleLanguage: 'zh-CN',
+      bilingualSubtitles: false,
+      secondSubtitleLanguage: 'en-US',
+      narrationFollowsSubtitles: true
     })
     expect(industrialVideoVoiceId(narrated.voice)).toBe('zh-CN-YunjianNeural')
 
     const silent = { ...createIndustrialVideoSettings('assembly'), voice: '无旁白' as const }
     expect(buildIndustrialVideoSettingsParams(silent).ttsEnabled).toBe(false)
     expect(industrialVideoVoiceId(silent.voice)).toBeUndefined()
+  })
+
+  it('carries subtitle settings fields for subtitle sync (COWORK_HTTP_GUIDE §17)', () => {
+    const settings = {
+      ...createIndustrialVideoSettings('marketing'),
+      subtitleLanguage: 'en-US' as const,
+      bilingualSubtitles: true,
+      secondSubtitleLanguage: 'ja-JP' as const
+    }
+    expect(buildIndustrialVideoSettingsParams(settings)).toMatchObject({
+      subtitleEnabled: true,
+      subtitleLanguage: 'en-US',
+      bilingualSubtitles: true,
+      secondSubtitleLanguage: 'ja-JP',
+      narrationFollowsSubtitles: true
+    })
   })
 
   it('attaches expectedSettingsVersion only when a known server version is supplied', () => {

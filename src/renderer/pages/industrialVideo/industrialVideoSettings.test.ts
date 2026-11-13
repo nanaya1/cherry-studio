@@ -40,12 +40,12 @@ describe('industrial video input contract', () => {
     }
   })
 
-  it.each(['温柔女声', '知性女声'])('restores cached unavailable voice %s as a supported voice', (voice) => {
-    expect(normalizeIndustrialVideoSettings({ voice }).voice).toBe('沉稳男声')
+  it.each(['温柔女声', '知性女声'])('保留六款中文标签中的缓存音色 %s', (voice) => {
+    expect(normalizeIndustrialVideoSettings({ voice }).voice).toBe(voice)
   })
 
   it('maps legacy cached voices to current equivalents instead of undefined', () => {
-    expect(normalizeIndustrialVideoVoice('清晰女声')).toBe('沉稳男声')
+    expect(normalizeIndustrialVideoVoice('清晰女声')).toBe('温柔女声')
     expect(normalizeIndustrialVideoVoice('自然中性声')).toBe('沉稳男声')
     expect(normalizeIndustrialVideoVoice('阳光男声')).toBe('阳光男声')
     expect(normalizeIndustrialVideoVoice('无旁白')).toBe('无旁白')
@@ -61,7 +61,7 @@ describe('industrial video input contract', () => {
       // 缺少 ratio / resolution / style / backgroundMusic / subtitle / withAudio
     })
     expect(normalized.duration).toBe(30)
-    expect(normalized.voice).toBe('沉稳男声')
+    expect(normalized.voice).toBe('温柔女声')
     expect(normalized.withAudio).toBe(true)
     expect(normalized.ratio).toBe('16:9')
   })

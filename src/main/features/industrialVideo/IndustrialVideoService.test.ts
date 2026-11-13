@@ -1742,6 +1742,14 @@ describe('IndustrialVideoService', () => {
     })
   })
 
+  it('静态英文音色经私有设置映射透传到服务端', async () => {
+    const { service } = makeService(client, session)
+    await service.runCreate({ sessionId: 's1', baseName: 'demo' })
+    await service.videoStart({ sessionId: 's1', run: 'r1', voice: 'en-US-JennyNeural', subtitleLanguage: 'en-US', secondSubtitleLanguage: 'zh-CN', ttsEnabled: true, narrationFollowsSubtitles: true })
+    expect(client.videoStart).toHaveBeenCalledWith(expect.objectContaining({ voice: 'en-US-JennyNeural', subtitle_language: 'en-US', second_subtitle_language: 'zh-CN', tts_enabled: true, narration_follows_subtitles: true }))
+    expect(service).not.toHaveProperty('ttsOptionsGet')
+  })
+
   describe('no fabricated server fields', () => {
     it('videoStart sends only allowed params (no duration/resolution/tts/music)', async () => {
       const { service } = makeService(client, session)
@@ -2018,6 +2026,143 @@ describe('IndustrialVideoService', () => {
         service.upload({ sessionId: 's1', name: 'big.bin', content: new Uint8Array([1]) })
       ).rejects.toMatchObject({ code: 'IVIDEO_HTTP_ERROR' })
       expect((store['industrial_video.records'] as any).s1.unknownSubmissions.length).toBe(0)
+    })
+  })
+
+  describe('工业字幕：camelCase → snake_case 透传 + stage:"plan" 安全路径', () => {
+    function subtitleVideoStartClient() {
+      return makeClient({
+        videoStart: vi.fn(async () =>
+          ok({
+            job_id: 'j1',
+            effective_settings: {
+              settings_version: 3,
+              subtitle_language: 'en-US',
+              second_subtitle_language: 'ja-JP',
+              bilingual_subtitles: true,
+              narration_follows_subtitles: true,
+              subtitle_enabled: true
+            },
+            settings_persisted: true,
+            settings_changed: true,
+            requires_replan: false,
+            approval_invalidated: false
+          })
+        )
+      })
+    }
+
+    it('video_start 把字幕 camelCase 字段转 snake_case 透传并回传 effectiveSettings 字幕字段', async () => {
+      const c = subtitleVideoStartClient()
+      const { service } = makeService(c, session)
+      await service.runCreate({ sessionId: 's1', baseName: 'demo' })
+      const res = await service.videoStart({
+        sessionId: 's1',
+        run: 'r1',
+        subtitleLanguage: 'en-US',
+        secondSubtitleLanguage: 'ja-JP',
+        bilingualSubtitles: true,
+        narrationFollowsSubtitles: true,
+        subtitleEnabled: true,
+        expectedSettingsVersion: 1
+      })
+      expect(c.videoStart).toHaveBeenCalledWith(
+        expect.objectContaining({
+          run: 'r1',
+          stage: 'video',
+          subtitle_language: 'en-US',
+          second_subtitle_language: 'ja-JP',
+          bilingual_subtitles: true,
+          narration_follows_subtitles: true,
+          subtitle_enabled: true,
+          expected_settings_version: 1
+        })
+      )
+      expect(res.effectiveSettings).toMatchObject({
+        subtitle_language: 'en-US',
+        second_subtitle_language: 'ja-JP',
+        bilingual_subtitles: true,
+        narration_follows_subtitles: true
+      })
+      expect(res.settingsVersion).toBe(3)
+    })
+
+    it('video_start stage:"plan" 安全透传，不请求生成（记录 planning 状态）', async () => {
+      const c = subtitleVideoStartClient()
+      const { service, store } = makeService(c, session)
+      await service.runCreate({ sessionId: 's1', baseName: 'demo' })
+      const res = await service.videoStart({
+        sessionId: 's1',
+        run: 'r1',
+        stage: 'plan',
+        subtitleLanguage: 'en-US',
+        expectedSettingsVersion: 1
+      } as never)
+      expect(c.videoStart).toHaveBeenCalledWith(expect.objectContaining({ stage: 'plan', subtitle_language: 'en-US' }))
+      expect(res.jobId).toBe('j1')
+      expect((store['industrial_video.records'] as any).s1.state).toBe('planning')
+    })
+
+    it('video_start 缺省仍为生成状态（向后兼容）', async () => {
+      const c = subtitleVideoStartClient()
+      const { service, store } = makeService(c, session)
+      await service.runCreate({ sessionId: 's1', baseName: 'demo' })
+      await service.videoStart({ sessionId: 's1', run: 'r1' })
+      expect((store['industrial_video.records'] as any).s1.state).toBe('generating')
+    })
+
+    it('parse 把字幕字段编入全量快照并转 snake_case 透传（stage=parse）', async () => {
+      const c = makeClient({
+        videoStart: vi.fn(async () => ok({ job_id: 'j1', effective_settings: { settings_version: 1 } }))
+      })
+      const { service } = makeService(c, session)
+      await service.runCreate({ sessionId: 's1', baseName: 'demo' })
+      await service.parse({
+        sessionId: 's1',
+        run: 'r1',
+        texts: [{ text: 'x' }],
+        subtitleLanguage: 'de-DE',
+        bilingualSubtitles: true,
+        secondSubtitleLanguage: 'fr-FR',
+        narrationFollowsSubtitles: true
+      })
+      expect(c.videoStart).toHaveBeenCalledWith(
+        expect.objectContaining({
+          stage: 'parse',
+          subtitle_language: 'de-DE',
+          second_subtitle_language: 'fr-FR',
+          bilingual_subtitles: true,
+          narration_follows_subtitles: true
+        })
+      )
+    })
+
+    it('estimate 透传字幕字段（只读，不提交任务）', async () => {
+      const c = makeClient({
+        estimate: vi.fn(async () =>
+          ok({ estimate: { fee: 9 }, effective_settings: { settings_version: 2 }, settings_persisted: false, settings_changed: false })
+        )
+      })
+      const { service } = makeService(c, session)
+      await service.runCreate({ sessionId: 's1', baseName: 'demo' })
+      await service.estimate({ sessionId: 's1', run: 'r1', subtitleLanguage: 'ko-KR', bilingualSubtitles: false })
+      expect(c.estimate).toHaveBeenCalledWith(
+        expect.objectContaining({ subtitle_language: 'ko-KR', bilingual_subtitles: false })
+      )
+    })
+
+    it('设置版本冲突（settings_version_conflict）必须抛出，不得吞掉', async () => {
+      const c = makeClient({
+        videoStart: vi.fn(async () =>
+          fail({ category: 'validation', status: 409, code: 'settings_version_conflict', message: '设置版本已变化' })
+        )
+      })
+      const { service } = makeService(c, session)
+      await service.runCreate({ sessionId: 's1', baseName: 'demo' })
+      await expect(service.videoStart({ sessionId: 's1', run: 'r1' })).rejects.toMatchObject({
+        code: 'IVIDEO_HTTP_ERROR',
+        data: { code: 'settings_version_conflict' }
+      })
     })
   })
 })

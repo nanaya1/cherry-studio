@@ -1,4 +1,5 @@
 import type { UpdateInfo } from 'builder-util-runtime'
+import type { INDUSTRIAL_VIDEO_CHINESE_VOICES, IndustrialVideoVoiceId } from '../industrialVideoVoices'
 
 import type { DoctorState } from '@shared/types/doctor'
 import type { AbsoluteFilePath, FileType } from '@shared/types/file'
@@ -17,19 +18,43 @@ import type { UniqueModelId } from '../types/model'
 import type { ComposerMessageTokenKind } from '../types/uiParts'
 import type { WebSearchStatus } from '../types/webSearch'
 
+/** 工业视频字幕支持的语言（服务端固定枚举，COWORK_HTTP_GUIDE §17）。渲染端不得自行增删。 */
+export const INDUSTRIAL_VIDEO_SUBTITLE_LANGUAGE_CODES = [
+  'zh-CN',
+  'zh-TW',
+  'en-US',
+  'ja-JP',
+  'ko-KR',
+  'es-ES',
+  'fr-FR',
+  'de-DE'
+] as const
+
+export type IndustrialVideoSubtitleLanguage = (typeof INDUSTRIAL_VIDEO_SUBTITLE_LANGUAGE_CODES)[number]
+
 export interface CacheIndustrialVideoSettings {
   type: 'marketing' | 'assembly'
   duration: number
   ratio: '16:9' | '9:16' | '1:1'
   resolution: '720P' | '1080P'
   style: '工业质感' | '工业写实' | '科技' | '现代' | '武侠' | '古风'
-  voice: '温柔女声' | '知性女声' | '阳光男声' | '沉稳男声' | '正式男声' | '男孩童声' | '无旁白'
+  // voice: '温柔女声' | '知性女声' | '阳光男声' | '沉稳男声' | '正式男声' | '男孩童声' | '无旁白'
+  voice: keyof typeof INDUSTRIAL_VIDEO_CHINESE_VOICES | IndustrialVideoVoiceId | '无旁白'
   backgroundMusic: boolean
   subtitle: boolean
   withAudio: boolean
+  /** 主字幕语言；默认中文。变更视为“主语言变更”，需模型重新规划与网页审核。 */
+  subtitleLanguage: IndustrialVideoSubtitleLanguage
+  /** 是否生成双语字幕（主语言 + 第二语言）。 */
+  bilingualSubtitles: boolean
+  /** 第二字幕语言；仅 bilingualSubtitles=true 时生效，且不得等于 subtitleLanguage。 */
+  secondSubtitleLanguage: IndustrialVideoSubtitleLanguage
+  /** 旁白跟随字幕语言，固定 true（服务端约束），客户端不可改为 false。 */
+  narrationFollowsSubtitles: boolean
 }
 
 export interface CacheIndustrialVideoDraft {
+  subtitleDirtyFields?: string[]
   orchestration?: 'agent' | 'dedicated'
   requirement: string
   modelId: UniqueModelId | null

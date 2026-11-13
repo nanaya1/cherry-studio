@@ -59,7 +59,13 @@ import {
   validateIndustrialVideoInput
 } from './industrialVideoSettings'
 import IndustrialVideoSettingsForm from './IndustrialVideoSettingsForm'
-import { uploadIndustrialLogo, uploadIndustrialMedia } from './industrialVideoWorkflow'
+import { resolveIndustrialVideoVoiceSettings } from './industrialVideoVoice'
+import { buildSubtitleSettingsParams, extractSubtitleServerSnapshot } from './industrialVideoSubtitle'
+import {
+  syncIndustrialVideoSubtitleSettings,
+  uploadIndustrialLogo,
+  uploadIndustrialMedia
+} from './industrialVideoWorkflow'
 import { useIndustrialVideoAnalysis } from './useIndustrialVideoAnalysis'
 import { useIndustrialVideoProduction } from './useIndustrialVideoProduction'
 
@@ -126,6 +132,15 @@ function IndustrialVideoSessionComposer({
   // 保留兼容参数：前置分析入口移除后不再用于触发结果失效。
   void settingsKey
   const currentSettings = settings ?? (draft ? normalizeIndustrialVideoSettings(draft.settings) : defaultSettings)
+  const subtitleDirty = useRef(new Set<string>(draft?.subtitleDirtyFields ?? []))
+  const changeSettings = (next: IndustrialVideoSettings) => {
+    const before = buildSubtitleSettingsParams(currentSettings)
+    const after = buildSubtitleSettingsParams(next)
+    for (const field of Object.keys(after) as Array<keyof typeof after>) {
+      if (before[field] !== after[field]) subtitleDirty.current.add(field)
+    }
+    onSettingsChange?.(next)
+  }
   // const [orchestration, setOrchestration] = useState<'agent' | 'dedicated'>(draft?.orchestration ?? 'agent')
   // 新任务固定普通工具链，已有会话保持原通道。
   const orchestration = draft?.orchestration ?? 'agent'
@@ -177,6 +192,7 @@ function IndustrialVideoSessionComposer({
       }
     })
     return {
+      subtitleDirtyFields: [...subtitleDirty.current],
       orchestration,
       requirement: text,
       modelId: model?.id ?? draft?.modelId ?? null,
@@ -223,6 +239,35 @@ function IndustrialVideoSessionComposer({
   const processed = useRef(new Set<string>(draft?.materials?.map((material) => material.id) ?? []))
   const analysis = useIndustrialVideoAnalysis()
   const production = useIndustrialVideoProduction(sessionId)
+  useEffect(() => {
+    const run = production.record?.run
+    if (!sessionId || !run || !onSettingsChange) return
+    let cancelled = false
+    void ipcApi
+      .request('industrial_video.planning_context_get', { sessionId, run })
+      .then((context) => {
+        if (cancelled || subtitleDirty.current.size) return
+        const snapshot = extractSubtitleServerSnapshot(
+          context.effective_settings as Record<string, unknown> | undefined
+        )
+        onSettingsChange(
+          normalizeIndustrialVideoSettings({
+            ...currentSettings,
+            ...(snapshot.subtitleEnabled !== undefined ? { subtitle: snapshot.subtitleEnabled } : {}),
+            ...Object.fromEntries(Object.entries(snapshot).filter(([key]) => key !== 'subtitleEnabled')),
+            narrationFollowsSubtitles: true
+          })
+        )
+      })
+      .catch(() => {
+        /* 发送前会重新读取并报告失败，不用本地默认值覆盖。 */
+      })
+    return () => {
+      cancelled = true
+    }
+    // 仅在服务端项目切换时回显，避免本地设置回写触发重复请求。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId, production.record?.run])
   const invalidateAnalysis = analysis.invalidate
   const [polishing, setPolishing] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -510,6 +555,35 @@ function IndustrialVideoSessionComposer({
       if (!active.current) return
       const targetSessionId = sessionId ?? (await ensureSession!(input))
       if (!active.current) return
+      const resolvedVoice = resolveIndustrialVideoVoiceSettings(input.settings)
+      if (resolvedVoice.voice) input.settings = { ...input.settings, voice: resolvedVoice.voice }
+      let subtitleRequiresReplan = false
+      if (production.record?.run) {
+        const subtitleReceipt = await syncIndustrialVideoSubtitleSettings(
+          targetSessionId,
+          production.record.run,
+          currentSettings,
+          [...subtitleDirty.current]
+        )
+        subtitleRequiresReplan = subtitleReceipt.requiresReplan || subtitleReceipt.settingsChanged
+        const context = await ipcApi.request('industrial_video.planning_context_get', {
+          sessionId: targetSessionId,
+          run: production.record.run
+        })
+        const snapshot = extractSubtitleServerSnapshot(
+          context.effective_settings as Record<string, unknown> | undefined
+        )
+        input.settings = normalizeIndustrialVideoSettings({
+          ...input.settings,
+          ...(snapshot.subtitleEnabled !== undefined ? { subtitle: snapshot.subtitleEnabled } : {}),
+          ...Object.fromEntries(Object.entries(snapshot).filter(([key]) => key !== 'subtitleEnabled')),
+          narrationFollowsSubtitles: true
+        })
+        subtitleDirty.current.clear()
+        input.subtitleDirtyFields = []
+        cacheService.setPersist(`industrial_video.session_draft.${targetSessionId}`, input)
+        onSettingsChange?.(input.settings)
+      }
       const media: Array<{ name: string; caption: string }> = []
       for (const attachment of attachments.filter((file) =>
         /\.(png|jpe?g|webp|gif|mp4|mov|webm|mkv)$/i.test(file.origin_name)
@@ -547,6 +621,10 @@ function IndustrialVideoSessionComposer({
             type: 'text' as const,
             text: JSON.stringify({
               settings: input.settings,
+              subtitleRequiresReplan,
+              subtitleInstruction: subtitleRequiresReplan
+                ? '字幕设置已变更。必须读取最新 ivideo_context.subtitle_translation_task，重新生成对应语言文稿及译文并提交，返回服务端工作台审核后结束本轮；不得使用旧版分镜开始生成。'
+                : '按服务端最新字幕语言生成主语言文稿及所需译文，配音始终跟随主字幕。已有项目以服务端最新设置为准。',
               modelId: input.modelId,
               media,
               logo: uploadedLogo ? { name: uploadedLogo.name } : null
@@ -676,7 +754,8 @@ function IndustrialVideoSessionComposer({
           {onSettingsChange ? (
             <IndustrialVideoSettingsForm
               settings={currentSettings}
-              onChange={onSettingsChange}
+              // onChange={onSettingsChange}
+              onChange={changeSettings}
               logoControl={logoControl}
             />
           ) : (

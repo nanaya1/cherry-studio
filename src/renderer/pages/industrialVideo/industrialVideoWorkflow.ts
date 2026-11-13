@@ -1,6 +1,19 @@
 import * as z from 'zod'
 
+import { loggerService } from '@logger'
 import { ipcApi } from '@renderer/ipc'
+
+import type { IndustrialVideoSettings } from './industrialVideoSettings'
+import {
+  diffSubtitleSettings,
+  extractSubtitleServerSnapshot,
+  interpretSubtitleSyncReceipt,
+  type SubtitleSyncReceipt
+} from './industrialVideoSubtitle'
+
+import { resolveIndustrialVideoVoiceSettings } from './industrialVideoVoice'
+
+const logger = loggerService.withContext('industrial-video-subtitle-sync')
 
 export const industrialStoryboardSchema = z
   .object({
@@ -61,6 +74,65 @@ export async function prepareIndustrialStoryboard(
   })
   if (!result.submitted) throw new Error('服务端未接受分镜，请刷新规划上下文后检查。')
   return storyboard
+}
+
+/** Only persist explicitly changed subtitle settings before submitting an industrial message. */
+export async function syncIndustrialVideoSubtitleSettings(
+  sessionId: string,
+  run: string,
+  localSettings: IndustrialVideoSettings,
+  dirtyFields?: readonly string[]
+): Promise<SubtitleSyncReceipt> {
+  const context = await ipcApi.request('industrial_video.planning_context_get', { sessionId, run })
+  const serverSnapshot = extractSubtitleServerSnapshot(
+    (context?.effective_settings as Record<string, unknown> | undefined) ?? undefined
+  )
+  const patch = diffSubtitleSettings(localSettings, serverSnapshot)
+  if (dirtyFields) {
+    for (const field of Object.keys(patch) as Array<keyof typeof patch>) {
+      if (!dirtyFields.includes(field)) delete patch[field]
+    }
+    if (Object.keys(patch).length || serverSnapshot.narrationFollowsSubtitles === false)
+      patch.narrationFollowsSubtitles = true
+  }
+  const voiceChanged = dirtyFields?.includes('voice') || dirtyFields?.includes('ttsEnabled') || patch.subtitleLanguage !== undefined
+  const voicePatch = voiceChanged ? resolveIndustrialVideoVoiceSettings(localSettings) : {}
+  // 未改：不覆盖服务端，回显既有设置。
+  // if (Object.keys(patch).length === 0) {
+  if (Object.keys(patch).length === 0 && !voiceChanged) {
+    return interpretSubtitleSyncReceipt(null)
+  }
+  const effective = context.effective_settings as Record<string, unknown> | undefined
+  const version =
+    typeof effective?.settings_version === 'number'
+      ? effective.settings_version
+      : typeof context.settings_version === 'number'
+        ? context.settings_version
+        : undefined
+  if (version === undefined) throw new Error('服务端未返回设置版本，已停止字幕设置同步。')
+  try {
+    const receipt = (await ipcApi.request('industrial_video.video_start', {
+      sessionId,
+      run,
+      stage: 'plan',
+      ...patch,
+      ...voicePatch,
+      narrationFollowsSubtitles: true,
+      ...(typeof version === 'number' ? { expectedSettingsVersion: version } : {})
+    })) as Record<string, unknown>
+    const result = interpretSubtitleSyncReceipt(receipt)
+    if (result.requiresReplan) {
+      logger.warn('字幕主语言变更：后续需模型重新规划与网页审核，已阻止使用旧版本生成', {
+        sessionId,
+        run,
+        settingsVersion: result.settingsVersion
+      })
+    }
+    return result
+  } catch (error) {
+    logger.warn('字幕设置同步失败，停止本轮', { sessionId, run })
+    throw error
+  }
 }
 
 /** 统一上传入口：POST 原始字节到服务根 `/upload`，返回 `{ name }` 句柄；不进渲染进程的 Token。 */

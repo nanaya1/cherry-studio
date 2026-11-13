@@ -4,7 +4,9 @@ import { Button, Input, Textarea } from '@cherrystudio/ui'
 import { ipcApi } from '@renderer/ipc'
 import type { Model } from '@shared/data/types/model'
 
-import { buildIndustrialVideoSettingsParams, industrialVideoVoiceId } from './industrialVideoRequest'
+// import { buildIndustrialVideoSettingsParams, industrialVideoVoiceId } from './industrialVideoRequest'
+import { buildIndustrialVideoSettingsParams } from './industrialVideoRequest'
+import { resolveIndustrialVideoVoiceSettings } from './industrialVideoVoice'
 import { buildIndustrialVideoPlanningKey, type IndustrialVideoSettings } from './industrialVideoSettings'
 import { parseIndustrialStoryboard, prepareIndustrialStoryboard } from './industrialVideoWorkflow'
 import { useIndustrialVideoAnalysis } from './useIndustrialVideoAnalysis'
@@ -133,7 +135,8 @@ export default function IndustrialVideoProductionPanel({
       sessionId,
       run,
       ...buildIndustrialVideoSettingsParams(settings, settingsVersion),
-      ...(settings.voice === '无旁白' ? {} : { voice: industrialVideoVoiceId(settings.voice) }),
+      // ...(settings.voice === '无旁白' ? {} : { voice: industrialVideoVoiceId(settings.voice) }),
+      ...resolveIndustrialVideoVoiceSettings(settings),
       aspectRatio: settings.ratio,
       style: settings.type === 'marketing' ? ('marketing' as const) : ('training' as const)
     }

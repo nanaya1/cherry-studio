@@ -135,6 +135,13 @@ export interface VideoStartParams {
   tts_enabled?: boolean | null
   subtitle_enabled?: boolean | null
   background_music_enabled?: boolean | null
+  /** 工业字幕（§17）：主字幕语言 / 第二字幕语言（服务端固定 8 种）。 */
+  subtitle_language?: string | null
+  second_subtitle_language?: string | null
+  /** 是否生成双语字幕。 */
+  bilingual_subtitles?: boolean | null
+  /** 旁白跟随字幕语言（服务端约束固定 true）。 */
+  narration_follows_subtitles?: boolean | null
   expected_settings_version?: number | null
 }
 export interface VideoStartResult {
@@ -161,6 +168,11 @@ export interface EstimateParams {
   subtitle_enabled?: boolean | null
   background_music_enabled?: boolean | null
   with_audio?: boolean | null
+  /** 工业字幕（§17）。 */
+  subtitle_language?: string | null
+  second_subtitle_language?: string | null
+  bilingual_subtitles?: boolean | null
+  narration_follows_subtitles?: boolean | null
   expected_settings_version?: number | null
 }
 /**

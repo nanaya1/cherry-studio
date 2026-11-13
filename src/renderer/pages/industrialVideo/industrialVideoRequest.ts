@@ -1,17 +1,13 @@
 import type { IndustrialVideoSettings, IndustrialVideoVoice } from './industrialVideoSettings'
 
-export const INDUSTRIAL_VIDEO_VOICES = {
-  温柔女声: 'zh-CN-XiaoxiaoNeural',
-  知性女声: 'zh-CN-XiaoyiNeural',
-  阳光男声: 'zh-CN-YunxiNeural',
-  沉稳男声: 'zh-CN-YunjianNeural',
-  正式男声: 'zh-CN-YunyangNeural',
-  男孩童声: 'zh-CN-YunxiaNeural'
-} as const
+export { INDUSTRIAL_VIDEO_CHINESE_VOICES as INDUSTRIAL_VIDEO_VOICES } from '@shared/data/industrialVideoVoices'
+import { INDUSTRIAL_VIDEO_CHINESE_VOICES as INDUSTRIAL_VIDEO_VOICES, INDUSTRIAL_VIDEO_VOICE_IDS, type IndustrialVideoVoiceId } from '@shared/data/industrialVideoVoices'
 
 /** 把展示音色映射为服务端 `voice` ID；`无旁白` 不传 voice（由 `ttsEnabled=false` 表达）。 */
 export function industrialVideoVoiceId(voice: IndustrialVideoVoice) {
-  return voice === '无旁白' ? undefined : INDUSTRIAL_VIDEO_VOICES[voice]
+  // return voice === '无旁白' ? undefined : INDUSTRIAL_VIDEO_VOICES[voice]
+  const id = INDUSTRIAL_VIDEO_VOICES[voice as keyof typeof INDUSTRIAL_VIDEO_VOICES] ?? voice
+  return INDUSTRIAL_VIDEO_VOICE_IDS.some(value => value === id) ? id as IndustrialVideoVoiceId : undefined
 }
 
 export const INDUSTRIAL_VIDEO_NARRATIVE_STYLES = {
@@ -36,7 +32,8 @@ export function buildIndustrialVideoRequest(run: string, settings: IndustrialVid
     style: settings.type === 'marketing' ? ('marketing' as const) : ('training' as const),
     aspect_ratio: settings.ratio,
     language: 'zh-CN',
-    voice: INDUSTRIAL_VIDEO_VOICES[settings.voice]
+    // voice: INDUSTRIAL_VIDEO_VOICES[settings.voice]
+    voice: industrialVideoVoiceId(settings.voice)
   }
 }
 
@@ -48,6 +45,14 @@ export interface IndustrialVideoSettingsParams {
   backgroundMusicEnabled: boolean
   withAudio: boolean
   narrativeStyle: (typeof INDUSTRIAL_VIDEO_NARRATIVE_STYLES)[IndustrialVideoSettings['style']]
+  /** 主字幕语言（COWORK_HTTP_GUIDE §17）。 */
+  subtitleLanguage: IndustrialVideoSettings['subtitleLanguage']
+  /** 是否双语字幕。 */
+  bilingualSubtitles: boolean
+  /** 第二字幕语言。 */
+  secondSubtitleLanguage: IndustrialVideoSettings['secondSubtitleLanguage']
+  /** 旁白跟随字幕，固定 true。 */
+  narrationFollowsSubtitles: boolean
   expectedSettingsVersion?: number
 }
 
@@ -67,7 +72,12 @@ export function buildIndustrialVideoSettingsParams(
     subtitleEnabled: settings.subtitle,
     backgroundMusicEnabled: settings.backgroundMusic,
     withAudio: settings.withAudio,
-    narrativeStyle: INDUSTRIAL_VIDEO_NARRATIVE_STYLES[settings.style]
+    narrativeStyle: INDUSTRIAL_VIDEO_NARRATIVE_STYLES[settings.style],
+    subtitleLanguage: settings.subtitleLanguage,
+    bilingualSubtitles: settings.bilingualSubtitles,
+    secondSubtitleLanguage: settings.secondSubtitleLanguage,
+    // narrationFollowsSubtitles: settings.narrationFollowsSubtitles
+    narrationFollowsSubtitles: true
   }
   if (typeof expectedSettingsVersion === 'number' && expectedSettingsVersion >= 0) {
     params.expectedSettingsVersion = expectedSettingsVersion

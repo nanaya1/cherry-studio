@@ -12,6 +12,7 @@ import { withCherryMeta } from '@shared/data/types/uiParts'
 import { IpcError } from '@shared/ipc/errors/IpcError'
 
 import { buildIndustrialVideoSettingsParams, industrialVideoVoiceId } from './industrialVideoRequest'
+import { resolveIndustrialVideoVoiceSettings } from './industrialVideoVoice'
 import { uploadIndustrialLogo, uploadIndustrialMedia } from './industrialVideoWorkflow'
 
 /**
@@ -232,7 +233,8 @@ async function runPreparation(
       media,
       logo: uploadedLogo ? { name: uploadedLogo.name } : null,
       ...buildIndustrialVideoSettingsParams(draft.settings),
-      voice: industrialVideoVoiceId(draft.settings.voice),
+      // voice: industrialVideoVoiceId(draft.settings.voice),
+      ...resolveIndustrialVideoVoiceSettings(draft.settings),
       aspectRatio: draft.settings.ratio,
       style: draft.settings.type === 'marketing' ? 'marketing' : 'training'
     })

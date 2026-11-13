@@ -46,6 +46,10 @@ describe('IndustrialVideoClient', () => {
     expect(init?.body).toBe(JSON.stringify({ run: 'demo-run' }))
   })
 
+  it('不暴露动态音色目录接口', () => {
+    expect(client).not.toHaveProperty('ttsOptionsGet')
+  })
+
   describe('审核 HTTP 契约', () => {
     const params = { run: 'r1', host_assertion: 'trusted-assertion', review_type: 'script_and_storyboard' as const }
     const snapshot = {

@@ -1,11 +1,12 @@
 import { beforeEach, expect, it, vi } from 'vitest'
 
-const mocks = vi.hoisted(() => ({ dialog: vi.fn(), download: vi.fn(), copy: vi.fn(), guard: vi.fn(), stat: vi.fn() }))
+const mocks = vi.hoisted(() => ({ dialog: vi.fn(), download: vi.fn(), copy: vi.fn(), guard: vi.fn(), stat: vi.fn(),
+  videoStart: vi.fn(), parse: vi.fn(), estimate: vi.fn() }))
 vi.mock('@application', async () => {
   const { mockApplicationFactory } = await import('@test-mocks/main/application')
   const overrides = {
     WindowManager: { getWindow: () => ({}) },
-    IndustrialVideoService: { downloadArtifact: mocks.download }
+    IndustrialVideoService: { downloadArtifact: mocks.download, videoStart: mocks.videoStart, parse: mocks.parse, estimate: mocks.estimate }
   }
   return mockApplicationFactory(overrides)
 })
@@ -15,6 +16,19 @@ vi.mock('@main/utils/file', () => ({ copyNew: mocks.copy }))
 vi.mock('node:fs/promises', () => ({ lstat: mocks.stat }))
 
 import { industrialVideoHandlers } from '../industrialVideo'
+
+it('IPC 设置同步保留 plan、版本、字幕开关和服务端回执，不降级为生成', async () => {
+  const settings = { sessionId: 's', run: 'r', stage: 'plan' as const, subtitleLanguage: 'en-US' as const,
+    secondSubtitleLanguage: 'ja-JP' as const, bilingualSubtitles: false, narrationFollowsSubtitles: true,
+    expectedSettingsVersion: 3 }
+  const receipt = { jobId: 'plan-job', settingsPersisted: true, settingsVersion: 4,
+    effectiveSettings: { subtitle_language: 'en-US' }, approvalInvalidated: true, requiresReplan: true }
+  mocks.videoStart.mockResolvedValueOnce(receipt)
+  expect(await industrialVideoHandlers['industrial_video.video_start'](settings, { senderId: 'w1' })).toEqual(receipt)
+  expect(mocks.videoStart).toHaveBeenCalledExactlyOnceWith(expect.objectContaining(settings))
+  expect(mocks.parse).not.toHaveBeenCalled()
+  expect(mocks.estimate).not.toHaveBeenCalled()
+})
 
 const input = { sessionId: 's', run: 'r', path: 'final/video.mp4' }
 const context = { senderId: 'w1' }

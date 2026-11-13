@@ -1,20 +1,25 @@
+import type { IndustrialVideoSubtitleLanguage } from '@shared/data/cache/cacheValueTypes'
+import { INDUSTRIAL_VIDEO_VOICE_IDS, type IndustrialVideoVoiceId, type INDUSTRIAL_VIDEO_CHINESE_VOICES } from '@shared/data/industrialVideoVoices'
+
+import { INDUSTRIAL_VIDEO_SUBTITLE_LANGUAGE_CODES } from '@shared/data/cache/cacheValueTypes'
+
 export const MAX_DURATION_SECONDS = 600
 
 export type IndustrialVideoType = 'marketing' | 'assembly'
+
+export type { IndustrialVideoSubtitleLanguage }
+
+/** 字幕语言白名单（与 shared `INDUSTRIAL_VIDEO_SUBTITLE_LANGUAGE_CODES` 同源）。 */
+export const INDUSTRIAL_VIDEO_SUBTITLE_LANGUAGES = INDUSTRIAL_VIDEO_SUBTITLE_LANGUAGE_CODES
 
 /**
  * 六款固定音色 + 无旁白。音色展示名为产品名，提交时由 `industrialVideoRequest`
  * 映射为服务端 `voice` ID（见 COWORK_HTTP_GUIDE §17.1）。`无旁白` 不是音色，而是
  * `ttsEnabled=false` 的语义，不映射任何 `voice` ID。
  */
-export type IndustrialVideoVoice =
-  | '温柔女声'
-  | '知性女声'
-  | '阳光男声'
-  | '沉稳男声'
-  | '正式男声'
-  | '男孩童声'
-  | '无旁白'
+// export type IndustrialVideoVoice =
+//   | '温柔女声' | '知性女声' | '阳光男声' | '沉稳男声' | '正式男声' | '男孩童声' | '无旁白'
+export type IndustrialVideoVoice = keyof typeof INDUSTRIAL_VIDEO_CHINESE_VOICES | IndustrialVideoVoiceId | '无旁白'
 
 export interface IndustrialVideoSettings {
   type: IndustrialVideoType
@@ -27,6 +32,14 @@ export interface IndustrialVideoSettings {
   subtitle: boolean
   /** 视频生成模型是否保留原生音轨，独立于 TTS 与背景音乐（COWORK_HTTP_GUIDE §17）。 */
   withAudio: boolean
+  /** 主字幕语言；默认中文。变更视为“主语言变更”，需模型重新规划与网页审核。 */
+  subtitleLanguage: IndustrialVideoSubtitleLanguage
+  /** 是否生成双语字幕（主语言 + 第二语言）。 */
+  bilingualSubtitles: boolean
+  /** 第二字幕语言；仅 bilingualSubtitles=true 时生效，且不得等于 subtitleLanguage。 */
+  secondSubtitleLanguage: IndustrialVideoSubtitleLanguage
+  /** 旁白跟随字幕语言，固定 true（服务端约束），客户端不可改为 false。 */
+  narrationFollowsSubtitles: boolean
 }
 
 export function createIndustrialVideoSettings(type: IndustrialVideoType): IndustrialVideoSettings {
@@ -40,7 +53,11 @@ export function createIndustrialVideoSettings(type: IndustrialVideoType): Indust
     voice: '沉稳男声',
     backgroundMusic: type === 'marketing',
     subtitle: true,
-    withAudio: true
+    withAudio: true,
+    subtitleLanguage: 'zh-CN',
+    bilingualSubtitles: false,
+    secondSubtitleLanguage: 'en-US',
+    narrationFollowsSubtitles: true
   }
 }
 
@@ -78,8 +95,8 @@ const LEGACY_VOICE_COMPAT: Record<string, IndustrialVideoVoice> = {
 }
 
 export function normalizeIndustrialVideoVoice(value: unknown): IndustrialVideoVoice {
-  // 隐藏音色及旧女声草稿回退到部署版可接受的默认值。
-  if (value === '温柔女声' || value === '知性女声' || value === '清晰女声') return '沉稳男声'
+  // if (value === '温柔女声' || value === '知性女声' || value === '清晰女声') return '沉稳男声'
+  if (INDUSTRIAL_VIDEO_VOICE_IDS.includes(value as IndustrialVideoVoiceId)) return value as IndustrialVideoVoiceId
   if (typeof value === 'string' && (ALL_VOICES as readonly string[]).includes(value)) {
     return value as IndustrialVideoVoice
   }
@@ -124,7 +141,22 @@ export function normalizeIndustrialVideoSettings(value: unknown): IndustrialVide
     backgroundMusic: typeof raw.backgroundMusic === 'boolean' ? raw.backgroundMusic : defaults.backgroundMusic,
     subtitle: typeof raw.subtitle === 'boolean' ? raw.subtitle : defaults.subtitle,
     // 旧缓存没有 withAudio 字段时回退到默认（true），不静默改为 false。
-    withAudio: typeof raw.withAudio === 'boolean' ? raw.withAudio : defaults.withAudio
+    withAudio: typeof raw.withAudio === 'boolean' ? raw.withAudio : defaults.withAudio,
+    // 字幕语言：旧缓存缺字段或非法码时回退默认语言，不把未知串当合法值。
+    subtitleLanguage: INDUSTRIAL_VIDEO_SUBTITLE_LANGUAGE_CODES.includes(
+      raw.subtitleLanguage as IndustrialVideoSubtitleLanguage
+    )
+      ? (raw.subtitleLanguage as IndustrialVideoSubtitleLanguage)
+      : defaults.subtitleLanguage,
+    bilingualSubtitles: typeof raw.bilingualSubtitles === 'boolean' ? raw.bilingualSubtitles : defaults.bilingualSubtitles,
+    // 第二语言同样夹紧；若与主语言相同（旧缓存/异常），回退默认第二语言，避免同语。
+    secondSubtitleLanguage:
+      INDUSTRIAL_VIDEO_SUBTITLE_LANGUAGE_CODES.includes(raw.secondSubtitleLanguage as IndustrialVideoSubtitleLanguage) &&
+      raw.secondSubtitleLanguage !== raw.subtitleLanguage
+        ? (raw.secondSubtitleLanguage as IndustrialVideoSubtitleLanguage)
+        : defaults.secondSubtitleLanguage,
+    // narrationFollowsSubtitles 服务端固定 true：旧缓存无论写入何值都归一为 true，绝不静默改为 false。
+    narrationFollowsSubtitles: true
   }
 }
 

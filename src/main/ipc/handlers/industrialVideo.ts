@@ -42,7 +42,11 @@ export const industrialVideoHandlers: IpcHandlersFor<typeof industrialVideoReque
       backgroundMusicEnabled: input.backgroundMusicEnabled,
       withAudio: input.withAudio,
       expectedSettingsVersion: input.expectedSettingsVersion,
-      narrativeStyle: input.narrativeStyle ?? null
+      narrativeStyle: input.narrativeStyle ?? null,
+      subtitleLanguage: input.subtitleLanguage ?? null,
+      secondSubtitleLanguage: input.secondSubtitleLanguage ?? null,
+      bilingualSubtitles: input.bilingualSubtitles ?? null,
+      narrationFollowsSubtitles: input.narrationFollowsSubtitles ?? null
     }),
   'industrial_video.planning_context_get': async (input) =>
     application.get('IndustrialVideoService').planningContextGet(input),
@@ -63,7 +67,12 @@ export const industrialVideoHandlers: IpcHandlersFor<typeof industrialVideoReque
       backgroundMusicEnabled: input.backgroundMusicEnabled,
       withAudio: input.withAudio,
       expectedSettingsVersion: input.expectedSettingsVersion,
-      narrativeStyle: input.narrativeStyle ?? null
+      narrativeStyle: input.narrativeStyle ?? null,
+      stage: input.stage,
+      subtitleLanguage: input.subtitleLanguage ?? null,
+      secondSubtitleLanguage: input.secondSubtitleLanguage ?? null,
+      bilingualSubtitles: input.bilingualSubtitles ?? null,
+      narrationFollowsSubtitles: input.narrationFollowsSubtitles ?? null
     }),
   'industrial_video.estimate': async (input) =>
     application.get('IndustrialVideoService').estimate({
@@ -79,7 +88,11 @@ export const industrialVideoHandlers: IpcHandlersFor<typeof industrialVideoReque
       backgroundMusicEnabled: input.backgroundMusicEnabled,
       withAudio: input.withAudio,
       expectedSettingsVersion: input.expectedSettingsVersion,
-      narrativeStyle: input.narrativeStyle ?? null
+      narrativeStyle: input.narrativeStyle ?? null,
+      subtitleLanguage: input.subtitleLanguage ?? null,
+      secondSubtitleLanguage: input.secondSubtitleLanguage ?? null,
+      bilingualSubtitles: input.bilingualSubtitles ?? null,
+      narrationFollowsSubtitles: input.narrationFollowsSubtitles ?? null
     }),
   'industrial_video.assemble': async (input) => application.get('IndustrialVideoService').assemble(input),
   'industrial_video.job_get': async (input) => application.get('IndustrialVideoService').jobGet(input),
