@@ -83,6 +83,7 @@ import ComposerFloatingCapsule from '@renderer/components/composer/ComposerFloat
 import { FilePreviewNavigationProvider } from '@renderer/components/FilePreview'
 import Scrollbar from '@renderer/components/Scrollbar'
 import type { WebviewAnnotationSavedPayload } from '@renderer/components/WebviewAnnotationControls'
+import { WebviewHost } from '@renderer/components/WebviewHost'
 import { usePreference } from '@renderer/data/hooks/usePreference'
 import { useAgentSessionBackgroundTasks } from '@renderer/hooks/agent/useAgentSessionBackgroundTasks'
 import { useAgentSessionCompaction } from '@renderer/hooks/agent/useAgentSessionCompaction'
@@ -93,6 +94,14 @@ import { useDirectoryTree } from '@renderer/hooks/useDirectoryTree'
 import { type FileEditSession, useFileEditSession } from '@renderer/hooks/useFileEditSession'
 import { useToolResult } from '@renderer/hooks/useToolResult'
 import { ipcApi, useIpcOn } from '@renderer/ipc'
+// 工业视频仅向通用右栏注入纯展示与会话快照，不反向依赖 Agent 执行逻辑。
+// eslint-disable-next-line import-x/no-restricted-paths
+import IndustrialVideoGenerationLoading from '@renderer/pages/industrialVideo/IndustrialVideoGenerationLoading'
+// eslint-disable-next-line import-x/no-restricted-paths
+import {
+  useIndustrialVideoProgressSnapshot,
+  useIndustrialVideoWorkbench
+} from '@renderer/pages/industrialVideo/industrialVideoProgressStore'
 import { agentBrowserRuntimeService } from '@renderer/services/AgentBrowserRuntimeService'
 import { EVENT_NAMES, EventEmitter } from '@renderer/services/EventService'
 import { toast } from '@renderer/services/toast'
@@ -270,6 +279,9 @@ interface AgentRightPanelScope {
   developerMode: boolean
   hasSystemWorkspaceFiles: boolean
   filesTitle: string
+  industrialVideoProgressTitle: string
+  industrialVideoProgressVisible: boolean
+  industrialVideoWorkbenchVisible: boolean
   flowTab: AgentFlowTab | null
   previousFlowTab: AgentFlowTab | null
   goBackFlow: () => void
@@ -386,6 +398,18 @@ function AgentRightPaneActionsProvider({
     (toolCallId: string) => panelState.isActive(getFlowTabValue(toolCallId)),
     [panelState.isActive]
   )
+  const industrialVideoProgress = useIndustrialVideoProgressSnapshot(sessionId)
+  const workbench = useIndustrialVideoWorkbench(sessionId)
+  useEffect(() => {
+    if (workbench) panelActions.requestOpen('industrial-video-workbench', { userInitiated: true })
+  }, [workbench, panelActions.requestOpen])
+  const lastIndustrialVideoProgressIdentity = useRef('')
+  useEffect(() => {
+    if (!industrialVideoProgress || lastIndustrialVideoProgressIdentity.current === industrialVideoProgress.identity)
+      return
+    lastIndustrialVideoProgressIdentity.current = industrialVideoProgress.identity
+    panelActions.tryOpen('industrial-video-progress', { userInitiated: false })
+  }, [industrialVideoProgress, panelActions])
   const canOpenBrowser = panelActions.canOpen(BROWSER_PANE_ID)
   const openBrowserPanel = useCallback(
     (url: string) => {
@@ -849,12 +873,17 @@ function AgentRightPaneStateProvider({
       workspaceType
     ]
   )
+  const industrialVideoProgress = useIndustrialVideoProgressSnapshot(sessionId)
+  const industrialVideoWorkbench = useIndustrialVideoWorkbench(sessionId)
   const scope = useMemo<AgentRightPanelScope>(
     () => ({
       browserTitle: t('agent.right_pane.tabs.browser'),
       developerMode: enableDeveloperMode,
       hasSystemWorkspaceFiles,
       filesTitle: t('agent.right_pane.tabs.files'),
+      industrialVideoProgressTitle: t('agent.right_pane.tabs.industrial_video_progress'),
+      industrialVideoProgressVisible: Boolean(industrialVideoProgress),
+      industrialVideoWorkbenchVisible: Boolean(industrialVideoWorkbench),
       flowTab,
       previousFlowTab,
       goBackFlow,
@@ -863,7 +892,18 @@ function AgentRightPaneStateProvider({
       statusTitle: t('agent.right_pane.tabs.status'),
       traceTitle: t('trace.label')
     }),
-    [enableDeveloperMode, flowTab, previousFlowTab, goBackFlow, hasSystemWorkspaceFiles, meta, resourcePane, t]
+    [
+      enableDeveloperMode,
+      flowTab,
+      previousFlowTab,
+      goBackFlow,
+      hasSystemWorkspaceFiles,
+      industrialVideoProgress,
+      industrialVideoWorkbench,
+      meta,
+      resourcePane,
+      t
+    ]
   )
 
   return (
@@ -1599,6 +1639,30 @@ function AgentTraceRightPanel({ active, scope }: RightPanelComponentProps<AgentR
   )
 }
 
+function AgentIndustrialVideoWorkbenchPanel({ scope }: RightPanelComponentProps<AgentRightPanelScope>) {
+  const workbench = useIndustrialVideoWorkbench(scope.meta.sessionId)
+  if (!workbench) return null
+  return (
+    <WebviewHost
+      key={`${scope.meta.sessionId}:${workbench.run}:${workbench.url}`}
+      id={`industrial-video-workbench:${scope.meta.sessionId}`}
+      src={workbench.url}
+      partition={`industrial-video-workbench:${scope.meta.sessionId}:${workbench.run}`}
+      ariaLabel="服务端工作台网页"
+      testId="industrial-video-workbench-guest"
+      className="h-full w-full"
+    />
+  )
+}
+
+function AgentIndustrialVideoProgressPanel({ scope }: RightPanelComponentProps<AgentRightPanelScope>) {
+  const snapshot = useIndustrialVideoProgressSnapshot(scope.meta.sessionId)
+  if (!snapshot) return null
+  return (
+    <IndustrialVideoGenerationLoading progress={snapshot.progress} stopped={snapshot.stopped} error={snapshot.error} />
+  )
+}
+
 function resolveAgentFilesReadiness(scope: AgentRightPanelScope): RightPanelReadiness {
   if (scope.meta.conversationState !== 'ready') return scope.meta.conversationState
   if (scope.meta.workspaceType === AGENT_WORKSPACE_TYPE.SYSTEM && !scope.hasSystemWorkspaceFiles) {
@@ -1641,6 +1705,30 @@ const AGENT_BROWSER_PANE_CAPABILITY = {
 } satisfies RightPanelCapability<AgentRightPanelScope>
 const AGENT_RIGHT_PANEL_CAPABILITIES = [
   AGENT_RESOURCE_PANE_CAPABILITY,
+  {
+    component: AgentIndustrialVideoWorkbenchPanel,
+    resolve: (scope) =>
+      scope.industrialVideoWorkbenchVisible
+        ? {
+            id: 'industrial-video-workbench',
+            instanceKey: `session:${scope.meta.sessionId}:industrial-video-workbench`,
+            title: '工作台',
+            readiness: scope.meta.conversationState
+          }
+        : null
+  },
+  {
+    component: AgentIndustrialVideoProgressPanel,
+    resolve: (scope) =>
+      scope.industrialVideoProgressVisible
+        ? {
+            id: 'industrial-video-progress',
+            instanceKey: `session:${scope.meta.sessionId ?? ''}:industrial-video-progress`,
+            title: scope.industrialVideoProgressTitle,
+            readiness: scope.meta.conversationState
+          }
+        : null
+  },
   {
     component: AgentRightPaneFilesPanel,
     resolve: (scope) => ({
@@ -1841,15 +1929,23 @@ function AgentRightPaneStatusShortcut({ disabled }: { disabled?: boolean }) {
 }
 
 const AgentRightPaneShortcuts = memo(function AgentRightPaneShortcuts({
-  browserEnabled = true
+  browserEnabled = true,
+  diagnosticsEnabled = true
 }: {
   browserEnabled?: boolean
+  diagnosticsEnabled?: boolean
 }) {
   const { t } = useTranslation()
   const [browserControlEnabled] = usePreference('app.browser.agent_control.enabled')
 
   return (
     <>
+      <RightPanelShortcut tab="industrial-video-workbench" label="工作台" icon={<Globe className="size-3.5" />} />
+      <RightPanelShortcut
+        tab="industrial-video-progress"
+        label={t('agent.right_pane.tabs.industrial_video_progress')}
+        icon={<Loader2 className="size-3.5" />}
+      />
       <RightPanelShortcut
         tab="files"
         label={t('agent.right_pane.tabs.files')}
@@ -1862,8 +1958,12 @@ const AgentRightPaneShortcuts = memo(function AgentRightPaneShortcuts({
           icon={<Globe className="size-3.5" />}
         />
       )}
-      <AgentRightPaneStatusShortcut />
-      <RightPanelShortcut tab={TRACE_PANE_ID} label={t('trace.label')} icon={<Waypoints className="size-3.5" />} />
+      {/* <AgentRightPaneStatusShortcut /> */}
+      {diagnosticsEnabled && <AgentRightPaneStatusShortcut />}
+      {/* <RightPanelShortcut tab={TRACE_PANE_ID} label={t('trace.label')} icon={<Waypoints className="size-3.5" />} /> */}
+      {diagnosticsEnabled && (
+        <RightPanelShortcut tab={TRACE_PANE_ID} label={t('trace.label')} icon={<Waypoints className="size-3.5" />} />
+      )}
     </>
   )
 })

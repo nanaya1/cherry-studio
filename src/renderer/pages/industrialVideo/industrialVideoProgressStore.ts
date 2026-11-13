@@ -1,0 +1,76 @@
+import { useSyncExternalStore } from 'react'
+
+import type { readGenerationProgress } from './IndustrialVideoGenerationLoading'
+
+export interface IndustrialVideoProgressSnapshot {
+  identity: string
+  progress: ReturnType<typeof readGenerationProgress>
+  stopped?: string
+  error?: string
+}
+
+const snapshots = new Map<string, IndustrialVideoProgressSnapshot>()
+const listeners = new Set<() => void>()
+
+interface IndustrialVideoWorkbenchSnapshot {
+  run: string
+  url: string
+}
+const workbenches = new Map<string, IndustrialVideoWorkbenchSnapshot>()
+
+export function openIndustrialVideoWorkbench(sessionId: string, run: string, url: string): void {
+  workbenches.set(sessionId, { run, url })
+  listeners.forEach((listener) => listener())
+}
+
+export function useIndustrialVideoWorkbench(sessionId: string | undefined) {
+  return useSyncExternalStore(
+    (listener) => {
+      listeners.add(listener)
+      return () => listeners.delete(listener)
+    },
+    () => (sessionId ? (workbenches.get(sessionId) ?? null) : null)
+  )
+}
+
+export function publishIndustrialVideoProgress(
+  sessionId: string,
+  snapshot: IndustrialVideoProgressSnapshot | null
+): void {
+  const current = snapshots.get(sessionId)
+  if (snapshot === null) {
+    if (!current) return
+    snapshots.delete(sessionId)
+  } else {
+    if (
+      current?.identity === snapshot.identity &&
+      current.progress.total === snapshot.progress.total &&
+      current.progress.done === snapshot.progress.done &&
+      current.progress.label === snapshot.progress.label &&
+      current.progress.stageLabel === snapshot.progress.stageLabel &&
+      current.stopped === snapshot.stopped &&
+      current.error === snapshot.error
+    )
+      return
+    snapshots.set(sessionId, snapshot)
+  }
+  listeners.forEach((listener) => listener())
+}
+
+export function getIndustrialVideoProgressSnapshot(
+  sessionId: string | undefined
+): IndustrialVideoProgressSnapshot | null {
+  return sessionId ? (snapshots.get(sessionId) ?? null) : null
+}
+
+export function useIndustrialVideoProgressSnapshot(
+  sessionId: string | undefined
+): IndustrialVideoProgressSnapshot | null {
+  return useSyncExternalStore(
+    (listener) => {
+      listeners.add(listener)
+      return () => listeners.delete(listener)
+    },
+    () => getIndustrialVideoProgressSnapshot(sessionId)
+  )
+}

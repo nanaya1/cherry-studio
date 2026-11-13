@@ -17,6 +17,7 @@ import { normalizeMeacoworkToolRuntimeName, toMeacoworkToolRuntimeName } from '@
 
 // import { LoaderCircle } from 'lucide-react'
 import IndustrialVideoGenerationLoading, { readGenerationProgress } from './IndustrialVideoGenerationLoading'
+import { openIndustrialVideoWorkbench, publishIndustrialVideoProgress } from './industrialVideoProgressStore'
 import { useIndustrialVideoProduction } from './useIndustrialVideoProduction'
 
 // const terminalLabels: Record<string, string> = { failed: '生成失败', cancelled: '已取消', blocked: '任务已阻塞' }
@@ -329,6 +330,21 @@ export default function IndustrialVideoAgentProduction({
       : finished
         ? '视频生成完成'
         : loadingProgress.label)
+  useEffect(() => {
+    publishIndustrialVideoProgress(
+      sessionId,
+      generating || terminal
+        ? {
+            identity,
+            progress: loadingProgress,
+            stopped: terminal || undefined,
+            error: error || jobError
+          }
+        : null
+    )
+    // 快照去重保留当前值，不能在依赖刷新时清空并再次通知订阅者。
+  }, [error, generating, identity, jobError, loadingProgress, sessionId, terminal])
+  useEffect(() => () => publishIndustrialVideoProgress(sessionId, null), [sessionId])
   const steps = [
     { label: '准备画面', done: finished, detail: finished ? '已完成' : '详细进度待返回' },
     ...Array.from({ length: total ?? 0 }, (_, index) => ({
@@ -362,8 +378,9 @@ export default function IndustrialVideoAgentProduction({
               className="text-primary underline"
               onClick={(event) => {
                 event.preventDefault()
-                setWorkbenchPage({ sessionId, run, url: url.href })
-                setOpen(true)
+                // setWorkbenchPage({ sessionId, run, url: url.href })
+                // setOpen(true)
+                openIndustrialVideoWorkbench(sessionId, run, url.href)
               }}>
               打开脚本工作台
             </a>
@@ -459,34 +476,36 @@ export default function IndustrialVideoAgentProduction({
       {/* {visible && open && !(finished && filePreviewActive) && ( */}
       {/* 成片完成后改在现有文件预览区展示，不保留独立在线预览。 */}
       {/* 失败/取消/阻塞等终态保持面板可显示（死因与冻结进度），顶栏开关随时可收起/展开。 */}
-      {(generating || Boolean(workbenchUrl) || (open && Boolean(terminal))) &&
+      {/* 生成中进度已移入通用右侧 Tab；原独立侧栏仅保留工作台与终态说明。 */}
+      {/* 旧独立成片区域停用，所有状态统一由右栏成片进度 Tab 展示。 */}
+      {false && (Boolean(workbenchUrl) || (open && Boolean(terminal))) &&
         open &&
-        (Boolean(workbenchUrl) || !filePreviewActive || generating) && (
-        <aside
-          aria-label="成片预览"
-          className="flex w-[380px] max-w-[45%] shrink-0 flex-col border-l border-border bg-card">
-          <header className="flex items-center justify-between border-b border-border p-3">
-            {/* <strong>成片</strong> */}
-            <strong>{workbenchUrl ? '脚本工作台' : '成片'}</strong>
-            <Button size="sm" variant="ghost" aria-label="关闭成片预览" onClick={() => setOpen(false)}>
-              关闭
-            </Button>
-          </header>
-          <div className="min-h-0 flex-1 overflow-auto">
-            {/* 原本地 FilePreview 改为服务端签名页面，不再为预览下载。 */}
-            {/* 工作台入口面板不再挂载，消息链接直接加载服务端网页。 */}
-            {workbenchUrl ? (
-              <WebviewHost
-                key={`${sessionId}:${run}:${workbenchUrl}`}
-                id={`industrial-video-workbench:${sessionId}`}
-                src={workbenchUrl}
-                partition={`industrial-video-workbench:${sessionId}:${run}`}
-                ariaLabel="服务端工作台网页"
-                testId="industrial-video-workbench-guest"
-                className="h-full w-full"
-              />
-            ) : (
-              /* 停用独立在线预览，下载后复用文件预览区。
+        (Boolean(workbenchUrl) || !filePreviewActive) && (
+          <aside
+            aria-label="成片预览"
+            className="flex w-[380px] max-w-[45%] shrink-0 flex-col border-l border-border bg-card">
+            <header className="flex items-center justify-between border-b border-border p-3">
+              {/* <strong>成片</strong> */}
+              <strong>{workbenchUrl ? '脚本工作台' : '成片'}</strong>
+              <Button size="sm" variant="ghost" aria-label="关闭成片预览" onClick={() => setOpen(false)}>
+                关闭
+              </Button>
+            </header>
+            <div className="min-h-0 flex-1 overflow-auto">
+              {/* 原本地 FilePreview 改为服务端签名页面，不再为预览下载。 */}
+              {/* 工作台入口面板不再挂载，消息链接直接加载服务端网页。 */}
+              {workbenchUrl ? (
+                <WebviewHost
+                  key={`${sessionId}:${run}:${workbenchUrl}`}
+                  id={`industrial-video-workbench:${sessionId}`}
+                  src={workbenchUrl}
+                  partition={`industrial-video-workbench:${sessionId}:${run}`}
+                  ariaLabel="服务端工作台网页"
+                  testId="industrial-video-workbench-guest"
+                  className="h-full w-full"
+                />
+              ) : (
+                /* 停用独立在线预览，下载后复用文件预览区。
             ) : finished && run && finalPath ? (
               <IndustrialVideoOnlinePreview key={artifactKey} sessionId={sessionId} run={run} finalPath={finalPath} previewUrl={progress?.preview_url} />
             */ /* 原转圈与重复进度文案保留，统一改用服务端进度组件。
@@ -516,16 +535,16 @@ export default function IndustrialVideoAgentProduction({
                 )}
               </div>
               */
-              <IndustrialVideoGenerationLoading
-                progress={loadingProgress}
-                // stopped={terminal || (stale ? summary : finished ? '生成已完成，等待成片文件信息' : undefined)}
-                stopped={terminal || (showStale ? summary : finished ? '生成已完成，等待成片文件信息' : undefined)}
-                error={error || jobError}
-              />
-            )}
-          </div>
-        </aside>
-      )}
+                <IndustrialVideoGenerationLoading
+                  progress={loadingProgress}
+                  // stopped={terminal || (stale ? summary : finished ? '生成已完成，等待成片文件信息' : undefined)}
+                  stopped={terminal || (showStale ? summary : finished ? '生成已完成，等待成片文件信息' : undefined)}
+                  error={error || jobError}
+                />
+              )}
+            </div>
+          </aside>
+        )}
     </div>
   )
 }

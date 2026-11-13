@@ -11,7 +11,9 @@ import type { MessageStreamingLayers } from '@renderer/components/chat/messages/
 import {
   type ResourcePaneConfig,
   ResourcePaneCountButton,
-  type ResourcePaneCountButtonProps
+  type ResourcePaneCountButtonProps,
+  useRightPanelActions,
+  useRightPanelState
 } from '@renderer/components/chat/panes/Shell'
 import type { ResourceListRevealRequest } from '@renderer/components/chat/resourceList/base'
 import ConversationCenterState from '@renderer/components/chat/shell/ConversationCenterState'
@@ -107,8 +109,18 @@ function AgentTopBarControls(props: AgentTopBarControlsProps) {
 }
 
 // MEA: 工业视频任务详情顶部整块成片预览面板展开/收起开关。
-function IndustrialVideoPreviewToggle({ open, onToggle }: { open: boolean; onToggle: (open: boolean) => void }) {
+function IndustrialVideoPreviewToggle() {
   const { t } = useTranslation()
+  const state = useRightPanelState()
+  const actions = useRightPanelActions()
+  const open = state.presentationOpen
+  const toggle = () => {
+    if (open) actions.close()
+    else {
+      const target = ['industrial-video-progress', 'industrial-video-workbench', 'files'].find(actions.canOpen)
+      if (target) actions.tryOpen(target, { userInitiated: true })
+    }
+  }
   // const filePreviewActive = useAgentFilePreviewActive()
   // if (filePreviewActive) return null
   return (
@@ -117,7 +129,7 @@ function IndustrialVideoPreviewToggle({ open, onToggle }: { open: boolean; onTog
       size="sm"
       aria-label={t('industrial_video.preview.toggle')}
       aria-expanded={open}
-      onClick={() => onToggle(!open)}>
+      onClick={toggle}>
       {open ? <PanelRightClose className="size-4" /> : <PanelRightOpen className="size-4" />}
       {/* <span>{open ? t('industrial_video.preview.collapse') : t('industrial_video.preview.expand')}</span> */}
     </Button>
@@ -443,7 +455,12 @@ const AgentChat = ({
   const rightPaneTools =
     !centerSurface && (sessionSnapshot || resourcePane) ? (
       sessionSnapshot?.featureKind === 'industrial-video' ? (
-        <IndustrialVideoPreviewToggle open={previewOpen} onToggle={setSessionPreviewOpen} />
+        <>
+          {/* <IndustrialVideoPreviewToggle open={previewOpen} onToggle={setSessionPreviewOpen} /> */}
+          {/* <AgentRightPane.Shortcuts browserEnabled={false} /> */}
+          <AgentRightPane.Shortcuts browserEnabled={false} diagnosticsEnabled={false} />
+          <IndustrialVideoPreviewToggle />
+        </>
       ) : (
         <>
           {resourcePaneCount && <ResourcePaneCountButton {...resourcePaneCount} />}

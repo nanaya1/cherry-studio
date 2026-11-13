@@ -7,6 +7,7 @@ import { useToolResultAttachments } from '@renderer/components/chat/messages/too
 import { ipcApi } from '@renderer/ipc'
 
 import IndustrialVideoAgentProduction from './IndustrialVideoAgentProduction'
+import { getIndustrialVideoProgressSnapshot, useIndustrialVideoProgressSnapshot } from './industrialVideoProgressStore'
 import { IndustrialVideoReviewFilesProvider } from './IndustrialVideoReviewFiles'
 import { useIndustrialVideoProduction } from './useIndustrialVideoProduction'
 
@@ -88,24 +89,15 @@ it('完成后自动下载，在消息展示文件并只打开一次现有文件�
   ).toHaveLength(1)
 })
 
-it('lets the task toolbar control the preview without polling reopening it', async () => {
-  const user = userEvent.setup()
+it('does not render the legacy production sidebar when progress is handled by the shared tab', () => {
   const onPreviewOpenChange = vi.fn()
-  const { rerender } = render(
-    <IndustrialVideoAgentProduction sessionId="s" previewOpen={false} onPreviewOpenChange={onPreviewOpenChange}>
+  render(
+    <IndustrialVideoAgentProduction sessionId="s" previewOpen onPreviewOpenChange={onPreviewOpenChange}>
       消息流
     </IndustrialVideoAgentProduction>
   )
   expect(screen.queryByLabelText('成片预览')).toBeNull()
   expect(onPreviewOpenChange).not.toHaveBeenCalled()
-  rerender(
-    <IndustrialVideoAgentProduction sessionId="s" previewOpen onPreviewOpenChange={onPreviewOpenChange}>
-      消息流
-    </IndustrialVideoAgentProduction>
-  )
-  expect(screen.getByLabelText('成片预览')).toBeVisible()
-  await user.click(screen.getByRole('button', { name: '关闭成片预览' }))
-  expect(onPreviewOpenChange).toHaveBeenCalledWith(false)
 })
 
 it('工作台交接消息在尚未生成时也能打开已有右侧区域', async () => {
@@ -132,27 +124,32 @@ it('工作台交接消息在尚未生成时也能打开已有右侧区域', asyn
   expect(link).toHaveAttribute('href', 'https://example.test/workbench')
   expect(screen.queryByTestId('workbench-browser')).toBeNull()
   await userEvent.click(link)
-  expect(screen.getByTestId('workbench-browser')).toHaveAttribute('data-src', 'https://example.test/workbench')
+  expect(screen.queryByTestId('workbench-browser')).toBeNull()
+  expect(screen.queryByLabelText('成片预览')).toBeNull()
   expect(screen.queryByText('服务端工作台内容')).toBeNull()
   expect(screen.queryByRole('button', { name: '打开服务端工作台' })).toBeNull()
 })
 
-// 终态（canceled/cancelled/取消待核实）侧栏保持显示终态说明（动画停止），消息流同步提示；不触发下载。
-it.each(['canceled', 'cancelled'])('服务端 %s 终态保持侧栏展示取消说明且不下载', async (status) => {
+// 终态（canceled/cancelled/取消待核实）统一由共享进度快照承载：说明（动画停止=stopped）保留，消息流同步提示；不触发下载。
+it.each(['canceled', 'cancelled'])('服务端 %s 终态保持取消说明且不下载（终态在共享进度Tab）', async (status) => {
   vi.mocked(useIndustrialVideoProduction).mockReturnValue({ ...production(status), job: { run: 'r', status } })
   render(
     <IndustrialVideoAgentProduction sessionId="s">
       <StartMessage />
     </IndustrialVideoAgentProduction>
   )
-  expect(await screen.findByLabelText('成片预览')).toHaveTextContent('已取消（取消不等于暂停）')
-  expect(screen.getByLabelText('视频制作实时进度')).toHaveAttribute('data-animating', 'false')
+  await waitFor(() => expect(getIndustrialVideoProgressSnapshot('s')?.stopped).toBe('已取消（取消不等于暂停）'))
+  // 旧独立成片侧栏不再渲染。
+  expect(screen.queryByLabelText('成片预览')).toBeNull()
+  // 冻结进度：取消后动画停止、计数不再推进。
+  expect(getIndustrialVideoProgressSnapshot('s')?.stopped).toBeTruthy()
+  // 消息流同步提示（业务保护不变）。
   expect(screen.getByLabelText('启动工具消息')).toHaveTextContent('已取消（取消不等于暂停）')
   expect(screen.queryByText('正在生成分镜视频')).toBeNull()
   expect(ipcApi.request).not.toHaveBeenCalledWith('industrial_video.download_artifact', expect.anything())
 })
 
-it('取消待核实时侧栏与消息同步提示核实状态，不宣称已停止或继续生成', async () => {
+it('取消待核实时共享进度快照展示核实状态，消息同步提示，不宣称已停止或继续生成', async () => {
   const value = production('generating', { scenes_total: 5, scenes_done: 2 })
   value.record!.control = { epoch: 1, stopRequested: true, phase: 'reconcile_required' }
   vi.mocked(useIndustrialVideoProduction).mockReturnValue(value)
@@ -161,8 +158,13 @@ it('取消待核实时侧栏与消息同步提示核实状态，不宣称已停�
       <StartMessage />
     </IndustrialVideoAgentProduction>
   )
-  expect(await screen.findByLabelText('成片预览')).toHaveTextContent('已请求取消，正在核实服务端状态')
-  expect(screen.getByLabelText('视频制作实时进度')).toHaveAttribute('data-animating', 'false')
+  await waitFor(() =>
+    expect(getIndustrialVideoProgressSnapshot('s')?.stopped).toBe('已请求取消，正在核实服务端状态')
+  )
+  expect(screen.queryByLabelText('成片预览')).toBeNull()
+  // 冻结进度保持（不继续推进、不宣称已停止）。
+  expect(getIndustrialVideoProgressSnapshot('s')?.progress.total).toBe(5)
+  expect(getIndustrialVideoProgressSnapshot('s')?.progress.done).toBe(2)
   expect(screen.getByLabelText('启动工具消息')).toHaveTextContent('已请求取消，正在核实服务端状态')
   expect(screen.queryByText('任务已停止')).toBeNull()
 })
@@ -171,7 +173,7 @@ it.each([
   ['needs_source_review', '资料待核对'],
   ['awaiting_scene_review', '镜头待审核'],
   ['awaiting_script_review', '脚本与分镜待确认']
-])('阻塞阶段 %s 侧栏保持阻塞原因并引导网页处理，消息同步提示，不误报完成', async (stage, label) => {
+])('阻塞阶段 %s 共享进度快照保持阻塞原因并引导网页处理，消息同步提示，不误报完成', async (stage, label) => {
   vi.mocked(useIndustrialVideoProduction).mockReturnValue({
     ...production('done', { stage_current: stage, final: 'old.mp4' }),
     job: { run: 'r', status: 'blocked', progress: { stage_current: stage, final: 'old.mp4' } }
@@ -181,8 +183,9 @@ it.each([
       <StartMessage />
     </IndustrialVideoAgentProduction>
   )
-  expect(await screen.findByLabelText('成片预览')).toHaveTextContent('任务已阻塞')
-  expect(screen.getByLabelText('成片预览')).toHaveTextContent('请回到服务端工作台处理后，再发起生成')
+  await waitFor(() => expect(getIndustrialVideoProgressSnapshot('s')?.stopped).toContain('任务已阻塞'))
+  expect(screen.queryByLabelText('成片预览')).toBeNull()
+  expect(getIndustrialVideoProgressSnapshot('s')?.stopped).toContain('请回到服务端工作台处理后，再发起生成')
   expect(screen.getByLabelText('启动工具消息')).toHaveTextContent(label)
   expect(screen.queryByText('视频生成完成')).toBeNull()
 })
@@ -305,16 +308,43 @@ it('keeps messages visible before task records load and recovers when they arriv
 
   vi.mocked(useIndustrialVideoProduction).mockReturnValue(production())
   rerender(<IndustrialVideoAgentProduction sessionId="s">消息流</IndustrialVideoAgentProduction>)
-  expect(await screen.findByLabelText('成片预览')).toHaveTextContent('共 3 个分镜')
+  await waitFor(() => expect(getIndustrialVideoProgressSnapshot('s')?.progress.total).toBe(3))
   expect(screen.getByText('消息流')).toBeInTheDocument()
 })
-it('shows authoritative server counts and assembly stage in the right preview', () => {
+it('settles when a subscribed right pane host rerenders the production subtree', async () => {
+  let renders = 0
+  function SubscribedHost() {
+    const snapshot = useIndustrialVideoProgressSnapshot('s')
+    if (++renders > 20) throw new Error('Progress publication did not settle')
+    return (
+      <>
+        <output aria-label="共享进度">{snapshot?.progress.done}</output>
+        <IndustrialVideoAgentProduction sessionId="s">消息流</IndustrialVideoAgentProduction>
+      </>
+    )
+  }
+  vi.mocked(useIndustrialVideoProduction).mockReturnValue(production('generating', { scenes_total: 5, scenes_done: 3 }))
+  const view = render(<SubscribedHost />)
+  await waitFor(() => expect(screen.getByLabelText('共享进度')).toHaveTextContent('3'))
+  view.rerender(<SubscribedHost />)
+  expect(screen.getByLabelText('共享进度')).toHaveTextContent('3')
+  view.unmount()
+  expect(getIndustrialVideoProgressSnapshot('s')).toBeNull()
+})
+
+it('publishes authoritative server counts for the shared progress tab', async () => {
   vi.mocked(useIndustrialVideoProduction).mockReturnValue(
     production('generating', { scenes_total: 5, scenes_done: 3, stage_current: 'assemble' })
   )
   render(<IndustrialVideoAgentProduction sessionId="s">消息流</IndustrialVideoAgentProduction>)
-  expect(screen.getByLabelText('成片预览')).toHaveTextContent('已完成 3/5 个分镜')
-  expect(screen.getByLabelText('成片预览')).toHaveTextContent('正在合成成片')
+  await waitFor(() =>
+    expect(getIndustrialVideoProgressSnapshot('s')).toEqual(
+      expect.objectContaining({
+        identity: 's:r:j',
+        progress: expect.objectContaining({ total: 5, done: 3, label: '正在合成成片' })
+      })
+    )
+  )
 })
 // 防止合成中的临时过期标记覆盖实时进度并停止制作动效。
 it.each([
@@ -330,10 +360,10 @@ it.each([
       <StartMessage />
     </IndustrialVideoAgentProduction>
   )
-  await waitFor(() => expect(screen.getByLabelText('成片预览')).toHaveTextContent(label))
+  await waitFor(() => expect(getIndustrialVideoProgressSnapshot('s')?.progress.label).toBe(label))
   expect(screen.getByLabelText('视频制作步骤')).toHaveTextContent(label)
   expect(screen.queryByText(/当前成片已过期/)).toBeNull()
-  expect(screen.getByLabelText('视频制作实时进度')).toHaveAttribute('data-animating', 'true')
+  expect(getIndustrialVideoProgressSnapshot('s')?.stopped).toBeUndefined()
   expect(screen.queryByTitle('成片在线播放')).toBeNull()
 })
 
@@ -347,8 +377,7 @@ it('uses actual storyboard count, keeps one card and respects closing the previe
     </IndustrialVideoAgentProduction>
   )
   expect(await screen.findByText('生成分镜 3')).toBeInTheDocument()
-  expect(screen.getByLabelText('成片预览')).toBeInTheDocument()
-  fireEvent.click(screen.getByRole('button', { name: '关闭成片预览' }))
+  expect(screen.queryByLabelText('成片预览')).toBeNull()
   vi.mocked(useIndustrialVideoProduction).mockReturnValue(production('generating', { scenes_done: 1, total_scenes: 3 }))
   rerender(
     <IndustrialVideoAgentProduction sessionId="s">
@@ -403,13 +432,14 @@ it('成片完成后无论本地预览是否激活都自动下载并在消息内�
   ).toHaveLength(1)
 })
 
-it('keeps generation progress in the sidebar even when a local file preview is active', async () => {
+it('keeps generation progress available when a local file preview is active', async () => {
   render(
     <IndustrialVideoAgentProduction sessionId="s" filePreviewActive>
       消息流
     </IndustrialVideoAgentProduction>
   )
-  expect(await screen.findByLabelText('成片预览')).toBeInTheDocument()
+  await waitFor(() => expect(getIndustrialVideoProgressSnapshot('s')).not.toBeNull())
+  expect(screen.queryByLabelText('成片预览')).toBeNull()
 })
 
 /* 旧行为（成片在线预览 + 手动“下载 MP4”另存 save_artifact）已停用，改为自动下载并复用文件预览。
@@ -493,17 +523,18 @@ it('生成前不打开成片区域，过期成片不下载并标记历史版本'
   expect(ipcApi.request).not.toHaveBeenCalledWith('industrial_video.download_artifact', expect.anything())
 })
 
-it('失败终态侧栏保持展示生成失败与冻结进度，消息同步提示且不下载', async () => {
-  vi.mocked(useIndustrialVideoProduction).mockReturnValue(
-    production('failed', { scenes_total: 5, scenes_done: 3 })
-  )
+it('失败终态共享进度快照保持生成失败与冻结进度，消息同步提示且不下载', async () => {
+  vi.mocked(useIndustrialVideoProduction).mockReturnValue(production('failed', { scenes_total: 5, scenes_done: 3 }))
   render(
     <IndustrialVideoAgentProduction sessionId="s">
       <StartMessage />
     </IndustrialVideoAgentProduction>
   )
-  expect(await screen.findByLabelText('成片预览')).toHaveTextContent('生成失败')
-  expect(screen.getByLabelText('视频制作实时进度')).toHaveAttribute('data-animating', 'false')
+  await waitFor(() => expect(getIndustrialVideoProgressSnapshot('s')?.stopped).toBe('生成失败'))
+  expect(screen.queryByLabelText('成片预览')).toBeNull()
+  // 冻结进度：失败时不归零、不继续推进。
+  expect(getIndustrialVideoProgressSnapshot('s')?.progress.total).toBe(5)
+  expect(getIndustrialVideoProgressSnapshot('s')?.progress.done).toBe(3)
   expect(screen.getByLabelText('启动工具消息')).toHaveTextContent('生成失败')
   expect(ipcApi.request).not.toHaveBeenCalledWith('industrial_video.download_artifact', expect.anything())
   expect(vi.mocked(ipcApi.request).mock.calls.some(([channel]) => channel === 'industrial_video.video_start')).toBe(
@@ -639,74 +670,63 @@ it('受控模式：初始刷新（poll）不自动打开受控面板，也不回
   expect(screen.queryByLabelText('成片预览')).toBeNull()
   expect(onPreviewOpenChange).not.toHaveBeenCalled()
 })
-it('受控模式：关闭/查看按钮与顶栏状态同步（回调布尔值）', async () => {
+it('生成进度迁入共享 Tab 后不再驱动旧受控侧栏', async () => {
   const onPreviewOpenChange = vi.fn()
-  const { rerender } = render(
+  render(
     <IndustrialVideoAgentProduction sessionId="s" previewOpen={true} onPreviewOpenChange={onPreviewOpenChange}>
       <IndustrialVideoReviewFilesProvider>
         <StartMessage />
       </IndustrialVideoReviewFilesProvider>
     </IndustrialVideoAgentProduction>
   )
-  expect(await screen.findByLabelText('成片预览')).toBeInTheDocument()
-  fireEvent.click(screen.getByRole('button', { name: '关闭成片预览' }))
-  expect(onPreviewOpenChange).toHaveBeenCalledWith(false)
-  // 受控关闭后保持关闭，poll 不抢开
-  rerender(
-    <IndustrialVideoAgentProduction sessionId="s" previewOpen={false} onPreviewOpenChange={onPreviewOpenChange}>
-      <IndustrialVideoReviewFilesProvider>
-        <StartMessage />
-      </IndustrialVideoReviewFilesProvider>
-    </IndustrialVideoAgentProduction>
-  )
+  await waitFor(() => expect(getIndustrialVideoProgressSnapshot('s')).not.toBeNull())
   expect(screen.queryByLabelText('成片预览')).toBeNull()
-  // 从关闭态点击“查看成片”请求打开
-  fireEvent.click(screen.getByRole('button', { name: '查看成片' }))
-  expect(onPreviewOpenChange).toHaveBeenCalledWith(true)
+  expect(onPreviewOpenChange).not.toHaveBeenCalled()
 })
 
-// 失败终态：侧栏保持展示，顶栏开关可收起/再展开，死因不丢失。
-it('失败终态受控收起后可再展开，失败原因保持显示', async () => {
+// 失败终态：不受旧受控侧栏 previewOpen 影响，死因保持显示（统一由共享进度快照承载）。
+it('失败终态不受旧受控侧栏 previewOpen 影响，失败原因保持显示', async () => {
   const onPreviewOpenChange = vi.fn()
-  vi.mocked(useIndustrialVideoProduction).mockReturnValue(
-    production('failed', { scenes_total: 5, scenes_done: 3 })
-  )
+  vi.mocked(useIndustrialVideoProduction).mockReturnValue(production('failed', { scenes_total: 5, scenes_done: 3 }))
   const content = (open: boolean) => (
     <IndustrialVideoAgentProduction sessionId="s" previewOpen={open} onPreviewOpenChange={onPreviewOpenChange}>
       <StartMessage />
     </IndustrialVideoAgentProduction>
   )
   const { rerender } = render(content(true))
-  expect(await screen.findByLabelText('成片预览')).toHaveTextContent('生成失败')
-  // 收起：死因只留消息流一行摘要，面板消失。
-  fireEvent.click(screen.getByRole('button', { name: '关闭成片预览' }))
-  expect(onPreviewOpenChange).toHaveBeenCalledWith(false)
-  rerender(content(false))
+  await waitFor(() => expect(getIndustrialVideoProgressSnapshot('s')?.stopped).toBe('生成失败'))
+  // 旧独立成片侧栏已移除，不受 previewOpen 驱动。
   expect(screen.queryByLabelText('成片预览')).toBeNull()
+  expect(getIndustrialVideoProgressSnapshot('s')?.progress.total).toBe(5)
+  expect(getIndustrialVideoProgressSnapshot('s')?.progress.done).toBe(3)
+  expect(onPreviewOpenChange).not.toHaveBeenCalled()
+  // 收起（previewOpen=false）：快照仍保持失败原因与冻结进度，不消失、不回调。
+  rerender(content(false))
+  expect(getIndustrialVideoProgressSnapshot('s')?.stopped).toBe('生成失败')
+  expect(getIndustrialVideoProgressSnapshot('s')?.progress.done).toBe(3)
+  // 消息流失败摘要保持（业务保护）。
   expect(screen.getByLabelText('启动工具消息')).toHaveTextContent('生成失败')
-  // 展开：面板回来，失败状态原样还在（非重新挂载假象——进度仍在）。
-  rerender(content(true))
-  expect(screen.getByLabelText('成片预览')).toHaveTextContent('生成失败')
-  expect(screen.getByLabelText('成片预览')).toHaveTextContent('已完成 3/5 个分镜')
+  expect(onPreviewOpenChange).not.toHaveBeenCalled()
 })
 
-// 失败收起后新一轮生成开始：面板自动恢复并回到生成中动画，旧失败文案被替换。
-it('失败收起后新一轮生成自动恢复面板并回到生成中状态', async () => {
+// 失败收起后新一轮生成开始：新 run 替换旧失败快照并回到生成中状态（共享进度 Tab 接管）。
+it('失败收起后新一轮生成替换旧失败快照并回到生成中状态', async () => {
   const onPreviewOpenChange = vi.fn()
-  vi.mocked(useIndustrialVideoProduction).mockReturnValue(
-    production('failed', { scenes_total: 5, scenes_done: 3 })
-  )
+  vi.mocked(useIndustrialVideoProduction).mockReturnValue(production('failed', { scenes_total: 5, scenes_done: 3 }))
   const content = (open: boolean) => (
     <IndustrialVideoAgentProduction sessionId="s" previewOpen={open} onPreviewOpenChange={onPreviewOpenChange}>
       <StartMessage />
     </IndustrialVideoAgentProduction>
   )
   const { rerender } = render(content(true))
-  expect(await screen.findByLabelText('成片预览')).toHaveTextContent('生成失败')
-  fireEvent.click(screen.getByRole('button', { name: '关闭成片预览' }))
-  rerender(content(false))
+  await waitFor(() => expect(getIndustrialVideoProgressSnapshot('s')?.stopped).toBe('生成失败'))
   expect(screen.queryByLabelText('成片预览')).toBeNull()
-  // 新一轮：run 与 jobId 更新，服务端状态回到 generating。
+  expect(getIndustrialVideoProgressSnapshot('s')?.progress.done).toBe(3)
+  // 收起旧侧栏（previewOpen=false）：旧失败快照仍保留，不回调。
+  rerender(content(false))
+  expect(getIndustrialVideoProgressSnapshot('s')?.stopped).toBe('生成失败')
+  expect(onPreviewOpenChange).not.toHaveBeenCalled()
+  // 新一轮：run 与 jobId 更新，服务端状态回到 generating，替换旧失败快照。
   const next = production('generating', { scenes_done: 1 })
   // next.record = { ...next.record, run: 'r2', jobId: 'j2' }
   next.record = { ...next.record!, run: 'r2', jobId: 'j2' }
@@ -715,9 +735,9 @@ it('失败收起后新一轮生成自动恢复面板并回到生成中状态', a
   next.job = { run: 'r2', progress: { scenes_done: 1 } }
   vi.mocked(useIndustrialVideoProduction).mockReturnValue(next)
   rerender(content(false))
-  // 组件请求宿主打开面板。
-  expect(onPreviewOpenChange).toHaveBeenCalledWith(true)
-  // 宿主（AgentChat）随之以 open=true 重渲染。
-  rerender(content(true))
-  expect(await screen.findByLabelText('成片预览')).toHaveTextContent('正在生成分镜视频')
+  // 新一轮由共享进度 Tab 接管，旧失败快照被替换（stopped 清除、进度回到生成中）。
+  await waitFor(() => expect(getIndustrialVideoProgressSnapshot('s')?.identity).toBe('s:r2:j2'))
+  expect(getIndustrialVideoProgressSnapshot('s')?.stopped).toBeFalsy()
+  expect(getIndustrialVideoProgressSnapshot('s')?.progress.done).toBe(1)
+  expect(screen.queryByLabelText('成片预览')).toBeNull()
 })

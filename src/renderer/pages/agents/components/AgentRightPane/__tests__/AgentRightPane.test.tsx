@@ -23,6 +23,11 @@ import { useRightPanelState } from '@renderer/components/chat/panes/Shell'
 import type * as ChatPrimitives from '@renderer/components/chat/primitives'
 import { useOptionalFilePreviewNavigation } from '@renderer/components/FilePreview/useFilePreviewNavigation'
 import type { WebviewAnnotationSavedPayload } from '@renderer/components/WebviewAnnotationControls'
+import {
+  publishIndustrialVideoProgress,
+  openIndustrialVideoWorkbench,
+  type IndustrialVideoProgressSnapshot
+} from '@renderer/pages/industrialVideo/industrialVideoProgressStore'
 import { EVENT_NAMES, EventEmitter } from '@renderer/services/EventService'
 import type { AgentSessionBackgroundTask } from '@shared/ai/agentSessionBackgroundTasks'
 import type { CherryMessagePart, CherryUIMessage } from '@shared/data/types/message'
@@ -373,6 +378,10 @@ vi.mock('@renderer/components/chat/trace/TracePane', () => {
   return { TracePane: () => <div data-testid="trace-pane" /> }
 })
 
+vi.mock('@renderer/components/WebviewHost', () => ({
+  WebviewHost: ({ src }: { src: string }) => <div data-testid="industrial-workbench" data-src={src} />
+}))
+
 vi.mock('../AgentBrowserView', () => ({
   AgentBrowserView: (props: {
     initialUrl?: string
@@ -682,6 +691,72 @@ describe('AgentRightPane', () => {
       hasLoaded: fileTreeModelState.hasLoaded,
       nodeById: fileTreeModelState.nodeById
     }))
+    publishIndustrialVideoProgress('session-a', null)
+  })
+
+  it('shows industrial video progress as a session-only right pane tab', async () => {
+    const snapshot: IndustrialVideoProgressSnapshot = {
+      identity: 'session-a:r:j',
+      progress: { total: 5, done: 3, label: '正在合成成片', stageLabel: '成片合成中' },
+      stopped: '',
+      error: ''
+    }
+    publishIndustrialVideoProgress('session-a', snapshot)
+
+    render(
+      <TestAgentRightPane sessionId="session-a" messages={[]} partsByMessageId={{}}>
+        <AgentRightPane.Shortcuts />
+        <AgentRightPane.Viewport />
+      </TestAgentRightPane>
+    )
+
+    await waitFor(() => expect(screen.getByTestId('right-pane')).toHaveAttribute('data-open', 'true'))
+    expect(screen.getByTestId('shell-tab-title')).toHaveTextContent('agent.right_pane.tabs.industrial_video_progress')
+    expect(screen.getByLabelText('视频制作实时进度')).toHaveTextContent('已完成 3/5 个分镜')
+    expect(screen.getByLabelText('视频制作实时进度')).toHaveTextContent('正在合成成片')
+  })
+
+  it('retains workbench and progress and reselects the same workbench on repeated link clicks', async () => {
+    const sessionId = 'industrial-tabs-test'
+    publishIndustrialVideoProgress(sessionId, {
+      identity: `${sessionId}:r:j`,
+      progress: { total: 5, done: 3, label: '正在合成成片', stageLabel: '成片合成中' }
+    })
+    render(
+      <TestAgentRightPane sessionId={sessionId} messages={[]} partsByMessageId={{}}>
+        <AgentRightPane.Shortcuts />
+        <AgentRightPane.Viewport />
+      </TestAgentRightPane>
+    )
+    act(() => openIndustrialVideoWorkbench(sessionId, 'r', 'https://example.test/workbench'))
+    await waitFor(() => expect(screen.getByTestId('industrial-workbench')).toBeVisible())
+    await userEvent.click(screen.getByRole('button', { name: 'agent.right_pane.tabs.industrial_video_progress' }))
+    expect(screen.getByLabelText('视频制作实时进度')).toBeVisible()
+    act(() => openIndustrialVideoWorkbench(sessionId, 'r', 'https://example.test/workbench'))
+    await waitFor(() => expect(screen.getByTestId('industrial-workbench')).toBeVisible())
+    expect(screen.getAllByTestId('industrial-workbench')).toHaveLength(1)
+  })
+
+  it('hides status and trace shortcuts when diagnostics entries are disabled', () => {
+    render(
+      <TestAgentRightPane sessionId="session-a" workspacePath="/workspace" messages={[]} partsByMessageId={{}}>
+        <AgentRightPane.Shortcuts diagnosticsEnabled={false} />
+      </TestAgentRightPane>
+    )
+    expect(screen.queryByRole('button', { name: 'agent.right_pane.tabs.status' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'trace.label' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'agent.right_pane.tabs.files' })).toBeInTheDocument()
+  })
+
+  it('does not show industrial video progress for sessions without a production snapshot', () => {
+    render(
+      <TestAgentRightPane sessionId="session-a" messages={[]} partsByMessageId={{}}>
+        <AgentRightPane.Shortcuts />
+        <AgentRightPane.Viewport />
+      </TestAgentRightPane>
+    )
+
+    expect(screen.queryByRole('button', { name: 'agent.right_pane.tabs.industrial_video_progress' })).toBeNull()
   })
 
   it('explicitly opens the session browser pane even when normal links prefer an external browser', async () => {
