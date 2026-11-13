@@ -341,6 +341,31 @@ describe('AnthropicMessageConverter.toUIMessages', () => {
 })
 
 describe('AnthropicMessageConverter.toAiSdkTools', () => {
+  it('preserves dynamic state dictionaries and their constraints in the provider schema', async () => {
+    const state = {
+      type: 'object',
+      minProperties: 1,
+      maxProperties: 24,
+      propertyNames: { pattern: '^[一-鿿A-Za-z][一-鿿A-Za-z0-9_]{0,63}$' },
+      additionalProperties: { type: 'string', minLength: 1, maxLength: 200 }
+    }
+    const inputSchema = {
+      type: 'object' as const,
+      properties: { before: state, after: state },
+      required: ['before', 'after'],
+      additionalProperties: false
+    }
+    const tools = converter.toAiSdkTools(
+      params({ tools: [{ name: 'ivideo_storyboard_submit', input_schema: inputSchema }] })
+    )
+    const schema = asSchema(tools!.ivideo_storyboard_submit.inputSchema)
+    expect(schema.jsonSchema).toEqual(inputSchema)
+    const value = { before: { 触控屏: '熄灭' }, after: { 触控屏: '亮起' } }
+    expect(schema.validate).toBeDefined()
+    expect(await schema.validate!(value)).toEqual({ success: true, value })
+    expect(await schema.validate!({ before: 'invalid', after: {} })).toMatchObject({ success: false })
+  })
+
   it('builds a ToolSet keyed by name and skips bash tools', () => {
     const tools = converter.toAiSdkTools(
       params({
