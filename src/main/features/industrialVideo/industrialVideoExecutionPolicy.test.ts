@@ -1,8 +1,27 @@
 import { describe, expect, it } from 'vitest'
 
-import { assertIndustrialVideoRuntime, INDUSTRIAL_VIDEO_PRODUCTION_PROMPT, isIndustrialVideoToolAllowed } from './industrialVideoExecutionPolicy'
+import {
+  assertIndustrialVideoRuntime,
+  INDUSTRIAL_VIDEO_PRODUCTION_PROMPT,
+  isIndustrialVideoToolAllowed
+} from './industrialVideoExecutionPolicy'
 
 describe('industrial video execution policy', () => {
+  it('允许只读分析上传附件，同时拒绝执行、写入和外部生成工具', () => {
+    expect(isIndustrialVideoToolAllowed('Read')).toBe(true)
+    for (const name of [
+      'Bash',
+      'Write',
+      'Edit',
+      'Skill',
+      'Task',
+      'Agent',
+      'mcp__external__Read',
+      'mcp__external__video_generate'
+    ]) {
+      expect(isIndustrialVideoToolAllowed(name)).toBe(false)
+    }
+  })
   it('要求按字幕任务编写主语言与译文，设置同步不得生成且仍需网页审核', () => {
     expect(INDUSTRIAL_VIDEO_PRODUCTION_PROMPT).toContain('subtitle_translation_task')
     expect(INDUSTRIAL_VIDEO_PRODUCTION_PROMPT).toContain('translations')

@@ -337,8 +337,9 @@ function toMcpInputSchema(schema: z.ZodType): Tool['inputSchema'] {
   return json as Tool['inputSchema']
 }
 
-function okResult(data: Record<string, unknown>): CallToolResult {
-  return { content: [{ type: 'text', text: JSON.stringify({ ok: true, ...data }) }] }
+function okResult(data: Record<string, unknown>, readable = false): CallToolResult {
+  // return { content: [{ type: 'text', text: JSON.stringify({ ok: true, ...data }) }] }
+  return { content: [{ type: 'text', text: JSON.stringify({ ok: true, ...data }, null, readable ? 2 : undefined) }] }
 }
 
 function errorResult(error: unknown, meta?: Record<string, unknown>): CallToolResult {
@@ -481,9 +482,11 @@ export class MeacoworkIndustrialVideoTools {
                 state_rules:
                   'before/after 各1–24项且对象键相同，值为非空中文；invariants可为空，非空项须在前后状态中保持同值；相邻镜头同名对象状态衔接。动态对象字段必须显式写出对象名及状态，不能生成{}。资料不足须说明，不编造事实。',
                 submit_rules:
-                  '生成前先完成规划自检，使用本次上下文的指纹、SHA和document.version提交原run；提交仅保存待审稿，不自动审批或生成视频。'
+                  '生成前先完成规划自检，使用本次上下文的指纹、SHA和document.version提交原run；提交仅保存待审稿，不自动审批或生成视频。',
+                large_result_reading:
+                  '若工具结果落盘或读取超限，使用 Read 的 offset、limit 每次读取约100行，按 source_lines 的原始行号顺序读完资料。source_text 与 source_lines 是相同资料的两种表示，可读取 source_lines 避免重复长字符串。禁止使用 Bash、Python、命令或子代理读取，不得只读开头就声称全文分析完成。'
               }
-            })
+            }, true)
           }
           return okResult(data)
         }

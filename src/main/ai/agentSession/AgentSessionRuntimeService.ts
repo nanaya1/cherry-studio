@@ -2643,9 +2643,14 @@ export class AgentSessionRuntimeService extends BaseService {
       const service = application.get('IndustrialVideoService')
       service.assertExecution(execution)
       await service.withExecution(execution, async () => {
-        await service.prepareUserParts({ sessionId: entry.sessionId, parts: turn.userMessage.data.parts ?? [] })
+        // await service.prepareUserParts({ sessionId: entry.sessionId, parts: turn.userMessage.data.parts ?? [] })
+        const parts = await service.prepareUserParts({ sessionId: entry.sessionId, parts: turn.userMessage.data.parts ?? [] })
         service.assertExecution(execution)
-        await send()
+        // await send()
+        await connection.send({
+          message: { ...turn.userMessage, data: { ...turn.userMessage.data, parts } },
+          systemReminder: turn.systemReminder === true
+        })
       })
     } else {
       await send()

@@ -167,7 +167,11 @@ it('首次规划向模型交付服务端任务、真实来源和非空状态要�
     document: { version: 0 }
   }
   ivServiceMock.planningContextGet.mockResolvedValueOnce(context)
-  const result = jsonOf(await makeTools().call('ivideo_context', { run: 'r1' }))
+  const response = await makeTools().call('ivideo_context', { run: 'r1' })
+  const text = (response.content[0] as { text: string }).text
+  expect(text.split('\n').length).toBeGreaterThan(10)
+  const result = jsonOf(response)
+  expect(result.client_generation_requirements.large_result_reading).toContain('offset')
   expect(result.client_planning_task).toEqual(context.client_planning_task)
   expect(result.source_lines).toEqual(context.source_lines)
   expect(result.client_generation_requirements.before_first_submit).toContain('before/after')

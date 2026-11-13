@@ -387,6 +387,16 @@ describe('工业视频成片分镜提交保护', () => {
     expect(client.jobCancel).not.toHaveBeenCalled()
   })
 
+  it('拦截文案带出服务端真实状态，避免把排队误述为解析未结束', async () => {
+    const client = makeClient({ jobGet: vi.fn(async () => ok({ run: 'r1', status: 'queued' })) })
+    const { service } = makeService(client, makeSession())
+    await service.runCreate({ sessionId: 's1', baseName: '新任务' })
+    await service.parse({ sessionId: 's1', run: 'r1', texts: [{ text: '资料' }] })
+    await service.jobGet({ sessionId: 's1', jobId: 'j1' })
+    await expect(service.storyboardSubmit(input)).rejects.toThrow('服务端状态：queued')
+    expect(client.storyboardSubmit).not.toHaveBeenCalled()
+  })
+
   it.each(['videoStart', 'assemble'] as const)('真实 %s 任务运行中仍禁止重复提交分镜', async (operation) => {
     const client = makeClient({ jobGet: vi.fn(async () => ok({ run: 'r1', status: 'running' })) })
     const { service } = makeService(client, makeSession())
@@ -546,22 +556,44 @@ describe('工业视频文档附件可信提取', () => {
     })
   }
 
-  it('docx 附件经可信提取进入 texts，字节不上传', async () => {
-    const { service, client, upload, extractDocumentText } = makeDocService()
-    await prepareAndParse(service, {
-      type: 'file',
-      filename: '装配手册.docx',
-      mediaType: docxMime,
-      url: `data:${docxMime};base64,29vb29vb`
+  it.each(['docx', 'xlsx', 'pptx', 'pdf', 'txt', 'md', 'csv'])(
+    '%s 附件经客户端提取进入 texts，原文件不上传',
+    async (ext) => {
+      const { service, client, upload, extractDocumentText } = makeDocService()
+      await prepareAndParse(service, {
+        type: 'file',
+        filename: `装配手册.${ext}`,
+        mediaType: 'application/octet-stream',
+        url: 'data:application/octet-stream;base64,29vb29vb'
+      })
+      expect(extractDocumentText).toHaveBeenCalledTimes(1)
+      expect(upload).not.toHaveBeenCalled()
+      expect(client.videoStart).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          run: 'r1',
+          texts: [{ text: '装配步骤全文', title: `装配手册.${ext}` }]
+        })
+      )
+    }
+  )
+
+  it('发送前将文档替换为完整文字，parse复用结果且不上传原件', async () => {
+    const text = Array.from({ length: 40 }, (_, index) => `第${index}段：${'设备装配资料'.repeat(500)}`).join('\n\n')
+    const { service, client, upload, extractDocumentText } = makeDocService(async () => text)
+    await service.runCreate({ sessionId: 's1', baseName: '文档' })
+    const execution = service.beginRound({ sessionId: 's1' })
+    await service.withExecution(execution, async () => {
+      const parts = await service.prepareUserParts({ sessionId: 's1', parts: [{
+        type: 'file', filename: '大型资料.pdf', mediaType: 'application/pdf', url: 'data:application/pdf;base64,29vb29vb'
+      }] })
+      expect(parts?.every((part) => part.type === 'text')).toBe(true)
+      const modelText = parts?.map((part) => part.type === 'text' ? part.text : '').join('\n') ?? ''
+      for (const paragraph of text.split('\n\n')) expect(modelText).toContain(paragraph)
+      await service.parse({ sessionId: 's1', run: 'r1' })
     })
     expect(extractDocumentText).toHaveBeenCalledTimes(1)
     expect(upload).not.toHaveBeenCalled()
-    expect(client.videoStart).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        run: 'r1',
-        texts: [{ text: '装配步骤全文', title: '装配手册.docx' }]
-      })
-    )
+    expect(client.videoStart).toHaveBeenCalledWith(expect.objectContaining({ texts: expect.any(Array) }))
   })
 
   it('PDF 按 octet-stream MIME 仍按扩展名提取', async () => {
