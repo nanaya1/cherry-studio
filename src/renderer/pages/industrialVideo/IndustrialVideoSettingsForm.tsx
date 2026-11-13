@@ -22,7 +22,11 @@ import {
   type IndustrialVideoSubtitleLanguage,
   MAX_DURATION_SECONDS
 } from './industrialVideoSettings'
-import { hasDuplicateSubtitleLanguages, INDUSTRIAL_VIDEO_SUBTITLE_LANGUAGE_OPTIONS } from './industrialVideoSubtitle'
+import {
+  hasDuplicateSubtitleLanguages,
+  INDUSTRIAL_VIDEO_SECOND_SUBTITLE_LANGUAGE_OPTIONS,
+  INDUSTRIAL_VIDEO_SUBTITLE_LANGUAGE_OPTIONS
+} from './industrialVideoSubtitle'
 import { INDUSTRIAL_VIDEO_FEATURED_ENGLISH_VOICES, selectIndustrialVideoVoice } from './industrialVideoVoice'
 
 // MEA:industrial-video 制作设置保持本地交互，不触发生产任务。
@@ -352,43 +356,50 @@ function SubtitleConfig({
     which: 'main' | 'second',
     value: IndustrialVideoSubtitleLanguage,
     onSelect: (code: IndustrialVideoSubtitleLanguage) => void
-  ) => (
-    <Popover open={subtitleLangOpen === which} onOpenChange={(open) => setSubtitleLangOpen(open ? which : undefined)}>
-      <PopoverTrigger asChild>
-        <Button
-          variant="ghost"
-          size="sm"
-          disabled={!settings.subtitle || (which === 'second' && !settings.bilingualSubtitles)}
-          aria-label={t(
-            which === 'main' ? 'industrial_video.subtitle_language' : 'industrial_video.second_subtitle_language'
-          )}
-          className="text-xs text-muted-foreground">
-          {t(INDUSTRIAL_VIDEO_SUBTITLE_LANGUAGE_OPTIONS.find((option) => option.code === value)?.labelKey ?? '')}
-          <ChevronDown size={12} />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent align="start" className="flex w-48 flex-col p-1">
-        {INDUSTRIAL_VIDEO_SUBTITLE_LANGUAGE_OPTIONS.map((option) => {
-          const sameAsMain = which === 'second' && option.code === settings.subtitleLanguage
-          return (
-            <Button
-              key={option.code}
-              size="sm"
-              variant={value === option.code ? 'secondary' : 'ghost'}
-              aria-pressed={value === option.code}
-              disabled={sameAsMain}
-              className="justify-start font-normal"
-              onClick={() => {
-                onSelect(option.code)
-                setSubtitleLangOpen(undefined)
-              }}>
-              {t(option.labelKey)}
-            </Button>
-          )
-        })}
-      </PopoverContent>
-    </Popover>
-  )
+  ) => {
+    const options =
+      which === 'second'
+        ? INDUSTRIAL_VIDEO_SECOND_SUBTITLE_LANGUAGE_OPTIONS
+        : INDUSTRIAL_VIDEO_SUBTITLE_LANGUAGE_OPTIONS
+
+    return (
+      <Popover open={subtitleLangOpen === which} onOpenChange={(open) => setSubtitleLangOpen(open ? which : undefined)}>
+        <PopoverTrigger asChild>
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={!settings.subtitle || (which === 'second' && !settings.bilingualSubtitles)}
+            aria-label={t(
+              which === 'main' ? 'industrial_video.subtitle_language' : 'industrial_video.second_subtitle_language'
+            )}
+            className="text-xs text-muted-foreground">
+            {t(options.find((option) => option.code === value)?.labelKey ?? '')}
+            <ChevronDown size={12} />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent align="start" className="flex w-48 flex-col p-1">
+          {options.map((option) => {
+            const sameAsMain = which === 'second' && option.code === settings.subtitleLanguage
+            return (
+              <Button
+                key={option.code}
+                size="sm"
+                variant={value === option.code ? 'secondary' : 'ghost'}
+                aria-pressed={value === option.code}
+                disabled={sameAsMain}
+                className="justify-start font-normal"
+                onClick={() => {
+                  onSelect(option.code)
+                  setSubtitleLangOpen(undefined)
+                }}>
+                {t(option.labelKey)}
+              </Button>
+            )
+          })}
+        </PopoverContent>
+      </Popover>
+    )
+  }
 
   const mainLanguageChanged = initialSubtitleLanguage !== settings.subtitleLanguage
   void duplicate

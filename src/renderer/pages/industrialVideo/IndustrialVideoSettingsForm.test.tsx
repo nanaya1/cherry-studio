@@ -67,6 +67,9 @@ describe('工业视频紧凑设置交互', () => {
     await user.click(screen.getByRole('button', { name: '通用男声' }))
     await user.click(screen.getByRole('switch', { name: 'industrial_video.bilingual_subtitles' }))
     await user.click(screen.getByRole('button', { name: 'industrial_video.second_subtitle_language' }))
+    for (const language of ['zh_cn', 'zh_tw', 'en_us', 'ja_jp', 'ko_kr', 'es_es', 'fr_fr', 'de_de']) {
+      expect(screen.getByRole('button', { name: `industrial_video.language.${language}` })).toBeInTheDocument()
+    }
     await user.click(screen.getByRole('button', { name: 'industrial_video.language.zh_cn' }))
     expect(screen.getByRole('button', { name: '通用男声' })).toHaveAttribute('aria-pressed', 'true')
     expect(ipcApi.request).not.toHaveBeenCalled()

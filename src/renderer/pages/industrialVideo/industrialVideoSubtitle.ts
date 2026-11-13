@@ -32,6 +32,21 @@ export const INDUSTRIAL_VIDEO_SUBTITLE_LANGUAGE_OPTIONS: ReadonlyArray<{
   { code: 'en-US', labelKey: 'industrial_video.language.en_us' }
 ]
 
+/** 第二字幕语言选项与服务端字幕语言白名单保持一致。 */
+export const INDUSTRIAL_VIDEO_SECOND_SUBTITLE_LANGUAGE_OPTIONS: ReadonlyArray<{
+  code: IndustrialVideoSubtitleLanguage
+  labelKey: string
+}> = [
+  { code: 'zh-CN', labelKey: 'industrial_video.language.zh_cn' },
+  { code: 'zh-TW', labelKey: 'industrial_video.language.zh_tw' },
+  { code: 'en-US', labelKey: 'industrial_video.language.en_us' },
+  { code: 'ja-JP', labelKey: 'industrial_video.language.ja_jp' },
+  { code: 'ko-KR', labelKey: 'industrial_video.language.ko_kr' },
+  { code: 'es-ES', labelKey: 'industrial_video.language.es_es' },
+  { code: 'fr-FR', labelKey: 'industrial_video.language.fr_fr' },
+  { code: 'de-DE', labelKey: 'industrial_video.language.de_de' }
+]
+
 /** 客户端设置 -> 字幕相关 wire 字段（字幕开关映射为 `subtitleEnabled`）。 */
 export function buildSubtitleSettingsParams(settings: IndustrialVideoSettings) {
   return {

@@ -7,7 +7,10 @@ import { industrialVideoRequestSchemas } from '@shared/ipc/schemas/industrialVid
 
 import { industrialVideoVoiceId, buildIndustrialVideoSettingsParams } from './industrialVideoRequest'
 import { createIndustrialVideoSettings, normalizeIndustrialVideoSettings } from './industrialVideoSettings'
-import { INDUSTRIAL_VIDEO_SUBTITLE_LANGUAGE_OPTIONS } from './industrialVideoSubtitle'
+import {
+  INDUSTRIAL_VIDEO_SECOND_SUBTITLE_LANGUAGE_OPTIONS,
+  INDUSTRIAL_VIDEO_SUBTITLE_LANGUAGE_OPTIONS
+} from './industrialVideoSubtitle'
 import { resolveIndustrialVideoVoiceSettings, selectIndustrialVideoVoice } from './industrialVideoVoice'
 
 const englishIds = [
@@ -31,8 +34,18 @@ const englishIds = [
 ].map((name) => `en-US-${name}Neural`)
 
 describe('工业视频静态音色契约', () => {
-  it('仅开放中英文字幕选项', () => {
+  it('主字幕仅开放中英文，第二字幕开放服务端支持的八种语言', () => {
     expect(INDUSTRIAL_VIDEO_SUBTITLE_LANGUAGE_OPTIONS.map((item) => item.code)).toEqual(['zh-CN', 'en-US'])
+    expect(INDUSTRIAL_VIDEO_SECOND_SUBTITLE_LANGUAGE_OPTIONS.map((item) => item.code)).toEqual([
+      'zh-CN',
+      'zh-TW',
+      'en-US',
+      'ja-JP',
+      'ko-KR',
+      'es-ES',
+      'fr-FR',
+      'de-DE'
+    ])
   })
   it('保留同语言选择与中文标签，纠正非当前语言音色，保留无旁白', () => {
     expect(selectIndustrialVideoVoice('沉稳男声', 'en-US')).toBe('en-US-JennyNeural')
