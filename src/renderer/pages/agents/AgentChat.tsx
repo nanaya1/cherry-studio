@@ -759,6 +759,7 @@ const AgentChatSessionCenter = ({
       startEditing={runtime.startEditing}
       editBusy={runtime.editBusy}
       respondToolApproval={runtime.respondToolApproval}
+      sendMessage={runtime.sendMessage}
     />
   )
   const main = (

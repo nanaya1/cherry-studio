@@ -34,6 +34,7 @@ interface AgentChatMainProps {
   startEditing: (messageId: string) => Promise<void>
   editBusy: boolean
   respondToolApproval: (input: MessageToolApprovalInput) => Promise<void>
+  sendMessage: (message?: { text: string }) => Promise<boolean>
 }
 
 export default function AgentChatMain({
@@ -55,7 +56,8 @@ export default function AgentChatMain({
   deleteMessage,
   startEditing,
   editBusy,
-  respondToolApproval
+  respondToolApproval,
+  sendMessage
 }: AgentChatMainProps) {
   if (placement !== 'docked' || !sessionMessagesEnabled) {
     return <div className="h-full min-h-0 flex-1" />
@@ -82,6 +84,7 @@ export default function AgentChatMain({
           startEditing={agentId ? startEditing : undefined}
           editBusy={editBusy}
           respondToolApproval={agentId ? respondToolApproval : undefined}
+          sendMessage={sendMessage}
         />
       </div>
     </div>

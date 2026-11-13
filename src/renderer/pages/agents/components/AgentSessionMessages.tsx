@@ -18,6 +18,7 @@ import { getAgentAvatarFromConfiguration } from '@renderer/utils/agent'
 import { buildAgentSessionTopicId } from '@renderer/utils/agentSession'
 import type { CherryMessagePart, CherryUIMessage } from '@shared/data/types/message'
 
+import IndustrialVideoGenerateButton from '../../industrialVideo/IndustrialVideoGenerateButton'
 import { useAgentMessageListProviderValue } from '../messages/agentMessageListAdapter'
 import AgentSessionBackgroundTasks from '../messages/AgentSessionBackgroundTasks'
 
@@ -49,6 +50,7 @@ type Props = {
   startEditing?: (messageId: string) => Promise<void>
   editBusy?: boolean
   respondToolApproval?: MessageListActions['respondToolApproval']
+  sendMessage?: (message: { text: string }) => Promise<boolean>
 }
 
 const AgentSessionMessages = ({
@@ -73,7 +75,8 @@ const AgentSessionMessages = ({
   deleteMessage,
   startEditing,
   editBusy,
-  respondToolApproval
+  respondToolApproval,
+  sendMessage
 }: Props) => {
   const { session } = useSession(sessionId)
   const sessionTopicId = useMemo(() => buildAgentSessionTopicId(sessionId), [sessionId])
@@ -103,15 +106,26 @@ const AgentSessionMessages = ({
     }
     return undefined
   }, [messages, partsByMessageId])
+  const showGenerateButton = useMemo(() => {
+    if (session?.featureKind !== 'industrial-video' || !sendMessage || !backgroundTaskAnchorMessageId) return false
+    const message = messages.find(({ id }) => id === backgroundTaskAnchorMessageId)
+    const parts = partsByMessageId[backgroundTaskAnchorMessageId] ?? message?.parts ?? []
+    return parts.some((part) => part.type === 'text' && /发送[「“]开始生成视频[」”]/u.test(part.text))
+  }, [backgroundTaskAnchorMessageId, messages, partsByMessageId, sendMessage, session?.featureKind])
   const messageTail = useMemo(
     () =>
       backgroundTaskAnchorMessageId
         ? {
             messageId: backgroundTaskAnchorMessageId,
-            content: <AgentSessionBackgroundTasks sessionId={sessionId} />
+            content: (
+              <div className="flex flex-col items-start gap-2">
+                {showGenerateButton && sendMessage && <IndustrialVideoGenerateButton sendMessage={sendMessage} />}
+                <AgentSessionBackgroundTasks sessionId={sessionId} />
+              </div>
+            )
           }
         : undefined,
-    [backgroundTaskAnchorMessageId, sessionId]
+    [backgroundTaskAnchorMessageId, sendMessage, sessionId, showGenerateButton]
   )
 
   const derivedTopic = useMemo<Topic>(

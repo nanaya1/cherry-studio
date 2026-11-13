@@ -1,14 +1,24 @@
-import { render } from '@testing-library/react'
-import type { PropsWithChildren } from 'react'
+import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import type { PropsWithChildren, ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import AgentSessionMessages from '../AgentSessionMessages'
 
-const useAgentMessageListProviderValueMock = vi.hoisted(() => vi.fn(() => ({ state: {}, actions: {}, meta: {} })))
+const useAgentMessageListProviderValueMock = vi.hoisted(() =>
+  vi.fn((value?: { messageTail?: { content?: ReactNode } }) => ({
+    state: { messageTail: value?.messageTail },
+    actions: {},
+    meta: {}
+  }))
+)
 const ipcRequestMock = vi.hoisted(() => vi.fn(() => Promise.resolve(undefined)))
 
 vi.mock('@renderer/components/chat/messages/MessageList', () => ({
-  default: () => <div data-testid="message-list" />
+  default: () => {
+    const input = useAgentMessageListProviderValueMock.mock.calls.at(-1)?.[0]
+    return <div data-testid="message-list">{input?.messageTail?.content}</div>
+  }
 }))
 
 vi.mock('@renderer/components/chat/messages/MessageListProvider', () => ({
@@ -26,13 +36,18 @@ vi.mock('@renderer/hooks/agent/useSession', () => ({
       agentId: 'agent-1',
       name: 'Agent session',
       createdAt: '2026-01-01T00:00:00.000Z',
-      updatedAt: '2026-01-01T00:00:00.000Z'
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      featureKind: 'industrial-video'
     }
   })
 }))
 
 vi.mock('../../messages/agentMessageListAdapter', () => ({
   useAgentMessageListProviderValue: useAgentMessageListProviderValueMock
+}))
+
+vi.mock('../../messages/AgentSessionBackgroundTasks', () => ({
+  default: () => null
 }))
 
 // The mount effect fires ipcApi.request('ai.agent.session.prewarm' / 'ai.agent.session.close_warm');
@@ -85,6 +100,32 @@ describe('AgentSessionMessages', () => {
 
     view.unmount()
     expect(ipcRequestMock).toHaveBeenCalledWith('ai.agent.session.close_warm', { sessionId: 'session-1' })
+  })
+
+  it('offers the start action on an industrial video handoff and sends the fixed command', async () => {
+    const user = userEvent.setup()
+    const sendMessage = vi.fn(async () => true)
+    render(
+      <AgentSessionMessages
+        agentId="agent-1"
+        sessionId="session-1"
+        messages={
+          [
+            {
+              id: 'assistant-handoff',
+              role: 'assistant',
+              parts: [{ type: 'text', text: '确认后，在对话框发送「开始生成视频」。' }]
+            }
+          ] as any
+        }
+        partsByMessageId={{}}
+        isLoading={false}
+        sendMessage={sendMessage}
+      />
+    )
+
+    await user.click(screen.getByRole('button', { name: '开始生成视频' }))
+    expect(sendMessage).toHaveBeenCalledWith({ text: '开始生成视频' })
   })
 
   it('anchors background status to the latest assistant with content instead of an empty pending placeholder', () => {
