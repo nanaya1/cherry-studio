@@ -114,6 +114,10 @@ export function buildPathRegistry() {
     // Isolated preload for site `<webview>` guests. Local mini apps keep their capability bridge.
     'feature.webview.preload_file': path.join(app.getAppPath(), 'out/preload/webview.js'),
 
+    // 工业工作台专属 preload：仅注入 `industrial-video-workbench:*` partition，
+    // 暴露受限桥（读取同版审核快照 / 显式请求 regenerate_storyboard），不提供通用 ipc/令牌。
+    'feature.industrialVideoWorkbench.preload_file': path.join(app.getAppPath(), 'out/preload/industrialVideoWorkbench.js'),
+
     // Local embedding model cache (transformers.js HF cache root, downloaded on first use)
     'feature.embedding.models': path.join(appUserDataRuntime, 'models', 'qwen3-embedding'),
 
@@ -382,6 +386,7 @@ const NO_ENSURE = [
   'feature.pdfjs.cmaps',
   'feature.pdfjs.standard_fonts',
   'feature.webview.preload_file',
+  'feature.industrialVideoWorkbench.preload_file',
   'feature.code_cli.skills.builtin',
   'feature.agents.builtin',
   'feature.agents.assistant.manifest.file',

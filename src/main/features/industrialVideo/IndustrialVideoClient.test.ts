@@ -2,7 +2,11 @@ import { mockMainLoggerService } from '@test-mocks/MainLoggerService'
 import { net } from 'electron'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { IndustrialVideoClient, type IndustrialVideoClientConfig } from './IndustrialVideoClient'
+import {
+  IndustrialVideoClient,
+  resolveJobGetTimeoutMs,
+  type IndustrialVideoClientConfig
+} from './IndustrialVideoClient'
 
 const BASE_URL = 'http://127.0.0.1:8848'
 const TOKEN = 'service-secret-token'
@@ -44,6 +48,52 @@ describe('IndustrialVideoClient', () => {
     expect(headers.get('authorization')).toBe(`Bearer ${TOKEN}`)
     expect(headers.get('content-type')).toBe('application/json')
     expect(init?.body).toBe(JSON.stringify({ run: 'demo-run' }))
+  })
+
+  it.each([
+    ['fullScriptTaskGet', 'full_script_task_get'],
+    ['storyboardTaskGet', 'storyboard_task_get'],
+    ['documentGet', 'document_get']
+  ] as const)('%s 原样返回 BusinessObject 而非协议解包', async (method, operation) => {
+    const business = { run: 'r1', result: { text: '业务字段' }, content: [], extra: { retained: true } }
+    fetchMock.mockResolvedValueOnce(jsonResponse(business))
+    expect(await client[method]({ run: 'r1' })).toMatchObject({ ok: true, data: business })
+    expect(fetchMock.mock.calls[0][0]).toBe(`${BASE_URL}/api/video/${operation}`)
+    expect(JSON.parse(fetchMock.mock.calls[0][1]?.body as string)).toEqual({ run: 'r1' })
+  })
+
+  it('全文提交原样发送三个 expected 字段并返回业务回执', async () => {
+    const params = {
+      run: 'r1',
+      text: '全文',
+      expected_document_version: 0,
+      expected_input_fingerprint: 'fp',
+      expected_storyboard_sha256: ''
+    }
+    const business = { run: 'r1', saved: { version: 1 }, requires_human_confirmation: true }
+    fetchMock.mockResolvedValueOnce(jsonResponse(business))
+    expect(await client.fullScriptTaskSubmit(params)).toMatchObject({ ok: true, data: business })
+    expect(fetchMock.mock.calls[0][0]).toBe(`${BASE_URL}/api/video/full_script_task_submit`)
+    expect(JSON.parse(fetchMock.mock.calls[0][1]?.body as string)).toEqual(params)
+  })
+
+  it('阶段提交保留不透明版本、空 UID 和原始输出，网络失败不重放', async () => {
+    const params = { run: 'r1', stage: 'outline' as const, scene_uid: null, expected_task_version: 'opaque:v1', output: { scenes: [] } }
+    fetchMock.mockResolvedValueOnce(jsonResponse({ saved: true, preview_saved: false }))
+    expect(await client.storyboardStageSubmit(params)).toMatchObject({ ok: true, data: { preview_saved: false } })
+    expect(fetchMock.mock.calls[0][0]).toBe(`${BASE_URL}/api/video/storyboard_stage_submit`)
+    expect(JSON.parse(fetchMock.mock.calls[0][1]?.body as string)).toEqual(params)
+    fetchMock.mockRejectedValueOnce(new Error('断网'))
+    expect(await client.storyboardStageSubmit(params)).toMatchObject({ ok: false, error: { outcomeUnknown: true } })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('新版审核按用户所见版本和动作提交，不使用旧审核端点', async () => {
+    const params = { run: 'r1', host_assertion: 'trusted', expected_review_version: 'displayed-v1', action: 'regenerate_storyboard' as const }
+    fetchMock.mockResolvedValueOnce(jsonResponse({ confirmed: true, regeneration_id: 'regen-1' }))
+    expect(await client.coworkReviewConfirm(params)).toMatchObject({ ok: true, data: { regeneration_id: 'regen-1' } })
+    expect(fetchMock.mock.calls[0][0]).toBe(`${BASE_URL}/api/video/cowork_review_confirm`)
+    expect(JSON.parse(fetchMock.mock.calls[0][1]?.body as string)).toEqual(params)
   })
 
   it('不暴露动态音色目录接口', () => {
@@ -395,6 +445,36 @@ describe('IndustrialVideoClient', () => {
       expect(result.error.category).toBe('timeout')
       expect(result.error.outcomeUnknown).toBe(true)
     }
+  })
+
+  it.each([
+    [undefined, TIMEOUT_MS],
+    [0, TIMEOUT_MS],
+    [5, 15_000],
+    [30, 40_000],
+    [600, 120_000]
+  ])('job_get 请求预算跟随 wait_s：wait_s=%s → %sms', (waitS, expected) => {
+    expect(resolveJobGetTimeoutMs(TIMEOUT_MS, waitS)).toBe(expected)
+  })
+
+  it('job_get 的长轮询不会被默认超时打断', async () => {
+    vi.useFakeTimers()
+    let signal: AbortSignal | undefined
+    fetchMock.mockImplementationOnce((_url, init) => {
+      signal = init?.signal ?? undefined
+      return new Promise<Response>((resolve, reject) => {
+        signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true })
+        setTimeout(() => resolve(jsonResponse({ ok: true, status: 'done' })), 30_000)
+      })
+    })
+
+    const promise = client.jobGet({ job_id: 'j1', wait_s: 30 })
+    await vi.advanceTimersByTimeAsync(TIMEOUT_MS + 1)
+    expect(signal?.aborted).toBe(false)
+    await vi.advanceTimersByTimeAsync(30_000)
+
+    const result = await promise
+    expect(result.ok).toBe(true)
   })
 
   it.each([301, 307, 308])('does not follow a %s redirect and does not re-send the token', async (status) => {

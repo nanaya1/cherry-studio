@@ -27,6 +27,22 @@ describe('工业工作台本轮交接', () => {
       stopReason: handoff.message
     })
   })
+  it('真实生成回执有作业标识即可结束，不伪造工作台链接', () => {
+    const receipt = {
+      ok: true,
+      started: true,
+      end_turn: true,
+      run: 'r1',
+      jobId: 'j1',
+      message: '视频已提交，后台跟踪并自动下载。'
+    }
+    expect(industrialVideoTurnHandoff('industrial-video', event(receipt, 'ivideo_start'))).toEqual({
+      continue: false,
+      stopReason: receipt.message
+    })
+    expect(industrialVideoTurnHandoff('industrial-video', event({ ...receipt, jobId: '' }, 'ivideo_start'))).toEqual({})
+    expect(industrialVideoTurnHandoff('industrial-video', event(receipt))).toEqual({})
+  })
   it('未获批准的生成也结束本轮', () => {
     expect(industrialVideoTurnHandoff('industrial-video', event(handoff, 'ivideo_start'))).toMatchObject({
       continue: false

@@ -1,4 +1,4 @@
-import { createHmac } from 'node:crypto'
+import { createHash, createHmac } from 'node:crypto'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -11,12 +11,15 @@ import { BaseService } from '@main/core/lifecycle'
 import { decodeTextWithAutoEncoding } from '@main/utils/legacyFile'
 import type { AgentSessionEntity } from '@shared/data/api/schemas/agentSessions'
 import type { IndustrialVideoProductionRecord } from '@shared/data/cache/cacheValueTypes'
+import { IpcError } from '@shared/ipc/errors/IpcError'
 
 import type { IndustrialVideoClient, IndustrialVideoError, IndustrialVideoResult } from './IndustrialVideoClient'
 import type { IndustrialVideoDownloadErrorCode } from './IndustrialVideoDownload'
 import type { IndustrialVideoDownloader } from './IndustrialVideoDownload'
 import { type IndustrialVideoDownloadResult } from './IndustrialVideoDownload'
 import { IndustrialVideoService } from './IndustrialVideoService'
+
+const sha256Hex = (text: string): string => createHash('sha256').update(text, 'utf8').digest('hex')
 
 // Spy used in place of the trusted WorkspaceService: asserts the real workspace path
 // is resolved by the main process (never a renderer-supplied directory).
@@ -97,6 +100,31 @@ function makeClient(overrides: Partial<Record<keyof IndustrialVideoClient, unkno
   return client
 }
 
+// 真实结构化 storyboard_schema 夹具：仅描述测试输入实际携带的字段（video_title），
+// 不再以 `{}` 或 `true` 放水（validateStoryboard 要求 schema.type==='object' 且含 properties）。
+// 约束与 storyboard.schema.json 的 video_title 字段保持一致（string / 1-120）。
+const minimalStoryboardSchema = {
+  type: 'object',
+  required: ['video_title'],
+  properties: {
+    video_title: { type: 'string', minLength: 1, maxLength: 120 }
+  }
+}
+
+// 带真实 storyboard_schema 的 planning_context_get 夹具，供正向分镜提交测试使用。
+// 同时返回 planning_completeness.ready（storyboardSubmit 提交成功后回读完整性校验所需）。
+function planningContextWithSchema(over: Record<string, unknown> = {}): Mock {
+  return vi.fn(async () =>
+    ok({
+      input_fingerprint: 'fp',
+      expected_storyboard_sha256: '',
+      storyboard_schema: minimalStoryboardSchema,
+      planning_completeness: { ready: true },
+      ...over
+    })
+  )
+}
+
 function makeService(
   client: IndustrialVideoClient,
   sessionOrFn: AgentSessionEntity | (() => AgentSessionEntity),
@@ -118,6 +146,7 @@ function makeService(
   service.setTestDeps({
     resolveConfig: () => ({ baseUrl: 'http://svc', token: 't', timeoutMs: 1000 }),
     getSession,
+    getModelExecutionId: () => 'model-execution-1',
     createClient: () => client,
     getPersist: (key: string) => (store[key] ?? {}) as Record<string, IndustrialVideoProductionRecord>,
     setPersist: (key: string, value: unknown) => {
@@ -138,6 +167,421 @@ function makeService(
   })
   return { service, store }
 }
+
+describe('审核写入恢复与隔离', () => {
+  const snapshot = {
+    run: 'r1',
+    review_version: 'v1',
+    script: '正文',
+    storyboard: {},
+    effective_settings: {},
+    allowed_actions: ['generate_video', 'regenerate_storyboard'],
+    phase: 'awaiting_cowork_review'
+  }
+
+  it('确认请求发出前持久化版本与动作；超时只读核对且禁止旧快照重试', async () => {
+    const client = makeClient({
+      coworkReviewGet: vi.fn(async () => ok(snapshot)),
+      coworkReviewConfirm: vi.fn(async () => {
+        expect(service.getRecords({ sessionId: 's1' })?.rounds.at(-1)).toMatchObject({
+          operation: 'review_confirm',
+          outcome: 'intended',
+          detail: { expectedReviewVersion: 'v1', action: 'generate_video' }
+        })
+        return fail()
+      })
+    })
+    const { service } = makeService(client, makeSession())
+    await service.runCreate({ sessionId: 's1', baseName: 'demo' })
+    await service.coworkReviewGet({ sessionId: 's1', run: 'r1' })
+    await expect(
+      service.coworkReviewConfirm({ sessionId: 's1', run: 'r1', expectedReviewVersion: 'v1', action: 'generate_video' })
+    ).rejects.toThrow()
+    expect(client.coworkReviewGet).toHaveBeenCalledTimes(2)
+    await expect(
+      service.coworkReviewConfirm({ sessionId: 's1', run: 'r1', expectedReviewVersion: 'v1', action: 'generate_video' })
+    ).rejects.toThrow()
+    expect(client.coworkReviewConfirm).toHaveBeenCalledTimes(1)
+    expect(service.getRecords({ sessionId: 's1' })?.unknownSubmissions).toHaveLength(1)
+  })
+
+  it('刷新不同审核版本会撤销本地生成许可', async () => {
+    const client = makeClient({
+      coworkReviewGet: vi.fn(async () => ok(snapshot)),
+      coworkReviewConfirm: vi.fn(async () => ok({ generation_allowed: true, remaining_blockers: [] }))
+    })
+    const { service } = makeService(client, makeSession())
+    await service.runCreate({ sessionId: 's1', baseName: 'demo' })
+    await service.coworkReviewGet({ sessionId: 's1', run: 'r1' })
+    await service.coworkReviewConfirm({
+      sessionId: 's1',
+      run: 'r1',
+      expectedReviewVersion: 'v1',
+      action: 'generate_video'
+    })
+    client.coworkReviewGet.mockResolvedValue(ok({ ...snapshot, review_version: 'v2' }))
+    await service.coworkReviewGet({ sessionId: 's1', run: 'r1' })
+    expect(service.getConfirmedReview({ sessionId: 's1' })).toBeNull()
+  })
+})
+
+describe('新版阶段任务安全边界', () => {
+  const task = {
+    stage: 'state',
+    scene_uid: 'uid-1',
+    expected_task_version: 'opaque-1',
+    expected_regeneration_id: '',
+    instructions: '完整指令',
+    context: {},
+    output_schema: {
+      type: 'object',
+      properties: { state_transition: { type: 'object' } },
+      required: ['state_transition']
+    }
+  }
+
+  describe('outline 标题单次修正', () => {
+    const outlineTask = {
+      ...task,
+      stage: 'outline',
+      scene_uid: null,
+      output_schema: {
+        type: 'object',
+        required: ['scenes'],
+        properties: {
+          scenes: {
+            type: 'array',
+            items: {
+              type: 'object',
+              required: ['title', 'action'],
+              properties: { title: { type: 'string', minLength: 1, maxLength: 12 }, action: { type: 'string' } }
+            }
+          }
+        }
+      }
+    }
+    const draft = { scenes: [{ title: 'Touchscreen inspection', action: 'inspect' }] }
+    const input = {
+      sessionId: 's1',
+      run: 'r1',
+      stage: 'outline' as const,
+      scene_uid: null,
+      expected_task_version: 'opaque-1',
+      output: draft
+    }
+    async function setup() {
+      const client = makeClient({
+        storyboardStageTaskGet: vi.fn(async () => ok(outlineTask)),
+        storyboardStageSubmit: vi.fn(async () => ok({ saved: true, preview_saved: false }))
+      })
+      const { service } = makeService(client, makeSession())
+      await service.runCreate({ sessionId: 's1', baseName: 'demo' })
+      await service.storyboardStageTaskGet({ sessionId: 's1', run: 'r1' })
+      return { client, service }
+    }
+
+    it('超限未保存，反馈具体字段长度；缩短标题后原版本单次保存', async () => {
+      const { client, service } = await setup()
+      const original = structuredClone(draft)
+      const result = await service.storyboardStageSubmit(input)
+      expect(result).toMatchObject({
+        saved: false,
+        correction_required: true,
+        next_operation: 'ivideo_storyboard_stage_submit',
+        violations: [{ path: 'scenes.0.title', title: draft.scenes[0].title, actual_length: 22, max_length: 12 }],
+        task: outlineTask
+      })
+      expect(client.storyboardStageSubmit).not.toHaveBeenCalled()
+      expect(draft).toEqual(original)
+      expect(
+        await service.storyboardStageSubmit({ ...input, output: { scenes: [{ title: 'Inspect', action: 'inspect' }] } })
+      ).toMatchObject({ saved: true })
+      expect(client.storyboardStageSubmit).toHaveBeenCalledTimes(1)
+      expect(client.storyboardStageSubmit.mock.calls[0][0]).toMatchObject({ expected_task_version: 'opaque-1' })
+    })
+
+    it('重取同版任务不重置次数，第二次超限停止且不能继续重交', async () => {
+      const { client, service } = await setup()
+      await service.storyboardStageSubmit(input)
+      await service.storyboardStageTaskGet({ sessionId: 's1', run: 'r1' })
+      await expect(service.storyboardStageSubmit(input)).rejects.toThrow('一次')
+      await expect(
+        service.storyboardStageSubmit({ ...input, output: { scenes: [{ title: 'Inspect', action: 'inspect' }] } })
+      ).rejects.toThrow()
+      expect(client.storyboardStageSubmit).not.toHaveBeenCalled()
+    })
+
+    it('修正不得改其他字段，完整结构仍需通过校验', async () => {
+      const { client, service } = await setup()
+      await service.storyboardStageSubmit(input)
+      await expect(
+        service.storyboardStageSubmit({ ...input, output: { scenes: [{ title: 'Inspect', action: 'changed' }] } })
+      ).rejects.toThrow()
+      expect(client.storyboardStageSubmit).not.toHaveBeenCalled()
+    })
+
+    it('读取动态上限而非固定12，多个超限标题一并反馈', async () => {
+      const { service, client } = await setup()
+      const dynamicTask = structuredClone(outlineTask)
+      dynamicTask.output_schema.properties.scenes.items.properties.title.maxLength = 5
+      client.storyboardStageTaskGet.mockResolvedValue(ok(dynamicTask))
+      await service.storyboardStageTaskGet({ sessionId: 's1', run: 'r1' })
+      expect(
+        await service.storyboardStageSubmit({
+          ...input,
+          output: {
+            scenes: [
+              { title: 'Inspect', action: 'inspect' },
+              { title: 'Review', action: 'review' }
+            ]
+          }
+        })
+      ).toMatchObject({
+        violations: [
+          { path: 'scenes.0.title', actual_length: 7, max_length: 5 },
+          { path: 'scenes.1.title', actual_length: 6, max_length: 5 }
+        ]
+      })
+      expect(client.storyboardStageSubmit).not.toHaveBeenCalled()
+    })
+
+    it('标题超限同时缺字段时直接报告结构错误，不误导仅改标题', async () => {
+      const { service, client } = await setup()
+      await expect(
+        service.storyboardStageSubmit({ ...input, output: { scenes: [{ title: draft.scenes[0].title }] } })
+      ).rejects.toThrow()
+      expect(client.storyboardStageSubmit).not.toHaveBeenCalled()
+    })
+
+    it('修正标题合规但改为全空白仍拒绝且不保存', async () => {
+      const { service, client } = await setup()
+      await service.storyboardStageSubmit(input)
+      await expect(
+        service.storyboardStageSubmit({ ...input, output: { scenes: [{ title: '   ', action: 'inspect' }] } })
+      ).rejects.toThrow('一次')
+      expect(client.storyboardStageSubmit).not.toHaveBeenCalled()
+    })
+
+    it('非标题错误不获得标题修正机会', async () => {
+      const { service, client } = await setup()
+      await expect(
+        service.storyboardStageSubmit({ ...input, output: { scenes: [{ title: 'Inspect' }] } })
+      ).rejects.toThrow()
+      expect(client.storyboardStageSubmit).not.toHaveBeenCalled()
+    })
+  })
+
+  it.each(['narration', 'attributes'] as const)('outline %s容量违规在保存前阻断且候选不变', async (kind) => {
+    const capacityTask = {
+      ...task,
+      stage: 'outline',
+      scene_uid: null,
+      context: { document_segments: [{ id: 't1', text: 'a'.repeat(kind === 'narration' ? 801 : 800) }] },
+      output_schema: { type: 'object', properties: { entities: { type: 'array' }, scenes: { type: 'array' } } }
+    }
+    const client = makeClient({
+      storyboardStageTaskGet: vi.fn(async () => ok(capacityTask)),
+      storyboardStageSubmit: vi.fn(async () => ok({ saved: true }))
+    })
+    const { service } = makeService(client, makeSession())
+    await service.runCreate({ sessionId: 's1', baseName: 'demo' })
+    await service.storyboardStageTaskGet({ sessionId: 's1', run: 'r1' })
+    const output = {
+      entities: [{ attributes: Array(kind === 'attributes' ? 25 : 24).fill('condition') }],
+      scenes: [{ narration_segment_ids: ['t1'] }]
+    }
+    const original = structuredClone(output)
+    await expect(
+      service.storyboardStageSubmit({
+        sessionId: 's1',
+        run: 'r1',
+        stage: 'outline',
+        scene_uid: null,
+        expected_task_version: 'opaque-1',
+        output
+      })
+    ).rejects.toThrow(kind === 'narration' ? '800' : '24')
+    expect(client.storyboardStageSubmit).not.toHaveBeenCalled()
+    expect(output).toEqual(original)
+  })
+
+  it('状态不变量矛盾在客户端拦截，不发保存且不修改候选', async () => {
+    const client = makeClient({
+      storyboardStageTaskGet: vi.fn(async () => ok(task)),
+      storyboardStageSubmit: vi.fn(async () => ok({ saved: true }))
+    })
+    const { service } = makeService(client, makeSession())
+    await service.runCreate({ sessionId: 's1', baseName: 'demo' })
+    await service.storyboardStageTaskGet({ sessionId: 's1', run: 'r1' })
+    const output = {
+      state_transition: {
+        before: { screen: '完整，未显示模型' },
+        after: { screen: '完整，显示模型' },
+        invariant_keys: ['screen']
+      }
+    }
+    const original = structuredClone(output)
+    await expect(
+      service.storyboardStageSubmit({
+        sessionId: 's1',
+        run: 'r1',
+        stage: 'state',
+        scene_uid: 'uid-1',
+        expected_task_version: 'opaque-1',
+        output
+      })
+    ).rejects.toThrow('screen')
+    expect(client.storyboardStageSubmit).not.toHaveBeenCalled()
+    expect(output).toEqual(original)
+  })
+
+  it('拒绝替换任务版本，成功提交原始阶段并持久化恢复元数据', async () => {
+    const client = makeClient({
+      storyboardStageTaskGet: vi.fn(async () => ok(task)),
+      storyboardStageSubmit: vi.fn(async () => ok({ saved: true, preview_saved: false }))
+    })
+    const { service } = makeService(client, makeSession())
+    await service.runCreate({ sessionId: 's1', baseName: 'demo' })
+    expect(await service.storyboardStageTaskGet({ sessionId: 's1', run: 'r1' })).toEqual(task)
+    const input = {
+      sessionId: 's1',
+      run: 'r1',
+      stage: 'state' as const,
+      scene_uid: 'uid-1',
+      expected_task_version: 'opaque-1',
+      output: { state_transition: {} }
+    }
+    await expect(service.storyboardStageSubmit({ ...input, expected_task_version: 'new-version' })).rejects.toThrow(
+      '版本'
+    )
+    expect(client.storyboardStageSubmit).not.toHaveBeenCalled()
+    expect(await service.storyboardStageSubmit(input)).toMatchObject({ saved: true, preview_saved: false })
+    expect(service.getRecords({ sessionId: 's1' })?.rounds.at(-1)?.detail).toMatchObject({
+      stage: 'state',
+      scene_uid: 'uid-1',
+      expected_task_version: 'opaque-1'
+    })
+  })
+
+  it('完整预览保存后释放原执行轮次，允许用户下一轮继续', async () => {
+    const client = makeClient({
+      storyboardStageTaskGet: vi.fn(async () => ok(task)),
+      storyboardStageSubmit: vi.fn(async () => ok({ saved: true, preview_saved: true }))
+    })
+    const { service } = makeService(client, makeSession())
+    const token = service.beginRound({ sessionId: 's1' })
+    await service.withExecution(token, async () => {
+      await service.runCreate({ sessionId: 's1', baseName: 'demo' })
+      await service.storyboardStageTaskGet({ sessionId: 's1', run: 'r1' })
+      await service.storyboardStageSubmit({
+        sessionId: 's1',
+        run: 'r1',
+        stage: 'state',
+        scene_uid: 'uid-1',
+        expected_task_version: 'opaque-1',
+        output: { state_transition: {} }
+      })
+    })
+    service.releaseRound(token)
+    expect(service.getRecords({ sessionId: 's1' })?.control?.phase).toBe('idle')
+    expect(() => service.beginRound({ sessionId: 's1' })).not.toThrow()
+  })
+
+  it('只有同session和模型执行ID的失败终态上报有效重生成ID', async () => {
+    const client = makeClient({
+      storyboardStageTaskGet: vi.fn(async () => ok({ ...task, expected_regeneration_id: 'regen-1' })),
+      storyboardTaskFail: vi.fn(async () => ok({ recorded: true }))
+    })
+    const { service } = makeService(client, makeSession())
+    await service.runCreate({ sessionId: 's1', baseName: 'demo' })
+    await service.storyboardStageTaskGet({ sessionId: 's1', run: 'r1' })
+    await service.handleModelTerminal({
+      sessionId: 's1',
+      assistantMessageId: 'old-execution',
+      status: 'error',
+      boundary: 'turn'
+    })
+    expect(client.storyboardTaskFail).not.toHaveBeenCalled()
+    await service.handleModelTerminal({
+      sessionId: 's1',
+      assistantMessageId: 'model-execution-1',
+      status: 'paused',
+      boundary: 'turn'
+    })
+    expect(client.storyboardTaskFail).toHaveBeenCalledExactlyOnceWith({
+      run: 'r1',
+      expected_regeneration_id: 'regen-1',
+      reason: 'canceled',
+      message: expect.any(String)
+    })
+  })
+
+  it('任务读取后重启不能静默重跑同版模型任务', async () => {
+    const client = makeClient({ storyboardStageTaskGet: vi.fn(async () => ok(task)) })
+    const { service, store } = makeService(client, makeSession())
+    await service.runCreate({ sessionId: 's1', baseName: 'demo' })
+    await service.storyboardStageTaskGet({ sessionId: 's1', run: 'r1' })
+    const { service: restarted } = makeService(
+      client,
+      makeSession(),
+      {},
+      {
+        getPersist: (key: string) => store[key] ?? {},
+        setPersist: (key: string, value: unknown) => {
+          store[key] = value
+        }
+      }
+    )
+    await expect(restarted.storyboardStageTaskGet({ sessionId: 's1', run: 'r1' })).rejects.toThrow('明确重试')
+  })
+
+  it('恢复必须显式重试且核对原版任务，不能换版复用旧候选', async () => {
+    const client = makeClient({ storyboardStageTaskGet: vi.fn(async () => ok(task)) })
+    const { service } = makeService(client, makeSession())
+    await service.runCreate({ sessionId: 's1', baseName: 'demo' })
+    await service.storyboardStageTaskGet({ sessionId: 's1', run: 'r1' })
+    await expect(service.retryStageTask({ sessionId: 's1', run: 'r1', expectedTaskVersion: 'other' })).rejects.toThrow()
+    await expect(
+      service.retryStageTask({ sessionId: 's1', run: 'r1', expectedTaskVersion: 'opaque-1' })
+    ).resolves.toMatchObject({ retried: true })
+  })
+
+  it('阶段提交超时保留候选与任务，读取next不能静默重放提交', async () => {
+    const client = makeClient({
+      storyboardStageTaskGet: vi.fn(async () => ok(task)),
+      storyboardStageSubmit: vi.fn(async () => fail())
+    })
+    const { service } = makeService(client, makeSession())
+    await service.runCreate({ sessionId: 's1', baseName: 'demo' })
+    await service.storyboardStageTaskGet({ sessionId: 's1', run: 'r1' })
+    const input = {
+      sessionId: 's1',
+      run: 'r1',
+      stage: 'state' as const,
+      scene_uid: 'uid-1',
+      expected_task_version: 'opaque-1',
+      output: { state_transition: {} }
+    }
+    await expect(service.storyboardStageSubmit(input)).rejects.toThrow()
+    expect(client.storyboardStageTaskGet).toHaveBeenCalledTimes(2)
+    expect(service.getRecords({ sessionId: 's1' })?.unknownSubmissions[0]?.detail).toMatchObject({
+      output: input.output,
+      expected_task_version: 'opaque-1'
+    })
+    await expect(service.storyboardStageSubmit(input)).rejects.toThrow()
+    expect(client.storyboardStageSubmit).toHaveBeenCalledTimes(1)
+  })
+
+  it('首次规划空 regeneration ID 不调用失败报告', async () => {
+    const client = makeClient({ storyboardTaskFail: vi.fn(async () => ok({})) })
+    const { service } = makeService(client, makeSession())
+    await service.runCreate({ sessionId: 's1', baseName: 'demo' })
+    await expect(
+      service.storyboardTaskFail({ sessionId: 's1', run: 'r1', reason: 'canceled', message: '用户取消' })
+    ).resolves.toMatchObject({ reported: false })
+    expect(client.storyboardTaskFail).not.toHaveBeenCalled()
+  })
+})
 
 describe('工业视频可信轮次释放', () => {
   it('仅澄清未制作的轮次结束后可再次发送，旧轮回调不能释放新轮', () => {
@@ -212,12 +656,20 @@ describe('工业视频可信轮次释放', () => {
   it.each(['ready', 'job', 'unknown', 'intended', 'old_epoch', 'stop', 'wrong_run', 'missing_receipt'])(
     '审核返回修改后的轮次释放：%s',
     async (condition) => {
-      const { service } = makeService(makeClient(), makeSession())
+      const { service } = makeService(
+        makeClient({
+          planningContextGet: planningContextWithSchema(),
+          storyboardTaskGet: vi.fn(async () => ok({ expected_input_fingerprint: 'fp', expected_storyboard_sha256: '' }))
+        }),
+        makeSession()
+      )
       const token = service.beginRound({ sessionId: 's1' })
       await service.withExecution(token, async () => {
         await service.runCreate({ sessionId: 's1', baseName: '审核修改' })
         await service.parse({ sessionId: 's1', run: 'r1', texts: [{ text: '螺母' }] })
         await service.jobGet({ sessionId: 's1', jobId: 'j1' })
+        // 领取分镜任务原始版本，满足 storyboardSubmit 的任务版本校验（真实契约）。
+        await service.storyboardTaskGet({ sessionId: 's1', run: 'r1' })
         await service.storyboardSubmit({
           sessionId: 's1',
           run: 'r1',
@@ -238,7 +690,7 @@ describe('工业视频可信轮次释放', () => {
         const unresolved: typeof receipt = {
           ...receipt,
           operation: 'parse',
-          outcome: condition as 'unknown' | 'intended'
+          outcome: condition
         }
         record.rounds.push(unresolved)
         if (condition === 'unknown') record.unknownSubmissions.push(unresolved)
@@ -300,6 +752,564 @@ describe('工业视频可信轮次释放', () => {
   })
 })
 
+describe('工业视频客户端任务契约', () => {
+  const input = { sessionId: 's1', run: 'r1' }
+  const expected = {
+    expected_document_version: 0,
+    expected_input_fingerprint: 'original-fp',
+    expected_storyboard_sha256: ''
+  }
+  const schema = {
+    type: 'object',
+    additionalProperties: false,
+    required: ['text'],
+    properties: { text: { type: 'string', minLength: 1, maxLength: 100000 } }
+  }
+  const task = { run: 'r1', ...expected, output_schema: schema, context: { document: { version: 0 } } }
+  const submit = {
+    ...input,
+    text: '完整全文',
+    expectedDocumentVersion: 0,
+    expectedInputFingerprint: 'original-fp',
+    expectedStoryboardSha256: ''
+  }
+  function setup(overrides: Parameters<typeof makeClient>[0] = {}) {
+    const client = makeClient({
+      fullScriptTaskGet: vi.fn(async () => ok(structuredClone(task))),
+      storyboardTaskGet: vi.fn(async () =>
+        ok({ ...structuredClone(task), output_schema: { type: 'object', properties: {} } })
+      ),
+      fullScriptTaskSubmit: vi.fn(async () =>
+        ok({ run: 'r1', saved: { version: 1 }, requires_human_confirmation: true })
+      ),
+      documentGet: vi.fn(async () => ok({ version: 1, text: '完整全文' })),
+      planningContextGet: vi.fn(async () =>
+        ok({
+          document: { version: 99 },
+          storyboard_schema: { type: 'object', properties: {} },
+          planning_completeness: { ready: true }
+        })
+      ),
+      ...overrides
+    })
+    return { client, ...makeService(client, makeSession()) }
+  }
+
+  it.each(['fullScriptTaskGet', 'storyboardTaskGet', 'documentGet'] as const)(
+    '%s 校验会话和 run，拒绝外部 run',
+    async (method) => {
+      const { service, client } = setup()
+      await service.runCreate({ sessionId: 's1', baseName: '任务' })
+      await expect(service[method]({ ...input, run: 'foreign' })).rejects.toMatchObject({ code: 'IVIDEO_RUN_INVALID' })
+      expect(client[method]).not.toHaveBeenCalled()
+      const before = structuredClone(service.getRecords({ sessionId: 's1' }))
+      await expect(service[method](input)).resolves.toBeDefined()
+      expect(service.getRecords({ sessionId: 's1' })).toEqual(before)
+    }
+  )
+
+  it('新任务读取拒绝过期可信执行连接', async () => {
+    const { service, client } = setup()
+    await service.runCreate({ sessionId: 's1', baseName: '任务' })
+    const token = service.beginRound({ sessionId: 's1' })
+    service.releaseRound(token)
+    await expect(service.withExecution(token, () => service.fullScriptTaskGet(input))).rejects.toMatchObject({
+      code: 'IVIDEO_STOPPED'
+    })
+    expect(client.fullScriptTaskGet).not.toHaveBeenCalled()
+  })
+
+  it('未读取全文任务不得提交，不能只凭调用方提供版本', async () => {
+    const { service, client } = setup()
+    await service.runCreate({ sessionId: 's1', baseName: '任务' })
+    await expect(service.fullScriptTaskSubmit(submit)).rejects.toThrow()
+    expect(client.fullScriptTaskSubmit).not.toHaveBeenCalled()
+  })
+
+  it('任务快照不受调用方篡改，提交绑定原始三个 expected 字段', async () => {
+    const { service, client } = setup()
+    await service.runCreate({ sessionId: 's1', baseName: '任务' })
+    const returned = await service.fullScriptTaskGet(input)
+    returned.expected_document_version = 99
+    await expect(service.fullScriptTaskSubmit({ ...submit, expectedDocumentVersion: 99 })).rejects.toThrow()
+    expect(client.fullScriptTaskSubmit).not.toHaveBeenCalled()
+    await expect(service.fullScriptTaskSubmit(submit)).resolves.toMatchObject({
+      saved: { version: 1 },
+      requires_human_confirmation: true
+    })
+    expect(client.fullScriptTaskSubmit).toHaveBeenCalledExactlyOnceWith({ run: 'r1', text: submit.text, ...expected })
+  })
+
+  it.each(['', '   '])('全文拒绝空白文本 %s', async (text) => {
+    const { service, client } = setup()
+    await service.runCreate({ sessionId: 's1', baseName: '任务' })
+    await service.fullScriptTaskGet(input)
+    await expect(service.fullScriptTaskSubmit({ ...submit, text })).rejects.toThrow()
+    expect(client.fullScriptTaskSubmit).not.toHaveBeenCalled()
+  })
+
+  it('全文按任务 output_schema 校验，不只检查字符串', async () => {
+    const { service, client } = setup({
+      fullScriptTaskGet: vi.fn(async () =>
+        ok({ ...task, output_schema: { ...schema, properties: { text: { type: 'string', minLength: 10 } } } })
+      )
+    })
+    await service.runCreate({ sessionId: 's1', baseName: '任务' })
+    await service.fullScriptTaskGet(input)
+    await expect(service.fullScriptTaskSubmit(submit)).rejects.toThrow()
+    expect(client.fullScriptTaskSubmit).not.toHaveBeenCalled()
+  })
+
+  it('超限草稿允许一次模型修正，合规前不保存，修正后只保存一次', async () => {
+    const { service, client } = setup()
+    await service.runCreate({ sessionId: 's1', baseName: '任务' })
+    await service.fullScriptTaskGet(input)
+    const result = await service.fullScriptTaskSubmit({ ...submit, text: 'x'.repeat(100001) })
+    expect(result).toMatchObject({
+      saved: false,
+      correction_required: true,
+      corrections_remaining: 3,
+      generation_started: false
+    })
+    expect(client.fullScriptTaskSubmit).not.toHaveBeenCalled()
+    await service.fullScriptTaskSubmit(submit)
+    expect(client.fullScriptTaskSubmit).toHaveBeenCalledTimes(1)
+  })
+
+  it('全文任务保留原硬上限并明确85%写作目标，432到420以内可内部修正', async () => {
+    const dynamicTask = {
+      ...task,
+      output_schema: { ...schema, properties: { text: { type: 'string', minLength: 1, maxLength: 420 } } }
+    }
+    const { service, client } = setup({ fullScriptTaskGet: vi.fn(async () => ok(dynamicTask)) })
+    await service.runCreate({ sessionId: 's1', baseName: '任务' })
+    const fetched = await service.fullScriptTaskGet(input)
+    expect(fetched).toMatchObject({ generation_target_length: 357, output_schema: dynamicTask.output_schema })
+    for (const [length, remaining] of [
+      [440, 3],
+      [432, 2],
+      [425, 1]
+    ]) {
+      const response = await service.fullScriptTaskSubmit({ ...submit, text: 'x'.repeat(length) })
+      expect(response).toMatchObject({
+        correction_required: true,
+        corrections_remaining: remaining,
+        target_length: 357,
+        saved: false
+      })
+      await service.fullScriptTaskGet(input)
+    }
+    await expect(service.fullScriptTaskSubmit({ ...submit, text: 'x'.repeat(419) })).resolves.toMatchObject({
+      saved: { version: 1 }
+    })
+    expect(client.fullScriptTaskSubmit).toHaveBeenCalledTimes(1)
+  })
+
+  it('首次432超420后压缩合规，只发送一次实际保存请求', async () => {
+    const { service, client } = setup({
+      fullScriptTaskGet: vi.fn(async () =>
+        ok({
+          ...task,
+          output_schema: { ...schema, properties: { text: { type: 'string', minLength: 1, maxLength: 420 } } }
+        })
+      )
+    })
+    await service.runCreate({ sessionId: 's1', baseName: '任务' })
+    await service.fullScriptTaskGet(input)
+    expect(await service.fullScriptTaskSubmit({ ...submit, text: 'x'.repeat(432) })).toMatchObject({
+      target_length: 357,
+      actual_length: 432,
+      saved: false
+    })
+    expect(client.fullScriptTaskSubmit).not.toHaveBeenCalled()
+    await service.fullScriptTaskSubmit({ ...submit, text: 'x'.repeat(360) })
+    expect(client.fullScriptTaskSubmit).toHaveBeenCalledTimes(1)
+  })
+
+  it('建议目标不低于服务端minLength且不改硬上限', async () => {
+    const { service } = setup({
+      fullScriptTaskGet: vi.fn(async () =>
+        ok({
+          ...task,
+          output_schema: { ...schema, properties: { text: { type: 'string', minLength: 400, maxLength: 420 } } }
+        })
+      )
+    })
+    await service.runCreate({ sessionId: 's1', baseName: '任务' })
+    expect(await service.fullScriptTaskGet(input)).toMatchObject({
+      generation_target_length: 400,
+      output_schema: { properties: { text: { minLength: 400, maxLength: 420 } } }
+    })
+  })
+
+  it('第三次修正后仍超限停止；重取同版不能再次获得预算', async () => {
+    const { service, client } = setup()
+    await service.runCreate({ sessionId: 's1', baseName: '任务' })
+    await service.fullScriptTaskGet(input)
+    for (const length of [100004, 100003, 100002])
+      await service.fullScriptTaskSubmit({ ...submit, text: 'x'.repeat(length) })
+    await expect(service.fullScriptTaskSubmit({ ...submit, text: 'x'.repeat(100001) })).rejects.toThrow('三次')
+    await service.fullScriptTaskGet(input)
+    await expect(service.fullScriptTaskSubmit({ ...submit, text: 'x'.repeat(100001) })).rejects.toThrow()
+    expect(client.fullScriptTaskSubmit).not.toHaveBeenCalled()
+  })
+
+  it('修正未下降则提前停止，不原样循环', async () => {
+    const { service, client } = setup()
+    await service.runCreate({ sessionId: 's1', baseName: '任务' })
+    await service.fullScriptTaskGet(input)
+    const candidate = { ...submit, text: 'x'.repeat(100001) }
+    await service.fullScriptTaskSubmit(candidate)
+    await service.fullScriptTaskGet(input)
+    await expect(service.fullScriptTaskSubmit(candidate)).rejects.toThrow('未下降')
+    await expect(service.fullScriptTaskSubmit(submit)).rejects.toThrow()
+    expect(client.fullScriptTaskSubmit).not.toHaveBeenCalled()
+  })
+
+  it('全文超长按动态上限本地拦截，报告上限/实际/超出数且未达服务端', async () => {
+    const overLimit = 'x'.repeat(100001)
+    const { service, client } = setup()
+    await service.runCreate({ sessionId: 's1', baseName: '任务' })
+    await service.fullScriptTaskGet(input)
+    const result = await service.fullScriptTaskSubmit({ ...submit, text: overLimit })
+    expect(result).toMatchObject({
+      saved: false,
+      correction_required: true,
+      actual_length: 100001,
+      max_length: 100000,
+      excess: 1
+    })
+    expect(result.task).toMatchObject({ output_schema: expect.any(Object) })
+    expect(client.fullScriptTaskSubmit).not.toHaveBeenCalled()
+  })
+
+  it('版本冲突停止旧任务，不重试或读取新指纹重交', async () => {
+    const { service, client } = setup({
+      fullScriptTaskSubmit: vi.fn(async () =>
+        fail({ status: 409, outcomeUnknown: false, code: 'planning_version_conflict' })
+      )
+    })
+    await service.runCreate({ sessionId: 's1', baseName: '任务' })
+    await service.fullScriptTaskGet(input)
+    await expect(service.fullScriptTaskSubmit(submit)).rejects.toThrow()
+    await expect(service.fullScriptTaskSubmit(submit)).rejects.toThrow()
+    expect(client.fullScriptTaskSubmit).toHaveBeenCalledTimes(1)
+    expect(client.fullScriptTaskGet).toHaveBeenCalledTimes(1)
+    expect(client.documentGet).not.toHaveBeenCalled()
+  })
+
+  it('全文超时但 documentGet 落盘不匹配，仍保留未知结果且不能盲重发', async () => {
+    const { service, client } = setup({
+      fullScriptTaskSubmit: vi.fn(async () => fail({ category: 'timeout', status: undefined, outcomeUnknown: true })),
+      // 落盘核对不匹配：版本未 +1 且正文不符 → 保持未知、禁止重发。
+      documentGet: vi.fn(async () => ok({ version: 0, text: '别处保存的稿' }))
+    })
+    await service.runCreate({ sessionId: 's1', baseName: '任务' })
+    await service.fullScriptTaskGet(input)
+    await expect(service.fullScriptTaskSubmit(submit)).rejects.toThrow()
+    expect(client.documentGet).toHaveBeenCalledExactlyOnceWith({ run: 'r1' })
+    await expect(service.fullScriptTaskSubmit(submit)).rejects.toThrow()
+    expect(client.fullScriptTaskSubmit).toHaveBeenCalledTimes(1)
+    expect(service.getRecords({ sessionId: 's1' })?.unknownSubmissions).toHaveLength(1)
+  })
+
+  it('全文超时且 documentGet 读失败，保持未知禁止重发', async () => {
+    const { service, client } = setup({
+      fullScriptTaskSubmit: vi.fn(async () => fail({ category: 'timeout', status: undefined, outcomeUnknown: true })),
+      documentGet: vi.fn(async () => {
+        throw new Error('network')
+      })
+    })
+    await service.runCreate({ sessionId: 's1', baseName: '任务' })
+    await service.fullScriptTaskGet(input)
+    await expect(service.fullScriptTaskSubmit(submit)).rejects.toThrow()
+    expect(client.fullScriptTaskSubmit).toHaveBeenCalledTimes(1)
+    expect(service.getRecords({ sessionId: 's1' })?.unknownSubmissions).toHaveLength(1)
+  })
+
+  it('全文超时但 documentGet 确认落盘则恢复成功并清除对应 unknown', async () => {
+    const { service, client } = setup({
+      fullScriptTaskSubmit: vi.fn(async () => fail({ category: 'timeout', status: undefined, outcomeUnknown: true })),
+      documentGet: vi.fn(async () => ok({ version: 1, text: '完整全文', text_sha256: sha256Hex('完整全文') }))
+    })
+    await service.runCreate({ sessionId: 's1', baseName: '任务' })
+    await service.fullScriptTaskGet(input)
+    const result = await service.fullScriptTaskSubmit(submit)
+    expect(result).toMatchObject({ saved: { version: 1 }, requires_human_confirmation: true })
+    expect(client.fullScriptTaskSubmit).toHaveBeenCalledTimes(1)
+    const rec = service.getRecords({ sessionId: 's1' })
+    expect(rec?.unknownSubmissions).toHaveLength(0)
+    expect(rec?.rounds.some((r) => r.operation === 'full_script_task_submit' && r.outcome === 'ok')).toBe(true)
+  })
+
+  it('分镜任务即使调用方省略版本仍使用任务原值，不补最新版本', async () => {
+    const { service, client } = setup()
+    await service.runCreate({ sessionId: 's1', baseName: '任务' })
+    await service.storyboardTaskGet(input)
+    await service.storyboardSubmit({
+      ...input,
+      storyboard: {},
+      expectedInputFingerprint: 'original-fp',
+      expectedStoryboardSha256: ''
+    })
+    expect(client.storyboardSubmit).toHaveBeenCalledExactlyOnceWith({ run: 'r1', storyboard: {}, ...expected })
+  })
+
+  it('分镜超时但 storyboard_get 落盘不匹配，保持未知不重发', async () => {
+    const { service, client } = setup({
+      storyboardSubmit: vi.fn(async () => fail({ category: 'timeout', outcomeUnknown: true })),
+      // 落盘核对不匹配：返回的分镜正文与提交不一致 → 保持未知、禁止重发。
+      storyboardGet: vi.fn(async () => ok({ storyboard: { video_title: '冲突稿' } }))
+    })
+    await service.runCreate({ sessionId: 's1', baseName: '任务' })
+    await service.storyboardTaskGet(input)
+    await expect(
+      service.storyboardSubmit({
+        ...input,
+        storyboard: {},
+        expectedInputFingerprint: 'original-fp',
+        expectedStoryboardSha256: ''
+      })
+    ).rejects.toThrow()
+    expect(client.storyboardGet).toHaveBeenCalledExactlyOnceWith({ run: 'r1', full: true })
+    expect(client.planningContextGet).toHaveBeenCalled()
+    expect(client.storyboardSubmit).toHaveBeenCalledTimes(1)
+    expect(service.getRecords({ sessionId: 's1' })?.unknownSubmissions).toHaveLength(1)
+  })
+
+  it('分镜超时且 storyboard_get 读失败，保持未知禁止重发', async () => {
+    const { service, client } = setup({
+      storyboardSubmit: vi.fn(async () => fail({ category: 'timeout', outcomeUnknown: true })),
+      storyboardGet: vi.fn(async () => {
+        throw new Error('network')
+      })
+    })
+    await service.runCreate({ sessionId: 's1', baseName: '任务' })
+    await service.storyboardTaskGet(input)
+    await expect(
+      service.storyboardSubmit({
+        ...input,
+        storyboard: {},
+        expectedInputFingerprint: 'original-fp',
+        expectedStoryboardSha256: ''
+      })
+    ).rejects.toThrow()
+    expect(client.storyboardSubmit).toHaveBeenCalledTimes(1)
+    expect(service.getRecords({ sessionId: 's1' })?.unknownSubmissions).toHaveLength(1)
+  })
+
+  it('分镜超时但 storyboard_get 确认落盘则恢复成功并清除对应 unknown', async () => {
+    const submitted = { video_title: '标题', scenes: [{ id: 1 }] }
+    const { service, client } = setup({
+      storyboardSubmit: vi.fn(async () => fail({ category: 'timeout', outcomeUnknown: true })),
+      storyboardGet: vi.fn(async () =>
+        ok({
+          storyboard: {
+            ...submitted,
+            plan_version: 2,
+            planning_owner: 'cowork_client_agent',
+            client_plan_input_fingerprint: 'original-fp'
+          }
+        })
+      ),
+      planningContextGet: vi.fn(async () =>
+        ok({
+          input_fingerprint: 'original-fp',
+          expected_storyboard_sha256: '',
+          document: { version: 0 },
+          storyboard_schema: { type: 'object', properties: {} },
+          planning_completeness: { ready: true }
+        })
+      )
+    })
+    await service.runCreate({ sessionId: 's1', baseName: '任务' })
+    await service.storyboardTaskGet(input)
+    const result = await service.storyboardSubmit({
+      ...input,
+      storyboard: submitted,
+      expectedInputFingerprint: 'original-fp',
+      expectedStoryboardSha256: ''
+    })
+    expect(result).toMatchObject({ submitted: true, reviewRequired: true })
+    expect(client.storyboardSubmit).toHaveBeenCalledTimes(1)
+    const rec = service.getRecords({ sessionId: 's1' })
+    expect(rec?.unknownSubmissions).toHaveLength(0)
+    expect(rec?.rounds.some((r) => r.operation === 'storyboard_submit' && r.outcome === 'ok')).toBe(true)
+  })
+
+  it('workbench 使用服务端权威门禁，not_started 不阻塞生成且保留 raw', async () => {
+    const raw = {
+      generation_status: 'not_started',
+      generation_allowed: true,
+      remaining_blockers: [],
+      next_stage: 'video'
+    }
+    const { service } = setup({ workbenchGet: vi.fn(async () => ok(raw)) })
+    await service.runCreate({ sessionId: 's1', baseName: '任务' })
+    expect(await service.workbenchGet(input)).toMatchObject({
+      generation_allowed: true,
+      remaining_blockers: [],
+      next_stage: 'video',
+      generatable: true,
+      blockers: [],
+      raw
+    })
+  })
+
+  // ── 分镜恢复边界：依赖变更 / 旧版本 / 旧 SHA 必须保守保持 unknown ──────────────
+  const submittedBoard = { video_title: '标题', scenes: [{ id: 1 }] }
+  function boardReturnsOurStoryboard() {
+    return ok({
+      storyboard: {
+        ...submittedBoard,
+        plan_version: 2,
+        planning_owner: 'cowork_client_agent',
+        client_plan_input_fingerprint: 'original-fp'
+      }
+    })
+  }
+  function standardContext(over: Record<string, unknown> = {}) {
+    return ok({
+      input_fingerprint: 'original-fp',
+      expected_storyboard_sha256: '',
+      document: { version: 0 },
+      storyboard_schema: { type: 'object', properties: {} },
+      planning_completeness: { ready: true },
+      ...over
+    })
+  }
+  async function submitTimedOutStoryboard(
+    service: ReturnType<typeof makeService>['service'],
+    over: Record<string, unknown> = {}
+  ) {
+    await expect(
+      service.storyboardSubmit({
+        ...input,
+        storyboard: submittedBoard,
+        expectedInputFingerprint: 'original-fp',
+        expectedStoryboardSha256: '',
+        expectedDocumentVersion: 0,
+        ...over
+      })
+    ).rejects.toThrow()
+  }
+
+  it('分镜正文已落盘但文档版本已变，保守保持未知不恢复', async () => {
+    const { service, client } = setup({
+      storyboardSubmit: vi.fn(async () => fail({ category: 'timeout', outcomeUnknown: true })),
+      storyboardGet: vi.fn(async () => boardReturnsOurStoryboard()),
+      // 文档版本已被他人更新为 1（提交时绑定的是 0）→ 候选分镜过期。
+      planningContextGet: vi.fn(async () => standardContext({ document: { version: 1 } }))
+    })
+    await service.runCreate({ sessionId: 's1', baseName: '任务' })
+    await service.storyboardTaskGet(input)
+    await submitTimedOutStoryboard(service)
+    expect(client.storyboardSubmit).toHaveBeenCalledTimes(1)
+    const rec = service.getRecords({ sessionId: 's1' })
+    expect(rec?.unknownSubmissions).toHaveLength(1) // 未恢复
+    expect(rec?.rounds.some((r) => r.operation === 'storyboard_submit' && r.outcome === 'ok')).toBe(false)
+  })
+
+  it('分镜正文已落盘但输入指纹已变，保守保持未知不恢复', async () => {
+    const { service, client } = setup({
+      storyboardSubmit: vi.fn(async () => fail({ category: 'timeout', outcomeUnknown: true })),
+      storyboardGet: vi.fn(async () => boardReturnsOurStoryboard()),
+      // 输入已被他人更新 → 指纹变化，候选分镜过期。
+      planningContextGet: vi.fn(async () => standardContext({ input_fingerprint: 'someone-else-fp' }))
+    })
+    await service.runCreate({ sessionId: 's1', baseName: '任务' })
+    await service.storyboardTaskGet(input)
+    await submitTimedOutStoryboard(service)
+    expect(client.storyboardSubmit).toHaveBeenCalledTimes(1)
+    const rec = service.getRecords({ sessionId: 's1' })
+    expect(rec?.unknownSubmissions).toHaveLength(1)
+    expect(rec?.rounds.some((r) => r.operation === 'storyboard_submit' && r.outcome === 'ok')).toBe(false)
+  })
+
+  it('分镜正文已落盘但读回旧 expected_storyboard_sha256 仍为旧SHA，拒绝恢复', async () => {
+    const { service, client } = setup({
+      storyboardTaskGet: vi.fn(async () =>
+        ok({
+          ...structuredClone(task),
+          expected_storyboard_sha256: 'old-sha',
+          output_schema: { type: 'object', properties: {} }
+        })
+      ),
+      storyboardSubmit: vi.fn(async () => fail({ category: 'timeout', outcomeUnknown: true })),
+      storyboardGet: vi.fn(async () => boardReturnsOurStoryboard()),
+      // 服务端仍报告我们提交时引用的旧 SHA → 新分镜未登记为当前稿。
+      planningContextGet: vi.fn(async () => standardContext({ expected_storyboard_sha256: 'old-sha' }))
+    })
+    await service.runCreate({ sessionId: 's1', baseName: '任务' })
+    await service.storyboardTaskGet(input)
+    await expect(
+      service.storyboardSubmit({
+        ...input,
+        storyboard: submittedBoard,
+        expectedInputFingerprint: 'original-fp',
+        expectedStoryboardSha256: 'old-sha',
+        expectedDocumentVersion: 0
+      })
+    ).rejects.toThrow()
+    expect(client.storyboardSubmit).toHaveBeenCalledTimes(1)
+    const rec = service.getRecords({ sessionId: 's1' })
+    expect(rec?.unknownSubmissions).toHaveLength(1)
+    expect(rec?.rounds.some((r) => r.operation === 'storyboard_submit' && r.outcome === 'ok')).toBe(false)
+  })
+
+  it('分镜正文落盘且依赖未变且 SHA 已推进，恢复成功并清除未知', async () => {
+    const { service, client } = setup({
+      storyboardTaskGet: vi.fn(async () =>
+        ok({
+          ...structuredClone(task),
+          expected_storyboard_sha256: 'old-sha',
+          output_schema: { type: 'object', properties: {} }
+        })
+      ),
+      storyboardSubmit: vi.fn(async () => fail({ category: 'timeout', outcomeUnknown: true })),
+      storyboardGet: vi.fn(async () => boardReturnsOurStoryboard()),
+      // SHA 已推进到新分镜 → 服务端确认落盘。
+      planningContextGet: vi.fn(async () => standardContext({ expected_storyboard_sha256: 'new-sha' }))
+    })
+    await service.runCreate({ sessionId: 's1', baseName: '任务' })
+    await service.storyboardTaskGet(input)
+    const result = await service.storyboardSubmit({
+      ...input,
+      storyboard: submittedBoard,
+      expectedInputFingerprint: 'original-fp',
+      expectedStoryboardSha256: 'old-sha',
+      expectedDocumentVersion: 0
+    })
+    expect(result).toMatchObject({ submitted: true, reviewRequired: true })
+    expect(client.storyboardSubmit).toHaveBeenCalledTimes(1)
+    const rec = service.getRecords({ sessionId: 's1' })
+    expect(rec?.unknownSubmissions).toHaveLength(0)
+    expect(rec?.rounds.some((r) => r.operation === 'storyboard_submit' && r.outcome === 'ok')).toBe(true)
+  })
+
+  it('分镜读回依赖字段缺失无法证明时，保守保持未知不恢复', async () => {
+    const { service, client } = setup({
+      storyboardSubmit: vi.fn(async () => fail({ category: 'timeout', outcomeUnknown: true })),
+      storyboardGet: vi.fn(async () => boardReturnsOurStoryboard()),
+      // 服务端未返回 document / input_fingerprint → 无法证实依赖未变。
+      planningContextGet: vi.fn(async () =>
+        ok({
+          expected_storyboard_sha256: '',
+          storyboard_schema: { type: 'object', properties: {} },
+          planning_completeness: { ready: true }
+        })
+      )
+    })
+    await service.runCreate({ sessionId: 's1', baseName: '任务' })
+    await service.storyboardTaskGet(input)
+    await submitTimedOutStoryboard(service)
+    expect(client.storyboardSubmit).toHaveBeenCalledTimes(1)
+    const rec = service.getRecords({ sessionId: 's1' })
+    expect(rec?.unknownSubmissions).toHaveLength(1)
+    expect(rec?.rounds.some((r) => r.operation === 'storyboard_submit' && r.outcome === 'ok')).toBe(false)
+  })
+})
+
 describe('工业视频成片分镜提交保护', () => {
   const input = {
     sessionId: 's1',
@@ -330,7 +1340,11 @@ describe('工业视频成片分镜提交保护', () => {
   })
 
   it('parse 创建返修新 run 后可提交新分镜，旧 run 仍拒绝写入', async () => {
-    const client = makeClient({ storyboardSubmit: vi.fn(async () => ok({ submitted: true, review_required: true })) })
+    const client = makeClient({
+      planningContextGet: planningContextWithSchema(),
+      storyboardSubmit: vi.fn(async () => ok({ submitted: true, review_required: true })),
+      storyboardTaskGet: vi.fn(async () => ok({ expected_input_fingerprint: 'fp', expected_storyboard_sha256: 'sha' }))
+    })
     const { service } = makeService(client, makeSession())
     await service.runCreate({ sessionId: 's1', baseName: '初版' })
     await service.parse({ sessionId: 's1', run: 'r1', texts: [{ text: '原资料' }] })
@@ -351,6 +1365,8 @@ describe('工业视频成片分镜提交保护', () => {
       // 下一次写入会再次查询，必须持续返回当前 run 的真实终态。
       client.jobGet.mockResolvedValue(ok({ run: 'r2', status: 'done' }))
       await service.jobGet({ sessionId: 's1', jobId: 'j1' })
+      // 领取新 run 的分镜任务原始版本，满足 storyboardSubmit 的任务版本校验（真实契约）。
+      await service.storyboardTaskGet({ sessionId: 's1', run: 'r2' })
       await expect(service.storyboardSubmit({ ...input, run: 'r2' })).resolves.toEqual({
         submitted: true,
         reviewRequired: true
@@ -441,20 +1457,30 @@ describe('工业视频成片分镜提交保护', () => {
   })
 
   it('素材解析 done 后首次提交分镜不应被当作成片返修', async () => {
-    const client = makeClient()
+    const client = makeClient({
+      planningContextGet: planningContextWithSchema(),
+      storyboardTaskGet: vi.fn(async () => ok({ expected_input_fingerprint: 'fp', expected_storyboard_sha256: 'sha' }))
+    })
     const { service } = makeService(client, makeSession())
     await service.runCreate({ sessionId: 's1', baseName: '新任务' })
     await service.parse({ sessionId: 's1', run: 'r1', texts: [{ text: '资料' }] })
     await service.jobGet({ sessionId: 's1', jobId: 'j1' })
     expect(service.getRecords({ sessionId: 's1' })?.state).toBe('done')
+    // 领取分镜任务原始版本，满足 storyboardSubmit 的任务版本校验（真实契约）。
+    await service.storyboardTaskGet({ sessionId: 's1', run: 'r1' })
     await expect(service.storyboardSubmit(input)).resolves.toEqual({ submitted: true, reviewRequired: false })
     expect(client.storyboardSubmit).toHaveBeenCalledTimes(1)
   })
 
   it('未成片的旧 dedicated 调用仍可提交分镜', async () => {
-    const client = makeClient()
+    const client = makeClient({
+      planningContextGet: planningContextWithSchema(),
+      storyboardTaskGet: vi.fn(async () => ok({ expected_input_fingerprint: 'fp', expected_storyboard_sha256: 'sha' }))
+    })
     const { service } = makeService(client, makeSession())
     await service.runCreate({ sessionId: 's1', baseName: '初版' })
+    // 领取分镜任务原始版本，满足 storyboardSubmit 的任务版本校验（真实契约）。
+    await service.storyboardTaskGet({ sessionId: 's1', run: 'r1' })
     await expect(service.storyboardSubmit(input)).resolves.toEqual({ submitted: true, reviewRequired: false })
     expect(client.storyboardSubmit).toHaveBeenCalledTimes(1)
   })
@@ -583,11 +1609,19 @@ describe('工业视频文档附件可信提取', () => {
     await service.runCreate({ sessionId: 's1', baseName: '文档' })
     const execution = service.beginRound({ sessionId: 's1' })
     await service.withExecution(execution, async () => {
-      const parts = await service.prepareUserParts({ sessionId: 's1', parts: [{
-        type: 'file', filename: '大型资料.pdf', mediaType: 'application/pdf', url: 'data:application/pdf;base64,29vb29vb'
-      }] })
+      const parts = await service.prepareUserParts({
+        sessionId: 's1',
+        parts: [
+          {
+            type: 'file',
+            filename: '大型资料.pdf',
+            mediaType: 'application/pdf',
+            url: 'data:application/pdf;base64,29vb29vb'
+          }
+        ]
+      })
       expect(parts?.every((part) => part.type === 'text')).toBe(true)
-      const modelText = parts?.map((part) => part.type === 'text' ? part.text : '').join('\n') ?? ''
+      const modelText = parts?.map((part) => (part.type === 'text' ? part.text : '')).join('\n') ?? ''
       for (const paragraph of text.split('\n\n')) expect(modelText).toContain(paragraph)
       await service.parse({ sessionId: 's1', run: 'r1' })
     })
@@ -1238,6 +2272,16 @@ describe('IndustrialVideoService', () => {
       vi.stubEnv('IVIDEO_REVIEW_IDENTITY_MODE', 'local')
       vi.stubEnv('IVIDEO_REVIEW_HOST_SECRET', '')
       const { service, store } = makeService(client, session)
+      // 生产保留内置密钥兜底（不缺配置即拒绝），此处以自定义拒绝 provider 显式模拟
+      // “缺少主进程 IVIDEO_REVIEW_HOST_SECRET 配置”的授权边界，验证报错不带本地身份。
+      service.setReviewAuthorizationProvider({
+        authorize: async () => {
+          throw new IpcError(
+            'IVIDEO_REVIEW_AUTH_UNAVAILABLE',
+            '未接通可信身份签发：缺少主进程 IVIDEO_REVIEW_HOST_SECRET 配置。'
+          )
+        }
+      })
       await service.runCreate({ sessionId: 's1', baseName: 'demo' })
       await expect(service.reviewSnapshotGet({ sessionId: 's1', run: 'r1' })).rejects.toMatchObject({
         code: 'IVIDEO_REVIEW_AUTH_UNAVAILABLE',
@@ -1250,6 +2294,7 @@ describe('IndustrialVideoService', () => {
     const receipt = { review_version: 'v1', generation_allowed: false, remaining_blockers: ['qa'] }
 
     it('使用主进程密钥签发短期最小权限声明，actor 取可信登录会话', async () => {
+      vi.stubEnv('IVIDEO_REVIEW_IDENTITY_MODE', 'enterprise')
       vi.stubEnv('IVIDEO_REVIEW_HOST_SECRET', 'review-secret')
       vi.spyOn(Date, 'now').mockReturnValue(1_794_000_000_000)
       const reviewSnapshotGet = vi.fn(async (params: { host_assertion: string }) => {
@@ -1286,6 +2331,7 @@ describe('IndustrialVideoService', () => {
     })
 
     it.each(['reviewSnapshotGet', 'reviewConfirm'] as const)('默认授权未接通时 %s 不发 HTTP', async (method) => {
+      vi.stubEnv('IVIDEO_REVIEW_IDENTITY_MODE', 'enterprise')
       const reviewSnapshotGet = vi.fn()
       const reviewConfirm = vi.fn()
       client = makeClient({ reviewSnapshotGet, reviewConfirm })
@@ -1783,8 +2829,24 @@ describe('IndustrialVideoService', () => {
   it('静态英文音色经私有设置映射透传到服务端', async () => {
     const { service } = makeService(client, session)
     await service.runCreate({ sessionId: 's1', baseName: 'demo' })
-    await service.videoStart({ sessionId: 's1', run: 'r1', voice: 'en-US-JennyNeural', subtitleLanguage: 'en-US', secondSubtitleLanguage: 'zh-CN', ttsEnabled: true, narrationFollowsSubtitles: true })
-    expect(client.videoStart).toHaveBeenCalledWith(expect.objectContaining({ voice: 'en-US-JennyNeural', subtitle_language: 'en-US', second_subtitle_language: 'zh-CN', tts_enabled: true, narration_follows_subtitles: true }))
+    await service.videoStart({
+      sessionId: 's1',
+      run: 'r1',
+      voice: 'en-US-JennyNeural',
+      subtitleLanguage: 'en-US',
+      secondSubtitleLanguage: 'zh-CN',
+      ttsEnabled: true,
+      narrationFollowsSubtitles: true
+    })
+    expect(client.videoStart).toHaveBeenCalledWith(
+      expect.objectContaining({
+        voice: 'en-US-JennyNeural',
+        subtitle_language: 'en-US',
+        second_subtitle_language: 'zh-CN',
+        tts_enabled: true,
+        narration_follows_subtitles: true
+      })
+    )
     expect(service).not.toHaveProperty('ttsOptionsGet')
   })
 
@@ -2178,7 +3240,12 @@ describe('IndustrialVideoService', () => {
     it('estimate 透传字幕字段（只读，不提交任务）', async () => {
       const c = makeClient({
         estimate: vi.fn(async () =>
-          ok({ estimate: { fee: 9 }, effective_settings: { settings_version: 2 }, settings_persisted: false, settings_changed: false })
+          ok({
+            estimate: { fee: 9 },
+            effective_settings: { settings_version: 2 },
+            settings_persisted: false,
+            settings_changed: false
+          })
         )
       })
       const { service } = makeService(c, session)

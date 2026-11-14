@@ -13,10 +13,19 @@ import {
 const logger = loggerService.withContext('industrial-video-client')
 
 export type IndustrialVideoOperation =
+  | 'storyboard_stage_task_get'
+  | 'storyboard_stage_submit'
+  | 'storyboard_task_fail'
+  | 'cowork_review_get'
+  | 'cowork_review_confirm'
   | 'review_snapshot_get'
   | 'review_confirm'
   | 'run_create'
   | 'video_start'
+  | 'full_script_task_get'
+  | 'full_script_task_submit'
+  | 'storyboard_task_get'
+  | 'document_get'
   | 'planning_context_get'
   | 'storyboard_submit'
   | 'storyboard_get'
@@ -222,6 +231,14 @@ export interface StoryboardSubmitResult {
   raw: VideoApiRecord
 }
 
+export interface FullScriptTaskSubmitParams {
+  run: string
+  text: string
+  expected_document_version: number
+  expected_input_fingerprint: string
+  expected_storyboard_sha256: string
+}
+
 export interface StoryboardGetParams {
   run: string
   full?: boolean
@@ -231,6 +248,18 @@ export interface JobGetParams {
   job_id: string
   tail_lines?: number
   wait_s?: number
+}
+
+const JOB_GET_WAIT_MARGIN_MS = 10_000
+const JOB_GET_MAX_TIMEOUT_MS = 120_000
+
+/**
+ * job_get 是长轮询：请求超时必须覆盖 wait_s 的等待时间，否则等待本身就会被
+ * 客户端超时打断，永远拿不到终态。未指定 wait_s 时沿用默认预算。
+ */
+export function resolveJobGetTimeoutMs(defaultTimeoutMs: number, waitS?: number): number {
+  if (typeof waitS !== 'number' || !Number.isFinite(waitS) || waitS <= 0) return defaultTimeoutMs
+  return Math.max(defaultTimeoutMs, Math.min(waitS * 1000 + JOB_GET_WAIT_MARGIN_MS, JOB_GET_MAX_TIMEOUT_MS))
 }
 export interface JobListParams {
   limit?: number
@@ -385,6 +414,59 @@ export class IndustrialVideoClient {
     }))
   }
 
+  // MEA:industrial-video 阶段与审核走同名接口，写入不作传输回退或重放。
+  async storyboardStageTaskGet(params: { run: string }): Promise<IndustrialVideoResult<VideoApiRecord>> {
+    return this.call('storyboard_stage_task_get', { ...params })
+  }
+
+  async storyboardStageSubmit(params: {
+    run: string
+    stage: 'outline' | 'state' | 'copy'
+    scene_uid: string | null
+    expected_task_version: string
+    output: VideoApiRecord
+  }): Promise<IndustrialVideoResult<VideoApiRecord>> {
+    return this.call('storyboard_stage_submit', { ...params })
+  }
+
+  async storyboardTaskFail(params: {
+    run: string
+    expected_regeneration_id: string
+    reason: 'failed' | 'canceled'
+    message: string
+  }): Promise<IndustrialVideoResult<VideoApiRecord>> {
+    return this.call('storyboard_task_fail', { ...params })
+  }
+
+  async coworkReviewGet(params: { run: string; host_assertion: string }): Promise<IndustrialVideoResult<VideoApiRecord>> {
+    return this.call('cowork_review_get', { ...params })
+  }
+
+  async coworkReviewConfirm(params: {
+    run: string
+    host_assertion: string
+    expected_review_version: string
+    action: 'regenerate_storyboard' | 'generate_video'
+  }): Promise<IndustrialVideoResult<VideoApiRecord>> {
+    return this.call('cowork_review_confirm', { ...params })
+  }
+
+  async fullScriptTaskGet(params: { run: string }): Promise<IndustrialVideoResult<VideoApiRecord>> {
+    return this.call('full_script_task_get', { ...params })
+  }
+
+  async fullScriptTaskSubmit(params: FullScriptTaskSubmitParams): Promise<IndustrialVideoResult<VideoApiRecord>> {
+    return this.call('full_script_task_submit', { ...params })
+  }
+
+  async storyboardTaskGet(params: { run: string }): Promise<IndustrialVideoResult<VideoApiRecord>> {
+    return this.call('storyboard_task_get', { ...params })
+  }
+
+  async documentGet(params: { run: string }): Promise<IndustrialVideoResult<VideoApiRecord>> {
+    return this.call('document_get', { ...params })
+  }
+
   async planningContextGet(params: { run: string }): Promise<IndustrialVideoResult<VideoApiRecord>> {
     const result = await this.call('planning_context_get', { ...params })
     return this.refine(result, (data) => data)
@@ -406,7 +488,13 @@ export class IndustrialVideoClient {
   }
 
   async jobGet(params: JobGetParams): Promise<IndustrialVideoResult<VideoApiRecord>> {
-    const result = await this.call('job_get', { ...params })
+    const result = await this.call(
+      'job_get',
+      { ...params },
+      {
+        timeoutMs: resolveJobGetTimeoutMs(this.timeoutMs, params.wait_s)
+      }
+    )
     return this.refine(result, (data) => data)
   }
 
@@ -579,7 +667,10 @@ export class IndustrialVideoClient {
    * 打开服务端工作台（只读）。返回可信工作台链接；真实响应字段名可能与契约不同，
    * 这里统一把 workbench_url / url / workbenchUrl 任一归一为 workbenchUrl。
    */
-  async workbenchOpen(params: { run: string; embed?: boolean }): Promise<IndustrialVideoResult<{ workbenchUrl: string; raw: VideoApiRecord }>> {
+  async workbenchOpen(params: {
+    run: string
+    embed?: boolean
+  }): Promise<IndustrialVideoResult<{ workbenchUrl: string; raw: VideoApiRecord }>> {
     const body: Record<string, unknown> = { run: params.run }
     if (params.embed !== undefined) body.embed = params.embed
     const result = await this.call('workbench_open', body)
@@ -607,12 +698,13 @@ export class IndustrialVideoClient {
 
   private async call(
     operation: IndustrialVideoOperation,
-    body: Record<string, unknown>
+    body: Record<string, unknown>,
+    options?: { timeoutMs?: number }
   ): Promise<IndustrialVideoResult<VideoApiRecord>> {
     const requestId = randomUUID()
     const url = `${this.baseUrl}/api/video/${operation}`
     const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), this.timeoutMs)
+    const timer = setTimeout(() => controller.abort(), options?.timeoutMs ?? this.timeoutMs)
 
     try {
       let response: Response

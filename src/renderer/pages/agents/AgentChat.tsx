@@ -796,7 +796,19 @@ const AgentChatSessionCenter = ({
           previewOpen={previewOpen}
           filePreviewActive={filePreviewActive}
           onPreviewOpenChange={onPreviewOpenChange}
-          preview={<IndustrialVideoTaskPanel sessionId={session.id} dedicated />}>
+          preview={
+            <IndustrialVideoTaskPanel
+              sessionId={session.id}
+              dedicated
+              sendMessage={runtime.sendMessage}
+              executing={runtime.isPending}
+              resumeStages={(run) =>
+                runtime.sendMessage({
+                  text: `继续项目 ${run} 的默认 next 分阶段任务，使用当前会话所选模型完整执行 instructions/context/output_schema；预览保存后读取审核并停止，禁止自动审批、估价或生成视频。`
+                })
+              }
+            />
+          }>
           <ToolDisplayNamesContext value={INDUSTRIAL_VIDEO_TOOL_DISPLAY_NAMES}>
             <IndustrialVideoReviewFilesProvider workspace={session.workspace?.path}>
               {messageList}

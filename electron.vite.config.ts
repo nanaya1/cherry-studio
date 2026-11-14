@@ -234,7 +234,8 @@ export default defineConfig({
           preload: resolve(__dirname, 'src/preload/preload.ts'),
           simplest: resolve(__dirname, 'src/preload/simplest.ts'), // Minimal preload
           webview: resolve(__dirname, 'src/preload/webview.ts'), // Site `<webview>` guests
-          miniAppBridge: resolve(__dirname, 'src/preload/miniAppBridge.ts') // Local mini app guests (`window.cherry`)
+          miniAppBridge: resolve(__dirname, 'src/preload/miniAppBridge.ts'), // Local mini app guests (`window.cherry`)
+          industrialVideoWorkbench: resolve(__dirname, 'src/preload/industrialVideoWorkbench.ts') // 工业工作台专属受限桥 preload
         },
         external: ['electron'],
         output: {

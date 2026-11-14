@@ -2,7 +2,20 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { ComponentProps } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import IndustrialVideoAgentComposerSlot from './IndustrialVideoAgentComposerSlot'
+import IndustrialVideoAgentComposer from './IndustrialVideoAgentComposerSlot'
+import IndustrialVideoGenerationLoading, { readGenerationProgress } from './IndustrialVideoGenerationLoading'
+
+function IndustrialVideoAgentComposerSlot(props: ComponentProps<typeof IndustrialVideoAgentComposer>) {
+  return (
+    <>
+      <IndustrialVideoAgentComposer {...props} />
+      <IndustrialVideoGenerationLoading
+        sessionId={props.sessionId}
+        progress={readGenerationProgress({}, 'generating', null)}
+      />
+    </>
+  )
+}
 
 const state = vi.hoisted(() => ({
   record: null as {
@@ -59,6 +72,15 @@ describe('industrial video server execution guard', () => {
     request.mockReset().mockResolvedValue({ epoch: 1, phase: 'stopped', stopRequested: true })
   })
 
+  it('模型已结束时后台制作不显示输入框暂停，保留独立停止及发送门禁', async () => {
+    state.record = { state: 'generating', unknownSubmissions: [], control: { phase: 'active', stopRequested: false } }
+    state.job = { status: 'running' }
+    render(<IndustrialVideoAgentComposerSlot {...baseProps} />)
+    expect(await screen.findByRole('button', { name: '停止制作' })).toBeEnabled()
+    expect(screen.queryByRole('button', { name: 'stop' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'send' })).toBeDisabled()
+  })
+
   it('查询失败仅提示状态暂不可获取，不宣称生成失败', async () => {
     state.error = 'offline'
     render(<IndustrialVideoAgentComposerSlot {...baseProps} />)
@@ -77,7 +99,7 @@ describe('industrial video server execution guard', () => {
     state.job = { status: 'running' }
     const stop = vi.fn().mockResolvedValue(undefined)
     render(<IndustrialVideoAgentComposerSlot {...baseProps} stop={stop} />)
-    const pause = await screen.findByRole('button', { name: 'stop' })
+    const pause = await screen.findByRole('button', { name: '停止制作' })
     fireEvent.click(pause)
     fireEvent.click(pause)
     expect(request).toHaveBeenCalledExactlyOnceWith('industrial_video.stop', { sessionId: 'video-1' })
@@ -97,7 +119,7 @@ describe('industrial video server execution guard', () => {
     else stop.mockRejectedValueOnce(new Error('abort failed'))
     const props = { ...baseProps, stop }
     const { rerender } = render(<IndustrialVideoAgentComposerSlot {...props} />)
-    fireEvent.click(await screen.findByRole('button', { name: 'stop' }))
+    fireEvent.click(await screen.findByRole('button', { name: '停止制作' }))
     await waitFor(() => expect(state.refresh.mock.calls.length).toBeGreaterThan(1))
     if (failure === 'ipc') expect(stop).not.toHaveBeenCalled()
     state.job = null

@@ -158,6 +158,20 @@ export const industrialVideoControlSchema = z.object({
 
 // ── Request: renderer → main calls (zod values, always parsed) ──
 export const industrialVideoRequestSchemas = {
+  'industrial_video.stage_retry': defineRoute({
+    input: z.object({ sessionId: sessionIdField, run: z.string().min(1), expectedTaskVersion: z.string().min(1) }).strict(),
+    output: z.object({ retried: z.boolean() })
+  }),
+  // MEA:industrial-video 审批仅供可信用户 IPC，绝不注册给模型。
+  'industrial_video.cowork_review_get': defineRoute({
+    input: z.object({ sessionId: sessionIdField, run: z.string().min(1) }).strict(),
+    output: z.record(z.string(), z.unknown())
+  }),
+  'industrial_video.cowork_review_confirm': defineRoute({
+    input: z.object({ sessionId: sessionIdField, run: z.string().min(1), expectedReviewVersion: z.string().min(1),
+      action: z.enum(['regenerate_storyboard', 'generate_video']) }).strict(),
+    output: z.record(z.string(), z.unknown())
+  }),
   'industrial_video.stop': defineRoute({
     input: z.object({ sessionId: sessionIdField }).strict(),
     output: industrialVideoControlSchema

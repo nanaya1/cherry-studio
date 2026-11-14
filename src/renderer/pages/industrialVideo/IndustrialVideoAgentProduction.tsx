@@ -9,15 +9,18 @@ import { ipcApi } from '@renderer/ipc'
 // import type { AbsoluteFilePath } from '@shared/types/file'
 // import IndustrialVideoOnlinePreview from './IndustrialVideoOnlinePreview'
 // 工业会话宿主复用现有右侧文件预览动作，不引入另一套预览。
-// eslint-disable-next-line import-x/no-restricted-paths
-import { useAgentRightPaneActions } from '@renderer/pages/agents/components/AgentRightPane'
+// import { useAgentRightPaneActions } from '@renderer/pages/agents/components/AgentRightPane'
 import { normalizeFilePreviewPath } from '@renderer/utils/filePreview'
 // import { normalizeFilePreviewPath } from '@renderer/utils/filePreview'
 import { normalizeMeacoworkToolRuntimeName, toMeacoworkToolRuntimeName } from '@shared/ai/meacoworkTools'
 
 // import { LoaderCircle } from 'lucide-react'
 import IndustrialVideoGenerationLoading, { readGenerationProgress } from './IndustrialVideoGenerationLoading'
-import { openIndustrialVideoWorkbench, publishIndustrialVideoProgress } from './industrialVideoProgressStore'
+import {
+  openIndustrialVideoFinal,
+  openIndustrialVideoWorkbench,
+  publishIndustrialVideoProgress
+} from './industrialVideoProgressStore'
 import { useIndustrialVideoProduction } from './useIndustrialVideoProduction'
 
 // const terminalLabels: Record<string, string> = { failed: '生成失败', cancelled: '已取消', blocked: '任务已阻塞' }
@@ -45,9 +48,12 @@ export default function IndustrialVideoAgentProduction({
   onPreviewOpenChange?: (open: boolean) => void
 }) {
   const { record, job, error, jobError, refresh } = useIndustrialVideoProduction(sessionId)
-  const { openArtifactFile } = useAgentRightPaneActions()
-  const previewAction = useRef(openArtifactFile)
-  previewAction.current = openArtifactFile
+  // 成片单独保留在右栏 Tab，不覆盖工作台或普通文件选择。
+  // const { openArtifactFile } = useAgentRightPaneActions()
+  // const previewAction = useRef(openArtifactFile)
+  // previewAction.current = openArtifactFile
+  const previewAction = useRef((path: string) => openIndustrialVideoFinal(sessionId, record?.run ?? '', path))
+  previewAction.current = (path) => openIndustrialVideoFinal(sessionId, record?.run ?? '', path)
   const downloads = useRef(new Map<string, Promise<string>>())
   const previewed = useRef(new Set<string>())
   const [download, setDownload] = useState<{ key: string; path?: string; error?: string } | null>(null)
@@ -470,6 +476,18 @@ export default function IndustrialVideoAgentProduction({
             {deliveryText}
           </p>
         )}
+        {/* 原入口仅覆盖执行恢复；预览保存后的同一工作台仍需展示审核。 */}
+        {/* record?.rounds.at(-1)?.operation === 'storyboard_stage_task_get' &&
+          record.rounds.at(-1)?.run === run &&
+          record.rounds.at(-1)?.detail?.lifecycle === 'executing' */}
+        {/* 执行期间不展示审核面板，审核入口统一放在消息末尾。
+        {Boolean(run) &&
+          record?.rounds.at(-1)?.operation === 'storyboard_stage_task_get' &&
+          record.rounds.at(-1)?.run === run &&
+          record.rounds.at(-1)?.detail?.lifecycle === 'executing' && (
+            <div className="max-h-72 overflow-auto border-b border-border">{workbench}</div>
+          )}
+        */}
         <ToolResultAttachmentsContext value={renderSteps}>{children}</ToolResultAttachmentsContext>
       </div>
       {/* {visible && open && ( */}
@@ -478,7 +496,8 @@ export default function IndustrialVideoAgentProduction({
       {/* 失败/取消/阻塞等终态保持面板可显示（死因与冻结进度），顶栏开关随时可收起/展开。 */}
       {/* 生成中进度已移入通用右侧 Tab；原独立侧栏仅保留工作台与终态说明。 */}
       {/* 旧独立成片区域停用，所有状态统一由右栏成片进度 Tab 展示。 */}
-      {false && (Boolean(workbenchUrl) || (open && Boolean(terminal))) &&
+      {false &&
+        (Boolean(workbenchUrl) || (open && Boolean(terminal))) &&
         open &&
         (Boolean(workbenchUrl) || !filePreviewActive) && (
           <aside
@@ -498,7 +517,10 @@ export default function IndustrialVideoAgentProduction({
                 <WebviewHost
                   key={`${sessionId}:${run}:${workbenchUrl}`}
                   id={`industrial-video-workbench:${sessionId}`}
-                  src={workbenchUrl}
+                  src={
+                    // workbenchUrl
+                    workbenchUrl ?? ''
+                  }
                   partition={`industrial-video-workbench:${sessionId}:${run}`}
                   ariaLabel="服务端工作台网页"
                   testId="industrial-video-workbench-guest"

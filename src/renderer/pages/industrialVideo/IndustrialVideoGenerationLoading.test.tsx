@@ -1,8 +1,27 @@
 import '@testing-library/jest-dom/vitest'
-import { render, screen } from '@testing-library/react'
-import { expect, it } from 'vitest'
+import { fireEvent, render, screen } from '@testing-library/react'
+import { expect, it, vi } from 'vitest'
 
 import IndustrialVideoGenerationLoading, { readGenerationProgress } from './IndustrialVideoGenerationLoading'
+import { publishIndustrialVideoStop } from './industrialVideoProgressStore'
+
+it('停止制作在进度区域显示边框按钮，禁用等待且会话隔离', () => {
+  const onStop = vi.fn()
+  publishIndustrialVideoStop('stop-test', { stop: onStop, stopping: false })
+  const progress = readGenerationProgress({}, 'generating', null)
+  const { rerender } = render(<IndustrialVideoGenerationLoading progress={progress} sessionId="stop-test" />)
+  const button = screen.getByRole('button', { name: '停止制作' })
+  expect(button).toHaveClass('border', 'border-border', 'bg-background')
+  expect(screen.getByRole('region', { name: '视频制作实时进度' })).toContainElement(button)
+  fireEvent.click(button)
+  expect(onStop).toHaveBeenCalledTimes(1)
+  publishIndustrialVideoStop('stop-test', { stop: onStop, stopping: true })
+  rerender(<IndustrialVideoGenerationLoading progress={progress} sessionId="stop-test" />)
+  expect(screen.getByRole('button', { name: '正在停止制作' })).toBeDisabled()
+  rerender(<IndustrialVideoGenerationLoading progress={progress} sessionId="other-session" />)
+  expect(screen.queryByRole('button')).not.toBeInTheDocument()
+  publishIndustrialVideoStop('stop-test', null)
+})
 
 // 防止服务端标准字段被遗漏，或把全部镜头完成误报为成片完成。
 it('uses server scene counts and stage without inventing the next scene', () => {

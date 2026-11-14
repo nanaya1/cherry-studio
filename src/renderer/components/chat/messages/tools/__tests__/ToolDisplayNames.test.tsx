@@ -95,6 +95,28 @@ describe('industrial-video tool display names', () => {
     }
   )
 
+  it.each([
+    ['ivideo_full_script_task_get', '获取全文生成任务'],
+    ['ivideo_full_script_task_submit', '提交全文生成稿'],
+    ['ivideo_storyboard_task_get', '获取分镜生成任务'],
+    ['ivideo_storyboard_stage_task_get', '获取分镜阶段任务'],
+    ['ivideo_storyboard_stage_submit', '提交分镜阶段结果'],
+    ['ivideo_cowork_review_get', '获取全文与分镜审核内容']
+  ])('renders the Chinese MCP header for %s', (name, label) => {
+    render(
+      <ToolDisplayNamesContext value={INDUSTRIAL_VIDEO_TOOL_DISPLAY_NAMES}>
+        <ToolHeader
+          toolResponse={
+            {
+              tool: { type: 'mcp', name, serverId: 'cherry-tools', serverName: 'cherry-tools' }
+            } as never
+          }
+        />
+      </ToolDisplayNamesContext>
+    )
+    expect(screen.getByText(label)).toBeTruthy()
+  })
+
   it('does not rename other tools or unknown future industrial-video tools', () => {
     render(
       <ToolDisplayNamesContext value={INDUSTRIAL_VIDEO_TOOL_DISPLAY_NAMES}>

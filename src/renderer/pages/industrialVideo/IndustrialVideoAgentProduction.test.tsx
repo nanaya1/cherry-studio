@@ -1,22 +1,47 @@
 import '@testing-library/jest-dom/vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
+import type { ButtonHTMLAttributes } from 'react'
 import { beforeEach, expect, it, vi } from 'vitest'
 
 import { useToolResultAttachments } from '@renderer/components/chat/messages/tools/shared/ToolDisplayNames'
 import { ipcApi } from '@renderer/ipc'
 
 import IndustrialVideoAgentProduction from './IndustrialVideoAgentProduction'
+import type * as IndustrialVideoProgressStore from './industrialVideoProgressStore'
 import { getIndustrialVideoProgressSnapshot, useIndustrialVideoProgressSnapshot } from './industrialVideoProgressStore'
 import { IndustrialVideoReviewFilesProvider } from './IndustrialVideoReviewFiles'
 import { useIndustrialVideoProduction } from './useIndustrialVideoProduction'
 
+vi.mock('@cherrystudio/ui', () => ({
+  Button: ({ children, ...props }: ButtonHTMLAttributes<HTMLButtonElement>) => (
+    <button type="button" {...props}>
+      {children}
+    </button>
+  )
+}))
+vi.mock('@renderer/components/chat/messages/MessageListProvider', () => ({
+  useOptionalMessageListActions: () => null
+}))
+vi.mock('@renderer/components/chat/messages/blocks/useScrollAnchor', () => ({
+  useScrollAnchor: () => ({ anchorRef: { current: null }, withScrollAnchor: (action: () => void) => action() })
+}))
 vi.mock('@renderer/components/WebviewHost', () => ({
   WebviewHost: ({ src }: { src: string }) => <div data-testid="workbench-browser" data-src={src} />
 }))
-const { openArtifactFile } = vi.hoisted(() => ({ openArtifactFile: vi.fn(async (_path: string) => {}) }))
+const { openArtifactFile } = vi.hoisted(() => ({
+  openArtifactFile: vi.fn<(path: string) => Promise<void>>().mockResolvedValue(undefined)
+}))
 vi.mock('@renderer/pages/agents/components/AgentRightPane', () => ({
   useAgentRightPaneActions: () => ({ openArtifactFile })
+}))
+vi.mock('./industrialVideoProgressStore', async (importActual) => ({
+  ...(await importActual<typeof IndustrialVideoProgressStore>()),
+  openIndustrialVideoFinal: (sessionId: string, run: string, path: string) => {
+    expect(sessionId).toBe('s')
+    expect(run).toBe('r')
+    return openArtifactFile(path)
+  }
 }))
 vi.mock('@renderer/ipc', () => ({ ipcApi: { request: vi.fn() } }))
 vi.mock('./useIndustrialVideoProduction', () => ({ useIndustrialVideoProduction: vi.fn() }))
@@ -33,6 +58,23 @@ function StartMessage() {
     </article>
   )
 }
+it('分阶段执行期间不在顶部展示完整审核工作台', () => {
+  const value = production('planning', {})
+  value.record!.rounds.push({
+    ...value.record!.rounds[0],
+    operation: 'storyboard_stage_task_get',
+    detail: { lifecycle: 'executing' }
+  })
+  vi.mocked(useIndustrialVideoProduction).mockReturnValue(value)
+  render(
+    <IndustrialVideoAgentProduction sessionId="s" workbench={<section aria-label="客户端审核">待审核</section>}>
+      <p>正常执行消息</p>
+    </IndustrialVideoAgentProduction>
+  )
+  expect(screen.getByText('正常执行消息')).toBeInTheDocument()
+  expect(screen.queryByRole('region', { name: '客户端审核' })).not.toBeInTheDocument()
+})
+
 it.each(['unknown', 'intended'])('无jobId的%s提交明确待确认，不下载旧成片或猜测任务', async (outcome) => {
   const value = production('done', { final: 'old.mp4' })
   const round = { ...value.record!.rounds[0], outcome: outcome as 'unknown' | 'intended', jobId: null }
@@ -100,6 +142,25 @@ it('does not render the legacy production sidebar when progress is handled by th
   expect(onPreviewOpenChange).not.toHaveBeenCalled()
 })
 
+it('预览保存后不在对话顶部显示独立审核面板', () => {
+  const value = production('storyboard_submitted')
+  vi.mocked(useIndustrialVideoProduction).mockReturnValue({ ...value, job: null })
+  const content = (
+    <IndustrialVideoAgentProduction sessionId="s" workbench={<section aria-label="客户端审核">待审核内容</section>}>
+      消息流
+    </IndustrialVideoAgentProduction>
+  )
+  const view = render(content)
+  expect(screen.queryByLabelText('客户端审核')).toBeNull()
+  vi.mocked(useIndustrialVideoProduction).mockReturnValue({ ...production('created'), job: null })
+  view.rerender(
+    <IndustrialVideoAgentProduction sessionId="s" workbench={<section aria-label="客户端审核">待审核内容</section>}>
+      消息流
+    </IndustrialVideoAgentProduction>
+  )
+  expect(screen.queryByLabelText('客户端审核')).toBeNull()
+})
+
 it('工作台交接消息在尚未生成时也能打开已有右侧区域', async () => {
   const value = production('storyboard_submitted')
   vi.mocked(useIndustrialVideoProduction).mockReturnValue({
@@ -126,6 +187,7 @@ it('工作台交接消息在尚未生成时也能打开已有右侧区域', asyn
   await userEvent.click(link)
   expect(screen.queryByTestId('workbench-browser')).toBeNull()
   expect(screen.queryByLabelText('成片预览')).toBeNull()
+  // 工作台内容在待审核状态持续挂载，点击链接仍不打开旧侧栏。
   expect(screen.queryByText('服务端工作台内容')).toBeNull()
   expect(screen.queryByRole('button', { name: '打开服务端工作台' })).toBeNull()
 })
@@ -158,9 +220,7 @@ it('取消待核实时共享进度快照展示核实状态，消息同步提示�
       <StartMessage />
     </IndustrialVideoAgentProduction>
   )
-  await waitFor(() =>
-    expect(getIndustrialVideoProgressSnapshot('s')?.stopped).toBe('已请求取消，正在核实服务端状态')
-  )
+  await waitFor(() => expect(getIndustrialVideoProgressSnapshot('s')?.stopped).toBe('已请求取消，正在核实服务端状态'))
   expect(screen.queryByLabelText('成片预览')).toBeNull()
   // 冻结进度保持（不继续推进、不宣称已停止）。
   expect(getIndustrialVideoProgressSnapshot('s')?.progress.total).toBe(5)

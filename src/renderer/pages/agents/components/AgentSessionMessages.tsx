@@ -11,6 +11,7 @@ import type {
 } from '@renderer/components/chat/messages/types'
 import { usePreference } from '@renderer/data/hooks/usePreference'
 import { useSession } from '@renderer/hooks/agent/useSession'
+import { useTopicStreamStatus } from '@renderer/hooks/useTopicStreamStatus'
 import { ipcApi } from '@renderer/ipc'
 import type { GetAgentResponse } from '@renderer/types/agent'
 import { type Topic, TopicType } from '@renderer/types/topic'
@@ -19,6 +20,7 @@ import { buildAgentSessionTopicId } from '@renderer/utils/agentSession'
 import type { CherryMessagePart, CherryUIMessage } from '@shared/data/types/message'
 
 import IndustrialVideoGenerateButton from '../../industrialVideo/IndustrialVideoGenerateButton'
+import { IndustrialVideoMessageReview } from '../../industrialVideo/IndustrialVideoTaskPanel'
 import { useAgentMessageListProviderValue } from '../messages/agentMessageListAdapter'
 import AgentSessionBackgroundTasks from '../messages/AgentSessionBackgroundTasks'
 
@@ -80,6 +82,7 @@ const AgentSessionMessages = ({
 }: Props) => {
   const { session } = useSession(sessionId)
   const sessionTopicId = useMemo(() => buildAgentSessionTopicId(sessionId), [sessionId])
+  const { isPending: isSessionStreaming } = useTopicStreamStatus(sessionTopicId)
   const [messageNavigation] = usePreference('chat.message.navigation_mode')
 
   const sessionAssistantId = session?.agentId ?? agentId
@@ -119,13 +122,39 @@ const AgentSessionMessages = ({
             messageId: backgroundTaskAnchorMessageId,
             content: (
               <div className="flex flex-col items-start gap-2">
-                {showGenerateButton && sendMessage && <IndustrialVideoGenerateButton sendMessage={sendMessage} />}
+                {/* 工业审核复用消息尾部附件，不进入折叠执行详情。 */}
+                {session?.featureKind === 'industrial-video' ? (
+                  <IndustrialVideoMessageReview
+                    sessionId={sessionId}
+                    // executing={isLoading}
+                    executing={isSessionStreaming}
+                    resumeStages={
+                      sendMessage
+                        ? (run) =>
+                            sendMessage({
+                              text: `继续项目 ${run} 的默认 next 分阶段任务，使用当前会话所选模型完整执行 instructions/context/output_schema；预览保存后读取审核并停止，禁止自动审批、估价或生成视频。`
+                            })
+                        : undefined
+                    }
+                    // 确认生成走既有会话链路：审核确认成功后发送「开始生成视频」。
+                    sendMessage={sendMessage}
+                  />
+                ) : (
+                  showGenerateButton && sendMessage && <IndustrialVideoGenerateButton sendMessage={sendMessage} />
+                )}
                 <AgentSessionBackgroundTasks sessionId={sessionId} />
               </div>
             )
           }
         : undefined,
-    [backgroundTaskAnchorMessageId, sendMessage, sessionId, showGenerateButton]
+    [
+      backgroundTaskAnchorMessageId,
+      sendMessage,
+      sessionId,
+      showGenerateButton,
+      session?.featureKind,
+      isSessionStreaming
+    ]
   )
 
   const derivedTopic = useMemo<Topic>(

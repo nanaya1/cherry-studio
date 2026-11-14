@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { PropsWithChildren, ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -12,7 +12,18 @@ const useAgentMessageListProviderValueMock = vi.hoisted(() =>
     meta: {}
   }))
 )
-const ipcRequestMock = vi.hoisted(() => vi.fn(() => Promise.resolve(undefined)))
+const ipcRequestMock = vi.hoisted(() =>
+  vi.fn<(route: string, input?: unknown) => Promise<unknown>>(async () => undefined)
+)
+const stream = vi.hoisted(() => ({ isPending: false }))
+vi.mock('@renderer/hooks/useTopicStreamStatus', () => ({ useTopicStreamStatus: () => stream }))
+vi.mock('../../../industrialVideo/IndustrialVideoReviewFiles', () => ({ default: () => null }))
+vi.mock('../../../industrialVideo/useIndustrialVideoProduction', () => ({
+  useIndustrialVideoProduction: () => ({
+    record: { sessionId: 'session-1', run: 'run-1', state: 'storyboard_submitted', control: { phase: 'idle' }, unknownSubmissions: [], rounds: [] },
+    refresh: async () => undefined
+  })
+}))
 
 vi.mock('@renderer/components/chat/messages/MessageList', () => ({
   default: () => {
@@ -22,6 +33,7 @@ vi.mock('@renderer/components/chat/messages/MessageList', () => ({
 }))
 
 vi.mock('@renderer/components/chat/messages/MessageListProvider', () => ({
+  useOptionalMessageListActions: () => null,
   MessageListProvider: ({ children }: PropsWithChildren) => <div data-testid="message-list-provider">{children}</div>
 }))
 
@@ -60,6 +72,29 @@ describe('AgentSessionMessages', () => {
   beforeEach(() => {
     useAgentMessageListProviderValueMock.mockClear()
     ipcRequestMock.mockClear()
+  })
+
+  it('历史已加载但模型仍在输出时不读取审核，输出结束后自动读取', async () => {
+    stream.isPending = true
+    const props = {
+      sessionId: 'session-1',
+      messages: [{ id: 'answer', role: 'assistant', parts: [{ type: 'text', text: '正在保存预览' }] }] as any,
+      partsByMessageId: {},
+      isLoading: false
+    }
+    const view = render(<AgentSessionMessages {...props} />)
+    try {
+      expect(ipcRequestMock.mock.calls.some(([route]) => route === 'industrial_video.cowork_review_get')).toBe(false)
+      stream.isPending = false
+      view.rerender(<AgentSessionMessages {...props} messages={[...props.messages]} />)
+      expect(ipcRequestMock).toHaveBeenCalledWith('industrial_video.cowork_review_get', {
+        sessionId: 'session-1',
+        run: 'run-1'
+      })
+    } finally {
+      view.unmount()
+      stream.isPending = false
+    }
   })
 
   it('normalizes blank agent avatars before passing the assistant profile to the message list', () => {
@@ -102,8 +137,7 @@ describe('AgentSessionMessages', () => {
     expect(ipcRequestMock).toHaveBeenCalledWith('ai.agent.session.close_warm', { sessionId: 'session-1' })
   })
 
-  it('offers the start action on an industrial video handoff and sends the fixed command', async () => {
-    const user = userEvent.setup()
+  it('工业会话不从模型文字另造旁路生成按钮', () => {
     const sendMessage = vi.fn(async () => true)
     render(
       <AgentSessionMessages
@@ -124,8 +158,35 @@ describe('AgentSessionMessages', () => {
       />
     )
 
-    await user.click(screen.getByRole('button', { name: '开始生成视频' }))
-    expect(sendMessage).toHaveBeenCalledWith({ text: '开始生成视频' })
+    expect(screen.queryByRole('button', { name: '开始生成视频' })).toBeNull()
+    expect(sendMessage).not.toHaveBeenCalled()
+  })
+
+  it('工业消息尾审核确认后发送生成消息且不直接提交视频', async () => {
+    const sendMessage = vi.fn(async () => true)
+    ipcRequestMock.mockImplementation(async (route: string) =>
+      route === 'industrial_video.cowork_review_get'
+        ? { review_version: 'rv-1', script: '全文', storyboard: { scenes: [] }, allowed_actions: ['generate_video'] }
+        : route === 'industrial_video.cowork_review_confirm'
+          ? { generation_allowed: true, remaining_blockers: [], next_stage: 'video' }
+          : undefined
+    )
+    render(
+      <AgentSessionMessages
+        agentId="agent-1"
+        sessionId="session-1"
+        messages={[{ id: 'assistant-review', role: 'assistant', parts: [{ type: 'text', text: '预览已保存' }] }] as any}
+        partsByMessageId={{}}
+        isLoading={false}
+        sendMessage={sendMessage}
+      />
+    )
+    await screen.findByRole('region', { name: '客户端审核' })
+    await screen.findByText('已同步最新内容')
+    await userEvent.setup().click(screen.getByRole('button', { name: '确认并生成视频' }))
+    await waitFor(() => expect(sendMessage).toHaveBeenCalledExactlyOnceWith({ text: '开始生成视频' }))
+    expect(ipcRequestMock.mock.calls.some(([route]) => route === 'industrial_video.video_start')).toBe(false)
+    ipcRequestMock.mockReset()
   })
 
   it('anchors background status to the latest assistant with content instead of an empty pending placeholder', () => {

@@ -1,3 +1,7 @@
+import { Button } from '@cherrystudio/ui'
+
+import { useIndustrialVideoStop } from './industrialVideoProgressStore'
+
 import './industrialVideoGenerationLoading.css'
 
 const count = (value: unknown) => (typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : null)
@@ -28,12 +32,15 @@ export function readGenerationProgress(
 export default function IndustrialVideoGenerationLoading({
   progress,
   stopped,
-  error
+  error,
+  sessionId
 }: {
   progress: ReturnType<typeof readGenerationProgress>
   stopped?: string
   error?: string
+  sessionId?: string
 }) {
+  const stopAction = useIndustrialVideoStop(sessionId)
   const animating = !stopped && !error
   const { total, done } = progress
   return (
@@ -102,6 +109,16 @@ export default function IndustrialVideoGenerationLoading({
         <p role="alert" className="max-w-64 break-words text-error">
           {stopped ? error : `进度更新暂时中断：${error}`}
         </p>
+      )}
+      {stopAction && !stopped && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="border border-border bg-background hover:bg-accent"
+          disabled={stopAction.stopping}
+          onClick={() => void stopAction.stop()}>
+          {stopAction.stopping ? '正在停止制作' : '停止制作'}
+        </Button>
       )}
       {!stopped && (
         <p className="max-w-64 text-xs leading-6 text-muted-foreground">

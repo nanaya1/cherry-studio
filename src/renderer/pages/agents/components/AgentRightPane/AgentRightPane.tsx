@@ -80,7 +80,7 @@ import {
 import { EmptyState } from '@renderer/components/chat/primitives'
 import type { ResourceListRevealRequest } from '@renderer/components/chat/resourceList/base'
 import ComposerFloatingCapsule from '@renderer/components/composer/ComposerFloatingCapsule'
-import { FilePreviewNavigationProvider } from '@renderer/components/FilePreview'
+import { FilePreview, FilePreviewNavigationProvider } from '@renderer/components/FilePreview'
 import Scrollbar from '@renderer/components/Scrollbar'
 import type { WebviewAnnotationSavedPayload } from '@renderer/components/WebviewAnnotationControls'
 import { WebviewHost } from '@renderer/components/WebviewHost'
@@ -99,9 +99,22 @@ import { ipcApi, useIpcOn } from '@renderer/ipc'
 import IndustrialVideoGenerationLoading from '@renderer/pages/industrialVideo/IndustrialVideoGenerationLoading'
 // eslint-disable-next-line import-x/no-restricted-paths
 import {
+  useIndustrialVideoFinal,
   useIndustrialVideoProgressSnapshot,
   useIndustrialVideoWorkbench
 } from '@renderer/pages/industrialVideo/industrialVideoProgressStore'
+// eslint-disable-next-line import-x/no-restricted-paths
+import { getResumeStages } from '@renderer/pages/industrialVideo/industrialVideoWorkbenchResumeBridge'
+// eslint-disable-next-line import-x/no-restricted-paths
+import { IndustrialVideoWorkbenchBridge } from '@renderer/pages/industrialVideo/industrialVideoWorkbenchBridge'
+import {
+  INDUSTRIAL_VIDEO_WORKBENCH_BRIDGE_CHANNEL,
+  INDUSTRIAL_VIDEO_WORKBENCH_MESSAGE_TYPE,
+  type IndustrialVideoWorkbenchInit,
+  type IndustrialVideoWorkbenchRequest,
+  type IndustrialVideoWorkbenchResponse
+} from '@shared/utils/industrialVideoWorkbench'
+import type { IpcMessageEvent, WebviewTag } from 'electron'
 import { agentBrowserRuntimeService } from '@renderer/services/AgentBrowserRuntimeService'
 import { EVENT_NAMES, EventEmitter } from '@renderer/services/EventService'
 import { toast } from '@renderer/services/toast'
@@ -282,6 +295,7 @@ interface AgentRightPanelScope {
   industrialVideoProgressTitle: string
   industrialVideoProgressVisible: boolean
   industrialVideoWorkbenchVisible: boolean
+  industrialVideoFinalVisible: boolean
   flowTab: AgentFlowTab | null
   previousFlowTab: AgentFlowTab | null
   goBackFlow: () => void
@@ -403,6 +417,10 @@ function AgentRightPaneActionsProvider({
   useEffect(() => {
     if (workbench) panelActions.requestOpen('industrial-video-workbench', { userInitiated: true })
   }, [workbench, panelActions.requestOpen])
+  const final = useIndustrialVideoFinal(sessionId)
+  useEffect(() => {
+    if (final) panelActions.requestOpen('industrial-video-final', { userInitiated: true })
+  }, [final, panelActions.requestOpen])
   const lastIndustrialVideoProgressIdentity = useRef('')
   useEffect(() => {
     if (!industrialVideoProgress || lastIndustrialVideoProgressIdentity.current === industrialVideoProgress.identity)
@@ -875,6 +893,7 @@ function AgentRightPaneStateProvider({
   )
   const industrialVideoProgress = useIndustrialVideoProgressSnapshot(sessionId)
   const industrialVideoWorkbench = useIndustrialVideoWorkbench(sessionId)
+  const industrialVideoFinal = useIndustrialVideoFinal(sessionId)
   const scope = useMemo<AgentRightPanelScope>(
     () => ({
       browserTitle: t('agent.right_pane.tabs.browser'),
@@ -884,6 +903,7 @@ function AgentRightPaneStateProvider({
       industrialVideoProgressTitle: t('agent.right_pane.tabs.industrial_video_progress'),
       industrialVideoProgressVisible: Boolean(industrialVideoProgress),
       industrialVideoWorkbenchVisible: Boolean(industrialVideoWorkbench),
+      industrialVideoFinalVisible: Boolean(industrialVideoFinal),
       flowTab,
       previousFlowTab,
       goBackFlow,
@@ -900,6 +920,7 @@ function AgentRightPaneStateProvider({
       hasSystemWorkspaceFiles,
       industrialVideoProgress,
       industrialVideoWorkbench,
+      industrialVideoFinal,
       meta,
       resourcePane,
       t
@@ -1640,14 +1661,143 @@ function AgentTraceRightPanel({ active, scope }: RightPanelComponentProps<AgentR
 }
 
 function AgentIndustrialVideoWorkbenchPanel({ scope }: RightPanelComponentProps<AgentRightPanelScope>) {
-  const workbench = useIndustrialVideoWorkbench(scope.meta.sessionId)
+  const sessionId = scope.meta.sessionId
+  const workbench = useIndustrialVideoWorkbench(sessionId)
+  const [loadError, setLoadError] = useState('')
+  useEffect(() => setLoadError(''), [workbench])
+
+  const run = workbench?.run
+  // 受限桥控制器：按 session/run 重建，渲染期同步（保证 webview ref 回调时已是最新）。
+  const bridgeRef = useRef<IndustrialVideoWorkbenchBridge | null>(null)
+  const bridgeKeyRef = useRef('')
+  const sessionIdRef = useRef(sessionId)
+  const runRef = useRef(run)
+  sessionIdRef.current = sessionId
+  runRef.current = run
+  if (run && sessionId) {
+    const key = JSON.stringify([sessionId, run, workbench.url])
+    if (bridgeKeyRef.current !== key) {
+      bridgeRef.current?.invalidate()
+      bridgeRef.current = new IndustrialVideoWorkbenchBridge({
+        sessionId,
+        run,
+        coworkReviewGet: () => ipcApi.request('industrial_video.cowork_review_get', { sessionId, run }),
+        coworkReviewConfirm: (reviewVersion, action) =>
+          ipcApi.request('industrial_video.cowork_review_confirm', {
+            sessionId,
+            run,
+            expectedReviewVersion: reviewVersion,
+            action
+          }),
+        // resumeStages: getResumeStages(sessionId, run)
+        getResumeStages: () => getResumeStages(sessionId, run)
+      })
+      bridgeKeyRef.current = key
+    }
+  } else {
+    bridgeRef.current?.invalidate()
+    bridgeRef.current = null
+    bridgeKeyRef.current = ''
+  }
+
+  // 当前已挂载 webview 的 ipc-message 监听，随 webview 卸载清理。
+  const attachedRef = useRef<{ webview: WebviewTag; bridge: IndustrialVideoWorkbenchBridge; handler: (event: IpcMessageEvent) => void; ready: () => void } | null>(null)
+  useEffect(() => () => {
+    const attached = attachedRef.current
+    attached?.bridge.invalidate()
+    attached?.webview.removeEventListener('ipc-message', attached.handler)
+    attached?.webview.removeEventListener('dom-ready', attached.ready)
+    attachedRef.current = null
+  }, [])
+  const onWebviewChange = useCallback((webview: WebviewTag | null) => {
+    const previous = attachedRef.current
+    if (previous) {
+      try {
+        previous.bridge.invalidate()
+        previous.webview.removeEventListener('ipc-message', previous.handler)
+        previous.webview.removeEventListener('dom-ready', previous.ready)
+      } catch {
+        // 已销毁
+      }
+      attachedRef.current = null
+    }
+    const bridge = bridgeRef.current
+    if (!webview) {
+      if (previous?.bridge === bridge) bridgeKeyRef.current = ''
+      return
+    }
+    if (!bridge) return
+    const handler = (event: IpcMessageEvent) => {
+      if (event.channel !== INDUSTRIAL_VIDEO_WORKBENCH_BRIDGE_CHANNEL) return
+      const request = event.args[0] as IndustrialVideoWorkbenchRequest | undefined
+      if (!request || typeof request.requestId !== 'string' ||
+        (request.type !== INDUSTRIAL_VIDEO_WORKBENCH_MESSAGE_TYPE.getSnapshot && request.type !== INDUSTRIAL_VIDEO_WORKBENCH_MESSAGE_TYPE.regenerateStoryboard)) return
+      if (attachedRef.current?.bridge !== bridge || bridgeRef.current !== bridge) return
+      void (async () => {
+        // 仅两条受限请求：读取同版快照 / 显式请求 regenerate_storyboard。
+        const result =
+          request.type === INDUSTRIAL_VIDEO_WORKBENCH_MESSAGE_TYPE.regenerateStoryboard
+            ? await bridge.regenerateStoryboard(request)
+            : await bridge.getSnapshot(request)
+        if (attachedRef.current?.bridge !== bridge || bridgeRef.current !== bridge) return
+        const response: IndustrialVideoWorkbenchResponse = {
+          requestId: request.requestId,
+          type: INDUSTRIAL_VIDEO_WORKBENCH_MESSAGE_TYPE.response,
+          ok: result.ok,
+          ...(result.ok ? { data: result.data } : { error: result.error, code: result.code })
+        }
+        try {
+          webview.send(INDUSTRIAL_VIDEO_WORKBENCH_BRIDGE_CHANNEL, response)
+        } catch {
+          // webview 已卸载
+        }
+      })()
+    }
+    webview.addEventListener('ipc-message', handler)
+    const ready = () => {
+      if (attachedRef.current?.bridge !== bridge || bridgeRef.current !== bridge) return
+      // 注入可信会话/run，供专属 preload 回填请求信封（网页自身拿不到）。
+      try {
+        const init: IndustrialVideoWorkbenchInit = {
+          type: INDUSTRIAL_VIDEO_WORKBENCH_MESSAGE_TYPE.init,
+          sessionId: sessionIdRef.current!,
+          run: runRef.current ?? ''
+        }
+        webview.send(INDUSTRIAL_VIDEO_WORKBENCH_BRIDGE_CHANNEL, init)
+      } catch {
+        // 尚未就绪，preload 会在下次请求前收到 init
+      }
+    }
+    attachedRef.current = { webview, bridge, handler, ready }
+    webview.addEventListener('dom-ready', ready)
+    ready()
+  }, [])
+
   if (!workbench) return null
+  if (loadError)
+    return (
+      <p role="alert" className="p-4 text-error">
+        工作台加载失败：{loadError}。请点击消息中的“打开工作台”重试。
+      </p>
+    )
+  if (workbench.document) {
+    return (
+      <section aria-label="审核文档预览" className="h-full overflow-auto bg-background p-4 text-foreground">
+        <h2 className="mb-4 break-words text-base font-medium">{workbench.document.name}</h2>
+        <pre className="whitespace-pre-wrap break-words font-sans text-sm leading-7">{workbench.document.content}</pre>
+      </section>
+    )
+  }
   return (
     <WebviewHost
       key={`${scope.meta.sessionId}:${workbench.run}:${workbench.url}`}
       id={`industrial-video-workbench:${scope.meta.sessionId}`}
       src={workbench.url}
       partition={`industrial-video-workbench:${scope.meta.sessionId}:${workbench.run}`}
+      onWebviewChange={onWebviewChange}
+      onDidFailLoad={(event) => {
+        if (event.isMainFrame && event.errorCode !== -3) setLoadError(`${event.errorDescription} (${event.errorCode})`)
+      }}
       ariaLabel="服务端工作台网页"
       testId="industrial-video-workbench-guest"
       className="h-full w-full"
@@ -1655,11 +1805,22 @@ function AgentIndustrialVideoWorkbenchPanel({ scope }: RightPanelComponentProps<
   )
 }
 
+function AgentIndustrialVideoFinalPanel({ scope }: RightPanelComponentProps<AgentRightPanelScope>) {
+  const final = useIndustrialVideoFinal(scope.meta.sessionId)
+  if (!final) return null
+  return <FilePreview filePath={AbsoluteFilePathSchema.parse(final.path)} />
+}
+
 function AgentIndustrialVideoProgressPanel({ scope }: RightPanelComponentProps<AgentRightPanelScope>) {
   const snapshot = useIndustrialVideoProgressSnapshot(scope.meta.sessionId)
   if (!snapshot) return null
   return (
-    <IndustrialVideoGenerationLoading progress={snapshot.progress} stopped={snapshot.stopped} error={snapshot.error} />
+    <IndustrialVideoGenerationLoading
+      sessionId={scope.meta.sessionId}
+      progress={snapshot.progress}
+      stopped={snapshot.stopped}
+      error={snapshot.error}
+    />
   )
 }
 
@@ -1713,6 +1874,19 @@ const AGENT_RIGHT_PANEL_CAPABILITIES = [
             id: 'industrial-video-workbench',
             instanceKey: `session:${scope.meta.sessionId}:industrial-video-workbench`,
             title: '工作台',
+            canMaximize: true,
+            readiness: scope.meta.conversationState
+          }
+        : null
+  },
+  {
+    component: AgentIndustrialVideoFinalPanel,
+    resolve: (scope) =>
+      scope.industrialVideoFinalVisible
+        ? {
+            id: 'industrial-video-final',
+            instanceKey: `session:${scope.meta.sessionId}:industrial-video-final`,
+            title: '成片',
             readiness: scope.meta.conversationState
           }
         : null
@@ -1941,6 +2115,7 @@ const AgentRightPaneShortcuts = memo(function AgentRightPaneShortcuts({
   return (
     <>
       <RightPanelShortcut tab="industrial-video-workbench" label="工作台" icon={<Globe className="size-3.5" />} />
+      <RightPanelShortcut tab="industrial-video-final" label="成片" icon={<FileText className="size-3.5" />} />
       <RightPanelShortcut
         tab="industrial-video-progress"
         label={t('agent.right_pane.tabs.industrial_video_progress')}

@@ -11,15 +11,130 @@ import type { industrialVideoReviewDocumentsSchema } from '@shared/ipc/schemas/i
 // 保留 DedicatedIndustrialVideoReview 组件文件供回滚：取消注释下面两行即可恢复原本地审核。
 // import DedicatedIndustrialVideoReview from './DedicatedIndustrialVideoReview'
 import IndustrialVideoWorkbench from './IndustrialVideoWorkbench'
+import { registerResumeStages } from './industrialVideoWorkbenchResumeBridge'
 import { useIndustrialVideoProduction } from './useIndustrialVideoProduction'
+
+export function IndustrialVideoMessageReview({
+  sessionId,
+  executing,
+  resumeStages,
+  sendMessage
+}: {
+  sessionId: string
+  executing: boolean
+  resumeStages?: (run: string) => Promise<unknown>
+  sendMessage?: (message: { text: string }) => Promise<boolean>
+}) {
+  const production = useIndustrialVideoProduction(sessionId)
+  const run = production.record?.run
+  const { refresh } = production
+  const executionActive = production.record?.control?.phase === 'active'
+  // 注册既有 resumeStages 供工业工作台 webview 受限桥在同 session/run 下回调，不暴露给网页。
+  useEffect(() => {
+    if (!run || !resumeStages) return
+    return registerResumeStages(sessionId, run, resumeStages)
+  }, [sessionId, run, resumeStages])
+  useEffect(() => {
+    // if (!executing) void refresh()
+    if (executing) return
+    let stopped = false
+    let timer: ReturnType<typeof setTimeout>
+    const poll = async () => {
+      await refresh()
+      if (!stopped) timer = setTimeout(() => void poll(), 3000)
+    }
+    void poll()
+    return () => {
+      stopped = true
+      clearTimeout(timer)
+    }
+  }, [executing, refresh])
+  // const [review, setReview] = useState<{ run: string; snapshot: Record<string, unknown> } | null>(null)
+  const [review, setReview] = useState<{ sessionId: string; run: string; snapshot: Record<string, unknown> } | null>(
+    null
+  )
+  const [reviewError, setReviewError] = useState('')
+  const [retry, setRetry] = useState(0)
+  useEffect(() => {
+    setReview(null)
+    setReviewError('')
+    // if (!run || executing || production.record?.state !== 'storyboard_submitted') return
+    if (!run || executing || executionActive || production.record?.state !== 'storyboard_submitted') return
+    let active = true
+    void ipcApi
+      .request('industrial_video.cowork_review_get', { sessionId, run })
+      .then((snapshot) => {
+        // if (active) setReview({ run, snapshot })
+        if (active) setReview({ sessionId, run, snapshot })
+      })
+      // .catch(() => undefined)
+      .catch((cause) => {
+        if (active) setReviewError(cause instanceof Error ? cause.message : String(cause))
+      })
+    return () => {
+      active = false
+    }
+    // }, [sessionId, run, executing, production.record?.state])
+  }, [sessionId, run, executing, executionActive, production.record?.state, retry])
+  // 等消息终态和本轮权限释放后再提供审核，保留轮询以自动恢复。
+  if (
+    executing ||
+    executionActive ||
+    production.record?.sessionId !== sessionId ||
+    production.record?.state !== 'storyboard_submitted'
+  )
+    return null
+  if (reviewError)
+    return (
+      <div role="alert" className="space-y-2 text-sm">
+        <p>审核读取失败：{reviewError}</p>
+        <Button size="sm" variant="outline" onClick={() => setRetry((value) => value + 1)}>
+          重试读取审核
+        </Button>
+      </div>
+    )
+  // if (!review || review.run !== run) return null
+  if (!review || review.sessionId !== sessionId || review.run !== run) return null
+  return (
+    <IndustrialVideoWorkbench
+      key={review.snapshot.review_version as string}
+      sessionId={sessionId}
+      production={production}
+      executing={executing}
+      resumeStages={resumeStages}
+      reviewOutput={review.snapshot}
+      sendMessage={sendMessage}
+    />
+  )
+}
 
 type ReviewSnapshot = z.infer<typeof industrialVideoReviewDocumentsSchema>
 
 // export default function IndustrialVideoTaskPanel({ sessionId }: { sessionId: string }) {
 // export default function IndustrialVideoTaskPanel({ sessionId }: { sessionId: string; dedicated?: boolean }) {
-export default function IndustrialVideoTaskPanel({ sessionId, dedicated }: { sessionId: string; dedicated?: boolean }) {
+export default function IndustrialVideoTaskPanel({
+  sessionId,
+  dedicated,
+  resumeStages,
+  executing,
+  reviewOutput,
+  sendMessage
+}: {
+  sessionId: string
+  dedicated?: boolean
+  resumeStages?: (run: string) => Promise<unknown>
+  executing?: boolean
+  reviewOutput?: Record<string, unknown>
+  sendMessage?: (message: { text: string }) => Promise<boolean>
+}) {
   const production = useIndustrialVideoProduction(sessionId)
   const { refresh } = production
+  // 注册既有 resumeStages 供工业工作台 webview 受限桥在同 session/run 下回调，不暴露给网页。
+  useEffect(() => {
+    const run = production.record?.run
+    if (!run || !resumeStages) return
+    return registerResumeStages(sessionId, run, resumeStages)
+  }, [sessionId, production, resumeStages])
 
   useEffect(() => {
     let stopped = false
@@ -38,7 +153,18 @@ export default function IndustrialVideoTaskPanel({ sessionId, dedicated }: { ses
 
   // MEA:industrial-video 仅专用工作台启用独立审核，普通 Agent 保留原生选择流程。
   // 回滚：将下行替换为 `return <DedicatedIndustrialVideoReview sessionId={sessionId} production={production} />`
-  if (dedicated) return <IndustrialVideoWorkbench sessionId={sessionId} production={production} />
+  // if (dedicated) return <IndustrialVideoWorkbench sessionId={sessionId} production={production} />
+  if (dedicated)
+    return (
+      <IndustrialVideoWorkbench
+        sessionId={sessionId}
+        production={production}
+        resumeStages={resumeStages}
+        executing={executing}
+        reviewOutput={reviewOutput}
+        sendMessage={sendMessage}
+      />
+    )
 
   return (
     <TaskReview key={`${sessionId}:${production.record?.run ?? ''}`} sessionId={sessionId} production={production} />

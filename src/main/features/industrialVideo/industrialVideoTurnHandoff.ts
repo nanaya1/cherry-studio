@@ -19,6 +19,20 @@ export function industrialVideoTurnHandoff(featureKind: string | undefined, inpu
     if (response?.isError) return {}
     const value = JSON.parse(response?.content?.find((part) => part.type === 'text')?.text ?? 'null')
     if (
+      input.tool_name === 'mcp__meacowork-tools__ivideo_start' &&
+      value?.ok === true &&
+      value.started === true &&
+      value.end_turn === true &&
+      typeof value.jobId === 'string' &&
+      value.jobId.trim() &&
+      typeof value.run === 'string' &&
+      value.run === (input.tool_input as { run?: unknown })?.run &&
+      typeof value.message === 'string' &&
+      value.message.trim()
+    ) {
+      return { continue: false, stopReason: value.message }
+    }
+    if (
       value?.ok !== true ||
       value.end_turn !== true ||
       typeof value.message !== 'string' ||

@@ -3,18 +3,22 @@ import { use, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Button } from '@cherrystudio/ui'
 import { useOptionalMessageListActions } from '@renderer/components/chat/messages/MessageListProvider'
 import { ToolResultAttachmentsContext } from '@renderer/components/chat/messages/tools/shared/ToolDisplayNames'
+// eslint-disable-next-line import-x/no-restricted-paths
+import { useAgentRightPaneActions } from '@renderer/pages/agents/components/AgentRightPane'
 import { normalizeFilePreviewPath } from '@renderer/utils/filePreview'
 import { joinPath } from '@renderer/utils/path'
 import { normalizeMeacoworkToolRuntimeName, toMeacoworkToolRuntimeName } from '@shared/ai/meacoworkTools'
+
+import { openIndustrialVideoReviewDocument } from './industrialVideoProgressStore'
 
 function readSnapshot(output: unknown) {
   try {
     const content = (output as { content?: { type: string; text?: string }[] })?.content
     const text = content?.find((part) => part.type === 'text')?.text
-    if (!text) return null
-    const value = JSON.parse(text)
+    const value = text ? JSON.parse(text) : output
     if (
-      value.ok !== true ||
+      !value ||
+      value.ok === false ||
       typeof value.review_version !== 'string' ||
       !value.review_version ||
       typeof value.script !== 'string' ||
@@ -53,39 +57,77 @@ export function IndustrialVideoReviewFilesProvider({
   return <ToolResultAttachmentsContext value={render}>{children}</ToolResultAttachmentsContext>
 }
 
-export default function IndustrialVideoReviewFiles({ output, workspace }: { output: unknown; workspace?: string }) {
+export default function IndustrialVideoReviewFiles({
+  output,
+  workspace,
+  sessionId,
+  run
+}: {
+  output: unknown
+  workspace?: string
+  sessionId?: string
+  run?: string
+}) {
   const snapshot = useMemo(() => readSnapshot(output), [output])
   const actions = useOptionalMessageListActions()
-  const [saved, setSaved] = useState<{ source: unknown; files: { path: string; name: string }[] } | null>(null)
+  const pane = useAgentRightPaneActions()
+  const openFile = actions?.openArtifactFile ?? pane.openArtifactFile
+  // const [saved, setSaved] = useState<{ source: unknown; files: { path: string; name: string }[] } | null>(null)
+  const [saved, setSaved] = useState<{
+    source: unknown
+    files: { path: string; name: string; content: string }[]
+  } | null>(null)
   const [error, setError] = useState('')
   useEffect(() => {
     let active = true
     setSaved(null)
     setError('')
-    if (!snapshot || !workspace) return
+    if (!snapshot) return
     const save = async () => {
       // 每次快照使用独立文件，避免覆盖历史审核副本或用户草稿。
       const stem = `审核-${crypto.randomUUID()}-`
       const title = String(snapshot.storyboard.video_title ?? '视频制作')
-      const files = ['脚本', '分镜脚本'].map((kind) => ({
-        path: normalizeFilePreviewPath(joinPath(workspace, `${stem}${kind}.md`)),
-        name: `${title}·${kind}.md`
-      }))
+      // 无用户工作区时使用现有临时文件接口，不要求额外选择目录。
+      const files = await Promise.all(
+        ['全文脚本', '动作分镜'].map(async (kind) => ({
+          path: normalizeFilePreviewPath(
+            workspace
+              ? joinPath(workspace, `${stem}${kind}.md`)
+              : await window.api.file.createTempFile(`${stem}${kind}.md`)
+          ),
+          name: `${title}·${kind}.md`
+        }))
+      )
       if (files.some((file) => !file.path)) throw new Error('工作区路径无效，无法保存审核文件。')
       const board =
         `# ${title}\n\n审核版本：${snapshot.review_version}\n\n` +
         snapshot.storyboard.scenes
           .map(
             (scene, index) =>
-              `## 镜头 ${index + 1}\n\n` +
-              Object.entries(scene)
-                .map(([key, value]) => `- ${key}：${typeof value === 'string' ? value : JSON.stringify(value)}`)
-                .join('\n')
+              `## ${index + 1}. ${String(scene.title ?? '镜头')} · ${String(scene.duration ?? '')} 秒\n\n` +
+              `### 画面\n\n${String(scene.prompt ?? '')}\n\n` +
+              `### 旁白\n\n${Array.isArray(scene.narration) ? scene.narration.map((item) => String(item.text ?? '')).join('\n\n') : ''}\n\n` +
+              `### 动作与核验\n\n${
+                scene.state_transition && typeof scene.state_transition === 'object'
+                  ? Object.entries(scene.state_transition)
+                      .filter(([key]) => ['action_en', 'contact_en', 'verification_en'].includes(key))
+                      .map(
+                        ([key, value]) =>
+                          `- ${{ action_en: '动作', contact_en: '接触方式', verification_en: '核验' }[key]}：${String(value)}`
+                      )
+                      .join('\n')
+                  : ''
+              }`
           )
           .join('\n\n')
       await window.api.file.write(files[0].path, snapshot.script)
       await window.api.file.write(files[1].path, board)
-      if (active) setSaved({ source: output, files })
+      // if (active) setSaved({ source: output, files })
+      if (active)
+        setSaved({
+          source: output,
+          files: files.map((file, index) => ({ ...file, content: index === 0 ? snapshot.script : board }))
+        })
     }
     void save().catch((cause) => {
       if (active) setError(cause instanceof Error ? cause.message : String(cause))
@@ -95,7 +137,7 @@ export default function IndustrialVideoReviewFiles({ output, workspace }: { outp
     }
   }, [snapshot, workspace, output])
   if (!snapshot) return null
-  if (!workspace) return <p role="alert">无法准备审核文件：当前会话缺少工作区。</p>
+  // 缺少工作区时由临时文件承载预览。
   if (error)
     return (
       <p role="alert" className="text-error">
@@ -105,18 +147,20 @@ export default function IndustrialVideoReviewFiles({ output, workspace }: { outp
   if (!saved || saved.source !== output) return <p role="status">正在准备脚本与分镜预览文件…</p>
   return (
     <div className="my-2 space-y-2">
-      <p className="text-sm text-muted-foreground">
-        脚本与分镜已生成，点击文件在右侧预览；请在现有审核选项中确认。版本：{snapshot.review_version}
-      </p>
+      <p className="text-sm text-muted-foreground">点击文件在右侧查看完整内容。</p>
       {saved.files.map((file) => (
         <Button
           key={file.path}
           variant="outline"
           className="h-auto w-full justify-start whitespace-normal py-3 text-left"
-          disabled={!actions?.openArtifactFile}
+          disabled={!openFile}
           onClick={() => {
             void Promise.resolve()
-              .then(() => actions?.openArtifactFile?.(file.path))
+              // .then(() => openFile?.(file.path))
+              .then(() => {
+                if (sessionId && run) openIndustrialVideoReviewDocument(sessionId, run, file)
+                else openFile?.(file.path)
+              })
               .catch((cause) => setError(String(cause)))
           }}>
           {file.name}

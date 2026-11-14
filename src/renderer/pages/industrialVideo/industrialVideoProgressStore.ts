@@ -9,18 +9,73 @@ export interface IndustrialVideoProgressSnapshot {
   error?: string
 }
 
+interface IndustrialVideoStopAction {
+  stop: () => Promise<void>
+  stopping: boolean
+}
+const stopActions = new Map<string, IndustrialVideoStopAction>()
+
+export function publishIndustrialVideoStop(sessionId: string, action: IndustrialVideoStopAction | null): void {
+  if (action) stopActions.set(sessionId, action)
+  else stopActions.delete(sessionId)
+  listeners.forEach((listener) => listener())
+}
+
+export function useIndustrialVideoStop(sessionId?: string) {
+  return useSyncExternalStore(
+    (listener) => {
+      listeners.add(listener)
+      return () => listeners.delete(listener)
+    },
+    () => (sessionId ? (stopActions.get(sessionId) ?? null) : null)
+  )
+}
+
 const snapshots = new Map<string, IndustrialVideoProgressSnapshot>()
 const listeners = new Set<() => void>()
 
 interface IndustrialVideoWorkbenchSnapshot {
   run: string
   url: string
+  document?: { name: string; content: string }
 }
 const workbenches = new Map<string, IndustrialVideoWorkbenchSnapshot>()
 
 export function openIndustrialVideoWorkbench(sessionId: string, run: string, url: string): void {
   workbenches.set(sessionId, { run, url })
   listeners.forEach((listener) => listener())
+}
+
+export function openIndustrialVideoReviewDocument(
+  sessionId: string,
+  run: string,
+  document: { name: string; content: string }
+): void {
+  workbenches.set(sessionId, { run, url: '', document })
+  listeners.forEach((listener) => listener())
+}
+
+const finals = new Map<string, { run: string; path: string }>()
+
+export function openIndustrialVideoFinal(sessionId: string, run: string, path: string): void {
+  if (workbenches.get(sessionId)?.run !== run) workbenches.delete(sessionId)
+  finals.set(sessionId, { run, path })
+  listeners.forEach((listener) => listener())
+}
+
+export function useIndustrialVideoFinal(sessionId: string | undefined) {
+  return useSyncExternalStore(
+    (listener) => {
+      listeners.add(listener)
+      return () => listeners.delete(listener)
+    },
+    () => {
+      if (!sessionId) return null
+      const final = finals.get(sessionId)
+      const workbench = workbenches.get(sessionId)
+      return final && (!workbench || workbench.run === final.run) ? final : null
+    }
+  )
 }
 
 export function useIndustrialVideoWorkbench(sessionId: string | undefined) {

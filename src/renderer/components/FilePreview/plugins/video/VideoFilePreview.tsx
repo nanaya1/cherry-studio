@@ -40,7 +40,9 @@ export default function VideoFilePreview({ filePath, fileName, refreshKey }: Fil
       <FilePreviewLayout.Content>
         <div className="flex h-full min-h-full w-full items-center justify-center p-4">
           {status === 'loading' && (
-            <div role="status" className="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">
+            <div
+              role="status"
+              className="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">
               {t('file_preview.loading')}
             </div>
           )}
@@ -51,7 +53,9 @@ export default function VideoFilePreview({ filePath, fileName, refreshKey }: Fil
             controls
             preload="metadata"
             src={src}
-            onLoadedData={() => setStatus('ready')}
+            // preload="metadata" does not guarantee a decoded frame.
+            // onLoadedData={() => setStatus('ready')}
+            onLoadedMetadata={() => setStatus('ready')}
             onError={() => setStatus('error')}>
             {fileName}
           </video>

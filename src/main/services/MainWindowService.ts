@@ -12,6 +12,7 @@ import { BaseService, Emitter, type Event, Injectable, Phase, ServicePhase } fro
 import { isLinux, isMac, isWin } from '@main/core/platform'
 import { isAppRendererUrl } from '@main/core/security/validateSender'
 import { WindowType } from '@main/core/window/types'
+import { industrialVideoWorkbenchSecurity } from '@main/features/industrialVideo/industrialVideoWorkbenchSecurity'
 import { isMiniAppPartition } from '@main/features/miniApp/runtime/partition'
 import { t } from '@main/i18n'
 import { openTabInMainWindow, resetMainRendererTabAttachDelivery } from '@main/services/mainWindowNavigation'
@@ -436,6 +437,17 @@ export class MainWindowService extends BaseService {
     const agentArtifactSession = session.fromPartition(getWebviewPartition(WebviewSecurityProfile.AgentHtmlArtifact))
 
     mainWindow.webContents.on('will-attach-webview', (event, webPreferences, params) => {
+      if (industrialVideoWorkbenchSecurity.attach(event, webPreferences, params)) {
+        if (industrialVideoWorkbenchSecurity.partitions().includes(params.partition)) {
+          const isolated = session.fromPartition(params.partition)
+          isolated.setPermissionRequestHandler((_contents, _permission, callback) => callback(false))
+          isolated.setPermissionCheckHandler(() => false)
+          isolated.webRequest.onBeforeRequest((details, callback) =>
+            callback({ cancel: !industrialVideoWorkbenchSecurity.allowsRequest(params.partition, details.url) })
+          )
+        }
+        return
+      }
       const securityProfile = getWebviewSecurityProfile(params.partition ?? '')
       // Mini app partitions carry their own gate (installMiniAppWebviewHost) and the
       // shared `persist:webview` lockdown lives in WebviewService.attachWebviewPreload.
@@ -477,6 +489,18 @@ export class MainWindowService extends BaseService {
     })
 
     mainWindow.webContents.on('did-attach-webview', (_, webContents) => {
+      const industrialPartition = industrialVideoWorkbenchSecurity
+        .partitions()
+        .find((partition) => webContents.session === session.fromPartition(partition))
+      if (industrialPartition) {
+        webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+        const guardNavigation = (event: Electron.Event, url: string) => {
+          if (!industrialVideoWorkbenchSecurity.allowsEntry(industrialPartition, url)) event.preventDefault()
+        }
+        webContents.on('will-navigate', guardNavigation)
+        webContents.on('will-redirect', guardNavigation)
+        return
+      }
       if (
         webContents.session === agentBrowserSession ||
         webContents.session === agentDevSession ||

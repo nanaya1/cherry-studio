@@ -22,7 +22,14 @@ const { agentSessionGetByIdMock, ivServiceMock, loggerErrorMock, loggerWarnMock 
     assertExecution: vi.fn(),
     withExecution: vi.fn((_token: unknown, fn: () => unknown) => fn()),
     getRecords: vi.fn(),
+    getConfirmedReview: vi.fn<() => { run: string; reviewVersion: string } | undefined>(() => undefined),
     runCreate: vi.fn(),
+    fullScriptTaskGet: vi.fn(),
+    fullScriptTaskSubmit: vi.fn(),
+    storyboardTaskGet: vi.fn(),
+    storyboardStageTaskGet: vi.fn(),
+    storyboardStageSubmit: vi.fn(),
+    coworkReviewGet: vi.fn(),
     planningContextGet: vi.fn(),
     storyboardGet: vi.fn(),
     storyboardSubmit: vi.fn(),
@@ -32,6 +39,7 @@ const { agentSessionGetByIdMock, ivServiceMock, loggerErrorMock, loggerWarnMock 
     parse: vi.fn(),
     estimate: vi.fn(),
     videoStart: vi.fn(),
+    assemble: vi.fn(),
     jobGet: vi.fn(),
     downloadArtifact: vi.fn()
   },
@@ -58,6 +66,108 @@ vi.mock('@application', () => ({
 
 const { MeacoworkIndustrialVideoTools } = await import('../meacoworkIndustrialVideoTools')
 const { IpcError } = await import('@shared/ipc/errors/IpcError')
+
+it.each(['video', 'assemble'])('已就绪的 %s 仅提交对应阶段并交接后台，不让模型继续轮询', async (stage) => {
+  agentSessionGetByIdMock.mockReturnValue(makeSession())
+  ivServiceMock.getRecords.mockReturnValue(undefined)
+  ivServiceMock.workbenchGet.mockResolvedValue({ generatable: true, blockers: [], next_stage: stage })
+  ivServiceMock.videoStart.mockResolvedValue({ jobId: 'video-job' })
+  ivServiceMock.assemble.mockResolvedValue({ jobId: 'assemble-job' })
+  const result = jsonOf(await makeTools().call('ivideo_start', { run: 'r1' }))
+  expect(result).toMatchObject({ ok: true, jobId: `${stage}-job`, started: true, end_turn: true, run: 'r1' })
+  expect(result.message).toContain('后台')
+  expect(result.message).toContain('自动下载')
+  expect(stage === 'video' ? ivServiceMock.assemble : ivServiceMock.videoStart).not.toHaveBeenCalled()
+})
+
+it('未知的服务端就绪阶段不得退回视频生成', async () => {
+  agentSessionGetByIdMock.mockReturnValue(makeSession())
+  ivServiceMock.getRecords.mockReturnValue(undefined)
+  ivServiceMock.workbenchGet.mockResolvedValue({ generatable: true, blockers: [], next_stage: 'unknown' })
+  expect(jsonOf(await makeTools().call('ivideo_start', { run: 'r1' }))).toMatchObject({ ok: false })
+  expect(ivServiceMock.videoStart).not.toHaveBeenCalled()
+  expect(ivServiceMock.assemble).not.toHaveBeenCalled()
+})
+
+it('完整任务透传且全文保存继续默认阶段，不等待全文确认或生成视频', async () => {
+  agentSessionGetByIdMock.mockReturnValue(makeSession())
+  const task = {
+    instructions: '完整指令',
+    context: { source_lines: [{ line: 1, text: '事实' }] },
+    output_schema: { type: 'object' },
+    expected_document_version: 0,
+    expected_input_fingerprint: 'fp',
+    expected_storyboard_sha256: ''
+  }
+  ivServiceMock.fullScriptTaskGet.mockResolvedValue(task)
+  const tools = makeTools()
+  const fetched = await tools.call('ivideo_full_script_task_get', { run: 'r1' })
+  expect(
+    JSON.parse((fetched.content[0] as { text: string }).text).data ??
+      JSON.parse((fetched.content[0] as { text: string }).text)
+  ).toMatchObject(task)
+  ivServiceMock.fullScriptTaskSubmit.mockResolvedValue({ saved: { text: '全文' } })
+  ivServiceMock.workbenchOpen.mockResolvedValue({ workbench_url: 'https://service/workbench' })
+  const saved = await tools.call('ivideo_full_script_task_submit', {
+    run: 'r1',
+    text: '全文',
+    expectedDocumentVersion: 0,
+    expectedInputFingerprint: 'fp',
+    expectedStoryboardSha256: ''
+  })
+  expect(jsonOf(saved)).toMatchObject({ next_operation: 'ivideo_storyboard_stage_task_get' })
+  expect(jsonOf(saved)).not.toHaveProperty('end_turn')
+  expect(ivServiceMock.workbenchOpen).not.toHaveBeenCalled()
+  expect(ivServiceMock.videoStart).not.toHaveBeenCalled()
+})
+
+it('outline 标题需修正时不推进 next 或显示已完成', async () => {
+  const tools = makeTools()
+  ivServiceMock.storyboardStageSubmit.mockResolvedValue({
+    saved: false,
+    correction_required: true,
+    corrections_remaining: 1,
+    next_operation: 'ivideo_storyboard_stage_submit'
+  })
+  const result = await tools.call('ivideo_storyboard_stage_submit', {
+    run: 'r1',
+    stage: 'outline',
+    scene_uid: null,
+    expected_task_version: 'v1',
+    output: { scenes: [] }
+  })
+  expect(result.isError).not.toBe(true)
+  expect(jsonOf(result)).toMatchObject({
+    saved: false,
+    correction_required: true,
+    next_operation: 'ivideo_storyboard_stage_submit'
+  })
+  expect(jsonOf(result)).not.toHaveProperty('end_turn')
+})
+
+it('全文草稿需修正时不伪报已保存或推进分镜', async () => {
+  const tools = makeTools()
+  ivServiceMock.fullScriptTaskSubmit.mockResolvedValue({
+    saved: false,
+    correction_required: true,
+    corrections_remaining: 1,
+    next_operation: 'ivideo_full_script_task_submit'
+  })
+  const result = await tools.call('ivideo_full_script_task_submit', {
+    run: 'r1',
+    text: '候选全文',
+    expectedDocumentVersion: 0,
+    expectedInputFingerprint: 'fp',
+    expectedStoryboardSha256: ''
+  })
+  expect(jsonOf(result)).toMatchObject({
+    saved: false,
+    correction_required: true,
+    next_operation: 'ivideo_full_script_task_submit'
+  })
+  expect(jsonOf(result)).not.toHaveProperty('end_turn')
+  expect(ivServiceMock.videoStart).not.toHaveBeenCalled()
+})
 
 const AGENT_ID = 'agent-1'
 const SESSION_ID = 's1'
@@ -174,13 +284,40 @@ it('首次规划向模型交付服务端任务、真实来源和非空状态要�
   expect(result.client_generation_requirements.large_result_reading).toContain('offset')
   expect(result.client_planning_task).toEqual(context.client_planning_task)
   expect(result.source_lines).toEqual(context.source_lines)
-  expect(result.client_generation_requirements.before_first_submit).toContain('before/after')
-  expect(result.client_generation_requirements.before_first_submit).toContain('不得提交空对象')
+  expect(result.client_generation_requirements.before_first_submit).toContain('storyboard_stage_task_get/submit')
+  expect(result.client_generation_requirements.before_first_submit).toContain('instructions/context/output_schema')
   expect(result.client_generation_requirements.execution_model).toBe('current_selected_model')
   expect(result.client_generation_requirements).toHaveProperty('state_object_contract')
 })
 
 describe('服务端工作台交接', () => {
+  it('阶段任务 complete 且已确认生成时直接指示 start，不再读取审核等按钮', async () => {
+    agentSessionGetByIdMock.mockReturnValue(makeSession())
+    ivServiceMock.storyboardStageTaskGet.mockResolvedValueOnce({ execution_status: 'complete', next: null })
+    ivServiceMock.getConfirmedReview.mockReturnValueOnce({ run: 'r1', reviewVersion: 'review-9' })
+    ivServiceMock.coworkReviewGet.mockClear()
+    const data = jsonOf(await makeTools().call('ivideo_storyboard_stage_task_get', { run: 'r1' }))
+    expect(data).toMatchObject({ ok: true, execution_status: 'complete', end_turn: false, review_confirmed: true })
+    expect(data.message).toContain('ivideo_start')
+    expect(ivServiceMock.coworkReviewGet).not.toHaveBeenCalled()
+    expect(ivServiceMock.videoStart).not.toHaveBeenCalled()
+  })
+
+  it('cowork_review_get 已确认生成时附带启动指引，未确认时保持等待按钮', async () => {
+    agentSessionGetByIdMock.mockReturnValue(makeSession())
+    const snapshot = { review_version: 'review-9', script: '全文', storyboard: {}, allowed_actions: [] }
+    ivServiceMock.coworkReviewGet.mockResolvedValue(snapshot)
+    ivServiceMock.getConfirmedReview.mockReturnValueOnce({ run: 'r1', reviewVersion: 'review-9' })
+    const confirmed = jsonOf(await makeTools().call('ivideo_cowork_review_get', { run: 'r1' }))
+    expect(confirmed).toMatchObject({ ok: true, end_turn: false, review_confirmed: true })
+    expect(confirmed.message).toContain('ivideo_start')
+
+    ivServiceMock.getConfirmedReview.mockReturnValueOnce(undefined)
+    const pending = jsonOf(await makeTools().call('ivideo_cowork_review_get', { run: 'r1' }))
+    expect(pending).toMatchObject({ ok: true, end_turn: true, snapshot: snapshot })
+    expect(pending).not.toHaveProperty('review_confirmed')
+  })
+
   it('生成前状态读取失败时返回工作台并结束，不提交或自动批准', async () => {
     agentSessionGetByIdMock.mockReturnValue(makeSession())
     ivServiceMock.videoStart.mockClear()
@@ -374,6 +511,7 @@ describe('MeacoworkIndustrialVideoTools — visibility & contract', () => {
     vi.clearAllMocks()
     agentSessionGetByIdMock.mockReturnValue(makeSession())
     for (const fn of Object.values(ivServiceMock)) (fn as Mock).mockReset()
+    ivServiceMock.workbenchOpen.mockResolvedValue({ run: 'r1', workbench_url: 'https://video.example/workbench' })
     ivServiceMock.workbenchGet.mockResolvedValue({ generatable: true, blockers: [] })
     ivServiceMock.getExecutionToken.mockReturnValue(Object.freeze({ sessionId: SESSION_ID, epoch: 1 }))
     ivServiceMock.withExecution.mockImplementation((_token, fn) => fn())
@@ -401,6 +539,12 @@ describe('MeacoworkIndustrialVideoTools — visibility & contract', () => {
     expect(names).toEqual(
       [
         'ivideo_context',
+        'ivideo_storyboard_stage_task_get',
+        'ivideo_storyboard_stage_submit',
+        'ivideo_cowork_review_get',
+        'ivideo_full_script_task_get',
+        'ivideo_full_script_task_submit',
+        'ivideo_storyboard_task_get',
         'ivideo_download',
         'ivideo_estimate',
         'ivideo_parse',
@@ -443,33 +587,20 @@ describe('MeacoworkIndustrialVideoTools — visibility & contract', () => {
     expect(provider.handles('ivideo_review_confirm')).toBe(false)
   })
 
-  it('可信审核后跳过估价直接启动生成，不再要求费用确认', () => {
-    for (const tool of makeTools().tools()) {
-      // 默认在线预览，下载不得成为制作流程的自动尾步。
-      expect(tool.description).toContain('审核与成本确认均在网页完成')
-      expect(tool.description).toContain('用户下一轮')
-      expect(tool.description).toContain('结束本轮')
-      expect(tool.description).not.toContain('用户确认生成及费用')
-    }
+  it('模型工具面不暴露新版真实用户确认入口', () => {
+    const provider = makeTools()
+    expect(provider.handles('ivideo_cowork_review_confirm')).toBe(false)
+    expect(provider.handles('ivideo_cowork_review_get')).toBe(true)
   })
 
-  it('every tool description documents the production workflow', () => {
-    for (const tool of makeTools().tools()) {
-      expect(tool.description).toMatch(/run_create|parse|storyboard|start|status|download/i)
-      // Each description must point the model at the ordered pipeline.
-      // expect(tool.description.toLowerCase()).toContain('run_create')
-      expect(tool.description?.toLowerCase()).toContain('run_create')
-    }
-  })
-
-  it('要求在生成前通过原生 AskUserQuestion 取得用户确认，而不是用 start 探测批准', () => {
-    for (const tool of makeTools().tools()) {
-      expect(tool.description).toContain('禁止再弹 AskUserQuestion')
-      expect(tool.description).toContain('服务端最新状态')
-      expect(tool.description).toContain('不满足则回工作台并结束')
-      expect(tool.description).not.toContain('call estimate then start')
-      expect(tool.description).not.toContain('storyboard_submit → estimate → start')
-    }
+  it('阶段提交 schema 要求原始版本与 nullable 镜头标识，不能携带宿主断言', () => {
+    const tool = makeTools()
+      .tools()
+      .find((item) => item.name === 'ivideo_storyboard_stage_submit')!
+    expect(tool.inputSchema.required).toEqual(
+      expect.arrayContaining(['stage', 'scene_uid', 'expected_task_version', 'output'])
+    )
+    expect(tool.inputSchema.properties).not.toHaveProperty('host_assertion')
   })
 
   it('公开的分镜提交 schema 允许首次无分镜时使用空 SHA，但仍要求该字段存在且为字符串', () => {
@@ -536,8 +667,9 @@ describe('MeacoworkIndustrialVideoTools — visibility & contract', () => {
     const get = tools.find((tool) => tool.name === 'ivideo_storyboard_get')!
     const submit = tools.find((tool) => tool.name === 'ivideo_storyboard_submit')!
 
-    expect(context.description).toContain('current_storyboard')
-    expect(context.description).toContain('不要调用 storyboard_get')
+    // 新契约先分阶段领取任务，不再根据有无分镜跳过全文确认。
+    expect(context.description).toContain('full_script_workflow')
+    expect(context.description).toContain('storyboard_workflow')
     expect(get.description).toContain('仅用于读取已提交的分镜')
     expect(submit.description).toContain('storyboard_schema')
   })
@@ -576,6 +708,7 @@ describe('MeacoworkIndustrialVideoTools — routing to the trusted service', () 
     vi.clearAllMocks()
     agentSessionGetByIdMock.mockReturnValue(makeSession())
     for (const fn of Object.values(ivServiceMock)) (fn as Mock).mockReset()
+    ivServiceMock.workbenchOpen.mockResolvedValue({ run: 'r1', workbench_url: 'https://video.example/workbench' })
     ivServiceMock.workbenchGet.mockResolvedValue({ generatable: true, blockers: [] })
     ivServiceMock.getExecutionToken.mockReturnValue(Object.freeze({ sessionId: SESSION_ID, epoch: 1 }))
     ivServiceMock.withExecution.mockImplementation((_token, fn) => fn())
@@ -791,7 +924,13 @@ describe('MeacoworkIndustrialVideoTools — routing to the trusted service', () 
     const result = await makeTools().call('ivideo_storyboard_submit', input)
 
     expect(result.isError).toBeFalsy()
-    expect(jsonOf(result)).toEqual({ ok: true, submitted: true, reviewRequired: true })
+    expect(jsonOf(result)).toMatchObject({
+      ok: true,
+      submitted: true,
+      reviewRequired: true,
+      end_turn: true,
+      workbench_url: 'https://video.example/workbench'
+    })
     expect(ivServiceMock.storyboardSubmit).toHaveBeenCalledExactlyOnceWith({ sessionId: SESSION_ID, ...input })
     expect(ivServiceMock.estimate).not.toHaveBeenCalled()
     expect(ivServiceMock.videoStart).not.toHaveBeenCalled()
@@ -826,9 +965,20 @@ describe('MeacoworkIndustrialVideoTools — routing to the trusted service', () 
   it('固定英文音色 MCP 枚举允许并透传，拒绝未知音色', async () => {
     ivServiceMock.parse.mockResolvedValue({ jobId: 'j-en' })
     const provider = makeTools()
-    const result = await provider.call('ivideo_parse', { run: 'r-1', voice: 'en-US-JennyNeural', subtitleLanguage: 'en-US', narrationFollowsSubtitles: true })
+    const result = await provider.call('ivideo_parse', {
+      run: 'r-1',
+      voice: 'en-US-JennyNeural',
+      subtitleLanguage: 'en-US',
+      narrationFollowsSubtitles: true
+    })
     expect(jsonOf(result).ok).toBe(true)
-    expect(ivServiceMock.parse).toHaveBeenCalledWith(expect.objectContaining({ voice: 'en-US-JennyNeural', subtitleLanguage: 'en-US', narrationFollowsSubtitles: true }))
+    expect(ivServiceMock.parse).toHaveBeenCalledWith(
+      expect.objectContaining({
+        voice: 'en-US-JennyNeural',
+        subtitleLanguage: 'en-US',
+        narrationFollowsSubtitles: true
+      })
+    )
     ivServiceMock.parse.mockClear()
     const invalid = await provider.call('ivideo_parse', { run: 'r-1', voice: 'en-US-UnknownNeural' })
     expect(invalid.isError).toBe(true)
@@ -906,6 +1056,7 @@ describe('MeacoworkIndustrialVideoTools — call-time re-validation', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     for (const fn of Object.values(ivServiceMock)) (fn as Mock).mockReset()
+    ivServiceMock.workbenchOpen.mockResolvedValue({ run: 'r1', workbench_url: 'https://video.example/workbench' })
     ivServiceMock.workbenchGet.mockResolvedValue({ generatable: true, blockers: [] })
     ivServiceMock.getExecutionToken.mockReturnValue(Object.freeze({ sessionId: SESSION_ID, epoch: 1 }))
     ivServiceMock.withExecution.mockImplementation((_token, fn) => fn())
@@ -945,6 +1096,7 @@ describe('MeacoworkIndustrialVideoTools — structured failure, never leaks the 
     vi.clearAllMocks()
     agentSessionGetByIdMock.mockReturnValue(makeSession())
     for (const fn of Object.values(ivServiceMock)) (fn as Mock).mockReset()
+    ivServiceMock.workbenchOpen.mockResolvedValue({ run: 'r1', workbench_url: 'https://video.example/workbench' })
     ivServiceMock.workbenchGet.mockResolvedValue({ generatable: true, blockers: [] })
     ivServiceMock.getExecutionToken.mockReturnValue(Object.freeze({ sessionId: SESSION_ID, epoch: 1 }))
     ivServiceMock.withExecution.mockImplementation((_token, fn) => fn())
@@ -976,6 +1128,7 @@ describe('工业字幕适配（MCP 工具层）', () => {
     vi.clearAllMocks()
     agentSessionGetByIdMock.mockReturnValue(makeSession())
     for (const fn of Object.values(ivServiceMock)) (fn as Mock).mockReset()
+    ivServiceMock.workbenchOpen.mockResolvedValue({ run: 'r1', workbench_url: 'https://video.example/workbench' })
     ivServiceMock.workbenchGet.mockResolvedValue({ generatable: true, blockers: [] })
     ivServiceMock.getExecutionToken.mockReturnValue(Object.freeze({ sessionId: SESSION_ID, epoch: 1 }))
     ivServiceMock.withExecution.mockImplementation((_token, fn) => fn())
@@ -1167,14 +1320,14 @@ describe('工业字幕适配（MCP 工具层）', () => {
     expect(ivServiceMock.videoStart).not.toHaveBeenCalled()
   })
 
-  it('上下文和提交说明明确按翻译任务生成主语言与译文，继续网页审核', () => {
+  it('上下文和提交说明明确按翻译任务生成主语言与译文，等待客户端审核', () => {
     for (const name of ['ivideo_context', 'ivideo_storyboard_submit']) {
       const tool = makeTools()
         .tools()
         .find((item) => item.name === name)!
       expect(tool.description).toContain('subtitle_translation_task')
       expect(tool.description).toContain('translations')
-      expect(tool.description).toContain('网页')
+      expect(tool.description).toContain('等待客户端按钮')
     }
   })
 })

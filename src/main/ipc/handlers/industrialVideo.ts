@@ -19,6 +19,9 @@ import { AbsoluteFilePathSchema } from '@shared/types/file'
  * route input into a service call.
  */
 export const industrialVideoHandlers: IpcHandlersFor<typeof industrialVideoRequestSchemas> = {
+  'industrial_video.stage_retry': async (input) => application.get('IndustrialVideoService').retryStageTask(input),
+  'industrial_video.cowork_review_get': async (input) => application.get('IndustrialVideoService').coworkReviewGet(input),
+  'industrial_video.cowork_review_confirm': async (input) => application.get('IndustrialVideoService').coworkReviewConfirm(input),
   'industrial_video.stop': async (input) => application.get('IndustrialVideoService').stop(input),
   'industrial_video.review_snapshot_get': async (input) =>
     application.get('IndustrialVideoService').reviewSnapshotGet(input),
