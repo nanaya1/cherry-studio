@@ -10,7 +10,10 @@ vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key })
 }))
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  vi.restoreAllMocks()
+})
 
 function renderPreview() {
   const { container } = render(
@@ -35,6 +38,14 @@ describe('video preview readiness', () => {
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
     expect(video).not.toHaveClass('opacity-0')
     expect(video).toHaveAttribute('controls')
+  })
+
+  it('shows an already loaded video even if metadata arrived before handlers attached', () => {
+    vi.spyOn(HTMLMediaElement.prototype, 'readyState', 'get').mockReturnValue(4)
+    const video = renderPreview()
+
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(video).not.toHaveClass('opacity-0')
   })
 
   it('shows a contained error when media loading fails', () => {

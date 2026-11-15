@@ -249,6 +249,23 @@ export default function IndustrialVideoAgentProduction({
   }, [finished, finalPath, run, sessionId, artifactKey, retry])
   */
 
+  useEffect(() => {
+    if (!finished || !run) return
+    let alive = true
+    void ipcApi
+      .request('industrial_video.workbench_open', { sessionId, run })
+      .then((result) => {
+        if (!alive || result.run !== run) return
+        const url = new URL(result.workbench_url)
+        if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) return
+        openIndustrialVideoWorkbench(sessionId, run, url.href)
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [finished, sessionId, run])
+
   // 下载与预览分开处理：失败重试只重试下载，预览失败不能导致重复保存文件。
   const downloaded = download?.key === artifactKey ? download : null
   const generating = Boolean(active && ['generating', 'assembling'].includes(state) && !terminal)
@@ -339,7 +356,8 @@ export default function IndustrialVideoAgentProduction({
   useEffect(() => {
     publishIndustrialVideoProgress(
       sessionId,
-      generating || terminal
+      // 规划失败不是视频生成失败，成片进度仅发布已确认生成的作业。
+      generating || (generationConfirmed && terminal)
         ? {
             identity,
             progress: loadingProgress,
@@ -349,7 +367,7 @@ export default function IndustrialVideoAgentProduction({
         : null
     )
     // 快照去重保留当前值，不能在依赖刷新时清空并再次通知订阅者。
-  }, [error, generating, identity, jobError, loadingProgress, sessionId, terminal])
+  }, [error, generating, generationConfirmed, identity, jobError, loadingProgress, sessionId, terminal])
   useEffect(() => () => publishIndustrialVideoProgress(sessionId, null), [sessionId])
   const steps = [
     { label: '准备画面', done: finished, detail: finished ? '已完成' : '详细进度待返回' },
@@ -372,7 +390,9 @@ export default function IndustrialVideoAgentProduction({
     ) {
       try {
         const content = (output as { content?: { type: string; text?: string }[] })?.content
-        const value = JSON.parse(content?.find((part) => part.type === 'text')?.text ?? 'null')
+        // const value = JSON.parse(content?.find((part) => part.type === 'text')?.text ?? 'null')
+        const text = content?.find((part) => part.type === 'text')?.text
+        const value = (text ? JSON.parse(text) : output) as Record<string, unknown> | null
         if (value?.ok !== true || typeof value.workbench_url !== 'string' || !run || (value.run && value.run !== run))
           return null
         const url = new URL(value.workbench_url)
@@ -401,12 +421,16 @@ export default function IndustrialVideoAgentProduction({
       return null
     try {
       const content = (output as { content?: { type: string; text?: string }[] })?.content
-      const value = JSON.parse(content?.find((part) => part.type === 'text')?.text ?? 'null')
+      // const value = JSON.parse(content?.find((part) => part.type === 'text')?.text ?? 'null')
+      const text = content?.find((part) => part.type === 'text')?.text
+      const value = (text ? JSON.parse(text) : output) as { ok?: boolean; jobId?: string } | null
       if (value?.ok !== true || value.jobId !== jobId) return null
     } catch {
       return null
     }
-    if (!generating) return renderArtifact()
+    // 完成文件在消息末尾直接展示，避免藏在工具折叠记录中。
+    // if (!generating) return renderArtifact()
+    if (!generating) return finished ? null : renderArtifact()
     return (
       <ToolDisclosure
         defaultActiveKey={['production']}
@@ -489,6 +513,7 @@ export default function IndustrialVideoAgentProduction({
           )}
         */}
         <ToolResultAttachmentsContext value={renderSteps}>{children}</ToolResultAttachmentsContext>
+        {finished && <div className="px-3 py-2">{renderArtifact()}</div>}
       </div>
       {/* {visible && open && ( */}
       {/* {visible && open && !(finished && filePreviewActive) && ( */}

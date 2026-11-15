@@ -10,6 +10,28 @@ import {
   validateStateInvariants
 } from './industrialVideoStoryboardSchema'
 
+describe('outline实体来源', () => {
+  const task = { stage: 'outline', context: { source_lines: [{ line: 5, text: '工业触控屏用于生产设备监控' }] } }
+  it('拒绝来源行中不存在的实体，不修改候选', () => {
+    const output = { entities: [{ name: '操作人员', source_lines: [5], attributes: ['posture'] }] }
+    expect(() => validateStageCapacity(task, output)).toThrow('操作人员')
+    expect(output.entities[0].name).toBe('操作人员')
+  })
+  it('不能用其他未引用行证明实体存在', () => {
+    expect(() =>
+      validateStageCapacity(
+        { ...task, context: { source_lines: [...task.context.source_lines, { line: 6, text: '操作人员' }] } },
+        { entities: [{ name: '操作人员', source_lines: [5], attributes: ['posture'] }] }
+      )
+    ).toThrow('操作人员')
+  })
+  it('接受有对应引用原文的实体', () => {
+    expect(() =>
+      validateStageCapacity(task, { entities: [{ name: '工业触控屏', source_lines: [5], attributes: ['condition'] }] })
+    ).not.toThrow()
+  })
+})
+
 describe('阶段容量与Unicode计长', () => {
   it('字符串长度按码点，嵌套数组及anyOf仍保留上下限与其他约束', () => {
     const schema = {

@@ -1,5 +1,6 @@
 import VideoOff from 'lucide-react/dist/esm/icons/video-off'
-import { useState } from 'react'
+// import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { EmptyState } from '@cherrystudio/ui'
@@ -17,6 +18,9 @@ export default function VideoFilePreview({ filePath, fileName, refreshKey }: Fil
   const { t } = useTranslation()
   const [status, setStatus] = useState<'error' | 'loading' | 'ready'>('loading')
   const src = `${toFileUrl(filePath)}#t=0.001${refreshKey ? `&rk=${refreshKey}` : ''}`
+  const syncReadiness = useCallback((video: HTMLVideoElement | null) => {
+    if (video) setStatus(video.error ? 'error' : video.readyState >= 1 ? 'ready' : 'loading')
+  }, [])
 
   if (status === 'error') {
     return (
@@ -49,6 +53,7 @@ export default function VideoFilePreview({ filePath, fileName, refreshKey }: Fil
           {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
           <video
             key={src}
+            ref={syncReadiness}
             className={`max-h-full max-w-full ${status === 'loading' ? 'opacity-0' : 'opacity-100'}`}
             controls
             preload="metadata"

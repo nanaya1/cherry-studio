@@ -9,7 +9,11 @@ import { ipcApi } from '@renderer/ipc'
 
 import IndustrialVideoAgentProduction from './IndustrialVideoAgentProduction'
 import type * as IndustrialVideoProgressStore from './industrialVideoProgressStore'
-import { getIndustrialVideoProgressSnapshot, useIndustrialVideoProgressSnapshot } from './industrialVideoProgressStore'
+import {
+  getIndustrialVideoProgressSnapshot,
+  useIndustrialVideoProgressSnapshot,
+  useIndustrialVideoWorkbench
+} from './industrialVideoProgressStore'
 import { IndustrialVideoReviewFilesProvider } from './IndustrialVideoReviewFiles'
 import { useIndustrialVideoProduction } from './useIndustrialVideoProduction'
 
@@ -48,13 +52,14 @@ vi.mock('./useIndustrialVideoProduction', () => ({ useIndustrialVideoProduction:
 vi.mock('@renderer/components/FilePreview', () => ({
   FilePreview: ({ filePath }: { filePath: string }) => <video aria-label="成片播放器" src={filePath} controls />
 }))
-function StartMessage() {
+function StartMessage({ parsed = false }: { parsed?: boolean }) {
   const attachments = useToolResultAttachments()
   return (
     <article aria-label="启动工具消息">
-      {attachments?.('mcp__meacowork-tools__ivideo_start', {
-        content: [{ type: 'text', text: '{"ok":true,"jobId":"j"}' }]
-      })}
+      {attachments?.(
+        'mcp__meacowork-tools__ivideo_start',
+        parsed ? { ok: true, jobId: 'j' } : { content: [{ type: 'text', text: '{"ok":true,"jobId":"j"}' }] }
+      )}
     </article>
   )
 }
@@ -110,18 +115,18 @@ it('旧任务已完成但仍有未知提交时，不以旧成片冒充本次结�
   expect(ipcApi.request).not.toHaveBeenCalledWith('industrial_video.download_artifact', expect.anything())
 })
 
-it('完成后自动下载，在消息展示文件并只打开一次现有文件预览', async () => {
+it.each([false, true])('完成后自动下载，在消息展示文件并只打开一次现有文件预览（解析结果=%s）', async (parsed) => {
   vi.mocked(useIndustrialVideoProduction).mockReturnValue(production('done', { final: 'output/final.mp4' }))
   const onPreviewOpenChange = vi.fn()
   const content = (
     <IndustrialVideoAgentProduction sessionId="s" previewOpen onPreviewOpenChange={onPreviewOpenChange}>
-      <StartMessage />
+      <StartMessage parsed={parsed} />
     </IndustrialVideoAgentProduction>
   )
   const view = render(content)
   await waitFor(() => expect(openArtifactFile).toHaveBeenCalledWith('/workspace/final.mp4'))
   // 成功按钮（final.mp4）位于消息附件内，而非独立预览侧栏。
-  expect(screen.getByLabelText('启动工具消息')).toHaveTextContent('final.mp4')
+  expect(screen.getByLabelText('成片文件')).toHaveTextContent('final.mp4')
   expect(screen.queryByLabelText('成片预览')).toBeNull()
   expect(onPreviewOpenChange).toHaveBeenCalledWith(false)
   view.rerender(content)
@@ -129,6 +134,34 @@ it('完成后自动下载，在消息展示文件并只打开一次现有文件�
   expect(
     vi.mocked(ipcApi.request).mock.calls.filter(([name]) => name === 'industrial_video.download_artifact')
   ).toHaveLength(1)
+})
+
+it('工具记录折叠未挂载时仍直接展示成片文件', async () => {
+  vi.mocked(useIndustrialVideoProduction).mockReturnValue(production('done', { final: 'output/final.mp4' }))
+  render(<IndustrialVideoAgentProduction sessionId="s">已折叠的消息记录</IndustrialVideoAgentProduction>)
+  expect(await screen.findByRole('button', { name: 'final.mp4' })).toBeVisible()
+})
+
+it('恢复已完成任务时重新取得同项目可信工作台链接', async () => {
+  vi.mocked(useIndustrialVideoProduction).mockReturnValue(production('done', { final: 'output/final.mp4' }))
+  vi.mocked(ipcApi.request).mockImplementation(async (channel) => {
+    if (channel === 'industrial_video.workbench_open')
+      return { run: 'r', workbench_url: 'https://example.test/restored' } as never
+    return { filePath: '/workspace/final.mp4' } as never
+  })
+  function RestoredWorkbench() {
+    const workbench = useIndustrialVideoWorkbench('s')
+    return workbench ? <a href={workbench.url}>恢复工作台</a> : null
+  }
+  render(
+    <IndustrialVideoAgentProduction sessionId="s">
+      <RestoredWorkbench />
+    </IndustrialVideoAgentProduction>
+  )
+  expect(await screen.findByRole('link', { name: '恢复工作台' })).toHaveAttribute(
+    'href',
+    'https://example.test/restored'
+  )
 })
 
 it('does not render the legacy production sidebar when progress is handled by the shared tab', () => {
@@ -161,7 +194,7 @@ it('预览保存后不在对话顶部显示独立审核面板', () => {
   expect(screen.queryByLabelText('客户端审核')).toBeNull()
 })
 
-it('工作台交接消息在尚未生成时也能打开已有右侧区域', async () => {
+it.each([false, true])('工作台交接消息在尚未生成时也能打开已有右侧区域（解析结果=%s）', async (parsed) => {
   const value = production('storyboard_submitted')
   vi.mocked(useIndustrialVideoProduction).mockReturnValue({
     ...value,
@@ -170,9 +203,12 @@ it('工作台交接消息在尚未生成时也能打开已有右侧区域', asyn
   })
   function ReviewMessage() {
     const attachments = useToolResultAttachments()
-    return attachments?.('mcp__meacowork-tools__ivideo_review_snapshot_get', {
-      content: [{ type: 'text', text: '{"ok":true,"workbench_url":"https://example.test/workbench"}' }]
-    })
+    return attachments?.(
+      'mcp__meacowork-tools__ivideo_review_snapshot_get',
+      parsed
+        ? { ok: true, workbench_url: 'https://example.test/workbench' }
+        : { content: [{ type: 'text', text: '{"ok":true,"workbench_url":"https://example.test/workbench"}' }] }
+    )
   }
   render(
     <IndustrialVideoAgentProduction sessionId="s" workbench={<div>服务端工作台内容</div>}>
@@ -485,7 +521,7 @@ it('成片完成后无论本地预览是否激活都自动下载并在消息内�
     </IndustrialVideoAgentProduction>
   )
   await waitFor(() => expect(openArtifactFile).toHaveBeenCalledWith('/workspace/final.mp4'))
-  expect(screen.getByLabelText('启动工具消息')).toHaveTextContent('final.mp4')
+  expect(screen.getByLabelText('成片文件')).toHaveTextContent('final.mp4')
   expect(screen.queryByTitle('成片在线播放')).toBeNull()
   expect(
     vi.mocked(ipcApi.request).mock.calls.filter(([name]) => name === 'industrial_video.download_artifact')

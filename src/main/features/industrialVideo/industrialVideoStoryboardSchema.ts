@@ -101,6 +101,17 @@ export function validateStageCapacity(task: Record<string, unknown>, output: Rec
     const entities = output.entities as { attributes?: unknown[] }[] | undefined
     if (Array.isArray(entities) && entities.reduce((sum, entity) => sum + (entity.attributes?.length ?? 0), 0) > 24)
       reject('跨实体跟踪物理属性总数不得超过24项')
+    const sourceLines = context?.source_lines as { line: number; text: string }[] | undefined
+    if (Array.isArray(sourceLines) && Array.isArray(entities)) {
+      const lines = new Map(sourceLines.map((line) => [line.line, line.text]))
+      for (const entity of entities as { name?: string; source_lines?: number[] }[]) {
+        if (
+          typeof entity.name === 'string' &&
+          !entity.source_lines?.some((line) => lines.get(line)?.includes(entity.name!))
+        )
+          reject(`实体名称须出现在所引用来源行中：${entity.name}`)
+      }
+    }
     const scenes = output.scenes as { narration_segment_ids?: string[] }[] | undefined
     if (Array.isArray(scenes) && scenes.some((scene) => Array.isArray(scene.narration_segment_ids))) {
       const parts = context?.document_segments as { id: string; text: string }[] | undefined
