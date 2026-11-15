@@ -385,13 +385,7 @@ const workbenchGuest = vi.hoisted(() => ({
 }))
 
 vi.mock('@renderer/components/WebviewHost', () => ({
-  WebviewHost: ({
-    src,
-    onWebviewChange
-  }: {
-    src: string
-    onWebviewChange?: (webview: unknown) => void
-  }) => {
+  WebviewHost: ({ src, onWebviewChange }: { src: string; onWebviewChange?: (webview: unknown) => void }) => {
     const listeners = new Map<string, Set<(event: unknown) => void>>()
     const fakeWebview = {
       addEventListener: (channel: string, handler: (event: unknown) => void) => {
@@ -404,7 +398,7 @@ vi.mock('@renderer/components/WebviewHost', () => ({
       send: workbenchGuest.send
     }
     useEffect(() => {
-      workbenchGuest.emit = (name, event = {}) => listeners.get(name)?.forEach(handler => handler(event))
+      workbenchGuest.emit = (name, event = {}) => listeners.get(name)?.forEach((handler) => handler(event))
       onWebviewChange?.(fakeWebview)
       return () => onWebviewChange?.(null)
     }, [onWebviewChange])
@@ -752,6 +746,8 @@ describe('AgentRightPane', () => {
       </TestAgentRightPane>
     )
 
+    expect(screen.getByTestId('right-pane')).toHaveAttribute('data-open', 'false')
+    await userEvent.click(screen.getByRole('button', { name: 'agent.right_pane.tabs.industrial_video_progress' }))
     await waitFor(() => expect(screen.getByTestId('right-pane')).toHaveAttribute('data-open', 'true'))
     expect(screen.getByTestId('shell-tab-title')).toHaveTextContent('agent.right_pane.tabs.industrial_video_progress')
     expect(screen.getByLabelText('视频制作实时进度')).toHaveTextContent('已完成 3/5 个分镜')
@@ -804,7 +800,8 @@ describe('AgentRightPane', () => {
 
   it('industrial workbench bridge rejects requests from a mismatched session without confirming', async () => {
     const sessionId = 'industrial-bridge-session'
-    const { registerResumeStages } = await import('@renderer/pages/industrialVideo/industrialVideoWorkbenchResumeBridge')
+    const { registerResumeStages } =
+      await import('@renderer/pages/industrialVideo/industrialVideoWorkbenchResumeBridge')
     const resumeStages = vi.fn(async () => 'resumed')
     const unregister = registerResumeStages(sessionId, 'run-x', resumeStages)
     try {
@@ -818,10 +815,25 @@ describe('AgentRightPane', () => {
       await screen.findByTestId('industrial-workbench')
       workbenchGuest.send.mockClear()
       act(() => workbenchGuest.emit('dom-ready'))
-      expect(workbenchGuest.send).toHaveBeenCalledWith('industrial-video-workbench:bridge', expect.objectContaining({type:'init',sessionId,run:'run-x'}))
-      act(() => workbenchGuest.emit('ipc-message', {channel:'industrial-video-workbench:bridge',args:[{type:'get_review_snapshot',requestId:'wrong-session',sessionId:'other',run:'run-x'}]}))
-      await waitFor(() => expect(workbenchGuest.send).toHaveBeenCalledWith('industrial-video-workbench:bridge',expect.objectContaining({requestId:'wrong-session',ok:false,code:'untrusted_source'})))
-      expect(ipcRequestMock.mock.calls.some(([route]) => route === 'industrial_video.cowork_review_confirm')).toBe(false)
+      expect(workbenchGuest.send).toHaveBeenCalledWith(
+        'industrial-video-workbench:bridge',
+        expect.objectContaining({ type: 'init', sessionId, run: 'run-x' })
+      )
+      act(() =>
+        workbenchGuest.emit('ipc-message', {
+          channel: 'industrial-video-workbench:bridge',
+          args: [{ type: 'get_review_snapshot', requestId: 'wrong-session', sessionId: 'other', run: 'run-x' }]
+        })
+      )
+      await waitFor(() =>
+        expect(workbenchGuest.send).toHaveBeenCalledWith(
+          'industrial-video-workbench:bridge',
+          expect.objectContaining({ requestId: 'wrong-session', ok: false, code: 'untrusted_source' })
+        )
+      )
+      expect(ipcRequestMock.mock.calls.some(([route]) => route === 'industrial_video.cowork_review_confirm')).toBe(
+        false
+      )
     } finally {
       unregister()
     }
@@ -831,7 +843,10 @@ describe('AgentRightPane', () => {
   it('切换会话后忽略旧 webview 的待完成响应和后续请求', async () => {
     let resolveSnapshot!: (value: unknown) => void
     ipcRequestMock.mockImplementation((route: string) => {
-      if (route === 'industrial_video.cowork_review_get') return new Promise(resolve => { resolveSnapshot = resolve })
+      if (route === 'industrial_video.cowork_review_get')
+        return new Promise((resolve) => {
+          resolveSnapshot = resolve
+        })
       return Promise.resolve(undefined)
     })
     const pane = (sessionId: string) => (
@@ -844,20 +859,108 @@ describe('AgentRightPane', () => {
     act(() => openIndustrialVideoWorkbench('bridge-old', 'run-old', 'https://example.test/workbench'))
     await screen.findByTestId('industrial-workbench')
     const emitOld = workbenchGuest.emit
-    act(() => emitOld('ipc-message', { channel: 'industrial-video-workbench:bridge', args: [
-      { type: 'get_review_snapshot', requestId: 'pending-old', sessionId: 'bridge-old', run: 'run-old' }
-    ] }))
+    act(() =>
+      emitOld('ipc-message', {
+        channel: 'industrial-video-workbench:bridge',
+        args: [{ type: 'get_review_snapshot', requestId: 'pending-old', sessionId: 'bridge-old', run: 'run-old' }]
+      })
+    )
     await waitFor(() => expect(resolveSnapshot).toBeTypeOf('function'))
     view.rerender(pane('bridge-new'))
     workbenchGuest.send.mockClear()
     await act(async () => resolveSnapshot({ review_version: 'rv-old' }))
     act(() => emitOld('dom-ready'))
-    act(() => emitOld('ipc-message', { channel: 'industrial-video-workbench:bridge', args: [
-      { type: 'regenerate_storyboard', requestId: 'late-old', sessionId: 'bridge-old', run: 'run-old', reviewVersion: 'rv-old' }
-    ] }))
+    act(() =>
+      emitOld('ipc-message', {
+        channel: 'industrial-video-workbench:bridge',
+        args: [
+          {
+            type: 'regenerate_storyboard',
+            requestId: 'late-old',
+            sessionId: 'bridge-old',
+            run: 'run-old',
+            reviewVersion: 'rv-old'
+          }
+        ]
+      })
+    )
     expect(workbenchGuest.send).not.toHaveBeenCalled()
-    expect(ipcRequestMock.mock.calls.filter(([route]) => route === 'industrial_video.cowork_review_get')).toHaveLength(1)
+    expect(ipcRequestMock.mock.calls.filter(([route]) => route === 'industrial_video.cowork_review_get')).toHaveLength(
+      1
+    )
     expect(ipcRequestMock.mock.calls.some(([route]) => route === 'industrial_video.cowork_review_confirm')).toBe(false)
+  })
+
+  it('closes cached industrial panels on session switches and allows explicit reopening', async () => {
+    const pane = (sessionId: string) => (
+      <TestAgentRightPane sessionId={sessionId} messages={[]} partsByMessageId={{}}>
+        <AgentRightPane.Shortcuts />
+        <AgentRightPane.Viewport />
+      </TestAgentRightPane>
+    )
+    const view = render(pane('tab-restore-a'))
+    act(() => {
+      openIndustrialVideoWorkbench('tab-restore-a', 'r', 'https://example.test/a')
+      openIndustrialVideoFinal('tab-restore-a', 'r', '/workspace/a.mp4')
+    })
+    await userEvent.click(screen.getByRole('button', { name: '工作台' }))
+    view.rerender(pane('tab-restore-b'))
+    act(() => {
+      openIndustrialVideoWorkbench('tab-restore-b', 'r', 'https://example.test/b')
+      openIndustrialVideoFinal('tab-restore-b', 'r', '/workspace/b.mp4')
+    })
+    expect(screen.getByTestId('shell-tab-title')).toHaveTextContent('成片')
+    view.rerender(pane('tab-restore-a'))
+    expect(screen.getByTestId('right-pane')).toHaveAttribute('data-open', 'false')
+    act(() => openIndustrialVideoWorkbench('tab-restore-a', 'r', 'https://example.test/a', true))
+    act(() => openIndustrialVideoFinal('tab-restore-a', 'r', '/workspace/a-restored.mp4', true))
+    expect(screen.getByTestId('right-pane')).toHaveAttribute('data-open', 'false')
+    await userEvent.click(screen.getByRole('button', { name: '工作台' }))
+    expect(screen.getByTestId('right-pane')).toHaveAttribute('data-open', 'true')
+    view.rerender(pane('tab-restore-b'))
+    expect(screen.getByTestId('right-pane')).toHaveAttribute('data-open', 'false')
+  })
+
+  it('keeps cached industrial content closed across remount until explicitly opened', async () => {
+    const sessionId = 'industrial-remount-selection'
+    const pane = () => (
+      <TestAgentRightPane sessionId={sessionId} messages={[]} partsByMessageId={{}}>
+        <AgentRightPane.Shortcuts />
+        <AgentRightPane.Viewport />
+      </TestAgentRightPane>
+    )
+    const view = render(pane())
+    act(() => {
+      openIndustrialVideoWorkbench(sessionId, 'r', 'https://example.test/remount')
+      openIndustrialVideoFinal(sessionId, 'r', '/workspace/remount.mp4')
+    })
+    await userEvent.click(screen.getByRole('button', { name: '工作台' }))
+    view.unmount()
+    render(pane())
+    expect(screen.getByTestId('right-pane')).toHaveAttribute('data-open', 'false')
+    act(() => openIndustrialVideoWorkbench(sessionId, 'r', 'https://example.test/remount?restored=1', true))
+    act(() => openIndustrialVideoFinal(sessionId, 'r', '/workspace/remount.mp4', true))
+    expect(screen.getByTestId('right-pane')).toHaveAttribute('data-open', 'false')
+    await userEvent.click(screen.getByRole('button', { name: '工作台' }))
+    expect(screen.getByTestId('industrial-workbench')).toBeVisible()
+  })
+
+  it('background workbench and repeated final recovery do not steal the selected tab', async () => {
+    const sessionId = 'industrial-background-restore'
+    render(
+      <TestAgentRightPane sessionId={sessionId} messages={[]} partsByMessageId={{}}>
+        <AgentRightPane.Shortcuts />
+        <AgentRightPane.Viewport />
+      </TestAgentRightPane>
+    )
+    act(() => openIndustrialVideoFinal(sessionId, 'r', '/workspace/final.mp4'))
+    act(() => openIndustrialVideoWorkbench(sessionId, 'r', 'https://example.test/workbench', true))
+    expect(screen.getByTestId('shell-tab-title')).toHaveTextContent('成片')
+    await userEvent.click(screen.getByRole('button', { name: '工作台' }))
+    act(() => openIndustrialVideoFinal(sessionId, 'r', '/workspace/final.mp4', true))
+    expect(screen.getByTestId('shell-tab-title')).toHaveTextContent('工作台')
+    act(() => openIndustrialVideoFinal(sessionId, 'r', '/workspace/final.mp4'))
+    expect(screen.getByTestId('shell-tab-title')).toHaveTextContent('成片')
   })
 
   it('keeps workbench mounted while switching to the downloaded final and isolates sessions', async () => {
@@ -884,7 +987,65 @@ describe('AgentRightPane', () => {
     expect(screen.queryByRole('button', { name: '成片' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '工作台' })).not.toBeInTheDocument()
     view.rerender(pane(sessionId))
-    await waitFor(() => expect(screen.getByTestId('shell-tab-title')).toHaveTextContent('成片'))
+    expect(screen.getByTestId('right-pane')).toHaveAttribute('data-open', 'false')
+  })
+
+  it.each(['workbench', 'final', 'progress'] as const)(
+    'closes the previous industrial %s on session switch and stays closed on return',
+    async (kind) => {
+      const sessionId = `industrial-empty-switch-${kind}`
+      const pane = (id: string) => (
+        <TestAgentRightPane sessionId={id} messages={[]} partsByMessageId={{}}>
+          <AgentRightPane.Viewport />
+        </TestAgentRightPane>
+      )
+      const view = render(pane(sessionId))
+      act(() => {
+        if (kind === 'workbench') openIndustrialVideoWorkbench(sessionId, 'r', 'https://example.test/workbench')
+        if (kind === 'final') openIndustrialVideoFinal(sessionId, 'r', '/workspace/final.mp4')
+        if (kind === 'progress') {
+          publishIndustrialVideoProgress(sessionId, {
+            identity: `${sessionId}:r:j`,
+            progress: { total: 5, done: 3, label: '正在合成成片', stageLabel: '成片合成中' }
+          })
+        }
+      })
+      await waitFor(() => expect(screen.getByTestId('right-pane')).toHaveAttribute('data-open', 'true'))
+      view.rerender(pane(`${sessionId}-empty`))
+      await waitFor(() => expect(screen.getByTestId('right-pane')).toHaveAttribute('data-open', 'false'))
+      view.rerender(pane(sessionId))
+      expect(screen.getByTestId('right-pane')).toHaveAttribute('data-open', 'false')
+    }
+  )
+
+  it('keeps a user-opened browser expanded when switching sessions without industrial content', async () => {
+    const pane = (sessionId: string) => (
+      <TestAgentRightPane sessionId={sessionId} messages={[]} partsByMessageId={{}}>
+        <OpenWebsiteButton url="https://example.test/ordinary" inBrowser />
+        <AgentRightPane.Viewport />
+      </TestAgentRightPane>
+    )
+    const view = render(pane('ordinary-browser-switch'))
+    await userEvent.click(screen.getByRole('button', { name: 'Open website' }))
+    expect(screen.getByTestId('right-pane')).toHaveAttribute('data-open', 'true')
+    view.rerender(pane('ordinary-browser-switch-empty'))
+    expect(screen.getByTestId('right-pane')).toHaveAttribute('data-open', 'true')
+  })
+
+  it('keeps user-selected files expanded after leaving an industrial session', async () => {
+    const pane = (sessionId: string) => (
+      <TestAgentRightPane sessionId={sessionId} workspacePath="/workspace" messages={[]} partsByMessageId={{}}>
+        <AgentRightPane.Shortcuts />
+        <AgentRightPane.Viewport />
+      </TestAgentRightPane>
+    )
+    const view = render(pane('industrial-files-switch'))
+    act(() => openIndustrialVideoWorkbench('industrial-files-switch', 'r', 'https://example.test/workbench'))
+    await screen.findByTestId('industrial-workbench')
+    await userEvent.click(screen.getByRole('button', { name: 'agent.right_pane.tabs.files' }))
+    view.rerender(pane('industrial-files-switch-empty'))
+    expect(screen.getByTestId('right-pane')).toHaveAttribute('data-open', 'true')
+    expect(screen.getByRole('button', { name: 'agent.right_pane.tabs.files' })).toHaveAttribute('aria-pressed', 'true')
   })
 
   it('hides status and trace shortcuts when diagnostics entries are disabled', () => {

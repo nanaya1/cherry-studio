@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import type { ButtonHTMLAttributes } from 'react'
 import { beforeEach, expect, it, vi } from 'vitest'
@@ -127,6 +127,8 @@ it.each([false, true])('完成后自动下载，在消息展示文件并只打�
   await waitFor(() => expect(openArtifactFile).toHaveBeenCalledWith('/workspace/final.mp4'))
   // 成功按钮（final.mp4）位于消息附件内，而非独立预览侧栏。
   expect(screen.getByLabelText('成片文件')).toHaveTextContent('final.mp4')
+  expect(screen.getByLabelText('启动工具消息')).toContainElement(screen.getByLabelText('成片文件'))
+  expect(screen.getAllByLabelText('成片文件')).toHaveLength(1)
   expect(screen.queryByLabelText('成片预览')).toBeNull()
   expect(onPreviewOpenChange).toHaveBeenCalledWith(false)
   view.rerender(content)
@@ -136,10 +138,12 @@ it.each([false, true])('完成后自动下载，在消息展示文件并只打�
   ).toHaveLength(1)
 })
 
-it('工具记录折叠未挂载时仍直接展示成片文件', async () => {
+it('启动消息未挂载时不在消息区外展示成片，但仍自动下载并打开预览', async () => {
   vi.mocked(useIndustrialVideoProduction).mockReturnValue(production('done', { final: 'output/final.mp4' }))
-  render(<IndustrialVideoAgentProduction sessionId="s">已折叠的消息记录</IndustrialVideoAgentProduction>)
-  expect(await screen.findByRole('button', { name: 'final.mp4' })).toBeVisible()
+  render(<IndustrialVideoAgentProduction sessionId="s">未挂载的消息记录</IndustrialVideoAgentProduction>)
+  await waitFor(() => expect(openArtifactFile).toHaveBeenCalledWith('/workspace/final.mp4'))
+  expect(screen.queryByLabelText('成片文件')).not.toBeInTheDocument()
+  expect(screen.queryByText('视频生成完成')).not.toBeInTheDocument()
 })
 
 it('恢复已完成任务时重新取得同项目可信工作台链接', async () => {
@@ -321,15 +325,17 @@ it.each([
   ],
   [{ delivery_status: 'passed' }, '交付状态待确认'],
   [{}, '交付状态待确认']
-])('完成后根据QA展示交付状态：%j', async (qa, text) => {
+])('完成后不在会话顶部展示QA交付状态：%j', async (qa, text) => {
   vi.mocked(useIndustrialVideoProduction).mockReturnValue(production('done', { final: 'final.mp4' }))
   vi.mocked(ipcApi.request).mockImplementation(async (channel) => {
     if (channel === 'industrial_video.qa_get') return qa as never
     return {} as never
   })
   render(<IndustrialVideoAgentProduction sessionId="s">消息流</IndustrialVideoAgentProduction>)
-  await waitFor(() => expect(screen.getByLabelText('成片交付状态')).toHaveTextContent(text))
-  expect(ipcApi.request).toHaveBeenCalledWith('industrial_video.qa_get', { sessionId: 's', run: 'r' })
+  await act(async () => {})
+  expect(screen.queryByLabelText('成片交付状态')).toBeNull()
+  expect(screen.queryByText(text, { exact: false })).toBeNull()
+  expect(screen.getByText('消息流')).toBeInTheDocument()
 })
 
 it('切换会话后迟到QA通过不能覆盖新会话', async () => {
@@ -345,17 +351,85 @@ it('切换会话后迟到QA通过不能覆盖新会话', async () => {
   const { rerender } = render(<IndustrialVideoAgentProduction sessionId="s">消息流</IndustrialVideoAgentProduction>)
   await waitFor(() => expect(resolveOld).toBeDefined())
   rerender(<IndustrialVideoAgentProduction sessionId="new">新消息流</IndustrialVideoAgentProduction>)
-  resolveOld({ delivery_status: 'passed', review_only: false, report_stale: false, quality_gate_report: { gates: {} } })
-  await waitFor(() => expect(screen.getByLabelText('成片交付状态')).toHaveTextContent('交付状态待确认'))
-  expect(screen.getByLabelText('成片交付状态')).not.toHaveTextContent('可交付')
+  await act(async () => {
+    resolveOld({
+      delivery_status: 'passed',
+      review_only: false,
+      report_stale: false,
+      quality_gate_report: { gates: {} }
+    })
+  })
+  expect(screen.queryByLabelText('成片交付状态')).toBeNull()
+  expect(screen.queryByText(/可交付/)).toBeNull()
+  expect(screen.getByText('新消息流')).toBeInTheDocument()
 })
 
 it('QA查询失败不报生成失败，也不沿用通过结论', async () => {
   vi.mocked(useIndustrialVideoProduction).mockReturnValue(production('done', { final: 'final.mp4' }))
   vi.mocked(ipcApi.request).mockRejectedValue(new Error('offline'))
   render(<IndustrialVideoAgentProduction sessionId="s">消息流</IndustrialVideoAgentProduction>)
-  await waitFor(() => expect(screen.getByLabelText('成片交付状态')).toHaveTextContent('QA查询失败，交付状态待确认'))
+  await act(async () => {})
+  expect(screen.queryByLabelText('成片交付状态')).toBeNull()
+  expect(screen.queryByText(/QA查询失败/)).toBeNull()
   expect(screen.queryByText('生成失败')).toBeNull()
+  expect(screen.getByText('消息流')).toBeInTheDocument()
+})
+
+it('查询异常持续6秒才在成片进度提示，恢复或切换会话立即清除，不覆盖真实进度', async () => {
+  vi.useFakeTimers()
+  try {
+    const value = { ...production('generating', { scenes_total: 5, scenes_done: 2 }), error: 'offline' }
+    vi.mocked(useIndustrialVideoProduction).mockReturnValue(value)
+    const content = (sessionId = 's') => (
+      <IndustrialVideoAgentProduction sessionId={sessionId}>
+        <StartMessage />
+      </IndustrialVideoAgentProduction>
+    )
+    const view = render(content())
+    expect(getIndustrialVideoProgressSnapshot('s')?.error).toBeFalsy()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(6000)
+    })
+    expect(getIndustrialVideoProgressSnapshot('s')?.error).toBe('任务状态更新异常，正在重试')
+    expect(getIndustrialVideoProgressSnapshot('s')?.progress.done).toBe(2)
+    expect(getIndustrialVideoProgressSnapshot('s')?.stopped).toBeUndefined()
+    expect(screen.queryByText('任务状态更新异常，正在重试')).not.toBeInTheDocument()
+    view.rerender(content('new'))
+    expect(getIndustrialVideoProgressSnapshot('new')?.error).toBeFalsy()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(6000)
+    })
+    expect(getIndustrialVideoProgressSnapshot('new')?.error).toBeTruthy()
+    vi.mocked(useIndustrialVideoProduction).mockReturnValue({ ...value, error: '' })
+    view.rerender(content('new'))
+    expect(getIndustrialVideoProgressSnapshot('new')?.error).toBeFalsy()
+    view.unmount()
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
+it('短暂查询异常恢复后不延迟冒出提示，业务失败原因不被查询异常覆盖', async () => {
+  vi.useFakeTimers()
+  try {
+    const value = { ...production(), error: 'offline', jobError: '服务端实际失败原因' }
+    vi.mocked(useIndustrialVideoProduction).mockReturnValue(value)
+    const content = <IndustrialVideoAgentProduction sessionId="s">消息流</IndustrialVideoAgentProduction>
+    const view = render(content)
+    expect(getIndustrialVideoProgressSnapshot('s')?.error).toBe('服务端实际失败原因')
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000)
+    })
+    vi.mocked(useIndustrialVideoProduction).mockReturnValue({ ...value, error: '', jobError: '' })
+    view.rerender(<IndustrialVideoAgentProduction sessionId="s">消息流</IndustrialVideoAgentProduction>)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(6000)
+    })
+    expect(getIndustrialVideoProgressSnapshot('s')?.error).toBeFalsy()
+    view.unmount()
+  } finally {
+    vi.useRealTimers()
+  }
 })
 
 const refresh = vi.fn(async () => {})

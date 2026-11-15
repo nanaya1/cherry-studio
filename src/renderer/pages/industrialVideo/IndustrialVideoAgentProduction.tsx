@@ -90,6 +90,16 @@ export default function IndustrialVideoAgentProduction({
   const active = Boolean(run && jobId && generationConfirmed && ['generating', 'assembling', 'done'].includes(state))
   const visible = active || Boolean(run && jobId && generationConfirmed && terminalLabels[state])
   const identity = `${sessionId}:${run}:${jobId}`
+  const queryFailed = Boolean(error)
+  const [queryWarningIdentity, setQueryWarningIdentity] = useState<string | null>(null)
+  useEffect(() => {
+    setQueryWarningIdentity(null)
+    if (!queryFailed) return
+    // 容忍两个轮询间隔的短暂异常，恢复或切换任务立即隐藏。
+    const timer = setTimeout(() => setQueryWarningIdentity(identity), 6000)
+    return () => clearTimeout(timer)
+  }, [queryFailed, identity])
+  const queryWarning = queryFailed && queryWarningIdentity === identity ? '任务状态更新异常，正在重试' : ''
   // const total = count(progress?.total_scenes) ?? count(progress?.total)
   // const done = count(progress?.scenes_done) ?? count(progress?.done)
   // const loadingProgress = readGenerationProgress(progress, state, storyboard?.run === run ? storyboard.count : null)
@@ -134,9 +144,10 @@ export default function IndustrialVideoAgentProduction({
   // const finished = active && state === 'done' && !stale && !terminal
   const finished = active && state === 'done' && !stale && !terminal && !submissionUnconfirmed
 
-  const [delivery, setDelivery] = useState<{ key: string; text: string } | null>(null)
+  // const [delivery, setDelivery] = useState<{ key: string; text: string } | null>(null)
+  const [, setDelivery] = useState<{ key: string; text: string } | null>(null)
   const deliveryKey = `${artifactKey}:${state}:${stale}:${terminal}`
-  const deliveryText = delivery?.key === deliveryKey ? delivery.text : '交付状态待确认'
+  // const deliveryText = delivery?.key === deliveryKey ? delivery.text : '交付状态待确认'
   useEffect(() => {
     if (!finished || !run) return
     let active = true
@@ -258,7 +269,7 @@ export default function IndustrialVideoAgentProduction({
         if (!alive || result.run !== run) return
         const url = new URL(result.workbench_url)
         if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) return
-        openIndustrialVideoWorkbench(sessionId, run, url.href)
+        openIndustrialVideoWorkbench(sessionId, run, url.href, true)
       })
       .catch(() => {})
     return () => {
@@ -286,7 +297,7 @@ export default function IndustrialVideoAgentProduction({
         setDownload({ key: artifactKey, path })
         if (previewed.current.has(artifactKey)) return
         previewed.current.add(artifactKey)
-        void Promise.resolve(previewAction.current(path)).catch(() => {
+        void Promise.resolve(openIndustrialVideoFinal(sessionId, run, path, true)).catch(() => {
           if (alive) setDownload({ key: artifactKey, path, error: '文件已下载，但自动预览失败，请点击文件重试预览' })
         })
       },
@@ -312,7 +323,7 @@ export default function IndustrialVideoAgentProduction({
   const renderArtifact = () => (
     <section aria-label="成片文件" className="space-y-2 rounded-lg border border-border p-3 text-sm">
       <p>{summary}</p>
-      {/* 交付状态沿用消息区顶部的唯一提示，不在文件附件重复展示。 */}
+      {/* 用户侧不展示内部 QA 交付状态。 */}
       {finished && !finalPath && <p role="status">生成已完成，等待成片文件信息</p>}
       {finished && finalPath && !downloaded?.path && !downloaded?.error && <p role="status">正在自动下载成片…</p>}
       {downloaded?.path && (
@@ -362,12 +373,13 @@ export default function IndustrialVideoAgentProduction({
             identity,
             progress: loadingProgress,
             stopped: terminal || undefined,
-            error: error || jobError
+            // error: error || jobError
+            error: jobError || queryWarning
           }
         : null
     )
     // 快照去重保留当前值，不能在依赖刷新时清空并再次通知订阅者。
-  }, [error, generating, generationConfirmed, identity, jobError, loadingProgress, sessionId, terminal])
+  }, [queryWarning, generating, generationConfirmed, identity, jobError, loadingProgress, sessionId, terminal])
   useEffect(() => () => publishIndustrialVideoProgress(sessionId, null), [sessionId])
   const steps = [
     { label: '准备画面', done: finished, detail: finished ? '已完成' : '详细进度待返回' },
@@ -428,9 +440,9 @@ export default function IndustrialVideoAgentProduction({
     } catch {
       return null
     }
-    // 完成文件在消息末尾直接展示，避免藏在工具折叠记录中。
-    // if (!generating) return renderArtifact()
-    if (!generating) return finished ? null : renderArtifact()
+    // 成片附件随启动消息展示，不挂在消息区外；附件不受工具详情折叠影响。
+    // if (!generating) return finished ? null : renderArtifact()
+    if (!generating) return renderArtifact()
     return (
       <ToolDisclosure
         defaultActiveKey={['production']}
@@ -470,9 +482,16 @@ export default function IndustrialVideoAgentProduction({
                     </li>
                   ))}
                 </ol>
+                {/* 查询异常仅在右侧成片进度提示，消息内保留真实业务错误。
                 {(error || jobError) && (
                   <p role="alert" className="text-error">
                     {error || jobError}
+                  </p>
+                )}
+                */}
+                {jobError && (
+                  <p role="alert" className="text-error">
+                    {jobError}
                   </p>
                 )}
               </section>
@@ -495,11 +514,13 @@ export default function IndustrialVideoAgentProduction({
               : '尚未获取到本次提交的任务编号，请联系服务端核实；不会自动重发或猜测绑定任务。'}
           </p>
         )} */}
+        {/* 停用用户侧顶部交付状态提示，保留 QA 查询及原有生成流程。
         {finished && (
           <p role="status" aria-label="成片交付状态" className="px-3 py-2 text-sm text-muted-foreground">
             {deliveryText}
           </p>
         )}
+        */}
         {/* 原入口仅覆盖执行恢复；预览保存后的同一工作台仍需展示审核。 */}
         {/* record?.rounds.at(-1)?.operation === 'storyboard_stage_task_get' &&
           record.rounds.at(-1)?.run === run &&
@@ -513,7 +534,7 @@ export default function IndustrialVideoAgentProduction({
           )}
         */}
         <ToolResultAttachmentsContext value={renderSteps}>{children}</ToolResultAttachmentsContext>
-        {finished && <div className="px-3 py-2">{renderArtifact()}</div>}
+        {/* {finished && <div className="px-3 py-2">{renderArtifact()}</div>} */}
       </div>
       {/* {visible && open && ( */}
       {/* {visible && open && !(finished && filePreviewActive) && ( */}

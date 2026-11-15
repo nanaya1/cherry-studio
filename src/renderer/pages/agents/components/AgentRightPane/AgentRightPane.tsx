@@ -1,3 +1,4 @@
+import type { IpcMessageEvent, WebviewTag } from 'electron'
 import {
   Activity,
   ArrowLeft,
@@ -99,22 +100,16 @@ import { ipcApi, useIpcOn } from '@renderer/ipc'
 import IndustrialVideoGenerationLoading from '@renderer/pages/industrialVideo/IndustrialVideoGenerationLoading'
 // eslint-disable-next-line import-x/no-restricted-paths
 import {
+  selectIndustrialVideoPanel,
   useIndustrialVideoFinal,
   useIndustrialVideoProgressSnapshot,
+  useIndustrialVideoSelectedPanel,
   useIndustrialVideoWorkbench
 } from '@renderer/pages/industrialVideo/industrialVideoProgressStore'
 // eslint-disable-next-line import-x/no-restricted-paths
-import { getResumeStages } from '@renderer/pages/industrialVideo/industrialVideoWorkbenchResumeBridge'
-// eslint-disable-next-line import-x/no-restricted-paths
 import { IndustrialVideoWorkbenchBridge } from '@renderer/pages/industrialVideo/industrialVideoWorkbenchBridge'
-import {
-  INDUSTRIAL_VIDEO_WORKBENCH_BRIDGE_CHANNEL,
-  INDUSTRIAL_VIDEO_WORKBENCH_MESSAGE_TYPE,
-  type IndustrialVideoWorkbenchInit,
-  type IndustrialVideoWorkbenchRequest,
-  type IndustrialVideoWorkbenchResponse
-} from '@shared/utils/industrialVideoWorkbench'
-import type { IpcMessageEvent, WebviewTag } from 'electron'
+// eslint-disable-next-line import-x/no-restricted-paths
+import { getResumeStages } from '@renderer/pages/industrialVideo/industrialVideoWorkbenchResumeBridge'
 import { agentBrowserRuntimeService } from '@renderer/services/AgentBrowserRuntimeService'
 import { EVENT_NAMES, EventEmitter } from '@renderer/services/EventService'
 import { toast } from '@renderer/services/toast'
@@ -133,6 +128,13 @@ import type { Model } from '@shared/data/types/model'
 import { AbsoluteFilePathSchema } from '@shared/types/file'
 import { WEBVIEW_ANNOTATION_LIMITS } from '@shared/types/webviewAnnotation'
 import { createFilePathHandle, toSafeFileUrl, type TreeDirRoot } from '@shared/utils/file'
+import {
+  INDUSTRIAL_VIDEO_WORKBENCH_BRIDGE_CHANNEL,
+  INDUSTRIAL_VIDEO_WORKBENCH_MESSAGE_TYPE,
+  type IndustrialVideoWorkbenchInit,
+  type IndustrialVideoWorkbenchRequest,
+  type IndustrialVideoWorkbenchResponse
+} from '@shared/utils/industrialVideoWorkbench'
 import { formatAgentWebviewAnnotationPrompt } from '@shared/utils/webviewAnnotations'
 import { WebviewSecurityProfile } from '@shared/utils/webviewSecurity'
 
@@ -414,14 +416,76 @@ function AgentRightPaneActionsProvider({
   )
   const industrialVideoProgress = useIndustrialVideoProgressSnapshot(sessionId)
   const workbench = useIndustrialVideoWorkbench(sessionId)
-  useEffect(() => {
-    if (workbench) panelActions.requestOpen('industrial-video-workbench', { userInitiated: true })
-  }, [workbench, panelActions.requestOpen])
   const final = useIndustrialVideoFinal(sessionId)
-  useEffect(() => {
-    if (final) panelActions.requestOpen('industrial-video-final', { userInitiated: true })
-  }, [final, panelActions.requestOpen])
-  const lastIndustrialVideoProgressIdentity = useRef('')
+  const { requestOpen: openIndustrialPanel } = panelActions
+  // const industrialSelections = useRef(new Map<string, string>())
+  const selectedIndustrialPanel = useIndustrialVideoSelectedPanel(sessionId)
+  const previousIndustrial = useRef<{ sessionId?: string; workbench: typeof workbench; final: typeof final }>({
+    sessionId: undefined,
+    workbench: null,
+    final: null
+  })
+  useLayoutEffect(() => {
+    const previous = previousIndustrial.current
+    previousIndustrial.current = { sessionId, workbench, final }
+    if (!sessionId) return
+    if (previous.sessionId !== sessionId) {
+      // 停用切换时恢复工业面板，避免工作台与成片闪切。
+      // const selected = selectedIndustrialPanel
+      // const available = (id: string) =>
+      //   id === 'industrial-video-workbench'
+      //     ? Boolean(workbench)
+      //     : id === 'industrial-video-final'
+      //       ? Boolean(final)
+      //       : Boolean(industrialVideoProgress)
+      // const target = selected
+      //   ? available(selected) ? selected : null
+      //   : final ? 'industrial-video-final' : workbench ? 'industrial-video-workbench' : null
+      // if (target) openIndustrialPanel(target, { userInitiated: false })
+      if (workbench || final || industrialVideoProgress) panelActions.close()
+      return
+    }
+    // 停用后台恢复自动展开工作台，显式打开仍走下方逻辑。
+    // if (workbench?.restoreOnly && workbench !== previous.workbench && selectedIndustrialPanel === 'industrial-video-workbench') {
+    //   openIndustrialPanel(selectedIndustrialPanel, { userInitiated: false })
+    //   return
+    // }
+    // 后台恢复只补数据；显式打开或新成片才改变当前选择。
+    if (final && final !== previous.final && !final.restoreOnly) {
+      openIndustrialPanel('industrial-video-final', { userInitiated: true })
+    } else if (workbench && workbench !== previous.workbench && !workbench.restoreOnly) {
+      openIndustrialPanel('industrial-video-workbench', { userInitiated: true })
+    }
+  }, [sessionId, workbench, final, industrialVideoProgress, openIndustrialPanel, panelActions])
+  const selectionSession = useRef<string | undefined>(undefined)
+  useLayoutEffect(() => {
+    const changedSession = selectionSession.current !== sessionId
+    selectionSession.current = sessionId
+    const waitingForSelection =
+      (selectedIndustrialPanel === 'industrial-video-workbench' && !workbench) ||
+      (selectedIndustrialPanel === 'industrial-video-final' && !final)
+    if (
+      !changedSession &&
+      !waitingForSelection &&
+      sessionId &&
+      panelState.activePanelId?.startsWith('industrial-video-')
+    ) {
+      selectIndustrialVideoPanel(sessionId, panelState.activePanelId)
+    }
+  }, [sessionId, panelState.activePanelId, selectedIndustrialPanel, workbench, final])
+  const { close: closePanel } = panelActions
+  const previousPanel = useRef({ sessionId, panelId: panelState.activePanelId })
+  const lastIndustrialVideoProgressIdentity = useRef(industrialVideoProgress?.identity ?? '')
+  useLayoutEffect(() => {
+    const previous = previousPanel.current
+    previousPanel.current = { sessionId, panelId: panelState.activePanelId }
+    if (previous.sessionId === sessionId) return
+    lastIndustrialVideoProgressIdentity.current = industrialVideoProgress?.identity ?? ''
+    // 工业内容切空时收起，避免通用面板回退到空浏览器；普通面板保持原行为。
+    if (previous.panelId?.startsWith('industrial-video-') && !workbench && !final && !industrialVideoProgress) {
+      closePanel()
+    }
+  }, [sessionId, panelState.activePanelId, workbench, final, industrialVideoProgress, closePanel])
   useEffect(() => {
     if (!industrialVideoProgress || lastIndustrialVideoProgressIdentity.current === industrialVideoProgress.identity)
       return
@@ -1701,14 +1765,22 @@ function AgentIndustrialVideoWorkbenchPanel({ scope }: RightPanelComponentProps<
   }
 
   // 当前已挂载 webview 的 ipc-message 监听，随 webview 卸载清理。
-  const attachedRef = useRef<{ webview: WebviewTag; bridge: IndustrialVideoWorkbenchBridge; handler: (event: IpcMessageEvent) => void; ready: () => void } | null>(null)
-  useEffect(() => () => {
-    const attached = attachedRef.current
-    attached?.bridge.invalidate()
-    attached?.webview.removeEventListener('ipc-message', attached.handler)
-    attached?.webview.removeEventListener('dom-ready', attached.ready)
-    attachedRef.current = null
-  }, [])
+  const attachedRef = useRef<{
+    webview: WebviewTag
+    bridge: IndustrialVideoWorkbenchBridge
+    handler: (event: IpcMessageEvent) => void
+    ready: () => void
+  } | null>(null)
+  useEffect(
+    () => () => {
+      const attached = attachedRef.current
+      attached?.bridge.invalidate()
+      attached?.webview.removeEventListener('ipc-message', attached.handler)
+      attached?.webview.removeEventListener('dom-ready', attached.ready)
+      attachedRef.current = null
+    },
+    []
+  )
   const onWebviewChange = useCallback((webview: WebviewTag | null) => {
     const previous = attachedRef.current
     if (previous) {
@@ -1730,8 +1802,13 @@ function AgentIndustrialVideoWorkbenchPanel({ scope }: RightPanelComponentProps<
     const handler = (event: IpcMessageEvent) => {
       if (event.channel !== INDUSTRIAL_VIDEO_WORKBENCH_BRIDGE_CHANNEL) return
       const request = event.args[0] as IndustrialVideoWorkbenchRequest | undefined
-      if (!request || typeof request.requestId !== 'string' ||
-        (request.type !== INDUSTRIAL_VIDEO_WORKBENCH_MESSAGE_TYPE.getSnapshot && request.type !== INDUSTRIAL_VIDEO_WORKBENCH_MESSAGE_TYPE.regenerateStoryboard)) return
+      if (
+        !request ||
+        typeof request.requestId !== 'string' ||
+        (request.type !== INDUSTRIAL_VIDEO_WORKBENCH_MESSAGE_TYPE.getSnapshot &&
+          request.type !== INDUSTRIAL_VIDEO_WORKBENCH_MESSAGE_TYPE.regenerateStoryboard)
+      )
+        return
       if (attachedRef.current?.bridge !== bridge || bridgeRef.current !== bridge) return
       void (async () => {
         // 仅两条受限请求：读取同版快照 / 显式请求 regenerate_storyboard。
@@ -1941,7 +2018,24 @@ const AGENT_RIGHT_PANEL_CAPABILITIES = [
 ] satisfies readonly RightPanelCapability<AgentRightPanelScope>[]
 
 const AgentRightPaneViewport = memo(function AgentRightPaneViewport() {
-  return <RightPanelViewport />
+  const meta = useAgentRightPaneMeta()
+  const selected = useIndustrialVideoSelectedPanel(meta.sessionId)
+  const state = useRightPanelState()
+  const workbench = useIndustrialVideoWorkbench(meta.sessionId)
+  const final = useIndustrialVideoFinal(meta.sessionId)
+  const pending =
+    selected === 'industrial-video-workbench' ? !workbench : selected === 'industrial-video-final' ? !final : false
+  const restoring = Boolean(
+    (pending || (selected && selected !== state.activePanelId)) && state.activePanelId?.startsWith('industrial-video-')
+  )
+  return (
+    <>
+      {restoring && <div role="status">正在恢复任务预览…</div>}
+      <div className="contents" hidden={restoring}>
+        <RightPanelViewport />
+      </div>
+    </>
+  )
 })
 
 function AgentRightPaneHighlightSection({

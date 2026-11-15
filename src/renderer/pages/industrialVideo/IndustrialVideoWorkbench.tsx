@@ -1,3 +1,4 @@
+import { LoaderCircle } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 import { Button } from '@cherrystudio/ui'
@@ -189,7 +190,9 @@ export default function IndustrialVideoWorkbench({
   const syncReview = async () => {
     if (!run || executing || handled || syncing.current || actionLock.current) return
     syncing.current = true
-    setSyncState('loading')
+    // 后台同步保留已同步状态；首次加载和失败重试仍展示加载提示。
+    // setSyncState('loading')
+    if (syncState !== 'ready') setSyncState('loading')
     try {
       const result = await ipcApi.request('industrial_video.cowork_review_get', { sessionId, run })
       if (!alive.current || currentTask.current !== taskKey) return
@@ -252,6 +255,10 @@ export default function IndustrialVideoWorkbench({
   if (reviewOutput) {
     const settings = snapshot?.effective_settings as Record<string, unknown> | undefined
     const board = snapshot?.storyboard as { scenes?: unknown[] } | undefined
+    const canGenerate = Array.isArray(snapshot?.allowed_actions) && snapshot.allowed_actions.includes('generate_video')
+    const waitingForUpdate =
+      !handled && !executing && syncState === 'ready' && (snapshot?.draft_stale === true || !canGenerate)
+    const showLoading = !handled && !executing && (syncState === 'loading' || waitingForUpdate)
     return (
       <section aria-label="客户端审核" className="my-3 space-y-3 text-sm">
         <p className="font-medium">分镜预览已完成，请核对内容。</p>
@@ -262,13 +269,25 @@ export default function IndustrialVideoWorkbench({
         {/* <IndustrialVideoReviewFiles output={reviewOutput} /> */}
         {/* <IndustrialVideoReviewFiles output={snapshot ?? reviewOutput} sessionId={sessionId} run={run} /> */}
         {/* 成功状态不常驻提示；原成功文案：已同步最新内容。 */}
-        {(syncState !== 'ready' || updated) && (
-          <p role="status" className="text-xs text-muted-foreground">
-            {syncState === 'loading'
-              ? '正在同步内容…'
-              : syncState === 'failed'
+        {/* 原提示条件：syncState !== 'ready' || updated */}
+        {/* 原过期提示：当前分镜预览已过期，保存修改后仍需重新生成分镜；暂不能生成视频。 */}
+        {/* 原更新提示：内容已更新，请到工作台核对后再生成。 */}
+        {!handled && (syncState !== 'ready' || updated || waitingForUpdate) && (
+          <p role="status" aria-busy={showLoading} className="flex items-center gap-2 text-xs text-muted-foreground">
+            {showLoading && (
+              <LoaderCircle aria-hidden="true" size={14} className="animate-spin motion-reduce:animate-none" />
+            )}
+            <span>
+              {syncState === 'failed'
                 ? '暂时无法同步最新内容。'
-                : '内容已更新，请到工作台核对后再生成。'}
+                : syncState === 'loading'
+                  ? '正在同步内容…'
+                  : waitingForUpdate
+                    ? '等待工作台分镜更新，正在自动检查…'
+                    : canGenerate
+                      ? '分镜已更新，可以确认并生成视频'
+                      : '内容已更新，请到工作台核对后再生成。'}
+            </span>
           </p>
         )}
         {/* 原手动刷新入口由自动同步及失败重试替代。

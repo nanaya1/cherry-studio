@@ -38,11 +38,29 @@ interface IndustrialVideoWorkbenchSnapshot {
   run: string
   url: string
   document?: { name: string; content: string }
+  restoreOnly?: boolean
 }
 const workbenches = new Map<string, IndustrialVideoWorkbenchSnapshot>()
+const selectedPanels = new Map<string, string>()
 
-export function openIndustrialVideoWorkbench(sessionId: string, run: string, url: string): void {
-  workbenches.set(sessionId, { run, url })
+export function selectIndustrialVideoPanel(sessionId: string, panelId: string): void {
+  if (selectedPanels.get(sessionId) === panelId) return
+  selectedPanels.set(sessionId, panelId)
+  listeners.forEach((listener) => listener())
+}
+
+export function useIndustrialVideoSelectedPanel(sessionId?: string): string | null {
+  return useSyncExternalStore(
+    (listener) => {
+      listeners.add(listener)
+      return () => listeners.delete(listener)
+    },
+    () => (sessionId ? (selectedPanels.get(sessionId) ?? null) : null)
+  )
+}
+
+export function openIndustrialVideoWorkbench(sessionId: string, run: string, url: string, restoreOnly = false): void {
+  workbenches.set(sessionId, { run, url, restoreOnly })
   listeners.forEach((listener) => listener())
 }
 
@@ -55,11 +73,15 @@ export function openIndustrialVideoReviewDocument(
   listeners.forEach((listener) => listener())
 }
 
-const finals = new Map<string, { run: string; path: string }>()
+// const finals = new Map<string, { run: string; path: string }>()
+const finals = new Map<string, { run: string; path: string; restoreOnly?: boolean }>()
 
-export function openIndustrialVideoFinal(sessionId: string, run: string, path: string): void {
+export function openIndustrialVideoFinal(sessionId: string, run: string, path: string, restoreOnly = false): void {
   if (workbenches.get(sessionId)?.run !== run) workbenches.delete(sessionId)
-  finals.set(sessionId, { run, path })
+  const current = finals.get(sessionId)
+  if (restoreOnly && current?.run === run && current.path === path) return
+  // finals.set(sessionId, { run, path })
+  finals.set(sessionId, { run, path, restoreOnly })
   listeners.forEach((listener) => listener())
 }
 

@@ -195,7 +195,7 @@ describe('IndustrialVideoWorkbench', () => {
     )
     expect(screen.getByText('分镜预览已完成，请核对内容。')).toBeInTheDocument()
     expect(screen.queryByText('审核版本：old')).toBeNull()
-    await screen.findByText('内容已更新，请到工作台核对后再生成。')
+    await screen.findByText('分镜已更新，可以确认并生成视频')
     expect(screen.getByRole('button', { name: '确认并生成视频' })).toBeEnabled()
   })
 
@@ -213,7 +213,7 @@ describe('IndustrialVideoWorkbench', () => {
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
     vi.mocked(ipcApi.request).mockResolvedValue({ ...initial, script: '网页保存的新稿', review_version: 'v2' })
     fireEvent.focus(window)
-    await screen.findByText('内容已更新，请到工作台核对后再生成。')
+    await screen.findByText('分镜已更新，可以确认并生成视频')
     expect(screen.queryByTestId('review-script')).not.toBeInTheDocument()
     expect(screen.queryByText('网页保存的新稿')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '重新生成分镜' })).not.toBeInTheDocument()
@@ -221,6 +221,58 @@ describe('IndustrialVideoWorkbench', () => {
     expect(
       vi.mocked(ipcApi.request).mock.calls.every(([route]) => route === 'industrial_video.cowork_review_get')
     ).toBe(true)
+  })
+
+  it('后台同步等待期间不闪提示或禁用按钮，但失败仍阻止确认', async () => {
+    const initial = { review_version: 'v1', allowed_actions: ['generate_video'] }
+    vi.mocked(ipcApi.request).mockResolvedValue(initial)
+    render(
+      <IndustrialVideoWorkbench sessionId="s" production={makeProduction()} executing={false} reviewOutput={initial} />
+    )
+    const button = screen.getByRole('button', { name: '确认并生成视频' })
+    await waitFor(() => expect(button).toBeEnabled())
+    let rejectSync!: (error: Error) => void
+    vi.mocked(ipcApi.request).mockImplementation(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectSync = reject
+        })
+    )
+    fireEvent.focus(window)
+    expect(screen.queryByText('正在同步内容…')).not.toBeInTheDocument()
+    expect(button).toBeEnabled()
+    rejectSync(new Error('网络中断'))
+    await screen.findByText('暂时无法同步最新内容。')
+    expect(button).toBeDisabled()
+  })
+
+  it('过期预览显示真实阻塞，服务端保存为可生成快照后自动恢复', async () => {
+    const initial = { review_version: 'v1', draft_stale: true, allowed_actions: ['regenerate_storyboard'] }
+    vi.mocked(ipcApi.request).mockResolvedValue(initial)
+    render(
+      <IndustrialVideoWorkbench sessionId="s" production={makeProduction()} executing={false} reviewOutput={initial} />
+    )
+    // 捕获轮询间隔及请求等待期间无反馈、保存后未停止 loading 的回归。
+    await waitFor(() => expect(screen.getByRole('status')).toHaveAttribute('aria-busy', 'true'))
+    expect(screen.getByText('等待工作台分镜更新，正在自动检查…')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '确认并生成视频' })).toBeDisabled()
+    let resolveSync!: (value: never) => void
+    vi.mocked(ipcApi.request).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveSync = resolve
+        })
+    )
+    fireEvent.focus(window)
+    expect(screen.getByRole('status')).toHaveAttribute('aria-busy', 'true')
+    resolveSync({ ...initial, review_version: 'v2', draft_stale: false, allowed_actions: ['generate_video'] } as never)
+    await waitFor(() => expect(screen.getByRole('button', { name: '确认并生成视频' })).toBeEnabled())
+    expect(screen.getByRole('status')).toHaveAttribute('aria-busy', 'false')
+    expect(screen.getByText('分镜已更新，可以确认并生成视频')).toBeInTheDocument()
+    expect(screen.queryByText('等待工作台分镜更新，正在自动检查…')).not.toBeInTheDocument()
+    expect(
+      screen.queryByText('当前分镜预览已过期，保存修改后仍需重新生成分镜；暂不能生成视频。')
+    ).not.toBeInTheDocument()
   })
 
   it('同步失败禁止确认，只显示失败重试入口，成功后恢复', async () => {
@@ -231,6 +283,8 @@ describe('IndustrialVideoWorkbench', () => {
       <IndustrialVideoWorkbench sessionId="s" production={makeProduction()} executing={false} reviewOutput={initial} />
     )
     await screen.findByRole('button', { name: '重试同步' })
+    expect(screen.getByRole('status')).toHaveAttribute('aria-busy', 'false')
+    expect(screen.queryByText('等待工作台分镜更新，正在自动检查…')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: '确认并生成视频' })).toBeDisabled()
     vi.mocked(ipcApi.request).mockResolvedValue(initial)
     await user.click(screen.getByRole('button', { name: '重试同步' }))
@@ -259,7 +313,7 @@ describe('IndustrialVideoWorkbench', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: '确认并生成视频' })).toBeEnabled())
     vi.mocked(ipcApi.request).mockResolvedValue({ ...initial, review_version: 'v2', script: '变更稿' })
     await user.click(screen.getByRole('button', { name: '确认并生成视频' }))
-    await screen.findByText('内容已更新，请到工作台核对后再生成。')
+    await screen.findByText('分镜已更新，可以确认并生成视频')
     expect(screen.queryByTestId('review-script')).not.toBeInTheDocument()
     expect(screen.queryByText('变更稿')).not.toBeInTheDocument()
     expect(resume).not.toHaveBeenCalled()

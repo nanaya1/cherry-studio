@@ -81,11 +81,16 @@ describe('industrial video server execution guard', () => {
     expect(screen.getByRole('button', { name: 'send' })).toBeDisabled()
   })
 
-  it('查询失败仅提示状态暂不可获取，不宣称生成失败', async () => {
+  it('查询失败不在输入框展示横幅，发送保护保持，恢复后可发送', async () => {
     state.error = 'offline'
-    render(<IndustrialVideoAgentComposerSlot {...baseProps} />)
-    expect(await screen.findByRole('alert')).toHaveTextContent('状态暂时获取失败，正在重试；不代表生成失败。')
+    const view = render(<IndustrialVideoAgentComposerSlot {...baseProps} />)
+    await act(async () => {})
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.queryByText(/状态暂时获取失败/)).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'send' })).toBeDisabled()
+    state.error = ''
+    view.rerender(<IndustrialVideoAgentComposerSlot {...baseProps} />)
+    await waitFor(() => expect(screen.getByRole('button', { name: 'send' })).toBeEnabled())
   })
 
   it('先持久化停止门禁再中断 Agent，等待时禁止连点', async () => {
