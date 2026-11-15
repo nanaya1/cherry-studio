@@ -59,7 +59,8 @@ describe('IndustrialVideoWorkbenchBridge', () => {
 
   it('失效的 pending 快照不能恢复可用版本', async () => {
     let release!: (value: typeof SNAPSHOT) => void
-    const deps = makeDeps({ coworkReviewGet: vi.fn(() => new Promise((resolve) => { release = resolve })) })
+    // const deps = makeDeps({ coworkReviewGet: vi.fn(() => new Promise((resolve) => { release = resolve })) })
+    const deps = makeDeps({ coworkReviewGet: vi.fn(() => new Promise<typeof SNAPSHOT>((resolve) => { release = resolve })) })
     const bridge = new IndustrialVideoWorkbenchBridge(deps)
     const result = bridge.getSnapshot(snapshotRequest())
     bridge.invalidate()

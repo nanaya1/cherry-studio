@@ -1,7 +1,7 @@
 import {
   type IndustrialVideoWorkbenchConfirmReceipt,
-  type IndustrialVideoWorkbenchRequest,
-  type IndustrialVideoWorkbenchSnapshot
+  type IndustrialVideoWorkbenchRequest
+  // type IndustrialVideoWorkbenchSnapshot
 } from '@shared/utils/industrialVideoWorkbench'
 
 export type IndustrialVideoWorkbenchAction = 'regenerate_storyboard' | 'generate_video'
@@ -10,7 +10,8 @@ export type IndustrialVideoWorkbenchAction = 'regenerate_storyboard' | 'generate
 export interface IndustrialVideoWorkbenchBridgeDeps {
   sessionId: string
   run: string
-  coworkReviewGet: () => Promise<IndustrialVideoWorkbenchSnapshot>
+  // coworkReviewGet: () => Promise<IndustrialVideoWorkbenchSnapshot>
+  coworkReviewGet: () => Promise<Record<string, unknown>>
   coworkReviewConfirm: (
     reviewVersion: string,
     action: IndustrialVideoWorkbenchAction
