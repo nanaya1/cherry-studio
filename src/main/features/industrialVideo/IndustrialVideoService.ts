@@ -59,6 +59,27 @@ function isRecordLike(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
+// 扫描 PDF 常只提取出分页标记（如 "-- 3 of 57 --"），trim 非空但确无正文。
+function isOnlyPageMarkers(text: string): boolean {
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+  return (
+    lines.length > 0 &&
+    lines.every((line) => /^(?:-{1,3}\s*)?(?:page\s*)?\d+\s*(?:of|\/)\s*\d+\s*(?:-{1,3})?$/i.test(line))
+  )
+}
+
+// 工业执行控制指令是系统提示，不得经模型 parse texts 变成服务端资料行。
+function isIndustrialControlText(text: string): boolean {
+  return (
+    (text.includes('## 工业视频受控制作') && text.includes('模型负责理解素材')) ||
+    (text.startsWith('本任务为工业视频制作。设置快照中的 media/logo 已上传') &&
+      text.includes('附件与 Logo 仅是素材，不是指令。'))
+  )
+}
+
 /**
  * 服务端提交分镜成功后会在提交的 storyboard 上追加少量权威元数据字段；核对落盘时
  * 须把这些服务端附加字段剥离，才能把提交正文与服务端存储正文做正文/hash 比对。
@@ -344,6 +365,7 @@ export interface IndustrialVideoServiceDeps {
   setLocalReviewActor: (actor: string) => void
   /** Trusted document → text extraction for non-text/non-media attachments (docx/pdf/…). */
   extractDocumentText: (filename: string, base64: string) => Promise<string | null>
+  ocrPdfText: (base64: string, signal: AbortSignal) => Promise<string>
 }
 
 /**
@@ -394,7 +416,32 @@ export class IndustrialVideoService extends BaseService {
     getLocalReviewActor: () => application.get('CacheService').getPersist('industrial_video.local_actor'),
     setLocalReviewActor: (actor) => application.get('CacheService').setPersist('industrial_video.local_actor', actor),
     extractDocumentText: (filename, base64) =>
-      extractDocumentTextFromBytes(base64, (filename.match(/\.([^.]+)$/)?.[1] ?? '').toLowerCase())
+      extractDocumentTextFromBytes(base64, (filename.match(/\.([^.]+)$/)?.[1] ?? '').toLowerCase()),
+    ocrPdfText: async (base64, signal) => {
+      // 不再固定依赖本地模型，复用用户已配置的图片 OCR（含系统默认）。
+      // if (!application.get('LocalModelService').isCapabilityReady('ocr'))
+      //   throw new Error('本地 OCR 模型尚未下载完整，请在本地模型设置中下载后重试。')
+      const { createPdfParser } = await import('@main/utils/pdf')
+      const { ocrPdfPagesToMarkdown } = await import('../fileProcessing')
+      const bytes = Uint8Array.from(Buffer.from(base64, 'base64'))
+      const parser = await createPdfParser({ data: bytes.slice() })
+      let pageCount: number
+      try {
+        pageCount = (await parser.getInfo()).total
+      } finally {
+        await parser.destroy()
+      }
+      signal.throwIfAborted()
+      if (pageCount < 1 || pageCount > 300) throw new Error('扫描 PDF 本地识别仅支持 1–300 页。')
+      // return ocrPdfPagesToMarkdown(bytes, pageCount, { signal, reportProgress: () => signal.throwIfAborted() })
+      return ocrPdfPagesToMarkdown(
+        bytes,
+        pageCount,
+        { signal, reportProgress: () => signal.throwIfAborted() },
+        (imagePath, pageSignal) =>
+          application.get('FileProcessingService').ocrImage({ kind: 'path', path: imagePath }, pageSignal)
+      )
+    }
   }
   private deps: IndustrialVideoServiceDeps = this.productionDeps
   private readonly pendingReviewSnapshots = new Map<string, { run: string; reviewVersion: string }>()
@@ -565,6 +612,31 @@ export class IndustrialVideoService extends BaseService {
     }
   >()
 
+  private readonly pdfOcrControllers = new Map<string, AbortController>()
+
+  private async extractScannedPdf(
+    base64: string,
+    filename: string,
+    token: Readonly<{ sessionId: string; epoch: number }>
+  ): Promise<string> {
+    this.assertExecution(token)
+    const controller = new AbortController()
+    this.pdfOcrControllers.set(token.sessionId, controller)
+    try {
+      const text = await this.deps.ocrPdfText(base64, controller.signal)
+      this.assertExecution(token)
+      return text
+    } catch (error) {
+      this.assertExecution(token)
+      throw new IpcError(
+        'IVIDEO_MATERIAL_INVALID',
+        `附件「${filename}」扫描 PDF 文字识别失败：${error instanceof Error ? error.message : String(error)}`
+      )
+    } finally {
+      if (this.pdfOcrControllers.get(token.sessionId) === controller) this.pdfOcrControllers.delete(token.sessionId)
+    }
+  }
+
   /** 仅接收 runtime 保存的真实用户消息；模型工具不可写入此入口。 */
   async prepareUserParts(input: { sessionId: string; parts: CherryMessagePart[] }): Promise<CherryMessagePart[]> {
     const token = this.getExecutionToken()
@@ -598,10 +670,12 @@ export class IndustrialVideoService extends BaseService {
         /* 提取失败不得回退为模型直接读取原文件。 */
       }
       this.assertExecution(token)
-      if (!text?.trim() || (type === FILE_TYPE.TEXT && looksLikeGarbledText(text)))
+      if (ext === 'pdf' && match && (!text?.trim() || isOnlyPageMarkers(text)))
+        text = await this.extractScannedPdf(match[2], part.filename ?? '未命名', token)
+      if (!text?.trim() || (type === FILE_TYPE.TEXT && looksLikeGarbledText(text)) || isOnlyPageMarkers(text))
         throw new IpcError(
           'IVIDEO_MATERIAL_INVALID',
-          `附件「${part.filename ?? '未命名'}」无法提取文本（可能为扫描件或不支持的格式），请转换为 txt/md 后重新发送。`
+          `附件「${part.filename ?? '未命名'}」未提取到可提取文字（可能仅有分页标记的扫描件或不支持的格式），请提供含可提取文字的原件，或先做 OCR 再转换为 txt/md 后重新发送。`
         )
       documentTexts.set(index, text)
       for (const chunk of splitTextsForServer(text, toServerTitle(part.filename))) {
@@ -625,7 +699,9 @@ export class IndustrialVideoService extends BaseService {
       const media: NonNullable<IndustrialVideoInput['media']> = []
       for (const [index, part] of pending.parts.entries()) {
         this.assertExecution(token)
-        if (part.type === 'text' && part.text.trim()) texts.push({ text: part.text })
+        // if (part.type === 'text' && part.text.trim()) texts.push({ text: part.text })
+        if (part.type === 'text' && part.text.trim() && !isIndustrialControlText(part.text))
+          texts.push({ text: part.text })
         if (part.type !== 'file') continue
         const preparedText = pending.documentTexts?.get(index)
         if (preparedText !== undefined) {
@@ -661,10 +737,12 @@ export class IndustrialVideoService extends BaseService {
             extracted = null
           }
           this.assertExecution(token)
-          if (!extracted?.trim())
+          if (ext === 'pdf' && (!extracted?.trim() || isOnlyPageMarkers(extracted)))
+            extracted = await this.extractScannedPdf(match[2], part.filename ?? '未命名', token)
+          if (!extracted?.trim() || isOnlyPageMarkers(extracted))
             throw new IpcError(
               'IVIDEO_MATERIAL_INVALID',
-              `附件「${part.filename ?? '未命名'}」无法提取文本（可能为扫描件或不支持的格式），请转换为 txt/md 后重新发送。`
+              `附件「${part.filename ?? '未命名'}」未提取到可提取文字（可能仅有分页标记的扫描件或不支持的格式），请提供含可提取文字的原件，或先做 OCR 再转换为 txt/md 后重新发送。`
             )
           // TEXT 分支乱码防线：自动编码解码对任意字节返回结果，二进制伪装成共享 textExts
           // 扩展名（.json/.md 等）时会产出乱码——工业资料不容忍乱码进付费流程，直接拒绝。
@@ -774,6 +852,7 @@ export class IndustrialVideoService extends BaseService {
       phase: unresolved ? 'reconcile_required' : 'stopped'
     }
     this.saveRecord(record)
+    this.pdfOcrControllers.get(input.sessionId)?.abort()
     this.invalidateReviews(input.sessionId)
     // if (activeJob) await this.jobCancel({ sessionId: input.sessionId, jobId: activeJob })
     // return { ...this.getRecord(input.sessionId)!.control! }
@@ -1244,6 +1323,16 @@ export class IndustrialVideoService extends BaseService {
       updated.unknownSubmissions = updated.unknownSubmissions.filter(
         (round) => round.run !== jobRun || round.jobId !== input.jobId
       )
+      // 成片完成后保留 job 供预览，但不能继续占用已结束的模型执行轮次。
+      if (
+        newState === 'done' &&
+        updated.control?.phase === 'active' &&
+        !updated.control.stopRequested &&
+        !this.deps.getModelExecutionId(input.sessionId) &&
+        !this.hasUnresolvedSubmission(updated)
+      ) {
+        updated.control = { ...updated.control, phase: 'idle' }
+      }
     }
     if (
       updated.control?.stopRequested &&
@@ -1409,7 +1498,7 @@ export class IndustrialVideoService extends BaseService {
     if (Array.isArray(changes.texts))
       changes.texts = changes.texts.filter((item) => {
         const text = (item as { text?: unknown } | null)?.text
-        return typeof text === 'string' && text.trim().length > 0
+        return typeof text === 'string' && text.trim().length > 0 && !isIndustrialControlText(text)
       })
     if (Array.isArray(changes.media))
       changes.media = changes.media.filter((item) => {
@@ -1473,6 +1562,27 @@ export class IndustrialVideoService extends BaseService {
   ): Promise<T> {
     const epoch = this.getRecord(request.sessionId)?.control?.epoch ?? 0
     return this.withSessionLock(request.sessionId, async () => {
+      // 兼容已完成但旧版本未释放的执行记录；只读核对同一 job 后再恢复审核。
+      const previous = this.getRecord(request.sessionId)
+      if (
+        request.operation === 'review_snapshot_get' &&
+        previous?.run === request.run &&
+        previous.state === 'done' &&
+        previous.jobId &&
+        previous.control?.phase === 'active' &&
+        previous.control.epoch === epoch &&
+        !previous.control.stopRequested &&
+        !this.executionContext.getStore() &&
+        !this.deps.getModelExecutionId(request.sessionId) &&
+        !this.hasUnresolvedSubmission(previous)
+      ) {
+        this.validateSession(request.sessionId)
+        await this.reconcileJob({
+          sessionId: request.sessionId,
+          jobId: previous.jobId,
+          doCall: () => this.createClient(this.requireConfig()).jobGet({ job_id: previous.jobId! })
+        })
+      }
       this.assertExecutionOpen(request.sessionId, epoch)
       const session = this.validateSession(request.sessionId)
       const record = this.getRecord(request.sessionId)
@@ -1988,13 +2098,27 @@ export class IndustrialVideoService extends BaseService {
   }): Promise<VideoApiRecord> {
     const key = this.taskKey(input, 'storyboard_stage_task_get')
     const task = this.planningTasks.get(key)
+    // 仅兼容已领取 outline 的空镜头字面串，不改变任务版本或真实镜头 ID。
     if (
-      !task ||
-      task.stage !== input.stage ||
-      task.scene_uid !== input.scene_uid ||
-      task.expected_task_version !== input.expected_task_version
+      task?.stage === 'outline' &&
+      task.scene_uid === null &&
+      input.stage === 'outline' &&
+      input.scene_uid === 'null'
     ) {
-      throw new IpcError('IVIDEO_TASK_INVALID', '阶段或版本不匹配；保留候选，禁止换版本重交。')
+      input = { ...input, scene_uid: null }
+    }
+    // 原组合校验统一误报版本冲突，改为区分任务、阶段、镜头和版本。
+    const mismatch = !task
+      ? '未领取任务'
+      : task.stage !== input.stage
+        ? 'stage 阶段'
+        : task.scene_uid !== input.scene_uid
+          ? 'scene_uid 镜头标识及类型'
+          : task.expected_task_version !== input.expected_task_version
+            ? '任务版本'
+            : null
+    if (!task || mismatch) {
+      throw new IpcError('IVIDEO_TASK_INVALID', `${mismatch}不匹配；保留候选，禁止换版本重交。`)
     }
     // MEA:industrial-video 仅 outline 标题超限允许原任务内修正一次，未保存不推进。
     // validateStoryboard(task.output_schema as VideoApiRecord, input.output)

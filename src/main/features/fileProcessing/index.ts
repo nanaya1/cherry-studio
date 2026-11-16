@@ -1,4 +1,5 @@
 export { FileProcessingService } from './FileProcessingService'
+export { ocrPdfPagesToMarkdown } from './processors/localDocument/pdfPageOcr'
 export { getFileProcessingFailureMessage, getFileProcessingMarkdownArtifactPath } from './persistence/artifacts'
 export { TesseractRuntimeService } from './processors/tesseract/runtime/TesseractRuntimeService'
 export type { FileProcessingJobPayload } from './tasks/shared'

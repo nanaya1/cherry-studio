@@ -71,6 +71,7 @@ export interface ClaudeCodeHookContext {
   agentDataPath: string
   /** Static per-session agent facts consumed by the guard table's `appliesTo` scoping. */
   builtinRole: string | undefined
+  featureKind?: string
   /** Cherry-owned MCP servers mounted for this session. */
   mountedServers: ReadonlySet<string>
   /** Loaded plugin directories by manifest name; indexed once per session. */
@@ -94,15 +95,18 @@ export function buildClaudeCodeHooks(ctx: ClaudeCodeHookContext): ClaudeCodeSett
     // Live state by id at fire-time: mode and disabled-set follow mid-session agent updates on warm
     // connections; a missing snapshot means no disabled set yet (canUseTool separately fails closed).
     const snapshot = sessionState().getToolPolicySnapshot(sessionId)
-    let featureKind: string | undefined
+    let featureKind: string | undefined = ctx.featureKind
     try {
-      featureKind = agentSessionService.getById(sessionId)?.featureKind
+      featureKind = agentSessionService.getById(sessionId)?.featureKind ?? ctx.featureKind
     } catch {
-      return {
-        hookSpecificOutput: {
-          hookEventName: 'PreToolUse',
-          permissionDecision: 'deny',
-          permissionDecisionReason: 'Session identity is unavailable.'
+      // 普通会话不因工业身份查询失败新增拒绝条件。
+      if (ctx.featureKind === 'industrial-video') {
+        return {
+          hookSpecificOutput: {
+            hookEventName: 'PreToolUse',
+            permissionDecision: 'deny',
+            permissionDecisionReason: 'Session identity is unavailable.'
+          }
         }
       }
     }

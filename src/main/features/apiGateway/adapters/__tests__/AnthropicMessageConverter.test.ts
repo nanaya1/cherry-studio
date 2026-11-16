@@ -341,7 +341,30 @@ describe('AnthropicMessageConverter.toUIMessages', () => {
 })
 
 describe('AnthropicMessageConverter.toAiSdkTools', () => {
-  it('preserves dynamic state dictionaries and their constraints in the provider schema', async () => {
+  it('keeps ordinary tool validation from forwarding undeclared arguments', async () => {
+    const tools = converter.toAiSdkTools(
+      params({
+        tools: [
+          {
+            name: 'get_weather',
+            input_schema: { type: 'object', properties: { city: { type: 'string' } }, required: ['city'] }
+          }
+        ]
+      })
+    )
+    const schema = asSchema(tools!.get_weather.inputSchema)
+    expect(await schema.validate!({ city: '上海', extra: 'not declared' })).toEqual({
+      success: true,
+      value: { city: '上海' }
+    })
+    expect(await schema.validate!({ city: 123 })).toMatchObject({ success: false })
+  })
+
+  it.each([
+    'ivideo_storyboard_submit',
+    'mcp__meacowork-tools__ivideo_storyboard_submit',
+    'mcp__cherry-tools__ivideo_storyboard_submit'
+  ])('preserves dynamic state dictionaries and their constraints in the provider schema: %s', async (toolName) => {
     const state = {
       type: 'object',
       minProperties: 1,
@@ -355,10 +378,8 @@ describe('AnthropicMessageConverter.toAiSdkTools', () => {
       required: ['before', 'after'],
       additionalProperties: false
     }
-    const tools = converter.toAiSdkTools(
-      params({ tools: [{ name: 'ivideo_storyboard_submit', input_schema: inputSchema }] })
-    )
-    const schema = asSchema(tools!.ivideo_storyboard_submit.inputSchema)
+    const tools = converter.toAiSdkTools(params({ tools: [{ name: toolName, input_schema: inputSchema }] }))
+    const schema = asSchema(tools![toolName].inputSchema)
     expect(schema.jsonSchema).toEqual(inputSchema)
     const value = { before: { 触控屏: '熄灭' }, after: { 触控屏: '亮起' } }
     expect(schema.validate).toBeDefined()

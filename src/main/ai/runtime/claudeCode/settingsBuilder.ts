@@ -550,11 +550,15 @@ async function buildToolPermissions(
       return { behavior: 'deny', message: 'Tool request was cancelled' }
     }
 
-    let featureKind: string | undefined
+    let featureKind: string | undefined = session.featureKind
     try {
-      featureKind = agentSessionService.getById(session.id)?.featureKind
+      featureKind = agentSessionService.getById(session.id)?.featureKind ?? session.featureKind
     } catch {
-      return { behavior: 'deny', message: 'Session identity is unavailable.' }
+      // 普通会话保留原权限流程；已知工业会话的身份不可降级。
+      // return { behavior: 'deny', message: 'Session identity is unavailable.' }
+      if (session.featureKind === 'industrial-video') {
+        return { behavior: 'deny', message: 'Session identity is unavailable.' }
+      }
     }
     if (featureKind === 'industrial-video' && !isIndustrialVideoToolAllowed(toolName)) {
       return { behavior: 'deny', message: INDUSTRIAL_VIDEO_BOUNDARY_REASON }
@@ -755,6 +759,7 @@ async function buildToolPermissions(
     cwd,
     agentDataPath,
     builtinRole,
+    featureKind: session.featureKind,
     mountedServers,
     pluginDirectories,
     supportsImages,

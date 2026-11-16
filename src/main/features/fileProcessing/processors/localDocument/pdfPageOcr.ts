@@ -4,7 +4,7 @@ import path from 'node:path'
 import { application } from '@application'
 import { ensureDir, remove, removeDir, write } from '@main/utils/file'
 import { createPdfParser } from '@main/utils/pdf'
-import { AbsoluteFilePathSchema } from '@shared/types/file'
+import { AbsoluteFilePathSchema, type AbsoluteFilePath } from '@shared/types/file'
 
 import { preprocessImage } from '../../utils/ocr'
 import type { FileProcessingExecutionContext } from '../types'
@@ -31,7 +31,8 @@ const RENDER_SCALE = 3
 export async function ocrPdfPagesToMarkdown(
   pdfBytes: Uint8Array,
   pageCount: number,
-  executionContext: FileProcessingExecutionContext
+  executionContext: FileProcessingExecutionContext,
+  recognizeImage?: (imagePath: AbsoluteFilePath, signal: AbortSignal) => Promise<string>
 ): Promise<string> {
   const workDir = AbsoluteFilePathSchema.parse(
     path.join(application.getPath('feature.file_processing.temp'), `local-document-${randomUUID()}`)
@@ -47,7 +48,8 @@ export async function ocrPdfPagesToMarkdown(
       for (let pageNumber = 1; pageNumber <= pageCount; pageNumber++) {
         executionContext.signal.throwIfAborted()
 
-        const pageText = await recognizePage(parser, pageNumber, workDir, executionContext.signal)
+        // const pageText = await recognizePage(parser, pageNumber, workDir, executionContext.signal)
+        const pageText = await recognizePage(parser, pageNumber, workDir, executionContext.signal, recognizeImage)
         if (pageText.length > 0) {
           pages.push(pageText)
         }
@@ -68,7 +70,8 @@ async function recognizePage(
   parser: Awaited<ReturnType<typeof createPdfParser>>,
   pageNumber: number,
   workDir: string,
-  signal: AbortSignal
+  signal: AbortSignal,
+  recognizeImage?: (imagePath: AbsoluteFilePath, signal: AbortSignal) => Promise<string>
 ): Promise<string> {
   const screenshot = await parser.getScreenshot({
     partial: [pageNumber],
@@ -88,6 +91,7 @@ async function recognizePage(
   await write(imagePath, await preprocessImage(Buffer.from(rendered)))
 
   try {
+    if (recognizeImage) return (await recognizeImage(imagePath, signal)).trim()
     const { text } = await application.get('OcrInferenceService').recognize({ kind: 'path', imagePath }, signal)
     return text.trim()
   } finally {

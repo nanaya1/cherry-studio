@@ -2312,6 +2312,90 @@ describe('buildClaudeCodeSessionSettings', () => {
     }
   )
 
+  it('keeps ordinary tool permissions usable when industrial identity lookup fails', async () => {
+    const settings = await buildClaudeCodeSessionSettings(
+      {
+        id: 'session-1',
+        agentId: 'agent-1',
+        workspace: { type: 'user', path: '/workspace/project' }
+      } as never,
+      {} as never
+    )
+    vi.mocked(sessionStateService.getToolPolicySnapshot('session-1')!.resolve).mockReturnValue({
+      approval: 'auto'
+    } as never)
+    mocks.getSession.mockImplementation(() => {
+      throw new Error('identity unavailable')
+    })
+    const result = await settings.canUseTool!('Bash', { command: 'pwd' }, {
+      signal: new AbortController().signal,
+      toolUseID: 'ordinary-identity-failure'
+    } as never)
+    expect(result).toMatchObject({ behavior: 'allow' })
+    const hooks = await Promise.all(
+      (settings.hooks?.PreToolUse?.[0]?.hooks ?? []).map((hook) =>
+        hook(
+          {
+            hook_event_name: 'PreToolUse',
+            tool_name: 'Bash',
+            tool_input: { command: 'pwd' }
+          } as never,
+          'ordinary-identity-failure',
+          { signal: new AbortController().signal }
+        )
+      )
+    )
+    expect(hooks).not.toContainEqual(
+      expect.objectContaining({
+        hookSpecificOutput: expect.objectContaining({ permissionDecision: 'deny' })
+      })
+    )
+  })
+
+  it('still denies industrial tools when live identity lookup fails', async () => {
+    const previousGet = mocks.applicationGet.getMockImplementation()!
+    mocks.applicationGet.mockImplementation((name: string) =>
+      name === 'IndustrialVideoService'
+        ? { getExecutionToken: () => ({ sessionId: 'session-1', epoch: 1 }) }
+        : previousGet(name)
+    )
+    const settings = await buildClaudeCodeSessionSettings(
+      {
+        id: 'session-1',
+        agentId: 'agent-1',
+        featureKind: 'industrial-video',
+        workspace: { type: 'user', path: '/workspace/project' }
+      } as never,
+      {} as never
+    )
+    mocks.getSession.mockImplementation(() => {
+      throw new Error('identity unavailable')
+    })
+    const result = await settings.canUseTool!('mcp__meacowork-tools__ivideo_status', {}, {
+      signal: new AbortController().signal,
+      toolUseID: 'industrial-identity-failure'
+    } as never)
+    expect(result).toMatchObject({ behavior: 'deny', message: 'Session identity is unavailable.' })
+    const hooks = await Promise.all(
+      (settings.hooks?.PreToolUse?.[0]?.hooks ?? []).map((hook) =>
+        hook(
+          {
+            hook_event_name: 'PreToolUse',
+            tool_name: 'mcp__meacowork-tools__ivideo_status',
+            tool_input: {}
+          } as never,
+          'industrial-identity-failure',
+          { signal: new AbortController().signal }
+        )
+      )
+    )
+    expect(hooks).toContainEqual(
+      expect.objectContaining({
+        hookSpecificOutput: expect.objectContaining({ permissionDecision: 'deny' })
+      })
+    )
+  })
+
   it('mounts only the industrial business MCP for industrial sessions', async () => {
     const session = {
       id: 'session-1',

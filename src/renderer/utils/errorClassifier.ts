@@ -99,6 +99,10 @@ export function classifyError(error?: SerializedError, providerId?: string): Err
   if (claudeCodeExitCategory) return classify(claudeCodeExitCategory)
 
   const errorBag = error as Record<string, unknown>
+  // 附件校验错误可能包含 OCR 建议，不代表识别引擎初始化失败。
+  // if (errorBag.code === 'IVIDEO_MATERIAL_INVALID') return classify('unknown')
+  if (errorBag.code === 'IVIDEO_MATERIAL_INVALID' || /^附件「[^\n]+」扫描 PDF 文字识别失败：/.test(error.message ?? ''))
+    return classify('unknown')
   if (isErrorCategory(errorBag.providerErrorCategory) && errorBag.providerErrorCategory !== 'unknown') {
     return classify(errorBag.providerErrorCategory)
   }

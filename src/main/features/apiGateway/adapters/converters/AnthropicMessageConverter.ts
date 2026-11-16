@@ -17,7 +17,7 @@ import type {
 } from '@anthropic-ai/sdk/resources/messages'
 import type { DynamicToolUIPart, FileUIPart, JSONValue, ReasoningUIPart, TextUIPart, ToolSet } from 'ai'
 // import { tool, zodSchema } from 'ai'
-import { jsonSchema, tool } from 'ai'
+import { jsonSchema, tool, zodSchema } from 'ai'
 
 import type { CherryUIMessage } from '@shared/data/types/message'
 import type { Model } from '@shared/data/types/model'
@@ -330,13 +330,15 @@ export class AnthropicMessageConverter implements IMessageConverter<MessageCreat
       const aiTool = tool({
         description: sanitizeDescription(toolDef.description || ''),
         // inputSchema: zodSchema(schema),
-        // 直接透传契约，避免 Zod 往返丢失动态属性；校验成功保留原参数。
-        inputSchema: jsonSchema({ ...rawSchema, required: rawSchema.required ?? [] } as JsonSchemaLike, {
-          validate: async (value) => {
-            const result = await schema.safeParseAsync(value)
-            return result.success ? { success: true, value } : { success: false, error: result.error }
-          }
-        }),
+        // 仅工业工具保留动态契约；普通工具沿用原 Zod 转换与参数校验。
+        inputSchema: /^(?:mcp__(?:meacowork-tools|cherry-tools)__)?ivideo_/.test(toolDef.name)
+          ? jsonSchema({ ...rawSchema, required: rawSchema.required ?? [] } as JsonSchemaLike, {
+              validate: async (value) => {
+                const result = await schema.safeParseAsync(value)
+                return result.success ? { success: true, value } : { success: false, error: result.error }
+              }
+            })
+          : zodSchema(schema),
         // The gateway forwards arbitrary Anthropic/MCP schemas. They do not satisfy
         // Responses strict-mode's all-properties-required contract, so match the
         // Codex client's dynamic-tool behavior and opt out explicitly.

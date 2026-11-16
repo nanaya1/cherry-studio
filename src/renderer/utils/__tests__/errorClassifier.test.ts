@@ -20,6 +20,17 @@ function makeRetryError(overrides: Partial<SerializedError> = {}): SerializedErr
 }
 
 describe('classifyError', () => {
+  it('运行时丢失错误码的扫描附件错误不误诊引擎初始化', () => {
+    expect(
+      classifyError(makeError({ message: '附件「资料.pdf」扫描 PDF 文字识别失败：本地 OCR 模型尚未下载完整' }))
+    ).toMatchObject({ category: 'unknown', navTarget: null })
+  })
+  it('工业附件提示中的 OCR 建议不误诊为引擎未初始化', () => {
+    expect(
+      classifyError(makeError({ code: 'IVIDEO_MATERIAL_INVALID', message: '附件未提取到文字，请先做 OCR' }))
+    ).toMatchObject({ category: 'unknown', navTarget: null })
+  })
+
   it.each([
     ['auth', '/settings/provider?id=anthropic'],
     ['model', '/settings/provider?id=anthropic'],

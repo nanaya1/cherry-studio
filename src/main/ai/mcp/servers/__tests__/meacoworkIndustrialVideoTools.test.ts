@@ -67,6 +67,66 @@ vi.mock('@application', () => ({
 const { MeacoworkIndustrialVideoTools } = await import('../meacoworkIndustrialVideoTools')
 const { IpcError } = await import('@shared/ipc/errors/IpcError')
 
+it('大阶段任务通过同一快照完整分段读取，不暴露 SDK 超长转义行', async () => {
+  agentSessionGetByIdMock.mockReturnValue(makeSession())
+  const task = {
+    run: 'r1',
+    stage: 'copy',
+    expected_task_version: 'original-version',
+    context: { source_text: '中文事实\\n"内容"'.repeat(9000) },
+    output_schema: { type: 'object', required: ['copy'] }
+  }
+  ivServiceMock.storyboardStageTaskGet.mockResolvedValue(task)
+  const tools = makeTools()
+  const callsBefore = ivServiceMock.storyboardStageTaskGet.mock.calls.length
+  let page = jsonOf(await tools.call('ivideo_storyboard_stage_task_get', { run: 'r1' }))
+  expect(page.paged).toBe(true)
+  let text = ''
+  const snapshotId = page.snapshot_id
+  while (true) {
+    expect(page.snapshot_id).toBe(snapshotId)
+    expect(JSON.stringify(page).length).toBeLessThan(16000)
+    text += page.text
+    if (page.next_offset === null) break
+    page = jsonOf(
+      await tools.call('ivideo_storyboard_stage_task_get', {
+        run: 'r1',
+        snapshot_id: snapshotId,
+        read_offset: page.next_offset
+      })
+    )
+  }
+  expect(JSON.parse(text)).toEqual({ ok: true, ...task })
+  expect(ivServiceMock.storyboardStageTaskGet.mock.calls.length - callsBefore).toBe(1)
+  expect(
+    jsonOf(
+      await tools.call('ivideo_storyboard_stage_task_get', {
+        run: 'r1',
+        snapshot_id: 'stale',
+        read_offset: 4000
+      })
+    )
+  ).toMatchObject({ ok: false })
+  expect(
+    jsonOf(
+      await tools.call('ivideo_storyboard_stage_task_get', {
+        run: 'another-run',
+        snapshot_id: snapshotId,
+        read_offset: 2000
+      })
+    )
+  ).toMatchObject({ ok: false })
+  expect(
+    jsonOf(
+      await tools.call('ivideo_storyboard_stage_task_get', {
+        run: 'r1',
+        snapshot_id: snapshotId,
+        read_offset: -1
+      })
+    )
+  ).toMatchObject({ ok: false })
+})
+
 it.each(['video', 'assemble'])('已就绪的 %s 仅提交对应阶段并交接后台，不让模型继续轮询', async (stage) => {
   agentSessionGetByIdMock.mockReturnValue(makeSession())
   ivServiceMock.getRecords.mockReturnValue(undefined)

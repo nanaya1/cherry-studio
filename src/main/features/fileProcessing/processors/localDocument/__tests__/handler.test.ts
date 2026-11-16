@@ -87,6 +87,25 @@ vi.mock('@main/utils/file', async (importOriginal) => ({
 vi.mock('../../../utils/ocr', () => ({ preprocessImage: preprocessImageMock }))
 
 import { localDocumentToMarkdownHandler } from '../documentToMarkdown/handler'
+import { ocrPdfPagesToMarkdown } from '../pdfPageOcr'
+
+it('工业 PDF 可使用配置的 OCR 回调，不依赖本地 PaddleOCR', async () => {
+  getScreenshotMock.mockResolvedValue({ pages: [{ data: Buffer.from('page') }] })
+  preprocessImageMock.mockResolvedValue(Buffer.from('png'))
+  recognizeMock.mockRejectedValue(new Error('本地模型未安装'))
+  const recognizeImage = vi.fn(async (_path: string, _signal: AbortSignal) => '系统识别正文')
+  const text = await ocrPdfPagesToMarkdown(
+    new Uint8Array([1]),
+    2,
+    {
+      signal: new AbortController().signal,
+      reportProgress: () => {}
+    },
+    recognizeImage
+  )
+  expect(text).toBe('系统识别正文\n\n系统识别正文')
+  expect(recognizeImage).toHaveBeenCalledTimes(2)
+})
 
 const PDF_BYTES = Buffer.from('%PDF-1.7 fake')
 

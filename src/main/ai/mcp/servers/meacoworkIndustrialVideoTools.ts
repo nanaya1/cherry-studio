@@ -3,6 +3,8 @@
  * 用户确认与可信审核不可由模型代签；本工具不提供确认接口。
  */
 
+import { createHash } from 'node:crypto'
+
 import type { CallToolResult, Tool } from '@modelcontextprotocol/sdk/types.js'
 import * as z from 'zod'
 
@@ -244,6 +246,16 @@ const WORKFLOW_HINT =
 // '不得调用 start 探测或绕过批准；必须通过原生 AskUserQuestion 取得用户确认并绑定 metadata.reviewVersion。' +
 // '回答明确包含“系统可信审核已通过”后，保持制作参数与已审核分镜不变，不要调用 ivideo_estimate，立即调用 ivideo_start，不要等待单独确认或再次询问脚本与分镜确认；未获批准不得报告为生成中。'
 
+const StageReadSchema = z
+  .strictObject({
+    run: z.string().min(1),
+    snapshot_id: z.string().min(1).optional(),
+    read_offset: z.number().int().nonnegative().optional()
+  })
+  .refine((value) => (value.snapshot_id === undefined) === (value.read_offset === undefined), {
+    message: 'snapshot_id and read_offset must be supplied together'
+  })
+
 const StageSubmitSchema = z.strictObject({
   run: z.string().min(1),
   stage: z.enum(['outline', 'state', 'copy']),
@@ -264,8 +276,9 @@ const IVIDEO_TOOLS: readonly Tool[] = [
   {
     name: 'ivideo_storyboard_stage_task_get',
     description:
-      '串行获取默认 next 阶段，当前模型完整执行 instructions/context/output_schema；不删减任务。complete 时读取审核并结束。',
-    inputSchema: toMcpInputSchema(ContextSchema)
+      '串行获取默认 next 阶段，当前模型完整执行 instructions/context/output_schema；不删减任务。大结果返回 paged=true 时，用同一 run、snapshot_id 和 next_offset 作为 read_offset 逐段读取，按顺序理解所有 text，next_offset=null 才读完；不得先提交或猜版本。complete 时读取审核并结束。',
+    // inputSchema: toMcpInputSchema(ContextSchema)
+    inputSchema: toMcpInputSchema(StageReadSchema)
   },
   {
     name: 'ivideo_storyboard_stage_submit',
@@ -426,11 +439,29 @@ function getService() {
 
 export class MeacoworkIndustrialVideoTools {
   private readonly executionToken: Readonly<{ sessionId: string; epoch: number }> | undefined
+  private stageReadSnapshot: { run: string; id: string; text: string } | undefined
   private runtimeStoryboardSchema: Record<string, unknown> = storyboardSchema
   private readonly submissionErrors = new Map<string, string>()
 
   constructor(private readonly context: MeacoworkIndustrialVideoContext) {
     this.executionToken = getService().getExecutionToken()
+  }
+
+  private readStagePage(run: string, id: string, offset: number): CallToolResult {
+    const snapshot = this.stageReadSnapshot
+    if (!snapshot || snapshot.run !== run || snapshot.id !== id || offset >= snapshot.text.length) {
+      throw new IpcError('IVIDEO_READ_SNAPSHOT_INVALID', '任务读取快照已失效，请重新获取阶段任务；不得猜测提交。')
+    }
+    const end = Math.min(offset + 2000, snapshot.text.length)
+    return okResult({
+      paged: true,
+      run,
+      snapshot_id: id,
+      read_offset: offset,
+      text: snapshot.text.slice(offset, end),
+      next_offset: end < snapshot.text.length ? end : null,
+      instruction: '按 next_offset 继续读取同一快照，完整读取所有 text 后再执行任务；不要读取 SDK 包装文件。'
+    })
   }
 
   tools(): Tool[] {
@@ -511,7 +542,12 @@ export class MeacoworkIndustrialVideoTools {
 
       switch (toolName) {
         case 'ivideo_storyboard_stage_task_get': {
-          const a = ContextSchema.parse(args)
+          // const a = ContextSchema.parse(args)
+          const a = StageReadSchema.parse(args)
+          if (a.snapshot_id !== undefined && a.read_offset !== undefined) {
+            return this.readStagePage(a.run, a.snapshot_id, a.read_offset)
+          }
+          this.stageReadSnapshot = undefined
           const task = await service.storyboardStageTaskGet({ sessionId, run: a.run })
           // 已确认的生成续轮不再进入待审核分支。
           if (task.execution_status === 'complete') {
@@ -533,10 +569,19 @@ export class MeacoworkIndustrialVideoTools {
               true
             )
           }
+          // return okResult(task, true)
+          const text = JSON.stringify({ ok: true, ...task }, null, 2)
+          // SDK 会把多行正文再次转义成单行；大任务改为同一快照的小段读取。
+          if (Buffer.byteLength(text, 'utf8') > 12000) {
+            const id = createHash('sha256').update(text).digest('hex')
+            this.stageReadSnapshot = { run: a.run, id, text }
+            return this.readStagePage(a.run, id, 0)
+          }
           return okResult(task, true)
         }
         case 'ivideo_storyboard_stage_submit': {
           const a = StageSubmitSchema.parse(args)
+          this.stageReadSnapshot = undefined
           const saved = await service.storyboardStageSubmit({ sessionId, ...a })
           if (saved.correction_required === true) return okResult(saved)
           return okResult(
