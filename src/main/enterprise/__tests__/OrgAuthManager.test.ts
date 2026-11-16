@@ -58,7 +58,7 @@ vi.mock('../OrgApiClient', async (importOriginal) => {
 import { OrgAuthManager } from '@main/enterprise/OrgAuthManager'
 
 // MEA:profile-logout-robustness 重复退出去重测试需断言业务访问门立即关闭。
-import { profileBusinessAccessGate } from '../core/profiles/ProfileRuntimeContext'
+import { profileBusinessAccessGate } from '../../core/profiles/ProfileRuntimeContext'
 
 import type { OrgCredentialStore, OrgSession } from '../OrgCredentialStore'
 
