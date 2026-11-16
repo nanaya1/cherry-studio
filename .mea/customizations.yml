@@ -223,6 +223,7 @@ customizations:
     owner: main
     # behavior: In profile isolation mode, local records are legacy staging only. Verify authenticated candidates online against modern currentuser before starting business services; route failed verification to recovery and persist signed-out selection before login.
     # behavior: In profile isolation mode, local records are legacy staging only. Verify authenticated candidates online before business startup; persist signed-out selection before login. Keep one bootstrap window, reuse only identical complete launch contexts, defer display until ready even on second-instance, and close with a localized prompt on main-frame load failure. Replaced windows cannot remove current IPC handlers or consume OAuth callbacks; preserve login cancellation exit, successful activation and relaunch semantics.
+    # 密码首次 POST 非成功时仅通过 loggerService 记录一次目标 origin+固定 /api/auth/login、status、允许列表 content-type 和错误码；不记录凭据/query/原文/完整 headers。JSON code/error.code 只接受 INVALID_CREDENTIALS、ACCOUNT_DISABLED、ACCOUNT_LOCKED、RATE_LIMITED、UNAUTHORIZED，否则 unknown；响应最多读取4KiB、等待200ms，异常保留原 HTTP 错误文本。PasswordProfileLogin.test.ts 覆盖脱敏、成功无失败日志、解析/读取失败、超限及超时。
     # behavior: Require online verification before business startup; retain the candidate and credentials with an isolated real retry when verification is unavailable, and select signed-out only on explicit user action. Keep one owner-checked bootstrap window and reveal only after readiness. User logout alone starts teardown; keep the process alive through login ready-to-show. Superseded windows cannot consume callbacks or terminate the current window; unrecoverable handoff failures require a visible restart-or-quit choice.
     behavior: 业务启动必须通过在线身份验证；验证成功直接进入主界面，失败先完成现有 signed-out 切换事务再打开原账号密码登录窗口，不新增页面或窗口，不清理候选凭据和业务数据。独立 startup recovery 的窗口入口、IPC 注册和 preload 桥接均停用；business 候选不可直接创建 bootstrap 窗口。保留窗口所有者检查、首帧显示、退出登录交接及异常事务恢复边界；替换后的旧窗口不能消费回调或终止当前窗口。
     markers:
@@ -391,10 +392,13 @@ customizations:
     owner: main
     # behavior: Keep MEACowork productName, com.meacowork.desktop appId, meacowork:// protocol, API gateway port 24333, and OpenClaw port 19790.
     # behavior: Enterprise product uses MEA Cowork 企业版, com.meacowork.enterprise (cn suffix for China), meacowork-enterprise://, isolated .meacowork-enterprise home and OpenClaw config, API port 24334 and OpenClaw port 19791. Default assistant name stays MEA Cowork. Enterprise brand artwork uses the supplied craftsman logo across build icons, tray variants and renderer logo; third-party provider icons remain unchanged. Packaged default account data root uses MEA-Cowork-Enterprise without .profiles-v2; custom data roots remain authoritative and existing data is not moved automatically. Package artifacts and the Windows default install folder use MEA-Cowork-Enterprise; macOS app bundle and application display name remain MEA Cowork 企业版. Updates use enterprise channels; no personal feed fallback.
-    behavior: Enterprise product uses MEA Cowork 企业版, com.meacowork.enterprise (cn suffix for China), meacowork-enterprise://, isolated .meacowork-enterprise home and OpenClaw config, API port 24334 and OpenClaw port 19791. Default assistant name stays MEA Cowork. Enterprise brand artwork uses the supplied craftsman logo across build icons, tray variants and renderer logo; third-party provider icons remain unchanged. Packaged default account data root uses MEA-Cowork-Enterprise without .profiles-v2; custom data roots remain authoritative and existing data is not moved automatically. Package artifacts and the Windows default install folder use MEA-Cowork-Enterprise; macOS app bundle and application display name remain MEA Cowork 企业版. Active attachment directories, screenshots, backups, diagnostics and relocation artifacts use meacowork names; legacy relocation markers and executable mapping keys remain readable for interrupted upgrades. Updates use enterprise channels; no personal feed fallback.
+    behavior: Enterprise product uses MEA Cowork 企业版, com.meacowork.enterprise (cn suffix for China), meacowork-enterprise://, isolated .meacowork-enterprise home and OpenClaw config, API port 24334 and OpenClaw port 19791. Default assistant name stays MEA Cowork. Enterprise brand artwork uses the supplied craftsman logo across build icons, tray variants and renderer logo; third-party provider icons remain unchanged. Packaged default account data root uses MEA-Cowork-Enterprise without .profiles-v2; custom data roots remain authoritative and existing data is not moved automatically. Package artifacts and the Windows default install folder use MEA-Cowork-Enterprise; macOS app bundle and application display name remain MEA Cowork 企业版. Active attachment directories, screenshots, backups, diagnostics and relocation artifacts use meacowork names; legacy relocation markers and executable mapping keys remain readable for interrupted upgrades. Enterprise customer builds load only .env.<company> selected by `pnpm build:enterprise <company> -- --<platform> --<arch>` and include the validated company identifier in artifact names without changing the shared app identity or data directory. Updates use enterprise channels; no personal feed fallback.
     touchpoints:
       - package.json
       - electron-builder.yml
+      - electron-builder.enterprise.config.cjs
+      - scripts/build-enterprise.js
+      - .env.example
       - src/main/services/protocol/ProtocolService.ts
       - src/main/services/OpenClawService.ts
       - src/shared/data/preference/preferenceSchemas.ts
@@ -438,6 +442,7 @@ customizations:
       - src/main/utils/__tests__/appEdition.test.ts
       - src/main/services/__tests__/AppUpdaterService.test.ts
       - scripts/__tests__/edition-packaging.test.ts
+      - scripts/__tests__/build-enterprise.test.ts
       - src/main/features/apiGateway/routes/__tests__/routes.integration.test.ts
 
   - id: native-module-packaging

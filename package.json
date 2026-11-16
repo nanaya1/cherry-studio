@@ -19,6 +19,7 @@
     "build:builtin-knowledge:check": "tsx scripts/generate-cherry-assistant-knowledge --check",
     "build:check": "pnpm lint && pnpm docs:check && pnpm test",
     "build:cn": "pnpm run typecheck && dotenv -v CHERRY_EDITION=cn -- electron-vite build && pnpm run build:utility-process",
+    "build:enterprise": "node scripts/build-enterprise.js",
     "build:linux": "dotenv pnpm run build && electron-builder --linux --x64 --arm64",
     "build:linux:arm64": "dotenv pnpm run build && electron-builder --linux --arm64",
     "build:linux:arm64:cn": "pnpm run build:cn && electron-builder --config electron-builder.cn.config.cjs --linux --arm64",
