@@ -44,6 +44,10 @@ customizations:
     # runtime 拒绝工业 enqueue/steer；每轮固定 token 绑定连接、发送和 MCP，审核绑定 epoch，跨轮关闭旧连接。
     # 可信发送 parts 延迟至 parse 提取文本并全量上传图片/视频；成片 parse 建新 run，不支持的附件类型明确阻塞。
     # 消息操作仅工业视频按通用 display policy 平铺：用户复制/修改需求/删除，助手复制/删除/查看用量（有数据）；无更多及笔记入口，删除确认不取消任务或删除成片，用量弹窗复用原详情。
+    # 成片下载（仅工业模块）：downloadArtifact 以已绑定 job record/state 读取当前 job 身份，按 job_get.progress.final_artifact 核对 owned_by_this_job/执行标识/成功状态/新 job active，失败即停止，不把新片归旧 job。
+    # /download 附 expected_sha256 与 expected_job_id，校验 X-IVideo 响应头与本地流式 hash；不匹配不发布成片。仅 job_get 成功且 progress 明确缺 final_artifact 才走旧服务兼容（无去重/无 hash 保证）；job_get 失败或字段存在但无效一律抛错不下载。
+    # 主进程按 job+hash+run+workspace+baseUrl 合并并发下载；持久索引置于受控 workspace（.ivideo-final-index.json），entry.sha 须等于本次权威 final.sha 且文件存在/sha/size 一致才复用旧片，新片另存旧片保留，索引写入失败不影响已发布成片。expectedSize 只取权威 final.size，调用方不一致不采用。
+    # 命名 标题_生成时间UTC_短任务标识.mp4（标题取 storyboard，时间取 final_artifact.generated_at，短标识取 job id 末尾随机段最多 12 位，如 a1b2c3d4）。
     markers:
       - MEA:industrial-video
     touchpoints:
@@ -71,6 +75,8 @@ customizations:
       - src/main/features/industrialVideo/IndustrialVideoClient.ts
       - src/main/features/industrialVideo/IndustrialVideoRevision.ts
       - src/main/features/industrialVideo/IndustrialVideoService.ts
+      - src/main/features/industrialVideo/IndustrialVideoDownload.ts
+      - src/main/features/industrialVideo/industrialVideoFinalArtifact.ts
       - src/shared/ipc/schemas/fileProcessing.ts
       - src/main/ipc/handlers/fileProcessing.ts
       - src/renderer/components/resourceCatalog/dialogs/components/PromptPolishActions.tsx
@@ -97,6 +103,9 @@ customizations:
       - src/main/features/industrialVideo/IndustrialVideoClient.test.ts
       - src/main/features/industrialVideo/IndustrialVideoRevision.test.ts
       - src/main/features/industrialVideo/IndustrialVideoService.test.ts
+      - src/main/features/industrialVideo/IndustrialVideoDownload.test.ts
+      - src/main/features/industrialVideo/__tests__/industrialVideoFinalArtifact.test.ts
+      - src/main/features/industrialVideo/__tests__/industrialVideoFinalDownload.test.ts
       - src/renderer/pages/industrialVideo/industrialVideoPreparation.test.ts
       - src/renderer/pages/industrialVideo/industrialVideoOrchestration.test.ts
       - src/renderer/pages/industrialVideo/IndustrialVideoOrchestratedTask.test.tsx

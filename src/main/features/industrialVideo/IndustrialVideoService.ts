@@ -2,7 +2,10 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 // import { createHmac } from 'node:crypto'
 import { createHash, createHmac, randomUUID } from 'node:crypto'
 // import { loggerService } from '@logger'
-import { mkdtemp, writeFile } from 'node:fs/promises'
+// MEA:industrial-video 原逻辑仅使用 mkdtemp/writeFile；保留原 import 以便回滚。
+// import { mkdtemp, writeFile } from 'node:fs/promises'
+import { createReadStream } from 'node:fs'
+import { mkdtemp, readFile, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
 
@@ -36,6 +39,13 @@ import {
   IndustrialVideoClient as IndustrialVideoClientImpl
 } from './IndustrialVideoClient'
 import { IndustrialVideoDownloader } from './IndustrialVideoDownload'
+import {
+  assertFinalDownloadAllowed,
+  type FinalArtifactInfo,
+  finalDownloadKey,
+  inspectFinalArtifact,
+  makeFinalFileName
+} from './industrialVideoFinalArtifact'
 import { canSubmitIndustrialVideo } from './industrialVideoRecovery'
 import {
   getIndustrialVideoInput,
@@ -53,6 +63,13 @@ import { industrialVideoWorkbenchSecurity } from './industrialVideoWorkbenchSecu
 
 const DEFAULT_TIMEOUT_MS = 30_000
 const PERSIST_KEY = 'industrial_video.records' as const
+// MEA:industrial-video 受控 workspace 内的持久去重索引（只存权威成片身份与本地路径）。
+const FINAL_DOWNLOAD_INDEX_FILE = '.ivideo-final-index.json'
+interface FinalIndexEntry {
+  path: string
+  sha256: string
+  size: number
+}
 // const logger = loggerService.withContext('industrial-video')
 
 function isRecordLike(value: unknown): value is Record<string, unknown> {
@@ -444,6 +461,8 @@ export class IndustrialVideoService extends BaseService {
     }
   }
   private deps: IndustrialVideoServiceDeps = this.productionDeps
+  /** MEA:industrial-video 同作用域身份的并发下载合并（仅工业模块）。 */
+  private readonly inFlightFinalDownloads = new Map<string, Promise<{ filePath: string; size: number }>>()
   private readonly pendingReviewSnapshots = new Map<string, { run: string; reviewVersion: string }>()
   private readonly confirmedReviews = new Map<string, { run: string; reviewVersion: string }>()
 
@@ -3028,13 +3047,112 @@ export class IndustrialVideoService extends BaseService {
     // The real workspace directory comes from the trusted WorkspaceService, never
     // a renderer-controlled value (which would be a path-injection vector).
     const workspaceDir = this.deps.getWorkspacePath(session.workspaceId)
-
     const config = this.requireConfig()
-    const downloader = this.deps.createDownloader(config)
-    const result = await downloader.downloadArtifact({
-      serverPath: input.path,
+
+    // MEA:industrial-video 读取当前 job 身份：id 取自已绑定的 production record
+    // （jobId / state / control 均为已确认存在的接口），再向服务端取权威 final_artifact。
+    const identityRecord = this.getRecord(input.sessionId)
+    const boundJobId = identityRecord?.jobId
+    let jobData: Record<string, unknown> | null = null
+    if (boundJobId) {
+      const jobResult = await this.createClient(config).jobGet({ job_id: boundJobId })
+      if (!jobResult.ok) {
+        const error = jobResult.error
+        throw new IpcError('IVIDEO_HTTP_ERROR', `无法核实成片所属任务：job_get 失败（${error.message}）`, {
+          category: error.category,
+          code: error.code,
+          status: error.status,
+          outcomeUnknown: false,
+          operation: 'job_get'
+        })
+      }
+      jobData = jobResult.data
+    }
+
+    // MEA:industrial-video 原下载（仅 path + expectedSize，无身份绑定/去重）：
+    // const downloader = this.deps.createDownloader(config)
+    // const result = await downloader.downloadArtifact({
+    //   serverPath: input.path, workspaceDir, expectedSize: input.expectedSize
+    // })
+    // if (!result.ok) { ... }
+    // return { filePath: result.filePath, size: result.size }
+    // 仅 job_get 成功且 progress 明确缺 final_artifact 字段才允许旧服务兼容下载。
+    if (jobData && boundJobId) {
+      const read = inspectFinalArtifact(jobData)
+      if (read.kind === 'absent') {
+        return this.callArtifactDownloader({
+          config,
+          workspaceDir,
+          serverPath: input.path,
+          expectedSize: input.expectedSize
+        })
+      }
+      if (read.kind === 'invalid') {
+        throw new IpcError('IVIDEO_ARTIFACT_INVALID', '服务端 final_artifact 字段无效，已停止下载。')
+      }
+
+      // 有新任务竞争时重取已绑定 record 再校验（仅此处，不扩为通用改造）。
+      const latestRecord = this.getRecord(input.sessionId)
+      assertFinalDownloadAllowed({
+        record: latestRecord,
+        jobData,
+        final: read.final,
+        requestedPath: input.path
+      })
+
+      const key = finalDownloadKey({
+        jobId: boundJobId,
+        final: read.final,
+        workspaceDir,
+        run: input.run,
+        baseUrl: config.baseUrl
+      })
+      const existing = this.inFlightFinalDownloads.get(key)
+      if (existing) return existing
+      const pending = this.runFinalDownload({
+        config,
+        workspaceDir,
+        serverPath: input.path,
+        run: input.run,
+        jobId: boundJobId,
+        final: read.final,
+        key
+      })
+      this.inFlightFinalDownloads.set(key, pending)
+      try {
+        return await pending
+      } finally {
+        this.inFlightFinalDownloads.delete(key)
+      }
+    }
+
+    // 无已绑定 job 时沿用原下载（无可核实的服务端身份，不属于本次 fail-open 修复范围）。
+    return this.callArtifactDownloader({
+      config,
       workspaceDir,
+      serverPath: input.path,
       expectedSize: input.expectedSize
+    })
+  }
+
+  /** MEA:industrial-video 唯一的下放入口：统一错误映射，原逻辑的错误处理保留于此。 */
+  private async callArtifactDownloader(args: {
+    config: IndustrialVideoServiceConfig
+    workspaceDir: string
+    serverPath: string
+    expectedSize?: number
+    fileName?: string
+    expectedSha256?: string
+    expectedJobId?: string
+  }): Promise<{ filePath: string; size: number }> {
+    const downloader = this.deps.createDownloader(args.config)
+    const result = await downloader.downloadArtifact({
+      serverPath: args.serverPath,
+      workspaceDir: args.workspaceDir,
+      expectedSize: args.expectedSize,
+      fileName: args.fileName,
+      expectedSha256: args.expectedSha256,
+      expectedJobId: args.expectedJobId
     })
     if (!result.ok) {
       const error = result.error
@@ -3046,6 +3164,91 @@ export class IndustrialVideoService extends BaseService {
       })
     }
     return { filePath: result.filePath, size: result.size }
+  }
+
+  private async readFinalIndex(workspaceDir: string): Promise<Record<string, FinalIndexEntry>> {
+    try {
+      const parsed: unknown = JSON.parse(await readFile(join(workspaceDir, FINAL_DOWNLOAD_INDEX_FILE), 'utf8'))
+      return isRecordLike(parsed) ? (parsed as Record<string, FinalIndexEntry>) : {}
+    } catch {
+      return {}
+    }
+  }
+
+  private async writeFinalIndex(workspaceDir: string, index: Record<string, FinalIndexEntry>): Promise<void> {
+    try {
+      await writeFile(join(workspaceDir, FINAL_DOWNLOAD_INDEX_FILE), JSON.stringify(index), 'utf8')
+    } catch {
+      // 索引写入失败不影响已发布成片；下次重下另存新片、旧片保留。
+    }
+  }
+
+  private async cachedFinalStillValid(
+    entry: FinalIndexEntry | undefined,
+    expectedSha256: string
+  ): Promise<FinalIndexEntry | null> {
+    if (!entry || typeof entry.path !== 'string' || typeof entry.sha256 !== 'string' || typeof entry.size !== 'number')
+      return null
+    // 缓存条目的 sha 必须等于本次权威 final.sha，不能只校验文件与自身记录自洽。
+    if (entry.sha256.toLowerCase() !== expectedSha256.toLowerCase()) return null
+    try {
+      const info = await stat(entry.path)
+      if (!info.isFile() || info.size !== entry.size) return null
+      const hash = createHash('sha256')
+      for await (const chunk of createReadStream(entry.path)) hash.update(chunk)
+      return hash.digest('hex') === expectedSha256.toLowerCase() ? entry : null
+    } catch {
+      return null
+    }
+  }
+
+  private async resolveFinalTitle(config: IndustrialVideoServiceConfig, run: string): Promise<string> {
+    try {
+      const response = await this.createClient(config).storyboardGet({ run, full: false })
+      if (!response.ok) return '成片'
+      const data = response.data
+      const title = data.video_title ?? (isRecordLike(data.storyboard) ? data.storyboard.video_title : undefined)
+      if (typeof title === 'string' && title.trim()) return title.trim()
+    } catch {
+      // 标题不可得时用默认名，不阻断下载。
+    }
+    return '成片'
+  }
+
+  private async runFinalDownload(args: {
+    config: IndustrialVideoServiceConfig
+    workspaceDir: string
+    serverPath: string
+    run: string
+    jobId: string
+    final: FinalArtifactInfo
+    key: string
+  }): Promise<{ filePath: string; size: number }> {
+    // 持久索引 + 本地文件存在/sha/size 校验：有效则复用旧片，避免重复下载。
+    const index = await this.readFinalIndex(args.workspaceDir)
+    const cachedValid = await this.cachedFinalStillValid(index[args.key], args.final.sha256)
+    if (cachedValid) {
+      return { filePath: cachedValid.path, size: cachedValid.size }
+    }
+
+    const title = await this.resolveFinalTitle(args.config, args.run)
+    const fileName = makeFinalFileName({ title, generatedAt: args.final.generatedAt, jobId: args.jobId })
+    const result = await this.callArtifactDownloader({
+      config: args.config,
+      workspaceDir: args.workspaceDir,
+      serverPath: args.serverPath,
+      // MEA:industrial-video 以服务端 final.size 为唯一权威；调用方 expectedSize 不一致不采用。
+      expectedSize: args.final.size,
+      fileName,
+      expectedSha256: args.final.sha256,
+      expectedJobId: args.jobId
+    })
+
+    // 索引写入 best-effort：失败不影响已发布成片。
+    const nextIndex = await this.readFinalIndex(args.workspaceDir)
+    nextIndex[args.key] = { path: result.filePath, sha256: args.final.sha256, size: result.size }
+    await this.writeFinalIndex(args.workspaceDir, nextIndex)
+    return result
   }
 
   async sceneRetry(input: { sessionId: string; run: string; sceneId: number }): Promise<Record<string, unknown>> {

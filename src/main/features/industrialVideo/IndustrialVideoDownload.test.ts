@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync, existsSync } from 'node:fs'
 import { open } from 'node:fs/promises'
 import type * as FsPromises from 'node:fs/promises'
@@ -445,5 +446,103 @@ describe('security: no token leakage', () => {
       mockMainLoggerService.info.mock.calls
     ])
     expect(logged).not.toContain(TOKEN)
+  })
+})
+
+// MEA:industrial-video 新服务下发 expected_sha256/expected_job_id 校验参数与响应头，并在本地计算 hash 防流期间覆盖。
+describe('final artifact binding (sha256 / job id)', () => {
+  const bytes = new Uint8Array([1, 2, 3, 4, 5])
+  const sha = createHash('sha256').update(bytes).digest('hex')
+
+  function boundResponse(headerSha = sha, headerJob = 'job-abc'): Response {
+    const headers: Record<string, string> = {
+      'content-length': String(bytes.length),
+      'X-IVideo-Final-Sha256': headerSha,
+      'X-IVideo-Final-Job-Id': headerJob
+    }
+    return new Response(new Uint8Array(bytes).buffer, { status: 200, headers })
+  }
+
+  it('sends expected_sha256 / expected_job_id as query params when provided', async () => {
+    fetchMock.mockResolvedValueOnce(boundResponse())
+    await makeDownloader().downloadArtifact({
+      serverPath: 'final/movie.mp4',
+      workspaceDir,
+      expectedSha256: sha,
+      expectedJobId: 'job-abc'
+    })
+    const [url] = fetchMock.mock.calls[0]
+    const parsed = new URL(url as string)
+    expect(parsed.pathname).toBe('/download')
+    expect(parsed.searchParams.get('path')).toBe('final/movie.mp4')
+    expect(parsed.searchParams.get('expected_sha256')).toBe(sha)
+    expect(parsed.searchParams.get('expected_job_id')).toBe('job-abc')
+  })
+
+  it('publishes and returns the locally computed sha256 when headers and hash match', async () => {
+    fetchMock.mockResolvedValueOnce(boundResponse())
+    const result = await makeDownloader().downloadArtifact({
+      serverPath: 'final/movie.mp4',
+      workspaceDir,
+      expectedSha256: sha,
+      expectedJobId: 'job-abc'
+    })
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.sha256).toBe(sha)
+      expect(new Uint8Array(readFileSync(result.filePath))).toEqual(bytes)
+    }
+  })
+
+  it('refuses to publish when the response header sha256 disagrees with the expected one', async () => {
+    fetchMock.mockResolvedValueOnce(boundResponse('b'.repeat(64)))
+    const result = await makeDownloader().downloadArtifact({
+      serverPath: 'final/movie.mp4',
+      workspaceDir,
+      expectedSha256: sha,
+      expectedJobId: 'job-abc'
+    })
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error.code).toBe('final_mismatch')
+    expect(existsSync(join(workspaceDir, 'movie.mp4'))).toBe(false)
+  })
+
+  it('refuses to publish when the locally computed hash differs (stream overwritten mid-transfer)', async () => {
+    // 响应头与预期一致，但流内容被覆盖，本地 hash 与预期不符。
+    fetchMock.mockResolvedValueOnce(boundResponse('c'.repeat(64)))
+    const result = await makeDownloader().downloadArtifact({
+      serverPath: 'final/movie.mp4',
+      workspaceDir,
+      expectedSha256: 'c'.repeat(64),
+      expectedJobId: 'job-abc'
+    })
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error.code).toBe('sha256_mismatch')
+    expect(readdirSync(workspaceDir).some((f) => f.includes('.part.'))).toBe(false)
+    expect(existsSync(join(workspaceDir, 'movie.mp4'))).toBe(false)
+  })
+
+  it('maps the server 409 disagreement to an http error and never publishes', async () => {
+    fetchMock.mockResolvedValueOnce(statusResponse(409))
+    const result = await makeDownloader().downloadArtifact({
+      serverPath: 'final/movie.mp4',
+      workspaceDir,
+      expectedSha256: sha,
+      expectedJobId: 'job-abc'
+    })
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.error.code).toBe('http')
+      expect(result.error.status).toBe(409)
+    }
+    expect(existsSync(join(workspaceDir, 'movie.mp4'))).toBe(false)
+  })
+
+  it('keeps legacy behavior when no expected binding is supplied (no query params, no hash gate)', async () => {
+    fetchMock.mockResolvedValueOnce(bytesResponse(bytes))
+    const result = await makeDownloader().downloadArtifact({ serverPath: 'final/movie.mp4', workspaceDir })
+    expect(result.ok).toBe(true)
+    const [url] = fetchMock.mock.calls[0]
+    expect(url).toBe(`${BASE_URL}/download?path=final%2Fmovie.mp4`)
   })
 })

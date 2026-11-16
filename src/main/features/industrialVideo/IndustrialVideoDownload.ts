@@ -1,4 +1,6 @@
-import { randomUUID } from 'node:crypto'
+// MEA:industrial-video 原逻辑仅使用 randomUUID；保留原 import 以便回滚。
+// import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID, type Hash } from 'node:crypto'
 import { createWriteStream, type WriteStream } from 'node:fs'
 import { link, mkdir, open, stat, unlink } from 'node:fs/promises'
 import { extname, join, normalize } from 'node:path'
@@ -47,6 +49,9 @@ export type IndustrialVideoDownloadErrorCode =
   | 'filename_unsafe'
   | 'partial'
   | 'io'
+  // MEA:industrial-video 新服务的成片身份绑定校验：响应头不一致 / 本地 hash 不一致。
+  | 'final_mismatch'
+  | 'sha256_mismatch'
 
 export interface IndustrialVideoDownloadError {
   category: 'download'
@@ -70,6 +75,8 @@ export interface IndustrialVideoDownloadSuccess {
   /** Number of bytes written and verified. */
   size: number
   status: number
+  /** MEA:industrial-video locally computed sha256 (only when expectedSha256 was supplied). */
+  sha256?: string
 }
 
 export type IndustrialVideoDownloadResult =
@@ -87,6 +94,10 @@ export interface DownloadArtifactInput {
   fileName?: string
   /** Optional external cancellation signal; aborting it cancels the download. */
   signal?: AbortSignal
+  /** MEA:industrial-video expected final sha256 (server-issued); binds /download and gates publication. */
+  expectedSha256?: string
+  /** MEA:industrial-video expected job id (server-issued); binds /download response headers. */
+  expectedJobId?: string
 }
 
 /** Thrown internally when the download is aborted mid-transfer. */
@@ -180,7 +191,13 @@ export class IndustrialVideoDownloader {
       // Ensure the (caller-verified) workspace directory exists.
       await mkdir(workspaceDir, { recursive: true })
 
-      const url = `${this.baseUrl}/download?path=${encodeURIComponent(input.serverPath)}`
+      // MEA:industrial-video 原下载仅带 path：
+      // const url = `${this.baseUrl}/download?path=${encodeURIComponent(input.serverPath)}`
+      const downloadUrl = new URL(`${this.baseUrl}/download`)
+      downloadUrl.searchParams.set('path', input.serverPath)
+      if (input.expectedSha256) downloadUrl.searchParams.set('expected_sha256', input.expectedSha256)
+      if (input.expectedJobId) downloadUrl.searchParams.set('expected_job_id', input.expectedJobId)
+      const url = downloadUrl.toString()
       let response: Response
       try {
         response = await net.fetch(url, {
@@ -226,6 +243,19 @@ export class IndustrialVideoDownloader {
         return this.fail(requestId, 'http', `HTTP ${response.status}`, unknown, response.status)
       }
 
+      // MEA:industrial-video 新服务在 200 上回带成片身份头；不一致即拒绝（含 409 场景由上面的 http 分支处理）。
+      if (input.expectedSha256 || input.expectedJobId) {
+        const headerSha = response.headers.get('X-IVideo-Final-Sha256')
+        const headerJob = response.headers.get('X-IVideo-Final-Job-Id')
+        if (
+          (input.expectedSha256 && headerSha?.toLowerCase() !== input.expectedSha256.toLowerCase()) ||
+          (input.expectedJobId && headerJob !== input.expectedJobId)
+        ) {
+          await response.body?.cancel().catch(() => undefined)
+          return this.fail(requestId, 'final_mismatch', '服务端成片身份头与预期不一致', false, response.status)
+        }
+      }
+
       // 200 path: establish a reliable total size before streaming.
       const sizeDecision = resolveReliableSize(input.expectedSize, response.headers.get('content-length'))
       if (sizeDecision.kind === SIZE_MISMATCH) {
@@ -254,9 +284,11 @@ export class IndustrialVideoDownloader {
       }
 
       // 3. Stream the body into the target (no whole-video buffering).
+      //    MEA:industrial-video 边流边算本地 sha256，发布前与服务端 hash 比对，防流期间覆盖。
+      const hasher = input.expectedSha256 ? createHash('sha256') : undefined
       let written = 0
       try {
-        written = await streamToStream(response, target.stream, controller.signal)
+        written = await streamToStream(response, target.stream, controller.signal, hasher)
       } catch (error) {
         await safeClose(target.stream)
         await safeUnlink(target.targetPath)
@@ -276,6 +308,17 @@ export class IndustrialVideoDownloader {
         await safeClose(target.stream)
         await safeUnlink(target.targetPath)
         return this.fail(requestId, 'size_mismatch', `Wrote ${written} bytes, expected ${reliableSize}`, false)
+      }
+
+      // MEA:industrial-video 本地 hash 不一致时绝不发布成片（防流期间被覆盖）。
+      let localSha256: string | undefined
+      if (hasher) {
+        localSha256 = hasher.digest('hex')
+        if (localSha256 !== input.expectedSha256?.toLowerCase()) {
+          await safeClose(target.stream)
+          await safeUnlink(target.targetPath)
+          return this.fail(requestId, 'sha256_mismatch', '下载内容 hash 与服务端记录不一致', false)
+        }
       }
 
       await finishWrite(target.stream)
@@ -298,7 +341,7 @@ export class IndustrialVideoDownloader {
       }
       await safeUnlink(target.targetPath)
       logger.info(`industrial video download ${requestId} published (${written} bytes)`)
-      return { ok: true, requestId, filePath: publishPath, size: written, status: 200 }
+      return { ok: true, requestId, filePath: publishPath, size: written, status: 200, sha256: localSha256 }
     } catch (error) {
       logger.warn(`industrial video download publish failed: ${(error as NodeJS.ErrnoException).code ?? 'io'}`)
       if (target) {
@@ -413,7 +456,14 @@ function finishWrite(stream: WriteStream): Promise<void> {
  * buffering the whole payload. Aborts cleanly (releasing the stream and the file)
  * when `signal` fires.
  */
-async function streamToStream(response: Response, fileStream: WriteStream, signal: AbortSignal): Promise<number> {
+// MEA:industrial-video 原签名不含 hasher；保留便于回滚。
+// async function streamToStream(response: Response, fileStream: WriteStream, signal: AbortSignal): Promise<number>
+async function streamToStream(
+  response: Response,
+  fileStream: WriteStream,
+  signal: AbortSignal,
+  hasher?: Hash
+): Promise<number> {
   let aborted = false
   let streamError: Error | null = null
 
@@ -446,6 +496,7 @@ async function streamToStream(response: Response, fileStream: WriteStream, signa
       if (done) break
       if (value && value.byteLength > 0) {
         total += value.byteLength
+        hasher?.update(value)
         await writeChunk(fileStream, value)
       }
     }
