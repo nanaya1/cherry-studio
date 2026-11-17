@@ -122,11 +122,12 @@ describe('McpCatalog', () => {
     expect(screen.queryByRole('tab', { name: 'Organization' })).not.toBeInTheDocument()
   })
 
-  it('presents the public connector tab for the legacy oauth management auth mode', () => {
+  it('hides the public connector tab even when the management directory is available', () => {
     orgSessionMock.authMode = 'management-oauth'
     render(<McpCatalog />)
 
-    expect(screen.getByRole('tab', { name: 'Organization' })).toBeVisible()
+    expect(screen.queryByRole('tab', { name: 'Organization' })).not.toBeInTheDocument()
+    expect(screen.queryByText('organization catalog')).not.toBeInTheDocument()
   })
 
   // [enterprise] 公共 tab 仅在组织连接器目录实际请求成功后（available）展示；初始失败隐藏，即使账号模式为 management-oauth
@@ -145,14 +146,11 @@ describe('McpCatalog', () => {
     expect(screen.getByRole('tab', { name: 'Discover' })).toBeVisible()
     expect(screen.getByRole('tab', { name: 'Providers' })).toBeVisible()
     expect(screen.getByRole('tab', { name: 'My MCP' })).toBeVisible()
-    expect(screen.getByRole('tab', { name: 'Organization' })).toBeVisible()
+    expect(screen.queryByRole('tab', { name: 'Organization' })).not.toBeInTheDocument()
+    expect(screen.queryByText('organization catalog')).not.toBeInTheDocument()
     expect(screen.getByText('builtin catalog')).toBeVisible()
 
-    await user.click(screen.getByRole('tab', { name: 'Organization' }))
-    expect(screen.getByText('organization catalog')).toBeVisible()
-    await user.click(screen.getByRole('tab', { name: 'Discover' }))
-    expect(screen.getByText('builtin catalog')).toBeVisible()
-    expect(screen.getAllByRole('tab', { name: 'Organization' })).toHaveLength(1)
+    expect(screen.queryByRole('tab', { name: 'Organization' })).not.toBeInTheDocument()
 
     await user.click(screen.getByRole('tab', { name: 'Marketplaces' }))
     expect(screen.getByText('market catalog')).toBeVisible()
