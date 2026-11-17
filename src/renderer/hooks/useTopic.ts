@@ -459,10 +459,13 @@ export function useTopicMutations() {
   const restoreTopic = useCallback(
     async (topicId: string): Promise<Topic> => {
       const topic = await restoreTrigger({ params: { id: topicId } })
+      // Inactive detail queries cannot revalidate a cached NOT_FOUND after undo.
+      await writeCache(`/topics/${topicId}`, topic)
       logger.info('Restored topic', { id: topicId })
       return topic
     },
-    [restoreTrigger]
+    // [restoreTrigger]
+    [restoreTrigger, writeCache]
   )
 
   const deleteTopics = useCallback(

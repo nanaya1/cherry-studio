@@ -97,6 +97,32 @@ describe('applyMigrations', () => {
     expect(String(sqlite.pragma('integrity_check', { simple: true }))).toBe('ok')
   })
 
+  it('repairs remote knowledge tables skipped by a historical migration cursor', () => {
+    applyMigrations(db, resolveMigrationsPath())
+    sqlite.exec(`
+      DROP TABLE agent_remote_knowledge_base;
+      DROP TABLE assistant_remote_knowledge_base;
+      DROP TABLE remote_knowledge_service;
+      INSERT INTO agent (id, type, name, instructions, order_key, created_at, updated_at)
+      VALUES ('agent-preserved', 'normal', 'Preserved', '', 'a0', 1, 1);
+    `)
+
+    applyMigrations(db, resolveMigrationsPath())
+
+    const tables = (
+      sqlite.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{ name: string }>
+    ).map(({ name }) => name)
+    expect(tables).toEqual(
+      expect.arrayContaining([
+        'agent_remote_knowledge_base',
+        'assistant_remote_knowledge_base',
+        'remote_knowledge_service'
+      ])
+    )
+    expect(sqlite.prepare("SELECT id FROM agent WHERE id = 'agent-preserved'").get()).toEqual({ id: 'agent-preserved' })
+    expect(String(sqlite.pragma('integrity_check', { simple: true }))).toBe('ok')
+  })
+
   it('preserves child rows across a table-recreate migration on a populated database', () => {
     const staged = stageMigrations()
     appendMigration(staged, '0001_seedable_pair', [
