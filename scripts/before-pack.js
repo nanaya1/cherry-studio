@@ -109,6 +109,28 @@ const packages = [
   'node-mac-permissions'
 ]
 
+// These optional native variants have no supported release target; do not require them at build time.
+const unsupportedNativePackages = [
+  '@napi-rs/canvas-android-arm64',
+  '@napi-rs/canvas-linux-arm-gnueabihf',
+  '@napi-rs/canvas-linux-riscv64-gnu',
+  '@img/sharp-libvips-linux-arm',
+  '@img/sharp-libvips-linux-ppc64',
+  '@img/sharp-libvips-linux-riscv64',
+  '@img/sharp-libvips-linux-s390x',
+  '@img/sharp-linux-arm',
+  '@img/sharp-linux-ppc64',
+  '@img/sharp-linux-riscv64',
+  '@img/sharp-linux-s390x',
+  '@img/sharp-win32-ia32',
+  '@node-rs/xxhash-android-arm64',
+  '@node-rs/xxhash-android-arm-eabi',
+  '@node-rs/xxhash-linux-arm-gnueabihf',
+  '@node-rs/xxhash-freebsd-x64',
+  '@node-rs/xxhash-win32-ia32-msvc',
+  'node-screenshots-linux-loong64-gnu'
+]
+
 /**
  * Platform-gated packages whose names carry no arch token, so the name matcher in
  * {@link keepPackages} cannot classify them. Kept for every arch of their own platform and
@@ -203,6 +225,7 @@ const getNativeModuleFilters = (platform, arch) => {
   const nativeBindingTarget = `${platform}-${arch}${platform === 'win32' ? '-msvc' : platform === 'linux' ? '-gnu' : ''}`
   return [
     ...packages.filter((name) => !keptPackages.includes(name)).map((name) => `!**/node_modules/${name}/**`),
+    ...unsupportedNativePackages.map((name) => `!**/node_modules/${name}/**`),
     `!**/node_modules/@mariozechner/clipboard-!(${nativeBindingTarget})/**`,
     `!**/node_modules/@koromix/koffi-!(${platform}-${arch})/**`,
     `!**/node_modules/node-addon-require-builtin-!(${nativeBindingTarget})/**`,
