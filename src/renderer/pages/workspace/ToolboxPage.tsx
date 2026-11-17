@@ -1,9 +1,10 @@
-import { Scrollbar } from '@cherrystudio/ui'
-import { cn } from '@renderer/utils/style'
 import { ArrowUpRight } from 'lucide-react'
 import type { FC } from 'react'
 import { useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
+
+import { Scrollbar } from '@cherrystudio/ui'
+import { cn } from '@renderer/utils/style'
 
 /**
  * One toolbox entry: a Xuelang product opened in the user's default browser
@@ -26,7 +27,9 @@ const PRODUCTS: ToolboxProduct[] = [
     nameKey: 'workspace.toolbox.products.hufu.name',
     taglineKey: 'workspace.toolbox.products.hufu.tagline',
     descriptionKey: 'workspace.toolbox.products.hufu.description',
-    url: 'http://osdev.xuelangyun.com:30080',
+    // 保留旧入口，按产品分别配置新地址。
+    // url: 'http://osdev.xuelangyun.com:30080',
+    url: 'https://xlos.xuelangyun.com/web/hufu/0',
     toneClass: 'bg-chart-1/15 text-chart-1'
   },
   {
@@ -34,7 +37,9 @@ const PRODUCTS: ToolboxProduct[] = [
     nameKey: 'workspace.toolbox.products.gonggong.name',
     taglineKey: 'workspace.toolbox.products.gonggong.tagline',
     descriptionKey: 'workspace.toolbox.products.gonggong.description',
-    url: 'http://osdev.xuelangyun.com:30080',
+    // 保留旧入口，按产品分别配置新地址。
+    // url: 'http://osdev.xuelangyun.com:30080',
+    url: 'https://xlos.xuelangyun.com/web/gonggong/0',
     toneClass: 'bg-info-subtle text-info-subtle-foreground'
   },
   {
@@ -42,7 +47,9 @@ const PRODUCTS: ToolboxProduct[] = [
     nameKey: 'workspace.toolbox.products.suanpan.name',
     taglineKey: 'workspace.toolbox.products.suanpan.tagline',
     descriptionKey: 'workspace.toolbox.products.suanpan.description',
-    url: 'http://osdev.xuelangyun.com:30080',
+    // 保留旧入口，按产品分别配置新地址。
+    // url: 'http://osdev.xuelangyun.com:30080',
+    url: 'https://xlos.xuelangyun.com/web/service/predict',
     toneClass: 'bg-success-subtle text-success-subtle-foreground'
   },
   {
