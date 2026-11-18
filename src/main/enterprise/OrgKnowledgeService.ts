@@ -26,6 +26,7 @@ import {
   type OrgKnowledgeCollaborator,
   type OrgKnowledgeInvitationList,
   type OrgKnowledgeItemPage,
+  LegacyPreviewMetadataSchema,
   type OrgKnowledgeMember,
   type OrgKnowledgeMemberList,
   type OrgKnowledgePreview,
@@ -123,6 +124,39 @@ export class OrgKnowledgeError extends Error {
     super(message)
     this.name = 'OrgKnowledgeError'
   }
+}
+
+/**
+ * MEA:enterprise-knowledge-page 客户端预览元数据适配入口：只转换已知旧 DTO，不发请求。
+ * Java 契约明确前 service.preview() 仍走原件字节，此函数尚未接线。
+ */
+export function adaptLegacyPreviewMetadata(raw: unknown): OrgKnowledgePreview {
+  const legacy = LegacyPreviewMetadataSchema.parse(raw)
+  const candidate = legacy.minio_preview_url || legacy.url
+  let parsedUrl: URL | undefined
+  if (candidate) {
+    try {
+      parsedUrl = new URL(candidate)
+    } catch {
+      throw new OrgKnowledgeError(E.ORGKB_PROTOCOL, '预览地址无效')
+    }
+    if (!['http:', 'https:'].includes(parsedUrl.protocol) || parsedUrl.username || parsedUrl.password) {
+      throw new OrgKnowledgeError(E.ORGKB_PROTOCOL, '预览地址无效')
+    }
+  }
+  const mimeType = legacy.mime_type?.split(';')[0].trim().toLowerCase() || null
+  const isPdf = mimeType === 'application/pdf' || parsedUrl?.pathname.toLowerCase().endsWith('.pdf') === true
+  const imageTypes = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/avif', 'image/bmp']
+  if (legacy.kind === 'inline' && parsedUrl && (isPdf || imageTypes.includes(mimeType ?? ''))) {
+    return {
+      kind: 'inline',
+      fileName: legacy.file_name,
+      mimeType: isPdf ? 'application/pdf' : mimeType,
+      content: '',
+      url: parsedUrl.href
+    }
+  }
+  return { kind: legacy.kind, fileName: legacy.file_name, mimeType, content: '' }
 }
 
 export class OrgKnowledgeService {
@@ -776,32 +810,40 @@ export class OrgKnowledgeService {
   async listDirectoryItems(
     baseId: string,
     cursor?: string | null,
-    parentId?: string | null
+    parentId?: string | null,
+    publicLibrary = false,
+    pageSize?: number,
+    statusFilter?: 'pending' | 'parsing' | 'parsed' | 'indexing' | 'ready' | 'failed'
   ): Promise<OrgKnowledgeItemPage> {
     const rawBase = this.decodeId(baseId, 'baseId')
     const lease = this.acquireLease()
     const rawParent = parentId ? this.decodeId(parentId, 'parentId') : null
     const pageNumber = cursor ? Number(cursor) : 1
     if (!Number.isInteger(pageNumber) || pageNumber < 1) throw new OrgKnowledgeError(E.ORGKB_BAD_INPUT, '非法目录分页')
-    // Java 文件列表按 rootOnly 或 parentId 取单一层，并校验 parent 归属。
+    // MEA:public-knowledge-status-filter 公共库状态筛选显式走全库查询，接受同库跨目录文件；
+    // 普通目录浏览仍按 parent/root 严格校验，权限与同库归属不放宽，owned/shared 管理不受影响。
+    const wholeLibrary = publicLibrary && statusFilter !== undefined
     const page = await this.checked(
       () =>
         this.auth.apiClient.javaKnowledge.listFiles(rawBase, {
           page: pageNumber,
-          rootOnly: !rawParent,
-          parentId: rawParent ?? undefined
+          ...(pageSize !== undefined ? { pageSize } : {}),
+          ...(statusFilter !== undefined ? { parseStatus: statusFilter } : {}),
+          ...(wholeLibrary ? {} : { rootOnly: !rawParent, ...(rawParent ? { parentId: rawParent } : {}) })
         }),
       lease
     )
     if (page.items.some((file) => file.knowledgeId !== rawBase)) {
       throw new OrgKnowledgeError(E.ORGKB_PROTOCOL, '目录文件归属不匹配')
     }
-    if (rawParent) {
-      if (page.items.some((file) => file.parentId !== rawParent)) {
+    if (!wholeLibrary) {
+      if (rawParent) {
+        if (page.items.some((file) => file.parentId !== rawParent)) {
+          throw new OrgKnowledgeError(E.ORGKB_PROTOCOL, '目录文件归属不匹配')
+        }
+      } else if (page.items.some((file) => file.parentId !== null)) {
         throw new OrgKnowledgeError(E.ORGKB_PROTOCOL, '目录文件归属不匹配')
       }
-    } else if (page.items.some((file) => file.parentId !== null)) {
-      throw new OrgKnowledgeError(E.ORGKB_PROTOCOL, '目录文件归属不匹配')
     }
     this.assertLease(lease)
     const entries = page.items
@@ -811,11 +853,17 @@ export class OrgKnowledgeService {
         baseId: encodeOrgId(file.knowledgeId),
         type: file.directory ? 'directory' : 'file',
         title: file.name,
-        status: file.directory
-          ? 'completed'
-          : file.parseStatus === 'ready'
-            ? 'completed'
-            : (file.parseStatus ?? 'pending'),
+        // status: file.directory ? 'completed' : file.parseStatus === 'ready' ? 'completed' : (file.parseStatus ?? 'pending'),
+        // MEA:enterprise-knowledge-page 公共文件忠实展示六状态，未知不得显示就绪；目录与非公共管理保持原行为。
+        status:
+          publicLibrary && !file.directory
+            ? (file.parseStatus ?? 'pending')
+            : file.directory
+              ? 'completed'
+              : file.parseStatus === 'ready'
+                ? 'completed'
+                : (file.parseStatus ?? 'pending'),
+        ...(publicLibrary && !file.directory ? { error: file.errorMessage ?? null } : {}),
         parentId: file.parentId ? encodeOrgId(file.parentId) : null,
         documentId: file.directory ? null : encodeOrgId(file.fileId),
         hasOriginalFile: file.hasOriginalFile ?? false,
@@ -824,7 +872,7 @@ export class OrgKnowledgeService {
         updatedAt: file.updateTime ?? ''
       })),
       total: page.total,
-      nextCursor: page.page * page.pageSize < page.total ? String(page.page + 1) : null
+      nextCursor: page.items.length > 0 && page.page * page.pageSize < page.total ? String(page.page + 1) : null
     }
   }
 

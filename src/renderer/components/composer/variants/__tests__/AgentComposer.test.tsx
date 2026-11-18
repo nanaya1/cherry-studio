@@ -276,10 +276,14 @@ const pdfSkillToken = {
   payload: pdfSkill
 } as const
 
+// 文件预览不参与草稿生命周期，避免加载依赖浏览器 DOMMatrix 的 PDF 渲染器。
+vi.mock('@renderer/components/FilePreview', () => ({ default: () => null, FilePreview: () => null }))
+
 vi.mock('@renderer/ipc', () => ({
   ipcApi: {
     request: (route: string, input: unknown) => mocks.ipcApiRequest(route, input)
-  }
+  },
+  useIpcOn: vi.fn()
 }))
 
 // useAgentSessionSlashCommands now observes the shared slash-command catalog via
@@ -684,7 +688,9 @@ vi.mock('react-i18next', async (importOriginal) => {
 
 // The @ mention command inserts a token via the editor chain and dedupes against the live document;
 // stub the serializer so the command runs against a lightweight chain mock.
-vi.mock('@renderer/components/composer/composerDraft', async (importOriginal) => ({
+// vi.mock('@renderer/components/composer/composerDraft', async (importOriginal) => ({
+// 使用与测试导入一致的相对路径，避免 Windows 路径解析绕过 mock。
+vi.mock('../../composerDraft', async (importOriginal) => ({
   ...(await importOriginal<typeof ComposerDraftModule>()),
   serializeComposerDocument: vi.fn(() => ({ text: '', tokens: [] }))
 }))
@@ -3787,6 +3793,62 @@ describe('AgentComposer', () => {
     })
   })
 
+  // MEA:new-task-draft-clearing 捕获清理前导航及卸载回写旧编辑器的回归。
+  it.each(['success', 'blocked', 'unsent'] as const)('返回新建智能体任务时保留正确草稿：%s', async (outcome) => {
+    const sessionId = 'new-task:tab-1:agent:pending'
+    const cacheKey = `agent.composer_draft.session_${sessionId}`
+    const fileToken: ComposerSerializedToken = {
+      id: `file:${file.fileTokenSourceId}`,
+      kind: 'file',
+      label: file.name,
+      payload: file,
+      index: 0,
+      textOffset: 0
+    }
+    mocks.files = [file]
+    let liveDraft = { text: '待发送内容', tokens: [fileToken] }
+    const drafts = new Map<string, unknown>()
+    vi.mocked(cacheService.get).mockImplementation((key: string) => drafts.get(key))
+    vi.mocked(cacheService.set).mockImplementation((key: string, value: unknown) => {
+      drafts.set(key, value)
+    })
+    mocks.getDraft.mockImplementation(() => liveDraft)
+    mocks.replaceDraft.mockImplementation((draft) => {
+      liveDraft = draft
+    })
+    mocks.sendMessage.mockResolvedValue(outcome !== 'blocked')
+    const props = {
+      agentId: 'agent-1',
+      sessionId,
+      sendMessage: mocks.sendMessage,
+      stop: mocks.stop,
+      isStreaming: false
+    }
+    const onDraftCleared = vi.fn(() => view.unmount())
+    const view = render(<AgentHomeComposer {...props} onDraftCleared={onDraftCleared} />)
+    act(() => mocks.surfaceProps?.onTextChange(liveDraft.text))
+
+    if (outcome !== 'unsent') {
+      await act(async () => {
+        await mocks.surfaceProps?.onSendDraft(liveDraft)
+      })
+    }
+    if (outcome !== 'success') view.unmount()
+
+    expect(onDraftCleared).toHaveBeenCalledTimes(outcome === 'success' ? 1 : 0)
+    const expectedText = outcome === 'success' ? '' : '待发送内容'
+    const expectedFiles = outcome === 'success' ? [] : [file]
+    const expectedTokens = outcome === 'success' ? [] : [fileToken]
+    expect(drafts.get(cacheKey)).toMatchObject({ text: expectedText, tokens: expectedTokens, files: expectedFiles })
+
+    // 清除旧 provider 的附件状态，验证重新挂载从缓存恢复。
+    mocks.files = []
+    render(<AgentHomeComposer {...props} />)
+    expect(mocks.surfaceProps?.text).toBe(expectedText)
+    expect(mocks.surfaceProps?.draftTokens ?? []).toEqual(expectedTokens)
+    expect(mocks.files).toEqual(expectedFiles)
+  })
+
   it('persists the surface-serialized draft on unmount, not the shadow token state', async () => {
     // A managed-sync dispatch (panel pick / hydration) inserts the chip while onTokensChange is
     // suppressed, so persisting the shadow token state would strand its sentence as visible prose.
@@ -5268,7 +5330,9 @@ describe('AgentComposer', () => {
     )
 
     const leftControls = screen.getByTestId('composer-left-controls')
-    expect(within(leftControls).queryByRole('button', { name: 'agent.settings.permissionMode.title' })).not.toBeInTheDocument()
+    expect(
+      within(leftControls).queryByRole('button', { name: 'agent.settings.permissionMode.title' })
+    ).not.toBeInTheDocument()
 
     const belowControls = screen.getByTestId('composer-below-controls')
     const permissionButton = within(belowControls).getByRole('button', { name: 'agent.settings.permissionMode.title' })

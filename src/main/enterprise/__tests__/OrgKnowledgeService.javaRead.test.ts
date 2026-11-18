@@ -9,7 +9,7 @@ import { encodeOrgId } from '../../../shared/data/types/enterpriseKnowledge'
 import { enterpriseKnowledgeErrorCodes as E } from '../../../shared/ipc/errors/enterpriseKnowledge'
 import { JavaKnowledgeError } from '../JavaKnowledgeClient'
 import { OrgApiHttpError } from '../OrgApiClient'
-import { OrgKnowledgeService } from '../OrgKnowledgeService'
+import { OrgKnowledgeService, adaptLegacyPreviewMetadata } from '../OrgKnowledgeService'
 import { orgStateStore } from '../OrgStateStore'
 
 // --- 与现有 OrgKnowledgeService.test.ts 一致的最小模块桩，保证主进程模块可加载 ---
@@ -319,6 +319,57 @@ describe('Java 原件预览归属', () => {
     javaKnowledge.getFile.mockResolvedValue(file({ hasOriginalFile: false }))
     await expect(service.preview({ baseId: encodeOrgId(KID), fileId: encodeOrgId(FID) })).rejects.toThrow('原件不可用')
     expect(javaKnowledge.preview).not.toHaveBeenCalled()
+  })
+
+  it('Java 预览仍返回原件字节，未接线预览元数据适配', async () => {
+    const bytes = Buffer.from('%PDF-1.7\noriginal')
+    javaKnowledge.getFile.mockResolvedValue(file({ hasOriginalFile: true, name: 'report.pdf' }))
+    javaKnowledge.preview.mockResolvedValue({ bytes, contentType: 'application/pdf' })
+    const result = await service.preview({ baseId: encodeOrgId(KID), fileId: encodeOrgId(FID) })
+    expect(result).toMatchObject({ kind: 'inline', mimeType: 'application/pdf' })
+    expect(result.base64).toBe(bytes.toString('base64'))
+    expect(result).not.toHaveProperty('url')
+  })
+})
+
+describe('旧预览元数据客户端适配入口（未接入 Java）', () => {
+  it('把已知旧预览 DTO 转成类型化预览并优先使用预览件地址', () => {
+    expect(
+      adaptLegacyPreviewMetadata({
+        kind: 'inline',
+        url: 'https://origin.example.test/original.pdf',
+        minio_preview_url: 'https://minio.example.test/preview.pdf?sign=abc',
+        file_name: 'report.pdf',
+        mime_type: 'application/pdf'
+      })
+    ).toEqual({
+      kind: 'inline',
+      fileName: 'report.pdf',
+      mimeType: 'application/pdf',
+      content: '',
+      url: 'https://minio.example.test/preview.pdf?sign=abc'
+    })
+  })
+
+  it('JSON 错误信封不会被当作预览元数据成功返回', () => {
+    expect(() => adaptLegacyPreviewMetadata({ code: 500, message: '文件预览失败' })).toThrow()
+    expect(() => adaptLegacyPreviewMetadata('preview failed')).toThrow()
+  })
+
+  it.each([
+    'ftp://minio.example.test/preview.pdf',
+    'https://user:pass@minio.example.test/preview.pdf',
+    'not a url',
+    'javascript:alert(1)'
+  ])('拒绝不安全的预览地址 %s', (url) => {
+    expect(() =>
+      adaptLegacyPreviewMetadata({
+        kind: 'inline',
+        minio_preview_url: url,
+        file_name: 'report.pdf',
+        mime_type: 'application/pdf'
+      })
+    ).toThrow(/预览地址无效/)
   })
 })
 

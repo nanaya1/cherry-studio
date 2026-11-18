@@ -163,6 +163,8 @@ export interface ChatComposerProps {
   resolvedProviders?: Provider[]
   externalContextControls?: boolean
   onConversationControlsChange?: ChatConversationControlsChangeHandler
+  // MEA:new-task-draft-clearing 仅成功直发且草稿清理完成后通知调用方。
+  onDraftCleared?: () => void
   onSend: (
     text: string,
     options?: {
@@ -398,6 +400,7 @@ const ChatComposerRoot = ({
   externalContextControls,
   onConversationControlsChange,
   onSend,
+  onDraftCleared,
   chatTarget,
   sendDisabled,
   showAssistantControl,
@@ -460,6 +463,7 @@ const ChatComposerRoot = ({
             draftCacheScopeKey={draftCacheScopeKey}
             actionsRef={actionsRef}
             onSend={onSend}
+            onDraftCleared={onDraftCleared}
             chatTarget={chatTarget}
             sendDisabled={sendDisabled}
             showAssistantControl={showAssistantControl}
@@ -503,6 +507,7 @@ const ChatComposerInner = ({
   draftCacheScopeKey,
   actionsRef,
   onSend,
+  onDraftCleared,
   chatTarget,
   sendDisabled = false,
   showAssistantControl,
@@ -1491,6 +1496,16 @@ const ChatComposerInner = ({
   )
 
   const clearCurrentDraft = useCallback(() => {
+    // MEA:new-task-draft-clearing 同步更新序列化来源，避免卸载仍读取旧编辑器。
+    actionsRef.current.replaceDraft({ text: '', tokens: [] })
+    filesRef.current = []
+    writeChatDraftCache(draftCacheScopeKey, {
+      text: '',
+      tokens: [],
+      files: [],
+      knowledgeBaseIds: knowledgeBaseIdsRef.current,
+      ...mentionedModelDraftRef.current
+    })
     setText('')
     setDraftTokens(undefined)
     setFiles([])
@@ -1502,7 +1517,8 @@ const ChatComposerInner = ({
     // from a stale index.
     resetHistoryIndex()
     inputHistoryToolsRef.current = null
-  }, [resetHistoryIndex, setFiles, setText])
+    // }, [resetHistoryIndex, setFiles, setText])
+  }, [actionsRef, draftCacheScopeKey, filesRef, resetHistoryIndex, setFiles, setText])
 
   // Queue mode: while a turn streams, follow-ups go here instead of sending; the head auto-drains
   // (normal send) when the topic goes idle, and the dock steers/edits/removes individual items.
@@ -1752,7 +1768,12 @@ const ChatComposerInner = ({
         }
 
         const sent = await sendQueuedPayload(payload)
-        if (sent) clearCurrentDraft()
+        // if (sent) clearCurrentDraft()
+        // MEA:new-task-draft-clearing 导航必须晚于同步清理。
+        if (sent) {
+          clearCurrentDraft()
+          onDraftCleared?.()
+        }
       } finally {
         directSendInFlightRef.current = false
         setIsDirectSending(false)
@@ -1762,6 +1783,7 @@ const ChatComposerInner = ({
       buildQueuedPayload,
       canSteer,
       clearCurrentDraft,
+      onDraftCleared,
       commitEditedMessage,
       editingMessageForCurrentTopic,
       enqueueFollowup,

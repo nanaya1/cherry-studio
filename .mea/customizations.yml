@@ -8,6 +8,17 @@ policy:
   require_tests: true
   preserve_original_code_by_comment: true
 customizations:
+  - id: local-knowledge-file-batches
+    title: 本地知识库文件多选100个并串行分批接收
+    owner: renderer
+    behavior: 仅本地文件多选上限从20放宽至100，每批20个串行提交，前批返回后继续；冲突暂停并沿用既有弹窗，用户选择应用于未接收部分，已接收批次不重放。失败或取消停止后续批次，保留已接收结果，不自动重试；目录、云端、主进程队列和并发不变。
+    markers:
+      - MEA:local-knowledge-file-batches
+    touchpoints:
+      - src/renderer/pages/knowledge/components/AddKnowledgeItemDialog.tsx
+      - src/renderer/pages/knowledge/components/addKnowledgeItemDialog/constants.ts
+    tests:
+      - src/renderer/pages/knowledge/components/__tests__/AddKnowledgeItemDialog.test.tsx
   - id: enterprise-java-resources
     title: Java 资源稳定身份与隔离安装
     owner: main
@@ -513,6 +524,21 @@ customizations:
     tests:
       - src/renderer/pages/settings/__tests__/SettingsPage.test.tsx
       - src/renderer/pages/settings/settingsSearch/__tests__/settingsSearchIndex.test.ts
+
+  - id: new-task-draft-clearing
+    title: 新建任务成功发送后清空草稿再导航
+    owner: renderer
+    behavior: Chat 与 Agent 成功发送后同步清空编辑器文本、tokens、附件及对应草稿缓存，再经 onDraftCleared 导航；卸载不得将已发送内容写回，返回新建任务不恢复已发送内容。失败、阻止发送和未发送草稿仍保留，另一模式草稿互不影响。
+    markers:
+      - MEA:new-task-draft-clearing
+    touchpoints:
+      - src/renderer/pages/workspace/NewTaskPage.tsx
+      - src/renderer/components/composer/variants/ChatComposer.tsx
+      - src/renderer/components/composer/variants/AgentComposer.tsx
+    tests:
+      - src/renderer/pages/workspace/NewTaskPage.test.tsx
+      - src/renderer/components/composer/variants/__tests__/ChatComposer.test.tsx
+      - src/renderer/components/composer/variants/__tests__/AgentComposer.test.tsx
 
   - id: new-task-composer-layout
     title: Preserve MEA new-task composer controls

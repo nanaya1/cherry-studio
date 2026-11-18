@@ -27,7 +27,11 @@ import { createSelectionReference } from '../../selectionReference'
 import type { FilePreviewPluginProps } from '../../types'
 import { PdfFilePreviewToolbar } from './PdfFilePreviewToolbar'
 import { PDF_RANGE_CHUNK_SIZE_BYTES, PdfFileRangeTransport, PdfRangeTooLargeError } from './PdfFileRangeTransport'
-import { PdfjsBundledCMapReaderFactory, PdfjsBundledStandardFontDataFactory } from './pdfjsResourceFactories'
+import {
+  PdfjsBundledCMapReaderFactory,
+  PdfjsBundledStandardFontDataFactory,
+  PdfjsBundledWasmFactory
+} from './pdfjsResourceFactories'
 import { type PdfDestination, PdfOutline, type PdfOutlineItem, type PdfOutlineStatus } from './PdfOutline'
 import { pageToPdfAnchor } from './pdfSelectionAnchor'
 
@@ -95,9 +99,14 @@ function detachDocument(viewer: PdfJsViewer): void {
   ;(viewer.setDocument as (pdfDocument: PDFDocumentProxy | null) => void)(null)
 }
 
-function destroyLoadingTask(loadingTask: PDFDocumentLoadingTask, filePath: string): void {
+function destroyLoadingTask(loadingTask: PDFDocumentLoadingTask, filePath: string, remote = false): void {
   void loadingTask.destroy().catch((error: unknown) => {
-    const normalized = error instanceof Error ? error : new Error(String(error))
+    // MEA:enterprise-knowledge-page 远程签名地址不写入日志，避免泄露。
+    const normalized = remote
+      ? new Error('远程 PDF 加载任务销毁失败')
+      : error instanceof Error
+        ? error
+        : new Error(String(error))
     logger.error(`Failed to destroy PDF loading task: ${filePath}`, normalized)
   })
 }
@@ -133,9 +142,19 @@ function PdfPreviewTooLarge({ filePath }: { filePath: AbsoluteFilePath }) {
  * limitation, see the FilePreview README).
  */
 type PdfPreviewProps =
-  | FilePreviewPluginProps
+  | (FilePreviewPluginProps & { base64?: never; url?: never })
   | {
       fileName: string
+      url: string
+      base64?: never
+      filePath?: never
+      metadata?: never
+      refreshKey?: number
+      onSelectionReference?: never
+    }
+  | {
+      fileName: string
+      url?: never
       base64: string
       filePath?: never
       metadata?: never
@@ -146,6 +165,7 @@ type PdfPreviewProps =
 export default function PdfFilePreview(props: PdfPreviewProps) {
   const { filePath, fileName, metadata, refreshKey, onSelectionReference } = props
   const base64 = 'base64' in props ? props.base64 : undefined
+  const url = 'url' in props ? props.url : undefined
   const sourceName = filePath ?? fileName
   const fileSize = metadata?.size
   const { t } = useTranslation()
@@ -370,7 +390,7 @@ export default function PdfFilePreview(props: PdfPreviewProps) {
       failed = true
       rangeTransport?.abort()
       if (loadingTask) {
-        destroyLoadingTask(loadingTask, sourceName)
+        destroyLoadingTask(loadingTask, sourceName, url !== undefined)
         loadingTask = null
       }
       const normalized = error instanceof Error ? error : new Error(String(error))
@@ -386,7 +406,10 @@ export default function PdfFilePreview(props: PdfPreviewProps) {
         setStatus('too_large')
         return
       }
-      logger.error(`Failed to load PDF preview: ${filePath}`, normalized)
+      logger.error(
+        `Failed to load PDF preview: ${filePath}`,
+        url === undefined ? normalized : new Error('远程 PDF 加载失败')
+      )
       setDocumentProxy(null)
       setStatus('error')
     }
@@ -408,19 +431,23 @@ export default function PdfFilePreview(props: PdfPreviewProps) {
         }
         if (cancelled) return
         loadingTask = getDocument({
-          ...(base64 !== undefined
-            ? { data: Uint8Array.from(atob(base64), (character) => character.charCodeAt(0)) }
-            : {
-                range: rangeTransport!,
-                rangeChunkSize: PDF_RANGE_CHUNK_SIZE_BYTES,
-                disableAutoFetch: true,
-                disableStream: true
-              }),
+          // MEA:enterprise-knowledge-page 签名预览地址不携带企业认证或跨域凭据。
+          ...(url !== undefined
+            ? { url, withCredentials: false }
+            : base64 !== undefined
+              ? { data: Uint8Array.from(atob(base64), (character) => character.charCodeAt(0)) }
+              : {
+                  range: rangeTransport!,
+                  rangeChunkSize: PDF_RANGE_CHUNK_SIZE_BYTES,
+                  disableAutoFetch: true,
+                  disableStream: true
+                }),
           // Non-embedded CID-keyed fonts decode to no glyphs without these; the
           // packaged bundle is served over IPC because file:// pages cannot
           // fetch asset URLs (see pdfjsResourceFactories.ts).
           CMapReaderFactory: PdfjsBundledCMapReaderFactory,
-          StandardFontDataFactory: PdfjsBundledStandardFontDataFactory
+          StandardFontDataFactory: PdfjsBundledStandardFontDataFactory,
+          WasmFactory: PdfjsBundledWasmFactory
         })
         const nextDocument = await loadingTask.promise
         if (cancelled || failed) return
@@ -436,11 +463,11 @@ export default function PdfFilePreview(props: PdfPreviewProps) {
       rangeTransport?.abort()
       rangeTransport = null
       if (loadingTask) {
-        destroyLoadingTask(loadingTask, sourceName)
+        destroyLoadingTask(loadingTask, sourceName, url !== undefined)
         loadingTask = null
       }
     }
-  }, [base64, filePath, fileSize, refreshKey, sourceName])
+  }, [base64, filePath, fileSize, refreshKey, sourceName, url])
 
   useEffect(() => {
     if (!documentProxy) return

@@ -93,6 +93,8 @@ export const OrgKnowledgeItemSchema = z.strictObject({
   type: z.string(),
   title: z.string(),
   status: z.string(),
+  // MEA:enterprise-knowledge-page 失败原因以纯文本传到前端 tooltip，不渲染 HTML。
+  error: z.string().nullable().optional(),
   /** Parent directory item ID; null means the base root. */
   parentId: z.string().nullable(),
   documentId: z.string().nullable(),
@@ -165,6 +167,18 @@ export const OrgKnowledgePreviewSchema = z.strictObject({
   base64: z.string().optional()
 })
 export type OrgKnowledgePreview = z.infer<typeof OrgKnowledgePreviewSchema>
+
+/**
+ * 已知旧预览元数据 DTO（已有源契约，仅供客户端适配；不代表 Java 预览接口支持元数据）。
+ */
+export const LegacyPreviewMetadataSchema = z.object({
+  kind: z.string(),
+  url: z.string().nullable().optional(),
+  minio_preview_url: z.string().nullable().optional(),
+  file_name: z.string(),
+  mime_type: z.string().nullable().optional()
+})
+export type LegacyPreviewMetadata = z.infer<typeof LegacyPreviewMetadataSchema>
 
 export const OrgKnowledgeMemberSchema = z.strictObject({
   userId: z.number().int(),

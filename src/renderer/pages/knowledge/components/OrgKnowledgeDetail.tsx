@@ -1,9 +1,21 @@
 // import { ArrowLeft } from 'lucide-react'
-import { ArrowLeft, ChevronDown } from 'lucide-react'
+import { ArrowLeft, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react'
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { Button, Input } from '@cherrystudio/ui'
+import {
+  Button,
+  Input,
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '@cherrystudio/ui'
 import { loggerService } from '@logger'
 import { CommandPopupMenu } from '@renderer/components/command'
 import { FilePreviewLayout, PdfFilePreview } from '@renderer/components/FilePreview'
@@ -51,7 +63,8 @@ const toReadOnlyKnowledgeItem = (item: OrgKnowledgeItem): KnowledgeItem =>
       : item.status === 'failed'
         ? 'failed'
         : 'processing') as KnowledgeItem['status'],
-    error: null,
+    // error: null,
+    error: item.status === 'failed' ? (item.error ?? null) : null,
     groupId: item.parentId,
     createdAt: item.createdAt || new Date(0).toISOString(),
     updatedAt: item.updatedAt || new Date(0).toISOString(),
@@ -217,8 +230,15 @@ function DocumentView({ baseId, target, onBack }: { baseId: string; target: Docu
           ) : data?.mode === 'preview' ? (
             <>
               {/* 文件名统一显示在预览标题栏。 */}
-              {data.value.kind === 'inline' && data.value.base64 && data.value.mimeType === 'application/pdf' ? (
-                <PdfFilePreview fileName={data.value.fileName} base64={data.value.base64} />
+              {/* 原 PDF 分支仅接收 base64；预览件 URL 与原件内存输入互斥。 */}
+              {data.value.kind === 'inline' &&
+              (data.value.url || data.value.base64) &&
+              data.value.mimeType === 'application/pdf' ? (
+                data.value.url ? (
+                  <PdfFilePreview fileName={data.value.fileName} url={data.value.url} />
+                ) : (
+                  <PdfFilePreview fileName={data.value.fileName} base64={data.value.base64!} />
+                )
               ) : data.value.kind === 'inline' &&
                 (data.value.url || data.value.base64) &&
                 ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/avif', 'image/bmp'].includes(
@@ -344,24 +364,35 @@ function SearchResults({
 type OrgKnowledgeDetailProps = {
   base: OrgKnowledgeBase
   owned: boolean
+  publicLibrary?: boolean
   onUnshared?: () => void
   onShared?: () => void
 }
 
 // MEA:enterprise-knowledge-page 详情自身限定状态归属，直接 rerender 也隔离目录、预览及操作。
 export default function OrgKnowledgeDetail(props: OrgKnowledgeDetailProps) {
-  return <OrgKnowledgeDetailSession key={props.base.id} {...props} />
+  // 原 key={props.base.id} 保留；公共库切换会话时需强制重建分页与筛选状态。
+  // return <OrgKnowledgeDetailSession key={props.base.id} {...props} />
+  const authorizationVersion = useKnowledgeAuthorizationVersion()
+  return (
+    <OrgKnowledgeDetailSession
+      key={`${props.base.id}-${Boolean(props.publicLibrary)}-${props.publicLibrary ? authorizationVersion : ''}`}
+      {...props}
+    />
+  )
 }
 
 // export default function OrgKnowledgeDetail({
 function OrgKnowledgeDetailSession({
   base,
   owned,
+  publicLibrary = false,
   onUnshared,
   onShared
 }: {
   base: OrgKnowledgeBase
   owned: boolean
+  publicLibrary?: boolean
   onUnshared?: () => void
   onShared?: () => void
 }) {
@@ -383,6 +414,10 @@ function OrgKnowledgeDetailSession({
   // const [tab] = useState<'documents' | 'search' | 'members'>('documents')
   const [tab, setTab] = useState<'documents' | 'search' | 'members'>('documents')
   const [cursor, setCursor] = useState<string | null>(null)
+  const [pageSize, setPageSize] = useState<5 | 10 | 20 | 50 | 100>(5)
+  const [statusFilter, setStatusFilter] = useState<
+    'all' | 'pending' | 'parsing' | 'parsed' | 'indexing' | 'ready' | 'failed'
+  >('all')
   const [directoryStack, setDirectoryStack] = useState<OrgKnowledgeItem[]>([])
   const [directoryItems, setDirectoryItems] = useState<OrgKnowledgeItem[] | null>(null)
   const [directoryError, setDirectoryError] = useState<string | null>(null)
@@ -446,10 +481,13 @@ function OrgKnowledgeDetailSession({
     const page = await ipcApi.request('enterprise.knowledge.items', {
       baseId: base.id,
       cursor,
-      parentId: currentParentId
+      parentId: currentParentId,
+      ...(publicLibrary
+        ? { publicLibrary: true, pageSize, statusFilter: statusFilter === 'all' ? null : statusFilter }
+        : {})
     })
     return page
-  }, [base.id, cursor, currentParentId])
+  }, [base.id, cursor, currentParentId, publicLibrary, pageSize, statusFilter])
   const {
     data,
     loading,
@@ -490,6 +528,28 @@ function OrgKnowledgeDetailSession({
       clearInterval(timer)
     }
   }, [addedBaseId, additionSubmitted, refresh, t])
+  // MEA:public-knowledge-ready-pagination 数据减少导致请求页为空时回首页，避免停在空白页。
+  useEffect(() => {
+    if (publicLibrary && !loading && data && cursor && data.items.length === 0) {
+      setCursor(null)
+    }
+  }, [publicLibrary, loading, data, cursor])
+  const currentPage = cursor ? Number(cursor) : 1
+  const pageCount = Math.max(1, Math.ceil((data?.total ?? 0) / pageSize))
+  const pageNumbers = Array.from(
+    new Set([
+      1,
+      pageCount,
+      currentPage - 1,
+      currentPage,
+      currentPage + 1,
+      ...(currentPage <= 2 ? [2, 3] : []),
+      ...(currentPage >= pageCount - 1 ? [pageCount - 2, pageCount - 1] : [])
+    ])
+  )
+    .filter((page) => page >= 1 && page <= pageCount)
+    .sort((left, right) => left - right)
+  const goToPage = (page: number) => setCursor(page === 1 ? null : String(page))
   const visibleItems = useMemo(() => directoryItems ?? data?.items ?? [], [data?.items, directoryItems])
   const readOnlyItems = useMemo(() => visibleItems.map(toReadOnlyKnowledgeItem), [visibleItems])
   const enterDirectory = useCallback(
@@ -500,6 +560,8 @@ function OrgKnowledgeDetailSession({
       setDirectoryError(null)
       setDirectoryItems(null)
       setDirectoryStack((previous) => [...previous, item])
+      // MEA:public-knowledge-ready-pagination 公共浏览只请求当前页，管理目录保留全量批操作。
+      if (publicLibrary) return
       try {
         const items: OrgKnowledgeItem[] = []
         const seen = new Set<string | null>()
@@ -522,18 +584,21 @@ function OrgKnowledgeDetailSession({
         setDirectoryError(cause instanceof Error ? cause.message : String(cause))
       }
     },
-    [base.id, t]
+    [base.id, publicLibrary, t]
   )
   const navigateUp = useCallback(() => {
     directoryRequest.current += 1
     setDirectoryError(null)
     setTarget(null)
     setCursor(null)
-    setDirectoryStack((previous) => {
-      const next = previous.slice(0, -1)
-      if (next.length === 0) setDirectoryItems(null)
-      return next
-    })
+    // setDirectoryStack((previous) => {
+    //   const next = previous.slice(0, -1)
+    //   if (next.length === 0) setDirectoryItems(null)
+    //   return next
+    // })
+    // MEA: 每次返回上级都清空旧目录列表，避免子目录缓存遮住父目录查询结果。
+    setDirectoryItems(null)
+    setDirectoryStack((previous) => previous.slice(0, -1))
   }, [])
   const openRemoteItem = useCallback(
     (item: KnowledgeItem, mode?: 'preview' | 'chunks') => {
@@ -719,12 +784,15 @@ function OrgKnowledgeDetailSession({
               items={readOnlyItems}
               total={data?.total ?? base.documentCount ?? 0}
               isLoading={loading}
-              hasMore={Boolean(data?.nextCursor)}
+              // hasMore={Boolean(data?.nextCursor)}
+              hasMore={!publicLibrary && Boolean(data?.nextCursor)}
               isLoadingMore={false}
               onLoadMore={() => setCursor(data?.nextCursor ?? null)}
               updatedAt={base.updatedAt ?? ''}
               // onAdd={() => {}}
-              allowAdd={owned && !adding}
+              // allowAdd={owned && !adding}
+              // MEA:public-knowledge-status-filter 公共库只读，空库也不提供上传入口。
+              allowAdd={owned && !publicLibrary && !adding}
               onAdd={(source = 'file', files) => {
                 if (adding || !owned) return
                 const open = (localBaseId: string) => {
@@ -770,7 +838,9 @@ function OrgKnowledgeDetailSession({
                 if (!owned || !remote?.fileId) throw new Error(t('common.error'))
                 await ipcApi.request('enterprise.knowledge.delete_file', { baseId: base.id, fileId: remote.fileId })
                 if (!activeSession.current) return
-                if (currentDirectory) {
+                // if (currentDirectory) {
+                // MEA:public-knowledge-ready-pagination 公共目录不遍历全量，删除后只刷新当前页。
+                if (currentDirectory && !publicLibrary) {
                   const request = ++directoryRequest.current
                   const items: OrgKnowledgeItem[] = []
                   const seen = new Set<string | null>()
@@ -812,7 +882,9 @@ function OrgKnowledgeDetailSession({
                   if (firstError) throw firstError
                   return
                 }
-                if (currentDirectory) {
+                // if (currentDirectory) {
+                // MEA:public-knowledge-ready-pagination 公共目录不遍历全量，删除后只刷新当前页。
+                if (currentDirectory && !publicLibrary) {
                   const request = ++directoryRequest.current
                   const items: OrgKnowledgeItem[] = []
                   const seen = new Set<string | null>()
@@ -840,14 +912,155 @@ function OrgKnowledgeDetailSession({
               readOnly
               virtualize={false}
               paginationActions={
-                data?.nextCursor ? (
+                publicLibrary ? (
+                  // MEA:public-knowledge-ready-pagination 分页独占底栏，覆盖共享组件的自动居中。
+                  <Pagination
+                    aria-label={t('knowledge.org.documents')}
+                    className="mx-0 w-full justify-end whitespace-nowrap">
+                    <PaginationContent className="gap-1 text-xs text-muted-foreground">
+                      <PaginationItem className="px-3">
+                        {t('knowledge.org.pagination_total', { total: data?.total ?? 0 })}
+                      </PaginationItem>
+                      <span aria-hidden="true" className="h-4 w-px shrink-0 self-center bg-border" />
+                      <PaginationItem className="pr-2">
+                        <Select
+                          value={String(pageSize)}
+                          disabled={loading}
+                          onValueChange={(value) => {
+                            setPageSize(Number(value) as 5 | 10 | 20 | 50 | 100)
+                            setCursor(null)
+                          }}>
+                          <SelectTrigger
+                            size="sm"
+                            aria-label={t('knowledge.org.page_size')}
+                            className="h-7 border-transparent px-2 text-xs shadow-none">
+                            <SelectValue />
+                          </SelectTrigger>
+                          {/* MEA:public-knowledge-ready-pagination 仅此快速分页菜单取消共享弹层的进出动画。 */}
+                          {/* 原 <SelectContent> 保留共享默认值；此实例不等待动画结束卸载。 */}
+                          <SelectContent
+                            align="end"
+                            className="data-[state=open]:animate-none! data-[state=closed]:animate-none!"
+                            style={{ transition: 'none' }}>
+                            {[5, 10, 20, 50, 100].map((size) => (
+                              <SelectItem key={size} value={String(size)}>
+                                {t('knowledge.org.per_page', { size })}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </PaginationItem>
+                      <span aria-hidden="true" className="h-4 w-px shrink-0 self-center bg-border" />
+                      <PaginationItem>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          className="size-7 shadow-none"
+                          aria-label={t('common.previous')}
+                          disabled={loading || currentPage === 1}
+                          onClick={() => goToPage(currentPage - 1)}>
+                          <ChevronLeft className="size-3.5" />
+                        </Button>
+                      </PaginationItem>
+                      {pageNumbers.map((page, index) => (
+                        <PaginationItem key={page} className="flex items-center gap-1">
+                          {index > 0 && page - pageNumbers[index - 1] > 1 ? (
+                            <PaginationEllipsis className="size-7" />
+                          ) : null}
+                          <Button
+                            type="button"
+                            variant={page === currentPage ? 'secondary' : 'ghost'}
+                            size="icon-sm"
+                            className="size-7 text-xs tabular-nums shadow-none"
+                            aria-current={page === currentPage ? 'page' : undefined}
+                            disabled={loading}
+                            onClick={() => goToPage(page)}>
+                            {page}
+                          </Button>
+                        </PaginationItem>
+                      ))}
+                      <PaginationItem>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          className="size-7 shadow-none"
+                          aria-label={t('knowledge.org.next_page')}
+                          disabled={loading || !data?.nextCursor || currentPage >= pageCount}
+                          onClick={() => goToPage(currentPage + 1)}>
+                          <ChevronRight className="size-3.5" />
+                        </Button>
+                      </PaginationItem>
+                      {/* 原游标历史分页保留，公共目录改用数字页码和可选页大小。
+
+                      <PaginationItem>
+                        <span className="px-2 text-sm text-muted-foreground">
+                          {t('knowledge.org.document_total', { count: data?.total ?? 0 })}
+                        </span>
+                      </PaginationItem>
+                      <PaginationItem>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={loading || previousCursors.length === 0}
+                          onClick={() => {
+                            setCursor(previousCursors.at(-1) ?? null)
+                            setPreviousCursors((previous) => previous.slice(0, -1))
+                          }}>
+                          {t('common.previous')}
+                        </Button>
+                      </PaginationItem>
+                      <PaginationItem>
+                        <span aria-current="page" className="px-2 text-sm tabular-nums">
+                          {previousCursors.length + 1}
+                        </span>
+                      </PaginationItem>
+                      <PaginationItem>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={loading || !data?.nextCursor}
+                          onClick={() => {
+                            if (!data?.nextCursor) return
+                            setPreviousCursors((previous) => [...previous, cursor])
+                            setCursor(data.nextCursor)
+                          }}>
+                          {t('knowledge.org.next_page')}
+                        </Button>
+                      </PaginationItem>
+                      */}
+                    </PaginationContent>
+                  </Pagination>
+                ) : data?.nextCursor ? (
                   <Button variant="outline" size="sm" onClick={() => setCursor(data.nextCursor)}>
                     {t('knowledge.org.next_page')}
                   </Button>
                 ) : undefined
               }
               toolbarActions={
-                owned && (!currentDirectory || addedBaseId) ? (
+                publicLibrary ? (
+                  <Select
+                    value={statusFilter}
+                    disabled={loading}
+                    onValueChange={(value) => {
+                      setStatusFilter(value as typeof statusFilter)
+                      setCursor(null)
+                    }}>
+                    <SelectTrigger size="sm" aria-label={t('knowledge.org.status_filter')} className="h-7 w-28 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent align="end">
+                      <SelectItem value="all">{t('common.all')}</SelectItem>
+                      <SelectItem value="pending">{t('knowledge.org.status.pending')}</SelectItem>
+                      <SelectItem value="parsing">{t('knowledge.org.status.parsing')}</SelectItem>
+                      <SelectItem value="parsed">{t('knowledge.org.status.parsed')}</SelectItem>
+                      <SelectItem value="indexing">{t('knowledge.org.status.indexing')}</SelectItem>
+                      <SelectItem value="ready">{t('knowledge.org.status.ready')}</SelectItem>
+                      <SelectItem value="failed">{t('knowledge.org.status.failed')}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                ) : owned && (!currentDirectory || addedBaseId) ? (
                   <>
                     {addedBaseId && addError && !additionSubmitted ? (
                       <Button variant="outline" size="sm" disabled={adding} onClick={() => void addFiles()}>

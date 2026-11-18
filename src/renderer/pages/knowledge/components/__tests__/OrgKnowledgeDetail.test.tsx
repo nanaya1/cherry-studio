@@ -33,8 +33,8 @@ vi.mock('@renderer/components/VirtualList', () => ({
   )
 }))
 vi.mock('@renderer/components/FilePreview/plugins/pdf/PdfFilePreview', () => ({
-  default: ({ fileName, base64 }: { fileName: string; base64: string }) => (
-    <div title={fileName} data-pdf-base64={base64} />
+  default: ({ fileName, base64, url }: { fileName: string; base64?: string; url?: string }) => (
+    <div title={fileName} data-pdf-base64={base64} data-pdf-url={url} />
   )
 }))
 
@@ -89,6 +89,145 @@ beforeEach(async () => {
     if (route === 'enterprise.knowledge.chunks')
       return { chunks: [{ id: 'chunk', content: '分块内容', chunkIndex: 0 }], total: 1, nextCursor: null }
     return { chunks: [] }
+  })
+})
+
+it('公共文件失败状态悬浮显示服务端错误原文', async () => {
+  const message = '解析失败：文件内容无法识别 <script>text</script>'
+  request.mockResolvedValue({ items: [{ ...item, status: 'failed', error: message }], total: 1, nextCursor: null })
+  const user = userEvent.setup()
+  render(<OrgKnowledgeDetail base={base} owned={false} publicLibrary />)
+  await screen.findByText(item.title)
+  await user.hover(await screen.findByText(i18n.t('knowledge.data_source.status.error')))
+  expect(await screen.findByRole('tooltip')).toHaveTextContent(message)
+  expect(document.querySelector('script')).toBeNull()
+})
+
+describe('公共库分页浏览', () => {
+  const stubSelectPointerApis = () => {
+    // jsdom 缺少真实 Select 依赖的指针捕获与滚动 API。
+    HTMLElement.prototype.hasPointerCapture ??= () => false
+    HTMLElement.prototype.releasePointerCapture ??= () => {}
+    HTMLElement.prototype.setPointerCapture ??= () => {}
+    HTMLElement.prototype.scrollIntoView ??= () => {}
+  }
+
+  it('按源分页默认每页5条，可选5/10/20/50/100，数字跳页且切换页大小回首页', async () => {
+    request.mockImplementation(async (_route, input) => ({
+      items: [{ ...item, title: `第${input.cursor ?? 1}页-${input.pageSize}条` }],
+      total: 128,
+      nextCursor: Number(input.cursor ?? 1) * input.pageSize < 128 ? String(Number(input.cursor ?? 1) + 1) : null
+    }))
+    stubSelectPointerApis()
+    const user = userEvent.setup()
+    render(<OrgKnowledgeDetail base={base} owned={false} publicLibrary />)
+    await screen.findByText('第1页-5条')
+    expect(request).toHaveBeenLastCalledWith('enterprise.knowledge.items', {
+      baseId: base.id,
+      cursor: null,
+      parentId: null,
+      publicLibrary: true,
+      pageSize: 5,
+      statusFilter: null
+    })
+    await user.click(screen.getByRole('button', { name: '3' }))
+    await screen.findByText('第3页-5条')
+    expect(screen.getByRole('button', { name: '3' })).toHaveAttribute('aria-current', 'page')
+    for (const size of [10, 20, 50, 100]) {
+      await user.click(screen.getByRole('combobox', { name: i18n.t('knowledge.org.page_size') }))
+      await user.click(await screen.findByRole('option', { name: i18n.t('knowledge.org.per_page', { size }) }))
+      await screen.findByText(`第1页-${size}条`)
+      expect(request).toHaveBeenLastCalledWith('enterprise.knowledge.items', {
+        baseId: base.id,
+        cursor: null,
+        parentId: null,
+        publicLibrary: true,
+        pageSize: size,
+        statusFilter: null
+      })
+      expect(screen.getByRole('button', { name: 'Previous' })).toBeDisabled()
+    }
+    expect(screen.getByText(i18n.t('knowledge.org.pagination_total', { total: 128 }))).toBeInTheDocument()
+  })
+
+  it('状态筛选切换时回首页并携带筛选值', async () => {
+    request.mockImplementation(async (_route, input) => ({
+      items: [{ ...item, title: `筛选-${input.statusFilter ?? 'all'}-第${input.cursor ?? 1}页` }],
+      total: 40,
+      nextCursor: input.cursor ? null : '2'
+    }))
+    stubSelectPointerApis()
+    const user = userEvent.setup()
+    render(<OrgKnowledgeDetail base={base} owned={false} publicLibrary />)
+    await screen.findByText('筛选-all-第1页')
+    await user.click(screen.getByRole('button', { name: 'Next page' }))
+    await screen.findByText('筛选-all-第2页')
+    await user.click(screen.getByRole('combobox', { name: i18n.t('knowledge.org.status_filter') }))
+    await user.click(await screen.findByRole('option', { name: i18n.t('knowledge.org.status.failed') }))
+    await screen.findByText('筛选-failed-第1页')
+    expect(request).toHaveBeenLastCalledWith('enterprise.knowledge.items', {
+      baseId: base.id,
+      cursor: null,
+      parentId: null,
+      publicLibrary: true,
+      pageSize: 5,
+      statusFilter: 'failed'
+    })
+    expect(screen.getByRole('button', { name: 'Previous' })).toBeDisabled()
+  })
+
+  it('请求页为空时回首页，不留在空白页', async () => {
+    request.mockImplementation(async (_route, input) => ({
+      items: input.cursor ? [] : [item],
+      total: input.cursor ? 1 : 40,
+      nextCursor: input.cursor ? null : '2'
+    }))
+    const user = userEvent.setup()
+    render(<OrgKnowledgeDetail base={base} owned={false} publicLibrary />)
+    await screen.findByText(item.title)
+    await user.click(screen.getByRole('button', { name: 'Next page' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Previous' })).toBeDisabled())
+    expect(await screen.findByText(item.title)).toBeInTheDocument()
+  })
+
+  it('公共目录只请求当前页，进出目录重置页码', async () => {
+    const directory = {
+      ...item,
+      id: 'orgkb:folder',
+      fileId: 'orgkb:folder-file',
+      type: 'directory',
+      title: '公共目录',
+      documentId: null
+    }
+    request.mockImplementation(async (_route, input) => ({
+      items: input.parentId
+        ? [{ ...item, title: input.cursor ? '目录第二页' : '目录第一页' }]
+        : input.cursor
+          ? [directory]
+          : [item],
+      total: 101,
+      nextCursor: input.cursor ? null : '2'
+    }))
+    const user = userEvent.setup()
+    render(<OrgKnowledgeDetail base={base} owned={false} publicLibrary />)
+    await screen.findByText(item.title)
+    await user.click(screen.getByRole('button', { name: 'Next page' }))
+    await user.click(await screen.findByText(directory.title))
+    await screen.findByText('目录第一页')
+    expect(request.mock.calls.filter(([, input]) => input.parentId && input.cursor)).toHaveLength(0)
+    expect(screen.getByRole('button', { name: 'Previous' })).toBeDisabled()
+    await user.click(screen.getByRole('button', { name: 'Next page' }))
+    await screen.findByText('目录第二页')
+    await user.click(screen.getByRole('button', { name: i18n.t('knowledge.data_source.back_to_parent') }))
+    await screen.findByText(item.title)
+    expect(screen.getByRole('button', { name: 'Previous' })).toBeDisabled()
+  })
+
+  it('公共空库不提供上传入口', async () => {
+    request.mockResolvedValue({ items: [], total: 0, nextCursor: null })
+    render(<OrgKnowledgeDetail base={base} owned publicLibrary />)
+    expect(await screen.findByText(i18n.t('knowledge.data_source.empty_description'))).toBeInTheDocument()
+    expect(screen.queryByText(i18n.t('knowledge.data_source.empty.title'))).not.toBeInTheDocument()
   })
 })
 
@@ -311,7 +450,11 @@ describe('组织知识库只读详情', () => {
     expect(screen.queryByText(i18n.t('knowledge.org.readonly_notice'))).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Next page' }))
     expect(await screen.findByText('第二页')).toBeInTheDocument()
-    expect(request).toHaveBeenCalledWith('enterprise.knowledge.items', { baseId: base.id, cursor: 'page2' })
+    expect(request).toHaveBeenCalledWith('enterprise.knowledge.items', {
+      baseId: base.id,
+      cursor: 'page2',
+      parentId: null
+    })
     expect(screen.queryByRole('button', { name: 'Manage members' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Share|Add|Delete|Rebuild/ })).not.toBeInTheDocument()
   })
@@ -320,15 +463,17 @@ describe('组织知识库只读详情', () => {
     const directory = {
       ...item,
       id: 'orgkb:directory',
+      fileId: 'orgkb:directory-file',
       type: 'directory',
       title: '资料夹',
       parentId: null,
       documentId: null
     }
-    const child = { ...item, id: 'orgkb:child', title: '子文件.txt', parentId: directory.id }
+    const child = { ...item, id: 'orgkb:child', title: '子文件.txt', parentId: directory.fileId }
     request.mockImplementation(async (route, input) => {
       if (route === 'enterprise.knowledge.items') {
-        return { items: input.cursor ? [] : [directory, child], total: 2, nextCursor: null }
+        const items = input.parentId === directory.fileId ? [child] : [directory, child]
+        return { items: input.cursor ? [] : items, total: items.length, nextCursor: null }
       }
       return { kind: 'text', fileName: child.title, mimeType: 'text/plain', content: '子文件内容' }
     })
@@ -341,37 +486,96 @@ describe('组织知识库只读详情', () => {
     expect(await screen.findByText(directory.title)).toBeInTheDocument()
   })
 
+  it('多层目录逐级返回时显示父目录文件而非子目录缓存', async () => {
+    const directory = {
+      ...item,
+      id: 'orgkb:directory-a',
+      fileId: 'orgkb:file-a',
+      type: 'directory',
+      title: '目录A',
+      documentId: null
+    }
+    const nestedDirectory = {
+      ...directory,
+      id: 'orgkb:directory-b',
+      fileId: 'orgkb:file-b',
+      title: '目录B',
+      parentId: directory.fileId
+    }
+    const parentFile = { ...item, id: 'orgkb:parent-file', title: 'A层文件.txt', parentId: directory.fileId }
+    const childFile = { ...item, id: 'orgkb:child-file', title: 'B层文件.txt', parentId: nestedDirectory.fileId }
+    request.mockImplementation(async (route, input) => {
+      if (route === 'enterprise.knowledge.items') {
+        const items =
+          input.parentId === nestedDirectory.fileId
+            ? [childFile]
+            : input.parentId === directory.fileId
+              ? [nestedDirectory, parentFile]
+              : [directory, item]
+        return { items, total: items.length, nextCursor: null }
+      }
+      return { chunks: [] }
+    })
+    const user = userEvent.setup()
+    render(<OrgKnowledgeDetail base={base} owned={false} />)
+    await user.click(await screen.findByText(directory.title))
+    expect(await screen.findByText(parentFile.title)).toBeInTheDocument()
+    await user.click(await screen.findByText(nestedDirectory.title))
+    expect(await screen.findByText(childFile.title)).toBeInTheDocument()
+    expect(screen.queryByText(parentFile.title)).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Back' }))
+    expect(await screen.findByText(parentFile.title)).toBeInTheDocument()
+    expect(screen.getByText(nestedDirectory.title)).toBeInTheDocument()
+    expect(screen.queryByText(childFile.title)).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Back' }))
+    expect(await screen.findByText(directory.title)).toBeInTheDocument()
+    expect(screen.getByText(item.title)).toBeInTheDocument()
+    expect(screen.queryByText(parentFile.title)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Back' })).not.toBeInTheDocument()
+  })
+
   it('目录分页重复游标停止请求并显示错误而非空态', async () => {
     const directory = { ...item, id: 'orgkb:dir', title: '循环目录', type: 'directory', documentId: null }
-    let calls = 0
-    request.mockImplementation(async () => {
-      calls += 1
-      if (calls > 4) throw new Error('测试终止循环')
-      return { items: [directory], total: 1, nextCursor: calls === 1 ? null : 'repeat' }
+    request.mockImplementation(async (route, input) => {
+      if (route !== 'enterprise.knowledge.items') throw new Error('非预期请求')
+      return input.parentId
+        ? { items: [item], total: 10, nextCursor: 'repeat' }
+        : { items: [directory], total: 1, nextCursor: null }
     })
+    const user = userEvent.setup()
     render(<OrgKnowledgeDetail base={base} owned={false} />)
-    await userEvent.click(await screen.findByText(directory.title))
+    await user.click(await screen.findByText(directory.title))
     expect(await screen.findByRole('alert')).toBeInTheDocument()
-    expect(calls).toBe(3)
+    expect(
+      request.mock.calls.filter(
+        ([route, input]) => route === 'enterprise.knowledge.items' && input.parentId && input.cursor === 'repeat'
+      )
+    ).toHaveLength(1)
+    expect(screen.getByRole('alert')).toHaveTextContent(i18n.t('common.error'))
   })
 
   it('返回上级后忽略未完成目录请求的迟到响应', async () => {
     const directory = { ...item, id: 'orgkb:dir', title: '慢目录', type: 'directory', documentId: null }
-    let resolve!: (value: unknown) => void
-    request.mockResolvedValueOnce({ items: [directory, item], total: 2, nextCursor: null }).mockImplementationOnce(
-      () =>
-        new Promise((done) => {
-          resolve = done
-        })
-    )
+    const pending: ((value: unknown) => void)[] = []
+    request.mockImplementation(async (route, input) => {
+      if (route !== 'enterprise.knowledge.items') throw new Error('非预期请求')
+      if (!input.parentId) return { items: [directory, item], total: 2, nextCursor: null }
+      return new Promise((done) => {
+        pending.push(done)
+      })
+    })
     render(<OrgKnowledgeDetail base={base} owned={false} />)
     await userEvent.click(await screen.findByText(directory.title))
     await userEvent.click(screen.getByRole('button', { name: 'Back' }))
     await act(async () => {
-      resolve({ items: [], total: 0, nextCursor: null })
+      for (const resolve of pending)
+        resolve({ items: [{ ...item, title: '迟到的子文件' }], total: 1, nextCursor: null })
     })
     expect(screen.getByText(item.title)).toBeInTheDocument()
     expect(screen.getByText(directory.title)).toBeInTheDocument()
+    expect(screen.queryByText('迟到的子文件')).not.toBeInTheDocument()
   })
 
   it('使用文件映射在应用内查看器展示 PDF', async () => {
@@ -384,6 +588,44 @@ describe('组织知识库只读详情', () => {
     expect(document.querySelector('iframe')).toBeNull()
     // expect(request).toHaveBeenCalledWith('enterprise.knowledge.preview', { fileId: item.fileId })
     expect(request).toHaveBeenCalledWith('enterprise.knowledge.preview', { baseId: base.id, fileId: item.fileId })
+  })
+
+  it('PDF 预览件 URL 存在时交给 PDF 查看器直链加载，不再传 base64', async () => {
+    const original = request.getMockImplementation()!
+    const previewUrl = 'https://storage.example/document.pdf?signature=test'
+    request.mockImplementation(async (route, input) =>
+      route === 'enterprise.knowledge.preview'
+        ? {
+            kind: 'inline',
+            fileName: item.title,
+            mimeType: 'application/pdf',
+            content: '',
+            url: previewUrl,
+            base64: 'JVBERi0='
+          }
+        : original(route, input)
+    )
+    const user = userEvent.setup()
+    render(<OrgKnowledgeDetail base={base} owned={false} />)
+    await user.click(await screen.findByText(item.title))
+    await waitFor(() => expect(screen.getByTitle(item.title)).toHaveAttribute('data-pdf-url', previewUrl))
+    expect(screen.getByTitle(item.title)).not.toHaveAttribute('data-pdf-base64')
+    expect(document.querySelector('iframe')).toBeNull()
+  })
+
+  it.each(['image/png', 'text/plain'])('非 PDF 的 %s URL 不进入 PDF 查看器', async (mimeType) => {
+    const original = request.getMockImplementation()!
+    request.mockImplementation(async (route, input) =>
+      route === 'enterprise.knowledge.preview'
+        ? { kind: 'inline', fileName: '其他文件', mimeType, content: '文本内容', url: 'https://storage.example/object' }
+        : original(route, input)
+    )
+    const user = userEvent.setup()
+    render(<OrgKnowledgeDetail base={base} owned={false} />)
+    await user.click(await screen.findByText(item.title))
+    if (mimeType === 'image/png') expect(await screen.findByRole('img', { name: '其他文件' })).toBeInTheDocument()
+    else expect(await screen.findByRole('status')).toHaveTextContent(i18n.t('knowledge.org.preview_unavailable'))
+    expect(screen.queryByTitle('其他文件')).not.toBeInTheDocument()
   })
 
   it.each(officeFormats)(
@@ -518,7 +760,13 @@ describe('组织知识库只读详情', () => {
     const user = userEvent.setup()
     render(<OrgKnowledgeDetail base={base} owned={false} />)
     await user.click(await screen.findByText(item.title))
-    await waitFor(() => expect(screen.getByTitle(item.title)).toHaveAttribute('data-pdf-base64', 'JVBERi0='))
+    await waitFor(() =>
+      expect(screen.getByTitle(item.title)).toHaveAttribute(
+        'data-pdf-url',
+        'https://storage.example/document.pdf?signature=test'
+      )
+    )
+    expect(screen.getByTitle(item.title)).not.toHaveAttribute('data-pdf-base64')
     expect(document.querySelector('iframe')).toBeNull()
   })
 
