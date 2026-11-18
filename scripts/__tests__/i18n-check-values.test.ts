@@ -12,7 +12,7 @@ const shippedBrandSurfaces = [
   'src/main/services/tokenDanceOAuth.ts',
   'src/renderer/i18n/locales',
   'resources/cherry-studio/release-history.json',
-  'resources/skills/cherry-browser/SKILL.md',
+  'resources/skills/meacowork-browser/SKILL.md',
   'resources/builtin-agents/cherry-assistant/product-manifest.json',
   'electron-builder.yml'
 ]

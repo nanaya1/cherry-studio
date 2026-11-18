@@ -1,6 +1,6 @@
 # Local document conversion
 
-Covers `mcp__cherry-tools__to_markdown` — converting a supported readable local document
+Covers `mcp__meacowork-tools__to_markdown` — converting a supported readable local document
 into Markdown.
 This is distinct from knowledge-base tools, which search documents already indexed by
 Cherry, and from shell runtimes or managed CLIs.
@@ -10,7 +10,7 @@ sequencing, supported formats, and recovery.
 
 ## Workflow
 
-Use `mcp__cherry-tools__to_markdown` when an agent needs the structured contents of a
+Use `mcp__meacowork-tools__to_markdown` when an agent needs the structured contents of a
 local document that ordinary text reads cannot handle.
 
 Pass a path relative to the session workspace, or an absolute path to a file the user
@@ -60,6 +60,6 @@ or symlink escapes out of those roots are rejected too. Temporary conversions ol
 
 > "Summarize `reports/q3-review.pptx`."
 
-Call `mcp__cherry-tools__to_markdown` with `reports/q3-review.pptx` → read or search the
+Call `mcp__meacowork-tools__to_markdown` with `reports/q3-review.pptx` → read or search the
 returned temporary Markdown path in slices → summarize the relevant sections. Do not
 install a separate document CLI or load the complete Markdown into model context.

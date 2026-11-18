@@ -1,8 +1,8 @@
 # Agent Sessions
 
-Covers `mcp__cherry-tools__session_list`, `mcp__cherry-tools__session_search`,
-`mcp__cherry-tools__session_create`, `mcp__cherry-tools__session_send`, and
-`mcp__cherry-tools__session_deliveries` — finding prior Agent work and coordinating a
+Covers `mcp__meacowork-tools__session_list`, `mcp__meacowork-tools__session_search`,
+`mcp__meacowork-tools__session_create`, `mcp__meacowork-tools__session_send`, and
+`mcp__meacowork-tools__session_deliveries` — finding prior Agent work and coordinating a
 bounded task with another Session.
 
 Get exact argument and result shapes from the live tool schema. This reference defines
@@ -81,8 +81,8 @@ during external tool execution cannot make arbitrary side effects exactly-once.
 
 > "Have the implementation Session finish the auth fix and bring the result back here."
 
-`mcp__cherry-tools__session_search` for a focused auth identifier → select the intended
-`sessionId` from message or metadata evidence → `mcp__cherry-tools__session_send` with
+`mcp__meacowork-tools__session_search` for a focused auth identifier → select the intended
+`sessionId` from message or metadata evidence → `mcp__meacowork-tools__session_send` with
 `reply: completion` and accept the live approval → continue other work; the runtime
 delivers the terminal result asynchronously. Use `session_deliveries` only if the user
 asks for delivery state or recovery.

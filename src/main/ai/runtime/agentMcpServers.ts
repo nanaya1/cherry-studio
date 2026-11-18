@@ -89,7 +89,9 @@ export function buildAgentMcpServers(
   }
 
   const workspaceSource = toWorkspaceSource(session)
-  servers['cherry-tools'] = {
+  // Record key follows the server's canonical name (formerly the literal `'cherry-tools'`);
+  // keeping key and `name` aligned is required by the runtime's server-id lookup.
+  servers[CHERRY_MCP_SERVER.CHERRY_TOOLS] = {
     name: CHERRY_MCP_SERVER.CHERRY_TOOLS,
     instance: new CherryBuiltinToolsServer({
       agentId: agent.id,

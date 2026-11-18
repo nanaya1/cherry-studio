@@ -1,5 +1,5 @@
 ---
-name: cherry-tool-guide
+name: meacowork-tool-guide
 description: MEA Cowork first-party tool and bundled-shell routing for general agents. For straightforward local work in shell-capable sessions, run JS/TS with `bun <file>` and one-off JS tools with `bun x`; run Python with `uv run [--with <pkg>] python` and one-off Python CLIs with `uvx`; search with `rg`. Load this guide before changing project dependencies, deciding whether a tool should be ephemeral or reusable, reading or converting local Office/PDF files, coordinating or delegating across Agent Sessions, or using MEA Cowork-owned web/browser, knowledge, persistent memory, schedules/notifications, IM channels, image generation, artifact reporting, managed CLI, skill, or MCP-server-registration capabilities—even if the user names no tool. Consult it before shell/file workarounds; live tool schemas are authoritative.
 version: 1.6.0
 ---
@@ -7,7 +7,7 @@ version: 1.6.0
 # MEA Cowork Tool Guide
 
 MEA Cowork injects first-party tools into your session over four MCP servers
-(`mcp__cherry-tools__*`, `mcp__agent-memory__*`, `mcp__skills__*`, `mcp__mcp-manager__*`)
+(`mcp__meacowork-tools__*`, `mcp__agent-memory__*`, `mcp__skills__*`, `mcp__mcp-manager__*`)
 and gives shell-capable general agents bundled runtimes for local execution. The MCP
 tools act on the running app — the user's knowledge bases, IM channels, schedules,
 managed CLIs, skill library, and MCP server registry — through boundaries only MEA Cowork
@@ -37,8 +37,8 @@ parameter names, enums, and required fields. Read it before every call.
   knowledge or MCP settings files to accomplish these — the tool does bookkeeping (registration, scoping, approval, sync)
   that a raw shell command skips. Shell is fine for *inspection* (e.g. `command -v` to
   probe PATH) — just not to perform the owned mutation.
-- **Honor approval.** `mcp__cherry-tools__kb_manage`, `mcp__cherry-tools__cli_install`,
-  `mcp__cherry-tools__session_create`, `mcp__cherry-tools__session_send`,
+- **Honor approval.** `mcp__meacowork-tools__kb_manage`, `mcp__meacowork-tools__cli_install`,
+  `mcp__meacowork-tools__session_create`, `mcp__meacowork-tools__session_send`,
   `mcp__skills__install_skill`, and `mcp__mcp-manager__install_mcp_server` are gated by
   the session's approval mode. Call them only once the user's intent is clear; if approval is
   declined, stop and report — do not retry the same effect through another route.
@@ -51,21 +51,21 @@ parameter names, enums, and required fields. Read it before every call.
 
 | User intent | Route to | Reference |
 | --- | --- | --- |
-| Look up current/online facts, news, docs | `mcp__cherry-tools__web_search` → `mcp__cherry-tools__web_fetch` | [web.md](references/web.md) |
-| Browser interaction (click, forms, screenshots) | `mcp__browser__*` when enabled; load `cherry-browser` | [web.md](references/web.md) |
-| Answer from the user's own documents | `mcp__cherry-tools__kb_list` → `mcp__cherry-tools__kb_search` → `mcp__cherry-tools__kb_read` | [knowledge.md](references/knowledge.md) |
-| Add / delete / re-index knowledge | `mcp__cherry-tools__kb_manage` (resolve IDs first; needs approval) | [knowledge.md](references/knowledge.md) |
-| Read or convert a local document | `mcp__cherry-tools__to_markdown` → read the returned temporary Markdown path as needed | [documents.md](references/documents.md) |
+| Look up current/online facts, news, docs | `mcp__meacowork-tools__web_search` → `mcp__meacowork-tools__web_fetch` | [web.md](references/web.md) |
+| Browser interaction (click, forms, screenshots) | `mcp__browser__*` when enabled; load `meacowork-browser` | [web.md](references/web.md) |
+| Answer from the user's own documents | `mcp__meacowork-tools__kb_list` → `mcp__meacowork-tools__kb_search` → `mcp__meacowork-tools__kb_read` | [knowledge.md](references/knowledge.md) |
+| Add / delete / re-index knowledge | `mcp__meacowork-tools__kb_manage` (resolve IDs first; needs approval) | [knowledge.md](references/knowledge.md) |
+| Read or convert a local document | `mcp__meacowork-tools__to_markdown` → read the returned temporary Markdown path as needed | [documents.md](references/documents.md) |
 | Recall a past fact, correction, or preference | `mcp__agent-memory__memory` (`search`) before re-asking | [memory.md](references/memory.md) |
 | Save durable knowledge vs. a one-off event | `mcp__agent-memory__memory` (`update` vs. `append`) | [memory.md](references/memory.md) |
-| Schedule a recurring / future task | `mcp__cherry-tools__cron` (MEA Cowork scheduling only) | [autonomy.md](references/autonomy.md) |
-| Proactively message the user or send a file | `mcp__cherry-tools__notify` (needs configured recipients) | [autonomy.md](references/autonomy.md) |
-| Inspect / connect / repair IM channels, rename agent | `mcp__cherry-tools__config` | [autonomy.md](references/autonomy.md) |
-| Find, create, message, or inspect work across Agent Sessions | `mcp__cherry-tools__session_list` / `session_search` / `session_create` / `session_send` / `session_deliveries` | [sessions.md](references/sessions.md) |
-| Generate an image | `mcp__cherry-tools__generate_image` (needs a painting model) | [outputs.md](references/outputs.md) |
-| Declare final deliverable file(s) | `mcp__cherry-tools__report_artifacts` | [outputs.md](references/outputs.md) |
+| Schedule a recurring / future task | `mcp__meacowork-tools__cron` (MEA Cowork scheduling only) | [autonomy.md](references/autonomy.md) |
+| Proactively message the user or send a file | `mcp__meacowork-tools__notify` (needs configured recipients) | [autonomy.md](references/autonomy.md) |
+| Inspect / connect / repair IM channels, rename agent | `mcp__meacowork-tools__config` | [autonomy.md](references/autonomy.md) |
+| Find, create, message, or inspect work across Agent Sessions | `mcp__meacowork-tools__session_list` / `session_search` / `session_create` / `session_send` / `session_deliveries` | [sessions.md](references/sessions.md) |
+| Generate an image | `mcp__meacowork-tools__generate_image` (needs a painting model) | [outputs.md](references/outputs.md) |
+| Declare final deliverable file(s) | `mcp__meacowork-tools__report_artifacts` | [outputs.md](references/outputs.md) |
 | Run JS/TS or Python, invoke a one-off package, search local code/files | bundled `bun`, `uv` / `uvx`, or `rg` according to task lifetime | [cli.md](references/cli.md) |
-| Find / install a command-line tool | `command -v` check → `mcp__cherry-tools__cli_list` → `mcp__cherry-tools__cli_search` → `mcp__cherry-tools__cli_install` (approval) | [cli.md](references/cli.md) |
+| Find / install a command-line tool | `command -v` check → `mcp__meacowork-tools__cli_list` → `mcp__meacowork-tools__cli_search` → `mcp__meacowork-tools__cli_install` (approval) | [cli.md](references/cli.md) |
 | Find / install a new capability skill | `mcp__skills__search_skills` → `mcp__skills__install_skill` (approval) | [skills.md](references/skills.md) |
 | Register a new MCP server the user supplied | `mcp__mcp-manager__install_mcp_server` (approval; never invent the config) | [mcp.md](references/mcp.md) |
 
@@ -78,7 +78,7 @@ Two different situations, don't confuse them:
   agent). Explain what's missing and what the user can do; don't work around it with
   shell/file tools. The reference for that domain says exactly when it can be absent.
 - **The tool is listed but reports a missing dependency** → e.g.
-  `mcp__cherry-tools__generate_image` with no painting model. It stays listed and
+  `mcp__meacowork-tools__generate_image` with no painting model. It stays listed and
   returns a note; relay the note and point the user at configuration — don't retry
   blindly or fake success.
 

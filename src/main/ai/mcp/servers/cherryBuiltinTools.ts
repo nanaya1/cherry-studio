@@ -64,6 +64,7 @@ import {
   webFetchInputSchema,
   webSearchInputSchema
 } from '@shared/ai/builtinTools'
+import { MEACOWORK_TOOLS_MCP_SERVER } from '@shared/ai/tools/mcpToolName'
 
 import { type CherryAgentContext, CherryAutonomyTools } from './cherryAutonomyTools'
 import { CherryCliTools } from './cherryCliTools'
@@ -226,7 +227,12 @@ export class CherryBuiltinToolsServer {
     const knowledge = new CherryKnowledgeTools(agentContext)
     const cli = new CherryCliTools()
     const documents = new CherryDocumentTools(agentContext)
-    this.mcpServer = new McpServer({ name: 'cherry-tools', version: '1.0.0' }, { capabilities: { tools: {} } })
+    // Formerly `{ name: 'cherry-tools', ... }`; the in-process server id is now the canonical
+    // `meacowork-tools`. Sibling providers aggregate here unchanged.
+    this.mcpServer = new McpServer(
+      { name: MEACOWORK_TOOLS_MCP_SERVER, version: '1.0.0' },
+      { capabilities: { tools: {} } }
+    )
     this.mcpServer.server.setRequestHandler(ListToolsRequestSchema, async () => ({
       tools: [
         ...listCherryBuiltinTools(),

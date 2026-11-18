@@ -1,10 +1,10 @@
 ---
-name: cherry-browser
+name: meacowork-browser
 description: Interact with the user's visible Agent browser in MEA Cowork. Use for page navigation, authenticated websites, screenshots, forms, clicks, and browser debugging. Check live browser tools first; browser control requires the Browser setting and an available Agent pane.
 version: 1.0.0
 ---
 
-# Cherry Browser
+# MEA Cowork Browser
 
 Use the live `mcp__browser__*` tools to operate the browser in this Agent Session's
 right pane. Read their current schemas; names may be adapted by the runtime. If

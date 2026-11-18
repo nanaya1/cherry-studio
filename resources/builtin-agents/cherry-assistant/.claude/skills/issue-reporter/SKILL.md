@@ -1,13 +1,13 @@
 ---
 name: issue-reporter
-description: 只在用户明确要求提交 GitHub Issue、GitHub Bug Report 或 GitHub Feature Request 时使用。用户只说“提交问题”“提交反馈”“上报 bug”“这是个 bug”或描述功能建议但未点名 GitHub 时不得触发，必须改用 cherry-studio-feedback 并默认提交飞书。
+description: 只在用户明确要求提交 GitHub Issue、GitHub Bug Report 或 GitHub Feature Request 时使用。用户只说“提交问题”“提交反馈”“上报 bug”“这是个 bug”或描述功能建议但未点名 GitHub 时不得触发，必须改用 meacowork-studio-feedback 并默认提交飞书。
 ---
 
 # Issue Reporter
 
 ## 触发边界
 
-只有用户明确要求提交到 GitHub，才能继续本流程。不得从“提交问题”“反馈”“bug”或“功能建议”推断 GitHub；未明确点名 GitHub 时立即转交 `cherry-studio-feedback`，不得运行 `gh auth status`、搜索仓库或发起任何 GitHub 操作。
+只有用户明确要求提交到 GitHub，才能继续本流程。不得从“提交问题”“反馈”“bug”或“功能建议”推断 GitHub；未明确点名 GitHub 时立即转交 `meacowork-studio-feedback`，不得运行 `gh auth status`、搜索仓库或发起任何 GitHub 操作。
 
 ## 检测 GitHub 登录
 

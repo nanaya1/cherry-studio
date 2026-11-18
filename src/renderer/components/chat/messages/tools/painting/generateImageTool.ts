@@ -2,15 +2,21 @@ import { CallToolResultSchema } from '@modelcontextprotocol/sdk/types.js'
 import { getToolName, isToolUIPart } from 'ai'
 
 import { GENERATE_IMAGE_TOOL_NAME, generateImageOutputSchema } from '@shared/ai/builtinTools'
+import { isBuiltinToolsRuntimeName } from '@shared/ai/tools/mcpToolName'
 import { isDeferredToolOutput } from '@shared/ai/transport'
 import type { CherryMessagePart } from '@shared/data/types/message'
 
 import { buildToolResponseFromPart } from '../toolResponse'
 
-const CHERRY_MCP_GENERATE_IMAGE_TOOL_NAME = `mcp__cherry-tools__${GENERATE_IMAGE_TOOL_NAME}`
+const CHERRY_MCP_GENERATE_IMAGE_TOOL_NAME = `mcp__meacowork-tools__${GENERATE_IMAGE_TOOL_NAME}`
 
 export function isGenerateImageToolName(toolName: string): boolean {
-  return toolName === GENERATE_IMAGE_TOOL_NAME || toolName === CHERRY_MCP_GENERATE_IMAGE_TOOL_NAME
+  // Helper also accepts the legacy `mcp__cherry-tools__generate_image` on read.
+  return (
+    toolName === GENERATE_IMAGE_TOOL_NAME ||
+    toolName === CHERRY_MCP_GENERATE_IMAGE_TOOL_NAME ||
+    isBuiltinToolsRuntimeName(toolName, GENERATE_IMAGE_TOOL_NAME)
+  )
 }
 
 export function parseGeneratedImageOutput(response: unknown) {

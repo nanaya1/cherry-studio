@@ -8,6 +8,10 @@
  *
  * Migration in progress: this is intended to replace the hand-maintained lists in `builtinTools.ts`
  * and the renderer's tool metadata, which still coexist until those call sites are ported.
+ *
+ * NOTE: The in-process MCP server and its wire names were renamed `cherry-tools` →
+ * `meacowork-tools`. The `name`/`mcpServer` values below are the canonical new ids; persisted
+ * data carrying the old id is recognised through `@shared/ai/tools/mcpToolName` helpers.
  */
 
 import type { ClaudeToolDescriptor } from './toolRules'
@@ -36,7 +40,7 @@ export interface ClaudeToolDescriptorDef {
   /** Other tools this one requires — if any is disabled, this tool is disabled too (transitively). */
   dependsOn?: readonly string[]
   /** Set for in-process MCP tools — the server hosting this tool (drives injection). */
-  mcpServer?: 'cherry-tools' | 'agent-memory' | 'skills'
+  mcpServer?: 'meacowork-tools' | 'agent-memory' | 'skills'
   /** Tool is unavailable unless the agent has at least one bound knowledge base. */
   requiresKnowledgeScope?: true
   /** The tool cannot complete meaningfully without a live user's response. */
@@ -268,104 +272,104 @@ const CLAUDE_TOOL_REGISTRY = {
   // ── in-process MCP tools ─────────────────────────────────────────
   // cherry-tools (always injected today)
   CherryWebSearch: {
-    name: 'mcp__cherry-tools__web_search',
+    name: 'mcp__meacowork-tools__web_search',
     category: 'context',
     exposure: 'user',
     description: 'Searches the web via your configured provider',
-    mcpServer: 'cherry-tools'
+    mcpServer: 'meacowork-tools'
   },
   CherryWebFetch: {
-    name: 'mcp__cherry-tools__web_fetch',
+    name: 'mcp__meacowork-tools__web_fetch',
     category: 'context',
     exposure: 'user',
     description: 'Fetches and reads a web page',
-    mcpServer: 'cherry-tools'
+    mcpServer: 'meacowork-tools'
   },
   CherryKbSearch: {
-    name: 'mcp__cherry-tools__kb_search',
+    name: 'mcp__meacowork-tools__kb_search',
     category: 'context',
     exposure: 'user',
     description: 'Searches your knowledge bases',
-    mcpServer: 'cherry-tools',
+    mcpServer: 'meacowork-tools',
     requiresKnowledgeScope: true
   },
   // Lists the bases, or outlines one base's structure when given a baseId. No separate toggle, but it
   // follows the visible "Knowledge Search" toggle (dependsOn kb_search): disabling search also revokes
   // browsing, so the user-facing toggle honestly covers all knowledge-base read access.
   CherryKbList: {
-    name: 'mcp__cherry-tools__kb_list',
+    name: 'mcp__meacowork-tools__kb_list',
     category: 'context',
     exposure: 'internal',
     description: 'Lists your knowledge bases, or outlines one base’s structure',
-    dependsOn: ['mcp__cherry-tools__kb_search'],
-    mcpServer: 'cherry-tools',
+    dependsOn: ['mcp__meacowork-tools__kb_search'],
+    mcpServer: 'meacowork-tools',
     requiresKnowledgeScope: true
   },
   // Deep-read tool (infrastructure the agent reaches for after a search) — internal, no separate
   // toggle. It returns whole documents (more than kb_search's chunks), so it follows the visible
   // "Knowledge Search" toggle (dependsOn kb_search): disabling search also revokes document reads.
   CherryKbRead: {
-    name: 'mcp__cherry-tools__kb_read',
+    name: 'mcp__meacowork-tools__kb_read',
     category: 'context',
     exposure: 'internal',
     description: 'Reads a knowledge base document, or greps within it',
-    dependsOn: ['mcp__cherry-tools__kb_search'],
-    mcpServer: 'cherry-tools',
+    dependsOn: ['mcp__meacowork-tools__kb_search'],
+    mcpServer: 'meacowork-tools',
     requiresKnowledgeScope: true
   },
   // The one mutating KB tool (add/delete/refresh sources) — exposed as its own toggle so the user
   // can see and disable write access; it still requires per-call approval at runtime.
   CherryKbManage: {
-    name: 'mcp__cherry-tools__kb_manage',
+    name: 'mcp__meacowork-tools__kb_manage',
     category: 'context',
     exposure: 'user',
     description: 'Adds, deletes, or refreshes knowledge base documents',
-    mcpServer: 'cherry-tools',
+    mcpServer: 'meacowork-tools',
     requiresKnowledgeScope: true
   },
   // Converts a local document (pdf/office/epub/csv/…) the ordinary text tools cannot read. Its own
   // toggle because it reads local files outside the workspace, so disabling Read must not leave a
   // second, unrelated door open.
   CherryToMarkdown: {
-    name: 'mcp__cherry-tools__to_markdown',
+    name: 'mcp__meacowork-tools__to_markdown',
     category: 'file',
     exposure: 'user',
     description: 'Markdown is easier for the agent to read',
-    mcpServer: 'cherry-tools'
+    mcpServer: 'meacowork-tools'
   },
   // agent autonomy / channels (hosted by cherry-tools). notify needs a connected channel to do anything.
   CherryCron: {
-    name: 'mcp__cherry-tools__cron',
+    name: 'mcp__meacowork-tools__cron',
     category: 'orchestration',
     exposure: 'user',
     description: 'Manages the in-app scheduler',
-    mcpServer: 'cherry-tools'
+    mcpServer: 'meacowork-tools'
   },
   // notify is user-exposed and NOT channel-gated: it self-degrades at call time (reports "no connected
   // channels") when the agent has none — see cherryAutonomyTools.ts sendNotification. Do not re-add a
   // channel enable-predicate, or an agent can't notify in the same run it uses config to add its first channel.
   CherryNotify: {
-    name: 'mcp__cherry-tools__notify',
+    name: 'mcp__meacowork-tools__notify',
     category: 'orchestration',
     exposure: 'user',
     description: 'Sends a notification through a connected channel',
-    mcpServer: 'cherry-tools'
+    mcpServer: 'meacowork-tools'
   },
   CherryConfig: {
-    name: 'mcp__cherry-tools__config',
+    name: 'mcp__meacowork-tools__config',
     category: 'orchestration',
     exposure: 'user',
     description: 'Inspects and manages this agent configuration and channels',
-    mcpServer: 'cherry-tools'
+    mcpServer: 'meacowork-tools'
   },
   // media (image generation). Hosted by cherry-tools; requires per-call approval and returns a
   // "configure a painting model" note at runtime when none is set (see builtinToolPolicy.ts).
   CherryGenerateImage: {
-    name: 'mcp__cherry-tools__generate_image',
+    name: 'mcp__meacowork-tools__generate_image',
     category: 'media',
     exposure: 'user',
     description: 'Generates an image from a text prompt using your configured painting model',
-    mcpServer: 'cherry-tools'
+    mcpServer: 'meacowork-tools'
   },
   // agent-memory (cross-session memory)
   AgentMemory: {
@@ -450,16 +454,16 @@ export interface ClaudeUserFacingTool {
 
 /** Friendly labels for MCP wire tools whose `name` is an opaque `mcp__server__wire` id. */
 const MCP_TOOL_LABELS: Record<string, string> = {
-  'mcp__cherry-tools__web_search': 'Web Search',
-  'mcp__cherry-tools__web_fetch': 'Web Fetch',
-  'mcp__cherry-tools__kb_search': 'Knowledge Search',
-  'mcp__cherry-tools__kb_manage': 'Manage Knowledge',
-  'mcp__cherry-tools__to_markdown': 'File to Markdown',
+  'mcp__meacowork-tools__web_search': 'Web Search',
+  'mcp__meacowork-tools__web_fetch': 'Web Fetch',
+  'mcp__meacowork-tools__kb_search': 'Knowledge Search',
+  'mcp__meacowork-tools__kb_manage': 'Manage Knowledge',
+  'mcp__meacowork-tools__to_markdown': 'File to Markdown',
   'mcp__agent-memory__memory': 'Memory',
-  'mcp__cherry-tools__cron': 'Scheduler',
-  'mcp__cherry-tools__notify': 'Notify',
-  'mcp__cherry-tools__config': 'Configuration',
-  'mcp__cherry-tools__generate_image': 'Generate Image'
+  'mcp__meacowork-tools__cron': 'Scheduler',
+  'mcp__meacowork-tools__notify': 'Notify',
+  'mcp__meacowork-tools__config': 'Configuration',
+  'mcp__meacowork-tools__generate_image': 'Generate Image'
 }
 
 /**

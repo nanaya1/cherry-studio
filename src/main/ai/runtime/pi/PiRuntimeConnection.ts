@@ -45,6 +45,7 @@ import {
   WEB_SEARCH_TOOL_NAME
 } from '@shared/ai/builtinTools'
 import { PI_NATIVE_BUILTIN_TOOLS, PI_TOOL_EXEC_TOOL_NAME } from '@shared/ai/piBuiltinTools'
+import { CHERRY_TOOLS_MCP_SERVER, MEACOWORK_TOOLS_MCP_SERVER } from '@shared/ai/tools/mcpToolName'
 import type { AgentPermissionMode } from '@shared/data/api/schemas/agents'
 import type { UniqueModelId } from '@shared/data/types/model'
 
@@ -309,12 +310,21 @@ export class PiRuntimeConnection implements AgentRuntimeConnection {
       const linkedChannel = initialSnapshot.linkedChannel
       const knowledgeBaseScope = resolveKnowledgeBaseScope(agent.knowledgeBaseIds, this.input.knowledgeBaseIds)
       const isToolEnabled = (serverName: string, toolName: string) =>
-        !this.disabledTools.has(buildPiMcpToolName(serverName, toolName))
+        // Check the canonical and legacy builtin-server names: a persisted disabledTools rule
+        // may still carry the pre-rename wire name (`cherry-tools` → `meacowork-tools`).
+        !this.disabledTools.has(buildPiMcpToolName(serverName, toolName)) &&
+        !(
+          serverName === MEACOWORK_TOOLS_MCP_SERVER &&
+          this.disabledTools.has(buildPiMcpToolName(CHERRY_TOOLS_MCP_SERVER, toolName))
+        )
       const citationsGuidance = buildCitationsGuidance({
-        web: isToolEnabled('cherry-tools', WEB_SEARCH_TOOL_NAME) || isToolEnabled('cherry-tools', WEB_FETCH_TOOL_NAME),
+        web:
+          isToolEnabled(MEACOWORK_TOOLS_MCP_SERVER, WEB_SEARCH_TOOL_NAME) ||
+          isToolEnabled(MEACOWORK_TOOLS_MCP_SERVER, WEB_FETCH_TOOL_NAME),
         kb:
           (resolveAgentCapabilities(agent).allKnowledgeBases || knowledgeBaseScope.length > 0) &&
-          (isToolEnabled('cherry-tools', KB_SEARCH_TOOL_NAME) || isToolEnabled('cherry-tools', KB_READ_TOOL_NAME))
+          (isToolEnabled(MEACOWORK_TOOLS_MCP_SERVER, KB_SEARCH_TOOL_NAME) ||
+            isToolEnabled(MEACOWORK_TOOLS_MCP_SERVER, KB_READ_TOOL_NAME))
       })
       const prompt = await buildAgentRuntimePrompt({
         workspacePath,

@@ -2111,6 +2111,170 @@ describe('SkillService', () => {
 
       await expect(fs.promises.readFile(path.join(destPath, 'scripts', 'run.sh'), 'utf-8')).resolves.toBe('trusted')
     })
+
+    // Builtin folder rename migration: an existing source=builtin row must be adopted
+    // in place so its id (and therefore global/per-agent settings) survives the upgrade.
+    const OLD_FOLDER = 'cherry-browser'
+    const NEW_FOLDER = 'meacowork-browser'
+
+    async function seedRenameScenario(
+      options: {
+        oldSource?: string
+        createOldDir?: boolean
+        createOldMirror?: boolean
+      } = {}
+    ) {
+      const sourceRoot = path.dirname(sourcePath)
+      const storageRoot = path.dirname(destPath)
+      const mirrorRoot = application.getPath('feature.agents.claude.skills')
+      const newSourcePath = path.join(sourceRoot, NEW_FOLDER)
+      const oldDir = path.join(storageRoot, OLD_FOLDER)
+      const newDir = path.join(storageRoot, NEW_FOLDER)
+      const oldMirror = path.join(mirrorRoot, OLD_FOLDER)
+      const newMirror = path.join(mirrorRoot, NEW_FOLDER)
+
+      await fs.promises.mkdir(newSourcePath, { recursive: true })
+      await fs.promises.writeFile(path.join(newSourcePath, 'SKILL.md'), '# New Builtin')
+      if (options.createOldDir !== false) {
+        await fs.promises.mkdir(oldDir, { recursive: true })
+        await fs.promises.writeFile(path.join(oldDir, 'SKILL.md'), '# Old Builtin')
+        await fs.promises.writeFile(path.join(oldDir, '.version'), '2.0.0')
+      }
+      if (options.createOldMirror !== false) {
+        await fs.promises.mkdir(oldMirror, { recursive: true })
+        await fs.promises.writeFile(path.join(oldMirror, 'SKILL.md'), '# Old Builtin')
+      }
+      return { newSourcePath, oldDir, newDir, oldMirror, newMirror }
+    }
+
+    it('migrates a renamed builtin folder in place, keeping its id, global gate, per-agent preference and mirror', async () => {
+      const skillService = new SkillService()
+      const { newSourcePath, oldDir, newDir, oldMirror, newMirror } = await seedRenameScenario()
+      await seedAgent()
+      await dbh.db.insert(agentGlobalSkillTable).values({
+        id: SKILL_ID_BUILTIN,
+        name: 'Old Builtin',
+        folderName: OLD_FOLDER,
+        source: 'builtin',
+        contentHash: 'old-hash',
+        isEnabled: false
+      })
+      await dbh.db.insert(agentSkillTable).values({
+        agentId: AGENT_ID,
+        skillId: SKILL_ID_BUILTIN,
+        isEnabled: true
+      })
+
+      await skillService.syncBuiltinSkill(NEW_FOLDER, newSourcePath, APP_VERSION)
+
+      const rows = await dbh.db.select().from(agentGlobalSkillTable)
+      expect(rows).toHaveLength(1)
+      expect(rows[0]).toMatchObject({
+        id: SKILL_ID_BUILTIN,
+        folderName: NEW_FOLDER,
+        source: 'builtin',
+        isEnabled: false
+      })
+      const joins = await dbh.db.select().from(agentSkillTable).where(eq(agentSkillTable.skillId, SKILL_ID_BUILTIN))
+      expect(joins).toEqual([expect.objectContaining({ agentId: AGENT_ID, isEnabled: true })])
+      await expect(fs.promises.readFile(path.join(newDir, 'SKILL.md'), 'utf-8')).resolves.toBe('# New Builtin')
+      await expect(fs.promises.access(oldDir)).rejects.toThrow()
+      await expect(fs.promises.access(newMirror)).resolves.toBeUndefined()
+      await expect(fs.promises.access(oldMirror)).rejects.toThrow()
+    })
+
+    it('never overwrites a user-owned skill at the new folder name', async () => {
+      const skillService = new SkillService()
+      const { newSourcePath, oldDir, newDir } = await seedRenameScenario()
+      await fs.promises.mkdir(newDir, { recursive: true })
+      await fs.promises.writeFile(path.join(newDir, 'SKILL.md'), '# User Authored')
+      await dbh.db.insert(agentGlobalSkillTable).values([
+        {
+          id: SKILL_ID_BUILTIN,
+          name: 'Old Builtin',
+          folderName: OLD_FOLDER,
+          source: 'builtin',
+          contentHash: 'old-hash',
+          isEnabled: true
+        },
+        {
+          id: SKILL_ID_1,
+          name: 'User Authored',
+          folderName: NEW_FOLDER,
+          source: 'local',
+          contentHash: 'user-hash',
+          isEnabled: true
+        }
+      ])
+
+      await expect(skillService.syncBuiltinSkill(NEW_FOLDER, newSourcePath, APP_VERSION)).rejects.toThrow(
+        /refusing to overwrite/
+      )
+
+      await expect(fs.promises.readFile(path.join(newDir, 'SKILL.md'), 'utf-8')).resolves.toBe('# User Authored')
+      await expect(fs.promises.readFile(path.join(oldDir, 'SKILL.md'), 'utf-8')).resolves.toBe('# Old Builtin')
+      const rows = await dbh.db.select().from(agentGlobalSkillTable)
+      expect(rows).toHaveLength(2)
+      expect(rows.find((row) => row.id === SKILL_ID_BUILTIN)).toMatchObject({
+        folderName: OLD_FOLDER,
+        source: 'builtin'
+      })
+      expect(rows.find((row) => row.id === SKILL_ID_1)).toMatchObject({ folderName: NEW_FOLDER, source: 'local' })
+    })
+
+    it('only migrates source=builtin rows and leaves a user-owned old folder untouched', async () => {
+      const skillService = new SkillService()
+      const { newSourcePath, oldDir } = await seedRenameScenario()
+      await fs.promises.writeFile(path.join(oldDir, 'SKILL.md'), '# User Authored')
+      await dbh.db.insert(agentGlobalSkillTable).values({
+        id: SKILL_ID_1,
+        name: 'User Authored',
+        folderName: OLD_FOLDER,
+        source: 'local',
+        contentHash: 'user-hash',
+        isEnabled: true
+      })
+
+      await skillService.syncBuiltinSkill(NEW_FOLDER, newSourcePath, APP_VERSION)
+
+      const rows = await dbh.db.select().from(agentGlobalSkillTable)
+      expect(rows).toHaveLength(2)
+      expect(rows.find((row) => row.id === SKILL_ID_1)).toMatchObject({ folderName: OLD_FOLDER, source: 'local' })
+      const builtin = rows.find((row) => row.source === 'builtin')
+      expect(builtin?.folderName).toBe(NEW_FOLDER)
+      expect(builtin?.id).not.toBe(SKILL_ID_1)
+      await expect(fs.promises.readFile(path.join(oldDir, 'SKILL.md'), 'utf-8')).resolves.toBe('# User Authored')
+    })
+
+    it('restores the old folder and keeps a single row when migration fails mid-way', async () => {
+      const skillService = new SkillService()
+      const { newSourcePath, oldDir, newDir } = await seedRenameScenario()
+      await dbh.db.insert(agentGlobalSkillTable).values({
+        id: SKILL_ID_BUILTIN,
+        name: 'Old Builtin',
+        folderName: OLD_FOLDER,
+        source: 'builtin',
+        contentHash: 'old-hash',
+        isEnabled: true
+      })
+      const updateSpy = vi.spyOn(agentGlobalSkillService, 'updateTx').mockImplementation(() => {
+        throw new Error('db write failed')
+      })
+
+      try {
+        await expect(skillService.syncBuiltinSkill(NEW_FOLDER, newSourcePath, APP_VERSION)).rejects.toThrow(
+          'db write failed'
+        )
+      } finally {
+        updateSpy.mockRestore()
+      }
+
+      const rows = await dbh.db.select().from(agentGlobalSkillTable)
+      expect(rows).toHaveLength(1)
+      expect(rows[0]).toMatchObject({ id: SKILL_ID_BUILTIN, folderName: OLD_FOLDER, source: 'builtin' })
+      await expect(fs.promises.readFile(path.join(oldDir, 'SKILL.md'), 'utf-8')).resolves.toBe('# Old Builtin')
+      await expect(fs.promises.access(newDir)).rejects.toThrow()
+    })
   })
 
   describe('skill mirror', () => {

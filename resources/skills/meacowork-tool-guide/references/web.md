@@ -1,6 +1,6 @@
 # Web research
 
-Covers `mcp__cherry-tools__web_search` and `mcp__cherry-tools__web_fetch`, plus the hard
+Covers `mcp__meacowork-tools__web_search` and `mcp__meacowork-tools__web_fetch`, plus the hard
 limits of Cherry's web built-ins.
 
 Get exact argument shapes from the live tool schema — this reference gives routing,
@@ -14,10 +14,10 @@ with shell commands.
 
 ## Workflow
 
-1. **`mcp__cherry-tools__web_search`** — fire one call per distinct question. When
+1. **`mcp__meacowork-tools__web_search`** — fire one call per distinct question. When
    researching several topics, issue the searches **in parallel** rather than
    serializing them. Search returns snippets and URLs, not full pages.
-2. **`mcp__cherry-tools__web_fetch`** — call only on the few URLs whose full text you
+2. **`mcp__meacowork-tools__web_fetch`** — call only on the few URLs whose full text you
    actually need. Fetching every result wastes context — be selective.
 
 If a search returns nothing useful, **refine the query before fetching** anything. Don't
@@ -25,7 +25,7 @@ fetch low-relevance URLs just because they came back.
 
 ## Browser interaction
 
-Load the bundled `cherry-browser` skill for live `mcp__browser__*` tools. These control
+Load the bundled `meacowork-browser` skill for live `mcp__browser__*` tools. These control
 the current Agent Session’s visible right pane when Browser settings enables Agent
 control. History and login-data imports are managed in Browser settings.
 

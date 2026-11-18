@@ -48,7 +48,7 @@ import {
   webSearchOutputSchema
 } from '@shared/ai/builtinTools'
 import { PI_TOOL_CALL_TOOL_NAME } from '@shared/ai/piBuiltinTools'
-import { parseFunctionCallToolName } from '@shared/ai/tools/mcpToolName'
+import { isBuiltinToolsMcpServer, parseFunctionCallToolName } from '@shared/ai/tools/mcpToolName'
 import { isDeferredToolOutput, isPersistedToolOutput } from '@shared/ai/transport'
 import type { CherryMessagePart } from '@shared/data/types/message'
 import { readCherryMeta } from '@shared/data/types/uiParts'
@@ -79,7 +79,7 @@ const CITABLE_TOOL_NAMES: ReadonlySet<string> = new Set([
   KB_SEARCH_TOOL_NAME,
   KB_READ_TOOL_NAME
 ])
-const CHERRY_TOOLS_MCP_SERVER = 'cherry-tools'
+// Formerly the literal `'cherry-tools'`; both ids now resolve via isBuiltinToolsMcpServer.
 const TOOL_INVOKE_TOOL_NAME = 'tool_invoke'
 
 type ToolResponsePart = ToolUIPart<UITools> | DynamicToolUIPart
@@ -108,7 +108,7 @@ function sourceIdToNumber(sourceId: unknown): number | undefined {
 /** `mcp__cherry-tools__web_search` → `web_search`; null for any other server or tool. */
 function citableCherryToolName(wireName: string): string | null {
   const parsed = parseFunctionCallToolName(wireName)
-  if (!parsed || parsed.serverPart !== CHERRY_TOOLS_MCP_SERVER) return null
+  if (!parsed || !isBuiltinToolsMcpServer(parsed.serverPart)) return null
   return CITABLE_TOOL_NAMES.has(parsed.toolPart) ? parsed.toolPart : null
 }
 
@@ -130,7 +130,7 @@ function resolveCitableToolName(part: CherryMessagePart): string | null {
     const partMetadata = readCherryMeta(part)?.tool
     const outputMetadata = extractOutputMetadata((toolPart as { output?: unknown }).output).metadata
     const belongsToCherryTools = (metadata: ToolMetadata | typeof partMetadata | undefined) =>
-      metadata?.serverId === CHERRY_TOOLS_MCP_SERVER || metadata?.serverName === CHERRY_TOOLS_MCP_SERVER
+      isBuiltinToolsMcpServer(metadata?.serverId) || isBuiltinToolsMcpServer(metadata?.serverName)
     return belongsToCherryTools(partMetadata) || belongsToCherryTools(outputMetadata) ? rawName : null
   }
 

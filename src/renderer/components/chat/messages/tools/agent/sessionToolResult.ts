@@ -4,6 +4,7 @@ import {
   SESSION_SEARCH_TOOL_NAME,
   SESSION_SEND_TOOL_NAME
 } from '@shared/ai/agentSessionDelivery'
+import { isBuiltinToolsMcpServer, isBuiltinToolsRuntimeName } from '@shared/ai/tools/mcpToolName'
 
 import type { ToolResponseLike } from '../toolResponse'
 
@@ -28,20 +29,22 @@ export interface SessionToolTarget {
 /** session_search may return many matches; that many cards keep the reply readable. */
 export const MAX_SESSION_SEARCH_RESULT_CARDS = 3
 
+// Bare tool name (assistant runtime) or the builtin-tools MCP wire name. The helper accepts both
+// the canonical `meacowork-tools` and the legacy `cherry-tools` spelling for persisted messages.
 function isSessionCreateToolName(toolName: string | undefined): boolean {
-  return toolName === SESSION_CREATE_TOOL_NAME || toolName === `mcp__cherry-tools__${SESSION_CREATE_TOOL_NAME}`
+  return toolName === SESSION_CREATE_TOOL_NAME || isBuiltinToolsRuntimeName(toolName, SESSION_CREATE_TOOL_NAME)
 }
 
 function isSessionSendToolName(toolName: string | undefined): boolean {
-  return toolName === SESSION_SEND_TOOL_NAME || toolName === `mcp__cherry-tools__${SESSION_SEND_TOOL_NAME}`
+  return toolName === SESSION_SEND_TOOL_NAME || isBuiltinToolsRuntimeName(toolName, SESSION_SEND_TOOL_NAME)
 }
 
 function isSessionSearchToolName(toolName: string | undefined): boolean {
-  return toolName === SESSION_SEARCH_TOOL_NAME || toolName === `mcp__cherry-tools__${SESSION_SEARCH_TOOL_NAME}`
+  return toolName === SESSION_SEARCH_TOOL_NAME || isBuiltinToolsRuntimeName(toolName, SESSION_SEARCH_TOOL_NAME)
 }
 
 function isSessionReadToolName(toolName: string | undefined): boolean {
-  return toolName === SESSION_READ_TOOL_NAME || toolName === `mcp__cherry-tools__${SESSION_READ_TOOL_NAME}`
+  return toolName === SESSION_READ_TOOL_NAME || isBuiltinToolsRuntimeName(toolName, SESSION_READ_TOOL_NAME)
 }
 
 export function isCherrySessionToolResponse(toolResponse: ToolResponseLike): boolean {
@@ -52,7 +55,7 @@ export function isCherrySessionToolResponse(toolResponse: ToolResponseLike): boo
     isSessionSearchToolName(tool.name) ||
     isSessionReadToolName(tool.name)
   if (!isSessionTool) return false
-  return tool.type !== 'mcp' || ('serverId' in tool && tool.serverId === 'cherry-tools')
+  return tool.type !== 'mcp' || ('serverId' in tool && isBuiltinToolsMcpServer(tool.serverId))
 }
 
 export interface SessionSendResult {

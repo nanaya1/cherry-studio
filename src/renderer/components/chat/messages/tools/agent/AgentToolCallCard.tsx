@@ -4,6 +4,8 @@ import { useTranslation } from 'react-i18next'
 import { Button, Tooltip } from '@cherrystudio/ui'
 import { cn } from '@renderer/utils/style'
 import { SESSION_CREATE_TOOL_NAME, SESSION_SEND_TOOL_NAME } from '@shared/ai/agentSessionDelivery'
+import { TO_MARKDOWN_TOOL_NAME } from '@shared/ai/builtinTools'
+import { isBuiltinToolsRuntimeName } from '@shared/ai/tools/mcpToolName'
 
 import { useOptionalMessageListActions } from '../../MessageListProvider'
 import {
@@ -75,14 +77,14 @@ export function AgentToolCallCard({
   const { t } = useTranslation()
   const renderedItem =
     isCherrySessionTool &&
-    (toolName === SESSION_CREATE_TOOL_NAME || toolName === `mcp__cherry-tools__${SESSION_CREATE_TOOL_NAME}`)
+    (toolName === SESSION_CREATE_TOOL_NAME || isBuiltinToolsRuntimeName(toolName, SESSION_CREATE_TOOL_NAME))
       ? SessionCreateTool({ input, output, hasError, isStreaming, status })
       : isCherrySessionTool &&
-          (toolName === SESSION_SEND_TOOL_NAME || toolName === `mcp__cherry-tools__${SESSION_SEND_TOOL_NAME}`)
+          (toolName === SESSION_SEND_TOOL_NAME || isBuiltinToolsRuntimeName(toolName, SESSION_SEND_TOOL_NAME))
         ? SessionSendTool({ input, output, hasError, isStreaming, status })
         : isValidAgentToolsType(toolName)
           ? renderTool(toolName, input ?? {}, output, hasError)
-          : toolName === TO_MARKDOWN_RUNTIME_TOOL_NAME
+          : toolName === TO_MARKDOWN_RUNTIME_TOOL_NAME || isBuiltinToolsRuntimeName(toolName, TO_MARKDOWN_TOOL_NAME)
             ? ToMarkdownTool({ input, output })
             : UnknownToolRenderer({ toolName: toolName ?? 'Tool', input, output })
   const openToolFlow =

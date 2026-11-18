@@ -180,7 +180,7 @@ describe('cherryBuiltinTools', () => {
   it('keeps runtime knowledge tools aligned with the shared wire-name registry', () => {
     const runtimeWireNames = makeKnowledgeTools(['kb-1'])
       .tools()
-      .map((tool) => `mcp__cherry-tools__${tool.name}`)
+      .map((tool) => `mcp__meacowork-tools__${tool.name}`)
       .sort()
 
     expect(runtimeWireNames).toEqual([...CLAUDE_KNOWLEDGE_TOOL_NAMES].sort())

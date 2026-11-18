@@ -38,6 +38,7 @@ import {
   WEB_SEARCH_TOOL_NAME
 } from '@shared/ai/builtinTools'
 import { type DshBuiltinToolDescriptor, getDshRuntimeBuiltinTools } from '@shared/ai/dshBuiltinTools'
+import { CHERRY_TOOLS_MCP_SERVER, MEACOWORK_TOOLS_MCP_SERVER } from '@shared/ai/tools/mcpToolName'
 import type { AgentPermissionMode } from '@shared/data/api/schemas/agents'
 import type { UniqueModelId } from '@shared/data/types/model'
 import type { ReasoningEffortOption } from '@shared/types/aiSdk'
@@ -339,12 +340,21 @@ export class DshRuntimeConnection implements AgentRuntimeConnection {
 
     const knowledgeBaseScope = resolveKnowledgeBaseScope(agent.knowledgeBaseIds, this.input.knowledgeBaseIds)
     const isToolEnabled = (serverName: string, toolName: string) =>
-      !this.disabledTools.has(buildDshCherryToolName(serverName, toolName))
+      // Canonical + legacy builtin-server names: persisted disabledTools rules may still use
+      // the pre-rename `cherry-tools` wire name.
+      !this.disabledTools.has(buildDshCherryToolName(serverName, toolName)) &&
+      !(
+        serverName === MEACOWORK_TOOLS_MCP_SERVER &&
+        this.disabledTools.has(buildDshCherryToolName(CHERRY_TOOLS_MCP_SERVER, toolName))
+      )
     const citationsGuidance = buildCitationsGuidance({
-      web: isToolEnabled('cherry-tools', WEB_SEARCH_TOOL_NAME) || isToolEnabled('cherry-tools', WEB_FETCH_TOOL_NAME),
+      web:
+        isToolEnabled(MEACOWORK_TOOLS_MCP_SERVER, WEB_SEARCH_TOOL_NAME) ||
+        isToolEnabled(MEACOWORK_TOOLS_MCP_SERVER, WEB_FETCH_TOOL_NAME),
       kb:
         (resolveAgentCapabilities(agent).allKnowledgeBases || knowledgeBaseScope.length > 0) &&
-        (isToolEnabled('cherry-tools', KB_SEARCH_TOOL_NAME) || isToolEnabled('cherry-tools', KB_READ_TOOL_NAME))
+        (isToolEnabled(MEACOWORK_TOOLS_MCP_SERVER, KB_SEARCH_TOOL_NAME) ||
+          isToolEnabled(MEACOWORK_TOOLS_MCP_SERVER, KB_READ_TOOL_NAME))
     })
     const prompt = await buildAgentRuntimePrompt({
       workspacePath,

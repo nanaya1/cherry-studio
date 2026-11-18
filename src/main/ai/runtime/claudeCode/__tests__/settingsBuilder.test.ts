@@ -25,7 +25,7 @@ const NON_BYPASSABLE_APPROVAL_REQUIRED_RUNTIME_NAMES = listBuiltinToolPolicies({
   approval: 'required',
   bypassApproval: 'enforce'
 }).map(toMcpRuntimeName)
-const NON_HOST_MCP_SERVERS: ReadonlySet<string> = new Set(['cherry-tools', 'agent-memory', 'skills', 'mcp-manager'])
+const NON_HOST_MCP_SERVERS: ReadonlySet<string> = new Set(['meacowork-tools', 'agent-memory', 'skills', 'mcp-manager'])
 const NON_ASSISTANT_APPROVAL_REQUIRED_RUNTIME_NAMES = listBuiltinToolPolicies({
   approval: 'required',
   mountedServers: NON_HOST_MCP_SERVERS
@@ -1666,14 +1666,14 @@ describe('buildClaudeCodeSessionSettings', () => {
     const settings = await buildClaudeCodeSessionSettings(session as never, {} as never)
 
     expect(settings.disallowedTools).toEqual(expect.arrayContaining(['Bash', 'Read']))
-    // The injected cherry-tools/agent-memory servers are always pre-approved via the allowlist.
+    // The injected meacowork-tools/agent-memory servers are always pre-approved via the allowlist.
     expect(settings.allowedTools).toEqual(
-      expect.arrayContaining(['mcp__cherry-tools__cron', 'mcp__agent-memory__memory'])
+      expect.arrayContaining(['mcp__meacowork-tools__cron', 'mcp__agent-memory__memory'])
     )
   })
 
   it('does not auto-approve disabled MCP tools', async () => {
-    const disabledTools = ['mcp__cherry-tools__web_fetch', 'mcp__agent-memory__memory']
+    const disabledTools = ['mcp__meacowork-tools__web_fetch', 'mcp__agent-memory__memory']
     mocks.getAgent.mockReturnValue({
       id: 'agent-1',
       type: 'claude-code',
@@ -1693,7 +1693,7 @@ describe('buildClaudeCodeSessionSettings', () => {
 
     expect(settings.disallowedTools).toEqual(expect.arrayContaining(disabledTools))
     for (const toolName of disabledTools) expect(settings.allowedTools).not.toContain(toolName)
-    expect(settings.allowedTools).toContain('mcp__cherry-tools__web_search')
+    expect(settings.allowedTools).toContain('mcp__meacowork-tools__web_search')
   })
 
   it('appends web-only citation guidance to the system prompt by default', async () => {
@@ -1707,8 +1707,8 @@ describe('buildClaudeCodeSessionSettings', () => {
 
     const systemPrompt = systemPromptText(settings.systemPrompt)
     expect(systemPrompt).toContain('## Citations')
-    expect(systemPrompt).toContain('mcp__cherry-tools__web_search')
-    expect(systemPrompt).not.toContain('mcp__cherry-tools__kb_search')
+    expect(systemPrompt).toContain('mcp__meacowork-tools__web_search')
+    expect(systemPrompt).not.toContain('mcp__meacowork-tools__kb_search')
   })
 
   it('includes kb_search in citation guidance when the agent has bound knowledge bases', async () => {
@@ -1729,7 +1729,7 @@ describe('buildClaudeCodeSessionSettings', () => {
 
     const settings = await buildClaudeCodeSessionSettings(session as never, {} as never)
 
-    expect(systemPromptText(settings.systemPrompt)).toContain('mcp__cherry-tools__kb_search')
+    expect(systemPromptText(settings.systemPrompt)).toContain('mcp__meacowork-tools__kb_search')
   })
 
   // The kb_* tools are exposed from the resolved scope, so an unbound Agent still gets them from the
@@ -1754,7 +1754,7 @@ describe('buildClaudeCodeSessionSettings', () => {
       knowledgeBaseIds: ['kb-selected']
     })
 
-    expect(systemPromptText(settings.systemPrompt)).toContain('mcp__cherry-tools__kb_search')
+    expect(systemPromptText(settings.systemPrompt)).toContain('mcp__meacowork-tools__kb_search')
   })
 
   it('omits citation guidance when both web tools are disabled and no knowledge base is bound', async () => {
@@ -1764,7 +1764,7 @@ describe('buildClaudeCodeSessionSettings', () => {
       model: 'anthropic::claude-sonnet',
       mcps: [],
       allowedTools: [],
-      disabledTools: ['mcp__cherry-tools__web_search', 'mcp__cherry-tools__web_fetch'],
+      disabledTools: ['mcp__meacowork-tools__web_search', 'mcp__meacowork-tools__web_fetch'],
       configuration: {}
     })
     const session = {
@@ -1786,7 +1786,11 @@ describe('buildClaudeCodeSessionSettings', () => {
       mcps: [],
       allowedTools: [],
       knowledgeBaseIds: ['kb-1'],
-      disabledTools: ['mcp__cherry-tools__web_search', 'mcp__cherry-tools__web_fetch', 'mcp__cherry-tools__kb_search'],
+      disabledTools: [
+        'mcp__meacowork-tools__web_search',
+        'mcp__meacowork-tools__web_fetch',
+        'mcp__meacowork-tools__kb_search'
+      ],
       configuration: {}
     })
     const session = {
@@ -1797,7 +1801,7 @@ describe('buildClaudeCodeSessionSettings', () => {
 
     const settings = await buildClaudeCodeSessionSettings(session as never, {} as never)
 
-    expect(settings.disallowedTools).toEqual(expect.arrayContaining(['mcp__cherry-tools__kb_read']))
+    expect(settings.disallowedTools).toEqual(expect.arrayContaining(['mcp__meacowork-tools__kb_read']))
     expect(systemPromptText(settings.systemPrompt)).not.toContain('## Citations')
   })
 
@@ -1867,7 +1871,7 @@ describe('buildClaudeCodeSessionSettings', () => {
     expect(settings.disallowedTools ?? []).not.toEqual(
       expect.arrayContaining(['AskUserQuestion', 'EnterPlanMode', 'ExitPlanMode'])
     )
-    expect(settings.disallowedTools ?? []).not.toContain('mcp__cherry-tools__notify')
+    expect(settings.disallowedTools ?? []).not.toContain('mcp__meacowork-tools__notify')
   })
 
   it('denies interactive no-responder tools at tool fire time for the current headless turn', async () => {
@@ -2221,7 +2225,7 @@ describe('buildClaudeCodeSessionSettings', () => {
           hook(
             {
               hook_event_name: 'PreToolUse',
-              tool_name: 'mcp__cherry-tools__config',
+              tool_name: 'mcp__meacowork-tools__config',
               tool_input: { action }
             } as never,
             'tool-use-1',
@@ -2484,7 +2488,7 @@ describe('buildClaudeCodeSessionSettings', () => {
     mocks.listSkills.mockResolvedValue([{ id: 'skill-1', folderName: 'system-skill', isEnabled: true }])
     mocks.getBuiltinAgentPluginDirectory.mockReturnValue('/app/feature.agents.builtin/cherry-assistant/.claude')
     mocks.loadBuiltinAgentDefinition.mockReturnValue({
-      skills: ['cherry-assistant-guide', 'faq-collector']
+      skills: ['meacowork-assistant-guide', 'faq-collector']
     })
     const session = {
       id: 'session-1',
@@ -2505,7 +2509,9 @@ describe('buildClaudeCodeSessionSettings', () => {
       path: '/app/feature.agents.builtin/cherry-assistant/.claude',
       skipMcpDiscovery: true
     })
-    expect(settings.skills).toEqual(expect.arrayContaining(['system-skill', 'cherry-assistant-guide', 'faq-collector']))
+    expect(settings.skills).toEqual(
+      expect.arrayContaining(['system-skill', 'meacowork-assistant-guide', 'faq-collector'])
+    )
     expect(settings.mcpServers?.skills).toBeDefined()
     expect(settings.allowedTools).toContain('mcp__skills__search_skills')
   })
@@ -2534,7 +2540,7 @@ describe('buildClaudeCodeSessionSettings', () => {
     mocks.listSkills.mockResolvedValue([{ id: 'skill-1', folderName: 'issue-reporter', isEnabled: true }])
     mocks.listLocalSkillFolderNames.mockResolvedValue(['faq-collector'])
     mocks.loadBuiltinAgentDefinition.mockReturnValue({
-      skills: ['cherry-assistant-guide', 'faq-collector', 'cherry-studio-feedback', 'issue-reporter']
+      skills: ['meacowork-assistant-guide', 'faq-collector', 'meacowork-studio-feedback', 'issue-reporter']
     })
     mocks.getBuiltinAgentPluginDirectory.mockReturnValue('/app/feature.agents.builtin/cherry-assistant/.claude')
     const session = {
@@ -2547,9 +2553,9 @@ describe('buildClaudeCodeSessionSettings', () => {
     await rm(workspacePath, { recursive: true, force: true })
 
     expect(settings.skills).toEqual([
-      'cherry-assistant-builtin:cherry-assistant-guide',
+      'cherry-assistant-builtin:meacowork-assistant-guide',
       'cherry-assistant-builtin:faq-collector',
-      'cherry-assistant-builtin:cherry-studio-feedback',
+      'cherry-assistant-builtin:meacowork-studio-feedback',
       'cherry-assistant-builtin:issue-reporter'
     ])
     expect(settings.plugins).toEqual([
@@ -2622,13 +2628,13 @@ describe('buildClaudeCodeSessionSettings', () => {
       workspacePath: '/workspace/project'
     })
 
-    const cherryServer = (settings.mcpServers?.['cherry-tools'] as any)?.instance
+    const cherryServer = (settings.mcpServers?.['meacowork-tools'] as any)?.instance
     const handlers = cherryServer.server._requestHandlers
     const listed = await handlers.get('tools/list')({ method: 'tools/list', params: {} }, {})
     expect(listed.tools.map((tool: { name: string }) => tool.name)).toEqual(
       expect.arrayContaining(['kb_search', 'kb_read', 'kb_list', 'kb_manage', 'cli_list', 'cli_search', 'cli_install'])
     )
-    expect(systemPromptText(settings.systemPrompt)).toContain('mcp__cherry-tools__kb_search')
+    expect(systemPromptText(settings.systemPrompt)).toContain('mcp__meacowork-tools__kb_search')
   })
 
   it('exposes CLI management tools to a normal Agent session', async () => {
@@ -2639,7 +2645,7 @@ describe('buildClaudeCodeSessionSettings', () => {
     }
 
     const settings = await buildClaudeCodeSessionSettings(session as never, {} as never)
-    const cherryServer = (settings.mcpServers?.['cherry-tools'] as any)?.instance
+    const cherryServer = (settings.mcpServers?.['meacowork-tools'] as any)?.instance
     const handlers = cherryServer.server._requestHandlers
     const listed = await handlers.get('tools/list')({ method: 'tools/list', params: {} }, {})
 
@@ -2694,7 +2700,7 @@ describe('buildClaudeCodeSessionSettings', () => {
       notificationContext
     })
 
-    const cherryServer = (settings.mcpServers?.['cherry-tools'] as any)?.instance
+    const cherryServer = (settings.mcpServers?.['meacowork-tools'] as any)?.instance
     const listed = await cherryServer.server._requestHandlers.get('tools/list')(
       { method: 'tools/list', params: {} },
       {}
@@ -2794,7 +2800,7 @@ describe('buildClaudeCodeSessionSettings', () => {
       } as never)
     ).resolves.toMatchObject({ behavior: 'allow' })
 
-    const cherryServer = (settings.mcpServers?.['cherry-tools'] as any)?.instance
+    const cherryServer = (settings.mcpServers?.['meacowork-tools'] as any)?.instance
     const listed = await cherryServer.server._requestHandlers.get('tools/list')(
       { method: 'tools/list', params: {} },
       {}
@@ -2932,7 +2938,7 @@ describe('buildClaudeCodeSessionSettings', () => {
     expect(mocks.createToolPolicySnapshot).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
-        autoAllowRuntimeNames: expect.arrayContaining(['mcp__cherry-tools__notify']),
+        autoAllowRuntimeNames: expect.arrayContaining(['mcp__meacowork-tools__notify']),
         autoAllowRuntimeNameExceptions: exceptions
       })
     )
