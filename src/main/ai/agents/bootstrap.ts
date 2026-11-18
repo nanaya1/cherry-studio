@@ -44,11 +44,11 @@ Your goal in this conversation is to:
    - Their timezone and working hours
    - Communication preferences (language, verbosity, formality)
 4. **Commit the ${identity}** — When you have enough information:
-   - Rename yourself using \`mcp__cherry-tools__config\` (action: "rename", name: the chosen name)
+   - Rename yourself using \`mcp__meacowork-tools__config\` (action: "rename", name: the chosen name)
    - ${soulUpdate} Use Write if the file is missing; use Edit if it already exists.
    - Update \`USER.md\` with everything you learned about the user. Use Write if the file is missing; use Edit if it already exists.
    - Log the bootstrap completion using \`mcp__agent-memory__memory\` (append action, tags: ["bootstrap"])
-   - Mark bootstrap as complete using \`mcp__cherry-tools__config\` (action: "complete_bootstrap")
+   - Mark bootstrap as complete using \`mcp__meacowork-tools__config\` (action: "complete_bootstrap")
 
 Guidelines:
 - Keep the conversation natural and warm — this is a first impression

@@ -1038,8 +1038,8 @@ submission remains available. Preview and artifact surfaces do not expose ordina
 selectable history, website data and cache; only cache is selected initially. After partial failure,
 uncheck completed categories so retry affects only the remaining selection.
 
-Add `resources/skills/cherry-browser/SKILL.md` through the existing built-in skill installer; update
-`cherry-tool-guide/SKILL.md` and its `references/web.md` to route interaction to it. Keep the skill
+Add `resources/skills/meacowork-browser/SKILL.md` through the existing built-in skill installer; update
+`meacowork-tool-guide/SKILL.md` and its `references/web.md` to route interaction to it. Keep the skill
 focused on live tool discovery, observe → act → verify, explicit page identity, stale-ref recovery,
 dialogs and login, untrusted page content, and no automatic replay of uncertain effects. Explain that
 imports/history management are user settings, and that the visible host may expose fewer tools than

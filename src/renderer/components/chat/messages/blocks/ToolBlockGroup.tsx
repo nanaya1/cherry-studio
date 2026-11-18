@@ -76,6 +76,8 @@ function getToolHeaderCandidateKey(candidate: ToolHeaderCandidate): string {
 
 const TOOL_GROUP_ICON_BY_NAME: Record<string, LucideIcon> = {
   [SESSION_CREATE_TOOL_NAME]: GitBranchPlus,
+  [`mcp__meacowork-tools__${SESSION_CREATE_TOOL_NAME}`]: GitBranchPlus,
+  // Legacy wire name kept so pre-rename messages keep their group icon.
   [`mcp__cherry-tools__${SESSION_CREATE_TOOL_NAME}`]: GitBranchPlus,
   [AgentToolsType.Agent]: Sparkles,
   [AgentToolsType.Bash]: SquareTerminal,

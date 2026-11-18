@@ -130,7 +130,7 @@ describe('PromptBuilder', () => {
     const { context: result } = await builder.buildPromptParts(posix('/workspace'))
 
     // The autonomy / memory-handbook / web-search handbook headings and their
-    // tool-strategy text ship lazily via the `cherry-tool-guide` builtin skill,
+    // tool-strategy text ship lazily via the `meacowork-tool-guide` builtin skill,
     // not baked into every prompt.
     expect(result).not.toContain('## Autonomy Tools')
     expect(result).not.toContain('## Agent Memory')

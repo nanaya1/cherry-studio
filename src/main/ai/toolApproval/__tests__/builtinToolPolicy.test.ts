@@ -13,7 +13,10 @@ import {
   toMcpRuntimeName
 } from '../builtinToolPolicy'
 
-const WITHOUT_HOST_TOOLS: ReadonlySet<string> = new Set(['cherry-tools', 'agent-memory', 'skills', 'mcp-manager'])
+// The builtin-tools server is now mounted under its canonical `meacowork-tools` id.
+const WITHOUT_HOST_TOOLS: ReadonlySet<string> = new Set(['meacowork-tools', 'agent-memory', 'skills', 'mcp-manager'])
+// Legacy mount name still accepted for warm sessions / older callers.
+const LEGACY_MOUNT_TOOLS: ReadonlySet<string> = new Set(['cherry-tools', 'agent-memory', 'skills', 'mcp-manager'])
 const WITH_HOST_TOOLS: ReadonlySet<string> = new Set([...WITHOUT_HOST_TOOLS, 'assistant', 'assistant-files'])
 
 describe('builtinToolPolicy', () => {
@@ -84,11 +87,28 @@ describe('builtinToolPolicy', () => {
   })
 
   it('does not auto-approve an undeclared future tool', () => {
-    expect(findBuiltinToolPolicy('mcp__cherry-tools__future_mutator', WITHOUT_HOST_TOOLS)).toBeUndefined()
+    expect(findBuiltinToolPolicy('mcp__meacowork-tools__future_mutator', WITHOUT_HOST_TOOLS)).toBeUndefined()
     expect(
       listBuiltinToolPolicies({ approval: 'auto', mountedServers: WITHOUT_HOST_TOOLS })
         .map(toMcpRuntimeName)
-        .includes('mcp__cherry-tools__future_mutator')
+        .includes('mcp__meacowork-tools__future_mutator')
     ).toBe(false)
+  })
+
+  it('resolves builtin policies through both the new and legacy server ids (rename compatibility)', () => {
+    expect(findBuiltinToolPolicy(toCherryBuiltinRuntimeName(KB_MANAGE_TOOL_NAME), WITHOUT_HOST_TOOLS)?.approval).toBe(
+      'required'
+    )
+    // Legacy wire name + legacy mounted id from a persisted warm session still resolve.
+    expect(findBuiltinToolPolicy('mcp__cherry-tools__kb_manage', LEGACY_MOUNT_TOOLS)?.approval).toBe('required')
+    // Mixed: new wire name with a legacy mount id, and vice versa.
+    expect(findBuiltinToolPolicy('mcp__meacowork-tools__kb_manage', LEGACY_MOUNT_TOOLS)?.approval).toBe('required')
+    expect(findBuiltinToolPolicy('mcp__cherry-tools__kb_manage', WITHOUT_HOST_TOOLS)?.approval).toBe('required')
+    // Listing with the legacy mount set still surfaces the renamed builtin entries.
+    expect(
+      listBuiltinToolPolicies({ mountedServers: LEGACY_MOUNT_TOOLS }).some(
+        (entry) => entry.toolName === KB_MANAGE_TOOL_NAME && entry.approval === 'required'
+      )
+    ).toBe(true)
   })
 })

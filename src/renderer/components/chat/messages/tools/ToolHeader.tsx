@@ -25,7 +25,7 @@ import { Flex, Tooltip } from '@cherrystudio/ui'
 import type { McpToolResponse, NormalToolResponse } from '@renderer/types/mcpTool'
 import type { McpTool } from '@renderer/types/tool'
 import { SESSION_CREATE_TOOL_NAME } from '@shared/ai/agentSessionDelivery'
-import { PROVIDER_WEB_SEARCH_TOOL_NAME } from '@shared/ai/builtinTools'
+import { PROVIDER_WEB_SEARCH_TOOL_NAME, TO_MARKDOWN_TOOL_NAME } from '@shared/ai/builtinTools'
 
 import { PlaceholderShimmerText } from '../blocks/PlaceholderShimmerText'
 import { useOptionalMessageListUi } from '../MessageListProvider'
@@ -33,7 +33,10 @@ import { AgentToolsType, TO_MARKDOWN_RUNTIME_TOOL_NAME } from './shared/agentToo
 import { type ToolStatus, ToolStatusIndicator, useIsStreaming } from './shared/GenericTools'
 
 type Translate = (key: string, options?: Record<string, string>) => string
-const SESSION_CREATE_RUNTIME_TOOL_NAME = `mcp__cherry-tools__${SESSION_CREATE_TOOL_NAME}`
+// Canonical wire name; the legacy `cherry-tools` spelling is kept as a case label below so
+// messages persisted before the server rename still render their session-create activity.
+const SESSION_CREATE_RUNTIME_TOOL_NAME = `mcp__meacowork-tools__${SESSION_CREATE_TOOL_NAME}`
+const LEGACY_SESSION_CREATE_RUNTIME_TOOL_NAME = `mcp__cherry-tools__${SESSION_CREATE_TOOL_NAME}`
 export interface ToolActivity {
   label: string
   description?: string
@@ -90,7 +93,12 @@ export const TOOL_HEADER_UI: Record<string, { icon: ReactNode; labelKey?: string
   [AgentToolsType.ExitWorktree]: { icon: <DoorOpen size={14} /> },
   [AgentToolsType.Workflow]: { icon: <WorkflowIcon size={14} />, labelKey: 'message.tools.labels.workflow' },
   [AgentToolsType.Skill]: { icon: <ToolCase size={14} />, labelKey: 'message.tools.labels.skill' },
-  [TO_MARKDOWN_RUNTIME_TOOL_NAME]: { icon: <FileType size={14} />, labelKey: 'message.tools.labels.toMarkdown' }
+  [TO_MARKDOWN_RUNTIME_TOOL_NAME]: { icon: <FileType size={14} />, labelKey: 'message.tools.labels.toMarkdown' },
+  // Legacy wire name of the renamed builtin-tools server.
+  [`mcp__cherry-tools__${TO_MARKDOWN_TOOL_NAME}`]: {
+    icon: <FileType size={14} />,
+    labelKey: 'message.tools.labels.toMarkdown'
+  }
 }
 
 const getAgentToolIcon = (toolName: string): ReactNode => TOOL_HEADER_UI[toolName]?.icon ?? <Wrench size={14} />
@@ -399,6 +407,7 @@ export function getReadableToolActivity(
       }
     case SESSION_CREATE_TOOL_NAME:
     case SESSION_CREATE_RUNTIME_TOOL_NAME:
+    case LEGACY_SESSION_CREATE_RUNTIME_TOOL_NAME:
       return {
         label: t(active ? 'message.tools.sessionCreate.creating' : 'message.tools.sessionCreate.created'),
         description: getStringArg(args, 'title') ?? t('message.tools.sessionCreate.untitled')

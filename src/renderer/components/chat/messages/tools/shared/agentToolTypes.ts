@@ -227,8 +227,9 @@ export function isAskUserQuestionToolName(toolName: unknown): boolean {
   return toolName === AgentToolsType.AskUserQuestion || toolName === 'builtin_AskUserQuestion'
 }
 
-/** cherry-tools document converter — an MCP tool, so it is keyed by its runtime wire name. */
-export const TO_MARKDOWN_RUNTIME_TOOL_NAME = `mcp__cherry-tools__${TO_MARKDOWN_TOOL_NAME}`
+/** Builtin-tools document converter — an MCP tool, keyed by its canonical runtime wire name
+ * (formerly `mcp__cherry-tools__to_markdown`; legacy messages are matched via the shared helper). */
+export const TO_MARKDOWN_RUNTIME_TOOL_NAME = `mcp__meacowork-tools__${TO_MARKDOWN_TOOL_NAME}`
 
 /**
  * Whether an `Agent`/`Task` result is a launch receipt for a subagent that is still running. A

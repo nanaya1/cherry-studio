@@ -37,15 +37,22 @@ import {
   WEB_FETCH_TOOL_NAME,
   WEB_SEARCH_TOOL_NAME
 } from '@shared/ai/builtinTools'
+import { MEACOWORK_TOOLS_MCP_SERVER } from '@shared/ai/tools/mcpToolName'
 
 import { listBrowserToolPolicies } from './browserToolPolicy'
 
 export type BuiltinToolApproval = 'auto' | 'required' | 'runtime'
 export type BuiltinToolBypassApproval = 'lift' | 'enforce'
 
-/** The Cherry-owned MCP servers. Which of them a session mounts is the runtime's call. */
+/**
+ * The Cherry-owned MCP servers. Which of them a session mounts is the runtime's call.
+ *
+ * NOTE: CHERRY_TOOLS keeps its identifier for source compatibility but its wire value is the
+ * renamed `meacowork-tools` (formerly the literal `'cherry-tools'`). Persisted data carrying the
+ * old id is still recognised through the helpers in `@shared/ai/tools/mcpToolName`.
+ */
 export const CHERRY_MCP_SERVER = {
-  CHERRY_TOOLS: 'cherry-tools',
+  CHERRY_TOOLS: MEACOWORK_TOOLS_MCP_SERVER,
   BROWSER: 'browser',
   AGENT_MEMORY: 'agent-memory',
   SKILLS: 'skills',

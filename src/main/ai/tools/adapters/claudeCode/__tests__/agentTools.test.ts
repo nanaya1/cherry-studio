@@ -85,9 +85,9 @@ describe('createClaudeAgentToolPolicySnapshot — live disabledTools', () => {
     const snapshot = await createClaudeAgentToolPolicySnapshot(
       makeAgent(['mcp__cherry-tools__notify', 'mcp__cherry-tools__config'])
     )
-    expect(snapshot.isDisabled('mcp__cherry-tools__notify')).toBe(true)
-    expect(snapshot.isDisabled('mcp__cherry-tools__config')).toBe(true)
-    expect(snapshot.isDisabled('mcp__cherry-tools__cron')).toBe(false)
+    expect(snapshot.isDisabled('mcp__meacowork-tools__notify')).toBe(true)
+    expect(snapshot.isDisabled('mcp__meacowork-tools__config')).toBe(true)
+    expect(snapshot.isDisabled('mcp__meacowork-tools__cron')).toBe(false)
   })
 
   it('keeps prior MCP descriptors when a later server listing fails', async () => {

@@ -846,13 +846,13 @@ describe('AgentPage', () => {
     )
     expect(agentPageMocks.composerLaunchOptions).toMatchObject({
       initialDraft: {
-        text: 'Use the cherry-studio-feedback skill.',
+        text: 'Use the meacowork-studio-feedback skill.',
         tokens: [
           expect.objectContaining({
             description: '使用内置的问题反馈 Agent 获取使用帮助或提交反馈。',
-            id: 'skill:cherry-studio-feedback',
+            id: 'skill:meacowork-studio-feedback',
             kind: 'skill',
-            promptText: 'Use the cherry-studio-feedback skill.'
+            promptText: 'Use the meacowork-studio-feedback skill.'
           })
         ]
       }

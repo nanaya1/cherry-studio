@@ -1,7 +1,7 @@
 # Autonomy: scheduling, notification, and channels
 
-Covers `mcp__cherry-tools__cron`, `mcp__cherry-tools__notify`, and
-`mcp__cherry-tools__config`. These three form **one channel-delivery workflow**:
+Covers `mcp__meacowork-tools__cron`, `mcp__meacowork-tools__notify`, and
+`mcp__meacowork-tools__config`. These three form **one channel-delivery workflow**:
 `config` connects the IM channels, `cron` schedules work that can deliver to them, and
 `notify` pushes messages/files through them.
 
@@ -14,7 +14,7 @@ Schedule changes, notifications, and agent/channel configuration may execute **w
 an approval card**. Don't call them merely because they're available — first confirm the
 user requested the effect or it's necessary to complete an already-approved task.
 
-## Scheduling — `mcp__cherry-tools__cron`
+## Scheduling — `mcp__meacowork-tools__cron`
 
 Schedules work **inside Cherry**. Never use OS `crontab`, `at`, or a background shell
 loop for user-facing schedules — Cherry owns execution, delivery, and lifecycle.
@@ -46,7 +46,7 @@ no channel delivery. Explicit IDs follow the same recipient policy as `notify` b
 A task created without channels has no notification recipients until the user adds
 channels in the scheduled-task editor's "Send to Channels" field.
 
-## Notification — `mcp__cherry-tools__notify`
+## Notification — `mcp__meacowork-tools__notify`
 
 Proactively sends the user a message and/or a workspace file through **connected
 channels** — use it to push a result, status update, or produced file without waiting to
@@ -68,7 +68,7 @@ be asked.
 a deliverable in the Cherry UI (no channel send), that's `report_artifacts` — a different
 tool; see [outputs.md](outputs.md).
 
-## Channels & self-config — `mcp__cherry-tools__config`
+## Channels & self-config — `mcp__meacowork-tools__config`
 
 Inspects and manages the agent's own configuration.
 
@@ -98,7 +98,7 @@ user and let them scan; the connection completes out of band. Confirm with a fol
   authorize explicit channel IDs. Alternatively, ask the user to set the task's
   channels in the scheduled-task editor's "Send to Channels" field; it lists the
   owning Agent's channels.
-  Use `mcp__cherry-tools__config` (`status`) to inspect owned channels and connection state.
+  Use `mcp__meacowork-tools__config` (`status`) to inspect owned channels and connection state.
 - **Recipient policy error naming a channel** → the ID is outside this turn's allowed
   recipients; select a configured one or omit `channel_id` (`channel_ids` for `cron`).
 - **Configured recipient unavailable** → inspect its connection with `config` (`status`)
@@ -112,17 +112,17 @@ user and let them scan; the connection completes out of band. Confirm with a fol
 **Schedule a report and notify on completion**
 > "Every weekday morning, summarize my unread items and send it to Telegram."
 
-From the Telegram channel's conversation, use `mcp__cherry-tools__config` (`status`)
+From the Telegram channel's conversation, use `mcp__meacowork-tools__config` (`status`)
 to confirm the channel is connected →
-`mcp__cherry-tools__cron` (`add`) a recurring weekday job whose prompt builds the summary,
+`mcp__meacowork-tools__cron` (`add`) a recurring weekday job whose prompt builds the summary,
 omitting `channel_ids` to save that channel as its recipient. The scheduled run does the
 work and delivery; you don't hand-roll an OS cron entry.
 
 **Connect an IM channel**
 > "Hook me up to Slack so you can message me there."
 
-`mcp__cherry-tools__config` (`status`) to see supported types and existing channels →
-`mcp__cherry-tools__config` (`add_channel`, type Slack) with the required credentials from
+`mcp__meacowork-tools__config` (`status`) to see supported types and existing channels →
+`mcp__meacowork-tools__config` (`add_channel`, type Slack) with the required credentials from
 the schema → confirm it shows connected in a follow-up `status`. Continue from that
-channel's conversation to use `mcp__cherry-tools__notify` there; connecting a channel
+channel's conversation to use `mcp__meacowork-tools__notify` there; connecting a channel
 does not grant a desktop turn notification recipients.

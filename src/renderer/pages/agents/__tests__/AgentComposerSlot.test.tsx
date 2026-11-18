@@ -98,7 +98,7 @@ describe('AgentComposerSlot', () => {
 
   it('forwards one-shot launch options to the real composer', () => {
     const launchOptions = {
-      initialDraft: { text: 'Use the cherry-studio-feedback skill.', tokens: [] },
+      initialDraft: { text: 'Use the meacowork-studio-feedback skill.', tokens: [] },
       onSent: vi.fn()
     }
 
