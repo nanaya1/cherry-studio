@@ -15,6 +15,7 @@ const logger = loggerService.withContext('ProviderSettings:ModelSync')
 
 interface UseProviderModelSyncOptions {
   existingModels?: Model[]
+  fillMissingOnly?: boolean
 }
 
 export function useProviderModelSync(providerId: string, options: UseProviderModelSyncOptions = {}) {
@@ -30,7 +31,9 @@ export function useProviderModelSync(providerId: string, options: UseProviderMod
   const { createModels, isCreating } = useModelMutations()
 
   const syncProviderModels = useCallback(
-    async (endpointProvider = provider) => {
+    // MEA:xuelang-oauth-model-sync 取消或过期后不再开始新的模型写入。
+    async (endpointProvider = provider, isCurrent: () => boolean = () => true) => {
+      if (!isCurrent()) return []
       logger.info('Checking provider models before sync', {
         providerId,
         localModelCount: models.length
@@ -40,13 +43,16 @@ export function useProviderModelSync(providerId: string, options: UseProviderMod
       // the function's `Promise<Model[]>` return type is satisfied without
       // pushing `readonly` all the way through the public API.
       const latestModels: Model[] =
-        models.length > 0
+        // 原只在缓存为空时查询：models.length > 0；补齐模式必须以落库状态去重。
+        models.length > 0 && !options.fillMissingOnly
           ? [...models]
           : await dataApiService.get('/models', {
               query: { providerId }
             })
 
-      if (latestModels.length > 0) {
+      if (!isCurrent()) return latestModels
+      // 原已有模型即跳过：if (latestModels.length > 0) {
+      if (latestModels.length > 0 && !options.fillMissingOnly) {
         logger.info('Skipping provider model creation because models already exist', {
           providerId,
           modelCount: latestModels.length
@@ -58,6 +64,7 @@ export function useProviderModelSync(providerId: string, options: UseProviderMod
         providerId
       })
       const { models: resolvedModels } = await fetchResolvedProviderModels(providerId)
+      if (!isCurrent()) return latestModels
       if (resolvedModels.length === 0) {
         logger.info('No remote provider models were resolved for sync', {
           providerId
@@ -93,6 +100,7 @@ export function useProviderModelSync(providerId: string, options: UseProviderMod
       })
 
       for (const chunk of chunks) {
+        if (!isCurrent()) break
         const created = await createModels(chunk)
         createdModels.push(...created)
       }
@@ -104,7 +112,7 @@ export function useProviderModelSync(providerId: string, options: UseProviderMod
 
       return [...latestModels, ...createdModels]
     },
-    [createModels, models, provider, providerId]
+    [createModels, models, options.fillMissingOnly, provider, providerId]
   )
 
   return {

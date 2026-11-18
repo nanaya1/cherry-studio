@@ -20,6 +20,8 @@ import type { CherryInBalance } from '@shared/ipc/schemas/cherryin'
 import { XUELANG_API_HOST } from '@shared/utils/constants'
 import { SystemProviderIds } from '@shared/utils/systemProviderId'
 
+import { useProviderModelSync } from '../hooks/useProviderModelSync'
+
 const logger = loggerService.withContext('CherryInOauth')
 
 const GATEWAY_PRESENTATION = {
@@ -62,6 +64,7 @@ const CherryInOauth: FC<CherryInOauthProps> = ({ providerId }) => {
   // const gateway = provider ? resolveGateway(provider.id) : undefined
   const gateway = provider ? resolveGateway(provider.presetProviderId ?? provider.id) : undefined
   const presentation = gateway ? GATEWAY_PRESENTATION[gateway] : undefined
+  const { syncProviderModels } = useProviderModelSync(providerId, { fillMissingOnly: true, existingModels: [] })
 
   const [isLoggingIn, setIsLoggingIn] = useState(false)
   const [isProvisioningKey, setIsProvisioningKey] = useState(false)
@@ -222,8 +225,17 @@ const CherryInOauth: FC<CherryInOauthProps> = ({ providerId }) => {
         void refreshHasToken(isCurrent)
       }
       toast.success(t('auth.get_key_success'))
+      // MEA:xuelang-oauth-model-sync 凭据落库后补齐账号可用模型，失败不回滚登录。
+      if (gateway === SystemProviderIds.xuelang) {
+        try {
+          await syncProviderModels(undefined, isCurrent)
+        } catch (error) {
+          logger.warn('Failed to sync Xuelang models after OAuth login:', error as Error)
+          if (isCurrent()) toast.warning(t('settings.models.manage.sync_pull_failed'))
+        }
+      }
     },
-    [addApiKey, fetchData, gateway, refreshHasToken, t, updateProvider]
+    [addApiKey, fetchData, gateway, refreshHasToken, syncProviderModels, t, updateProvider]
   )
 
   const handleProvisionApiKey = useCallback(async () => {
