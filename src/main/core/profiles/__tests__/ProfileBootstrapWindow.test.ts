@@ -78,7 +78,15 @@ vi.mock('@main/enterprise/OrgApiClient', () => ({
 vi.mock('@main/enterprise/passwordLoginRuntime', () => ({
   createPasswordProfileLogin: () => ({ login: passwordLoginMock, cancel: vi.fn() })
 }))
-vi.mock('@main/enterprise/OrgCredentialStore', () => ({ OrgCredentialStore: class {} }))
+// MEA:enterprise-java-auth 原空类 mock 保留回溯，下方新增 forJava 静态入口。
+// vi.mock('@main/enterprise/OrgCredentialStore', () => ({ OrgCredentialStore: class {} }))
+vi.mock('@main/enterprise/OrgCredentialStore', () => ({
+  OrgCredentialStore: class {
+    static forJava() {
+      return new this()
+    }
+  }
+}))
 
 import {
   closeProfileBootstrapWindows,

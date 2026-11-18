@@ -23,9 +23,18 @@ vi.mock('@main/core/profiles/ProfileAuthRuntime', () => ({
   restoreProfileAuthSession: async () => ({ fetch: mocks.sessionFetch })
 }))
 
+// MEA:enterprise-java-auth 原 mock 保留回溯，下方新增 forJava 静态入口。
+// vi.mock('@main/enterprise/OrgCredentialStore', () => ({
+//   OrgCredentialStore: class {
+//     load = mocks.credentialLoad
+//   }
+// }))
 vi.mock('@main/enterprise/OrgCredentialStore', () => ({
   OrgCredentialStore: class {
     load = mocks.credentialLoad
+    static forJava() {
+      return new this()
+    }
   }
 }))
 

@@ -207,6 +207,13 @@ export class OrgSkillCatalog {
     this.auth.assertLease(lease)
     if (!visible.some((item) => item.id === source.resourceId)) throw new Error('技能无权访问')
     if (source.serverInstanceId !== lease.issuerId) throw new Error('技能来源与当前服务不符')
+    // 复用本次在线可见列表恢复内存授权，避免重启后等待定时刷新。
+    profileSwitchFence.assertWritable()
+    orgStateStore.reconcileJavaResources(
+      'skill',
+      visible.map((item) => javaResourceKey(lease.issuerId, 'skill', item.id)),
+      lease
+    )
     const { skillService } = await import('@main/ai/skills/SkillService')
     const state = orgStateStore.get(resourceKey)
     const local = (await skillService.list({ agentId })).find(

@@ -50,6 +50,82 @@ afterEach(async () => {
 })
 
 describe('ProfileRegistry', () => {
+  it('writes Java authorization using the original registry contract without changing the input', async () => {
+    const filePath = await createRegistryPath()
+    const registry = new ProfileRegistry(filePath)
+    await registry.initialize()
+    await registry.ensureAuthenticated(AUTHENTICATED_IDENTITY)
+    const authorization = { tenantId: 'tenant-1', groupId: null, role: 'user' }
+
+    const updated = await registry.updateAuthorizationContext(AUTHENTICATED_IDENTITY, authorization)
+    expect(updated.value.authorizationContext).toEqual(authorization)
+
+    const persisted = JSON.parse(await readFile(filePath, 'utf8'))
+    const record = persisted.profiles.find((profile: { kind: string }) => profile.kind === 'authenticated')
+    expect(record.authorizationContext).toEqual({ role: 'user' })
+    expect(record.profileId).toBe(computeProfileId(AUTHENTICATED_IDENTITY))
+    expect(authorization).toEqual({ tenantId: 'tenant-1', groupId: null, role: 'user' })
+  })
+
+  it('preserves every account while normalizing existing Java contexts on a registry write', async () => {
+    const filePath = await createRegistryPath()
+    const otherIdentity = { ...AUTHENTICATED_IDENTITY, subjectId: 'subject-2' }
+    await writeRegistry(filePath, [
+      recordFor({ kind: 'signed-out', bootstrapId: 'signed-out' }),
+      recordFor(AUTHENTICATED_IDENTITY, {
+        authorizationContext: { tenantId: 'tenant-1', groupId: null, role: 'user' }
+      }),
+      recordFor(otherIdentity, {
+        authorizationContext: { tenantId: 'tenant-2', groupId: 'group-2', role: 'admin' }
+      })
+    ])
+    const registry = new ProfileRegistry(filePath)
+    await registry.updateAuthorizationContext(AUTHENTICATED_IDENTITY, {
+      tenantId: 'tenant-1',
+      groupId: null,
+      role: 'user'
+    })
+
+    const persisted = JSON.parse(await readFile(filePath, 'utf8'))
+    expect(persisted.profiles).toHaveLength(3)
+    expect(persisted.profiles[1]).toEqual(
+      recordFor(AUTHENTICATED_IDENTITY, {
+        authorizationContext: { role: 'user' }
+      })
+    )
+    expect(persisted.profiles[2]).toEqual(
+      recordFor(otherIdentity, {
+        authorizationContext: { groupId: 'group-2', role: 'admin' }
+      })
+    )
+    await expect(registry.read()).resolves.toEqual(persisted)
+  })
+
+  it('keeps existing authorization metadata compatible when adding another account', async () => {
+    const filePath = await createRegistryPath()
+    const context = {
+      tenantId: 'tenant-1',
+      groupId: null,
+      role: 'admin',
+      status: 'active',
+      checkedAt: '2026-10-14T12:34:56.000Z'
+    }
+    await writeRegistry(filePath, [
+      recordFor({ kind: 'signed-out', bootstrapId: 'signed-out' }),
+      recordFor(AUTHENTICATED_IDENTITY, { authorizationContext: context })
+    ])
+    const registry = new ProfileRegistry(filePath)
+    await registry.ensureAuthenticated({ ...AUTHENTICATED_IDENTITY, subjectId: 'subject-2' })
+
+    const persisted = JSON.parse(await readFile(filePath, 'utf8'))
+    expect(persisted.profiles).toHaveLength(3)
+    expect(persisted.profiles[1]).toEqual(
+      recordFor(AUTHENTICATED_IDENTITY, {
+        authorizationContext: { role: 'admin', status: 'active', checkedAt: context.checkedAt }
+      })
+    )
+  })
+
   it('returns the committed registry with unknown durability when confirmation fails', async () => {
     const filePath = await createRegistryPath()
     const { ProfileControlStore, ProfileRegistryV1Schema } = await import('..')

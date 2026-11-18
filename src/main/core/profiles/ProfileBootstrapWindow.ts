@@ -484,7 +484,8 @@ function registerSignedOutHandlers(context: ProfileLaunchContext, window: Browse
           }
         }
       : undefined,
-    credentialStoreFor: (profileRoot) => new OrgCredentialStore(profileRoot),
+    // credentialStoreFor: (profileRoot) => new OrgCredentialStore(profileRoot),
+    credentialStoreFor: (profileRoot) => OrgCredentialStore.forJava(profileRoot),
     coordinator: new ProfileSwitchCoordinator({
       journal: new ProfileSwitchJournal(path.join(paths.controlRoot, 'switch-journal.json')),
       activePointer,
@@ -534,7 +535,8 @@ function registerSignedOutHandlers(context: ProfileLaunchContext, window: Browse
     return result
   })
   const auth = new OrgAuthManager({
-    credentialStore: new OrgCredentialStore(context.profileRoot),
+    // credentialStore: new OrgCredentialStore(context.profileRoot),
+    credentialStore: OrgCredentialStore.forJava(context.profileRoot),
     profileSession: session,
     fence: loginFence
   })

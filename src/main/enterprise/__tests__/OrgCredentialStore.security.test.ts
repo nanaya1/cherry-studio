@@ -51,6 +51,73 @@ afterEach(async () => {
 })
 
 describe('OrgCredentialStore secure profile-scoped storage', () => {
+  it('keeps both protocol credentials intact across Java login, quarantine, restore and logout', async () => {
+    const root = await tempRoot()
+    const legacy = new OrgCredentialStore(root, cryptoProvider())
+    const java = OrgCredentialStore.forJava(root, cryptoProvider())
+    const original = session()
+    const javaSession: OrgSession = {
+      authMode: 'management-java',
+      accountKind: 'management',
+      issuerId: 'server-1',
+      authOrigin: 'https://management.example',
+      userId: 'user-1',
+      officialUserId: '',
+      groupId: null,
+      tenantId: 'tenant-1',
+      displayName: 'User',
+      phone: '',
+      role: 'member',
+      accessToken: 'java-secret',
+      expiresAt: null
+    }
+    await legacy.save(original)
+    const legacyBytes = await readFile(legacy.filePath, 'utf8')
+    await java.save(javaSession)
+    expect(java.filePath).not.toBe(legacy.filePath)
+    expect(await readFile(legacy.filePath, 'utf8')).toBe(legacyBytes)
+    await expect(java.load()).resolves.toEqual(javaSession)
+    await java.quarantine()
+    await expect(java.load()).resolves.toBeNull()
+    await expect(legacy.load()).resolves.toEqual(original)
+    await java.restoreQuarantined()
+    await expect(java.load()).resolves.toEqual(javaSession)
+    await java.clear()
+    await expect(java.load()).resolves.toBeNull()
+    expect(await readFile(legacy.filePath, 'utf8')).toBe(legacyBytes)
+  })
+
+  it('rejects credentials for the other protocol without overwriting either file', async () => {
+    const root = await tempRoot()
+    const java = OrgCredentialStore.forJava(root, cryptoProvider())
+    await expect(java.save(session())).rejects.toThrow('凭据协议与当前存储不匹配')
+    await expect(java.load()).resolves.toBeNull()
+  })
+
+  it('does not reuse another protocol or fall back to the shared legacy file', async () => {
+    const root = await tempRoot()
+    const legacy = new OrgCredentialStore(root, cryptoProvider())
+    const java = OrgCredentialStore.forJava(root, cryptoProvider())
+    await legacy.save(session())
+    await expect(java.load()).resolves.toBeNull()
+    const legacyBytes = await readFile(legacy.filePath, 'utf8')
+    await writeFile(java.filePath, legacyBytes)
+    await expect(java.load()).resolves.toBeNull()
+    await expect(
+      java.migrateLegacy({
+        kind: 'authenticated',
+        identityDigest: computeIdentityDigest({
+          kind: 'authenticated',
+          accountKind: 'management',
+          issuerId: 'server-1',
+          subjectId: 'user-1'
+        })
+      })
+    ).resolves.toBeNull()
+    expect(await readFile(legacy.filePath, 'utf8')).toBe(legacyBytes)
+    expect(OrgCredentialStore.forJava(root, cryptoProvider()).filePath).toBe(java.filePath)
+  })
+
   it('writes only an encrypted envelope under the explicit target profile root', async () => {
     const root = await tempRoot()
     const store = new OrgCredentialStore(root, cryptoProvider())

@@ -231,6 +231,41 @@ describe('OrgSkillCatalog C1/C2/C4', () => {
     )
   })
 
+  // [enterprise] 重启后授权副本不含 tenantId：activateResource 必须先在线刷新恢复内存授权，
+  // 否则 isSkillAllowed 直接拒绝，要等 60 秒在线监测周期才能用。
+  it('激活前先在线刷新授权，恢复内存租户授权后才放行', async () => {
+    const issuerId = '9a38eaa8-d367-41b3-b8e2-90cebef54422'
+    const key = `java-resource:${issuerId}:skill:1`
+    authMock.acquireLease.mockReturnValue({
+      generation: 1,
+      issuerId,
+      groupId: 'group',
+      tenantId: 'tenant-1',
+      userId: 'user'
+    })
+    stateStoreMock.get.mockReturnValue({ skillId: 'one', folderName: 'isolated', version: '1', contentHash: 'hash' })
+    skillServiceMock.list.mockResolvedValue([{ id: 'one', sourceUrl: key, isEnabled: true }])
+    skillServiceMock.getInstalledSkillDirectory.mockReturnValue(tempRoot)
+    await writeFile(join(tempRoot, 'SKILL.md'), '内容')
+    apiMock.javaResources.listSkills.mockResolvedValue([{ id: '1' }])
+    // 模拟重启后的状态：未刷新前 isSkillAllowed=false；reconcile（在线核实）后恢复为 true
+    let allowed = false
+    stateStoreMock.isSkillAllowed.mockImplementation(() => allowed)
+    stateStoreMock.reconcileJavaResources.mockImplementation(() => {
+      allowed = true
+    })
+
+    const result = await catalog.activateResource(key, 'agent')
+
+    expect(stateStoreMock.reconcileJavaResources).toHaveBeenCalledWith(
+      'skill',
+      [key],
+      expect.objectContaining({ issuerId, tenantId: 'tenant-1' })
+    )
+    expect(result.content).toContain('内容')
+    expect(apiMock.javaResources.reportLifecycle).toHaveBeenCalled()
+  })
+
   it('激活授权请求期间取消后不加载正文或上报exec', async () => {
     const key = `java-resource:${'9a38eaa8-d367-41b3-b8e2-90cebef54422'}:skill:1`
     const controller = new AbortController()
