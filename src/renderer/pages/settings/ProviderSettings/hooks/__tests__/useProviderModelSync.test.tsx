@@ -135,6 +135,48 @@ describe('useProviderModelSync', () => {
     ])
   })
 
+  it('fills missing models from fresh storage without overwriting custom or disabled models', async () => {
+    const existing = { id: 'xuelang::alpha', providerId: 'xuelang', name: 'Custom', isEnabled: false }
+    const beta = { id: 'xuelang::beta', providerId: 'xuelang', name: 'Beta' }
+    useModelsMock.mockReturnValue({ models: [{ ...existing, name: 'Stale' }] })
+    dataApiGetMock.mockResolvedValue([existing])
+    fetchResolvedProviderModelsMock.mockResolvedValue({ models: [{ ...existing, name: 'Remote' }, beta] })
+    createModelsMock.mockResolvedValue([beta])
+    const { result } = renderHook(() => useProviderModelSync('xuelang', { fillMissingOnly: true }))
+
+    await act(async () => {
+      expect(await result.current.syncProviderModels()).toEqual([existing, beta])
+    })
+    expect(createModelsMock).toHaveBeenCalledTimes(1)
+    expect(createModelsMock).toHaveBeenCalledWith([expect.objectContaining({ name: 'Beta' })])
+  })
+
+  it('does not write models when a login expires while fetching the remote list', async () => {
+    let current = true
+    fetchResolvedProviderModelsMock.mockImplementation(async () => {
+      current = false
+      return { models: [{ id: 'xuelang::beta', providerId: 'xuelang', name: 'Beta' }] }
+    })
+    const { result } = renderHook(() => useProviderModelSync('xuelang', { fillMissingOnly: true }))
+    await act(async () => {
+      await result.current.syncProviderModels(undefined, () => current)
+    })
+    expect(createModelsMock).not.toHaveBeenCalled()
+  })
+
+  it('does not recreate existing models on repeated fill-only syncs', async () => {
+    const model = { id: 'xuelang::alpha', providerId: 'xuelang', name: 'Alpha' }
+    dataApiGetMock.mockResolvedValueOnce([]).mockResolvedValue([model])
+    fetchResolvedProviderModelsMock.mockResolvedValue({ models: [model] })
+    createModelsMock.mockResolvedValue([model])
+    const { result } = renderHook(() => useProviderModelSync('xuelang', { fillMissingOnly: true }))
+    await act(async () => {
+      expect(await result.current.syncProviderModels()).toEqual([model])
+      expect(await result.current.syncProviderModels()).toEqual([model])
+    })
+    expect(createModelsMock).toHaveBeenCalledTimes(1)
+  })
+
   it('uses an endpoint provider override when settings changed before the hook rerenders', async () => {
     const currentProvider = { id: 'new-api', defaultChatEndpoint: 'openai-chat-completions' }
     const updatedProvider = { id: 'new-api', defaultChatEndpoint: 'anthropic-messages' }
