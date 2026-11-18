@@ -437,6 +437,14 @@ function makeJavaApi() {
       getCatalog: vi.fn().mockResolvedValue([javaSpace]),
       listFiles: vi.fn().mockResolvedValue({ items: [javaFile], total: 1, page: 1, pageSize: 20 }),
       getFile: vi.fn().mockResolvedValue(javaFile),
+      // 默认无预览件：既有原件字节用例保持走非预生成路线。
+      getPreviewUrl: vi.fn().mockResolvedValue({
+        kind: 'inline',
+        url: null,
+        minio_preview_url: null,
+        file_name: '文件.txt',
+        mime_type: null
+      }),
       preview: vi.fn().mockResolvedValue({ bytes: Buffer.from('%PDF-1.7'), contentType: 'application/pdf' }),
       read: vi.fn().mockResolvedValue({ knowledgeId: codeSpaceId, fileId: javaFileId, content: '解析正文' }),
       listChunks: vi.fn(),
@@ -473,6 +481,13 @@ describe('云端 Office 预览', () => {
         directory: false,
         hasOriginalFile: true,
         mimeType: null
+      }),
+      getPreviewUrl: vi.fn().mockResolvedValue({
+        kind: 'inline',
+        url: null,
+        minio_preview_url: null,
+        file_name: `报告.${extension}`,
+        mime_type: null
       }),
       preview: vi.fn().mockResolvedValue({ bytes, contentType }),
       read: vi.fn().mockResolvedValue({ knowledgeId, fileId, content: 'Office 解析正文' })

@@ -128,7 +128,8 @@ export class OrgKnowledgeError extends Error {
 
 /**
  * MEA:enterprise-knowledge-page 客户端预览元数据适配入口：只转换已知旧 DTO，不发请求。
- * Java 契约明确前 service.preview() 仍走原件字节，此函数尚未接线。
+ * 原说明（接线前）：Java 契约明确前 service.preview() 仍走原件字节，此函数尚未接线。
+ * MEA:enterprise-knowledge-page Java 预览接口契约已约定，本函数复用同一 DTO 接入 preview 主链。
  */
 export function adaptLegacyPreviewMetadata(raw: unknown): OrgKnowledgePreview {
   const legacy = LegacyPreviewMetadataSchema.parse(raw)
@@ -1174,8 +1175,36 @@ export class OrgKnowledgeService {
     const lease = this.acquireLease()
     const client = this.auth.apiClient.javaKnowledge
     const file = await this.checked(() => client.getFile(baseId, fileId), lease)
-    if (file.knowledgeId !== baseId || file.fileId !== fileId || file.directory || file.hasOriginalFile !== true)
+    // if (file.knowledgeId !== baseId || file.fileId !== fileId || file.directory || file.hasOriginalFile !== true)
+    //   throw new OrgKnowledgeError(E.ORGKB_FORBIDDEN, '原件不可用或能力已变化')
+    // MEA:enterprise-knowledge-page 预览件与原件分离，无原件但有预览件不应被提前拦截。
+    if (file.knowledgeId !== baseId || file.fileId !== fileId || file.directory)
       throw new OrgKnowledgeError(E.ORGKB_FORBIDDEN, '原件不可用或能力已变化')
+    // MEA:enterprise-knowledge-page 先取预览元数据；接口失败即抛错，不回退旧服务字节接口。
+    const metadata = await this.checked(() => client.getPreviewUrl(baseId, fileId), lease)
+    const preview = adaptLegacyPreviewMetadata(metadata)
+    logger.info('knowledge preview metadata', { fileId: params.fileId, kind: preview.kind, mimeType: preview.mimeType })
+
+    // MEA:enterprise-knowledge-page 预生成预览件优先：PDF 交 PDF.js 直链，图片直接引用临时地址。
+    if (preview.kind === 'inline' && preview.url) {
+      const isPdf =
+        preview.mimeType === 'application/pdf' || new URL(preview.url).pathname.toLowerCase().endsWith('.pdf')
+      if (isPdf)
+        return {
+          kind: 'inline',
+          fileName: preview.fileName,
+          mimeType: 'application/pdf',
+          content: '',
+          url: preview.url
+        }
+      if (
+        preview.mimeType &&
+        ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/avif', 'image/bmp'].includes(preview.mimeType)
+      )
+        return { kind: 'inline', fileName: preview.fileName, mimeType: preview.mimeType, content: '', url: preview.url }
+    }
+    // 无预览件时仍需原件字节保持图片/文本/Office 能力；能力门控后移到取字节之前。
+    if (file.hasOriginalFile !== true) throw new OrgKnowledgeError(E.ORGKB_FORBIDDEN, '原件不可用或能力已变化')
     const original = await this.checked(() => client.preview(baseId, fileId), lease)
     // const mimeType = original.contentType || file.mimeType || null
     let mimeType = (original.contentType || file.mimeType)?.split(';')[0].trim().toLowerCase() || null
