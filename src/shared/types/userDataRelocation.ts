@@ -17,7 +17,7 @@ export const USER_DATA_RELOCATION_VALIDATION_REASONS = [
 export type UserDataRelocationValidationReason = (typeof USER_DATA_RELOCATION_VALIDATION_REASONS)[number]
 
 export type UserDataRelocationInspection =
-  | { valid: true; targetEmpty: boolean }
+  | { valid: true; targetEmpty: boolean; copyRequired?: boolean; sourcePath?: string }
   | { valid: false; reason: UserDataRelocationValidationReason }
 
 /**

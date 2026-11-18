@@ -152,6 +152,59 @@ describe('ProfileSwitchCoordinator', () => {
     expect(deps.application.relaunch).not.toHaveBeenCalled()
   })
 
+  it.each(['unclean', 'throw', 'relaunch-throw'] as const)(
+    'automatically relaunches signed-out teardown failure without cancelling logout intent: %s',
+    async (failure) => {
+      const deps = dependencies()
+      const teardown = vi.fn(async (): Promise<ShutdownResult> => {
+        if (failure === 'throw') throw new Error('MCP teardown crashed')
+        return {
+          clean: false,
+          stop: { timedOut: ['McpRuntimeService'], failed: [] },
+          destroy: { timedOut: [], failed: [] }
+        }
+      })
+      if (failure === 'relaunch-throw') {
+        deps.application.relaunch.mockImplementation(() => {
+          throw new Error('relaunch failed')
+        })
+      }
+      const openSignedOut = vi.fn()
+      const result = await new ProfileSwitchCoordinator({
+        ...deps,
+        openSignedOut,
+        application: { ...deps.application, prepareProfileLogout: teardown }
+      }).switchProfile(request, { ...deps.targetRecord, kind: 'signed-out' })
+
+      expect(result).toEqual({ kind: 'relaunching' })
+      expect(dialog.showMessageBoxSync).not.toHaveBeenCalled()
+      expect(deps.application.relaunch).toHaveBeenCalledOnce()
+      expect(deps.application.forceExit).toHaveBeenCalledTimes(failure === 'relaunch-throw' ? 1 : 0)
+      expect(deps.journal.cancel).not.toHaveBeenCalled()
+      expect(deps.journal.commit).not.toHaveBeenCalled()
+      expect(deps.activePointer.commitPointer).not.toHaveBeenCalled()
+      expect(openSignedOut).not.toHaveBeenCalled()
+      expect(deps.fence.state.kind).toBe('teardown-failed')
+      expect(mockMainLoggerService.error).toHaveBeenCalledWith(
+        'Logout teardown failed; automatically relaunching',
+        expect.objectContaining({ error: expect.anything() })
+      )
+    }
+  )
+
+  it('keeps signed-out persistence failures on the existing recovery path', async () => {
+    const deps = dependencies()
+    deps.activePointer.commitPointer.mockRejectedValue(new Error('disk unavailable'))
+    const result = await new ProfileSwitchCoordinator(deps).switchProfile(request, {
+      ...deps.targetRecord,
+      kind: 'signed-out'
+    })
+    expect(result).toEqual({ kind: 'needs-recovery', stage: 'active-pointer' })
+    expect(dialog.showMessageBoxSync).toHaveBeenCalledOnce()
+    expect(deps.application.relaunch).not.toHaveBeenCalled()
+    expect(deps.application.forceExit).toHaveBeenCalledWith(1)
+  })
+
   it('orders prepared journal, fence, clean teardown, pointer, committed journal, and relaunch', async () => {
     const deps = dependencies()
     const beginSwitch = vi.spyOn(deps.fence, 'beginSwitch').mockImplementation((operationId) => {

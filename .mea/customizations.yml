@@ -72,6 +72,51 @@ customizations:
       - src/main/enterprise/__tests__/OrgStateStore.test.ts
       - src/main/enterprise/__tests__/orgCurrentUserTransport.test.ts
       - src/main/core/profiles/__tests__/ProfileStartupVerifier.test.ts
+  - id: data-root-relocation-safety
+    title: 数据目录复制迁移与失败恢复安全
+    owner: main
+    behavior: inspect和request按可信profile的dataRoot共用保护树和空目标规则；保留packaged限制并在选择目录前明确提示开发运行不支持。复制使用可写非截断句柄真实sync；已有空目标提升前复检且仅非递归rmdir，非空及链接不得覆盖。提升前携带任务归属，清理只删除同任务工件。请求先持久化且失败恢复内存，不替换未完成任务；提交失败持久failed并仅在原锁定源可用时交回正常启动恢复，不前置严格registry校验掩盖原有恢复流程；提交后保留新根和cleanup-pending。界面仅显示固定诊断码及本地化原因，不泄露原始路径异常。生成schema不手改。同步预检与异步执行共用被检查路径所属卷根至叶子的链接检查（包含卷根及UNC share根），不得将跨盘relative绝对结果拆分拼到源盘；覆盖同盘、C到D、D到C、空或缺失目标、junction拒绝与提交失败恢复，failed仅由新UI请求按既有语义覆盖。
+    markers:
+      - MEA:data-root-relocation-safety
+    touchpoints:
+      - src/main/services/dataRootRelocation.ts
+      - src/main/services/userDataRelocation/index.ts
+      - src/shared/types/userDataRelocation.ts
+      - src/shared/ipc/schemas/app.ts
+      - src/main/ipc/handlers/app.ts
+      - src/main/main.ts
+      - src/renderer/pages/settings/DataSettings/BasicDataSettings.tsx
+      - src/renderer/i18n/locales
+    tests:
+      - src/main/services/__tests__/dataRootRelocation.test.ts
+      - src/main/services/__tests__/dataRootRelocation.bootConfig.test.ts
+      - src/main/ipc/handlers/__tests__/app.test.ts
+      - src/renderer/pages/settings/DataSettings/__tests__/BasicDataSettings.test.tsx
+  - id: profile-logout-robustness
+    title: 退出登录主动取消 MCP 并仅在清理失败时自动重启
+    owner: main
+    behavior: 正常退出登录保持同进程返回登录页；MCP 停止时先取消网络启动及 OAuth 授权等待、关闭连接中 transport，禁止 fallback 和 ping 后重连及迟到缓存写入，真实等待底层清理完成，不用 race 假成功。底层不可取消时保留外层生命周期超时，signed-out teardown 异常或不 clean 自动 relaunch，不弹 teardown 选择框；记录原异常，relaunch 抛错安全退出且不取消 journal 或回滚 logout intent。持久化、登录损坏和其他恢复边界不自动重启，不改其他服务。
+    markers:
+      - MEA:profile-logout-robustness
+    # 2026-11-12：SDK 1.29.0 SSE start 在 close 后仍 pending；eventsource 吞掉 AbortError。
+    # ESM/CJS 版本化补丁共用终止信号，拒绝全部启动等待并阻止迟到 OAuth 重连，正常 endpoint 语义不变。
+    # 合成集成回归覆盖正常 listTools/echo、OAuth token、长调用取消、新 runtime 重建与停止竞态；不等同真实重登录。
+    touchpoints:
+      - patches/@modelcontextprotocol__sdk@1.29.0.patch
+      - pnpm-workspace.yaml
+      - pnpm-lock.yaml
+      - src/main/ai/mcp/McpRuntimeService.ts
+      - src/main/ai/mcp/mcpTransport.ts
+      - src/main/ai/mcp/oauth/callback.ts
+      - src/main/core/profiles/ProfileSwitchCoordinator.ts
+    tests:
+      - src/main/ai/mcp/__tests__/McpRuntimeService.sse.integration.test.ts
+      - src/main/ai/mcp/__tests__/McpRuntimeService.test.ts
+      - src/main/ai/mcp/__tests__/mcpTransport.test.ts
+      - src/main/ai/mcp/oauth/__tests__/callback.test.ts
+      - src/main/core/profiles/__tests__/ProfileSwitchCoordinator.test.ts
+      - src/main/core/profiles/__tests__/ProfileSessionService.test.ts
+      - src/main/enterprise/__tests__/OrgAuthManager.test.ts
   - id: second-instance-window-reveal
     title: 二次启动不得显示隐藏预热窗口
     owner: main

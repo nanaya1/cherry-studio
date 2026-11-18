@@ -1,3 +1,5 @@
+import path from 'node:path'
+
 import { describe, expect, it, vi } from 'vitest'
 
 import { computeIdentityDigest } from '../ProfileIdentity'
@@ -133,7 +135,8 @@ describe('ProfileSessionService', () => {
 
     await service.completeAuthentication(auth as never)
 
-    expect(deps.credentialStoreFor).toHaveBeenCalledWith('/data/profiles/' + authenticated.profileId)
+    // expect(deps.credentialStoreFor).toHaveBeenCalledWith('/data/profiles/' + authenticated.profileId)
+    expect(deps.credentialStoreFor).toHaveBeenCalledWith(path.join(deps.dataRoot, 'profiles', authenticated.profileId))
     expect(targetStore.save).toHaveBeenCalledWith(auth.session)
     expect(deps.coordinator.switchProfile).toHaveBeenCalled()
   })
