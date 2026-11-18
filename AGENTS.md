@@ -1,1 +1,3 @@
 CLAUDE.md
+
+个人库分享取消续作：再次分享前必须检查同一副本的取消日志，未知删除只经Java的localShare/state核查本人3/local墓碑，再调用localShare/finishRemoval补清理授权，不调用已移除的operation接口，不重放Space删除。历史类型、缺失或无权均保留关联及资料；恢复库不同于原库时要求从最终恢复库重开。关键契约与回归维护在.mea/customizations.yml的enterprise-knowledge-page条目。

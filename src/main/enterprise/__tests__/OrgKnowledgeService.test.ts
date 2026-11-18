@@ -14,6 +14,11 @@ vi.mock('node:fs', async (original) => ({
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+vi.mock('@main/i18n', async () => {
+  const { default: messages } = await import('../../i18n/locales/zh-cn.json')
+  return { t: (key: string) => messages[key as keyof typeof messages] }
+})
+
 import { JavaKnowledgeError } from '../JavaKnowledgeClient'
 // import { OrgApiClient, OrgApiHttpError } from '../OrgApiClient'
 import { OrgApiHttpError } from '../OrgApiClient'
@@ -165,6 +170,8 @@ function makeApiClient() {
         return { knowledgeId: codeSpaceId, fileId: uploadFolderId, name, parentId: parentId ?? null, directory: true }
       }),
       getSpace: vi.fn(async () => space),
+      getLocalShareState: vi.fn(async () => 'ACTIVE'),
+      finishLocalShareRemoval: vi.fn(async (_id: string, guard: any) => guard()),
       getCatalog: vi.fn(async () => [space]),
       getFile: vi.fn(async (_id: string, fileId: string) => {
         const uploaded = uploads[fileId === uploadFileId ? 0 : 1]
@@ -1600,7 +1607,8 @@ describe('取消整个分享', () => {
     // const client = (service as any).client; downloadOriginal 由 Java download 返回真实字节替代。
     const client = api.javaKnowledge
     client.download.mockResolvedValue({ bytes: Buffer.from('file-bytes') })
-    vi.mocked(application.getPath).mockReturnValue('/tmp/knowledge-recovery-')
+    // vi.mocked(application.getPath).mockReturnValue('/tmp/knowledge-recovery-')
+    vi.mocked(application.getPath).mockReturnValue(join(tmpdir(), 'knowledge-recovery-'))
     const remote = {
       id: 'f',
       space_id: codeSpaceId,
@@ -1656,7 +1664,8 @@ describe('取消整个分享', () => {
     // const client = (service as any).client; downloadOriginal 由 Java download 返回真实字节替代。
     const client = api.javaKnowledge
     client.download.mockResolvedValue({ bytes: Buffer.from('file-bytes') })
-    vi.mocked(application.getPath).mockReturnValue('/tmp/knowledge-recovery-')
+    // vi.mocked(application.getPath).mockReturnValue('/tmp/knowledge-recovery-')
+    vi.mocked(application.getPath).mockReturnValue(join(tmpdir(), 'knowledge-recovery-'))
     const remote = {
       id: 'f',
       space_id: codeSpaceId,
@@ -1708,7 +1717,8 @@ describe('取消整个分享', () => {
     // const client = (service as any).client; downloadOriginal 由 Java download 返回真实字节替代。
     const client = api.javaKnowledge
     client.download.mockResolvedValue({ bytes: Buffer.from('file-bytes') })
-    vi.mocked(application.getPath).mockReturnValue('/tmp/knowledge-recovery-')
+    // vi.mocked(application.getPath).mockReturnValue('/tmp/knowledge-recovery-')
+    vi.mocked(application.getPath).mockReturnValue(join(tmpdir(), 'knowledge-recovery-'))
     const remote = {
       id: 'f',
       space_id: codeSpaceId,
@@ -1767,7 +1777,8 @@ describe('取消整个分享', () => {
     const { api, service } = setup()
     // vi.spyOn((service as any).client, 'downloadOriginal').mockRejectedValue(new Error('下载断流'))
     api.javaKnowledge.download.mockRejectedValue(new Error('下载断流'))
-    vi.mocked(application.getPath).mockReturnValue('/tmp/knowledge-recovery-')
+    // vi.mocked(application.getPath).mockReturnValue('/tmp/knowledge-recovery-')
+    vi.mocked(application.getPath).mockReturnValue(join(tmpdir(), 'knowledge-recovery-'))
     const remote = {
       id: 'f',
       space_id: codeSpaceId,
@@ -1903,7 +1914,8 @@ describe('取消整个分享', () => {
       recoveryItems.getItemsByBaseId.mockReturnValue([])
       ks.getFilePath.mockReturnValue('/managed/file.txt')
       api.javaKnowledge.download.mockResolvedValue({ bytes: Buffer.from('file-bytes') })
-      vi.mocked(application.getPath).mockReturnValue('/tmp/knowledge-recovery-')
+      // vi.mocked(application.getPath).mockReturnValue('/tmp/knowledge-recovery-')
+      vi.mocked(application.getPath).mockReturnValue(join(tmpdir(), 'knowledge-recovery-'))
       ks.addItems.mockImplementation(async () => {
         recoveryItems.getItemsByBaseId.mockReturnValue([{ id: 'downloaded' }])
       })
@@ -2023,7 +2035,8 @@ describe('取消整个分享', () => {
       recoveryItems.getItemsByBaseId.mockReturnValue([])
       ks.getFilePath.mockReturnValue('/managed/file.txt')
       api.javaKnowledge.download.mockResolvedValue({ bytes: Buffer.from('file-bytes') })
-      vi.mocked(application.getPath).mockReturnValue('/tmp/knowledge-recovery-')
+      // vi.mocked(application.getPath).mockReturnValue('/tmp/knowledge-recovery-')
+      vi.mocked(application.getPath).mockReturnValue(join(tmpdir(), 'knowledge-recovery-'))
       ks.addItems.mockImplementation(async () => {
         recoveryItems.getItemsByBaseId.mockReturnValue([{ id: 'downloaded' }])
       })

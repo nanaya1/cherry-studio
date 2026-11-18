@@ -59,14 +59,15 @@ const invitation = (knowledgeId: string, invitationId: string) => ({
   expiresAt: null
 })
 
-const operation = (id: number) => ({
-  id,
-  knowledgeId: UUID_A,
-  creationOrigin: 'LOCAL_SHARE',
-  publicState: 'NONE',
-  operationState: 'READY'
-})
-
+// const operation = (id: number) => ({
+//   id,
+//   knowledgeId: UUID_A,
+//   creationOrigin: 'LOCAL_SHARE',
+//   publicState: 'NONE',
+//   operationState: 'READY'
+// })
+//
+//
 function setup(responses: Response[]) {
   const fetchImpl = vi.fn<typeof fetch>()
   for (const response of responses) fetchImpl.mockResolvedValueOnce(response)
@@ -343,37 +344,38 @@ describe('JavaKnowledgeClient.acceptInvitation / declineInvitation', () => {
   })
 })
 
-describe('JavaKnowledgeClient.listOperations', () => {
-  it('GET /operation/page 返回分页操作', async () => {
-    const { client, fetchImpl } = setup([envelope({ items: [operation(11)], total: 1 })])
-    const page = await client.listOperations(1)
-    expect(page.items[0].id).toBe(11)
-    expect(urlOf(fetchImpl.mock.calls[0])).toContain('/api/v1/knowledge/operation/page?')
-  })
-})
-
-describe('JavaKnowledgeClient.confirmOperation', () => {
-  it('POST /operation/confirm 携带 id，返回空间', async () => {
-    const { client, fetchImpl } = setup([envelope(space(UUID_A))])
-    const result = await client.confirmOperation(11)
-    expect(result?.id).toBe(UUID_A)
-    const call = fetchImpl.mock.calls[0]
-    expect(urlOf(call)).toBe('https://ent.test/api/v1/knowledge/operation/confirm')
-    expect(bodyOf(call)).toMatchObject({ id: 11 })
-  })
-
-  it('删除确认返回 null', async () => {
-    const { client } = setup([envelope(null)])
-    expect(await client.confirmOperation(11)).toBeNull()
-  })
-
-  it('非法 operationId 发请求前拒绝', async () => {
-    const { client, fetchImpl } = setup([])
-    await expect(client.confirmOperation(0)).rejects.toThrow('操作ID')
-    expect(fetchImpl).not.toHaveBeenCalled()
-  })
-})
-
+// describe('JavaKnowledgeClient.listOperations', () => {
+//   it('GET /operation/page 返回分页操作', async () => {
+//     const { client, fetchImpl } = setup([envelope({ items: [operation(11)], total: 1 })])
+//     const page = await client.listOperations(1)
+//     expect(page.items[0].id).toBe(11)
+//     expect(urlOf(fetchImpl.mock.calls[0])).toContain('/api/v1/knowledge/operation/page?')
+//   })
+// })
+//
+// describe('JavaKnowledgeClient.confirmOperation', () => {
+//   it('POST /operation/confirm 携带 id，返回空间', async () => {
+//     const { client, fetchImpl } = setup([envelope(space(UUID_A))])
+//     const result = await client.confirmOperation(11)
+//     expect(result?.id).toBe(UUID_A)
+//     const call = fetchImpl.mock.calls[0]
+//     expect(urlOf(call)).toBe('https://ent.test/api/v1/knowledge/operation/confirm')
+//     expect(bodyOf(call)).toMatchObject({ id: 11 })
+//   })
+//
+//   it('删除确认返回 null', async () => {
+//     const { client } = setup([envelope(null)])
+//     expect(await client.confirmOperation(11)).toBeNull()
+//   })
+//
+//   it('非法 operationId 发请求前拒绝', async () => {
+//     const { client, fetchImpl } = setup([])
+//     await expect(client.confirmOperation(0)).rejects.toThrow('操作ID')
+//     expect(fetchImpl).not.toHaveBeenCalled()
+//   })
+// })
+//
+//
 describe('JavaKnowledgeClient 写方法跨切面契约', () => {
   it('10008 触发会话失效', async () => {
     const { client, onSessionExpired } = setup([envelope(null, 10008)])
@@ -426,5 +428,40 @@ describe('JavaKnowledgeClient 写方法跨切面契约', () => {
     await client.removeSpace('bad', beforeSend).catch(() => {})
     expect(beforeSend).not.toHaveBeenCalled()
     expect(fetchImpl).not.toHaveBeenCalled()
+  })
+})
+
+describe('JavaKnowledgeClient 本人副本核查及删除收尾', () => {
+  it.each(['ACTIVE', 'DELETED', 'LEGACY', 'UNCONFIRMED'])('校验UUID后读取%s事实', async (state) => {
+    const { client, fetchImpl } = setup([envelope({ id: UUID_A, state })])
+    expect(await client.getLocalShareState(UUID_A)).toBe(state)
+    expect(urlOf(fetchImpl.mock.calls[0])).toBe(`https://ent.test/api/v1/knowledge/localShare/state?id=${UUID_A}`)
+  })
+  it.each([{ id: UUID_B, state: 'DELETED' }, { id: UUID_A, state: 'UNKNOWN' }, null])(
+    '拒绝错库、缺失及非法状态，不推断删除',
+    async (data) => {
+      const { client, fetchImpl } = setup([envelope(data)])
+      await expect(client.getLocalShareState(UUID_A)).rejects.toThrow()
+      expect(fetchImpl).toHaveBeenCalledTimes(1)
+    }
+  )
+  it('查询被拒绝时不返回删除状态，也不自动重试', async () => {
+    const { client, fetchImpl } = setup([envelope(null, 10007)])
+    await expect(client.getLocalShareState(UUID_A)).rejects.toThrow('无权限')
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+  })
+  it('授权收尾只调用专用Java入口，发送前执行原租约守卫', async () => {
+    const { client, fetchImpl } = setup([envelope(null)])
+    await expect(
+      client.finishLocalShareRemoval(UUID_A, () => {
+        throw new Error('changed')
+      })
+    ).rejects.toThrow('changed')
+    expect(fetchImpl).not.toHaveBeenCalled()
+    await client.finishLocalShareRemoval(UUID_A)
+    const call = fetchImpl.mock.calls[0]
+    expect(urlOf(call)).toBe('https://ent.test/api/v1/knowledge/localShare/finishRemoval')
+    expect(bodyOf(call)).toEqual({ id: UUID_A })
+    expect(call[1]?.method).toBe('POST')
   })
 })

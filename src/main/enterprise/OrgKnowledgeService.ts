@@ -15,6 +15,7 @@ import { KeyedMutex } from '@main/core/concurrency/KeyedMutex'
 import type { JobManager } from '@main/core/job/JobManager'
 import type { JobContext, JobSettledEvent } from '@main/core/job/types'
 import type { Disposable } from '@main/core/lifecycle'
+import { t } from '@main/i18n'
 import {
   OrgKnowledgeCreateShareInputSchema,
   OrgKnowledgeReceiveShareInputSchema,
@@ -51,7 +52,8 @@ import { enterpriseKnowledgeErrorCodes as E } from '@shared/ipc/errors/enterpris
 import { AbsoluteFilePathSchema, type AbsoluteFilePath } from '@shared/types/file'
 import { sanitizeFilename } from '@shared/utils/file'
 
-import { CloudKnowledgeRecovery, type RecoveryFile } from './CloudKnowledgeRecovery'
+// import { CloudKnowledgeRecovery, type RecoveryFile } from './CloudKnowledgeRecovery'
+import { CloudKnowledgeRecovery, CloudRecoveryStateError, type RecoveryFile } from './CloudKnowledgeRecovery'
 // import { FirstShareUpload, type FirstShareEntry, type FirstShareProgress } from './FirstShareUpload'
 import {
   FirstShareUpload,
@@ -2590,10 +2592,15 @@ export class OrgKnowledgeService {
         }
       },
       checkSpace: async () => {
-        // MEA:enterprise-knowledge-page 写链路迁移：checkSpace 走 Java 原生目录。
-        const catalog = await this.checked(() => this.javaKnowledge.getCatalog(), lease)
-        if (catalog.some((entry) => entry.id === spaceId && entry.category === 'OWNED')) return true
-        return !(await this.confirmJavaDeletion(spaceId, lease))
+        // const catalog = await this.checked(() => this.javaKnowledge.getCatalog(), lease)
+        // if (catalog.some((entry) => entry.id === spaceId && entry.category === 'OWNED')) return true
+        // return !(await this.confirmJavaDeletion(spaceId, lease))
+        // MEA:enterprise-knowledge-page 以本人墓碑核查代替目录缺席推断及已移除的操作接口。
+        const state = await this.checked(() => this.javaKnowledge.getLocalShareState(spaceId), lease)
+        if (state === 'ACTIVE') return true
+        this.requireDeletedShareState(state)
+        await this.checked(() => this.javaKnowledge.finishLocalShareRemoval(spaceId, this.writeGuard(lease)), lease)
+        return false
       },
       // deleteSpace: () => this.client.deleteShareSpace(spaceId),
       // MEA:enterprise-knowledge-page 写链路迁移：deleteSpace 走 Java 原生 removeSpace（不得旧端点）。
@@ -2626,6 +2633,7 @@ export class OrgKnowledgeService {
   }
 
   private async confirmJavaDeletion(spaceId: string, lease: Lease): Promise<boolean> {
+    /*
     const matches: Array<{ id: number }> = []
     let count = 0
     let total: number | undefined
@@ -2651,6 +2659,19 @@ export class OrgKnowledgeService {
     )
     if (confirmed !== null) throw new Error('删除结果未确认')
     return true
+    */
+    // MEA:enterprise-knowledge-page 未知删除只核查事实及续作Java清理，绝不重放Space DELETE。
+    const state = await this.checked(() => this.javaKnowledge.getLocalShareState(spaceId), lease)
+    this.requireDeletedShareState(state)
+    await this.checked(() => this.javaKnowledge.finishLocalShareRemoval(spaceId, this.writeGuard(lease)), lease)
+    return true
+  }
+
+  private requireDeletedShareState(state: string): void {
+    if (state === 'DELETED') return
+    if (state === 'ACTIVE') throw new CloudRecoveryStateError(t('enterprise.knowledge.share.cloud_exists'))
+    if (state === 'LEGACY') throw new CloudRecoveryStateError(t('enterprise.knowledge.share.legacy'))
+    throw new CloudRecoveryStateError(t('enterprise.knowledge.share.unconfirmed'))
   }
 
   private async runRecovery<T>(
@@ -2875,7 +2896,53 @@ export class OrgKnowledgeService {
   }
 
   // MEA:enterprise-knowledge-page 首传选项随计划固化，核对续作沿用已保存模式。
+  // share(localBaseId: string, verifyOnly = false, uploadOriginal = true): Promise<OrgKnowledgeShareResult> {
   share(localBaseId: string, verifyOnly = false, uploadOriginal = true): Promise<OrgKnowledgeShareResult> {
+    const lease = this.acquireLease()
+    const key = this.syncKey(localBaseId, lease)
+    const shareId = orgStateStore.getShareAssociation(key)?.shareId ?? orgStateStore.getFirstShareUpload(key)?.shareId
+    // MEA:enterprise-knowledge-page 收尾中断可能已清除关联，仍按恢复日志阻止绕过未完成取消。
+    const pending = Object.entries(orgStateStore.getCloudRecoveries()).filter(
+      ([id, state]) =>
+        this.matchesSyncIdentity(id, lease) &&
+        state.phase !== 'completed' &&
+        (state.spaceId === shareId || state.localBaseId === localBaseId || state.localCopies?.includes(localBaseId))
+    )
+    if (pending.length > 1) return Promise.reject(new Error(t('enterprise.knowledge.share.cancel_pending')))
+    // MEA:enterprise-knowledge-page 取消未收尾时先恢复状态，不能复用completed旧关联或直接重建。
+    if (pending.length === 1) {
+      return this.resumeUnshareBeforeSharing(localBaseId, pending[0][1].spaceId, lease, verifyOnly, uploadOriginal)
+    }
+    return this.startShare(localBaseId, verifyOnly, uploadOriginal)
+  }
+
+  private async resumeUnshareBeforeSharing(
+    localBaseId: string,
+    spaceId: string,
+    lease: Lease,
+    verifyOnly: boolean,
+    uploadOriginal: boolean
+  ): Promise<OrgKnowledgeShareResult> {
+    const restoredBaseId = await this.runRecovery(encodeOrgId(spaceId), lease, async ({ recovery, key }) => {
+      const saved = orgStateStore.getCloudRecovery(key)
+      if (!saved || saved.deleteLocal || saved.mode === 'delete-only')
+        throw new Error(t('enterprise.knowledge.share.removal_pending'))
+      if (saved.phase === 'delete-unknown') await recovery.confirmDeleteResult()
+      else if (!['deleted', 'local-cleanup'].includes(saved.phase))
+        throw new Error(t('enterprise.knowledge.share.cancel_pending'))
+      return recovery.cancel(false, false)
+    })
+    this.assertLease(lease)
+    // 恢复库可能与历史原库不同；要求从最终保留库重开，避免旧资料回流。
+    if (restoredBaseId !== localBaseId) throw new Error(t('enterprise.knowledge.share.use_restored'))
+    return this.startShare(localBaseId, verifyOnly, uploadOriginal)
+  }
+
+  private startShare(
+    localBaseId: string,
+    verifyOnly: boolean,
+    uploadOriginal: boolean
+  ): Promise<OrgKnowledgeShareResult> {
     const lease = this.acquireLease()
     const key = this.syncKey(localBaseId, lease)
     // MEA:enterprise-knowledge-page 取消分享期间拒绝新建上传，避免 DELETE 与上传竞争同一 space。
@@ -2902,7 +2969,7 @@ export class OrgKnowledgeService {
       return this.shareMutex.runExclusive(key, async () => {
         if (verifyOnly && residual.creation !== 'created') {
           // 无操作ID或可信 knowledgeId 时只展示核对入口，绝不按名称认领创建结果。
-          await this.checked(() => this.javaKnowledge.listOperations(1, this.writeGuard(lease)), lease)
+          // await this.checked(() => this.javaKnowledge.listOperations(1, this.writeGuard(lease)), lease)
           throw new OrgKnowledgeError(E.ORGKB_SHARE_INCOMPLETE, '创建操作缺少可靠绑定，需按原生操作ID人工核查')
         }
         await this.rollbackFirstShare(key, localBaseId, lease)
@@ -2923,7 +2990,22 @@ export class OrgKnowledgeService {
       //   replaceKnowledgeSourceBindings(localBaseId, encodeOrgId(existing.shareId))
       // return Promise.resolve({ ...existing, shareId: encodeOrgId(existing.shareId) })
       // return this.checked(() => this.client.getSpace(existing.shareId), lease).then((space) => {
-      return this.checked(() => this.javaKnowledge.getSpace(existing.shareId), lease).then((space) => {
+      // return this.checked(() => this.javaKnowledge.getSpace(existing.shareId), lease).then((space) => {
+      return this.checked(() => this.javaKnowledge.getLocalShareState(existing.shareId), lease).then(async (state) => {
+        if (state !== 'ACTIVE') {
+          if (state === 'DELETED') throw new Error(t('enterprise.knowledge.share.deleted'))
+          this.requireDeletedShareState(state)
+        }
+        const space = await this.checked(() => this.javaKnowledge.getSpace(existing.shareId), lease)
+        const recovery = orgStateStore.getCloudRecovery(
+          JSON.stringify([lease.issuerId, lease.userId, 'recovery', existing.shareId])
+        )
+        if (
+          this.unsharing.has(key) ||
+          orgStateStore.getShareAssociation(key)?.shareId !== existing.shareId ||
+          (recovery && recovery.phase !== 'completed')
+        )
+          throw new Error(t('enterprise.knowledge.share.cancel_pending'))
         if (space.id !== existing.shareId || typeof space.allowLocalFileUpload !== 'boolean')
           throw new Error('空间源文件上传策略未确认')
         if (existing.completion === 'completed')

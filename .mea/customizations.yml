@@ -162,12 +162,14 @@ customizations:
     # 切库同步本机路由与云端选中，详情独立会话清理预览/目录/页码；旧refresh和取消分享回调不能覆盖新库。
     # 主进程列表校验全部条目base_id匹配请求库，跨库响应按协议错误阻断而非静默展示。
     # 首次分享失败改为task可信空间补偿：先持久cleanup再停止流，owner/lease校验DELETE，unknown不重放；保留本机资料，追加及completed不回滚。
+    # 取消与再次分享：先核查本人3/local墓碑并补清理Java授权；LEGACY/UNCONFIRMED保留关联，已移除operation接口只保留注释。
     owner: main
-    behavior: 文档标识经显式文件映射或文件元信息校验后用于预览；主进程鉴权限量读取，渲染进程以纯文本、图片或沙箱 PDF 展示。首次分享递归stat原文件总量（含子目录），逐文件流式上传；2026-10-17最新约定暂不设置客户端总容量上限，取代此前2GiB及临时20MiB限制，OrgKnowledgeService.buildFirstSharePlan及FirstShareUpload.run两处旧检查和抛错均保留为注释，服务端仍可限制容量且错误处理保持不变；客户端原子互斥且同库复用，列表可重开字节进度详情。创建及文件请求前持久化intent，响应归属和分块数校验后保存fileId并核对哈希和完整分块，未知结果暂停且不得盲目重传或重建库；Cookie流式请求不手设Content-Length，传输结束关闭源流；上传连续5分钟无字节进展或服务器响应时中止并清理源流，创建库和远端核对请求30秒超时，未知结果不重放且finally释放全局忙碌槽；全部确认前禁止分享码和邀请。分享码与人员邀请弹窗重开时隐藏历史completed进度、上传说明及复用文件成功结果，本会话新上传或未完成恢复仍展示进度与完成反馈，不清理持久化记录。后续旧manifest推送已停用；本机任务不得自动写云端，云端owner新增文件先托管解析再上传到同space并保留可信fileId。分享完成迁移助手与智能体知识源，取消时先恢复可用本地资料，下载故障阻断删除；缺失资料与其他设备停止操作须明确确认，未知DELETE持久化且不重发，可信删除后回绑本地。
+    behavior: 文档标识经显式文件映射或文件元信息校验后用于预览；主进程鉴权限量读取，渲染进程以纯文本、图片或沙箱 PDF 展示。首次分享递归stat原文件总量（含子目录），逐文件流式上传；2026-10-17最新约定暂不设置客户端总容量上限，取代此前2GiB及临时20MiB限制，OrgKnowledgeService.buildFirstSharePlan及FirstShareUpload.run两处旧检查和抛错均保留为注释，服务端仍可限制容量且错误处理保持不变；客户端原子互斥且同库复用，列表可重开字节进度详情。创建及文件请求前持久化intent，响应归属和分块数校验后保存fileId并核对哈希和完整分块，未知结果暂停且不得盲目重传或重建库；Cookie流式请求不手设Content-Length，传输结束关闭源流；上传连续5分钟无字节进展或服务器响应时中止并清理源流，创建库和远端核对请求30秒超时，未知结果不重放且finally释放全局忙碌槽；全部确认前禁止分享码和邀请。分享码与人员邀请弹窗重开时隐藏历史completed进度、上传说明及复用文件成功结果，本会话新上传或未完成恢复仍展示进度与完成反馈，不清理持久化记录。后续旧manifest推送已停用；本机任务不得自动写云端，云端owner新增文件先托管解析再上传到同space并保留可信fileId。分享完成迁移助手与智能体知识源，取消时先恢复可用本地资料，下载故障阻断删除；缺失资料与其他设备停止操作须明确确认，未知DELETE持久化且不重发，可信删除后回绑本地。再次分享必须先完成原副本取消收尾：只以Java本人3/local删除墓碑确认删除，localShare/finishRemoval仅补清理授权；历史类型及未确认结果保留关联，恢复库不同则从恢复库重开，禁止旧资料回流。
     markers:
       - MEA:enterprise-knowledge-page
     touchpoints:
       - src/main/enterprise/CloudKnowledgeRecovery.ts
+      - src/main/enterprise/JavaKnowledgeClient.ts
       - src/main/enterprise/KnowledgeSourceBindings.ts
       - src/main/data/services/AssistantService.ts
       - src/main/data/services/AgentService.ts
@@ -211,6 +213,8 @@ customizations:
       - src/renderer/pages/knowledge/utils/sharing.ts
     tests:
       - src/main/enterprise/__tests__/CloudKnowledgeRecovery.test.ts
+      - src/main/enterprise/__tests__/OrgKnowledgeService.javaUpload.test.ts
+      - src/main/enterprise/__tests__/JavaKnowledgeClient.write.test.ts
       - src/main/enterprise/__tests__/KnowledgeSourceBindings.test.ts
       - src/main/enterprise/__tests__/FirstShareUpload.test.ts
       - src/main/enterprise/__tests__/OrgKnowledgeFirstShare.test.ts
