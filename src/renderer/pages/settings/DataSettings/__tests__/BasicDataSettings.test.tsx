@@ -1,9 +1,11 @@
 import '@testing-library/jest-dom/vitest'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { popup } from '@renderer/services/popup'
 import { toast } from '@renderer/services/toast'
+import { IpcError } from '@shared/ipc/errors/IpcError'
 
 import type * as ClearCachePopupModule from '../ClearCachePopup'
 
@@ -54,6 +56,7 @@ async function renderSettings() {
 describe('BasicDataSettings', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.mocked(popup.confirm).mockReset()
     indexedDbDatabasesMock.mockResolvedValue([])
     vi.stubGlobal('indexedDB', { databases: indexedDbDatabasesMock })
     localStorage.clear()
@@ -71,6 +74,71 @@ describe('BasicDataSettings', () => {
           : undefined
       )
     )
+  })
+
+  // 捕获开发运行选择后才失败，以及 request/inspect 异常丢失或泄露原始错误的回归。
+  it('explains the development restriction before opening the folder picker', async () => {
+    requestMock.mockImplementation((route) =>
+      Promise.resolve(route === 'app.get_info' ? { isPackaged: false, appDataPath: '/source' } : { results: [] })
+    )
+    await renderSettings()
+    const selectFolder = vi.fn()
+    window.api.file.selectFolder = selectFolder
+    await userEvent.setup().click(screen.getByRole('button', { name: 'settings.data.app_data.select' }))
+    expect(selectFolder).not.toHaveBeenCalled()
+    expect(toast.error).toHaveBeenCalledWith('settings.data.app_data.packaged_only')
+  })
+
+  it.each(['app.user_data_relocation.inspect', 'app.user_data_relocation.request'])(
+    'shows a safe diagnostic for %s failure without relaunch',
+    async (failureRoute) => {
+      requestMock.mockImplementation((route) => {
+        if (route === failureRoute)
+          return Promise.reject(new IpcError('USER_DATA_RELOCATION_PERSIST_FAILED', 'secret/path token=private'))
+        return Promise.resolve(
+          route === 'app.get_info'
+            ? { isPackaged: true, appDataPath: '/source' }
+            : route === 'app.user_data_relocation.inspect'
+              ? { valid: true, targetEmpty: true }
+              : { results: [] }
+        )
+      })
+      await renderSettings()
+      window.api.file.selectFolder = vi.fn().mockResolvedValue('/target')
+      vi.mocked(popup.confirm).mockResolvedValueOnce(true)
+      await userEvent.setup().click(screen.getByRole('button', { name: 'settings.data.app_data.select' }))
+      await waitFor(() =>
+        expect(toast.error).toHaveBeenCalledWith(
+          'settings.data.app_data.path_change_failed (USER_DATA_RELOCATION_PERSIST_FAILED)'
+        )
+      )
+      expect(requestMock.mock.calls.some(([route]) => route === 'app.relaunch')).toBe(false)
+      expect(JSON.stringify(vi.mocked(toast.error).mock.calls)).not.toContain('private')
+    }
+  )
+
+  it('keeps copy mandatory and displays the inspected dataRoot in confirmation', async () => {
+    requestMock.mockImplementation((route) =>
+      Promise.resolve(
+        route === 'app.get_info'
+          ? { isPackaged: true, appDataPath: '/root/profiles/account/userData' }
+          : route === 'app.user_data_relocation.inspect'
+            ? { valid: true, targetEmpty: true, copyRequired: true, sourcePath: '/root' }
+            : { results: [] }
+      )
+    )
+    await renderSettings()
+    window.api.file.selectFolder = vi.fn().mockResolvedValue('/target')
+    vi.mocked(popup.confirm).mockImplementationOnce(async (options) => {
+      render(<>{options.content}</>)
+      expect(screen.getByText('/root')).toBeInTheDocument()
+      const copy = screen.getAllByRole('switch').find((element) => (element as HTMLInputElement).defaultChecked)
+      expect(copy).toBeDisabled()
+      return false
+    })
+    await userEvent.setup().click(screen.getByRole('button', { name: 'settings.data.app_data.select' }))
+    await waitFor(() => expect(popup.confirm).toHaveBeenCalledOnce())
+    expect(requestMock.mock.calls.some(([route]) => route === 'app.user_data_relocation.request')).toBe(false)
   })
 
   it('leaves backup and restore actions interactive', async () => {

@@ -1,10 +1,17 @@
+import { resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
+
+import { ipcMain } from 'electron'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { application } from '@application'
 import { OrgApiHttpError } from '@main/enterprise/OrgApiClient'
 import { OrgKnowledgeError } from '@main/enterprise/OrgKnowledgeService'
+import { IpcApiService } from '@main/ipc/IpcApiService'
 import { enterpriseKnowledgeErrorCodes as E } from '@shared/ipc/errors/enterpriseKnowledge'
 import { IpcError } from '@shared/ipc/errors/IpcError'
+import { enterpriseKnowledgeRequestSchemas } from '@shared/ipc/schemas/enterpriseKnowledge'
+import { IpcChannel } from '@shared/IpcChannel'
 
 import { enterpriseKnowledgeHandlers } from '../enterpriseKnowledge'
 
@@ -17,6 +24,7 @@ describe('enterpriseKnowledgeHandlers', () => {
     syncStatus: vi.fn(),
     catalog: vi.fn(),
     listItems: vi.fn(),
+    listDirectoryItems: vi.fn(),
     listChunks: vi.fn(),
     search: vi.fn(),
     read: vi.fn(),
@@ -42,6 +50,102 @@ describe('enterpriseKnowledgeHandlers', () => {
     vi.mocked(application.get).mockImplementation((name: string) =>
       name === 'EnterprisePlugin' ? ({ knowledge: fakeKnowledge } as never) : (undefined as never)
     )
+  })
+
+  it('目录IPC接受界面的5/10/20/50/100页大小且省略时保留旧默认', async () => {
+    const schema = enterpriseKnowledgeRequestSchemas['enterprise.knowledge.items'].input
+    for (const pageSize of [undefined, 5, 10, 20, 50, 100]) {
+      const input = schema.parse({ baseId: 'orgkb:space', publicLibrary: true, pageSize })
+      fakeKnowledge.listDirectoryItems.mockResolvedValue({ items: [], total: 0, nextCursor: null })
+      await enterpriseKnowledgeHandlers['enterprise.knowledge.items'](input, ctx)
+      expect(fakeKnowledge.listDirectoryItems).toHaveBeenLastCalledWith(
+        'orgkb:space',
+        null,
+        null,
+        true,
+        pageSize,
+        undefined
+      )
+    }
+    for (const pageSize of [0, 21, 1000, 20.5, '20']) {
+      expect(schema.safeParse({ baseId: 'orgkb:space', pageSize }).success).toBe(false)
+    }
+  })
+
+  // MEA:public-knowledge-status-filter 覆盖首屏的 null 筛选，防止严格协议遗漏新字段。
+  it('真实IPC入口接受全部状态和目录筛选，拒绝非法状态并保持管理默认', async () => {
+    const service = new IpcApiService()
+    ;(service as unknown as { onInit(): void }).onInit()
+    const invoke = vi.mocked(ipcMain.handle).mock.calls.find(([channel]) => channel === IpcChannel.IpcApi_Request)![1]
+    const event = {
+      sender: { getType: () => 'window' },
+      senderFrame: {
+        url: pathToFileURL(resolve(application.getPath('app.root'), 'index.html')).href,
+        parent: null
+      }
+    } as Parameters<typeof invoke>[0]
+    vi.mocked(application.get).mockImplementation((name: string) => {
+      if (name === 'EnterprisePlugin') return { knowledge: fakeKnowledge } as never
+      if (name === 'WindowManager') return { getWindowIdByWebContents: () => 'w1' } as never
+      return undefined as never
+    })
+    const page = { items: [], total: 0, nextCursor: null }
+    fakeKnowledge.listDirectoryItems.mockResolvedValue(page)
+    try {
+      for (const pageSize of [5, 10, 20, 50, 100]) {
+        for (const cursor of [null, '3']) {
+          for (const parentId of [null, 'orgkb:folder']) {
+            for (const statusFilter of [null, 'pending', 'parsing', 'parsed', 'indexing', 'ready', 'failed']) {
+              const input = { baseId: 'orgkb:space', cursor, parentId, publicLibrary: true, pageSize, statusFilter }
+              await expect(invoke(event, 'enterprise.knowledge.items', input)).resolves.toEqual({
+                ok: true,
+                data: page
+              })
+              expect(fakeKnowledge.listDirectoryItems).toHaveBeenLastCalledWith(
+                'orgkb:space',
+                cursor,
+                parentId,
+                true,
+                pageSize,
+                statusFilter ?? undefined
+              )
+            }
+          }
+        }
+      }
+      await expect(invoke(event, 'enterprise.knowledge.items', { baseId: 'orgkb:space' })).resolves.toEqual({
+        ok: true,
+        data: page
+      })
+      expect(fakeKnowledge.listDirectoryItems).toHaveBeenLastCalledWith(
+        'orgkb:space',
+        null,
+        null,
+        undefined,
+        undefined,
+        undefined
+      )
+      fakeKnowledge.listDirectoryItems.mockClear()
+      for (const invalid of [
+        { pageSize: '20' },
+        { pageSize: 21 },
+        { cursor: 3 },
+        { publicLibrary: 'true' },
+        { statusFilter: 'all' },
+        { statusFilter: 'completed' },
+        { statusFilter: 1 }
+      ]) {
+        await expect(
+          invoke(event, 'enterprise.knowledge.items', { baseId: 'orgkb:space', ...invalid })
+        ).resolves.toMatchObject({
+          ok: false,
+          error: { code: 'VALIDATION_FAILED', message: 'Invalid input for enterprise.knowledge.items' }
+        })
+      }
+      expect(fakeKnowledge.listDirectoryItems).not.toHaveBeenCalled()
+    } finally {
+      await service._doDestroy()
+    }
   })
 
   it('首传透传源文件选项，核对不覆盖持久模式', async () => {
@@ -104,7 +208,8 @@ describe('enterpriseKnowledgeHandlers', () => {
   })
 
   it('maps OrgKnowledgeError (BAD_INPUT) to IpcError', async () => {
-    fakeKnowledge.listItems.mockRejectedValue(new OrgKnowledgeError(E.ORGKB_BAD_INPUT, 'bad id'))
+    // fakeKnowledge.listItems.mockRejectedValue(new OrgKnowledgeError(E.ORGKB_BAD_INPUT, 'bad id'))
+    fakeKnowledge.listDirectoryItems.mockRejectedValue(new OrgKnowledgeError(E.ORGKB_BAD_INPUT, 'bad id'))
     await expect(
       enterpriseKnowledgeHandlers['enterprise.knowledge.items']({ baseId: 'x' }, ctx)
     ).rejects.toBeInstanceOf(IpcError)

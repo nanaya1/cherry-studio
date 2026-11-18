@@ -90,7 +90,7 @@ const LocalEmbeddingStatus = ({ status, percent }: LocalEmbeddingState) => {
   const canOpenSettings = status === 'not_downloaded' || status === 'error'
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-6 py-12 text-center">
+    <div className="flex min-h-0 flex-1 overflow-auto flex-col items-center justify-center px-6 py-12 text-center">
       <div role="status" aria-live="polite" className="flex flex-col items-center">
         {downloading ? (
           <CircularProgress
@@ -376,7 +376,9 @@ const DataSourcePanelContent = ({
             <span className="font-medium text-sm">{t('files.drag_upload')}</span>
           </div>
         ) : null}
+        {/* 原分页位于表格上方，移至列表下方的独立底栏。
         {paginationActions ? <div className="flex shrink-0 justify-end px-3 pt-2">{paginationActions}</div> : null}
+        */}
         {currentDirectory && onNavigateUp && (
           <div className="flex shrink-0 items-center gap-2 px-3 py-2">
             {/* Flat text button (no chrome): the `px-2.5` matches the row's own inset so the chevron
@@ -398,6 +400,10 @@ const DataSourcePanelContent = ({
           currentDirectory ? (
             <div className="flex min-h-0 flex-1 items-center justify-center px-6 py-12 text-center text-foreground-tertiary text-sm">
               {t('knowledge.data_source.empty_folder')}
+            </div>
+          ) : readOnly && !allowAdd ? (
+            <div className="flex min-h-0 flex-1 items-center justify-center px-6 py-12 text-center text-sm text-foreground-tertiary">
+              {t('knowledge.data_source.empty_description')}
             </div>
           ) : (
             <DataSourceEmptyState onAddSource={handleAddSource} />
@@ -423,6 +429,8 @@ const DataSourcePanelContent = ({
           />
         )}
       </div>
+      {/* MEA:public-knowledge-ready-pagination 底栏与列表分开，不随表格滚动或挤占表格行。 */}
+      {paginationActions ? <div className="flex w-full shrink-0 justify-end px-3 py-2">{paginationActions}</div> : null}
       <ConfirmDialog
         open={Boolean(pendingDeleteItem)}
         onOpenChange={(open) => {

@@ -8,6 +8,85 @@ policy:
   require_tests: true
   preserve_original_code_by_comment: true
 customizations:
+  - id: data-root-relocation-safety
+    title: 数据目录复制迁移与失败恢复安全
+    owner: main
+    behavior: inspect和request按可信profile的dataRoot共用保护树和空目标规则；保留packaged限制并在选择目录前明确提示开发运行不支持。复制使用可写非截断句柄真实sync；已有空目标提升前复检且仅非递归rmdir，非空及链接不得覆盖。提升前携带任务归属，清理只删除同任务工件。请求先持久化且失败恢复内存，不替换未完成任务；提交失败持久failed并仅在原锁定源可用时交回正常启动恢复，不前置严格registry校验掩盖原有恢复流程；提交后保留新根和cleanup-pending。界面仅显示固定诊断码及本地化原因，不泄露原始路径异常。生成schema不手改。同步预检与异步执行共用被检查路径所属卷根至叶子的链接检查（包含卷根及UNC share根），不得将跨盘relative绝对结果拆分拼到源盘；覆盖同盘、C到D、D到C、空或缺失目标、junction拒绝与提交失败恢复，failed仅由新UI请求按既有语义覆盖。
+    markers:
+      - MEA:data-root-relocation-safety
+    touchpoints:
+      - src/main/services/dataRootRelocation.ts
+      - src/main/services/userDataRelocation/index.ts
+      - src/shared/types/userDataRelocation.ts
+      - src/shared/ipc/schemas/app.ts
+      - src/main/ipc/handlers/app.ts
+      - src/main/main.ts
+      - src/renderer/pages/settings/DataSettings/BasicDataSettings.tsx
+      - src/renderer/i18n/locales
+    tests:
+      - src/main/services/__tests__/dataRootRelocation.test.ts
+      - src/main/services/__tests__/dataRootRelocation.bootConfig.test.ts
+      - src/main/ipc/handlers/__tests__/app.test.ts
+      - src/renderer/pages/settings/DataSettings/__tests__/BasicDataSettings.test.tsx
+  - id: profile-logout-robustness
+    title: 退出登录主动取消 MCP 并仅在清理失败时自动重启
+    owner: main
+    behavior: 正常退出登录保持同进程返回登录页；MCP 停止时先取消网络启动及 OAuth 授权等待、关闭连接中 transport，禁止 fallback 和 ping 后重连及迟到缓存写入，真实等待底层清理完成，不用 race 假成功。底层不可取消时保留外层生命周期超时，signed-out teardown 异常或不 clean 自动 relaunch，不弹 teardown 选择框；记录原异常，relaunch 抛错安全退出且不取消 journal 或回滚 logout intent。持久化、登录损坏和其他恢复边界不自动重启，不改其他服务。
+    markers:
+      - MEA:profile-logout-robustness
+    # 2026-11-12：SDK 1.29.0 SSE start 在 close 后仍 pending；eventsource 吞掉 AbortError。
+    # ESM/CJS 版本化补丁共用终止信号，拒绝全部启动等待并阻止迟到 OAuth 重连，正常 endpoint 语义不变。
+    # 合成集成回归覆盖正常 listTools/echo、OAuth token、长调用取消、新 runtime 重建与停止竞态；不等同真实重登录。
+    touchpoints:
+      - patches/@modelcontextprotocol__sdk@1.29.0.patch
+      - pnpm-workspace.yaml
+      - pnpm-lock.yaml
+      - src/main/ai/mcp/McpRuntimeService.ts
+      - src/main/ai/mcp/mcpTransport.ts
+      - src/main/ai/mcp/oauth/callback.ts
+      - src/main/core/profiles/ProfileSwitchCoordinator.ts
+    tests:
+      - src/main/ai/mcp/__tests__/McpRuntimeService.sse.integration.test.ts
+      - src/main/ai/mcp/__tests__/McpRuntimeService.test.ts
+      - src/main/ai/mcp/__tests__/mcpTransport.test.ts
+      - src/main/ai/mcp/oauth/__tests__/callback.test.ts
+      - src/main/core/profiles/__tests__/ProfileSwitchCoordinator.test.ts
+      - src/main/core/profiles/__tests__/ProfileSessionService.test.ts
+      - src/main/enterprise/__tests__/OrgAuthManager.test.ts
+  - id: public-knowledge-status-filter
+    title: 公共知识库全量浏览与状态筛选
+    owner: enterprise
+    # 原约定：状态筛选仅影响当前层级，进入子目录后按直接子项筛选；服务端实际返回跨目录平铺files。
+    behavior: 公共分类浏览不再默认携带parse_status=ready，无筛选时保留当前parent_id层级校验；文件表格上方提供状态筛选，筛选值通过IPC贯通到files请求，进入子目录后沿用筛选条件；仅publicLibrary且有statusFilter时接受同库跨目录平铺files并保留真实parentId，所有files仍严格校验space_id，无筛选或非公共管理仍严格校验files父目录，folders始终严格校验同库及父目录而不推定平铺；默认每页5条，可选5/10/20/50/100，通过可选pageSize贯通IPC与files请求，省略仍为100；真实IpcApi_Request注册入口必须接受cursor:null、数值5/10/20/50/100、statusFilter:null及六种解析状态，拒绝字符串页大小和非法状态，回归不得绕过生产注册表；dev:watch必须将--watch传给electron-vite，以同步重建主进程和preload，避免界面与主进程协议不一致；单行紧凑总数、页大小选择器、前后箭头和高亮数字页码，多页省略号且可直接跳页，无跳转输入，不自动遍历目录；非虚拟文件行区域以min-h-0与flex-1约束高度并独立overflow-auto滚动，父容器overflow-hidden阻止行内容覆盖分页；表头与分页不随文件行滚动；分页在表格下方独占整行且整组靠右，总数、页大小与页码之间使用两条独立且统一 h-4 w-px 尺寸的竖分隔线；仅页大小Select实例禁用弹层动画和转场，保留键盘与焦点行为，开关不得请求知识库，改选仅请求一次并回首页。页大小变化及进出目录回首页，分类/权限变化重置会话，旧响应不得回退页码，刷新空页回首页；终页按响应page_size和total判断。owned/shared管理、预览遍历、恢复下载不使用状态过滤，不扩展根目录parent_id既有语义。
+    markers:
+      - MEA:public-knowledge-status-filter
+    touchpoints:
+      - package.json
+      - src/main/enterprise/OrgKnowledgeClient.ts
+      - src/main/enterprise/OrgKnowledgeService.ts
+      - src/main/ipc/handlers/enterpriseKnowledge.ts
+      - src/shared/ipc/schemas/enterpriseKnowledge.ts
+      - src/renderer/pages/knowledge/KnowledgePage.tsx
+      - src/renderer/pages/knowledge/components/OrgKnowledgeDetail.tsx
+      - src/renderer/pages/knowledge/panels/dataSource/DataSourcePanel.tsx
+      - src/renderer/pages/knowledge/panels/dataSource/KnowledgeItemList.tsx
+    tests:
+      - src/main/enterprise/__tests__/OrgKnowledgeClient.test.ts
+      - src/main/enterprise/__tests__/OrgKnowledgeService.test.ts
+      - src/renderer/pages/knowledge/components/__tests__/OrgKnowledgeDetail.test.tsx
+      - src/renderer/pages/knowledge/__tests__/OrgKnowledgeNavigation.test.tsx
+      - src/main/ipc/handlers/__tests__/enterpriseKnowledge.test.ts
+  - id: local-knowledge-file-batches
+    title: 本地知识库文件多选100个并串行分批接收
+    owner: renderer
+    behavior: 仅本地文件多选上限从20放宽至100，每批20个串行提交，前批返回后继续；冲突暂停并沿用既有弹窗，用户选择应用于未接收部分，已接收批次不重放。失败或取消停止后续批次，保留已接收结果，不自动重试；目录、云端、主进程队列和并发不变。
+    markers:
+      - MEA:local-knowledge-file-batches
+    touchpoints:
+      - src/renderer/pages/knowledge/components/AddKnowledgeItemDialog.tsx
+      - src/renderer/pages/knowledge/components/addKnowledgeItemDialog/constants.ts
+    tests:
+      - src/renderer/pages/knowledge/components/__tests__/AddKnowledgeItemDialog.test.tsx
   - id: second-instance-window-reveal
     title: 二次启动不得显示隐藏预热窗口
     owner: main
@@ -44,6 +123,8 @@ customizations:
     # 原件上传默认开启，两个分享入口透传uploadOriginal；核对按文件恢复持久模式，缺省true。
     # 首次模式库级写前持久化并携带allow_local_file_upload创建；恢复隐藏选择，追加实时读取策略，未知拒绝上传。
     # 原件入口严格按每文件has_original_file展示；直接预览复核能力，策略与下载权限独立透传。
+    # 预览元数据经/api/kb/v1/files/:id/preview-url账户网关转发到上游/api/v1，保留scope=client；minio_preview_url优先于原文url，仅PDF预览件返回经HTTP(S)/无userinfo校验的规范化URL，由PDF.js加载(withCredentials:false、无企业auth)，不在主进程下载转Base64；保留授权/lease、原名及旧响应回退，原件URL/Base64、图片和Office路线不变。
+    # OrgKnowledgeClient覆盖新路径和可选预览字段；OrgKnowledgeService覆盖PDF预览件免下载、HTTP/HTTPS规范化与非法协议/userinfo拒绝及原件回归；PdfFilePreview覆盖URL/Base64/本地range切换销毁、竞态和错误日志不泄露签名URL，OrgKnowledgeDetail覆盖PDF路由与非PDF隔离。
     # 关闭原件仍核对可信身份、目录和一对一完整分块；首次计划仍读取本机原件hash作为副本身份。
     # P1：知识库DELETE凭据获取前后校验原租约/session身份且不401重放；恢复先固化expectedHashes再核对导入目标。
     # 删除模式不扫描/下载/恢复：先固化当前账号可信副本，DELETE成功后才清受管本机库、分组及失效引用；未知禁止重发，失败仅本机续作。
@@ -53,11 +134,16 @@ customizations:
     # 切库同步本机路由与云端选中，详情独立会话清理预览/目录/页码；旧refresh和取消分享回调不能覆盖新库。
     # 主进程列表校验全部条目base_id匹配请求库，跨库响应按协议错误阻断而非静默展示。
     # 首次分享失败改为task可信空间补偿：先持久cleanup再停止流，owner/lease校验DELETE，unknown不重放；保留本机资料，追加及completed不回滚。
+    # 公共浏览文件忠实使用files.parse_status六状态，缺省/null回退pending且不得显示就绪；目录及非公共管理保持既有状态行为。
+    # files.error_message经共享条目error透传，失败状态使用既有Tooltip按纯文本显示，缺省/null不生成错误原因。
+    # 只读且不可添加的公共空列表仅显示暂无数据源，不展示上传引导或添加快捷按钮；可编辑列表保留原入口。
+    # OrgKnowledgeClient真实解析覆盖六状态、缺省/null及非法值；OrgKnowledgeService覆盖过期completed/无item、目录与非公共管理回归。
     owner: main
-    behavior: 文档标识经显式文件映射或文件元信息校验后用于预览；主进程鉴权限量读取，渲染进程以纯文本、图片或沙箱 PDF 展示。首次分享递归stat原文件总量（含子目录），逐文件流式上传；2026-10-17最新约定暂不设置客户端总容量上限，取代此前2GiB及临时20MiB限制，OrgKnowledgeService.buildFirstSharePlan及FirstShareUpload.run两处旧检查和抛错均保留为注释，服务端仍可限制容量且错误处理保持不变；客户端原子互斥且同库复用，列表可重开字节进度详情。创建及文件请求前持久化intent，响应归属和分块数校验后保存fileId并核对哈希和完整分块，未知结果暂停且不得盲目重传或重建库；Cookie流式请求不手设Content-Length，传输结束关闭源流；上传连续5分钟无字节进展或服务器响应时中止并清理源流，创建库和远端核对请求30秒超时，未知结果不重放且finally释放全局忙碌槽；全部确认前禁止分享码和邀请。分享码与人员邀请弹窗重开时隐藏历史completed进度、上传说明及复用文件成功结果，本会话新上传或未完成恢复仍展示进度与完成反馈，不清理持久化记录。后续旧manifest推送已停用；本机任务不得自动写云端，云端owner新增文件先托管解析再上传到同space并保留可信fileId。分享完成迁移助手与智能体知识源，取消时先恢复可用本地资料，下载故障阻断删除；缺失资料与其他设备停止操作须明确确认，未知DELETE持久化且不重发，可信删除后回绑本地。
+    behavior: 公共浏览文件忠实透传files.parse_status的pending/parsing/parsed/indexing/ready/failed六状态，缺省或null回退pending，不被旧item.completed或缺失item误标就绪；目录与非公共管理保持原状态行为，根目录过滤不变。文档标识经显式文件映射或文件元信息校验后用于预览；主进程鉴权限量读取，渲染进程以纯文本、图片或沙箱 PDF 展示。首次分享递归stat原文件总量（含子目录），逐文件流式上传；2026-10-17最新约定暂不设置客户端总容量上限，取代此前2GiB及临时20MiB限制，OrgKnowledgeService.buildFirstSharePlan及FirstShareUpload.run两处旧检查和抛错均保留为注释，服务端仍可限制容量且错误处理保持不变；客户端原子互斥且同库复用，列表可重开字节进度详情。创建及文件请求前持久化intent，响应归属和分块数校验后保存fileId并核对哈希和完整分块，未知结果暂停且不得盲目重传或重建库；Cookie流式请求不手设Content-Length，传输结束关闭源流；上传连续5分钟无字节进展或服务器响应时中止并清理源流，创建库和远端核对请求30秒超时，未知结果不重放且finally释放全局忙碌槽；全部确认前禁止分享码和邀请。分享码与人员邀请弹窗重开时隐藏历史completed进度、上传说明及复用文件成功结果，本会话新上传或未完成恢复仍展示进度与完成反馈，不清理持久化记录。后续旧manifest推送已停用；本机任务不得自动写云端，云端owner新增文件先托管解析再上传到同space并保留可信fileId。分享完成迁移助手与智能体知识源，取消时先恢复可用本地资料，下载故障阻断删除；缺失资料与其他设备停止操作须明确确认，未知DELETE持久化且不重发，可信删除后回绑本地。
     markers:
       - MEA:enterprise-knowledge-page
     touchpoints:
+      - src/renderer/components/FilePreview/plugins/pdf/PdfFilePreview.tsx
       - src/main/enterprise/CloudKnowledgeRecovery.ts
       - src/main/enterprise/KnowledgeSourceBindings.ts
       - src/main/data/services/AssistantService.ts
@@ -101,6 +187,7 @@ customizations:
       - src/renderer/pages/knowledge/sections/KnowledgePageNavigatorSection.tsx
       - src/renderer/pages/knowledge/utils/sharing.ts
     tests:
+      - src/renderer/components/FilePreview/plugins/pdf/__tests__/PdfFilePreview.test.tsx
       - src/main/enterprise/__tests__/CloudKnowledgeRecovery.test.ts
       - src/main/enterprise/__tests__/KnowledgeSourceBindings.test.ts
       - src/main/enterprise/__tests__/FirstShareUpload.test.ts
@@ -136,6 +223,7 @@ customizations:
     owner: main
     # behavior: In profile isolation mode, local records are legacy staging only. Verify authenticated candidates online against modern currentuser before starting business services; route failed verification to recovery and persist signed-out selection before login.
     # behavior: In profile isolation mode, local records are legacy staging only. Verify authenticated candidates online before business startup; persist signed-out selection before login. Keep one bootstrap window, reuse only identical complete launch contexts, defer display until ready even on second-instance, and close with a localized prompt on main-frame load failure. Replaced windows cannot remove current IPC handlers or consume OAuth callbacks; preserve login cancellation exit, successful activation and relaunch semantics.
+    # 密码首次 POST 非成功时仅通过 loggerService 记录一次目标 origin+固定 /api/auth/login、status、允许列表 content-type 和错误码；不记录凭据/query/原文/完整 headers。JSON code/error.code 只接受 INVALID_CREDENTIALS、ACCOUNT_DISABLED、ACCOUNT_LOCKED、RATE_LIMITED、UNAUTHORIZED，否则 unknown；响应最多读取4KiB、等待200ms，异常保留原 HTTP 错误文本。PasswordProfileLogin.test.ts 覆盖脱敏、成功无失败日志、解析/读取失败、超限及超时。
     # behavior: Require online verification before business startup; retain the candidate and credentials with an isolated real retry when verification is unavailable, and select signed-out only on explicit user action. Keep one owner-checked bootstrap window and reveal only after readiness. User logout alone starts teardown; keep the process alive through login ready-to-show. Superseded windows cannot consume callbacks or terminate the current window; unrecoverable handoff failures require a visible restart-or-quit choice.
     behavior: 业务启动必须通过在线身份验证；验证成功直接进入主界面，失败先完成现有 signed-out 切换事务再打开原账号密码登录窗口，不新增页面或窗口，不清理候选凭据和业务数据。独立 startup recovery 的窗口入口、IPC 注册和 preload 桥接均停用；business 候选不可直接创建 bootstrap 窗口。保留窗口所有者检查、首帧显示、退出登录交接及异常事务恢复边界；替换后的旧窗口不能消费回调或终止当前窗口。
     markers:
@@ -304,10 +392,13 @@ customizations:
     owner: main
     # behavior: Keep MEACowork productName, com.meacowork.desktop appId, meacowork:// protocol, API gateway port 24333, and OpenClaw port 19790.
     # behavior: Enterprise product uses MEA Cowork 企业版, com.meacowork.enterprise (cn suffix for China), meacowork-enterprise://, isolated .meacowork-enterprise home and OpenClaw config, API port 24334 and OpenClaw port 19791. Default assistant name stays MEA Cowork. Enterprise brand artwork uses the supplied craftsman logo across build icons, tray variants and renderer logo; third-party provider icons remain unchanged. Packaged default account data root uses MEA-Cowork-Enterprise without .profiles-v2; custom data roots remain authoritative and existing data is not moved automatically. Package artifacts and the Windows default install folder use MEA-Cowork-Enterprise; macOS app bundle and application display name remain MEA Cowork 企业版. Updates use enterprise channels; no personal feed fallback.
-    behavior: Enterprise product uses MEA Cowork 企业版, com.meacowork.enterprise (cn suffix for China), meacowork-enterprise://, isolated .meacowork-enterprise home and OpenClaw config, API port 24334 and OpenClaw port 19791. Default assistant name stays MEA Cowork. Enterprise brand artwork uses the supplied craftsman logo across build icons, tray variants and renderer logo; third-party provider icons remain unchanged. Packaged default account data root uses MEA-Cowork-Enterprise without .profiles-v2; custom data roots remain authoritative and existing data is not moved automatically. Package artifacts and the Windows default install folder use MEA-Cowork-Enterprise; macOS app bundle and application display name remain MEA Cowork 企业版. Active attachment directories, screenshots, backups, diagnostics and relocation artifacts use meacowork names; legacy relocation markers and executable mapping keys remain readable for interrupted upgrades. Updates use enterprise channels; no personal feed fallback.
+    behavior: Enterprise product uses MEA Cowork 企业版, com.meacowork.enterprise (cn suffix for China), meacowork-enterprise://, isolated .meacowork-enterprise home and OpenClaw config, API port 24334 and OpenClaw port 19791. Default assistant name stays MEA Cowork. Enterprise brand artwork uses the supplied craftsman logo across build icons, tray variants and renderer logo; third-party provider icons remain unchanged. Packaged default account data root uses MEA-Cowork-Enterprise without .profiles-v2; custom data roots remain authoritative and existing data is not moved automatically. Package artifacts and the Windows default install folder use MEA-Cowork-Enterprise; macOS app bundle and application display name remain MEA Cowork 企业版. Active attachment directories, screenshots, backups, diagnostics and relocation artifacts use meacowork names; legacy relocation markers and executable mapping keys remain readable for interrupted upgrades. Enterprise customer builds load only .env.<company> selected by `pnpm build:enterprise <company> -- --<platform> --<arch>` and include the validated company identifier in artifact names without changing the shared app identity or data directory. Updates use enterprise channels; no personal feed fallback.
     touchpoints:
       - package.json
       - electron-builder.yml
+      - electron-builder.enterprise.config.cjs
+      - scripts/build-enterprise.js
+      - .env.example
       - src/main/services/protocol/ProtocolService.ts
       - src/main/services/OpenClawService.ts
       - src/shared/data/preference/preferenceSchemas.ts
@@ -351,6 +442,7 @@ customizations:
       - src/main/utils/__tests__/appEdition.test.ts
       - src/main/services/__tests__/AppUpdaterService.test.ts
       - scripts/__tests__/edition-packaging.test.ts
+      - scripts/__tests__/build-enterprise.test.ts
       - src/main/features/apiGateway/routes/__tests__/routes.integration.test.ts
 
   - id: native-module-packaging

@@ -26,6 +26,7 @@ type CreateTransportInput = {
   authProvider: McpOAuthClientProvider
   logger: LoggerService
   onServerLog: (entry: McpServerLogEntry) => void
+  signal?: AbortSignal
 }
 
 function fetchViaNet(url: string | URL | Request, init?: RequestInit): Promise<Response> {
@@ -115,14 +116,21 @@ async function createInMemory({ sdk, server, args, logger }: CreateTransportInpu
 }
 
 function createUrlTransport(
-  { sdk, server, typeOverride, authProvider, logger }: CreateTransportInput,
+  { sdk, server, typeOverride, authProvider, logger, signal }: CreateTransportInput,
   baseUrl: string
 ): McpTransport {
+  // MEA:profile-logout-robustness 网络启动与 OAuth 发现共用真实底层取消信号。
+  const fetchWithCancellation: typeof fetchViaNet = (url, init) =>
+    fetchViaNet(url, {
+      ...init,
+      signal: signal && init?.signal ? AbortSignal.any([signal, init.signal]) : (signal ?? init?.signal)
+    })
   const urlBasedType: McpServerType = typeOverride ?? server.type ?? 'sse'
 
   if (urlBasedType === 'streamableHttp') {
     const options: StreamableHTTPClientTransportOptions = {
-      fetch: fetchViaNet,
+      // fetch: fetchViaNet,
+      fetch: fetchWithCancellation,
       ...buildHttpOptions(server, authProvider)
     }
     // redact headers before logging
@@ -132,7 +140,9 @@ function createUrlTransport(
 
   if (urlBasedType === 'sse') {
     const options: SSEClientTransportOptions = {
-      eventSourceInit: { fetch: fetchViaNet },
+      // eventSourceInit: { fetch: fetchViaNet },
+      fetch: fetchWithCancellation,
+      eventSourceInit: { fetch: fetchWithCancellation },
       ...buildHttpOptions(server, authProvider)
     }
     return new sdk.SSEClientTransport(new URL(baseUrl), options)

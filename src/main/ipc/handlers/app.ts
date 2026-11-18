@@ -8,9 +8,13 @@ import { isWin } from '@main/core/platform'
 import { getProfileLaunchContext } from '@main/core/profiles'
 import { cacheCleanupService } from '@main/services/cacheCleanup'
 import { requestDataReset, requestV1Remigration } from '@main/services/dataReset'
-import { requestDataRootRelocation } from '@main/services/dataRootRelocation'
+import { inspectDataRootRelocationTarget, requestDataRootRelocation } from '@main/services/dataRootRelocation'
 import { requestDeviceDataReset } from '@main/services/profileDataReset'
-import { inspectUserDataRelocationTarget, requestUserDataRelocation } from '@main/services/userDataRelocation'
+import {
+  inspectUserDataRelocationTarget,
+  RelocationValidationError,
+  requestUserDataRelocation
+} from '@main/services/userDataRelocation'
 import { handleZoomFactor } from '@main/utils/zoom'
 import { IpcError } from '@shared/ipc/errors/IpcError'
 import type { appRequestSchemas } from '@shared/ipc/schemas/app'
@@ -35,7 +39,13 @@ export const appHandlers: IpcHandlersFor<typeof appRequestSchemas> = {
   // target and persists the request here. The execution face (a relocation-only
   // launch) never starts IpcApiService — its progress window talks over bare
   // UserDataRelocationIpcChannels instead (services/userDataRelocation/window.ts).
-  'app.user_data_relocation.inspect': async ({ path }) => inspectUserDataRelocationTarget(path),
+  // 'app.user_data_relocation.inspect': async ({ path }) => inspectUserDataRelocationTarget(path),
+  // MEA:data-root-relocation-safety 保留 packaged 限制，inspect/request 使用同一可信迁移对象。
+  'app.user_data_relocation.inspect': async ({ path }) => {
+    if (!app.isPackaged) throw new IpcError('USER_DATA_RELOCATION_UNAVAILABLE')
+    const context = getProfileLaunchContext()
+    return context ? inspectDataRootRelocationTarget(context, path) : inspectUserDataRelocationTarget(path)
+  },
   'app.user_data_relocation.request': async ({ path, copy }) => {
     if (!app.isPackaged) {
       throw new IpcError('USER_DATA_RELOCATION_UNAVAILABLE', 'userData relocation is available only in packaged builds')
@@ -48,11 +58,31 @@ export const appHandlers: IpcHandlersFor<typeof appRequestSchemas> = {
           'profile dataRoot relocation requires copying the verified dataRoot'
         )
       }
-      requestDataRootRelocation(context, path)
+      try {
+        requestDataRootRelocation(context, path)
+      } catch (error) {
+        if (error instanceof RelocationValidationError) {
+          throw new IpcError('USER_DATA_RELOCATION_INVALID', 'Invalid relocation target', { reason: error.reason })
+        }
+        // MEA:data-root-relocation-safety 不将文件系统路径或原始异常发给界面。
+        loggerService
+          .withContext('AppRelocation')
+          .error('Failed to persist dataRoot relocation request', error as Error)
+        throw new IpcError('USER_DATA_RELOCATION_PERSIST_FAILED')
+      }
       return
     }
     // Legacy userData relocation remains available when profile isolation has no launch context.
-    requestUserDataRelocation(path, copy)
+    // requestUserDataRelocation(path, copy)
+    try {
+      requestUserDataRelocation(path, copy)
+    } catch (error) {
+      if (error instanceof RelocationValidationError) {
+        throw new IpcError('USER_DATA_RELOCATION_INVALID', 'Invalid relocation target', { reason: error.reason })
+      }
+      loggerService.withContext('AppRelocation').error('Failed to persist userData relocation request', error as Error)
+      throw new IpcError('USER_DATA_RELOCATION_PERSIST_FAILED')
+    }
   },
   'app.cache_cleanup.inspect': async ({ groups }) => cacheCleanupService.inspect(groups),
   'app.cache_cleanup.run': async ({ groups }) => cacheCleanupService.run(groups),

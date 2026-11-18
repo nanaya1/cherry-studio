@@ -93,6 +93,7 @@ export const OrgKnowledgeItemSchema = z.strictObject({
   type: z.string(),
   title: z.string(),
   status: z.string(),
+  error: z.string().nullable().optional(),
   /** Parent directory item ID; null means the base root. */
   parentId: z.string().nullable(),
   documentId: z.string().nullable(),

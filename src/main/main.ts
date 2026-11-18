@@ -65,7 +65,9 @@ const startApp = async () => {
       await reportDataRootBusyAndQuit()
       return
     }
-    const dataRootRelocationResult = await runDataRootRelocation()
+    // const dataRootRelocationResult = await runDataRootRelocation()
+    // MEA:data-root-relocation-safety 失败恢复不得切换到未锁定的源目录。
+    const dataRootRelocationResult = await runDataRootRelocation(dataRoot)
     if (dataRootRelocationResult === 'handled') {
       application.relaunch()
       return

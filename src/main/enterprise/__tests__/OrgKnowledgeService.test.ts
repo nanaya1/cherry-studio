@@ -174,6 +174,331 @@ function makeService(apiClient: ReturnType<typeof makeApiClient>) {
   return service
 }
 
+describe('公共目录分页', () => {
+  it.each([null, 'requested-parent'])(
+    '公共状态筛选接受同库跨目录文件并保留真实parentId（请求目录%s）',
+    async (parentId) => {
+      const api = makeApiClient()
+      const service = makeService(api)
+      const parents = [null, 'folder-a', 'folder-b']
+      api.request.mockImplementation(async (path: string) =>
+        path.includes('/files')
+          ? {
+              folders: [],
+              files: parents.map((parent, index) => ({
+                id: `file-${index}`,
+                space_id: 'space',
+                parent_id: parent,
+                name: `文件${index}`,
+                is_dir: false,
+                parse_status: 'ready',
+                updated_at: ''
+              })),
+              total: 3,
+              page: 1,
+              page_size: 20
+            }
+          : { items: [], total: 0 }
+      )
+      try {
+        const result = await service.listDirectoryItems(
+          encodeOrgId('space'),
+          null,
+          parentId ? encodeOrgId(parentId) : null,
+          true,
+          20,
+          'ready'
+        )
+        expect(result.items.map(({ fileId, baseId, parentId }) => ({ fileId, baseId, parentId }))).toEqual(
+          parents.map((parent, index) => ({
+            fileId: encodeOrgId(`file-${index}`),
+            baseId: encodeOrgId('space'),
+            parentId: parent ? encodeOrgId(parent) : null
+          }))
+        )
+      } finally {
+        service.dispose()
+      }
+    }
+  )
+
+  it.each([
+    {
+      label: '公共筛选跨库文件',
+      publicLibrary: true,
+      statusFilter: 'ready',
+      isDir: false,
+      space: 'other-space',
+      parent: 'requested-parent'
+    },
+    {
+      label: '公共无筛选错父目录文件',
+      publicLibrary: true,
+      statusFilter: undefined,
+      isDir: false,
+      space: 'space',
+      parent: 'other-parent'
+    },
+    {
+      label: '非公共有筛选错父目录文件',
+      publicLibrary: false,
+      statusFilter: 'ready',
+      isDir: false,
+      space: 'space',
+      parent: 'other-parent'
+    },
+    {
+      label: '非公共无筛选错父目录文件',
+      publicLibrary: false,
+      statusFilter: undefined,
+      isDir: false,
+      space: 'space',
+      parent: 'other-parent'
+    },
+    {
+      label: '公共筛选错父目录文件夹',
+      publicLibrary: true,
+      statusFilter: 'ready',
+      isDir: true,
+      space: 'space',
+      parent: 'other-parent'
+    },
+    {
+      label: '公共筛选跨库文件夹',
+      publicLibrary: true,
+      statusFilter: 'ready',
+      isDir: true,
+      space: 'other-space',
+      parent: 'requested-parent'
+    }
+  ] as const)('目录归属安全校验仍拒绝：%j', async ({ publicLibrary, statusFilter, isDir, space, parent }) => {
+    const api = makeApiClient()
+    const service = makeService(api)
+    const entry = { id: 'entry', space_id: space, parent_id: parent, name: '条目', is_dir: isDir, updated_at: '' }
+    api.request.mockImplementation(async (path: string) =>
+      path.includes('/files')
+        ? { folders: isDir ? [entry] : [], files: isDir ? [] : [entry], total: 1, page: 1, page_size: 20 }
+        : { items: [], total: 0 }
+    )
+    try {
+      await expect(
+        service.listDirectoryItems(
+          encodeOrgId('space'),
+          null,
+          encodeOrgId('requested-parent'),
+          publicLibrary,
+          20,
+          statusFilter
+        )
+      ).rejects.toMatchObject({ code: E.ORGKB_PROTOCOL })
+    } finally {
+      service.dispose()
+    }
+  })
+
+  it.each([
+    ['pending', 'pending'],
+    ['parsing', 'parsing'],
+    ['parsed', 'parsed'],
+    ['indexing', 'indexing'],
+    ['ready', 'ready'],
+    ['ready', 'ready', 'failed'],
+    ['failed', 'failed'],
+    [null, 'pending'],
+    [undefined, 'pending']
+  ])(
+    '公共文件解析状态%s不被过期item或缺失item覆盖（期望%s，旧状态%s）',
+    async (parseStatus, expected, itemStatus = 'completed') => {
+      const api = makeApiClient()
+      const service = makeService(api)
+      api.request.mockImplementation(async (path: string) =>
+        path.includes('/files')
+          ? {
+              folders: [
+                {
+                  id: 'folder',
+                  space_id: 'space',
+                  parent_id: null,
+                  name: '目录',
+                  is_dir: true,
+                  parse_status: null,
+                  updated_at: ''
+                }
+              ],
+              files: ['stale', 'missing'].map((id) => ({
+                id,
+                space_id: 'space',
+                parent_id: null,
+                name: id,
+                is_dir: false,
+                updated_at: '',
+                error_message: id === 'stale' ? '解析服务返回：不支持此文件内容' : null,
+                ...(parseStatus === undefined ? {} : { parse_status: parseStatus })
+              })),
+              total: 3,
+              page: 1,
+              page_size: 100
+            }
+          : {
+              items: [
+                {
+                  id: 'item',
+                  base_id: 'space',
+                  group_id: null,
+                  type: 'file',
+                  title: '旧标题',
+                  status: itemStatus,
+                  error: null,
+                  document_id: 'stale',
+                  data: { file_id: 'stale' },
+                  created_at: '2026-10-17T00:00:00Z',
+                  updated_at: '2026-10-17T00:00:00Z'
+                }
+              ],
+              total: 1
+            }
+      )
+      try {
+        const result = await service.listDirectoryItems(encodeOrgId('space'), null, null, true)
+        expect(result.items.map(({ title, status }) => ({ title, status }))).toEqual([
+          { title: '目录', status: 'completed' },
+          { title: 'stale', status: expected },
+          { title: 'missing', status: expected }
+        ])
+        expect(result.items[1].error).toBe('解析服务返回：不支持此文件内容')
+        expect(result.items[2].error).toBeNull()
+      } finally {
+        service.dispose()
+      }
+    }
+  )
+
+  it('非公共管理保留item状态及缺失item的既有就绪回退', async () => {
+    const api = makeApiClient()
+    const service = makeService(api)
+    api.request.mockImplementation(async (path: string) =>
+      path.includes('/files')
+        ? {
+            folders: [],
+            files: ['stale', 'missing'].map((id) => ({
+              id,
+              space_id: 'space',
+              parent_id: null,
+              name: id,
+              is_dir: false,
+              parse_status: 'failed',
+              updated_at: ''
+            })),
+            total: 2,
+            page: 1,
+            page_size: 100
+          }
+        : {
+            items: [
+              {
+                id: 'item',
+                base_id: 'space',
+                group_id: null,
+                type: 'file',
+                title: '文件',
+                status: 'processing',
+                error: null,
+                document_id: 'stale',
+                data: { file_id: 'stale' },
+                created_at: '2026-10-17T00:00:00Z',
+                updated_at: '2026-10-17T00:00:00Z'
+              }
+            ],
+            total: 1
+          }
+    )
+    try {
+      const result = await service.listDirectoryItems(encodeOrgId('space'))
+      expect(result.items.map((item) => item.status)).toEqual(['processing', 'completed'])
+    } finally {
+      service.dispose()
+    }
+  })
+
+  it.each([
+    ['public', true],
+    ['public', false],
+    ['owned', true],
+    ['shared', true]
+  ] as const)('%s分类浏览标记%s不按解析状态过滤', async (category, publicLibrary) => {
+    const api = makeApiClient()
+    const service = makeService(api)
+    api.request.mockImplementation(async (path: string) => {
+      if (path.includes('/catalog'))
+        return { public: [], owned: [], shared: [], [category]: [{ id: 'space', name: '库' }] }
+      if (path.includes('/files'))
+        return {
+          folders: [{ id: 'folder', space_id: 'space', parent_id: null, name: '空目录', is_dir: true, updated_at: '' }],
+          files: [],
+          total: 1,
+          page: 1,
+          page_size: 100
+        }
+      return { items: [], total: 0 }
+    })
+    try {
+      const result = await service.listDirectoryItems(
+        encodeOrgId('space'),
+        null,
+        null,
+        publicLibrary,
+        publicLibrary ? 20 : undefined
+      )
+      const path = api.request.mock.calls.find(([url]) => url.includes('/files'))![0]
+      expect(new URL(path, 'https://example.test').searchParams.has('parse_status')).toBe(false)
+      expect(new URL(path, 'https://example.test').searchParams.get('page_size')).toBe(publicLibrary ? '20' : '100')
+      expect(result.items.map((entry) => entry.title)).toEqual(['空目录'])
+      expect(result.nextCursor).toBeNull()
+    } finally {
+      service.dispose()
+    }
+  })
+
+  it.each([
+    [1, 100, 201, '2', 100],
+    [2, 100, 201, '3', 100],
+    [2, 1, 101, null, 100],
+    [2, 100, 200, null, 100],
+    [3, 1, 201, null, 100],
+    [3, 0, 201, null, 100],
+    [1, 0, 0, null, 100],
+    [2, 20, 128, '3', 20],
+    [7, 8, 128, null, 20],
+    [3, 28, 128, null, 50]
+  ])('第%s页%s条、总数%s时游标为%s', async (page, count, total, nextCursor, responsePageSize) => {
+    const api = makeApiClient()
+    const service = makeService(api)
+    api.request.mockImplementation(async (path: string) =>
+      path.includes('/files')
+        ? {
+            folders: [],
+            files: Array.from({ length: count }, (_, index) => ({
+              id: `file-${index}`,
+              space_id: 'space',
+              parent_id: null,
+              name: '文件',
+              is_dir: false,
+              updated_at: ''
+            })),
+            total,
+            page,
+            page_size: responsePageSize
+          }
+        : { items: [], total: 0 }
+    )
+    try {
+      expect((await service.listDirectoryItems(encodeOrgId('space'), String(page))).nextCursor).toBe(nextCursor)
+    } finally {
+      service.dispose()
+    }
+  })
+})
+
 describe('云端文件删除', () => {
   const baseId = encodeOrgId('space')
   const fileId = encodeOrgId('f')
@@ -245,6 +570,84 @@ const codeShare = {
 const codeCatalog = { public: [], shared: [], owned: [{ id: codeSpaceId, name: '副本', my_role: 'owner' }] }
 
 describe('云端 Office 预览', () => {
+  it.each(['http', 'https'])('%s PDF MIME 预览件返回规范化 URL，无需扩展名', async (protocol) => {
+    const api = makeApiClient()
+    const service = makeService(api)
+    vi.spyOn((service as any).client, 'getFile').mockResolvedValue({ id: 'f', is_dir: false, has_original_file: true })
+    vi.spyOn((service as any).client, 'getPreviewUrl').mockResolvedValue({
+      kind: 'inline',
+      minio_preview_url: `${protocol}://MINIO.example.test/a/../object?signature=test`,
+      file_name: '报告.docx',
+      mime_type: 'application/pdf; charset=binary'
+    })
+    const fetchPreview = vi.spyOn((service as any).client, 'fetchPresignedPreviewBytes')
+    await expect(service.preview({ fileId: 'orgkb:Zg' })).resolves.toEqual({
+      kind: 'inline',
+      fileName: '报告.docx',
+      mimeType: 'application/pdf',
+      content: '',
+      url: `${protocol}://minio.example.test/object?signature=test`
+    })
+    expect(fetchPreview).not.toHaveBeenCalled()
+    expect(api.requestBytes).not.toHaveBeenCalled()
+    service.dispose()
+  })
+  it.each(['docx', 'xlsx', 'pptx', 'doc', 'pdf'])(
+    '%s 优先显示 MinIO PDF 预览件，不把原件 MIME 用于 PDF',
+    async (extension) => {
+      const api = makeApiClient()
+      const service = makeService(api)
+      const fetchPreview = vi.spyOn((service as any).client, 'fetchPresignedPreviewBytes')
+      vi.spyOn((service as any).client, 'getFile').mockResolvedValue({
+        id: 'f',
+        is_dir: false,
+        has_original_file: true
+      })
+      vi.spyOn((service as any).client, 'getPreviewUrl').mockResolvedValue({
+        kind: 'inline',
+        url: `https://minio.example.test/report.${extension}?signature=original`,
+        minio_preview_url: 'https://minio.example.test/report.preview.pdf?signature=preview',
+        file_name: `报告.${extension}`,
+        mime_type: extension === 'pdf' ? 'application/pdf' : 'application/octet-stream'
+      })
+      await expect(service.preview({ fileId: 'orgkb:Zg' })).resolves.toEqual({
+        kind: 'inline',
+        fileName: `报告.${extension}`,
+        mimeType: 'application/pdf',
+        content: '',
+        url: 'https://minio.example.test/report.preview.pdf?signature=preview'
+      })
+      expect(fetchPreview).not.toHaveBeenCalled()
+      expect(api.requestText).not.toHaveBeenCalled()
+      expect(api.requestBytes).not.toHaveBeenCalled()
+      service.dispose()
+    }
+  )
+
+  it.each([
+    'javascript:alert(1)',
+    'file:///preview.pdf',
+    'ftp://minio.example.test/preview.pdf',
+    'https://user:password@minio.example.test/preview.pdf',
+    'http://user@minio.example.test/preview.pdf'
+  ])('拒绝不安全的 PDF 预览地址 %s', async (url) => {
+    const api = makeApiClient()
+    const service = makeService(api)
+    vi.spyOn((service as any).client, 'getFile').mockResolvedValue({ id: 'f', is_dir: false, has_original_file: true })
+    vi.spyOn((service as any).client, 'getPreviewUrl').mockResolvedValue({
+      kind: 'inline',
+      url: 'https://minio.example.test/report.docx',
+      minio_preview_url: url,
+      file_name: '报告.docx',
+      mime_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    })
+    const fetchPreview = vi.spyOn((service as any).client, 'fetchPresignedPreviewBytes')
+    await expect(service.preview({ fileId: 'orgkb:Zg' })).rejects.toMatchObject({ code: E.ORGKB_PROTOCOL })
+    expect(fetchPreview).not.toHaveBeenCalled()
+    expect(api.requestBytes).not.toHaveBeenCalled()
+    service.dispose()
+  })
+
   it.each([
     ['docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 25 * 1024 * 1024],
     ['xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 20 * 1024 * 1024],

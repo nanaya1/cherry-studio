@@ -14,7 +14,11 @@ import { useKnowledgePage } from '../KnowledgePageProvider'
 import AddKnowledgeItemDialogFooter from './addKnowledgeItemDialog/AddKnowledgeItemDialogFooter'
 import AddKnowledgeItemDialogHeader from './addKnowledgeItemDialog/AddKnowledgeItemDialogHeader'
 import AddKnowledgeItemDialogSourceTabs from './addKnowledgeItemDialog/AddKnowledgeItemDialogSourceTabs'
-import { DEFAULT_SOURCE_TYPE, KNOWLEDGE_ADD_ITEMS_MAX } from './addKnowledgeItemDialog/constants'
+import {
+  DEFAULT_SOURCE_TYPE,
+  KNOWLEDGE_ADD_FILES_MAX,
+  KNOWLEDGE_ADD_ITEMS_MAX
+} from './addKnowledgeItemDialog/constants'
 import KnowledgeAddConflictDialog from './addKnowledgeItemDialog/KnowledgeAddConflictDialog'
 import type { NoteDraft, NoteItem, NoteSourceMode } from './addKnowledgeItemDialog/types'
 
@@ -195,10 +199,14 @@ export const KnowledgeItemSourceDialog = ({
   // otherwise. Returns true when the batch is within the limit and may be submitted.
   const ensureWithinAddLimit = useCallback(
     (items: KnowledgeAddItemInput[]): boolean => {
-      if (items.length <= KNOWLEDGE_ADD_ITEMS_MAX) {
+      // MEA:local-knowledge-file-batches 只放宽本地文件选择，其他来源沿用原上限。
+      const limit = activeSource === 'file' && !cloudBaseId ? KNOWLEDGE_ADD_FILES_MAX : KNOWLEDGE_ADD_ITEMS_MAX
+      // if (items.length <= KNOWLEDGE_ADD_ITEMS_MAX) {
+      if (items.length <= limit) {
         return true
       }
-      const message = t('knowledge.data_source.add_dialog.too_many_sources', { count: KNOWLEDGE_ADD_ITEMS_MAX })
+      // const message = t('knowledge.data_source.add_dialog.too_many_sources', { count: KNOWLEDGE_ADD_ITEMS_MAX })
+      const message = t('knowledge.data_source.add_dialog.too_many_sources', { count: limit })
       if (directPick) {
         toast.warning(message)
       } else {
@@ -206,7 +214,7 @@ export const KnowledgeItemSourceDialog = ({
       }
       return false
     },
-    [directPick, t]
+    [activeSource, cloudBaseId, directPick, t]
   )
 
   // 'detect' (first pass) surfaces the conflict dialog when same-name collisions
@@ -215,16 +223,27 @@ export const KnowledgeItemSourceDialog = ({
   const submitWithStrategy = useCallback(
     async (items: KnowledgeAddItemInput[], conflictStrategy: 'detect' | ConflictResolution) => {
       if (!active.current) return
-      const result = await submitKnowledgeItems(items, conflictStrategy)
-      if (!active.current) return
-      if (result.status === 'conflicts') {
-        setPendingConflict({ items, conflicts: result.conflicts })
-        return
+      // const result = await submitKnowledgeItems(items, conflictStrategy)
+      // if (!active.current) return
+      // if (result.status === 'conflicts') {
+      //   setPendingConflict({ items, conflicts: result.conflicts })
+      //   return
+      // }
+      // MEA:local-knowledge-file-batches 仅在前批接收后继续；冲突只保存未接收部分，异常直接停止。
+      const batchSize = activeSource === 'file' && !cloudBaseId ? KNOWLEDGE_ADD_ITEMS_MAX : items.length
+      for (let offset = 0; offset < items.length; offset += batchSize) {
+        if (!active.current) return
+        const result = await submitKnowledgeItems(items.slice(offset, offset + batchSize), conflictStrategy)
+        if (!active.current) return
+        if (result.status === 'conflicts') {
+          setPendingConflict({ items: items.slice(offset), conflicts: result.conflicts })
+          return
+        }
       }
       onAdded?.()
       handleOpenChange(false)
     },
-    [handleOpenChange, submitKnowledgeItems, onAdded]
+    [activeSource, cloudBaseId, handleOpenChange, submitKnowledgeItems, onAdded]
   )
 
   const handleSubmit = useCallback(() => {
@@ -339,7 +358,8 @@ export const KnowledgeItemSourceDialog = ({
 
   const handleConflictResolve = useCallback(
     (resolution: ConflictResolution) => {
-      if (!pendingConflict) {
+      // if (!pendingConflict) {
+      if (!pendingConflict || pendingResolution !== null) {
         return
       }
 
@@ -360,7 +380,7 @@ export const KnowledgeItemSourceDialog = ({
           setPendingResolution(null)
         })
     },
-    [directPick, handleOpenChange, pendingConflict, submitWithStrategy, t]
+    [directPick, handleOpenChange, pendingConflict, pendingResolution, submitWithStrategy, t]
   )
 
   const handleConflictCancel = useCallback(() => {

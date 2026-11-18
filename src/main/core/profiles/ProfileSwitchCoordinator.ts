@@ -122,11 +122,15 @@ export class ProfileSwitchCoordinator {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       this.dependencies.fence.markTeardownFailed(message)
+      // showProfileRecoveryChoice(this.dependencies.application, 'teardown')
+      if (targetRecord.kind === 'signed-out') return this.relaunchAfterLogoutTeardownFailure(error)
       showProfileRecoveryChoice(this.dependencies.application, 'teardown')
       return { kind: 'teardown-failed', error: message }
     }
     if (!teardown.clean) {
       this.dependencies.fence.markTeardownFailed('One or more services failed to stop or destroy cleanly')
+      // showProfileRecoveryChoice(this.dependencies.application, 'teardown')
+      if (targetRecord.kind === 'signed-out') return this.relaunchAfterLogoutTeardownFailure(teardown)
       showProfileRecoveryChoice(this.dependencies.application, 'teardown')
       return { kind: 'teardown-failed', teardown }
     }
@@ -207,6 +211,18 @@ export class ProfileSwitchCoordinator {
     }
     logger.info('Profile switch committed; requesting application relaunch')
     this.dependencies.application.relaunch()
+    return { kind: 'relaunching' }
+  }
+
+  // MEA:profile-logout-robustness 仅退出清理失败自动重启；保留持久 logout intent 与关闭的 fence。
+  private relaunchAfterLogoutTeardownFailure(error: unknown): ProfileSwitchResult {
+    logger.error('Logout teardown failed; automatically relaunching', { error })
+    try {
+      this.dependencies.application.relaunch()
+    } catch (relaunchError) {
+      logger.error('Logout relaunch failed; exiting safely', relaunchError as Error)
+      this.dependencies.application.forceExit(1)
+    }
     return { kind: 'relaunching' }
   }
 

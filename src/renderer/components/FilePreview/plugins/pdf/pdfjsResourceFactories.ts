@@ -30,3 +30,12 @@ export class PdfjsBundledStandardFontDataFactory {
     return content
   }
 }
+
+export class PdfjsBundledWasmFactory {
+  async fetch({ filename }: { filename: string }): Promise<Uint8Array> {
+    if (!filename) throw new Error('Wasm filename must be specified.')
+
+    const { content } = await ipcApi.request('pdfjs.resource.read', { kind: 'wasm', name: filename })
+    return content
+  }
+}

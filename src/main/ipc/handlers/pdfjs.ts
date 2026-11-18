@@ -10,13 +10,15 @@ export const PDFJS_RESOURCE_MAX_BYTES = 1024 * 1024
 
 const PDFJS_RESOURCE_PATHS = {
   cmap: 'feature.pdfjs.cmaps',
-  standard_font: 'feature.pdfjs.standard_fonts'
+  standard_font: 'feature.pdfjs.standard_fonts',
+  wasm: 'feature.pdfjs.wasm'
 } as const
 
-// CMaps are binary (`*.bcmap`); standard font files already carry their extension.
+// CMaps use an implicit `.bcmap`; font and WASM filenames already include extensions.
 const PDFJS_RESOURCE_EXTENSIONS = {
   cmap: '.bcmap',
-  standard_font: ''
+  standard_font: '',
+  wasm: ''
 } as const
 
 /**

@@ -30,9 +30,13 @@ import { popup } from '@renderer/services/popup'
 import { toast } from '@renderer/services/toast'
 import type { AppInfo } from '@renderer/types/app'
 import { cn } from '@renderer/utils/style'
+import { IpcError } from '@shared/ipc/errors/IpcError'
 import type { CacheCleanupSizeSnapshot } from '@shared/types/cacheCleanupIpc'
 import { LOG_RETENTION_DAYS } from '@shared/types/logger'
-import type { UserDataRelocationValidationReason } from '@shared/types/userDataRelocation'
+import {
+  USER_DATA_RELOCATION_VALIDATION_REASONS,
+  type UserDataRelocationValidationReason
+} from '@shared/types/userDataRelocation'
 
 import BackupPopup from './BackupPopup'
 import ClearCachePopup, { formatCacheCleanupSize } from './ClearCachePopup'
@@ -103,6 +107,11 @@ const BasicDataSettings: React.FC = () => {
       return
     }
 
+    // MEA:data-root-relocation-safety 选择前明确开发模式限制，不移除主进程保护。
+    if (!appInfo.isPackaged) {
+      toast.error(t('settings.data.app_data.packaged_only'))
+      return
+    }
     const newAppDataPath = await window.api.file.selectFolder({
       title: t('settings.data.app_data.select_title'),
       properties: ['openDirectory', 'createDirectory']
@@ -112,13 +121,21 @@ const BasicDataSettings: React.FC = () => {
       return
     }
 
-    const inspection = await ipcApi.request('app.user_data_relocation.inspect', { path: newAppDataPath })
-    if (!inspection.valid) {
-      showRelocationValidationError(inspection.reason)
-      return
+    try {
+      const inspection = await ipcApi.request('app.user_data_relocation.inspect', { path: newAppDataPath })
+      if (!inspection.valid) {
+        showRelocationValidationError(inspection.reason)
+        return
+      }
+      await showMigrationConfirmModal(
+        inspection.sourcePath ?? appInfo.appDataPath,
+        newAppDataPath,
+        !inspection.targetEmpty,
+        inspection.copyRequired ?? false
+      )
+    } catch (error) {
+      showRelocationRequestError(error)
     }
-
-    void showMigrationConfirmModal(appInfo.appDataPath, newAppDataPath, !inspection.targetEmpty)
   }
 
   const showRelocationValidationError = (reason: UserDataRelocationValidationReason) => {
@@ -143,7 +160,33 @@ const BasicDataSettings: React.FC = () => {
     }
   }
 
-  const showMigrationConfirmModal = async (originalPath: string, newPath: string, targetNotEmpty: boolean) => {
+  const showRelocationRequestError = (error: unknown) => {
+    // MEA:data-root-relocation-safety 仅显示固定错误码与已知原因，不显示原始路径/异常文本。
+    if (error instanceof IpcError && error.code === 'USER_DATA_RELOCATION_UNAVAILABLE') {
+      toast.error(t('settings.data.app_data.packaged_only'))
+      return
+    }
+    if (error instanceof IpcError && error.code === 'USER_DATA_RELOCATION_INVALID') {
+      const reason = (error.data as { reason?: UserDataRelocationValidationReason } | undefined)?.reason
+      if (reason && USER_DATA_RELOCATION_VALIDATION_REASONS.includes(reason)) {
+        showRelocationValidationError(reason)
+        return
+      }
+    }
+    const code =
+      error instanceof IpcError && error.code === 'USER_DATA_RELOCATION_PERSIST_FAILED'
+        ? error.code
+        : 'USER_DATA_RELOCATION_FAILED'
+    logger.error('Failed to change application data path', { code })
+    toast.error(`${t('settings.data.app_data.path_change_failed')} (${code})`)
+  }
+
+  const showMigrationConfirmModal = async (
+    originalPath: string,
+    newPath: string,
+    targetNotEmpty: boolean,
+    copyRequired: boolean
+  ) => {
     let shouldCopyData = !targetNotEmpty
 
     const PathsContent = () => (
@@ -165,7 +208,8 @@ const BasicDataSettings: React.FC = () => {
           <Switch
             defaultChecked={shouldCopyData}
             onCheckedChange={(checked) => (shouldCopyData = checked)}
-            disabled={targetNotEmpty}
+            // disabled={targetNotEmpty}
+            disabled={targetNotEmpty || copyRequired}
             className="mr-2"
           />
           <MigrationPathLabel style={{ fontWeight: 'normal', fontSize: '14px' }}>
@@ -216,8 +260,9 @@ const BasicDataSettings: React.FC = () => {
         void ipcApi.request('app.relaunch')
       }, 500)
     } catch (error) {
-      logger.error('Failed to change application data path', error as Error)
-      toast.error(t('settings.data.app_data.path_change_failed'))
+      // logger.error('Failed to change application data path', error as Error)
+      // toast.error(t('settings.data.app_data.path_change_failed'))
+      showRelocationRequestError(error)
     }
   }
 
@@ -349,7 +394,14 @@ const BasicDataSettings: React.FC = () => {
               {appInfo?.appDataPath}
             </PathText>
             <Tooltip title={t('settings.data.app_data.select')}>
-              <FolderOutput onClick={handleSelectAppDataPath} style={{ cursor: 'pointer' }} size={16} />
+              {/* <FolderOutput onClick={handleSelectAppDataPath} style={{ cursor: 'pointer' }} size={16} /> */}
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label={t('settings.data.app_data.select')}
+                onClick={handleSelectAppDataPath}>
+                <FolderOutput size={16} />
+              </Button>
             </Tooltip>
             <RowFlex className="ml-2 gap-1.25">
               <Button onClick={() => handleOpenPath(appInfo?.appDataPath)} variant="outline">

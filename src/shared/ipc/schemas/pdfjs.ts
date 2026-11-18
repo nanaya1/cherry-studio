@@ -23,7 +23,7 @@ const pdfjsResourceNameSchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/,
  */
 export const pdfjsRequestSchemas = {
   'pdfjs.resource.read': defineRoute({
-    input: z.strictObject({ kind: z.enum(['cmap', 'standard_font']), name: pdfjsResourceNameSchema }),
+    input: z.strictObject({ kind: z.enum(['cmap', 'standard_font', 'wasm']), name: pdfjsResourceNameSchema }),
     output: z.strictObject({ content: uint8ArraySchema })
   })
 }
