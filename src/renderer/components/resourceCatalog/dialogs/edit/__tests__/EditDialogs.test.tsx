@@ -22,6 +22,7 @@ const {
   ipcRequestMock,
   knowledgeBasesState,
   mcpStatusState,
+  openRouteMock,
   openSettingsTabMock,
   promptCatalogState,
   promptProcessorMock,
@@ -66,6 +67,7 @@ const {
     ]
   },
   mcpStatusState: { current: {} },
+  openRouteMock: vi.fn(),
   openSettingsTabMock: vi.fn(),
   promptCatalogState: {
     current: {
@@ -319,7 +321,9 @@ vi.mock('@renderer/utils/aiGeneration', () => ({
 }))
 
 vi.mock('@renderer/services/mainWindowNavigation', () => ({
-  openSettingsTab: openSettingsTabMock
+  // MEA:mcp-jump 断言目标已从设置页改为 /app/skills-connectors，mock 需同时覆盖 openRoute
+  openSettingsTab: openSettingsTabMock,
+  openRoute: openRouteMock
 }))
 
 vi.mock('react-i18next', async (importOriginal) => {
@@ -1777,7 +1781,8 @@ describe('edit dialogs', () => {
 
     fireEvent.click(manageSkillsButton)
 
-    expect(openSettingsTabMock).toHaveBeenCalledWith('/settings/skills')
+    // MEA:mcp-jump 目标已从隐藏的设置页改为工作台技能连接器页
+    expect(openRouteMock).toHaveBeenCalledWith('/app/skills-connectors?tab=skill')
     expect(ipcRequestMock).not.toHaveBeenCalledWith('tab.detach', expect.anything())
     expect(onOpenChange).not.toHaveBeenCalled()
   })
@@ -1935,11 +1940,12 @@ describe('edit dialogs', () => {
     expect(screen.getByText('MCP One')).toBeInTheDocument()
     expect(screen.getByText('Connected')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'MCP services Settings' }))
-    expect(openSettingsTabMock).toHaveBeenCalledWith('/settings/mcp/servers')
+    // MEA:mcp-jump 目标已从隐藏的设置页改为工作台技能连接器页
+    expect(openRouteMock).toHaveBeenCalledWith('/app/skills-connectors?tab=connector')
     expect(onAssistantOpenChange).not.toHaveBeenCalled()
 
     cleanup()
-    openSettingsTabMock.mockClear()
+    openRouteMock.mockClear()
     const onAgentOpenChange = vi.fn()
 
     render(<AgentEditDialog open resource={AGENT} onOpenChange={onAgentOpenChange} />)
@@ -1950,7 +1956,7 @@ describe('edit dialogs', () => {
     expect(screen.getByText('MCP One')).toBeInTheDocument()
     expect(screen.getByText('Connected')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'MCP services Settings' }))
-    expect(openSettingsTabMock).toHaveBeenCalledWith('/settings/mcp/servers')
+    expect(openRouteMock).toHaveBeenCalledWith('/app/skills-connectors?tab=connector')
     expect(onAgentOpenChange).not.toHaveBeenCalled()
   })
 

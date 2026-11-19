@@ -36,7 +36,7 @@ import { usePromptProcessor } from '@renderer/hooks/usePromptProcessor'
 import { useRemoteKnowledgeBases } from '@renderer/hooks/useRemoteKnowledge'
 import { useSelectableKnowledgeBases } from '@renderer/hooks/useSelectableKnowledgeBases'
 import { useInstalledSkills, useReconcileSkillsOnOpen } from '@renderer/hooks/useSkills'
-import { openSettingsTab } from '@renderer/services/mainWindowNavigation'
+import { openRoute, openSettingsTab } from '@renderer/services/mainWindowNavigation'
 import { toast } from '@renderer/services/toast'
 import type { AgentDetail } from '@renderer/types/resourceCatalog'
 import { getPermissionModeCards } from '@renderer/utils/agent'
@@ -115,10 +115,14 @@ type ToolTab = 'tools.builtin' | 'tools.knowledge' | 'tools.mcp' | 'tools.skills
 
 const logger = loggerService.withContext('AgentEditDialog')
 const DEFAULT_TOOL_TAB: ToolTab = 'tools.builtin'
-const SKILLS_SETTINGS_PATH = '/settings/skills'
+// MEA:skills-jump 设置侧栏已隐藏 /settings/skills，「管理技能」改跳工作台「技能与连接器」页
+// const SKILLS_SETTINGS_PATH = '/settings/skills'
+const SKILLS_CATALOG_PATH = '/app/skills-connectors?tab=skill'
 
 function openSkillsSettingsTab() {
-  openSettingsTab(SKILLS_SETTINGS_PATH)
+  // MEA:skills-jump 原跳转已隐藏的设置页，改为技能连接器页（原实现保留注释）
+  // openSettingsTab(SKILLS_SETTINGS_PATH)
+  openRoute(SKILLS_CATALOG_PATH)
 }
 
 const CATEGORY_LABEL_KEYS: Record<ClaudeToolCategory, string> = {
