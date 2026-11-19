@@ -164,6 +164,39 @@ describe('AskUserQuestionComposer', () => {
     expect(container.firstElementChild).toHaveAttribute('data-composer-viewport-inset-target', '')
   })
 
+  it.each(['采用本次参数', '保留初始设置', '取消'])(
+    '工业视频参数选择“%s”直接回答挂起问题，无需发送消息',
+    async (choice) => {
+      const question = '制作参数有差异：时长：30秒 → 60秒；画幅：16:9 → 9:16。请选择？'
+      const request = makeRequest([
+        {
+          question,
+          header: '参数确认',
+          options: [
+            { label: '采用本次参数', description: '按60秒、9:16继续' },
+            { label: '保留初始设置', description: '按30秒、16:9继续' },
+            { label: '取消', description: '停止本轮，不提交修改' }
+          ],
+          multiSelect: false
+        }
+      ])
+      const onRespond = vi.fn().mockResolvedValue(undefined)
+      render(<AskUserQuestionComposer request={request} onRespond={onRespond} />)
+
+      expect(screen.getByRole('heading', { name: question })).toBeVisible()
+      await userEvent.click(screen.getByRole('button', { name: new RegExp(choice) }))
+
+      await waitFor(() =>
+        expect(onRespond).toHaveBeenCalledWith({
+          match: request.match,
+          approved: true,
+          updatedInput: { ...request.input, answers: { [question]: choice } }
+        })
+      )
+      expect(onRespond).toHaveBeenCalledTimes(1)
+    }
+  )
+
   it('auto advances after option selection and submits a custom input as an answer option', async () => {
     const onRespond = vi.fn().mockResolvedValue(undefined)
     render(<AskUserQuestionComposer request={makeRequest()} onRespond={onRespond} />)
