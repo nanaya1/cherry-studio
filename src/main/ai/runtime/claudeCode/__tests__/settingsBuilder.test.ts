@@ -879,10 +879,12 @@ describe('buildClaudeCodeSessionSettings', () => {
     )
     const agent = { ...mocks.getAgent(), mcps: ['legacy-browser', 'remote-browser'] }
     const snapshot = new Map([
-      ['legacy-browser', { id: 'legacy-browser', name: '@cherry/browser', type: 'inMemory' }],
+      // 内置 MCP 名单自 8527e23f4d 起去掉 @cherry/ 前缀，fixture 必须与 BuiltinMcpServerNames.browser 同名，
+      // 去重判断（name === 'browser'）才能把这条重复内置桥识别为应剔除的 legacy 条目。
+      ['legacy-browser', { id: 'legacy-browser', name: 'browser', type: 'inMemory' }],
       [
         'remote-browser',
-        { id: 'remote-browser', name: '@cherry/browser', type: 'streamableHttp', baseUrl: 'https://example.com/mcp' }
+        { id: 'remote-browser', name: 'browser', type: 'streamableHttp', baseUrl: 'https://example.com/mcp' }
       ]
     ])
     mocks.findByIdOrName.mockReturnValue({ id: 'legacy-browser', name: 'edited', type: 'stdio' })
@@ -2596,31 +2598,30 @@ describe('buildClaudeCodeSessionSettings', () => {
     }
   })
 
-  // 下载改为专属会话自动放行，生成和未知工具仍需授权。
-  // it.each(['ivideo_start', 'ivideo_download', 'ivideo_future_tool'])(
-  // 启动生成改为专属会话自动确认，未知工具仍需授权。
-  // it.each(['ivideo_start', 'ivideo_future_tool'])(
-  it.each(['ivideo_future_tool'])(
-    'keeps industrial-video non-preparation tools on the existing approval path: %s',
-    async (name) => {
-      const settings = await buildClaudeCodeSessionSettings(
-        {
-          id: 'session-1',
-          agentId: 'agent-1',
-          featureKind: 'industrial-video',
-          workspace: { type: 'user', path: '/workspace/project' }
-        } as never,
-        {} as never
-      )
-      const emit = vi.fn()
-      settings.approvalEmitter!.emit = emit
-      void settings.canUseTool!(`mcp__meacowork-tools__${name}`, {}, {
-        signal: { aborted: false },
-        toolUseID: 'restricted-1'
-      } as never)
-      expect(emit).toHaveBeenCalledWith(expect.objectContaining({ toolName: `mcp__meacowork-tools__${name}` }))
-    }
-  )
+  // 未知/未来工具不自动放行：1f88b8cc3a 起前置边界拦截直接 deny（不再进入审批 emit）。
+  it('denies an unknown industrial-video future tool at the boundary', async () => {
+    const settings = await buildClaudeCodeSessionSettings(
+      {
+        id: 'session-1',
+        agentId: 'agent-1',
+        featureKind: 'industrial-video',
+        workspace: { type: 'user', path: '/workspace/project' }
+      } as never,
+      {} as never
+    )
+    const emit = vi.fn()
+    settings.approvalEmitter!.emit = emit
+    const result = await settings.canUseTool!('mcp__meacowork-tools__ivideo_future_tool', {}, {
+      signal: { aborted: false },
+      toolUseID: 'restricted-1'
+    } as never)
+    expect(result).toEqual({
+      behavior: 'deny',
+      message:
+        '工业视频会话只能通过工业视频业务工具制作视频；禁止本地命令、代码执行、外部生成服务、技能及子代理。请使用已有素材与工业视频服务，缺少能力时明确说明。'
+    })
+    expect(emit).not.toHaveBeenCalled()
+  })
 
   // it('preserves explicit ask rules for industrial-video preparation', async () => {
   // it.each(['ivideo_storyboard_submit', 'ivideo_download'])(
@@ -2678,165 +2679,66 @@ describe('buildClaudeCodeSessionSettings', () => {
     expect(emit).toHaveBeenCalledWith(expect.objectContaining({ toolName }))
   })
 
-  it('binds the reviewed industrial-video version to the pending confirmation card', async () => {
-    const getInteractionState = vi.fn(() => ({ currentTurn: 'interactive', userResponse: 'stream' }))
-    mocks.applicationGet.mockImplementation((name: string) => {
-      if (name === 'PreferenceService') return { get: vi.fn(() => undefined) }
-      if (name === 'McpCatalogService') return { listTools: vi.fn(async () => []) }
-      if (name === 'AgentSessionRuntimeService') return { getInteractionState }
-      if (name === 'IndustrialVideoService') {
-        return {
-          getExecutionToken: () => ({ sessionId: 'session-1', epoch: 1 }),
-          assertExecution: vi.fn(),
-          getConfirmedReview: () => null,
-          getPendingReviewSnapshot: () => ({ run: 'run-1', reviewVersion: 'review-7' }),
-          getRecords: () => ({ run: 'run-1' })
+  // 工业审核确认框已整体迁移至服务端工作台：无论是否存在已确认/待确认版本，一律 deny 迁移文案。
+  it('denies the legacy industrial-video review confirmation card regardless of review state', async () => {
+    for (const reviewState of [
+      // 未绑定任何审核版本。
+      { getConfirmedReview: () => null, getPendingReviewSnapshot: () => null },
+      // 有待确认快照（旧流程会绑定进审批队列）。
+      { getConfirmedReview: () => null, getPendingReviewSnapshot: () => ({ run: 'run-1', reviewVersion: 'review-7' }) },
+      // 已可信确认过（旧流程会代答放行并引导 ivideo_start）。
+      { getConfirmedReview: () => ({ run: 'run-1', reviewVersion: 'review-8' }), getPendingReviewSnapshot: () => null }
+    ]) {
+      const getInteractionState = vi.fn(() => ({ currentTurn: 'interactive', userResponse: 'stream' }))
+      mocks.applicationGet.mockImplementation((name: string) => {
+        if (name === 'PreferenceService') return { get: vi.fn(() => undefined) }
+        if (name === 'McpCatalogService') return { listTools: vi.fn(async () => []) }
+        if (name === 'AgentSessionRuntimeService') return { getInteractionState }
+        if (name === 'IndustrialVideoService') {
+          return {
+            getExecutionToken: () => ({ sessionId: 'session-1', epoch: 1 }),
+            assertExecution: vi.fn(),
+            getRecords: () => ({ run: 'run-1' }),
+            ...reviewState
+          }
         }
-      }
-      throw new Error(`Unexpected application.get(${name})`)
-    })
-    const settings = await buildClaudeCodeSessionSettings(
-      {
-        id: 'session-1',
-        agentId: 'agent-1',
-        featureKind: 'industrial-video',
-        workspace: { type: 'user', path: '/workspace/project' }
-      } as never,
-      {} as never
-    )
-    const emit = vi.fn()
-    settings.approvalEmitter!.emit = emit
-    const input = {
-      questions: [
+        throw new Error(`Unexpected application.get(${name})`)
+      })
+      disposeToolPolicySnapshot('session-1')
+      const settings = await buildClaudeCodeSessionSettings(
         {
-          question: '脚本与分镜是否确认?',
-          header: '审核',
-          options: [{ label: '脚本与分镜没问题,开始生成视频' }, { label: '我要修改脚本或分镜' }],
-          multiSelect: false
-        }
-      ]
-    }
+          id: 'session-1',
+          agentId: 'agent-1',
+          featureKind: 'industrial-video',
+          workspace: { type: 'user', path: '/workspace/project' }
+        } as never,
+        {} as never
+      )
+      const emit = vi.fn()
+      settings.approvalEmitter!.emit = emit
 
-    void settings.canUseTool?.('AskUserQuestion', input, {
-      signal: { aborted: false },
-      toolUseID: 'tool-use-review'
-    } as never)
+      const result = await settings.canUseTool?.(
+        'AskUserQuestion',
+        {
+          questions: [
+            {
+              question: '脚本与分镜是否确认？',
+              header: '审核',
+              options: [{ label: '脚本与分镜没问题，开始生成视频' }, { label: '我要修改脚本或分镜' }],
+              multiSelect: false
+            }
+          ]
+        },
+        { signal: { aborted: false }, toolUseID: 'tool-use-review-migrated' } as never
+      )
 
-    expect(mocks.approvalRegister).toHaveBeenCalledWith(
-      expect.objectContaining({
-        sessionId: 'session-1',
-        originalInput: input,
-        trustedContext: { kind: 'industrial-video-review', run: 'run-1', reviewVersion: 'review-7' }
+      expect(result).toEqual({
+        behavior: 'deny',
+        message: '脚本与分镜确认已迁移至服务端工作台。请获取工作台链接并结束本轮，不再发起此确认框。'
       })
-    )
-    expect(emit).toHaveBeenCalledOnce()
-  })
-
-  it('rejects an industrial-video confirmation card when no reviewed version can be bound', async () => {
-    const getInteractionState = vi.fn(() => ({ currentTurn: 'interactive', userResponse: 'stream' }))
-    mocks.applicationGet.mockImplementation((name: string) => {
-      if (name === 'PreferenceService') return { get: vi.fn(() => undefined) }
-      if (name === 'McpCatalogService') return { listTools: vi.fn(async () => []) }
-      if (name === 'AgentSessionRuntimeService') return { getInteractionState }
-      if (name === 'IndustrialVideoService') {
-        return {
-          getExecutionToken: () => ({ sessionId: 'session-1', epoch: 1 }),
-          assertExecution: vi.fn(),
-          getConfirmedReview: () => null,
-          getPendingReviewSnapshot: () => null,
-          getRecords: () => ({ run: 'run-1' })
-        }
-      }
-      throw new Error(`Unexpected application.get(${name})`)
-    })
-    const settings = await buildClaudeCodeSessionSettings(
-      {
-        id: 'session-1',
-        agentId: 'agent-1',
-        featureKind: 'industrial-video',
-        workspace: { type: 'user', path: '/workspace/project' }
-      } as never,
-      {} as never
-    )
-    const emit = vi.fn()
-    settings.approvalEmitter!.emit = emit
-
-    const result = await settings.canUseTool?.(
-      'AskUserQuestion',
-      {
-        questions: [
-          {
-            question: '脚本与分镜是否确认？',
-            header: '审核',
-            options: [{ label: '脚本与分镜没问题，开始生成视频' }, { label: '我要修改脚本或分镜' }],
-            multiSelect: false
-          }
-        ]
-      },
-      { signal: { aborted: false }, toolUseID: 'tool-use-review-missing-version' } as never
-    )
-
-    expect(result).toEqual({
-      behavior: 'deny',
-      message:
-        '当前没有可绑定的脚本与分镜审核版本。请先调用 ivideo_review_snapshot_get 重新读取审核快照，再发起一次确认；不要重复当前确认问题。'
-    })
-    expect(mocks.approvalRegister).not.toHaveBeenCalled()
-    expect(emit).not.toHaveBeenCalled()
-  })
-
-  it('does not ask for an industrial-video review again after trusted confirmation', async () => {
-    const getInteractionState = vi.fn(() => ({ currentTurn: 'interactive', userResponse: 'stream' }))
-    mocks.applicationGet.mockImplementation((name: string) => {
-      if (name === 'PreferenceService') return { get: vi.fn(() => undefined) }
-      if (name === 'McpCatalogService') return { listTools: vi.fn(async () => []) }
-      if (name === 'AgentSessionRuntimeService') return { getInteractionState }
-      if (name === 'IndustrialVideoService') {
-        return {
-          getExecutionToken: () => ({ sessionId: 'session-1', epoch: 1 }),
-          assertExecution: vi.fn(),
-          getConfirmedReview: () => ({ run: 'run-1', reviewVersion: 'review-8' }),
-          getRecords: () => ({ run: 'run-1' })
-        }
-      }
-      throw new Error(`Unexpected application.get(${name})`)
-    })
-    const session = {
-      id: 'session-1',
-      agentId: 'agent-1',
-      featureKind: 'industrial-video',
-      workspace: { type: 'user', path: '/workspace/project' }
+      expect(mocks.approvalRegister).not.toHaveBeenCalled()
+      expect(emit).not.toHaveBeenCalled()
     }
-    const settings = await buildClaudeCodeSessionSettings(session as never, {} as never)
-    const emit = vi.fn()
-    settings.approvalEmitter!.emit = emit
-
-    const result = await settings.canUseTool?.(
-      'AskUserQuestion',
-      {
-        questions: [
-          {
-            question: '脚本与分镜是否确认？',
-            header: '审核',
-            options: [{ label: '脚本与分镜没问题，开始生成视频' }, { label: '我要修改脚本或分镜' }],
-            multiSelect: false
-          }
-        ]
-      },
-      { signal: { aborted: false }, toolUseID: 'tool-use-review-repeat' } as never
-    )
-
-    expect(result).toEqual({
-      behavior: 'allow',
-      updatedInput: expect.objectContaining({
-        answers: {
-          '脚本与分镜是否确认？':
-            '脚本与分镜没问题，开始生成视频\n\n系统可信审核已通过（审核版本：review-8）。不要调用费用预估；保持制作参数与已审核分镜不变，立即调用 ivideo_start 启动视频生成，不要等待单独确认，也不要再次询问脚本与分镜确认。'
-        }
-      })
-    })
-    expect(mocks.approvalRegister).not.toHaveBeenCalled()
-    expect(emit).not.toHaveBeenCalled()
   })
 
   it('does not emit an approval request when registration settles synchronously', async () => {
