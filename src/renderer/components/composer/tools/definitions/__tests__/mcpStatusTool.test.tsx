@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   mcpServers: [] as McpServer[],
   mcpServerOptions: [] as Array<{ enabled?: boolean } | undefined>,
   open: vi.fn(),
+  openRoute: vi.fn(),
   openSettingsTab: vi.fn(),
   registerLaunchers: vi.fn<(launchers: unknown[], footerActions?: unknown[]) => () => void>(() => () => undefined),
   toastError: vi.fn(),
@@ -63,6 +64,8 @@ vi.mock('@renderer/services/toast', () => ({
 }))
 
 vi.mock('@renderer/services/mainWindowNavigation', () => ({
+  // MEA:mcp-jump 跳转目标已改为 /app/skills-connectors，mock 需覆盖 openRoute
+  openRoute: mocks.openRoute,
   openSettingsTab: mocks.openSettingsTab
 }))
 
@@ -566,6 +569,7 @@ describe('mcpStatusTool', () => {
 
     action.action({} as any)
 
-    expect(mocks.openSettingsTab).toHaveBeenCalledWith('/settings/mcp/servers')
+    // MEA:mcp-jump 目标已从隐藏的设置页改为工作台技能连接器页
+    expect(mocks.openRoute).toHaveBeenCalledWith('/app/skills-connectors?tab=connector')
   })
 })

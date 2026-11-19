@@ -18,6 +18,8 @@ import { useOrgSkills } from '@renderer/hooks/useOrgSkills'
 
 interface SkillsConnectorsPageProps {
   connectorView: ReactNode
+  // MEA: 外部跳转（智能/助手编辑弹窗）通过路由 search tab 参数定位二级 tab
+  initialTab?: 'skill' | 'connector'
 }
 
 // [enterprise] skillView 曾增加 'org'，现组织技能由 OrgSubTab 管理
@@ -30,9 +32,10 @@ type OrgSubTab = 'recommended' | 'org'
 const secondaryTabClassName =
   'h-10 flex-none rounded-none border-x-0 border-t-0 border-b-2 border-transparent bg-transparent px-1.5 font-medium text-muted-foreground shadow-none hover:bg-transparent hover:text-foreground data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none dark:data-[state=active]:border-foreground dark:data-[state=active]:bg-transparent'
 
-export default function SkillsConnectorsPage({ connectorView }: SkillsConnectorsPageProps) {
+export default function SkillsConnectorsPage({ connectorView, initialTab }: SkillsConnectorsPageProps) {
   const { t } = useTranslation()
-  const [activeTab, setActiveTab] = useState('skill')
+  // MEA: 显式 string 类型，保持 setActiveTab 与 Tabs onValueChange(value: string) 兼容
+  const [activeTab, setActiveTab] = useState<string>(initialTab ?? 'skill')
   const [skillView, setSkillView] = useState<SkillView>('recommended')
   const [recommendedSearch, setRecommendedSearch] = useState('')
   const { status: accountStatus } = useOrgAccountSession()

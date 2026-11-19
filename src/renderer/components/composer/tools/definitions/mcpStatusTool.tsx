@@ -13,7 +13,9 @@ import { useAgent } from '@renderer/hooks/agent/useAgent'
 import { useAgentMutationsById, useAssistantMutationsById } from '@renderer/hooks/resourceCatalog'
 import { useMcpRuntimeStatusMap } from '@renderer/hooks/useMcpRuntimeStatus'
 import { useMcpServers } from '@renderer/hooks/useMcpServer'
-import { openSettingsTab } from '@renderer/services/mainWindowNavigation'
+// MEA:mcp-jump 设置侧栏已隐藏 /settings/mcp，全局管理入口改跳工作台「技能与连接器」页
+// import { openSettingsTab } from '@renderer/services/mainWindowNavigation'
+import { openRoute } from '@renderer/services/mainWindowNavigation'
 import { toast } from '@renderer/services/toast'
 import type { Assistant } from '@renderer/types/assistant'
 import type { ResourceEditDialogTarget } from '@renderer/types/resourceCatalog'
@@ -250,7 +252,9 @@ export function buildMcpGlobalConfigFooterItem(t: TFunction): ComposerToolFooter
     ariaLabel,
     tooltip: ariaLabel,
     icon: <Globe2 />,
-    action: () => openSettingsTab('/settings/mcp/servers')
+    // MEA:mcp-jump 原跳转已隐藏的设置页，改为技能连接器页连接器 tab（原实现保留注释）
+    // action: () => openSettingsTab('/settings/mcp/servers')
+    action: () => openRoute('/app/skills-connectors?tab=connector')
   }
 }
 
