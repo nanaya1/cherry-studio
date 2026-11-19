@@ -20,6 +20,7 @@ const knowledgeRoutes: [string, string, (client: JavaKnowledgeClient) => Promise
   ['GET', 'file/detail', (client) => client.getFile(KNOWLEDGE_ID, ITEM_ID)],
   ['GET', 'file/chunks', (client) => client.listChunks(KNOWLEDGE_ID, ITEM_ID)],
   ['GET', 'file/content', (client) => client.read(KNOWLEDGE_ID, ITEM_ID)],
+  ['GET', 'file/preview-url', (client) => client.getPreviewUrl(KNOWLEDGE_ID, ITEM_ID)],
   ['GET', 'file/preview', (client) => client.preview(KNOWLEDGE_ID, ITEM_ID)],
   ['GET', 'file/download', (client) => client.download(KNOWLEDGE_ID, ITEM_ID)],
   ['POST', 'folder/add', (client) => client.createFolder(KNOWLEDGE_ID, '目录')],

@@ -769,13 +769,13 @@ export class JavaKnowledgeClient {
 
   /**
    * 校验归属后取预览元数据：沿用标准 JSON 信封解包与业务码校验，不发字节请求。
-   * 复用已约定的 LegacyPreviewMetadata DTO，不引入第二套预览契约。
+   * 客户端入口固定权限上下文，无需 scope；复用已约定的 LegacyPreviewMetadata DTO。
    */
   async getPreviewUrl(id: string, fileId: string): Promise<LegacyPreviewMetadata> {
     if (!KNOWLEDGE_UUID.test(id)) throw new Error('知识库ID格式无效')
     if (!HEX32.test(fileId)) throw new Error('文件ID格式无效')
     return LegacyPreviewMetadataSchema.parse(
-      object(await this.json(`/api/v1/knowledge/file/preview-url${this.query({ scope: 'client', id, fileId })}`))
+      object(await this.json(`/api/v1/client/knowledge/file/preview-url${this.query({ id, fileId })}`))
     )
   }
 

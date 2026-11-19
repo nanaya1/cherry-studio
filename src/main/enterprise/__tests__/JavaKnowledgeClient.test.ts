@@ -470,16 +470,16 @@ describe('JavaKnowledgeClient.getPreviewUrl', () => {
     mime_type: 'application/pdf'
   }
 
-  it('走 GET file/preview-url，携带 scope/id/fileId 与 token 头，不携带企业授权头', async () => {
+  it('走客户端 GET file/preview-url，省略 scope，携带 id/fileId 与 token 头', async () => {
     const { client, fetchImpl } = setup([envelope(metadata)])
     const result = await client.getPreviewUrl(UUID_A, FILE_A)
     expect(result).toEqual(metadata)
     expect(String(fetchImpl.mock.calls[0][0])).toBe(
-      `https://ent.test/api/v1/knowledge/file/preview-url?scope=client&id=${UUID_A}&fileId=${FILE_A}`
+      `https://ent.test/api/v1/client/knowledge/file/preview-url?id=${UUID_A}&fileId=${FILE_A}`
     )
     expect(logs.info).toHaveBeenCalledWith(
       'knowledge request started',
-      expect.objectContaining({ method: 'GET', path: '/api/v1/knowledge/file/preview-url' })
+      expect.objectContaining({ method: 'GET', path: '/api/v1/client/knowledge/file/preview-url' })
     )
     const init = fetchImpl.mock.calls[0][1]!
     const headers = new Headers(init.headers)
