@@ -47,8 +47,8 @@ import {
   useOptionalQuickPanel
 } from '@renderer/components/QuickPanel'
 import {
-  openResourceEditDialog,
-  ResourceEditDialogEventHost
+  openResourceEditDialog
+  // MEA:dual-dialog-fix 内嵌宿主已停用，改由窗口级 ResourceEditDialogEventHost 承载
 } from '@renderer/components/resourceCatalog/dialogs/ResourceEditDialogEventHost'
 import { usePreference } from '@renderer/data/hooks/usePreference'
 import { useUpdateAgent } from '@renderer/hooks/agent/useAgent'
@@ -1841,7 +1841,8 @@ const AgentComposerInner = ({
       extensions={supportedExts}
       selectableKnowledgeBases={selectableKnowledgeBases}>
       {model && <ComposerToolRuntimeHost scope={scope} model={model} session={toolsSession} />}
-      <ResourceEditDialogEventHost />
+      {/* MEA:dual-dialog-fix 内嵌编辑弹窗宿主已停用：改由窗口级唯一宿主承载，避免同窗口
+          多个 composer 并存时重复响应打开事件、渲染出重叠的两个编辑弹窗。 */}
       <ComposerPinnedToolsProvider value={pinnedLauncherIds}>
         <ComposerSurface
           showAiDisclaimer

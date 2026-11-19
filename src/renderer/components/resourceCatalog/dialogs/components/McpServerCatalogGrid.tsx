@@ -89,10 +89,12 @@ export function McpServerCatalogGrid({
   )
 
   const handleOpenMcpSettings = () => {
-    // MEA:mcp-jump 原跳转已隐藏的设置页，改为技能连接器页（原实现保留注释）
-    // openSettingsTab(MCP_SERVERS_SETTINGS_PATH)
+    // MEA:mcp-jump 编辑弹窗场景由宿主接管（先关弹窗再跳转）；无宿主时直接跳技能连接器页。
+    if (onOpenSettings) {
+      onOpenSettings()
+      return
+    }
     openRoute(MCP_CATALOG_PATH)
-    onOpenSettings?.()
   }
 
   return (
