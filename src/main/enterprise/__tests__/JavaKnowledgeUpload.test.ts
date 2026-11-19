@@ -203,7 +203,7 @@ describe('JavaKnowledgeUpload 传输形态', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1)
 
     // 路由：Java 原生端点，无 /api/kb/v1 旧路由；scope=client 查询参数。
-    expect(captured.url).toBe('https://ent.test/api/v1/knowledge/file/importChunks?scope=client')
+    expect(captured.url).toBe('https://ent.test/api/v1/client/knowledge/file/importChunks')
     expect(captured.method).toBe('POST')
     // token 头、无 Bearer。
     expect(captured.headers?.['token']).toBe('secret-token')

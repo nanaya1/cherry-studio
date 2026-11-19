@@ -32,8 +32,8 @@ describe('OrgApiClient Java资源接线', () => {
     const client = new OrgApiClient(async () => javaSession, undefined, expired)
     expect((await client.javaKnowledge.getSpace(id)).id).toBe(id)
     const [url, init] = fetchImpl.mock.calls[0]
-    expect(new URL(url).pathname).toBe('/api/v1/knowledge/detail')
-    expect(new URL(url).searchParams.get('scope')).toBe('client')
+    expect(new URL(url).pathname).toBe('/api/v1/client/knowledge/detail')
+    expect(new URL(url).searchParams.has('scope')).toBe(false)
     expect(new Headers(init.headers).get('token')).toBe('native-token')
     expect(new Headers(init.headers).has('authorization')).toBe(false)
     await expect(client.javaKnowledge.getSpace(id)).rejects.toThrow('重新登录')
@@ -54,7 +54,8 @@ describe('OrgApiClient Java资源接线', () => {
     const client = new OrgApiClient(async () => javaSession)
     expect(await client.javaResources.listConnectors()).toEqual([])
     const [url, init] = fetchImpl.mock.calls[0]
-    expect(new URL(url).pathname).toBe('/api/v1/mcp/list')
+    expect(new URL(url).pathname).toBe('/api/v1/client/mcp/list')
+    expect(new URL(url).searchParams.has('scope')).toBe(false)
     expect(new Headers(init.headers).get('token')).toBe('native-token')
     expect(new Headers(init.headers).has('authorization')).toBe(false)
   })

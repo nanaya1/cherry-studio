@@ -94,7 +94,7 @@ function identity(raw: Record<string, unknown>): JavaResourceIdentity {
   }
 }
 
-/** Native Java resource transport; never forwards management credentials to MCP targets. */
+/** 企业资源仅访问客户端专用入口，分组权限由服务端执行；凭据不转发给 MCP 目标。 */
 export class JavaResourceClient {
   private readonly baseUrl: string
   private readonly fetchImpl: typeof fetch
@@ -152,7 +152,7 @@ export class JavaResourceClient {
     const skills: JavaSkillResource[] = []
     const pageSize = 100
     for (let page = 1; ; page += 1) {
-      const data = object(await this.json(`/api/v1/skill/page?page=${page}&pageSize=${pageSize}&scope=all`))
+      const data = object(await this.json(`/api/v1/client/skill/page?page=${page}&pageSize=${pageSize}`))
       if (!Array.isArray(data.items) || !Number.isSafeInteger(data.total) || (data.total as number) < 0) {
         throw new Error('技能分页响应无效')
       }
@@ -177,7 +177,7 @@ export class JavaResourceClient {
   }
 
   async listConnectors(): Promise<JavaConnectorResource[]> {
-    const data = await this.json('/api/v1/mcp/list?scope=all')
+    const data = await this.json('/api/v1/client/mcp/list')
     if (!Array.isArray(data)) throw new Error('连接器目录响应无效')
     return data.flatMap((entry) => {
       const raw = object(entry)
@@ -215,7 +215,7 @@ export class JavaResourceClient {
 
   async readFile(fileCode: string): Promise<{ bytes: Buffer; contentType: string }> {
     if (!fileCode) throw new Error('文件标识不能为空')
-    return this.request(`/api/v1/file/view/${encodeURIComponent(fileCode)}`, async (response) => {
+    return this.request(`/api/v1/client/file/view/${encodeURIComponent(fileCode)}`, async (response) => {
       const contentType = response.headers.get('content-type')?.split(';')[0].trim().toLowerCase() ?? ''
       if (contentType === 'application/json' || contentType.endsWith('+json')) {
         await this.unwrap(await response.json())
@@ -267,7 +267,7 @@ export class JavaResourceClient {
     ) {
       throw new Error('技能生命周期事件无效')
     }
-    await this.json('/api/v1/skill/lifecycle/report', {
+    await this.json('/api/v1/client/skill/lifecycle/report', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({

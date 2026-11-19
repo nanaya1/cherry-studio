@@ -73,8 +73,8 @@ describe('JavaResourceClient', () => {
     expect(items[0].name).toBe('公共技能')
     expect(items[0].tags).toEqual([{ code: 'test', name: '测试' }])
     expect(fetchImpl.mock.calls.map(([url]) => String(url))).toEqual([
-      'https://enterprise.test/api/v1/skill/page?page=1&pageSize=100&scope=all',
-      'https://enterprise.test/api/v1/skill/page?page=2&pageSize=100&scope=all'
+      'https://enterprise.test/api/v1/client/skill/page?page=1&pageSize=100',
+      'https://enterprise.test/api/v1/client/skill/page?page=2&pageSize=100'
     ])
     const init = fetchImpl.mock.calls[0][1]!
     expect(new Headers(init.headers).get('token')).toBe('secret-token')
@@ -169,7 +169,9 @@ describe('JavaResourceClient', () => {
       })
     ])
     expect((await client.readFile('code/with?query')).bytes).toEqual(Buffer.from([80, 75]))
-    expect(String(fetchImpl.mock.calls[0][0])).toBe('https://enterprise.test/api/v1/file/view/code%2Fwith%3Fquery')
+    expect(String(fetchImpl.mock.calls[0][0])).toBe(
+      'https://enterprise.test/api/v1/client/file/view/code%2Fwith%3Fquery'
+    )
   })
 
   it('生命周期仅发送契约载荷，同一事件重试不改eventId', async () => {

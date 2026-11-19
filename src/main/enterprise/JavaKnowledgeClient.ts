@@ -14,7 +14,7 @@ function requestLog(baseUrl: string, path: string, method: string) {
   const url = new URL(path, baseUrl)
   const resources: Record<string, string> = {}
   // 仅记录资源定位字段，不记录任意查询参数、请求头或正文。
-  for (const key of ['scope', 'id', 'knowledgeId', 'fileId', 'chunkId']) {
+  for (const key of ['id', 'knowledgeId', 'fileId', 'chunkId']) {
     const value = url.searchParams.get(key)
     if (value && /^[a-zA-Z0-9_-]{1,128}$/.test(value)) resources[key] = value
   }
@@ -486,7 +486,7 @@ export class JavaKnowledgeClient {
 
   /**
    * 流式 multipart 上传传输（原件直传，不整文件缓冲）。
-   * 独立 token 头、scope 由调用方拼入 path、无进展超时（不套 30s 总超时）、
+   * 独立 token 头、客户端专用入口、无进展超时（不套 30s 总超时）、
    * beforeSend 租约在取 token 后发请求前生效、无重试。返回已解包的业务 data。
    * 调用方（JavaKnowledgeUpload）负责组装 multipart 字段与响应校验。
    */
@@ -610,8 +610,7 @@ export class JavaKnowledgeClient {
     for (let page = 1; ; page += 1) {
       const data = this.parsePage(
         await this.json(
-          `/api/v1/knowledge/page${this.query({
-            scope: 'client',
+          `/api/v1/client/knowledge/page${this.query({
             page,
             pageSize,
             category: options.category,
@@ -633,7 +632,7 @@ export class JavaKnowledgeClient {
   async getSpace(id: string): Promise<JavaKnowledgeSpace> {
     if (!KNOWLEDGE_UUID.test(id)) throw new Error('知识库ID格式无效')
     const space = knowledgeVOSchema.parse(
-      object(await this.json(`/api/v1/knowledge/detail${this.query({ scope: 'client', id })}`))
+      object(await this.json(`/api/v1/client/knowledge/detail${this.query({ id })}`))
     ) as JavaKnowledgeSpace
     assertAttribution(space.id, id, '详情')
     return space
@@ -644,7 +643,7 @@ export class JavaKnowledgeClient {
     if (!KNOWLEDGE_UUID.test(id)) throw new Error('知识库ID格式无效')
     const result = z
       .object({ id: uuid, state: z.enum(['ACTIVE', 'DELETED', 'LEGACY', 'UNCONFIRMED']) })
-      .parse(object(await this.json(`/api/v1/knowledge/localShare/state${this.query({ id })}`)))
+      .parse(object(await this.json(`/api/v1/client/knowledge/localShare/state${this.query({ id })}`)))
     assertAttribution(result.id, id, '副本状态')
     return result.state
   }
@@ -653,7 +652,7 @@ export class JavaKnowledgeClient {
   async finishLocalShareRemoval(id: string, beforeSend?: () => void): Promise<void> {
     if (!KNOWLEDGE_UUID.test(id)) throw new Error('知识库ID格式无效')
     await this.json(
-      '/api/v1/knowledge/localShare/finishRemoval',
+      '/api/v1/client/knowledge/localShare/finishRemoval',
       {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -673,8 +672,7 @@ export class JavaKnowledgeClient {
     const pageSize = options.pageSize ?? 100
     const data = this.parsePage(
       await this.json(
-        `/api/v1/knowledge/file/page${this.query({
-          scope: 'client',
+        `/api/v1/client/knowledge/file/page${this.query({
           knowledgeId,
           page,
           pageSize,
@@ -699,7 +697,7 @@ export class JavaKnowledgeClient {
     if (!KNOWLEDGE_UUID.test(id)) throw new Error('知识库ID格式无效')
     if (!HEX32.test(fileId)) throw new Error('文件ID格式无效')
     const file = knowledgeFileVOSchema.parse(
-      object(await this.json(`/api/v1/knowledge/file/detail${this.query({ scope: 'client', id, fileId })}`))
+      object(await this.json(`/api/v1/client/knowledge/file/detail${this.query({ id, fileId })}`))
     ) as JavaKnowledgeFile
     assertAttribution(file.knowledgeId, id, '文件')
     assertAttribution(file.fileId, fileId, '文件')
@@ -712,9 +710,7 @@ export class JavaKnowledgeClient {
     if (!HEX32.test(fileId)) throw new Error('文件ID格式无效')
     const pageSize = 100
     const data = this.parsePage(
-      await this.json(
-        `/api/v1/knowledge/file/chunks${this.query({ scope: 'client', knowledgeId, fileId, page, pageSize })}`
-      ),
+      await this.json(`/api/v1/client/knowledge/file/chunks${this.query({ knowledgeId, fileId, page, pageSize })}`),
       '知识库分块'
     )
     const items = data.items.map((entry) => {
@@ -732,7 +728,7 @@ export class JavaKnowledgeClient {
     if (!HEX32.test(fileId)) throw new Error('文件ID格式无效')
     if (chunkId !== undefined && !HEX32.test(chunkId)) throw new Error('分块ID格式无效')
     const content = knowledgeContentVOSchema.parse(
-      object(await this.json(`/api/v1/knowledge/file/content${this.query({ scope: 'client', id, fileId, chunkId })}`))
+      object(await this.json(`/api/v1/client/knowledge/file/content${this.query({ id, fileId, chunkId })}`))
     ) as JavaKnowledgeContent
     assertAttribution(content.knowledgeId, id, '正文')
     assertAttribution(content.fileId, fileId, '正文')
@@ -750,12 +746,12 @@ export class JavaKnowledgeClient {
     }
     const query = options.query?.trim()
     if (!query) throw new Error('检索文本不能为空')
-    const body: Record<string, unknown> = { scope: 'client', query, knowledgeIds }
+    const body: Record<string, unknown> = { query, knowledgeIds }
     if (options.topK != null) body.topK = options.topK
     if (options.rerank != null) body.rerank = options.rerank
     if (options.mode != null) body.mode = options.mode
     const data = object(
-      await this.json('/api/v1/knowledge/search', {
+      await this.json('/api/v1/client/knowledge/search', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(body)
@@ -775,9 +771,8 @@ export class JavaKnowledgeClient {
     if (!KNOWLEDGE_UUID.test(id)) throw new Error('知识库ID格式无效')
     if (!HEX32.test(fileId)) throw new Error('文件ID格式无效')
     // return this.request(`/api/v1/knowledge/file/preview${this.query({ scope: 'client', id, fileId })}`, (response) => this.consumeStream(response))
-    return this.request(
-      `/api/v1/knowledge/file/preview${this.query({ scope: 'client', id, fileId })}`,
-      (response, diagnostics) => this.consumeStream(response, diagnostics)
+    return this.request(`/api/v1/client/knowledge/file/preview${this.query({ id, fileId })}`, (response, diagnostics) =>
+      this.consumeStream(response, diagnostics)
     )
   }
 
@@ -787,7 +782,7 @@ export class JavaKnowledgeClient {
     if (!HEX32.test(fileId)) throw new Error('文件ID格式无效')
     // return this.request(`/api/v1/knowledge/file/download${this.query({ scope: 'client', id, fileId })}`, (response) => this.consumeStream(response))
     return this.request(
-      `/api/v1/knowledge/file/download${this.query({ scope: 'client', id, fileId })}`,
+      `/api/v1/client/knowledge/file/download${this.query({ id, fileId })}`,
       (response, diagnostics) => this.consumeStream(response, diagnostics)
     )
   }
@@ -798,9 +793,7 @@ export class JavaKnowledgeClient {
     const shares: JavaKnowledgeShare[] = []
     for (let page = 1; ; page += 1) {
       const data = this.parsePage(
-        await this.json(
-          `/api/v1/knowledge/share/page${this.query({ scope: 'client', knowledgeId, page, pageSize: 100 })}`
-        ),
+        await this.json(`/api/v1/client/knowledge/share/page${this.query({ knowledgeId, page, pageSize: 100 })}`),
         '知识库分享'
       )
       for (const entry of data.items) {
@@ -820,9 +813,7 @@ export class JavaKnowledgeClient {
     const members: JavaKnowledgeMember[] = []
     for (let page = 1; ; page += 1) {
       const data = this.parsePage(
-        await this.json(
-          `/api/v1/knowledge/member/page${this.query({ scope: 'client', knowledgeId, page, pageSize: 100 })}`
-        ),
+        await this.json(`/api/v1/client/knowledge/member/page${this.query({ knowledgeId, page, pageSize: 100 })}`),
         '知识库成员'
       )
       for (const entry of data.items) {
@@ -844,7 +835,7 @@ export class JavaKnowledgeClient {
     return knowledgeVOSchema.parse(
       object(
         await this.json(
-          '/api/v1/knowledge/localShare/add',
+          '/api/v1/client/knowledge/localShare/add',
           {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
@@ -860,11 +851,11 @@ export class JavaKnowledgeClient {
   async removeSpace(id: string, beforeSend?: () => void): Promise<void> {
     if (!KNOWLEDGE_UUID.test(id)) throw new Error('知识库ID格式无效')
     await this.json(
-      '/api/v1/knowledge/remove',
+      '/api/v1/client/knowledge/remove',
       {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ scope: 'client', id })
+        body: JSON.stringify({ id })
       },
       beforeSend
     )
@@ -877,11 +868,11 @@ export class JavaKnowledgeClient {
     const space = knowledgeVOSchema.parse(
       object(
         await this.json(
-          '/api/v1/knowledge/edit',
+          '/api/v1/client/knowledge/edit',
           {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ scope: 'client', id, name })
+            body: JSON.stringify({ id, name })
           },
           beforeSend
         )
@@ -899,11 +890,11 @@ export class JavaKnowledgeClient {
     const file = knowledgeFileVOSchema.parse(
       object(
         await this.json(
-          '/api/v1/knowledge/folder/add',
+          '/api/v1/client/knowledge/folder/add',
           {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ scope: 'client', id, name, parentId })
+            body: JSON.stringify({ id, name, parentId })
           },
           beforeSend
         )
@@ -918,11 +909,11 @@ export class JavaKnowledgeClient {
     if (!KNOWLEDGE_UUID.test(id)) throw new Error('知识库ID格式无效')
     if (!HEX32.test(fileId)) throw new Error('文件ID格式无效')
     await this.json(
-      '/api/v1/knowledge/file/remove',
+      '/api/v1/client/knowledge/file/remove',
       {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ scope: 'client', id, fileId })
+        body: JSON.stringify({ id, fileId })
       },
       beforeSend
     )
@@ -936,11 +927,11 @@ export class JavaKnowledgeClient {
     const file = knowledgeFileVOSchema.parse(
       object(
         await this.json(
-          '/api/v1/knowledge/file/edit',
+          '/api/v1/client/knowledge/file/edit',
           {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ scope: 'client', id, fileId, name })
+            body: JSON.stringify({ id, fileId, name })
           },
           beforeSend
         )
@@ -957,14 +948,14 @@ export class JavaKnowledgeClient {
     beforeSend?: () => void
   ): Promise<JavaKnowledgeShare> {
     if (!KNOWLEDGE_UUID.test(id)) throw new Error('知识库ID格式无效')
-    const body: Record<string, unknown> = { scope: 'client', id }
+    const body: Record<string, unknown> = { id }
     if (params.password !== undefined) body.password = params.password
     if (params.maxViews !== undefined) body.maxViews = params.maxViews
     body.expireDays = params.expireDays
     const share = knowledgeShareVOSchema.parse(
       object(
         await this.json(
-          '/api/v1/knowledge/share/add',
+          '/api/v1/client/knowledge/share/add',
           {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
@@ -983,11 +974,11 @@ export class JavaKnowledgeClient {
     if (!KNOWLEDGE_UUID.test(id)) throw new Error('知识库ID格式无效')
     if (!HEX32.test(shareId)) throw new Error('分享ID格式无效')
     await this.json(
-      '/api/v1/knowledge/share/remove',
+      '/api/v1/client/knowledge/share/remove',
       {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ scope: 'client', id, shareId })
+        body: JSON.stringify({ id, shareId })
       },
       beforeSend
     )
@@ -1004,7 +995,7 @@ export class JavaKnowledgeClient {
     return knowledgeVOSchema.parse(
       object(
         await this.json(
-          '/api/v1/knowledge/share/receive',
+          '/api/v1/client/knowledge/share/receive',
           {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
@@ -1026,7 +1017,7 @@ export class JavaKnowledgeClient {
     const pageSize = params.pageSize ?? 100
     const data = this.parsePage(
       await this.json(
-        `/api/v1/knowledge/member/options${this.query({
+        `/api/v1/client/knowledge/member/options${this.query({
           knowledgeId: params.knowledgeId,
           keyword: params.keyword,
           page,
@@ -1055,12 +1046,12 @@ export class JavaKnowledgeClient {
     if (expireDays !== undefined && (!Number.isInteger(expireDays) || expireDays < 1 || expireDays > 30)) {
       throw new Error('邀请有效期无效')
     }
-    const body: Record<string, unknown> = { scope: 'client', id, userId }
+    const body: Record<string, unknown> = { id, userId }
     if (expireDays !== undefined) body.expireDays = expireDays
     return knowledgeMemberVOSchema.parse(
       object(
         await this.json(
-          '/api/v1/knowledge/member/add',
+          '/api/v1/client/knowledge/member/add',
           {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
@@ -1077,11 +1068,11 @@ export class JavaKnowledgeClient {
     if (!KNOWLEDGE_UUID.test(id)) throw new Error('知识库ID格式无效')
     if (!Number.isInteger(userId) || userId <= 0) throw new Error('用户ID无效')
     await this.json(
-      '/api/v1/knowledge/member/remove',
+      '/api/v1/client/knowledge/member/remove',
       {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ scope: 'client', id, userId })
+        body: JSON.stringify({ id, userId })
       },
       beforeSend
     )
@@ -1093,7 +1084,7 @@ export class JavaKnowledgeClient {
     for (let page = 1; ; page += 1) {
       const data = this.parsePage(
         await this.json(
-          `/api/v1/knowledge/invitation/page${this.query({ page, pageSize: 100 })}`,
+          `/api/v1/client/knowledge/invitation/page${this.query({ page, pageSize: 100 })}`,
           undefined,
           beforeSend
         ),
@@ -1114,7 +1105,7 @@ export class JavaKnowledgeClient {
     return knowledgeMemberVOSchema.parse(
       object(
         await this.json(
-          '/api/v1/knowledge/invitation/accept',
+          '/api/v1/client/knowledge/invitation/accept',
           {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
@@ -1130,7 +1121,7 @@ export class JavaKnowledgeClient {
   async declineInvitation(invitationId: string, beforeSend?: () => void): Promise<void> {
     if (!HEX32.test(invitationId)) throw new Error('邀请ID格式无效')
     await this.json(
-      '/api/v1/knowledge/invitation/decline',
+      '/api/v1/client/knowledge/invitation/decline',
       {
         method: 'POST',
         headers: { 'content-type': 'application/json' },

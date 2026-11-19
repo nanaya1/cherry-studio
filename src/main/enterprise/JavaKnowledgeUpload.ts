@@ -58,7 +58,7 @@ function validateFileName(name: string): void {
 /**
  * Java 原生预计算分块流式上传：组合 JavaKnowledgeClient.uploadMultipart 传输，
  * 流式读取原件（不整文件缓冲），camelCase 字段 id/fileName/chunksFile/file/parentId，
- * scope=client 查询参数；保持原件 SHA-256 指纹与大小一致性校验。
+ * 不发送 scope 查询参数，权限由客户端专用入口固定执行；保持原件 SHA-256 指纹与大小一致性校验。
  * 未知结果不自动重发。
  */
 export async function uploadJavaKnowledgeFile(
@@ -139,7 +139,7 @@ export async function uploadJavaKnowledgeFile(
   }
 
   const data = (await client.uploadMultipart(
-    '/api/v1/knowledge/file/importChunks?scope=client',
+    '/api/v1/client/knowledge/file/importChunks',
     `multipart/form-data; boundary=${boundary}`,
     contentLength,
     body,

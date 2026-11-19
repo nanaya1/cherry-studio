@@ -90,7 +90,7 @@ describe('JavaKnowledgeClient.createLocalShare', () => {
     const result = await client.createLocalShare('我的库', true)
     expect(result.id).toBe(UUID_A)
     const call = fetchImpl.mock.calls[0]
-    expect(urlOf(call)).toBe('https://ent.test/api/v1/knowledge/localShare/add')
+    expect(urlOf(call)).toBe('https://ent.test/api/v1/client/knowledge/localShare/add')
     expect(call[1]!.method).toBe('POST')
     expect(bodyOf(call)).toMatchObject({ name: '我的库', allowLocalFileUpload: true })
   })
@@ -103,12 +103,12 @@ describe('JavaKnowledgeClient.createLocalShare', () => {
 })
 
 describe('JavaKnowledgeClient.removeSpace', () => {
-  it('POST /remove 携带 scope=client 与 id，成功即返回', async () => {
+  it('POST /remove 仅携带 id，成功即返回', async () => {
     const { client, fetchImpl } = setup([envelope(null)])
     await client.removeSpace(UUID_A)
     const call = fetchImpl.mock.calls[0]
-    expect(urlOf(call)).toBe('https://ent.test/api/v1/knowledge/remove')
-    expect(bodyOf(call)).toMatchObject({ scope: 'client', id: UUID_A })
+    expect(urlOf(call)).toBe('https://ent.test/api/v1/client/knowledge/remove')
+    expect(bodyOf(call)).toMatchObject({ id: UUID_A })
   })
 
   it('非法 id 发请求前拒绝', async () => {
@@ -119,13 +119,13 @@ describe('JavaKnowledgeClient.removeSpace', () => {
 })
 
 describe('JavaKnowledgeClient.renameSpace', () => {
-  it('POST /edit 携带 scope=client、id、name，并校验归属', async () => {
+  it('POST /edit 携带 id、name，并校验归属', async () => {
     const { client, fetchImpl } = setup([envelope(space(UUID_A))])
     const result = await client.renameSpace(UUID_A, '改名')
     expect(result.id).toBe(UUID_A)
     const call = fetchImpl.mock.calls[0]
-    expect(urlOf(call)).toBe('https://ent.test/api/v1/knowledge/edit')
-    expect(bodyOf(call)).toMatchObject({ scope: 'client', id: UUID_A, name: '改名' })
+    expect(urlOf(call)).toBe('https://ent.test/api/v1/client/knowledge/edit')
+    expect(bodyOf(call)).toMatchObject({ id: UUID_A, name: '改名' })
   })
 
   it('归属不符 fail closed', async () => {
@@ -147,8 +147,8 @@ describe('JavaKnowledgeClient.createFolder', () => {
     expect(result.knowledgeId).toBe(UUID_A)
     expect(result.fileId).toBe(FILE_A)
     const call = fetchImpl.mock.calls[0]
-    expect(urlOf(call)).toBe('https://ent.test/api/v1/knowledge/folder/add')
-    expect(bodyOf(call)).toMatchObject({ scope: 'client', id: UUID_A, name: '目录', parentId: FILE_A })
+    expect(urlOf(call)).toBe('https://ent.test/api/v1/client/knowledge/folder/add')
+    expect(bodyOf(call)).toMatchObject({ id: UUID_A, name: '目录', parentId: FILE_A })
   })
 
   it('省略 parentId 时不发送该字段', async () => {
@@ -165,12 +165,12 @@ describe('JavaKnowledgeClient.createFolder', () => {
 })
 
 describe('JavaKnowledgeClient.removeFile', () => {
-  it('POST /file/remove 携带 scope=client、id、fileId', async () => {
+  it('POST /file/remove 携带 id、fileId', async () => {
     const { client, fetchImpl } = setup([envelope(null)])
     await client.removeFile(UUID_A, FILE_A)
     const call = fetchImpl.mock.calls[0]
-    expect(urlOf(call)).toBe('https://ent.test/api/v1/knowledge/file/remove')
-    expect(bodyOf(call)).toMatchObject({ scope: 'client', id: UUID_A, fileId: FILE_A })
+    expect(urlOf(call)).toBe('https://ent.test/api/v1/client/knowledge/file/remove')
+    expect(bodyOf(call)).toMatchObject({ id: UUID_A, fileId: FILE_A })
   })
 
   it('非法 fileId 发请求前拒绝', async () => {
@@ -181,13 +181,13 @@ describe('JavaKnowledgeClient.removeFile', () => {
 })
 
 describe('JavaKnowledgeClient.renameFile', () => {
-  it('POST /file/edit 携带 scope=client、id、fileId、name，校验归属', async () => {
+  it('POST /file/edit 携带 id、fileId、name，校验归属', async () => {
     const { client, fetchImpl } = setup([envelope(file(UUID_A, FILE_A))])
     const result = await client.renameFile(UUID_A, FILE_A, '新名')
     expect(result.knowledgeId).toBe(UUID_A)
     const call = fetchImpl.mock.calls[0]
-    expect(urlOf(call)).toBe('https://ent.test/api/v1/knowledge/file/edit')
-    expect(bodyOf(call)).toMatchObject({ scope: 'client', id: UUID_A, fileId: FILE_A, name: '新名' })
+    expect(urlOf(call)).toBe('https://ent.test/api/v1/client/knowledge/file/edit')
+    expect(bodyOf(call)).toMatchObject({ id: UUID_A, fileId: FILE_A, name: '新名' })
   })
 
   it('归属不符 fail closed', async () => {
@@ -202,9 +202,8 @@ describe('JavaKnowledgeClient.createShare', () => {
     const result = await client.createShare(UUID_A, { password: 'abcd', maxViews: 5, expireDays: 30 })
     expect(result.shareId).toBe(FILE_A)
     const call = fetchImpl.mock.calls[0]
-    expect(urlOf(call)).toBe('https://ent.test/api/v1/knowledge/share/add')
+    expect(urlOf(call)).toBe('https://ent.test/api/v1/client/knowledge/share/add')
     expect(bodyOf(call)).toMatchObject({
-      scope: 'client',
       id: UUID_A,
       password: 'abcd',
       maxViews: 5,
@@ -225,12 +224,12 @@ describe('JavaKnowledgeClient.createShare', () => {
 })
 
 describe('JavaKnowledgeClient.revokeShare', () => {
-  it('POST /share/remove 携带 scope=client、id、shareId', async () => {
+  it('POST /share/remove 携带 id、shareId', async () => {
     const { client, fetchImpl } = setup([envelope(null)])
     await client.revokeShare(UUID_A, FILE_A)
     const call = fetchImpl.mock.calls[0]
-    expect(urlOf(call)).toBe('https://ent.test/api/v1/knowledge/share/remove')
-    expect(bodyOf(call)).toMatchObject({ scope: 'client', id: UUID_A, shareId: FILE_A })
+    expect(urlOf(call)).toBe('https://ent.test/api/v1/client/knowledge/share/remove')
+    expect(bodyOf(call)).toMatchObject({ id: UUID_A, shareId: FILE_A })
   })
 
   it('非法 shareId 发请求前拒绝', async () => {
@@ -246,7 +245,7 @@ describe('JavaKnowledgeClient.receiveShare', () => {
     const result = await client.receiveShare({ shareCode: 'abc-1234', password: 'pw' })
     expect(result.id).toBe(UUID_A)
     const call = fetchImpl.mock.calls[0]
-    expect(urlOf(call)).toBe('https://ent.test/api/v1/knowledge/share/receive')
+    expect(urlOf(call)).toBe('https://ent.test/api/v1/client/knowledge/share/receive')
     expect(bodyOf(call)).toMatchObject({ shareCode: 'abc-1234', password: 'pw' })
   })
 
@@ -264,7 +263,7 @@ describe('JavaKnowledgeClient.memberOptions', () => {
     expect(page.items[0].userId).toBe(42)
     expect(page.total).toBe(1)
     const url = urlOf(fetchImpl.mock.calls[0])
-    expect(url).toContain('/api/v1/knowledge/member/options?')
+    expect(url).toContain('/api/v1/client/knowledge/member/options?')
     expect(url).toContain(`knowledgeId=${UUID_A}`)
     expect(url).toContain('keyword=bob')
     expect(url).toContain('pageSize=20')
@@ -278,21 +277,21 @@ describe('JavaKnowledgeClient.memberOptions', () => {
 })
 
 describe('JavaKnowledgeClient.addMember / removeMember', () => {
-  it('addMember POST /member/add 携带 scope=client、id、userId、expireDays', async () => {
+  it('addMember POST /member/add 携带 id、userId、expireDays', async () => {
     const { client, fetchImpl } = setup([envelope(member(42))])
     const result = await client.addMember(UUID_A, 42, 7)
     expect(result.userId).toBe(42)
     const call = fetchImpl.mock.calls[0]
-    expect(urlOf(call)).toBe('https://ent.test/api/v1/knowledge/member/add')
-    expect(bodyOf(call)).toMatchObject({ scope: 'client', id: UUID_A, userId: 42, expireDays: 7 })
+    expect(urlOf(call)).toBe('https://ent.test/api/v1/client/knowledge/member/add')
+    expect(bodyOf(call)).toMatchObject({ id: UUID_A, userId: 42, expireDays: 7 })
   })
 
-  it('removeMember POST /member/remove 携带 scope=client、id、userId', async () => {
+  it('removeMember POST /member/remove 携带 id、userId', async () => {
     const { client, fetchImpl } = setup([envelope(null)])
     await client.removeMember(UUID_A, 42)
     const call = fetchImpl.mock.calls[0]
-    expect(urlOf(call)).toBe('https://ent.test/api/v1/knowledge/member/remove')
-    expect(bodyOf(call)).toMatchObject({ scope: 'client', id: UUID_A, userId: 42 })
+    expect(urlOf(call)).toBe('https://ent.test/api/v1/client/knowledge/member/remove')
+    expect(bodyOf(call)).toMatchObject({ id: UUID_A, userId: 42 })
   })
 
   it('非法 userId 发请求前拒绝', async () => {
@@ -325,7 +324,7 @@ describe('JavaKnowledgeClient.acceptInvitation / declineInvitation', () => {
     const result = await client.acceptInvitation(INV_A)
     expect(result.userId).toBe(42)
     const call = fetchImpl.mock.calls[0]
-    expect(urlOf(call)).toBe('https://ent.test/api/v1/knowledge/invitation/accept')
+    expect(urlOf(call)).toBe('https://ent.test/api/v1/client/knowledge/invitation/accept')
     expect(bodyOf(call)).toMatchObject({ invitationId: INV_A })
   })
 
@@ -333,7 +332,7 @@ describe('JavaKnowledgeClient.acceptInvitation / declineInvitation', () => {
     const { client, fetchImpl } = setup([envelope(null)])
     await client.declineInvitation(INV_A)
     const call = fetchImpl.mock.calls[0]
-    expect(urlOf(call)).toBe('https://ent.test/api/v1/knowledge/invitation/decline')
+    expect(urlOf(call)).toBe('https://ent.test/api/v1/client/knowledge/invitation/decline')
     expect(bodyOf(call)).toMatchObject({ invitationId: INV_A })
   })
 
@@ -435,7 +434,9 @@ describe('JavaKnowledgeClient 本人副本核查及删除收尾', () => {
   it.each(['ACTIVE', 'DELETED', 'LEGACY', 'UNCONFIRMED'])('校验UUID后读取%s事实', async (state) => {
     const { client, fetchImpl } = setup([envelope({ id: UUID_A, state })])
     expect(await client.getLocalShareState(UUID_A)).toBe(state)
-    expect(urlOf(fetchImpl.mock.calls[0])).toBe(`https://ent.test/api/v1/knowledge/localShare/state?id=${UUID_A}`)
+    expect(urlOf(fetchImpl.mock.calls[0])).toBe(
+      `https://ent.test/api/v1/client/knowledge/localShare/state?id=${UUID_A}`
+    )
   })
   it.each([{ id: UUID_B, state: 'DELETED' }, { id: UUID_A, state: 'UNKNOWN' }, null])(
     '拒绝错库、缺失及非法状态，不推断删除',
@@ -460,7 +461,7 @@ describe('JavaKnowledgeClient 本人副本核查及删除收尾', () => {
     expect(fetchImpl).not.toHaveBeenCalled()
     await client.finishLocalShareRemoval(UUID_A)
     const call = fetchImpl.mock.calls[0]
-    expect(urlOf(call)).toBe('https://ent.test/api/v1/knowledge/localShare/finishRemoval')
+    expect(urlOf(call)).toBe('https://ent.test/api/v1/client/knowledge/localShare/finishRemoval')
     expect(bodyOf(call)).toEqual({ id: UUID_A })
     expect(call[1]?.method).toBe('POST')
   })

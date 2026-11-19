@@ -73,8 +73,7 @@ describe('JavaKnowledgeClient 请求日志', () => {
       'knowledge request completed',
       expect.objectContaining({
         method: 'GET',
-        path: `/api/v1/knowledge/file/${endpoint}`,
-        scope: 'client',
+        path: `/api/v1/client/knowledge/file/${endpoint}`,
         id: UUID_A,
         fileId: FILE_A,
         status: 200,
@@ -94,7 +93,7 @@ describe('JavaKnowledgeClient 请求日志', () => {
       'knowledge request completed',
       expect.objectContaining({
         method: 'POST',
-        path: '/api/v1/knowledge/search',
+        path: '/api/v1/client/knowledge/search',
         status: 200,
         code: 200,
         requestId: 'req-search',
@@ -154,7 +153,7 @@ describe('JavaKnowledgeClient 请求日志', () => {
     await expect(client.getFile(UUID_A, FILE_A)).rejects.toThrow('private-network-error')
     expect(logs.warn).toHaveBeenCalledWith(
       'knowledge request completed',
-      expect.objectContaining({ path: '/api/v1/knowledge/file/detail', outcome: 'failed' })
+      expect.objectContaining({ path: '/api/v1/client/knowledge/file/detail', outcome: 'failed' })
     )
     expect(JSON.stringify(logs.warn.mock.calls)).not.toContain('secret-token')
   })
@@ -163,7 +162,7 @@ describe('JavaKnowledgeClient 请求日志', () => {
     const { client } = setup([envelope(null, 10007, 'req-upload')])
     await expect(
       client.uploadMultipart(
-        `/api/v1/knowledge/file/upload?scope=client&knowledgeId=${UUID_A}&token=private-query-token`,
+        `/api/v1/client/knowledge/file/upload?knowledgeId=${UUID_A}&token=private-query-token`,
         'multipart/form-data; boundary=test',
         0,
         async function* () {}
@@ -207,7 +206,7 @@ describe('JavaKnowledgeClient 传输与鉴权', () => {
 })
 
 describe('JavaKnowledgeClient.getCatalog', () => {
-  it('跨页取全量并携带 scope=client 与分类分桶', async () => {
+  it('跨页取全量使用客户端专用入口与分类分桶，不发送 scope', async () => {
     const { client, fetchImpl } = setup([
       envelope({ items: [space(UUID_A)], total: 2 }),
       envelope({ items: [space(UUID_B)], total: 2 })
@@ -217,8 +216,8 @@ describe('JavaKnowledgeClient.getCatalog', () => {
     expect(items[0].canDownload).toBe(true)
     const urls = fetchImpl.mock.calls.map(([url]) => String(url))
     expect(urls).toEqual([
-      'https://ent.test/api/v1/knowledge/page?scope=client&page=1&pageSize=1&category=PUBLIC',
-      'https://ent.test/api/v1/knowledge/page?scope=client&page=2&pageSize=1&category=PUBLIC'
+      'https://ent.test/api/v1/client/knowledge/page?page=1&pageSize=1&category=PUBLIC',
+      'https://ent.test/api/v1/client/knowledge/page?page=2&pageSize=1&category=PUBLIC'
     ])
     const init = fetchImpl.mock.calls[0][1]!
     expect(new Headers(init.headers).get('token')).toBe('secret-token')
@@ -251,7 +250,7 @@ describe('JavaKnowledgeClient.getSpace', () => {
     expect(result.id).toBe(UUID_A)
     expect(result.category).toBe('PUBLIC')
     const url = String(fetchImpl.mock.calls[0][0])
-    expect(url).toContain('scope=client')
+    expect(new URL(url).searchParams.has('scope')).toBe(false)
     expect(url).toContain(`id=${UUID_A}`)
   })
 
@@ -351,7 +350,7 @@ describe('JavaKnowledgeClient.read', () => {
 })
 
 describe('JavaKnowledgeClient.search', () => {
-  it('显式 scope=client 且只返回命中库', async () => {
+  it('客户端入口省略 scope 且只返回命中库', async () => {
     const { client, fetchImpl } = setup([
       envelope({
         chunks: [{ knowledgeId: UUID_A, fileId: FILE_A, chunkId: CHUNK_A, title: 't', content: 'c', score: 0.9 }],
@@ -363,7 +362,7 @@ describe('JavaKnowledgeClient.search', () => {
     const init = fetchImpl.mock.calls[0][1]!
     expect(init.method).toBe('POST')
     const body = JSON.parse(String(init.body))
-    expect(body.scope).toBe('client')
+    expect(body).not.toHaveProperty('scope')
     expect(body.knowledgeIds).toEqual([UUID_A])
   })
 

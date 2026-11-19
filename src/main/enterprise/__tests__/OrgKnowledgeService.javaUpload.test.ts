@@ -143,7 +143,7 @@ it('首传通过 Java 建库、建目录、流式 importChunks，并核验正文
   expect(result.files[0].fileId).toBe(encodeOrgId(FID))
   expect(java.createLocalShare).toHaveBeenCalledWith('本地库', true, expect.any(Function))
   expect(java.createFolder).toHaveBeenCalledWith(KID, '目录', undefined, expect.any(Function))
-  expect(java.uploadMultipart.mock.calls[0][0]).toBe('/api/v1/knowledge/file/importChunks?scope=client')
+  expect(java.uploadMultipart.mock.calls[0][0]).toBe('/api/v1/client/knowledge/file/importChunks')
   expect(legacy).not.toHaveBeenCalled()
 })
 it('正文错误即使数量一致也不能确认成功', async () => {
