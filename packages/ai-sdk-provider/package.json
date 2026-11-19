@@ -1,7 +1,7 @@
 {
   "name": "@cherrystudio/ai-sdk-provider",
   "version": "0.1.7",
-  "description": "Cherry Studio AI SDK provider bundle with CherryIN routing.",
+  "description": "MEA Cowork AI SDK provider bundle with CherryIN routing.",
   "keywords": [
     "ai-sdk",
     "cherry-studio",
@@ -9,15 +9,15 @@
     "provider",
     "vercel-ai-sdk"
   ],
-  "homepage": "https://github.com/CherryHQ/cherry-studio",
+  "homepage": "https://github.com/nanaya1/cherry-studio",
   "bugs": {
-    "url": "https://github.com/CherryHQ/cherry-studio/issues"
+    "url": "https://github.com/nanaya1/cherry-studio/issues"
   },
   "license": "MIT",
-  "author": "Cherry Studio",
+  "author": "MEA Cowork",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/CherryHQ/cherry-studio.git",
+    "url": "git+https://github.com/nanaya1/cherry-studio.git",
     "directory": "packages/ai-sdk-provider"
   },
   "files": [

@@ -41,7 +41,7 @@
 | [IPC Transport](./references/ai/ipc-transport.md) | IpcChatTransport bridging useChat to Main over ai.stream.* IpcApi routes, with dispatch ack coordination and detach vs abort |
 | [Local Models](./references/ai/local-models.md) | Local model subsystem — the bundle catalog, on-disk installation state, verified acquisition, and the worker runtime that infers over installed models |
 | [Model Retry & Fallback](./references/ai/model-retry.md) | User-configurable same-model retry plus fallback models via ai-retry wrapModel, driven by chat.retry.* preferences |
-| [Observability](./references/ai/observability.md) | OTel tracing for AI calls and agent runtimes — Cherry roots, SDK adapters, runtime spans, local projection, and sinks |
+| [Observability](./references/ai/observability.md) | OTel tracing for AI calls and agent runtimes — Cowork roots, SDK adapters, runtime spans, local projection, and sinks |
 | [Params Pipeline](./references/ai/params-pipeline.md) | buildAgentParams and the RequestFeature model composing plugins, tools, hooks, and provider quirks per request |
 | [Provider Resolution](./references/ai/provider-resolution.md) | Endpoint resolution chain from provider.endpointConfigs and adapterFamily to the AI SDK provider id and variants |
 | [Provider State Ownership](./references/ai/provider-state-ownership.md) | Ownership rules for provider facts, endpoint dialects, user connection overrides, and per-request controls |
@@ -108,7 +108,7 @@
 
 | Document | Description |
 |----------|-------------|
-| [Data System Reference](./references/data/README.md) | Entry point for Cherry Studio data systems - decision guide across BootConfig, Cache, Preference, DataApi, app_state |
+| [Data System Reference](./references/data/README.md) | Entry point for MEA Cowork data systems - decision guide across BootConfig, Cache, Preference, DataApi, app_state |
 | [API Design Guidelines](./references/data/api-design-guidelines.md) | RESTful path, status code, Zod DTO, and scope/side-effect boundary rules for designing DataApi endpoints |
 | [Data API Type System](./references/data/api-types.md) | DataApi type system reference - request/response types, path resolution, pagination types, and error handling |
 | [App State System Overview](./references/data/app-state-overview.md) | app_state SQLite table for durable owner-private completion and reconciliation markers |
@@ -196,7 +196,7 @@
 
 | Document | Description |
 |----------|-------------|
-| [Cherry Studio LAN Transfer Protocol Specification](./references/lan-transfer/README.md) | LAN transfer protocol spec for desktop-mobile sync covering mDNS discovery, TCP handshake, and file transfer |
+| [MEA Cowork LAN Transfer Protocol Specification](./references/lan-transfer/README.md) | LAN transfer protocol spec for desktop-mobile sync covering mDNS discovery, TCP handshake, and file transfer |
 
 ### Lifecycle
 
@@ -220,13 +220,13 @@
 | Document | Description |
 |----------|-------------|
 | [Memory Reference](./references/memory/README.md) | Entry point for the memory mechanisms — Agent File Memory, Knowledge Base, and MCP Memory — plus the status of the v1 Global Memory feature |
-| [Memory Feature Overview](./references/memory/overview.md) | Comparison of the three memory mechanisms in Cherry Studio — Agent File Memory, Knowledge Base, and MCP Memory — plus the status of the v1 Global Memory feature |
+| [Memory Feature Overview](./references/memory/overview.md) | Comparison of the three memory mechanisms in MEA Cowork — Agent File Memory, Knowledge Base, and MCP Memory — plus the status of the v1 Global Memory feature |
 
 ### Mini App
 
 | Document | Description |
 |----------|-------------|
-| [Mini App Reference](./references/mini-app/README.md) | Entry point for building a Cherry Studio mini app — what a package is, the host API, and where each rule lives |
+| [Mini App Reference](./references/mini-app/README.md) | Entry point for building a MEA Cowork mini app — what a package is, the host API, and where each rule lives |
 | [Activity log](./references/mini-app/activity-log.md) | What the host records about a mini app's behaviour — every refusal, every call that leaves the sandbox, every permission decision — and what it never records |
 | [Capabilities](./references/mini-app/capabilities.md) | The window.cherry API method by method — signatures, return shapes, the seven error names, quotas and rate limits |
 | [Lifecycle](./references/mini-app/lifecycle.md) | How a mini app lives and dies — no shutdown notice, write-on-change persistence, visibility and locale events, quiesce during updates |
@@ -234,7 +234,7 @@
 | [Packaging](./references/mini-app/packaging.md) | Building a .miniapp archive, what the installer rejects, the install consent flow, distribution manifests, updates, rollback and uninstall |
 | [Runtime probes](./references/mini-app/probes.md) | The runtime measurements behind the sandbox — WebRTC escape, Web Storage ceiling, TransformStream terminal callbacks, host-cache reuse — recorded in enough detail to rebuild each probe when Electron moves |
 | [Sandbox](./references/mini-app/sandbox.md) | What a mini app cannot do — blocked Web Storage, default-deny network, CORS on own files, navigation and popups — and what to use instead |
-| [Theming](./references/mini-app/theming.md) | Matching Cherry's look from a mini app — the served /__cherry/theme.css, the stable CSS variable contract, dark mode, fonts and Tailwind mapping |
+| [Theming](./references/mini-app/theming.md) | Matching MEA Cowork's look from a mini app — the served /__cherry/theme.css, the stable CSS variable contract, dark mode, fonts and Tailwind mapping |
 
 ### Provider Model
 

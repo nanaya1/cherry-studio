@@ -1,5 +1,5 @@
 ---
-description: Matching Cherry's look from a mini app — the served /__cherry/theme.css, the stable CSS variable contract, dark mode, fonts and Tailwind mapping
+description: Matching MEA Cowork's look from a mini app — the served /__cherry/theme.css, the stable CSS variable contract, dark mode, fonts and Tailwind mapping
 sources:
   - src/main/features/miniApp/runtime/protocol.ts
   - packages/ui/scripts/theme-contract.ts

@@ -101,11 +101,11 @@ describe('createTransport', () => {
     const config = { type: 'streamableHttp' as const, baseUrl: 'https://mcp.example/mcp', headers: { APP: 'x' } }
 
     const http = (await create(config)) as unknown as FakeTransport
-    expect(http.options.requestInit.headers).toMatchObject({ 'X-Title': 'Cherry Studio', APP: 'x' })
+    expect(http.options.requestInit.headers).toMatchObject({ 'X-Title': 'MEA Cowork', APP: 'x' })
     expect(http.options.fetch).toBeTypeOf('function')
 
     const sse = (await create({ ...config, type: 'sse' })) as unknown as FakeTransport
-    expect(sse.options.requestInit.headers).toMatchObject({ 'X-Title': 'Cherry Studio', APP: 'x' })
+    expect(sse.options.requestInit.headers).toMatchObject({ 'X-Title': 'MEA Cowork', APP: 'x' })
     expect(sse.options.eventSourceInit.fetch).toBeTypeOf('function')
   })
 

@@ -180,7 +180,7 @@ describe('AppUpdaterService', () => {
         'User-Agent': 'test-user-agent',
         'Cache-Control': 'no-cache',
         'Client-Id': 'test-client-id',
-        'App-Name': 'Cherry Studio',
+        'App-Name': 'MEA Cowork',
         'App-Version': 'v1.0.0',
         OS: process.platform,
         'X-Edition': 'global',

@@ -114,7 +114,7 @@ export class AnalyticsService extends BaseService implements Activatable {
       headers: {
         'User-Agent': generateUserAgent(),
         'Client-Id': clientId,
-        'App-Name': 'Cherry Studio',
+        'App-Name': 'MEA Cowork',
         'App-Version': `v${app.getVersion()}`,
         OS: process.platform
       }

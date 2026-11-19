@@ -1,10 +1,10 @@
 {
   "name": "@cherrystudio/remote-transport",
   "version": "0.1.2",
-  "description": "Cherry Studio encrypted remote access transport using Noise XX and JSON-RPC.",
+  "description": "MEA Cowork encrypted remote access transport using Noise XX and JSON-RPC.",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/CherryHQ/cherry-studio.git",
+    "url": "git+https://github.com/nanaya1/cherry-studio.git",
     "directory": "packages/remote-transport"
   },
   "files": [

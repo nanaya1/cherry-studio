@@ -72,7 +72,7 @@ export function useOrgSkills(enabled: boolean) {
       setAvailable(true)
       // [enterprise] C2：并行查询停用列表（查询失败不影响目录展示）
       try {
-        const { disabled } = await ipcApi.request('enterprise.skills.listDisabled')
+        const { disabled } = await ipcApi.request('enterprise.skills.list_disabled')
         if (requestId !== requestRef.current) return
         setDisabledSlugs(disabled)
       } catch {
@@ -135,7 +135,7 @@ export function useOrgSkills(enabled: boolean) {
   const remove = useCallback(
     async (slug: string): Promise<boolean> => {
       try {
-        await ipcApi.request('enterprise.skills.reportDeleted', { slug })
+        await ipcApi.request('enterprise.skills.report_deleted', { slug })
         // [enterprise] 卸载成功即时移除「已安装」标记
         setInstalledSlugs((current) => {
           const next = new Set(current)

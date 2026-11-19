@@ -1,6 +1,6 @@
 # @cherrystudio/provider-registry
 
-Bundled AI provider and model catalog for Cherry Studio: static JSON data files plus TypeScript schemas for reading them.
+Bundled AI provider and model catalog for MEA Cowork: static JSON data files plus TypeScript schemas for reading them.
 
 > **Internal package — not published to npm.** It's `private` and consumed only inside this monorepo (the app resolves it to `src/` directly; the main process reads `data/*.json` from the bundled resources). The imports below are for in-repo consumers via the workspace, not an external install.
 

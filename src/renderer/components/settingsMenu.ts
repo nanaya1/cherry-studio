@@ -68,7 +68,7 @@ export const MEA_HIDDEN_SETTINGS_ROUTES: readonly string[] = [
  */
 export const settingsMenu: readonly SettingsMenuEntry[] = [
   { route: '/settings/provider', titleKey: 'settings.provider.title', icon: createElement(Cloud) },
-  { route: '/settings/model', titleKey: 'settings.model', icon: createElement(Package) },
+  { route: '/settings/model', titleKey: 'settings.model', icon: createElement(Package, { strokeWidth: 1.5 }) },
   {
     route: '/settings/local-models',
     titleKey: 'settings.dependencies.localModels.title',

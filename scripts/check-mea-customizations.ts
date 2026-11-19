@@ -61,7 +61,8 @@ if (!exists('.mea/customizations.yml')) fail('missing .mea/customizations.yml')
 const manifest = parse(fs.readFileSync(manifestPath, 'utf8')) as Manifest
 if (manifest.version !== 1) fail(`unsupported manifest version: ${manifest.version}`)
 if (manifest.product !== 'MEACowork') fail(`unexpected product: ${manifest.product}`)
-if (!Array.isArray(manifest.customizations) || manifest.customizations.length === 0) fail('no customizations registered')
+if (!Array.isArray(manifest.customizations) || manifest.customizations.length === 0)
+  fail('no customizations registered')
 
 const ids = new Set<string>()
 for (const item of manifest.customizations) {

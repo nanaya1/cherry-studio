@@ -1,12 +1,11 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest'
-
-import { useQuickPanel } from '@renderer/components/QuickPanel'
 import { MockUseCacheUtils } from '@test-mocks/renderer/useCache'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { type ReactNode, useEffect } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { useQuickPanel } from '@renderer/components/QuickPanel'
 import { MIN_WINDOW_HEIGHT, SECOND_MIN_WINDOW_WIDTH } from '@shared/utils/window'
 
 const mocks = vi.hoisted(() => ({

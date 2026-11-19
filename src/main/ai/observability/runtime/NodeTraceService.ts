@@ -4,7 +4,7 @@ import { type Activatable, BaseService, DependsOn, Injectable, Phase, ServicePha
 // Heavy OTel modules (trace-core processors, trace-node, opentelemetry SDK) are loaded
 // via dynamic import() in initTracer() to avoid startup overhead when developer_mode is off.
 
-const TRACER_NAME = 'CherryStudio'
+const TRACER_NAME = 'MEACowork'
 
 const logger = loggerService.withContext('NodeTraceService')
 

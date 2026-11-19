@@ -283,7 +283,7 @@ async function fetchFromClawhub(
   const detailUrl = new URL(`https://clawhub.ai/api/v1/skills/${encodeURIComponent(slug)}`)
   detailUrl.searchParams.set('ownerHandle', ownerHandle)
   const detailResp = await net.fetch(detailUrl.toString(), {
-    headers: { 'User-Agent': 'CherryStudio' }
+    headers: { 'User-Agent': 'MEACowork' }
   })
 
   if (!detailResp.ok) {
@@ -316,7 +316,7 @@ async function fetchFromClawhub(
   downloadUrl.searchParams.set('slug', slug)
   downloadUrl.searchParams.set('ownerHandle', ownerHandle)
   const downloadResp = await net.fetch(downloadUrl.toString(), {
-    headers: { 'User-Agent': 'CherryStudio' }
+    headers: { 'User-Agent': 'MEACowork' }
   })
 
   if (!downloadResp.ok) {

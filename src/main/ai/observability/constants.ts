@@ -1,1 +1,1 @@
-export const TRACER_NAME = 'CherryStudio'
+export const TRACER_NAME = 'MEACowork'

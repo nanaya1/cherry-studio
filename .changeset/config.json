@@ -5,7 +5,12 @@
   },
   "access": "public",
   "baseBranch": "main",
-  "changelog": ["@changesets/changelog-github", { "repo": "CherryHQ/cherry-studio" }],
+  "changelog": [
+    "@changesets/changelog-github",
+    {
+      "repo": "nanaya1/cherry-studio"
+    }
+  ],
   "commit": false,
   "fixed": [],
   "ignore": ["@cherrystudio/ui", "@cherrystudio/provider-registry", "@cherrystudio/dsh-bridge"],

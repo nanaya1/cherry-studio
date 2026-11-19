@@ -1,5 +1,5 @@
 ---
-description: Entry point for building a Cherry Studio mini app — what a package is, the host API, and where each rule lives
+description: Entry point for building a MEA Cowork mini app — what a package is, the host API, and where each rule lives
 sources:
   - src/main/features/miniApp
   - src/preload/miniAppBridge.ts

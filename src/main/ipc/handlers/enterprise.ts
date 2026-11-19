@@ -21,27 +21,27 @@ export const enterpriseHandlers: IpcHandlersFor<typeof enterpriseRequestSchemas>
     await application.get('EnterprisePlugin').skills.install(slug)
     return { ok: true }
   },
-  'enterprise.skills.reportExec': async ({ slug, detail }) => {
+  'enterprise.skills.report_exec': async ({ slug, detail }) => {
     void application.get('EnterprisePlugin').skills.reportExec(slug, detail)
     return { ok: true }
   },
   // [enterprise] copy 模式：已安装副本不受目录停用影响。
-  // 'enterprise.skills.listDisabled': async () => ({
+  // 'enterprise.skills.list_disabled': async () => ({
   //   disabled: await application.get('EnterprisePlugin').skills.listDisabled()
   // }),
-  'enterprise.skills.listDisabled': async () => ({ disabled: [] }),
+  'enterprise.skills.list_disabled': async () => ({ disabled: [] }),
   // [enterprise] copy 模式保留旧路由兼容已打开窗口，但不再上报或写删除墓碑。
-  // 'enterprise.skills.reportDeleted': async ({ slug }) => {
+  // 'enterprise.skills.report_deleted': async ({ slug }) => {
   //   await application.get('EnterprisePlugin').skills.reportDeleted(slug)
   //   return { ok: true }
   // },
-  'enterprise.skills.reportDeleted': async () => ({ ok: true }),
+  'enterprise.skills.report_deleted': async () => ({ ok: true }),
   // [enterprise] copy 模式：登出不影响已安装副本，旧 unavailable 状态不再生效。
-  // 'enterprise.status.orgUnavailable': async () => {
+  // 'enterprise.status.org_unavailable': async () => {
   //   const { orgStateStore } = await import('@main/enterprise/OrgStateStore')
   //   return { unavailable: orgStateStore.snapshotUnavailable() }
   // },
-  'enterprise.status.orgUnavailable': async () => ({ unavailable: false }),
+  'enterprise.status.org_unavailable': async () => ({ unavailable: false }),
   'enterprise.connectors.list': async () => ({
     connectors: await application.get('EnterprisePlugin').connectors.list()
   }),

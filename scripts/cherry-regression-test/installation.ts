@@ -71,11 +71,10 @@ export function installReleaseArtifact(
       env: environment
     })
     executablePath =
-      findFile(installedPath, (candidate) => basename(candidate).toLowerCase() === 'cherry studio.exe') ?? ''
+      findFile(installedPath, (candidate) => basename(candidate).toLowerCase() === 'mea cowork.exe') ?? ''
   }
 
-  if (!executablePath || !existsSync(executablePath))
-    throw new Error('Installed Cherry Studio executable was not found')
+  if (!executablePath || !existsSync(executablePath)) throw new Error('Installed MEA Cowork executable was not found')
   const record = {
     artifactName: basename(artifactPath),
     artifactPath,

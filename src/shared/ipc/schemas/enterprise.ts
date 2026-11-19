@@ -69,22 +69,22 @@ export const enterpriseRequestSchemas = {
     input: z.strictObject({ slug: z.string() }),
     output: z.strictObject({ ok: z.boolean() })
   }),
-  'enterprise.skills.reportExec': defineRoute({
+  'enterprise.skills.report_exec': defineRoute({
     input: z.strictObject({ slug: z.string(), detail: z.record(z.string(), z.unknown()).optional() }),
     output: z.strictObject({ ok: z.boolean() })
   }),
   // [enterprise] C2 停用拦截：渲染层构建技能注入前查询已停用 slug 列表
-  'enterprise.skills.listDisabled': defineRoute({
+  'enterprise.skills.list_disabled': defineRoute({
     input: z.void(),
     output: z.strictObject({ disabled: z.array(z.string()) })
   }),
   // [enterprise] C4 删除上报：用户卸载 org 技能时上报 deleted 事件
-  'enterprise.skills.reportDeleted': defineRoute({
+  'enterprise.skills.report_deleted': defineRoute({
     input: z.strictObject({ slug: z.string() }),
     output: z.strictObject({ ok: z.boolean() })
   }),
   // [enterprise] C3 组织可用性：登出后 org 资源标记不可用，重登恢复
-  'enterprise.status.orgUnavailable': defineRoute({
+  'enterprise.status.org_unavailable': defineRoute({
     input: z.void(),
     output: z.strictObject({ unavailable: z.boolean() })
   }),

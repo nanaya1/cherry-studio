@@ -1584,13 +1584,13 @@ describe('SkillService', () => {
 
         expect(result).toBe(installedSkill)
         expect(net.fetch).toHaveBeenNthCalledWith(1, 'https://clawhub.ai/api/v1/skills/code?ownerHandle=ivangdavila', {
-          headers: { 'User-Agent': 'CherryStudio' }
+          headers: { 'User-Agent': 'MEACowork' }
         })
         expect(net.fetch).toHaveBeenNthCalledWith(
           2,
           'https://clawhub.ai/api/v1/download?slug=code&ownerHandle=ivangdavila',
           {
-            headers: { 'User-Agent': 'CherryStudio' }
+            headers: { 'User-Agent': 'MEACowork' }
           }
         )
         expect(createTempDirSpy).toHaveBeenCalledWith('clawhub')

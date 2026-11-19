@@ -5,7 +5,7 @@ sources:
   - src/shared/types/lanTransfer.ts
 ---
 
-# Cherry Studio LAN Transfer Protocol Specification
+# MEA Cowork LAN Transfer Protocol Specification
 
 > Protocol version: 1
 

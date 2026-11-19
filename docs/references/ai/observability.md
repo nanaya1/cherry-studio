@@ -1,5 +1,5 @@
 ---
-description: OTel tracing for AI calls and agent runtimes — Cherry roots, SDK adapters, runtime spans, local projection, and sinks
+description: OTel tracing for AI calls and agent runtimes — Cowork roots, SDK adapters, runtime spans, local projection, and sinks
 sources:
   - src/main/ai/observability
 ---

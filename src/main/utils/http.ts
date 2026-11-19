@@ -2,8 +2,8 @@ import { normalizeHeaders } from '@ai-sdk/provider-utils'
 
 export const defaultAppHeaders = () => {
   return {
-    'HTTP-Referer': 'https://cherry-ai.com',
-    'X-Title': 'Cherry Studio'
+    'HTTP-Referer': 'https://www.meacowork.com',
+    'X-Title': 'MEA Cowork'
   }
 }
 

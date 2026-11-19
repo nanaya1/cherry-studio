@@ -81,7 +81,7 @@ export class RegressionApp {
       }
       await new Promise((resolvePromise) => setTimeout(resolvePromise, 500))
     } while (Date.now() < deadline)
-    throw new Error('Cherry Studio main window was not ready within 60 seconds')
+    throw new Error('MEA Cowork main window was not ready within 60 seconds')
   }
 
   async window(pathFragment: string): Promise<Page> {

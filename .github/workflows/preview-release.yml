@@ -203,7 +203,7 @@ jobs:
             const platforms = { win: 'Windows', mac: 'macOS', linux: 'Linux' };
             const rows = [];
             for (const artifact of artifacts.sort((a, b) => a.name.localeCompare(b.name))) {
-              const match = /^Cherry-Studio(-CN)?-(\d+\.\d+\.\d+-preview-[0-9a-f]{7})-(win|mac|linux)-(x64|arm64)(?:-setup\.exe|\.dmg|\.AppImage)$/.exec(artifact.name);
+              const match = /^MEA-Cowork(-CN)?-(\d+\.\d+\.\d+-preview-[0-9a-f]{7})-(win|mac|linux)-(x64|arm64)(?:-setup\.exe|\.dmg|\.AppImage)$/.exec(artifact.name);
               if (artifact.expired || !match) continue;
               const [, cn, version, platform, arch] = match;
               const size = `${(artifact.size_in_bytes / 1024 / 1024).toFixed(1)} MiB`;

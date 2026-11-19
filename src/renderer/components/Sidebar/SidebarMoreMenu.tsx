@@ -1,6 +1,7 @@
-import { MenuItem, Popover, PopoverContent, PopoverTrigger } from '@cherrystudio/ui'
 import { Ellipsis } from 'lucide-react'
 import { useState } from 'react'
+
+import { MenuItem, Popover, PopoverContent, PopoverTrigger } from '@cherrystudio/ui'
 
 import { ActiveIndicator } from './primitives'
 import { SidebarTooltip } from './Tooltip'

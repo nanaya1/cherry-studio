@@ -130,8 +130,8 @@ describe('provider attribution headers on the chat request boundary', () => {
       })
     )
 
-    expect(headers.get('http-referer')).toBe('https://cherry-ai.com')
-    expect(headers.get('x-title')).toBe('Cherry Studio')
+    expect(headers.get('http-referer')).toBe('https://www.meacowork.com')
+    expect(headers.get('x-title')).toBe('MEA Cowork')
   })
 
   it('keeps default attribution for a managed provider outside the registry', async () => {
@@ -139,8 +139,8 @@ describe('provider attribution headers on the chat request boundary', () => {
       makeOpenAICompatibleProvider({ id: 'cherryai', presetProviderId: 'cherryai' })
     )
 
-    expect(headers.get('http-referer')).toBe('https://cherry-ai.com')
-    expect(headers.get('x-title')).toBe('Cherry Studio')
+    expect(headers.get('http-referer')).toBe('https://www.meacowork.com')
+    expect(headers.get('x-title')).toBe('MEA Cowork')
   })
 
   it('does not reclassify a fully custom provider when its id matches the registry', async () => {
@@ -155,7 +155,7 @@ describe('provider attribution headers on the chat request boundary', () => {
   it('keeps default attribution for a grouped canonical registry provider', async () => {
     const headers = await captureRequestHeaders(makeOpenAICompatibleProvider({ id: 'zai', presetProviderId: 'zhipu' }))
 
-    expect(headers.get('http-referer')).toBe('https://cherry-ai.com')
-    expect(headers.get('x-title')).toBe('Cherry Studio')
+    expect(headers.get('http-referer')).toBe('https://www.meacowork.com')
+    expect(headers.get('x-title')).toBe('MEA Cowork')
   })
 })

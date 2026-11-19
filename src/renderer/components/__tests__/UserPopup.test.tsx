@@ -203,7 +203,7 @@ describe('UserPopup', () => {
           role: null
         }
       }
-      if (route === 'enterprise.status.orgUnavailable') return { unavailable: false }
+      if (route === 'enterprise.status.org_unavailable') return { unavailable: false }
       return undefined
     })
   })
@@ -232,7 +232,7 @@ describe('UserPopup', () => {
           role: ''
         }
       }
-      if (route === 'enterprise.status.orgUnavailable') return { unavailable: false }
+      if (route === 'enterprise.status.org_unavailable') return { unavailable: false }
       return undefined
     })
     MockUsePreferenceUtils.setPreferenceValue('app.user.name', '本地用户')
@@ -374,7 +374,7 @@ describe('UserPopup', () => {
           authorizing = true
           return { authorizationUrl: 'https://example.test/oauth' }
         }
-        if (route === 'enterprise.status.orgUnavailable') return { unavailable: false }
+        if (route === 'enterprise.status.org_unavailable') return { unavailable: false }
         return undefined
       })
       showUserPopup()
@@ -462,7 +462,7 @@ describe('UserPopup', () => {
     mocks.ipcRequest.mockImplementation(async (route: string) => {
       if (route === 'enterprise.status.get')
         return { phase: 'signed-out', authMode: 'official-direct', displayName: null, phone: null, role: null }
-      if (route === 'enterprise.status.orgUnavailable') return { unavailable: false }
+      if (route === 'enterprise.status.org_unavailable') return { unavailable: false }
       return undefined
     })
     showUserPopup()
@@ -500,7 +500,7 @@ describe('UserPopup', () => {
         loggedOut = true
         return { phase: 'signed-out', authMode: 'official-direct', displayName: null, phone: null, role: null }
       }
-      if (route === 'enterprise.status.orgUnavailable') return { unavailable: false }
+      if (route === 'enterprise.status.org_unavailable') return { unavailable: false }
       return undefined
     })
     showUserPopup()
@@ -525,7 +525,7 @@ describe('UserPopup', () => {
         if (statusAttempts === 1) throw new Error('service unavailable')
         return { phase: 'signed-in', authMode: 'official-direct', displayName: 'Sora', phone: '13900000000', role: '' }
       }
-      if (route === 'enterprise.status.orgUnavailable') return { unavailable: false }
+      if (route === 'enterprise.status.org_unavailable') return { unavailable: false }
       return undefined
     })
     showUserPopup()

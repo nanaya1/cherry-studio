@@ -1,5 +1,5 @@
 ---
-description: Comparison of the three memory mechanisms in Cherry Studio — Agent File Memory, Knowledge Base, and MCP Memory — plus the status of the v1 Global Memory feature
+description: Comparison of the three memory mechanisms in MEA Cowork — Agent File Memory, Knowledge Base, and MCP Memory — plus the status of the v1 Global Memory feature
 sources:
   - src/main/ai/agents/prompt.ts
   - src/main/ai/agents/tools/memoryTools.ts

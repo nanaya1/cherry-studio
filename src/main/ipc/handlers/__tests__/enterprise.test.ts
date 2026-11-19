@@ -50,7 +50,7 @@ describe('enterprise 登录生命周期契约', () => {
 
 describe('enterpriseHandlers copy mode', () => {
   it('keeps the legacy delete-report route without touching managed state', async () => {
-    await expect(enterpriseHandlers['enterprise.skills.reportDeleted']({ slug: 'org-review' }, ctx)).resolves.toEqual({
+    await expect(enterpriseHandlers['enterprise.skills.report_deleted']({ slug: 'org-review' }, ctx)).resolves.toEqual({
       ok: true
     })
 
@@ -58,10 +58,10 @@ describe('enterpriseHandlers copy mode', () => {
   })
 
   it('does not expose managed disable or unavailable state', async () => {
-    await expect(enterpriseHandlers['enterprise.skills.listDisabled'](undefined, ctx)).resolves.toEqual({
+    await expect(enterpriseHandlers['enterprise.skills.list_disabled'](undefined, ctx)).resolves.toEqual({
       disabled: []
     })
-    await expect(enterpriseHandlers['enterprise.status.orgUnavailable'](undefined, ctx)).resolves.toEqual({
+    await expect(enterpriseHandlers['enterprise.status.org_unavailable'](undefined, ctx)).resolves.toEqual({
       unavailable: false
     })
 

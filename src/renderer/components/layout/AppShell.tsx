@@ -1,3 +1,6 @@
+import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
+
 import { useCache, usePersistCache } from '@data/hooks/useCache'
 import { QuickPanelProvider } from '@renderer/components/QuickPanel'
 import { useCommandHandler } from '@renderer/hooks/command'
@@ -13,8 +16,6 @@ import { SINGLE_TAB_MODE } from '@renderer/utils/tabMode'
 import { DefaultRendererPersistCache } from '@shared/data/cache/cacheSchemas'
 import { isSettingsPath } from '@shared/data/types/settingsPath'
 import { MIN_WINDOW_HEIGHT, SECOND_MIN_WINDOW_WIDTH } from '@shared/utils/window'
-import { useCallback, useEffect, useMemo, useRef } from 'react'
-import { useTranslation } from 'react-i18next'
 
 import Sidebar, { SidebarTitleBarIdentity } from '../app/Sidebar'
 import { createRecentRouteEntryFromTab, recordGlobalSearchRecentEntry } from '../GlobalSearch/globalSearchGroups'

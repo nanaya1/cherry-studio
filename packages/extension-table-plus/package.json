@@ -6,11 +6,11 @@
     "tiptap",
     "tiptap extension"
   ],
-  "homepage": "https://cherry-ai.com",
+  "homepage": "https://github.com/nanaya1/cherry-studio",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/CherryHQ/cherry-studio",
+    "url": "https://github.com/nanaya1/cherry-studio",
     "directory": "packages/extension-table-plus"
   },
   "files": [

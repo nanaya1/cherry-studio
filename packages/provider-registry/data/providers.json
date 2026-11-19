@@ -6,22 +6,22 @@
       "description": "雪浪工匠 - AI model provider",
       "endpointConfigs": {
         "anthropic-messages": {
-          "adapterFamily": "cherryin",
+          "adapterFamily": "meacowork",
           "baseUrl": "https://api.xuelanglm.com/v1"
         },
         "google-generate-content": {
-          "adapterFamily": "cherryin",
+          "adapterFamily": "meacowork",
           "baseUrl": "https://api.xuelanglm.com/v1"
         },
         "openai-chat-completions": {
-          "adapterFamily": "cherryin",
+          "adapterFamily": "meacowork",
           "baseUrl": "https://api.xuelanglm.com/v1",
           "reasoningFormat": {
             "type": "openai-chat"
           }
         },
         "openai-responses": {
-          "adapterFamily": "cherryin",
+          "adapterFamily": "meacowork",
           "baseUrl": "https://api.xuelanglm.com/v1"
         }
       },
@@ -34,38 +34,33 @@
       "name": "雪浪工匠"
     },
     {
-      "availableInEditions": ["global"],
+      "availableInEditions": ["global", "cn"],
       "defaultChatEndpoint": "openai-chat-completions",
       "description": "CherryIN - AI model provider",
       "endpointConfigs": {
         "anthropic-messages": {
-          "adapterFamily": "meacowork",
+          "adapterFamily": "cherryin",
           "baseUrl": "https://open.cherryin.net"
         },
         "google-generate-content": {
-          "adapterFamily": "meacowork",
+          "adapterFamily": "cherryin",
           "baseUrl": "https://open.cherryin.net"
         },
         "openai-chat-completions": {
-          "adapterFamily": "meacowork",
+          "adapterFamily": "cherryin",
           "baseUrl": "https://open.cherryin.net",
           "reasoningFormat": {
             "type": "openai-chat"
           }
         },
         "openai-responses": {
-          "adapterFamily": "meacowork",
+          "adapterFamily": "cherryin",
           "baseUrl": "https://open.cherryin.net"
         }
       },
       "id": "cherryin",
       "metadata": {
-        "website": {
-          "apiKey": "https://open.cherryin.ai/console/token",
-          "docs": "https://open.cherryin.ai",
-          "models": "https://open.cherryin.ai/pricing",
-          "official": "https://open.cherryin.ai"
-        }
+        "website": {}
       },
       "name": "CherryIN",
       "serverTools": [
@@ -536,7 +531,6 @@
       "metadata": {
         "website": {
           "apiKey": "https://ppio.com/settings/key-management",
-          "docs": "https://docs.cherry-ai.com/pre-basic/providers/ppio",
           "models": "https://ppio.com/model-api/product/llm-api",
           "official": "https://ppio.com/"
         }
@@ -776,7 +770,6 @@
       "metadata": {
         "website": {
           "apiKey": "https://tokendance.space/keys",
-          "docs": "https://tokendance.space/docs/cherry-studio",
           "models": "https://tokendance.space/models",
           "official": "https://tokendance.space"
         }
@@ -1697,6 +1690,7 @@
           "official": "https://www.aliyun.com/product/bailian"
         }
       },
+      "modelListSource": "registry",
       "name": "Bailian",
       "serverTools": [
         {
@@ -1708,7 +1702,6 @@
           "modelScope": "model-dependent"
         }
       ],
-      "modelListSource": "registry",
       "supplementModelsFromRegistry": true
     },
     {
@@ -2711,5 +2704,5 @@
       "presetProviderId": "minimax"
     }
   ],
-  "version": "dbca1ba38bf86df7"
+  "version": "3267e02d971f813c"
 }

@@ -1,6 +1,7 @@
-import NewTaskPage from '@renderer/pages/workspace/NewTaskPage'
 import { createFileRoute } from '@tanstack/react-router'
 import * as z from 'zod'
+
+import NewTaskPage from '@renderer/pages/workspace/NewTaskPage'
 
 export const Route = createFileRoute('/app/new-task')({
   validateSearch: (search) =>

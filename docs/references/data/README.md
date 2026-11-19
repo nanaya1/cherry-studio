@@ -1,5 +1,5 @@
 ---
-description: Entry point for Cherry Studio data systems - decision guide across BootConfig, Cache, Preference, DataApi, app_state
+description: Entry point for MEA Cowork data systems - decision guide across BootConfig, Cache, Preference, DataApi, app_state
 sources:
   - src/main/data
   - src/renderer/data

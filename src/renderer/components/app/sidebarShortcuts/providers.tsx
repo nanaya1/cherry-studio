@@ -198,8 +198,7 @@ const agentProvider: SidebarShortcutProvider = {
       (agent) => agent.id,
       (agent) => ({
         label: agent.name,
-        renderIcon: ({ slotSize }) =>
-          renderAgentEntityIcon(iconType, agent, defaultModelId, slotSize),
+        renderIcon: ({ slotSize }) => renderAgentEntityIcon(iconType, agent, defaultModelId, slotSize),
         supportsNewTab: true
       })
     )
@@ -237,13 +236,7 @@ const assistantProvider: SidebarShortcutProvider = {
       (assistant) => ({
         label: assistant.name,
         renderIcon: ({ slotSize, glyphSize }) =>
-          renderAssistantEntityIcon(
-            iconType,
-            assistant,
-            defaultModelId,
-            slotSize,
-            glyphSize
-          ),
+          renderAssistantEntityIcon(iconType, assistant, defaultModelId, slotSize, glyphSize),
         supportsNewTab: true
       })
     )

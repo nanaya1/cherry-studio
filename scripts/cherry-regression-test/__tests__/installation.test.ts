@@ -12,7 +12,7 @@ it('installs Windows releases without exposing GitHub credentials to the install
   const directory = mkdtempSync(join(tmpdir(), 'cherry-installer-'))
   const paths = getRunPaths(directory)
   ensureRunDirectories(paths)
-  const executable = join(paths.installed, 'Cherry Studio.exe')
+  const executable = join(paths.installed, 'MEA Cowork.exe')
   writeFileSync(executable, '')
   for (const key of ['GH_TOKEN', 'GITHUB_TOKEN', 'GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN', 'gh_token']) {
     vi.stubEnv(key, 'test-token')

@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest'
-
-import { useQuickPanel } from '@renderer/components/QuickPanel'
 import { MockUseCacheUtils } from '@test-mocks/renderer/useCache'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { type ReactNode, useEffect } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+
+import { useQuickPanel } from '@renderer/components/QuickPanel'
 
 // Pin the mode on so this suite keeps asserting single-tab bar behavior even if
 // the production constant is ever flipped back.

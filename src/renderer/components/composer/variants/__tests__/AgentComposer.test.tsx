@@ -5268,7 +5268,9 @@ describe('AgentComposer', () => {
     )
 
     const leftControls = screen.getByTestId('composer-left-controls')
-    expect(within(leftControls).queryByRole('button', { name: 'agent.settings.permissionMode.title' })).not.toBeInTheDocument()
+    expect(
+      within(leftControls).queryByRole('button', { name: 'agent.settings.permissionMode.title' })
+    ).not.toBeInTheDocument()
 
     const belowControls = screen.getByTestId('composer-below-controls')
     const permissionButton = within(belowControls).getByRole('button', { name: 'agent.settings.permissionMode.title' })

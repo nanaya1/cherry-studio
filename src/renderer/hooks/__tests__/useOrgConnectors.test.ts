@@ -132,7 +132,7 @@ describe('useOrgConnectors', () => {
   })
 
   it('re-requests and becomes available after the initial mount fails, is unmounted, and remounts', async () => {
-    const initial = deferred<{ connectors: typeof sampleConnector[] }>()
+    const initial = deferred<{ connectors: (typeof sampleConnector)[] }>()
     mocks.request.mockImplementation((route: string) => {
       if (route === 'enterprise.connectors.list') return initial.promise
       throw new Error(`unexpected route: ${route}`)
@@ -153,7 +153,7 @@ describe('useOrgConnectors', () => {
     act(() => first.unmount())
 
     // 重新挂载，目录此时可达
-    const restored = deferred<{ connectors: typeof sampleConnector[] }>()
+    const restored = deferred<{ connectors: (typeof sampleConnector)[] }>()
     mocks.request.mockImplementation((route: string) => {
       if (route === 'enterprise.connectors.list') return restored.promise
       throw new Error(`unexpected route: ${route}`)
@@ -174,8 +174,8 @@ describe('useOrgConnectors', () => {
   })
 
   it('keeps the new list when an old pending request resolves after a newer request succeeds', async () => {
-    const oldReq = deferred<{ connectors: typeof sampleConnector[] }>()
-    const newReq = deferred<{ connectors: typeof sampleConnector[] }>()
+    const oldReq = deferred<{ connectors: (typeof sampleConnector)[] }>()
+    const newReq = deferred<{ connectors: (typeof sampleConnector)[] }>()
     const oldConnector = { ...sampleConnector, slug: 'old', name: 'Old' }
     const newConnector = { ...sampleConnector, slug: 'new', name: 'New' }
 
