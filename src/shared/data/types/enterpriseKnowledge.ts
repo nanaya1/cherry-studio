@@ -93,6 +93,8 @@ export const OrgKnowledgeItemSchema = z.strictObject({
   type: z.string(),
   title: z.string(),
   status: z.string(),
+  // MEA:enterprise-knowledge-page 失败原因以纯文本传到前端 tooltip，不渲染 HTML。
+  error: z.string().nullable().optional(),
   /** Parent directory item ID; null means the base root. */
   parentId: z.string().nullable(),
   documentId: z.string().nullable(),
@@ -165,6 +167,31 @@ export const OrgKnowledgePreviewSchema = z.strictObject({
   base64: z.string().optional()
 })
 export type OrgKnowledgePreview = z.infer<typeof OrgKnowledgePreviewSchema>
+
+/**
+ * 已知旧预览元数据 DTO。MEA:enterprise-knowledge-page 现网 Java preview-url 接口实际返回
+ * camelCase（fileName/mimeType/minioPreviewUrl），历史契约文档为 snake_case（file_name/mime_type/
+ * minio_preview_url）；字段均可缺省或为 null，客户端回退文件目录名，不因命名差异或缺失阻断预览。
+ */
+export const LegacyPreviewMetadataSchema = z
+  .object({
+    kind: z.string(),
+    url: z.string().nullish(),
+    minio_preview_url: z.string().nullish(),
+    minioPreviewUrl: z.string().nullish(),
+    file_name: z.string().nullish(),
+    fileName: z.string().nullish(),
+    mime_type: z.string().nullish(),
+    mimeType: z.string().nullish()
+  })
+  .transform((raw) => ({
+    kind: raw.kind,
+    url: raw.url ?? null,
+    minio_preview_url: raw.minio_preview_url ?? raw.minioPreviewUrl ?? null,
+    file_name: raw.file_name ?? raw.fileName ?? null,
+    mime_type: raw.mime_type ?? raw.mimeType ?? null
+  }))
+export type LegacyPreviewMetadata = z.infer<typeof LegacyPreviewMetadataSchema>
 
 export const OrgKnowledgeMemberSchema = z.strictObject({
   userId: z.number().int(),

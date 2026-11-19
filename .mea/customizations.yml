@@ -8,6 +8,17 @@ policy:
   require_tests: true
   preserve_original_code_by_comment: true
 customizations:
+  - id: local-knowledge-file-batches
+    title: 本地知识库文件多选100个并串行分批接收
+    owner: renderer
+    behavior: 仅本地文件多选上限从20放宽至100，每批20个串行提交，前批返回后继续；冲突暂停并沿用既有弹窗，用户选择应用于未接收部分，已接收批次不重放。失败或取消停止后续批次，保留已接收结果，不自动重试；目录、云端、主进程队列和并发不变。
+    markers:
+      - MEA:local-knowledge-file-batches
+    touchpoints:
+      - src/renderer/pages/knowledge/components/AddKnowledgeItemDialog.tsx
+      - src/renderer/pages/knowledge/components/addKnowledgeItemDialog/constants.ts
+    tests:
+      - src/renderer/pages/knowledge/components/__tests__/AddKnowledgeItemDialog.test.tsx
   - id: enterprise-java-resources
     title: Java 资源稳定身份与隔离安装
     owner: main
@@ -164,6 +175,7 @@ customizations:
     # 主进程列表校验全部条目base_id匹配请求库，跨库响应按协议错误阻断而非静默展示。
     # 首次分享失败改为task可信空间补偿：先持久cleanup再停止流，owner/lease校验DELETE，unknown不重放；保留本机资料，追加及completed不回滚。
     # 取消与再次分享：先核查本人3/local墓碑并补清理Java授权；LEGACY/UNCONFIRMED保留关联，已移除operation接口只保留注释。
+    # 预览元数据：Java preview-url现网返回camelCase（fileName/mimeType/minioPreviewUrl），LegacyPreviewMetadataSchema兼容snake_case与camelCase并归一为snake_case；kind外字段可缺省或null，缺失时回退文件目录名不阻断预览。回归覆盖JavaKnowledgeClient.getPreviewUrl与OrgKnowledgeService.javaRead。
     # Java知识库完整调用链统一/api/v1/client/knowledge，省略scope；失败不回退PC，预计算导入及取消续作使用相同专用前缀。
     owner: main
     behavior: Java知识库完整调用链统一/api/v1/client/knowledge，查询、JSON及预计算导入不传scope，失败不回退PC入口。文档标识经显式文件映射或文件元信息校验后用于预览；主进程鉴权限量读取，渲染进程以纯文本、图片或沙箱 PDF 展示。首次分享递归stat原文件总量（含子目录），逐文件流式上传；2026-10-17最新约定暂不设置客户端总容量上限，取代此前2GiB及临时20MiB限制，OrgKnowledgeService.buildFirstSharePlan及FirstShareUpload.run两处旧检查和抛错均保留为注释，服务端仍可限制容量且错误处理保持不变；客户端原子互斥且同库复用，列表可重开字节进度详情。创建及文件请求前持久化intent，响应归属和分块数校验后保存fileId并核对哈希和完整分块，未知结果暂停且不得盲目重传或重建库；Cookie流式请求不手设Content-Length，传输结束关闭源流；上传连续5分钟无字节进展或服务器响应时中止并清理源流，创建库和远端核对请求30秒超时，未知结果不重放且finally释放全局忙碌槽；全部确认前禁止分享码和邀请。分享码与人员邀请弹窗重开时隐藏历史completed进度、上传说明及复用文件成功结果，本会话新上传或未完成恢复仍展示进度与完成反馈，不清理持久化记录。后续旧manifest推送已停用；本机任务不得自动写云端，云端owner新增文件先托管解析再上传到同space并保留可信fileId。分享完成迁移助手与智能体知识源，取消时先恢复可用本地资料，下载故障阻断删除；缺失资料与其他设备停止操作须明确确认，未知DELETE持久化且不重发，可信删除后回绑本地。再次分享必须先完成原副本取消收尾：只以Java本人3/local删除墓碑确认删除，localShare/finishRemoval仅补清理授权；历史类型及未确认结果保留关联，恢复库不同则从恢复库重开，禁止旧资料回流。
@@ -518,6 +530,21 @@ customizations:
     tests:
       - src/renderer/pages/settings/__tests__/SettingsPage.test.tsx
       - src/renderer/pages/settings/settingsSearch/__tests__/settingsSearchIndex.test.ts
+
+  - id: new-task-draft-clearing
+    title: 新建任务成功发送后清空草稿再导航
+    owner: renderer
+    behavior: Chat 与 Agent 成功发送后同步清空编辑器文本、tokens、附件及对应草稿缓存，再经 onDraftCleared 导航；卸载不得将已发送内容写回，返回新建任务不恢复已发送内容。失败、阻止发送和未发送草稿仍保留，另一模式草稿互不影响。
+    markers:
+      - MEA:new-task-draft-clearing
+    touchpoints:
+      - src/renderer/pages/workspace/NewTaskPage.tsx
+      - src/renderer/components/composer/variants/ChatComposer.tsx
+      - src/renderer/components/composer/variants/AgentComposer.tsx
+    tests:
+      - src/renderer/pages/workspace/NewTaskPage.test.tsx
+      - src/renderer/components/composer/variants/__tests__/ChatComposer.test.tsx
+      - src/renderer/components/composer/variants/__tests__/AgentComposer.test.tsx
 
   - id: new-task-composer-layout
     title: Preserve MEA new-task composer controls

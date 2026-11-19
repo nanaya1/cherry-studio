@@ -105,11 +105,23 @@ export class OrgCredentialStore {
   constructor(
     profileRoot: string,
     private readonly crypto: OrgCredentialCrypto = safeStorage,
-    private readonly confirmDurability: OrgCredentialDurabilityConfirmer = confirmParentDirectoryDurability
+    // private readonly confirmDurability: OrgCredentialDurabilityConfirmer = confirmParentDirectoryDurability
+    private readonly confirmDurability: OrgCredentialDurabilityConfirmer = confirmParentDirectoryDurability,
+    private readonly protocol: 'legacy' | 'management-java' = 'legacy'
   ) {
     if (!profileRoot) throw new Error('OrgCredentialStore requires an explicit profileRoot')
-    this.filePath = join(profileRoot, 'userData', 'Sensitive', 'Enterprise', 'org-session.json')
+    // this.filePath = join(profileRoot, 'userData', 'Sensitive', 'Enterprise', 'org-session.json')
+    const filename = protocol === 'management-java' ? 'org-session-java.json' : 'org-session.json'
+    this.filePath = join(profileRoot, 'userData', 'Sensitive', 'Enterprise', filename)
     this.quarantinePath = `${this.filePath}.quarantine`
+  }
+
+  static forJava(profileRoot: string, crypto: OrgCredentialCrypto = safeStorage): OrgCredentialStore {
+    return new OrgCredentialStore(profileRoot, crypto, undefined, 'management-java')
+  }
+
+  private accepts(session: OrgSession): boolean {
+    return (session.authMode === 'management-java') === (this.protocol === 'management-java')
   }
 
   async load(): Promise<OrgSession | null> {
@@ -129,12 +141,17 @@ export class OrgCredentialStore {
     const envelope = encryptedFileSchema.safeParse(decoded)
     if (!envelope.success) return null
     this.assertEncryptionAvailable()
-    return orgSessionSchema.parse(JSON.parse(this.crypto.decryptString(Buffer.from(envelope.data.payload, 'base64'))))
+    // return orgSessionSchema.parse(JSON.parse(this.crypto.decryptString(Buffer.from(envelope.data.payload, 'base64'))))
+    const session = orgSessionSchema.parse(
+      JSON.parse(this.crypto.decryptString(Buffer.from(envelope.data.payload, 'base64')))
+    )
+    return this.accepts(session) ? session : null
   }
 
   async save(session: OrgSession): Promise<OrgCredentialWriteResult> {
     this.assertEncryptionAvailable()
     const parsed = orgSessionSchema.parse(session)
+    if (!this.accepts(parsed)) throw new Error('凭据协议与当前存储不匹配')
     const payload = this.crypto.encryptString(JSON.stringify(parsed)).toString('base64')
     await mkdir(dirname(this.filePath), { recursive: true })
     await atomicWriteFile(
@@ -192,6 +209,7 @@ export class OrgCredentialStore {
     const legacy = legacyFileSchema.safeParse(decoded)
     if (!legacy.success) return null
     const session = legacy.data.session
+    if (!this.accepts(session)) return null
     if (profile.kind !== 'authenticated') return null
     const identityDigest = computeIdentityDigest({
       kind: 'authenticated',

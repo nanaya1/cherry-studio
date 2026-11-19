@@ -1,5 +1,5 @@
 import fs from 'node:fs'
-import { rm } from 'node:fs/promises'
+// import { rm } from 'node:fs/promises'
 import path from 'node:path'
 
 // import { app, session } from 'electron'
@@ -108,9 +108,8 @@ export async function initializeLockedProfileIsolation(
     legacyRoot,
     legacyDataExists: async () => fs.existsSync(path.join(legacyRoot, 'Data')),
     cleanupCommittedSource: async (profileRoot) => {
-      await rm(path.join(profileRoot, 'userData', 'Sensitive', 'Enterprise', 'org-session.json.quarantine'), {
-        force: true
-      })
+      // await rm(path.join(profileRoot, 'userData', 'Sensitive', 'Enterprise', 'org-session.json.quarantine'), { force: true })
+      await OrgCredentialStore.forJava(profileRoot).discardQuarantined()
     }
   })
   const context = await coordinator.initialize()
@@ -208,7 +207,8 @@ export async function verifyBusinessCandidate(context: ProfileLaunchContext): Pr
   if (context.mode !== 'business') {
     throw new Error('verifyBusinessCandidate requires a business launch context')
   }
-  const credentialStore = new OrgCredentialStore(context.profileRoot)
+  // const credentialStore = new OrgCredentialStore(context.profileRoot)
+  const credentialStore = OrgCredentialStore.forJava(context.profileRoot)
   try {
     const stored = await credentialStore.load()
     const electronSession =

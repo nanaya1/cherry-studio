@@ -59,6 +59,35 @@ export type OrgResourceEntitlement = z.infer<typeof entitlementSchema>
 // export type OrgAuthorizationLease = Pick<OrgResourceEntitlement, 'issuerId' | 'groupId' | 'generation'>
 export type OrgAuthorizationLease = Pick<OrgResourceEntitlement, 'issuerId' | 'groupId' | 'tenantId' | 'generation'>
 
+// [enterprise] 共用业务数据/恢复原存储契约：旧版 entitlement 严格 schema 无 tenantId。
+// 落盘副本仅省略该字段，返回新对象不改入参；其余业务字段一律保留。
+function omitEntitlementTenant(entries: Record<string, OrgResourceEntitlement>): Record<string, unknown> {
+  const copy: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(entries)) {
+    const entry = { ...value }
+    delete entry.tenantId
+    copy[key] = entry
+  }
+  return copy
+}
+
+// 旧版不认识删除意图字段；持久化为不可自动重放的待核对状态，保留运行内存。
+function legacyKnowledgeShares(entries: Record<string, OrgKnowledgeShareAssociation>) {
+  const copy = structuredClone(entries)
+  for (const association of Object.values(copy)) {
+    const manifest = association.manifest
+    if (!manifest) continue
+    for (const operation of manifest.operations) {
+      delete operation.cleanupDeleteState
+      if (operation.phase === 'cleanup_pending' && (operation.kind === 'delete' || operation.kind === 'update')) {
+        operation.phase = 'verifying'
+        manifest.state = 'unknown'
+      }
+    }
+  }
+  return copy
+}
+
 const fileSchema = z.object({
   skills: z.record(z.string(), skillStateSchema).default({}),
   skillEntitlements: z.record(z.string(), entitlementSchema).default({}),
@@ -160,7 +189,15 @@ export class OrgStateStore {
     try {
       const filePath = AbsoluteFilePathSchema.parse(stateFile())
       mkdirSync(dirname(filePath), { recursive: true })
-      atomicWriteFileSync(filePath, JSON.stringify(this.data, null, 2), { mode: 0o600 })
+      // 落盘复用旧版授权与任务契约；内存保留租户及删除意图，业务关联不拆分。
+      const disk = {
+        ...this.data,
+        skillEntitlements: omitEntitlementTenant(this.data!.skillEntitlements),
+        connectorEntitlements: omitEntitlementTenant(this.data!.connectorEntitlements),
+        knowledgeShares: legacyKnowledgeShares(this.data!.knowledgeShares)
+      }
+      // atomicWriteFileSync(filePath, JSON.stringify(this.data, null, 2), { mode: 0o600 })
+      atomicWriteFileSync(filePath, JSON.stringify(disk, null, 2), { mode: 0o600 })
     } catch (error) {
       // 失败后重新读取已提交状态，避免未落盘的关联在后续写入时被意外提交。
       this.data = null
@@ -249,10 +286,26 @@ export class OrgStateStore {
     const entries = resourceType === 'skill' ? this.data!.skillEntitlements : this.data!.connectorEntitlements
     for (const [key, entitlement] of Object.entries(entries)) {
       const source = parseJavaResourceKey(key)
+      // [enterprise] Java 稳定键按 issuer/resourceType 收窄；非 Java 资源走自身执行逻辑。
       if (source?.resourceType !== resourceType || source.serverInstanceId !== lease.issuerId) continue
-      const sameContext = entitlement.groupId === lease.groupId && entitlement.tenantId === lease.tenantId
-      entitlement.entitlement = available && sameContext && visible.has(key) ? 'active' : 'disabled'
-      if (entitlement.entitlement === 'active') entitlement.generation = lease.generation
+      // [enterprise] 只有调用方给出在线可见列表、同 group、且无不同 tenant 明确记录时才核恢复
+      // tenantId/generation；失败(available=false)或租户冲突一律 disabled，不借刷新错误复活。
+      // const sameContext = entitlement.groupId === lease.groupId && entitlement.tenantId === lease.tenantId
+      // entitlement.entitlement = available && sameContext && visible.has(key) ? 'active' : 'disabled'
+      // if (entitlement.entitlement === 'active') entitlement.generation = lease.generation
+      const tenantConflict = entitlement.tenantId !== undefined && entitlement.tenantId !== lease.tenantId
+      const verified =
+        available &&
+        entitlement.issuerId === lease.issuerId &&
+        entitlement.resourceId === source.resourceId &&
+        entitlement.groupId === lease.groupId &&
+        !tenantConflict &&
+        visible.has(key)
+      entitlement.entitlement = verified ? 'active' : 'disabled'
+      if (verified) {
+        entitlement.tenantId = lease.tenantId
+        entitlement.generation = lease.generation
+      }
     }
     this.persist()
   }

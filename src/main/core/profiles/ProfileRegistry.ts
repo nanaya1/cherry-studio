@@ -74,8 +74,13 @@ export class ProfileRegistry {
       this.assertRecordMatchesIdentity(existing, identity)
       const withoutAuthorizationContext = { ...existing }
       delete withoutAuthorizationContext.authorizationContext
-      const updated = authorizationContext ? { ...withoutAuthorizationContext, authorizationContext } : withoutAuthorizationContext
-      const durability = await this.store.write({ ...registry, profiles: registry.profiles.with(index, updated) })
+      const updated = authorizationContext
+        ? { ...withoutAuthorizationContext, authorizationContext }
+        : withoutAuthorizationContext
+      // 共用注册表保持旧版本契约；完整 Java 授权仍由会话和在线复验负责。
+      const compatible = this.forLegacyRegistry({ ...registry, profiles: registry.profiles.with(index, updated) })
+      // const durability = await this.store.write({ ...registry, profiles: registry.profiles.with(index, updated) })
+      const durability = await this.store.write(compatible)
       return { value: updated, durability }
     })
   }
@@ -93,6 +98,19 @@ export class ProfileRegistry {
       throw new Error(`Profile is disabled: ${profileId}`)
     }
     return record
+  }
+
+  private forLegacyRegistry(registry: ProfileRegistryV1): ProfileRegistryV1 {
+    return {
+      ...registry,
+      profiles: registry.profiles.map((record) => {
+        if (!record.authorizationContext) return record
+        const context = { ...record.authorizationContext }
+        delete context.tenantId
+        if (context.groupId === null) delete context.groupId
+        return { ...record, authorizationContext: context }
+      })
+    }
   }
 
   private async readExisting(): Promise<ProfileRegistryV1> {
@@ -123,7 +141,10 @@ export class ProfileRegistry {
       }
 
       const created = this.createRecord(identity)
-      const durability = await this.store.write({ ...registry, profiles: [...registry.profiles, created] })
+      // const durability = await this.store.write({ ...registry, profiles: [...registry.profiles, created] })
+      const durability = await this.store.write(
+        this.forLegacyRegistry({ ...registry, profiles: [...registry.profiles, created] })
+      )
       return { value: created, durability }
     })
   }

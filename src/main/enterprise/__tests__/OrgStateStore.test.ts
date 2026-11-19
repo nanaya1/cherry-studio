@@ -40,36 +40,82 @@ vi.mock('@logger', () => ({
 }))
 
 import { OrgStateStore } from '@main/enterprise/OrgStateStore'
+import { OrgKnowledgeSyncManifestSchema } from '@shared/data/types/enterpriseKnowledge'
 
 import { CloudKnowledgeRecovery, type CloudRecovery } from '../CloudKnowledgeRecovery'
 
 describe('OrgStateStore', () => {
   let tmp: string
 
-  it.each([undefined, 'not_sent', 'intent_saved'] as const)(
-    '同步删除状态 %s 落盘重载且历史记录不推断未发送',
-    (cleanupDeleteState) => {
-      const store = new OrgStateStore()
-      const operation = {
-        itemId: 'i',
-        fileName: '旧文件',
-        kind: 'delete' as const,
-        remoteFileId: 'remote',
-        newFileId: null,
-        hash: null,
-        phase: 'cleanup_pending' as const,
-        error: null,
-        ...(cleanupDeleteState ? { cleanupDeleteState } : {})
-      }
-      store.setShareAssociation('cleanup', {
-        shareId: 'space',
-        files: [],
-        completion: 'completed',
-        manifest: { entries: [], state: 'unknown', lastSyncedAt: null, operations: [operation] }
-      })
-      expect(new OrgStateStore().getShareAssociation('cleanup')!.manifest!.operations[0]).toEqual(operation)
+  // 防止旧版拒绝整份状态，以及重启后把不确定删除重新变成可执行清理。
+  it.each(
+    (['delete', 'update'] as const).flatMap((kind) =>
+      ([undefined, 'not_sent', 'intent_saved'] as const).map((cleanupDeleteState) => ({ kind, cleanupDeleteState }))
+    )
+  )('清理任务 $kind/$cleanupDeleteState 兼容旧版且重启后保持待核对', ({ kind, cleanupDeleteState }) => {
+    const store = new OrgStateStore()
+    const operation = {
+      itemId: 'i',
+      fileName: '旧文件',
+      kind,
+      remoteFileId: 'remote',
+      newFileId: kind === 'update' ? 'new-file' : null,
+      hash: kind === 'update' ? 'new-hash' : null,
+      phase: 'cleanup_pending' as const,
+      error: null,
+      ...(cleanupDeleteState ? { cleanupDeleteState } : {})
     }
-  )
+    store.setShareAssociation('cleanup', {
+      shareId: 'space',
+      files: [],
+      completion: 'completed',
+      manifest: { entries: [], state: 'unknown', lastSyncedAt: null, operations: [operation] }
+    })
+    const raw = JSON.parse(readFileSync(join(tmp, 'Sensitive', 'Enterprise', 'org-state.json'), 'utf8'))
+    const manifest = raw.knowledgeShares.cleanup.manifest
+    const legacyOperationSchema = OrgKnowledgeSyncManifestSchema.shape.operations.element.omit({
+      cleanupDeleteState: true
+    })
+    const legacyManifestSchema = OrgKnowledgeSyncManifestSchema.extend({
+      operations: legacyOperationSchema.array()
+    })
+    expect(legacyManifestSchema.safeParse(manifest).success).toBe(true)
+    expect(manifest.operations[0]).not.toHaveProperty('cleanupDeleteState')
+    const legacyOperation = { ...operation }
+    delete legacyOperation.cleanupDeleteState
+    expect(manifest.operations[0]).toEqual({ ...legacyOperation, phase: 'verifying' })
+    expect(manifest.state).toBe('unknown')
+    expect(store.getShareAssociation('cleanup')!.manifest!.operations[0]).toEqual(operation)
+    const restarted = new OrgStateStore()
+    expect(restarted.getShareAssociation('cleanup')).toEqual(raw.knowledgeShares.cleanup)
+    restarted.markAvailable()
+    expect(new OrgStateStore().getShareAssociation('cleanup')!.manifest!.operations[0].phase).toBe('verifying')
+  })
+
+  it('普通上传及已完成任务保持原状态，其他知识库关联不受清理投影影响', () => {
+    const store = new OrgStateStore()
+    const operations = (['writing', 'verifying', 'complete', 'failure'] as const).map((phase) => ({
+      itemId: phase,
+      fileName: '文件',
+      kind: 'update' as const,
+      remoteFileId: 'old',
+      newFileId: 'new',
+      hash: 'hash',
+      phase,
+      error: null
+    }))
+    const association = {
+      shareId: 'other-space',
+      files: [],
+      completion: 'completed' as const,
+      manifest: { entries: [], state: 'shared' as const, lastSyncedAt: '2026-11-17', operations }
+    }
+    store.setShareAssociation('other', association)
+    store.setShareAssociation('plain', 'plain-space')
+    const restarted = new OrgStateStore()
+    expect(restarted.getShareAssociation('other')).toEqual(association)
+    expect(restarted.getShareAssociation('plain')?.shareId).toBe('plain-space')
+  })
 
   it('只对有Java稳定映射的连接器执行即时远端复核', () => {
     const store = new OrgStateStore()
@@ -118,7 +164,11 @@ describe('OrgStateStore', () => {
     expect(store.isSkillAllowed(key, lease)).toBe(false)
     expect(store.isSkillAllowed('java-resource:invalid', lease)).toBe(false)
     store.recordSkillEntitlement(key, { ...lease, resourceId: '1', entitlement: 'active' })
-    expect(new OrgStateStore().isSkillAllowed(key, lease)).toBe(true)
+    // [enterprise] 落盘省略 tenantId：原「重启即放行」改为需在线核实恢复（见下方新回归）
+    const restarted = new OrgStateStore()
+    expect(restarted.isSkillAllowed(key, lease)).toBe(false)
+    restarted.reconcileJavaResources('skill', [key], lease)
+    expect(restarted.isSkillAllowed(key, lease)).toBe(true)
     expect(store.isSkillAllowed(other, lease)).toBe(false)
     expect(store.isSkillAllowed(key, { ...lease, generation: 2 })).toBe(false)
     expect(store.isSkillAllowed('local-skill', null)).toBe(true)
@@ -136,11 +186,88 @@ describe('OrgStateStore', () => {
 
   it('租户变化拒绝持久化的旧资源授权', () => {
     const store = new OrgStateStore()
-    const lease = { issuerId: 'server', groupId: null, tenantId: 'tenant-a', generation: 1 }
-    store.recordSkillEntitlement('skill', { ...lease, resourceId: 'skill', entitlement: 'active' })
+    const issuerId = 'a'.repeat(32)
+    const key = `java-resource:${issuerId}:skill:1`
+    const lease = { issuerId, groupId: null, tenantId: 'tenant-a', generation: 1 }
+    store.recordSkillEntitlement(key, { ...lease, resourceId: '1', entitlement: 'active' })
     const restarted = new OrgStateStore()
-    expect(restarted.isSkillAllowed('org-skill:skill', lease)).toBe(true)
-    expect(restarted.isSkillAllowed('org-skill:skill', { ...lease, tenantId: 'tenant-b' })).toBe(false)
+    // [enterprise] 落盘省略 tenantId：原「重启即 tenant-a 放行」改为需在线刷新恢复
+    expect(restarted.isSkillAllowed(key, lease)).toBe(false)
+    restarted.reconcileJavaResources('skill', [key], lease)
+    expect(restarted.isSkillAllowed(key, lease)).toBe(true)
+    expect(restarted.isSkillAllowed(key, { ...lease, tenantId: 'tenant-b' })).toBe(false)
+  })
+
+  // [enterprise] 共用业务数据/恢复原存储契约的回归：旧版 strict schema 不认识 tenantId，
+  // 落盘若带该字段会导致整份 org-state 解析失败并重置（落盘不兼容）。
+  it('Java 授权落盘省略 tenantId，其余授权字段与其他业务数据原样保留', () => {
+    const store = new OrgStateStore()
+    const issuerId = 'a'.repeat(32)
+    const skillKey = `java-resource:${issuerId}:skill:1`
+    const mcpKey = `java-resource:${issuerId}:mcp:1`
+    store.upsert('demo', { version: '1', contentHash: 'h', skillId: 's', folderName: 'd' })
+    store.setShareAssociation('share', { shareId: 'space', completion: 'completed', files: [] })
+    store.recordSkillEntitlement(skillKey, {
+      issuerId,
+      groupId: null,
+      tenantId: 'tenant-1',
+      resourceId: '1',
+      entitlement: 'active',
+      generation: 3
+    })
+    store.recordConnectorEntitlement(mcpKey, {
+      issuerId,
+      groupId: null,
+      tenantId: 'tenant-1',
+      resourceId: '1',
+      localResourceId: 'mcp-1',
+      entitlement: 'active',
+      generation: 3
+    })
+
+    const raw = JSON.parse(readFileSync(join(tmp, 'Sensitive', 'Enterprise', 'org-state.json'), 'utf8'))
+    expect(raw.skillEntitlements[skillKey]).not.toHaveProperty('tenantId')
+    expect(raw.connectorEntitlements[mcpKey]).not.toHaveProperty('tenantId')
+    expect(raw.skillEntitlements[skillKey]).toEqual({
+      issuerId,
+      groupId: null,
+      resourceId: '1',
+      entitlement: 'active',
+      generation: 3
+    })
+    expect(raw.connectorEntitlements[mcpKey].localResourceId).toBe('mcp-1')
+    // 其他业务数据/字段不删
+    expect(raw.skills.demo.skillId).toBe('s')
+    expect(raw.knowledgeShares.share.shareId).toBe('space')
+    // 内存仍保留 tenantId（当前实例放行）
+    expect(store.isSkillAllowed(skillKey, { issuerId, groupId: null, tenantId: 'tenant-1', generation: 3 })).toBe(true)
+  })
+
+  it('重启后的无 tenant 记录需在线资源列表核实才恢复，失败不放行且租户变化拒绝', () => {
+    const issuerId = 'a'.repeat(32)
+    const key = `java-resource:${issuerId}:skill:1`
+    const leaseA = { issuerId, groupId: null, tenantId: 'tenant-a', generation: 3 }
+    const leaseB = { ...leaseA, tenantId: 'tenant-b' }
+    new OrgStateStore().recordSkillEntitlement(key, { ...leaseA, resourceId: '1', entitlement: 'active' })
+
+    const restarted = new OrgStateStore()
+    // 无 tenant 记录不能直接获得有 tenant 租约的授权
+    expect(restarted.isSkillAllowed(key, leaseA)).toBe(false)
+    // 失败（available=false）保持 disabled
+    restarted.reconcileJavaResources('skill', [key], leaseA, false)
+    expect(restarted.isSkillAllowed(key, leaseA)).toBe(false)
+    // 在线列表为空 → 仍未授权
+    restarted.reconcileJavaResources('skill', [], leaseA)
+    expect(restarted.isSkillAllowed(key, leaseA)).toBe(false)
+    // 在线列表核实 → 恢复 tenantId + generation 后放行
+    restarted.reconcileJavaResources('skill', [key], leaseA)
+    expect(restarted.isSkillAllowed(key, leaseA)).toBe(true)
+    // 已明确恢复 tenant-a，再用 tenant-b 刷新不得错误复活
+    restarted.reconcileJavaResources('skill', [key], leaseB)
+    expect(restarted.isSkillAllowed(key, leaseB)).toBe(false)
+    expect(restarted.isSkillAllowed(key, leaseA)).toBe(false)
+    // tenantId 仍未落盘，再次重启回到未授权
+    expect(new OrgStateStore().isSkillAllowed(key, leaseA)).toBe(false)
   })
 
   it('首次回滚task与unknown删除日志真实落盘，重启保留且不清其他账号', () => {
@@ -291,7 +418,10 @@ describe('OrgStateStore', () => {
       }
     }
     new OrgStateStore().setShareAssociation('key', record as never)
-    expect(new OrgStateStore().getShareAssociation('key')).toEqual(record)
+    // expect(new OrgStateStore().getShareAssociation('key')).toEqual(record)
+    const expected = structuredClone(record)
+    expected.manifest.operations[0].phase = 'verifying'
+    expect(new OrgStateStore().getShareAssociation('key')).toEqual(expected)
   })
 
   it('共享逐文件结果和完成状态跨实例保留', () => {

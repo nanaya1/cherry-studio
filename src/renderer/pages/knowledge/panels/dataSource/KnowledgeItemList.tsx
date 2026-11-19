@@ -157,7 +157,8 @@ const KnowledgeItemList = ({
               hover), but carries an aria-label so the trailing gridcell has a matching header. */}
           <div role="columnheader" aria-label={t('knowledge.data_source.table.columns.actions')} />
         </div>
-        <div role="presentation" className="min-h-0 flex-1">
+        {/* MEA:public-knowledge-status-filter 将行区域限制在剩余高度，避免非虚拟列表溢出覆盖分页。 */}
+        <div role="presentation" className="flex min-h-0 flex-1 flex-col overflow-hidden">
           {virtualize ? (
             <DynamicVirtualList
               list={deferredItems}
@@ -171,7 +172,7 @@ const KnowledgeItemList = ({
               {renderItemRow}
             </DynamicVirtualList>
           ) : (
-            <div role="rowgroup" className="space-y-1.5 overflow-auto pb-6" onScroll={handleListScroll}>
+            <div role="rowgroup" className="min-h-0 flex-1 space-y-1.5 overflow-auto pb-6" onScroll={handleListScroll}>
               {deferredItems.map((item, index) => (
                 <div key={getItemKey(index)}>{renderItemRow(item)}</div>
               ))}

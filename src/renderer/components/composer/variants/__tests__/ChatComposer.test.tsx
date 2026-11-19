@@ -88,6 +88,9 @@ const mocks = vi.hoisted(() => ({
     | undefined
 }))
 
+// 文件预览不参与草稿生命周期，避免加载依赖浏览器 DOMMatrix 的 PDF 渲染器。
+vi.mock('@renderer/components/FilePreview', () => ({ default: () => null, FilePreview: () => null }))
+
 const originalResizeObserver = globalThis.ResizeObserver
 
 const seedInputHistory = (items: string[]) => {
@@ -148,7 +151,7 @@ const modelBWithFunctionCall = {
 const ipcRequestMock = vi.hoisted(() => vi.fn())
 
 // Send-time attachment metadata (buildFileParts) resolves through IpcApi.
-vi.mock('@renderer/ipc', () => ({ ipcApi: { request: ipcRequestMock } }))
+vi.mock('@renderer/ipc', () => ({ ipcApi: { request: ipcRequestMock }, useIpcOn: vi.fn() }))
 
 vi.mock('@renderer/components/composer/ComposerSurface', () => {
   function MockComposerSurface(props: ComposerSurfaceProps) {
@@ -3243,6 +3246,56 @@ describe('ChatComposer', () => {
         expect.any(Number)
       )
     })
+  })
+
+  // MEA:new-task-draft-clearing 捕获清理前导航及卸载回写旧编辑器的回归，不预先把 getter 伪造成空值。
+  it.each(['success', 'blocked', 'unsent'] as const)('返回新建聊天时保留正确草稿：%s', async (outcome) => {
+    const scopeKey = 'new-task:tab-1:chat'
+    const cacheKey = `chat.composer_draft.${scopeKey}` as const
+    const file = { fileTokenSourceId: 'draft-file', name: 'notes.md', path: '/tmp/notes.md' }
+    const fileToken: ComposerSerializedToken = {
+      id: `file:${file.fileTokenSourceId}`,
+      kind: 'file',
+      label: file.name,
+      payload: file,
+      index: 0,
+      textOffset: 0
+    }
+    mocks.files = [file]
+    let liveDraft = { text: '待发送内容', tokens: [fileToken] }
+    const drafts = new Map<string, unknown>()
+    vi.mocked(cacheService.get).mockImplementation((key: string) => drafts.get(key))
+    vi.mocked(cacheService.set).mockImplementation((key: string, value: unknown) => {
+      drafts.set(key, value)
+    })
+    mocks.getDraft.mockImplementation(() => liveDraft)
+    mocks.replaceDraft.mockImplementation((draft) => {
+      liveDraft = draft
+    })
+    const onSend = vi.fn().mockResolvedValue(outcome !== 'blocked')
+    const onDraftCleared = vi.fn(() => view.unmount())
+    const view = render(<ChatHomeComposer scopeKey={scopeKey} onSend={onSend} onDraftCleared={onDraftCleared} />)
+    act(() => mocks.surfaceProps?.onTextChange(liveDraft.text))
+
+    if (outcome !== 'unsent') {
+      await act(async () => {
+        await mocks.surfaceProps?.onSendDraft(liveDraft)
+      })
+    }
+    if (outcome !== 'success') view.unmount()
+
+    expect(onDraftCleared).toHaveBeenCalledTimes(outcome === 'success' ? 1 : 0)
+    const expectedText = outcome === 'success' ? '' : '待发送内容'
+    const expectedFiles = outcome === 'success' ? [] : [file]
+    const expectedTokens = outcome === 'success' ? [] : [fileToken]
+    expect(drafts.get(cacheKey)).toMatchObject({ text: expectedText, tokens: expectedTokens, files: expectedFiles })
+
+    // 模拟新 provider，避免把旧 mock 的附件状态误当成缓存恢复。
+    mocks.files = undefined
+    render(<ChatHomeComposer scopeKey={scopeKey} onSend={onSend} />)
+    expect(mocks.surfaceProps?.text).toBe(expectedText)
+    expect(mocks.surfaceProps?.draftTokens ?? []).toEqual(expectedTokens)
+    expect(mocks.files).toEqual(expectedFiles)
   })
 
   it('clears the cached draft after a successful send', async () => {

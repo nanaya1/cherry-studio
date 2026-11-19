@@ -280,8 +280,19 @@ export default function NewTaskPage() {
   const agentSelectionInitializedRef = useRef(false)
   const chatPlaceholderRef = useRef<{ target: string; topicId: string } | null>(null)
   const agentPlaceholderRef = useRef<{ target: string; session: AgentSessionEntity } | null>(null)
-  // MEA v2.1.3 used pendingNavigationRef with Composer.onDraftCleared; v2.1.4 removed that callback.
-  // Navigation now happens after the reserved messages and resource caches are synchronized.
+  // Navigation waits for reserved messages, resource caches, and the Composer draft to synchronize.
+  // MEA:new-task-draft-clearing 等待编辑器和草稿同步清空，避免导航卸载回写已发送内容。
+  const pendingNavigationRef = useRef<{ type: TaskMode; id: string } | null>(null)
+  const handleDraftCleared = useCallback(() => {
+    const destination = pendingNavigationRef.current
+    if (!destination) return
+    pendingNavigationRef.current = null
+    if (destination.type === 'chat') {
+      void navigate({ to: '/app/chat', search: { topicId: destination.id }, replace: true })
+    } else {
+      void navigate({ to: '/app/agents', search: { sessionId: destination.id }, replace: true })
+    }
+  }, [navigate])
 
   useEffect(() => {
     if (!isAssistantListResolved || chatSelectionInitializedRef.current) return
@@ -359,7 +370,9 @@ export default function NewTaskPage() {
         } catch (error) {
           logger.error('Failed to synchronize started chat task', error as Error)
         }
-        void navigate({ to: '/app/chat', search: { topicId }, replace: true })
+        // void navigate({ to: '/app/chat', search: { topicId }, replace: true })
+        // MEA:new-task-draft-clearing 成功发送后由清理完成回调导航。
+        pendingNavigationRef.current = { type: 'chat', id: topicId }
         return true
       } catch (error) {
         if (!isCurrent()) return false
@@ -417,7 +430,9 @@ export default function NewTaskPage() {
         } catch (error) {
           logger.error('Failed to synchronize started agent task', error as Error)
         }
-        void navigate({ to: '/app/agents', search: { sessionId: session.id }, replace: true })
+        // void navigate({ to: '/app/agents', search: { sessionId: session.id }, replace: true })
+        // MEA:new-task-draft-clearing 成功发送后由清理完成回调导航。
+        pendingNavigationRef.current = { type: 'agent', id: session.id }
         return true
       } catch (error) {
         if (!isCurrent()) return false
@@ -511,6 +526,7 @@ export default function NewTaskPage() {
                     onDraftAssistantChange={handleChatAssistantChange}
                     onSend={handleChatSend}
                     // MEA: onDraftCleared={handleDraftCleared}；v2.1.4 已移除该回调，发送成功后在 handler 内跳转。
+                    onDraftCleared={handleDraftCleared}
                   />
                 </NewTaskQuickPanelFill>
               </QuickPanelProvider>
@@ -605,6 +621,7 @@ export default function NewTaskPage() {
                     }
                     launchOptions={canUseLaunchSkill ? skillLaunchOptions : undefined}
                     // MEA: onDraftCleared={handleDraftCleared}；v2.1.4 已移除该回调，发送成功后在 handler 内跳转。
+                    onDraftCleared={handleDraftCleared}
                   />
                 </NewTaskQuickPanelFill>
               </QuickPanelProvider>

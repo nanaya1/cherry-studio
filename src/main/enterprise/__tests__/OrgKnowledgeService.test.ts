@@ -437,6 +437,14 @@ function makeJavaApi() {
       getCatalog: vi.fn().mockResolvedValue([javaSpace]),
       listFiles: vi.fn().mockResolvedValue({ items: [javaFile], total: 1, page: 1, pageSize: 20 }),
       getFile: vi.fn().mockResolvedValue(javaFile),
+      // 默认无预览件：既有原件字节用例保持走非预生成路线。
+      getPreviewUrl: vi.fn().mockResolvedValue({
+        kind: 'inline',
+        url: null,
+        minio_preview_url: null,
+        file_name: '文件.txt',
+        mime_type: null
+      }),
       preview: vi.fn().mockResolvedValue({ bytes: Buffer.from('%PDF-1.7'), contentType: 'application/pdf' }),
       read: vi.fn().mockResolvedValue({ knowledgeId: codeSpaceId, fileId: javaFileId, content: '解析正文' }),
       listChunks: vi.fn(),
@@ -473,6 +481,13 @@ describe('云端 Office 预览', () => {
         directory: false,
         hasOriginalFile: true,
         mimeType: null
+      }),
+      getPreviewUrl: vi.fn().mockResolvedValue({
+        kind: 'inline',
+        url: null,
+        minio_preview_url: null,
+        file_name: `报告.${extension}`,
+        mime_type: null
       }),
       preview: vi.fn().mockResolvedValue({ bytes, contentType }),
       read: vi.fn().mockResolvedValue({ knowledgeId, fileId, content: 'Office 解析正文' })
@@ -3961,6 +3976,76 @@ describe('OrgKnowledgeService catalog/items', () => {
       { id: encodeOrgId(javaOtherId), type: 'file', parentId: fileId, status: 'processing' }
     ])
     expect(java.listFiles).toHaveBeenCalledExactlyOnceWith(codeSpaceId, { page: 2 })
+  })
+
+  it('公共库状态筛选走全库查询，接受同库跨目录文件并忠实展示状态与错误', async () => {
+    const { java, svc } = setup()
+    java.listFiles.mockResolvedValue({
+      items: [
+        { ...javaFile, fileId: javaOtherId, parentId: javaFileId, parseStatus: 'failed', errorMessage: '解析失败原文' }
+      ],
+      total: 12,
+      page: 2,
+      pageSize: 5
+    })
+    const page = await svc.listDirectoryItems(baseId, '2', null, true, 5, 'failed')
+    // 全库查询不带 parentId/rootOnly；同库归属仍由服务复核。
+    expect(java.listFiles).toHaveBeenCalledExactlyOnceWith(codeSpaceId, {
+      page: 2,
+      pageSize: 5,
+      parseStatus: 'failed'
+    })
+    expect(page.items).toMatchObject([
+      { id: encodeOrgId(javaOtherId), parentId: fileId, status: 'failed', error: '解析失败原文' }
+    ])
+    expect(page.nextCursor).toBe('3')
+  })
+
+  it('公共库无筛选时六状态原样展示，普通目录仍按 parent/root 严格校验', async () => {
+    const { java, svc } = setup()
+    const statuses = ['pending', 'parsing', 'parsed', 'indexing', 'ready', 'failed']
+    java.listFiles.mockResolvedValue({
+      items: statuses.map((parseStatus, index) => ({
+        ...javaFile,
+        fileId: `${'a'.repeat(30)}${index}`,
+        parseStatus,
+        errorMessage: parseStatus === 'failed' ? '失败原因' : null
+      })),
+      total: 6,
+      page: 1,
+      pageSize: 5
+    })
+    const page = await svc.listDirectoryItems(baseId, null, null, true, 5)
+    expect(page.items.map((item) => item.status)).toEqual(statuses)
+    expect(page.items.at(-1)).toMatchObject({ error: '失败原因' })
+    expect(java.listFiles).toHaveBeenCalledExactlyOnceWith(codeSpaceId, { page: 1, pageSize: 5, rootOnly: true })
+
+    java.listFiles.mockClear()
+    java.listFiles.mockResolvedValue({
+      items: [{ ...javaFile, parentId: javaFileId, parseStatus: 'ready' }],
+      total: 1,
+      page: 1,
+      pageSize: 20
+    })
+    expect((await svc.listDirectoryItems(baseId, null, fileId, false)).items[0]).toMatchObject({ status: 'completed' })
+    expect(java.listFiles).toHaveBeenCalledExactlyOnceWith(codeSpaceId, {
+      page: 1,
+      parentId: javaFileId,
+      rootOnly: false
+    })
+  })
+
+  it('全库查询仍拒绝跨库文件，不放宽同库归属校验', async () => {
+    const { java, svc } = setup()
+    java.listFiles.mockResolvedValue({
+      items: [{ ...javaFile, knowledgeId: '11111111-1111-4111-8111-111111111111' }],
+      total: 1,
+      page: 1,
+      pageSize: 5
+    })
+    await expect(svc.listDirectoryItems(baseId, null, null, true, 5, 'failed')).rejects.toMatchObject({
+      code: E.ORGKB_PROTOCOL
+    })
   })
 
   it('缺少显式映射时仅接受文件接口确认的同一标识', async () => {

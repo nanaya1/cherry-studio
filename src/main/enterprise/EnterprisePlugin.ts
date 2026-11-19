@@ -94,7 +94,8 @@ export class EnterprisePlugin extends BaseService {
                 }
               }
             : undefined,
-        credentialStoreFor: (profileRoot) => new OrgCredentialStore(profileRoot),
+        // credentialStoreFor: (profileRoot) => new OrgCredentialStore(profileRoot),
+        credentialStoreFor: (profileRoot) => OrgCredentialStore.forJava(profileRoot),
         coordinator: new ProfileSwitchCoordinator({
           journal: switchJournal,
           activePointer,
@@ -134,7 +135,8 @@ export class EnterprisePlugin extends BaseService {
         operationId: uuidv4
       })
       this.auth = new OrgAuthManager({
-        credentialStore: new OrgCredentialStore(context.profileRoot),
+        // credentialStore: new OrgCredentialStore(context.profileRoot),
+        credentialStore: OrgCredentialStore.forJava(context.profileRoot),
         currentProfile: async () => {
           const state = await registry.read()
           const profile = state.profiles.find((candidate) => candidate.profileId === context.profileId)
@@ -146,7 +148,8 @@ export class EnterprisePlugin extends BaseService {
       })
     } else {
       const profileRoot = context?.profileRoot ?? path.dirname(application.getPath('app.userdata'))
-      this.auth = new OrgAuthManager({ credentialStore: new OrgCredentialStore(profileRoot) })
+      // this.auth = new OrgAuthManager({ credentialStore: new OrgCredentialStore(profileRoot) })
+      this.auth = new OrgAuthManager({ credentialStore: OrgCredentialStore.forJava(profileRoot) })
     }
     this.skills = new OrgSkillCatalog(this.auth)
     this.connectors = new OrgMcpCatalog(this.auth)

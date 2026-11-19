@@ -9,7 +9,7 @@ import { encodeOrgId } from '../../../shared/data/types/enterpriseKnowledge'
 import { enterpriseKnowledgeErrorCodes as E } from '../../../shared/ipc/errors/enterpriseKnowledge'
 import { JavaKnowledgeError } from '../JavaKnowledgeClient'
 import { OrgApiHttpError } from '../OrgApiClient'
-import { OrgKnowledgeService } from '../OrgKnowledgeService'
+import { OrgKnowledgeService, adaptLegacyPreviewMetadata } from '../OrgKnowledgeService'
 import { orgStateStore } from '../OrgStateStore'
 
 // --- 与现有 OrgKnowledgeService.test.ts 一致的最小模块桩，保证主进程模块可加载 ---
@@ -72,6 +72,7 @@ function makeJavaKnowledge() {
     getCatalog: vi.fn(),
     listFiles: vi.fn(),
     getFile: vi.fn(),
+    getPreviewUrl: vi.fn(),
     preview: vi.fn(),
     listChunks: vi.fn(),
     search: vi.fn(),
@@ -257,13 +258,22 @@ function file(
 
 const javaKnowledge = makeJavaKnowledge()
 let service: OrgKnowledgeService
+let built: ReturnType<typeof makeService>
 
 beforeEach(() => {
   vi.mocked(createReadStream).mockImplementation(() => Readable.from([Buffer.from('file-bytes')]) as never)
   vi.mocked(orgStateStore.getShareAssociations).mockReturnValue({})
   vi.mocked(orgStateStore.getShareAssociation).mockReturnValue(undefined)
   for (const fn of Object.values(javaKnowledge)) fn.mockReset()
-  const built = makeService(javaKnowledge)
+  // 默认无预览件：旧原件字节用例保持走非预生成路线。
+  javaKnowledge.getPreviewUrl.mockResolvedValue({
+    kind: 'inline',
+    url: null,
+    minio_preview_url: null,
+    file_name: '文件.txt',
+    mime_type: null
+  })
+  built = makeService(javaKnowledge)
   service = built.service
 })
 
@@ -309,16 +319,187 @@ describe('Java 原件预览归属', () => {
     await expect(service.preview({ baseId: encodeOrgId(KID), fileId: encodeOrgId(FID) })).rejects.toThrow('预览')
   })
 
-  it('文件元数据归属不符时拒绝预览', async () => {
+  it('文件元数据归属不符时拒绝预览且不请求预览元数据', async () => {
     javaKnowledge.getFile.mockResolvedValue({ ...file({ hasOriginalFile: true }), knowledgeId: 'other' })
     await expect(service.preview({ baseId: encodeOrgId(KID), fileId: encodeOrgId(FID) })).rejects.toThrow('原件不可用')
+    expect(javaKnowledge.getPreviewUrl).not.toHaveBeenCalled()
     expect(javaKnowledge.preview).not.toHaveBeenCalled()
   })
 
-  it('无原件时不发出文件预览请求', async () => {
+  it('无原件且无预览件时不请求原件字节', async () => {
     javaKnowledge.getFile.mockResolvedValue(file({ hasOriginalFile: false }))
     await expect(service.preview({ baseId: encodeOrgId(KID), fileId: encodeOrgId(FID) })).rejects.toThrow('原件不可用')
+    // 先取元数据确认无预览件，仍不读取原件字节。
+    expect(javaKnowledge.getPreviewUrl).toHaveBeenCalledWith(KID, FID)
     expect(javaKnowledge.preview).not.toHaveBeenCalled()
+  })
+
+  it('无预览件时元数据先于原件字节，按原件路线返回 base64', async () => {
+    const bytes = Buffer.from('%PDF-1.7\noriginal')
+    javaKnowledge.getFile.mockResolvedValue(file({ hasOriginalFile: true, name: 'report.pdf' }))
+    javaKnowledge.preview.mockResolvedValue({ bytes, contentType: 'application/pdf' })
+    const result = await service.preview({ baseId: encodeOrgId(KID), fileId: encodeOrgId(FID) })
+    expect(result).toMatchObject({ kind: 'inline', mimeType: 'application/pdf' })
+    expect(result.base64).toBe(bytes.toString('base64'))
+    expect(result).not.toHaveProperty('url')
+    expect(javaKnowledge.getPreviewUrl).toHaveBeenCalledWith(KID, FID)
+  })
+})
+
+describe('Java 预览元数据主链（getPreviewUrl → adaptLegacyPreviewMetadata）', () => {
+  const pdfMetadata = {
+    kind: 'inline',
+    url: 'https://origin.example.test/report.pdf?token=enterprise-secret',
+    minio_preview_url: 'https://minio.example.test/preview.pdf?sign=preview-secret',
+    file_name: 'report.pdf',
+    mime_type: 'application/pdf'
+  }
+
+  it('无原件但有预览件时优先返回预生成 PDF URL，不请求原件字节', async () => {
+    javaKnowledge.getFile.mockResolvedValue(file({ hasOriginalFile: false, name: 'report.pdf' }))
+    javaKnowledge.getPreviewUrl.mockResolvedValue(pdfMetadata)
+    const result = await service.preview({ baseId: encodeOrgId(KID), fileId: encodeOrgId(FID) })
+    expect(result).toEqual({
+      kind: 'inline',
+      fileName: 'report.pdf',
+      mimeType: 'application/pdf',
+      content: '',
+      url: 'https://minio.example.test/preview.pdf?sign=preview-secret'
+    })
+    expect(javaKnowledge.getPreviewUrl).toHaveBeenCalledWith(KID, FID)
+    expect(javaKnowledge.preview).not.toHaveBeenCalled()
+    expect(javaKnowledge.read).not.toHaveBeenCalled()
+  })
+
+  it('PDF 由服务端 MIME/路径推断，不依赖扩展名与原件字节签名', async () => {
+    javaKnowledge.getFile.mockResolvedValue(file({ hasOriginalFile: false, name: '报告.docx' }))
+    javaKnowledge.getPreviewUrl.mockResolvedValue({
+      kind: 'inline',
+      url: 'https://origin.example.test/original',
+      minio_preview_url: 'https://minio.example.test/a/../object?sign=s',
+      file_name: '报告.docx',
+      mime_type: 'application/pdf; charset=binary'
+    })
+    const result = await service.preview({ baseId: encodeOrgId(KID), fileId: encodeOrgId(FID) })
+    expect(result).toMatchObject({ mimeType: 'application/pdf', url: 'https://minio.example.test/object?sign=s' })
+    expect(javaKnowledge.preview).not.toHaveBeenCalled()
+  })
+
+  it('图片预览件直接返回 URL', async () => {
+    javaKnowledge.getFile.mockResolvedValue(file({ hasOriginalFile: false, name: 'a.png' }))
+    javaKnowledge.getPreviewUrl.mockResolvedValue({
+      kind: 'inline',
+      url: null,
+      minio_preview_url: 'https://minio.example.test/a.png?sign=s',
+      file_name: 'a.png',
+      mime_type: 'image/png'
+    })
+    const result = await service.preview({ baseId: encodeOrgId(KID), fileId: encodeOrgId(FID) })
+    expect(result).toMatchObject({
+      kind: 'inline',
+      mimeType: 'image/png',
+      url: 'https://minio.example.test/a.png?sign=s'
+    })
+    expect(javaKnowledge.preview).not.toHaveBeenCalled()
+  })
+
+  it('元数据缺 file_name 或为 null 时回退文件目录名，不阻断预览', async () => {
+    // 现网 preview-url 响应可能缺 file_name 字段（曾致 invalid_type 预览报错）。
+    javaKnowledge.getFile.mockResolvedValue(file({ hasOriginalFile: true, name: '周报.docx' }))
+    javaKnowledge.getPreviewUrl.mockResolvedValue({
+      kind: 'inline',
+      url: null,
+      minio_preview_url: 'https://minio.example.test/doc.pdf?sign=s',
+      mime_type: 'application/pdf'
+    })
+    const result = await service.preview({ baseId: encodeOrgId(KID), fileId: encodeOrgId(FID) })
+    expect(result).toMatchObject({ kind: 'inline', fileName: '周报.docx', mimeType: 'application/pdf' })
+    expect(javaKnowledge.preview).not.toHaveBeenCalled()
+
+    javaKnowledge.getPreviewUrl.mockResolvedValue({
+      kind: 'inline',
+      url: null,
+      minio_preview_url: null,
+      file_name: null,
+      mime_type: null
+    })
+    javaKnowledge.preview.mockResolvedValue({ bytes: Buffer.from('%PDF-1.7\nx'), contentType: 'application/pdf' })
+    const fallback = await service.preview({ baseId: encodeOrgId(KID), fileId: encodeOrgId(FID) })
+    expect(fallback).toMatchObject({ kind: 'inline', fileName: '周报.docx', mimeType: 'application/pdf' })
+  })
+
+  it('新接口业务失败即报错，不回退原件字节接口', async () => {
+    javaKnowledge.getFile.mockResolvedValue(file({ hasOriginalFile: true, name: 'report.pdf' }))
+    javaKnowledge.getPreviewUrl.mockRejectedValue(new JavaKnowledgeError(500))
+    await expect(service.preview({ baseId: encodeOrgId(KID), fileId: encodeOrgId(FID) })).rejects.toThrow(
+      '企业资源服务异常'
+    )
+    expect(javaKnowledge.preview).not.toHaveBeenCalled()
+  })
+
+  it('新接口 404 即报错，不掩盖接口未实现', async () => {
+    javaKnowledge.getFile.mockResolvedValue(file({ hasOriginalFile: true, name: 'report.pdf' }))
+    javaKnowledge.getPreviewUrl.mockRejectedValue(new Error('知识库请求失败 (404)'))
+    await expect(service.preview({ baseId: encodeOrgId(KID), fileId: encodeOrgId(FID) })).rejects.toThrow('404')
+    expect(javaKnowledge.preview).not.toHaveBeenCalled()
+  })
+
+  it('归属不符在元数据请求之前拒绝，未授权不请求', async () => {
+    javaKnowledge.getFile.mockResolvedValue({ ...file({ hasOriginalFile: true }), knowledgeId: 'other' })
+    await expect(service.preview({ baseId: encodeOrgId(KID), fileId: encodeOrgId(FID) })).rejects.toThrow('原件不可用')
+    expect(javaKnowledge.getPreviewUrl).not.toHaveBeenCalled()
+  })
+
+  it('租约失效时不请求元数据接口', async () => {
+    javaKnowledge.getFile.mockResolvedValue(file({ hasOriginalFile: true, name: 'report.pdf' }))
+    built.auth.assertLease.mockImplementationOnce(() => {
+      throw new Error('stale')
+    })
+    await expect(service.preview({ baseId: encodeOrgId(KID), fileId: encodeOrgId(FID) })).rejects.toThrow(
+      '组织账号已切换'
+    )
+    expect(javaKnowledge.getPreviewUrl).not.toHaveBeenCalled()
+  })
+})
+
+describe('旧预览元数据 DTO 适配入口（复用已约定 DTO）', () => {
+  it('把已知旧预览 DTO 转成类型化预览并优先使用预览件地址', () => {
+    expect(
+      adaptLegacyPreviewMetadata({
+        kind: 'inline',
+        url: 'https://origin.example.test/original.pdf',
+        minio_preview_url: 'https://minio.example.test/preview.pdf?sign=abc',
+        file_name: 'report.pdf',
+        mime_type: 'application/pdf'
+      })
+    ).toEqual({
+      kind: 'inline',
+      fileName: 'report.pdf',
+      mimeType: 'application/pdf',
+      content: '',
+      url: 'https://minio.example.test/preview.pdf?sign=abc'
+    })
+  })
+
+  it('JSON 错误信封不会被当作预览元数据成功返回', () => {
+    expect(() => adaptLegacyPreviewMetadata({ code: 500, message: '文件预览失败' })).toThrow()
+    expect(() => adaptLegacyPreviewMetadata('preview failed')).toThrow()
+  })
+
+  it.each([
+    'ftp://minio.example.test/preview.pdf',
+    'https://user:pass@minio.example.test/preview.pdf',
+    'not a url',
+    'javascript:alert(1)'
+  ])('拒绝不安全的预览地址 %s', (url) => {
+    expect(() =>
+      adaptLegacyPreviewMetadata({
+        kind: 'inline',
+        minio_preview_url: url,
+        file_name: 'report.pdf',
+        mime_type: 'application/pdf'
+      })
+    ).toThrow(/预览地址无效/)
   })
 })
 

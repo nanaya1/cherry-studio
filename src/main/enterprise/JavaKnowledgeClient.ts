@@ -4,6 +4,7 @@ import { finished } from 'node:stream/promises'
 import * as z from 'zod'
 
 import { loggerService } from '@logger'
+import { LegacyPreviewMetadataSchema, type LegacyPreviewMetadata } from '@shared/data/types/enterpriseKnowledge'
 
 import { javaResponseErrorMessage } from './JavaResponseError'
 
@@ -764,6 +765,18 @@ export class JavaKnowledgeClient {
       return hit
     })
     return { hits, modeFallback: textOrNull(data.modeFallback) }
+  }
+
+  /**
+   * 校验归属后取预览元数据：沿用标准 JSON 信封解包与业务码校验，不发字节请求。
+   * 复用已约定的 LegacyPreviewMetadata DTO，不引入第二套预览契约。
+   */
+  async getPreviewUrl(id: string, fileId: string): Promise<LegacyPreviewMetadata> {
+    if (!KNOWLEDGE_UUID.test(id)) throw new Error('知识库ID格式无效')
+    if (!HEX32.test(fileId)) throw new Error('文件ID格式无效')
+    return LegacyPreviewMetadataSchema.parse(
+      object(await this.json(`/api/v1/knowledge/file/preview-url${this.query({ scope: 'client', id, fileId })}`))
+    )
   }
 
   /** 校验归属后预览原文件，返回字节与内容类型（不落盘）。 */

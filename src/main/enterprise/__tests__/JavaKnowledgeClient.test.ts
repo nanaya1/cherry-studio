@@ -459,6 +459,93 @@ describe('JavaKnowledgeClient.preview / download', () => {
   })
 })
 
+describe('JavaKnowledgeClient.getPreviewUrl', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  const metadata = {
+    kind: 'inline',
+    url: 'https://origin.example.test/report.pdf?token=enterprise-secret',
+    minio_preview_url: 'https://minio.example.test/preview.pdf?sign=preview-secret',
+    file_name: 'report.pdf',
+    mime_type: 'application/pdf'
+  }
+
+  it('走 GET file/preview-url，携带 scope/id/fileId 与 token 头，不携带企业授权头', async () => {
+    const { client, fetchImpl } = setup([envelope(metadata)])
+    const result = await client.getPreviewUrl(UUID_A, FILE_A)
+    expect(result).toEqual(metadata)
+    expect(String(fetchImpl.mock.calls[0][0])).toBe(
+      `https://ent.test/api/v1/knowledge/file/preview-url?scope=client&id=${UUID_A}&fileId=${FILE_A}`
+    )
+    expect(logs.info).toHaveBeenCalledWith(
+      'knowledge request started',
+      expect.objectContaining({ method: 'GET', path: '/api/v1/knowledge/file/preview-url' })
+    )
+    const init = fetchImpl.mock.calls[0][1]!
+    const headers = new Headers(init.headers)
+    expect(headers.get('token')).toBe('secret-token')
+    expect(headers.has('authorization')).toBe(false)
+    expect(init.credentials).toBe('omit')
+    expect(init.redirect).toBe('error')
+  })
+
+  it('签名 URL 与 token 不进入日志', async () => {
+    const { client } = setup([envelope(metadata)])
+    await client.getPreviewUrl(UUID_A, FILE_A)
+    const serialized = JSON.stringify([logs.info.mock.calls, logs.warn.mock.calls])
+    for (const secret of ['preview-secret', 'enterprise-secret', 'secret-token'])
+      expect(serialized).not.toContain(secret)
+  })
+
+  it('业务失败信封按 Java 业务码报错，不返回元数据', async () => {
+    const { client } = setup([envelope(null, 10007, 'req-denied')])
+    await expect(client.getPreviewUrl(UUID_A, FILE_A)).rejects.toThrow('无权限')
+  })
+
+  it('会话失效触发认证层', async () => {
+    const { client, onSessionExpired } = setup([envelope(null, 10008)])
+    await expect(client.getPreviewUrl(UUID_A, FILE_A)).rejects.toThrow('重新登录')
+    expect(onSessionExpired).toHaveBeenCalled()
+  })
+
+  it('缺 file_name 或为 null/驼峰命名的成功信封均可解析，缺失字段归一为 null', async () => {
+    // 现网响应为 camelCase（fileName/minioPreviewUrl/mimeType），schema 需同时兼容两种命名。
+    const { client } = setup([
+      envelope({
+        kind: 'inline',
+        url: 'https://origin.example.test/report.pdf?token=enterprise-secret',
+        minioPreviewUrl: 'https://minio.example.test/preview.pdf?sign=preview-secret',
+        fileName: 'report.pdf',
+        mimeType: 'application/pdf'
+      })
+    ])
+    expect(await client.getPreviewUrl(UUID_A, FILE_A)).toEqual({
+      kind: 'inline',
+      url: 'https://origin.example.test/report.pdf?token=enterprise-secret',
+      minio_preview_url: 'https://minio.example.test/preview.pdf?sign=preview-secret',
+      file_name: 'report.pdf',
+      mime_type: 'application/pdf'
+    })
+    const { client: client2 } = setup([envelope({ kind: 'inline' })])
+    expect(await client2.getPreviewUrl(UUID_A, FILE_A)).toEqual({
+      kind: 'inline',
+      url: null,
+      minio_preview_url: null,
+      file_name: null,
+      mime_type: null
+    })
+  })
+
+  it.each([
+    ['bad-id', FILE_A],
+    [UUID_A, 'bad-file']
+  ])('非法 ID 不发出请求（%s / %s）', async (id, fileId) => {
+    const { client, fetchImpl } = setup([])
+    await expect(client.getPreviewUrl(id, fileId)).rejects.toThrow()
+    expect(fetchImpl).not.toHaveBeenCalled()
+  })
+})
+
 describe('JavaKnowledgeClient 超时', () => {
   it('读取正文受超时限制', async () => {
     const fetchImpl = vi.fn<typeof fetch>(

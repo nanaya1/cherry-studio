@@ -324,6 +324,8 @@ type Props = {
   resolvedWorkspaceWarning: string | null
   externalContextControls?: boolean
   sendMessage: (message?: { text: string }, options?: AgentComposerSendOptions) => Promise<boolean | void>
+  // MEA:new-task-draft-clearing 仅成功直发且草稿清理完成后通知调用方。
+  onDraftCleared?: () => void
   stop: () => Promise<void>
   onCreateEmptySession?: () => void | Promise<unknown>
   onAgentChange?: (agentId: string | null) => void | Promise<void>
@@ -356,6 +358,7 @@ const AgentComposerRoot = ({
   resolvedModel,
   resolvedWorkspaceWarning,
   sendMessage,
+  onDraftCleared,
   stop,
   onCreateEmptySession,
   onAgentChange,
@@ -493,6 +496,7 @@ const AgentComposerRoot = ({
         workspaceId={resolvedWorkspaceId}
         actionsRef={actionsRef}
         chatSendMessage={sendMessage}
+        onDraftCleared={onDraftCleared}
         chatStop={stop}
         onCreateEmptySession={onCreateEmptySession}
         onAgentChange={onAgentChange}
@@ -538,6 +542,7 @@ interface InnerProps {
   workspaceId?: string | null
   actionsRef: React.MutableRefObject<ProviderActionHandlers>
   chatSendMessage: Props['sendMessage']
+  onDraftCleared?: Props['onDraftCleared']
   chatStop: Props['stop']
   onCreateEmptySession?: Props['onCreateEmptySession']
   onAgentChange?: Props['onAgentChange']
@@ -778,6 +783,7 @@ const AgentComposerInner = ({
   workspaceId,
   actionsRef,
   chatSendMessage,
+  onDraftCleared,
   chatStop,
   onCreateEmptySession,
   onAgentChange,
@@ -1552,6 +1558,9 @@ const AgentComposerInner = ({
   )
 
   const clearCurrentDraft = useCallback(() => {
+    // MEA:new-task-draft-clearing 同步清理编辑器及附件引用，防止卸载回写已发送草稿。
+    actionsRef.current.replaceDraft({ text: '', tokens: [] })
+    filesRef.current = []
     setText('')
     setFiles([])
     setSelectedSkills([])
@@ -1576,6 +1585,8 @@ const AgentComposerInner = ({
     resetHistoryIndex()
     inputHistoryToolsRef.current = null
   }, [
+    actionsRef,
+    filesRef,
     agentId,
     draftCacheKey,
     draftPersistenceEnabled,
@@ -1666,7 +1677,12 @@ const AgentComposerInner = ({
       setIsDirectSending(true)
       try {
         const sent = await sendQueuedPayload(payload)
-        if (sent) clearCurrentDraft()
+        // if (sent) clearCurrentDraft()
+        // MEA:new-task-draft-clearing 导航必须晚于同步清理。
+        if (sent) {
+          clearCurrentDraft()
+          onDraftCleared?.()
+        }
       } finally {
         directSendInFlightRef.current = false
         setIsDirectSending(false)
@@ -1675,6 +1691,7 @@ const AgentComposerInner = ({
     [
       buildQueuedPayload,
       clearCurrentDraft,
+      onDraftCleared,
       enqueueFollowup,
       isStreaming,
       model,

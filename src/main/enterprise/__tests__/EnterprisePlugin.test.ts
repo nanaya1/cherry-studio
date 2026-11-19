@@ -73,7 +73,15 @@ vi.mock('../OrgAuthManager', async () => {
   }
 })
 
-vi.mock('../OrgCredentialStore', () => ({ OrgCredentialStore: class {} }))
+// MEA:enterprise-java-auth 原空类 mock 保留回溯，下方新增 forJava 静态入口。
+// vi.mock('../OrgCredentialStore', () => ({ OrgCredentialStore: class {} }))
+vi.mock('../OrgCredentialStore', () => ({
+  OrgCredentialStore: class {
+    static forJava() {
+      return new this()
+    }
+  }
+}))
 vi.mock('../OrgSkillCatalog', () => ({
   OrgSkillCatalog: class {
     migrateLegacyCopies() {
