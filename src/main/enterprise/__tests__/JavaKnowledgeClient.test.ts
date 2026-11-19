@@ -509,9 +509,32 @@ describe('JavaKnowledgeClient.getPreviewUrl', () => {
     expect(onSessionExpired).toHaveBeenCalled()
   })
 
-  it('缺 file_name 的成功信封被 schema 拒绝', async () => {
-    const { client } = setup([envelope({ kind: 'inline' })])
-    await expect(client.getPreviewUrl(UUID_A, FILE_A)).rejects.toThrow()
+  it('缺 file_name 或为 null/驼峰命名的成功信封均可解析，缺失字段归一为 null', async () => {
+    // 现网响应为 camelCase（fileName/minioPreviewUrl/mimeType），schema 需同时兼容两种命名。
+    const { client } = setup([
+      envelope({
+        kind: 'inline',
+        url: 'https://origin.example.test/report.pdf?token=enterprise-secret',
+        minioPreviewUrl: 'https://minio.example.test/preview.pdf?sign=preview-secret',
+        fileName: 'report.pdf',
+        mimeType: 'application/pdf'
+      })
+    ])
+    expect(await client.getPreviewUrl(UUID_A, FILE_A)).toEqual({
+      kind: 'inline',
+      url: 'https://origin.example.test/report.pdf?token=enterprise-secret',
+      minio_preview_url: 'https://minio.example.test/preview.pdf?sign=preview-secret',
+      file_name: 'report.pdf',
+      mime_type: 'application/pdf'
+    })
+    const { client: client2 } = setup([envelope({ kind: 'inline' })])
+    expect(await client2.getPreviewUrl(UUID_A, FILE_A)).toEqual({
+      kind: 'inline',
+      url: null,
+      minio_preview_url: null,
+      file_name: null,
+      mime_type: null
+    })
   })
 
   it.each([

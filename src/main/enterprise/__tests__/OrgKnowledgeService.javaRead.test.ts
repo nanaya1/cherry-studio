@@ -403,6 +403,31 @@ describe('Java 预览元数据主链（getPreviewUrl → adaptLegacyPreviewMetad
     expect(javaKnowledge.preview).not.toHaveBeenCalled()
   })
 
+  it('元数据缺 file_name 或为 null 时回退文件目录名，不阻断预览', async () => {
+    // 现网 preview-url 响应可能缺 file_name 字段（曾致 invalid_type 预览报错）。
+    javaKnowledge.getFile.mockResolvedValue(file({ hasOriginalFile: true, name: '周报.docx' }))
+    javaKnowledge.getPreviewUrl.mockResolvedValue({
+      kind: 'inline',
+      url: null,
+      minio_preview_url: 'https://minio.example.test/doc.pdf?sign=s',
+      mime_type: 'application/pdf'
+    })
+    const result = await service.preview({ baseId: encodeOrgId(KID), fileId: encodeOrgId(FID) })
+    expect(result).toMatchObject({ kind: 'inline', fileName: '周报.docx', mimeType: 'application/pdf' })
+    expect(javaKnowledge.preview).not.toHaveBeenCalled()
+
+    javaKnowledge.getPreviewUrl.mockResolvedValue({
+      kind: 'inline',
+      url: null,
+      minio_preview_url: null,
+      file_name: null,
+      mime_type: null
+    })
+    javaKnowledge.preview.mockResolvedValue({ bytes: Buffer.from('%PDF-1.7\nx'), contentType: 'application/pdf' })
+    const fallback = await service.preview({ baseId: encodeOrgId(KID), fileId: encodeOrgId(FID) })
+    expect(fallback).toMatchObject({ kind: 'inline', fileName: '周报.docx', mimeType: 'application/pdf' })
+  })
+
   it('新接口业务失败即报错，不回退原件字节接口', async () => {
     javaKnowledge.getFile.mockResolvedValue(file({ hasOriginalFile: true, name: 'report.pdf' }))
     javaKnowledge.getPreviewUrl.mockRejectedValue(new JavaKnowledgeError(500))

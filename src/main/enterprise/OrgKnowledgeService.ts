@@ -151,13 +151,13 @@ export function adaptLegacyPreviewMetadata(raw: unknown): OrgKnowledgePreview {
   if (legacy.kind === 'inline' && parsedUrl && (isPdf || imageTypes.includes(mimeType ?? ''))) {
     return {
       kind: 'inline',
-      fileName: legacy.file_name,
+      fileName: legacy.file_name ?? '',
       mimeType: isPdf ? 'application/pdf' : mimeType,
       content: '',
       url: parsedUrl.href
     }
   }
-  return { kind: legacy.kind, fileName: legacy.file_name, mimeType, content: '' }
+  return { kind: legacy.kind, fileName: legacy.file_name ?? '', mimeType, content: '' }
 }
 
 export class OrgKnowledgeService {
@@ -1183,6 +1183,8 @@ export class OrgKnowledgeService {
     // MEA:enterprise-knowledge-page 先取预览元数据；接口失败即抛错，不回退旧服务字节接口。
     const metadata = await this.checked(() => client.getPreviewUrl(baseId, fileId), lease)
     const preview = adaptLegacyPreviewMetadata(metadata)
+    // MEA:enterprise-knowledge-page Java 元数据 file_name 可缺省，回退文件目录名，不因名称缺失阻断预览。
+    const previewName = preview.fileName || file.name
     logger.info('knowledge preview metadata', { fileId: params.fileId, kind: preview.kind, mimeType: preview.mimeType })
 
     // MEA:enterprise-knowledge-page 预生成预览件优先：PDF 交 PDF.js 直链，图片直接引用临时地址。
@@ -1192,7 +1194,7 @@ export class OrgKnowledgeService {
       if (isPdf)
         return {
           kind: 'inline',
-          fileName: preview.fileName,
+          fileName: previewName,
           mimeType: 'application/pdf',
           content: '',
           url: preview.url
@@ -1201,7 +1203,7 @@ export class OrgKnowledgeService {
         preview.mimeType &&
         ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/avif', 'image/bmp'].includes(preview.mimeType)
       )
-        return { kind: 'inline', fileName: preview.fileName, mimeType: preview.mimeType, content: '', url: preview.url }
+        return { kind: 'inline', fileName: previewName, mimeType: preview.mimeType, content: '', url: preview.url }
     }
     // 无预览件时仍需原件字节保持图片/文本/Office 能力；能力门控后移到取字节之前。
     if (file.hasOriginalFile !== true) throw new OrgKnowledgeError(E.ORGKB_FORBIDDEN, '原件不可用或能力已变化')
