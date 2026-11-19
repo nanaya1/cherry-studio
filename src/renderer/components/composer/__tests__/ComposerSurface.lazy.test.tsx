@@ -567,4 +567,19 @@ describe('deferred ComposerSurface', () => {
     await screen.findByTestId('composer-runtime')
     expect(mocks.runtimeIntent?.transfer).toBeUndefined()
   })
+
+  // MEA:composer-waiting fallback 必须与 runtime 一致：等待态隐藏发送入口且不提交。
+  it('fallback 的 waitingReason 隐藏发送按钮、禁用 spinner 不提交，移除后恢复', () => {
+    const { rerender } = render(<Harness waitingReason="引用内容正在解析，请稍候" />)
+
+    expect(screen.queryByText('Send')).not.toBeInTheDocument()
+    const waiting = screen.getByRole('button', { name: '引用内容正在解析，请稍候' })
+    expect(waiting).toBeDisabled()
+    fireEvent.click(waiting)
+    expect(mocks.onSendDraft).not.toHaveBeenCalled()
+
+    rerender(<Harness />)
+    fireEvent.click(screen.getByText('Send'))
+    expect(mocks.onSendDraft).toHaveBeenCalledTimes(1)
+  })
 })

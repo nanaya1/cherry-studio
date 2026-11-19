@@ -5626,4 +5626,48 @@ describe('ComposerSurface', () => {
       })
     )
   })
+
+  // MEA:composer-waiting 等待/停止态不暴露可点发送或可重复暂停；data-ui 是维护中的语义契约。
+  describe('waiting send action', () => {
+    it('waitingReason 用禁用 spinner 替代发送图标，点击不提交，恢复后重新可发送', () => {
+      const onSendDraft = vi.fn()
+      const { container, rerender } = render(
+        <ComposerSurface {...baseProps} waitingReason="资源准备中，请稍候" onSendDraft={onSendDraft} />
+      )
+
+      expect(container.querySelector('[data-ui="chat.composer.action.send"]')).toBeNull()
+      const waiting = screen.getByRole('button', { name: '资源准备中，请稍候' })
+      expect(waiting).toBeDisabled()
+      fireEvent.click(waiting)
+      expect(onSendDraft).not.toHaveBeenCalled()
+
+      rerender(<ComposerSurface {...baseProps} onSendDraft={onSendDraft} />)
+      expect(screen.queryByRole('button', { name: '资源准备中，请稍候' })).not.toBeInTheDocument()
+      const send = container.querySelector('[data-ui="chat.composer.action.send"]')
+      expect(send).not.toBeNull()
+      fireEvent.click(send!)
+      expect(onSendDraft).toHaveBeenCalledTimes(1)
+    })
+
+    it('停止中不显示可重复暂停按钮，点击等待指示不触发 stop 或提交', () => {
+      const onPause = vi.fn()
+      const onSendDraft = vi.fn()
+      const { container } = render(
+        <ComposerSurface
+          {...baseProps}
+          isLoading
+          sendDisabled
+          waitingReason="任务正在停止，请稍候"
+          onPause={onPause}
+          onSendDraft={onSendDraft}
+        />
+      )
+
+      expect(container.querySelector('[data-ui="chat.composer.action.pause"]')).toBeNull()
+      const waiting = screen.getByRole('button', { name: '任务正在停止，请稍候' })
+      fireEvent.click(waiting)
+      expect(onPause).not.toHaveBeenCalled()
+      expect(onSendDraft).not.toHaveBeenCalled()
+    })
+  })
 })

@@ -29,6 +29,8 @@ interface AgentComposerSlotProps {
   attachmentOnly?: boolean
   taskBusy?: boolean
   taskStopping?: boolean
+  /** MEA:composer-waiting 上层给出的具体阻止原因，透传给 AgentComposer。 */
+  blockedReasonOverride?: string
   onAgentChange?: (agentId: string | null) => void | Promise<void>
   agentChanging?: boolean
   onCreateEmptySession?: () => void | Promise<unknown>
@@ -55,6 +57,7 @@ function AgentComposerSlot({
   attachmentOnly,
   taskBusy,
   taskStopping,
+  blockedReasonOverride,
   onAgentChange,
   agentChanging,
   onCreateEmptySession,
@@ -96,6 +99,7 @@ function AgentComposerSlot({
         attachmentOnly={attachmentOnly}
         taskBusy={taskBusy}
         taskStopping={taskStopping}
+        blockedReasonOverride={blockedReasonOverride}
         forceNarrowLayout={session.featureKind === 'industrial-video'}
         canChangeModel={!isEditing}
         sendMessage={isEditing ? resendEditedMessage : sendMessage}

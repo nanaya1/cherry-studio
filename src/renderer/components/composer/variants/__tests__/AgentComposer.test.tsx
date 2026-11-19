@@ -3024,7 +3024,9 @@ describe('AgentComposer', () => {
       expect.objectContaining({ id: 'reference:session:s1', kind: 'reference', promptText: '' })
     )
     // ...so sending stays blocked until the transcript arrives.
-    expect(mocks.surfaceProps?.sendBlockedReason).toBe('common.loading')
+    expect(mocks.surfaceProps?.sendDisabled).toBe(true)
+    expect(mocks.surfaceProps?.sendBlockedReason).toBe('agent.composer.send_blocked.reference_parsing')
+    expect(mocks.surfaceProps?.waitingReason).toBe('agent.composer.send_blocked.reference_parsing')
 
     await act(async () => {
       resolveMessages?.({
@@ -4752,11 +4754,43 @@ describe('AgentComposer', () => {
     )
 
     expect(mocks.surfaceProps?.sendDisabled).toBe(true)
-    expect(mocks.surfaceProps?.sendBlockedReason).toBe('common.loading')
+    expect(mocks.surfaceProps?.sendBlockedReason).toBe('agent.composer.send_blocked.resource_preparing')
+    expect(mocks.surfaceProps?.waitingReason).toBe('agent.composer.send_blocked.resource_preparing')
 
     fireEvent.click(screen.getByText('send'))
 
     expect(mocks.sendMessage).not.toHaveBeenCalled()
+  })
+
+  it('reports the previous-send reason and blocks sends while a direct send is submitting', async () => {
+    const inFlight = createDeferred<void>()
+    mocks.sendMessage.mockReturnValue(inFlight.promise)
+
+    render(
+      <AgentComposer
+        agentId="agent-1"
+        sessionId="session-1"
+        sendMessage={mocks.sendMessage}
+        stop={mocks.stop}
+        isStreaming={false}
+      />
+    )
+
+    let sending: unknown
+    act(() => {
+      sending = mocks.surfaceProps?.onSendDraft({ text: 'first', tokens: [] })
+    })
+
+    expect(mocks.surfaceProps?.sendDisabled).toBe(true)
+    expect(mocks.surfaceProps?.sendBlockedReason).toBe('agent.composer.send_blocked.previous_sending')
+    expect(mocks.surfaceProps?.waitingReason).toBe('agent.composer.send_blocked.previous_sending')
+
+    await act(async () => {
+      inFlight.resolve(undefined)
+      await sending
+    })
+    expect(mocks.surfaceProps?.sendBlockedReason).toBeUndefined()
+    expect(mocks.surfaceProps?.waitingReason).toBeUndefined()
   })
 
   it('工业任务在 Agent 空闲时保持停止入口，停止中忽略再次暂停且不排队', async () => {
@@ -4775,6 +4809,10 @@ describe('AgentComposer', () => {
     fireEvent.click(screen.getByText('pause'))
     expect(mocks.stop).toHaveBeenCalledTimes(1)
     rerender(<AgentComposer {...props} taskStopping />)
+    // MEA:composer-waiting 该用例仍带 taskBusy=true（工业停止通常伴随任务忙），属可停止执行态，
+    // 保留暂停入口、不进入等待 spinner；纯停止确认场景见 Surface 层用例。
+    expect(mocks.surfaceProps?.waitingReason).toBeUndefined()
+    expect(mocks.surfaceProps?.isLoading).toBe(true)
     await act(async () => {
       await mocks.surfaceProps?.onPause()
       await mocks.surfaceProps?.onSendDraft({ text: 'revision', tokens: [] })
@@ -4797,6 +4835,8 @@ describe('AgentComposer', () => {
       />
     )
     expect(mocks.surfaceProps?.isLoading).toBe(true)
+    // MEA:composer-waiting 可停止执行态不进入等待 spinner，保留暂停入口。
+    expect(mocks.surfaceProps?.waitingReason).toBeUndefined()
     fireEvent.click(screen.getByText('pause'))
     expect(mocks.stop).toHaveBeenCalledTimes(1)
   })
@@ -4855,6 +4895,8 @@ describe('AgentComposer', () => {
     fireEvent.click(screen.getByText('send'))
 
     // Busy → the message is queued, not sent; the dock surfaces through `queueContent`.
+    // MEA:composer-waiting 正常流式仍走排队，不进入等待 spinner。
+    expect(mocks.surfaceProps?.waitingReason).toBeUndefined()
     expect(mocks.sendMessage).not.toHaveBeenCalled()
     expect(getQueueDock()).toBeTruthy()
   })

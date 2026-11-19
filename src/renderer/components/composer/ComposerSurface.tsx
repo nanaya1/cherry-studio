@@ -1,4 +1,4 @@
-import { CirclePause } from 'lucide-react'
+import { CirclePause, Loader2 } from 'lucide-react'
 import {
   type ComponentType,
   type DragEvent as ReactDragEvent,
@@ -233,23 +233,35 @@ function DeferredComposerSurface(props: ComposerSurfaceProps) {
   const belowControls = props.renderBelowControls?.(undefined, pendingPanelControl)
   const sendAccessoryElement = typeof props.sendAccessory === 'function' ? props.sendAccessory() : props.sendAccessory
   const editorMinHeight = getComposerEditorMinHeight(props.fontSize)
-  const sendAction =
-    props.isLoading && props.sendDisabled ? (
-      <button
-        data-ui="chat.composer.action.pause"
-        type="button"
-        className="flex size-7.5 items-center justify-center rounded-full text-error hover:bg-accent"
-        aria-label={t('chat.input.pause')}
-        onClick={() => void props.onPause()}>
-        <CirclePause size={20} />
-      </button>
-    ) : (
-      <SendMessageButton
-        disabled={props.sendDisabled}
-        sendMessage={() => void props.onSendDraft(getFallbackDraft())}
-        onDisabledClick={showBlockedSendReason}
-      />
-    )
+  // MEA:composer-waiting 与 runtime 同一分支：等待/停止中用禁用 spinner，原因进 aria/title。
+  // 可停止执行态（isLoading && sendDisabled）优先保留暂停按钮，不被等待 spinner 吞掉。
+  // 原实现：props.isLoading && props.sendDisabled ? <button ... onPause .../> : <SendMessageButton .../>
+  const sendAction = props.waitingReason ? (
+    <button
+      data-ui="chat.composer.action.waiting"
+      type="button"
+      className="flex size-7.5 items-center justify-center rounded-full text-muted-foreground"
+      aria-label={props.waitingReason}
+      title={props.waitingReason}
+      disabled>
+      <Loader2 size={20} className="animate-spin" />
+    </button>
+  ) : props.isLoading && props.sendDisabled ? (
+    <button
+      data-ui="chat.composer.action.pause"
+      type="button"
+      className="flex size-7.5 items-center justify-center rounded-full text-error hover:bg-accent"
+      aria-label={t('chat.input.pause')}
+      onClick={() => void props.onPause()}>
+      <CirclePause size={20} />
+    </button>
+  ) : (
+    <SendMessageButton
+      disabled={props.sendDisabled}
+      sendMessage={() => void props.onSendDraft(getFallbackDraft())}
+      onDisabledClick={showBlockedSendReason}
+    />
+  )
   const inputbarElement = (
     <div
       id="inputbar"

@@ -2,7 +2,7 @@ import type { JSONContent, TiptapEditorHTMLElement } from '@tiptap/core'
 import type { EditorView } from '@tiptap/pm/view'
 import type { Editor } from '@tiptap/react'
 import { EditorContent, type NodeViewProps } from '@tiptap/react'
-import { Check, CirclePause, LocateFixed, Maximize2, Minimize2, Pencil, X } from 'lucide-react'
+import { Check, CirclePause, Loader2, LocateFixed, Maximize2, Minimize2, Pencil, X } from 'lucide-react'
 import React, { startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -154,6 +154,8 @@ export interface ComposerSurfaceProps {
   steerShortcut?: ComposerShortcut
   sendDisabled: boolean
   sendBlockedReason?: string
+  /** MEA:composer-waiting 可选：等待态用禁用 spinner 代替发送/暂停按钮，并以该文案作为 aria/tooltip 原因。默认不传时行为不变。 */
+  waitingReason?: string
   isLoading: boolean
   onSendDraft: (draft: ComposerSerializedDraft, options?: { steer?: boolean }) => void | Promise<void>
   onPause: () => void | Promise<void>
@@ -507,6 +509,7 @@ export default function ComposerSurfaceRuntime({
   steerShortcut,
   sendDisabled,
   sendBlockedReason,
+  waitingReason,
   isLoading,
   onSendDraft,
   onPause,
@@ -2197,7 +2200,22 @@ export default function ComposerSurfaceRuntime({
     typeof sendAccessory === 'function' ? sendAccessory(inputAdapter, unifiedPanelControl) : sendAccessory
   const compactControls = renderCompactControls?.(inputAdapter, unifiedPanelControl)
   const ExpandIcon = hasCustomHeight ? Minimize2 : Maximize2
-  const sendAction = showPauseButton ? (
+  // MEA:composer-waiting 等待/停止中优先显示禁用 spinner；native disabled 不触发任何发送/停止。
+  // 可停止执行态（showPauseButton）优先保留暂停按钮，避免等待 spinner 吞掉停止入口。
+  // waitingReason 未传时保持原发送/暂停分支，普通 ChatComposer 呈现不变。
+  // 原实现：const sendAction = showPauseButton ? (<Tooltip ...><button .../></Tooltip>) : (<SendMessageButton ... />)
+  const sendAction = waitingReason ? (
+    <Tooltip content={waitingReason} placement="top">
+      <button
+        data-ui="chat.composer.action.waiting"
+        type="button"
+        className="flex size-7.5 items-center justify-center rounded-full text-muted-foreground"
+        aria-label={waitingReason}
+        disabled>
+        <Loader2 size={20} className="animate-spin" />
+      </button>
+    </Tooltip>
+  ) : showPauseButton ? (
     <Tooltip content={t('chat.input.pause')} placement="top">
       <button
         data-ui="chat.composer.action.pause"

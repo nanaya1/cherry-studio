@@ -348,6 +348,8 @@ type Props = {
   attachmentOnly?: boolean
   taskBusy?: boolean
   taskStopping?: boolean
+  /** MEA:composer-waiting 上层（工业 ComposerSlot）给出的具体阻止原因，覆盖通用“资源准备中”。 */
+  blockedReasonOverride?: string
   forceNarrowLayout?: boolean
   launchOptions?: AgentComposerLaunchOptions
 }
@@ -384,6 +386,7 @@ const AgentComposerRoot = ({
   attachmentOnly = false,
   taskBusy = false,
   taskStopping = false,
+  blockedReasonOverride,
   launchOptions,
   renderControls,
   forceNarrowLayout = false,
@@ -523,6 +526,7 @@ const AgentComposerRoot = ({
         attachmentOnly={attachmentOnly}
         taskBusy={taskBusy}
         taskStopping={taskStopping}
+        blockedReasonOverride={blockedReasonOverride}
         launchOptions={launchOptions}
         renderControls={renderControls}
         forceNarrowLayout={forceNarrowLayout}
@@ -571,6 +575,7 @@ interface InnerProps {
   attachmentOnly?: boolean
   taskBusy?: boolean
   taskStopping?: boolean
+  blockedReasonOverride?: string
   launchOptions?: AgentComposerLaunchOptions
   renderControls: AgentComposerControlsRenderer
   forceNarrowLayout?: boolean
@@ -814,6 +819,7 @@ const AgentComposerInner = ({
   attachmentOnly = false,
   taskBusy = false,
   taskStopping = false,
+  blockedReasonOverride,
   launchOptions,
   renderControls,
   forceNarrowLayout = false,
@@ -2004,8 +2010,34 @@ const AgentComposerInner = ({
             !!missingModelMessage ||
             (text.trim().length === 0 && files.length === 0 && selectedSkills.length === 0)
           }
+          // sendBlockedReason={
+          //   sendDisabled || isDirectSending || hasPendingReference ? t('common.loading') : missingModelMessage
+          // }
+          // MEA:composer-waiting 具体原因透传；等待态用 waitingReason 的 spinner，发送图标不再承载等待语义。
           sendBlockedReason={
-            sendDisabled || isDirectSending || hasPendingReference ? t('common.loading') : missingModelMessage
+            sendDisabled
+              ? (blockedReasonOverride ?? t('agent.composer.send_blocked.resource_preparing'))
+              : isDirectSending
+                ? t('agent.composer.send_blocked.previous_sending')
+                : hasPendingReference
+                  ? t('agent.composer.send_blocked.reference_parsing')
+                  : missingModelMessage
+          }
+          // MEA:composer-waiting 可停止执行态（isStreaming/taskBusy 时 isLoading=true 且 sendDisabled=true）
+          // 不传 waitingReason，保留原暂停按钮，避免等待 spinner 吞掉停止入口；纯停止确认（仅 taskStopping）
+          // 与提交/解析/准备等待仍显示禁用 spinner。
+          waitingReason={
+            isStreaming || taskBusy
+              ? undefined
+              : taskStopping
+                ? t('agent.composer.send_blocked.stopping')
+                : isDirectSending
+                  ? t('agent.composer.send_blocked.previous_sending')
+                  : hasPendingReference
+                    ? t('agent.composer.send_blocked.reference_parsing')
+                    : sendDisabled
+                      ? (blockedReasonOverride ?? t('agent.composer.send_blocked.resource_preparing'))
+                      : undefined
           }
           // isLoading={isStreaming}
           // isLoading={attachmentOnly ? false : isStreaming}
