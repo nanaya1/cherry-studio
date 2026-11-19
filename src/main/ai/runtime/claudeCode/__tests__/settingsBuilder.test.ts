@@ -357,6 +357,9 @@ describe('buildClaudeCodeSessionSettings', () => {
           recordToolExecutionTiming: mocks.recordToolExecutionTiming
         }
       }
+      if (name === 'IndustrialVideoService') {
+        return { getExecutionToken: () => ({ sessionId: 'session-1', epoch: 1 }), assertExecution: vi.fn() }
+      }
       throw new Error(`Unexpected application.get(${name})`)
     })
     // The per-session snapshot registry is service-held state shared across tests; reset session-1
@@ -2561,6 +2564,7 @@ describe('buildClaudeCodeSessionSettings', () => {
     'ivideo_storyboard_get',
     'ivideo_storyboard_submit',
     'ivideo_review_snapshot_get',
+    'ivideo_regenerate_storyboard',
     'ivideo_status',
     'ivideo_estimate',
     'ivideo_download',
@@ -2682,6 +2686,8 @@ describe('buildClaudeCodeSessionSettings', () => {
       if (name === 'AgentSessionRuntimeService') return { getInteractionState }
       if (name === 'IndustrialVideoService') {
         return {
+          getExecutionToken: () => ({ sessionId: 'session-1', epoch: 1 }),
+          assertExecution: vi.fn(),
           getConfirmedReview: () => null,
           getPendingReviewSnapshot: () => ({ run: 'run-1', reviewVersion: 'review-7' }),
           getRecords: () => ({ run: 'run-1' })
@@ -2734,6 +2740,8 @@ describe('buildClaudeCodeSessionSettings', () => {
       if (name === 'AgentSessionRuntimeService') return { getInteractionState }
       if (name === 'IndustrialVideoService') {
         return {
+          getExecutionToken: () => ({ sessionId: 'session-1', epoch: 1 }),
+          assertExecution: vi.fn(),
           getConfirmedReview: () => null,
           getPendingReviewSnapshot: () => null,
           getRecords: () => ({ run: 'run-1' })
@@ -2785,6 +2793,8 @@ describe('buildClaudeCodeSessionSettings', () => {
       if (name === 'AgentSessionRuntimeService') return { getInteractionState }
       if (name === 'IndustrialVideoService') {
         return {
+          getExecutionToken: () => ({ sessionId: 'session-1', epoch: 1 }),
+          assertExecution: vi.fn(),
           getConfirmedReview: () => ({ run: 'run-1', reviewVersion: 'review-8' }),
           getRecords: () => ({ run: 'run-1' })
         }

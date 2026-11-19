@@ -114,6 +114,7 @@ const INDUSTRIAL_VIDEO_PREPARATION_TOOLS = new Set(
     'ivideo_storyboard_get',
     'ivideo_storyboard_submit',
     'ivideo_review_snapshot_get',
+    'ivideo_regenerate_storyboard',
     'ivideo_status',
     'ivideo_estimate',
     'ivideo_download',
