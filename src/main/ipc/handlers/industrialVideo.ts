@@ -22,6 +22,8 @@ export const industrialVideoHandlers: IpcHandlersFor<typeof industrialVideoReque
   'industrial_video.stage_retry': async (input) => application.get('IndustrialVideoService').retryStageTask(input),
   'industrial_video.cowork_review_get': async (input) => application.get('IndustrialVideoService').coworkReviewGet(input),
   'industrial_video.cowork_review_confirm': async (input) => application.get('IndustrialVideoService').coworkReviewConfirm(input),
+  'industrial_video.workbench_dirty_answer': async (input) =>
+    application.get('IndustrialVideoService').answerWorkbenchDirty(input),
   'industrial_video.stop': async (input) => application.get('IndustrialVideoService').stop(input),
   'industrial_video.review_snapshot_get': async (input) =>
     application.get('IndustrialVideoService').reviewSnapshotGet(input),

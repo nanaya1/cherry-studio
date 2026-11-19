@@ -30,17 +30,20 @@ const state = vi.hoisted(() => ({
 const request = vi.hoisted(() => vi.fn())
 vi.mock('@renderer/ipc', () => ({ ipcApi: { request } }))
 vi.mock('./useIndustrialVideoProduction', () => ({ useIndustrialVideoProduction: () => state }))
+vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }))
 vi.mock('../agents/AgentComposerSlot', () => ({
   default: ({
     sendDisabled,
     taskBusy,
     taskStopping,
-    stop
+    stop,
+    blockedReasonOverride
   }: ComponentProps<typeof IndustrialVideoAgentComposerSlot>) => (
     <>
       <button type="button" disabled={sendDisabled}>
         send
       </button>
+      <span data-testid="blocked-reason">{blockedReasonOverride}</span>
       {taskBusy && (
         <button type="button" disabled={taskStopping} onClick={() => void stop()}>
           stop
@@ -197,6 +200,35 @@ describe('industrial video server execution guard', () => {
     state.record.unknownSubmissions = []
     state.error = 'offline'
     rerender(<IndustrialVideoAgentComposerSlot {...props} />)
+    expect(screen.getByRole('button', { name: 'send' })).toBeDisabled()
+  })
+
+  // MEA:composer-waiting 工业 ComposerSlot 透传具体阻止原因，不再一律叫资源准备。
+  it('后台制作透传后台原因且不传输入框暂停，停止入口留在进度区', async () => {
+    state.record = { state: 'generating', unknownSubmissions: [], control: { phase: 'active', stopRequested: false } }
+    state.job = { status: 'running' }
+    render(<IndustrialVideoAgentComposerSlot {...baseProps} />)
+    expect(await screen.findByTestId('blocked-reason')).toHaveTextContent(
+      'agent.composer.send_blocked.background_producing'
+    )
+    expect(screen.queryByRole('button', { name: 'stop' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '停止制作' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'send' })).toBeDisabled()
+  })
+
+  it('资源查询失败透传查询原因而非资源准备', () => {
+    state.error = 'offline'
+    render(<IndustrialVideoAgentComposerSlot {...baseProps} />)
+    expect(screen.getByTestId('blocked-reason')).toHaveTextContent('agent.composer.send_blocked.resource_query_failed')
+    expect(screen.getByRole('button', { name: 'send' })).toBeDisabled()
+  })
+
+  it('停止后核实服务端状态透传结果核实原因', async () => {
+    state.record!.control = { phase: 'reconcile_required', stopRequested: true }
+    render(<IndustrialVideoAgentComposerSlot {...baseProps} />)
+    expect(await screen.findByTestId('blocked-reason')).toHaveTextContent(
+      'agent.composer.send_blocked.result_verifying'
+    )
     expect(screen.getByRole('button', { name: 'send' })).toBeDisabled()
   })
 })

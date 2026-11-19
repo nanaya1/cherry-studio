@@ -1,5 +1,10 @@
+import { IpcError } from '@shared/ipc/errors/IpcError'
 import {
+  INDUSTRIAL_VIDEO_WORKBENCH_BRIDGE_CHANNEL,
+  INDUSTRIAL_VIDEO_WORKBENCH_MESSAGE_TYPE,
   type IndustrialVideoWorkbenchConfirmReceipt,
+  type IndustrialVideoWorkbenchDirtyQuery,
+  type IndustrialVideoWorkbenchDirtyQueryResponse,
   type IndustrialVideoWorkbenchRequest
   // type IndustrialVideoWorkbenchSnapshot
 } from '@shared/utils/industrialVideoWorkbench'
@@ -7,6 +12,10 @@ import {
 export type IndustrialVideoWorkbenchAction = 'regenerate_storyboard' | 'generate_video'
 
 /** 宿主受限桥；只确认显式分镜请求，不触发视频生成。 */
+export interface WorkbenchWebviewPort {
+  send: (channel: string, message: unknown) => void
+}
+
 export interface IndustrialVideoWorkbenchBridgeDeps {
   sessionId: string
   run: string
@@ -26,14 +35,26 @@ export type BridgeResult =
 
 const reject = (code: string): BridgeResult => ({ ok: false, error: code, code })
 const nonempty = (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0
+const DIRTY_QUERY_TIMEOUT_MS = 5000
 
 export class IndustrialVideoWorkbenchBridge {
   private currentReviewVersion: string | null = null
   private busy = false
   private invalid = false
   private readonly processed = new Set<string>()
+  private activeWebview: WorkbenchWebviewPort | null = null
+  private readonly dirtyPending = new Map<
+    string,
+    { resolve: (dirty: boolean) => void; reject: (error: IpcError) => void; timer: ReturnType<typeof setTimeout> }
+  >()
 
   constructor(private readonly deps: IndustrialVideoWorkbenchBridgeDeps) {}
+
+  /** 记录最近一次活跃网页端口；卸载时清空并终止未完成查询。 */
+  attachWebview(webview: WorkbenchWebviewPort | null): void {
+    this.activeWebview = webview
+    if (!webview) for (const requestId of [...this.dirtyPending.keys()]) this.rejectDirty(requestId)
+  }
 
   private validate(request: IndustrialVideoWorkbenchRequest, type: IndustrialVideoWorkbenchRequest['type']): BridgeResult | null {
     if (!request || typeof request !== 'object' || request.type !== type ||
@@ -51,6 +72,60 @@ export class IndustrialVideoWorkbenchBridge {
 
   private resumeHandler() {
     return this.deps.getResumeStages ? this.deps.getResumeStages() : this.deps.resumeStages
+  }
+
+  /** 向最近活跃网页发带唯一 requestId 的 fresh 查询；无网页立即拒绝，超时 fail closed。 */
+  queryFreshDirty(requestId: string): Promise<boolean> {
+    const webview = this.activeWebview
+    if (this.invalid || !webview) {
+      return Promise.reject(new IpcError('IVIDEO_WORKBENCH_DIRTY_UNKNOWN', '活跃工作台不可用'))
+    }
+    const query: IndustrialVideoWorkbenchDirtyQuery = {
+      requestId,
+      type: INDUSTRIAL_VIDEO_WORKBENCH_MESSAGE_TYPE.dirtyQuery,
+      sessionId: this.deps.sessionId,
+      run: this.deps.run
+    }
+    return new Promise<boolean>((resolve, reject) => {
+      const timer = setTimeout(() => this.rejectDirty(requestId), DIRTY_QUERY_TIMEOUT_MS)
+      this.dirtyPending.set(requestId, { resolve, reject, timer })
+      try {
+        webview.send(INDUSTRIAL_VIDEO_WORKBENCH_BRIDGE_CHANNEL, query)
+      } catch {
+        this.rejectDirty(requestId)
+      }
+    })
+  }
+
+  /** 仅匹配 requestId 与可信 session/run 的严格布尔响应能兑现 pending。 */
+  answerDirtyQuery(response: IndustrialVideoWorkbenchDirtyQueryResponse): boolean {
+    const allowed = ['requestId', 'type', 'sessionId', 'run', 'dirty']
+    if (
+      !response ||
+      typeof response !== 'object' ||
+      response.type !== 'dirty_query_response' ||
+      !nonempty(response.requestId) ||
+      response.sessionId !== this.deps.sessionId ||
+      response.run !== this.deps.run ||
+      typeof response.dirty !== 'boolean' ||
+      Object.keys(response).some((key) => !allowed.includes(key))
+    ) {
+      return false
+    }
+    const pending = this.dirtyPending.get(response.requestId)
+    if (!pending) return false
+    clearTimeout(pending.timer)
+    this.dirtyPending.delete(response.requestId)
+    pending.resolve(response.dirty)
+    return true
+  }
+
+  private rejectDirty(requestId: string): void {
+    const pending = this.dirtyPending.get(requestId)
+    if (!pending) return
+    clearTimeout(pending.timer)
+    this.dirtyPending.delete(requestId)
+    pending.reject(new IpcError('IVIDEO_WORKBENCH_DIRTY_UNKNOWN', '工作台查询失败'))
   }
 
   /** 失败不污染已展示版本；失效后不可重新启用。 */
@@ -103,9 +178,11 @@ export class IndustrialVideoWorkbenchBridge {
     }
   }
 
-  /** 离开页面 / run 变更时终止后续副作用。 */
+  /** 离开页面 / run 变更时终止后续副作用与未完成的 dirty 查询。 */
   invalidate(): void {
     this.invalid = true
     this.currentReviewVersion = null
+    this.activeWebview = null
+    for (const requestId of [...this.dirtyPending.keys()]) this.rejectDirty(requestId)
   }
 }

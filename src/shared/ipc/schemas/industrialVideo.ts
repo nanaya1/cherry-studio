@@ -172,6 +172,19 @@ export const industrialVideoRequestSchemas = {
       action: z.enum(['regenerate_storyboard', 'generate_video']) }).strict(),
     output: z.record(z.string(), z.unknown())
   }),
+  // MEA:industrial-video 网页 S.dirty 经受限桥上报；带 query 的 requestId，严格布尔。
+  // 未知/串会话/run 由宿主拒绝，仅供 fail-closed 核查。
+  'industrial_video.workbench_dirty_answer': defineRoute({
+    input: z
+      .object({
+        requestId: z.string().min(1),
+        sessionId: sessionIdField,
+        run: z.string().min(1),
+        dirty: z.boolean()
+      })
+      .strict(),
+    output: z.boolean()
+  }),
   'industrial_video.stop': defineRoute({
     input: z.object({ sessionId: sessionIdField }).strict(),
     output: industrialVideoControlSchema
@@ -648,4 +661,13 @@ export const industrialVideoRequestSchemas = {
         raw: z.record(z.string(), z.unknown())
       })
   })
+}
+
+/** MEA:industrial-video main 主动向活跃工作台发起的新鲜 dirty 查询（广播事件）。 */
+export type IndustrialVideoEventSchemas = {
+  'industrial_video.workbench_dirty_query': {
+    requestId: string
+    sessionId: string
+    run: string
+  }
 }

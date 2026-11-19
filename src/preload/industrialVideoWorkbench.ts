@@ -19,12 +19,35 @@ import {
  */
 
 let trustedSession: { sessionId: string; run: string } | null = null
+type DirtyQueryHandler = (query: {
+  requestId: string
+  type: 'dirty_query'
+  sessionId: string
+  run: string
+}) => {
+  requestId: string
+  type: 'dirty_query_response'
+  sessionId: string
+  run: string
+  dirty: boolean
+} | null
+let dirtyQueryHandler: DirtyQueryHandler | null = null
 
 ipcRenderer.on(INDUSTRIAL_VIDEO_WORKBENCH_BRIDGE_CHANNEL, (_event, message: unknown) => {
   if (!message || typeof message !== 'object') return
-  const msg = message as { type?: string; sessionId?: string; run?: string }
+  const msg = message as { type?: string; sessionId?: string; run?: string; requestId?: string }
   if (msg.type === INDUSTRIAL_VIDEO_WORKBENCH_MESSAGE_TYPE.init && typeof msg.sessionId === 'string' && typeof msg.run === 'string') {
     trustedSession = { sessionId: msg.sessionId, run: msg.run }
+    return
+  }
+  if (msg.type === INDUSTRIAL_VIDEO_WORKBENCH_MESSAGE_TYPE.dirtyQuery && dirtyQueryHandler && trustedSession) {
+    const response = dirtyQueryHandler({
+      requestId: String(msg.requestId ?? ''),
+      type: 'dirty_query',
+      sessionId: trustedSession.sessionId,
+      run: trustedSession.run
+    })
+    if (response) ipcRenderer.sendToHost(INDUSTRIAL_VIDEO_WORKBENCH_BRIDGE_CHANNEL, response)
   }
 })
 
@@ -67,7 +90,11 @@ const api = {
   requestRegenerateStoryboard: (reviewVersion: string) =>
     sendRequest<Record<string, unknown>>(INDUSTRIAL_VIDEO_WORKBENCH_MESSAGE_TYPE.regenerateStoryboard, {
       reviewVersion
-    })
+    }),
+  /** 网页注册 dirty 查询响应器；宿主每次操作现查，未知/失败由宿主 fail closed。 */
+  onDirtyQuery: (handler: DirtyQueryHandler) => {
+    dirtyQueryHandler = handler
+  }
 }
 
 contextBridge.exposeInMainWorld(INDUSTRIAL_VIDEO_WORKBENCH_API_KEY, api)

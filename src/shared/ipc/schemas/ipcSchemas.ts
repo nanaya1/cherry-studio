@@ -19,7 +19,7 @@ import { exportRequestSchemas } from './export'
 import { externalAppRequestSchemas } from './externalApp'
 import { type FileEventSchemas, fileRequestSchemas } from './file'
 import { fileProcessingRequestSchemas } from './fileProcessing'
-import { industrialVideoRequestSchemas } from './industrialVideo'
+import { type IndustrialVideoEventSchemas, industrialVideoRequestSchemas } from './industrialVideo'
 import { hermesDashboardRequestSchemas } from './hermesDashboard'
 import { knowledgeRequestSchemas } from './knowledge'
 import { localModelRequestSchemas } from './localModel'
@@ -122,6 +122,7 @@ export type IpcEventSchemas = AiEventSchemas &
   CherryCloudEventSchemas &
   EnterpriseEventSchemas & // [enterprise]
   FileEventSchemas &
+  IndustrialVideoEventSchemas &
   McpEventSchemas &
   MiniAppEventSchemas &
   NavigationEventSchemas &

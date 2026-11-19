@@ -1,5 +1,6 @@
 // import { useEffect, useState, type ComponentProps } from 'react'
 import { useCallback, useEffect, useRef, useState, type ComponentProps } from 'react'
+import { useTranslation } from 'react-i18next'
 
 // import { Button } from '@cherrystudio/ui'
 import { loggerService } from '@logger'
@@ -12,6 +13,7 @@ import { useIndustrialVideoProduction } from './useIndustrialVideoProduction'
 const logger = loggerService.withContext('IndustrialVideoAgentComposerSlot')
 
 export default function IndustrialVideoAgentComposerSlot(props: ComponentProps<typeof AgentComposerSlot>) {
+  const { t } = useTranslation()
   const { record, job, error, refresh } = useIndustrialVideoProduction(props.sessionId)
   const [ready, setReady] = useState(false)
   const stoppingSession = useRef<string | null>(null)
@@ -98,6 +100,15 @@ export default function IndustrialVideoAgentComposerSlot(props: ComponentProps<t
     Boolean(record?.unknownSubmissions.length) ||
     (!verifiedStopped && ['parsing', 'planning', 'generating', 'assembling'].includes(record?.state ?? '')) ||
     (!verifiedStopped && ['queued', 'running'].includes(String(job?.status ?? '')))
+  // MEA:composer-waiting 具体阻止原因透传，不再把查询失败/结果核实/后台制作都叫“资源准备中”。
+  const blockedReasonOverride =
+    !ready || Boolean(error)
+      ? t('agent.composer.send_blocked.resource_query_failed')
+      : stopped && taskBusy && !stopFailed
+        ? t('agent.composer.send_blocked.result_verifying')
+        : backgroundProduction
+          ? t('agent.composer.send_blocked.background_producing')
+          : undefined
   return (
     // <AgentComposerSlot {...props} attachmentOnly sendDisabled={props.sendDisabled || props.isStreaming || blocked} />
     <div>
@@ -127,6 +138,7 @@ export default function IndustrialVideoAgentComposerSlot(props: ComponentProps<t
         taskBusy={!backgroundProduction && (taskStopping || stopFailed || (!stopped && taskBusy))}
         // taskStopping={taskStopping}
         taskStopping={!backgroundProduction && taskStopping}
+        blockedReasonOverride={blockedReasonOverride}
         isStreaming={!stopped && props.isStreaming}
         stop={stop}
         sendDisabled={props.sendDisabled || taskBusy || blocked}

@@ -29,6 +29,24 @@ describe('industrial video execution policy', () => {
     expect(INDUSTRIAL_VIDEO_PRODUCTION_PROMPT).toContain('不触发收费生成')
     expect(INDUSTRIAL_VIDEO_PRODUCTION_PROMPT).toContain('网页')
   })
+  it('参数差异通过本轮原生选择确认，不替代审核或要求补发消息', () => {
+    const clarification = INDUSTRIAL_VIDEO_PRODUCTION_PROMPT.split('## 制作参数差异确认')[1]
+    expect(clarification).toBeDefined()
+    for (const rule of [
+      'AskUserQuestion',
+      '初始设置 → 本次识别值',
+      '采用本次参数',
+      '保留初始设置',
+      '取消',
+      '同一个问题',
+      '不要求用户再发送',
+      '未提及或无法明确识别',
+      '不代表全文或分镜审核通过',
+      '版本冲突'
+    ]) {
+      expect(clarification).toContain(rule)
+    }
+  })
   it.each(['pi', 'dsh'])('rejects unguarded industrial runtime %s', (runtime) => {
     expect(() => assertIndustrialVideoRuntime('industrial-video', runtime)).toThrow('Claude Code')
   })

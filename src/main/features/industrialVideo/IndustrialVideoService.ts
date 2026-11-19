@@ -383,6 +383,12 @@ export interface IndustrialVideoServiceDeps {
   /** Trusted document → text extraction for non-text/non-media attachments (docx/pdf/…). */
   extractDocumentText: (filename: string, base64: string) => Promise<string | null>
   ocrPdfText: (base64: string, signal: AbortSignal) => Promise<string>
+  /** Fresh dirty query against the currently active workbench; rejects on timeout/no active page. */
+  queryWorkbenchDirty: (input: {
+    sessionId: string
+    run: string
+    requestId: string
+  }) => Promise<{ ok: boolean; dirty?: boolean; requestId?: string }>
 }
 
 /**
@@ -458,13 +464,37 @@ export class IndustrialVideoService extends BaseService {
         (imagePath, pageSignal) =>
           application.get('FileProcessingService').ocrImage({ kind: 'path', path: imagePath }, pageSignal)
       )
-    }
+    },
+    queryWorkbenchDirty: ({ sessionId, run, requestId }) =>
+      new Promise((resolve) => {
+        const timer = setTimeout(() => {
+          this.dirtyQueries.delete(requestId)
+          resolve({ ok: false })
+        }, IndustrialVideoService.DIRTY_QUERY_TIMEOUT_MS)
+        this.dirtyQueries.set(requestId, { sessionId, run, resolve, timer })
+        application.get('IpcApiService').broadcast('industrial_video.workbench_dirty_query', {
+          requestId,
+          sessionId,
+          run
+        })
+      })
   }
   private deps: IndustrialVideoServiceDeps = this.productionDeps
   /** MEA:industrial-video 同作用域身份的并发下载合并（仅工业模块）。 */
   private readonly inFlightFinalDownloads = new Map<string, Promise<{ filePath: string; size: number }>>()
   private readonly pendingReviewSnapshots = new Map<string, { run: string; reviewVersion: string }>()
   private readonly confirmedReviews = new Map<string, { run: string; reviewVersion: string }>()
+  // MEA:industrial-video 每次操作的新鲜 dirty 查询；无响应/超时 fail closed。
+  private readonly dirtyQueries = new Map<
+    string,
+    {
+      sessionId: string
+      run: string
+      resolve: (value: { ok: boolean; dirty?: boolean; requestId?: string }) => void
+      timer: ReturnType<typeof setTimeout>
+    }
+  >()
+  private static readonly DIRTY_QUERY_TIMEOUT_MS = 5000
 
   protected override onAllReady(): void {
     this.registerDisposable(
@@ -1781,6 +1811,80 @@ export class IndustrialVideoService extends BaseService {
       this.confirmedReviews.delete(input.sessionId)
     }
     return receipt
+  }
+
+  /** 兑现一次新鲜 dirty 查询：requestId / session / run 必须完全匹配，否则忽略（查询方超时 fail closed）。 */
+  answerWorkbenchDirty(input: {
+    requestId: string
+    sessionId: string
+    run: string
+    dirty: boolean
+  }): boolean {
+    const pending = this.dirtyQueries.get(input.requestId)
+    if (
+      !pending ||
+      pending.sessionId !== input.sessionId ||
+      pending.run !== input.run ||
+      typeof input.dirty !== 'boolean'
+    ) {
+      return false
+    }
+    clearTimeout(pending.timer)
+    this.dirtyQueries.delete(input.requestId)
+    pending.resolve({ ok: true, dirty: input.dirty, requestId: input.requestId })
+    return true
+  }
+
+  /** 聊天触发重开分镜：核验本轮用户文本绑定、展示版本与新鲜 dirty，只走 regenerate。 */
+  async requestRegenerateStoryboard(input: {
+    sessionId: string
+    run: string
+    reviewVersion: string
+    chatInstruction: string
+  }): Promise<VideoApiRecord> {
+    const token = this.getExecutionToken()
+    if (!token || token.sessionId !== input.sessionId) {
+      throw new IpcError('IVIDEO_STOPPED', '该连接没有可信执行轮次，请重新发送。')
+    }
+    this.assertExecution(token)
+    const userTurn = this.userInputs.get(input.sessionId)
+    if (!userTurn || userTurn.epoch !== token.epoch) {
+      throw new IpcError('IVIDEO_NO_USER_TURN', '本轮没有可信用户指令，不能重开分镜。')
+    }
+    // host 只核文本绑定，不判断语义（意图由模型判断）。
+    const original = userTurn.parts
+      .filter((p) => p.type === 'text' && p.text.trim())
+      .map((p) => (p as { text: string }).text.trim())
+      .join('\n')
+    const instruction = input.chatInstruction?.trim()
+    const bound = !!original && !!instruction && (instruction === original || (instruction.length >= 8 && original.includes(instruction)))
+    if (!bound) {
+      throw new IpcError('IVIDEO_CHAT_INSTRUCTION_MISMATCH', 'chatInstruction 与本轮用户文本不一致，请重新发送。')
+    }
+    const displayed = this.pendingReviewSnapshots.get(input.sessionId)
+    if (displayed?.run !== input.run || displayed.reviewVersion !== input.reviewVersion) {
+      throw new IpcError('IVIDEO_REVIEW_VERSION_INVALID', '只能重开当前展示的审核版本，请刷新审核内容。')
+    }
+    // 每次操作现查 dirty；未知/超时/无活跃页面 fail closed。
+    const requestId = `ivideo-dirty-${randomUUID()}`
+    let probe: Awaited<ReturnType<IndustrialVideoServiceDeps['queryWorkbenchDirty']>>
+    try {
+      probe = await this.deps.queryWorkbenchDirty({ sessionId: input.sessionId, run: input.run, requestId })
+    } catch {
+      probe = { ok: false }
+    }
+    if (!probe?.ok || probe.requestId !== requestId || typeof probe.dirty !== 'boolean') {
+      throw new IpcError('IVIDEO_WORKBENCH_DIRTY_UNKNOWN', '无法确认工作台保存状态，请在工作台保存后重试。')
+    }
+    if (probe.dirty) {
+      throw new IpcError('IVIDEO_WORKBENCH_DIRTY', '工作台存在未保存修改，请先保存后再重开分镜。')
+    }
+    return this.coworkReviewConfirm({
+      sessionId: input.sessionId,
+      run: input.run,
+      expectedReviewVersion: input.reviewVersion,
+      action: 'regenerate_storyboard'
+    })
   }
 
   getPendingReviewSnapshot(input: { sessionId: string }): { run: string; reviewVersion: string } | null {

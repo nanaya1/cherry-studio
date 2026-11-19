@@ -226,4 +226,87 @@ describe('IndustrialVideoWorkbenchBridge', () => {
     expect(regen.ok).toBe(false)
     expect(deps.resumeStages).not.toHaveBeenCalled()
   })
+
+  // ── 每次操作的新鲜 dirty 查询：向记录的最近活跃网页发唯一 requestId，仅匹配响应有效 ──
+  const dirtyAnswer = (overrides: Record<string, unknown> = {}) => ({
+    requestId: 'q-1',
+    type: 'dirty_query_response' as const,
+    sessionId: 'sess-1',
+    run: 'run-1',
+    dirty: false,
+    ...overrides
+  })
+
+  const attach = (bridge: IndustrialVideoWorkbenchBridge, send = vi.fn()) => {
+    const port = { send }
+    bridge.attachWebview(port)
+    return port
+  }
+
+  it('响应 dirty=false 时放行，请求携带同一 requestId', async () => {
+    const bridge = new IndustrialVideoWorkbenchBridge(makeDeps())
+    const port = attach(bridge)
+    const pending = bridge.queryFreshDirty('q-1')
+    expect(port.send).toHaveBeenCalledExactlyOnceWith('industrial-video-workbench:bridge', {
+      requestId: 'q-1',
+      type: 'dirty_query',
+      sessionId: 'sess-1',
+      run: 'run-1'
+    })
+    expect(bridge.answerDirtyQuery(dirtyAnswer())).toBe(true)
+    expect(await pending).toBe(false)
+  })
+
+  it('响应 dirty=true 时返回 true（由 host 阻断）', async () => {
+    const bridge = new IndustrialVideoWorkbenchBridge(makeDeps())
+    attach(bridge)
+    const pending = bridge.queryFreshDirty('q-1')
+    expect(bridge.answerDirtyQuery(dirtyAnswer({ dirty: true }))).toBe(true)
+    expect(await pending).toBe(true)
+  })
+
+  it('忽略 requestId 不符与串 session/run 的响应', async () => {
+    const bridge = new IndustrialVideoWorkbenchBridge(makeDeps())
+    attach(bridge)
+    const pending = bridge.queryFreshDirty('q-1')
+    expect(bridge.answerDirtyQuery(dirtyAnswer({ requestId: 'spoofed' }))).toBe(false)
+    expect(bridge.answerDirtyQuery(dirtyAnswer({ run: 'other-run' }))).toBe(false)
+    expect(bridge.answerDirtyQuery(dirtyAnswer({ sessionId: 'other-session' }))).toBe(false)
+    expect(bridge.answerDirtyQuery(dirtyAnswer({ dirty: 'yes' }))).toBe(false)
+    expect(bridge.answerDirtyQuery(dirtyAnswer())).toBe(true)
+    expect(await pending).toBe(false)
+  })
+
+  it('无活跃网页时立即拒绝，不发查询', async () => {
+    const bridge = new IndustrialVideoWorkbenchBridge(makeDeps())
+    const send = vi.fn()
+    const port = { send }
+    bridge.attachWebview(port)
+    bridge.attachWebview(null)
+    await expect(bridge.queryFreshDirty('q-1')).rejects.toMatchObject({ code: 'IVIDEO_WORKBENCH_DIRTY_UNKNOWN' })
+    expect(send).not.toHaveBeenCalled()
+  })
+
+  it('新鲜查询超时 fail closed', async () => {
+    vi.useFakeTimers()
+    try {
+      const bridge = new IndustrialVideoWorkbenchBridge(makeDeps())
+      attach(bridge)
+      const pending = bridge.queryFreshDirty('q-timeout')
+      const assertion = expect(pending).rejects.toMatchObject({ code: 'IVIDEO_WORKBENCH_DIRTY_UNKNOWN' })
+      await vi.advanceTimersByTimeAsync(6000)
+      await assertion
+      expect(bridge.answerDirtyQuery(dirtyAnswer({ requestId: 'q-timeout' }))).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('invalidate 后未完成的 fresh 查询立即 fail closed', async () => {
+    const bridge = new IndustrialVideoWorkbenchBridge(makeDeps())
+    attach(bridge)
+    const pending = bridge.queryFreshDirty('q-1')
+    bridge.invalidate()
+    await expect(pending).rejects.toMatchObject({ code: 'IVIDEO_WORKBENCH_DIRTY_UNKNOWN' })
+  })
 })

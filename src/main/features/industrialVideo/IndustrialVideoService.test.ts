@@ -5,7 +5,7 @@ import { join } from 'node:path'
 
 import { net } from 'electron'
 import iconv from 'iconv-lite'
-import type { Mock, Mocked } from 'vitest'
+import { afterEach, type Mock, type Mocked } from 'vitest'
 
 import { BaseService } from '@main/core/lifecycle'
 import { decodeTextWithAutoEncoding } from '@main/utils/legacyFile'
@@ -3495,5 +3495,169 @@ describe('IndustrialVideoService', () => {
         data: { code: 'settings_version_conflict' }
       })
     })
+  })
+})
+
+// ── MEA:industrial-video 聊天触发可信重开分镜 ────────────────────────────────
+// host 只验证 chatInstruction 与本轮用户文本绑定、展示版本与新鲜 dirty 查询；语义由模型判断。
+describe('聊天触发可信重开分镜 requestRegenerateStoryboard', () => {
+  const reviewSnapshot = {
+    review_version: 'v1',
+    script: '真实脚本',
+    storyboard: { scenes: [] },
+    effective_settings: {},
+    allowed_actions: ['regenerate_storyboard', 'generate_video']
+  }
+  const USER_TEXT = '请按这个方案修改分镜，把第三个镜头改为俯拍全流程'
+
+  type DirtyAnswer = { ok: boolean; dirty?: boolean; requestId?: string }
+  type SetupOpts = {
+    probe?: (input: { sessionId: string; run: string; requestId: string }) => Promise<DirtyAnswer>
+    withUserTurn?: boolean
+  }
+
+  async function setup(opts: SetupOpts = {}) {
+    const client = makeClient({
+      coworkReviewGet: vi.fn(async () => ok(reviewSnapshot))
+    })
+    const probe = opts.probe ?? vi.fn(async ({ requestId }: { requestId: string }) => ({ ok: true, dirty: false, requestId }))
+    const { service } = makeService(client, makeSession(), {}, { queryWorkbenchDirty: probe })
+    await service.runCreate({ sessionId: 's1', baseName: 'demo' })
+    const token = service.beginRound({ sessionId: 's1' })
+    const confirm = vi
+      .spyOn(service, 'coworkReviewConfirm')
+      .mockResolvedValue({ task_operation: 'storyboard_stage_task_get' })
+    await service.withExecution(token, async () => {
+      if (opts.withUserTurn !== false) {
+        await service.prepareUserParts({ sessionId: 's1', parts: [{ type: 'text', text: USER_TEXT }] })
+      }
+      await service.coworkReviewGet({ sessionId: 's1', run: 'r1' })
+    })
+    const call = (overrides: Partial<Parameters<typeof service.requestRegenerateStoryboard>[0]> = {}) =>
+      service.withExecution(token, () =>
+        service.requestRegenerateStoryboard({
+          sessionId: 's1',
+          run: 'r1',
+          reviewVersion: 'v1',
+          chatInstruction: USER_TEXT,
+          ...overrides
+        })
+      )
+    return { service, client, token, confirm, probe, call }
+  }
+
+  afterEach(() => vi.restoreAllMocks())
+
+  it('每次请求都发带 requestId 的新鲜 dirty 查询，两次 requestId 不同', async () => {
+    const seen: string[] = []
+    const probe = vi.fn(async ({ requestId }: { requestId: string }) => {
+      seen.push(requestId)
+      return { ok: true, dirty: false, requestId }
+    })
+    const { call } = await setup({ probe })
+    await call()
+    await call()
+    expect(seen).toHaveLength(2)
+    expect(seen[0]).toBeTruthy()
+    expect(seen[1]).toBeTruthy()
+    expect(seen[0]).not.toBe(seen[1])
+  })
+
+  it('新鲜查询返回 dirty=true 时阻断', async () => {
+    const { call, confirm } = await setup({
+      probe: vi.fn(async ({ requestId }: { requestId: string }) => ({ ok: true, dirty: true, requestId }))
+    })
+    await expect(call()).rejects.toMatchObject({ code: 'IVIDEO_WORKBENCH_DIRTY' })
+    expect(confirm).not.toHaveBeenCalled()
+  })
+
+  it('新鲜查询超时（probe 拒绝）时 fail closed', async () => {
+    const { call, confirm } = await setup({ probe: vi.fn(async () => { throw new Error('timeout') }) })
+    await expect(call()).rejects.toMatchObject({ code: 'IVIDEO_WORKBENCH_DIRTY_UNKNOWN' })
+    expect(confirm).not.toHaveBeenCalled()
+  })
+
+  it('无活跃工作台（probe ok=false）时 fail closed', async () => {
+    const { call, confirm } = await setup({ probe: vi.fn(async () => ({ ok: false })) })
+    await expect(call()).rejects.toMatchObject({ code: 'IVIDEO_WORKBENCH_DIRTY_UNKNOWN' })
+    expect(confirm).not.toHaveBeenCalled()
+  })
+
+  it('dirty 响应无 requestId 或与查询不符时 fail closed', async () => {
+    const { call, confirm } = await setup({ probe: vi.fn(async () => ({ ok: true, dirty: false, requestId: 'spoofed' })) })
+    await expect(call()).rejects.toMatchObject({ code: 'IVIDEO_WORKBENCH_DIRTY_UNKNOWN' })
+    expect(confirm).not.toHaveBeenCalled()
+  })
+
+  it('本轮无真实用户指令绑定时阻断，不查询 dirty 不确认', async () => {
+    const { call, confirm, probe } = await setup({ withUserTurn: false })
+    await expect(call()).rejects.toMatchObject({ code: 'IVIDEO_NO_USER_TURN' })
+    expect(probe).not.toHaveBeenCalled()
+    expect(confirm).not.toHaveBeenCalled()
+  })
+
+  it('chatInstruction 缺失或为空时阻断，不查询 dirty 不确认', async () => {
+    const { call, confirm, probe } = await setup()
+    await expect(call({ chatInstruction: '   ' })).rejects.toMatchObject({ code: 'IVIDEO_CHAT_INSTRUCTION_MISMATCH' })
+    expect(probe).not.toHaveBeenCalled()
+    expect(confirm).not.toHaveBeenCalled()
+  })
+
+  it('chatInstruction 被改写（非原文子串）时阻断', async () => {
+    const { call, confirm, probe } = await setup()
+    await expect(call({ chatInstruction: '把第三个镜头改为仰拍全流程' })).rejects.toMatchObject({
+      code: 'IVIDEO_CHAT_INSTRUCTION_MISMATCH'
+    })
+    expect(probe).not.toHaveBeenCalled()
+    expect(confirm).not.toHaveBeenCalled()
+  })
+
+  it('chatInstruction 长度不足 8 的子串不放行', async () => {
+    const { call, confirm, probe } = await setup()
+    await expect(call({ chatInstruction: '修改分镜' })).rejects.toMatchObject({
+      code: 'IVIDEO_CHAT_INSTRUCTION_MISMATCH'
+    })
+    expect(probe).not.toHaveBeenCalled()
+    expect(confirm).not.toHaveBeenCalled()
+  })
+
+  it('chatInstruction 命中长度≥8 的原文子串时放行', async () => {
+    const { call, confirm } = await setup()
+    await expect(call({ chatInstruction: '请按这个方案修改分镜' })).resolves.toMatchObject({
+      task_operation: 'storyboard_stage_task_get'
+    })
+    expect(confirm).toHaveBeenCalledExactlyOnceWith({
+      sessionId: 's1',
+      run: 'r1',
+      expectedReviewVersion: 'v1',
+      action: 'regenerate_storyboard'
+    })
+  })
+
+  it('chatInstruction 与本轮原文完全相同时放行', async () => {
+    const { call, confirm } = await setup()
+    await expect(call()).resolves.toMatchObject({ task_operation: 'storyboard_stage_task_get' })
+    expect(confirm).toHaveBeenCalledTimes(1)
+  })
+
+  it('展示版本不匹配时阻断，不查询 dirty', async () => {
+    const { call, confirm, probe } = await setup()
+    await expect(call({ reviewVersion: 'v-stale' })).rejects.toMatchObject({ code: 'IVIDEO_REVIEW_VERSION_INVALID' })
+    expect(probe).not.toHaveBeenCalled()
+    expect(confirm).not.toHaveBeenCalled()
+  })
+
+  it('全部合法时只调用 regenerate_storyboard，不授权视频', async () => {
+    const { service, call, confirm, probe } = await setup()
+    const result = await call()
+    expect(result).toMatchObject({ task_operation: 'storyboard_stage_task_get' })
+    expect(probe).toHaveBeenCalledTimes(1)
+    expect(confirm).toHaveBeenCalledExactlyOnceWith({
+      sessionId: 's1',
+      run: 'r1',
+      expectedReviewVersion: 'v1',
+      action: 'regenerate_storyboard'
+    })
+    expect(service.getConfirmedReview({ sessionId: 's1' })).toBeNull()
   })
 })

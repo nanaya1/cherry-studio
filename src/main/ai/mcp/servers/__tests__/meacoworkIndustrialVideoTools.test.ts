@@ -30,6 +30,7 @@ const { agentSessionGetByIdMock, ivServiceMock, loggerErrorMock, loggerWarnMock 
     storyboardStageTaskGet: vi.fn(),
     storyboardStageSubmit: vi.fn(),
     coworkReviewGet: vi.fn(),
+    requestRegenerateStoryboard: vi.fn(),
     planningContextGet: vi.fn(),
     storyboardGet: vi.fn(),
     storyboardSubmit: vi.fn(),
@@ -609,6 +610,7 @@ describe('MeacoworkIndustrialVideoTools — visibility & contract', () => {
         'ivideo_estimate',
         'ivideo_parse',
         'ivideo_run_create',
+        'ivideo_regenerate_storyboard',
         'ivideo_review_snapshot_get',
         'ivideo_start',
         'ivideo_status',
@@ -651,6 +653,97 @@ describe('MeacoworkIndustrialVideoTools — visibility & contract', () => {
     const provider = makeTools()
     expect(provider.handles('ivideo_cowork_review_confirm')).toBe(false)
     expect(provider.handles('ivideo_cowork_review_get')).toBe(true)
+  })
+
+  it('只暴露受限的 ivideo_regenerate_storyboard，绝不暴露 generate_video 或通用确认', () => {
+    const provider = makeTools()
+    expect(provider.handles('ivideo_regenerate_storyboard')).toBe(true)
+    expect(provider.handles('ivideo_generate_video')).toBe(false)
+    expect(provider.handles('ivideo_review_confirm')).toBe(false)
+    expect(provider.handles('ivideo_cowork_review_confirm')).toBe(false)
+  })
+
+  it('受限重开分镜工具注入可信 sessionId，原样转发 chatInstruction，且不携带 action 字段', async () => {
+    agentSessionGetByIdMock.mockReturnValue(makeSession())
+    ivServiceMock.requestRegenerateStoryboard.mockResolvedValue({ task_operation: 'storyboard_stage_task_get' })
+    const result = jsonOf(
+      await makeTools().call('ivideo_regenerate_storyboard', {
+        run: 'r-1',
+        reviewVersion: 'v1',
+        chatInstruction: '按这个改分镜'
+      })
+    )
+    expect(result).toMatchObject({ ok: true, task_operation: 'storyboard_stage_task_get' })
+    expect(ivServiceMock.requestRegenerateStoryboard).toHaveBeenCalledWith({
+      sessionId: SESSION_ID,
+      run: 'r-1',
+      reviewVersion: 'v1',
+      chatInstruction: '按这个改分镜'
+    })
+    // action / sessionId / assertion 等越权字段必须被 strict schema 拒绝
+    const blocked = jsonOf(
+      await makeTools().call('ivideo_regenerate_storyboard', {
+        run: 'r-1',
+        reviewVersion: 'v1',
+        chatInstruction: '按这个改分镜',
+        action: 'generate_video'
+      })
+    )
+    expect(blocked.ok).toBe(false)
+    const blocked2 = jsonOf(
+      await makeTools().call('ivideo_regenerate_storyboard', {
+        run: 'r-1',
+        reviewVersion: 'v1',
+        chatInstruction: '按这个改分镜',
+        sessionId: 'attacker'
+      })
+    )
+    expect(blocked2.ok).toBe(false)
+  })
+
+  it('chatInstruction 必填且非空，缺失时 schema 拒绝', async () => {
+    agentSessionGetByIdMock.mockReturnValue(makeSession())
+    const missing = jsonOf(
+      await makeTools().call('ivideo_regenerate_storyboard', { run: 'r-1', reviewVersion: 'v1' })
+    )
+    expect(missing.ok).toBe(false)
+    const empty = jsonOf(
+      await makeTools().call('ivideo_regenerate_storyboard', {
+        run: 'r-1',
+        reviewVersion: 'v1',
+        chatInstruction: '   '
+      })
+    )
+    expect(empty.ok).toBe(false)
+  })
+
+  it('工具 schema 用 chatInstruction 字段，description 要求原样摘录且说明 host 只核文本绑定', () => {
+    const tool = makeTools()
+      .tools()
+      .find((item) => item.name === 'ivideo_regenerate_storyboard')!
+    expect(tool.inputSchema.required).toEqual(expect.arrayContaining(['run', 'reviewVersion', 'chatInstruction']))
+    expect(tool.inputSchema.properties).not.toHaveProperty('userOriginalText')
+    expect(tool.description).toContain('原样摘录')
+    expect(tool.description).toContain('只讨论')
+    expect(tool.description).toContain('不替你判断语义')
+  })
+
+  it('重开成功后返回 end_turn:false 且引导继续 storyboard_stage_task_get 的 next 阶段', async () => {
+    agentSessionGetByIdMock.mockReturnValue(makeSession())
+    ivServiceMock.requestRegenerateStoryboard.mockResolvedValue({ task_operation: 'storyboard_stage_task_get' })
+    const result = jsonOf(
+      await makeTools().call('ivideo_regenerate_storyboard', {
+        run: 'r-1',
+        reviewVersion: 'v1',
+        chatInstruction: '按这个改分镜'
+      })
+    )
+    expect(result.ok).toBe(true)
+    expect(result.end_turn).toBe(false)
+    expect(result.next_operation).toBe('ivideo_storyboard_stage_task_get')
+    expect(result.task_operation).toBe('storyboard_stage_task_get')
+    expect(result.message).toContain('继续')
+    expect(result.message).toContain('next')
   })
 
   it('阶段提交 schema 要求原始版本与 nullable 镜头标识，不能携带宿主断言', () => {

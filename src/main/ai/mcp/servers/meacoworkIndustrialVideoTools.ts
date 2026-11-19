@@ -91,6 +91,13 @@ const ReviewSnapshotGetSchema = z.strictObject({
   run: z.string().min(1)
 })
 
+// 只允许携带展示版本与本轮用户原话；action / sessionId / assertion 等越权字段由 strict schema 拒绝。
+const RegenerateStoryboardSchema = z.strictObject({
+  run: z.string().min(1),
+  reviewVersion: z.string().min(1),
+  chatInstruction: z.string().trim().min(1)
+})
+
 /* 停用旧六字段校验，使用服务端完整 Schema。
 const StoryboardNarrationSchema = z.strictObject({
   text: z.string().min(1).max(200),
@@ -234,7 +241,8 @@ const DownloadSchema = z.strictObject({
 const WORKFLOW_HINT =
   // '流程：run_create → parse → context → storyboard_submit → review_snapshot_get 返回工作台链接，然后结束本轮。'
   // '旧流程：全文与分镜分别等待网页确认。'
-  '流程：run_create → parse → full_script_task_get/submit → 串行 storyboard_stage_task_get/submit。当前会话所选模型完整执行每项 instructions/context/output_schema；全文保存无需先确认。每次提交原样携带 stage、scene_uid、expected_task_version。preview_saved=true 后读取 cowork_review_get 并结束，等待客户端按钮。不得自动估价、批准或生成；工作台仅编辑保存。冲突保留候选并停止，未知结果先查询不重放。'
+  // '流程：run_create → parse → full_script_task_get/submit → 串行 storyboard_stage_task_get/submit。当前会话所选模型完整执行每项 instructions/context/output_schema；全文保存无需先确认。每次提交原样携带 stage、scene_uid、expected_task_version。preview_saved=true 后读取 cowork_review_get 并结束，等待客户端按钮。不得自动估价、批准或生成；工作台仅编辑保存。冲突保留候选并停止，未知结果先查询不重放。'
+  '流程：run_create → parse → full_script_task_get/submit → 串行 storyboard_stage_task_get/submit。当前会话所选模型完整执行每项 instructions/context/output_schema；全文保存无需先确认。每次提交原样携带 stage、scene_uid、expected_task_version。preview_saved=true 后读取 cowork_review_get 并结束，等待客户端按钮。仅当用户明确要求改分镜时才调用 ivideo_regenerate_storyboard：先取最新 reviewVersion，chatInstruction 必须原样摘录用户本轮要求修改分镜的原话，禁止改写或概括；“只讨论/先不改/询问”绝不调用。host 只验证文本绑定与工作台状态，不替你判断语义；有未保存修改、版本不符或文本不一致则停止不重试。不得自动估价、批准或生成；工作台仅编辑保存。冲突保留候选并停止，未知结果先查询不重放。'
 
 // const WORKFLOW_HINT =
 // '流程：run_create → parse → context → 客户端按 storyboard_schema 编写分镜 → storyboard_submit → review_snapshot_get → AskUserQuestion → 可信审核通过 → estimate → 用户确认生成及费用 → start → status → download。' +
@@ -291,6 +299,13 @@ const IVIDEO_TOOLS: readonly Tool[] = [
     description:
       '读取已保存预览的同版审核快照；展示由客户端承担。未确认则结束等待按钮；可信确认仍有效且用户要求生成时继续 ivideo_start，不能代替用户确认。',
     inputSchema: toMcpInputSchema(ContextSchema)
+  },
+  {
+    // 仅限模型判定用户明确要求改分镜时调用；host 只验证文本绑定与状态。
+    name: 'ivideo_regenerate_storyboard',
+    description:
+      '仅当用户明确要求“按这个改/修改/重做分镜”时调用；“只讨论/先不改/询问”绝不调用。先 ivideo_cowork_review_get 取最新 reviewVersion。chatInstruction 必须原样摘录用户本轮要求修改分镜的原话，禁止改写或概括；host 只验证它与本轮用户文本绑定，不替你判断语义。参数只允许 run、reviewVersion、chatInstruction，不得携带动作或身份字段。有未保存修改、版本不符、文本不一致或无本轮指令时拒绝，此时停止不重试、不升级为生成视频。成功仅重开分镜草稿，继续 ivideo_storyboard_stage_task_get 的默认 next 阶段重新生成，不自动批准、估价或生成视频。',
+    inputSchema: toMcpInputSchema(RegenerateStoryboardSchema)
   },
 
   {
@@ -613,6 +628,23 @@ export class MeacoworkIndustrialVideoTools {
           }
           return okResult({ snapshot, end_turn: true }, true)
         }
+        case 'ivideo_regenerate_storyboard': {
+          // 严格只走 regenerate；注入可信 sessionId，action 不接受模型入参。
+          const a = RegenerateStoryboardSchema.parse(args)
+          const receipt = await service.requestRegenerateStoryboard({
+            sessionId,
+            run: a.run,
+            reviewVersion: a.reviewVersion,
+            chatInstruction: a.chatInstruction
+          })
+          return okResult({
+            ...receipt,
+            end_turn: false,
+            next_operation: 'ivideo_storyboard_stage_task_get',
+            message:
+              '分镜草稿已按本轮指令重开，继续执行 ivideo_storyboard_stage_task_get 的默认 next 阶段领取任务并重新生成分镜；不自动批准、估价或生成视频。'
+          })
+        }
         case 'ivideo_run_create': {
           const a = RunCreateSchema.parse(args)
           const data = await service.runCreate({ sessionId, baseName: a.baseName, prefix: a.prefix ?? null })
@@ -638,7 +670,7 @@ export class MeacoworkIndustrialVideoTools {
           return okResult({
             ...saved,
             next_operation: 'ivideo_storyboard_stage_task_get',
-            message: '全文已保存，无需全文确认；继续默认 next 阶段，完整预览保存后等待客户端真实按钮审核。'
+            message: '全文已保存，无需全文确认；继续默认 next 阶段，完整预览保存后等待用户明确指令。仅当用户明确要求“按这个改/修改/重做分镜”时调用 ivideo_regenerate_storyboard 重开；“只讨论/先不改”不调用。'
           })
         }
         case 'ivideo_context': {
@@ -669,7 +701,7 @@ export class MeacoworkIndustrialVideoTools {
                   execution_model: 'current_selected_model',
                   before_first_submit:
                     // '先执行 client_planning_task，一次生成完整脚本和分镜。'
-                    '全文保存后无需确认，串行执行 storyboard_stage_task_get/submit，完整保留 instructions/context/output_schema；原样回传 stage/scene_uid/expected_task_version。preview_saved=true 后读取 cowork_review_get 并结束；已有稿不重复规划，重生成必须来自客户端真实按钮。',
+                    '全文保存后无需确认，串行执行 storyboard_stage_task_get/submit，完整保留 instructions/context/output_schema；原样回传 stage/scene_uid/expected_task_version。preview_saved=true 后读取 cowork_review_get 并结束；已有稿不重复规划。仅在用户明确要求“按这个改/修改/重做分镜”时调用 ivideo_regenerate_storyboard 重开，host 核查本轮指令与工作台保存状态；“只讨论/先不改”绝不调用，不自动批准或生成视频。',
                   state_object_contract:
                     (
                       this.runtimeStoryboardSchema.properties as {

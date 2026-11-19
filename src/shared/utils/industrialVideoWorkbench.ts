@@ -23,6 +23,10 @@ export const INDUSTRIAL_VIDEO_WORKBENCH_MESSAGE_TYPE = {
   getSnapshot: 'get_review_snapshot',
   /** 网页→宿主：显式请求 regenerate_storyboard（绑定点击时的 review_version）。 */
   regenerateStoryboard: 'regenerate_storyboard',
+  /** 宿主→网页：查询当前活跃工作台的未保存状态，绑定 requestId；每次操作现查。 */
+  dirtyQuery: 'dirty_query',
+  /** 网页→宿主：dirty 查询响应，绑定同一 requestId。 */
+  dirtyQueryResponse: 'dirty_query_response',
   /** 宿主→网页：请求回执。 */
   response: 'response'
 } as const
@@ -49,11 +53,30 @@ export interface IndustrialVideoWorkbenchConfirmReceipt {
 /** 网页发起的受限请求信封（run/sessionId 由宿主 init 后回填，宿主再以自身可信值校验）。 */
 export interface IndustrialVideoWorkbenchRequest {
   requestId: string
-  type: typeof INDUSTRIAL_VIDEO_WORKBENCH_MESSAGE_TYPE.getSnapshot | typeof INDUSTRIAL_VIDEO_WORKBENCH_MESSAGE_TYPE.regenerateStoryboard
+  type:
+    | typeof INDUSTRIAL_VIDEO_WORKBENCH_MESSAGE_TYPE.getSnapshot
+    | typeof INDUSTRIAL_VIDEO_WORKBENCH_MESSAGE_TYPE.regenerateStoryboard
   sessionId: string
   run: string
   /** 用户点击时绑定的审核版本；必须与展示版本一致，禁止用新取版本替代。 */
   reviewVersion?: string
+}
+
+/** 宿主→网页的 dirty 查询；绑定 requestId 与可信 session/run。 */
+export interface IndustrialVideoWorkbenchDirtyQuery {
+  requestId: string
+  type: typeof INDUSTRIAL_VIDEO_WORKBENCH_MESSAGE_TYPE.dirtyQuery
+  sessionId: string
+  run: string
+}
+
+/** 网页→宿主的 dirty 查询响应；dirty 必须为严格布尔，未知值不得回传。 */
+export interface IndustrialVideoWorkbenchDirtyQueryResponse {
+  requestId: string
+  type: typeof INDUSTRIAL_VIDEO_WORKBENCH_MESSAGE_TYPE.dirtyQueryResponse
+  sessionId: string
+  run: string
+  dirty: boolean
 }
 
 /** 宿主→网页的回执信封，以 requestId 关联。 */

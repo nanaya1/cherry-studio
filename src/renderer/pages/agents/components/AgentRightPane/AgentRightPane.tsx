@@ -131,6 +131,7 @@ import { createFilePathHandle, toSafeFileUrl, type TreeDirRoot } from '@shared/u
 import {
   INDUSTRIAL_VIDEO_WORKBENCH_BRIDGE_CHANNEL,
   INDUSTRIAL_VIDEO_WORKBENCH_MESSAGE_TYPE,
+  type IndustrialVideoWorkbenchDirtyQueryResponse,
   type IndustrialVideoWorkbenchInit,
   type IndustrialVideoWorkbenchRequest,
   type IndustrialVideoWorkbenchResponse
@@ -1738,6 +1739,27 @@ function AgentIndustrialVideoWorkbenchPanel({ scope }: RightPanelComponentProps<
   const runRef = useRef(run)
   sessionIdRef.current = sessionId
   runRef.current = run
+
+  // 主进程发起的 fresh dirty 查询：经受限桥问活跃网页，无法确认时不回答（宿主超时 fail closed）。
+  useIpcOn('industrial_video.workbench_dirty_query', (query) => {
+    if (!query || query.sessionId !== sessionIdRef.current || query.run !== runRef.current) return
+    const bridge = bridgeRef.current
+    if (!bridge) return
+    void bridge.queryFreshDirty(query.requestId).then(
+      (dirty) => {
+        void ipcApi
+          .request('industrial_video.workbench_dirty_answer', {
+            requestId: query.requestId,
+            sessionId: query.sessionId,
+            run: query.run,
+            dirty
+          })
+          .catch(() => undefined)
+      },
+      () => undefined
+    )
+  })
+
   if (run && sessionId) {
     const key = JSON.stringify([sessionId, run, workbench.url])
     if (bridgeKeyRef.current !== key) {
@@ -1795,21 +1817,29 @@ function AgentIndustrialVideoWorkbenchPanel({ scope }: RightPanelComponentProps<
     }
     const bridge = bridgeRef.current
     if (!webview) {
+      bridge?.attachWebview(null)
       if (previous?.bridge === bridge) bridgeKeyRef.current = ''
       return
     }
     if (!bridge) return
+    bridge.attachWebview(webview)
     const handler = (event: IpcMessageEvent) => {
       if (event.channel !== INDUSTRIAL_VIDEO_WORKBENCH_BRIDGE_CHANNEL) return
-      const request = event.args[0] as IndustrialVideoWorkbenchRequest | undefined
+      const request = event.args[0] as
+        | IndustrialVideoWorkbenchRequest
+        | IndustrialVideoWorkbenchDirtyQueryResponse
+        | undefined
+      if (!request || typeof request.requestId !== 'string') return
+      if (attachedRef.current?.bridge !== bridge || bridgeRef.current !== bridge) return
+      if (request.type === INDUSTRIAL_VIDEO_WORKBENCH_MESSAGE_TYPE.dirtyQueryResponse) {
+        bridge.answerDirtyQuery(request as IndustrialVideoWorkbenchDirtyQueryResponse)
+        return
+      }
       if (
-        !request ||
-        typeof request.requestId !== 'string' ||
-        (request.type !== INDUSTRIAL_VIDEO_WORKBENCH_MESSAGE_TYPE.getSnapshot &&
-          request.type !== INDUSTRIAL_VIDEO_WORKBENCH_MESSAGE_TYPE.regenerateStoryboard)
+        request.type !== INDUSTRIAL_VIDEO_WORKBENCH_MESSAGE_TYPE.getSnapshot &&
+        request.type !== INDUSTRIAL_VIDEO_WORKBENCH_MESSAGE_TYPE.regenerateStoryboard
       )
         return
-      if (attachedRef.current?.bridge !== bridge || bridgeRef.current !== bridge) return
       void (async () => {
         // 仅两条受限请求：读取同版快照 / 显式请求 regenerate_storyboard。
         const result =
