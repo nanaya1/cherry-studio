@@ -11,10 +11,12 @@ import { loggerService } from '@logger'
 
 import { JavaAuthClient } from './JavaAuthClient'
 import { JavaKnowledgeClient } from './JavaKnowledgeClient'
+import { JavaModelConfigClient } from './JavaModelConfigClient'
 import { JavaResourceClient } from './JavaResourceClient'
 import type {
   OrgConnectorCatalogItem,
   OrgCurrentUser,
+  JavaModelConfigSnapshot,
   OrgSession,
   OrgSkillCatalogItem,
   RawOrgSkillFacet
@@ -119,6 +121,22 @@ export class OrgApiClient {
       },
       onSessionExpired: this.onResourceSessionExpired
     })
+  }
+
+  /** MEA:enterprise-model-binding 请求始终使用租约对应的凭据，迟到的失效响应不得撤销新身份。 */
+  getModelConfig(session: OrgSession, assertCurrent: () => void): Promise<JavaModelConfigSnapshot> {
+    if (session.authMode !== 'management-java') throw new Error('请重新登录企业账号')
+    return new JavaModelConfigClient({
+      baseUrl: session.authOrigin,
+      getAccessToken: async () => {
+        assertCurrent()
+        return session.accessToken
+      },
+      onSessionExpired: () => {
+        assertCurrent()
+        return this.onResourceSessionExpired()
+      }
+    }).getConfig()
   }
 
   private async shareHttpError(response: Response): Promise<never> {

@@ -1,3 +1,5 @@
+import type { EndpointType } from '@shared/data/types/model'
+
 /**
  * [enterprise] T0 企业扩展 - 客户端主进程侧类型定义
  * 仅供 EnterprisePlugin 消费，不进入通用 shared 类型。
@@ -148,4 +150,32 @@ export interface JavaAuthProfile {
   tenantId: string
   roleCode: string
   groupId: string | null
+}
+
+/**
+ * Cowork 模型自动绑定接口返回的单个模型。
+ * 这些字段只描述当前 Key 的授权结果，客户端不会根据模型名称自行补全权限。
+ */
+export interface JavaModelConfigModel {
+  id: string
+  name?: string
+  endpointTypes: EndpointType[]
+}
+
+/** Cowork 模型配置中的单个服务商与其专属客户端 Key。 */
+export interface JavaModelConfigProvider {
+  id: string
+  name: string
+  apiKey: string
+  defaultChatEndpoint: EndpointType
+  endpointConfigs: Partial<Record<EndpointType, { baseUrl: string }>>
+  models: JavaModelConfigModel[]
+}
+
+/** `/api/v1/client/model/config` 成功响应的数据快照。 */
+export interface JavaModelConfigSnapshot {
+  serverInstanceId: string
+  userId: string
+  tenantId: string
+  providers: JavaModelConfigProvider[]
 }

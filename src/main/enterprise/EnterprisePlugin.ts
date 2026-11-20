@@ -30,6 +30,7 @@ import {
 
 // eslint-disable-next-line barrel/closed
 import { showProfileRecoveryChoice } from '../core/profiles/ProfileSwitchCoordinator'
+import { CoworkModelConfigSync } from './CoworkModelConfigSync'
 import { OrgAuthManager } from './OrgAuthManager'
 import { OrgCredentialStore } from './OrgCredentialStore'
 import { OrgKnowledgeService } from './OrgKnowledgeService'
@@ -51,6 +52,8 @@ export class EnterprisePlugin extends BaseService {
   readonly skills: OrgSkillCatalog
   readonly connectors: OrgMcpCatalog
   readonly knowledge: OrgKnowledgeService
+  private readonly modelConfigSync = new CoworkModelConfigSync()
+  private modelConfigSyncTask: Promise<void> | null = null
 
   constructor() {
     super()
@@ -200,16 +203,44 @@ export class EnterprisePlugin extends BaseService {
     }
   }
 
+  /** 登录完成或企业授权变化后，异步同步 Cowork 自动服务商；失败不阻断账号登录。 */
+  private syncCoworkModelConfig(): Promise<void> {
+    if (this.modelConfigSyncTask) return this.modelConfigSyncTask
+    const task = this.modelConfigSync
+      .sync(this.auth)
+      .then((result) => {
+        if (result) logger.info('Cowork model configuration synchronized', result)
+      })
+      .catch(() => {
+        // 不能记录可能包含明文 Key 的原始异常或响应；周期在线校验成功后会重试。
+        logger.warn('Cowork model configuration synchronization failed; retaining existing configuration')
+      })
+      .finally(() => {
+        if (this.modelConfigSyncTask === task) this.modelConfigSyncTask = null
+      })
+    this.modelConfigSyncTask = task
+    return task
+  }
+
   protected async onInit(): Promise<void> {
     this.registerDisposable(
       this.auth.onVerificationChanged((status) => {
         application.get('IpcApiService').broadcast('enterprise.verification_changed', status)
         if (status.state === 'blocked') void this.cancelBlockedWork()
+        if (status.state === 'verified') void this.syncCoworkModelConfig()
       })
     )
-    this.registerDisposable(this.auth.onAuthorizationChanged(() => this.knowledge.invalidateAuthorizationContext()))
+    // this.registerDisposable(this.auth.onAuthorizationChanged(() => this.knowledge.invalidateAuthorizationContext()))
+    // MEA:enterprise-model-binding 授权变化除资源缓存外，还需更新自动绑定的模型权限。
+    this.registerDisposable(
+      this.auth.onAuthorizationChanged(() => {
+        this.knowledge.invalidateAuthorizationContext()
+        void this.syncCoworkModelConfig()
+      })
+    )
     this.registerDisposable(() => this.auth.dispose())
     await this.auth.initialize()
+    void this.syncCoworkModelConfig()
     this.knowledge.initialize(application.get('JobManager'))
     this.registerDisposable(() => this.knowledge.dispose())
     const context = getProfileLaunchContext()
@@ -218,6 +249,7 @@ export class EnterprisePlugin extends BaseService {
         gate: profileBusinessAccessGate,
         verify: async () => {
           await this.auth.verifyOnlineAuthority()
+          void this.syncCoworkModelConfig()
           try {
             await Promise.allSettled([
               this.skills.refreshResourceAuthority(),

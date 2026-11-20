@@ -1,4 +1,6 @@
-type JavaService = '认证' | '企业资源'
+// type JavaService = '认证' | '企业资源'
+// MEA:enterprise-model-binding 模型配置错误使用独立领域提示。
+type JavaService = '认证' | '企业资源' | '模型服务'
 
 /** 仅业务提示使用公开msg；系统异常不透传内部诊断。 */
 export function javaResponseErrorMessage(code: number, msg: unknown, requestId: unknown, service: JavaService): string {
@@ -23,7 +25,13 @@ export function javaResponseErrorMessage(code: number, msg: unknown, requestId: 
       message = '验证码错误或已过期，当前客户端暂不支持验证码登录，请联系管理员'
       break
     case 500:
-      message = service === '认证' ? '认证服务异常，请稍后重试或联系管理员' : '企业资源服务异常，请稍后重试'
+      // message = service === '认证' ? '认证服务异常，请稍后重试或联系管理员' : '企业资源服务异常，请稍后重试'
+      message =
+        service === '认证'
+          ? '认证服务异常，请稍后重试或联系管理员'
+          : service === '模型服务'
+            ? '模型服务异常，请稍后重试'
+            : '企业资源服务异常，请稍后重试'
       break
     default:
       message = `${service}服务返回未知业务码（${code}），请联系管理员`

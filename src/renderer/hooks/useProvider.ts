@@ -53,6 +53,8 @@ export function useProviders(
       : undefined
 
   const { data, isLoading, error, refetch } = useQuery('/providers', queryOptions)
+  // MEA:enterprise-model-binding 主进程登录同步绕过 renderer mutation，需订阅提交后的数据通知。
+  useDataChange('/providers', () => void refetch())
 
   const {
     trigger: createTrigger,
@@ -96,6 +98,7 @@ export function useProviderById(providerId: string | null | undefined) {
     enabled: !!providerId,
     swrOptions: { keepPreviousData: false }
   })
+  useDataChange('/providers/:providerId', () => void refetch(), { routeParams: { providerId: resolvedProviderId } })
   return { provider: data, isLoading, error, refetch }
 }
 
@@ -260,12 +263,17 @@ export function useProviderAuthConfig(providerId: string) {
     params: { providerId },
     enabled: !!providerId
   })
+  useDataChange('/providers/:providerId/auth-config', () => void result.refetch(), { routeParams: { providerId } })
   // Schema: GET /providers/:id/auth-config -> AuthConfig | null
   return { ...result, data: result.data }
 }
 
 export function useProviderApiKeys(providerId: string) {
-  return useQuery('/providers/:providerId/api-keys', { params: { providerId } })
+  // return useQuery('/providers/:providerId/api-keys', { params: { providerId } })
+  const result = useQuery('/providers/:providerId/api-keys', { params: { providerId } })
+  // 自动同步可能轮换或停用 Key，设置页不能继续持有旧凭据快照。
+  useDataChange('/providers/:providerId/api-keys', () => void result.refetch(), { routeParams: { providerId } })
+  return result
 }
 
 /** Read a sparse projection of the provider's effective registry preset. */
@@ -287,11 +295,13 @@ export { getProviderDisplayName }
  * use `useProviders()` + `getProviderDisplayName` to avoid hook-in-loop.
  */
 export function useProviderDisplayName(providerId: string | undefined): string {
-  const { data } = useQuery('/providers/:providerId', {
+  // const { data } = useQuery('/providers/:providerId', {
+  const { data, refetch } = useQuery('/providers/:providerId', {
     params: { providerId: providerId ?? '' },
     enabled: !!providerId,
     swrOptions: { keepPreviousData: false }
   })
+  useDataChange('/providers/:providerId', () => void refetch(), { routeParams: { providerId: providerId ?? '' } })
   return getProviderDisplayName(data)
 }
 

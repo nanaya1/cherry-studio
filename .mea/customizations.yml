@@ -8,6 +8,25 @@ policy:
   require_tests: true
   preserve_original_code_by_comment: true
 customizations:
+  - id: enterprise-model-binding
+    title: Cowork 登录后自动绑定模型服务商
+    owner: main
+    behavior: Java 登录及在线身份校验成功后读取 /api/v1/client/model/config 完整快照，使用原始 token 头且禁止缓存和重定向。后端仅返回 coworkAutoBindEnabled=true 且授权有效的 Key；新建及历史 Key 默认关闭，开关不影响其他调用用途，关闭后下次成功同步停用自动项，重新开启同一 Key 保持配置 ID。一个 Key 对应一个自动服务商；绑定按认证来源、实例、用户、企业和配置 ID 隔离，不按名称认领手动项，不更改默认模型。重复同步原位更新 Key、地址、协议及模型权限；快照在单一 SQLite 连接事务中全部成功或回滚。完整快照缺失项停用凭据和模型但保留历史引用；企业切换时先停用旧身份的自动绑定。租约校验拦截退出、授权变化及迟到响应，普通失败保留本身份旧配置且不阻断登录，在线监控校验成功后重试。Java及sub2api接口和开关代码已实现，需手工迁移与部署；管理Vue开关控件和桌面完整链路验收待接入。
+    markers:
+      - MEA:enterprise-model-binding
+    touchpoints:
+      - src/main/enterprise/JavaModelConfigClient.ts
+      - src/main/enterprise/CoworkModelConfigSync.ts
+      - src/main/enterprise/OrgApiClient.ts
+      - src/main/enterprise/EnterprisePlugin.ts
+      - src/main/enterprise/JavaResponseError.ts
+      - src/main/enterprise/types.ts
+      - src/renderer/hooks/useProvider.ts
+    tests:
+      - src/main/enterprise/__tests__/JavaModelConfigClient.test.ts
+      - src/main/enterprise/__tests__/CoworkModelConfigSync.test.ts
+      - src/main/enterprise/__tests__/EnterprisePlugin.test.ts
+      - src/renderer/hooks/__tests__/useProvider.dataChange.test.ts
   - id: local-knowledge-file-batches
     title: 本地知识库文件多选100个并串行分批接收
     owner: renderer

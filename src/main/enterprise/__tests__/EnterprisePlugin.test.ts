@@ -2,6 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { OrgVerificationStatus } from '../OrgAuthManager'
 
+const { syncModelConfig } = vi.hoisted(() => ({ syncModelConfig: vi.fn(async () => null) }))
+vi.mock('../CoworkModelConfigSync', () => ({
+  CoworkModelConfigSync: class {
+    sync = syncModelConfig
+  }
+}))
+
 vi.mock('@application', async () => {
   const { mockApplicationFactory } = await import('@test-mocks/main/application')
   const mock = mockApplicationFactory()
@@ -171,6 +178,7 @@ describe('EnterprisePlugin account verification lifecycle', () => {
 
   beforeEach(async () => {
     vi.useFakeTimers()
+    syncModelConfig.mockReset().mockResolvedValue(null)
     BaseService.resetInstances()
     profileSwitchFence.resetForTesting()
     setProfileLaunchContext(undefined)
@@ -260,6 +268,18 @@ describe('EnterprisePlugin account verification lifecycle', () => {
     expect(application.forceExit).not.toHaveBeenCalled()
     expect(application.relaunch).not.toHaveBeenCalled()
   }
+
+  it('模型配置不可用不阻断已登录的业务环境，并在在线校验后重试', async () => {
+    syncModelConfig.mockRejectedValueOnce(new Error('model config unavailable'))
+    auth.setVerification('unavailable')
+    auth.setVerification('verified')
+    await vi.advanceTimersByTimeAsync(0)
+    expectHostAvailable()
+    const attempts = syncModelConfig.mock.calls.length
+    await vi.advanceTimersByTimeAsync(65_000)
+    expect(syncModelConfig.mock.calls.length).toBeGreaterThan(attempts)
+    expectHostAvailable()
+  })
 
   // Catches missing event wiring and the old monitor-triggered profile teardown.
   it('broadcasts revocation and cancels in-flight execution without closing the live host', async () => {
