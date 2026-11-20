@@ -1865,6 +1865,8 @@
   "knowledge.org.invitations_title": "分享给我的邀请",
   "knowledge.org.invite": "发送邀请",
   "knowledge.org.invite_people": "指定人邀请",
+  "knowledge.org.invite_prepare": "上传源文件并继续",
+  "knowledge.org.invite_upload_required": "请先上传并确认源文件，再搜索邀请人。",
   "knowledge.org.invited": "邀请已发送，等待接受",
   "knowledge.org.invited_by": "{{name}} 邀请你使用此知识库",
   "knowledge.org.knowledge_invitation": "知识库邀请",

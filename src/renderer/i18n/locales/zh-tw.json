@@ -1865,6 +1865,8 @@
   "knowledge.org.invitations_title": "分享給我的邀請",
   "knowledge.org.invite": "傳送邀請",
   "knowledge.org.invite_people": "指定人邀請",
+  "knowledge.org.invite_prepare": "上傳來源檔案並繼續",
+  "knowledge.org.invite_upload_required": "請先上傳並確認來源檔案，再搜尋邀請對象。",
   "knowledge.org.invited": "邀請已傳送，等待接受",
   "knowledge.org.invited_by": "{{name}} 邀請你使用此知識庫",
   "knowledge.org.knowledge_invitation": "知識庫邀請",

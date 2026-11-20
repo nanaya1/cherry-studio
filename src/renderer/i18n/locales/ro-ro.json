@@ -1865,6 +1865,8 @@
   "knowledge.org.invitations_title": "Invitations shared with me",
   "knowledge.org.invite": "Trimite invitație",
   "knowledge.org.invite_people": "Invite people",
+  "knowledge.org.invite_prepare": "Încarcă fișierele sursă și continuă",
+  "knowledge.org.invite_upload_required": "Încarcă și confirmă fișierele sursă înainte de a căuta persoane de invitat.",
   "knowledge.org.invited": "Invitație trimisă; se așteaptă acceptarea",
   "knowledge.org.invited_by": "{{name}} invited you to this knowledge base",
   "knowledge.org.knowledge_invitation": "Knowledge invitation",

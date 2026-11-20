@@ -1865,6 +1865,8 @@
   "knowledge.org.invitations_title": "Invitations shared with me",
   "knowledge.org.invite": "Davet gönder",
   "knowledge.org.invite_people": "Invite people",
+  "knowledge.org.invite_prepare": "Kaynak dosyaları yükle ve devam et",
+  "knowledge.org.invite_upload_required": "Davet edilecek kişileri aramadan önce kaynak dosyaları yükleyin ve doğrulayın.",
   "knowledge.org.invited": "Davet gönderildi; kabul bekleniyor",
   "knowledge.org.invited_by": "{{name}} invited you to this knowledge base",
   "knowledge.org.knowledge_invitation": "Knowledge invitation",

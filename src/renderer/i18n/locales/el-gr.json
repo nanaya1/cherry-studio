@@ -1865,6 +1865,8 @@
   "knowledge.org.invitations_title": "Invitations shared with me",
   "knowledge.org.invite": "Αποστολή πρόσκλησης",
   "knowledge.org.invite_people": "Invite people",
+  "knowledge.org.invite_prepare": "Μεταφόρτωση αρχείων πηγής και συνέχεια",
+  "knowledge.org.invite_upload_required": "Μεταφορτώστε και επιβεβαιώστε τα αρχεία πηγής πριν αναζητήσετε άτομα για πρόσκληση.",
   "knowledge.org.invited": "Η πρόσκληση εστάλη· αναμονή αποδοχής",
   "knowledge.org.invited_by": "{{name}} invited you to this knowledge base",
   "knowledge.org.knowledge_invitation": "Knowledge invitation",

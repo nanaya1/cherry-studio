@@ -1865,6 +1865,8 @@
   "knowledge.org.invitations_title": "Invitations shared with me",
   "knowledge.org.invite": "招待を送信",
   "knowledge.org.invite_people": "Invite people",
+  "knowledge.org.invite_prepare": "元ファイルをアップロードして続行",
+  "knowledge.org.invite_upload_required": "招待するユーザーを検索する前に、元ファイルをアップロードして確認してください。",
   "knowledge.org.invited": "招待を送信しました。承諾待ちです",
   "knowledge.org.invited_by": "{{name}} invited you to this knowledge base",
   "knowledge.org.knowledge_invitation": "Knowledge invitation",

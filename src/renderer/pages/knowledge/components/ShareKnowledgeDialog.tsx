@@ -67,7 +67,10 @@ export default function ShareKnowledgeDialog({
   const uploadOriginal = true
   const originalOption =
     !remote && !uploadStarted && !upload ? (
-      <div className="text-sm text-muted-foreground">{t('knowledge.org.upload_original_required')}</div>
+      // <div className="text-sm text-muted-foreground">{t('knowledge.org.upload_original_required')}</div>
+      <div className="text-sm text-muted-foreground">
+        {t(mode === 'people' ? 'knowledge.org.invite_upload_required' : 'knowledge.org.upload_original_required')}
+      </div>
     ) : null
   const [password, setPassword] = useState('')
   const [maxViews, setMaxViews] = useState('')

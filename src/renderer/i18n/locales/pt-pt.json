@@ -1865,6 +1865,8 @@
   "knowledge.org.invitations_title": "Invitations shared with me",
   "knowledge.org.invite": "Enviar convite",
   "knowledge.org.invite_people": "Invite people",
+  "knowledge.org.invite_prepare": "Carregar ficheiros de origem e continuar",
+  "knowledge.org.invite_upload_required": "Carregue e confirme os ficheiros de origem antes de procurar pessoas para convidar.",
   "knowledge.org.invited": "Convite enviado; a aguardar aceitação",
   "knowledge.org.invited_by": "{{name}} invited you to this knowledge base",
   "knowledge.org.knowledge_invitation": "Knowledge invitation",

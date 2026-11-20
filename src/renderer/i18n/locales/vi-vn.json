@@ -1865,6 +1865,8 @@
   "knowledge.org.invitations_title": "Invitations shared with me",
   "knowledge.org.invite": "Gửi lời mời",
   "knowledge.org.invite_people": "Invite people",
+  "knowledge.org.invite_prepare": "Tải tệp nguồn lên và tiếp tục",
+  "knowledge.org.invite_upload_required": "Tải lên và xác nhận các tệp nguồn trước khi tìm người để mời.",
   "knowledge.org.invited": "Đã gửi lời mời; đang chờ chấp nhận",
   "knowledge.org.invited_by": "{{name}} invited you to this knowledge base",
   "knowledge.org.knowledge_invitation": "Knowledge invitation",
