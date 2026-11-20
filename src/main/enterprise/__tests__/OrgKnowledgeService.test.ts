@@ -4998,28 +4998,28 @@ describe('OrgKnowledgeService collaborators', () => {
       pageSize: 20
     })
     expect(memberOptions).toHaveBeenCalledExactlyOnceWith(
-      { knowledgeId, keyword: undefined, page: undefined, pageSize: undefined },
+      { keyword: undefined, page: undefined, pageSize: undefined },
       expect.any(Function)
     )
     expect(legacy).not.toHaveBeenCalled()
     service.dispose()
   })
 
-  it('透传 knowledgeId/keyword/page/pageSize 到 Java memberOptions', async () => {
-    // 旧全局 /api/collaborators 已由按知识库鉴权的 memberOptions 取代。
+  it('只透传 keyword/page/pageSize 到 Java memberOptions', async () => {
+    // 候选人按当前企业查询，知识库ID不参与该HTTP接口的筛选或鉴权。
     const { service, memberOptions, legacy } = setup()
     await expect(
       service.collaborators({ baseId: encodeOrgId(knowledgeId), keyword: 'bo', page: 2, pageSize: 20 })
     ).resolves.toEqual({ items: [], total: 0, page: 2, pageSize: 20 })
     expect(memberOptions).toHaveBeenCalledExactlyOnceWith(
-      { knowledgeId, keyword: 'bo', page: 2, pageSize: 20 },
+      { keyword: 'bo', page: 2, pageSize: 20 },
       expect.any(Function)
     )
     expect(legacy).not.toHaveBeenCalled()
     service.dispose()
   })
 
-  it('本地面板只使用当前身份已完成关联，不按名称猜测 knowledgeId', async () => {
+  it('本地面板保留当前身份已完成关联校验，不向候选请求传库ID', async () => {
     const { service, memberOptions, legacy } = setup()
     vi.mocked(orgStateStore.getShareAssociation).mockReturnValue({
       shareId: knowledgeId,
@@ -5031,7 +5031,7 @@ describe('OrgKnowledgeService collaborators', () => {
       JSON.stringify([lease.issuerId, lease.userId, lease.groupId, 'local-1'])
     )
     expect(memberOptions).toHaveBeenCalledExactlyOnceWith(
-      { knowledgeId, keyword: 'bo', page: 2, pageSize: 20 },
+      { keyword: 'bo', page: 2, pageSize: 20 },
       expect.any(Function)
     )
     expect(legacy).not.toHaveBeenCalled()

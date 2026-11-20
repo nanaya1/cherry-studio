@@ -1368,18 +1368,17 @@ export class OrgKnowledgeService {
     return { members: raw.map(toMember) }
   }
 
-  // MEA:enterprise-knowledge-page 写链路迁移：collaborators 现需 baseId（Java memberOptions 强制 knowledgeId）。
-  // 旧 IPC 路由 enterprise.knowledge.collaborators 输入无 baseId，需主代理在 shared IPC schema 增加 baseId 并让 UI 传入。
+  // MEA:enterprise-knowledge-page baseId仅用于面板标识与本地共享关联校验，不作为成员候选查询参数。
   async collaborators(params: {
     baseId: string
     keyword?: string
     page?: number
     pageSize?: number
   }): Promise<OrgKnowledgeCollaboratorList> {
-    // const knowledgeId = this.decodeId(params.baseId, 'baseId')
     const lease = this.acquireLease()
     // MEA:enterprise-knowledge-page 本地面板仅解析当前身份下已完成的共享关联，不猜测或创建云端库。
     const remote = isOrgId(params.baseId)
+    if (remote) this.decodeId(params.baseId, 'baseId')
     const association = remote ? undefined : orgStateStore.getShareAssociation(this.syncKey(params.baseId, lease))
     if (
       !remote &&
@@ -1388,12 +1387,10 @@ export class OrgKnowledgeService {
         association.files.some((file) => file.status !== 'success'))
     )
       throw new OrgKnowledgeError(E.ORGKB_SHARE_INCOMPLETE, '该本地知识库尚未完成共享关联，无法查询协作者')
-    const knowledgeId = remote ? this.decodeId(params.baseId, 'baseId') : association!.shareId
-    // MEA:enterprise-knowledge-page 写链路迁移：memberOptions 走 Java 原生客户端（knowledgeId 必填）。
     const raw = await this.checked(
       () =>
         this.javaKnowledge.memberOptions(
-          { knowledgeId, keyword: params.keyword, page: params.page, pageSize: params.pageSize },
+          { keyword: params.keyword, page: params.page, pageSize: params.pageSize },
           this.writeGuard(lease)
         ),
       lease

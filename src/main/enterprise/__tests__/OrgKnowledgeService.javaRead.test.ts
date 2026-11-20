@@ -119,14 +119,14 @@ describe('协作者面板解析本地共享关联', () => {
     vi.mocked(orgStateStore.clearShare).mockClear()
   })
 
-  it('只用当前 lease 的 syncKey 将本地 UUID 解析为云端 ID', async () => {
+  it('只用当前 lease 核查本地共享关联，查询候选人时不传知识库ID', async () => {
     vi.mocked(orgStateStore.getShareAssociation).mockImplementation((input) =>
       input === key ? (completed as never) : undefined
     )
     const result = await built.service.collaborators({ baseId: localId, keyword: '同', page: 2, pageSize: 10 })
     expect(orgStateStore.getShareAssociation).toHaveBeenCalledExactlyOnceWith(key)
     expect(java.memberOptions).toHaveBeenCalledExactlyOnceWith(
-      { knowledgeId: KID, keyword: '同', page: 2, pageSize: 10 },
+      { keyword: '同', page: 2, pageSize: 10 },
       expect.any(Function)
     )
     expect(result).toMatchObject({ items: [{ id: 50, username: 'other' }], total: 2, page: 2, pageSize: 10 })

@@ -257,22 +257,21 @@ describe('JavaKnowledgeClient.receiveShare', () => {
 })
 
 describe('JavaKnowledgeClient.memberOptions', () => {
-  it('GET /member/options 携带 knowledgeId 与关键字，返回分页原生 VO', async () => {
+  it('GET /member/options 只发送关键字与分页，返回分页原生 VO', async () => {
     const { client, fetchImpl } = setup([envelope({ items: [memberOption(42)], total: 1 })])
-    const page = await client.memberOptions({ knowledgeId: UUID_A, keyword: 'bob', page: 1, pageSize: 20 })
+    const page = await client.memberOptions({ keyword: 'bob', page: 1, pageSize: 20 })
     expect(page.items[0].userId).toBe(42)
     expect(page.total).toBe(1)
-    const url = urlOf(fetchImpl.mock.calls[0])
-    expect(url).toContain('/api/v1/client/knowledge/member/options?')
-    expect(url).toContain(`knowledgeId=${UUID_A}`)
-    expect(url).toContain('keyword=bob')
-    expect(url).toContain('pageSize=20')
+    const url = new URL(urlOf(fetchImpl.mock.calls[0]))
+    expect(url.pathname).toBe('/api/v1/client/knowledge/member/options')
+    expect(Object.fromEntries(url.searchParams)).toEqual({ keyword: 'bob', page: '1', pageSize: '20' })
   })
 
-  it('非法 knowledgeId 发请求前拒绝', async () => {
-    const { client, fetchImpl } = setup([])
-    await expect(client.memberOptions({ knowledgeId: 'bad' })).rejects.toThrow()
-    expect(fetchImpl).not.toHaveBeenCalled()
+  it('不提供知识库或查询条件时按默认分页搜索当前企业成员', async () => {
+    const { client, fetchImpl } = setup([envelope({ items: [memberOption(42)], total: 1 })])
+    await expect(client.memberOptions()).resolves.toMatchObject({ total: 1, page: 1, pageSize: 100 })
+    const url = new URL(urlOf(fetchImpl.mock.calls[0]))
+    expect(Object.fromEntries(url.searchParams)).toEqual({ page: '1', pageSize: '100' })
   })
 })
 

@@ -1020,18 +1020,16 @@ export class JavaKnowledgeClient {
     ) as JavaKnowledgeSpace
   }
 
-  /** 搜索当前企业有效成员（knowledgeId 服务端强制必填）。 */
+  /** 搜索当前企业有效成员，企业范围由服务端会话确定，不依赖知识库ID。 */
   async memberOptions(
-    params: { knowledgeId: string; keyword?: string; page?: number; pageSize?: number },
+    params: { keyword?: string; page?: number; pageSize?: number } = {},
     beforeSend?: () => void
   ): Promise<JavaKnowledgePage<JavaKnowledgeMemberOption>> {
-    if (!KNOWLEDGE_UUID.test(params.knowledgeId)) throw new Error('知识库ID格式无效')
     const page = params.page ?? 1
     const pageSize = params.pageSize ?? 100
     const data = this.parsePage(
       await this.json(
         `/api/v1/client/knowledge/member/options${this.query({
-          knowledgeId: params.knowledgeId,
           keyword: params.keyword,
           page,
           pageSize
