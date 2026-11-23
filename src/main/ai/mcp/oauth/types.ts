@@ -46,6 +46,8 @@ export interface OAuthCallbackServerOptions {
   path: string
   /** Event emitter to signal when auth code is received */
   events: EventEmitter
+  /** OAuth state expected in the callback */
+  expectedState?: string
 }
 
 /**

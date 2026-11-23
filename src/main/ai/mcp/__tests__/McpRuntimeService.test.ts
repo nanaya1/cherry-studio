@@ -3,7 +3,7 @@ import fs from 'node:fs/promises'
 
 import { MockMainCacheServiceUtils } from '@test-mocks/main/CacheService'
 import { mockMainLoggerService } from '@test-mocks/MainLoggerService'
-import open from 'open'
+import { shell } from 'electron'
 import sharp from 'sharp'
 // import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -1334,9 +1334,7 @@ describe('McpRuntimeService transport fallback (issue #16891)', () => {
     callbackServerMock.waitForAuthCode.mockReset().mockResolvedValue('auth-code')
     callbackServerMock.getServer = Promise.resolve(undefined as unknown)
     callbackServerMock.instances.length = 0
-    vi.mocked(open)
-      .mockReset()
-      .mockResolvedValue(undefined as never)
+    vi.mocked(shell.openExternal).mockReset().mockResolvedValue(undefined)
   })
 
   function urlServer(type: 'sse' | 'streamableHttp'): McpServer {
@@ -1420,13 +1418,13 @@ describe('McpRuntimeService transport fallback (issue #16891)', () => {
       const client = (await (service as any).getOrCreateClient(server)) as MockClient
       const authProvider = mcpSdkMock.streamableHttpTransports.at(-1)!.opts.authProvider
       const callbacksBefore = callbackServerMock.instances.length
-      vi.mocked(open).mockClear()
+      vi.mocked(shell.openExternal).mockClear()
 
       await expect(authProvider.redirectToAuthorization(new URL('https://auth.example.com/expired'))).rejects.toThrow(
         'Unauthorized'
       )
       expect(callbackServerMock.instances).toHaveLength(callbacksBefore)
-      expect(open).not.toHaveBeenCalled()
+      expect(shell.openExternal).not.toHaveBeenCalled()
 
       client.ping.mockImplementation(async () => {
         await authProvider.redirectToAuthorization(new URL('https://auth.example.com/expired'))
@@ -1440,7 +1438,7 @@ describe('McpRuntimeService transport fallback (issue #16891)', () => {
       expect(replacement.connectCalls.map((call) => call.kind)).toEqual(['streamableHttp', 'streamableHttp'])
       expect(callbackServerMock.instances).toHaveLength(callbacksBefore + 1)
       expect(callbackServerMock.instances.every((callback) => callback.close.mock.calls.length === 1)).toBe(true)
-      expect(open).toHaveBeenCalledExactlyOnceWith('https://auth.example.com/authorize')
+      expect(shell.openExternal).toHaveBeenCalledExactlyOnceWith('https://auth.example.com/authorize')
     }
   )
 
@@ -1462,12 +1460,12 @@ describe('McpRuntimeService transport fallback (issue #16891)', () => {
 
     await vi.waitFor(() => expect(callbackServerMock.instances).toHaveLength(1))
     expect(mcpSdkMock.clients.at(-1)?.connectCalls).toEqual([{ kind: 'streamableHttp' }])
-    expect(open).not.toHaveBeenCalled()
+    expect(shell.openExternal).not.toHaveBeenCalled()
 
     resolveListen(undefined)
     const client = (await connectPromise) as unknown as MockClient
     expect(client.connectCalls.map((c) => c.kind)).toEqual(['streamableHttp', 'streamableHttp'])
-    expect(open).toHaveBeenCalledWith('https://auth.example.com/authorize')
+    expect(shell.openExternal).toHaveBeenCalledWith('https://auth.example.com/authorize')
     expect(callbackServerMock.instances[0]?.close).toHaveBeenCalledTimes(1)
   })
 
@@ -1489,7 +1487,7 @@ describe('McpRuntimeService transport fallback (issue #16891)', () => {
     expect(callbackServerMock.waitForAuthCode).not.toHaveBeenCalled()
     expect(mcpSdkMock.clients.length).toBe(clientsBefore + 1)
     expect(mcpSdkMock.clients.at(-1)?.connectCalls).toEqual([{ kind: 'streamableHttp' }])
-    expect(open).not.toHaveBeenCalled()
+    expect(shell.openExternal).not.toHaveBeenCalled()
     expect(callbackServerMock.instances[0]?.close).toHaveBeenCalledTimes(1)
   })
 
@@ -1509,7 +1507,7 @@ describe('McpRuntimeService transport fallback (issue #16891)', () => {
   it('releases the callback port when opening the browser fails', async () => {
     mcpSdkMock.state.failStreamable = true
     mcpSdkMock.state.failStreamableUnauthorized = true
-    vi.mocked(open).mockRejectedValue(new Error('browser launch failed'))
+    vi.mocked(shell.openExternal).mockRejectedValue(new Error('browser launch failed'))
     const service = new McpRuntimeService()
 
     await expect((service as any).getOrCreateClient(urlServer('streamableHttp'))).rejects.toThrow(

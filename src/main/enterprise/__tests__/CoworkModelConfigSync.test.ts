@@ -162,6 +162,7 @@ describe('CoworkModelConfigSync', () => {
     expect(JSON.stringify(broadcast.mock.calls)).not.toContain('sk-key-')
   })
 
+  /* MEA:enterprise-model-binding 原重复覆盖契约保留，新契约只首次导入 Key 配置。
   it('重复同步原位更新地址、Key 和模型，不增加记录也不重排', async () => {
     const data = snapshot()
     serve(data)
@@ -184,12 +185,108 @@ describe('CoworkModelConfigSync', () => {
     expect(modelService.list({})).toHaveLength(1)
     expect(modelService.list({})[0].name).toBe('更新后的名称')
   })
+  */
+
+  it('已导入 Key 跨同步实例保留本地配置、工具能力及手动停用的模型', async () => {
+    const data = snapshot()
+    serve(data)
+    const { auth } = createAuth()
+    await sync.sync(auth)
+    const providerId = providerService.list({})[0].id
+    providerService.update(providerId, {
+      name: '本地服务商',
+      endpointConfigs: { [chat]: { baseUrl: 'https://local-models.test/v1' } }
+    })
+    providerService.replaceApiKeys(providerId, [{ id: 'local', key: 'sk-local', isEnabled: true }])
+    modelService.update(providerId, 'chat-model', {
+      name: '本地模型',
+      capabilities: ['function-call', 'reasoning'],
+      inputModalities: ['image'],
+      isEnabled: false
+    })
+    const providersBefore = dbh.db.select().from(userProviderTable).all()
+    const modelsBefore = dbh.db.select().from(userModelTable).all()
+    data.providers[0].name = '后台新名称'
+    data.providers[0].apiKey = 'sk-rotated'
+    data.providers[0].endpointConfigs[chat]!.baseUrl = 'https://new-models.test/v1'
+    data.providers[0].models = [{ id: 'new-model', endpointTypes: [chat] }]
+
+    await new CoworkModelConfigSync().sync(auth)
+
+    expect(dbh.db.select().from(userProviderTable).all()).toEqual(providersBefore)
+    expect(dbh.db.select().from(userModelTable).all()).toEqual(modelsBefore)
+    expect(providerService.getRotatedApiKey(providerId)).toBe('sk-local')
+    expect(modelService.list({})[0]).toMatchObject({
+      name: '本地模型',
+      capabilities: ['function-call', 'reasoning'],
+      inputModalities: ['image'],
+      isEnabled: false
+    })
+  })
+
+  it('跳过已导入 Key 时仍能导入新增 Key', async () => {
+    const data = snapshot()
+    serve(data)
+    const { auth } = createAuth()
+    await sync.sync(auth)
+    const existingId = providerService.list({})[0].id
+    modelService.update(existingId, 'chat-model', { capabilities: ['function-call'] })
+    data.providers.push({
+      ...data.providers[0],
+      id: 'key-43',
+      apiKey: 'sk-key-b',
+      models: [{ id: 'new-model', endpointTypes: [chat] }]
+    })
+
+    await sync.sync(auth)
+
+    expect(providerService.list({})).toHaveLength(2)
+    expect(modelService.list({ providerId: existingId })[0].capabilities).toContain('function-call')
+    const added = providerService.list({}).find((provider) => provider.id !== existingId)!
+    expect(providerService.getRotatedApiKey(added.id)).toBe('sk-key-b')
+    expect(modelService.list({ providerId: added.id }).map((model) => model.apiModelId)).toEqual(['new-model'])
+  })
+
+  it('手动关闭已有服务商和凭据后，重新登录不自动启用', async () => {
+    serve()
+    const { auth } = createAuth()
+    await sync.sync(auth)
+    const providerId = providerService.list({})[0].id
+    providerService.update(providerId, { isEnabled: false })
+    providerService.replaceApiKeys(providerId, [{ id: 'cowork', key: 'sk-key-a', isEnabled: false }])
+    const before = dbh.db.select().from(userProviderTable).all()
+
+    await sync.sync(auth)
+
+    expect(dbh.db.select().from(userProviderTable).all()).toEqual(before)
+    expect(providerService.getRotatedApiKey(providerId)).toBe('')
+    expect(modelService.list({})[0]).toMatchObject({ isEnabled: true, isDeprecated: false })
+  })
+
+  it('删除自动服务商后重新导入该 Key 的最新配置', async () => {
+    const data = snapshot()
+    serve(data)
+    const { auth } = createAuth()
+    await sync.sync(auth)
+    const providerId = providerService.list({})[0].id
+    providerService.delete(providerId)
+    data.providers[0].apiKey = 'sk-rotated'
+    data.providers[0].models = [{ id: 'new-model', endpointTypes: [chat] }]
+
+    await sync.sync(auth)
+
+    expect(providerService.list({}).map((provider) => provider.id)).toEqual([providerId])
+    expect(providerService.getRotatedApiKey(providerId)).toBe('sk-rotated')
+    expect(modelService.list({}).map((model) => model.apiModelId)).toEqual(['new-model'])
+  })
 
   it('完整快照移除 Key 后停用凭据与模型，并保留历史引用；恢复后重新启用', async () => {
     const data = snapshot()
     serve(data)
     const { auth } = createAuth()
     await sync.sync(auth)
+    const providerId = providerService.list({})[0].id
+    modelService.update(providerId, 'chat-model', { name: '本地模型', capabilities: ['function-call'] })
     const original = data.providers
     data.providers = []
     await sync.sync(auth)
@@ -204,9 +301,15 @@ describe('CoworkModelConfigSync', () => {
     await sync.sync(auth)
     expect(providerService.list({})).toHaveLength(1)
     expect(providerService.list({})[0].isEnabled).toBe(true)
-    expect(modelService.list({})[0]).toMatchObject({ isEnabled: true, isDeprecated: false })
+    expect(modelService.list({})[0]).toMatchObject({
+      name: '本地模型',
+      capabilities: ['function-call'],
+      isEnabled: true,
+      isDeprecated: false
+    })
   })
 
+  /* MEA:enterprise-model-binding 已导入 Key 的模型列表由用户维护，不再跟随后续快照覆盖。
   it('模型权限变化只停用已移除的模型，空模型列表不会填入默认模型', async () => {
     const data = snapshot()
     serve(data)
@@ -218,6 +321,22 @@ describe('CoworkModelConfigSync', () => {
     expect(modelService.list({ enabled: true })).toEqual([])
     expect(modelService.list({})).toHaveLength(1)
     expect(modelService.list({})[0].isEnabled).toBe(false)
+  })
+  */
+
+  it('首次导入空模型列表不填入默认模型，后续登录也不自动补入模型', async () => {
+    const data = snapshot()
+    data.providers[0].models = []
+    serve(data)
+    const { auth } = createAuth()
+    await sync.sync(auth)
+    expect(providerService.list({})[0].isEnabled).toBe(true)
+    expect(modelService.list({})).toEqual([])
+    data.providers[0].models = [{ id: 'new-model', endpointTypes: [chat] }]
+
+    await sync.sync(auth)
+
+    expect(modelService.list({})).toEqual([])
   })
 
   it('按声明的嵌入协议生成能力标签，不将嵌入模型混入普通对话', async () => {
@@ -308,8 +427,15 @@ describe('CoworkModelConfigSync', () => {
     const broadcast = vi.mocked(application.get('WindowManager').broadcast)
     broadcast.mockClear()
     const before = dbh.db.select().from(userProviderTable).all()
-    data.providers[0].apiKey = 'sk-new-key'
-    data.providers[0].models = [{ id: 'new-model', endpointTypes: [chat] }]
+    // data.providers[0].apiKey = 'sk-new-key'
+    // data.providers[0].models = [{ id: 'new-model', endpointTypes: [chat] }]
+    // 已有 Key 不再写入，用新增 Key 验证部分创建失败时的事务回滚。
+    data.providers.push({
+      ...data.providers[0],
+      id: 'key-43',
+      apiKey: 'sk-new-key',
+      models: [{ id: 'new-model', endpointTypes: [chat] }]
+    })
     vi.spyOn(modelService, 'create').mockImplementationOnce(() => {
       throw new Error('disk write failed')
     })
@@ -317,6 +443,15 @@ describe('CoworkModelConfigSync', () => {
     expect(dbh.db.select().from(userProviderTable).all()).toEqual(before)
     expect(modelService.list({ enabled: true }).map((model) => model.apiModelId)).toEqual(['chat-model'])
     expect(broadcast).not.toHaveBeenCalled()
+
+    await sync.sync(auth)
+    expect(providerService.list({})).toHaveLength(2)
+    expect(
+      modelService
+        .list({ enabled: true })
+        .map((model) => model.apiModelId)
+        .sort()
+    ).toEqual(['chat-model', 'new-model'])
   })
 
   it('未通过在线身份校验时不拉取模型配置', async () => {

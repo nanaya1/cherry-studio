@@ -108,6 +108,27 @@ export class CoworkModelConfigSync {
     for (const config of snapshot.providers) {
       const providerId = `${prefix}${digest([config.id])}`
       desiredIds.add(providerId)
+      // MEA:enterprise-model-binding 已导入的 Key 由本地维护，后续登录只恢复撤权停用状态。
+      const existing = existingProviders.get(providerId)
+      if (existing) {
+        if (!existing.isEnabled && existing.apiKeys.length > 0 && existing.apiKeys.every((key) => !key.isEnabled)) {
+          const models = modelService.list({ providerId })
+          // 自动停用会同时标记全部模型弃用，普通手动关闭不应在登录时被重新打开。
+          if (models.some((model) => !model.isDeprecated)) continue
+          providerService.replaceApiKeys(
+            providerId,
+            providerService.getApiKeys(providerId).map((key) => ({ ...key, isEnabled: true }))
+          )
+          modelService.bulkUpdate(
+            models.map((model) => ({
+              ...parseUniqueModelId(model.id),
+              patch: { isEnabled: true, isDeprecated: false }
+            }))
+          )
+          providerService.update(providerId, { isEnabled: true })
+        }
+        continue
+      }
       const fields = {
         name: config.name,
         endpointConfigs: config.endpointConfigs,
@@ -115,12 +136,15 @@ export class CoworkModelConfigSync {
         authConfig: { type: 'api-key' as const }
       }
       const apiKeys = [{ id: 'cowork', key: config.apiKey, isEnabled: true }]
+      /* 原重复覆盖逻辑保留，已存在的绑定在上方跳过。
       if (existingProviders.has(providerId)) {
         providerService.update(providerId, fields)
         providerService.replaceApiKeys(providerId, apiKeys)
       } else {
         providerService.create({ providerId, ...fields, apiKeys })
       }
+      */
+      providerService.create({ providerId, ...fields, apiKeys })
       this.syncModels(providerId, config)
       providerService.update(providerId, { isEnabled: true })
     }

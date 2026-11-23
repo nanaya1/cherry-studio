@@ -69,6 +69,63 @@ describe('CallBackServer.waitForAuthCode', () => {
     await expect(server.waitForAuthCode(100)).resolves.toBe('early-code')
   })
 
+  it('rejects a callback with a mismatched OAuth state', async () => {
+    vi.useRealTimers()
+    const guarded = new CallBackServer({
+      port: 0,
+      path: '/oauth/callback',
+      events: new EventEmitter(),
+      expectedState: 'expected-state'
+    })
+    try {
+      const listener = await guarded.getServer
+      const { port } = listener.address() as AddressInfo
+      const pending = guarded.waitForAuthCode(1000)
+      const assertion = expect(pending).rejects.toThrow('OAuth callback state mismatch')
+      const status = await new Promise<number | undefined>((resolve, reject) => {
+        http
+          .get(`http://127.0.0.1:${port}/oauth/callback?code=code&state=wrong-state`, (response) => {
+            response.resume()
+            response.on('end', () => resolve(response.statusCode))
+          })
+          .on('error', reject)
+      })
+
+      expect(status).toBe(400)
+      await assertion
+    } finally {
+      await guarded.close()
+    }
+  })
+
+  it.each([
+    ['code=accepted-code&state=expected-state', 200, 'accepted-code'],
+    ['error=access_denied&state=expected-state', 400, 'access_denied'],
+    ['code=rejected-code&state=wrong-state', 400, 'OAuth callback state mismatch']
+  ] as const)('retains an early authorization outcome: %s', async (query, expectedStatus, outcome) => {
+    vi.useRealTimers()
+    const guarded = new CallBackServer({
+      port: 0,
+      path: '/oauth/callback',
+      events: new EventEmitter(),
+      expectedState: 'expected-state'
+    })
+    try {
+      const listener = await guarded.getServer
+      const { port } = listener.address() as AddressInfo
+      const response = await fetch(`http://127.0.0.1:${port}/oauth/callback?${query}`)
+      await response.text()
+      expect(response.status).toBe(expectedStatus)
+      if (expectedStatus === 200) {
+        await expect(guarded.waitForAuthCode(1000)).resolves.toBe(outcome)
+      } else {
+        await expect(guarded.waitForAuthCode(1000)).rejects.toThrow(outcome)
+      }
+    } finally {
+      await guarded.close()
+    }
+  })
+
   it('cancels authorization waiting without retaining listeners or timers', async () => {
     const controller = new AbortController()
     const pending = server.waitForAuthCode(300_000, controller.signal)

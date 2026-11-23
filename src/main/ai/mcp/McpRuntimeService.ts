@@ -681,7 +681,8 @@ export class McpRuntimeService extends BaseService {
       callbackServer ??= new CallBackServer({
         port: authProvider.config.callbackPort,
         path: authProvider.config.callbackPath,
-        events: new EventEmitter()
+        events: new EventEmitter(),
+        expectedState: authProvider.currentAuthorizationState
       })
       try {
         await callbackServer.getServer

@@ -91,6 +91,8 @@ vi.mock('../OrgCredentialStore', () => ({
 }))
 vi.mock('../OrgSkillCatalog', () => ({
   OrgSkillCatalog: class {
+    async refreshResourceAuthority() {}
+
     migrateLegacyCopies() {
       return 0
     }
@@ -98,6 +100,8 @@ vi.mock('../OrgSkillCatalog', () => ({
 }))
 vi.mock('../OrgMcpCatalog', () => ({
   OrgMcpCatalog: class {
+    async refreshResourceAuthority() {}
+
     migrateLegacyCopies() {
       return 0
     }
@@ -136,6 +140,7 @@ import { EnterprisePlugin } from '../EnterprisePlugin'
 
 type AuthHarness = {
   disposed: boolean
+  verifyOnlineAuthority(): Promise<void>
   setVerification(state: OrgVerificationStatus['state'], reason?: OrgVerificationStatus['reason']): void
   changeAuthorization(): void
 }
@@ -224,7 +229,11 @@ describe('EnterprisePlugin account verification lifecycle', () => {
       },
       AiStreamManager: { cancelActiveWork: async (reason: string) => work[1].controller.abort(reason) },
       AgentSessionRuntimeService: { cancelActiveWork: async (reason: string) => work[2].controller.abort(reason) },
-      McpRuntimeService: { abortActiveToolCalls: () => work[3].controller.abort() }
+      // McpRuntimeService: { abortActiveToolCalls: () => work[3].controller.abort() }
+      McpRuntimeService: {
+        abortActiveToolCalls: () => work[3].controller.abort(),
+        stopUnauthorizedOrgConnectors: async () => undefined
+      }
     }
     vi.spyOn(application, 'get').mockImplementation(
       ((name: string) => services[name] ?? application.getExisting(name as never)) as typeof application.get
@@ -269,6 +278,7 @@ describe('EnterprisePlugin account verification lifecycle', () => {
     expect(application.relaunch).not.toHaveBeenCalled()
   }
 
+  /* MEA:enterprise-model-binding 原在线校验重试契约保留，模型同步改为每次登录仅尝试一次。
   it('模型配置不可用不阻断已登录的业务环境，并在在线校验后重试', async () => {
     syncModelConfig.mockRejectedValueOnce(new Error('model config unavailable'))
     auth.setVerification('unavailable')
@@ -278,6 +288,49 @@ describe('EnterprisePlugin account verification lifecycle', () => {
     const attempts = syncModelConfig.mock.calls.length
     await vi.advanceTimersByTimeAsync(65_000)
     expect(syncModelConfig.mock.calls.length).toBeGreaterThan(attempts)
+    expectHostAvailable()
+  })
+  */
+
+  it('登录仅同步一次，周期在线校验、网络恢复及授权通知均不重复同步模型', async () => {
+    const onlineVerification = vi.spyOn(auth, 'verifyOnlineAuthority')
+    expect(syncModelConfig).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(185_000)
+    auth.setVerification('unavailable')
+    auth.setVerification('verified')
+    auth.changeAuthorization()
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(onlineVerification).toHaveBeenCalledTimes(3)
+    expect(syncModelConfig).toHaveBeenCalledTimes(1)
+    expectHostAvailable()
+  })
+
+  it('登录同步失败不阻断业务环境，只在下次登录初始化时重新尝试', async () => {
+    await plugin._doDestroy()
+    syncModelConfig.mockClear().mockRejectedValueOnce(new Error('model config unavailable'))
+    plugin = new EnterprisePlugin()
+    auth = plugin.auth as unknown as AuthHarness
+    knowledge = plugin.knowledge as unknown as KnowledgeHarness
+
+    await plugin._doInit()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(syncModelConfig).toHaveBeenCalledTimes(1)
+    expectHostAvailable()
+    auth.setVerification('unavailable')
+    auth.setVerification('verified')
+    await vi.advanceTimersByTimeAsync(125_000)
+    expect(syncModelConfig).toHaveBeenCalledTimes(1)
+
+    await plugin._doDestroy()
+    plugin = new EnterprisePlugin()
+    auth = plugin.auth as unknown as AuthHarness
+    knowledge = plugin.knowledge as unknown as KnowledgeHarness
+    await plugin._doInit()
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(syncModelConfig).toHaveBeenCalledTimes(2)
     expectHostAvailable()
   })
 

@@ -13,10 +13,13 @@ export class CallBackServer {
   private server: Promise<http.Server>
   private events: EventEmitter
   private authCode?: string
+  private authError?: Error
+  private readonly expectedState?: string
 
   constructor(options: OAuthCallbackServerOptions) {
-    const { port, path, events } = options
+    const { port, path, events, expectedState } = options
     this.events = events
+    this.expectedState = expectedState
     this.server = this.initialize(port, path)
   }
 
@@ -28,8 +31,29 @@ export class CallBackServer {
           // Parse the URL to extract the authorization code
           const url = new URL(req.url, `http://127.0.0.1:${port}`)
           const code = url.searchParams.get('code')
+          const state = url.searchParams.get('state')
+          const oauthError = url.searchParams.get('error')
+          if (this.expectedState && state !== this.expectedState) {
+            // MEA:mcp-oauth-authorization 错误回调也必须匹配本次授权的 state。
+            const error = new Error('OAuth callback state mismatch')
+            this.authError = error
+            this.events.emit('oauth-error', error)
+            res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' })
+            res.end(error.message)
+            return
+          }
+          if (oauthError) {
+            // MEA:mcp-oauth-authorization 先于 waiter 到达的拒绝回调也必须保留，避免再次等到超时。
+            const error = new Error(url.searchParams.get('error_description') || oauthError)
+            this.authError = error
+            this.events.emit('oauth-error', error)
+            res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' })
+            res.end(error.message)
+            return
+          }
           if (code) {
             this.authCode = code
+            logger.info('OAuth authorization callback received')
             this.events.emit('auth-code-received', code)
             // Send success response to browser
             const title = t('settings.mcp.oauth.callback.title')
@@ -135,17 +159,23 @@ export class CallBackServer {
   // async waitForAuthCode(timeoutMs = 300_000): Promise<string> {
   async waitForAuthCode(timeoutMs = 300_000, signal?: AbortSignal): Promise<string> {
     signal?.throwIfAborted()
+    if (this.authError) throw this.authError
     if (this.authCode !== undefined) return this.authCode
     return new Promise((resolve, reject) => {
       const cleanup = () => {
         clearTimeout(timer)
         this.events.off('auth-code-received', onCode)
+        this.events.off('oauth-error', onError)
         signal?.removeEventListener('abort', onAbort)
       }
       const onCode = (code: string) => {
         // clearTimeout(timer)
         cleanup()
         resolve(code)
+      }
+      const onError = (error: Error) => {
+        cleanup()
+        reject(error)
       }
       const onAbort = () => {
         cleanup()
@@ -157,6 +187,7 @@ export class CallBackServer {
         reject(new Error(`Timed out waiting for OAuth authorization code after ${Math.round(timeoutMs / 1000)}s`))
       }, timeoutMs)
       this.events.once('auth-code-received', onCode)
+      this.events.once('oauth-error', onError)
       signal?.addEventListener('abort', onAbort, { once: true })
     })
   }

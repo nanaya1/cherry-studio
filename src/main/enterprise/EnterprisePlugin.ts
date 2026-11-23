@@ -203,7 +203,7 @@ export class EnterprisePlugin extends BaseService {
     }
   }
 
-  /** 登录完成或企业授权变化后，异步同步 Cowork 自动服务商；失败不阻断账号登录。 */
+  /** 每次登录首次验证成功后仅尝试一次模型同步，失败不阻断账号登录。 */
   private syncCoworkModelConfig(): Promise<void> {
     if (this.modelConfigSyncTask) return this.modelConfigSyncTask
     const task = this.modelConfigSync
@@ -212,7 +212,7 @@ export class EnterprisePlugin extends BaseService {
         if (result) logger.info('Cowork model configuration synchronized', result)
       })
       .catch(() => {
-        // 不能记录可能包含明文 Key 的原始异常或响应；周期在线校验成功后会重试。
+        // 不能记录可能包含明文 Key 的原始异常或响应；仅在下次登录时重新尝试。
         logger.warn('Cowork model configuration synchronization failed; retaining existing configuration')
       })
       .finally(() => {
@@ -227,19 +227,21 @@ export class EnterprisePlugin extends BaseService {
       this.auth.onVerificationChanged((status) => {
         application.get('IpcApiService').broadcast('enterprise.verification_changed', status)
         if (status.state === 'blocked') void this.cancelBlockedWork()
-        if (status.state === 'verified') void this.syncCoworkModelConfig()
+        // MEA:enterprise-model-binding verified 还用于网络恢复，不作为模型配置同步入口。
+        // if (status.state === 'verified') void this.syncCoworkModelConfig()
       })
     )
     // this.registerDisposable(this.auth.onAuthorizationChanged(() => this.knowledge.invalidateAuthorizationContext()))
-    // MEA:enterprise-model-binding 授权变化除资源缓存外，还需更新自动绑定的模型权限。
+    // MEA:enterprise-model-binding 授权缓存照常失效，模型配置只在登录时读取。
     this.registerDisposable(
       this.auth.onAuthorizationChanged(() => {
         this.knowledge.invalidateAuthorizationContext()
-        void this.syncCoworkModelConfig()
+        // void this.syncCoworkModelConfig()
       })
     )
     this.registerDisposable(() => this.auth.dispose())
     await this.auth.initialize()
+    // 登录初始化完成后只尝试一次；后续 verified 通知仅代表在线校验恢复。
     void this.syncCoworkModelConfig()
     this.knowledge.initialize(application.get('JobManager'))
     this.registerDisposable(() => this.knowledge.dispose())
@@ -249,7 +251,8 @@ export class EnterprisePlugin extends BaseService {
         gate: profileBusinessAccessGate,
         verify: async () => {
           await this.auth.verifyOnlineAuthority()
-          void this.syncCoworkModelConfig()
+          // MEA:enterprise-model-binding 在线监控只校验账号及资源授权，不周期拉取模型配置。
+          // void this.syncCoworkModelConfig()
           try {
             await Promise.allSettled([
               this.skills.refreshResourceAuthority(),

@@ -1,3 +1,5 @@
+import { randomBytes } from 'node:crypto'
+
 import {
   type OAuthClientProvider,
   type OAuthDiscoveryState,
@@ -8,7 +10,8 @@ import type {
   OAuthClientInformationMixed,
   OAuthTokens
 } from '@modelcontextprotocol/sdk/shared/auth'
-import open from 'open'
+import { shell } from 'electron'
+// import open from 'open'
 import { sanitizeUrl } from 'strict-url-sanitise'
 
 import { application } from '@application'
@@ -22,6 +25,7 @@ const logger = loggerService.withContext('Mcp:OAuthClientProvider')
 export class McpOAuthClientProvider implements OAuthClientProvider {
   private storage: JsonFileStorage
   private lastDiscoveredAuthServerUrl?: string
+  private authorizationState?: string
   public readonly config: Required<OAuthProviderOptions>
   public prepareAuthorization?: () => Promise<void>
 
@@ -44,6 +48,16 @@ export class McpOAuthClientProvider implements OAuthClientProvider {
 
   get redirectUrl(): string {
     return `http://127.0.0.1:${this.config.callbackPort}${this.config.callbackPath}`
+  }
+
+  state(): string {
+    // MEA:mcp-oauth-authorization Cowork 强制要求 state，每次授权使用新的随机值。
+    this.authorizationState = randomBytes(32).toString('base64url')
+    return this.authorizationState
+  }
+
+  get currentAuthorizationState(): string | undefined {
+    return this.authorizationState
   }
 
   get clientMetadata() {
@@ -115,8 +129,13 @@ export class McpOAuthClientProvider implements OAuthClientProvider {
     if (this.prepareAuthorization !== prepareAuthorization) throw new UnauthorizedError()
     try {
       // Open the browser to the authorization URL
-      await open(sanitizeUrl(authorizationUrl.toString()))
-      logger.debug('Browser opened automatically.')
+      // await open(sanitizeUrl(authorizationUrl.toString()))
+      // MEA:mcp-oauth-authorization 使用原生打开接口，避免 Windows 启动命令失败仍进入回调等待。
+      await shell.openExternal(sanitizeUrl(authorizationUrl.toString()))
+      // logger.debug('Browser opened automatically.')
+      logger.info('OAuth authorization opened in system browser', {
+        authorizationEndpoint: authorizationUrl.origin + authorizationUrl.pathname
+      })
     } catch (error) {
       logger.error('Could not open browser automatically.')
       throw error // Let caller handle the error

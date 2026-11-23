@@ -3,6 +3,7 @@ import os from 'os'
 import path from 'path'
 
 import type { OAuthClientInformation, OAuthTokens } from '@modelcontextprotocol/sdk/shared/auth.js'
+import { shell } from 'electron'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // The provider constructor reads application.getPath('feature.mcp.oauth'); the
@@ -12,6 +13,9 @@ vi.mock('@application', async () => {
   const { mockApplicationFactory } = await import('@test-mocks/main/application')
   return mockApplicationFactory({})
 })
+
+// 防止回归测试在旧实现上真正拉起系统浏览器。
+vi.mock('open', () => ({ default: vi.fn().mockResolvedValue(undefined) }))
 
 const { McpOAuthClientProvider } = await import('../provider')
 
@@ -164,5 +168,75 @@ describe('McpOAuthClientProvider.saveDiscoveryState', () => {
 
     expect(await provider.clientInformation()).toMatchObject({ client_id: 'cid' })
     expect(await provider.tokens()).toMatchObject({ access_token: 'at' })
+  })
+})
+
+describe('McpOAuthClientProvider.state', () => {
+  it('generates a fresh base64url state for every authorization attempt', async () => {
+    const configDir = await fs.mkdtemp(path.join(os.tmpdir(), 'oauth-state-test-'))
+    try {
+      const provider = new McpOAuthClientProvider({ serverUrlHash: 'hash-state', configDir })
+      const first = provider.state()
+      const second = provider.state()
+
+      expect(first).toMatch(/^[A-Za-z0-9_-]{43}$/)
+      expect(second).toMatch(/^[A-Za-z0-9_-]{43}$/)
+      expect(second).not.toBe(first)
+      expect(provider.currentAuthorizationState).toBe(second)
+    } finally {
+      await fs.rm(configDir, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('McpOAuthClientProvider.redirectToAuthorization', () => {
+  beforeEach(() => {
+    vi.mocked(shell.openExternal).mockReset().mockResolvedValue(undefined)
+  })
+
+  it('waits for the system browser launch result and preserves OAuth parameters', async () => {
+    const provider = new McpOAuthClientProvider({ serverUrlHash: 'browser-launch' })
+    let release!: () => void
+    const launch = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    let launchedUrl: URL | undefined
+    vi.mocked(shell.openExternal).mockImplementation(async (url) => {
+      launchedUrl = new URL(url)
+      await launch
+    })
+    provider.prepareAuthorization = async () => undefined
+    const authorizationUrl = new URL('http://10.0.0.1:8082/oauth2/authorize')
+    authorizationUrl.search = new URLSearchParams({
+      state: provider.state(),
+      redirect_uri: provider.redirectUrl,
+      code_challenge: 'synthetic-pkce-challenge',
+      scope: 'mcp:knowledge:read',
+      resource: 'http://10.0.0.1:8007/mcp'
+    }).toString()
+    let settled = false
+    const pending = provider.redirectToAuthorization(authorizationUrl).then(() => {
+      settled = true
+    })
+    try {
+      await vi.waitFor(() => expect(launchedUrl).toBeDefined())
+      expect(settled).toBe(false)
+      expect(launchedUrl?.href).toBe(authorizationUrl.href)
+    } finally {
+      release()
+      await pending
+    }
+    expect(settled).toBe(true)
+  })
+
+  it('rejects immediately when the operating system cannot open the browser', async () => {
+    const provider = new McpOAuthClientProvider({ serverUrlHash: 'browser-failure' })
+    provider.prepareAuthorization = async () => undefined
+    const launchError = new Error('No browser association')
+    vi.mocked(shell.openExternal).mockRejectedValueOnce(launchError)
+
+    await expect(provider.redirectToAuthorization(new URL('https://auth.example.com/authorize'))).rejects.toBe(
+      launchError
+    )
   })
 })
