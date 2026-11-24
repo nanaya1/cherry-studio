@@ -67,6 +67,7 @@ const KnowledgePageContent = () => {
               key={selectedOrgBase.id}
               base={selectedOrgBase}
               publicLibrary={category === 'public'}
+              canManageWeb={org.canManageWeb}
               owned={org.catalog.owned.some((base) => base.id === selectedOrgBase.id)}
               onUnshared={handleOrgUnshared}
               onShared={() => void org.refresh()}

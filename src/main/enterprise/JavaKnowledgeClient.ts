@@ -60,6 +60,9 @@ export interface JavaKnowledgeSpace {
   sourceKnowledgeId: string | null
   accessRule: string | null
   editable: boolean | null
+  spaceAdministrator?: boolean | null
+  knowledgeRole?: number | null
+  knowledgeRoleDescription?: string | null
   canManageMembers: boolean | null
   canManageShares: boolean | null
   canDownload: boolean | null
@@ -255,6 +258,9 @@ const knowledgeVOSchema = z
     sourceKnowledgeId: z.string().nullable().optional(),
     accessRule: z.string().nullable().optional(),
     editable: z.boolean().nullable().optional(),
+    spaceAdministrator: z.boolean().nullable().optional(),
+    knowledgeRole: z.number().int().nullable().optional(),
+    knowledgeRoleDescription: z.string().nullable().optional(),
     canManageMembers: z.boolean().nullable().optional(),
     canManageShares: z.boolean().nullable().optional(),
     canDownload: z.boolean().nullable().optional(),

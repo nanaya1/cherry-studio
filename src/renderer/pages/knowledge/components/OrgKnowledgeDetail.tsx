@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 
 import {
   Button,
+  Badge,
   Input,
   Pagination,
   PaginationContent,
@@ -37,6 +38,8 @@ import { previewText } from '../utils/sharing'
 import { KnowledgeItemSourceDialog } from './AddKnowledgeItemDialog'
 import DetailHeader from './DetailHeader'
 import KnowledgeSharingPanel from './KnowledgeSharingPanel'
+import KnowledgeSourceUpload from './KnowledgeSourceUpload'
+import KnowledgeWebButton from './KnowledgeWebButton'
 import ShareKnowledgeDialog from './ShareKnowledgeDialog'
 
 // 仅两个入口文件接入内存预览，直接按需加载未由 barrel 导出的 Office 组件。
@@ -365,6 +368,7 @@ type OrgKnowledgeDetailProps = {
   base: OrgKnowledgeBase
   owned: boolean
   publicLibrary?: boolean
+  canManageWeb?: boolean
   onUnshared?: () => void
   onShared?: () => void
 }
@@ -376,7 +380,8 @@ export default function OrgKnowledgeDetail(props: OrgKnowledgeDetailProps) {
   const authorizationVersion = useKnowledgeAuthorizationVersion()
   return (
     <OrgKnowledgeDetailSession
-      key={`${props.base.id}-${Boolean(props.publicLibrary)}-${props.publicLibrary ? authorizationVersion : ''}`}
+      // 权限变化立即销毁旧上传/分享状态，拒绝旧会话回调。
+      key={`${props.base.id}-${Boolean(props.publicLibrary)}-${authorizationVersion}-${props.base.editable === true}`}
       {...props}
     />
   )
@@ -387,12 +392,14 @@ function OrgKnowledgeDetailSession({
   base,
   owned,
   publicLibrary = false,
+  canManageWeb = false,
   onUnshared,
   onShared
 }: {
   base: OrgKnowledgeBase
   owned: boolean
   publicLibrary?: boolean
+  canManageWeb?: boolean
   onUnshared?: () => void
   onShared?: () => void
 }) {
@@ -405,6 +412,7 @@ function OrgKnowledgeDetailSession({
   }, [])
   // const canCreateShare = owned && Boolean(base.localBaseId) && base.shareCompleted === true
   const canCreateShare = owned
+  const editable = base.editable === true
   // const [inviting, setInviting] = useState(false)
   const [sharing, setSharing] = useState<false | 'code' | 'people'>(false)
   const [addSource, setAddSource] = useState<KnowledgeItemType | null>(null)
@@ -621,6 +629,16 @@ function OrgKnowledgeDetailSession({
     [enterDirectory, visibleItems]
   )
   const previewRemoteItem = useCallback((item: KnowledgeItem) => openRemoteItem(item, 'preview'), [openRemoteItem])
+  // 旧服务端兼容标记对应知识管理员，不能显示为预留的空间管理员。
+  const role = base.knowledgeRole ?? (base.spaceAdministrator ? 2 : undefined)
+  const roleLabel =
+    role === 1
+      ? t('knowledge.org.space_administrator')
+      : role === 2
+        ? t('knowledge.org.knowledge_manager')
+        : role === 3
+          ? t('knowledge.org.knowledge_member')
+          : undefined
   if (target)
     return (
       <main data-ui="knowledge.content" className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
@@ -636,41 +654,48 @@ function OrgKnowledgeDetailSession({
     <main data-ui="knowledge.content" className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       <DetailHeader
         base={base}
+        sharingStatus={
+          // base.spaceAdministrator ? (<Badge variant="outline">{t('knowledge.org.space_administrator')}</Badge>) : undefined
+          roleLabel ? <Badge variant="outline">{roleLabel}</Badge> : undefined
+        }
         // action={<Badge variant="outline">{t('knowledge.org.readonly')}</Badge>}
         actions={
-          owned ? (
-            <>
-              <Button variant="ghost" onClick={() => setTab(tab === 'members' ? 'documents' : 'members')}>
-                {t(tab === 'members' ? 'knowledge.org.documents' : 'knowledge.org.shares')}
-              </Button>
-              {/* 原独立邀请按钮由与本地一致的分享菜单承接。 */}
-              {canCreateShare ? (
-                <CommandPopupMenu
-                  location="webcontents.context"
-                  align="end"
-                  side="bottom"
-                  extraItems={[
-                    {
-                      type: 'item',
-                      id: 'share-code',
-                      label: t('knowledge.org.share_code'),
-                      onSelect: () => setSharing('code')
-                    },
-                    {
-                      type: 'item',
-                      id: 'invite-people',
-                      label: t('knowledge.org.invite_people'),
-                      onSelect: () => setSharing('people')
-                    }
-                  ]}>
-                  <Button variant="ghost" size="sm">
-                    {t('knowledge.org.share')}
-                    <ChevronDown className="size-3.5" />
-                  </Button>
-                </CommandPopupMenu>
-              ) : null}
-            </>
-          ) : undefined
+          <>
+            {canManageWeb ? <KnowledgeWebButton baseId={base.id} /> : null}
+            {owned ? (
+              <>
+                <Button variant="ghost" onClick={() => setTab(tab === 'members' ? 'documents' : 'members')}>
+                  {t(tab === 'members' ? 'knowledge.org.documents' : 'knowledge.org.shares')}
+                </Button>
+                {/* 原独立邀请按钮由与本地一致的分享菜单承接。 */}
+                {canCreateShare ? (
+                  <CommandPopupMenu
+                    location="webcontents.context"
+                    align="end"
+                    side="bottom"
+                    extraItems={[
+                      {
+                        type: 'item',
+                        id: 'share-code',
+                        label: t('knowledge.org.share_code'),
+                        onSelect: () => setSharing('code')
+                      },
+                      {
+                        type: 'item',
+                        id: 'invite-people',
+                        label: t('knowledge.org.invite_people'),
+                        onSelect: () => setSharing('people')
+                      }
+                    ]}>
+                    <Button variant="ghost" size="sm">
+                      {t('knowledge.org.share')}
+                      <ChevronDown className="size-3.5" />
+                    </Button>
+                  </CommandPopupMenu>
+                ) : null}
+              </>
+            ) : null}
+          </>
         }
       />
       {/* 原邀请入口依赖 base.localBaseId；已有云端库直接使用云端身份。 */}
@@ -791,10 +816,12 @@ function OrgKnowledgeDetailSession({
               updatedAt={base.updatedAt ?? ''}
               // onAdd={() => {}}
               // allowAdd={owned && !adding}
-              // MEA:public-knowledge-status-filter 公共库只读，空库也不提供上传入口。
-              allowAdd={owned && !publicLibrary && !adding}
+              // MEA:public-knowledge-status-filter 公共库内容维护单独依赖服务端editable。
+              // allowAdd={owned && !publicLibrary && !adding}
+              allowAdd={editable && owned && !publicLibrary && !adding}
               onAdd={(source = 'file', files) => {
-                if (adding || !owned) return
+                // if (adding || !owned) return
+                if (adding || !owned || !editable) return
                 const open = (localBaseId: string) => {
                   if (!activeSession.current) return
                   setAddedBaseId(localBaseId)
@@ -835,7 +862,8 @@ function OrgKnowledgeDetailSession({
               // onDelete={() => {}}
               onDelete={async (item) => {
                 const remote = visibleItems.find((entry) => entry.id === item.id)
-                if (!owned || !remote?.fileId) throw new Error(t('common.error'))
+                // if (!owned || !remote?.fileId) throw new Error(t('common.error'))
+                if (!editable || !remote?.fileId) throw new Error(t('common.error'))
                 await ipcApi.request('enterprise.knowledge.delete_file', { baseId: base.id, fileId: remote.fileId })
                 if (!activeSession.current) return
                 // if (currentDirectory) {
@@ -862,9 +890,11 @@ function OrgKnowledgeDetailSession({
                 await refresh()
                 onShared?.()
               }}
-              allowDelete={(item) => owned && Boolean(visibleItems.find((entry) => entry.id === item.id)?.fileId)}
+              // allowDelete={(item) => owned && Boolean(visibleItems.find((entry) => entry.id === item.id)?.fileId)}
+              allowDelete={(item) => editable && Boolean(visibleItems.find((entry) => entry.id === item.id)?.fileId)}
               deleteDescription={t('knowledge.org.delete_file_notice')}
               onDeleteItems={async (itemIds) => {
+                if (!editable) throw new Error(t('common.error'))
                 const selectedFiles = itemIds.map((itemId) => {
                   const remote = visibleItems.find((entry) => entry.id === itemId)
                   if (!remote?.fileId) throw new Error(t('common.error'))
@@ -1039,37 +1069,54 @@ function OrgKnowledgeDetailSession({
                 ) : undefined
               }
               toolbarActions={
-                publicLibrary ? (
-                  <Select
-                    value={statusFilter}
-                    disabled={loading}
-                    onValueChange={(value) => {
-                      setStatusFilter(value as typeof statusFilter)
-                      setCursor(null)
-                    }}>
-                    <SelectTrigger size="sm" aria-label={t('knowledge.org.status_filter')} className="h-7 w-28 text-xs">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent align="end">
-                      <SelectItem value="all">{t('common.all')}</SelectItem>
-                      <SelectItem value="pending">{t('knowledge.org.status.pending')}</SelectItem>
-                      <SelectItem value="parsing">{t('knowledge.org.status.parsing')}</SelectItem>
-                      <SelectItem value="parsed">{t('knowledge.org.status.parsed')}</SelectItem>
-                      <SelectItem value="indexing">{t('knowledge.org.status.indexing')}</SelectItem>
-                      <SelectItem value="ready">{t('knowledge.org.status.ready')}</SelectItem>
-                      <SelectItem value="failed">{t('knowledge.org.status.failed')}</SelectItem>
-                    </SelectContent>
-                  </Select>
-                ) : owned && (!currentDirectory || addedBaseId) ? (
-                  <>
-                    {addedBaseId && addError && !additionSubmitted ? (
-                      <Button variant="outline" size="sm" disabled={adding} onClick={() => void addFiles()}>
-                        {t('knowledge.org.upload_continue')}
-                      </Button>
-                    ) : null}
-                    {/* 添加菜单由共用面板提供，继续上传保留独立操作。 */}
-                  </>
-                ) : undefined
+                <>
+                  {editable && (!owned || publicLibrary) ? (
+                    <KnowledgeSourceUpload
+                      key={`${base.id}-${currentParentId}`}
+                      baseId={base.id}
+                      parentId={currentParentId}
+                      onChanged={async () => {
+                        setDirectoryItems(null)
+                        await refresh()
+                        onShared?.()
+                      }}
+                    />
+                  ) : null}
+                  {publicLibrary ? (
+                    <Select
+                      value={statusFilter}
+                      disabled={loading}
+                      onValueChange={(value) => {
+                        setStatusFilter(value as typeof statusFilter)
+                        setCursor(null)
+                      }}>
+                      <SelectTrigger
+                        size="sm"
+                        aria-label={t('knowledge.org.status_filter')}
+                        className="h-7 w-28 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent align="end">
+                        <SelectItem value="all">{t('common.all')}</SelectItem>
+                        <SelectItem value="pending">{t('knowledge.org.status.pending')}</SelectItem>
+                        <SelectItem value="parsing">{t('knowledge.org.status.parsing')}</SelectItem>
+                        <SelectItem value="parsed">{t('knowledge.org.status.parsed')}</SelectItem>
+                        <SelectItem value="indexing">{t('knowledge.org.status.indexing')}</SelectItem>
+                        <SelectItem value="ready">{t('knowledge.org.status.ready')}</SelectItem>
+                        <SelectItem value="failed">{t('knowledge.org.status.failed')}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  ) : owned && editable && (!currentDirectory || addedBaseId) ? (
+                    <>
+                      {addedBaseId && addError && !additionSubmitted ? (
+                        <Button variant="outline" size="sm" disabled={adding} onClick={() => void addFiles()}>
+                          {t('knowledge.org.upload_continue')}
+                        </Button>
+                      ) : null}
+                      {/* 添加菜单由共用面板提供，继续上传保留独立操作。 */}
+                    </>
+                  ) : null}
+                </>
               }
             />
           </>

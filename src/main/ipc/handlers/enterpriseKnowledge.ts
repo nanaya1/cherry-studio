@@ -52,6 +52,8 @@ function guard<R>(fn: () => Promise<R>): Promise<R> {
 const plugin = () => application.get('EnterprisePlugin')
 
 export const enterpriseKnowledgeHandlers: IpcHandlersFor<typeof enterpriseKnowledgeRequestSchemas> = {
+  'enterprise.knowledge.open_web_management': (params) => guard(() => plugin().knowledge.openWebManagement(params)),
+  'enterprise.knowledge.upload_source': (params) => guard(() => plugin().knowledge.uploadSource(params)),
   'enterprise.knowledge.pending_cleanup': () => guard(() => plugin().knowledge.pendingCleanup()),
   'enterprise.knowledge.cleanup_local': (params) => guard(() => plugin().knowledge.cleanupLocal(params)),
   'enterprise.knowledge.local_groups': () => guard(() => plugin().knowledge.localGroups()),

@@ -504,6 +504,30 @@ describe('旧预览元数据 DTO 适配入口（复用已约定 DTO）', () => {
 })
 
 describe('OrgKnowledgeService 只读迁移：catalog 走 Java 客户端', () => {
+  it('目录保留角色编码与描述，未知角色不映射成管理角色', async () => {
+    const javaKnowledge = makeJavaKnowledge()
+    const { service } = makeService(javaKnowledge)
+    javaKnowledge.getCatalog.mockResolvedValue([
+      {
+        ...space({ id: 'p-1', category: 'PUBLIC' }),
+        knowledgeRole: 2,
+        knowledgeRoleDescription: '知识管理员',
+        editable: false
+      },
+      { ...space({ id: 'p-2', category: 'PUBLIC' }), knowledgeRole: 99, spaceAdministrator: true, editable: false }
+    ])
+    const catalog = await service.catalog()
+    expect(catalog.public[0]).toMatchObject({
+      knowledgeRole: 2,
+      knowledgeRoleDescription: '知识管理员',
+      editable: false
+    })
+    expect(catalog.public[1].knowledgeRole).toBeUndefined()
+    expect(catalog.public[1].spaceAdministrator).toBe(false)
+    expect(catalog.public[1].editable).toBe(false)
+    service.dispose()
+  })
+
   it('按服务端 category 严格分桶 PUBLIC/OWNED/SHARED，不使用 visibility', async () => {
     javaKnowledge.getCatalog.mockResolvedValue([
       space({ id: 'p-1', category: 'PUBLIC', name: '公开' }),

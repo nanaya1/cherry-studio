@@ -9,3 +9,8 @@ Java 企业资源统一使用 `/api/v1/client/knowledge/**`、`/api/v1/client/sk
 指定人邀请检索失败时收起候选层并完整展示错误；本地共享关联未完成时由用户明确启动上传，全部确认成功后再重试原候选查询，不将失败展示为空结果。
 
 个人库分享取消续作：再次分享前必须检查同一副本的取消日志，未知删除只经Java的localShare/state核查本人3/local墓碑，再调用localShare/finishRemoval补清理授权，不调用已移除的operation接口，不重放Space删除。历史类型、缺失或无权均保留关联及资料；恢复库不同于原库时要求从最终恢复库重开。关键契约与回归维护在.mea/customizations.yml的enterprise-knowledge-page条目。
+
+
+知识库逐库管理角色由Java配置分组，客户端仅按服务端editable显示内容上传/删除，knowledgeRole和knowledgeRoleDescription传递角色，spaceAdministrator只作旧版内容管理标记，不能扩大读取或问答范围。公共创建及网页管理仅当前企业management-java OWNER/ADMIN开放，主进程重新核查角色；固定URL不含Token，浏览器正常登录并核对用户/企业。MAIN_VITE_ORG_WEB_BASE_URL为构建期管理前端地址，缺省复用管理服务根地址。公共/分享库原件上传逐文件流式走/client/knowledge/file/upload，未知结果停止且不自动重发；个人库创建和本人分享的预计算流程保持既有契约。实现及验证见 docs/references/enterprise/knowledge-space-administrators.md。
+
+知识库角色使用Java KnowledgeRoleEnum稳定编码：1=空间管理员仅预留，2=知识管理员，3=空间成员按既有读取授权派生不落库；角色等级不替代editable/manageable。客户端按knowledgeRole本地化展示，旧服务端spaceAdministrator=true兼容显示知识管理员。

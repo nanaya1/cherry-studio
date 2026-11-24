@@ -50,6 +50,18 @@ const localBaseId = z
   .refine((id) => !id.startsWith('orgkb:'))
 
 export const enterpriseKnowledgeRequestSchemas = {
+  'enterprise.knowledge.open_web_management': defineRoute({
+    input: z.strictObject({ baseId: orgId.optional(), create: z.boolean().optional() }),
+    output: z.void()
+  }),
+  'enterprise.knowledge.upload_source': defineRoute({
+    input: z.strictObject({
+      baseId: orgId,
+      parentId: orgId.nullable().optional(),
+      kind: z.enum(['file', 'directory'])
+    }),
+    output: z.boolean()
+  }),
   'enterprise.knowledge.pending_cleanup': defineRoute({
     input: z.void(),
     output: z.array(z.strictObject({ baseId: z.string(), localBaseId: z.string() }))

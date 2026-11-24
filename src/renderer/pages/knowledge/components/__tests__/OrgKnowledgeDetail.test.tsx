@@ -232,6 +232,50 @@ describe('公共库分页浏览', () => {
 })
 
 describe('云端删除交互', () => {
+  it('公共库知识管理员可上传和删除全部文件，但没有分享操作', async () => {
+    const user = userEvent.setup()
+    render(
+      <OrgKnowledgeDetail
+        base={{ ...base, editable: true, spaceAdministrator: true, knowledgeRole: 2 }}
+        owned={false}
+        publicLibrary
+        canManageWeb
+      />
+    )
+    await screen.findByText(item.title)
+    expect(screen.getByText(i18n.t('knowledge.org.knowledge_manager'))).toBeInTheDocument()
+    expect(screen.queryByText(i18n.t('knowledge.org.space_administrator'))).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: i18n.t('knowledge.data_source.toolbar.add') }))
+    await user.click(
+      await screen.findByRole('menuitem', { name: i18n.t('knowledge.data_source.add_dialog.sources.file') })
+    )
+    await waitFor(() =>
+      expect(request).toHaveBeenCalledWith('enterprise.knowledge.upload_source', {
+        baseId: base.id,
+        parentId: null,
+        kind: 'file'
+      })
+    )
+    await user.click(screen.getByRole('button', { name: i18n.t('common.more') }))
+    expect(
+      await screen.findByRole('menuitem', { name: i18n.t('knowledge.data_source.actions.delete') })
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: i18n.t('knowledge.org.share') })).not.toBeInTheDocument()
+  })
+
+  it('网页管理跳转使用固定IPC参数，权限撤回后立即收起内容维护入口', async () => {
+    const user = userEvent.setup()
+    const { rerender } = render(
+      <OrgKnowledgeDetail base={{ ...base, editable: true }} owned={false} publicLibrary canManageWeb />
+    )
+    await screen.findByText(item.title)
+    await user.click(screen.getByRole('button', { name: i18n.t('knowledge.org.web_management') }))
+    expect(request).toHaveBeenCalledWith('enterprise.knowledge.open_web_management', { baseId: base.id, create: false })
+    rerender(<OrgKnowledgeDetail base={{ ...base, editable: false }} owned={false} publicLibrary />)
+    await screen.findByText(item.title)
+    expect(screen.queryByRole('button', { name: i18n.t('knowledge.data_source.toolbar.add') })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: i18n.t('knowledge.org.web_management') })).not.toBeInTheDocument()
+  })
   it('本人云端文件确认后删除，刷新列表并保留本机资料', async () => {
     let deleted = false
     request.mockImplementation(async (route) => {
@@ -244,7 +288,7 @@ describe('云端删除交互', () => {
       return { chunks: [] }
     })
     const user = userEvent.setup()
-    render(<OrgKnowledgeDetail base={base} owned />)
+    render(<OrgKnowledgeDetail base={{ ...base, editable: true }} owned />)
     await screen.findByText(item.title)
     await user.click(screen.getByRole('button', { name: i18n.t('common.more') }))
     await user.click(await screen.findByRole('menuitem', { name: i18n.t('knowledge.data_source.actions.delete') }))
@@ -271,7 +315,7 @@ describe('云端删除交互', () => {
       return { chunks: [] }
     })
     const user = userEvent.setup()
-    render(<OrgKnowledgeDetail base={base} owned />)
+    render(<OrgKnowledgeDetail base={{ ...base, editable: true }} owned />)
     await screen.findByText(item.title)
     await screen.findByText(secondItem.title)
 
@@ -300,7 +344,7 @@ describe('云端删除交互', () => {
       return { items: [item], total: 1, nextCursor: null }
     })
     const user = userEvent.setup()
-    render(<OrgKnowledgeDetail base={base} owned />)
+    render(<OrgKnowledgeDetail base={{ ...base, editable: true }} owned />)
     await screen.findByText(item.title)
     await user.click(screen.getByRole('button', { name: i18n.t('common.more') }))
     await user.click(await screen.findByRole('menuitem', { name: i18n.t('knowledge.data_source.actions.delete') }))
@@ -370,7 +414,7 @@ describe('组织知识库只读详情', () => {
           })
         : original(route, input)
     )
-    const { rerender } = render(<OrgKnowledgeDetail base={base} owned />)
+    const { rerender } = render(<OrgKnowledgeDetail base={{ ...base, editable: true }} owned />)
     await screen.findByText(item.title)
     const user = userEvent.setup()
     await user.click(screen.getByRole('button', { name: i18n.t('knowledge.data_source.toolbar.add') }))
@@ -391,7 +435,7 @@ describe('组织知识库只读详情', () => {
           finish = resolve
         })
     )
-    const { rerender } = render(<OrgKnowledgeDetail base={base} owned />)
+    const { rerender } = render(<OrgKnowledgeDetail base={{ ...base, editable: true }} owned />)
     await screen.findByText(item.title)
     await userEvent.click(screen.getByRole('button', { name: i18n.t('common.add') }))
     const next = { ...base, id: 'orgkb:B', name: '乙库' }
@@ -417,17 +461,17 @@ describe('组织知识库只读详情', () => {
       return { shares: [], members: [] }
     })
     const next = { ...base, id: 'orgkb:B', name: '乙库' }
-    const { rerender } = render(<OrgKnowledgeDetail base={base} owned />)
+    const { rerender } = render(<OrgKnowledgeDetail base={{ ...base, editable: true }} owned />)
     await userEvent.click(await screen.findByText(directory.title))
     rerender(<OrgKnowledgeDetail base={next} owned />)
     expect(await screen.findByText('乙库根文件')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: i18n.t('knowledge.org.shares') }))
     await screen.findByText('No share codes')
-    rerender(<OrgKnowledgeDetail base={base} owned />)
+    rerender(<OrgKnowledgeDetail base={{ ...base, editable: true }} owned />)
     expect(await screen.findByText(directory.title)).toBeInTheDocument()
   })
   it('本人云端资料在共用面板工具栏添加，头部保留分享操作且不提供本机写菜单', async () => {
-    render(<OrgKnowledgeDetail base={base} owned />)
+    render(<OrgKnowledgeDetail base={{ ...base, editable: true }} owned />)
     await screen.findByText(item.title)
     const toolbar = screen.getByRole('toolbar', { name: i18n.t('knowledge.org.documents') })
     expect(toolbar).toContainElement(screen.getByRole('button', { name: i18n.t('knowledge.data_source.toolbar.add') }))

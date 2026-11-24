@@ -122,14 +122,33 @@ describe('源文件开关 IPC 契约', () => {
 })
 
 describe('重命名已分享本地知识库 IPC 契约', () => {
-  it('接受本地 baseId 与 1-128 字符名称，拒绝 orgkb 远端 id 或越界名称', () => {
+  it('接受本地或云端 baseId 与 1-128 字符名称，拒绝越界名称', () => {
     const schema = enterpriseKnowledgeRequestSchemas['enterprise.knowledge.rename_shared'].input
     expect(schema.safeParse({ baseId: 'local-uuid', name: '新名' }).success).toBe(true)
-    expect(schema.safeParse({ baseId: encodeOrgId('s'), name: '新名' }).success).toBe(false)
+    expect(schema.safeParse({ baseId: encodeOrgId('s'), name: '新名' }).success).toBe(true)
     expect(schema.safeParse({ baseId: 'local-uuid', name: '   ' }).success).toBe(false)
     expect(schema.safeParse({ baseId: 'local-uuid', name: 'x'.repeat(129) }).success).toBe(false)
     expect(schema.safeParse({ baseId: 'local-uuid', name: 'x'.repeat(128) }).success).toBe(true)
   })
+})
+
+// 捕获渲染进程向新命令注入外部地址、文件路径或伪造服务端权限的回归。
+it('网页跳转和原件上传IPC只接受固定意图，权限布尔字段保留严格类型', () => {
+  const web = enterpriseKnowledgeRequestSchemas['enterprise.knowledge.open_web_management'].input
+  const upload = enterpriseKnowledgeRequestSchemas['enterprise.knowledge.upload_source'].input
+  const baseId = encodeOrgId('s')
+  expect(web.safeParse({ create: true }).success).toBe(true)
+  expect(web.safeParse({ create: true, url: 'https://attacker.test' }).success).toBe(false)
+  expect(upload.safeParse({ baseId, kind: 'directory', parentId: null }).success).toBe(true)
+  expect(upload.safeParse({ baseId, kind: 'file', path: 'C:/private.txt' }).success).toBe(false)
+  expect(upload.safeParse({ baseId, kind: 'file', editable: true }).success).toBe(false)
+  expect(
+    OrgKnowledgeCatalogSchema.safeParse({
+      public: [{ id: baseId, name: '库', description: null, editable: 'true' }],
+      owned: [],
+      shared: []
+    }).success
+  ).toBe(false)
 })
 
 describe('分享码 IPC 契约', () => {

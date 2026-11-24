@@ -10,6 +10,7 @@ export function useOrgKnowledge() {
   const [catalog, setCatalog] = useState<OrgKnowledgeCatalog>(EMPTY_CATALOG)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [canManageWeb, setCanManageWeb] = useState(false)
   const statusRef = useRef<EnterpriseStatus | null>(null)
   const [authorizationVersion, setAuthorizationVersion] = useState(0)
   const authorizationVersionRef = useRef(0)
@@ -43,6 +44,11 @@ export function useOrgKnowledge() {
       if (previous && next.generation < previous.generation) return
       if (previous?.generation === next.generation && previous.phase === next.phase) return
       statusRef.current = next
+      setCanManageWeb(
+        next.phase === 'signed-in' &&
+          next.authMode === 'management-java' &&
+          ['OWNER', 'ADMIN'].includes(next.role ?? '')
+      )
       // MEA:profile-verification-network-tolerance Health-only events must not reset knowledge navigation.
       authorizationVersionRef.current += 1
       setAuthorizationVersion(authorizationVersionRef.current)
@@ -75,5 +81,5 @@ export function useOrgKnowledge() {
     }
   }, [applyStatus])
 
-  return { catalog, loading, error, refresh, authorizationVersion, authorizationVersionRef }
+  return { catalog, loading, error, refresh, authorizationVersion, authorizationVersionRef, canManageWeb }
 }

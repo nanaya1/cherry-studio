@@ -76,7 +76,11 @@ export const OrgKnowledgeBaseSchema = z.strictObject({
   shareCompleted: z.boolean().optional(),
   hasShareEvidence: z.boolean().optional(),
   allowLocalFileUpload: z.boolean().optional(),
-  canDownload: z.boolean().optional()
+  canDownload: z.boolean().optional(),
+  editable: z.boolean().optional(),
+  spaceAdministrator: z.boolean().optional(),
+  knowledgeRole: z.union([z.literal(1), z.literal(2), z.literal(3)]).optional(),
+  knowledgeRoleDescription: z.string().optional()
 })
 export type OrgKnowledgeBase = z.infer<typeof OrgKnowledgeBaseSchema>
 

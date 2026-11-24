@@ -295,6 +295,7 @@ describe('云端文件删除', () => {
     // 旧 /api/kb/v1/files/:id 删除改为 Java knowledgeId/fileId 双重归属校验。
     const javaKnowledge = {
       getCatalog: vi.fn().mockResolvedValue([{ id: knowledgeId, category: owned ? 'OWNED' : 'SHARED' }]),
+      getSpace: vi.fn().mockResolvedValue({ id: knowledgeId, editable: owned }),
       getFile: vi.fn().mockResolvedValue({ knowledgeId, fileId: rawFileId, directory: false }),
       removeFile: vi.fn(async (_knowledgeId, _fileId, beforeSend) => beforeSend())
     }
@@ -315,9 +316,9 @@ describe('云端文件删除', () => {
     service.dispose()
   })
 
-  it('拒绝非所有者删除', async () => {
+  it('拒绝没有内容维护权的用户删除', async () => {
     const { javaKnowledge, legacy, service } = setup(false)
-    await expect(service.deleteFile({ baseId, fileId })).rejects.toMatchObject({ code: E.ORGKB_FORBIDDEN })
+    await expect(service.deleteFile({ baseId, fileId })).rejects.toMatchObject({ code: 10007 })
     expect(javaKnowledge.getFile).not.toHaveBeenCalled()
     expect(javaKnowledge.removeFile).not.toHaveBeenCalled()
     expect(legacy).not.toHaveBeenCalled()

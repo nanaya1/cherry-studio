@@ -258,3 +258,8 @@ v2 重构已经完成。v1 数据只能通过 `src/main/data/migration/v2/` 中�
 ## 本地指令
 
 如果仓库根目录存在 `CLAUDE.local.md`（该文件被 git 忽略，可能不存在），在执行本文件中的任何内容前，应完整阅读它。它包含开发者的私有指令；与本文件冲突时，**以它为准**。能够自动加载该文件的工具（例如 Claude Code）无需再次读取。
+
+
+知识库逐库管理角色由Java配置分组，客户端仅按服务端editable显示内容上传/删除，knowledgeRole和knowledgeRoleDescription传递角色，spaceAdministrator只作旧版内容管理标记，不能扩大读取或问答范围。公共创建及网页管理仅当前企业management-java OWNER/ADMIN开放，主进程重新核查角色；固定URL不含Token，浏览器正常登录并核对用户/企业。MAIN_VITE_ORG_WEB_BASE_URL为构建期管理前端地址，缺省复用管理服务根地址。公共/分享库原件上传逐文件流式走/client/knowledge/file/upload，未知结果停止且不自动重发；个人库创建和本人分享的预计算流程保持既有契约。实现及验证见 docs/references/enterprise/knowledge-space-administrators.md。
+
+知识库角色使用Java KnowledgeRoleEnum稳定编码：1=空间管理员仅预留，2=知识管理员，3=空间成员按既有读取授权派生不落库；角色等级不替代editable/manageable。客户端按knowledgeRole本地化展示，旧服务端spaceAdministrator=true兼容显示知识管理员。

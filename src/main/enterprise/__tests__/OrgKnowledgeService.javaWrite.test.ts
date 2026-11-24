@@ -60,6 +60,7 @@ const lease = { generation: 1, issuerId: 'server-1', groupId: 'g', userId: Strin
 function makeJavaKnowledge() {
   return {
     getCatalog: vi.fn(),
+    getSpace: vi.fn(),
     listShares: vi.fn(),
     createShare: vi.fn(),
     revokeShare: vi.fn(),
@@ -97,6 +98,7 @@ describe('Java 删除文件安全边界', () => {
     java = makeJavaKnowledge()
     built = makeService(java)
     java.getCatalog.mockResolvedValue([{ id: KID, category: 'OWNED' }])
+    java.getSpace.mockResolvedValue({ id: KID, editable: true })
     java.getFile.mockResolvedValue({ fileId, knowledgeId: KID })
     vi.mocked(orgStateStore.getCloudRecovery).mockReset()
     vi.mocked(orgStateStore.removeShareAssociation).mockClear()
@@ -120,11 +122,19 @@ describe('Java 删除文件安全边界', () => {
     expect(java.removeFile).not.toHaveBeenCalled()
   })
 
-  it('非 owned 空间不读取或删除文件', async () => {
+  it('没有内容维护权限时不读取或删除文件', async () => {
     java.getCatalog.mockResolvedValue([{ id: KID, category: 'SHARED' }])
-    await expect(remove()).rejects.toMatchObject({ code: E.ORGKB_FORBIDDEN })
+    java.getSpace.mockResolvedValue({ id: KID, editable: false })
+    await expect(remove()).rejects.toMatchObject({ code: 10007 })
     expect(java.getFile).not.toHaveBeenCalled()
     expect(java.removeFile).not.toHaveBeenCalled()
+  })
+
+  it('有内容维护权的公共库空间管理员可删除他人上传文件', async () => {
+    java.getCatalog.mockResolvedValue([{ id: KID, category: 'PUBLIC' }])
+    java.getSpace.mockResolvedValue({ id: KID, category: 'PUBLIC', editable: true, manageable: false })
+    await expect(remove()).resolves.toEqual({ ok: true })
+    expect(java.removeFile).toHaveBeenCalledExactlyOnceWith(KID, fileId, expect.any(Function))
   })
 
   it('恢复中的空间禁止删除', async () => {
@@ -490,7 +500,7 @@ describe('OrgKnowledgeService 写链路迁移：collaborators 需 baseId 走 Jav
     service = built.service
   })
 
-  it('携带 knowledgeId 查询并过滤本人', async () => {
+  it('成员候选不传旧knowledgeId参数并过滤本人', async () => {
     javaKnowledge.memberOptions.mockResolvedValue({
       items: [
         { userId: OWNER, username: 'me', showName: 'me' },
@@ -502,7 +512,7 @@ describe('OrgKnowledgeService 写链路迁移：collaborators 需 baseId 走 Jav
     })
     const result = await service.collaborators({ baseId: encodeOrgId(KID), keyword: 'u', page: 1, pageSize: 100 })
     expect(javaKnowledge.memberOptions).toHaveBeenCalledWith(
-      { knowledgeId: KID, keyword: 'u', page: 1, pageSize: 100 },
+      { keyword: 'u', page: 1, pageSize: 100 },
       expect.any(Function)
     )
     expect(result.items).toHaveLength(1)

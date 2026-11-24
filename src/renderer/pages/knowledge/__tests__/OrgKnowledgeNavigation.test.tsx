@@ -59,6 +59,7 @@ const { request, local, catalog, refreshOrg, refetchLocal, updateBase, useIpcOn,
   const authorization = {
     version: 1,
     live: false,
+    canManageWeb: false,
     listener: undefined as ((status: EnterpriseStatus) => void) | undefined
   }
   const useIpcOn = vi.fn((event: string, handler: typeof authorization.listener) => {
@@ -87,6 +88,7 @@ vi.mock('@renderer/hooks/useOrgKnowledge', async (importOriginal) => {
       return {
         catalog,
         loading: false,
+        canManageWeb: authorization.canManageWeb,
         error: null,
         refresh: refreshOrg,
         authorizationVersion: authorization.version,
@@ -118,9 +120,17 @@ beforeEach(async () => {
   local.bases = []
   authorization.version = 1
   authorization.live = false
+  authorization.canManageWeb = false
   authorization.listener = undefined
   catalog.owned = [
-    { id: 'orgkb:owned', name: '我的服务端副本', description: '', documentCount: 1, hasShareEvidence: true }
+    {
+      id: 'orgkb:owned',
+      name: '我的服务端副本',
+      description: '',
+      documentCount: 1,
+      hasShareEvidence: true,
+      editable: true
+    }
   ]
   request.mockReset()
   refreshOrg.mockReset().mockImplementation(async () => {
@@ -222,7 +232,7 @@ it('无 localBaseId 的 owned 云端库在组织类别可见，切换本地时�
   await user.click(screen.getByRole('button', { name: 'Shared with me' }))
   expect(screen.getByRole('button', { name: '我的服务端副本' })).toBeInTheDocument()
   expect(screen.getByRole('status')).toHaveTextContent('shared:')
-  await user.click(screen.getByRole('button', { name: 'Local' }))
+  await user.click(screen.getByRole('button', { name: i18n.t('knowledge.org.local') }))
   expect(screen.getByRole('status')).toHaveTextContent('local:')
 })
 
@@ -419,7 +429,7 @@ it('跨端 owned 仅在本地可见，点击加载云端资料并可管理', asy
   expect(await screen.findByText('orgkb:owned云端资料.pdf')).toBeInTheDocument()
   await user.click(screen.getByRole('button', { name: i18n.t('knowledge.org.shares') }))
   expect(await screen.findByText('No share codes')).toBeInTheDocument()
-  expect(screen.queryByRole('button', { name: 'Generate share code' })).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Generate share code' })).toBeInTheDocument()
   expect(screen.queryByRole('button', { name: 'Invite people' })).not.toBeInTheDocument()
   await user.click(screen.getByRole('button', { name: 'Public' }))
   expect(screen.queryByRole('button', { name: '我的服务端副本' })).not.toBeInTheDocument()
@@ -433,7 +443,7 @@ it('跨端 owned 仅在本地可见，点击加载云端资料并可管理', asy
   await user.click(screen.getByRole('button', { name: '其他管理员分享' }))
   expect(await screen.findByText('orgkb:shared云端资料.pdf')).toBeInTheDocument()
   expect(screen.queryByTestId('members')).not.toBeInTheDocument()
-  await user.click(screen.getByRole('button', { name: 'Local' }))
+  await user.click(screen.getByRole('button', { name: i18n.t('knowledge.org.local') }))
   expect(screen.queryByText('orgkb:shared云端资料.pdf')).not.toBeInTheDocument()
   expect(screen.queryByText('orgkb:owned云端资料.pdf')).not.toBeInTheDocument()
   expect(screen.queryByRole('button', { name: '公共资料' })).not.toBeInTheDocument()
@@ -466,7 +476,7 @@ it('远端选中有高亮，取消选择恢复 ghost', async () => {
   expect(row).toHaveAttribute('aria-pressed', 'true')
   expect(row.parentElement).toHaveClass('bg-muted')
   await user.click(screen.getByRole('button', { name: 'Public' }))
-  await user.click(screen.getByRole('button', { name: 'Local' }))
+  await user.click(screen.getByRole('button', { name: i18n.t('knowledge.org.local') }))
   expect(screen.getByRole('button', { name: '我的服务端副本' })).toHaveAttribute('data-variant', 'ghost')
 })
 
@@ -515,8 +525,9 @@ it('同机 owned 通过本机入口去重并打开云端，未分享本机仍正
   expect(screen.queryByRole('button', { name: '我的服务端副本' })).not.toBeInTheDocument()
   await user.click(screen.getByText('本机已分享'))
   expect(await screen.findByText('orgkb:owned云端资料.pdf')).toBeInTheDocument()
-  await user.click(screen.getByRole('button', { name: 'Invite people' }))
-  expect(screen.getByRole('dialog')).toHaveTextContent('people:local:shared')
+  await user.click(screen.getByRole('button', { name: i18n.t('knowledge.org.share') }))
+  await user.click(screen.getByRole('menuitem', { name: 'Invite people' }))
+  expect(await screen.findByRole('dialog')).toHaveTextContent('people:orgkb:owned')
   await user.click(screen.getByText('本机私有'))
   expect(screen.getByText('本机私有本机详情')).toBeInTheDocument()
   expect(screen.queryByText('orgkb:owned云端资料.pdf')).not.toBeInTheDocument()
@@ -524,24 +535,20 @@ it('同机 owned 通过本机入口去重并打开云端，未分享本机仍正
 })
 
 it.each([
-  { localBaseId: 'local:shared', shareCompleted: true, allowed: true },
-  { localBaseId: 'local:shared', shareCompleted: false, allowed: false },
-  { localBaseId: undefined, shareCompleted: true, allowed: false }
-])('云端详情仅可信同机完成库开放生成与指定人邀请：%j', async ({ localBaseId, shareCompleted, allowed }) => {
+  { localBaseId: 'local:shared', shareCompleted: true },
+  { localBaseId: 'local:shared', shareCompleted: false },
+  { localBaseId: undefined, shareCompleted: true }
+])('本人云端详情通过分享菜单邀请，使用云端ID且不依赖本机关联：%j', async ({ localBaseId, shareCompleted }) => {
   catalog.owned = [{ ...catalog.owned[0], localBaseId, shareCompleted }]
   const user = userEvent.setup()
   render(<RoutedPage />)
   await user.click(screen.getByRole('button', { name: '我的服务端副本' }))
-  if (allowed) {
-    await user.click(screen.getByRole('button', { name: 'Invite people' }))
-    expect(screen.getByRole('dialog')).toHaveTextContent('people:local:shared')
-  } else {
-    expect(screen.queryByRole('button', { name: 'Invite people' })).not.toBeInTheDocument()
-  }
+  await user.click(screen.getByRole('button', { name: i18n.t('knowledge.org.share') }))
+  await user.click(screen.getByRole('menuitem', { name: 'Invite people' }))
+  expect(await screen.findByRole('dialog')).toHaveTextContent('people:orgkb:owned')
   await user.click(screen.getByRole('button', { name: i18n.t('knowledge.org.shares') }))
   await screen.findByText('No share codes')
-  expect(Boolean(screen.queryByRole('button', { name: 'Generate share code' }))).toBe(allowed)
-  if (!allowed) expect(screen.getByText(i18n.t('knowledge.org.share_requires_local_completion'))).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Generate share code' })).toBeInTheDocument()
 })
 
 it('跨端取消共享成功刷新组织与本机目录并显示恢复本机入口', async () => {
@@ -577,8 +584,26 @@ it('切换分类清除云端选中，公共不会沿用 owned 选择', async () 
   expect(screen.getByRole('status')).toHaveTextContent('public:')
   await user.click(screen.getByRole('button', { name: '公共资料' }))
   expect(screen.getByRole('status')).toHaveTextContent('public:orgkb:public')
-  await user.click(screen.getByRole('button', { name: 'Local' }))
+  await user.click(screen.getByRole('button', { name: i18n.t('knowledge.org.local') }))
   expect(screen.getByRole('status')).toHaveTextContent('local:')
+})
+
+// 捕获公共创建入口泄漏给普通成员、以及错误地创建本机库的回归。
+it.each([false, true])('公共库创建入口按企业管理能力显示并固定跳网页：%s', async (canManageWeb) => {
+  authorization.canManageWeb = canManageWeb
+  const user = userEvent.setup()
+  render(<RoutedPage />)
+  expect(screen.queryByRole('button', { name: i18n.t('knowledge.org.create_public_web') })).not.toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: 'Public' }))
+  if (canManageWeb) {
+    await user.click(screen.getByRole('button', { name: i18n.t('knowledge.org.create_public_web') }))
+    expect(request).toHaveBeenCalledWith('enterprise.knowledge.open_web_management', {
+      create: true,
+      baseId: undefined
+    })
+  } else {
+    expect(screen.queryByRole('button', { name: i18n.t('knowledge.org.create_public_web') })).not.toBeInTheDocument()
+  }
 })
 
 // === submitRenameBase × enterprise.knowledge.rename_shared 行为 ===
@@ -639,7 +664,14 @@ it('本地改名成功后对绑定本机库的共享副本发起云端重命名�
 
 it('无本机副本的 owned 云端库可以直接发起云端重命名', async () => {
   catalog.owned = [
-    { id: 'orgkb:owned', name: '我的服务端副本', description: '', documentCount: 1, hasShareEvidence: true }
+    {
+      id: 'orgkb:owned',
+      name: '我的服务端副本',
+      description: '',
+      documentCount: 1,
+      hasShareEvidence: true,
+      editable: true
+    }
   ]
   const user = userEvent.setup()
   render(
@@ -660,7 +692,14 @@ it('无本机副本的 owned 云端库可以直接发起云端重命名', async 
 
 it('云端改名成功但目录刷新失败时仍关闭改名流程，不误报云端同步失败', async () => {
   catalog.owned = [
-    { id: 'orgkb:owned', name: '我的服务端副本', description: '', documentCount: 1, hasShareEvidence: true }
+    {
+      id: 'orgkb:owned',
+      name: '我的服务端副本',
+      description: '',
+      documentCount: 1,
+      hasShareEvidence: true,
+      editable: true
+    }
   ]
   refreshOrg.mockRejectedValueOnce(new Error('refresh down'))
   const user = userEvent.setup()

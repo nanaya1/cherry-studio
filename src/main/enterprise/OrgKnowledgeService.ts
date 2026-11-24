@@ -22,6 +22,7 @@ import {
   type OrgKnowledgeCollaboratorList,
   type OrgKnowledgeShare,
   type OrgKnowledgeCatalog,
+  type OrgKnowledgeBase,
   type OrgKnowledgeChunkPage,
   type OrgKnowledgeCollaborator,
   type OrgKnowledgeInvitationList,
@@ -72,11 +73,13 @@ import type {
   JavaKnowledgeClient
 } from './JavaKnowledgeClient'
 import { uploadJavaKnowledgeFile } from './JavaKnowledgeUpload'
+import { requireEditableKnowledge, uploadKnowledgeSource } from './KnowledgeContentCommands'
 import {
   captureKnowledgeSourceBindings,
   removeKnowledgeSourceBindings,
   replaceKnowledgeSourceBindings
 } from './KnowledgeSourceBindings'
+import { openKnowledgeWebManagement } from './KnowledgeWebManagement'
 import { OrgApiHttpError } from './OrgApiClient'
 import type { OrgAuthManager } from './OrgAuthManager'
 // import { OrgKnowledgeClient, OrgKnowledgeProtocolError } from './OrgKnowledgeClient'
@@ -172,6 +175,7 @@ export class OrgKnowledgeService {
   private readonly syncing = new Set<string>()
   // MEA:enterprise-knowledge-page 取消分享期间同步占位：阻止 share/invite/createShareCode/syncApply/syncPreview 对同一 space 的并发写。
   private readonly unsharing = new Set<string>()
+  private readonly sourceUploads = new Set<string>()
   private readonly autoSyncTimers = new Map<string, ReturnType<typeof setTimeout>>()
   private readonly automaticAdditions = new Map<string, { baseId: string; localBaseId: string; lease: Lease }>()
   private jobs!: Pick<JobManager, 'list'>
@@ -572,7 +576,7 @@ export class OrgKnowledgeService {
       }
       return undefined
     }
-    const toBase = (b: JavaKnowledgeSpace) => ({
+    const toBase = (b: JavaKnowledgeSpace): OrgKnowledgeBase => ({
       id: encodeOrgId(b.id),
       name: b.name,
       description: b.description ?? null,
@@ -580,6 +584,13 @@ export class OrgKnowledgeService {
       documentCount: undefined,
       allowLocalFileUpload: b.allowLocalFileUpload ?? undefined,
       canDownload: b.canDownload ?? undefined,
+      editable: b.editable === true,
+      spaceAdministrator:
+        b.spaceAdministrator === true && (b.knowledgeRole == null || b.knowledgeRole === 1 || b.knowledgeRole === 2),
+      // 角色只用于展示，未知编码不映射成管理角色；内容操作仍以editable为准。
+      knowledgeRole:
+        b.knowledgeRole === 1 || b.knowledgeRole === 2 || b.knowledgeRole === 3 ? b.knowledgeRole : undefined,
+      knowledgeRoleDescription: b.knowledgeRoleDescription ?? undefined,
       localBaseId: undefined as string | undefined,
       shareCompleted: false,
       hasShareEvidence: undefined as boolean | undefined
@@ -1030,7 +1041,9 @@ export class OrgKnowledgeService {
     const spaceId = this.decodeId(params.baseId, 'baseId')
     const fileId = this.decodeId(params.fileId, 'fileId')
     const lease = this.acquireLease()
-    await this.assertRealOwner(spaceId, lease)
+    // await this.assertRealOwner(spaceId, lease)
+    // 知识管理员只获得内容维护权，整库与分享操作仍沿用原所有者校验。
+    await requireEditableKnowledge(this.javaKnowledge, spaceId, this.writeGuard(lease))
     // const file = await this.checked(() => this.client.getFile(fileId), lease)
     // if (file.id !== fileId || file.space_id !== spaceId)
     // MEA:enterprise-knowledge-page 删除前通过 Java 校验文件与空间双重归属。
@@ -1043,6 +1056,41 @@ export class OrgKnowledgeService {
     // await this.checked(() => this.client.deleteFile(fileId), lease)
     await this.checked(() => this.javaKnowledge.removeFile(spaceId, fileId, this.writeGuard(lease)), lease)
     return { ok: true }
+  }
+
+  /** MEA:enterprise-knowledge-page 原件上传由Space解析，不改变个人分享的预计算上传流程。 */
+  async uploadSource(params: {
+    baseId: string
+    parentId?: string | null
+    kind: 'file' | 'directory'
+  }): Promise<boolean> {
+    const lease = this.acquireLease()
+    const id = this.decodeId(params.baseId, 'baseId')
+    const parentId = params.parentId ? this.decodeId(params.parentId, 'parentId') : undefined
+    const key = JSON.stringify([lease.issuerId, lease.userId, lease.tenantId, id])
+    if (this.sourceUploads.has(key))
+      throw new OrgKnowledgeError(E.ORGKB_FORBIDDEN, t('enterprise.knowledge.content.busy'))
+    this.sourceUploads.add(key)
+    try {
+      return await this.checked(
+        () =>
+          uploadKnowledgeSource(this.javaKnowledge, id, parentId, params.kind, () => {
+            this.assertLease(lease)
+            if (this.disposed) throw new Error(t('enterprise.knowledge.content.unconfirmed'))
+          }),
+        lease
+      )
+    } finally {
+      this.sourceUploads.delete(key)
+    }
+  }
+
+  /** 仅当前企业OWNER/ADMIN可打开固定Web管理页面，不传递登录凭据。 */
+  async openWebManagement(params: { baseId?: string; create?: boolean }): Promise<void> {
+    await openKnowledgeWebManagement(this.auth, {
+      id: params.baseId ? this.decodeId(params.baseId, 'baseId') : undefined,
+      create: params.create === true
+    })
   }
 
   /*

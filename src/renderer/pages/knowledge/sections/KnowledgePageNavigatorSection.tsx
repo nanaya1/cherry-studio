@@ -10,6 +10,7 @@ import { toast } from '@renderer/services/toast'
 import { parseOrgId } from '@shared/data/types/enterpriseKnowledge'
 
 import KnowledgeInvitations from '../components/KnowledgeInvitations'
+import KnowledgeWebButton from '../components/KnowledgeWebButton'
 import { BaseNavigator, type BaseNavigatorRemoteRow } from '../components/navigator'
 import ReceiveKnowledgeShareDialog from '../components/ReceiveKnowledgeShareDialog'
 // import KnowledgeSharingPanel from '../components/KnowledgeSharingPanel'
@@ -223,6 +224,7 @@ const KnowledgePageNavigatorSection = () => {
         content={
           category === 'local' ? undefined : (
             <div className="min-h-0 flex-1 space-y-2 overflow-auto">
+              {category === 'public' && org.canManageWeb ? <KnowledgeWebButton key={orgSession} create /> : null}
               {category === 'shared' ? (
                 <Button variant="outline" className="w-full" onClick={() => setReceiving(true)}>
                   {t('knowledge.org.add_with_code')}

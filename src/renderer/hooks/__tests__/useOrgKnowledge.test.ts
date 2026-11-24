@@ -39,6 +39,15 @@ beforeEach(() => {
 })
 
 describe('useOrgKnowledge', () => {
+  it('只有当前企业Java管理员显示网页入口，切号立即清除旧能力', async () => {
+    mocks.request.mockImplementation(async (route) =>
+      route === 'enterprise.status.get' ? { ...status(1), authMode: 'management-java', role: 'ADMIN' } : catalog
+    )
+    const { result } = renderHook(() => useOrgKnowledge())
+    await waitFor(() => expect(result.current.canManageWeb).toBe(true))
+    act(() => mocks.listener?.({ ...status(2), authMode: 'management-java', role: 'MEMBER' }))
+    expect(result.current.canManageWeb).toBe(false)
+  })
   it('在 StrictMode 重新挂载 effect 后仍可完成目录加载', async () => {
     const { result } = renderHook(() => useOrgKnowledge(), {
       wrapper: ({ children }) => createElement(StrictMode, null, children)
