@@ -328,7 +328,11 @@ export const aiRequestSchemas = {
     output: AgentEntitySchema
   }),
   'ai.agent.industrial_video_session.create': defineRoute({
-    input: z.strictObject({ modelId: UniqueModelIdSchema, agentType: AgentEntitySchema.shape.type }),
+    input: z.strictObject({
+      modelId: UniqueModelIdSchema,
+      agentType: AgentEntitySchema.shape.type,
+      reasoningEffort: ReasoningEffortOptionSchema
+    }),
     output: z.strictObject({ sessionId: z.string().min(1) })
   }),
   'ai.agent.restore': defineRoute({

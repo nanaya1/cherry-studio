@@ -7,8 +7,8 @@ import { loggerService } from '@logger'
 import { AgentSessionArchiveBusyError } from '@main/ai/agents/AgentLifecycleService'
 import { createAgent } from '@main/ai/agents/createAgent'
 import { createBuiltinSkillSession } from '@main/ai/agents/createBuiltinSkillSession'
-import { createIndustrialVideoSession } from '@main/ai/agents/createIndustrialVideoSession'
 import { createBuiltinSupportSession } from '@main/ai/agents/createBuiltinSupportSession'
+import { createIndustrialVideoSession } from '@main/ai/agents/createIndustrialVideoSession'
 import { buildAgentSessionTopicId } from '@main/ai/agentSession/topic'
 import { findPersistedToolOutput } from '@main/ai/messages/persistedToolOutput'
 import { AgentSessionForkError } from '@main/ai/runtime/fork'
@@ -187,8 +187,8 @@ export const aiHandlers: IpcHandlersFor<typeof aiRequestSchemas> = {
 
   // ── Agent creation + session warm-connection lifecycle. ──
   'ai.agent.create': (input) => createAgent(input),
-  'ai.agent.industrial_video_session.create': ({ modelId, agentType }) =>
-    createIndustrialVideoSession(modelId, agentType),
+  'ai.agent.industrial_video_session.create': ({ modelId, agentType, reasoningEffort }) =>
+    createIndustrialVideoSession(modelId, agentType, reasoningEffort),
   'ai.agent.restore': async ({ agentId }) => {
     try {
       return await application.get('AgentLifecycleService').restoreAgent(agentId)

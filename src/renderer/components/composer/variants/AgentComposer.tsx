@@ -863,7 +863,9 @@ const AgentComposerInner = ({
     () => pinnedToolIds.map((id) => (id === 'skills' ? AGENT_SKILLS_LAUNCHER_ID : id)),
     [pinnedToolIds]
   )
-  const configuredReasoningEffort = agent?.configuration?.reasoning_effort ?? 'default'
+  const configuredReasoningEffort =
+    agent?.configuration?.reasoning_effort ??
+    (agent?.configuration?.internal_kind === 'industrial-video' ? 'none' : 'default')
   const canonicalReasoningEffort = model
     ? (resolveReasoningEffortForModel(model, configuredReasoningEffort) ?? 'default')
     : configuredReasoningEffort
@@ -1970,6 +1972,14 @@ const AgentComposerInner = ({
       <AgentComposerContextUsage model={model} sessionId={sessionId} />
     </>
   )
+  const attachmentOnlyAccessory: ComposerSurfaceProps['sendAccessory'] =
+    model && !launchOptions?.editing ? (
+      <ModelSpeedControl
+        model={model}
+        reasoningEffort={reasoningEffort}
+        onReasoningEffortChange={handleReasoningEffortChange}
+      />
+    ) : undefined
 
   return (
     <ComposerToolDerivedStateProvider
@@ -2097,8 +2107,8 @@ const AgentComposerInner = ({
           rootPanelLeadingItems={rootPanelNewSessionItems}
           onRootPanelOpen={handleRootPanelOpen}
           onToolLauncherSelect={(launcher, options) => dispatchLauncher(launcher, options)}
-          // sendAccessory={sendAccessory}
-          sendAccessory={attachmentOnly ? undefined : sendAccessory}
+          // MEA:industrial-video 附件模式仍允许按任务选择模型强度，其余发送附件保持隐藏。
+          sendAccessory={attachmentOnly ? attachmentOnlyAccessory : sendAccessory}
           compactWhenSingleLine={compactWhenSingleLine}
           deferQuickPanel={deferQuickPanel}
           {...controlSlots}

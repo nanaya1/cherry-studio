@@ -7,6 +7,7 @@ import { loggerService } from '@logger'
 import { toast } from '@renderer/services/toast'
 import { fetchGenerate } from '@renderer/utils/aiGeneration'
 import type { Model } from '@shared/data/types/model'
+import type { ReasoningEffortOption } from '@shared/types/aiSdk'
 
 const logger = loggerService.withContext('PromptPolishActions')
 const PROTECTED_PROMPT_TOKEN_PATTERN = /\{\{[^{}\r\n]+\}\}|\$\{[^{}\r\n]+\}/g
@@ -21,6 +22,7 @@ type PromptPolishActionsProps = {
   value: string
   fallbackSource?: string
   model?: Model
+  reasoningEffort?: ReasoningEffortOption
   emptyValueSystemPrompt: string
   existingValueSystemPrompt: string
   onChange: (value: string) => void
@@ -46,6 +48,7 @@ export function PromptPolishActions({
   value,
   fallbackSource,
   model,
+  reasoningEffort,
   emptyValueSystemPrompt,
   existingValueSystemPrompt,
   onChange,
@@ -154,6 +157,7 @@ export function PromptPolishActions({
         content: source,
         // 未指定模型时保留原请求结构，由 fetchGenerate 使用默认模型。
         ...(model ? { model } : {}),
+        ...(reasoningEffort ? { reasoningEffort } : {}),
         throwOnError: true,
         signal: controller.signal
       })

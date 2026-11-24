@@ -1,6 +1,6 @@
 import type { UpdateInfo } from 'builder-util-runtime'
-import type { INDUSTRIAL_VIDEO_CHINESE_VOICES, IndustrialVideoVoiceId } from '../industrialVideoVoices'
 
+import type { ReasoningEffortOption } from '@shared/types/aiSdk'
 import type { DoctorState } from '@shared/types/doctor'
 import type { AbsoluteFilePath, FileType } from '@shared/types/file'
 import type { McpTool } from '@shared/types/mcp'
@@ -12,6 +12,7 @@ import type { AgentSessionContextUsage } from '../../ai/agentSessionContextUsage
 import type { AgentSessionFlowParts } from '../../ai/agentSessionFlowParts'
 import type { AgentSessionSlashCommand } from '../../ai/agentSessionSlashCommands'
 import type { AutonomousTurnOrigin } from '../../ai/agentSessionTurnOrigin'
+import type { INDUSTRIAL_VIDEO_CHINESE_VOICES, IndustrialVideoVoiceId } from '../industrialVideoVoices'
 import type { McpServer } from '../types/mcpServer'
 import type { MiniApp } from '../types/miniApp'
 import type { UniqueModelId } from '../types/model'
@@ -58,6 +59,8 @@ export interface CacheIndustrialVideoDraft {
   orchestration?: 'agent' | 'dedicated'
   requirement: string
   modelId: UniqueModelId | null
+  /** 新任务显式保存；历史任务缺失时继续按 none 执行。 */
+  reasoningEffort?: ReasoningEffortOption
   settings: CacheIndustrialVideoSettings
   // MEA:industrial-video preparation 新增可选字段（由主代理填充，草稿持久化而非活动任务）。
   // 旧草稿缺少这些字段时按 undefined 处理，下游以可选链读取，不破坏既有写入。

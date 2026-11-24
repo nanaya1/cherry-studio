@@ -25,6 +25,7 @@ beforeEach(() => {
     orchestration: 'dedicated',
     requirement: '展示设备',
     modelId: 'test::model',
+    reasoningEffort: 'high',
     settings: createIndustrialVideoSettings('marketing')
   })
   request.mockImplementation(async (channel) => {
@@ -48,6 +49,7 @@ it('submits a validated draft with server fingerprints once, never approves or s
     expectedInputFingerprint: 'fp1',
     expectedStoryboardSha256: 'sha1'
   })
+  expect(request).toHaveBeenCalledWith('ai.text.generate', expect.objectContaining({ reasoningEffort: 'high' }))
   expect(request.mock.calls.filter(([channel]) => channel === 'industrial_video.storyboard_submit')).toHaveLength(1)
   expect(
     request.mock.calls.some(([channel]) =>

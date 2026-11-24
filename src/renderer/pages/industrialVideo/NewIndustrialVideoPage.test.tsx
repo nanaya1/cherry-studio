@@ -59,7 +59,26 @@ vi.mock('@renderer/components/composer/ComposerSurface', () => ({
 vi.mock('@renderer/components/ModelSelector', () => ({
   ModelSelector: ({ trigger }: { trigger: React.ReactNode }) => trigger
 }))
-vi.mock('@renderer/utils/model', () => ({ readDefaultModel: async () => ({ id: 'test::model', name: '测试模型' }) }))
+vi.mock('@renderer/components/ModelSpeedControl', () => ({
+  ModelSpeedControl: ({ reasoningEffort }: { reasoningEffort: string }) => (
+    <button type="button" aria-label="agent.speed.title">
+      {`assistants.settings.reasoning_effort.${reasoningEffort}`}
+    </button>
+  ),
+  resolveSupportedReasoningEffort: (_model: unknown, effort: string) => effort
+}))
+vi.mock('@renderer/utils/model', () => ({
+  readDefaultModel: async () => ({
+    id: 'test::model',
+    providerId: 'test',
+    name: '测试模型',
+    capabilities: ['reasoning'],
+    reasoning: {
+      defaultEffort: 'medium',
+      selectableEfforts: ['none', 'low', 'medium', 'high']
+    }
+  })
+}))
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }))
 
 async function openEntry() {
@@ -101,7 +120,10 @@ beforeEach(() => {
     throw new Error(`未预期接口 ${channel}`)
   })
   MockUseDataApiUtils.mockQueryData('/agents', {
-    items: [{ id: 'custom', type: 'claude-code' }, { id: 'builtin', type: 'claude-code', configuration: { builtin_role: 'assistant' } }]
+    items: [
+      { id: 'custom', type: 'claude-code' },
+      { id: 'builtin', type: 'claude-code', configuration: { builtin_role: 'assistant' } }
+    ]
   } as never)
   mocks.reuseOrCreateSession.mockResolvedValue({
     session: { id: 'video-1', featureKind: 'industrial-video' },
@@ -113,6 +135,9 @@ describe('工业视频真实新建路由', () => {
   it('StrictMode 直接进入原型标题、类型、输入和三卡，浏览不创建空任务', async () => {
     const view = await openEntry()
     expect(await screen.findByRole('heading', { name: 'industrial_video.create.marketing' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'agent.speed.title' })).toHaveTextContent(
+      'assistants.settings.reasoning_effort.default'
+    )
     expect(screen.getByRole('tab', { name: 'industrial_video.marketing' })).toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: '视频需求' })).toHaveValue('')
     for (const sample of ['product', 'assembly', 'technology']) {
@@ -202,7 +227,8 @@ describe('工业视频真实新建路由', () => {
     await waitFor(() =>
       expect(ipcApi.request).toHaveBeenCalledWith('ai.agent.industrial_video_session.create', {
         modelId: 'test::model',
-        agentType: 'claude-code'
+        agentType: 'claude-code',
+        reasoningEffort: 'default'
       })
     )
     expect(mocks.reuseOrCreateSession).not.toHaveBeenCalled()

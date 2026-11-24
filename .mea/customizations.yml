@@ -27,6 +27,7 @@ customizations:
     # 当前统一使用普通工具链，不再持久化 execution_mode；服务端审核、计费确认及未知提交门禁保持不变。
     # 仅主动编辑同步字幕与音色设置，固定 narration_follows_subtitles=true；无旁白跨语言保持关闭。
     # 当前音色固定离线目录：英文展示精选五类及当前旧音色原标签，保留17款 ID 兼容；中文六款与默认不变，无动态查询或 style 参数。
+    # 工业视频新任务强度默认 default，随内部 Agent 和安全草稿持久化；历史缺失值按 none，润色、资料分析与分镜规划使用当前任务强度。
     # 新阶段接口复用原会话工具链；同版审核通过客户端双按钮，工作台仅编辑保存，无网页发任务桥。
     # 工业工作台专属受限桥仅支持同版审核快照和显式修改分镜；dom-ready握手，切会话/run/卸载终止待处理续跑，动态查找当前注册回调。
     title: 工业视频任务分类、独立导航与本地资料前置分析
@@ -54,11 +55,14 @@ customizations:
       - src/shared/data/api/schemas/agentSessions.ts
       - src/shared/data/cache/cacheSchemas.ts
       - src/shared/data/cache/cacheValueTypes.ts
+      - src/shared/ipc/schemas/ai.ts
       - src/shared/data/cache/templateKey.ts
       - src/renderer/data/CacheService.ts
       - src/renderer/utils/conversationEntry.ts
       - src/main/data/db/schemas/agentSession.ts
       - src/main/data/services/AgentSessionService.ts
+      - src/main/ai/agents/createIndustrialVideoSession.ts
+      - src/main/ipc/handlers/ai.ts
       - src/renderer/routes/app/agents.tsx
       - src/renderer/routes/app/agents_.industrial-video.tsx
       - src/renderer/pages/industrialVideo
@@ -80,6 +84,8 @@ customizations:
       - src/shared/ipc/schemas/fileProcessing.ts
       - src/main/ipc/handlers/fileProcessing.ts
       - src/renderer/components/resourceCatalog/dialogs/components/PromptPolishActions.tsx
+      - src/renderer/utils/aiGeneration.ts
+      - src/renderer/components/composer/variants/AgentComposer.tsx
       - src/renderer/routes/app/industrial-video.tsx
       - src/renderer/components/app/Sidebar.tsx
       - src/renderer/hooks/resourceViewSources.ts
@@ -97,6 +103,8 @@ customizations:
       - src/renderer/pages/agents/components/AgentRightPane/__tests__/AgentRightPane.test.tsx
       - src/renderer/pages/agents/components/__tests__/AgentSessionMessages.test.tsx
       - src/renderer/pages/industrialVideo/NewIndustrialVideoPage.test.tsx
+      - src/renderer/components/resourceCatalog/dialogs/components/__tests__/PromptPolishActions.model.test.tsx
+      - src/renderer/components/composer/variants/__tests__/AgentComposer.test.tsx
       - src/renderer/pages/industrialVideo/IndustrialVideoSettingsForm.test.tsx
       - src/renderer/pages/industrialVideo/industrialVideoSettings.test.ts
       - src/renderer/pages/industrialVideo/industrialVideoWorkflow.test.ts

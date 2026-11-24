@@ -1533,6 +1533,56 @@ describe('AgentComposer', () => {
     expect(mocks.speedControlProps?.reasoningEffort).toBe('low')
   })
 
+  it('keeps legacy industrial-video agents at none when no effort was saved', () => {
+    mocks.agentConfiguration = { internal_kind: 'industrial-video' }
+    mocks.modelResult = {
+      ...model,
+      capabilities: [MODEL_CAPABILITY.REASONING],
+      reasoning: {
+        controls: [{ kind: 'effort', values: ['none', 'low', 'high'] }],
+        selectableEfforts: ['none', 'low', 'high']
+      }
+    }
+
+    render(
+      <AgentComposer
+        agentId="agent-1"
+        sessionId="session-1"
+        sendMessage={mocks.sendMessage}
+        stop={mocks.stop}
+        isStreaming={false}
+      />
+    )
+
+    expect(mocks.speedControlProps?.reasoningEffort).toBe('none')
+  })
+
+  it('shows the reasoning control in industrial-video attachment mode', () => {
+    mocks.agentConfiguration = { internal_kind: 'industrial-video', reasoning_effort: 'high' }
+    mocks.modelResult = {
+      ...model,
+      capabilities: [MODEL_CAPABILITY.REASONING],
+      reasoning: {
+        controls: [{ kind: 'effort', values: ['none', 'low', 'high'] }],
+        selectableEfforts: ['none', 'low', 'high']
+      }
+    }
+
+    render(
+      <AgentComposer
+        agentId="agent-1"
+        sessionId="session-1"
+        sendMessage={mocks.sendMessage}
+        stop={mocks.stop}
+        isStreaming={false}
+        attachmentOnly
+      />
+    )
+
+    expect(screen.getByTestId('agent-speed-control')).toBeVisible()
+    expect(mocks.speedControlProps?.reasoningEffort).toBe('high')
+  })
+
   it('persists and snapshots the selected Agent service tier', async () => {
     mocks.modelResult = {
       ...model,

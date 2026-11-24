@@ -29,7 +29,8 @@ export default function NewIndustrialVideoPage() {
       // MEA:industrial-video 专用命令隔离创建内部 Agent；不修改、复用或覆盖普通 Agent。
       const result = await ipcApi.request('ai.agent.industrial_video_session.create', {
         modelId: draft.modelId,
-        agentType
+        agentType,
+        reasoningEffort: draft.reasoningEffort ?? 'none'
       })
       cacheService.setPersist(`industrial_video.session_draft.${result.sessionId}`, draft)
       return result.sessionId

@@ -8,6 +8,7 @@ import {
 import type { AgentType } from '@shared/data/api/schemas/agents'
 import { AGENT_WORKSPACE_TYPE } from '@shared/data/api/schemas/agentWorkspaces'
 import type { UniqueModelId } from '@shared/data/types/model'
+import type { ReasoningEffortOption } from '@shared/types/aiSdk'
 
 import { createAgent } from './createAgent'
 
@@ -15,7 +16,8 @@ const logger = loggerService.withContext('CreateIndustrialVideoSession')
 
 export async function createIndustrialVideoSession(
   modelId: UniqueModelId,
-  agentType: AgentType
+  agentType: AgentType,
+  reasoningEffort: ReasoningEffortOption
 ): Promise<{ sessionId: string }> {
   assertIndustrialVideoRuntime('industrial-video', agentType)
   const agent = await createAgent(
@@ -25,7 +27,7 @@ export async function createIndustrialVideoSession(
       // instructions: 'You are an industrial video planning and production assistant.',
       instructions: INDUSTRIAL_VIDEO_PRODUCTION_PROMPT,
       model: modelId,
-      configuration: { internal_kind: 'industrial-video' }
+      configuration: { internal_kind: 'industrial-video', reasoning_effort: reasoningEffort }
     },
     { allowIndustrialVideoInternal: true }
   )

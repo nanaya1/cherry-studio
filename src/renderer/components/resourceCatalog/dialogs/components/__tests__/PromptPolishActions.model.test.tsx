@@ -47,6 +47,7 @@ describe('PromptPolishActions 模型选择', () => {
         value={value}
         fallbackSource={fallbackSource}
         model={selectedModel}
+        reasoningEffort="high"
         emptyValueSystemPrompt="生成策略"
         existingValueSystemPrompt="润色策略"
         onChange={onChange}
@@ -60,6 +61,7 @@ describe('PromptPolishActions 模型选择', () => {
       prompt,
       content,
       model: selectedModel,
+      reasoningEffort: 'high',
       throwOnError: true,
       signal: expect.any(AbortSignal)
     })

@@ -209,7 +209,7 @@ async function runPreparation(
     const response = await ipcApi.request('ai.text.generate', {
       requestId,
       uniqueModelId: model.id,
-      reasoningEffort: 'none',
+      reasoningEffort: draft.reasoningEffort ?? 'none',
       system: prompt,
       uiMessages: [{ id: crypto.randomUUID(), role: 'user', parts: [textPart, ...fileParts] }]
     })

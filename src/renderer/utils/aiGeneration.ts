@@ -4,8 +4,8 @@ import { takeRight } from 'es-toolkit/compat'
 /**
  * Renderer helpers that call the AI (`ai.text.generate`) to produce short text:
  * generic text generation plus topic/note auto-naming. Stateless request/response.
- * Every request passes `reasoningEffort: 'none'`: short throwaway output never
- * benefits from provider-default thinking, which only adds latency and tokens.
+ * Requests default to `reasoningEffort: 'none'`; callers with an explicit
+ * task-level choice may override it.
  */
 import { preferenceService } from '@data/PreferenceService'
 import { loggerService } from '@logger'
@@ -20,6 +20,7 @@ import { readDefaultModel, readQuickModel } from '@renderer/utils/model'
 import { removeSpecialCharactersForTopicName } from '@renderer/utils/naming'
 import { containsSupportedVariables, replacePromptVariables } from '@renderer/utils/prompt'
 import type { Model } from '@shared/data/types/model'
+import type { ReasoningEffortOption } from '@shared/types/aiSdk'
 
 const logger = loggerService.withContext('aiGeneration')
 
@@ -102,12 +103,14 @@ export async function fetchGenerate({
   prompt,
   content,
   model,
+  reasoningEffort = 'none',
   throwOnError = false,
   signal
 }: {
   prompt: string
   content: string
   model?: Model
+  reasoningEffort?: ReasoningEffortOption
   throwOnError?: boolean
   signal?: AbortSignal
 }): Promise<string> {
@@ -135,7 +138,7 @@ export async function fetchGenerate({
     const { text } = await ipcApi.request('ai.text.generate', {
       ...(requestId ? { requestId } : {}),
       uniqueModelId: resolvedModel.id,
-      reasoningEffort: 'none',
+      reasoningEffort,
       system: prompt,
       prompt: content
     })

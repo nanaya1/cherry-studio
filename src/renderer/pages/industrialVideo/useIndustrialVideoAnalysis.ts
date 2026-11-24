@@ -4,6 +4,7 @@ import { ipcApi } from '@renderer/ipc'
 import type { FileUIPart } from '@shared/data/types/message'
 import type { Model } from '@shared/data/types/model'
 import { withCherryMeta } from '@shared/data/types/uiParts'
+import type { ReasoningEffortOption } from '@shared/types/aiSdk'
 
 export function useIndustrialVideoAnalysis() {
   const [running, setRunning] = useState(false)
@@ -27,7 +28,8 @@ export function useIndustrialVideoAnalysis() {
     model: Model,
     prompt: string,
     content: string,
-    files: FileUIPart[] = []
+    files: FileUIPart[] = [],
+    reasoningEffort: ReasoningEffortOption = 'none'
   ): Promise<string | undefined> => {
     if (controllerRef.current) return undefined
     const controller = new AbortController()
@@ -64,7 +66,7 @@ export function useIndustrialVideoAnalysis() {
       const response = await ipcApi.request('ai.text.generate', {
         requestId,
         uniqueModelId: model.id,
-        reasoningEffort: 'none',
+        reasoningEffort,
         system: prompt,
         uiMessages: [{ id: crypto.randomUUID(), role: 'user', parts: [textPart, ...files] }]
       })

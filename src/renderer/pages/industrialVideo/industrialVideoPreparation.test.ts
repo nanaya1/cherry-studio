@@ -164,6 +164,7 @@ describe('工业视频准备任务 runner', () => {
     expect(isIndustrialVideoPreparing('dedup-session')).toBe(false)
     // 每个 IPC 通道至多一次，generate/parse 不重复。
     expect(channelCalls('ai.text.generate')).toHaveLength(1)
+    expect(channelCalls('ai.text.generate')[0][1]).toEqual(expect.objectContaining({ reasoningEffort: 'none' }))
     expect(channelCalls('industrial_video.parse')).toHaveLength(1)
     // 不在组件生命周期内，也绝不触发付费生成或中断。
     expect(channelCalls('industrial_video.video_start')).toHaveLength(0)

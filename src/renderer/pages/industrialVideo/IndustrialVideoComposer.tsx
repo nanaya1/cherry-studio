@@ -27,6 +27,7 @@ import { fileToComposerToken } from '@renderer/components/composer/variants/shar
 // import IndustrialVideoKnowledgePicker from './IndustrialVideoKnowledgePicker'
 import { IndustrialVideoMaterialControl } from '@renderer/components/composer/variants/shared/IndustrialVideoMaterialControl'
 import { ModelSelector } from '@renderer/components/ModelSelector'
+import { ModelSpeedControl, resolveSupportedReasoningEffort } from '@renderer/components/ModelSpeedControl'
 import { PromptPolishActions } from '@renderer/components/resourceCatalog/dialogs/components/PromptPolishActions'
 // import { usePersistCache } from '@renderer/data/hooks/useCache'
 import { ipcApi } from '@renderer/ipc'
@@ -41,6 +42,7 @@ import type { CacheIndustrialVideoAttachment, CacheIndustrialVideoDraft } from '
 import type { CherryMessagePart } from '@shared/data/types/message'
 import type { Model } from '@shared/data/types/model'
 import { withCherryMeta } from '@shared/data/types/uiParts'
+import type { ReasoningEffortOption } from '@shared/types/aiSdk'
 import { AbsoluteFilePathSchema } from '@shared/types/file'
 import { createFilePathHandle, getFileTypeByExt } from '@shared/utils/file'
 
@@ -59,8 +61,8 @@ import {
   validateIndustrialVideoInput
 } from './industrialVideoSettings'
 import IndustrialVideoSettingsForm from './IndustrialVideoSettingsForm'
-import { resolveIndustrialVideoVoiceSettings } from './industrialVideoVoice'
 import { buildSubtitleSettingsParams, extractSubtitleServerSnapshot } from './industrialVideoSubtitle'
+import { resolveIndustrialVideoVoiceSettings } from './industrialVideoVoice'
 import {
   syncIndustrialVideoSubtitleSettings,
   uploadIndustrialLogo,
@@ -70,6 +72,8 @@ import { useIndustrialVideoAnalysis } from './useIndustrialVideoAnalysis'
 import { useIndustrialVideoProduction } from './useIndustrialVideoProduction'
 
 const defaultSettings = createIndustrialVideoSettings('marketing')
+const resolveIndustrialVideoReasoningEffort = (model: Model, effort: ReasoningEffortOption) =>
+  Array.isArray(model.capabilities) ? resolveSupportedReasoningEffort(model, effort) : effort
 const demoVideos = [
   {
     key: 'product',
@@ -146,6 +150,9 @@ function IndustrialVideoSessionComposer({
   const orchestration = draft?.orchestration ?? 'agent'
   const [text, setText] = useState(draft?.requirement ?? '')
   const [model, setModel] = useState<Model>()
+  const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffortOption>(
+    draft?.reasoningEffort ?? (sessionId ? 'none' : 'default')
+  )
   const [logo, setLogo] = useState<{ name: string; source: string } | undefined>(() =>
     draft?.logo ? { name: draft.logo.name, source: draft.logo.source } : undefined
   )
@@ -196,6 +203,7 @@ function IndustrialVideoSessionComposer({
       orchestration,
       requirement: text,
       modelId: model?.id ?? draft?.modelId ?? null,
+      reasoningEffort,
       settings: {
         ...currentSettings,
         duration:
@@ -215,7 +223,7 @@ function IndustrialVideoSessionComposer({
       ...(logo ? { logo: { name: logo.name, source: logo.source } } : {})
     }
     // }, [currentSettings, draft?.modelId, model?.id, text, files, materials, logo])
-  }, [currentSettings, draft?.modelId, model?.id, text, files, materials, logo, orchestration])
+  }, [currentSettings, draft?.modelId, model?.id, text, reasoningEffort, files, materials, logo, orchestration])
   useEffect(() => {
     // MEA:industrial-video 无会话入口上报安全草稿，绑定任务不重挂载编辑器。
     // if (!sessionId) return
@@ -322,7 +330,10 @@ function IndustrialVideoSessionComposer({
     const modelId = draft?.modelId ?? cacheService.getPersist('industrial_video.last_model_id')
     void (modelId ? dataApiService.get(`/models/${modelId}`) : readDefaultModel())
       .then((value) => {
-        if (active.current) setModel((current) => current ?? value ?? undefined)
+        if (active.current && value) {
+          setModel((current) => current ?? value)
+          setReasoningEffort((current) => resolveIndustrialVideoReasoningEffort(value, current))
+        }
       })
       .catch((cause) => {
         if (active.current) setSelectionError(String(cause.message ?? cause))
@@ -488,7 +499,7 @@ function IndustrialVideoSessionComposer({
     try {
       const { fileParts, content } = await buildAnalysisInput()
       if (!active.current) return
-      await analysis.analyze(model, t('industrial_video.analysis_prompt'), content, fileParts)
+      await analysis.analyze(model, t('industrial_video.analysis_prompt'), content, fileParts, reasoningEffort)
     } catch (cause) {
       if (active.current) setSelectionError(cause instanceof Error ? cause.message : String(cause))
     } finally {
@@ -809,6 +820,8 @@ function IndustrialVideoSessionComposer({
                 // onSelect={setModel}
                 onSelect={(selected) => {
                   setModel(selected)
+                  if (selected)
+                    setReasoningEffort((current) => resolveIndustrialVideoReasoningEffort(selected, current))
                   if (selected) cacheService.setPersist('industrial_video.last_model_id', selected.id)
                 }}
                 trigger={
@@ -821,6 +834,13 @@ function IndustrialVideoSessionComposer({
                   </Button>
                 }
               />
+              {model && Array.isArray(model.capabilities) ? (
+                <ModelSpeedControl
+                  model={model}
+                  reasoningEffort={reasoningEffort}
+                  onReasoningEffortChange={setReasoningEffort}
+                />
+              ) : null}
               {/* <Button
                 variant="ghost"
                 size="icon"
@@ -881,6 +901,9 @@ function IndustrialVideoSessionComposer({
                 key={`${model?.id}:${polishSettingsKey}`}
                 value={text}
                 model={model}
+                reasoningEffort={
+                  model ? resolveIndustrialVideoReasoningEffort(model, reasoningEffort) : reasoningEffort
+                }
                 onChange={setText}
                 onRunningChange={onPolishingChange}
                 // 公共润色组件支持未显式选中模型时回退到默认模型，不在页面层额外禁用。
