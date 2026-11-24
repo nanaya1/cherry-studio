@@ -1,5 +1,6 @@
 import { LoaderCircle } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { Button } from '@cherrystudio/ui'
 import { WebviewHost } from '@renderer/components/WebviewHost'
@@ -43,6 +44,7 @@ export default function IndustrialVideoWorkbench({
   reviewOutput,
   sendMessage: sendGeneration
 }: WorkbenchProps) {
+  const { t } = useTranslation()
   const run = production.record?.run ?? undefined
   const taskKey = `${sessionId}:${run ?? ''}`
   const currentTask = useRef(taskKey)
@@ -260,11 +262,15 @@ export default function IndustrialVideoWorkbench({
       !handled && !executing && syncState === 'ready' && (snapshot?.draft_stale === true || !canGenerate)
     const showLoading = !handled && !executing && (syncState === 'loading' || waitingForUpdate)
     return (
-      <section aria-label="客户端审核" className="my-3 space-y-3 text-sm">
-        <p className="font-medium">分镜预览已完成，请核对内容。</p>
+      <section aria-label={t('industrial_video.workbench.client_review')} className="my-3 space-y-3 text-sm">
+        <p className="font-medium">{t('industrial_video.workbench.review_ready')}</p>
         <p className="text-xs text-muted-foreground">
-          {String(settings?.target_duration_s ?? '—')} 秒 · {String(settings?.aspect_ratio ?? '—')} ·{' '}
-          {String(settings?.resolution ?? '—')} · {board?.scenes?.length ?? 0} 个镜头
+          {t('industrial_video.workbench.review_summary', {
+            duration: String(settings?.target_duration_s ?? '—'),
+            ratio: String(settings?.aspect_ratio ?? '—'),
+            resolution: String(settings?.resolution ?? '—'),
+            shots: board?.scenes?.length ?? 0
+          })}
         </p>
         {/* <IndustrialVideoReviewFiles output={reviewOutput} /> */}
         {/* <IndustrialVideoReviewFiles output={snapshot ?? reviewOutput} sessionId={sessionId} run={run} /> */}
@@ -279,14 +285,14 @@ export default function IndustrialVideoWorkbench({
             )}
             <span>
               {syncState === 'failed'
-                ? '暂时无法同步最新内容。'
+                ? t('industrial_video.workbench.sync_failed')
                 : syncState === 'loading'
-                  ? '正在同步内容…'
+                  ? t('industrial_video.workbench.syncing')
                   : waitingForUpdate
-                    ? '等待工作台分镜更新，正在自动检查…'
+                    ? t('industrial_video.workbench.waiting_for_update')
                     : canGenerate
-                      ? '分镜已更新，可以确认并生成视频'
-                      : '内容已更新，请到工作台核对后再生成。'}
+                      ? t('industrial_video.workbench.ready_to_generate')
+                      : t('industrial_video.workbench.review_updated')}
             </span>
           </p>
         )}
@@ -295,10 +301,10 @@ export default function IndustrialVideoWorkbench({
         */}
         {syncState === 'failed' && (
           <Button variant="ghost" disabled={busy || executing} onClick={() => void syncReview()}>
-            重试同步
+            {t('industrial_video.workbench.retry_sync')}
           </Button>
         )}
-        {handled && <p role="status">此版本已处理，请查看后续消息。</p>}
+        {handled && <p role="status">{t('industrial_video.workbench.version_handled')}</p>}
         <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
           <Button
             // variant="ghost"
@@ -306,7 +312,7 @@ export default function IndustrialVideoWorkbench({
             disabled={busy}
             onClick={() => void openWorkbench()}>
             {/* 原入口文案：编辑内容 */}
-            打开工作台
+            {t('industrial_video.workbench.open')}
           </Button>
           {/* 重生成入口统一放在工作台，保留原入口以便恢复。 */}
           {/* <Button
@@ -330,10 +336,10 @@ export default function IndustrialVideoWorkbench({
               !snapshot.allowed_actions.includes('generate_video')
             }
             onClick={() => void reviewAction('generate_video')}>
-            确认并生成视频
+            {t('industrial_video.workbench.confirm_and_generate')}
           </Button>
         </div>
-        <p className="text-xs text-muted-foreground">生成视频即确认当前全文、分镜并授权生成。</p>
+        <p className="text-xs text-muted-foreground">{t('industrial_video.workbench.generate_consent')}</p>
         {error && (
           <p role="alert" className="text-error">
             {error}
@@ -344,22 +350,28 @@ export default function IndustrialVideoWorkbench({
   }
 
   return (
-    <aside aria-label="工业视频工作台" className="flex h-full min-h-0 flex-col bg-background text-foreground">
-      <section className="space-y-2 border-b border-border p-3" aria-label="客户端审核">
+    <aside
+      aria-label={t('industrial_video.workbench.label')}
+      className="flex h-full min-h-0 flex-col bg-background text-foreground">
+      <section
+        className="space-y-2 border-b border-border p-3"
+        aria-label={t('industrial_video.workbench.client_review')}>
         {recoveryVersion && (
           <Button
             variant="outline"
             disabled={busy || executing || !resumeStages || Boolean(production.record?.unknownSubmissions.length)}
             onClick={() => void retryStage()}>
-            明确重试当前阶段任务
+            {t('industrial_video.workbench.retry_stage')}
           </Button>
         )}
         <Button variant="outline" disabled={busy || executing || !run} onClick={() => void reviewAction()}>
-          刷新审核内容
+          {t('industrial_video.workbench.refresh_review')}
         </Button>
         {snapshot && (
           <>
-            <p className="text-xs text-muted-foreground">审核版本：{String(snapshot.review_version)}</p>
+            <p className="text-xs text-muted-foreground">
+              {t('industrial_video.task.version', { version: String(snapshot.review_version) })}
+            </p>
             <pre className="max-h-48 overflow-auto whitespace-pre-wrap">{String(snapshot.script)}</pre>
             <pre className="max-h-64 overflow-auto whitespace-pre-wrap">
               {JSON.stringify(snapshot.storyboard, null, 2)}
@@ -376,9 +388,9 @@ export default function IndustrialVideoWorkbench({
                 !snapshot.allowed_actions.includes('regenerate_storyboard')
               }
               onClick={() => void reviewAction('regenerate_storyboard')}>
-              确认全文素材，修改动作分镜
+              {t('industrial_video.workbench.confirm_script_regenerate')}
             </Button>
-            <p className="text-xs text-muted-foreground">点击即确认当前全文与动作分镜并授权生成视频。</p>
+            <p className="text-xs text-muted-foreground">{t('industrial_video.workbench.generate_consent')}</p>
             <Button
               disabled={
                 busy ||
@@ -387,7 +399,7 @@ export default function IndustrialVideoWorkbench({
                 !snapshot.allowed_actions.includes('generate_video')
               }
               onClick={() => void reviewAction('generate_video')}>
-              生成视频
+              {t('industrial_video.orchestration.generate')}
             </Button>
           </>
         )}
@@ -402,16 +414,16 @@ export default function IndustrialVideoWorkbench({
           <div className="flex h-full min-h-0 flex-col">
             <div className="flex items-center gap-2 border-b border-border p-2">
               <Button size="sm" variant="ghost" disabled={busy} onClick={() => setOpened(null)}>
-                收起工作台
+                {t('industrial_video.workbench.collapse')}
               </Button>
-              <span className="text-xs text-muted-foreground">服务端工作台（内置网页）</span>
+              <span className="text-xs text-muted-foreground">{t('industrial_video.workbench.embedded_label')}</span>
             </div>
             <div className="min-h-0 flex-1">
               <WebviewHost
                 id={`industrial-video-workbench:${sessionId}`}
                 src={openedUrl}
                 partition={`industrial-video-workbench:${taskKey}`}
-                ariaLabel="服务端工作台网页"
+                ariaLabel={t('industrial_video.workbench.webview_label')}
                 testId="industrial-video-workbench-guest"
                 className="h-full w-full"
               />
@@ -419,12 +431,10 @@ export default function IndustrialVideoWorkbench({
           </div>
         ) : (
           <div className="flex flex-col gap-3 p-4">
-            <p className="text-sm text-muted-foreground">
-              工作台仅编辑并保存全文与分镜；保存后返回客户端，点击“刷新审核内容”查看同版内容并确认。
-            </p>
+            <p className="text-sm text-muted-foreground">{t('industrial_video.workbench.instructions')}</p>
             <div>
               <Button variant="outline" disabled={busy} onClick={() => void openWorkbench()}>
-                打开服务端工作台
+                {t('industrial_video.workbench.open_server')}
               </Button>
             </div>
             {error && (

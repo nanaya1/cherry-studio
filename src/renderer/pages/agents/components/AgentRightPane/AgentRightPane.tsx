@@ -1939,7 +1939,9 @@ function AgentIndustrialVideoWorkbenchPanel({ active, scope }: RightPanelCompone
   if (!workbench) return <p className="p-4 text-muted-foreground">{t('industrial_video.loading')}</p>
   if (workbench.document) {
     return (
-      <section aria-label="审核文档预览" className="h-full overflow-auto bg-background p-4 text-foreground">
+      <section
+        aria-label={t('industrial_video.workbench.client_review')}
+        className="h-full overflow-auto bg-background p-4 text-foreground">
         <h2 className="mb-4 break-words text-base font-medium">{workbench.document.name}</h2>
         <pre className="whitespace-pre-wrap break-words font-sans text-sm leading-7">{workbench.document.content}</pre>
       </section>
@@ -1955,7 +1957,7 @@ function AgentIndustrialVideoWorkbenchPanel({ active, scope }: RightPanelCompone
       onDidFailLoad={(event) => {
         if (event.isMainFrame && event.errorCode !== -3) setLoadError(`${event.errorDescription} (${event.errorCode})`)
       }}
-      ariaLabel="服务端工作台网页"
+      ariaLabel={t('industrial_video.workbench.webview_label')}
       testId="industrial-video-workbench-guest"
       className="h-full w-full"
     />
@@ -2098,6 +2100,7 @@ const AGENT_RIGHT_PANEL_CAPABILITIES = [
 ] satisfies readonly RightPanelCapability<AgentRightPanelScope>[]
 
 const AgentRightPaneViewport = memo(function AgentRightPaneViewport() {
+  const { t } = useTranslation()
   const meta = useAgentRightPaneMeta()
   const selected = useIndustrialVideoSelectedPanel(meta.sessionId)
   const state = useRightPanelState()
@@ -2110,7 +2113,7 @@ const AgentRightPaneViewport = memo(function AgentRightPaneViewport() {
   )
   return (
     <>
-      {restoring && <div role="status">正在恢复任务预览…</div>}
+      {restoring && <div role="status">{t('industrial_video.preview.restoring')}</div>}
       <div className="contents" hidden={restoring}>
         <RightPanelViewport />
       </div>

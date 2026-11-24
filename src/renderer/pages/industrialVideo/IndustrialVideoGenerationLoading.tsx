@@ -1,3 +1,5 @@
+import { useTranslation } from 'react-i18next'
+
 import { Button } from '@cherrystudio/ui'
 
 import { useIndustrialVideoStop } from './industrialVideoProgressStore'
@@ -6,11 +8,20 @@ import './industrialVideoGenerationLoading.css'
 
 const count = (value: unknown) => (typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : null)
 
+export interface IndustrialVideoGenerationProgress {
+  total: number | null
+  done: number | null
+  label: string
+  labelKey?: string
+  stageLabel: string
+  stageLabelKey?: string
+}
+
 export function readGenerationProgress(
   progress: Record<string, unknown> | undefined,
   state: string,
   fallback: number | null
-) {
+): IndustrialVideoGenerationProgress {
   const total = count(progress?.scenes_total) ?? count(progress?.total_scenes) ?? count(progress?.total) ?? fallback
   const rawDone = count(progress?.scenes_done) ?? count(progress?.done)
   const done = rawDone !== null && (total === null || rawDone <= total) ? rawDone : null
@@ -25,7 +36,9 @@ export function readGenerationProgress(
     total,
     done,
     label: assembling ? '正在合成成片' : '正在生成分镜视频',
-    stageLabel: assembling ? '成片合成中' : '镜头制作中'
+    labelKey: assembling ? 'industrial_video.generation.assembling' : 'industrial_video.generation.generating_shots',
+    stageLabel: assembling ? '成片合成中' : '镜头制作中',
+    stageLabelKey: assembling ? 'industrial_video.generation.assembly_stage' : 'industrial_video.generation.shot_stage'
   }
 }
 
@@ -40,6 +53,7 @@ export default function IndustrialVideoGenerationLoading({
   error?: string
   sessionId?: string
 }) {
+  const { t } = useTranslation()
   const stopAction = useIndustrialVideoStop(sessionId)
   const animating = !stopped && !error
   const { total, done } = progress
@@ -47,7 +61,7 @@ export default function IndustrialVideoGenerationLoading({
     <section
       className="ivideo-loading flex h-full min-h-80 flex-col items-center justify-center gap-5 px-6 py-10 text-center text-sm"
       data-animating={animating ? 'true' : 'false'}
-      aria-label="视频制作实时进度">
+      aria-label={t('industrial_video.generation.progress_label')}>
       <div
         className="ivideo-loading-stage relative w-full max-w-80 overflow-hidden rounded-2xl border border-border bg-background"
         aria-hidden="true">
@@ -79,22 +93,36 @@ export default function IndustrialVideoGenerationLoading({
         </svg>
       </div>
       <span className="rounded-full border border-border bg-muted px-3 py-1 text-xs text-muted-foreground">
-        {stopped || progress.stageLabel}
+        {stopped ||
+          t(
+            progress.stageLabelKey ??
+              (progress.stageLabel === '成片合成中'
+                ? 'industrial_video.generation.assembly_stage'
+                : 'industrial_video.generation.shot_stage')
+          )}
       </span>
       <div className="space-y-2" role="status" aria-live="polite">
-        <h3 className="text-base font-semibold text-foreground">{stopped || progress.label}</h3>
+        <h3 className="text-base font-semibold text-foreground">
+          {stopped ||
+            t(
+              progress.labelKey ??
+                (progress.label === '正在合成成片'
+                  ? 'industrial_video.generation.assembling'
+                  : 'industrial_video.generation.generating_shots')
+            )}
+        </h3>
         <p className="text-muted-foreground tabular-nums">
           {done !== null && total !== null
-            ? `已完成 ${done}/${total} 个分镜`
+            ? t('industrial_video.generation.shots_completed', { done, total })
             : total !== null
-              ? `共 ${total} 个分镜，等待完成进度`
-              : '等待服务端返回分镜进度'}
+              ? t('industrial_video.generation.shots_pending', { total })
+              : t('industrial_video.generation.waiting_for_progress')}
         </p>
       </div>
       {total !== null && total > 0 && done !== null && (
         <div
           role="progressbar"
-          aria-label="分镜完成数"
+          aria-label={t('industrial_video.generation.completed_shots_label')}
           aria-valuemin={0}
           aria-valuemax={total}
           aria-valuenow={done}
@@ -107,7 +135,7 @@ export default function IndustrialVideoGenerationLoading({
       )}
       {error && (
         <p role="alert" className="max-w-64 break-words text-error">
-          {stopped ? error : `进度更新暂时中断：${error}`}
+          {stopped ? error : t('industrial_video.generation.progress_interrupted', { error })}
         </p>
       )}
       {stopAction && !stopped && (
@@ -117,7 +145,7 @@ export default function IndustrialVideoGenerationLoading({
           className="border border-border bg-background hover:bg-accent"
           disabled={stopAction.stopping}
           onClick={() => void stopAction.stop()}>
-          {stopAction.stopping ? '正在停止制作' : '停止制作'}
+          {stopAction.stopping ? t('industrial_video.generation.stopping') : t('industrial_video.generation.stop')}
         </Button>
       )}
       {!stopped && (

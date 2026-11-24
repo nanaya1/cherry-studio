@@ -502,8 +502,14 @@ vi.mock('motion/react', () => ({
 
 // A stable `t` identity mirrors production react-i18next; a fresh closure per render
 // would invalidate the provider's scope memo and break render-isolation assertions.
-const stableT = (key: string, values?: Record<string, unknown>) =>
-  key === 'agent.right_pane.status.task_progress_compact' ? `Step ${values?.current}/${values?.total}` : key
+const stableT = (key: string, values?: Record<string, unknown>) => {
+  if (key === 'agent.right_pane.status.task_progress_compact') return `Step ${values?.current}/${values?.total}`
+  if (key === 'industrial_video.generation.progress_label') return '视频制作实时进度'
+  if (key === 'industrial_video.generation.shots_completed') return `已完成 ${values?.done}/${values?.total} 个分镜`
+  if (key === 'industrial_video.generation.assembling') return '正在合成成片'
+  if (key === 'industrial_video.generation.assembly_stage') return '成片合成中'
+  return key
+}
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: stableT })
 }))

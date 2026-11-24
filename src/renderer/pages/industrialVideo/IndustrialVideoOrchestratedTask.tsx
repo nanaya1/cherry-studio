@@ -201,33 +201,33 @@ function IndustrialVideoProgress({
   const { t } = useTranslation()
   const materialSteps = [
     {
-      label: '理解资料',
+      label: t('industrial_video.orchestration.understand'),
       done: ['parsing', 'submitted', 'planning', 'planned'].includes(preparationStage ?? '')
     },
     {
-      label: '核对关键依据',
+      label: t('industrial_video.orchestration.sources'),
       done: ['submitted', 'planning', 'planned'].includes(preparationStage ?? '')
     },
     {
-      label: '生成脚本与分镜',
+      label: t('industrial_video.orchestration.storyboard'),
       done: ['storyboard_submitted', 'confirming', 'generating', 'assembling', 'done'].includes(state ?? '')
     }
   ]
   const videoSteps = [
     {
-      label: '准备画面',
+      label: t('industrial_video.generation.prepare_visuals'),
       done: ['assembling', 'done'].includes(state ?? '')
     },
     {
-      label: '生成分镜',
+      label: t('industrial_video.generation.generate_shots'),
       done: ['assembling', 'done'].includes(state ?? '')
     },
     {
-      label: '配音与字幕',
+      label: t('industrial_video.generation.voice_and_subtitles'),
       done: ['done'].includes(state ?? '')
     },
     {
-      label: '拼接成片',
+      label: t('industrial_video.generation.assemble_video'),
       done: ['done'].includes(state ?? '')
     }
   ]
@@ -299,12 +299,12 @@ function IndustrialVideoLoadingStage({
       <LoaderCircle aria-hidden="true" className="size-5 animate-spin motion-reduce:animate-none" />
       <p className="text-sm font-medium">
         {stage === 'assembling'
-          ? '正在拼接成片'
+          ? t('industrial_video.orchestration.state.assembling')
           : stage === 'parsing'
-            ? '正在理解资料'
+            ? t('industrial_video.orchestration.state.parsing')
             : stage === 'done'
-              ? '成片已完成'
-              : '正在生成视频'}
+              ? t('industrial_video.orchestration.state.done')
+              : t('industrial_video.orchestration.state.generating')}
       </p>
       {totalShots !== null ? (
         indeterminate ? (
@@ -391,7 +391,9 @@ export default function IndustrialVideoOrchestratedTask({
               <div key={revision.id} className="ml-auto max-w-[85%] rounded-xl bg-muted px-4 py-3 text-sm">
                 <p className="whitespace-pre-wrap">{revision.text}</p>
                 {!revision.consumedRun && (
-                  <p className="mt-1 text-xs text-muted-foreground">已收到，将在当前步骤结束后处理</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {t('industrial_video.orchestration.revision_received')}
+                  </p>
                 )}
               </div>
             ))}
@@ -423,7 +425,7 @@ export default function IndustrialVideoOrchestratedTask({
       <aside
         hidden={!open}
         className={open ? 'flex w-[380px] shrink-0 flex-col border-l border-border bg-card' : 'hidden'}
-        aria-label="成片预览"
+        aria-label={t('industrial_video.preview.pane_label')}
         data-ui="industrial-video.review-preview">
         <div className="min-h-0 flex-1 overflow-auto p-4">
           {isGenerating && <IndustrialVideoLoadingStage loading={loading} t={t} />}
