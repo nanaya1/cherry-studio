@@ -28,13 +28,13 @@ const TEMPLATE_AGENT_JSON = JSON.stringify({
   name: { 'en-US': 'Cherry Assistant', 'zh-CN': 'Cherry Assistant CN' },
   instructions: { 'en-US': 'English instructions', 'zh-CN': 'Chinese instructions' },
   configuration: { permission_mode: 'default' },
-  skills: ['cherry-assistant-guide']
+  skills: ['meacowork-assistant-guide']
 })
 const SUPPORT_AGENT_JSON = JSON.stringify({
   name: { 'en-US': 'Cherry Support', 'zh-CN': 'Cherry Support CN' },
   instructions: { 'en-US': 'Support instructions', 'zh-CN': 'Chinese support instructions' },
   configuration: { permission_mode: 'acceptEdits' },
-  skills: ['cherry-assistant-guide', 'faq-collector', 'cherry-studio-feedback', 'issue-reporter']
+  skills: ['meacowork-assistant-guide', 'faq-collector', 'meacowork-studio-feedback', 'issue-reporter']
 })
 const RC5_STOCK_SOUL_PATH = fileURLToPath(new URL('./fixtures/cherry-assistant-rc5-soul.md', import.meta.url))
 const PR17870_INTERIM_STOCK_SOUL_PATH = fileURLToPath(
@@ -62,7 +62,7 @@ describe('BuiltinAgentProvisioner', () => {
     vi.mocked(app.getLocale).mockReturnValue('en-US')
 
     writeFile(path.join(templateDir, '.claude', '.claude-plugin', 'plugin.json'), '{"name":"cherry-assistant-builtin"}')
-    writeFile(path.join(templateDir, '.claude', 'skills', 'cherry-assistant-guide', 'SKILL.md'), 'SKILL_V1')
+    writeFile(path.join(templateDir, '.claude', 'skills', 'meacowork-assistant-guide', 'SKILL.md'), 'SKILL_V1')
     writeFile(path.join(templateDir, 'SOUL.md'), 'TEMPLATE_SOUL')
     writeFile(path.join(templateDir, 'USER.md'), 'TEMPLATE_USER')
     writeFile(path.join(templateDir, 'memory', 'FACT.md'), 'TEMPLATE_FACT')
@@ -101,7 +101,7 @@ describe('BuiltinAgentProvisioner', () => {
   it('loads bundled skills from the app-owned plugin directory', () => {
     expect(getBuiltinAgentPluginDirectory('assistant')).toBe(path.join(templateDir, '.claude'))
     expect(mocks.toAsarUnpackedPath).toHaveBeenCalledWith(path.join(templateDir, '.claude'))
-    expect(loadBuiltinAgentDefinition('assistant')?.skills).toEqual(['cherry-assistant-guide'])
+    expect(loadBuiltinAgentDefinition('assistant')?.skills).toEqual(['meacowork-assistant-guide'])
   })
 
   it('keeps the canonical bundled plugin name aligned with its manifest', () => {
@@ -115,7 +115,7 @@ describe('BuiltinAgentProvisioner', () => {
     expect(loadBuiltinAgentDefinition('support')).toMatchObject({
       name: 'Cherry Support',
       instructions: 'Support instructions',
-      skills: ['cherry-assistant-guide', 'faq-collector', 'cherry-studio-feedback', 'issue-reporter']
+      skills: ['meacowork-assistant-guide', 'faq-collector', 'meacowork-studio-feedback', 'issue-reporter']
     })
     expect(getBuiltinAgentPluginDirectory('support')).toBe(path.join(templateDir, '.claude'))
   })
@@ -149,7 +149,7 @@ describe('BuiltinAgentProvisioner', () => {
       name: 'Cherry Assistant',
       instructions: 'English instructions',
       configuration: { permission_mode: 'default' },
-      skills: ['cherry-assistant-guide']
+      skills: ['meacowork-assistant-guide']
     })
   })
 

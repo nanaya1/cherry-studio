@@ -1,7 +1,7 @@
 # Web research
 
 Covers `mcp__meacowork-tools__web_search` and `mcp__meacowork-tools__web_fetch`, plus the hard
-limits of MEA Cowork's web built-ins.
+limits of Cherry's web built-ins.
 
 Get exact argument shapes from the live tool schema — this reference gives routing,
 sequencing, and limits only.
@@ -25,7 +25,7 @@ fetch low-relevance URLs just because they came back.
 
 ## Browser interaction
 
-Load the bundled `cherry-browser` skill for live `mcp__browser__*` tools. These control
+Load the bundled `meacowork-browser` skill for live `mcp__browser__*` tools. These control
 the current Agent Session’s visible right pane when Browser settings enables Agent
 control. History and login-data imports are managed in Browser settings.
 

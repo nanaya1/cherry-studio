@@ -9,9 +9,12 @@ import {
   mockUseWriteCache
 } from '@test-mocks/renderer/useDataApi'
 import { act, renderHook } from '@testing-library/react'
+import { createElement, type PropsWithChildren } from 'react'
+import { SWRConfig, unstable_serialize } from 'swr'
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest'
 
 import { dataApiService } from '@data/DataApiService'
+import type * as DataApiHooks from '@renderer/data/hooks/useDataApi'
 import type { Topic } from '@renderer/types/topic'
 import { DataApiErrorFactory } from '@shared/data/api/errors'
 import type { Topic as ApiTopic } from '@shared/data/types/topic'
@@ -462,6 +465,39 @@ describe('useTopicMutations', () => {
       '/topics',
       '/topics/topic-a'
     ])
+  })
+
+  it('clears an inactive topic detail NOT_FOUND before the restored topic is reopened', async () => {
+    const { useWriteCache } = await vi.importActual<typeof DataApiHooks>('@renderer/data/hooks/useDataApi')
+    mockUseWriteCache.mockImplementationOnce(function useRealWriteCache() {
+      return vi.fn(useWriteCache())
+    })
+    const restoredTopic = createApiTopic({ id: 'topic-a' })
+    MockUseDataApiUtils.mockMutationWithTrigger('POST', '/topics/:id/restore', vi.fn().mockResolvedValue(restoredTopic))
+    const key = unstable_serialize(['/topics/topic-a'])
+    const staleError = DataApiErrorFactory.notFound('Topic', 'topic-a')
+    const cache = new Map([[key, { data: undefined, error: staleError }]])
+    const wrapper = ({ children }: PropsWithChildren) =>
+      createElement(SWRConfig, { value: { provider: () => cache } }, children)
+    const { result } = renderHook(() => useTopicMutations(), { wrapper })
+
+    await act(async () => result.current.restoreTopic('topic-a'))
+
+    expect(cache.get(key)?.error).toBeUndefined()
+    expect(cache.get(key)?.data).toEqual(restoredTopic)
+  })
+
+  it('does not populate the topic cache when restore fails', async () => {
+    const error = DataApiErrorFactory.notFound('Topic', 'topic-a')
+    MockUseDataApiUtils.mockMutationWithTrigger('POST', '/topics/:id/restore', vi.fn().mockRejectedValue(error))
+    const { result } = renderHook(() => useTopicMutations())
+    const writeCache = mockUseWriteCache.mock.results.at(-1)?.value as Mock
+
+    await act(async () => {
+      await expect(result.current.restoreTopic('topic-a')).rejects.toBe(error)
+    })
+
+    expect(writeCache).not.toHaveBeenCalled()
   })
 
   it('archives selected topics through one all-or-nothing lifecycle command', async () => {

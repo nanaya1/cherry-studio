@@ -57,6 +57,7 @@ vi.mock('@application', () => ({
       if (name === 'PreferenceService') return { get: getPreference }
       if (name === 'AiService') return { generateImage }
       if (name === 'FileManager') return { read: fileRead }
+      if (name === 'IndustrialVideoService') return { getExecutionToken: () => undefined }
       throw new Error(`unexpected service: ${name}`)
     }
   }

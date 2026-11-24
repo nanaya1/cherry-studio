@@ -1,9 +1,15 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  buildBuiltinToolsRuntimeName,
   buildFunctionCallToolName,
   buildMcpToolName,
+  CHERRY_TOOLS_MCP_SERVER,
   generateMcpToolFunctionName,
+  isBuiltinToolsMcpServer,
+  isBuiltinToolsRuntimeName,
+  MEACOWORK_TOOLS_MCP_SERVER,
+  normalizeBuiltinToolsRuntimeName,
   parseFunctionCallToolName,
   toCamelCase
 } from '../mcpToolName'
@@ -270,5 +276,46 @@ describe('buildFunctionCallToolName', () => {
       const result = buildFunctionCallToolName('@anthropic/mcp-server', 'chat')
       expect(result).toBe('mcp__AnthropicMcpServer__chat')
     })
+  })
+})
+
+describe('builtin tools MCP server rename', () => {
+  it('exposes the new canonical id and keeps the legacy id for persisted data', () => {
+    expect(MEACOWORK_TOOLS_MCP_SERVER).toBe('meacowork-tools')
+    expect(CHERRY_TOOLS_MCP_SERVER).toBe('cherry-tools')
+  })
+
+  it('recognizes both server ids and their camelCase wire forms', () => {
+    for (const id of ['cherry-tools', 'meacowork-tools', 'cherryTools', 'meacoworkTools']) {
+      expect(isBuiltinToolsMcpServer(id)).toBe(true)
+    }
+    for (const id of ['agent-memory', 'skills', 'docs', undefined]) {
+      expect(isBuiltinToolsMcpServer(id)).toBe(false)
+    }
+  })
+
+  it('writes the new runtime name but accepts both spellings on read', () => {
+    expect(buildBuiltinToolsRuntimeName('web_search')).toBe('mcp__meacowork-tools__web_search')
+    expect(isBuiltinToolsRuntimeName('mcp__meacowork-tools__web_search', 'web_search')).toBe(true)
+    expect(isBuiltinToolsRuntimeName('mcp__cherry-tools__web_search', 'web_search')).toBe(true)
+    expect(isBuiltinToolsRuntimeName('mcp__docs__web_search', 'web_search')).toBe(false)
+  })
+
+  it('normalizes old and new builtin runtime names to one canonical name', () => {
+    expect(normalizeBuiltinToolsRuntimeName('mcp__cherry-tools__web_search')).toBe(
+      normalizeBuiltinToolsRuntimeName('mcp__meacowork-tools__web_search')
+    )
+    expect(normalizeBuiltinToolsRuntimeName('mcp__docs__search')).toBe('mcp__docs__search')
+    expect(normalizeBuiltinToolsRuntimeName(undefined)).toBeUndefined()
+  })
+
+  it('recognizes a legacy camel+hash builtin wire id via its server segment', () => {
+    // Persisted disabled-tool rules may use buildFunctionCallToolName, which truncates long
+    // names and appends a server-derived hash. The server segment still identifies the builtin server.
+    const longTool = `tool_${'x'.repeat(80)}`
+    const legacyId = buildFunctionCallToolName(CHERRY_TOOLS_MCP_SERVER, longTool)
+    const parsed = parseFunctionCallToolName(legacyId)
+    expect(parsed).not.toBeNull()
+    expect(isBuiltinToolsMcpServer(parsed!.serverPart)).toBe(true)
   })
 })

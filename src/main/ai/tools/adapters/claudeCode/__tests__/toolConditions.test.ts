@@ -53,7 +53,7 @@ describe('resolveDisallowedTools', () => {
     expect(enabled.has('mcp__meacowork-tools__kb_list')).toBe(false)
     expect(enabled.has('mcp__meacowork-tools__kb_read')).toBe(false)
 
-    const disallowed = new Set(resolveDisallowedTools({ disabledTools: ['mcp__meacowork-tools__kb_search'] }))
+    const disallowed = new Set(resolveDisallowedTools({ disabledTools: ['mcp__cherry-tools__kb_search'] }))
     expect(disallowed.has('mcp__meacowork-tools__kb_search')).toBe(true)
     expect(disallowed.has('mcp__meacowork-tools__kb_list')).toBe(true)
     expect(disallowed.has('mcp__meacowork-tools__kb_read')).toBe(true)

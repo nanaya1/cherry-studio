@@ -23,11 +23,7 @@ import { getRenderableTextContent } from '@renderer/utils/message/find'
 import { extractOutputMetadata } from '@renderer/utils/message/toolOutput'
 import { GENERATE_IMAGE_TOOL_NAME } from '@shared/ai/builtinTools'
 import { generateImageOutputSchema } from '@shared/ai/generateImageTool'
-import {
-  isMeacoworkToolRuntimeName,
-  normalizeMeacoworkToolRuntimeName,
-  toMeacoworkToolRuntimeName
-} from '@shared/ai/meacoworkTools'
+import { isBuiltinToolsRuntimeName } from '@shared/ai/tools/mcpToolName'
 import { isDeferredToolOutput } from '@shared/ai/transport'
 import type { FileUIPart } from '@shared/data/types/message'
 import { readCherryMeta } from '@shared/data/types/uiParts'
@@ -40,6 +36,10 @@ export type ImageExportMode = 'embed' | 'folder' | 'none'
 
 /** Base64 inline payloads beyond this size bloat the .md past ~13 MiB of text. */
 const MAX_EMBED_IMAGE_BYTES = 10 * 1024 * 1024
+
+// Canonical wire name of the renamed builtin-tools server. The legacy `mcp__cherry-tools__` name
+// is still accepted on read via isBuiltinToolsRuntimeName so old exported sessions keep images.
+const AGENT_GENERATE_IMAGE_TOOL_NAME = `mcp__meacowork-tools__${GENERATE_IMAGE_TOOL_NAME}`
 
 export type ExportableImageRef = {
   /** Dedup key: fileEntryId when known, else the part url. */
@@ -131,10 +131,11 @@ function isGenerateImageToolPart(part: unknown): boolean {
   const toolPart = part as { state?: string }
   if (toolPart.state !== 'output-available') return false
   const toolName = getToolName(part as never).trim()
+  // New canonical name + legacy name (for messages persisted before the rename) both qualify.
   return (
     toolName === GENERATE_IMAGE_TOOL_NAME ||
-    (isMeacoworkToolRuntimeName(toolName) &&
-      normalizeMeacoworkToolRuntimeName(toolName) === toMeacoworkToolRuntimeName(GENERATE_IMAGE_TOOL_NAME))
+    toolName === AGENT_GENERATE_IMAGE_TOOL_NAME ||
+    isBuiltinToolsRuntimeName(toolName, GENERATE_IMAGE_TOOL_NAME)
   )
 }
 

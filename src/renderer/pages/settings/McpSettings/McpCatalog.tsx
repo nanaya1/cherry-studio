@@ -43,8 +43,9 @@ export default function McpCatalog() {
   const orgMode = accountStatus?.authMode === 'management-oauth'
   // [enterprise] 提升组织连接器目录 hook 到页面：enabled 仅当 management-oauth 账号模式
   const connectorsCatalog = useOrgConnectors(orgMode)
-  // [enterprise] 实际请求成功（available）才展示公共 tab；初始失败隐藏，刷新失败保留
-  const showPublicCatalog = orgMode && connectorsCatalog.available
+  // 隐藏公共入口，保留目录能力与原显隐条件，便于恢复。
+  // const showPublicCatalog = orgMode && connectorsCatalog.available
+  const showPublicCatalog = false
   const [activeTab, setActiveTab] = useState<CatalogTab>('discover')
   const [discoverTab, setDiscoverTab] = useState<DiscoverTab>('builtin')
   const [selectedProvider, setSelectedProvider] = useState<ProviderConfig | null>(null)

@@ -1,5 +1,5 @@
 import type { McpServer } from '../../data/types/mcpServer'
-import { buildFunctionCallToolName, toCamelCase } from './mcpToolName'
+import { buildFunctionCallToolName, CHERRY_TOOLS_MCP_SERVER, isBuiltinToolsMcpServer, toCamelCase } from './mcpToolName'
 
 export type McpPolicyTool = {
   id?: string
@@ -20,12 +20,24 @@ export function buildMcpWireWildcard(serverName: string): string {
 }
 
 export function matchesMcpSourceToolRule(value: string, server: McpServer, tool: McpPolicyTool): boolean {
-  return (
+  if (
     value === tool.name ||
     value === tool.id ||
     value === buildMcpWireToolId(server.name, tool.name) ||
     value === buildMcpWireWildcard(server.name)
-  )
+  ) {
+    return true
+  }
+  // The in-process builtin server was renamed `cherry-tools` → `meacowork-tools`. Persisted
+  // disabledTools / disabledAutoApproveTools rules can still carry the legacy wire id or
+  // wildcard; match those against the same tool so upgrades don't silently drop restrictions.
+  if (isBuiltinToolsMcpServer(server.name)) {
+    return (
+      value === buildMcpWireToolId(CHERRY_TOOLS_MCP_SERVER, tool.name) ||
+      value === buildMcpWireWildcard(CHERRY_TOOLS_MCP_SERVER)
+    )
+  }
+  return false
 }
 
 export function isMcpToolDisabledBySource(server: McpServer, tool: McpPolicyTool): boolean {

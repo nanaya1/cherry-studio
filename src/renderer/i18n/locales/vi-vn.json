@@ -4732,7 +4732,7 @@
   "settings.general.backup.title": "Sao lưu và Khôi phục Dữ liệu",
   "settings.general.commit_attribution.description": "Cho phép agent thêm ghi nguồn Claude Code vào các commit git và pull request mà chúng tạo. Tắt để ẩn ghi nguồn.",
   "settings.general.commit_attribution.title": "Ghi nguồn cho commit",
-  "settings.general.common.menu.presentation_mode.cherry": "Cherry",
+  "settings.general.common.menu.presentation_mode.cherry": "MEA Cowork",
   "settings.general.common.menu.presentation_mode.native": "Bản địa",
   "settings.general.common.menu.presentation_mode.restart.content": "Thay đổi kiểu menu yêu cầu khởi động lại ứng dụng để có hiệu lực. Bạn có muốn khởi động lại ngay bây giờ không?",
   "settings.general.common.menu.presentation_mode.restart.title": "Yêu cầu khởi động lại",

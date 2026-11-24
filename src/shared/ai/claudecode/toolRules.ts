@@ -1,6 +1,7 @@
 import type { AgentPermissionMode } from '../../data/api/schemas/agents'
 import type { ToolApproval, ToolOrigin } from '../tool'
 import { buildMcpWireToolId, buildMcpWireWildcard } from '../tools/mcpSourcePolicy'
+import { CHERRY_TOOLS_MCP_SERVER, isBuiltinToolsMcpServer } from '../tools/mcpToolName'
 
 export interface ClaudeToolDescriptor {
   id: string
@@ -59,6 +60,13 @@ export function matchesClaudeToolRule(rule: string, descriptor: ClaudeToolDescri
     if (descriptor.sourceName && descriptor.sourceToolName) {
       if (rule === rawClaudeMcpToolName(descriptor.sourceName, descriptor.sourceToolName)) return true
       if (rule === rawClaudeMcpToolName(descriptor.sourceName, '*')) return true
+    }
+    // The builtin-tools server was renamed; a persisted rule under the legacy server name
+    // must still apply to the same tool. Restrict this to the known builtin server so a
+    // third-party MCP can never be matched through an unrelated server's rule.
+    if (descriptor.sourceName && isBuiltinToolsMcpServer(descriptor.sourceName) && descriptor.sourceToolName) {
+      if (rule === rawClaudeMcpToolName(CHERRY_TOOLS_MCP_SERVER, descriptor.sourceToolName)) return true
+      if (rule === rawClaudeMcpToolName(CHERRY_TOOLS_MCP_SERVER, '*')) return true
     }
   }
 

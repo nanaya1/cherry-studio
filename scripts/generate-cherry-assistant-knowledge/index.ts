@@ -34,9 +34,9 @@ const outputs: GeneratedOutput[] = [
     content: serializeProductManifest()
   },
   {
-    path: path.join(ASSISTANT_DIR, '.claude/skills/cherry-assistant-guide/SKILL.md'),
+    path: path.join(ASSISTANT_DIR, '.claude/skills/meacowork-assistant-guide/SKILL.md'),
     content: fs.readFileSync(
-      path.join(ASSISTANT_DIR, '.claude/skills/cherry-assistant-guide/skill-zh-cn-template.md'),
+      path.join(ASSISTANT_DIR, '.claude/skills/meacowork-assistant-guide/skill-zh-cn-template.md'),
       'utf-8'
     )
   },

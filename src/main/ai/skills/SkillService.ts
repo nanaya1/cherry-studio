@@ -49,6 +49,12 @@ const logger = loggerService.withContext('SkillService')
 
 const SKILLS_PLUGIN_MANIFEST = `${JSON.stringify({ name: 'cherry-studio-skills' }, null, 2)}\n`
 const BUILTIN_VERSION_FILE = '.version'
+// Bundled builtin folders renamed in this release. Existing installs adopt the
+// new folder in place so the catalog id and its enablement rows survive.
+const BUILTIN_FOLDER_RENAMES: Readonly<Record<string, string>> = {
+  'meacowork-browser': 'cherry-browser',
+  'meacowork-tool-guide': 'cherry-tool-guide'
+}
 
 interface CatalogDisplayMetadata {
   displayName: string
@@ -1458,6 +1464,72 @@ export class SkillService {
     return matches[0]?.name ?? null
   }
 
+  private async migrateRenamedBuiltinFolder(
+    newFolderName: string,
+    sourcePath: string,
+    namespace: string | null
+  ): Promise<boolean> {
+    const oldFolderName = BUILTIN_FOLDER_RENAMES[newFolderName]
+    if (!oldFolderName) return false
+
+    const oldSkill = this.findCatalogSkillCaseInsensitive(oldFolderName)
+    if (!oldSkill || oldSkill.source !== 'builtin' || oldSkill.namespace !== namespace) return false
+    if (this.findCatalogSkillCaseInsensitive(newFolderName)) {
+      logger.warn('Skipped builtin folder migration for an occupied catalog name', { oldFolderName, newFolderName })
+      return false
+    }
+
+    // Resolve both folders under the app-owned root; user directories are never touched.
+    const oldDir = this.getInstalledSkillDirectory(oldSkill)
+    const newDir = this.getInstalledSkillDirectory({ folderName: newFolderName, source: 'builtin', sourceUrl: null })
+    const sourceHash = await this.computeBuiltinDirectoryHash(sourcePath)
+    const newStorageEntry = await this.findStorageFolderCaseInsensitive(newFolderName)
+    let shouldRename = false
+    if (newStorageEntry) {
+      // Adopt a target folder only when it already holds the verified new builtin content.
+      try {
+        await fs.promises.access(path.join(newDir, BUILTIN_VERSION_FILE))
+        if ((await this.computeBuiltinDirectoryHash(newDir)) !== sourceHash) return false
+      } catch {
+        logger.warn('Skipped builtin folder migration because the target folder is user-owned', {
+          newFolderName,
+          newStorageEntry
+        })
+        return false
+      }
+    } else if (await directoryExists(oldDir)) {
+      shouldRename = true
+    }
+
+    let renamed = false
+    try {
+      if (shouldRename) {
+        await fs.promises.rename(oldDir, newDir)
+        renamed = true
+      }
+      application.get('DbService').withWriteTx((tx) => {
+        agentGlobalSkillService.updateTx(tx, oldSkill.id, { folderName: newFolderName })
+      })
+    } catch (error) {
+      if (renamed) {
+        try {
+          await fs.promises.rename(newDir, oldDir)
+        } catch (rollbackError) {
+          logger.error('Failed to restore builtin folder after migration rollback', {
+            oldFolderName,
+            newFolderName,
+            error: rollbackError instanceof Error ? rollbackError.message : String(rollbackError)
+          })
+        }
+      }
+      throw error
+    }
+
+    await this.unlinkMirror(oldFolderName)
+    logger.info('Migrated builtin skill folder', { oldFolderName, newFolderName, skillId: oldSkill.id })
+    return true
+  }
+
   /**
    * Atomically publish a bundled skill and synchronize its DB row under the
    * same library mutation lock used by install, uninstall, and reconcile.
@@ -1478,6 +1550,9 @@ export class SkillService {
     namespace: string | null = null
   ): Promise<boolean> {
     return this.mutationLock.runExclusive(async () => {
+      // Adopt a renamed builtin before the normal sync so its catalog id survives.
+      await this.migrateRenamedBuiltinFolder(folderName, sourcePath, namespace)
+
       const existing = this.findCatalogSkillCaseInsensitive(folderName)
       if (existing && existing.source !== 'builtin') {
         throw new Error(

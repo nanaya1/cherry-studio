@@ -74,6 +74,66 @@ describe('packaged dependency contents', () => {
     }
   })
 
+  it.each([
+    ['darwin', 'arm64'],
+    ['darwin', 'x64'],
+    ['win32', 'x64'],
+    ['win32', 'arm64'],
+    ['linux', 'x64'],
+    ['linux', 'arm64']
+  ])('excludes unsupported native variants from %s %s without dropping target binaries', (platform, arch) => {
+    const patterns = [...config.files, ...getNativeModuleFilters(platform, arch)]
+    const foreignPackages = [
+      '@napi-rs/canvas-android-arm64',
+      '@napi-rs/canvas-linux-arm-gnueabihf',
+      '@napi-rs/canvas-linux-riscv64-gnu',
+      '@img/sharp-libvips-linux-arm',
+      '@img/sharp-libvips-linux-ppc64',
+      '@img/sharp-libvips-linux-riscv64',
+      '@img/sharp-libvips-linux-s390x',
+      '@img/sharp-linux-arm',
+      '@img/sharp-linux-ppc64',
+      '@img/sharp-linux-riscv64',
+      '@img/sharp-linux-s390x',
+      '@img/sharp-win32-ia32',
+      '@node-rs/xxhash-android-arm64',
+      '@node-rs/xxhash-android-arm-eabi',
+      '@node-rs/xxhash-linux-arm-gnueabihf',
+      '@node-rs/xxhash-freebsd-x64',
+      '@node-rs/xxhash-win32-ia32-msvc',
+      'node-screenshots-linux-loong64-gnu'
+    ]
+    for (const modules of ['node_modules', 'node_modules/consumer/node_modules']) {
+      for (const name of foreignPackages) {
+        expect(includesFile(`${modules}/${name}/binding.node`, patterns), name).toBe(false)
+      }
+      const suffix = platform === 'darwin' ? '' : platform === 'win32' ? '-msvc' : '-gnu'
+      for (const name of [
+        `@napi-rs/canvas-${platform}-${arch}${suffix}`,
+        `@img/sharp-${platform}-${arch}`,
+        `@node-rs/xxhash-${platform}-${arch}${suffix}`,
+        `node-screenshots-${platform}-${arch}${suffix}`
+      ]) {
+        expect(includesFile(`${modules}/${name}/binding.node`, patterns), name).toBe(true)
+      }
+      if (platform !== 'win32') {
+        expect(includesFile(`${modules}/@img/sharp-libvips-${platform}-${arch}/lib/libvips.dylib`, patterns)).toBe(true)
+      }
+      if (platform === 'linux') {
+        for (const name of [
+          `@img/sharp-libvips-linuxmusl-${arch}`,
+          `@napi-rs/canvas-linux-${arch}-musl`,
+          `@node-rs/xxhash-linux-${arch}-musl`
+        ]) {
+          expect(includesFile(`${modules}/${name}/binding.node`, patterns), name).toBe(true)
+        }
+      }
+      // WASM fallbacks are platform-neutral; native platform pruning must not remove them.
+      expect(includesFile(`${modules}/@img/sharp-wasm32/lib/sharp.wasm`, patterns)).toBe(true)
+      expect(includesFile(`${modules}/@node-rs/xxhash-wasm32-wasi/xxhash.wasm`, patterns)).toBe(true)
+    }
+  })
+
   it.each(['node_modules', 'node_modules/consumer/node_modules'])(
     'excludes SQLite build inputs and cached binaries under %s while preserving its runtime',
     (modules) => {
@@ -91,6 +151,43 @@ describe('packaged dependency contents', () => {
       }
     }
   )
+
+  it('excludes rebuild backups while preserving the SQLite runtime in nested dependencies', () => {
+    for (const modules of ['node_modules', 'node_modules/consumer/node_modules']) {
+      for (const file of ['Release/better_sqlite3.node', 'Release/obj/gen/sqlite3/sqlite3.c', 'config.gypi']) {
+        expect(includesFile(`${modules}/better-sqlite3/build-electron-backup/${file}`), file).toBe(false)
+      }
+      expect(includesFile(`${modules}/better-sqlite3/build/Release/better_sqlite3.node`)).toBe(true)
+    }
+  })
+
+  it('ships migrations only through extraResources, including the migration journal', () => {
+    expect(includesFile('migrations/sqlite-drizzle/meta/0000_snapshot.json')).toBe(false)
+    expect(includesFile('migrations/sqlite-drizzle/0000_initial.sql')).toBe(false)
+    const { extraResources } = parse(readFileSync(path.join(projectRoot, 'electron-builder.yml'), 'utf8'))
+    const resource = extraResources.find((entry: { from: string }) => entry.from === 'migrations/sqlite-drizzle')
+    expect(resource).toEqual({ from: 'migrations/sqlite-drizzle', to: 'migrations/sqlite-drizzle' })
+    const filter = new FileMatcher(
+      path.join(projectRoot, resource.from),
+      projectRoot,
+      (value: string) => value,
+      resource.filter ?? ['**/*']
+    ).createFilter()
+    for (const file of ['0000_initial.sql', 'meta/_journal.json', 'meta/0000_snapshot.json']) {
+      expect(filter(path.join(projectRoot, resource.from, file), fileStat), file).toBe(true)
+    }
+  })
+
+  it('keeps the Feishu CommonJS entry without shipping the unused ESM copy', () => {
+    const sdk = JSON.parse(
+      readFileSync(path.join(projectRoot, 'node_modules/@larksuiteoapi/node-sdk/package.json'), 'utf8')
+    )
+    for (const modules of ['node_modules', 'node_modules/consumer/node_modules']) {
+      expect(includesFile(`${modules}/@larksuiteoapi/node-sdk/es/index.js`)).toBe(false)
+      expect(includesFile(`${modules}/@larksuiteoapi/node-sdk/${sdk.main.replace(/^\.\//, '')}`)).toBe(true)
+      expect(includesFile(`${modules}/@larksuiteoapi/node-sdk/package.json`)).toBe(true)
+    }
+  })
 
   it('excludes dependency documentation images without removing runtime assets or source JS', () => {
     for (const file of [

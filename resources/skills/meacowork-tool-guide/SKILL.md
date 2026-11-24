@@ -52,7 +52,7 @@ parameter names, enums, and required fields. Read it before every call.
 | User intent | Route to | Reference |
 | --- | --- | --- |
 | Look up current/online facts, news, docs | `mcp__meacowork-tools__web_search` → `mcp__meacowork-tools__web_fetch` | [web.md](references/web.md) |
-| Browser interaction (click, forms, screenshots) | `mcp__browser__*` when enabled; load `cherry-browser` | [web.md](references/web.md) |
+| Browser interaction (click, forms, screenshots) | `mcp__browser__*` when enabled; load `meacowork-browser` | [web.md](references/web.md) |
 | Answer from the user's own documents | `mcp__meacowork-tools__kb_list` → `mcp__meacowork-tools__kb_search` → `mcp__meacowork-tools__kb_read` | [knowledge.md](references/knowledge.md) |
 | Add / delete / re-index knowledge | `mcp__meacowork-tools__kb_manage` (resolve IDs first; needs approval) | [knowledge.md](references/knowledge.md) |
 | Read or convert a local document | `mcp__meacowork-tools__to_markdown` → read the returned temporary Markdown path as needed | [documents.md](references/documents.md) |

@@ -49,6 +49,22 @@ describe('Claude Code tool rules', () => {
     expect(matchesClaudeToolRule('mcp__other__searchDocs', mcpSearch)).toBe(false)
   })
 
+  it('matches legacy server-name rules for the renamed builtin-tools server', () => {
+    const builtinSearch: ClaudeToolDescriptor = {
+      ...mcpSearch,
+      id: buildClaudeMcpToolName('meacowork-tools', 'web_search'),
+      name: 'web_search',
+      sourceId: 'builtin',
+      sourceName: 'meacowork-tools',
+      sourceToolName: 'web_search'
+    }
+    expect(matchesClaudeToolRule('mcp__meacowork-tools__web_search', builtinSearch)).toBe(true)
+    // Persisted rules from before the cherry-tools → meacowork-tools rename still match.
+    expect(matchesClaudeToolRule('mcp__cherry-tools__web_search', builtinSearch)).toBe(true)
+    expect(matchesClaudeToolRule('mcp__cherry-tools__*', builtinSearch)).toBe(true)
+    expect(matchesClaudeToolRule('mcp__other__web_search', builtinSearch)).toBe(false)
+  })
+
   it('lets source force-prompt override mode defaults', () => {
     expect(
       resolveClaudeToolAccess({ ...read, sourceApproval: 'prompt' }, { permissionMode: 'bypassPermissions' }).approval

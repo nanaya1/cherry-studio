@@ -69,7 +69,7 @@ describe('CLAUDE_KNOWLEDGE_TOOL_NAMES', () => {
     // These are the two the builtin catalog hides when the agent has no bound base.
     expect(CLAUDE_KNOWLEDGE_TOOL_NAMES.has('mcp__meacowork-tools__kb_search')).toBe(true)
     expect(CLAUDE_KNOWLEDGE_TOOL_NAMES.has('mcp__meacowork-tools__kb_manage')).toBe(true)
-    // Non-kb MEA Cowork tools must not be swept in.
+    // Non-kb cherry tools must not be swept in.
     expect(CLAUDE_KNOWLEDGE_TOOL_NAMES.has('mcp__meacowork-tools__web_search')).toBe(false)
     expect(CLAUDE_KNOWLEDGE_TOOL_NAMES.has('mcp__meacowork-tools__generate_image')).toBe(false)
   })

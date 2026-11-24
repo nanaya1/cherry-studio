@@ -107,6 +107,7 @@ export function buildAgentMcpServers(
   }
 
   const workspaceSource = toWorkspaceSource(session)
+  // Record key and name must stay aligned with the canonical in-process server id.
   servers[MEACOWORK_TOOLS_SERVER_NAME] = {
     name: MEACOWORK_MCP_SERVER.MEACOWORK_TOOLS,
     instance: new MeacoworkBuiltinToolsServer({

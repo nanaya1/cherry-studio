@@ -126,15 +126,16 @@ describe('SkillsConnectorsPage', () => {
     orgSessionMock.authMode = 'official-direct'
     render(<SkillsConnectorsPage connectorView={<div>connector catalog</div>} />)
 
-    expect(screen.getByRole('tab', { name: 'Recommended skills' })).toBeVisible()
+    expect(screen.queryByRole('tab', { name: 'Recommended skills' })).not.toBeInTheDocument()
     expect(screen.queryByRole('tab', { name: 'Organization' })).not.toBeInTheDocument()
   })
 
-  it('shows the public skill tab for the legacy oauth management auth mode', () => {
+  it('hides the public skill tab even when the management directory is available', () => {
     orgSessionMock.authMode = 'management-oauth'
     render(<SkillsConnectorsPage connectorView={<div>connector catalog</div>} />)
 
-    expect(screen.getByRole('tab', { name: 'Organization' })).toBeVisible()
+    expect(screen.queryByRole('tab', { name: 'Organization' })).not.toBeInTheDocument()
+    expect(screen.queryByText(/^org skills:/)).not.toBeInTheDocument()
   })
 
   // [enterprise] 公共 tab 仅在组织目录实际请求成功后（available）展示；初始失败隐藏，即使账号模式为 management-oauth
@@ -151,14 +152,12 @@ describe('SkillsConnectorsPage', () => {
     render(<SkillsConnectorsPage connectorView={<div>connector catalog</div>} />)
 
     expect(screen.getByRole('tab', { name: 'Skills' })).toBeVisible()
-    expect(screen.getByRole('tab', { name: 'Recommended skills' })).toHaveClass('border-b-2')
-    expect(screen.getByRole('tab', { name: 'Organization' })).toHaveClass('border-b-2')
+    expect(screen.queryByRole('tab', { name: 'Recommended skills' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('tab', { name: 'Organization' })).not.toBeInTheDocument()
     expect(screen.getByText('recommended skills:')).toBeVisible()
 
     await user.type(screen.getByPlaceholderText('library.toolbar.search_placeholder'), '周报')
-    await user.click(screen.getByRole('tab', { name: 'Organization' }))
-    expect(screen.getByText('org skills: 周报')).toBeVisible()
-    await user.click(screen.getByRole('tab', { name: 'Recommended skills' }))
+    expect(screen.getByText('recommended skills: 周报')).toBeVisible()
     expect(screen.getByText('skill dialogs:')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /My installed/ })).toHaveTextContent('2')
 

@@ -22,6 +22,7 @@ const {
   ipcRequestMock,
   knowledgeBasesState,
   mcpStatusState,
+  openRouteMock,
   openSettingsTabMock,
   promptCatalogState,
   promptProcessorMock,
@@ -66,6 +67,7 @@ const {
     ]
   },
   mcpStatusState: { current: {} },
+  openRouteMock: vi.fn(),
   openSettingsTabMock: vi.fn(),
   promptCatalogState: {
     current: {
@@ -319,7 +321,9 @@ vi.mock('@renderer/utils/aiGeneration', () => ({
 }))
 
 vi.mock('@renderer/services/mainWindowNavigation', () => ({
-  openSettingsTab: openSettingsTabMock
+  // MEA:mcp-jump 断言目标已从设置页改为 /app/skills-connectors，mock 需同时覆盖 openRoute
+  openSettingsTab: openSettingsTabMock,
+  openRoute: openRouteMock
 }))
 
 vi.mock('react-i18next', async (importOriginal) => {
@@ -1767,9 +1771,22 @@ describe('edit dialogs', () => {
     expect(screen.getByText('Skill One')).toBeInTheDocument()
   })
 
-  it('opens Skill settings in an app tab without closing the agent edit dialog', () => {
-    const onOpenChange = vi.fn()
-    render(<AgentEditDialog open resource={AGENT} onOpenChange={onOpenChange} />)
+  it('closes the agent edit dialog before opening Skill settings in an app tab on the next frame', async () => {
+    // MEA:skills-jump 弹窗内跳技能/连接器页需先关弹窗（flush 待存编辑），避免弹窗残留遮挡跳转目标。
+    function Host() {
+      const [open, setOpen] = useState(true)
+      const [target, setTarget] = useState<AgentDetail | null>(AGENT)
+
+      const handleOpenChange = (nextOpen: boolean) => {
+        setOpen(nextOpen)
+        if (!nextOpen) setTarget(null)
+      }
+
+      return <AgentEditDialog open={open} resource={target} onOpenChange={handleOpenChange} />
+    }
+
+    render(<Host />)
+    const frames = mockDeferredAnimationFrames()
 
     selectTab('技能')
 
@@ -1777,9 +1794,18 @@ describe('edit dialogs', () => {
 
     fireEvent.click(manageSkillsButton)
 
-    expect(openSettingsTabMock).toHaveBeenCalledWith('/settings/skills')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(openRouteMock).not.toHaveBeenCalled()
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+    frames.flushAllFrames()
+
+    // MEA:mcp-jump 目标已从隐藏的设置页改为工作台技能连接器页
+    expect(openRouteMock).toHaveBeenCalledWith('/app/skills-connectors?tab=skill')
     expect(ipcRequestMock).not.toHaveBeenCalledWith('tab.detach', expect.anything())
-    expect(onOpenChange).not.toHaveBeenCalled()
+    frames.restore()
   })
 
   it('reuses the shared skill catalog in the agent edit dialog', async () => {
@@ -1924,9 +1950,23 @@ describe('edit dialogs', () => {
     )
   })
 
-  it('uses the same MCP server list presentation in assistant and agent editing', async () => {
-    const onAssistantOpenChange = vi.fn()
-    render(<AssistantEditDialog open resource={ASSISTANT} onOpenChange={onAssistantOpenChange} />)
+  it('closes the edit dialogs before opening MCP settings in an app tab on the next frame', async () => {
+    // MEA:mcp-jump 弹窗内跳技能/连接器页需先关弹窗（flush 待存编辑），避免弹窗残留遮挡跳转目标。
+    const frames = mockDeferredAnimationFrames()
+
+    function AssistantHost() {
+      const [open, setOpen] = useState(true)
+      const [target, setTarget] = useState<Assistant | null>(ASSISTANT)
+
+      const handleOpenChange = (nextOpen: boolean) => {
+        setOpen(nextOpen)
+        if (!nextOpen) setTarget(null)
+      }
+
+      return <AssistantEditDialog open={open} resource={target} onOpenChange={handleOpenChange} />
+    }
+
+    render(<AssistantHost />)
 
     selectTab('MCP')
     fireEvent.click(within(screen.getByRole('radiogroup', { name: 'MCP Mode' })).getByRole('radio', { name: 'Manual' }))
@@ -1935,14 +1975,36 @@ describe('edit dialogs', () => {
     expect(screen.getByText('MCP One')).toBeInTheDocument()
     expect(screen.getByText('Connected')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'MCP services Settings' }))
-    expect(openSettingsTabMock).toHaveBeenCalledWith('/settings/mcp/servers')
-    expect(onAssistantOpenChange).not.toHaveBeenCalled()
+
+    // With pending edits the close flushes the auto-save queue first, so the dialog
+    // unmounts asynchronously.
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(openRouteMock).not.toHaveBeenCalled()
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+    frames.flushAllFrames()
+
+    // MEA:mcp-jump 目标已从隐藏的设置页改为工作台技能连接器页
+    expect(openRouteMock).toHaveBeenCalledWith('/app/skills-connectors?tab=connector')
 
     cleanup()
-    openSettingsTabMock.mockClear()
-    const onAgentOpenChange = vi.fn()
+    openRouteMock.mockClear()
 
-    render(<AgentEditDialog open resource={AGENT} onOpenChange={onAgentOpenChange} />)
+    function AgentHost() {
+      const [open, setOpen] = useState(true)
+      const [target, setTarget] = useState<AgentDetail | null>(AGENT)
+
+      const handleOpenChange = (nextOpen: boolean) => {
+        setOpen(nextOpen)
+        if (!nextOpen) setTarget(null)
+      }
+
+      return <AgentEditDialog open={open} resource={target} onOpenChange={handleOpenChange} />
+    }
+
+    render(<AgentHost />)
 
     selectTab('MCP')
 
@@ -1950,8 +2012,19 @@ describe('edit dialogs', () => {
     expect(screen.getByText('MCP One')).toBeInTheDocument()
     expect(screen.getByText('Connected')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'MCP services Settings' }))
-    expect(openSettingsTabMock).toHaveBeenCalledWith('/settings/mcp/servers')
-    expect(onAgentOpenChange).not.toHaveBeenCalled()
+
+    // With pending edits the close flushes the auto-save queue first, so the dialog
+    // unmounts asynchronously.
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(openRouteMock).not.toHaveBeenCalled()
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+    frames.flushAllFrames()
+
+    expect(openRouteMock).toHaveBeenCalledWith('/app/skills-connectors?tab=connector')
+    frames.restore()
   })
 
   it('closes the assistant edit dialog before running model settings navigation on the next frame', async () => {

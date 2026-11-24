@@ -48,4 +48,24 @@ describe('mcpSourcePolicy', () => {
       approval: 'prompt'
     })
   })
+
+  it('matches builtin-tools rules persisted under the legacy server id after the rename', () => {
+    // The in-process builtin server is now `meacowork-tools`, but an agent's persisted
+    // disabledTools / disabledAutoApproveTools may still carry the pre-rename wire ids.
+    const builtinServer = { ...server, name: 'meacowork-tools' }
+    const builtinTool = { name: 'web_search' }
+    // source-policy rules are minted by buildFunctionCallToolName → camelCase segments.
+    expect(matchesMcpSourceToolRule('mcp__meacoworkTools__webSearch', builtinServer, builtinTool)).toBe(true)
+    expect(matchesMcpSourceToolRule('mcp__cherryTools__webSearch', builtinServer, builtinTool)).toBe(true)
+    expect(matchesMcpSourceToolRule('mcp__cherryTools__*', builtinServer, builtinTool)).toBe(true)
+    // A different server's rule must never match just because the tool name is shared.
+    expect(matchesMcpSourceToolRule('mcp__docs__webSearch', builtinServer, builtinTool)).toBe(false)
+  })
+
+  it('applies legacy disabled rules to the renamed builtin server', () => {
+    const builtinServer = { ...server, name: 'meacowork-tools' }
+    const builtinTool = { name: 'kb_manage' }
+    const configured = { ...builtinServer, disabledTools: ['mcp__cherryTools__kbManage'] } as McpServer
+    expect(isMcpToolDisabledBySource(configured, builtinTool)).toBe(true)
+  })
 })

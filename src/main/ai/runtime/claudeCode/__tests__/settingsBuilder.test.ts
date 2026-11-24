@@ -2811,7 +2811,7 @@ describe('buildClaudeCodeSessionSettings', () => {
     mocks.listSkills.mockResolvedValue([{ id: 'skill-1', folderName: 'system-skill', isEnabled: true }])
     mocks.getBuiltinAgentPluginDirectory.mockReturnValue('/app/feature.agents.builtin/cherry-assistant/.claude')
     mocks.loadBuiltinAgentDefinition.mockReturnValue({
-      skills: ['cherry-assistant-guide', 'faq-collector']
+      skills: ['meacowork-assistant-guide', 'faq-collector']
     })
     const session = {
       id: 'session-1',
@@ -2832,7 +2832,9 @@ describe('buildClaudeCodeSessionSettings', () => {
       path: '/app/feature.agents.builtin/cherry-assistant/.claude',
       skipMcpDiscovery: true
     })
-    expect(settings.skills).toEqual(expect.arrayContaining(['system-skill', 'cherry-assistant-guide', 'faq-collector']))
+    expect(settings.skills).toEqual(
+      expect.arrayContaining(['system-skill', 'meacowork-assistant-guide', 'faq-collector'])
+    )
     expect(settings.mcpServers?.skills).toBeDefined()
     expect(settings.allowedTools).toContain('mcp__skills__search_skills')
   })
@@ -2861,7 +2863,7 @@ describe('buildClaudeCodeSessionSettings', () => {
     mocks.listSkills.mockResolvedValue([{ id: 'skill-1', folderName: 'issue-reporter', isEnabled: true }])
     mocks.listLocalSkillFolderNames.mockResolvedValue(['faq-collector'])
     mocks.loadBuiltinAgentDefinition.mockReturnValue({
-      skills: ['cherry-assistant-guide', 'faq-collector', 'cherry-studio-feedback', 'issue-reporter']
+      skills: ['meacowork-assistant-guide', 'faq-collector', 'meacowork-studio-feedback', 'issue-reporter']
     })
     mocks.getBuiltinAgentPluginDirectory.mockReturnValue('/app/feature.agents.builtin/cherry-assistant/.claude')
     const session = {
@@ -2874,9 +2876,9 @@ describe('buildClaudeCodeSessionSettings', () => {
     await rm(workspacePath, { recursive: true, force: true })
 
     expect(settings.skills).toEqual([
-      'cherry-assistant-builtin:cherry-assistant-guide',
+      'cherry-assistant-builtin:meacowork-assistant-guide',
       'cherry-assistant-builtin:faq-collector',
-      'cherry-assistant-builtin:cherry-studio-feedback',
+      'cherry-assistant-builtin:meacowork-studio-feedback',
       'cherry-assistant-builtin:issue-reporter'
     ])
     expect(settings.plugins).toEqual([

@@ -83,6 +83,11 @@ files:
   - "resources/**/*" # include all files in resources, and unpack them from asar for runtime access
   - "!resources/devtools/**" # dev-only extensions are loaded from source in development
   - "node_modules/@deepseek-ai/dsh-sandbox-windows-acl/assets/**"
+  - "!outputs"
+  - "!output"
+  - "!**/node_modules/better-sqlite3/build-electron-backup/**"
+  - "!migrations" # Packaged migrations are supplied by extraResources below.
+  - "!**/node_modules/@larksuiteoapi/node-sdk/es/**"
 asarUnpack:
   - resources/**
   - "!resources/devtools/**"

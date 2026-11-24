@@ -165,3 +165,82 @@ export function parseFunctionCallToolName(toolName: string | undefined): McpFunc
     toolPart: rest.slice(delimiterIndex + 2)
   }
 }
+
+/**
+ * ── Built-in tools MCP server rename (`cherry-tools` → `meacowork-tools`) ──────────
+ *
+ * 历史：内置工具 server 曾叫 `cherry-tools`，wire name 为 `mcp__cherry-tools__<tool>`；
+ * `buildFunctionCallToolName` 还会产出 camelCase 形态 `mcp__cherryTools__<tool>`，长名时
+ * 截断并追加 server 派生 hash。这些名字已持久化在 source-policy 的
+ * `disabledTools` / `disabledAutoApproveTools`、消息 part 的 tool name 以及
+ * `metadata.serverId` / `metadata.serverName` 中。
+ *
+ * 现在：新写入统一用 `meacowork-tools`；所有读路径（权限、引用、导出、会话恢复）
+ * 必须同时识别新旧 server 名与 snake/camel 两种工具段，否则存量数据在升级后会失效。
+ * 上面原有的命名/解析函数全部原样保留，继续服务第三方 MCP 与 legacy 策略。
+ */
+
+/** 新的 canonical server id —— 新写入的 wire name / metadata 一律用它。 */
+export const MEACOWORK_TOOLS_MCP_SERVER = 'meacowork-tools'
+/** 旧 server id —— 仅供识别存量数据，不再产出。 */
+export const CHERRY_TOOLS_MCP_SERVER = 'cherry-tools'
+
+/**
+ * 内置工具 server 的所有已知拼写：新旧 kebab id 与各自 camelCase wire 形态。
+ * 顺序无关；用于任何"这个 server 段是不是内置工具 server"的判定。
+ */
+const BUILTIN_TOOLS_SERVER_IDS: ReadonlySet<string> = new Set([
+  MEACOWORK_TOOLS_MCP_SERVER,
+  CHERRY_TOOLS_MCP_SERVER,
+  toCamelCase(MEACOWORK_TOOLS_MCP_SERVER), // meacoworkTools
+  toCamelCase(CHERRY_TOOLS_MCP_SERVER) // cherryTools
+])
+
+/**
+ * 判定一个 server id / serverName / wire 中的 serverPart 是否属于内置工具 server。
+ * 同时接受新旧 id 与 camelCase 形态（后者来自 `buildFunctionCallToolName`）。
+ * 非内置 server（agent-memory / skills / 第三方）返回 false，避免误放行。
+ */
+export function isBuiltinToolsMcpServer(serverName: unknown): boolean {
+  if (typeof serverName !== 'string' || !serverName) return false
+  const lower = serverName.toLowerCase()
+  for (const id of BUILTIN_TOOLS_SERVER_IDS) {
+    if (serverName === id || lower === id.toLowerCase()) return true
+  }
+  return false
+}
+
+/**
+ * 写入端：构造内置工具的新 wire name `mcp__meacowork-tools__<tool>`。
+ * 工具名保留协议原名（snake_case），与既有 `mcp__cherry-tools__<tool>` 形态一致。
+ */
+export function buildBuiltinToolsRuntimeName(toolName: string): string {
+  return `mcp__${MEACOWORK_TOOLS_MCP_SERVER}__${toolName}`
+}
+
+/**
+ * 读取端：判断一个 wire name 是否指向内置工具的某个工具。
+ * 新名与旧名（含 camelCase 工具段）都接受；工具段用 `toCamelCase` 双边归一，
+ * 以兼容 `mcp__cherryTools__webSearch` 这类历史拼法。
+ */
+export function isBuiltinToolsRuntimeName(name: string | undefined, toolName: string): boolean {
+  const parsed = parseFunctionCallToolName(name)
+  if (!parsed || !isBuiltinToolsMcpServer(parsed.serverPart)) return false
+  return toCamelCase(parsed.toolPart) === toCamelCase(toolName)
+}
+
+/**
+ * 读取端：把新旧内置工具 wire name 归一到唯一的 canonical 新名。
+ * 非内置 server（如 `mcp__docs__search`）原样返回；`undefined` 原样返回，
+ * 便于调用方直接透传可选的工具名而不额外分支。
+ *
+ * 注意：带 server-hash 截断的历史 id（`mcp__cherryTools__<tool>_<hash>`）无法反推
+ * 原工具名，其归一结果仍带原工具段；这类 id 的权限识别走
+ * `isBuiltinToolsMcpServer(parsed.serverPart)`，不要依赖本函数做 ID 相等比较。
+ */
+export function normalizeBuiltinToolsRuntimeName(name: string | undefined): string | undefined {
+  if (name === undefined) return undefined
+  const parsed = parseFunctionCallToolName(name)
+  if (!parsed || !isBuiltinToolsMcpServer(parsed.serverPart)) return name
+  return buildBuiltinToolsRuntimeName(parsed.toolPart)
+}

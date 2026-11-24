@@ -11,6 +11,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 import { CLAUDE_TOOL_DEFS } from '@shared/ai/claudecode/toolRegistry'
+import { normalizeBuiltinToolsRuntimeName } from '@shared/ai/tools/mcpToolName'
 
 /** Raw session context the enable-predicates compute from (not pre-digested per-condition flags). */
 export interface ClaudeToolContext {
@@ -51,7 +52,8 @@ export function resolveDisallowedTools(
   agent: { disabledTools?: readonly string[] | null },
   ctx?: ClaudeToolContext
 ): string[] {
-  const userDisabled = new Set(agent.disabledTools ?? [])
+  // const userDisabled = new Set(agent.disabledTools ?? [])
+  const userDisabled = new Set((agent.disabledTools ?? []).map((name) => normalizeBuiltinToolsRuntimeName(name)!))
   const registeredToolNames = new Set(CLAUDE_TOOL_DEFS.map((def) => def.name))
   const blocked = new Set<string>()
 

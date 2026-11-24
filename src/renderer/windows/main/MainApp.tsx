@@ -16,6 +16,7 @@ import { AppShell } from '@renderer/components/layout/AppShell'
 import { TabsProvider } from '@renderer/components/layout/TabsProvider'
 import { MandatoryGateProvider } from '@renderer/components/MandatoryGateProvider'
 import { PopupHost } from '@renderer/components/PopupHost'
+import { ResourceEditDialogEventHost } from '@renderer/components/resourceCatalog/dialogs/ResourceEditDialogEventHost'
 import { ThemeProvider } from '@renderer/components/ThemeProvider'
 import ToastHost from '@renderer/components/ToastHost'
 import { WindowFatalFallback } from '@renderer/components/WindowFatalFallback'
@@ -127,6 +128,10 @@ export function MainWindowContent(): React.ReactElement {
           )}
           <MainWindowRuntime />
           <ConversationNotificationRuntime />
+          {/* MEA:dual-dialog-fix 窗口级唯一编辑弹窗宿主：composer 变体各自内嵌的宿主会在
+              同窗口多 composer 并存（如新建任务页 chat/agent 双 forceMount）时重复响应
+              OPEN_RESOURCE_EDIT_DIALOG 广播，渲染出重叠的两个编辑弹窗。 */}
+          <ResourceEditDialogEventHost />
           <PopupHost />
           <ToastHost />
           {providerSetupStatus === 'pending' ? null : <PrivacyPolicyUpdateGate />}

@@ -36,7 +36,7 @@ import { usePromptProcessor } from '@renderer/hooks/usePromptProcessor'
 import { useRemoteKnowledgeBases } from '@renderer/hooks/useRemoteKnowledge'
 import { useSelectableKnowledgeBases } from '@renderer/hooks/useSelectableKnowledgeBases'
 import { useInstalledSkills, useReconcileSkillsOnOpen } from '@renderer/hooks/useSkills'
-import { openSettingsTab } from '@renderer/services/mainWindowNavigation'
+import { openRoute, openSettingsTab } from '@renderer/services/mainWindowNavigation'
 import { toast } from '@renderer/services/toast'
 import type { AgentDetail } from '@renderer/types/resourceCatalog'
 import { getPermissionModeCards } from '@renderer/utils/agent'
@@ -115,10 +115,20 @@ type ToolTab = 'tools.builtin' | 'tools.knowledge' | 'tools.mcp' | 'tools.skills
 
 const logger = loggerService.withContext('AgentEditDialog')
 const DEFAULT_TOOL_TAB: ToolTab = 'tools.builtin'
-const SKILLS_SETTINGS_PATH = '/settings/skills'
+// MEA:skills-jump 设置侧栏已隐藏 /settings/skills，「管理技能」改跳工作台「技能与连接器」页
+// const SKILLS_SETTINGS_PATH = '/settings/skills'
+const SKILLS_CATALOG_PATH = '/app/skills-connectors?tab=skill'
+// MEA:mcp-jump MCP 齿轮与 McpServerCatalogGrid 内置默认同目标：连接器 tab。
+const MCP_CATALOG_PATH = '/app/skills-connectors?tab=connector'
 
 function openSkillsSettingsTab() {
-  openSettingsTab(SKILLS_SETTINGS_PATH)
+  // MEA:skills-jump 原跳转已隐藏的设置页，改为技能连接器页（原实现保留注释）
+  // openSettingsTab(SKILLS_SETTINGS_PATH)
+  openRoute(SKILLS_CATALOG_PATH)
+}
+
+function openMcpCatalogTab() {
+  openRoute(MCP_CATALOG_PATH)
 }
 
 const CATEGORY_LABEL_KEYS: Record<ClaudeToolCategory, string> = {
@@ -589,6 +599,7 @@ function AgentEditDialogContent({
               skillsLoading={skillsLoading}
               skillsReady={baselineSkillAgentId === resource.id}
               caps={caps}
+              onCloseForNavigation={closeBeforeAction}
             />
           </TabsContent>
         ) : null}
@@ -1048,7 +1059,8 @@ function AgentToolsFields({
   skills,
   skillsLoading,
   skillsReady,
-  caps
+  caps,
+  onCloseForNavigation
 }: {
   agent: AgentDetail
   form: UseFormReturn<AgentEditFormValues>
@@ -1058,6 +1070,8 @@ function AgentToolsFields({
   skillsLoading: boolean
   skillsReady: boolean
   caps: AgentRuntimeCapabilities
+  // MEA:skills-jump 弹窗内跳技能/连接器页前先关弹窗（flush 待存编辑），避免弹窗残留遮挡跳转目标。
+  onCloseForNavigation: (navigate: () => void) => void
 }) {
   const { t } = useTranslation()
   const disabledTools = form.watch('disabledTools')
@@ -1163,6 +1177,7 @@ function AgentToolsFields({
           onToggle={(id, enabled) => (enabled ? enableMCP(id) : disableMCP(id))}
           emptyLabel={t('library.config.agent.section.tools.no_mcp_bound')}
           portalContainer={portalContainer}
+          onOpenSettings={() => onCloseForNavigation(openMcpCatalogTab)}
         />
       ) : null}
       {activeToolTab === 'tools.skills' ? (
@@ -1183,7 +1198,7 @@ function AgentToolsFields({
             <Button
               type="button"
               variant="ghost"
-              onClick={openSkillsSettingsTab}
+              onClick={() => onCloseForNavigation(openSkillsSettingsTab)}
               className="h-full min-h-11 w-full rounded-lg border border-border-subtle border-dashed px-2.5 py-1.5 font-normal text-muted-foreground text-sm shadow-none transition-colors hover:border-border-strong hover:bg-accent/50 hover:text-foreground">
               <ToolCase size={14} strokeWidth={1.7} />
               {t('agent.settings.skills.addMore')}

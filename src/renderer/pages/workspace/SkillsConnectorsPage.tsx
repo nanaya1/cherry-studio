@@ -18,6 +18,8 @@ import { useOrgSkills } from '@renderer/hooks/useOrgSkills'
 
 interface SkillsConnectorsPageProps {
   connectorView: ReactNode
+  // MEA: 外部跳转（智能/助手编辑弹窗）通过路由 search tab 参数定位二级 tab
+  initialTab?: 'skill' | 'connector'
 }
 
 // [enterprise] skillView 曾增加 'org'，现组织技能由 OrgSubTab 管理
@@ -30,9 +32,10 @@ type OrgSubTab = 'recommended' | 'org'
 const secondaryTabClassName =
   'h-10 flex-none rounded-none border-x-0 border-t-0 border-b-2 border-transparent bg-transparent px-1.5 font-medium text-muted-foreground shadow-none hover:bg-transparent hover:text-foreground data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none dark:data-[state=active]:border-foreground dark:data-[state=active]:bg-transparent'
 
-export default function SkillsConnectorsPage({ connectorView }: SkillsConnectorsPageProps) {
+export default function SkillsConnectorsPage({ connectorView, initialTab }: SkillsConnectorsPageProps) {
   const { t } = useTranslation()
-  const [activeTab, setActiveTab] = useState('skill')
+  // MEA: 显式 string 类型，保持 setActiveTab 与 Tabs onValueChange(value: string) 兼容
+  const [activeTab, setActiveTab] = useState<string>(initialTab ?? 'skill')
   const [skillView, setSkillView] = useState<SkillView>('recommended')
   const [recommendedSearch, setRecommendedSearch] = useState('')
   const { status: accountStatus } = useOrgAccountSession()
@@ -40,8 +43,9 @@ export default function SkillsConnectorsPage({ connectorView }: SkillsConnectors
   const orgMode = accountStatus?.authMode === 'management-oauth'
   // [enterprise] 提升组织技能目录 hook 到页面：enabled 仅当 management-oauth 账号模式
   const skillsCatalog = useOrgSkills(orgMode)
-  // [enterprise] 实际请求成功（available）才展示公共 tab；初始失败隐藏，刷新失败保留
-  const showPublicCatalog = orgMode && skillsCatalog.available
+  // 隐藏公共入口，保留目录能力与原显隐条件，便于恢复。
+  // const showPublicCatalog = orgMode && skillsCatalog.available
+  const showPublicCatalog = false
   // [enterprise] 「推荐」一级视图内的二级 tab 状态
   const [orgSubTab, setOrgSubTab] = useState<OrgSubTab>('recommended')
   const skillController = useResourceCatalogController('skill', { clientSideSkillSearch: true })
@@ -113,26 +117,29 @@ export default function SkillsConnectorsPage({ connectorView }: SkillsConnectors
             className="flex min-h-0 flex-1 flex-col">
             {/* [enterprise] 原筛选 chip 风格保留，现统一为连接器目录的下划线二级 tab */}
             {/* <TabsList className="mx-6 h-auto shrink-0 justify-start gap-1 bg-transparent p-0"> */}
-            <TabsList className="mx-6 h-11 shrink-0 justify-start gap-6 rounded-none bg-transparent p-0">
-              {/* <TabsTrigger
+            {/* 仅剩推荐内容时隐藏整行标签，恢复公共入口后自动恢复切换栏。 */}
+            {showPublicCatalog ? (
+              <TabsList className="mx-6 h-11 shrink-0 justify-start gap-6 rounded-none bg-transparent p-0">
+                {/* <TabsTrigger
                 value="recommended"
                 className="h-7 gap-1.5 rounded-full border-0 px-3 py-0 text-muted-foreground shadow-none hover:text-foreground data-[state=active]:bg-muted data-[state=active]:text-foreground data-[state=active]:shadow-none dark:data-[state=active]:text-foreground">
                 {t('workspace.skill_catalog.recommended')}
               </TabsTrigger> */}
-              <TabsTrigger value="recommended" className={secondaryTabClassName}>
-                {t('workspace.skill_catalog.recommended')}
-              </TabsTrigger>
-              {/* <TabsTrigger
+                <TabsTrigger value="recommended" className={secondaryTabClassName}>
+                  {t('workspace.skill_catalog.recommended')}
+                </TabsTrigger>
+                {/* <TabsTrigger
                 value="org"
                 className="h-7 gap-1.5 rounded-full border-0 px-3 py-0 text-muted-foreground shadow-none hover:text-foreground data-[state=active]:bg-muted data-[state=active]:text-foreground data-[state=active]:shadow-none dark:data-[state=active]:text-foreground">
                 {t('workspace.skill_catalog.org')}
               </TabsTrigger> */}
-              {showPublicCatalog ? (
-                <TabsTrigger value="org" className={secondaryTabClassName}>
-                  {t('workspace.skill_catalog.org')}
-                </TabsTrigger>
-              ) : null}
-            </TabsList>
+                {showPublicCatalog ? (
+                  <TabsTrigger value="org" className={secondaryTabClassName}>
+                    {t('workspace.skill_catalog.org')}
+                  </TabsTrigger>
+                ) : null}
+              </TabsList>
+            ) : null}
             <TabsContent value="recommended" className="flex min-h-0 flex-1 flex-col">
               <RecommendedSkillCatalogView
                 search={recommendedSearch}

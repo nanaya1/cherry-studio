@@ -58,7 +58,7 @@ describe('DshRuntimeDriver.listAvailableTools', () => {
     ])
   })
 
-  it('auto-approves safe MEA Cowork tools but keeps sensitive MEA Cowork tools prompt-gated', async () => {
+  it('auto-approves safe Cherry tools but keeps sensitive Cherry tools prompt-gated', async () => {
     mocks.findByIdOrName.mockReturnValue({ id: 'cherry-id', name: 'meacowork-tools' })
     mocks.listTools.mockReturnValue([
       { name: 'web_search', description: 'Search the web' } as McpTool,

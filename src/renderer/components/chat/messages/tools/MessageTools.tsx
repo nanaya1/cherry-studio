@@ -17,7 +17,9 @@ interface Props {
  * knowledge, memory) — route them through `chooseTool` instead of the generic MCP renderer.
  * Other MCP servers keep the generic card.
  */
-const DEDICATED_AGENT_SERVERS = new Set(['agent-memory'])
+// Include both the canonical `meacowork-tools` and its legacy `cherry-tools` id so pre-rename
+// messages still route through the dedicated tool cards.
+const DEDICATED_AGENT_SERVERS = new Set(['meacowork-tools', 'cherry-tools', 'agent-memory'])
 
 function rendersThroughChooseTool(toolResponse: McpToolResponse | NormalToolResponse): boolean {
   const tool = toolResponse.tool

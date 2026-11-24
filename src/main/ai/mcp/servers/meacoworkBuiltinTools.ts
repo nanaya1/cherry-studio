@@ -64,8 +64,7 @@ import {
   webFetchInputSchema,
   webSearchInputSchema
 } from '@shared/ai/builtinTools'
-// import type { AgentSessionFeatureKind } from '@shared/data/api/schemas/agentSessions'
-import { MEACOWORK_TOOLS_SERVER_NAME } from '@shared/ai/meacoworkTools'
+import { MEACOWORK_TOOLS_MCP_SERVER } from '@shared/ai/tools/mcpToolName'
 import type { AgentSessionEntity } from '@shared/data/api/schemas/agentSessions'
 
 import { type MeacoworkAgentContext, MeacoworkAutonomyTools } from './meacoworkAutonomyTools'
@@ -242,12 +241,12 @@ export class MeacoworkBuiltinToolsServer {
     const knowledge = new MeacoworkKnowledgeTools(agentContext)
     const cli = new MeacoworkCliTools()
     const documents = new MeacoworkDocumentTools(agentContext)
-    // The industrial-video tools are surfaced only to industrial-video sessions; a `general` (or
-    // legacy/unknown) session never sees or routes them, so they cannot affect the general tool set.
     const industrialVideo =
       agentContext.featureKind === 'industrial-video' ? new MeacoworkIndustrialVideoTools(agentContext) : null
+    // Formerly `{ name: 'cherry-tools', ... }`; the in-process server id is now the canonical
+    // `meacowork-tools`. Sibling providers aggregate here unchanged.
     this.mcpServer = new McpServer(
-      { name: MEACOWORK_TOOLS_SERVER_NAME, version: '1.0.0' },
+      { name: MEACOWORK_TOOLS_MCP_SERVER, version: '1.0.0' },
       { capabilities: { tools: {} } }
     )
     this.mcpServer.server.setRequestHandler(ListToolsRequestSchema, async () => ({

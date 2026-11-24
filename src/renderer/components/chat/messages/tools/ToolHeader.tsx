@@ -35,7 +35,10 @@ import { type ToolStatus, ToolStatusIndicator, useIsStreaming } from './shared/G
 import { getMcpToolRuntimeName, useToolDisplayName } from './shared/ToolDisplayNames'
 
 type Translate = (key: string, options?: Record<string, string>) => string
+// Canonical wire name; the legacy `cherry-tools` spelling is kept as a case label below so
+// messages persisted before the server rename still render their session-create activity.
 const SESSION_CREATE_RUNTIME_TOOL_NAME = toMeacoworkToolRuntimeName(SESSION_CREATE_TOOL_NAME)
+const LEGACY_SESSION_CREATE_RUNTIME_TOOL_NAME = `mcp__cherry-tools__${SESSION_CREATE_TOOL_NAME}`
 export interface ToolActivity {
   label: string
   description?: string
@@ -402,6 +405,7 @@ export function getReadableToolActivity(
       }
     case SESSION_CREATE_TOOL_NAME:
     case SESSION_CREATE_RUNTIME_TOOL_NAME:
+    case LEGACY_SESSION_CREATE_RUNTIME_TOOL_NAME:
       return {
         label: t(active ? 'message.tools.sessionCreate.creating' : 'message.tools.sessionCreate.created'),
         description: getStringArg(args, 'title') ?? t('message.tools.sessionCreate.untitled')

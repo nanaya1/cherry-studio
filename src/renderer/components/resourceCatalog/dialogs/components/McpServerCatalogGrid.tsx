@@ -6,14 +6,17 @@ import { useTranslation } from 'react-i18next'
 import { Button, Tooltip } from '@cherrystudio/ui'
 import { useQuery } from '@renderer/data/hooks/useDataApi'
 import { useMcpRuntimeStatusMap } from '@renderer/hooks/useMcpRuntimeStatus'
-import { openSettingsTab } from '@renderer/services/mainWindowNavigation'
+// MEA:mcp-jump 原导入保留注释，恢复时取消注释：import { openSettingsTab } from '@renderer/services/mainWindowNavigation'
+import { openRoute } from '@renderer/services/mainWindowNavigation'
 import type { McpRuntimeStatus } from '@shared/data/cache/cacheValueTypes'
 import type { McpServer } from '@shared/data/types/mcpServer'
 import { isBrowserMcpServer } from '@shared/utils/mcp'
 
 import { type CatalogItem, CatalogToggleGrid } from './CatalogPicker'
 
-const MCP_SERVERS_SETTINGS_PATH = '/settings/mcp/servers'
+// MEA:mcp-jump 设置侧栏已隐藏 /settings/mcp，齿轮改跳工作台「技能与连接器」页的连接器 tab
+// const MCP_SERVERS_SETTINGS_PATH = '/settings/mcp/servers'
+const MCP_CATALOG_PATH = '/app/skills-connectors?tab=connector'
 
 function getStatusBadge(t: TFunction, state: McpRuntimeStatus['state']) {
   switch (state) {
@@ -86,8 +89,12 @@ export function McpServerCatalogGrid({
   )
 
   const handleOpenMcpSettings = () => {
-    openSettingsTab(MCP_SERVERS_SETTINGS_PATH)
-    onOpenSettings?.()
+    // MEA:mcp-jump 编辑弹窗场景由宿主接管（先关弹窗再跳转）；无宿主时直接跳技能连接器页。
+    if (onOpenSettings) {
+      onOpenSettings()
+      return
+    }
+    openRoute(MCP_CATALOG_PATH)
   }
 
   return (

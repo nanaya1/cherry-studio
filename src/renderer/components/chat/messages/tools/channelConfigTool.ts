@@ -1,30 +1,26 @@
 import { CallToolResultSchema } from '@modelcontextprotocol/sdk/types.js'
 
 import type { McpToolResponse, NormalToolResponse } from '@renderer/types/mcpTool'
-import {
-  isMeacoworkToolsServerName,
-  normalizeMeacoworkToolRuntimeName,
-  toMeacoworkToolRuntimeName
-} from '@shared/ai/meacoworkTools'
+import { isBuiltinToolsMcpServer, isBuiltinToolsRuntimeName } from '@shared/ai/tools/mcpToolName'
 import { isDeferredToolOutput } from '@shared/ai/transport'
 import type { CherryMessagePart } from '@shared/data/types/message'
 
 import { buildToolResponseFromPart } from './toolResponse'
 
-const CONFIG_RUNTIME_TOOL_NAME = toMeacoworkToolRuntimeName('config')
+const CONFIG_TOOL_NAMES = new Set([
+  'config',
+  'mcp__meacowork-tools__config',
+  // Legacy wire name from before the builtin server rename.
+  'mcp__cherry-tools__config'
+])
 
 type ChannelConfigToolResponse = McpToolResponse | NormalToolResponse
 
 function isChannelConfigTool(toolResponse: ChannelConfigToolResponse): boolean {
   const { tool } = toolResponse
-  const isMeacoworkTools =
-    ('serverId' in tool && isMeacoworkToolsServerName(tool.serverId)) ||
-    normalizeMeacoworkToolRuntimeName(tool.name) === CONFIG_RUNTIME_TOOL_NAME
-  return (
-    tool.type === 'mcp' &&
-    isMeacoworkTools &&
-    (tool.name === 'config' || normalizeMeacoworkToolRuntimeName(tool.name) === CONFIG_RUNTIME_TOOL_NAME)
-  )
+  const isCherryTools =
+    ('serverId' in tool && isBuiltinToolsMcpServer(tool.serverId)) || isBuiltinToolsRuntimeName(tool.name, 'config')
+  return tool.type === 'mcp' && isCherryTools && CONFIG_TOOL_NAMES.has(tool.name)
 }
 
 function isChannelAuthQrRequest(toolResponse: ChannelConfigToolResponse): boolean {

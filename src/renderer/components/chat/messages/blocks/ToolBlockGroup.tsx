@@ -24,7 +24,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@c
 import { ErrorBoundary } from '@renderer/components/ErrorBoundary'
 import { SESSION_CREATE_TOOL_NAME } from '@shared/ai/agentSessionDelivery'
 import { PROVIDER_WEB_SEARCH_TOOL_NAME } from '@shared/ai/builtinTools'
-import { normalizeMeacoworkToolRuntimeName, toMeacoworkToolRuntimeName } from '@shared/ai/meacoworkTools'
+import { normalizeMeacoworkToolRuntimeName } from '@shared/ai/meacoworkTools'
 import type { CherryMessagePart } from '@shared/data/types/message'
 
 import { useMessageDisclosureState } from '../hooks/useMessageDisclosureState'
@@ -77,7 +77,9 @@ function getToolHeaderCandidateKey(candidate: ToolHeaderCandidate): string {
 
 const TOOL_GROUP_ICON_BY_NAME: Record<string, LucideIcon> = {
   [SESSION_CREATE_TOOL_NAME]: GitBranchPlus,
-  [toMeacoworkToolRuntimeName(SESSION_CREATE_TOOL_NAME)]: GitBranchPlus,
+  [`mcp__meacowork-tools__${SESSION_CREATE_TOOL_NAME}`]: GitBranchPlus,
+  // Legacy wire name kept so pre-rename messages keep their group icon.
+  [`mcp__cherry-tools__${SESSION_CREATE_TOOL_NAME}`]: GitBranchPlus,
   [AgentToolsType.Agent]: Sparkles,
   [AgentToolsType.Bash]: SquareTerminal,
   [AgentToolsType.BashOutput]: SquareTerminal,

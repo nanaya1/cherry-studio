@@ -1,5 +1,5 @@
 ---
-name: cherry-studio-feedback
+name: meacowork-studio-feedback
 description: Use when MEA Cowork 用户希望报告、提交或整理 BUG、UI/UX 问题或功能建议，但未明确要求创建 GitHub Issue。
 ---
 

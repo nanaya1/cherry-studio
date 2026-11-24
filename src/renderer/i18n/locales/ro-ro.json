@@ -4732,7 +4732,7 @@
   "settings.general.backup.title": "Backup și recuperare date",
   "settings.general.commit_attribution.description": "Permite agenților să adauge atribuirea Claude Code la commit-urile git și pull request-urile pe care le creează. Dezactivează pentru a o ascunde.",
   "settings.general.commit_attribution.title": "Atribuirea commit-urilor",
-  "settings.general.common.menu.presentation_mode.cherry": "Cireașă",
+  "settings.general.common.menu.presentation_mode.cherry": "MEA Cowork",
   "settings.general.common.menu.presentation_mode.native": "Nativ",
   "settings.general.common.menu.presentation_mode.restart.content": "Schimbarea stilului meniului necesită repornirea aplicației. Vrei să o repornești acum?",
   "settings.general.common.menu.presentation_mode.restart.title": "Este necesară repornirea",

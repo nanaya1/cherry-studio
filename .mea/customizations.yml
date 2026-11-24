@@ -8,6 +8,19 @@ policy:
   require_tests: true
   preserve_original_code_by_comment: true
 customizations:
+  - id: xuelang-oauth-model-sync
+    title: 雪浪授权后自动补齐账号可用模型
+    owner: renderer
+    behavior: 雪浪授权或重新领取凭据成功后，用已落库密钥拉取账号可用模型，按最新本地模型身份仅新增缺失项；不覆盖自定义设置、不重启用已禁用模型、不删除旧模型。同步失败单独提示且不影响登录；取消或过期后不开始下一次模型写入。CherryIN 和其他同步入口保持原行为。
+    markers:
+      - MEA:xuelang-oauth-model-sync
+    touchpoints:
+      - src/renderer/pages/settings/ProviderSettings/ProviderSpecific/CherryInOauth.tsx
+      - src/renderer/pages/settings/ProviderSettings/hooks/useProviderModelSync.ts
+    tests:
+      - src/renderer/pages/settings/ProviderSettings/__tests__/CherryInOauth.test.tsx
+      - src/renderer/pages/settings/ProviderSettings/hooks/__tests__/useProviderModelSync.test.tsx
+
   - id: remote-knowledge-schema-repair
     title: 远程知识库历史数据库结构修复
     owner: main

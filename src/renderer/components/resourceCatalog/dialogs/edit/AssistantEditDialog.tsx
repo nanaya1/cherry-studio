@@ -35,6 +35,8 @@ import { useAssistantMutationsById } from '@renderer/hooks/resourceCatalog'
 import { useCloseBeforeAction } from '@renderer/hooks/useCloseBeforeAction'
 import { useGroupMutations, useGroups } from '@renderer/hooks/useGroups'
 import { usePromptProcessor } from '@renderer/hooks/usePromptProcessor'
+// MEA:mcp-jump 助手弹窗 MCP 齿轮与 AgentEditDialog 同目标：工作台技能连接器页连接器 tab。
+import { openRoute } from '@renderer/services/mainWindowNavigation'
 import { toast } from '@renderer/services/toast'
 import { MCP_MODE_OPTIONS, RESOURCE_PROMPT_POLISH_SYSTEM_PROMPT } from '@renderer/utils/resourceCatalog'
 import {
@@ -115,6 +117,9 @@ type AssistantEditFormValues = {
 type CustomParameter = AssistantFormState['customParameters'][number]
 type CustomParameterType = CustomParameter['type']
 type AssistantToolTab = 'tools.builtin' | 'tools.mcp' | 'tools.knowledge'
+
+// MEA:mcp-jump 与 McpServerCatalogGrid / AgentEditDialog 保持同一跳转目标。
+const MCP_CATALOG_PATH = '/app/skills-connectors?tab=connector'
 
 const logger = loggerService.withContext('AssistantEditDialog')
 const UI_DEFAULT_MAX_TOKENS = 4096
@@ -435,7 +440,12 @@ function AssistantEditDialogContent({
                 )}
               />
             ) : activeTab === 'tools.mcp' ? (
-              <AssistantToolsFields form={form} portalContainer={dialogContentElement} />
+              <AssistantToolsFields
+                form={form}
+                portalContainer={dialogContentElement}
+                // MEA:mcp-jump 弹窗内跳技能/连接器页前先关弹窗（flush 待存编辑），避免弹窗残留遮挡跳转目标。
+                onCloseForNavigation={closeBeforeAction}
+              />
             ) : (
               <div className="grid gap-4">
                 <KnowledgeBaseField form={form} portalContainer={dialogContentElement} />
@@ -644,10 +654,13 @@ function AssistantPromptField({
 
 function AssistantToolsFields({
   form,
-  portalContainer
+  portalContainer,
+  onCloseForNavigation
 }: {
   form: UseFormReturn<AssistantEditFormValues>
   portalContainer: HTMLElement | null
+  // MEA:mcp-jump 弹窗内跳技能/连接器页前先关弹窗（flush 待存编辑），避免弹窗残留遮挡跳转目标。
+  onCloseForNavigation: (navigate: () => void) => void
 }) {
   const { t } = useTranslation()
   const mcpMode = form.watch('mcpMode')
@@ -661,6 +674,8 @@ function AssistantToolsFields({
       enabled ? Array.from(new Set([...mcpServerIds, id])) : mcpServerIds.filter((serverId) => serverId !== id),
       { shouldDirty: true }
     )
+  // MEA:mcp-jump 与 McpServerCatalogGrid 内置齿轮同一目标：工作台技能连接器页的连接器 tab。
+  const handleOpenMcpSettings = () => openRoute(MCP_CATALOG_PATH)
 
   return (
     <div className="grid gap-4">
@@ -702,6 +717,7 @@ function AssistantToolsFields({
                 onToggle={toggleMcpServer}
                 emptyLabel={t('library.config.tools.empty_title')}
                 portalContainer={portalContainer}
+                onOpenSettings={() => onCloseForNavigation(handleOpenMcpSettings)}
               />
               <FormMessage />
             </FormItem>

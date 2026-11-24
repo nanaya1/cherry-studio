@@ -34,7 +34,7 @@ import {
   resolveSupportedServiceTier
 } from '@renderer/components/ModelSpeedControl'
 import { type QuickPanelListItem, useOptionalQuickPanel } from '@renderer/components/QuickPanel'
-import { ResourceEditDialogEventHost } from '@renderer/components/resourceCatalog/dialogs/ResourceEditDialogEventHost'
+// MEA:dual-dialog-fix 内嵌宿主已停用，改由窗口级 ResourceEditDialogEventHost 承载
 import { useCache } from '@renderer/data/hooks/useCache'
 import { usePreference } from '@renderer/data/hooks/usePreference'
 import { useChatWrite } from '@renderer/hooks/chat/ChatWriteContext'
@@ -1881,7 +1881,8 @@ const ChatComposerInner = ({
       {displayAssistant && runtimeModel && (
         <ComposerToolRuntimeHost scope={scope} assistant={displayAssistant} model={runtimeModel} />
       )}
-      <ResourceEditDialogEventHost />
+      {/* MEA:dual-dialog-fix 内嵌编辑弹窗宿主已停用：改由窗口级唯一宿主承载，避免同窗口
+          多个 composer 并存时重复响应打开事件、渲染出重叠的两个编辑弹窗。 */}
       <ComposerPinnedToolsProvider value={pinnedToolIds}>
         <ComposerSurface
           showAiDisclaimer

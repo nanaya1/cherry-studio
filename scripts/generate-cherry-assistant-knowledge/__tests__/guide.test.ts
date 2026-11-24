@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest'
 const ROOT_DIR = path.resolve(__dirname, '..', '..', '..')
 const TEMPLATE_PATH = path.join(
   ROOT_DIR,
-  'resources/builtin-agents/cherry-assistant/.claude/skills/cherry-assistant-guide/skill-zh-cn-template.md'
+  'resources/builtin-agents/cherry-assistant/.claude/skills/meacowork-assistant-guide/skill-zh-cn-template.md'
 )
 const AGENT_TEMPLATE_PATH = path.join(ROOT_DIR, 'resources/builtin-agents/cherry-assistant/agent-template.json')
 const SUPPORT_AGENT_TEMPLATE_PATH = path.join(ROOT_DIR, 'resources/builtin-agents/cherry-support/agent-template.json')
@@ -19,7 +19,7 @@ const MARKETPLACE_PATH = path.join(
 )
 const FEEDBACK_PATH = path.join(
   ROOT_DIR,
-  'resources/builtin-agents/cherry-assistant/.claude/skills/cherry-studio-feedback/SKILL.md'
+  'resources/builtin-agents/cherry-assistant/.claude/skills/meacowork-studio-feedback/SKILL.md'
 )
 const ISSUE_REPORTER_PATH = path.join(
   ROOT_DIR,
@@ -67,7 +67,7 @@ describe('Cherry Assistant guide', () => {
     expect(agent.instructions['en-US']).toContain('complete any request using the available tools')
     expect(agent.instructions['en-US']).toContain('taking particular ownership of helping them succeed with MEA Cowork')
     expect(agent.instructions['en-US']).toContain(
-      'Use `cherry-studio-feedback` unless the user explicitly asks for a GitHub Issue'
+      'Use `meacowork-studio-feedback` unless the user explicitly asks for a GitHub Issue'
     )
     expect(agent.instructions['zh-CN']).toContain('内置通用 Agent 和上手引导')
     expect(agent.instructions['zh-CN']).toContain('帮助用户完成任何请求')
@@ -91,7 +91,7 @@ describe('Cherry Assistant guide', () => {
     expect(soul).toContain("Mirror the user's terminology and level of formality")
     expect(soul).not.toContain("Match the user's language")
     expect(soul).not.toContain('Cherry Studio')
-    expect(soul).not.toContain('cherry-studio-feedback')
+    expect(soul).not.toContain('meacowork-studio-feedback')
     expect(soul).not.toContain('Working principles')
     expect(soul).not.toContain('Hard safety constraints')
   })
@@ -161,8 +161,8 @@ describe('Cherry Assistant guide', () => {
     const feedback = fs.readFileSync(FEEDBACK_PATH, 'utf-8')
     const issueReporter = fs.readFileSync(ISSUE_REPORTER_PATH, 'utf-8')
 
-    expect(agent.skills).toContain('cherry-studio-feedback')
-    expect(agent.instructions['en-US']).toContain('Use `cherry-studio-feedback` unless the user explicitly asks')
+    expect(agent.skills).toContain('meacowork-studio-feedback')
+    expect(agent.instructions['en-US']).toContain('Use `meacowork-studio-feedback` unless the user explicitly asks')
     expect(agent.instructions['zh-CN']).toContain('明确要求创建 GitHub Issue')
     expect(feedback).toContain('mcp__assistant__prepare_diagnostic_report')
     expect(feedback).toContain('不会打开弹窗、勾选知晓确认或上传')
@@ -231,7 +231,7 @@ describe('Cherry Assistant guide', () => {
           bootstrap_completed: true,
           builtin_role: 'support'
         }),
-        skills: ['cherry-assistant-guide', 'faq-collector', 'cherry-studio-feedback', 'issue-reporter']
+        skills: ['meacowork-assistant-guide', 'faq-collector', 'meacowork-studio-feedback', 'issue-reporter']
       })
     )
     expect(generated.instructions['en-US']).toContain('Your scope has four parts')
