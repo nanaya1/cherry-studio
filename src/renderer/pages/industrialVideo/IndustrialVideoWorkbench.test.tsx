@@ -444,7 +444,7 @@ describe('IndustrialVideoWorkbench', () => {
         </>
       )
     }
-    render(
+    const view = render(
       <>
         <IndustrialVideoWorkbench
           sessionId="entry-session"
@@ -462,6 +462,14 @@ describe('IndustrialVideoWorkbench', () => {
       sessionId: 'entry-session',
       run: 'run-1'
     })
+
+    view.rerender(
+      <>
+        <IndustrialVideoWorkbench sessionId="entry-session" production={makeProduction()} executing={false} />
+        <RightPane />
+      </>
+    )
+    expect(screen.getByText('右上角工作台：run-1')).toBeInTheDocument()
   })
 
   it('renders a clickable workbench link and no webview by default', () => {

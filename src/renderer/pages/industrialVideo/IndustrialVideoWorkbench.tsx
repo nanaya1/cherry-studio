@@ -10,7 +10,7 @@ import { START_VIDEO_MESSAGE } from './IndustrialVideoGenerateButton'
 import IndustrialVideoOnlinePreview from './IndustrialVideoOnlinePreview'
 import {
   openIndustrialVideoWorkbench,
-  registerIndustrialVideoWorkbenchAvailability
+  publishIndustrialVideoWorkbenchAvailability
 } from './industrialVideoProgressStore'
 // 稿件展示统一放在工作台，保留原组件以便恢复。
 // import IndustrialVideoReviewFiles from './IndustrialVideoReviewFiles'
@@ -53,7 +53,7 @@ export default function IndustrialVideoWorkbench({
   const currentTask = useRef(taskKey)
   useEffect(() => {
     if (!reviewOutput || !run) return
-    return registerIndustrialVideoWorkbenchAvailability(sessionId, run)
+    publishIndustrialVideoWorkbenchAvailability(sessionId, run)
   }, [reviewOutput, run, sessionId])
   currentTask.current = taskKey
   const [opened, setOpened] = useState<{ taskKey: string; url: string } | null>(null)
