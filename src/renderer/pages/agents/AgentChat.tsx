@@ -857,7 +857,6 @@ function AgentChatLayout({
   return (
     <AgentRightPane.Scope
       model={model}
-      industrialVideo={sessionSnapshot?.featureKind === 'industrial-video'}
       conversationState={conversationState}
       streamingLayers={streamingLayers}
       isMessageHistoryLoading={isMessageHistoryLoading}
