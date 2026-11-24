@@ -199,6 +199,23 @@ describe('NotificationService', () => {
     expect(mocks.electronNotifications).toHaveLength(0)
   })
 
+  it('sends industrial-video completion only to the focused app window', () => {
+    mocks.getWindowInfosByType.mockImplementation((type: WindowType) =>
+      type === WindowType.Main ? [mainWindowInfo({ isFocused: true })] : []
+    )
+    service.deliverIndustrialVideoCompletion('session-video', '设备操作演示')
+    expect(mocks.send).toHaveBeenCalledWith(
+      'main-1',
+      'notification.conversation',
+      expect.objectContaining({
+        id: expect.stringMatching(/^industrial-video-completion:session-video:/),
+        message: '设备操作演示',
+        meta: { conversationType: 'agent', conversationId: 'session-video' }
+      })
+    )
+    expect(mocks.electronNotifications).toHaveLength(0)
+  })
+
   it('shows a main-owned Agent approval notification and delegates its click to conversation navigation', () => {
     mocks.getWindowInfosByType.mockImplementation((type: WindowType) =>
       type === WindowType.Main ? [mainWindowInfo()] : []

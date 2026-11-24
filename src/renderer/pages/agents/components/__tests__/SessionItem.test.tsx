@@ -1,13 +1,15 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type * as CherryStudioUi from '@cherrystudio/ui'
 import { ResourceList } from '@renderer/components/chat/resourceList/base'
 import type { AgentSessionEntity } from '@shared/data/api/schemas/agentSessions'
 
 import SessionItem, { type SessionItemMenuActions } from '../SessionItem'
+
+const ipcRequest = vi.hoisted(() => vi.fn())
 
 vi.mock('@cherrystudio/ui', async (importOriginal) => importOriginal<typeof CherryStudioUi>())
 
@@ -22,6 +24,11 @@ vi.mock('@renderer/components/chat/panes/Shell', () => ({
 
 vi.mock('@renderer/data/hooks/useCache', () => ({
   useCache: () => [[]]
+}))
+
+vi.mock('@renderer/ipc', () => ({
+  ipcApi: { request: ipcRequest },
+  useIpcOn: vi.fn()
 }))
 
 vi.mock('@renderer/hooks/useTopicStreamStatus', () => ({
@@ -39,6 +46,7 @@ vi.mock('react-i18next', () => ({
     t: (key: string) =>
       ({
         'industrial_video.title': 'Industrial video',
+        'industrial_video.preview.expand': 'Show finished-video preview',
         'common.cancel': 'Cancel',
         'common.archive': 'Archive',
         'recycle_bin.move.confirm_action': 'Move to Recycle Bin',
@@ -101,6 +109,10 @@ sessionMenuActions.exportMenuOptions = {
 }
 
 describe('SessionItem', () => {
+  beforeEach(() => {
+    ipcRequest.mockReset().mockResolvedValue(null)
+  })
+
   it('identifies video tasks even when the sidebar hides ordinary leading icons', () => {
     const video = { ...session, featureKind: 'industrial-video' as const }
     const Provider = ResourceList.Provider<AgentSessionEntity>
@@ -117,6 +129,27 @@ describe('SessionItem', () => {
       </Provider>
     )
     expect(screen.getByRole('img', { name: 'Industrial video' })).toBeInTheDocument()
+  })
+
+  it('opens an industrial-video task from its unread finished-video badge', async () => {
+    const user = userEvent.setup()
+    const onPress = vi.fn()
+    const video = { ...session, featureKind: 'industrial-video' as const }
+    ipcRequest.mockResolvedValue({ delivery: { unread: true } })
+    const Provider = ResourceList.Provider<AgentSessionEntity>
+    render(
+      <Provider items={[video]}>
+        <SessionItem
+          session={video}
+          sessionMenuActions={sessionMenuActions}
+          onDelete={vi.fn()}
+          onOpenRenameDialog={vi.fn()}
+          onPress={onPress}
+        />
+      </Provider>
+    )
+    await user.click(await screen.findByRole('button', { name: 'Show finished-video preview: Session A' }))
+    expect(onPress).toHaveBeenCalledWith('session-a')
   })
 
   it('archives through the hover action without requesting permanent deletion', async () => {

@@ -290,9 +290,13 @@ export default function IndustrialVideoAgentProduction({
     let alive = true
     let pending = downloads.current.get(artifactKey)
     if (!pending) {
-      pending = ipcApi
-        .request('industrial_video.download_artifact', { sessionId, run, path: finalPath })
-        .then((result) => normalizeFilePreviewPath(result.filePath))
+      const delivery = record?.delivery
+      pending =
+        delivery?.run === run && delivery.jobId === jobId && delivery.serverPath === finalPath && delivery.localPath
+          ? Promise.resolve(normalizeFilePreviewPath(delivery.localPath))
+          : ipcApi
+              .request('industrial_video.download_artifact', { sessionId, run, path: finalPath })
+              .then((result) => normalizeFilePreviewPath(result.filePath))
       downloads.current.set(artifactKey, pending)
     }
     setDownload({ key: artifactKey })
@@ -302,10 +306,13 @@ export default function IndustrialVideoAgentProduction({
         setDownload({ key: artifactKey, path })
         if (previewed.current.has(artifactKey)) return
         previewed.current.add(artifactKey)
-        const restoreOnly = !observedGenerating.current.has(identity)
+        const restoreOnly = !observedGenerating.current.has(identity) && record?.delivery?.unread !== true
         void Promise.resolve(openIndustrialVideoFinal(sessionId, run, path, restoreOnly)).catch(() => {
           if (alive) setDownload({ key: artifactKey, path, error: '文件已下载，但自动预览失败，请点击文件重试预览' })
         })
+        if (!restoreOnly && jobId) {
+          void ipcApi.request('industrial_video.delivery_mark_viewed', { sessionId, run, jobId })
+        }
       },
       (cause) => {
         if (!alive) return
@@ -318,7 +325,7 @@ export default function IndustrialVideoAgentProduction({
     return () => {
       alive = false
     }
-  }, [finished, finalPath, run, sessionId, artifactKey, downloadRetry])
+  }, [finished, finalPath, run, sessionId, artifactKey, downloadRetry, identity, jobId, record?.delivery])
 
   // MEA:industrial-video 仅成功完成自动关闭 loading 区（转由文件预览区交付）；
   // 失败/取消/阻塞等终态保持显示死因与进度，用户可用顶栏开关或"关闭"按钮收起后再展开。

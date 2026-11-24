@@ -153,6 +153,30 @@ it('历史完成任务只恢复成片入口，不自动打开', async () => {
   expect(openArtifactFile).not.toHaveBeenCalled()
 })
 
+it('未查看的后台成片直接使用已校验本地文件并自动打开', async () => {
+  const value = production('done', { final: 'output/final.mp4' })
+  value.record!.delivery = {
+    run: 'r',
+    jobId: 'j',
+    serverPath: 'output/final.mp4',
+    localPath: '/workspace/background-final.mp4',
+    unread: true
+  }
+  vi.mocked(useIndustrialVideoProduction).mockReturnValue(value)
+  render(
+    <IndustrialVideoAgentProduction sessionId="s">
+      <StartMessage />
+    </IndustrialVideoAgentProduction>
+  )
+  await waitFor(() => expect(openArtifactFile).toHaveBeenCalledWith('/workspace/background-final.mp4'))
+  expect(ipcApi.request).not.toHaveBeenCalledWith('industrial_video.download_artifact', expect.anything())
+  expect(ipcApi.request).toHaveBeenCalledWith('industrial_video.delivery_mark_viewed', {
+    sessionId: 's',
+    run: 'r',
+    jobId: 'j'
+  })
+})
+
 it('启动消息未挂载时仍自动下载并恢复成片入口，但不打开历史成片', async () => {
   vi.mocked(useIndustrialVideoProduction).mockReturnValue(production('done', { final: 'output/final.mp4' }))
   render(<IndustrialVideoAgentProduction sessionId="s">未挂载的消息记录</IndustrialVideoAgentProduction>)

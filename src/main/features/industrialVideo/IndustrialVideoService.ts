@@ -389,6 +389,7 @@ export interface IndustrialVideoServiceDeps {
     run: string
     requestId: string
   }) => Promise<{ ok: boolean; dirty?: boolean; requestId?: string }>
+  publishDelivery: (input: { sessionId: string; unread: boolean; notify: boolean; title: string }) => void
 }
 
 /**
@@ -477,11 +478,17 @@ export class IndustrialVideoService extends BaseService {
           sessionId,
           run
         })
-      })
+      }),
+    publishDelivery: ({ sessionId, unread, notify, title }) => {
+      application.get('IpcApiService').broadcast('industrial_video.delivery_updated', { sessionId, unread })
+      if (!notify) return
+      application.get('NotificationService').deliverIndustrialVideoCompletion(sessionId, title)
+    }
   }
   private deps: IndustrialVideoServiceDeps = this.productionDeps
   /** MEA:industrial-video 同作用域身份的并发下载合并（仅工业模块）。 */
   private readonly inFlightFinalDownloads = new Map<string, Promise<{ filePath: string; size: number }>>()
+  private readonly backgroundDeliveries = new Set<string>()
   private readonly pendingReviewSnapshots = new Map<string, { run: string; reviewVersion: string }>()
   private readonly confirmedReviews = new Map<string, { run: string; reviewVersion: string }>()
   // MEA:industrial-video 每次操作的新鲜 dirty 查询；无响应/超时 fail closed。
@@ -502,6 +509,55 @@ export class IndustrialVideoService extends BaseService {
         void this.handleModelTerminal(event).catch(() => undefined)
       })
     )
+    this.registerInterval(() => this.reconcileActiveDeliveries(), 3000)
+    void this.reconcileActiveDeliveries()
+  }
+
+  async reconcileActiveDeliveries(): Promise<void> {
+    const records = Object.values(this.readRecords()).filter(
+      (record) => record.run && record.jobId && ['generating', 'assembling'].includes(record.state)
+    )
+    await Promise.all(records.map((record) => this.reconcileActiveDelivery(record)))
+  }
+
+  private async reconcileActiveDelivery(record: IndustrialVideoProductionRecord): Promise<void> {
+    if (!record.run || !record.jobId || this.backgroundDeliveries.has(record.sessionId)) return
+    this.backgroundDeliveries.add(record.sessionId)
+    try {
+      const job = await this.jobGet({ sessionId: record.sessionId, jobId: record.jobId })
+      const latest = this.getRecord(record.sessionId)
+      if (latest?.state !== 'done' || latest.run !== record.run || latest.jobId !== record.jobId) return
+      const progress = isRecordLike(job.progress) ? job.progress : null
+      const serverPath = typeof progress?.final === 'string' ? progress.final : ''
+      if (!serverPath) return
+      if (
+        latest.delivery?.run === record.run &&
+        latest.delivery.jobId === record.jobId &&
+        latest.delivery.serverPath === serverPath
+      )
+        return
+      const result = await this.downloadArtifact({ sessionId: record.sessionId, run: record.run, path: serverPath })
+      const current = this.getRecord(record.sessionId)
+      if (current?.run !== record.run || current.jobId !== record.jobId || current.state !== 'done') return
+      current.delivery = {
+        run: record.run,
+        jobId: record.jobId,
+        serverPath,
+        localPath: result.filePath,
+        unread: true
+      }
+      this.saveRecord(current)
+      this.deps.publishDelivery({
+        sessionId: record.sessionId,
+        unread: true,
+        notify: true,
+        title: this.deps.getSession(record.sessionId).name || '工业视频任务'
+      })
+    } catch {
+      // 后台交付失败保留现有任务状态，由任务内重试入口处理。
+    } finally {
+      this.backgroundDeliveries.delete(record.sessionId)
+    }
   }
 
   async handleModelTerminal(event: {
@@ -1814,12 +1870,7 @@ export class IndustrialVideoService extends BaseService {
   }
 
   /** 兑现一次新鲜 dirty 查询：requestId / session / run 必须完全匹配，否则忽略（查询方超时 fail closed）。 */
-  answerWorkbenchDirty(input: {
-    requestId: string
-    sessionId: string
-    run: string
-    dirty: boolean
-  }): boolean {
+  answerWorkbenchDirty(input: { requestId: string; sessionId: string; run: string; dirty: boolean }): boolean {
     const pending = this.dirtyQueries.get(input.requestId)
     if (
       !pending ||
@@ -1857,7 +1908,10 @@ export class IndustrialVideoService extends BaseService {
       .map((p) => (p as { text: string }).text.trim())
       .join('\n')
     const instruction = input.chatInstruction?.trim()
-    const bound = !!original && !!instruction && (instruction === original || (instruction.length >= 8 && original.includes(instruction)))
+    const bound =
+      !!original &&
+      !!instruction &&
+      (instruction === original || (instruction.length >= 8 && original.includes(instruction)))
     if (!bound) {
       throw new IpcError('IVIDEO_CHAT_INSTRUCTION_MISMATCH', 'chatInstruction 与本轮用户文本不一致，请重新发送。')
     }
@@ -3396,5 +3450,19 @@ export class IndustrialVideoService extends BaseService {
   getRecords(input: { sessionId: string }): IndustrialVideoProductionRecord | null {
     this.validateSession(input.sessionId)
     return this.getRecord(input.sessionId)
+  }
+
+  markDeliveryViewed(input: { sessionId: string; run: string; jobId: string }): { viewed: boolean } {
+    this.validateSession(input.sessionId)
+    const record = this.getRecord(input.sessionId)
+    if (!record?.delivery || record.delivery.run !== input.run || record.delivery.jobId !== input.jobId) {
+      return { viewed: false }
+    }
+    if (record.delivery.unread) {
+      record.delivery = { ...record.delivery, unread: false }
+      this.saveRecord(record)
+      this.deps.publishDelivery({ sessionId: input.sessionId, unread: false, notify: false, title: '' })
+    }
+    return { viewed: true }
   }
 }

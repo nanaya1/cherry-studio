@@ -233,6 +233,14 @@ export interface IndustrialVideoProductionRecord {
   rounds: IndustrialVideoRound[]
   /** Subset of `rounds` whose outcome is `unknown` (outcome-unconfirmed). */
   unknownSubmissions: IndustrialVideoRound[]
+  /** MEA:industrial-video 后台交付状态；旧记录缺失时视为无新成片。 */
+  delivery?: {
+    run: string
+    jobId: string
+    serverPath: string
+    localPath: string
+    unread: boolean
+  }
   updatedAt: number
 }
 

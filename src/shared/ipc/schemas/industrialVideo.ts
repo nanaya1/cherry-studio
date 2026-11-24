@@ -1,7 +1,7 @@
 import * as z from 'zod'
-import { INDUSTRIAL_VIDEO_VOICE_IDS } from '@shared/data/industrialVideoVoices'
 
 import { INDUSTRIAL_VIDEO_SUBTITLE_LANGUAGE_CODES } from '@shared/data/cache/cacheValueTypes'
+import { INDUSTRIAL_VIDEO_VOICE_IDS } from '@shared/data/industrialVideoVoices'
 
 import { defineRoute } from '../define'
 import { uint8ArraySchema } from './common'
@@ -10,9 +10,7 @@ import { uint8ArraySchema } from './common'
  * 字幕语言固定枚举（服务端 §17 / rendering/subtitles.py 同源）。渲染端只能提交这 8 种，
  * 主进程原样转 snake_case 透传给 `video_start`；非法值由本 schema 在边界拦截。
  */
-const ivSubtitleLanguageSchema = z.enum(
-  INDUSTRIAL_VIDEO_SUBTITLE_LANGUAGE_CODES as unknown as [string, ...string[]]
-)
+const ivSubtitleLanguageSchema = z.enum(INDUSTRIAL_VIDEO_SUBTITLE_LANGUAGE_CODES as unknown as [string, ...string[]])
 
 /**
  * Industrial-video IPC schemas — a TYPED ALLOWLIST of the only operations the
@@ -159,7 +157,9 @@ export const industrialVideoControlSchema = z.object({
 // ── Request: renderer → main calls (zod values, always parsed) ──
 export const industrialVideoRequestSchemas = {
   'industrial_video.stage_retry': defineRoute({
-    input: z.object({ sessionId: sessionIdField, run: z.string().min(1), expectedTaskVersion: z.string().min(1) }).strict(),
+    input: z
+      .object({ sessionId: sessionIdField, run: z.string().min(1), expectedTaskVersion: z.string().min(1) })
+      .strict(),
     output: z.object({ retried: z.boolean() })
   }),
   // MEA:industrial-video 审批仅供可信用户 IPC，绝不注册给模型。
@@ -168,8 +168,14 @@ export const industrialVideoRequestSchemas = {
     output: z.record(z.string(), z.unknown())
   }),
   'industrial_video.cowork_review_confirm': defineRoute({
-    input: z.object({ sessionId: sessionIdField, run: z.string().min(1), expectedReviewVersion: z.string().min(1),
-      action: z.enum(['regenerate_storyboard', 'generate_video']) }).strict(),
+    input: z
+      .object({
+        sessionId: sessionIdField,
+        run: z.string().min(1),
+        expectedReviewVersion: z.string().min(1),
+        action: z.enum(['regenerate_storyboard', 'generate_video'])
+      })
+      .strict(),
     output: z.record(z.string(), z.unknown())
   }),
   // MEA:industrial-video 网页 S.dirty 经受限桥上报；带 query 的 requestId，严格布尔。
@@ -605,9 +611,29 @@ export const industrialVideoRequestSchemas = {
           })
         ),
         control: industrialVideoControlSchema.optional(),
+        delivery: z
+          .object({
+            run: z.string(),
+            jobId: z.string(),
+            serverPath: z.string(),
+            localPath: z.string(),
+            unread: z.boolean()
+          })
+          .optional(),
         updatedAt: z.number()
       })
       .nullable()
+  }),
+
+  'industrial_video.delivery_mark_viewed': defineRoute({
+    input: z
+      .object({
+        sessionId: sessionIdField,
+        run: z.string().trim().min(1),
+        jobId: z.string().trim().min(1)
+      })
+      .strict(),
+    output: z.object({ viewed: z.boolean() })
   }),
 
   /**
@@ -648,18 +674,17 @@ export const industrialVideoRequestSchemas = {
         run: z.string().trim().min(1)
       })
       .strict(),
-    output: z
-      .object({
-        run: z.string(),
-        generation_status: z.string(),
-        needs_script_sync: z.boolean(),
-        document_needs_sync: z.boolean(),
-        approved: z.boolean(),
-        approved_verified: z.boolean(),
-        generatable: z.boolean(),
-        blockers: z.array(z.string()),
-        raw: z.record(z.string(), z.unknown())
-      })
+    output: z.object({
+      run: z.string(),
+      generation_status: z.string(),
+      needs_script_sync: z.boolean(),
+      document_needs_sync: z.boolean(),
+      approved: z.boolean(),
+      approved_verified: z.boolean(),
+      generatable: z.boolean(),
+      blockers: z.array(z.string()),
+      raw: z.record(z.string(), z.unknown())
+    })
   })
 }
 
@@ -669,5 +694,9 @@ export type IndustrialVideoEventSchemas = {
     requestId: string
     sessionId: string
     run: string
+  }
+  'industrial_video.delivery_updated': {
+    sessionId: string
+    unread: boolean
   }
 }

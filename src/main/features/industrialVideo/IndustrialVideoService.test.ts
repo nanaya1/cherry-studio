@@ -169,6 +169,61 @@ function makeService(
   return { service, store }
 }
 
+describe('后台成片交付', () => {
+  it('仅将生成中转为完成的新成片下载并发布为未查看', async () => {
+    const publishDelivery = vi.fn()
+    const finalPath = 'r1/final/video.mp4'
+    const client = makeClient({
+      jobGet: vi.fn(async () =>
+        ok({
+          run: 'r1',
+          job_id: 'j1',
+          status: 'done',
+          progress: {
+            final: finalPath,
+            final_artifact: {
+              path: finalPath,
+              sha256: 'a'.repeat(64),
+              size: 123,
+              generated_at: '2026-11-24T00:00:00Z',
+              execution_id: 'j1',
+              owned_by_this_job: true
+            }
+          }
+        })
+      )
+    })
+    const { service } = makeService(
+      client,
+      makeSession({ name: '设备操作演示' }),
+      {},
+      {
+        publishDelivery,
+        getModelExecutionId: () => undefined
+      }
+    )
+    await service.runCreate({ sessionId: 's1', baseName: 'demo' })
+    const token = service.beginRound({ sessionId: 's1' })
+    await service.withExecution(token, () => service.videoStart({ sessionId: 's1', run: 'r1' }))
+
+    await service.reconcileActiveDeliveries()
+
+    expect(service.getRecords({ sessionId: 's1' })?.delivery).toEqual({
+      run: 'r1',
+      jobId: 'j1',
+      serverPath: finalPath,
+      localPath: '/abs/workspace/movie.mp4',
+      unread: true
+    })
+    expect(publishDelivery).toHaveBeenCalledWith({
+      sessionId: 's1',
+      unread: true,
+      notify: true,
+      title: '设备操作演示'
+    })
+  })
+})
+
 describe('审核写入恢复与隔离', () => {
   const snapshot = {
     run: 'r1',
@@ -3520,7 +3575,8 @@ describe('聊天触发可信重开分镜 requestRegenerateStoryboard', () => {
     const client = makeClient({
       coworkReviewGet: vi.fn(async () => ok(reviewSnapshot))
     })
-    const probe = opts.probe ?? vi.fn(async ({ requestId }: { requestId: string }) => ({ ok: true, dirty: false, requestId }))
+    const probe =
+      opts.probe ?? vi.fn(async ({ requestId }: { requestId: string }) => ({ ok: true, dirty: false, requestId }))
     const { service } = makeService(client, makeSession(), {}, { queryWorkbenchDirty: probe })
     await service.runCreate({ sessionId: 's1', baseName: 'demo' })
     const token = service.beginRound({ sessionId: 's1' })
@@ -3572,7 +3628,11 @@ describe('聊天触发可信重开分镜 requestRegenerateStoryboard', () => {
   })
 
   it('新鲜查询超时（probe 拒绝）时 fail closed', async () => {
-    const { call, confirm } = await setup({ probe: vi.fn(async () => { throw new Error('timeout') }) })
+    const { call, confirm } = await setup({
+      probe: vi.fn(async () => {
+        throw new Error('timeout')
+      })
+    })
     await expect(call()).rejects.toMatchObject({ code: 'IVIDEO_WORKBENCH_DIRTY_UNKNOWN' })
     expect(confirm).not.toHaveBeenCalled()
   })
@@ -3584,7 +3644,9 @@ describe('聊天触发可信重开分镜 requestRegenerateStoryboard', () => {
   })
 
   it('dirty 响应无 requestId 或与查询不符时 fail closed', async () => {
-    const { call, confirm } = await setup({ probe: vi.fn(async () => ({ ok: true, dirty: false, requestId: 'spoofed' })) })
+    const { call, confirm } = await setup({
+      probe: vi.fn(async () => ({ ok: true, dirty: false, requestId: 'spoofed' }))
+    })
     await expect(call()).rejects.toMatchObject({ code: 'IVIDEO_WORKBENCH_DIRTY_UNKNOWN' })
     expect(confirm).not.toHaveBeenCalled()
   })

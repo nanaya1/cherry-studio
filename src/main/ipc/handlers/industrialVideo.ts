@@ -20,8 +20,10 @@ import { AbsoluteFilePathSchema } from '@shared/types/file'
  */
 export const industrialVideoHandlers: IpcHandlersFor<typeof industrialVideoRequestSchemas> = {
   'industrial_video.stage_retry': async (input) => application.get('IndustrialVideoService').retryStageTask(input),
-  'industrial_video.cowork_review_get': async (input) => application.get('IndustrialVideoService').coworkReviewGet(input),
-  'industrial_video.cowork_review_confirm': async (input) => application.get('IndustrialVideoService').coworkReviewConfirm(input),
+  'industrial_video.cowork_review_get': async (input) =>
+    application.get('IndustrialVideoService').coworkReviewGet(input),
+  'industrial_video.cowork_review_confirm': async (input) =>
+    application.get('IndustrialVideoService').coworkReviewConfirm(input),
   'industrial_video.workbench_dirty_answer': async (input) =>
     application.get('IndustrialVideoService').answerWorkbenchDirty(input),
   'industrial_video.stop': async (input) => application.get('IndustrialVideoService').stop(input),
@@ -137,6 +139,8 @@ export const industrialVideoHandlers: IpcHandlersFor<typeof industrialVideoReque
   'industrial_video.upload': async (input) => application.get('IndustrialVideoService').upload(input),
   'industrial_video.snapshot_save': async (input) => application.get('IndustrialVideoService').snapshotSave(input),
   'industrial_video.get_records': async (input) => application.get('IndustrialVideoService').getRecords(input),
+  'industrial_video.delivery_mark_viewed': async (input) =>
+    application.get('IndustrialVideoService').markDeliveryViewed(input),
   'industrial_video.workbench_open': async (input) => application.get('IndustrialVideoService').workbenchOpen(input),
   'industrial_video.workbench_get': async (input) => application.get('IndustrialVideoService').workbenchGet(input)
 }

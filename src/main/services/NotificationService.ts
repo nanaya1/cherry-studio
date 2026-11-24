@@ -69,6 +69,22 @@ export class NotificationService extends BaseService {
     electronNotification.show()
   }
 
+  public deliverIndustrialVideoCompletion(sessionId: string, title: string): void {
+    const focusedWindow = getFullChromeWindowInfos().find((window) => window.isFocused)
+    if (!focusedWindow) return
+    application.get('IpcApiService').send(focusedWindow.id, 'notification.conversation', {
+      id: `industrial-video-completion:${sessionId}:${Date.now()}`,
+      kind: 'task-completion',
+      type: 'success',
+      title: 'industrial-video',
+      message: title,
+      timestamp: Date.now(),
+      actionKey: CONVERSATION_NOTIFICATION_ACTION_KEY,
+      meta: { conversationType: 'agent', conversationId: sessionId },
+      source: 'assistant'
+    })
+  }
+
   private handleConversationCompleted({ topicId, turnId, completedAt }: ConversationCompletedEvent): void {
     const target = this.resolveConversationTarget(topicId)
     const title =
