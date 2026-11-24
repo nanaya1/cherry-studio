@@ -27,6 +27,7 @@ import {
   publishIndustrialVideoProgress,
   openIndustrialVideoWorkbench,
   openIndustrialVideoFinal,
+  selectIndustrialVideoPanel,
   type IndustrialVideoProgressSnapshot
 } from '@renderer/pages/industrialVideo/industrialVideoProgressStore'
 import { EVENT_NAMES, EventEmitter } from '@renderer/services/EventService'
@@ -1005,6 +1006,26 @@ describe('AgentRightPane', () => {
     expect(screen.getByTestId('shell-tab-title')).toHaveTextContent('工作台')
     act(() => openIndustrialVideoFinal(sessionId, 'r', '/workspace/final.mp4'))
     expect(screen.getByTestId('shell-tab-title')).toHaveTextContent('成片')
+  })
+
+  it('replaces a stale preview selection when a new generation starts', async () => {
+    const sessionId = 'industrial-stale-preview-selection'
+    selectIndustrialVideoPanel(sessionId, 'industrial-video-final')
+    render(
+      <TestAgentRightPane sessionId={sessionId} messages={[]} partsByMessageId={{}}>
+        <AgentRightPane.Viewport />
+      </TestAgentRightPane>
+    )
+
+    act(() =>
+      publishIndustrialVideoProgress(sessionId, {
+        identity: `${sessionId}:new-run:new-job`,
+        progress: { total: 5, done: 0, label: '正在生成分镜', stageLabel: '分镜生成中' }
+      })
+    )
+
+    await waitFor(() => expect(screen.getByLabelText('视频制作实时进度')).toBeVisible())
+    expect(screen.queryByRole('status', { name: '正在恢复任务预览…' })).not.toBeInTheDocument()
   })
 
   it('keeps workbench mounted while switching to the downloaded final and isolates sessions', async () => {

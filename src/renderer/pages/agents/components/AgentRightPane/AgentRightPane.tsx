@@ -511,8 +511,10 @@ function AgentRightPaneActionsProvider({
     if (!industrialVideoProgress || lastIndustrialVideoProgressIdentity.current === industrialVideoProgress.identity)
       return
     lastIndustrialVideoProgressIdentity.current = industrialVideoProgress.identity
+    // MEA:industrial-video 新进度取代失效的历史预览选择。
+    if (sessionId) selectIndustrialVideoPanel(sessionId, 'industrial-video-progress')
     panelActions.tryOpen('industrial-video-progress', { userInitiated: false })
-  }, [industrialVideoProgress, panelActions])
+  }, [sessionId, industrialVideoProgress, panelActions])
   const canOpenBrowser = panelActions.canOpen(BROWSER_PANE_ID)
   const openBrowserPanel = useCallback(
     (url: string) => {
