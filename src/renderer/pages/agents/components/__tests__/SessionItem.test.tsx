@@ -131,27 +131,6 @@ describe('SessionItem', () => {
     expect(screen.getByRole('img', { name: 'Industrial video' })).toBeInTheDocument()
   })
 
-  it('opens an industrial-video task from its unread finished-video badge', async () => {
-    const user = userEvent.setup()
-    const onPress = vi.fn()
-    const video = { ...session, featureKind: 'industrial-video' as const }
-    ipcRequest.mockResolvedValue({ delivery: { unread: true } })
-    const Provider = ResourceList.Provider<AgentSessionEntity>
-    render(
-      <Provider items={[video]}>
-        <SessionItem
-          session={video}
-          sessionMenuActions={sessionMenuActions}
-          onDelete={vi.fn()}
-          onOpenRenameDialog={vi.fn()}
-          onPress={onPress}
-        />
-      </Provider>
-    )
-    await user.click(await screen.findByRole('button', { name: 'Show finished-video preview: Session A' }))
-    expect(onPress).toHaveBeenCalledWith('session-a')
-  })
-
   it('archives through the hover action without requesting permanent deletion', async () => {
     const user = userEvent.setup()
     const onDelete = vi.fn()

@@ -41,7 +41,7 @@ import type { CherryMessagePart, CherryUIMessage } from '@shared/data/types/mess
 import { agentSessionForkFailureReason } from '@shared/ipc/errors/ai'
 import type { DoctorSubjectRef } from '@shared/types/doctor'
 import { type AbsoluteFilePath, AbsoluteFilePathSchema } from '@shared/types/file'
-import { createFilePathHandle } from '@shared/utils/file'
+import { createFilePathHandle, isFilePathHandle } from '@shared/utils/file'
 
 import AgentSessionApiRetryStatus from './AgentSessionApiRetryStatus'
 import { agentSessionForkAvailability, agentSessionForkReasonLabel } from './agentSessionFork'
@@ -377,6 +377,24 @@ export function useAgentMessageListProviderValue({
     [topic.id]
   )
 
+  const { notifyError, previewFile: previewLeafFile } = leafCapabilities
+
+  // MEA:industrial-video 成片预览留在应用右栏，“打开”仍沿用系统默认程序。
+  const previewFile = useCallback<NonNullable<MessageListActions['previewFile']>>(
+    (target) => {
+      if (
+        featureKind === 'industrial-video' &&
+        target.ext.toLowerCase() === '.mp4' &&
+        isFilePathHandle(target.handle) &&
+        openArtifactFile
+      ) {
+        return openArtifactFile(target.handle.path)
+      }
+      return previewLeafFile?.(target)
+    },
+    [featureKind, openArtifactFile, previewLeafFile]
+  )
+
   // Replaces the live turn's placeholder with the api-retry line while retrying, otherwise the
   // placeholder itself (the component decides from session-scoped cache).
   const renderActiveTurnStatus = useCallback(
@@ -384,7 +402,6 @@ export function useAgentMessageListProviderValue({
     [sessionId]
   )
 
-  const { notifyError } = leafCapabilities
   const openForkSourceSession = useCallback(
     async (sourceSessionId: string) => {
       try {
@@ -488,6 +505,7 @@ export function useAgentMessageListProviderValue({
       ...exportActions,
       ...errorActions,
       ...pickMessageLeafActions(leafCapabilities),
+      previewFile,
       openBrowserUrl,
       openExternalUrl: openExternalUrl ?? leafCapabilities.openExternalUrl,
       navigateToRoute,
@@ -538,6 +556,7 @@ export function useAgentMessageListProviderValue({
       isAgentToolFlowActive,
       openAgentToolFlow,
       openPath,
+      previewFile,
       respondToolApproval,
       resolvePath,
       selectionController.actions,

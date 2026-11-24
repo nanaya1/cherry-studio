@@ -69,6 +69,9 @@ describe('工业结构化运行时接线', () => {
     expect(INDUSTRIAL_VIDEO_STRUCTURED_SYSTEM_PROMPT).toContain('effectiveSettings.target_duration_s')
     expect(INDUSTRIAL_VIDEO_STRUCTURED_SYSTEM_PROMPT).toContain('effectiveSettings.tts_enabled')
     expect(INDUSTRIAL_VIDEO_STRUCTURED_SYSTEM_PROMPT).toContain('不一致时不得继续提交分镜')
+    expect(INDUSTRIAL_VIDEO_STRUCTURED_SYSTEM_PROMPT).toContain('自动下载成片并以通用文件附件展示在对应消息末尾')
+    expect(INDUSTRIAL_VIDEO_STRUCTURED_SYSTEM_PROMPT).toContain('不会自动打开预览')
+    expect(INDUSTRIAL_VIDEO_STRUCTURED_SYSTEM_PROMPT).not.toContain('成片默认在线预览')
   })
 
   beforeEach(() => {

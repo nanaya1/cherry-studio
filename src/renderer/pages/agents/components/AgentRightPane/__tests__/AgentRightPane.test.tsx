@@ -730,6 +730,30 @@ describe('AgentRightPane', () => {
     publishIndustrialVideoProgress('session-a', null)
   })
 
+  it('opens an industrial video workbench from the shortcut before the message entry is used', async () => {
+    ipcRequestMock.mockResolvedValueOnce({
+      workbench_url: 'https://example.test/workbench',
+      run: 'run-1',
+      raw: {}
+    })
+    render(
+      <TestAgentRightPane sessionId="shortcut-workbench" industrialVideo messages={[]} partsByMessageId={{}}>
+        <AgentRightPane.Shortcuts />
+        <AgentRightPane.Viewport />
+      </TestAgentRightPane>
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: '工作台' }))
+
+    expect(await screen.findByTestId('industrial-workbench')).toHaveAttribute(
+      'data-src',
+      'https://example.test/workbench'
+    )
+    expect(ipcRequestMock).toHaveBeenCalledWith('industrial_video.workbench_open', {
+      sessionId: 'shortcut-workbench'
+    })
+  })
+
   it('shows industrial video progress as a session-only right pane tab', async () => {
     const snapshot: IndustrialVideoProgressSnapshot = {
       identity: 'session-a:r:j',
@@ -752,6 +776,26 @@ describe('AgentRightPane', () => {
     expect(screen.getByTestId('shell-tab-title')).toHaveTextContent('agent.right_pane.tabs.industrial_video_progress')
     expect(screen.getByLabelText('视频制作实时进度')).toHaveTextContent('已完成 3/5 个分镜')
     expect(screen.getByLabelText('视频制作实时进度')).toHaveTextContent('正在合成成片')
+  })
+
+  it('closes industrial video progress without falling back to an empty browser when progress ends', async () => {
+    publishIndustrialVideoProgress('session-a', {
+      identity: 'session-a:r:j',
+      progress: { total: 5, done: 5, label: '正在校验成片', stageLabel: '成片校验中' }
+    })
+    render(
+      <TestAgentRightPane sessionId="session-a" messages={[]} partsByMessageId={{}}>
+        <AgentRightPane.Shortcuts />
+        <AgentRightPane.Viewport />
+      </TestAgentRightPane>
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'agent.right_pane.tabs.industrial_video_progress' }))
+    await waitFor(() => expect(screen.getByTestId('right-pane')).toHaveAttribute('data-open', 'true'))
+
+    act(() => publishIndustrialVideoProgress('session-a', null))
+
+    await waitFor(() => expect(screen.getByTestId('right-pane')).toHaveAttribute('data-open', 'false'))
   })
 
   it('maximizes and restores the workbench without reloading its page', async () => {

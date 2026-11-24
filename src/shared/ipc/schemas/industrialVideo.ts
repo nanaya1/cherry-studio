@@ -611,6 +611,17 @@ export const industrialVideoRequestSchemas = {
           })
         ),
         control: industrialVideoControlSchema.optional(),
+        deliveries: z
+          .array(
+            z.object({
+              run: z.string(),
+              jobId: z.string(),
+              serverPath: z.string(),
+              localPath: z.string(),
+              unread: z.boolean()
+            })
+          )
+          .optional(),
         delivery: z
           .object({
             run: z.string(),

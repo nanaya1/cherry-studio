@@ -28,6 +28,9 @@ describe('industrial video execution policy', () => {
     expect(INDUSTRIAL_VIDEO_PRODUCTION_PROMPT).toContain('不得自动估价、批准或生成视频')
     expect(INDUSTRIAL_VIDEO_PRODUCTION_PROMPT).toContain('不使用 AskUserQuestion 替代真实按钮')
     expect(INDUSTRIAL_VIDEO_PRODUCTION_PROMPT).toContain('ivideo_cowork_review_get')
+    expect(INDUSTRIAL_VIDEO_PRODUCTION_PROMPT).toContain('自动下载成片并以通用文件附件展示在对应消息末尾')
+    expect(INDUSTRIAL_VIDEO_PRODUCTION_PROMPT).toContain('不会自动打开预览')
+    expect(INDUSTRIAL_VIDEO_PRODUCTION_PROMPT).not.toContain('成片默认在线预览')
     // 字幕双语不进静态提示词：语言选择由设置与服务端动态 copy 任务决定，客户端只承诺「配音字幕走业务服务」。
   })
   it('参数差异通过本轮原生选择确认，不替代审核或要求补发消息', () => {

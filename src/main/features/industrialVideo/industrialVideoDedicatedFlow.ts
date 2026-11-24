@@ -34,7 +34,9 @@ export interface DedicatedFlowDeps {
    */
   workbenchOpen: (run: string, embed: boolean) => Promise<{ workbenchUrl: string }>
   /** 读取服务端工作台最新状态（按 run 校验归属），作为是否 submit 一次的可信依据。 */
-  workbenchGet: (run: string) => Promise<{ approved: boolean; generatable: boolean; blockers: string[]; raw: Record<string, unknown> }>
+  workbenchGet: (
+    run: string
+  ) => Promise<{ approved: boolean; generatable: boolean; blockers: string[]; raw: Record<string, unknown> }>
   /**
    * @deprecated 专属 fixed-flow 不再本地弹可信审核框；改为服务端工作台批准（workbenchGet）。
    * 保留字段仅为兼容既有注入；structured runtime 仍提供实现但 flow 不再调用。
@@ -159,7 +161,7 @@ export async function runIndustrialVideoDedicatedFlow(userText: string, deps: De
   )
   if (videoSubmitted && record?.jobId) {
     await waitJob(record.jobId, run, 'video')
-    return '生成作业已完成，请在现有结果区域查看在线预览；本轮未重复生成。'
+    return '生成作业已完成，客户端会自动下载成片并在对应消息末尾展示文件附件；本轮未重复生成，也不会自动打开预览。'
   }
   // 读取服务端工作台最新状态作为是否 submit 一次的可信依据（服务端可信批准，非本地审核弹框）。
   check()
@@ -173,5 +175,5 @@ export async function runIndustrialVideoDedicatedFlow(userText: string, deps: De
   check()
   const started = await deps.call('ivideo_start', {})
   await waitJob(z.string().min(1).parse(started.jobId), run, 'video')
-  return '生成作业已完成，请在现有结果区域查看在线预览或下载。'
+  return '生成作业已完成，客户端会自动下载成片并在对应消息末尾展示文件附件，不会自动打开预览。'
 }

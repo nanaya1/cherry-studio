@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 
 import { Button } from '@cherrystudio/ui'
+import MessageAttachments from '@renderer/components/chat/messages/frame/MessageAttachments'
 import { ToolDisclosure } from '@renderer/components/chat/messages/tools/shared/ToolDisclosure'
 import { ToolResultAttachmentsContext } from '@renderer/components/chat/messages/tools/shared/ToolDisplayNames'
 import { WebviewHost } from '@renderer/components/WebviewHost'
@@ -13,15 +14,27 @@ import { ipcApi } from '@renderer/ipc'
 import { normalizeFilePreviewPath } from '@renderer/utils/filePreview'
 // import { normalizeFilePreviewPath } from '@renderer/utils/filePreview'
 import { normalizeMeacoworkToolRuntimeName, toMeacoworkToolRuntimeName } from '@shared/ai/meacoworkTools'
+import { AbsoluteFilePathSchema } from '@shared/types/file'
+import { createFilePathHandle } from '@shared/utils/file'
 
 // import { LoaderCircle } from 'lucide-react'
 import IndustrialVideoGenerationLoading, { readGenerationProgress } from './IndustrialVideoGenerationLoading'
-import {
-  openIndustrialVideoFinal,
-  openIndustrialVideoWorkbench,
-  publishIndustrialVideoProgress
-} from './industrialVideoProgressStore'
+import { openIndustrialVideoWorkbench, publishIndustrialVideoProgress } from './industrialVideoProgressStore'
 import { useIndustrialVideoProduction } from './useIndustrialVideoProduction'
+
+function parseToolResult(output: unknown): Record<string, unknown> | null {
+  if (!output || typeof output !== 'object' || Array.isArray(output)) return null
+  const content = (output as { content?: unknown }).content
+  if (Array.isArray(content)) {
+    const text = content.find(
+      (part): part is { type: string; text: string } =>
+        Boolean(part) && typeof part === 'object' && (part as { type?: unknown }).type === 'text'
+    )?.text
+    if (text) return JSON.parse(text) as Record<string, unknown>
+  }
+  if (content && typeof content === 'object' && !Array.isArray(content)) return content as Record<string, unknown>
+  return output as Record<string, unknown>
+}
 
 // const terminalLabels: Record<string, string> = { failed: '生成失败', cancelled: '已取消', blocked: '任务已阻塞' }
 const terminalLabels: Record<string, string> = {
@@ -48,20 +61,14 @@ export default function IndustrialVideoAgentProduction({
   onPreviewOpenChange?: (open: boolean) => void
 }) {
   const { record, job, error, jobError, refresh } = useIndustrialVideoProduction(sessionId)
-  // 成片单独保留在右栏 Tab，不覆盖工作台或普通文件选择。
-  // const { openArtifactFile } = useAgentRightPaneActions()
-  // const previewAction = useRef(openArtifactFile)
-  // previewAction.current = openArtifactFile
-  const previewAction = useRef((path: string) => openIndustrialVideoFinal(sessionId, record?.run ?? '', path))
-  previewAction.current = (path) => openIndustrialVideoFinal(sessionId, record?.run ?? '', path)
   const downloads = useRef(new Map<string, Promise<string>>())
-  const previewed = useRef(new Set<string>())
-  const observedGenerating = useRef(new Set<string>())
   const [download, setDownload] = useState<{ key: string; path?: string; error?: string } | null>(null)
   const [downloadRetry, setDownloadRetry] = useState(0)
   const run = record?.run
   const state = record?.state ?? ''
   const jobId = record?.jobId
+  const deliveries = record?.deliveries ?? (record?.delivery ? [record.delivery] : [])
+  const currentDelivery = deliveries.find((delivery) => delivery.run === run && delivery.jobId === jobId)
   const progress = (!job?.run || job.run === run ? job?.progress : undefined) as Record<string, unknown> | undefined
   const [storyboard, setStoryboard] = useState<{ run: string; count: number } | null>(null)
   // MEA: 顶栏开关驱动受控显隐；未受控时保留 standalone 自动打开行为。
@@ -145,10 +152,6 @@ export default function IndustrialVideoAgentProduction({
   const generating = Boolean(active && ['generating', 'assembling'].includes(state) && !terminal)
   // const finished = active && state === 'done' && !stale && !terminal
   const finished = active && state === 'done' && !stale && !terminal && !submissionUnconfirmed
-
-  useEffect(() => {
-    if (generating) observedGenerating.current.add(identity)
-  }, [generating, identity])
 
   // const [delivery, setDelivery] = useState<{ key: string; text: string } | null>(null)
   const [, setDelivery] = useState<{ key: string; text: string } | null>(null)
@@ -266,7 +269,8 @@ export default function IndustrialVideoAgentProduction({
   }, [finished, finalPath, run, sessionId, artifactKey, retry])
   */
 
-  useEffect(() => {
+  // 完成任务恢复时不再自动打开工作台；工作台只响应用户主动入口。
+  /* useEffect(() => {
     if (!finished || !run) return
     let alive = true
     void ipcApi
@@ -281,16 +285,18 @@ export default function IndustrialVideoAgentProduction({
     return () => {
       alive = false
     }
-  }, [finished, sessionId, run])
+  }, [finished, sessionId, run]) */
 
   // 下载与预览分开处理：失败重试只重试下载，预览失败不能导致重复保存文件。
   const downloaded = download?.key === artifactKey ? download : null
+  const persistedFinalPath = currentDelivery?.localPath ? normalizeFilePreviewPath(currentDelivery.localPath) : ''
+  const preparingFinal = finished && !downloaded?.path && !persistedFinalPath
   useEffect(() => {
     if (!finished || !finalPath || !run) return
     let alive = true
     let pending = downloads.current.get(artifactKey)
     if (!pending) {
-      const delivery = record?.delivery
+      const delivery = currentDelivery
       pending =
         delivery?.run === run && delivery.jobId === jobId && delivery.serverPath === finalPath && delivery.localPath
           ? Promise.resolve(normalizeFilePreviewPath(delivery.localPath))
@@ -304,15 +310,6 @@ export default function IndustrialVideoAgentProduction({
       (path) => {
         if (!alive) return
         setDownload({ key: artifactKey, path })
-        if (previewed.current.has(artifactKey)) return
-        previewed.current.add(artifactKey)
-        const restoreOnly = !observedGenerating.current.has(identity) && record?.delivery?.unread !== true
-        void Promise.resolve(openIndustrialVideoFinal(sessionId, run, path, restoreOnly)).catch(() => {
-          if (alive) setDownload({ key: artifactKey, path, error: '文件已下载，但自动预览失败，请点击文件重试预览' })
-        })
-        if (!restoreOnly && jobId) {
-          void ipcApi.request('industrial_video.delivery_mark_viewed', { sessionId, run, jobId })
-        }
       },
       (cause) => {
         if (!alive) return
@@ -325,7 +322,7 @@ export default function IndustrialVideoAgentProduction({
     return () => {
       alive = false
     }
-  }, [finished, finalPath, run, sessionId, artifactKey, downloadRetry, identity, jobId, record?.delivery])
+  }, [finished, finalPath, run, sessionId, artifactKey, downloadRetry, jobId, currentDelivery])
 
   // MEA:industrial-video 仅成功完成自动关闭 loading 区（转由文件预览区交付）；
   // 失败/取消/阻塞等终态保持显示死因与进度，用户可用顶栏开关或"关闭"按钮收起后再展开。
@@ -333,38 +330,35 @@ export default function IndustrialVideoAgentProduction({
     if (visible && !generating && !workbenchUrl && open && !terminal && !submissionUnconfirmed) setOpen(false)
   }, [visible, generating, workbenchUrl, open, setOpen, terminal, submissionUnconfirmed])
 
-  const renderArtifact = () => (
-    <section aria-label="成片文件" className="space-y-2 rounded-lg border border-border p-3 text-sm">
-      <p>{summary}</p>
-      {/* 用户侧不展示内部 QA 交付状态。 */}
-      {finished && !finalPath && <p role="status">生成已完成，等待成片文件信息</p>}
-      {finished && finalPath && !downloaded?.path && !downloaded?.error && <p role="status">正在自动下载成片…</p>}
-      {downloaded?.path && (
-        <Button
-          variant="outline"
-          title={downloaded.path}
-          onClick={() => {
-            setOpen(false)
-            void Promise.resolve(previewAction.current(downloaded.path!)).catch(() => {
-              setDownload({ ...downloaded, error: '文件已下载，但预览失败，请再次点击文件重试' })
-            })
-          }}>
-          {downloaded.path.split(/[/\\\\]/).at(-1)}
-        </Button>
-      )}
-      {downloaded?.error && <p role="alert">{downloaded.error}</p>}
-      {downloaded?.error && !downloaded.path && (
-        <Button
-          variant="outline"
-          onClick={() => {
-            downloads.current.delete(artifactKey)
-            setDownloadRetry((value) => value + 1)
-          }}>
-          重试下载
-        </Button>
-      )}
-    </section>
-  )
+  const renderArtifact = (delivery = currentDelivery) => {
+    const path = delivery?.localPath ? normalizeFilePreviewPath(delivery.localPath) : downloaded?.path
+    return (
+      <section aria-label="成片文件" className="text-sm">
+        {!path && <p>{summary}</p>}
+        {!path && finished && !finalPath && <p role="status">生成已完成，等待成片文件信息</p>}
+        {!path && finished && finalPath && !downloaded?.error && <p role="status">正在自动下载成片…</p>}
+        {path && (
+          <MessageAttachments
+            handle={createFilePathHandle(AbsoluteFilePathSchema.parse(path))}
+            name={path.split(/[/\\\\]/).at(-1) ?? path}
+            ext=".mp4"
+            createdAt={new Date(record?.updatedAt ?? Date.now()).toISOString()}
+          />
+        )}
+        {downloaded?.error && !delivery && <p role="alert">{downloaded.error}</p>}
+        {downloaded?.error && !path && (
+          <Button
+            variant="outline"
+            onClick={() => {
+              downloads.current.delete(artifactKey)
+              setDownloadRetry((value) => value + 1)
+            }}>
+            重试下载
+          </Button>
+        )}
+      </section>
+    )
+  }
 
   // 生成期间的临时失效标记不能覆盖制作进度或停止动效。
   const showStale = stale && state === 'done'
@@ -378,21 +372,40 @@ export default function IndustrialVideoAgentProduction({
         ? '视频生成完成'
         : loadingProgress.label)
   useEffect(() => {
+    const progressSnapshot = preparingFinal
+      ? {
+          ...loadingProgress,
+          label: finalPath ? '正在下载并校验成片' : '正在获取成片文件',
+          stageLabel: '成片处理中'
+        }
+      : loadingProgress
     publishIndustrialVideoProgress(
       sessionId,
       // 规划失败不是视频生成失败，成片进度仅发布已确认生成的作业。
-      generating || (generationConfirmed && terminal)
+      generating || preparingFinal || (generationConfirmed && terminal)
         ? {
             identity,
-            progress: loadingProgress,
+            progress: progressSnapshot,
             stopped: terminal || undefined,
             // error: error || jobError
-            error: jobError || queryWarning
+            error: downloaded?.error || jobError || queryWarning
           }
         : null
     )
     // 快照去重保留当前值，不能在依赖刷新时清空并再次通知订阅者。
-  }, [queryWarning, generating, generationConfirmed, identity, jobError, loadingProgress, sessionId, terminal])
+  }, [
+    downloaded?.error,
+    finalPath,
+    generating,
+    generationConfirmed,
+    identity,
+    jobError,
+    loadingProgress,
+    preparingFinal,
+    queryWarning,
+    sessionId,
+    terminal
+  ])
   useEffect(() => () => publishIndustrialVideoProgress(sessionId, null), [sessionId])
   const steps = [
     { label: '准备画面', done: finished, detail: finished ? '已完成' : '详细进度待返回' },
@@ -414,10 +427,11 @@ export default function IndustrialVideoAgentProduction({
       normalizeMeacoworkToolRuntimeName(toolName) === toMeacoworkToolRuntimeName('ivideo_review_snapshot_get')
     ) {
       try {
-        const content = (output as { content?: { type: string; text?: string }[] })?.content
+        // const content = (output as { content?: { type: string; text?: string }[] })?.content
         // const value = JSON.parse(content?.find((part) => part.type === 'text')?.text ?? 'null')
-        const text = content?.find((part) => part.type === 'text')?.text
-        const value = (text ? JSON.parse(text) : output) as Record<string, unknown> | null
+        // const text = content?.find((part) => part.type === 'text')?.text
+        // const value = (text ? JSON.parse(text) : output) as Record<string, unknown> | null
+        const value = parseToolResult(output)
         if (value?.ok !== true || typeof value.workbench_url !== 'string' || !run || (value.run && value.run !== run))
           return null
         const url = new URL(value.workbench_url)
@@ -442,76 +456,84 @@ export default function IndustrialVideoAgentProduction({
         return null
       }
     }
-    if (!visible || normalizeMeacoworkToolRuntimeName(toolName) !== toMeacoworkToolRuntimeName('ivideo_start'))
-      return null
+    if (normalizeMeacoworkToolRuntimeName(toolName) !== toMeacoworkToolRuntimeName('ivideo_start')) return null
+    let messageJobId = ''
     try {
-      const content = (output as { content?: { type: string; text?: string }[] })?.content
+      // const content = (output as { content?: { type: string; text?: string }[] })?.content
       // const value = JSON.parse(content?.find((part) => part.type === 'text')?.text ?? 'null')
-      const text = content?.find((part) => part.type === 'text')?.text
-      const value = (text ? JSON.parse(text) : output) as { ok?: boolean; jobId?: string } | null
-      if (value?.ok !== true || value.jobId !== jobId) return null
+      // const text = content?.find((part) => part.type === 'text')?.text
+      // const value = (text ? JSON.parse(text) : output) as { ok?: boolean; jobId?: string } | null
+      const value = parseToolResult(output)
+      if (value?.ok !== true || typeof value.jobId !== 'string') return null
+      messageJobId = value.jobId
     } catch {
       return null
     }
+    const messageDelivery = deliveries.find((delivery) => delivery.jobId === messageJobId)
+    if (messageJobId !== jobId) return messageDelivery ? renderArtifact(messageDelivery) : null
+    if (!visible) return messageDelivery ? renderArtifact(messageDelivery) : null
     // 成片附件随启动消息展示，不挂在消息区外；附件不受工具详情折叠影响。
     // if (!generating) return finished ? null : renderArtifact()
-    if (!generating) return renderArtifact()
+    if (!generating) return renderArtifact(messageDelivery)
+    // 消息区不重复展示生成进度；实时 loading 统一由右侧生成进度区域承载。
     return (
-      <ToolDisclosure
-        defaultActiveKey={['production']}
-        items={[
-          {
-            key: 'production',
-            label: summary,
-            children: (
-              <section aria-label="视频制作步骤" className="space-y-3 border-l border-border pl-4 text-sm">
-                <div className="flex items-center justify-between gap-2">
-                  <strong>{summary}</strong>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                      setWorkbenchPage(null)
-                      setOpen(true)
-                    }}>
-                    查看成片
-                  </Button>
-                </div>
-                <p role="status">
-                  {done !== null && total !== null
-                    ? `已完成 ${done}/${total} 镜`
-                    : total !== null
-                      ? `共 ${total} 镜，详细进度待返回`
-                      : '详细进度待返回'}
-                </p>
-                <ol className="space-y-2">
-                  {steps.map((step) => (
-                    <li key={step.label} className="flex justify-between gap-3">
-                      <span>{step.label}</span>
-                      <span className="text-muted-foreground">
-                        {step.done ? '✓ ' : ''}
-                        {step.detail}
-                      </span>
-                    </li>
-                  ))}
-                </ol>
-                {/* 查询异常仅在右侧成片进度提示，消息内保留真实业务错误。
+      false && (
+        <ToolDisclosure
+          defaultActiveKey={['production']}
+          items={[
+            {
+              key: 'production',
+              label: summary,
+              children: (
+                <section aria-label="视频制作步骤" className="space-y-3 border-l border-border pl-4 text-sm">
+                  <div className="flex items-center justify-between gap-2">
+                    <strong>{summary}</strong>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setWorkbenchPage(null)
+                        setOpen(true)
+                      }}>
+                      查看成片
+                    </Button>
+                  </div>
+                  <p role="status">
+                    {done !== null && total !== null
+                      ? `已完成 ${done}/${total} 镜`
+                      : total !== null
+                        ? `共 ${total} 镜，详细进度待返回`
+                        : '详细进度待返回'}
+                  </p>
+                  <ol className="space-y-2">
+                    {steps.map((step) => (
+                      <li key={step.label} className="flex justify-between gap-3">
+                        <span>{step.label}</span>
+                        <span className="text-muted-foreground">
+                          {step.done ? '✓ ' : ''}
+                          {step.detail}
+                        </span>
+                      </li>
+                    ))}
+                  </ol>
+                  {/* 查询异常仅在右侧成片进度提示，消息内保留真实业务错误。
                 {(error || jobError) && (
                   <p role="alert" className="text-error">
                     {error || jobError}
                   </p>
                 )}
                 */}
-                {jobError && (
-                  <p role="alert" className="text-error">
-                    {jobError}
-                  </p>
-                )}
-              </section>
-            )
-          }
-        ]}
-      />
+                  {jobError && (
+                    <p role="alert" className="text-error">
+                      {jobError}
+                    </p>
+                  )}
+                </section>
+              )
+            }
+          ]}
+        />
+      )
     )
   }
   return (

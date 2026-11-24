@@ -138,6 +138,8 @@ it.each(['video', 'assemble'])('已就绪的 %s 仅提交对应阶段并交接�
   expect(result).toMatchObject({ ok: true, jobId: `${stage}-job`, started: true, end_turn: true, run: 'r1' })
   expect(result.message).toContain('后台')
   expect(result.message).toContain('自动下载')
+  expect(result.message).toContain('消息末尾展示文件附件')
+  expect(result.message).toContain('不会自动打开预览')
   expect(stage === 'video' ? ivServiceMock.assemble : ivServiceMock.videoStart).not.toHaveBeenCalled()
 })
 
@@ -703,9 +705,7 @@ describe('MeacoworkIndustrialVideoTools — visibility & contract', () => {
 
   it('chatInstruction 必填且非空，缺失时 schema 拒绝', async () => {
     agentSessionGetByIdMock.mockReturnValue(makeSession())
-    const missing = jsonOf(
-      await makeTools().call('ivideo_regenerate_storyboard', { run: 'r-1', reviewVersion: 'v1' })
-    )
+    const missing = jsonOf(await makeTools().call('ivideo_regenerate_storyboard', { run: 'r-1', reviewVersion: 'v1' }))
     expect(missing.ok).toBe(false)
     const empty = jsonOf(
       await makeTools().call('ivideo_regenerate_storyboard', {

@@ -98,8 +98,8 @@ import { ipcApi, useIpcOn } from '@renderer/ipc'
 // 工业视频仅向通用右栏注入纯展示与会话快照，不反向依赖 Agent 执行逻辑。
 // eslint-disable-next-line import-x/no-restricted-paths
 import IndustrialVideoGenerationLoading from '@renderer/pages/industrialVideo/IndustrialVideoGenerationLoading'
-// eslint-disable-next-line import-x/no-restricted-paths
 import {
+  openIndustrialVideoWorkbench,
   selectIndustrialVideoPanel,
   useIndustrialVideoFinal,
   useIndustrialVideoProgressSnapshot,
@@ -296,6 +296,7 @@ interface AgentRightPanelScope {
   hasSystemWorkspaceFiles: boolean
   filesTitle: string
   industrialVideoProgressTitle: string
+  industrialVideoSession: boolean
   industrialVideoProgressVisible: boolean
   industrialVideoWorkbenchVisible: boolean
   industrialVideoFinalVisible: boolean
@@ -313,6 +314,7 @@ type AgentConversationState = 'pending' | 'ready' | 'unavailable'
 interface AgentRightPaneScopeProps extends Omit<AgentRightPaneMeta, 'conversationState'> {
   children: ReactNode
   conversationState?: AgentConversationState
+  industrialVideo?: boolean
   /** Controls effective presentation without clearing panel intent. */
   present?: boolean
   resourcePane?: ResourcePaneConfig | null
@@ -475,12 +477,30 @@ function AgentRightPaneActionsProvider({
     }
   }, [sessionId, panelState.activePanelId, selectedIndustrialPanel, workbench, final])
   const { close: closePanel } = panelActions
-  const previousPanel = useRef({ sessionId, panelId: panelState.activePanelId })
+  const previousPanel = useRef({
+    sessionId,
+    panelId: panelState.activePanelId,
+    hadIndustrialVideoProgress: Boolean(industrialVideoProgress)
+  })
   const lastIndustrialVideoProgressIdentity = useRef(industrialVideoProgress?.identity ?? '')
   useLayoutEffect(() => {
     const previous = previousPanel.current
-    previousPanel.current = { sessionId, panelId: panelState.activePanelId }
-    if (previous.sessionId === sessionId) return
+    previousPanel.current = {
+      sessionId,
+      panelId: panelState.activePanelId,
+      hadIndustrialVideoProgress: Boolean(industrialVideoProgress)
+    }
+    // MEA:industrial-video 进度能力移除时收起右栏，避免通用能力回退到空浏览器。
+    if (previous.sessionId === sessionId) {
+      if (
+        previous.panelId === 'industrial-video-progress' &&
+        previous.hadIndustrialVideoProgress &&
+        !industrialVideoProgress
+      ) {
+        closePanel()
+      }
+      return
+    }
     lastIndustrialVideoProgressIdentity.current = industrialVideoProgress?.identity ?? ''
     // 工业内容切空时收起，避免通用面板回退到空浏览器；普通面板保持原行为。
     if (previous.panelId?.startsWith('industrial-video-') && !workbench && !final && !industrialVideoProgress) {
@@ -632,6 +652,7 @@ function AgentRightPaneStateProvider({
   agentName,
   agentAvatar,
   model,
+  industrialVideo = false,
   conversationState = 'ready',
   present = true,
   resourcePane = null,
@@ -966,8 +987,11 @@ function AgentRightPaneStateProvider({
       hasSystemWorkspaceFiles,
       filesTitle: t('agent.right_pane.tabs.files'),
       industrialVideoProgressTitle: t('agent.right_pane.tabs.industrial_video_progress'),
+      industrialVideoSession: industrialVideo,
       industrialVideoProgressVisible: Boolean(industrialVideoProgress),
-      industrialVideoWorkbenchVisible: Boolean(industrialVideoWorkbench),
+      // industrialVideoWorkbenchVisible: Boolean(industrialVideoWorkbench),
+      // MEA:industrial-video 首次打开也保留顶栏工作台入口，由面板按会话请求当前 run。
+      industrialVideoWorkbenchVisible: industrialVideo || Boolean(industrialVideoWorkbench),
       industrialVideoFinalVisible: Boolean(industrialVideoFinal),
       flowTab,
       previousFlowTab,
@@ -983,6 +1007,7 @@ function AgentRightPaneStateProvider({
       previousFlowTab,
       goBackFlow,
       hasSystemWorkspaceFiles,
+      industrialVideo,
       industrialVideoProgress,
       industrialVideoWorkbench,
       industrialVideoFinal,
@@ -1725,11 +1750,32 @@ function AgentTraceRightPanel({ active, scope }: RightPanelComponentProps<AgentR
   )
 }
 
-function AgentIndustrialVideoWorkbenchPanel({ scope }: RightPanelComponentProps<AgentRightPanelScope>) {
+function AgentIndustrialVideoWorkbenchPanel({ active, scope }: RightPanelComponentProps<AgentRightPanelScope>) {
+  const { t } = useTranslation()
   const sessionId = scope.meta.sessionId
   const workbench = useIndustrialVideoWorkbench(sessionId)
   const [loadError, setLoadError] = useState('')
   useEffect(() => setLoadError(''), [workbench])
+  useEffect(() => {
+    if (!active || workbench || !sessionId || !scope.industrialVideoSession) return
+    let alive = true
+    setLoadError('')
+    void ipcApi
+      .request('industrial_video.workbench_open', { sessionId })
+      .then((result) => {
+        if (!alive) return
+        const url = new URL(result.workbench_url)
+        if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password)
+          throw new Error(t('industrial_video.task.invalid_preview'))
+        openIndustrialVideoWorkbench(sessionId, result.run, url.href)
+      })
+      .catch((cause) => {
+        if (alive) setLoadError(cause instanceof Error ? cause.message : String(cause))
+      })
+    return () => {
+      alive = false
+    }
+  }, [active, scope.industrialVideoSession, sessionId, t, workbench])
 
   const run = workbench?.run
   // 受限桥控制器：按 session/run 重建，渲染期同步（保证 webview ref 回调时已是最新）。
@@ -1832,7 +1878,7 @@ function AgentIndustrialVideoWorkbenchPanel({ scope }: RightPanelComponentProps<
       if (!request || typeof request.requestId !== 'string') return
       if (attachedRef.current?.bridge !== bridge || bridgeRef.current !== bridge) return
       if (request.type === INDUSTRIAL_VIDEO_WORKBENCH_MESSAGE_TYPE.dirtyQueryResponse) {
-        bridge.answerDirtyQuery(request as IndustrialVideoWorkbenchDirtyQueryResponse)
+        bridge.answerDirtyQuery(request)
         return
       }
       if (
@@ -1880,13 +1926,15 @@ function AgentIndustrialVideoWorkbenchPanel({ scope }: RightPanelComponentProps<
     ready()
   }, [])
 
-  if (!workbench) return null
   if (loadError)
     return (
       <p role="alert" className="p-4 text-error">
-        工作台加载失败：{loadError}。请点击消息中的“打开工作台”重试。
+        {loadError}
       </p>
     )
+  // if (!workbench) return null
+  // MEA:industrial-video 快捷入口首次打开期间提供明确反馈，等待当前会话工作台地址。
+  if (!workbench) return <p className="p-4 text-muted-foreground">{t('industrial_video.loading')}</p>
   if (workbench.document) {
     return (
       <section aria-label="审核文档预览" className="h-full overflow-auto bg-background p-4 text-foreground">

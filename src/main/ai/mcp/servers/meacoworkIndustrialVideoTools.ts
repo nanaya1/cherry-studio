@@ -670,7 +670,8 @@ export class MeacoworkIndustrialVideoTools {
           return okResult({
             ...saved,
             next_operation: 'ivideo_storyboard_stage_task_get',
-            message: '全文已保存，无需全文确认；继续默认 next 阶段，完整预览保存后等待用户明确指令。仅当用户明确要求“按这个改/修改/重做分镜”时调用 ivideo_regenerate_storyboard 重开；“只讨论/先不改”不调用。'
+            message:
+              '全文已保存，无需全文确认；继续默认 next 阶段，完整预览保存后等待用户明确指令。仅当用户明确要求“按这个改/修改/重做分镜”时调用 ivideo_regenerate_storyboard 重开；“只讨论/先不改”不调用。'
           })
         }
         case 'ivideo_context': {
@@ -951,7 +952,7 @@ export class MeacoworkIndustrialVideoTools {
             run: a.run,
             started: true,
             end_turn: true,
-            message: `视频${latest.next_stage === 'assemble' ? '合成' : '生成'}已提交，任务 ${data.jobId}。本轮结束，由客户端后台跟踪进度，完成后自动下载并展示成片；不要继续调用进度工具等待。`
+            message: `视频${latest.next_stage === 'assemble' ? '合成' : '生成'}已提交，任务 ${data.jobId}。本轮结束，由客户端后台跟踪进度，完成后自动下载成片并在对应消息末尾展示文件附件，不会自动打开预览；不要继续调用进度工具等待。`
           })
         }
         case 'ivideo_status': {

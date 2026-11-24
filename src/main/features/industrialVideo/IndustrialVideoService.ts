@@ -18,6 +18,7 @@ import { agentWorkspaceService } from '@main/data/services/AgentWorkspaceService
 import type { AgentSessionEntity } from '@shared/data/api/schemas/agentSessions'
 import type {
   IndustrialVideoControl,
+  IndustrialVideoDelivery,
   IndustrialVideoProductionRecord,
   IndustrialVideoProductionState,
   IndustrialVideoRound
@@ -531,28 +532,17 @@ export class IndustrialVideoService extends BaseService {
       const serverPath = typeof progress?.final === 'string' ? progress.final : ''
       if (!serverPath) return
       if (
-        latest.delivery?.run === record.run &&
-        latest.delivery.jobId === record.jobId &&
-        latest.delivery.serverPath === serverPath
+        this.getDeliveries(latest).some(
+          (delivery) =>
+            delivery.run === record.run && delivery.jobId === record.jobId && delivery.serverPath === serverPath
+        )
       )
         return
-      const result = await this.downloadArtifact({ sessionId: record.sessionId, run: record.run, path: serverPath })
+      await this.downloadArtifact({ sessionId: record.sessionId, run: record.run, path: serverPath, unread: true })
       const current = this.getRecord(record.sessionId)
       if (current?.run !== record.run || current.jobId !== record.jobId || current.state !== 'done') return
-      current.delivery = {
-        run: record.run,
-        jobId: record.jobId,
-        serverPath,
-        localPath: result.filePath,
-        unread: true
-      }
-      this.saveRecord(current)
-      this.deps.publishDelivery({
-        sessionId: record.sessionId,
-        unread: true,
-        notify: true,
-        title: this.deps.getSession(record.sessionId).name || '工业视频任务'
-      })
+      // MEA:industrial-video 专属完成通知与未查看徽标停用；消息产物是唯一入口。
+      // this.deps.publishDelivery({ sessionId: record.sessionId, unread: true, notify: true, title: ... })
     } catch {
       // 后台交付失败保留现有任务状态，由任务内重试入口处理。
     } finally {
@@ -1112,6 +1102,25 @@ export class IndustrialVideoService extends BaseService {
     const map = this.readRecords()
     map[record.sessionId] = { ...record, updatedAt: Date.now() }
     this.writeRecords(map)
+  }
+
+  private getDeliveries(record: IndustrialVideoProductionRecord): IndustrialVideoDelivery[] {
+    const deliveries = record.deliveries ?? []
+    const legacy = record.delivery
+    if (!legacy || deliveries.some((item) => item.run === legacy.run && item.jobId === legacy.jobId)) return deliveries
+    return [legacy, ...deliveries]
+  }
+
+  private saveDelivery(sessionId: string, delivery: IndustrialVideoDelivery): void {
+    const record = this.getRecord(sessionId)
+    if (!record) return
+    const deliveries = this.getDeliveries(record)
+    const index = deliveries.findIndex((item) => item.run === delivery.run && item.jobId === delivery.jobId)
+    record.deliveries =
+      index === -1
+        ? [...deliveries, delivery]
+        : deliveries.map((item, itemIndex) => (itemIndex === index ? delivery : item))
+    this.saveRecord(record)
   }
 
   /**
@@ -3196,6 +3205,7 @@ export class IndustrialVideoService extends BaseService {
     run: string
     path: string
     expectedSize?: number
+    unread?: boolean
   }): Promise<{ filePath: string; size: number }> {
     const session = this.validateSession(input.sessionId)
     const record = this.getRecord(input.sessionId)
@@ -3238,12 +3248,20 @@ export class IndustrialVideoService extends BaseService {
     if (jobData && boundJobId) {
       const read = inspectFinalArtifact(jobData)
       if (read.kind === 'absent') {
-        return this.callArtifactDownloader({
+        const result = await this.callArtifactDownloader({
           config,
           workspaceDir,
           serverPath: input.path,
           expectedSize: input.expectedSize
         })
+        this.saveDelivery(input.sessionId, {
+          run: input.run,
+          jobId: boundJobId,
+          serverPath: input.path,
+          localPath: result.filePath,
+          unread: input.unread === true
+        })
+        return result
       }
       if (read.kind === 'invalid') {
         throw new IpcError('IVIDEO_ARTIFACT_INVALID', '服务端 final_artifact 字段无效，已停止下载。')
@@ -3278,7 +3296,15 @@ export class IndustrialVideoService extends BaseService {
       })
       this.inFlightFinalDownloads.set(key, pending)
       try {
-        return await pending
+        const result = await pending
+        this.saveDelivery(input.sessionId, {
+          run: input.run,
+          jobId: boundJobId,
+          serverPath: input.path,
+          localPath: result.filePath,
+          unread: input.unread === true
+        })
+        return result
       } finally {
         this.inFlightFinalDownloads.delete(key)
       }
@@ -3455,13 +3481,18 @@ export class IndustrialVideoService extends BaseService {
   markDeliveryViewed(input: { sessionId: string; run: string; jobId: string }): { viewed: boolean } {
     this.validateSession(input.sessionId)
     const record = this.getRecord(input.sessionId)
-    if (!record?.delivery || record.delivery.run !== input.run || record.delivery.jobId !== input.jobId) {
+    if (!record) return { viewed: false }
+    const deliveries = this.getDeliveries(record)
+    const delivery = deliveries.find((item) => item.run === input.run && item.jobId === input.jobId)
+    if (!delivery) {
       return { viewed: false }
     }
-    if (record.delivery.unread) {
-      record.delivery = { ...record.delivery, unread: false }
+    if (delivery.unread) {
+      record.deliveries = deliveries.map((item) =>
+        item.run === input.run && item.jobId === input.jobId ? { ...item, unread: false } : item
+      )
       this.saveRecord(record)
-      this.deps.publishDelivery({ sessionId: input.sessionId, unread: false, notify: false, title: '' })
+      // this.deps.publishDelivery({ sessionId: input.sessionId, unread: false, notify: false, title: '' })
     }
     return { viewed: true }
   }

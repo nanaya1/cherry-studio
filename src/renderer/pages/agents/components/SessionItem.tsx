@@ -1,4 +1,4 @@
-import { Archive, PinIcon, Play, Video } from 'lucide-react'
+import { Archive, PinIcon, Video } from 'lucide-react'
 import type { MouseEvent } from 'react'
 import { memo, useCallback, useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -19,10 +19,7 @@ import {
 } from '@renderer/components/chat/resourceList/base'
 import { useCache } from '@renderer/data/hooks/useCache'
 import { useSessionMenuActions } from '@renderer/hooks/chat/useSessionMenuActions'
-import { useIndustrialVideoDeliveryUnread } from '@renderer/hooks/useIndustrialVideoDeliveryUnread'
 import { useTopicStreamStatus } from '@renderer/hooks/useTopicStreamStatus'
-import { ipcApi } from '@renderer/ipc'
-import { publishIndustrialVideoDelivery } from '@renderer/services/industrialVideoDeliveryStore'
 import { buildAgentSessionTopicId, getChannelTypeIcon } from '@renderer/utils/agentSession'
 import { cn } from '@renderer/utils/style'
 import { classifyTurn } from '@shared/ai/transport'
@@ -134,23 +131,6 @@ const SessionItem = ({
   // const showLeadingSlot = reserveLeadingIconSlot || !!channelIcon
   // MEA:industrial-video 侧栏隐藏普通图标时仍保留任务类型标识。
   const isIndustrialVideo = session.featureKind === 'industrial-video'
-  const hasUnreadDelivery = useIndustrialVideoDeliveryUnread(isIndustrialVideo ? session.id : undefined)
-  useEffect(() => {
-    if (!isIndustrialVideo) return
-    let alive = true
-    void ipcApi
-      .request('industrial_video.get_records', { sessionId: session.id })
-      .then((record) => {
-        if (alive) publishIndustrialVideoDelivery(session.id, record?.delivery?.unread === true)
-      })
-      .catch(() => {
-        if (alive) publishIndustrialVideoDelivery(session.id, false)
-      })
-    return () => {
-      alive = false
-    }
-  }, [isIndustrialVideo, session.id])
-  const showUnreadDelivery = hasUnreadDelivery && !showAwaitingApprovalBadge && !isStreamPending && !isStreamErrored
   const showLeadingSlot = isIndustrialVideo || reserveLeadingIconSlot || !!channelIcon
   const startInlineEdit = useCallback(() => actions.startRename(session.id), [actions, session.id])
   const startMenuEdit = useCallback(() => onOpenRenameDialog(session), [onOpenRenameDialog, session])
@@ -312,7 +292,7 @@ const SessionItem = ({
             // overlay fades out, the standing yield closes, and the in-flow action rail expands. The
             // awaiting-approval pill (mutually exclusive with the overlay) is an
             // in-flow sibling the title simply fades against — no standing margin.
-            (hasStreamIndicator || showUnreadDelivery) && CONVERSATION_ROW_STATUS_TITLE_CLASS
+            hasStreamIndicator && CONVERSATION_ROW_STATUS_TITLE_CLASS
           )}
           onDoubleClick={(event) => {
             event.stopPropagation()
@@ -322,22 +302,7 @@ const SessionItem = ({
         </ResourceList.ItemTitle>
       )}
 
-      {!rowState.renaming && showUnreadDelivery && (
-        <Tooltip title={t('industrial_video.preview.expand')} delay={300}>
-          <button
-            type="button"
-            aria-label={`${t('industrial_video.preview.expand')}: ${sessionName}`}
-            className="absolute top-1/2 right-1.5 flex size-5 -translate-y-1/2 items-center justify-center rounded-full bg-info-subtle text-info-subtle-foreground transition-opacity group-hover:opacity-0"
-            onClick={(event) => {
-              event.stopPropagation()
-              onPress(session.id)
-            }}>
-            <Play aria-hidden="true" className="size-3 fill-current" />
-          </button>
-        </Tooltip>
-      )}
-
-      {!rowState.renaming && !showUnreadDelivery && (
+      {!rowState.renaming && (
         <ConversationRowStatus
           status={conversationRowStatus}
           testId={

@@ -25,6 +25,7 @@ import { loggerService } from '@logger'
 import type { ReadOnlyComposerFileTokenPreview } from '@renderer/components/composer/tokenView'
 import { ErrorBoundary } from '@renderer/components/ErrorBoundary'
 import type { Citation } from '@renderer/types/message'
+import type { McpTool } from '@renderer/types/tool'
 import { fileHandleFromPart } from '@renderer/utils/file/fileHandle'
 import {
   isCitationSourcePart,
@@ -64,6 +65,7 @@ import {
 } from '../tools/agent'
 import MessageTools, { canRenderMessageTool } from '../tools/MessageTools'
 import { AgentToolsType, isAskUserQuestionToolName } from '../tools/shared/agentToolTypes'
+import { getMcpToolRuntimeName, useToolResultAttachments } from '../tools/shared/ToolDisplayNames'
 import { hasPartParentToolCallId } from '../tools/toolParentMetadata'
 import { buildToolResponseFromPart, type ToolRenderItem, type ToolResponseLike } from '../tools/toolResponse'
 import type { MessageListItem } from '../types'
@@ -883,6 +885,19 @@ function buildToolRenderItems(
   })
 }
 
+function CompletedToolAttachments({ items }: { items: ToolRenderItem[] }) {
+  const renderAttachments = useToolResultAttachments()
+  if (!renderAttachments) return null
+
+  return items.map(({ id, toolResponse }) => {
+    if (toolResponse.status !== 'done' || toolResponse.response?.isError === true) return null
+    const toolName =
+      toolResponse.tool.type === 'mcp' ? getMcpToolRuntimeName(toolResponse.tool as McpTool) : toolResponse.tool.name
+    const attachment = renderAttachments(toolName, toolResponse.response)
+    return attachment ? <React.Fragment key={id}>{attachment}</React.Fragment> : null
+  })
+}
+
 function getReportArtifactToolResponses(entries: readonly PartEntry[], messageId: string) {
   return entries.flatMap((entry) => {
     const toolResponse = getCachedToolProjection(entry.part, `${messageId}-part-${entry.index}`).toolResponse
@@ -1451,6 +1466,7 @@ const MessageProcessLayout = React.memo(function MessageProcessLayout({
         {renderCompletedHistory}
       </MessageProcessGroup>
       {completedResult}
+      <CompletedToolAttachments items={completedToolItems} />
     </>
   )
 })

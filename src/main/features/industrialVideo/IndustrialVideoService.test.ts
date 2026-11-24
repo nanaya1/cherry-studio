@@ -208,19 +208,16 @@ describe('后台成片交付', () => {
 
     await service.reconcileActiveDeliveries()
 
-    expect(service.getRecords({ sessionId: 's1' })?.delivery).toEqual({
-      run: 'r1',
-      jobId: 'j1',
-      serverPath: finalPath,
-      localPath: '/abs/workspace/movie.mp4',
-      unread: true
-    })
-    expect(publishDelivery).toHaveBeenCalledWith({
-      sessionId: 's1',
-      unread: true,
-      notify: true,
-      title: '设备操作演示'
-    })
+    expect(service.getRecords({ sessionId: 's1' })?.deliveries).toEqual([
+      {
+        run: 'r1',
+        jobId: 'j1',
+        serverPath: finalPath,
+        localPath: '/abs/workspace/movie.mp4',
+        unread: true
+      }
+    ])
+    expect(publishDelivery).not.toHaveBeenCalled()
   })
 })
 

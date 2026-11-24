@@ -218,6 +218,14 @@ export interface IndustrialVideoControl {
   stopRequested: boolean
 }
 
+export interface IndustrialVideoDelivery {
+  run: string
+  jobId: string
+  serverPath: string
+  localPath: string
+  unread: boolean
+}
+
 export interface IndustrialVideoProductionRecord {
   /** 可选以兼容旧记录；停止或可信新轮入口首次写入，未知意图仍阻塞新轮。 */
   control?: IndustrialVideoControl
@@ -234,13 +242,9 @@ export interface IndustrialVideoProductionRecord {
   /** Subset of `rounds` whose outcome is `unknown` (outcome-unconfirmed). */
   unknownSubmissions: IndustrialVideoRound[]
   /** MEA:industrial-video 后台交付状态；旧记录缺失时视为无新成片。 */
-  delivery?: {
-    run: string
-    jobId: string
-    serverPath: string
-    localPath: string
-    unread: boolean
-  }
+  delivery?: IndustrialVideoDelivery
+  /** MEA:industrial-video 每次成功生成对应的交付历史。 */
+  deliveries?: IndustrialVideoDelivery[]
   updatedAt: number
 }
 

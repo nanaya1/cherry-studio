@@ -15,7 +15,6 @@ import {
 } from '../shared/agentToolTypes'
 import { type ToolStatus, ToolStatusIndicator } from '../shared/GenericTools'
 import type { ToolDisclosureItem } from '../shared/ToolDisclosure'
-import { useToolResultAttachments } from '../shared/ToolDisplayNames'
 import { extractToolErrorText } from '../toolError'
 import { AgentToolDisclosure, AgentToolDisclosureLabel } from './AgentToolDisclosure'
 import { SessionCreateTool } from './SessionCreateTool'
@@ -74,7 +73,6 @@ export function AgentToolCallCard({
   showInlineDetails?: boolean
 }) {
   const actions = useOptionalMessageListActions()
-  const renderAttachments = useToolResultAttachments()
   const { t } = useTranslation()
   const normalizedToolName = toolName ? normalizeMeacoworkToolRuntimeName(toolName) : undefined
   const renderedItem =
@@ -189,7 +187,6 @@ export function AgentToolCallCard({
         stateId={toolCallId}
         showInlineDetails={canShowInlineDetails}
       />
-      {!hasError && status === 'done' && renderAttachments?.(toolName ?? '', output)}
     </>
   )
 }

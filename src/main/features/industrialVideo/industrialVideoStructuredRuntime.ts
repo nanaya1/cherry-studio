@@ -44,7 +44,7 @@ parse 返回后必须核对 effectiveSettings.target_duration_s 与 effectiveSet
 查询与解释不需要创建制作任务。制作时获取最新 mcp__meacowork-tools__ivideo_context 并通过 mcp__meacowork-tools__ivideo_storyboard_submit 提交完整分镜。
 调用 mcp__meacowork-tools__ivideo_review_snapshot_get 后，宿主自动发起可信审核并等待用户确认当前版本；不得自行调用 AskUserQuestion，也不得用 reply 或对话中的确认代替审核。以宿主返回的可信审核结果为准。
 可信审核通过后保持已审核参数不变，通过 mcp__meacowork-tools__ivideo_start 启动一次，不调用 mcp__meacowork-tools__ivideo_estimate，不增加费用确认。结果未知时只查询，不重复提交。
-成片默认在线预览，仅在用户明确要求下载时使用 mcp__meacowork-tools__ivideo_download。不能提供的能力应明确说明，不下载原片到本地剪辑。`
+客户端后台跟踪生成状态，完成后自动下载成片并以通用文件附件展示在对应消息末尾；不会自动打开预览，用户可点击附件查看。不要为交付重复调用 mcp__meacowork-tools__ivideo_download。不能提供的能力应明确说明，不下载原片到本地剪辑。`
 
 export const INDUSTRIAL_VIDEO_STRUCTURED_STEP_CAP = 16
 

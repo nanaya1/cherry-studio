@@ -150,24 +150,4 @@ describe('ConversationNotificationRuntime', () => {
       title: 'Research notes'
     })
   })
-
-  it('shows a direct finished-video action for industrial-video completion', () => {
-    renderRuntime(
-      tabsContext({ id: 'active', type: 'route', url: '/app/chat?topicId=topic-1', title: 'Current topic' })
-    )
-    emitNotification(
-      conversationNotification({
-        id: 'industrial-video-completion:session-video:1',
-        meta: { conversationType: 'agent', conversationId: 'session-video' },
-        message: '设备操作演示'
-      })
-    )
-    const notification = mocks.toastSuccess.mock.calls[0][0]
-    expect(notification.action).toBeDefined()
-    void act(() => notification.action?.onClick())
-    expect(mocks.ipcRequest).toHaveBeenCalledWith('navigation.focus_or_open_conversation', {
-      target: { conversationType: 'agent', conversationId: 'session-video' },
-      title: '设备操作演示'
-    })
-  })
 })
