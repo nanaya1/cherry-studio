@@ -4,6 +4,11 @@ import type { IpcHandlersFor } from '@shared/ipc/types'
 
 // [enterprise] T0 企业扩展 IPC 处理器。实现主体在 @main/enterprise/*。
 export const enterpriseHandlers: IpcHandlersFor<typeof enterpriseRequestSchemas> = {
+  'enterprise.knowledge_connectors.list': async () => ({
+    connectors: await application.get('EnterprisePlugin').externalConnectors.list()
+  }),
+  'enterprise.knowledge_connectors.set_active': async ({ resourceKey, active }) =>
+    application.get('EnterprisePlugin').externalConnectors.setActive(resourceKey, active),
   'enterprise.skills.list_resources': async () => {
     const catalog = application.get('EnterprisePlugin').skills
     return { skills: await catalog.listResources(), installedKeys: catalog.installedResourceKeys() }

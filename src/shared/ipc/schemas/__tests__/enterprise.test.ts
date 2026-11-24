@@ -3,6 +3,14 @@ import { describe, expect, it } from 'vitest'
 import { enterpriseRequestSchemas, verificationStatusSchema } from '../enterprise'
 
 describe('enterprise IPC schemas', () => {
+  it('外部知识库启停只接受引用和开关，不接受凭据或客户端指定企业', () => {
+    const input = enterpriseRequestSchemas['enterprise.knowledge_connectors.set_active'].input
+    expect(input.safeParse({ resourceKey: 'source-reference', active: true }).success).toBe(true)
+    // eslint-disable-next-line data-schema-key/valid-key -- 外部HTTP认证头不属于本地配置键
+    for (const extra of [{ headers: { 'mcp-key': 'secret' } }, { tenantId: 9 }, { token: 'secret' }]) {
+      expect(input.safeParse({ resourceKey: 'source-reference', active: true, ...extra }).success).toBe(false)
+    }
+  })
   const listSkills = enterpriseRequestSchemas['enterprise.skills.list'].input
 
   it('Java带横杠实例ID可穿过技能安装、卸载与连接器安装IPC', () => {

@@ -107,7 +107,27 @@ const javaSkillItemSchema = z.strictObject({
   tags: z.array(orgSkillFacetSchema)
 })
 
+// MEA:external-knowledge-connectors 目录IPC不返回MCP Key或上游配置
+const externalKnowledgeConnectorItemSchema = z.strictObject({
+  resourceKey: z.string().min(1),
+  id: z.string(),
+  name: z.string(),
+  description: z.string(),
+  kind: z.string(),
+  serverId: z.string().nullable(),
+  isActive: z.boolean()
+})
+export type ExternalKnowledgeConnectorItem = z.infer<typeof externalKnowledgeConnectorItemSchema>
+
 export const enterpriseRequestSchemas = {
+  'enterprise.knowledge_connectors.list': defineRoute({
+    input: z.void(),
+    output: z.strictObject({ connectors: z.array(externalKnowledgeConnectorItemSchema) })
+  }),
+  'enterprise.knowledge_connectors.set_active': defineRoute({
+    input: z.strictObject({ resourceKey: z.string().min(1), active: z.boolean() }),
+    output: externalKnowledgeConnectorItemSchema
+  }),
   'enterprise.skills.list_resources': defineRoute({
     input: z.void(),
     output: z.strictObject({ skills: z.array(javaSkillItemSchema), installedKeys: z.array(z.string()) })

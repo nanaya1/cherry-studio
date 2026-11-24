@@ -31,6 +31,7 @@ import {
 // eslint-disable-next-line barrel/closed
 import { showProfileRecoveryChoice } from '../core/profiles/ProfileSwitchCoordinator'
 import { CoworkModelConfigSync } from './CoworkModelConfigSync'
+import { ExternalKnowledgeConnectorCatalog } from './ExternalKnowledgeConnectorCatalog'
 import { OrgAuthManager } from './OrgAuthManager'
 import { OrgCredentialStore } from './OrgCredentialStore'
 import { OrgKnowledgeService } from './OrgKnowledgeService'
@@ -51,6 +52,7 @@ export class EnterprisePlugin extends BaseService {
   readonly auth: OrgAuthManager
   readonly skills: OrgSkillCatalog
   readonly connectors: OrgMcpCatalog
+  readonly externalConnectors: ExternalKnowledgeConnectorCatalog
   readonly knowledge: OrgKnowledgeService
   private readonly modelConfigSync = new CoworkModelConfigSync()
   private modelConfigSyncTask: Promise<void> | null = null
@@ -156,6 +158,7 @@ export class EnterprisePlugin extends BaseService {
     }
     this.skills = new OrgSkillCatalog(this.auth)
     this.connectors = new OrgMcpCatalog(this.auth)
+    this.externalConnectors = new ExternalKnowledgeConnectorCatalog(this.auth)
     this.knowledge = new OrgKnowledgeService(this.auth)
   }
 

@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest'
 // import { cleanup, render, screen, waitFor } from '@testing-library/react'
-import { cleanup, render, screen } from '@testing-library/react'
+// import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -9,6 +10,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 const { orgSessionMock } = vi.hoisted(() => ({
   orgSessionMock: { authMode: 'management-exchange' }
 }))
+
+// 真实Tabs验证激活行为，避免全局扁平Tabs替身掩盖未点击就查询的问题
+vi.mock('@cherrystudio/ui', async (importOriginal) => importOriginal())
 
 vi.mock('@renderer/hooks/useOrgAccountSession', () => ({
   useOrgAccountSession: () => ({ status: { authMode: orgSessionMock.authMode, phase: 'signed-in' } })
@@ -92,6 +96,8 @@ vi.mock('react-i18next', () => ({
   })
 }))
 
+import { ipcApi } from '@renderer/ipc'
+
 import McpCatalog from '../McpCatalog'
 
 afterEach(() => {
@@ -100,6 +106,29 @@ afterEach(() => {
 })
 
 describe('McpCatalog', () => {
+  it('外部知识库在我的MCP左侧，仅点击时查询；离开不停止，重复点击重新查询', async () => {
+    orgSessionMock.authMode = 'management-java'
+    const request = vi.spyOn(ipcApi, 'request').mockResolvedValue({ connectors: [] })
+    const user = userEvent.setup()
+    render(<McpCatalog />)
+    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
+      'Built-in Servers',
+      'Organization',
+      'settings.mcp.externalKnowledge.title',
+      'My MCP'
+    ])
+    expect(request).not.toHaveBeenCalled()
+    const external = screen.getByRole('tab', { name: 'settings.mcp.externalKnowledge.title' })
+    await user.click(external)
+    await waitFor(() => expect(screen.getByText('settings.mcp.externalKnowledge.empty')).toBeVisible())
+    await user.click(screen.getByRole('tab', { name: 'My MCP' }))
+    expect(request.mock.calls.map(([route]) => route)).toEqual(['enterprise.knowledge_connectors.list'])
+    await user.click(external)
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(2))
+    await user.click(external)
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(3))
+    request.mockRestore()
+  })
   it('Java 登录仅恢复公共目录，不恢复市场和服务商', async () => {
     orgSessionMock.authMode = 'management-java'
     render(<McpCatalog />)

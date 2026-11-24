@@ -33,6 +33,7 @@ import { cn } from '@renderer/utils/style'
 import type { CreateMcpServerDto } from '@shared/data/api/schemas/mcpServers'
 import type { ProtocolMcpInstallRequest } from '@shared/data/types/mcpProtocolInstall'
 import type { McpServer } from '@shared/data/types/mcpServer'
+import { isExternalKnowledgeConnector } from '@shared/utils/externalKnowledgeConnector'
 import { isBrowserMcpServer } from '@shared/utils/mcp'
 
 import AddMcpServerModal from './AddMcpServerModal'
@@ -153,6 +154,8 @@ const McpServersList: FC<McpServersListProps> = ({ variant = 'settings', showTit
     const keywords = deferredSearchText.toLowerCase().split(/\s+/).filter(Boolean)
 
     return mcpServers.filter((server) => {
+      // MEA:external-knowledge-connectors 独立标签管理的连接不在我的MCP重复展示
+      if (variant === 'catalog' && isExternalKnowledgeConnector(server)) return false
       if (isBrowserMcpServer(server)) return false
       if (filter === 'enabled' && !server.isActive) return false
       if (filter === 'disabled' && server.isActive) return false
@@ -166,7 +169,8 @@ const McpServersList: FC<McpServersListProps> = ({ variant = 'settings', showTit
       const searchTarget = `${server.name} ${server.description} ${server.tags?.join(' ')} ${server.provider ?? ''}`
       return matchKeywordsInString(keywords, searchTarget)
     })
-  }, [deferredSearchText, filter, mcpServers])
+    // }, [deferredSearchText, filter, mcpServers])
+  }, [deferredSearchText, filter, mcpServers, variant])
 
   const { onSortEnd } = useDndReorder({
     originalList: mcpServers,

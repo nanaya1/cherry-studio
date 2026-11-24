@@ -8,6 +8,27 @@ policy:
   require_tests: true
   preserve_original_code_by_comment: true
 customizations:
+  - id: external-knowledge-connectors
+    title: 外部知识库显式查询与手动启停
+    owner: main
+    behavior: Java企业登录在我的MCP左侧展示外部知识库标签，仅点击时读取企业共享接入实例，不按分组、不增加登录同步或运行时成员强校验。新实例默认关闭，显式启动才创建本地MCP；来源以reference编码认证来源、用户、企业和实例UUID，不认领同名手动项。刷新保留用户关闭选择，完整成功快照缺失及明确10007/10008才停用对应项并清Key，网络和结构失败保留旧配置。凭据仅主进程保存，不通过目录IPC输出。沿用Space mcp-key，未点击时不保证成员移出后的旧调用即时失效。
+    markers:
+      - MEA:external-knowledge-connectors
+    touchpoints:
+      - src/main/enterprise/ExternalKnowledgeConnectorCatalog.ts
+      - src/main/enterprise/JavaKnowledgeConnectorClient.ts
+      - src/main/enterprise/EnterprisePlugin.ts
+      - src/main/ipc/handlers/enterprise.ts
+      - src/shared/ipc/schemas/enterprise.ts
+      - src/shared/utils/externalKnowledgeConnector.ts
+      - src/renderer/pages/settings/McpSettings/McpCatalog.tsx
+      - src/renderer/pages/settings/McpSettings/ExternalKnowledgeConnectorList.tsx
+      - src/renderer/pages/settings/McpSettings/McpServersList.tsx
+    tests:
+      - src/main/enterprise/__tests__/ExternalKnowledgeConnectorCatalog.test.ts
+      - src/main/enterprise/__tests__/JavaKnowledgeConnectorClient.test.ts
+      - src/renderer/pages/settings/McpSettings/__tests__/McpCatalog.test.tsx
+      - src/renderer/pages/settings/McpSettings/__tests__/ExternalKnowledgeConnectorList.test.tsx
   - id: mcp-oauth-authorization
     title: 自建 MCP 浏览器授权与回调校验
     owner: main

@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { ProtocolMcpInstallRequest, ProtocolMcpServerInstall } from '@shared/data/types/mcpProtocolInstall'
 import type { McpServer } from '@shared/data/types/mcpServer'
+import { externalKnowledgeReference } from '@shared/utils/externalKnowledgeConnector'
 
 import McpServersList from '../McpServersList'
 
@@ -13,7 +14,8 @@ const mocks = vi.hoisted(() => ({
   navigate: vi.fn(),
   pendingProtocolInstalls: [] as ProtocolMcpInstallRequest[],
   protocolInstallRequestId: 'request-1',
-  refetch: vi.fn()
+  refetch: vi.fn(),
+  mcpServers: [] as McpServer[]
 }))
 
 vi.mock('@cherrystudio/ui', async (importOriginal) => {
@@ -26,7 +28,8 @@ vi.mock('@cherrystudio/ui', async (importOriginal) => {
 
 vi.mock('@renderer/hooks/useMcpServer', () => ({
   useMcpServers: () => ({
-    mcpServers: [],
+    // mcpServers: [],
+    mcpServers: mocks.mcpServers,
     addMcpServer: mocks.addMcpServer,
     reorderMcpServers: vi.fn(),
     refetch: mocks.refetch
@@ -61,7 +64,8 @@ vi.mock('../QuickCreateMcpServerDialog', () => ({
       </button>
     ) : null
 }))
-vi.mock('../McpServerCard', () => ({ default: () => null }))
+// vi.mock('../McpServerCard', () => ({ default: () => null }))
+vi.mock('../McpServerCard', () => ({ default: ({ server }: { server: McpServer }) => <div>{server.name}</div> }))
 
 vi.mock('react-i18next', async (importOriginal) => {
   const actual = await importOriginal<object>()
@@ -93,6 +97,36 @@ const protocolServers: ProtocolMcpServerInstall[] = [
 ]
 
 describe('McpServersList catalog filters', () => {
+  it('外部知识库不重复进入我的MCP，普通手动项仍可见', () => {
+    mocks.ipcRequest.mockResolvedValue([])
+    const base = {
+      id: 'manual',
+      name: '手动MCP',
+      type: 'streamableHttp',
+      isActive: false,
+      createdAt: '',
+      updatedAt: '',
+      sortOrder: 0
+    } as McpServer
+    mocks.mcpServers = [
+      base,
+      {
+        ...base,
+        id: 'external',
+        name: '外部实例',
+        reference: externalKnowledgeReference({
+          issuerId: 'server-a',
+          userId: '7',
+          tenantId: '9',
+          instanceId: '11111111-1111-4111-8111-111111111111'
+        })
+      }
+    ]
+    render(<McpServersList variant="catalog" showTitle={false} />)
+    expect(screen.getByText('手动MCP')).toBeVisible()
+    expect(screen.queryByText('外部实例')).not.toBeInTheDocument()
+    mocks.mcpServers = []
+  })
   it('hides transport and builtin filters from My MCP while preserving status filters', async () => {
     mocks.pendingProtocolInstalls = []
     mocks.ipcRequest.mockResolvedValue([])
@@ -120,7 +154,8 @@ describe('McpServersList quick create', () => {
     render(<McpServersList variant="catalog" />)
 
     await user.click(screen.getByRole('button', { name: 'common.add' }))
-    await user.click(screen.getByRole('menuitem', { name: 'settings.mcp.addServer.create' }))
+    // await user.click(screen.getByRole('menuitem', { name: 'settings.mcp.addServer.create' }))
+    await user.click(screen.getByRole('button', { name: 'settings.mcp.addServer.create' }))
     await user.click(screen.getByRole('button', { name: 'quick-create-server' }))
 
     await waitFor(() => expect(mocks.addMcpServer).toHaveBeenCalledWith({ name: 'created-server' }))

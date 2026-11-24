@@ -18,6 +18,7 @@ import { useOrgAccountSession } from '@renderer/hooks/useOrgAccountSession'
 import { cn } from '@renderer/utils/style'
 
 import BuiltinMcpServerList from './BuiltinMcpServerList'
+import ExternalKnowledgeConnectorList from './ExternalKnowledgeConnectorList'
 import McpMarketList from './McpMarketList'
 import McpProviderSettings from './McpProviderSettings'
 import McpServersList from './McpServersList'
@@ -28,7 +29,8 @@ import { getMcpProviderLogo, getProviderDisplayName, type ProviderConfig, provid
 // [enterprise] 组织连接器由发现页三级 tab 上移为目录二级 tab
 // type CatalogTab = 'discover' | 'providers' | 'mine'
 // type CatalogTab = 'discover' | 'org' | 'providers' | 'mine'
-type CatalogTab = 'builtin' | 'discover' | 'org' | 'providers' | 'mine'
+// type CatalogTab = 'builtin' | 'discover' | 'org' | 'providers' | 'mine'
+type CatalogTab = 'builtin' | 'discover' | 'org' | 'external' | 'providers' | 'mine'
 // type DiscoverTab = 'builtin' | 'marketplace' | 'org'
 type DiscoverTab = 'builtin' | 'marketplace'
 
@@ -49,6 +51,7 @@ export default function McpCatalog() {
     accountStatus.authMode === 'management-java'
   // const [activeTab, setActiveTab] = useState<CatalogTab>('discover')
   const [activeTab, setActiveTab] = useState<CatalogTab>('builtin')
+  const [externalVisit, setExternalVisit] = useState(0)
   const [discoverTab, setDiscoverTab] = useState<DiscoverTab>('builtin')
   const [selectedProvider, setSelectedProvider] = useState<ProviderConfig | null>(null)
 
@@ -115,6 +118,18 @@ export default function McpCatalog() {
           {/* <TabsTrigger value="providers" className={primaryTabClassName}>
             {t('settings.mcp.providers')}
           </TabsTrigger> */}
+          {/* MEA:external-knowledge-connectors 点击标签重新查询，非激活页面不挂载目录 */}
+          {showPublicCatalog ? (
+            <TabsTrigger
+              value="external"
+              className={primaryTabClassName}
+              onMouseDown={(event) => {
+                // 与Tabs的鼠标激活处于同一事件，避免首次进入发出两次请求
+                if (event.button === 0 && !event.ctrlKey) setExternalVisit((value) => value + 1)
+              }}>
+              {t('settings.mcp.externalKnowledge.title')}
+            </TabsTrigger>
+          ) : null}
           <TabsTrigger value="mine" className={primaryTabClassName}>
             {t('settings.mcp.myServers')}
           </TabsTrigger>
@@ -195,6 +210,14 @@ export default function McpCatalog() {
 
       <TabsContent value="mine" className="min-h-0 flex-1">
         <McpServersList variant="catalog" showTitle={false} />
+      </TabsContent>
+
+      <TabsContent value="external" className="flex min-h-0 flex-1 flex-col">
+        {showPublicCatalog && activeTab === 'external' ? (
+          <Scrollbar className="@container/mcp-discover min-h-0 flex-1 px-6 pt-5 pb-6">
+            <ExternalKnowledgeConnectorList visit={externalVisit} />
+          </Scrollbar>
+        ) : null}
       </TabsContent>
 
       {/* MEA：服务商入口停用后不挂载详情弹窗，原逻辑保留。 */}
