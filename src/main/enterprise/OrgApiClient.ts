@@ -13,6 +13,7 @@ import { JavaAuthClient } from './JavaAuthClient'
 import { JavaKnowledgeClient } from './JavaKnowledgeClient'
 import { JavaModelConfigClient } from './JavaModelConfigClient'
 import { JavaResourceClient } from './JavaResourceClient'
+import { KnowledgeInspectionClient } from './KnowledgeInspectionClient'
 import type {
   OrgConnectorCatalogItem,
   OrgCurrentUser,
@@ -120,6 +121,20 @@ export class OrgApiClient {
         return session.accessToken
       },
       onSessionExpired: this.onResourceSessionExpired
+    })
+  }
+
+  knowledgeInspection(session: OrgSession, assertCurrent: () => void): KnowledgeInspectionClient {
+    return new KnowledgeInspectionClient({
+      baseUrl: session.authOrigin,
+      getAccessToken: async () => {
+        assertCurrent()
+        return session.accessToken
+      },
+      onSessionExpired: () => {
+        assertCurrent()
+        return this.onResourceSessionExpired?.()
+      }
     })
   }
 

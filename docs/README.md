@@ -144,7 +144,7 @@
 |----------|-------------|
 | [企业组织资源功能交接](./references/enterprise/README.md) | 企业组织账号、公共技能与连接器目录、全量复制安装模式的功能交接说明 |
 | [登录后自动绑定模型服务商：接口契约](./references/enterprise/client-model-binding-api.md) | 登录后自动绑定 Cowork 模型服务商的接口契约、客户端实现与后端联调条件 |
-| [知识库分组角色与网页管理](./references/enterprise/knowledge-space-administrators.md) | 知识库分组角色的客户端内容维护、网页管理跳转和验证约定 |
+| [知识库分组角色与网页管理](./references/enterprise/knowledge-space-administrators.md) | 知识库分组角色、网页管理跳转与企业共享空间只读查看约定 |
 
 ### File
 

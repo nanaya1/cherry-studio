@@ -29,6 +29,14 @@ import {
   KnowledgeAddItemsResultSchema,
   KNOWLEDGE_RUNTIME_ITEMS_MAX
 } from '@shared/data/types/knowledge'
+import {
+  InspectionSpaceSchema,
+  InspectionFileSchema,
+  InspectionChunkSchema,
+  InspectionContentSchema,
+  InspectionRelationSchema,
+  inspectionPageSchema
+} from '@shared/data/types/knowledgeInspection'
 
 import { defineRoute } from '../define'
 
@@ -50,6 +58,38 @@ const localBaseId = z
   .refine((id) => !id.startsWith('orgkb:'))
 
 export const enterpriseKnowledgeRequestSchemas = {
+  'enterprise.knowledge.inspection.spaces': defineRoute({
+    input: z.strictObject({ page: z.number().int().positive(), keyword: z.string().max(100).optional() }),
+    output: inspectionPageSchema(InspectionSpaceSchema)
+  }),
+  'enterprise.knowledge.inspection.detail': defineRoute({
+    input: z.strictObject({ baseId: orgId }),
+    output: InspectionSpaceSchema
+  }),
+  'enterprise.knowledge.inspection.files': defineRoute({
+    input: z.strictObject({ baseId: orgId, page: z.number().int().positive(), parentId: orgId.optional() }),
+    output: inspectionPageSchema(InspectionFileSchema)
+  }),
+  'enterprise.knowledge.inspection.content': defineRoute({
+    input: z.strictObject({ baseId: orgId, fileId: orgId }),
+    output: InspectionContentSchema
+  }),
+  'enterprise.knowledge.inspection.chunks': defineRoute({
+    input: z.strictObject({ baseId: orgId, fileId: orgId, page: z.number().int().positive() }),
+    output: inspectionPageSchema(InspectionChunkSchema)
+  }),
+  'enterprise.knowledge.inspection.invitations': defineRoute({
+    input: z.strictObject({ baseId: orgId, page: z.number().int().positive() }),
+    output: inspectionPageSchema(InspectionRelationSchema)
+  }),
+  'enterprise.knowledge.inspection.links': defineRoute({
+    input: z.strictObject({ baseId: orgId, page: z.number().int().positive() }),
+    output: inspectionPageSchema(InspectionRelationSchema)
+  }),
+  'enterprise.knowledge.inspection.receipts': defineRoute({
+    input: z.strictObject({ baseId: orgId, shareId: orgId, page: z.number().int().positive() }),
+    output: inspectionPageSchema(InspectionRelationSchema)
+  }),
   'enterprise.knowledge.open_web_management': defineRoute({
     input: z.strictObject({ baseId: orgId.optional(), create: z.boolean().optional() }),
     output: z.void()

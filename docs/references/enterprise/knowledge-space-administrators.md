@@ -1,6 +1,10 @@
 ---
-description: 知识库分组角色的客户端内容维护、网页管理跳转和验证约定
+description: 知识库分组角色、网页管理跳转与企业共享空间只读查看约定
 sources:
+  - src/main/enterprise/KnowledgeInspection.ts
+  - src/main/enterprise/KnowledgeInspectionClient.ts
+  - src/shared/data/types/knowledgeInspection.ts
+  - src/renderer/pages/knowledge/components/KnowledgeInspectionDetail.tsx
   - src/main/enterprise/KnowledgeContentCommands.ts
   - src/main/enterprise/KnowledgeWebManagement.ts
   - src/main/enterprise/OrgKnowledgeService.ts
@@ -39,6 +43,18 @@ Java 和 Web 按每个公共库或个人库分享副本配置知识管理员分�
 运行 `KnowledgeContentCommands.test.ts`、`KnowledgeWebManagement.test.ts`、`OrgKnowledgeService.javaWrite.test.ts`、`OrgKnowledgeDetail.test.tsx`、`OrgKnowledgeNavigation.test.tsx` 和 `useOrgKnowledge.test.ts`，核对上传归属、撤权、未知结果不重发、Web入口角色及URL凭据边界。
 
 按仓库约定执行 `pnpm lint`、`pnpm mea:check`、`pnpm docs:check`，使用受控会话与本地文件，不连接业务服务。Java 的手工 SQL 升级、Web 配置界面及权限契约由后端 `docs/knowledge-space-administrators.md` 维护；此文档不表示已部署或完成真实环境验收。
+
+## 企业全部共享空间只读查看
+
+当前企业 OWNER/ADMIN 在「分享给我」增加「我收到的 / 企业全部」。全部范围通过独立 GET `/api/v1/client/knowledge/inspection/**` 分页读取当前企业 visibility=3 的未删除个人库分享副本，包括没有领取人的空间。公共库仍使用公共分类，普通成员不显示范围切换。
+
+详情以现有 DetailHeader 和共享 UI 组件展示「文档内容 / 分享关系」，仅允许查看已启用目录、ready 正文及分块。正文是纯文本，超限有截断提示并支持分块分页。关系分别查询实际邀请、链接及领取人，分页展开；不展示分享码、密码、地址或已删除关系。真实邀请人/链接创建者缺失时不回填空间创建者，邀请只显示真实更新时间。链接次数耗尽仅限制新领取，不撤销既有领取，过期或吊销与实际授权分别展示。
+
+`qaAuthorized` 按原有访问事实提示是否可问答；管理目录不加入普通 catalog、聊天选择器或搜索范围。此入口不提供原件、编辑、上传、删除、策略和分享写操作，不新增巡检配置或角色。其他既有页面入口保持原规则。
+
+主进程 KnowledgeInspection 每次在线核验有效管理角色，以租约固定会话凭据；请求和失效回调都复核原身份，迟到失效响应不能清除新会话。渲染端单独维护范围和选中空间，身份/企业/角色或分类变化即清空，查询失败显示错误，异步旧结果不回填。
+
+自动化回归：`KnowledgeInspection.test.ts`、`KnowledgeInspection.test.tsx`、`OrgKnowledgeNavigation.test.tsx`、`enterpriseKnowledge.test.ts`，同时验证普通目录和聊天选择范围。若 `pnpm test:main` 的预重建因正在使用的 SQLite 原生模块被锁失败，本组不依赖 SQLite，可直接使用 `pnpm exec vitest run --project main <测试路径>` 执行，不中断其他进程或改写用户数据。完整类型、格式和多语言检查沿用 `pnpm lint`。本次无客户端存储迁移、后端 SQL 或新增配置。
 
 ## 知识库角色
 

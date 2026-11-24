@@ -52,6 +52,15 @@ function guard<R>(fn: () => Promise<R>): Promise<R> {
 const plugin = () => application.get('EnterprisePlugin')
 
 export const enterpriseKnowledgeHandlers: IpcHandlersFor<typeof enterpriseKnowledgeRequestSchemas> = {
+  'enterprise.knowledge.inspection.spaces': (params) => guard(() => plugin().knowledge.inspection.spaces(params)),
+  'enterprise.knowledge.inspection.detail': (params) => guard(() => plugin().knowledge.inspection.detail(params)),
+  'enterprise.knowledge.inspection.files': (params) => guard(() => plugin().knowledge.inspection.files(params)),
+  'enterprise.knowledge.inspection.content': (params) => guard(() => plugin().knowledge.inspection.content(params)),
+  'enterprise.knowledge.inspection.chunks': (params) => guard(() => plugin().knowledge.inspection.chunks(params)),
+  'enterprise.knowledge.inspection.invitations': (params) =>
+    guard(() => plugin().knowledge.inspection.invitations(params)),
+  'enterprise.knowledge.inspection.links': (params) => guard(() => plugin().knowledge.inspection.links(params)),
+  'enterprise.knowledge.inspection.receipts': (params) => guard(() => plugin().knowledge.inspection.receipts(params)),
   'enterprise.knowledge.open_web_management': (params) => guard(() => plugin().knowledge.openWebManagement(params)),
   'enterprise.knowledge.upload_source': (params) => guard(() => plugin().knowledge.uploadSource(params)),
   'enterprise.knowledge.pending_cleanup': () => guard(() => plugin().knowledge.pendingCleanup()),

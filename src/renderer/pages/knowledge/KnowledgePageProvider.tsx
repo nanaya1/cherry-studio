@@ -36,6 +36,7 @@ import {
   useKnowledgeGroups,
   useUpdateKnowledgeGroup
 } from './hooks/useKnowledgeGroups'
+import { useKnowledgeInspection } from './hooks/useKnowledgeInspection'
 import type { KnowledgeRestoreBaseInitialValues } from './panels/ragConfig/RagConfigPanel'
 import type { KnowledgeFilePreviewTarget, KnowledgeTabKey } from './types'
 
@@ -45,6 +46,7 @@ type CreateKnowledgeBase = ReturnType<typeof useCreateKnowledgeBase>['createBase
 type RestoreKnowledgeBase = ReturnType<typeof useRestoreKnowledgeBase>['restoreBase']
 
 interface KnowledgePageContextValue {
+  inspection: ReturnType<typeof useKnowledgeInspection>
   org: ReturnType<typeof useOrgKnowledge>
   category: 'local' | 'public' | 'shared'
   setCategory: (category: 'local' | 'public' | 'shared') => void
@@ -146,6 +148,7 @@ export const KnowledgePageProvider = ({ children, baseId, onBaseIdChange }: Know
   */
   // MEA:profile-verification-network-tolerance Only authorization changes invalidate knowledge operations.
   const orgSession = org.authorizationVersion
+  const inspection = useKnowledgeInspection(org.canManageWeb, orgSession, category)
   const orgSessionRef = org.authorizationVersionRef
   const [selectionSession, setSelectionSession] = useState(orgSession)
   if (selectionSession !== orgSession) {
@@ -629,6 +632,7 @@ export const KnowledgePageProvider = ({ children, baseId, onBaseIdChange }: Know
 
   const value = useMemo<KnowledgePageContextValue>(
     () => ({
+      inspection,
       org,
       category,
       setCategory,
@@ -699,6 +703,7 @@ export const KnowledgePageProvider = ({ children, baseId, onBaseIdChange }: Know
       deleteGroup: handleDeleteGroup
     }),
     [
+      inspection,
       org,
       category,
       setCategory,

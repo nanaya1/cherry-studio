@@ -607,6 +607,39 @@ it.each([false, true])('公共库创建入口按企业管理能力显示并固�
 })
 
 // === submitRenameBase × enterprise.knowledge.rename_shared 行为 ===
+it.each([false, true])('企业全部范围仅企业管理员显示，管理目录不写入普通目录：%s', async (authorized) => {
+  authorization.canManageWeb = authorized
+  const user = userEvent.setup()
+  const original = request.getMockImplementation()!
+  const inspectionBase = {
+    id: 'orgkb:inspection',
+    name: '仅管理可见',
+    ownerName: '甲',
+    ownerId: 42,
+    description: null,
+    updateTime: null,
+    qaAuthorized: false
+  }
+  request.mockImplementation(async (route, input) => {
+    if (route === 'enterprise.knowledge.inspection.spaces')
+      return { items: [inspectionBase], total: 1, page: 1, pageSize: 20 }
+    return original(route, input)
+  })
+  render(<RoutedPage />)
+  await user.click(screen.getByRole('button', { name: i18n.t('knowledge.org.shared') }))
+  if (!authorized) {
+    expect(screen.queryByRole('button', { name: 'Enterprise all' })).not.toBeInTheDocument()
+    return
+  }
+  await user.click(screen.getByRole('button', { name: 'Enterprise all' }))
+  await screen.findByRole('button', { name: /仅管理可见/ })
+  expect(screen.queryByRole('button', { name: '其他管理员分享' })).not.toBeInTheDocument()
+  expect(catalog.shared.map((base) => base.id)).toEqual(['orgkb:shared'])
+  await user.click(screen.getByRole('button', { name: 'Received by me' }))
+  expect(screen.queryByRole('button', { name: /仅管理可见/ })).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: '其他管理员分享' })).toBeInTheDocument()
+})
+
 // 仅用于驱动 KnowledgePageProvider 的 submitRenameBase；对话框区在上方已被 mock 为空。
 function RenameHarness() {
   const { openRenameBaseDialog, submitRenameBase } = useKnowledgePage()

@@ -74,6 +74,7 @@ import type {
 } from './JavaKnowledgeClient'
 import { uploadJavaKnowledgeFile } from './JavaKnowledgeUpload'
 import { requireEditableKnowledge, uploadKnowledgeSource } from './KnowledgeContentCommands'
+import { KnowledgeInspection } from './KnowledgeInspection'
 import {
   captureKnowledgeSourceBindings,
   removeKnowledgeSourceBindings,
@@ -392,6 +393,11 @@ export class OrgKnowledgeService {
       }
     })
     */
+  }
+
+  // MEA:enterprise-knowledge-page 独立读取器不复用普通目录缓存或问答选择。
+  get inspection(): KnowledgeInspection {
+    return new KnowledgeInspection(this.auth)
   }
 
   private acquireLease(): Lease {

@@ -9,6 +9,7 @@ import { ipcApi } from '@renderer/ipc'
 import { toast } from '@renderer/services/toast'
 import { parseOrgId } from '@shared/data/types/enterpriseKnowledge'
 
+import KnowledgeInspectionNavigator from '../components/KnowledgeInspectionNavigator'
 import KnowledgeInvitations from '../components/KnowledgeInvitations'
 import KnowledgeWebButton from '../components/KnowledgeWebButton'
 import { BaseNavigator, type BaseNavigatorRemoteRow } from '../components/navigator'
@@ -23,7 +24,9 @@ const NAVIGATOR_MAX_WIDTH = 360
 
 const KnowledgePageNavigatorSection = () => {
   const { t } = useTranslation()
-  const { org, orgSession, category, setCategory, selectedOrgBase, selectOrgBase } = useKnowledgePage()
+  // MEA:enterprise-knowledge-page 企业全部范围与普通分享目录相互独立。
+  // const { org, orgSession, category, setCategory, selectedOrgBase, selectOrgBase } = useKnowledgePage()
+  const { org, orgSession, category, setCategory, selectedOrgBase, selectOrgBase, inspection } = useKnowledgePage()
   const [receiving, setReceiving] = useState(false)
   const [unshareBaseId, setUnshareBaseId] = useState<string | null>(null)
   const [deleteLocal, setDeleteLocal] = useState(false)
@@ -224,55 +227,83 @@ const KnowledgePageNavigatorSection = () => {
         content={
           category === 'local' ? undefined : (
             <div className="min-h-0 flex-1 space-y-2 overflow-auto">
-              {category === 'public' && org.canManageWeb ? <KnowledgeWebButton key={orgSession} create /> : null}
-              {category === 'shared' ? (
-                <Button variant="outline" className="w-full" onClick={() => setReceiving(true)}>
-                  {t('knowledge.org.add_with_code')}
-                </Button>
-              ) : null}
-              {category === 'shared' ? (
-                <KnowledgeInvitations
-                  key={orgSession}
-                  onChanged={org.refresh}
-                  onAddWithCode={() => setReceiving(true)}
-                />
-              ) : null}
-              {receiving && category === 'shared' ? (
-                <ReceiveKnowledgeShareDialog
-                  key={orgSession}
-                  onClose={() => setReceiving(false)}
-                  onReceived={async (received) => {
-                    selectOrgBase({ id: received.baseId, name: received.name, description: null })
-                    await org.refresh()
-                  }}
-                />
-              ) : null}
-              {org.loading ? (
-                <p role="status" className="p-2 text-muted-foreground">
-                  {t('common.loading')}
-                </p>
-              ) : null}
-              {org.error ? (
-                <div role="alert" className="p-2">
-                  <p className="break-words text-error">{org.error}</p>
-                  <Button variant="ghost" onClick={() => void org.refresh()}>
-                    {t('knowledge.org.refresh')}
-                  </Button>
+              {category === 'shared' && org.canManageWeb ? (
+                <div className="flex gap-1" aria-label={t('knowledge.inspection.scope')}>
+                  {(['mine', 'all'] as const).map((value) => (
+                    <Button
+                      key={value}
+                      size="sm"
+                      className="min-w-0 flex-1 px-1 text-xs"
+                      variant={inspection.scope === value ? 'secondary' : 'ghost'}
+                      aria-pressed={inspection.scope === value}
+                      onClick={() => {
+                        setReceiving(false)
+                        inspection.setScope(value)
+                      }}>
+                      {t(value === 'mine' ? 'knowledge.inspection.mine' : 'knowledge.inspection.all')}
+                    </Button>
+                  ))}
                 </div>
               ) : null}
-              {!org.loading && !org.error && orgBases.length === 0 ? (
-                <p className="p-2 text-sm text-muted-foreground">{t('knowledge.org.empty_bases')}</p>
-              ) : null}
-              {orgBases.map((base) => (
-                <Button
-                  key={base.id}
-                  variant={selectedOrgBase?.id === base.id ? 'secondary' : 'ghost'}
-                  className="h-auto w-full justify-start whitespace-normal py-2 text-left"
-                  aria-pressed={selectedOrgBase?.id === base.id}
-                  onClick={() => selectOrgBase(base)}>
-                  {base.name}
-                </Button>
-              ))}
+              {inspection.active ? (
+                <KnowledgeInspectionNavigator
+                  key={orgSession}
+                  selected={inspection.selected}
+                  onSelect={inspection.select}
+                />
+              ) : (
+                <>
+                  {category === 'public' && org.canManageWeb ? <KnowledgeWebButton key={orgSession} create /> : null}
+                  {category === 'shared' ? (
+                    <Button variant="outline" className="w-full" onClick={() => setReceiving(true)}>
+                      {t('knowledge.org.add_with_code')}
+                    </Button>
+                  ) : null}
+                  {category === 'shared' ? (
+                    <KnowledgeInvitations
+                      key={orgSession}
+                      onChanged={org.refresh}
+                      onAddWithCode={() => setReceiving(true)}
+                    />
+                  ) : null}
+                  {receiving && category === 'shared' ? (
+                    <ReceiveKnowledgeShareDialog
+                      key={orgSession}
+                      onClose={() => setReceiving(false)}
+                      onReceived={async (received) => {
+                        selectOrgBase({ id: received.baseId, name: received.name, description: null })
+                        await org.refresh()
+                      }}
+                    />
+                  ) : null}
+                  {org.loading ? (
+                    <p role="status" className="p-2 text-muted-foreground">
+                      {t('common.loading')}
+                    </p>
+                  ) : null}
+                  {org.error ? (
+                    <div role="alert" className="p-2">
+                      <p className="break-words text-error">{org.error}</p>
+                      <Button variant="ghost" onClick={() => void org.refresh()}>
+                        {t('knowledge.org.refresh')}
+                      </Button>
+                    </div>
+                  ) : null}
+                  {!org.loading && !org.error && orgBases.length === 0 ? (
+                    <p className="p-2 text-sm text-muted-foreground">{t('knowledge.org.empty_bases')}</p>
+                  ) : null}
+                  {orgBases.map((base) => (
+                    <Button
+                      key={base.id}
+                      variant={selectedOrgBase?.id === base.id ? 'secondary' : 'ghost'}
+                      className="h-auto w-full justify-start whitespace-normal py-2 text-left"
+                      aria-pressed={selectedOrgBase?.id === base.id}
+                      onClick={() => selectOrgBase(base)}>
+                      {base.name}
+                    </Button>
+                  ))}
+                </>
+              )}
             </div>
           )
         }

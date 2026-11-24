@@ -754,3 +754,36 @@ customizations:
       - '"chat.default.name": "MEA Cowork"'
       - '"en-US": "MEA Cowork Support"'
       - "validateApplicationBrand"
+
+  - id: enterprise-shared-space-view
+    title: 企业全部共享空间只读查看
+    owner: main
+    behavior: 当前企业有效OWNER/ADMIN在分享给我切换我收到的和企业全部；独立管理目录分页读取本企业个人库分享副本，不写入普通catalog或聊天知识库授权。正文及分块只读且仅ready已启用文件，qaAuthorized按原有授权提示，原件及所有写入入口不开放。真实邀请人、链接创建人和实际领取人分别展示，缺失不回填创建者，不返回分享码、密码或链接；次数用尽不撤销既有领取，邀请更新时间不冒充接受时间。每次主进程在线核验并绑定原身份租约及凭据，切身份/企业/角色/分类清除页面状态，迟到响应不回填，错误不伪装空结果。Java再次校验当前企业角色及归属，无巡检配置或角色扩权。
+    markers:
+      - MEA:enterprise-shared-space-view
+    touchpoints:
+      - src/main/enterprise/KnowledgeInspection.ts
+      - src/main/enterprise/KnowledgeInspectionClient.ts
+      - src/main/enterprise/OrgApiClient.ts
+      - src/main/enterprise/OrgKnowledgeService.ts
+      - src/main/ipc/handlers/enterpriseKnowledge.ts
+      - src/shared/ipc/schemas/enterpriseKnowledge.ts
+      - src/shared/data/types/knowledgeInspection.ts
+      - src/renderer/pages/knowledge/KnowledgePage.tsx
+      - src/renderer/pages/knowledge/KnowledgePageProvider.tsx
+      - src/renderer/pages/knowledge/sections/KnowledgePageNavigatorSection.tsx
+      - src/renderer/pages/knowledge/hooks/useKnowledgeInspection.ts
+      - src/renderer/pages/knowledge/hooks/useInspectionQuery.ts
+      - src/renderer/pages/knowledge/components/KnowledgeInspectionNavigator.tsx
+      - src/renderer/pages/knowledge/components/KnowledgeInspectionDetail.tsx
+      - src/renderer/pages/knowledge/components/KnowledgeInspectionFiles.tsx
+      - src/renderer/pages/knowledge/components/KnowledgeInspectionRelations.tsx
+      - src/renderer/pages/knowledge/components/InspectionPager.tsx
+      - src/renderer/pages/knowledge/components/InspectionQueryState.tsx
+      - src/renderer/i18n/locales
+    tests:
+      - src/main/enterprise/__tests__/KnowledgeInspection.test.ts
+      - src/main/ipc/handlers/__tests__/enterpriseKnowledge.test.ts
+      - src/renderer/pages/knowledge/components/__tests__/KnowledgeInspection.test.tsx
+      - src/renderer/pages/knowledge/__tests__/OrgKnowledgeNavigation.test.tsx
+      - src/renderer/hooks/__tests__/useSelectableKnowledgeBases.test.ts

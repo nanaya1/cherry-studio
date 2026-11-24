@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import KnowledgeInspectionDetail from './components/KnowledgeInspectionDetail'
 // 待处理邀请入口移至左侧导航。
 // import KnowledgeInvitations from './components/KnowledgeInvitations'
 // import KnowledgeSharingPanel from './components/KnowledgeSharingPanel'
@@ -13,6 +14,7 @@ import KnowledgePageNavigatorSection from './sections/KnowledgePageNavigatorSect
 import KnowledgePageShell from './sections/KnowledgePageShell'
 
 const KnowledgePageContent = () => {
+  const { inspection } = useKnowledgePage()
   const { t } = useTranslation()
   const { filePreview, selectedBase, isLoading, org, category, selectedOrgBase, orgSession, handleOrgUnshared } =
     useKnowledgePage()
@@ -57,7 +59,15 @@ const KnowledgePageContent = () => {
       ) : category !== 'local' ? (
       */}
       {/* MEA:enterprise-knowledge-page 本地 owned 与组织库共用云端权威详情。 */}
-      {managingCopy || category !== 'local' ? (
+      {/* MEA:enterprise-knowledge-page 企业管理查看独立详情，不继承上传、分享或检索入口。 */}
+      {/* 原条件：managingCopy || category !== 'local' */}
+      {inspection.active ? (
+        inspection.selected ? (
+          <KnowledgeInspectionDetail key={`${orgSession}-${inspection.selected.id}`} base={inspection.selected} />
+        ) : (
+          <p className="min-w-0 flex-1 p-6 text-sm text-muted-foreground">{t('knowledge.org.select_base')}</p>
+        )
+      ) : managingCopy || category !== 'local' ? (
         <div key={orgSession} className="flex min-h-0 min-w-0 flex-1 flex-col overflow-auto">
           {/* MEA:enterprise-knowledge-page 分享码领取与指定人邀请并存。 */}
           {/* {category === 'shared' ? <KnowledgeInvitations onChanged={org.refresh} /> : null} */}
