@@ -41,7 +41,40 @@ interface IndustrialVideoWorkbenchSnapshot {
   restoreOnly?: boolean
 }
 const workbenches = new Map<string, IndustrialVideoWorkbenchSnapshot>()
+const availableWorkbenches = new Map<string, Map<string, number>>()
 const selectedPanels = new Map<string, string>()
+
+export function publishIndustrialVideoWorkbenchAvailability(sessionId: string, run: string | null): void {
+  if (run) availableWorkbenches.set(sessionId, new Map([[run, 1]]))
+  else availableWorkbenches.delete(sessionId)
+  listeners.forEach((listener) => listener())
+}
+
+export function registerIndustrialVideoWorkbenchAvailability(sessionId: string, run: string): () => void {
+  const runs = availableWorkbenches.get(sessionId) ?? new Map<string, number>()
+  runs.set(run, (runs.get(run) ?? 0) + 1)
+  availableWorkbenches.set(sessionId, runs)
+  listeners.forEach((listener) => listener())
+  return () => {
+    const current = availableWorkbenches.get(sessionId)
+    if (!current) return
+    const count = current.get(run) ?? 0
+    if (count > 1) current.set(run, count - 1)
+    else current.delete(run)
+    if (!current.size) availableWorkbenches.delete(sessionId)
+    listeners.forEach((listener) => listener())
+  }
+}
+
+export function useIndustrialVideoWorkbenchAvailability(sessionId?: string): string | null {
+  return useSyncExternalStore(
+    (listener) => {
+      listeners.add(listener)
+      return () => listeners.delete(listener)
+    },
+    () => (sessionId ? (Array.from(availableWorkbenches.get(sessionId)?.keys() ?? []).at(-1) ?? null) : null)
+  )
+}
 
 export function selectIndustrialVideoPanel(sessionId: string, panelId: string): void {
   if (selectedPanels.get(sessionId) === panelId) return

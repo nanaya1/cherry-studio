@@ -25,6 +25,7 @@ import { useOptionalFilePreviewNavigation } from '@renderer/components/FilePrevi
 import type { WebviewAnnotationSavedPayload } from '@renderer/components/WebviewAnnotationControls'
 import {
   publishIndustrialVideoProgress,
+  publishIndustrialVideoWorkbenchAvailability,
   openIndustrialVideoWorkbench,
   openIndustrialVideoFinal,
   selectIndustrialVideoPanel,
@@ -735,6 +736,8 @@ describe('AgentRightPane', () => {
       nodeById: fileTreeModelState.nodeById
     }))
     publishIndustrialVideoProgress('session-a', null)
+    publishIndustrialVideoWorkbenchAvailability('shortcut-workbench', null)
+    publishIndustrialVideoWorkbenchAvailability('pending-workbench', null)
   })
 
   it('opens an industrial video workbench from the shortcut before the message entry is used', async () => {
@@ -743,8 +746,9 @@ describe('AgentRightPane', () => {
       run: 'run-1',
       raw: {}
     })
+    act(() => publishIndustrialVideoWorkbenchAvailability('shortcut-workbench', 'run-1'))
     render(
-      <TestAgentRightPane sessionId="shortcut-workbench" industrialVideo messages={[]} partsByMessageId={{}}>
+      <TestAgentRightPane sessionId="shortcut-workbench" messages={[]} partsByMessageId={{}}>
         <AgentRightPane.Shortcuts />
         <AgentRightPane.Viewport />
       </TestAgentRightPane>
@@ -757,8 +761,21 @@ describe('AgentRightPane', () => {
       'https://example.test/workbench'
     )
     expect(ipcRequestMock).toHaveBeenCalledWith('industrial_video.workbench_open', {
-      sessionId: 'shortcut-workbench'
+      sessionId: 'shortcut-workbench',
+      run: 'run-1'
     })
+  })
+
+  it('hides the shortcut until the message workbench entry is available', () => {
+    render(
+      <TestAgentRightPane sessionId="pending-workbench" messages={[]} partsByMessageId={{}}>
+        <AgentRightPane.Shortcuts />
+        <AgentRightPane.Viewport />
+      </TestAgentRightPane>
+    )
+
+    expect(screen.queryByRole('button', { name: '工作台' })).not.toBeInTheDocument()
+    expect(ipcRequestMock).not.toHaveBeenCalledWith('industrial_video.workbench_open', expect.anything())
   })
 
   it('shows industrial video progress as a session-only right pane tab', async () => {

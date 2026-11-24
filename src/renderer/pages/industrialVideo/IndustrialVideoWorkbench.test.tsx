@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ipcApi } from '@renderer/ipc'
 
-import { useIndustrialVideoWorkbench } from './industrialVideoProgressStore'
+import { useIndustrialVideoWorkbench, useIndustrialVideoWorkbenchAvailability } from './industrialVideoProgressStore'
 import IndustrialVideoWorkbench from './IndustrialVideoWorkbench'
 
 const mocks = vi.hoisted(() => ({
@@ -432,11 +432,17 @@ describe('IndustrialVideoWorkbench', () => {
     })
     function RightPane() {
       const workbench = useIndustrialVideoWorkbench('entry-session')
-      return workbench ? (
-        <p role="status">
-          工作台：{workbench.run} {workbench.url}
-        </p>
-      ) : null
+      const availableRun = useIndustrialVideoWorkbenchAvailability('entry-session')
+      return (
+        <>
+          {availableRun && <p>右上角工作台：{availableRun}</p>}
+          {workbench && (
+            <p role="status">
+              工作台：{workbench.run} {workbench.url}
+            </p>
+          )}
+        </>
+      )
     }
     render(
       <>
@@ -449,6 +455,7 @@ describe('IndustrialVideoWorkbench', () => {
         <RightPane />
       </>
     )
+    expect(await screen.findByText('右上角工作台：run-1')).toBeInTheDocument()
     await userEvent.setup().click(screen.getByRole('button', { name: '打开工作台' }))
     expect(await screen.findByText(`工作台：run-1 ${mocks.workbenchUrl}`)).toBeInTheDocument()
     expect(ipcApi.request).toHaveBeenCalledWith('industrial_video.workbench_open', {

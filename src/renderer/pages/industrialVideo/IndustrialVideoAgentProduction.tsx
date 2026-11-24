@@ -19,7 +19,11 @@ import { createFilePathHandle } from '@shared/utils/file'
 
 // import { LoaderCircle } from 'lucide-react'
 import IndustrialVideoGenerationLoading, { readGenerationProgress } from './IndustrialVideoGenerationLoading'
-import { openIndustrialVideoWorkbench, publishIndustrialVideoProgress } from './industrialVideoProgressStore'
+import {
+  openIndustrialVideoWorkbench,
+  publishIndustrialVideoProgress,
+  registerIndustrialVideoWorkbenchAvailability
+} from './industrialVideoProgressStore'
 import { useIndustrialVideoProduction } from './useIndustrialVideoProduction'
 
 function parseToolResult(output: unknown): Record<string, unknown> | null {
@@ -34,6 +38,34 @@ function parseToolResult(output: unknown): Record<string, unknown> | null {
   }
   if (content && typeof content === 'object' && !Array.isArray(content)) return content as Record<string, unknown>
   return output as Record<string, unknown>
+}
+
+function IndustrialVideoWorkbenchLink({
+  message,
+  run,
+  sessionId,
+  url
+}: {
+  message?: string
+  run: string
+  sessionId: string
+  url: string
+}) {
+  useEffect(() => registerIndustrialVideoWorkbenchAvailability(sessionId, run), [run, sessionId])
+  return (
+    <div className="space-y-2 text-sm">
+      <a
+        href={url}
+        className="text-primary underline"
+        onClick={(event) => {
+          event.preventDefault()
+          openIndustrialVideoWorkbench(sessionId, run, url)
+        }}>
+        打开脚本工作台
+      </a>
+      {message && <p>{message}</p>}
+    </div>
+  )
 }
 
 // const terminalLabels: Record<string, string> = { failed: '生成失败', cancelled: '已取消', blocked: '任务已阻塞' }
@@ -437,20 +469,12 @@ export default function IndustrialVideoAgentProduction({
         const url = new URL(value.workbench_url)
         if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) return null
         return (
-          <div className="space-y-2 text-sm">
-            <a
-              href={url.href}
-              className="text-primary underline"
-              onClick={(event) => {
-                event.preventDefault()
-                // setWorkbenchPage({ sessionId, run, url: url.href })
-                // setOpen(true)
-                openIndustrialVideoWorkbench(sessionId, run, url.href)
-              }}>
-              打开脚本工作台
-            </a>
-            {typeof value.message === 'string' && <p>{value.message}</p>}
-          </div>
+          <IndustrialVideoWorkbenchLink
+            message={typeof value.message === 'string' ? value.message : undefined}
+            run={run}
+            sessionId={sessionId}
+            url={url.href}
+          />
         )
       } catch {
         return null

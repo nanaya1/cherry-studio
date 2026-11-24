@@ -8,7 +8,11 @@ import { useToolResultAttachments } from '@renderer/components/chat/messages/too
 import { ipcApi } from '@renderer/ipc'
 
 import IndustrialVideoAgentProduction from './IndustrialVideoAgentProduction'
-import { getIndustrialVideoProgressSnapshot, useIndustrialVideoProgressSnapshot } from './industrialVideoProgressStore'
+import {
+  getIndustrialVideoProgressSnapshot,
+  useIndustrialVideoProgressSnapshot,
+  useIndustrialVideoWorkbenchAvailability
+} from './industrialVideoProgressStore'
 import { IndustrialVideoReviewFilesProvider } from './IndustrialVideoReviewFiles'
 import { useIndustrialVideoProduction } from './useIndustrialVideoProduction'
 
@@ -301,15 +305,21 @@ it.each([false, true])('工作台交接消息在尚未生成时也能打开已�
         : { content: [{ type: 'text', text: '{"ok":true,"workbench_url":"https://example.test/workbench"}' }] }
     )
   }
+  function WorkbenchShortcutProbe() {
+    const availableRun = useIndustrialVideoWorkbenchAvailability('s')
+    return availableRun ? <p>右上角工作台：{availableRun}</p> : null
+  }
   render(
     <IndustrialVideoAgentProduction sessionId="s" workbench={<div>服务端工作台内容</div>}>
       <IndustrialVideoReviewFilesProvider>
         <ReviewMessage />
+        <WorkbenchShortcutProbe />
       </IndustrialVideoReviewFilesProvider>
     </IndustrialVideoAgentProduction>
   )
   const link = screen.getByRole('link', { name: '打开脚本工作台' })
   expect(link).toHaveAttribute('href', 'https://example.test/workbench')
+  expect(await screen.findByText('右上角工作台：r')).toBeInTheDocument()
   expect(screen.queryByTestId('workbench-browser')).toBeNull()
   await userEvent.click(link)
   expect(screen.queryByTestId('workbench-browser')).toBeNull()

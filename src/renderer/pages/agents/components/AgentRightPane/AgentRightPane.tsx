@@ -104,7 +104,8 @@ import {
   useIndustrialVideoFinal,
   useIndustrialVideoProgressSnapshot,
   useIndustrialVideoSelectedPanel,
-  useIndustrialVideoWorkbench
+  useIndustrialVideoWorkbench,
+  useIndustrialVideoWorkbenchAvailability
 } from '@renderer/pages/industrialVideo/industrialVideoProgressStore'
 // eslint-disable-next-line import-x/no-restricted-paths
 import { IndustrialVideoWorkbenchBridge } from '@renderer/pages/industrialVideo/industrialVideoWorkbenchBridge'
@@ -296,7 +297,7 @@ interface AgentRightPanelScope {
   hasSystemWorkspaceFiles: boolean
   filesTitle: string
   industrialVideoProgressTitle: string
-  industrialVideoSession: boolean
+  industrialVideoWorkbenchRun: string | null
   industrialVideoProgressVisible: boolean
   industrialVideoWorkbenchVisible: boolean
   industrialVideoFinalVisible: boolean
@@ -314,7 +315,6 @@ type AgentConversationState = 'pending' | 'ready' | 'unavailable'
 interface AgentRightPaneScopeProps extends Omit<AgentRightPaneMeta, 'conversationState'> {
   children: ReactNode
   conversationState?: AgentConversationState
-  industrialVideo?: boolean
   /** Controls effective presentation without clearing panel intent. */
   present?: boolean
   resourcePane?: ResourcePaneConfig | null
@@ -654,7 +654,6 @@ function AgentRightPaneStateProvider({
   agentName,
   agentAvatar,
   model,
-  industrialVideo = false,
   conversationState = 'ready',
   present = true,
   resourcePane = null,
@@ -981,6 +980,7 @@ function AgentRightPaneStateProvider({
   )
   const industrialVideoProgress = useIndustrialVideoProgressSnapshot(sessionId)
   const industrialVideoWorkbench = useIndustrialVideoWorkbench(sessionId)
+  const industrialVideoWorkbenchRun = useIndustrialVideoWorkbenchAvailability(sessionId)
   const industrialVideoFinal = useIndustrialVideoFinal(sessionId)
   const scope = useMemo<AgentRightPanelScope>(
     () => ({
@@ -989,11 +989,11 @@ function AgentRightPaneStateProvider({
       hasSystemWorkspaceFiles,
       filesTitle: t('agent.right_pane.tabs.files'),
       industrialVideoProgressTitle: t('agent.right_pane.tabs.industrial_video_progress'),
-      industrialVideoSession: industrialVideo,
+      industrialVideoWorkbenchRun,
       industrialVideoProgressVisible: Boolean(industrialVideoProgress),
       // industrialVideoWorkbenchVisible: Boolean(industrialVideoWorkbench),
-      // MEA:industrial-video 首次打开也保留顶栏工作台入口，由面板按会话请求当前 run。
-      industrialVideoWorkbenchVisible: industrialVideo || Boolean(industrialVideoWorkbench),
+      // MEA:industrial-video 消息入口可用时同步显示顶栏入口，不提前请求未就绪的工作台。
+      industrialVideoWorkbenchVisible: Boolean(industrialVideoWorkbenchRun || industrialVideoWorkbench),
       industrialVideoFinalVisible: Boolean(industrialVideoFinal),
       flowTab,
       previousFlowTab,
@@ -1009,9 +1009,9 @@ function AgentRightPaneStateProvider({
       previousFlowTab,
       goBackFlow,
       hasSystemWorkspaceFiles,
-      industrialVideo,
       industrialVideoProgress,
       industrialVideoWorkbench,
+      industrialVideoWorkbenchRun,
       industrialVideoFinal,
       meta,
       resourcePane,
@@ -1759,11 +1759,11 @@ function AgentIndustrialVideoWorkbenchPanel({ active, scope }: RightPanelCompone
   const [loadError, setLoadError] = useState('')
   useEffect(() => setLoadError(''), [workbench])
   useEffect(() => {
-    if (!active || workbench || !sessionId || !scope.industrialVideoSession) return
+    if (!active || workbench || !sessionId || !scope.industrialVideoWorkbenchRun) return
     let alive = true
     setLoadError('')
     void ipcApi
-      .request('industrial_video.workbench_open', { sessionId })
+      .request('industrial_video.workbench_open', { sessionId, run: scope.industrialVideoWorkbenchRun })
       .then((result) => {
         if (!alive) return
         const url = new URL(result.workbench_url)
@@ -1777,7 +1777,7 @@ function AgentIndustrialVideoWorkbenchPanel({ active, scope }: RightPanelCompone
     return () => {
       alive = false
     }
-  }, [active, scope.industrialVideoSession, sessionId, t, workbench])
+  }, [active, scope.industrialVideoWorkbenchRun, sessionId, t, workbench])
 
   const run = workbench?.run
   // 受限桥控制器：按 session/run 重建，渲染期同步（保证 webview ref 回调时已是最新）。

@@ -8,7 +8,10 @@ import { ipcApi } from '@renderer/ipc'
 
 import { START_VIDEO_MESSAGE } from './IndustrialVideoGenerateButton'
 import IndustrialVideoOnlinePreview from './IndustrialVideoOnlinePreview'
-import { openIndustrialVideoWorkbench } from './industrialVideoProgressStore'
+import {
+  openIndustrialVideoWorkbench,
+  registerIndustrialVideoWorkbenchAvailability
+} from './industrialVideoProgressStore'
 // 稿件展示统一放在工作台，保留原组件以便恢复。
 // import IndustrialVideoReviewFiles from './IndustrialVideoReviewFiles'
 import type { useIndustrialVideoProduction } from './useIndustrialVideoProduction'
@@ -48,6 +51,10 @@ export default function IndustrialVideoWorkbench({
   const run = production.record?.run ?? undefined
   const taskKey = `${sessionId}:${run ?? ''}`
   const currentTask = useRef(taskKey)
+  useEffect(() => {
+    if (!reviewOutput || !run) return
+    return registerIndustrialVideoWorkbenchAvailability(sessionId, run)
+  }, [reviewOutput, run, sessionId])
   currentTask.current = taskKey
   const [opened, setOpened] = useState<{ taskKey: string; url: string } | null>(null)
   const openedUrl = opened?.taskKey === taskKey ? opened.url : null
