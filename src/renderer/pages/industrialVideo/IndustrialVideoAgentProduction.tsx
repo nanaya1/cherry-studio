@@ -21,8 +21,8 @@ import { createFilePathHandle } from '@shared/utils/file'
 import IndustrialVideoGenerationLoading, { readGenerationProgress } from './IndustrialVideoGenerationLoading'
 import {
   openIndustrialVideoWorkbench,
-  publishIndustrialVideoProgress,
-  registerIndustrialVideoWorkbenchAvailability
+  publishIndustrialVideoWorkbenchAvailability,
+  publishIndustrialVideoProgress
 } from './industrialVideoProgressStore'
 import { useIndustrialVideoProduction } from './useIndustrialVideoProduction'
 
@@ -51,7 +51,7 @@ function IndustrialVideoWorkbenchLink({
   sessionId: string
   url: string
 }) {
-  useEffect(() => registerIndustrialVideoWorkbenchAvailability(sessionId, run), [run, sessionId])
+  useEffect(() => publishIndustrialVideoWorkbenchAvailability(sessionId, run), [run, sessionId])
   return (
     <div className="space-y-2 text-sm">
       <a

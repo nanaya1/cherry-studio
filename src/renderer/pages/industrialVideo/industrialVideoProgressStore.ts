@@ -45,7 +45,7 @@ const availableWorkbenches = new Map<string, Map<string, number>>()
 const selectedPanels = new Map<string, string>()
 
 export function publishIndustrialVideoWorkbenchAvailability(sessionId: string, run: string | null): void {
-  if (run) availableWorkbenches.set(sessionId, new Map([[run, 1]]))
+  if (run) availableWorkbenches.set(sessionId, new Map([[run, Number.POSITIVE_INFINITY]]))
   else availableWorkbenches.delete(sessionId)
   listeners.forEach((listener) => listener())
 }

@@ -329,6 +329,43 @@ it.each([false, true])('工作台交接消息在尚未生成时也能打开已�
   expect(screen.queryByRole('button', { name: '打开服务端工作台' })).toBeNull()
 })
 
+it('历史工作台消息卸载后仍保留当前 run 的右上角入口', async () => {
+  const value = production('storyboard_submitted')
+  vi.mocked(useIndustrialVideoProduction).mockReturnValue({
+    ...value,
+    record: { ...value.record!, jobId: null },
+    job: null
+  })
+  function ReviewMessage() {
+    const attachments = useToolResultAttachments()
+    return attachments?.('mcp__meacowork-tools__ivideo_review_snapshot_get', {
+      ok: true,
+      workbench_url: 'https://example.test/workbench'
+    })
+  }
+  function WorkbenchShortcutProbe() {
+    const availableRun = useIndustrialVideoWorkbenchAvailability('retained')
+    return availableRun ? <p>右上角工作台：{availableRun}</p> : null
+  }
+  const view = render(
+    <IndustrialVideoAgentProduction sessionId="retained" workbench={<div>服务端工作台内容</div>}>
+      <IndustrialVideoReviewFilesProvider>
+        <ReviewMessage />
+        <WorkbenchShortcutProbe />
+      </IndustrialVideoReviewFilesProvider>
+    </IndustrialVideoAgentProduction>
+  )
+  expect(await screen.findByText('右上角工作台：r')).toBeInTheDocument()
+
+  view.rerender(
+    <IndustrialVideoAgentProduction sessionId="retained">
+      <WorkbenchShortcutProbe />
+    </IndustrialVideoAgentProduction>
+  )
+
+  expect(screen.getByText('右上角工作台：r')).toBeInTheDocument()
+})
+
 // 终态（canceled/cancelled/取消待核实）统一由共享进度快照承载：说明（动画停止=stopped）保留，消息流同步提示；不触发下载。
 it.each(['canceled', 'cancelled'])('服务端 %s 终态保持取消说明且不下载（终态在共享进度Tab）', async (status) => {
   vi.mocked(useIndustrialVideoProduction).mockReturnValue({ ...production(status), job: { run: 'r', status } })
