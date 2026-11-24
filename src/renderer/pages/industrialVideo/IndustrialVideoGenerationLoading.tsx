@@ -148,13 +148,6 @@ export default function IndustrialVideoGenerationLoading({
           {stopAction.stopping ? t('industrial_video.generation.stopping') : t('industrial_video.generation.stop')}
         </Button>
       )}
-      {!stopped && (
-        <p className="max-w-64 text-xs leading-6 text-muted-foreground">
-          完成后会自动显示成片，
-          <br />
-          你可以先查看脚本与分镜。
-        </p>
-      )}
     </section>
   )
 }
