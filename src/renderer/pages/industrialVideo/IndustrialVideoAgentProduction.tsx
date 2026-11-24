@@ -56,6 +56,7 @@ export default function IndustrialVideoAgentProduction({
   previewAction.current = (path) => openIndustrialVideoFinal(sessionId, record?.run ?? '', path)
   const downloads = useRef(new Map<string, Promise<string>>())
   const previewed = useRef(new Set<string>())
+  const observedGenerating = useRef(new Set<string>())
   const [download, setDownload] = useState<{ key: string; path?: string; error?: string } | null>(null)
   const [downloadRetry, setDownloadRetry] = useState(0)
   const run = record?.run
@@ -141,8 +142,13 @@ export default function IndustrialVideoAgentProduction({
   const submissionUnconfirmed = Boolean(
     record?.unknownSubmissions.length || record?.rounds.at(-1)?.outcome === 'intended'
   )
+  const generating = Boolean(active && ['generating', 'assembling'].includes(state) && !terminal)
   // const finished = active && state === 'done' && !stale && !terminal
   const finished = active && state === 'done' && !stale && !terminal && !submissionUnconfirmed
+
+  useEffect(() => {
+    if (generating) observedGenerating.current.add(identity)
+  }, [generating, identity])
 
   // const [delivery, setDelivery] = useState<{ key: string; text: string } | null>(null)
   const [, setDelivery] = useState<{ key: string; text: string } | null>(null)
@@ -279,7 +285,6 @@ export default function IndustrialVideoAgentProduction({
 
   // 下载与预览分开处理：失败重试只重试下载，预览失败不能导致重复保存文件。
   const downloaded = download?.key === artifactKey ? download : null
-  const generating = Boolean(active && ['generating', 'assembling'].includes(state) && !terminal)
   useEffect(() => {
     if (!finished || !finalPath || !run) return
     let alive = true
@@ -297,7 +302,8 @@ export default function IndustrialVideoAgentProduction({
         setDownload({ key: artifactKey, path })
         if (previewed.current.has(artifactKey)) return
         previewed.current.add(artifactKey)
-        void Promise.resolve(openIndustrialVideoFinal(sessionId, run, path, true)).catch(() => {
+        const restoreOnly = !observedGenerating.current.has(identity)
+        void Promise.resolve(openIndustrialVideoFinal(sessionId, run, path, restoreOnly)).catch(() => {
           if (alive) setDownload({ key: artifactKey, path, error: '文件已下载，但自动预览失败，请点击文件重试预览' })
         })
       },

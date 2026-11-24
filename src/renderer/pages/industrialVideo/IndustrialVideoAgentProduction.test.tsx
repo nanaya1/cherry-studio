@@ -33,18 +33,21 @@ vi.mock('@renderer/components/chat/messages/blocks/useScrollAnchor', () => ({
 vi.mock('@renderer/components/WebviewHost', () => ({
   WebviewHost: ({ src }: { src: string }) => <div data-testid="workbench-browser" data-src={src} />
 }))
-const { openArtifactFile } = vi.hoisted(() => ({
-  openArtifactFile: vi.fn<(path: string) => Promise<void>>().mockResolvedValue(undefined)
+const { openArtifactFile, registerFinal } = vi.hoisted(() => ({
+  openArtifactFile: vi.fn<(path: string) => Promise<void>>().mockResolvedValue(undefined),
+  registerFinal: vi.fn<(path: string, restoreOnly: boolean) => void>()
 }))
 vi.mock('@renderer/pages/agents/components/AgentRightPane', () => ({
   useAgentRightPaneActions: () => ({ openArtifactFile })
 }))
 vi.mock('./industrialVideoProgressStore', async (importActual) => ({
   ...(await importActual<typeof IndustrialVideoProgressStore>()),
-  openIndustrialVideoFinal: (sessionId: string, run: string, path: string) => {
+  openIndustrialVideoFinal: (sessionId: string, run: string, path: string, restoreOnly = false) => {
     expect(sessionId).toBe('s')
     expect(run).toBe('r')
-    return openArtifactFile(path)
+    registerFinal(path, restoreOnly)
+    if (!restoreOnly) return openArtifactFile(path)
+    return undefined
   }
 }))
 vi.mock('@renderer/ipc', () => ({ ipcApi: { request: vi.fn() } }))
@@ -115,8 +118,7 @@ it('旧任务已完成但仍有未知提交时，不以旧成片冒充本次结�
   expect(ipcApi.request).not.toHaveBeenCalledWith('industrial_video.download_artifact', expect.anything())
 })
 
-it.each([false, true])('完成后自动下载，在消息展示文件并只打开一次现有文件预览（解析结果=%s）', async (parsed) => {
-  vi.mocked(useIndustrialVideoProduction).mockReturnValue(production('done', { final: 'output/final.mp4' }))
+it.each([false, true])('本次生成完成后自动下载，在消息展示文件并只打开一次成片（解析结果=%s）', async (parsed) => {
   const onPreviewOpenChange = vi.fn()
   const content = (
     <IndustrialVideoAgentProduction sessionId="s" previewOpen onPreviewOpenChange={onPreviewOpenChange}>
@@ -124,6 +126,8 @@ it.each([false, true])('完成后自动下载，在消息展示文件并只打�
     </IndustrialVideoAgentProduction>
   )
   const view = render(content)
+  vi.mocked(useIndustrialVideoProduction).mockReturnValue(production('done', { final: 'output/final.mp4' }))
+  view.rerender(content)
   await waitFor(() => expect(openArtifactFile).toHaveBeenCalledWith('/workspace/final.mp4'))
   // 成功按钮（final.mp4）位于消息附件内，而非独立预览侧栏。
   expect(screen.getByLabelText('成片文件')).toHaveTextContent('final.mp4')
@@ -138,10 +142,22 @@ it.each([false, true])('完成后自动下载，在消息展示文件并只打�
   ).toHaveLength(1)
 })
 
-it('启动消息未挂载时不在消息区外展示成片，但仍自动下载并打开预览', async () => {
+it('历史完成任务只恢复成片入口，不自动打开', async () => {
+  vi.mocked(useIndustrialVideoProduction).mockReturnValue(production('done', { final: 'output/final.mp4' }))
+  render(
+    <IndustrialVideoAgentProduction sessionId="s">
+      <StartMessage />
+    </IndustrialVideoAgentProduction>
+  )
+  await waitFor(() => expect(registerFinal).toHaveBeenCalledWith('/workspace/final.mp4', true))
+  expect(openArtifactFile).not.toHaveBeenCalled()
+})
+
+it('启动消息未挂载时仍自动下载并恢复成片入口，但不打开历史成片', async () => {
   vi.mocked(useIndustrialVideoProduction).mockReturnValue(production('done', { final: 'output/final.mp4' }))
   render(<IndustrialVideoAgentProduction sessionId="s">未挂载的消息记录</IndustrialVideoAgentProduction>)
-  await waitFor(() => expect(openArtifactFile).toHaveBeenCalledWith('/workspace/final.mp4'))
+  await waitFor(() => expect(registerFinal).toHaveBeenCalledWith('/workspace/final.mp4', true))
+  expect(openArtifactFile).not.toHaveBeenCalled()
   expect(screen.queryByLabelText('成片文件')).not.toBeInTheDocument()
   expect(screen.queryByText('视频生成完成')).not.toBeInTheDocument()
 })
@@ -587,14 +603,15 @@ it('hides the duplicate online preview while a local video is open, without down
 */
 
 // 新行为：成片完成后无论本地预览是否激活都自动下载，并在消息内展示文件（等价替代在线预览）。
-it('成片完成后无论本地预览是否激活都自动下载并在消息内展示文件', async () => {
+it('历史成片无论本地预览是否激活都自动下载并在消息内展示文件，但不抢开预览', async () => {
   vi.mocked(useIndustrialVideoProduction).mockReturnValue(production('done', { final: 'final.mp4' }))
   render(
     <IndustrialVideoAgentProduction sessionId="s" filePreviewActive>
       <StartMessage />
     </IndustrialVideoAgentProduction>
   )
-  await waitFor(() => expect(openArtifactFile).toHaveBeenCalledWith('/workspace/final.mp4'))
+  await waitFor(() => expect(registerFinal).toHaveBeenCalledWith('/workspace/final.mp4', true))
+  expect(openArtifactFile).not.toHaveBeenCalled()
   expect(screen.getByLabelText('成片文件')).toHaveTextContent('final.mp4')
   expect(screen.queryByTitle('成片在线播放')).toBeNull()
   expect(
@@ -646,7 +663,7 @@ it('点击消息内成片文件后打开文件并收起成片区域', async () =
     </IndustrialVideoAgentProduction>
   )
   const button = await screen.findByRole('button', { name: 'final.mp4' })
-  await waitFor(() => expect(openArtifactFile).toHaveBeenCalled())
+  await waitFor(() => expect(registerFinal).toHaveBeenCalledWith('/workspace/final.mp4', true))
   // 默认自动下载，无需手动“下载 MP4”另存。
   expect(ipcApi.request).toHaveBeenCalledWith('industrial_video.download_artifact', {
     sessionId: 's',
@@ -768,15 +785,15 @@ it('延迟下载在切换会话后不调用旧会话预览打开', async () => {
   expect(screen.queryByText('a.mp4')).toBeNull()
 })
 
-// 重复轮询（多次 rerender）同一完成态只下载一次，不重复打开预览。
-it('重复轮询同一完成态只调用一次下载', async () => {
+// 重复轮询（多次 rerender）同一历史完成态只下载一次，不打开预览。
+it('重复轮询同一历史完成态只调用一次下载', async () => {
   vi.mocked(useIndustrialVideoProduction).mockReturnValue(production('done', { final: 'final.mp4' }))
   const { rerender } = render(
     <IndustrialVideoAgentProduction sessionId="s">
       <StartMessage />
     </IndustrialVideoAgentProduction>
   )
-  await waitFor(() => expect(openArtifactFile).toHaveBeenCalledTimes(1))
+  await waitFor(() => expect(registerFinal).toHaveBeenCalledWith('/workspace/final.mp4', true))
   for (let index = 0; index < 3; index++) {
     rerender(
       <IndustrialVideoAgentProduction sessionId="s">
@@ -784,7 +801,8 @@ it('重复轮询同一完成态只调用一次下载', async () => {
       </IndustrialVideoAgentProduction>
     )
   }
-  await waitFor(() => expect(openArtifactFile).toHaveBeenCalledTimes(1))
+  expect(openArtifactFile).not.toHaveBeenCalled()
+  expect(registerFinal).toHaveBeenCalledTimes(1)
   expect(
     vi.mocked(ipcApi.request).mock.calls.filter(([name]) => name === 'industrial_video.download_artifact')
   ).toHaveLength(1)
