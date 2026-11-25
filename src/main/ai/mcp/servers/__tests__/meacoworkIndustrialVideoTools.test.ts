@@ -68,19 +68,27 @@ vi.mock('@application', () => ({
 const { MeacoworkIndustrialVideoTools } = await import('../meacoworkIndustrialVideoTools')
 const { IpcError } = await import('@shared/ipc/errors/IpcError')
 
-it('大阶段任务通过同一快照完整分段读取，不暴露 SDK 超长转义行', async () => {
+it.each([
+  ['ivideo_storyboard_stage_task_get', 'storyboardStageTaskGet'],
+  ['ivideo_full_script_task_get', 'fullScriptTaskGet']
+] as const)('%s 通过同一快照分段读取长任务', async (operation, method) => {
   agentSessionGetByIdMock.mockReturnValue(makeSession())
   const task = {
     run: 'r1',
     stage: 'copy',
     expected_task_version: 'original-version',
+    expectedDocumentVersion: 42,
+    expectedInputFingerprint: 'original-input',
+    expectedStoryboardSha256: 'original-storyboard',
     context: { source_text: '中文事实\\n"内容"'.repeat(9000) },
     output_schema: { type: 'object', required: ['copy'] }
   }
-  ivServiceMock.storyboardStageTaskGet.mockResolvedValue(task)
+  const getTask = ivServiceMock[method]
+  getTask.mockResolvedValue(task)
   const tools = makeTools()
-  const callsBefore = ivServiceMock.storyboardStageTaskGet.mock.calls.length
-  let page = jsonOf(await tools.call('ivideo_storyboard_stage_task_get', { run: 'r1' }))
+  const initialArgs = method === 'fullScriptTaskGet' ? { run: 'r1', view: 'full' } : { run: 'r1' }
+  const callsBefore = getTask.mock.calls.length
+  let page = jsonOf(await tools.call(operation, initialArgs))
   expect(page.paged).toBe(true)
   let text = ''
   const snapshotId = page.snapshot_id
@@ -90,7 +98,7 @@ it('大阶段任务通过同一快照完整分段读取，不暴露 SDK 超长�
     text += page.text
     if (page.next_offset === null) break
     page = jsonOf(
-      await tools.call('ivideo_storyboard_stage_task_get', {
+      await tools.call(operation, {
         run: 'r1',
         snapshot_id: snapshotId,
         read_offset: page.next_offset
@@ -98,10 +106,10 @@ it('大阶段任务通过同一快照完整分段读取，不暴露 SDK 超长�
     )
   }
   expect(JSON.parse(text)).toEqual({ ok: true, ...task })
-  expect(ivServiceMock.storyboardStageTaskGet.mock.calls.length - callsBefore).toBe(1)
+  expect(getTask.mock.calls.length - callsBefore).toBe(1)
   expect(
     jsonOf(
-      await tools.call('ivideo_storyboard_stage_task_get', {
+      await tools.call(operation, {
         run: 'r1',
         snapshot_id: 'stale',
         read_offset: 4000
@@ -110,7 +118,7 @@ it('大阶段任务通过同一快照完整分段读取，不暴露 SDK 超长�
   ).toMatchObject({ ok: false })
   expect(
     jsonOf(
-      await tools.call('ivideo_storyboard_stage_task_get', {
+      await tools.call(operation, {
         run: 'another-run',
         snapshot_id: snapshotId,
         read_offset: 2000
@@ -119,13 +127,49 @@ it('大阶段任务通过同一快照完整分段读取，不暴露 SDK 超长�
   ).toMatchObject({ ok: false })
   expect(
     jsonOf(
-      await tools.call('ivideo_storyboard_stage_task_get', {
+      await tools.call(operation, {
         run: 'r1',
         snapshot_id: snapshotId,
         read_offset: -1
       })
     )
   ).toMatchObject({ ok: false })
+})
+
+it('全文查询先返回提交约束，并直接定位长素材末尾的章节', async () => {
+  agentSessionGetByIdMock.mockReturnValue(makeSession())
+  const prefix = '早期记录\n'.repeat(30000)
+  const appendix = 'The Mom Test\n请用户描述上一次遇到的问题。'
+  const task = {
+    instructions: '根据指定附录编写全文',
+    output_schema: { type: 'object', required: ['text'] },
+    expected_document_version: 42,
+    expected_input_fingerprint: 'original-input',
+    expected_storyboard_sha256: 'original-storyboard',
+    context: { requirement: '用户访谈', source_text: prefix + appendix, source_lines: [prefix, appendix] }
+  }
+  ivServiceMock.fullScriptTaskGet.mockResolvedValue(task)
+  const tools = makeTools()
+  const operation = 'ivideo_full_script_task_get'
+  const summary = jsonOf(await tools.call(operation, { run: 'r1' }))
+  expect(summary).toMatchObject({
+    ok: true,
+    instructions: task.instructions,
+    output_schema: task.output_schema,
+    expected_document_version: 42,
+    expected_input_fingerprint: 'original-input',
+    expected_storyboard_sha256: 'original-storyboard',
+    sources: [{ field: 'source_text' }, { field: 'source_lines' }]
+  })
+  expect(summary.context).toEqual({ requirement: '用户访谈' })
+  const source = { view: 'source', snapshot_id: summary.snapshot_id, field: 'source_text', query: 'The Mom Test' }
+  expect(jsonOf(await tools.call(operation, { run: 'r1', ...source }))).toMatchObject({
+    found: true,
+    read_offset: prefix.length,
+    text: appendix,
+    next_offset: null
+  })
+  expect(jsonOf(await tools.call(operation, { run: 'another-run', ...source }))).toMatchObject({ ok: false })
 })
 
 it.each(['video', 'assemble'])('已就绪的 %s 仅提交对应阶段并交接后台，不让模型继续轮询', async (stage) => {

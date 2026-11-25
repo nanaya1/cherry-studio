@@ -33,6 +33,8 @@ customizations:
       - src/main/data/db/__tests__/applyMigrations.test.ts
 
   - id: industrial-video
+    # MCP 全文长任务与阶段任务使用同一读取协议，按工具、run 和快照游标完整分段返回。
+    # 全文默认先返回任务约束和原始提交版本；长素材按快照与字段查询，支持关键词定位，完整视图保留分页。
     # 全文写作目标为动态硬上限85%且不低于minLength；仅未保存的超长稿允许原版本最多三次下降式压缩，同版重取不重置预算。
     # 阶段字符串按Unicode码点校验；提交前核查实体属性合计24项及片段派生旁白800字符/4行，超限停止不自动修改。
     # outline 标题遵守运行时 maxLength；超限未保存时仅允许当前模型原版本修正一次不合规标题，完整校验后才推进，重取同版不重置次数。
@@ -77,6 +79,7 @@ customizations:
       - src/main/data/db/schemas/agentSession.ts
       - src/main/data/services/AgentSessionService.ts
       - src/main/ai/agents/createIndustrialVideoSession.ts
+      - src/main/ai/mcp/servers/meacoworkIndustrialVideoTools.ts
       - src/main/ipc/handlers/ai.ts
       - src/renderer/routes/app/agents.tsx
       - src/renderer/routes/app/agents_.industrial-video.tsx
@@ -128,6 +131,7 @@ customizations:
       - src/renderer/pages/industrialVideo/industrialVideoSettings.test.ts
       - src/renderer/pages/industrialVideo/industrialVideoWorkflow.test.ts
       - src/main/features/industrialVideo/IndustrialVideoClient.test.ts
+      - src/main/ai/mcp/servers/__tests__/meacoworkIndustrialVideoTools.test.ts
       - src/main/features/industrialVideo/IndustrialVideoRevision.test.ts
       - src/main/features/industrialVideo/IndustrialVideoService.test.ts
       - src/main/services/__tests__/NotificationService.test.ts
