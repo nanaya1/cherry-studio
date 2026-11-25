@@ -15,7 +15,7 @@ export default function InspectionPager({
 }) {
   const { t } = useTranslation()
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2 py-2 text-xs text-muted-foreground">
+    <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
       <span>
         {t('knowledge.inspection.pagination', { page, pages: Math.max(1, Math.ceil(total / pageSize)), total })}
       </span>

@@ -1,5 +1,5 @@
 // import { Inbox, Link, RefreshCw } from 'lucide-react'
-import { Link, RefreshCw } from 'lucide-react'
+import { Inbox, Link, RefreshCw } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -12,10 +12,12 @@ import { KnowledgeDialogHeader } from './KnowledgeDialogLayout'
 
 export default function KnowledgeInvitations({
   onChanged,
-  onAddWithCode
+  onAddWithCode,
+  compact = false
 }: {
   onChanged: () => Promise<void>
   onAddWithCode?: () => void
+  compact?: boolean
 }) {
   const { t } = useTranslation()
   const load = useCallback(() => ipcApi.request('enterprise.knowledge.invitations'), [])
@@ -51,11 +53,19 @@ export default function KnowledgeInvitations({
       if (active.current) setBusy(false)
     }
   }
+  const pendingCount = !loading && !error ? (data?.invitations.length ?? 0) : 0
   return (
     <>
-      <Button variant="outline" className="w-full" onClick={() => setOpen(true)}>
-        {t('knowledge.org.invitations')}
-        {!loading && !error && data && data.invitations.length > 0 ? ` (${data.invitations.length})` : ''}
+      <Button
+        variant="outline"
+        size={compact ? 'sm' : 'default'}
+        className={compact ? 'h-auto min-w-0 gap-1 px-1.5 whitespace-normal' : 'w-full'}
+        onClick={() => setOpen(true)}>
+        {compact ? <Inbox aria-hidden="true" className="size-3.5" /> : null}
+        <span>
+          {t('knowledge.org.invitations')}
+          {pendingCount > 0 ? ` (${pendingCount > 100 ? '99+' : pendingCount})` : ''}
+        </span>
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent

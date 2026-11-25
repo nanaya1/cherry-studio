@@ -593,18 +593,18 @@ it.each([false, true])('公共库创建入口按企业管理能力显示并固�
   authorization.canManageWeb = canManageWeb
   const user = userEvent.setup()
   render(<RoutedPage />)
-  expect(screen.queryByRole('button', { name: i18n.t('knowledge.org.create_public_web') })).not.toBeInTheDocument()
   await user.click(screen.getByRole('button', { name: 'Public' }))
   if (canManageWeb) {
-    await user.click(screen.getByRole('button', { name: i18n.t('knowledge.org.create_public_web') }))
+    await user.click(screen.getByRole('button', { name: i18n.t('knowledge.add.title') }))
     expect(request).toHaveBeenCalledWith('enterprise.knowledge.open_web_management', {
       create: true,
       baseId: undefined
     })
   } else {
-    expect(screen.queryByRole('button', { name: i18n.t('knowledge.org.create_public_web') })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: i18n.t('knowledge.add.title') })).not.toBeInTheDocument()
   }
 })
+
 it('个人侧栏将本地库和未绑定的云端库合并分页', async () => {
   const user = userEvent.setup()
   local.bases = Array.from({ length: 20 }, (_, index) => ({

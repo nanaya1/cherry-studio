@@ -1,9 +1,10 @@
+import { Info, Link } from 'lucide-react'
 import { type MouseEvent as ReactMouseEvent, useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 // import { Button } from '@cherrystudio/ui'
 // import { Button, PageSidePanel } from '@cherrystudio/ui'
-import { Button } from '@cherrystudio/ui'
+import { Button, Tooltip } from '@cherrystudio/ui'
 import { useResizeDrag } from '@renderer/hooks/useResizeDrag'
 import { ipcApi } from '@renderer/ipc'
 import { toast } from '@renderer/services/toast'
@@ -19,19 +20,19 @@ import ReceiveKnowledgeShareDialog from '../components/ReceiveKnowledgeShareDial
 import UnshareKnowledgeDialog from '../components/UnshareKnowledgeDialog'
 import { useKnowledgePage } from '../KnowledgePageProvider'
 
-const NAVIGATOR_DEFAULT_WIDTH = 250
+const NAVIGATOR_DEFAULT_WIDTH = 260
 const NAVIGATOR_MIN_WIDTH = 220
 const NAVIGATOR_MAX_WIDTH = 360
-
 const NAVIGATOR_PAGE_SIZE = 20
+
 const KnowledgePageNavigatorSection = () => {
   const { t } = useTranslation()
   // MEA:enterprise-knowledge-page 企业全部范围与普通分享目录相互独立。
   // const { org, orgSession, category, setCategory, selectedOrgBase, selectOrgBase } = useKnowledgePage()
   const { org, orgSession, category, setCategory, selectedOrgBase, selectOrgBase, inspection } = useKnowledgePage()
-  const [receiving, setReceiving] = useState(false)
   const [requestedPage, setRequestedPage] = useState(1)
   useEffect(() => setRequestedPage(1), [category, inspection.active, orgSession])
+  const [receiving, setReceiving] = useState(false)
   const [unshareBaseId, setUnshareBaseId] = useState<string | null>(null)
   const [deleteLocal, setDeleteLocal] = useState(false)
   const [pendingCleanup, setPendingCleanup] = useState<Array<{ baseId: string; localBaseId: string }>>([])
@@ -121,7 +122,6 @@ const KnowledgePageNavigatorSection = () => {
             }
           }))
       : []
-  const [navigatorWidth, setNavigatorWidth] = useState(NAVIGATOR_DEFAULT_WIDTH)
   const total = category === 'local' ? bases.length + remoteRows.length : orgBases.length
   const page = Math.min(requestedPage, Math.max(1, Math.ceil(total / NAVIGATOR_PAGE_SIZE)))
   const start = (page - 1) * NAVIGATOR_PAGE_SIZE
@@ -129,6 +129,7 @@ const KnowledgePageNavigatorSection = () => {
   useEffect(() => {
     if (page !== requestedPage) setRequestedPage(page)
   }, [page, requestedPage])
+  const [navigatorWidth, setNavigatorWidth] = useState(NAVIGATOR_DEFAULT_WIDTH)
   const contentLeftRef = useRef(0)
 
   const handleNavigatorResizeMove = useCallback((moveEvent: MouseEvent) => {
@@ -237,22 +238,48 @@ const KnowledgePageNavigatorSection = () => {
         }
         content={
           category === 'local' ? undefined : (
-            <div className="min-h-0 flex-1 space-y-2 overflow-auto">
+            <div className="flex min-h-0 flex-1 flex-col gap-2">
               {category === 'shared' && org.canManageWeb ? (
-                <div className="flex gap-1" aria-label={t('knowledge.inspection.scope')}>
+                <div
+                  className="flex shrink-0 gap-1 rounded-lg bg-muted p-1"
+                  aria-label={t('knowledge.inspection.scope')}>
                   {(['mine', 'all'] as const).map((value) => (
-                    <Button
+                    <div
                       key={value}
-                      size="sm"
-                      className="min-w-0 flex-1 px-1 text-xs"
-                      variant={inspection.scope === value ? 'secondary' : 'ghost'}
-                      aria-pressed={inspection.scope === value}
-                      onClick={() => {
-                        setReceiving(false)
-                        inspection.setScope(value)
-                      }}>
-                      {t(value === 'mine' ? 'knowledge.inspection.mine' : 'knowledge.inspection.all')}
-                    </Button>
+                      data-selected={value === 'all' && inspection.scope === value ? true : undefined}
+                      className={
+                        value === 'all'
+                          ? 'flex min-w-0 flex-1 items-center justify-center rounded-md hover:bg-accent data-[selected=true]:bg-secondary data-[selected=true]:hover:bg-secondary-hover'
+                          : 'flex min-w-0 flex-1 items-center justify-center'
+                      }>
+                      <Button
+                        size="sm"
+                        className={
+                          value === 'all'
+                            ? 'min-w-0 rounded-md px-1 text-xs hover:bg-transparent focus-visible:bg-transparent focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset'
+                            : 'min-w-0 flex-1 rounded-md px-1 text-xs'
+                        }
+                        variant={value === 'mine' && inspection.scope === value ? 'secondary' : 'ghost'}
+                        aria-pressed={inspection.scope === value}
+                        onClick={() => {
+                          setReceiving(false)
+                          inspection.setScope(value)
+                        }}>
+                        {t(value === 'mine' ? 'knowledge.inspection.mine' : 'knowledge.inspection.all')}
+                      </Button>
+                      {value === 'all' ? (
+                        <Tooltip asChild placement="bottom" content={t('knowledge.inspection.scope_hint')}>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            className="size-6 shrink-0 text-muted-foreground hover:bg-transparent focus-visible:bg-transparent focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset"
+                            aria-label={t('knowledge.inspection.scope')}>
+                            <Info aria-hidden="true" className="size-3.5" />
+                          </Button>
+                        </Tooltip>
+                      ) : null}
+                    </div>
                   ))}
                 </div>
               ) : null}
@@ -263,19 +290,25 @@ const KnowledgePageNavigatorSection = () => {
                   onSelect={inspection.select}
                 />
               ) : (
-                <>
+                <div className="flex min-h-0 flex-1 flex-col gap-2">
                   {category === 'public' && org.canManageWeb ? <KnowledgeWebButton key={orgSession} create /> : null}
                   {category === 'shared' ? (
-                    <Button variant="outline" className="w-full" onClick={() => setReceiving(true)}>
-                      {t('knowledge.org.add_with_code')}
-                    </Button>
-                  ) : null}
-                  {category === 'shared' ? (
-                    <KnowledgeInvitations
-                      key={orgSession}
-                      onChanged={org.refresh}
-                      onAddWithCode={() => setReceiving(true)}
-                    />
+                    <div className="grid w-full shrink-0 grid-cols-2 gap-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-auto min-w-0 gap-1 px-1.5 whitespace-normal"
+                        onClick={() => setReceiving(true)}>
+                        <Link aria-hidden="true" className="size-3.5" />
+                        {t('knowledge.org.add_with_code')}
+                      </Button>
+                      <KnowledgeInvitations
+                        key={orgSession}
+                        onChanged={org.refresh}
+                        onAddWithCode={() => setReceiving(true)}
+                        compact
+                      />
+                    </div>
                   ) : null}
                   {receiving && category === 'shared' ? (
                     <ReceiveKnowledgeShareDialog
@@ -287,33 +320,35 @@ const KnowledgePageNavigatorSection = () => {
                       }}
                     />
                   ) : null}
-                  {org.loading ? (
-                    <p role="status" className="p-2 text-muted-foreground">
-                      {t('common.loading')}
-                    </p>
-                  ) : null}
-                  {org.error ? (
-                    <div role="alert" className="p-2">
-                      <p className="break-words text-error">{org.error}</p>
-                      <Button variant="ghost" onClick={() => void org.refresh()}>
-                        {t('knowledge.org.refresh')}
+                  <div className="min-h-0 flex-1 space-y-1 overflow-auto">
+                    {org.loading ? (
+                      <p role="status" className="p-2 text-muted-foreground">
+                        {t('common.loading')}
+                      </p>
+                    ) : null}
+                    {org.error ? (
+                      <div role="alert" className="p-2">
+                        <p className="break-words text-error">{org.error}</p>
+                        <Button variant="ghost" onClick={() => void org.refresh()}>
+                          {t('knowledge.org.refresh')}
+                        </Button>
+                      </div>
+                    ) : null}
+                    {!org.loading && !org.error && orgBases.length === 0 ? (
+                      <p className="p-2 text-sm text-muted-foreground">{t('knowledge.org.empty_bases')}</p>
+                    ) : null}
+                    {orgBases.slice(start, end).map((base) => (
+                      <Button
+                        key={base.id}
+                        variant={selectedOrgBase?.id === base.id ? 'secondary' : 'ghost'}
+                        className="h-auto w-full justify-start whitespace-normal rounded-lg px-2 py-2 text-left"
+                        aria-pressed={selectedOrgBase?.id === base.id}
+                        onClick={() => selectOrgBase(base)}>
+                        <span className="line-clamp-2 break-all">{base.name}</span>
                       </Button>
-                    </div>
-                  ) : null}
-                  {!org.loading && !org.error && orgBases.length === 0 ? (
-                    <p className="p-2 text-sm text-muted-foreground">{t('knowledge.org.empty_bases')}</p>
-                  ) : null}
-                  {orgBases.slice(start, end).map((base) => (
-                    <Button
-                      key={base.id}
-                      variant={selectedOrgBase?.id === base.id ? 'secondary' : 'ghost'}
-                      className="h-auto w-full justify-start whitespace-normal py-2 text-left"
-                      aria-pressed={selectedOrgBase?.id === base.id}
-                      onClick={() => selectOrgBase(base)}>
-                      {base.name}
-                    </Button>
-                  ))}
-                </>
+                    ))}
+                  </div>
+                </div>
               )}
             </div>
           )
