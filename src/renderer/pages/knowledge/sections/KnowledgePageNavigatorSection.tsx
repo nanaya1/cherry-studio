@@ -9,6 +9,7 @@ import { ipcApi } from '@renderer/ipc'
 import { toast } from '@renderer/services/toast'
 import { parseOrgId } from '@shared/data/types/enterpriseKnowledge'
 
+import InspectionPager from '../components/InspectionPager'
 import KnowledgeInspectionNavigator from '../components/KnowledgeInspectionNavigator'
 import KnowledgeInvitations from '../components/KnowledgeInvitations'
 import KnowledgeWebButton from '../components/KnowledgeWebButton'
@@ -22,12 +23,15 @@ const NAVIGATOR_DEFAULT_WIDTH = 250
 const NAVIGATOR_MIN_WIDTH = 220
 const NAVIGATOR_MAX_WIDTH = 360
 
+const NAVIGATOR_PAGE_SIZE = 20
 const KnowledgePageNavigatorSection = () => {
   const { t } = useTranslation()
   // MEA:enterprise-knowledge-page 企业全部范围与普通分享目录相互独立。
   // const { org, orgSession, category, setCategory, selectedOrgBase, selectOrgBase } = useKnowledgePage()
   const { org, orgSession, category, setCategory, selectedOrgBase, selectOrgBase, inspection } = useKnowledgePage()
   const [receiving, setReceiving] = useState(false)
+  const [requestedPage, setRequestedPage] = useState(1)
+  useEffect(() => setRequestedPage(1), [category, inspection.active, orgSession])
   const [unshareBaseId, setUnshareBaseId] = useState<string | null>(null)
   const [deleteLocal, setDeleteLocal] = useState(false)
   const [pendingCleanup, setPendingCleanup] = useState<Array<{ baseId: string; localBaseId: string }>>([])
@@ -118,6 +122,13 @@ const KnowledgePageNavigatorSection = () => {
           }))
       : []
   const [navigatorWidth, setNavigatorWidth] = useState(NAVIGATOR_DEFAULT_WIDTH)
+  const total = category === 'local' ? bases.length + remoteRows.length : orgBases.length
+  const page = Math.min(requestedPage, Math.max(1, Math.ceil(total / NAVIGATOR_PAGE_SIZE)))
+  const start = (page - 1) * NAVIGATOR_PAGE_SIZE
+  const end = start + NAVIGATOR_PAGE_SIZE
+  useEffect(() => {
+    if (page !== requestedPage) setRequestedPage(page)
+  }, [page, requestedPage])
   const contentLeftRef = useRef(0)
 
   const handleNavigatorResizeMove = useCallback((moveEvent: MouseEvent) => {
@@ -292,7 +303,7 @@ const KnowledgePageNavigatorSection = () => {
                   {!org.loading && !org.error && orgBases.length === 0 ? (
                     <p className="p-2 text-sm text-muted-foreground">{t('knowledge.org.empty_bases')}</p>
                   ) : null}
-                  {orgBases.map((base) => (
+                  {orgBases.slice(start, end).map((base) => (
                     <Button
                       key={base.id}
                       variant={selectedOrgBase?.id === base.id ? 'secondary' : 'ghost'}
@@ -307,15 +318,20 @@ const KnowledgePageNavigatorSection = () => {
             </div>
           )
         }
-        remoteRows={remoteRows}
+        remoteRows={remoteRows.slice(Math.max(0, start - bases.length), Math.max(0, end - bases.length))}
         sharedBaseIds={
           new Set(
             org.catalog.owned.flatMap((base) => (base.localBaseId && base.shareCompleted ? [base.localBaseId] : []))
           )
         }
-        // 远端 owned 行已由 remoteRows 集成到本地主滚动区；保留旧 footer 位置为空，避免恢复为独立列表。
-        footer={null}
-        bases={bases}
+        footer={
+          !inspection.active && (category === 'local' ? !isLoading : !org.loading && !org.error) ? (
+            <div className="shrink-0 border-t border-border pt-2">
+              <InspectionPager page={page} total={total} pageSize={NAVIGATOR_PAGE_SIZE} onChange={setRequestedPage} />
+            </div>
+          ) : null
+        }
+        bases={bases.slice(start, end)}
         groups={groups}
         isLoading={isLoading}
         width={navigatorWidth}
