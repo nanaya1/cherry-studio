@@ -12,6 +12,7 @@ import { ipcApi } from '@renderer/ipc'
 import { normalizeKnowledgeError } from '@renderer/pages/knowledge/utils/error'
 import type { KnowledgeItem, KnowledgeItemChunk } from '@shared/data/types/knowledge'
 
+import { KnowledgeChunkCard } from '../../components/KnowledgeDocumentContent'
 import { toKnowledgeItemRowViewModel } from './utils/selectors'
 
 const logger = loggerService.withContext('KnowledgeItemChunkDetailPanel')
@@ -26,27 +27,13 @@ interface KnowledgeItemChunkDetailPanelProps {
   onBack: () => void
 }
 
-const KnowledgeItemChunkCard = ({ chunk }: { chunk: KnowledgeItemChunk }) => {
-  const { t } = useTranslation()
-
-  return (
-    <div className="rounded-lg border border-border-subtle transition-all hover:border-border-strong">
-      <div className="flex items-center gap-2 px-3 py-2">
-        <span className="flex size-5 shrink-0 items-center justify-center rounded bg-accent text-xs leading-4 text-foreground-tertiary">
-          {chunk.metadata.chunkIndex + 1}
-        </span>
-        <span className="flex-1 text-xs leading-4 text-foreground-tertiary">
-          {chunk.metadata.tokenCount} {t('knowledge.rag.tokens_unit')}
-        </span>
-      </div>
-      <div className="px-3 pb-3">
-        <p className="line-clamp-2 text-sm leading-relaxed text-muted-foreground">{chunk.content}</p>
-      </div>
-    </div>
-  )
-}
-
-const renderChunk = (chunk: KnowledgeItemChunk) => <KnowledgeItemChunkCard chunk={chunk} />
+const renderChunk = (chunk: KnowledgeItemChunk) => (
+  <KnowledgeChunkCard
+    index={chunk.metadata.chunkIndex}
+    content={chunk.content}
+    tokenCount={chunk.metadata.tokenCount}
+  />
+)
 
 const KnowledgeItemChunkState = ({ children }: { children: ReactNode }) => (
   <div className="flex min-h-full items-center justify-center px-4 py-10 text-center text-sm leading-5 text-foreground-tertiary">

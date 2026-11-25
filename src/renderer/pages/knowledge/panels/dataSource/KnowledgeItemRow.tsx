@@ -27,6 +27,9 @@ export interface KnowledgeItemRowProps {
   onPreviewSource: () => void | Promise<unknown>
   onReindex: () => void | Promise<unknown>
   onViewChunks: () => void
+  selectable?: boolean
+  canActivate?: boolean
+  canPreviewSource?: boolean
   readOnly?: boolean
   allowDelete?: boolean
 }
@@ -43,15 +46,6 @@ const KnowledgeItemEmbeddingProgress = ({ itemId }: { itemId: string }) => {
     return null
   }
   return ` ${progress}%`
-}
-
-const KnowledgeDirectoryCopyStatus = ({ itemId }: { itemId: string }) => {
-  const { t } = useTranslation()
-  const progress = useSharedCacheValue(`knowledge.item.directory_copy_progress.${itemId}` as const)
-  if (progress == null) {
-    return t('knowledge.data_source.status.pending')
-  }
-  return t('knowledge.data_source.status.copying', { percent: progress })
 }
 
 const KnowledgeItemStatusBadge = ({
@@ -111,6 +105,9 @@ const KnowledgeItemRow = ({
   onPreviewSource,
   onReindex,
   onViewChunks,
+  selectable = true,
+  canActivate = true,
+  canPreviewSource = true,
   readOnly = false,
   allowDelete = !readOnly
 }: KnowledgeItemRowProps) => {
@@ -129,9 +126,9 @@ const KnowledgeItemRow = ({
   // preview/fallback/error handling to `previewSource`, directories drill into their children, and
   // notes open their stored `data.content`. All are status-independent — a note's text is present
   // from creation, well before its chunk view (`completed`) exists.
-  const canActivate = true
+
   const typeLabel = t(dataSourceTypeDisplayConfig[item.type].filterLabelKey)
-  const updatedAt = formatRelativeTime(item.updatedAt, language)
+  const updatedAt = Number.isFinite(Date.parse(item.updatedAt)) ? formatRelativeTime(item.updatedAt, language) : '—'
   const fullTitle = 'source' in item.data ? item.data.source : title
 
   // Row actions, surfaced via the whole-row right-click menu (replacing the old per-row more
@@ -141,7 +138,7 @@ const KnowledgeItemRow = ({
 
     // Notes have no external source to preview — their original text opens via the row's primary
     // click — so the "preview original" action only applies to files, URLs, and directories.
-    if (item.type !== 'note') {
+    if (canPreviewSource && item.type !== 'note') {
       items.push({
         type: 'item',
         id: 'preview-source',
@@ -200,6 +197,7 @@ const KnowledgeItemRow = ({
   }, [
     allowDelete,
     canReindex,
+    canPreviewSource,
     canViewChunks,
     item.type,
     onDelete,
@@ -233,25 +231,28 @@ const KnowledgeItemRow = ({
         onKeyDown={canActivate ? handleRowKeyDown : undefined}
         className={cn(
           KNOWLEDGE_ITEM_ROW_GRID,
+          !selectable && 'grid-cols-[minmax(0,1fr)_4rem_7rem_6rem_2rem]',
           'group/row rounded-md px-2.5 py-1.5 transition-colors',
           canActivate && 'cursor-pointer focus-visible:bg-muted focus-visible:outline-none',
           // Match the navigator base rows: hover highlight for any row, solid selected background
           // for the checked one.
           selected ? 'bg-muted' : 'hover:bg-muted'
         )}>
-        <div role="gridcell" className="flex items-center self-stretch" onClick={(event) => event.stopPropagation()}>
-          {/* The label fills the whole cell so a click anywhere in the checkbox column toggles
+        {selectable ? (
+          <div role="gridcell" className="flex items-center self-stretch" onClick={(event) => event.stopPropagation()}>
+            {/* The label fills the whole cell so a click anywhere in the checkbox column toggles
               selection; the cell's stopPropagation keeps that click from also opening the row. */}
-          <label className="flex size-full cursor-pointer items-center">
-            <Checkbox
-              size="sm"
-              className={knowledgeDataSourceCheckboxClassName}
-              aria-label={t('knowledge.data_source.table.select_row')}
-              checked={selected}
-              onCheckedChange={(next) => onToggleSelect(next === true)}
-            />
-          </label>
-        </div>
+            <label className="flex size-full cursor-pointer items-center">
+              <Checkbox
+                size="sm"
+                className={knowledgeDataSourceCheckboxClassName}
+                aria-label={t('knowledge.data_source.table.select_row')}
+                checked={selected}
+                onCheckedChange={(next) => onToggleSelect(next === true)}
+              />
+            </label>
+          </div>
+        ) : null}
         <div role="gridcell" className="flex min-w-0 items-center gap-2">
           <span className="flex size-6 shrink-0 items-center justify-center rounded bg-background-subtle">
             <Icon className={cn('size-3.5', icon.iconClassName)} />
@@ -264,26 +265,26 @@ const KnowledgeItemRow = ({
           {typeLabel}
         </div>
         <div role="gridcell">
-          <KnowledgeItemStatusBadge
-            status={status}
-            failureReason={failureReason}
-            statusText={
-              item.type === 'directory' && item.status === 'preparing' ? (
-                <KnowledgeDirectoryCopyStatus itemId={item.id} />
-              ) : (
+          {item.type !== 'directory' ? (
+            <KnowledgeItemStatusBadge
+              status={status}
+              failureReason={failureReason}
+              statusText={
                 <>
                   {t(status.labelKey)}
                   {item.status === 'embedding' ? <KnowledgeItemEmbeddingProgress itemId={item.id} /> : null}
                 </>
-              )
-            }
-          />
+              }
+            />
+          ) : (
+            <span className="text-xs text-foreground-tertiary">—</span>
+          )}
         </div>
         <div role="gridcell" className="truncate text-xs text-foreground-tertiary">
           {updatedAt}
         </div>
         <div role="gridcell" className="flex items-center justify-center" onClick={(event) => event.stopPropagation()}>
-          <KnowledgeRowActionsMenu items={contextMenuItems} />
+          {contextMenuItems.length ? <KnowledgeRowActionsMenu items={contextMenuItems} /> : null}
         </div>
       </div>
     </CommandContextMenu>

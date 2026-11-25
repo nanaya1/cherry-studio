@@ -16,6 +16,7 @@ export const InspectionFileSchema = z.strictObject({
   id: z.string(),
   name: z.string(),
   directory: z.boolean(),
+  hasOriginalFile: z.boolean().optional(),
   parseStatus: z.string().nullable(),
   updateTime: z.string().nullable()
 })
@@ -53,6 +54,17 @@ export const InspectionChunkSchema = z.strictObject({
   chunkIndex: z.number().int().nonnegative()
 })
 export type InspectionChunk = z.infer<typeof InspectionChunkSchema>
+export const InspectionPreviewSchema = z.object({
+  minioPreviewUrl: z
+    .url({ protocol: /^https?$/ })
+    .max(8192)
+    .refine((value) => {
+      const url = new URL(value)
+      return !url.username && !url.password && !url.hash
+    }),
+  fileName: z.string()
+})
+
 export const InspectionContentSchema = z.strictObject({
   content: z.string(),
   totalChars: z.number().int().nonnegative().nullable(),
