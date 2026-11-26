@@ -15,7 +15,6 @@ describe('knowledge ordering migrate-forward', () => {
   const dbh = setupTestDatabase({ beforeMigration: '0027_knowledge_base_order' })
 
   it('upgrades a populated previous schema without losing rows or changing timestamps', () => {
-    const migrationsFolder = resolve('migrations/sqlite-drizzle')
     const values = [
       { id: '11111111-1111-4111-8111-111111111111', name: 'Older', createdAt: 1000, updatedAt: 1100 },
       { id: '22222222-2222-4222-8222-222222222222', name: 'Newer', createdAt: 2000, updatedAt: 2100 }
@@ -34,7 +33,7 @@ describe('knowledge ordering migrate-forward', () => {
       .insert(knowledgeItemTable)
       .values({ baseId: values[0].id, type: 'note', data: content, status: 'completed' })
       .run()
-    applyMigrations(dbh.db, migrationsFolder)
+    dbh.migrateForward()
     new SeedRunner(dbh.db).runAll([new KnowledgeBaseOrderSeeder()])
     const service = new KnowledgeBaseService()
     const rows = service.listCursor({ limit: 100, sortBy: 'orderKey', sortOrder: 'asc' }).items

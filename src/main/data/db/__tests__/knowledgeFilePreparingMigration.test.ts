@@ -1,10 +1,7 @@
-import { resolve } from 'node:path'
-
 import { setupTestDatabase } from '@test-helpers/db'
 import { asc, eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
 
-import { applyMigrations } from '@data/db/applyMigrations'
 import { knowledgeBaseTable, knowledgeItemTable } from '@data/db/schemas/knowledge'
 import type { PosixRelativeFilePath } from '@shared/utils/file'
 
@@ -18,7 +15,6 @@ describe('knowledge file preparing migrate-forward', () => {
   const dbh = setupTestDatabase({ beforeMigration: '0028_slow_ravenous' })
 
   it('rebuilds a populated knowledge_item table without losing rows or the child cascade', () => {
-    const migrationsFolder = resolve('migrations/sqlite-drizzle')
     dbh.db
       .insert(knowledgeBaseTable)
       .values({ id: BASE_ID, name: 'KB', orderKey: 'a0', status: 'completed', chunkSize: 1024, chunkOverlap: 200 })
@@ -59,7 +55,7 @@ describe('knowledge file preparing migrate-forward', () => {
         })
         .run()
     ).toThrow(/knowledge_item_type_status_check/)
-    applyMigrations(dbh.db, migrationsFolder)
+    dbh.migrateForward()
 
     expect(readItems()).toEqual(before)
     expect(dbh.sqlite.pragma('foreign_key_check')).toEqual([])

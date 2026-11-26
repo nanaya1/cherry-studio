@@ -25,6 +25,7 @@ export interface TestDatabaseOptions {
 export interface TestDatabaseHandle {
   /** Drizzle DB instance — same type as production `DbService.getDb()`. */
   readonly db: DbType
+  migrateForward(): void
   /**
    * Raw better-sqlite3 connection under the same DB — the native escape hatch
    * for SQL/PRAGMA a test needs to issue outside Drizzle (e.g. `sqlite.prepare(...).all()`,
@@ -71,6 +72,7 @@ export function setupTestDatabase(options: TestDatabaseOptions = {}): TestDataba
   let sqlite: Database.Database | null = null
   let db: DbType | null = null
   let tempDir: string | null = null
+  let forwardMigrations: string | undefined
 
   beforeAll(async () => {
     if (activeHarnessCount > 0) {
@@ -92,10 +94,11 @@ export function setupTestDatabase(options: TestDatabaseOptions = {}): TestDataba
     sqlite.pragma('synchronous = NORMAL')
 
     // Same migration path as DbService.onInit(): migrations first, then custom SQL.
-    const migrations = options.beforeMigration
+    const fixture = options.beforeMigration
       ? copyMigrationPrefix(join(tempDir, 'migrations'), options.beforeMigration)
-      : resolveMigrationsPath()
-    applyMigrations(db, migrations)
+      : undefined
+    forwardMigrations = fixture?.forward ?? resolveMigrationsPath()
+    applyMigrations(db, fixture?.initial ?? forwardMigrations)
 
     if (options.seeders?.length) {
       new SeedRunner(db).runAll(options.seeders)
@@ -142,6 +145,10 @@ export function setupTestDatabase(options: TestDatabaseOptions = {}): TestDataba
   })
 
   return {
+    migrateForward() {
+      if (!db || !forwardMigrations) throw new Error('Test database not initialised')
+      applyMigrations(db, forwardMigrations)
+    },
     get db(): DbType {
       if (!db) {
         throw new Error(

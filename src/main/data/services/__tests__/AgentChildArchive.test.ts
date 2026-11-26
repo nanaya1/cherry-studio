@@ -1,12 +1,9 @@
-import { resolve } from 'node:path'
-
 import { setupTestDatabase } from '@test-helpers/db'
 import { eq } from 'drizzle-orm'
 import { v4 as uuid } from 'uuid'
 import { describe, expect, it } from 'vitest'
 
 import { application } from '@application'
-import { applyMigrations } from '@data/db/applyMigrations'
 import { agentSessionTable } from '@data/db/schemas/agentSession'
 import { agentSessionContextTable } from '@data/db/schemas/agentSessionContext'
 import { agentWorkspaceTable } from '@data/db/schemas/agentWorkspace'
@@ -59,8 +56,7 @@ describe('child archive migration', () => {
       .prepare(`INSERT INTO agent_session_message (id, session_id, role, status, data, created_at, updated_at)
       VALUES (?, ?, 'assistant', 'success', ?, 1, 1)`)
       .run(messageId, root, JSON.stringify({ parts: [{ type: 'text', text: 'Legacy child display' }] }))
-    const folder = resolve('migrations/sqlite-drizzle')
-    applyMigrations(dbh.db, folder)
+    dbh.migrateForward()
     expect(messages.getSessionMessage(root, messageId).data.parts).toEqual([
       { type: 'text', text: 'Legacy child display' }
     ])

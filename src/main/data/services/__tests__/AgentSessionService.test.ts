@@ -1,12 +1,10 @@
 import path from 'path'
 
 import { setupTestDatabase, seedSessionRoot } from '@test-helpers/db'
-import { resolveMigrationsPath } from '@test-helpers/db/internal/migrationsPath'
 import { eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from 'vitest'
 
 import { application } from '@application'
-import { applyMigrations } from '@data/db/applyMigrations'
 import { agentTable } from '@data/db/schemas/agent'
 import { agentSessionTable } from '@data/db/schemas/agentSession'
 import { agentSessionMessageTable } from '@data/db/schemas/agentSessionMessage'
@@ -2257,7 +2255,7 @@ describe('task session ownership migration', () => {
       INSERT INTO agent_session_message (id, session_id, role, data, status, created_at, updated_at)
       VALUES ('message', 'sticky', 'user', '{"parts":[{"type":"text","text":"preserved"}]}', 'success', 1, 1);
     `)
-    applyMigrations(dbh.db, resolveMigrationsPath())
+    dbh.migrateForward()
     expect(
       dbh.sqlite.prepare('SELECT session_id, data FROM agent_session_message WHERE id = ?').get('message')
     ).toEqual({ session_id: 'sticky', data: '{"parts":[{"type":"text","text":"preserved"}]}' })

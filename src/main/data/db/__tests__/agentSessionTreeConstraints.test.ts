@@ -1,9 +1,7 @@
 import { setupTestDatabase } from '@test-helpers/db'
-import { resolveMigrationsPath } from '@test-helpers/db/internal/migrationsPath'
 import { eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
 
-import { applyMigrations } from '@data/db/applyMigrations'
 import { agentSessionTable as sessions } from '@data/db/schemas/agentSession'
 import { agentSessionMessageTable as messages } from '@data/db/schemas/agentSessionMessage'
 import { agentWorkspaceTable } from '@data/db/schemas/agentWorkspace'
@@ -92,7 +90,7 @@ describe('Session tree populated upgrade', () => {
           i + 200
         )
     })()
-    applyMigrations(dbh.db, resolveMigrationsPath())
+    dbh.migrateForward()
     const path = readAgentSessionPath(dbh.db, 'flat')
     expect(path).toHaveLength(10001)
     for (let i = 0; i < path.length; i++)
@@ -137,7 +135,7 @@ describe('Session tree populated branch upgrade', () => {
       .prepare<[], { id: string; session_id: string }>('SELECT * FROM agent_session_message ORDER BY id')
       .all()
     const sessionBefore = dbh.sqlite.prepare("SELECT * FROM agent_session WHERE id = 'branched'").get()
-    applyMigrations(dbh.db, resolveMigrationsPath())
+    dbh.migrateForward()
     expect(readAgentSessionPath(dbh.db, 'flat').map((row) => row.id)).toEqual(['a', 'b'])
     for (const row of before) {
       expect(dbh.sqlite.prepare('SELECT * FROM agent_session_message WHERE id = ?').get(row.id)).toMatchObject(
@@ -159,7 +157,7 @@ describe('Session tree populated branch upgrade', () => {
     ).toEqual({ count: 2 })
     expect(dbh.sqlite.pragma('foreign_key_check')).toEqual([])
     expect(dbh.sqlite.pragma('integrity_check', { simple: true })).toBe('ok')
-    applyMigrations(dbh.db, resolveMigrationsPath())
+    dbh.migrateForward()
     expect(readAgentSessionPath(dbh.db, 'flat').map((row) => row.id)).toEqual(['a', 'b'])
     dbh.sqlite.exec(
       "INSERT INTO agent_session_message_fts(agent_session_message_fts, rank) VALUES ('integrity-check', 1)"
@@ -185,7 +183,7 @@ for (const invalidParent of ['missing', 'foreign']) {
         .run(invalidParent === 'missing' ? 'missing' : 'other-root')
       const before = dbh.sqlite.prepare('SELECT * FROM agent_session_message ORDER BY id').all()
       const migrationsBefore = dbh.sqlite.prepare('SELECT * FROM __drizzle_migrations').all()
-      expect(() => applyMigrations(dbh.db, resolveMigrationsPath())).toThrow(
+      expect(() => dbh.migrateForward()).toThrow(
         expect.objectContaining({
           cause: expect.objectContaining({ code: 'SQLITE_CONSTRAINT_CHECK' })
         })
@@ -209,7 +207,7 @@ describe('Session tree upgrade before tree fields existed', () => {
       INSERT INTO agent_session_message (id, session_id, role, data, status, created_at, updated_at)
       VALUES ('old', 'flat', 'user', '{"parts":[{"type":"text","text":"old archive"}]}', 'success', 100, 200);
     `)
-    applyMigrations(dbh.db, resolveMigrationsPath())
+    dbh.migrateForward()
     expect(readAgentSessionPath(dbh.db, 'flat').map((row) => row.id)).toEqual(['old'])
     expect(dbh.db.select().from(messages).where(eq(messages.role, 'root')).all()).toHaveLength(2)
     expect(dbh.sqlite.pragma('foreign_key_check')).toEqual([])

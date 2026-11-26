@@ -61,7 +61,7 @@ function assertArchive(
 }
 
 describe('native context migrate-forward', () => {
-  const dbh = setupTestDatabase({ beforeMigration: '0031_agent_native_contexts' })
+  const dbh = setupTestDatabase({ beforeMigration: '0034_upstream_v2_2_3' })
 
   it('preserves an older populated archive without inventing native input bindings', () => {
     const { messageId } = archive(dbh)
