@@ -555,3 +555,26 @@ describe('resolveUserDataLocation', () => {
     })
   })
 })
+
+describe('activatePersonalProfileLocation', () => {
+  it('uses the same selected directory for Electron and Chromium', async () => {
+    stubElectron()
+    stubConstants({ isLinux: false, isWin: false, isPortable: false })
+    const { mkdirSync } = stubFs()
+    vi.doMock('../personalProfileSelection', () => ({
+      readPersonalProfileSelection: () => ({ kind: 'account', serverInstanceId: 'server', userId: '7' })
+    }))
+    try {
+      const { activatePersonalProfileLocation } = await import('../userDataLocation')
+      expect(activatePersonalProfileLocation()).toBe('account')
+      const location = mkdirSync.mock.calls[0][0]
+      expect(location).toMatch(/^\/mock\/userData\/PersonalProfiles\/[a-f0-9]{64}$/)
+      expect(setPathMock.mock.calls).toEqual([
+        ['userData', location],
+        ['sessionData', location]
+      ])
+    } finally {
+      vi.doUnmock('../personalProfileSelection')
+    }
+  })
+})

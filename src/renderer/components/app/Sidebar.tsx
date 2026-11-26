@@ -18,6 +18,7 @@ import { useAssistantsApi } from '@renderer/hooks/useAssistant'
 import useAvatar from '@renderer/hooks/useAvatar'
 import { useConversationNavigation } from '@renderer/hooks/useConversationNavigation'
 import { useMiniApps } from '@renderer/hooks/useMiniApps'
+import { usePersonalAccountDetails } from '@renderer/hooks/usePersonalAccountDetails'
 // [MEA 定向恢复] 姓名头像只用本地设置，不再用服务端资料：原 useOrgAccountSession 仅用于侧栏用户名/头像覆盖，现已停用。
 // import { useOrgAccountSession } from '@renderer/hooks/useOrgAccountSession'
 import { useSidebarFavorites } from '@renderer/hooks/useSidebarFavorites'
@@ -50,6 +51,7 @@ import {
   type SidebarVisibleLayout
 } from '../Sidebar'
 import UserPopup from '../UserPopup'
+import { SidebarAccountMenu } from './SidebarAccountMenu'
 import { resolveSidebarEntry, type SidebarVariantContext } from './sidebarVariants'
 
 const FeedbackDialog = lazy(() => import('../feedback/FeedbackDialog'))
@@ -147,17 +149,29 @@ export default function Sidebar({
   // const signedInDisplayName = orgStatus?.phase === 'signed-in' ? orgStatus.displayName?.trim() : undefined
   // 原逻辑：sidebarDisplayName = signedInDisplayName || userName || fallback；description 在登录时隐藏；avatar 在登录且无本地头像时显示服务端首字。
   // 现改用纯本地设置：本地名 + 本地用户副标题 + 本地头像。
-  const sidebarDisplayName = userName || t('chat.user', { defaultValue: t('export.user', { defaultValue: 'User' }) })
+  const { data: personalAccount } = usePersonalAccountDetails()
+  const sidebarDisplayName =
+    personalAccount?.displayName ||
+    userName ||
+    t('chat.user', { defaultValue: t('export.user', { defaultValue: 'User' }) })
+  const sidebarDescription = personalAccount
+    ? personalAccount.username === sidebarDisplayName
+      ? undefined
+      : personalAccount.username
+    : t('workspace.localUser')
   const sidebarUser = useMemo<SidebarUser>(
     () => ({
       name: sidebarDisplayName,
-      description: t('workspace.localUser'),
+      description: sidebarDescription,
       avatar: avatar || undefined,
       onClick: () => UserPopup.show(),
+      renderMenu: (close) => (
+        <SidebarAccountMenu name={sidebarDisplayName} description={sidebarDescription} close={close} />
+      ),
       settingsLabel: t('settings.title'),
       onSettingsClick: () => openSettingsTab()
     }),
-    [avatar, sidebarDisplayName, t]
+    [avatar, sidebarDescription, sidebarDisplayName, t]
   )
   const sidebarLogo = useMemo(() => <img src={AppLogo} alt="" className="h-full w-full object-cover" />, [])
 

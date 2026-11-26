@@ -1,5 +1,5 @@
 import { createMemoryHistory, createRootRoute, createRouter, RouterProvider } from '@tanstack/react-router'
-import { ArrowLeft, Check, KeyRound, Languages } from 'lucide-react'
+import { ArrowLeft, Check, Languages, LogIn } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -23,6 +23,7 @@ import {
 import { dataApiService } from '@data/DataApiService'
 import { useMultiplePreferences, usePreference } from '@data/hooks/usePreference'
 import AppLogo from '@renderer/assets/images/logo.png'
+import UserPopup from '@renderer/components/UserPopup'
 import { WindowControls } from '@renderer/components/WindowControls'
 import { useCherryAccountSession } from '@renderer/hooks/useCherryAccountSession'
 import { useDefaultModel, useModels } from '@renderer/hooks/useModel'
@@ -342,15 +343,17 @@ export default function OnboardingPage({
               </SelectContent>
             </Select>
           </div>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="nodrag text-muted-foreground hover:text-foreground"
-            onClick={() => void complete('skipped')}
-            disabled={isCompleting || isUpdatingPrivacy}>
-            {t('onboarding.skip')}
-          </Button>
+          {step !== 'welcome' && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="nodrag text-muted-foreground hover:text-foreground"
+              onClick={() => void complete('skipped')}
+              disabled={isCompleting || isUpdatingPrivacy}>
+              {t('onboarding.skip')}
+            </Button>
+          )}
         </div>
         <WindowControls />
       </div>
@@ -364,7 +367,7 @@ export default function OnboardingPage({
                   <img src={AppLogo} alt="MEA Cowork" className="size-16 rounded-xl" />
                   <div className="mt-5 flex flex-col gap-2 text-center">
                     <h1 className="m-0 font-semibold text-2xl text-foreground">{t('onboarding.welcome.title')}</h1>
-                    <p className="m-0 text-muted-foreground text-sm">{t('onboarding.welcome.subtitle')}</p>
+                    <p className="m-0 text-muted-foreground text-sm">{t('onboarding.welcome.account_subtitle')}</p>
                   </div>
                   <div className="mt-8 flex w-full flex-col gap-3">
                     {/* 「登录樱桃云」按钮暂时隐藏：连接 cloud.cherryai.com(.cn) 走 Cherry 厂商云，Mea Cowork 暂不开放登录。
@@ -398,7 +401,19 @@ export default function OnboardingPage({
                       </Button>
                     ) : null}
                     */}
-                    {/* CherryIn 登录暂时保留走「其他服务商」入口，迁移 Cherry Cloud 登录为该入口之一。 */}
+                    <Button
+                      type="button"
+                      size="lg"
+                      className="h-11 w-full rounded-xl"
+                      disabled={isUpdatingPrivacy}
+                      onClick={() =>
+                        void runAfterPrivacyChoice(async () => {
+                          await UserPopup.show({ loginOnly: true })
+                        })
+                      }>
+                      <LogIn size={16} />
+                      {t('onboarding.welcome.account_login')}
+                    </Button>
                     <Button
                       type="button"
                       variant="outline"
@@ -406,13 +421,9 @@ export default function OnboardingPage({
                       className="h-11 w-full rounded-xl"
                       disabled={isUpdatingPrivacy}
                       onClick={() => void runAfterPrivacyChoice(() => setStep('provider'))}>
-                      <KeyRound size={16} />
-                      {t('onboarding.welcome.other_provider')}
+                      {t('onboarding.welcome.continue_as_guest')}
                     </Button>
                   </div>
-                  <p className="mt-4 mb-0 text-center text-muted-foreground text-xs">
-                    {t('onboarding.welcome.setup_hint')}
-                  </p>
                 </div>
               </div>
             )}

@@ -64,7 +64,7 @@ vi.mock('@renderer/hooks/useModel', () => ({
 }))
 
 vi.mock('@renderer/hooks/resourceViewSources', () => ({
-  useAssistantTopicsSource: () => ({ topics: [] }),
+  useAssistantTopicsSource: () => ({ topics: [], rendererTopics: [] }),
   useAgentSessionsSource: () => ({ sessions: [] })
 }))
 

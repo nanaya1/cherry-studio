@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import {
@@ -7,7 +7,6 @@ import {
   // AvatarFallback,
   AvatarImage,
   Button,
-  Center,
   ColFlex,
   Dialog,
   DialogContent,
@@ -24,6 +23,7 @@ import { usePreference } from '@data/hooks/usePreference'
 import useAvatar from '@renderer/hooks/useAvatar'
 // [enterprise] T0 企业登录入口
 import { useOrgAccountSession } from '@renderer/hooks/useOrgAccountSession'
+import { usePersonalAccountDetails } from '@renderer/hooks/usePersonalAccountDetails'
 import { ipcApi } from '@renderer/ipc'
 import { createPopup, type PopupInjectedProps } from '@renderer/services/popup'
 import { toast } from '@renderer/services/toast'
@@ -32,11 +32,132 @@ import { isEmoji } from '@renderer/utils/naming'
 
 import { EmojiPicker } from './EmojiPicker'
 
-type Props = PopupInjectedProps<Record<string, never>>
+interface UserPopupOptions {
+  loginOnly?: boolean
+  profileOnly?: boolean
+}
+
+type Props = PopupInjectedProps<Record<string, never>> & UserPopupOptions
 
 type AvatarPopoverView = 'menu' | 'emoji'
 
-const PopupContainer: React.FC<Props> = ({ open, resolve }) => {
+function PersonalAccountActions({ editing, setEditing }: { editing: boolean; setEditing: (editing: boolean) => void }) {
+  const { t } = useTranslation()
+  const [signedIn, setSignedIn] = useState<boolean>()
+  const [busy, setBusy] = useState(false)
+  const [failed, setFailed] = useState(false)
+  const { data: personalAccount, mutate: refreshPersonalAccount } = usePersonalAccountDetails(signedIn === true)
+
+  useEffect(() => {
+    let active = true
+    void ipcApi.request('enterprise.personal.status').then(
+      (status) => {
+        if (active && status) setSignedIn(status.signedIn)
+      },
+      () => {
+        if (active) setFailed(true)
+      }
+    )
+    return () => {
+      active = false
+    }
+  }, [])
+
+  const changeAccount = async (credentials: { username: string; password: string } | null) => {
+    setBusy(true)
+    setFailed(false)
+    try {
+      const result = await ipcApi.request('enterprise.personal.change_account', {
+        credentials,
+        confirmation: {
+          title: t('settings.doctor.actions.relaunch'),
+          message: t('settings.general.common.menu.presentation_mode.restart.title'),
+          cancel: t('common.cancel'),
+          proceed: t('common.confirm')
+        }
+      })
+      if (result === 'updated') {
+        if (credentials) void refreshPersonalAccount()
+        setEditing(false)
+      }
+    } catch {
+      setFailed(true)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (signedIn === undefined && !failed) return null
+
+  return (
+    <div className={editing ? 'px-5 pt-2 pb-5' : 'border-border-subtle border-t px-5 py-4'}>
+      {editing ? (
+        <form
+          className="flex flex-col gap-2"
+          onSubmit={(event) => {
+            event.preventDefault()
+            const data = new FormData(event.currentTarget)
+            void changeAccount({ username: String(data.get('username')), password: String(data.get('password')) })
+          }}>
+          <Input
+            name="username"
+            autoComplete="username"
+            aria-label={t('library.config.prompt.vars.username')}
+            placeholder={t('library.config.prompt.vars.username')}
+            required
+            maxLength={60}
+            disabled={busy}
+          />
+          <Input
+            name="password"
+            type="password"
+            autoComplete="current-password"
+            aria-label={t('settings.provider.basic_auth.password.label')}
+            placeholder={t('settings.provider.basic_auth.password.label')}
+            required
+            maxLength={72}
+            disabled={busy}
+          />
+          <Button type="submit" loading={busy}>
+            {t('settings.provider.org_service.login')}
+          </Button>
+          <Button type="button" variant="ghost" disabled={busy} onClick={() => setEditing(false)}>
+            {t('common.cancel')}
+          </Button>
+        </form>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {personalAccount && (
+            <div className="min-w-0">
+              <div className="truncate font-medium text-sm">{personalAccount.displayName}</div>
+              {personalAccount.displayName !== personalAccount.username && (
+                <div className="truncate text-muted-foreground text-xs">{personalAccount.username}</div>
+              )}
+            </div>
+          )}
+          <div className={signedIn ? 'grid grid-cols-2 gap-2' : 'grid'}>
+            <Button className="flex-1" variant="outline" disabled={busy} onClick={() => setEditing(true)}>
+              {t(signedIn ? 'settings.provider.org_service.switch_account' : 'settings.provider.org_service.login')}
+            </Button>
+            {signedIn && (
+              <Button variant="ghost" loading={busy} onClick={() => void changeAccount(null)}>
+                {t('settings.provider.org_service.logout')}
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
+      {failed && (
+        <p className="pt-2 text-error-subtle-foreground text-xs" role="alert">
+          {t('settings.provider.org_service.login_failed')}
+        </p>
+      )}
+    </div>
+  )
+}
+
+const PopupContainer: React.FC<Props> = ({ open, resolve, loginOnly = false, profileOnly = false }) => {
+  const [editingAccount, setEditingAccount] = useState(loginOnly)
   const [userName, setUserName] = usePreference('app.user.name')
   // The stored name is always trimmed; the draft keeps the raw text so a space can be typed
   // mid-name, and stays unset until typed so the input follows the preference until then.
@@ -84,6 +205,7 @@ const PopupContainer: React.FC<Props> = ({ open, resolve }) => {
 
   const onOpenChange = (nextOpen: boolean) => {
     if (!nextOpen) {
+      setEditingAccount(false)
       resolve({})
     }
   }
@@ -135,12 +257,12 @@ const PopupContainer: React.FC<Props> = ({ open, resolve }) => {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[300px] gap-0 p-0 sm:max-w-[300px]">
-        <DialogHeader className="sr-only">
-          <DialogTitle>{t('settings.general.user_name.label')}</DialogTitle>
+      <DialogContent className="w-[calc(100%-2rem)] max-w-[300px] gap-0 p-0 sm:max-w-[300px]">
+        <DialogHeader className={editingAccount ? 'px-5 pt-5 pb-2 pr-12' : 'sr-only'}>
+          <DialogTitle>{t(editingAccount ? 'settings.provider.org_service.login' : 'workspace.localUser')}</DialogTitle>
         </DialogHeader>
-        <Center className="mt-[30px]">
-          <ColFlex className="items-center gap-2.5">
+        {!editingAccount && (
+          <div className="flex flex-col items-center gap-5 px-5 pt-[30px] pb-5">
             <Popover
               open={avatarPopoverOpen}
               onOpenChange={(visible) => {
@@ -154,7 +276,7 @@ const PopupContainer: React.FC<Props> = ({ open, resolve }) => {
                   type="button"
                   variant="ghost"
                   aria-label={t('common.avatar')}
-                  className="size-20 rounded-[25%] p-0 text-foreground shadow-none transition-opacity hover:bg-transparent hover:text-foreground hover:opacity-80 focus-visible:bg-transparent focus-visible:opacity-80">
+                  className="size-20 shrink-0 rounded-[25%] p-0 text-foreground shadow-none transition-opacity hover:bg-transparent hover:text-foreground hover:opacity-80 focus-visible:bg-transparent focus-visible:opacity-80">
                   {/* [MEA 定向恢复] 原逻辑：signedInDisplayName && !avatarPreference 时显示服务端首字头像；现停用，只用本地 emoji/图片头像。
                   {signedInDisplayName && !avatarPreference ? (
                     <Avatar className="size-20 rounded-[25%]">
@@ -219,10 +341,7 @@ const PopupContainer: React.FC<Props> = ({ open, resolve }) => {
                 )}
               </PopoverContent>
             </Popover>
-          </ColFlex>
-        </Center>
-        <RowFlex className="items-center gap-2.5 p-5">
-          {/* [MEA 定向恢复] 原逻辑：signedInDisplayName 存在时占位符清空、value 用服务端名、输入框禁用；现停用，姓名只走本地 app.user.name 且始终可编辑（保留输入空格修复与草稿逻辑）。
+            {/* [MEA 定向恢复] 原逻辑：signedInDisplayName 存在时占位符清空、value 用服务端名、输入框禁用；现停用，姓名只走本地 app.user.name 且始终可编辑（保留输入空格修复与草稿逻辑）。
           <Input
             placeholder={signedInDisplayName ? undefined : t('settings.general.user_name.placeholder')}
             value={signedInDisplayName || (userNameDraft ?? userName)}
@@ -238,17 +357,25 @@ const PopupContainer: React.FC<Props> = ({ open, resolve }) => {
             className="w-full flex-1 text-center disabled:cursor-default disabled:opacity-100"
             maxLength={30}
           /> */}
-          <Input
-            placeholder={t('settings.general.user_name.placeholder')}
-            value={userNameDraft ?? userName}
-            onChange={(e) => {
-              setUserNameDraft(e.target.value)
-              void setUserName(e.target.value.trim())
-            }}
-            className="w-full flex-1 text-center disabled:cursor-default disabled:opacity-100"
-            maxLength={30}
+            <Input
+              aria-label={t('settings.general.user_name.label')}
+              placeholder={t('settings.general.user_name.placeholder')}
+              value={userNameDraft ?? userName}
+              onChange={(e) => {
+                setUserNameDraft(e.target.value)
+                void setUserName(e.target.value.trim())
+              }}
+              className="w-full text-center"
+              maxLength={30}
+            />
+          </div>
+        )}
+        {open && !profileOnly && (
+          <PersonalAccountActions
+            editing={editingAccount}
+            setEditing={loginOnly ? () => resolve({}) : setEditingAccount}
           />
-        </RowFlex>
+        )}
         {/* 「登录 / 退出樱桃云」入口暂时隐藏：连接 cloud.cherryai.com(.cn) 走 Cherry 厂商云。Mea Cowork 暂不开放登录。 */}
         {/*
         {isCnEdition || cloudStatus?.phase === 'signed-in' ? (
@@ -307,7 +434,10 @@ const PopupContainer: React.FC<Props> = ({ open, resolve }) => {
         {/* [enterprise] 官网账户登录入口（樱桃云入口同款布局） */}
         {/* 隐藏未登录/授权中的入口，保留已有会话的退出及状态重试。 */}
         {/* 原条件：orgLoadState !== 'loading' */}
-        {orgLoadState !== 'loading' && (orgLoadState === 'error' || orgStatus?.phase === 'signed-in') ? (
+        {!profileOnly &&
+        !editingAccount &&
+        orgLoadState !== 'loading' &&
+        (orgLoadState === 'error' || orgStatus?.phase === 'signed-in') ? (
           <RowFlex className="border-border-subtle border-t px-5 py-4">
             {orgLoadState === 'error' ? (
               <ColFlex className="w-full gap-2">
@@ -407,6 +537,6 @@ const PopupContainer: React.FC<Props> = ({ open, resolve }) => {
   )
 }
 
-const UserPopup = createPopup<Record<string, never>, Record<string, never>>(PopupContainer, { dismissResult: {} })
+const UserPopup = createPopup<UserPopupOptions, Record<string, never>>(PopupContainer, { dismissResult: {} })
 
 export default UserPopup

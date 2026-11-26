@@ -249,9 +249,28 @@ export class Application {
    * first line to read when diagnosing one.
    */
   public async shutdown(): Promise<void> {
+    await this.stopRuntime(true)
+  }
+
+  public async preparePersonalProfileSwitch(): Promise<{ clean: boolean }> {
+    if (!this.canQuit()) return { clean: false }
+    return this.stopRuntime(false)
+  }
+
+  public relaunchAfterPersonalProfileSwitch(): void {
+    if (isDev || !app.isPackaged) {
+      // electron-vite stops its dev server when Electron exits. Explain the
+      // manual restart in the confirmation before destroying the windows.
+      app.exit(0)
+      return
+    }
+    this.relaunch()
+  }
+
+  private async stopRuntime(finishLogging: boolean): Promise<{ clean: boolean }> {
     if (this.isShuttingDown) {
       logger.warn('Already shutting down')
-      return
+      return { clean: false }
     }
 
     this.isShuttingDown = true
@@ -285,7 +304,8 @@ export class Application {
     }
 
     // Close logger LAST — after this point, no more logging
-    loggerService.finish()
+    if (finishLogging) loggerService.finish()
+    return { clean: !unclean }
   }
 
   /**

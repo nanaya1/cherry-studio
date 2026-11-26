@@ -1,6 +1,8 @@
 import { Columns2, Settings } from 'lucide-react'
 import React from 'react'
 
+import { Popover, PopoverContent, PopoverTrigger } from '@cherrystudio/ui'
+
 import { UserAvatar } from './primitives'
 import { SidebarTooltip } from './Tooltip'
 import type { SidebarUser, SidebarVisibleLayout } from './types'
@@ -29,6 +31,19 @@ type FooterProps = Omit<SidebarFooterProps, 'layout' | 'actions' | 'onOverlayOpe
   actions?: React.ReactNode
 }
 
+function AccountMenu({ user, children }: { user: SidebarUser; children: React.ReactElement }) {
+  const [open, setOpen] = React.useState(false)
+  if (!user.renderMenu) return children
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>{children}</PopoverTrigger>
+      <PopoverContent align="start" side="top" sideOffset={8} className="w-64 p-1.5">
+        {user.renderMenu(() => setOpen(false))}
+      </PopoverContent>
+    </Popover>
+  )
+}
+
 function IconFooter({ user, actions, extensionsLabel, onExtensionsClick }: FooterProps) {
   return (
     <div className="flex flex-col items-center gap-1 px-1.5 pt-2 pb-3 [-webkit-app-region:no-drag]">
@@ -45,9 +60,15 @@ function IconFooter({ user, actions, extensionsLabel, onExtensionsClick }: Foote
       {actions}
       {user && (
         <SidebarTooltip content={user.name}>
-          <button type="button" aria-label={user.name} onClick={user.onClick} className="cursor-pointer rounded-full">
-            <UserAvatar user={user} className="h-7 w-7" />
-          </button>
+          <AccountMenu user={user}>
+            <button
+              type="button"
+              aria-label={user.name}
+              onClick={user.renderMenu ? undefined : user.onClick}
+              className="cursor-pointer rounded-full">
+              <UserAvatar user={user} className="h-7 w-7" />
+            </button>
+          </AccountMenu>
         </SidebarTooltip>
       )}
     </div>
@@ -71,15 +92,20 @@ function FullFooter({ user, actions, extensionsLabel, onExtensionsClick }: Foote
 
       {user && (
         <div className="flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-accent/60">
-          <button type="button" onClick={user.onClick} className="flex min-w-0 flex-1 items-center gap-2 text-left">
-            <UserAvatar user={user} className="h-7 w-7 shrink-0" />
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-[12px] text-sidebar-foreground">{user.name}</span>
-              {user.description && (
-                <span className="block truncate text-[10px] text-muted-foreground">{user.description}</span>
-              )}
-            </span>
-          </button>
+          <AccountMenu user={user}>
+            <button
+              type="button"
+              onClick={user.renderMenu ? undefined : user.onClick}
+              className="flex min-w-0 flex-1 items-center gap-2 text-left">
+              <UserAvatar user={user} className="h-7 w-7 shrink-0" />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[12px] text-sidebar-foreground">{user.name}</span>
+                {user.description && (
+                  <span className="block truncate text-[10px] text-muted-foreground">{user.description}</span>
+                )}
+              </span>
+            </button>
+          </AccountMenu>
           {user.onSettingsClick && (
             <button
               type="button"

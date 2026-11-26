@@ -19,7 +19,7 @@ import { runBackupRestoreGate } from '@main/core/preboot/backupRestoreGate'
 import { configureChromiumFlags } from '@main/core/preboot/chromiumFlags'
 import { initCrashTelemetry } from '@main/core/preboot/crashTelemetry'
 import { requireSingleInstance } from '@main/core/preboot/singleInstance'
-import { resolveUserDataLocation } from '@main/core/preboot/userDataLocation'
+import { requirePersonalProfileLocation, resolveUserDataLocation } from '@main/core/preboot/userDataLocation'
 import { runV2MigrationGate } from '@main/core/preboot/v2MigrationGate'
 import { MINI_APP_SCHEME_DECLARATION } from '@main/features/miniApp/runtime/protocol'
 import { runDataReset } from '@main/services/dataReset'
@@ -31,6 +31,7 @@ import { getApplicationId } from '@main/utils/appEdition'
 // should be the first to resolveUserDataLocation()
 resolveUserDataLocation()
 requireSingleInstance()
+const personalProfile = requirePersonalProfileLocation()
 configureChromiumFlags()
 initCrashTelemetry()
 initSentry()
@@ -57,8 +58,10 @@ const startApp = async () => {
   // userData relocation: a pending/failed relocation makes this a dedicated
   // relocation launch (execute or explain, then relaunch) before any service
   // opens files under the source tree. See services/userDataRelocation/README.md.
-  const relocationResult = await runUserDataRelocation()
-  if (relocationResult === 'handled') return
+  if (personalProfile === 'guest') {
+    const relocationResult = await runUserDataRelocation()
+    if (relocationResult === 'handled') return
+  }
 
   // Backup-restore gate: swap in a staged restored DB (if any) before the v2
   // migration gate reads the DB. Never throws; on any failure the old DB
@@ -66,8 +69,10 @@ const startApp = async () => {
   await runBackupRestoreGate()
 
   // 'handled' = migration window took over OR fatal error already quit the app.
-  const migrationResult = await runV2MigrationGate()
-  if (migrationResult === 'handled') return
+  if (personalProfile === 'guest') {
+    const migrationResult = await runV2MigrationGate()
+    if (migrationResult === 'handled') return
+  }
 
   // Set the Windows AppUserModelID — the identity Windows uses to attribute this
   // app's notifications, taskbar icon grouping, and Jump Lists (no-op on macOS/Linux).
