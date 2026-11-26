@@ -12,6 +12,7 @@ import { application } from '@application'
 import { notifyDataApiDataChange } from '@data/dataApiDataChange'
 import { assistantTable } from '@data/db/schemas/assistant'
 import { assistantKnowledgeBaseTable, assistantMcpServerTable } from '@data/db/schemas/assistantRelations'
+import { assistantAvatarFileRefTable } from '@data/db/schemas/fileRelations'
 import { pinTable } from '@data/db/schemas/pin'
 import { assistantRemoteKnowledgeBaseTable } from '@data/db/schemas/remoteKnowledge'
 import type { DbOrTx, DbType } from '@data/db/types'
@@ -27,6 +28,7 @@ import type {
 } from '@shared/data/api/schemas/assistants'
 import type { EntitySearchItem } from '@shared/data/api/schemas/search'
 import { type Assistant, DEFAULT_ASSISTANT_SETTINGS } from '@shared/data/types/assistant'
+import type { FileEntryId } from '@shared/data/types/file'
 import type { UniqueModelId } from '@shared/data/types/model'
 import { isRemoteKnowledgeBaseId } from '@shared/data/types/remoteKnowledge'
 
@@ -37,6 +39,7 @@ import { promptService } from './PromptService'
 import { topicService } from './TopicService'
 import { applyMoves, insertWithOrderKey } from './utils/orderKey'
 import { nullsToUndefined, timestampToISO } from './utils/rowMappers'
+import { clearSingleFileRefTx, insertSingleFileRefTx } from './utils/singleFileRef'
 
 const logger = loggerService.withContext('DataApi:AssistantService')
 
@@ -72,12 +75,14 @@ function normalizeKnowledgeBaseIds(ids: readonly string[]): string[] {
 function rowToAssistant(
   row: AssistantRow,
   relations: AssistantRelationIds = createEmptyRelations(),
-  modelName: string | null = null
+  modelName: string | null = null,
+  avatarFileId?: FileEntryId
 ): Assistant {
   const clean = nullsToUndefined(row)
   return {
     ...clean,
     builtinRole: row.builtinRole === 'assistant' ? row.builtinRole : null,
+    ...(avatarFileId ? { avatarFileId, avatarSrc: application.get('FileManager').getUrl(avatarFileId) } : {}),
     // Preserve the T | null contract: `modelId` is legitimately nullable (R3 exception).
     modelId: row.modelId as UniqueModelId | null,
     groupId: row.groupId,
@@ -121,6 +126,42 @@ export class AssistantDataService {
 
   private get db() {
     return application.get('DbService').getDb()
+  }
+
+  assertActiveTx(tx: DbOrTx, id: string): void {
+    const row = tx
+      .select({ id: assistantTable.id })
+      .from(assistantTable)
+      .where(and(eq(assistantTable.id, id), isNull(assistantTable.deletedAt)))
+      .get()
+    if (!row) throw DataApiErrorFactory.notFound('Assistant', id)
+  }
+
+  setAvatarSlotTx(tx: DbOrTx, assistantId: string, fileId: FileEntryId): void {
+    this.assertActiveTx(tx, assistantId)
+    this.clearAvatarSlotTx(tx, assistantId)
+    insertSingleFileRefTx(tx, assistantAvatarFileRefTable, assistantId, fileId)
+  }
+
+  clearAvatarSlotTx(tx: DbOrTx, assistantId: string): void {
+    clearSingleFileRefTx(tx, assistantAvatarFileRefTable, assistantId)
+    tx.update(assistantTable).set({ updatedAt: Date.now() }).where(eq(assistantTable.id, assistantId)).run()
+  }
+
+  setAvatarEmojiTx(tx: DbOrTx, assistantId: string, emoji: string): void {
+    this.assertActiveTx(tx, assistantId)
+    tx.update(assistantTable).set({ emoji }).where(eq(assistantTable.id, assistantId)).run()
+    this.clearAvatarSlotTx(tx, assistantId)
+  }
+
+  private getAvatarIds(assistantIds: string[], db: DbOrTx = this.db): Map<string, FileEntryId> {
+    if (assistantIds.length === 0) return new Map()
+    const rows = db
+      .select()
+      .from(assistantAvatarFileRefTable)
+      .where(inArray(assistantAvatarFileRefTable.sourceId, assistantIds))
+      .all()
+    return new Map(rows.map((row) => [row.sourceId, row.fileEntryId]))
   }
 
   private getModelNameById(db: Pick<DbType, 'select'>, modelId: string | null): string | null {
@@ -271,7 +312,12 @@ export class AssistantDataService {
       throw DataApiErrorFactory.notFound('Assistant', id)
     }
     const relations = this.getRelationIdsByAssistantIds([id])
-    return rowToAssistant(row, relations.get(id), this.getModelNameById(this.db, row.modelId))
+    return rowToAssistant(
+      row,
+      relations.get(id),
+      this.getModelNameById(this.db, row.modelId),
+      this.getAvatarIds([id]).get(id)
+    )
   }
 
   search(query: { q: string; limit: number; updatedAtFrom?: number }): AssistantEntitySearchItem[] {
@@ -391,11 +437,13 @@ export class AssistantDataService {
       this.db,
       rows.map((row) => row.assistant.modelId)
     )
+    const avatars = this.getAvatarIds(assistantIds)
     const items = rows.map((row) =>
       rowToAssistant(
         row.assistant,
         relations.get(row.assistant.id),
-        row.assistant.modelId ? (modelNames.get(row.assistant.modelId) ?? null) : null
+        row.assistant.modelId ? (modelNames.get(row.assistant.modelId) ?? null) : null,
+        avatars.get(row.assistant.id)
       )
     )
 
@@ -455,7 +503,7 @@ export class AssistantDataService {
     return rowToAssistant(
       row,
       {
-        mcpServerIds: dto.mcpServerIds ?? [],
+        mcpServerIds: [...new Set(dto.mcpServerIds ?? [])],
         knowledgeBaseIds: normalizeKnowledgeBaseIds(dto.knowledgeBaseIds ?? [])
       },
       modelName
@@ -483,6 +531,8 @@ export class AssistantDataService {
         groupId: source.groupId,
         ...relations
       })
+      const avatarFileId = this.getAvatarIds([id], tx).get(id)
+      if (avatarFileId) this.setAvatarSlotTx(tx, created.assistant.id, avatarFileId)
       const clonedPromptIds = promptService.cloneBindingsForTargetTx(
         tx,
         { type: 'assistant', id },
@@ -493,7 +543,7 @@ export class AssistantDataService {
 
     logger.info('Duplicated assistant', { id: row.id, sourceId: id })
     if (clonedPromptIds.length > 0) promptService.notifyTargetBindingsChanged()
-    return rowToAssistant(row, relations, modelName)
+    return rowToAssistant(row, relations, modelName, this.getAvatarIds([row.id]).get(row.id))
   }
 
   /**
@@ -565,7 +615,7 @@ export class AssistantDataService {
     }
 
     const nextRelations: AssistantRelationIds = {
-      mcpServerIds: mcpServerIds ?? current.mcpServerIds,
+      mcpServerIds: [...new Set(mcpServerIds ?? current.mcpServerIds)],
       knowledgeBaseIds:
         knowledgeBaseIds !== undefined ? normalizeKnowledgeBaseIds(knowledgeBaseIds) : current.knowledgeBaseIds
     }
@@ -604,6 +654,8 @@ export class AssistantDataService {
         next = existing
       }
 
+      if (dto.emoji !== undefined) this.clearAvatarSlotTx(tx, id)
+
       // Sync junction table rows if relation fields are provided
       this.syncRelationsTx(tx, id, { mcpServerIds, knowledgeBaseIds })
 
@@ -617,7 +669,7 @@ export class AssistantDataService {
 
     logger.info('Updated assistant', { id, changes: Object.keys(dto) })
 
-    return rowToAssistant(row, nextRelations, modelName)
+    return rowToAssistant(row, nextRelations, modelName, this.getAvatarIds([id]).get(id))
   }
 
   /** Move a single assistant within the active (non-deleted) assistant list. */
@@ -758,7 +810,12 @@ export class AssistantDataService {
     this.notifyReadModelChange([id], 'membership')
     logger.info('Restored assistant', { id })
     const relations = this.getRelationIdsByAssistantIds([id])
-    return rowToAssistant(row, relations.get(id), this.getModelNameById(this.db, row.modelId))
+    return rowToAssistant(
+      row,
+      relations.get(id),
+      this.getModelNameById(this.db, row.modelId),
+      this.getAvatarIds([id]).get(id)
+    )
   }
 
   /** Hard-delete trashed assistants older than the retention cutoff. */
@@ -800,7 +857,7 @@ export class AssistantDataService {
       const desiredIds = new Set(dto.mcpServerIds)
 
       const removeIds = existing.filter((r) => !desiredIds.has(r.mcpServerId)).map((r) => r.mcpServerId)
-      const toAdd = dto.mcpServerIds.filter((id) => !existingIds.has(id))
+      const toAdd = [...desiredIds].filter((id) => !existingIds.has(id))
 
       if (removeIds.length > 0) {
         tx.delete(assistantMcpServerTable)
@@ -830,7 +887,7 @@ export class AssistantDataService {
       const desiredIds = new Set(localIds)
 
       const removeIds = existing.filter((r) => !desiredIds.has(r.knowledgeBaseId)).map((r) => r.knowledgeBaseId)
-      const toAdd = localIds.filter((id) => !existingIds.has(id))
+      const toAdd = [...desiredIds].filter((id) => !existingIds.has(id))
 
       if (removeIds.length > 0) {
         tx.delete(assistantKnowledgeBaseTable)

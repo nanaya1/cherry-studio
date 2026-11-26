@@ -40,9 +40,11 @@ import { loggerService } from '@logger'
 import { agentDataDirectoryPath, assertAgentStorageDirectory } from '@main/ai/agents/agentDataDirectory'
 import { readHeartbeat } from '@main/ai/agents/heartbeat'
 import { pauseHeartbeatSchedule } from '@main/ai/agents/heartbeatSchedule'
+import { frameScheduledTrigger } from '@main/ai/agents/scheduledTriggerFraming'
 import { buildAgentSessionTopicId } from '@main/ai/agentSession/topic'
 import { ChannelAdapterListener, startAgentSessionRun, type StreamListener } from '@main/ai/streamManager'
 import type { JobContext } from '@main/core/job/types'
+import { t } from '@main/i18n'
 import { isHeartbeatEnabled } from '@shared/ai/agentHeartbeat'
 import { AGENT_RUNTIME_CAPABILITIES } from '@shared/ai/agentRuntimeCapabilities'
 import { AGENT_WORKSPACE_TYPE, type AgentSessionWorkspaceSource } from '@shared/data/api/schemas/agentWorkspaces'
@@ -59,6 +61,7 @@ export type AgentTaskInput = {
 }
 
 export type AgentTaskOutput = {
+  kind: 'executed' | 'skipped'
   /** First 200 chars of the assistant reply, or a status marker for skipped runs. */
   result: string
 }
@@ -107,6 +110,7 @@ function loadReusableSession(taskScheduleId: string, agentId: string) {
  */
 function resolveTaskSession(params: {
   sessionType: AgentSessionType
+  scheduleId: string | null
   reuse: TaskSessionReuse
   reuseBinding: { scheduleId: string; reuseRevision: number } | null
   agentId: string
@@ -125,7 +129,7 @@ function resolveTaskSession(params: {
     })
   }
 
-  const session = agentSessionService.create({ agentId, name, workspace }, sessionType)
+  const session = agentSessionService.create({ agentId, name, workspace }, sessionType, params.scheduleId)
   if (reuse.enabled && reuseBinding) {
     application.get('AgentJobsService').bindTaskSessionReuse({
       ...reuseBinding,
@@ -153,6 +157,9 @@ export async function runAgentTask(ctx: JobContext<AgentTaskInput>): Promise<Age
   }
 
   const config = agent.configuration ?? {}
+  if (config.dsh_plan_permission_pending) {
+    return { kind: 'skipped', result: t('agent.session.pi.plan_permission_confirmation') }
+  }
 
   // Identity is the reserved prompt, not the schedule name — see HEARTBEAT_PROMPT_SENTINEL.
   const isHeartbeat = prompt === HEARTBEAT_PROMPT_SENTINEL
@@ -165,7 +172,7 @@ export async function runAgentTask(ctx: JobContext<AgentTaskInput>): Promise<Age
   if (isHeartbeat) {
     if (!isHeartbeatEnabled(config)) {
       logger.debug('Heartbeat skipped (disabled)', { agentId, scheduleId })
-      return { result: 'Skipped (disabled)' }
+      return { kind: 'skipped', result: 'Skipped (disabled)' }
     }
     // Runtime changes may bypass heartbeat configuration events; recheck capabilities at execution.
     const capabilities = Object.hasOwn(AGENT_RUNTIME_CAPABILITIES, agent.type)
@@ -173,7 +180,7 @@ export async function runAgentTask(ctx: JobContext<AgentTaskInput>): Promise<Age
       : undefined
     if (capabilities?.heartbeat !== true) {
       logger.debug('Heartbeat skipped (runtime lacks the capability)', { agentId, scheduleId, type: agent.type })
-      return { result: 'Skipped (capability)' }
+      return { kind: 'skipped', result: 'Skipped (capability)' }
     }
     const agentsDataRoot = application.getPath('feature.agents.data')
     const agentDataPath = agentDataDirectoryPath(agentsDataRoot, agentId)
@@ -206,21 +213,16 @@ export async function runAgentTask(ctx: JobContext<AgentTaskInput>): Promise<Age
             logger.warn('Post-pause heartbeat sync failed', { agentId, scheduleId, error })
           })
       }
-      return { result: 'Skipped (untrusted agent data path)' }
+      return { kind: 'skipped', result: 'Skipped (untrusted agent data path)' }
     }
     const content = await readHeartbeat(agentDataPath)
     if (!content) {
       logger.debug('Heartbeat skipped (no heartbeat.md)', { agentId, scheduleId })
-      return { result: 'Skipped (no file)' }
+      return { kind: 'skipped', result: 'Skipped (no file)' }
     }
-    effectivePrompt = [
-      '[Heartbeat]',
-      'This is a periodic heartbeat. The instructions below are from your heartbeat.md file.',
-      'Process each item, take action where possible, and use the notify tool to alert the user of important results.',
-      '',
-      '---',
-      content
-    ].join('\n')
+    effectivePrompt = frameScheduledTrigger({ kind: 'heartbeat', instruction: content })
+  } else {
+    effectivePrompt = frameScheduledTrigger({ kind: 'task', taskName, instruction: prompt })
   }
 
   const expectedReuseRevision = normalizeTaskSessionReuseRevision(ctx.input.reuseRevision)
@@ -236,6 +238,7 @@ export async function runAgentTask(ctx: JobContext<AgentTaskInput>): Promise<Age
   const sessionType = isHeartbeat ? 'background' : 'conversation'
   let session = resolveTaskSession({
     sessionType,
+    scheduleId,
     reuse: reuseIsCurrent ? currentReuse : { enabled: false, revision: expectedReuseRevision },
     reuseBinding,
     agentId,
@@ -269,7 +272,7 @@ export async function runAgentTask(ctx: JobContext<AgentTaskInput>): Promise<Age
     rejectExecution = reject
   })
   let topicId = buildAgentSessionTopicId(session.id)
-  let accumulatedText = ''
+  let pausedStatus: 'cancelled' | 'interrupted' | undefined
   let completionActive = true
   const complete = (settle: () => void) => {
     if (!completionActive) return
@@ -282,24 +285,36 @@ export async function runAgentTask(ctx: JobContext<AgentTaskInput>): Promise<Age
   }
   const sentinel: StreamListener = {
     id: `agent-task:${scheduleId ?? ctx.jobId}`,
-    onChunk(chunk) {
-      // `text-delta`'s field is `delta`, not `text` (AI SDK `UIMessageChunk`) — the
-      // previous `as { text }` cast silently never accumulated, so the persisted
-      // result was always the `'Completed'` fallback.
-      if (chunk.type === 'text-delta') accumulatedText += chunk.delta
-    },
+    ownsTaskResult: true,
+    onChunk() {},
     // Stream manager already snapshots and invokes every listener, including the
     // channel sinks. Re-invoking them here delivered each cron result twice.
-    onDone() {
-      complete(() => resolveExecution(accumulatedText.trim()))
+    onDone(result) {
+      complete(() =>
+        resolveExecution(
+          (
+            result.finalMessage?.parts.flatMap((part) => (part.type === 'text' ? [part.text] : [])).join('') ?? ''
+          ).trim()
+        )
+      )
     },
-    onPaused() {
+    onPaused(result) {
       if (runSignal.aborted) {
         const reason = runSignal.reason
         complete(() => rejectExecution(reason instanceof Error ? reason : new Error(String(reason ?? 'Task aborted'))))
         return
       }
-      complete(() => resolveExecution(accumulatedText.trim()))
+      pausedStatus =
+        result.reason === 'user-requested' || result.reason === 'remote-cancel' ? 'cancelled' : 'interrupted'
+      complete(() => rejectExecution(new Error('Task interrupted')))
+      if (pausedStatus === 'cancelled') {
+        void application
+          .get('JobManager')
+          .cancel(ctx.jobId, result.reason)
+          .catch((error) => {
+            logger.warn('Failed to settle stopped task as cancelled', { jobId: ctx.jobId, error })
+          })
+      }
     },
     onError(result) {
       complete(() => rejectExecution(new Error(result.error.message ?? 'Execution failed')))
@@ -346,11 +361,15 @@ export async function runAgentTask(ctx: JobContext<AgentTaskInput>): Promise<Age
       }
       if (started.reason === 'busy') {
         completionActive = false
-        return { result: 'Skipped (session busy)' }
+        return { kind: 'skipped', result: 'Skipped (session busy)' }
       }
       if (rebound) throw new Error(`Agent session ${session.id} became invalid while starting task`)
       rebound = true
-      session = agentSessionService.create({ agentId, name: taskName ?? 'Scheduled task', workspace }, sessionType)
+      session = agentSessionService.create(
+        { agentId, name: taskName ?? 'Scheduled task', workspace },
+        sessionType,
+        scheduleId
+      )
       topicId = buildAgentSessionTopicId(session.id)
       if (reuseBinding) {
         application.get('AgentJobsService').bindTaskSessionReuse({
@@ -371,7 +390,8 @@ export async function runAgentTask(ctx: JobContext<AgentTaskInput>): Promise<Age
     resultText = await executionDone
   } catch (err) {
     runError = err instanceof Error ? err : new Error(String(err))
-    if (!runSignal.aborted && subscribedChannels.length > 0) {
+    if (pausedStatus) await ctx.patchMetadata({ taskResultStatus: pausedStatus })
+    if (!runSignal.aborted && !pausedStatus && subscribedChannels.length > 0) {
       await notifyTaskError(
         { id: scheduleId, name: taskName, durationMs: Date.now() - startTimeMs },
         runError.message,
@@ -384,7 +404,7 @@ export async function runAgentTask(ctx: JobContext<AgentTaskInput>): Promise<Age
     dispose()
   }
 
-  return { result: resultText.slice(0, 200) || 'Completed' }
+  return { kind: 'executed', result: resultText.slice(0, 200) || 'Completed' }
 }
 
 async function notifyTaskError(

@@ -29,6 +29,7 @@ export const agentGlobalSkillTable = sqliteTable(
       .default(sql`'[]'`),
     contentHash: text().notNull(),
     isEnabled: integer({ mode: 'boolean' }).notNull().default(false),
+    mirrorEnabled: integer({ mode: 'boolean' }).notNull().default(true),
     ...createUpdateTimestamps
   },
   (t) => [

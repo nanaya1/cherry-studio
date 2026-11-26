@@ -1,3 +1,8 @@
+import { Check, Download, LoaderCircle, Plug } from 'lucide-react'
+import type { FC, ReactNode } from 'react'
+import { useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+
 import { Badge, Button, Popover, PopoverContent, PopoverTrigger, Tabs, TabsList, TabsTrigger } from '@cherrystudio/ui'
 import CollapsibleSearchBar from '@renderer/components/CollapsibleSearchBar'
 import { SettingTitle } from '@renderer/components/SettingsPrimitives'
@@ -7,13 +12,7 @@ import { toast } from '@renderer/services/toast'
 import { cn } from '@renderer/utils/style'
 import { PRESET_MCP_SERVERS } from '@shared/data/presets/mcpServers'
 import { isBrowserMcpServer } from '@shared/utils/mcp'
-import { BuiltinMcpServerNames } from '@shared/utils/mcp'
-import { Check, Download, LoaderCircle, Plug } from 'lucide-react'
-import type { FC, ReactNode } from 'react'
-import { useMemo, useState } from 'react'
-import { useTranslation } from 'react-i18next'
 
-import { QVERIS_API_KEY_REGISTRATION_URL } from './QVerisApiKeyGuide'
 import { toCreateMcpServerDto } from './utils'
 
 interface BuiltinMcpServerListProps {
@@ -135,15 +134,6 @@ const BuiltinMcpServerList: FC<BuiltinMcpServerListProps> = ({ variant = 'settin
                           href={server.reference}
                           className="wrap-break-word mt-2 inline-block text-link hover:underline">
                           {server.reference}
-                        </a>
-                      )}
-                      {server.name === BuiltinMcpServerNames.qveris && (
-                        <a
-                          href={QVERIS_API_KEY_REGISTRATION_URL}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="wrap-break-word mt-2 block text-link hover:underline">
-                          {t('settings.mcp.qveris.get_api_key')}
                         </a>
                       )}
                     </div>

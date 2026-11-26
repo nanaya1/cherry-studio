@@ -1,4 +1,6 @@
 import React from 'react'
+
+import { MockCherrystudioUI as TypedMocks } from './CherrystudioUI.tsx'
 const itemHandler = (onSelect, props) => ({
   ...props,
   'data-disabled': props.disabled ? '' : undefined,
@@ -8,6 +10,7 @@ const itemHandler = (onSelect, props) => ({
 })
 const SelectContext = React.createContext({})
 export const MockCherrystudioUI = {
+  ScrollArea: TypedMocks.ScrollArea,
   Badge: ({ children, ...props }) => <span {...props}>{children}</span>,
   Button: ({ children, loading, ...props }) => {
     void loading

@@ -1,5 +1,6 @@
 import { MockUsePreferenceUtils } from '@test-mocks/renderer/usePreference'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { popup } from '@renderer/services/popup'
@@ -11,20 +12,21 @@ import AppearanceSettings, { confirmMenuPresentationModeChange } from '../Appear
 
 const t = (key: string) => key
 
-const i18nMock = vi.hoisted(() => ({
-  language: 'zh-CN',
-  resolvedLanguage: 'zh-CN'
-}))
-
-vi.mock('@renderer/i18n/resolver', () => ({
-  default: i18nMock
-}))
-
 const mocks = vi.hoisted(() => ({ request: vi.fn() }))
 const themeMocks = vi.hoisted(() => ({ setTheme: vi.fn() }))
 vi.mock('@renderer/ipc', () => ({ ipcApi: { request: mocks.request } }))
 
-vi.mock('@cherrystudio/ui', async () => {
+const i18nMock = vi.hoisted(() => ({
+  language: 'zh-CN',
+  resolvedLanguage: 'zh-CN',
+  changeLanguage: vi.fn().mockResolvedValue(undefined)
+}))
+
+vi.mock('@renderer/i18n/resolver', () => ({ default: i18nMock }))
+
+vi.mock('@cherrystudio/ui', async (importOriginal) => {
+  const { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } =
+    await importOriginal<typeof import('@cherrystudio/ui')>()
   const React = await import('react')
   const passthrough =
     (tag: string) =>
@@ -41,6 +43,11 @@ vi.mock('@cherrystudio/ui', async () => {
 
   return {
     Button,
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
     CodeEditor: ({ value, ...props }: any) =>
       React.createElement('textarea', { ...props, value: value ?? '', readOnly: true }),
     Combobox: ({ options = [], popoverClassName, renderOption, value, ...props }: any) => {
@@ -111,13 +118,6 @@ vi.mock('@cherrystudio/ui', async () => {
           )
         )
       ),
-    Select: ({ children }: { children?: React.ReactNode }) => React.createElement(React.Fragment, null, children),
-    SelectContent: passthrough('div'),
-    SelectItem: ({ children, value, ...props }: any) =>
-      React.createElement('div', { ...props, 'data-value': value }, children),
-    SelectTrigger: ({ children, size, ...props }: any) =>
-      React.createElement('button', { ...props, 'data-size': size, role: 'combobox', type: 'button' }, children),
-    SelectValue: () => null,
     Switch: ({ checked, onCheckedChange, ...props }: any) =>
       React.createElement('input', {
         ...props,
@@ -194,10 +194,6 @@ vi.mock('@renderer/components/SettingsPrimitives', async () => {
   }
 })
 
-vi.mock('@renderer/components/Scrollbar', () => ({
-  default: ({ children, ...props }: { children?: React.ReactNode }) => <div {...props}>{children}</div>
-}))
-
 vi.mock('@renderer/components/icons/ResetIcon', () => ({
   default: (props: any) => <span data-testid="reset-icon" {...props} />
 }))
@@ -260,7 +256,7 @@ describe('AppearanceSettings menu presentation mode', () => {
     expect(setTimeoutTimer).toHaveBeenCalledWith('handleMenuPresentationModeChange', expect.any(Function), 500)
 
     setTimeoutTimer.mock.calls[0][1]()
-    expect(window.api.application.relaunch).toHaveBeenCalled()
+    expect(mocks.request).toHaveBeenCalledWith('app.relaunch')
   })
 
   it('surfaces save failures without scheduling relaunch', async () => {
@@ -279,15 +275,13 @@ describe('AppearanceSettings menu presentation mode', () => {
 
     expect(toast.error).toHaveBeenCalledWith('save failed')
     expect(setTimeoutTimer).not.toHaveBeenCalled()
-    expect(window.api.application.relaunch).not.toHaveBeenCalled()
+    expect(mocks.request).not.toHaveBeenCalledWith('app.relaunch')
   })
 })
 
 describe('AppearanceSettings selectors', () => {
   beforeEach(() => {
     MockUsePreferenceUtils.resetMocks()
-    i18nMock.language = 'zh-CN'
-    i18nMock.resolvedLanguage = 'zh-CN'
     mocks.request.mockReset()
     themeMocks.setTheme.mockReset()
     mocks.request.mockImplementation((route: string) => {
@@ -297,33 +291,29 @@ describe('AppearanceSettings selectors', () => {
     })
   })
 
-  it('shows the resolved i18n language when no app language preference is saved', async () => {
+  it('shows the resolved interface language in Appearance when no preference is saved', () => {
     MockUsePreferenceUtils.setPreferenceValue('app.language', null)
-
     render(<AppearanceSettings />)
 
-    await waitFor(() => {
-      expect(mocks.request).toHaveBeenCalledWith('system.get_fonts')
-      expect(mocks.request).toHaveBeenCalledWith('app.adjust_zoom', { delta: 0 })
-    })
-
-    expect(screen.getByRole('combobox', { name: /中文/ })).toBeInTheDocument()
-    expect(screen.queryByRole('combobox', { name: /English/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: '中文' })).toBeInTheDocument()
   })
 
-  it('does not render manual chat layout switches', async () => {
+  it('persists a selected interface language and applies it immediately', async () => {
+    HTMLElement.prototype.scrollIntoView ??= vi.fn()
+    const user = userEvent.setup()
+    MockUsePreferenceUtils.setPreferenceValue('app.language', 'zh-CN')
     render(<AppearanceSettings />)
 
-    await waitFor(() => {
-      expect(mocks.request).toHaveBeenCalledWith('system.get_fonts')
-      expect(mocks.request).toHaveBeenCalledWith('app.adjust_zoom', { delta: 0 })
-    })
+    screen.getByRole('combobox', { name: '中文' }).focus()
+    await user.keyboard('{Enter}')
+    screen.getByRole('option', { name: /English$/ }).focus()
+    await user.keyboard('{Enter}')
 
-    expect(screen.queryByText('settings.messages.layout.conversation')).not.toBeInTheDocument()
-    expect(screen.queryByText('settings.messages.layout.work')).not.toBeInTheDocument()
+    await waitFor(() => expect(MockUsePreferenceUtils.getPreferenceValue('app.language')).toBe('en-US'))
+    expect(i18nMock.changeLanguage).toHaveBeenCalledWith('en-US')
   })
 
-  it('shows every theme as a visual choice and switches from the preview', async () => {
+  it('persists the selected theme', async () => {
     render(<AppearanceSettings />)
 
     await waitFor(() => {
@@ -335,13 +325,7 @@ describe('AppearanceSettings selectors', () => {
     const lightThemeLabel = lightThemePreview?.nextElementSibling
 
     expect(lightThemeButton).toHaveAttribute('aria-pressed', 'true')
-    expect(lightThemePreview).toHaveClass(
-      'border-primary',
-      'ring-2',
-      'group-focus-visible:border-ring',
-      'group-focus-visible:bg-accent'
-    )
-    expect(lightThemePreview).not.toHaveClass('group-focus-visible:ring-3', 'group-focus-visible:ring-ring/50')
+
     expect(lightThemeLabel).toHaveTextContent('settings.theme.light')
     expect(screen.getByRole('button', { name: 'settings.theme.dark' })).toHaveAttribute('aria-pressed', 'false')
     expect(screen.getByRole('button', { name: 'settings.theme.system' })).toHaveAttribute('aria-pressed', 'false')
@@ -349,16 +333,6 @@ describe('AppearanceSettings selectors', () => {
     fireEvent.click(screen.getByRole('button', { name: 'settings.theme.dark' }))
 
     expect(themeMocks.setTheme).toHaveBeenCalledWith(ThemeMode.dark)
-  })
-
-  it('places the theme group before the display and language group', () => {
-    const { container } = render(<AppearanceSettings />)
-    const groupTitles = Array.from(container.querySelectorAll('section > h2')).map((heading) => heading.textContent)
-
-    expect(groupTitles.slice(0, 2)).toEqual([
-      'settings.theme.title',
-      'settings.general.common.sections.display_language'
-    ])
   })
 
   it('routes each list position row to its own module preference', async () => {

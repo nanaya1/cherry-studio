@@ -8,6 +8,96 @@ policy:
   require_tests: true
   preserve_original_code_by_comment: true
 customizations:
+  - id: api-gateway-listener-isolation
+    title: 对外网关与 Agent 内部网关独立
+    owner: main
+    behavior: 关闭对外网关时保留 MEA 的 24333 配置，Agent 仍可按需启动仅本机可访问的内部网关，内部调用不改变对外开关与配置。
+    touchpoints:
+      - src/shared/utils/apiGateway.ts
+      - src/main/features/apiGateway/ApiGatewayService.ts
+      - src/main/ai/runtime/agentApiGateway.ts
+      - src/main/ai/runtime/claudeCode/agentSessionWarmup.ts
+    tests:
+      - src/main/features/apiGateway/__tests__/ApiGatewayService.test.ts
+      - src/main/ai/runtime/__tests__/agentApiGateway.test.ts
+      - src/main/ai/runtime/claudeCode/__tests__/agentSessionWarmup.test.ts
+
+  - id: dsh-plan-permission-confirmation
+    title: 旧 DSH 计划模式迁移后的权限确认
+    owner: main
+    behavior: 旧 DSH 计划模式迁移到 Pi 后保留历史，首次发送前确认默认权限。确认前阻止交互执行和后台任务，保留 MEA 内置工具禁用规则。
+    markers:
+      - MEA:dsh-plan-permission-confirmation
+    touchpoints:
+      - src/main/data/services/retiredAgentRuntimeMigration.ts
+      - src/main/ai/streamManager/context/AgentChatContextProvider.ts
+      - src/main/ai/agents/runAgentTask.ts
+      - src/main/ai/runtime/pi/PiRuntimeConnection.ts
+      - src/renderer/components/composer/variants/AgentComposer.tsx
+      - src/shared/data/api/schemas/agents.ts
+    tests:
+      - src/main/ai/runtime/pi/__tests__/retiredSessionHistory.test.ts
+      - src/main/ai/streamManager/context/__tests__/AgentChatContextProvider.test.ts
+
+  - id: legacy-feedback-history
+    title: 保留旧版反馈会话
+    owner: main
+    behavior: 旧产品反馈智能体退出常用列表和全局搜索。升级保留智能体和关联历史，已有关联会话仍可按原 ID 打开。
+    touchpoints:
+      - src/main/data/db/seeding/seederRegistry.ts
+      - src/main/data/services/AgentService.ts
+    tests:
+      - src/main/data/db/seeding/__tests__/cherrySupportSeeder.test.ts
+
+  - id: mea-published-upgrade
+    title: MEA 正式版数据库覆盖升级
+    owner: main
+    behavior: MEA 最早正式版为 2.0.11。启动直接使用现有 MEA 数据目录和数据库升级链，无需运行 Cherry Studio 旧版桥接安装流程。
+    touchpoints:
+      - src/main/main.ts
+      - src/main/core/preboot/userDataLocation.ts
+      - src/main/data/db/applyMigrations.ts
+      - migrations/sqlite-drizzle/0034_upstream_v2_2_3.sql
+    tests:
+      - src/main/data/db/__tests__/applyMigrations.test.ts
+      - src/main/data/db/__tests__/applyMigrations.populated.test.ts
+
+  - id: dingtalk-legacy-channels
+    title: 保留旧钉钉频道的会话兼容
+    owner: main
+    behavior: 升级标记已有钉钉频道，保留原始会话 ID、机器人码回退和群聊提及设置。已有频道使用兼容适配器和表单，新建频道默认进入新版钉钉流程。
+    markers:
+      - MEA:dingtalk-legacy-channels
+    touchpoints:
+      - migrations/sqlite-drizzle/0034_upstream_v2_2_3.sql
+      - src/main/ai/channels/channelAdapterLoader.ts
+      - src/main/ai/channels/adapters/dingtalk/LegacyDingTalkAdapter.ts
+      - src/shared/data/types/channel.ts
+      - src/shared/data/api/schemas/agentChannels.ts
+      - src/renderer/pages/settings/ChannelsSettings/ChannelForms.tsx
+    tests:
+      - src/main/data/db/__tests__/applyMigrations.test.ts
+      - src/main/ai/channels/adapters/__tests__/LegacyDingTalkAdapter.test.ts
+      - src/main/ai/channels/adapters/__tests__/DingTalkAdapter.test.ts
+
+  - id: scheduled-task-notification-route
+    title: 保留计划任务页面并从通知打开运行结果
+    owner: renderer
+    behavior: 侧栏和常规任务详情沿用 MEA 页面。完成通知打开 2.2.3 结果页，并使用通知对应的运行 ID 定位结果。
+    markers:
+      - MEA:scheduled-task-notification-route
+    touchpoints:
+      - src/main/ai/agents/agentTaskNotification.ts
+      - src/main/services/notificationActivation.ts
+      - src/shared/data/types/notification.ts
+      - src/renderer/routes/app/scheduled-tasks.tsx
+      - src/renderer/routes/app/scheduled-tasks.index.tsx
+      - src/renderer/pages/agents/ScheduledTasksPage.tsx
+      - src/renderer/pages/settings/TasksSettings.tsx
+    tests:
+      - src/renderer/routes/settings/__tests__/scheduled-tasks.test.ts
+      - src/renderer/pages/agents/__tests__/ScheduledTasksPage.endStates.test.tsx
+
   - id: xuelang-oauth-model-sync
     title: 雪浪授权后自动补齐账号可用模型
     owner: renderer
@@ -155,18 +245,23 @@ customizations:
   - id: navigation-layout
     title: Preserve MEA sidebar and top-navigation behavior
     owner: renderer
-    behavior: Treat meacowork as the sole product baseline for left sidebar and top navigation; keep detail-page sidebar rules and MEA session/topic resource-list placement.
+    behavior: Treat meacowork as the sole product baseline for left sidebar and top navigation; keep detail-page sidebar rules and MEA session/topic resource-list placement. Individual chat and Agent sessions have no sidebar favorite action. Sidebar avatar opens the upstream menu and local profile editor, with legacy enterprise and Cherry Cloud account actions hidden from both surfaces.
     touchpoints:
       - src/renderer/components/app/Sidebar.tsx
       - src/renderer/components/Sidebar/Sidebar.tsx
+      - src/renderer/components/Sidebar/SidebarFooter.tsx
+      - src/renderer/components/UserAccountPanel.tsx
+      - src/renderer/pages/settings/ProfileSettings.tsx
       - src/renderer/utils/detailPage.ts
       - src/renderer/pages/home/HomePage.tsx
       - src/renderer/pages/agents/AgentPage.tsx
       - src/renderer/components/chat/resourceList
     tests:
       - src/renderer/components/app/__tests__/Sidebar.test.tsx
-      - src/renderer/pages/home/Tabs/components/__tests__/Topics.test.tsx
-      - src/renderer/pages/agents/components/__tests__/Sessions.test.tsx
+      - src/renderer/components/__tests__/UserAccountPanel.test.tsx
+      - src/renderer/pages/settings/__tests__/ProfileSettings.test.tsx
+      - src/renderer/pages/home/Tabs/components/topics/__tests__/Topics.test.tsx
+      - src/renderer/pages/agents/components/sessions/__tests__/Sessions.test.tsx
 
   - id: resource-protection
     title: Protect MEA builtin resources and resource-center behavior
@@ -226,6 +321,22 @@ customizations:
       - src/renderer/components/resourceCatalog/dialogs/create/__tests__/ResourceCreateWizard.test.tsx
       - src/renderer/components/resourceCatalog/dialogs/edit/__tests__/EditDialogs.test.tsx
       - src/renderer/components/resourceCatalog/dialogs/detail/__tests__/AssistantPresetPreviewDialog.test.tsx
+
+  - id: mcp-connector-discovery
+    title: MCP 发现与管理沿用 MEA 连接器目录
+    owner: renderer
+    behavior: 保留技能与连接器页面及连接器目录的发现、服务商和我的服务器布局。旧 MCP 发现链接进入对应的连接器视图，复用新版服务商导入和服务器导出能力，独立市场入口保持隐藏。
+    touchpoints:
+      - src/renderer/pages/settings/McpSettings/McpCatalog.tsx
+      - src/renderer/pages/settings/McpSettings/McpServersList.tsx
+      - src/renderer/pages/marketplace/MarketplaceMcpProvider.tsx
+      - src/renderer/routes/app/skills-connectors.tsx
+      - src/renderer/routes/settings/mcp
+      - src/renderer/utils/sidebar.ts
+    tests:
+      - src/renderer/pages/settings/McpSettings/__tests__/McpCatalog.test.tsx
+      - src/renderer/routes/settings/__tests__/mcp.test.tsx
+      - src/renderer/pages/launchpad/__tests__/LaunchpadPage.test.tsx
 
   - id: builtin-mcp-names
     title: Preserve unprefixed builtin MCP names

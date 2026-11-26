@@ -10,7 +10,8 @@ import {
   Button,
   CircularProgress,
   Divider,
-  Scrollbar,
+  IndicatorLight,
+  ScrollArea,
   SegmentedControl,
   Switch,
   Tooltip
@@ -20,8 +21,6 @@ import AppLogo from '@renderer/assets/images/logo.png'
 import { DoctorPopup } from '@renderer/components/doctor'
 // import FeedbackDialog from '@renderer/components/feedback/FeedbackDialog'
 import LogoAvatar from '@renderer/components/icons/LogoAvatar'
-import IndicatorLight from '@renderer/components/IndicatorLight'
-import { ReleaseNotes } from '@renderer/components/ReleaseNotes'
 import {
   SettingGroup,
   SettingRow,
@@ -29,6 +28,7 @@ import {
   SettingsContentColumn,
   SettingTitle
 } from '@renderer/components/SettingsPrimitives'
+import { UpgradeReleaseNotes } from '@renderer/components/UpgradeReleaseNotes'
 import { useAppUpdateState } from '@renderer/hooks/useAppUpdateState'
 import { useOpenReleaseNotes } from '@renderer/hooks/useOpenReleaseNotes'
 import { useTheme } from '@renderer/hooks/useTheme'
@@ -57,10 +57,13 @@ const AboutSettings: FC = () => {
   const showReleases = useOpenReleaseNotes()
   const location = useLocation()
   const navigate = useNavigate()
-  const search = useSearch({ strict: false }) as Partial<Record<typeof DOCTOR_OPEN_QUERY_PARAM, DoctorPanel>>
+  const search: Partial<Record<typeof DOCTOR_OPEN_QUERY_PARAM, DoctorPanel>> = useSearch({ strict: false })
   const consumedDoctorPanelRef = useRef<DoctorPanel | undefined>(undefined)
 
-  const { appUpdateState, updateAppUpdateState } = useAppUpdateState()
+  const { appUpdateState, updateAppUpdateState } = useAppUpdateState(async (releaseInfo) => {
+    const { default: UpdateDialogPopup } = await import('@renderer/components/UpdateDialogPopup')
+    return UpdateDialogPopup.show({ releaseInfo })
+  })
 
   useEffect(() => {
     const initialPanel = search[DOCTOR_OPEN_QUERY_PARAM]
@@ -187,11 +190,6 @@ const AboutSettings: FC = () => {
 
   const testChannels = getAvailableTestChannels()
   const isUpdateReady = appUpdateState.available && appUpdateState.downloaded && !appUpdateState.downloading
-  const releaseNotesText =
-    typeof appUpdateState.info?.releaseNotes === 'string'
-      ? appUpdateState.info.releaseNotes.replace(/\n/g, '\n\n')
-      : (appUpdateState.info?.releaseNotes?.map((note) => note.note).join('\n') ?? '')
-
   return (
     <SettingsContentColumn theme={theme}>
       <SettingGroup theme={theme}>
@@ -297,9 +295,12 @@ const AboutSettings: FC = () => {
             </SettingRowTitle>
           </SettingRow>
           <Divider className="my-3" />
-          <Scrollbar className="max-h-96 overflow-x-hidden pr-2">
-            <ReleaseNotes content={releaseNotesText} />
-          </Scrollbar>
+          <ScrollArea
+            contentProps={{ className: 'pr-2' }}
+            viewportProps={{ className: 'overflow-x-hidden' }}
+            className="max-h-96">
+            <UpgradeReleaseNotes releaseInfo={appUpdateState.info} />
+          </ScrollArea>
         </SettingGroup>
       )}
 
@@ -332,7 +333,7 @@ function AboutActionRow({
   onAction,
   title
 }: {
-  actionLabel: string
+  actionLabel: ReactNode
   icon: ReactNode
   id?: string
   onAction: () => void | Promise<void>

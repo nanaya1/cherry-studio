@@ -32,7 +32,8 @@ export function getIconDisplayConfig(
 ): IconDisplayConfig | undefined {
   if (!iconId) return undefined
   if (context === 'provider-list') {
-    return getProviderIconAssetMetrics({ kind: 'provider', iconId }).kind === 'tile'
+    return iconId.toLowerCase() === 'xuelang' ||
+      getProviderIconAssetMetrics({ kind: 'provider', iconId }).kind === 'tile'
       ? providerListContainedIcon
       : defaultIcon
   }

@@ -1,4 +1,4 @@
-import { CallToolResultSchema } from '@modelcontextprotocol/sdk/types.js'
+import { CallToolResultSchema } from '@modelcontextprotocol/core'
 
 import type { McpToolResponse, NormalToolResponse } from '@renderer/types/mcpTool'
 import { isBuiltinToolsMcpServer, isBuiltinToolsRuntimeName } from '@shared/ai/tools/mcpToolName'

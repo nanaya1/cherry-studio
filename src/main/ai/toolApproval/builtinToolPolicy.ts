@@ -4,6 +4,7 @@ import {
   isBuiltinToolsMcpServer,
   MEACOWORK_TOOLS_MCP_SERVER
 } from '@shared/ai/tools/mcpToolName'
+import type { AgentPermissionMode } from '@shared/data/api/schemas/agents'
 
 import {
   BUILTIN_TOOL_POLICY_ENTRIES,
@@ -13,6 +14,7 @@ import {
   type BuiltinToolPolicyEntry,
   MOUNTED_TOOL_POLICY_PROVIDERS
 } from './builtinToolPolicyRegistry'
+import type { ToolGuardInteractionState } from './toolGuards'
 
 export type {
   BuiltinToolApproval,
@@ -20,6 +22,15 @@ export type {
   BuiltinToolPolicyEntry
 } from './builtinToolPolicyRegistry'
 export { CHERRY_MCP_SERVER } from './builtinToolPolicyRegistry'
+
+/** Auto-approval never authorizes another unattended delegation hop. */
+export function resolveDelegationApproval(
+  mode: AgentPermissionMode | undefined,
+  interaction: ToolGuardInteractionState
+): 'allow' | 'ask' | 'deny' {
+  if (interaction.currentTurn === 'headless' || interaction.userResponse === 'unavailable') return 'deny'
+  return mode === 'auto' || mode === 'bypassPermissions' ? 'allow' : 'ask'
+}
 
 /**
  * Index every builtin entry under both its canonical (new) runtime name and, for the renamed
@@ -88,7 +99,7 @@ export function findBuiltinToolPolicy(
   return undefined
 }
 
-/** Standard MCP runtime name used by Claude Code and by safe DSH bridged identities. */
+/** Standard MCP runtime name used by Claude Code and legacy bridged identities. */
 export function toMcpRuntimeName(ref: Pick<BuiltinToolPolicyEntry, 'serverName' | 'toolName'>): string {
   return `mcp__${ref.serverName}__${ref.toolName}`
 }

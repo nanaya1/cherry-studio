@@ -6,7 +6,8 @@ import { useTranslation } from 'react-i18next'
 // import { Button, EmojiIcon } from '@cherrystudio/ui'
 import { Button } from '@cherrystudio/ui'
 import ModelAvatar from '@renderer/components/Avatar/ModelAvatar'
-import { getProviderDisplayName, ModelSelector, type ModelSelectorFilter } from '@renderer/components/ModelSelector'
+import { CherryCloudModelSelector as ModelSelector } from '@renderer/components/cherryCloud/CherryCloudModelSelector'
+import { getProviderDisplayName, type ModelSelectorFilter } from '@renderer/components/ModelSelector'
 import { openResourceEditDialog } from '@renderer/components/resourceCatalog/dialogs/ResourceEditDialogEventHost'
 import { AssistantSelector } from '@renderer/components/resourceCatalog/selectors'
 // MEA:resource-icons 不再从名称提取头像。
@@ -177,6 +178,7 @@ export function ChatConversationControls({
           />
         ) : useMentionedModelSelector ? (
           <ModelSelector
+            allowPresentationSwitch
             multiple
             value={mentionedModelSelectorValue}
             onSelect={handleMentionedModelSelect}
@@ -206,6 +208,7 @@ export function ChatConversationControls({
           />
         ) : (
           <ModelSelector
+            allowPresentationSwitch
             multiple={false}
             value={model}
             onSelect={onModelSelect}

@@ -1,9 +1,10 @@
 import { arrayMove } from '@dnd-kit/sortable'
 import { CalendarClock, Plus, Puzzle, Shapes, Wrench } from 'lucide-react'
-import type { Ref } from 'react'
-import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react'
+import type { ReactElement, Ref } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useId, useLayoutEffect, useRef, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { Popover, PopoverContent, PopoverTrigger } from '@cherrystudio/ui'
 import { usePersistCache } from '@data/hooks/useCache'
 import { usePreference } from '@data/hooks/usePreference'
 import { loggerService } from '@logger'
@@ -39,7 +40,9 @@ import {
 import { cn } from '@renderer/utils/style'
 import { APP_NAME } from '@shared/utils/constants'
 
+import { HelpMenu } from '../layout/HelpMenu'
 import { GlobalSearchButton, SidebarCollapseButton, SidebarShellActions } from '../layout/ShellTabBarActions'
+import { useNotificationCenter } from '../NotificationCenter'
 import type { ResolvedSidebarEntry } from '../Sidebar'
 import {
   getSidebarDisplayWidth,
@@ -49,7 +52,7 @@ import {
   type SidebarUser,
   type SidebarVisibleLayout
 } from '../Sidebar'
-import UserPopup from '../UserPopup'
+import { UserAccountPanel } from '../UserAccountPanel'
 import { resolveSidebarEntry, type SidebarVariantContext } from './sidebarVariants'
 
 const FeedbackDialog = lazy(() => import('../feedback/FeedbackDialog'))
@@ -148,16 +151,41 @@ export default function Sidebar({
   // 原逻辑：sidebarDisplayName = signedInDisplayName || userName || fallback；description 在登录时隐藏；avatar 在登录且无本地头像时显示服务端首字。
   // 现改用纯本地设置：本地名 + 本地用户副标题 + 本地头像。
   const sidebarDisplayName = userName || t('chat.user', { defaultValue: t('export.user', { defaultValue: 'User' }) })
+  const notificationCenter = useNotificationCenter()
+  const unreadDescriptionId = useId()
+  const openingNotifications = useRef(false)
+  const [userMenuOpen, setUserMenuOpen] = useState(false)
+  const closeUserMenu = useCallback(() => setUserMenuOpen(false), [])
+  useEffect(() => {
+    if (!userMenuOpen) return
+    window.addEventListener('blur', closeUserMenu)
+    return () => window.removeEventListener('blur', closeUserMenu)
+  }, [closeUserMenu, userMenuOpen])
+
+  const renderUserTrigger = (trigger: ReactElement) => (
+    <PopoverTrigger
+      asChild
+      data-notification-anchor="left"
+      aria-describedby={notificationCenter?.hasUnread ? unreadDescriptionId : undefined}>
+      {trigger}
+    </PopoverTrigger>
+  )
   const sidebarUser = useMemo<SidebarUser>(
     () => ({
       name: sidebarDisplayName,
       description: t('workspace.localUser'),
       avatar: avatar || undefined,
-      onClick: () => UserPopup.show(),
+      indicator: notificationCenter?.hasUnread ? (
+        <span className="pointer-events-none absolute right-0.5 top-0.5 size-1.5 rounded-full bg-destructive">
+          <span id={unreadDescriptionId} className="sr-only">
+            {t('notification.center.unread')}
+          </span>
+        </span>
+      ) : undefined,
       settingsLabel: t('settings.title'),
       onSettingsClick: () => openSettingsTab()
     }),
-    [avatar, sidebarDisplayName, t]
+    [avatar, notificationCenter?.hasUnread, sidebarDisplayName, t, unreadDescriptionId]
   )
   const sidebarLogo = useMemo(() => <img src={AppLogo} alt="" className="h-full w-full object-cover" />, [])
 
@@ -533,6 +561,7 @@ export default function Sidebar({
     title: APP_NAME,
     logo: sidebarLogo,
     user: sidebarUser,
+    renderUserTrigger,
     actions: (footerLayout: SidebarVisibleLayout, onOverlayOpenChange?: (open: boolean) => void) => (
       <SidebarShellActions
         layout={footerLayout}
@@ -566,25 +595,49 @@ export default function Sidebar({
           )}
         </div>
       ) : null}
-      <div className="min-h-0 flex-1">
-        <UISidebar
-          width={activeSidebarWidth}
-          setWidth={setSidebarWidth}
-          showHeader={isMac}
-          onHoverChange={setHoverVisible}
-          onResizePreview={setPreviewSidebarWidth}
-          {...sidebarProps}
-        />
-      </div>
-      {hoverVisible && layout === 'hidden' && (
-        <UISidebar
-          width={activeSidebarWidth}
-          setWidth={setSidebarWidth}
-          isFloating
-          onDismiss={() => setHoverVisible(false)}
-          {...sidebarProps}
-        />
-      )}
+      <Popover open={userMenuOpen} onOpenChange={setUserMenuOpen}>
+        <div className="min-h-0 flex-1">
+          <UISidebar
+            width={activeSidebarWidth}
+            setWidth={setSidebarWidth}
+            showHeader={isMac}
+            onHoverChange={setHoverVisible}
+            onResizePreview={setPreviewSidebarWidth}
+            {...sidebarProps}
+          />
+        </div>
+        {(hoverVisible || userMenuOpen) && layout === 'hidden' && (
+          <UISidebar
+            width={activeSidebarWidth}
+            setWidth={setSidebarWidth}
+            isFloating
+            onDismiss={() => setHoverVisible(false)}
+            {...sidebarProps}
+          />
+        )}
+        {userMenuOpen && (
+          <PopoverContent
+            aria-label={t('sidebar.account_menu')}
+            align="start"
+            side="top"
+            sideOffset={8}
+            className="w-56 rounded-md p-0"
+            onCloseAutoFocus={(event) => {
+              if (openingNotifications.current) {
+                event.preventDefault()
+                openingNotifications.current = false
+              }
+            }}>
+            <UserAccountPanel
+              onRequestClose={closeUserMenu}
+              onNotificationsOpen={() => {
+                openingNotifications.current = true
+              }}>
+              <HelpMenu onRequestClose={closeUserMenu} />
+            </UserAccountPanel>
+          </PopoverContent>
+        )}
+      </Popover>
       {feedbackDialogMounted ? (
         <Suspense fallback={null}>
           <FeedbackDialog open={feedbackOpen} onOpenChange={setFeedbackOpen} />

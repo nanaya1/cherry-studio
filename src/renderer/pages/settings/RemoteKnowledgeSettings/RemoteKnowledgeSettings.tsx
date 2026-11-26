@@ -3,7 +3,7 @@ import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button, ConfirmDialog, EmptyState, Spinner } from '@cherrystudio/ui'
-import Scrollbar from '@renderer/components/Scrollbar'
+import { ScrollArea } from '@cherrystudio/ui'
 import {
   SettingDivider,
   SettingGroup,
@@ -55,7 +55,7 @@ export function RemoteKnowledgeSettings() {
   }
 
   return (
-    <Scrollbar className="flex flex-1 flex-col" style={{ height: 'calc(100vh - var(--navbar-height))' }}>
+    <ScrollArea className="flex flex-1 flex-col" style={{ height: 'calc(100vh - var(--navbar-height))' }}>
       <SettingsContentBody>
         <SettingGroup>
           <div className="flex items-start justify-between gap-4 pb-1">
@@ -77,12 +77,7 @@ export function RemoteKnowledgeSettings() {
           <SettingDivider className="m-0 mt-2" />
           {error && <p className="my-3 text-xs text-destructive">{error.message}</p>}
           {services.length === 0 ? (
-            <EmptyState
-              compact
-              preset="no-resource"
-              className="py-8"
-              description={t('settings.remoteKnowledge.empty')}
-            />
+            <EmptyState compact className="py-8" description={t('settings.remoteKnowledge.empty')} />
           ) : (
             <div className="flex flex-col">
               {services.map((service) => (
@@ -124,7 +119,7 @@ export function RemoteKnowledgeSettings() {
           setDeleteTarget(undefined)
         }}
       />
-    </Scrollbar>
+    </ScrollArea>
   )
 }
 

@@ -15,20 +15,22 @@ import type { MessageListRuntime } from '@renderer/components/chat/messages/type
 import { dispatchLocateMessage } from '@renderer/components/chat/messages/utils/dispatchLocateMessage'
 import type { ComposerContextValue } from '@renderer/components/composer/ComposerContext'
 import { useToolApprovalComposerOverrides } from '@renderer/components/composer/useToolApprovalComposerOverrides'
+import { usePreference } from '@renderer/data/hooks/usePreference'
 import { useChatWithHistory } from '@renderer/hooks/useChatWithHistory'
+import { useConversationErrorToasts } from '@renderer/hooks/useConversationErrorToasts'
 import {
   type ConversationHistoryAdapter,
   type ReservedMessageSeedOptions,
   useConversationTurnController
 } from '@renderer/hooks/useConversationTurnController'
 import { type ExecutionFinishEvent, useExecutionOverlay } from '@renderer/hooks/useExecutionOverlay'
-import { useToolApprovalBridge } from '@renderer/hooks/useToolApprovalBridge'
 import { useTopicMessagesCache, type UseTopicMessagesCacheParams } from '@renderer/hooks/useTopicMessagesCache'
 import {
   useTopicAwaitingApproval,
   useTopicOverlayHandoffOnTerminal,
   useTopicStreamStatus
 } from '@renderer/hooks/useTopicStreamStatus'
+import { autoReadService } from '@renderer/services/voice'
 import type { Assistant } from '@renderer/types/assistant'
 import type { Topic } from '@renderer/types/topic'
 import { mergeMessagesById } from '@renderer/utils/message/mergeMessagesById'
@@ -36,10 +38,11 @@ import { isRenderableConversationMessage } from '@renderer/utils/message/message
 import type { ActiveExecution, ComposerChatTarget } from '@shared/ai/transport'
 import type { CherryMessagePart, CherryUIMessage } from '@shared/data/types/message'
 import type { ServiceTierSelection, UniqueModelId } from '@shared/data/types/model'
-import { isBlankUserTurn } from '@shared/data/types/uiParts'
+import { hasClearContextPart, isBlankUserTurn } from '@shared/data/types/uiParts'
 import type { ReasoningEffortOption } from '@shared/types/aiSdk'
 
 import { useChatWriteActions } from './hooks/useChatWriteActions'
+import { useToolApprovalBridge } from './hooks/useToolApprovalBridge'
 
 const logger = loggerService.withContext('useChatRuntimeState')
 
@@ -116,11 +119,14 @@ export function useChatRuntimeState({
   composerModelId,
   onBranchLiveStateChange
 }: UseChatRuntimeStateParams) {
+  const [scrollToBottomOnSend] = usePreference('chat.message.scroll_to_bottom_on_send')
+  const [autoReadEnabled] = usePreference('feature.voice.auto_read.enabled')
   const { regenerate, stop, setMessages, activeExecutions } = useChatWithHistory(topic.id, initialMessages, refresh)
   const { isPending: isTopicStreamPending } = useTopicStreamStatus(topic.id)
   const isTopicAwaitingApproval = useTopicAwaitingApproval(topic.id)
   const messages = uiMessages
   const invalidateCache = useInvalidateCache()
+  const errorToastsRef = useRef<ReturnType<typeof useConversationErrorToasts> | null>(null)
   const messageListRuntimeRef = useRef<MessageListRuntime | null>(null)
   const bindMessageListRuntime = useCallback((runtime: MessageListRuntime) => {
     messageListRuntimeRef.current = runtime
@@ -133,8 +139,9 @@ export function useChatRuntimeState({
   const scrollToBottom = useCallback(() => {
     requestAnimationFrame(() => messageListRuntimeRef.current?.scrollToBottom())
   }, [])
-  const locateMessage = useCallback((messageId: string, highlight?: boolean) => {
-    dispatchLocateMessage(messageListRuntimeRef.current, messageId, highlight)
+  const locateMessage = useCallback((messageId: string | null, highlight?: boolean) => {
+    if (messageId === null) messageListRuntimeRef.current?.scrollToBottom()
+    else dispatchLocateMessage(messageListRuntimeRef.current, messageId, highlight)
   }, [])
 
   // PR 3: the effect that pushed `uiMessages` into `useChat.setMessages` after
@@ -191,13 +198,24 @@ export function useChatRuntimeState({
     liveAssistants,
     disposeOverlay,
     reset: resetOverlay
-  } = useExecutionOverlay(topic.id, branchActiveExecutions, messages, {
-    onFinish: (executionId, event) => finishRef.current?.(executionId, event)
+  } = useExecutionOverlay(topic.id, branchActiveExecutions, {
+    onUpdate: (_executionId, event) =>
+      autoReadService.update({
+        ...event,
+        enabled: autoReadEnabled,
+        scope: topic.id,
+        eligible: event.message.id === branchFlowActiveNodeIdRef.current
+      }),
+    onLeave: () => autoReadService.cancelScope(topic.id),
+    onFinish: (executionId, event) => {
+      errorToastsRef.current?.onFinish(executionId, event)
+      finishRef.current?.(executionId, event)
+    }
   })
 
   // Deterministic overlay→DB handoff at terminal (see hook docs); branch
   // bookkeeping stays in `handleExecutionFinish`.
-  useTopicOverlayHandoffOnTerminal(topic.id, createOverlayRefreshHandoff(refresh, resetOverlay))
+  useTopicOverlayHandoffOnTerminal(topic.id, createOverlayRefreshHandoff(refresh, resetOverlay), liveAssistants)
 
   const { partsByMessageId, liveMessageIds, streamingLayers } = useMessageStreamingLayers({
     messages,
@@ -244,6 +262,7 @@ export function useChatRuntimeState({
     [uiMessages]
   )
   const toolApprovalComposerOverrides = useToolApprovalComposerOverrides({
+    topicId: topic.id,
     partsByMessageId,
     persistedPartsByMessageId,
     streamingLayers,
@@ -259,6 +278,7 @@ export function useChatRuntimeState({
   const seedReservedMessages = useCallback(
     async (reservedMessages: CherryUIMessage[], options: ReservedMessageSeedOptions = {}) => {
       const { activeExecutions: openedExecutions, preserveActiveNode } = options
+      errorToastsRef.current?.track(openedExecutions, reservedMessages)
       if (reservedMessages.length > 0) {
         const reservedExecutions = openedExecutions ?? []
         if (reservedExecutions.length > 0) {
@@ -330,7 +350,15 @@ export function useChatRuntimeState({
     historyAdapter,
     ensureConversation,
     buildStreamRequest,
-    refreshMetadata
+    refreshMetadata,
+    onAccepted: (ack) => errorToastsRef.current?.track(ack.activeExecutions, ack.reservedMessages),
+    onError: (error, input) =>
+      errorToastsRef.current?.report(
+        error,
+        input.options?.mentionedModels?.length === 1
+          ? input.options.mentionedModels[0]
+          : (composerModelId ?? assistant?.modelId ?? undefined)
+      )
   })
 
   const activeStreamingMessageIds = useMemo(() => new Set(liveMessageIds), [liveMessageIds])
@@ -346,6 +374,8 @@ export function useChatRuntimeState({
     branchLiveActiveNodeOverride?.previousActiveNodeId === activeNodeId
       ? branchLiveActiveNodeOverride.activeNodeId
       : activeNodeId
+  const branchFlowActiveNodeIdRef = useRef(branchFlowActiveNodeId)
+  branchFlowActiveNodeIdRef.current = branchFlowActiveNodeId
 
   useEffect(() => {
     if (!onBranchLiveStateChange) return
@@ -390,7 +420,15 @@ export function useChatRuntimeState({
   ])
 
   const handleExecutionFinish = useCallback(
-    (executionId: string, { attemptId, message, isError }: ExecutionFinishEvent) => {
+    (executionId: string, { attemptId, message, isAbort, isError }: ExecutionFinishEvent) => {
+      void autoReadService.consume({
+        enabled: autoReadEnabled,
+        message,
+        attemptId,
+        isAbort,
+        isError,
+        eligible: message.id === branchFlowActiveNodeIdRef.current
+      })
       const finishedKey = attemptId
       const treeCachePath = `/topics/${topic.id}/tree`
       void (async () => {
@@ -436,13 +474,13 @@ export function useChatRuntimeState({
         }
       })()
     },
-    [cache, disposeOverlay, invalidateCache, onBranchLiveStateChange, refresh, topic.id]
+    [autoReadEnabled, cache, disposeOverlay, invalidateCache, onBranchLiveStateChange, refresh, topic.id]
   )
   finishRef.current = handleExecutionFinish
 
   const shouldRenderHomeComposer = false
 
-  const { actions: chatWriteActions } = useChatWriteActions({
+  const { actions: chatWriteActions, retryFailedMessage } = useChatWriteActions({
     topic,
     uiMessages: messages,
     activeNodeId,
@@ -462,19 +500,30 @@ export function useChatRuntimeState({
     assistant,
     composerModelId
   })
+  const errorToasts = useConversationErrorToasts(topic.id, {
+    retry: retryFailedMessage,
+    trimContext: async () => {
+      if (!chatWriteActions.canStartNewContext || isTopicStreamPending) return false
+      const activeMessage = messages.find((message) => message.id === activeNodeId)
+      if (hasClearContextPart(activeMessage?.parts)) return false
+      await chatWriteActions.startNewContext()
+      return true
+    }
+  })
+  errorToastsRef.current = errorToasts
 
   const sendMessage = useCallback(
     async (text: string, options?: ChatTurnInput['options']) => {
       try {
         const sent = await send({ text, options })
-        if (sent) scrollToBottom()
+        if (sent && scrollToBottomOnSend) scrollToBottom()
         return sent
       } catch (err) {
         logger.warn('failed to open conversation turn', err as Error)
         throw err
       }
     },
-    [scrollToBottom, send]
+    [scrollToBottom, scrollToBottomOnSend, send]
   )
 
   return {

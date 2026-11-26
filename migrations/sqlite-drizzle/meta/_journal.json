@@ -238,6 +238,13 @@
       "when": 1791860904634,
       "tag": "0033_nostalgic_christian_walker",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "6",
+      "when": 1795677769963,
+      "tag": "0034_upstream_v2_2_3",
+      "breakpoints": true
     }
   ],
   "version": "7"

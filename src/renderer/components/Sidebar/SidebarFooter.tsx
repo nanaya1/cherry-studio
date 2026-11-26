@@ -12,6 +12,7 @@ export type SidebarFooterActions =
 export interface SidebarFooterProps {
   layout: SidebarVisibleLayout
   user?: SidebarUser
+  renderUserTrigger?: (trigger: React.ReactElement) => React.ReactNode
   actions?: SidebarFooterActions
   extensionsLabel?: string
   onExtensionsClick?: () => void
@@ -29,7 +30,13 @@ type FooterProps = Omit<SidebarFooterProps, 'layout' | 'actions' | 'onOverlayOpe
   actions?: React.ReactNode
 }
 
-function IconFooter({ user, actions, extensionsLabel, onExtensionsClick }: FooterProps) {
+function IconFooter({
+  user,
+  actions,
+  extensionsLabel,
+  onExtensionsClick,
+  renderUserTrigger = (trigger) => trigger
+}: FooterProps) {
   return (
     <div className="flex flex-col items-center gap-1 px-1.5 pt-2 pb-3 [-webkit-app-region:no-drag]">
       {extensionsLabel && (
@@ -45,16 +52,24 @@ function IconFooter({ user, actions, extensionsLabel, onExtensionsClick }: Foote
       {actions}
       {user && (
         <SidebarTooltip content={user.name}>
-          <button type="button" aria-label={user.name} onClick={user.onClick} className="cursor-pointer rounded-full">
-            <UserAvatar user={user} className="h-7 w-7" />
-          </button>
+          {renderUserTrigger(
+            <button type="button" aria-label={user.name} onClick={user.onClick} className="cursor-pointer rounded-full">
+              <UserAvatar user={user} className="h-7 w-7" />
+            </button>
+          )}
         </SidebarTooltip>
       )}
     </div>
   )
 }
 
-function FullFooter({ user, actions, extensionsLabel, onExtensionsClick }: FooterProps) {
+function FullFooter({
+  user,
+  actions,
+  extensionsLabel,
+  onExtensionsClick,
+  renderUserTrigger = (trigger) => trigger
+}: FooterProps) {
   return (
     <div className="space-y-1 border-sidebar-border border-t px-2 py-2 [-webkit-app-region:no-drag]">
       {extensionsLabel && (
@@ -71,15 +86,17 @@ function FullFooter({ user, actions, extensionsLabel, onExtensionsClick }: Foote
 
       {user && (
         <div className="flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-accent/60">
-          <button type="button" onClick={user.onClick} className="flex min-w-0 flex-1 items-center gap-2 text-left">
-            <UserAvatar user={user} className="h-7 w-7 shrink-0" />
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-[12px] text-sidebar-foreground">{user.name}</span>
-              {user.description && (
-                <span className="block truncate text-[10px] text-muted-foreground">{user.description}</span>
-              )}
-            </span>
-          </button>
+          {renderUserTrigger(
+            <button type="button" onClick={user.onClick} className="flex min-w-0 flex-1 items-center gap-2 text-left">
+              <UserAvatar user={user} className="h-7 w-7 shrink-0" />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[12px] text-sidebar-foreground">{user.name}</span>
+                {user.description && (
+                  <span className="block truncate text-[10px] text-muted-foreground">{user.description}</span>
+                )}
+              </span>
+            </button>
+          )}
           {user.onSettingsClick && (
             <button
               type="button"

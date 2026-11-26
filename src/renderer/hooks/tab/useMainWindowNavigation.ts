@@ -101,7 +101,11 @@ function useMainRouteEventBridge(handleRoute: (path: string) => void) {
  */
 export function useMainWindowNavigation() {
   const openSettingsRoute = useOpenSettingsRoute()
-  const { attachTab, ...navigationTabs } = useTabs()
+  const { attachTab, activeTab, openTab, tabs, updateTab, setActiveTab } = useTabs()
+  const pendingNotesTabIdRef = useRef<string | null>(null)
+  useEffect(() => {
+    pendingNotesTabIdRef.current = null
+  }, [tabs])
   const initData = useWindowInitData<MainWindowInitData>()
   const handledNavigationRequestIdRef = useRef<number | null>(null)
 
@@ -109,11 +113,20 @@ export function useMainWindowNavigation() {
     (to: string) => {
       if (isSettingsPath(to)) {
         openSettingsRoute(to)
+      } else if (to.split('?')[0] === '/app/notes') {
+        const notesTab = tabs.find((tab) => tab.type === 'route' && tab.url.split('?')[0] === '/app/notes')
+        const notesTabId = notesTab?.id ?? pendingNotesTabIdRef.current
+        if (notesTabId) {
+          updateTab(notesTabId, { url: to })
+          setActiveTab(notesTabId)
+        } else {
+          pendingNotesTabIdRef.current = openTab(to)
+        }
       } else {
-        navigateActiveTab(navigationTabs, to)
+        navigateActiveTab({ activeTab, openTab, updateTab }, to)
       }
     },
-    [openSettingsRoute, navigationTabs]
+    [openSettingsRoute, activeTab, openTab, tabs, updateTab, setActiveTab]
   )
 
   useIpcOn('navigation.open_route_requested', ({ to }) => handleRoute(to))

@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 
-import { MenuItem } from '@cherrystudio/ui'
+import { MenuItem, Tooltip } from '@cherrystudio/ui'
 import { CommandContextMenu } from '@renderer/components/command'
 import { cn } from '@renderer/utils/style'
 
@@ -67,7 +67,7 @@ function EntryContextMenu({
 }
 
 function createAuxClickHandler(entry: ResolvedSidebarEntry, guardClick: SidebarClickGuard) {
-  if (!entry.onOpenNewTab) return undefined
+  if (entry.disabled || !entry.onOpenNewTab) return undefined
   return guardClick(entry.key, (e: React.MouseEvent) => {
     if (e.button === 1) {
       e.preventDefault()
@@ -88,7 +88,7 @@ function IconList({ entries, active, onReorder, onContextMenuOpenChange }: ListP
       onReorder={onReorder}
       className="flex flex-col items-center gap-0.5 px-1.5 [-webkit-app-region:no-drag]">
       {(entry, guardClick) => {
-        const isActive = entry.isActive(active)
+        const isActive = !entry.disabled && entry.isActive(active)
 
         return (
           <SidebarTooltip key={entry.key} content={entry.label}>
@@ -96,7 +96,11 @@ function IconList({ entries, active, onReorder, onContextMenuOpenChange }: ListP
               <button
                 type="button"
                 aria-label={entry.label}
-                onClick={guardClick(entry.key, entry.onOpen)}
+                aria-current={isActive ? 'page' : undefined}
+                aria-disabled={entry.disabled || undefined}
+                aria-description={entry.statusLabel}
+                data-dnd-row-control
+                onClick={entry.disabled ? undefined : guardClick(entry.key, entry.onOpen)}
                 onMouseDown={preventMiddleClickAutoscroll}
                 onAuxClick={createAuxClickHandler(entry, guardClick)}
                 className={`relative flex h-9 w-9 items-center justify-center rounded-full transition-all duration-150 ${
@@ -123,30 +127,40 @@ function FullList({ entries, active, onReorder, onContextMenuOpenChange }: ListP
       onReorder={onReorder}
       className="space-y-0.5 px-2 [-webkit-app-region:no-drag]">
       {(entry, guardClick: SidebarClickGuard) => {
-        const isActive = entry.isActive(active)
+        const isActive = !entry.disabled && entry.isActive(active)
 
         return (
           <div key={entry.key} className="relative">
-            <EntryContextMenu items={entry.contextMenuItems} onOpenChange={onContextMenuOpenChange}>
-              <MenuItem
-                variant="ghost"
-                icon={entry.presentation === 'history' ? undefined : entry.renderIcon(16, 'md')}
-                label={entry.label}
-                active={isActive}
-                onClick={guardClick(entry.key, entry.onOpen)}
-                onMouseDown={preventMiddleClickAutoscroll}
-                onAuxClick={createAuxClickHandler(entry, guardClick)}
-                className={cn(
-                  'rounded-lg',
-                  entry.presentation === 'primary' &&
-                    'bg-foreground font-medium text-background hover:bg-foreground/90 hover:text-background data-[active=true]:bg-foreground data-[active=true]:text-background',
-                  entry.presentation === 'history' &&
-                    'min-h-7.5 pl-6 text-[12px] text-muted-foreground hover:text-foreground data-[active=true]:bg-[var(--sidebar-active-bg)] data-[active=true]:text-foreground',
-                  (!entry.presentation || entry.presentation === 'default') &&
-                    'data-[active=true]:bg-[var(--sidebar-active-bg)]'
-                )}
-              />
-            </EntryContextMenu>
+            <Tooltip
+              content={entry.statusLabel ? `${entry.label} — ${entry.statusLabel}` : entry.label}
+              placement="right"
+              delay={400}
+              fullWidthTrigger>
+              <EntryContextMenu items={entry.contextMenuItems} onOpenChange={onContextMenuOpenChange}>
+                <MenuItem
+                  variant="ghost"
+                  icon={entry.presentation === 'history' ? undefined : entry.renderIcon(16, 'md')}
+                  label={entry.label}
+                  active={isActive}
+                  aria-current={isActive ? 'page' : undefined}
+                  aria-disabled={entry.disabled || undefined}
+                  aria-description={entry.statusLabel}
+                  data-dnd-row-control
+                  onClick={entry.disabled ? undefined : guardClick(entry.key, entry.onOpen)}
+                  onMouseDown={preventMiddleClickAutoscroll}
+                  onAuxClick={createAuxClickHandler(entry, guardClick)}
+                  className={cn(
+                    'rounded-lg',
+                    entry.presentation === 'primary' &&
+                      'bg-foreground font-medium text-background hover:bg-foreground/90 hover:text-background data-[active=true]:bg-foreground data-[active=true]:text-background',
+                    entry.presentation === 'history' &&
+                      'min-h-7.5 pl-6 text-[12px] text-muted-foreground hover:text-foreground data-[active=true]:bg-[var(--sidebar-active-bg)] data-[active=true]:text-foreground',
+                    (!entry.presentation || entry.presentation === 'default') &&
+                      'data-[active=true]:bg-[var(--sidebar-active-bg)]'
+                  )}
+                />
+              </EntryContextMenu>
+            </Tooltip>
             {isActive && entry.presentation !== 'primary' && <ActiveIndicator className="rounded-lg" />}
           </div>
         )

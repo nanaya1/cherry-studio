@@ -1,17 +1,18 @@
 import { setupTestDatabase } from '@test-helpers/db'
-import { eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
 
 import { agentTable } from '@data/db/schemas/agent'
 import { agentSessionTable } from '@data/db/schemas/agentSession'
 import { agentWorkspaceTable } from '@data/db/schemas/agentWorkspace'
-import { CherrySupportSeeder } from '@data/db/seeding/seeders/cherrySupportSeeder'
+import { seeders } from '@data/db/seeding/seederRegistry'
+import { agentService } from '@data/services/AgentService'
+import { agentSessionService } from '@data/services/AgentSessionService'
 import { CHERRY_SUPPORT_AGENT_ID } from '@shared/ai/builtinAgent'
 
-describe('CherrySupportSeeder', () => {
+describe('legacy feedback history', () => {
   const dbh = setupTestDatabase()
 
-  function insertSupportAgent(overrides: Partial<typeof agentTable.$inferInsert> = {}) {
+  function insertSupportAgent() {
     dbh.db
       .insert(agentTable)
       .values({
@@ -21,8 +22,7 @@ describe('CherrySupportSeeder', () => {
         instructions: '',
         model: null,
         orderKey: 'a1',
-        configuration: { avatar: '🧰', builtin_role: 'support' },
-        ...overrides
+        configuration: { avatar: '🧰', builtin_role: 'support' }
       })
       .run()
   }
@@ -44,49 +44,17 @@ describe('CherrySupportSeeder', () => {
       .run()
   }
 
-  it('removes an existing Cherry Support agent together with its sessions', () => {
+  it('keeps legacy feedback data addressable while hiding its Agent from discovery', () => {
     insertSupportAgent()
     insertSupportSession('support-session-1')
 
-    new CherrySupportSeeder().run(dbh.db)
-
-    expect(dbh.db.select().from(agentTable).where(eq(agentTable.id, CHERRY_SUPPORT_AGENT_ID)).all()).toHaveLength(0)
-    expect(dbh.db.select().from(agentSessionTable).all()).toHaveLength(0)
-  })
-
-  it('is a no-op when the library has no Cherry Support agent', () => {
-    new CherrySupportSeeder().run(dbh.db)
-
-    expect(dbh.db.select().from(agentTable).all()).toHaveLength(0)
-    expect(dbh.db.select().from(agentSessionTable).all()).toHaveLength(0)
-  })
-
-  it('hard-deletes a soft-deleted Cherry Support row', () => {
-    insertSupportAgent({ deletedAt: Date.UTC(2026, 0, 1) })
-
-    new CherrySupportSeeder().run(dbh.db)
-
-    expect(dbh.db.select().from(agentTable).where(eq(agentTable.id, CHERRY_SUPPORT_AGENT_ID)).all()).toHaveLength(0)
-  })
-
-  it('leaves an ordinary agent that merely carries a forged support role untouched', () => {
-    dbh.db
-      .insert(agentTable)
-      .values({
-        id: 'ordinary-agent',
-        type: 'claude-code',
-        name: 'My Agent',
-        instructions: 'Keep my instructions',
-        model: null,
-        orderKey: 'a0',
-        configuration: { avatar: 'U', builtin_role: 'support' }
-      })
-      .run()
-
-    new CherrySupportSeeder().run(dbh.db)
-
-    const [ordinary] = dbh.db.select().from(agentTable).where(eq(agentTable.id, 'ordinary-agent')).all()
-    expect(ordinary).toMatchObject({ name: 'My Agent', instructions: 'Keep my instructions' })
-    expect(ordinary.configuration).toEqual({ avatar: 'U', builtin_role: 'support' })
+    expect(seeders.some((seeder) => seeder.name === 'cherrySupport')).toBe(false)
+    expect(agentService.listAgents().agents).toEqual([])
+    expect(agentService.search({ q: '产品反馈', limit: 5 })).toEqual([])
+    expect(agentSessionService.getConversationById('support-session-1')).toMatchObject({
+      agentId: CHERRY_SUPPORT_AGENT_ID,
+      name: 'Feedback session'
+    })
+    expect(agentService.getAgent(CHERRY_SUPPORT_AGENT_ID)?.name).toBe('产品反馈')
   })
 })

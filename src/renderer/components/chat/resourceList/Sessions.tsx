@@ -1,3 +1,3 @@
 // MEA 全局侧栏与 Agents 页共用同一 Sessions 实现；待上游将实现下沉到共享层后移除此桥接。
 // eslint-disable-next-line import-x/no-restricted-paths
-export { default } from '@renderer/pages/agents/components/Sessions'
+export { Sessions as default } from '@renderer/pages/agents/components/sessions'

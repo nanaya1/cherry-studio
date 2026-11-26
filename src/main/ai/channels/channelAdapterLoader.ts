@@ -6,15 +6,6 @@ export type ChannelAdapterLoader = (channel: AgentChannelEntity, agentId: string
 
 export const loadChannelAdapter: ChannelAdapterLoader = async (channel, agentId) => {
   switch (channel.type) {
-    case 'dingtalk': {
-      const { createDingTalkAdapter } = await import('./adapters/dingtalk/DingTalkAdapter')
-      return createDingTalkAdapter({
-        channelId: channel.id,
-        channelType: channel.type,
-        agentId,
-        channelConfig: channel.config
-      })
-    }
     case 'discord': {
       const { createDiscordAdapter } = await import('./adapters/discord/DiscordAdapter')
       return createDiscordAdapter({
@@ -54,6 +45,33 @@ export const loadChannelAdapter: ChannelAdapterLoader = async (channel, agentId)
     case 'telegram': {
       const { createTelegramAdapter } = await import('./adapters/telegram/TelegramAdapter')
       return createTelegramAdapter({
+        channelId: channel.id,
+        channelType: channel.type,
+        agentId,
+        channelConfig: channel.config
+      })
+    }
+    case 'dingtalk': {
+      if (channel.config.legacy_conversation_ids) {
+        const { LegacyDingTalkAdapter } = await import('./adapters/dingtalk/LegacyDingTalkAdapter')
+        return new LegacyDingTalkAdapter({
+          channelId: channel.id,
+          channelType: channel.type,
+          agentId,
+          channelConfig: channel.config
+        })
+      }
+      const { createDingTalkAdapter } = await import('./adapters/dingtalk/DingTalkAdapter')
+      return createDingTalkAdapter({
+        channelId: channel.id,
+        channelType: channel.type,
+        agentId,
+        channelConfig: channel.config
+      })
+    }
+    case 'wecom': {
+      const { createWeComAdapter } = await import('./adapters/wecom/WeComAdapter')
+      return createWeComAdapter({
         channelId: channel.id,
         channelType: channel.type,
         agentId,

@@ -1,7 +1,11 @@
-// MEA:resource-icons 原头像布局测试依赖保留供回滚。
-// import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
+vi.mock('@renderer/components/cherryCloud/CherryCloudModelSelector', async () => {
+  const selector = await import('@renderer/components/ModelSelector')
+  return {
+    CherryCloudModelSelector: selector.ModelSelector
+  }
+})
+
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -50,17 +54,17 @@ vi.mock('@renderer/components/resourceCatalog/dialogs/components/EditDialogShare
 
 function Harness({
   modelId = null,
-  runtimeSelectable = false
+  showAgentFields = false
 }: {
   modelId?: UniqueModelId | null
-  runtimeSelectable?: boolean
+  showAgentFields?: boolean
 }) {
   const form = useForm<ResourceCreateWizardFormValues>({
     defaultValues: {
       avatar: '💬',
       name: '',
       description: '',
-      agentType: 'claude-code',
+      agentType: 'pi-durable',
       permissionMode: 'auto',
       modelId,
       prompt: '',
@@ -72,12 +76,13 @@ function Harness({
   return (
     <Form {...form}>
       <BasicInfoStep
+        active
+        disabled={false}
+        onImagePendingChange={vi.fn()}
         form={form}
         portalContainer={null}
-        // MEA:resource-icons fallbackAvatar="💬"
-        runtimeSelectable={runtimeSelectable}
+        showAgentFields={showAgentFields}
       />
-      <output aria-label="保留的头像">{form.watch('avatar')}</output>
       <output data-testid="permission-mode">{form.watch('permissionMode')}</output>
     </Form>
   )
@@ -105,75 +110,17 @@ describe('BasicInfoStep', () => {
     )
   })
 
-  // MEA:resource-icons 原头像布局测试保留供回滚。
-  // it('integrates the avatar picker into the name field', () => {
-  //   render(<Harness />)
-  //   expect(screen.getByText('library.config.dialogs.create.avatar_name_label')).toBeVisible()
-  //   const avatarButton = screen.getByRole('button', { name: 'library.config.dialogs.create.avatar_aria' })
-  //   const inputGroup = avatarButton.closest('[data-slot="input-group"]')
-  //   expect(inputGroup).not.toBeNull()
-  //   expect(
-  //     within(inputGroup as HTMLElement).getByPlaceholderText('library.config.dialogs.create.name_placeholder')
-  //   ).toBeVisible()
-  // })
-  // MEA:resource-icons 防止创建入口重新暴露 Emoji，或编辑名称时丢失头像值。
-  it.each([false, true])('隐藏创建头像选择器并保留名称编辑和头像值（智能体：%s）', async (runtimeSelectable) => {
-    const user = userEvent.setup()
-    render(<Harness runtimeSelectable={runtimeSelectable} />)
-
-    expect(screen.queryByRole('button', { name: 'library.config.dialogs.create.avatar_aria' })).not.toBeInTheDocument()
-    const name = screen.getByPlaceholderText('library.config.dialogs.create.name_placeholder')
-    await user.type(name, 'MEA resource')
-    expect(name).toHaveValue('MEA resource')
-    expect(screen.getByLabelText('保留的头像')).toHaveTextContent('💬')
-  })
-
-  it('offers Claude and Pi for creation without exposing DeepSeek Harness', () => {
-    render(<Harness runtimeSelectable />)
-
-    expect(screen.getByText('library.config.agent.field.runtime.immutable_hint')).toBeVisible()
-    expect(screen.queryByRole('img', { name: /runtime\.immutable_hint/ })).not.toBeInTheDocument()
-    expect(screen.getByRole('radio', { name: /runtime.option.claude_code/ })).toBeChecked()
-    expect(screen.getByRole('radio', { name: /runtime.option.pi/ })).not.toBeChecked()
-    expect(screen.queryByRole('radio', { name: /runtime.option.dsh/ })).not.toBeInTheDocument()
-    expect(screen.queryByText('library.config.agent.field.runtime.pi_hint')).not.toBeInTheDocument()
-  })
-
-  it('uses smart approval when switching between Claude and Pi', async () => {
-    const user = userEvent.setup()
-    render(<Harness runtimeSelectable />)
-
-    expect(screen.getByLabelText('library.config.agent.field.permission_mode.label')).toHaveTextContent(
-      'agent.settings.tooling.permissionMode.auto.title'
-    )
-
-    await user.click(screen.getByRole('radio', { name: /runtime.option.pi/ }))
-
-    expect(screen.getByRole('radio', { name: /runtime.option.pi/ })).toBeChecked()
-    expect(screen.getByLabelText('library.config.agent.field.permission_mode.label')).toHaveTextContent(
-      'agent.settings.tooling.permissionMode.auto.title'
-    )
-    expect(screen.getByTestId('permission-mode')).toHaveTextContent('auto')
-
-    await user.click(screen.getByRole('radio', { name: /runtime.option.claude_code/ }))
-
-    expect(screen.getByRole('radio', { name: /runtime.option.claude_code/ })).toBeChecked()
-    expect(screen.getByLabelText('library.config.agent.field.permission_mode.label')).toHaveTextContent(
-      'agent.settings.tooling.permissionMode.auto.title'
-    )
-    expect(screen.getByTestId('permission-mode')).toHaveTextContent('auto')
-  })
-
-  it('still displays the runtime summary for an existing DeepSeek Harness agent', () => {
+  it.each(['pi', 'claude-code'] as const)('still displays the runtime summary for an existing %s agent', (runtime) => {
     function ExistingAgentRuntime() {
       const { t } = useTranslation()
-      return <AgentRuntimeSummary value="dsh" t={t} />
+      return <AgentRuntimeSummary value={runtime} t={t} />
     }
 
     render(<ExistingAgentRuntime />)
 
-    expect(screen.getByText('library.config.agent.field.runtime.option.dsh')).toBeVisible()
-    expect(screen.getByText('library.config.agent.field.runtime.option_description.dsh')).toBeVisible()
+    const key = runtime === 'pi' ? 'pi' : 'claude_code'
+    expect(screen.getByText(`library.config.agent.field.runtime.option.${key}`)).toBeVisible()
+    expect(screen.getByText(`library.config.agent.field.runtime.option_description.${key}`)).toBeVisible()
     expect(screen.queryByRole('radio')).not.toBeInTheDocument()
   })
 

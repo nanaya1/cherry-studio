@@ -4,7 +4,13 @@ import { isClaudeCodeProviderId } from '@shared/data/presets/claudeCode'
 import { isCodexProviderId } from '@shared/data/presets/codex'
 import { isGrokCliProviderId } from '@shared/data/presets/grokCli'
 import type { Provider } from '@shared/data/types/provider'
-import { isAwsBedrockProvider, isProviderSupportAuth, isVertexProvider, matchesPreset } from '@shared/utils/provider'
+import {
+  hasApiKeys,
+  isAwsBedrockProvider,
+  isProviderSupportAuth,
+  isVertexProvider,
+  matchesPreset
+} from '@shared/utils/provider'
 import { SystemProviderIds } from '@shared/utils/systemProviderId'
 
 import type { useProviderMeta } from '../hooks/providerSetting/useProviderMeta'
@@ -39,7 +45,7 @@ export const PROVIDER_SPECIFIC_SETTINGS_REGISTRY: Record<ProviderSpecificPlaceme
   beforeAuth: [
     {
       key: 'oauth',
-      when: ({ provider }) => isProviderSupportAuth(provider),
+      when: ({ provider }) => isProviderSupportAuth(provider) || (provider.id === 'silicon' && hasApiKeys(provider)),
       render: (providerId) => <ProviderOauth providerId={providerId} />
     },
     {

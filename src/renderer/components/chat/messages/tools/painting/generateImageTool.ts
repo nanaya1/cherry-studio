@@ -1,4 +1,4 @@
-import { CallToolResultSchema } from '@modelcontextprotocol/sdk/types.js'
+import { CallToolResultSchema } from '@modelcontextprotocol/core'
 import { getToolName, isToolUIPart } from 'ai'
 
 import { GENERATE_IMAGE_TOOL_NAME, generateImageOutputSchema } from '@shared/ai/builtinTools'
@@ -21,7 +21,7 @@ export function isGenerateImageToolName(toolName: string): boolean {
 
 export function parseGeneratedImageOutput(response: unknown) {
   const outputParse = generateImageOutputSchema.safeParse(response)
-  const mcpOutputParse = CallToolResultSchema.safeParse(response)
+  const mcpOutputParse = CallToolResultSchema.safeParse(Array.isArray(response) ? { content: response } : response)
   return {
     items: outputParse.success ? outputParse.data : [],
     inlineUrls:

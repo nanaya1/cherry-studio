@@ -6,7 +6,7 @@ import type { ImageGenerationMode } from '@shared/data/types/model'
 import { createDashScopeProvider } from '../../dashscope/dashscopeProvider'
 import { createDashScopeTransport } from '../../dashscope/dashscopeTransport'
 import type { ImageGenerationSubmitInput } from '../../imageGenerationModel'
-import { captureImageRequest, submitWithResponse } from './captureRequest'
+import { captureImageRequest } from './captureRequest'
 
 /**
  * DashScope request boundary — one body family per model id, POSTed to the
@@ -102,101 +102,20 @@ const CASES: Case[] = [
     })
   },
   {
-    name: 'z-image-turbo text-to-image → official single-text sync body',
+    name: 'chat-like (canonical qwen-image-3-0) → same family as the dotted apiModelId',
     input: {
       ...base,
-      modelId: 'z-image-turbo',
+      modelId: 'qwen-image-3.0',
       prompt: 'a fox',
-      n: 1,
-      size: '1024x1536',
-      seed: 42,
-      modelDescriptor: {
-        ...descriptor('z-image-turbo', 'generate'),
-        endpoint: '/api/v1/services/aigc/multimodal-generation/generation',
-        isSync: true
-      },
-      providerParams: { promptExtend: false }
-    },
-    schema: z.strictObject({
-      model: z.literal('z-image-turbo'),
-      input: z.strictObject({
-        messages: z.tuple([
-          z.strictObject({
-            role: z.literal('user'),
-            content: z.tuple([z.strictObject({ text: z.literal('a fox') })])
-          })
-        ])
-      }),
-      parameters: z.strictObject({
-        size: z.literal('1024*1536'),
-        seed: z.literal(42),
-        prompt_extend: z.literal(false)
-      })
-    })
-  },
-  {
-    name: 'qwen-image-2.1-pro text-to-image → native sync body with enable_thinking',
-    input: {
-      ...base,
-      modelId: 'qwen-image-2.1-pro',
-      prompt: 'a fox',
-      n: 2,
-      size: '1328x1328',
-      seed: 42,
-      modelDescriptor: {
-        ...descriptor('qwen-image-2.1-pro', 'generate'),
-        endpoint: '/api/v1/services/aigc/multimodal-generation/generation',
-        isSync: true
-      },
-      providerParams: { addWatermark: false, promptExtend: true, thinkingMode: true }
-    },
-    schema: z.strictObject({
-      model: z.literal('qwen-image-2.1-pro'),
-      input: z.strictObject({
-        messages: z.array(
-          z.strictObject({
-            role: z.literal('user'),
-            content: z.tuple([z.strictObject({ text: z.literal('a fox') })])
-          })
-        )
-      }),
-      parameters: z.strictObject({
-        size: z.literal('1328*1328'),
-        n: z.literal(2),
-        seed: z.literal(42),
-        prompt_extend: z.literal(true),
-        enable_thinking: z.literal(true),
-        watermark: z.literal(false)
-      })
-    })
-  },
-  {
-    name: 'qwen-image-2.1-pro image-to-image → messages[] image content',
-    input: {
-      ...base,
-      modelId: 'qwen-image-2.1-pro',
-      prompt: 'edit the fox',
-      files: file([1, 2, 3]),
-      modelDescriptor: {
-        ...descriptor('qwen-image-2.1-pro', 'edit'),
-        endpoint: '/api/v1/services/aigc/multimodal-generation/generation',
-        isSync: true
-      },
+      modelDescriptor: descriptor('qwen-image-3-0', 'generate'),
       providerParams: {}
     },
     schema: z.strictObject({
-      model: z.literal('qwen-image-2.1-pro'),
+      model: z.string(),
       input: z.strictObject({
-        messages: z.array(
-          z.strictObject({
-            role: z.literal('user'),
-            content: z.tuple([
-              z.strictObject({ text: z.literal('edit the fox') }),
-              z.strictObject({ image: z.string() })
-            ])
-          })
-        )
-      })
+        messages: z.array(z.strictObject({ role: z.literal('user'), content: z.array(messagePart) }))
+      }),
+      parameters: z.unknown().optional()
     })
   },
   {
@@ -291,27 +210,40 @@ describe('DashScope request boundary', () => {
   for (const c of CASES) {
     it(`${c.name}: satisfies the wire contract and matches snapshot`, async () => {
       const req = await captureImageRequest(transport, c.input)
-      expect(req.url).toBe(`${host}${c.input.modelDescriptor?.endpoint}`)
+      expect(req.url).toBe(`${host}/api/v1/services/aigc/image`)
       c.schema.parse(req.body)
       expect(req.body).toMatchSnapshot()
     })
   }
 
-  it('rejects Z-Image image-to-image input before sending an unsupported request', async () => {
-    await expect(
-      captureImageRequest(transport, {
-        ...base,
-        modelId: 'z-image-turbo',
-        prompt: 'edit the fox',
-        files: file([1, 2, 3]),
-        modelDescriptor: {
-          ...descriptor('z-image-turbo', 'generate'),
-          endpoint: '/api/v1/services/aigc/multimodal-generation/generation',
-          isSync: true
-        },
-        providerParams: {}
-      })
-    ).rejects.toThrow('Z-Image Turbo accepts text-to-image only')
+  it('honors the injected proxy-aware fetch and provider extra headers', async () => {
+    const fetchSpy = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(JSON.stringify({ output: { task_id: 't-1', task_status: 'PENDING' } }), { status: 200 })
+      )
+    const proxiedTransport = createDashScopeTransport({
+      apiKey: 'ds-key',
+      imageBaseURL: host,
+      fetch: fetchSpy,
+      headers: { 'X-Custom': 'on' }
+    })
+
+    const submit = await proxiedTransport.submit({
+      ...base,
+      modelId: 'qwen-image-3.0',
+      prompt: 'a fox',
+      modelDescriptor: descriptor('qwen-image-3.0', 'generate'),
+      providerParams: {}
+    })
+
+    expect(submit).toEqual({ taskId: 't-1' })
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchSpy.mock.calls[0]
+    expect(String(url)).toBe(`${host}/api/v1/services/aigc/image`)
+    const headers = new Headers(init.headers as HeadersInit)
+    expect(headers.get('authorization')).toBe('Bearer ds-key')
+    expect(headers.get('x-custom')).toBe('on')
   })
 
   it.each([
@@ -362,33 +294,6 @@ describe('DashScope request boundary', () => {
       })
     }
   )
-})
-
-describe('DashScope synchronous image response boundary', () => {
-  it('extracts image URLs from qwen-image-2.1-pro choices content', async () => {
-    const transport = createDashScopeTransport({ apiKey: 'ds-key', imageBaseURL: host })
-    const result = await submitWithResponse(
-      transport,
-      {
-        ...base,
-        modelId: 'qwen-image-2.1-pro',
-        prompt: 'a fox',
-        modelDescriptor: {
-          ...descriptor('qwen-image-2.1-pro', 'generate'),
-          endpoint: '/api/v1/services/aigc/multimodal-generation/generation',
-          isSync: true
-        },
-        providerParams: {}
-      },
-      {
-        output: {
-          choices: [{ message: { content: [{ image: 'https://img.example/qwen-image-2-1-pro.png' }] } }]
-        }
-      }
-    )
-
-    expect(result).toEqual({ imageUrls: ['https://img.example/qwen-image-2-1-pro.png'] })
-  })
 })
 
 describe('DashScope poll resume (restart-safe response family)', () => {

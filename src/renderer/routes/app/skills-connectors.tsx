@@ -7,7 +7,9 @@ import SkillsConnectorsPage from '@renderer/pages/workspace/SkillsConnectorsPage
 // MEA: 智能/助手编辑弹窗等场景需要直接落到「技能」或「连接器」二级 tab，
 // 通过 tab search 参数定位；无参数时保持原默认（技能 tab）。
 export const skillsConnectorsSearchSchema = z.object({
-  tab: z.enum(['skill', 'connector']).optional()
+  tab: z.enum(['skill', 'connector']).optional(),
+  connectorView: z.enum(['builtin', 'marketplace', 'providers']).optional(),
+  connectorProvider: z.enum(['bailian', 'modelscope']).optional()
 })
 
 export type SkillsConnectorsSearch = z.infer<typeof skillsConnectorsSearchSchema>
@@ -20,6 +22,18 @@ export const Route = createFileRoute('/app/skills-connectors')({
 function SkillsConnectorsRouteComponent() {
   // MEA: 从路由 search 读取 tab 定位参数，传给页面做初始二级 tab。
   // key 按 tab 取值：页面实例复用（KeepAlive / 重复跳转换参数）时也能落到目标 tab。
-  const { tab } = Route.useSearch()
-  return <SkillsConnectorsPage key={tab ?? 'skill'} connectorView={<McpCatalog />} initialTab={tab} />
+  const { tab, connectorView, connectorProvider } = Route.useSearch()
+  return (
+    <SkillsConnectorsPage
+      key={tab ?? 'skill'}
+      connectorView={
+        <McpCatalog
+          key={JSON.stringify([connectorView, connectorProvider])}
+          initialView={connectorView}
+          initialProvider={connectorProvider}
+        />
+      }
+      initialTab={tab}
+    />
+  )
 }

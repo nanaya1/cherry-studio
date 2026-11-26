@@ -69,28 +69,23 @@ function getUserAvatarFallback(user?: SidebarUser) {
   return user?.name ? user.name.slice(0, 1).toUpperCase() : ''
 }
 
-export function UserAvatar({
-  user,
-  className,
-  ring = true
-}: {
-  user: SidebarUser
-  className?: string
-  ring?: boolean
-}) {
+export function UserAvatar({ user, className }: { user: SidebarUser; className?: string }) {
   const isEmojiAvatar = user.avatar ? isEmoji(user.avatar) : false
 
   return (
-    <div className={`overflow-hidden rounded-full ${ring ? 'ring-1 ring-border' : ''} ${className ?? ''}`}>
-      {user.avatar && !isTextAvatar(user.avatar) ? (
-        <img src={user.avatar} alt={user.name} className="h-full w-full object-cover" />
-      ) : isEmojiAvatar ? (
-        <EmojiIcon emoji={user.avatar!} fluid fontSize={17} />
-      ) : (
-        <div className="flex h-full w-full items-center justify-center bg-linear-to-br from-blue-400 to-indigo-500 text-[10px] text-white">
-          {getUserAvatarFallback(user)}
-        </div>
-      )}
+    <div className={`relative ${className ?? ''}`}>
+      <div className="h-full w-full overflow-hidden rounded-full">
+        {user.avatar && !isTextAvatar(user.avatar) ? (
+          <img src={user.avatar} alt={user.name} className="h-full w-full object-cover" />
+        ) : isEmojiAvatar ? (
+          <EmojiIcon emoji={user.avatar!} fluid fontSize={17} />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center bg-linear-to-br from-blue-400 to-indigo-500 text-[10px] text-white">
+            {getUserAvatarFallback(user)}
+          </div>
+        )}
+      </div>
+      {user.indicator}
     </div>
   )
 }

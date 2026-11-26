@@ -20,7 +20,8 @@ export const FeishuChannelConfigSchema = z.object({
   encrypt_key: z.string(),
   verification_token: z.string(),
   allowed_chat_ids: z.array(z.string()).default([]),
-  domain: FeishuDomainSchema
+  domain: FeishuDomainSchema,
+  mention_only: z.boolean().optional()
 })
 
 export type FeishuChannelConfig = z.infer<typeof FeishuChannelConfigSchema>
@@ -43,6 +44,48 @@ export const WeChatChannelConfigSchema = z.object({
 
 export type WeChatChannelConfig = z.infer<typeof WeChatChannelConfigSchema>
 
+const WeComChatIdSchema = z
+  .string()
+  .trim()
+  .regex(/^(dm|group):\S+$/)
+const WeComUserIdSchema = z.string().trim().min(1)
+
+export const WeComChannelConfigSchema = z.strictObject({
+  type: z.literal('wecom'),
+  bot_id: z.string().trim(),
+  secret: z.string(),
+  allowed_chat_ids: z
+    .array(WeComChatIdSchema)
+    .default([])
+    .transform((ids) => [...new Set(ids)]),
+  allowed_user_ids: z
+    .array(WeComUserIdSchema)
+    .default([])
+    .transform((ids) => [...new Set(ids)])
+})
+
+export type WeComChannelConfig = z.infer<typeof WeComChannelConfigSchema>
+
+export const DingTalkChannelConfigSchema = z.strictObject({
+  type: z.literal('dingtalk'),
+  client_id: z.string().trim(),
+  client_secret: z.string(),
+  robot_code: z.string().trim(),
+  legacy_conversation_ids: z.literal(true).optional(),
+  require_mention: z.boolean().optional(),
+  card_template_id: z.string().trim().optional(),
+  allowed_chat_ids: z
+    .array(z.string().trim().min(1))
+    .default([])
+    .transform((ids) => [...new Set(ids)]),
+  allowed_user_ids: z
+    .array(z.string().trim().min(1))
+    .default([])
+    .transform((ids) => [...new Set(ids)])
+})
+
+export type DingTalkChannelConfig = z.infer<typeof DingTalkChannelConfigSchema>
+
 export const DiscordChannelConfigSchema = z.object({
   type: z.literal('discord'),
   bot_token: z.string(),
@@ -60,17 +103,6 @@ export const SlackChannelConfigSchema = z.object({
 
 export type SlackChannelConfig = z.infer<typeof SlackChannelConfigSchema>
 
-export const DingTalkChannelConfigSchema = z.object({
-  type: z.literal('dingtalk'),
-  client_id: z.string(),
-  client_secret: z.string(),
-  robot_code: z.string().optional(),
-  allowed_chat_ids: z.array(z.string()).default([]),
-  require_mention: z.boolean().default(true)
-})
-
-export type DingTalkChannelConfig = z.infer<typeof DingTalkChannelConfigSchema>
-
 // ---- Discriminated union ----
 
 export const ChannelConfigSchema = z.discriminatedUnion('type', [
@@ -78,14 +110,15 @@ export const ChannelConfigSchema = z.discriminatedUnion('type', [
   FeishuChannelConfigSchema,
   QQChannelConfigSchema,
   WeChatChannelConfigSchema,
+  WeComChannelConfigSchema,
+  DingTalkChannelConfigSchema,
   DiscordChannelConfigSchema,
-  SlackChannelConfigSchema,
-  DingTalkChannelConfigSchema
+  SlackChannelConfigSchema
 ])
 
 export type ChannelConfig = z.infer<typeof ChannelConfigSchema>
 
-export const CHANNEL_TYPES = ['telegram', 'feishu', 'qq', 'wechat', 'discord', 'slack', 'dingtalk'] as const
+export const CHANNEL_TYPES = ['telegram', 'feishu', 'qq', 'wechat', 'wecom', 'dingtalk', 'discord', 'slack'] as const
 export type ChannelType = (typeof CHANNEL_TYPES)[number]
 
 export interface ChannelStatus {

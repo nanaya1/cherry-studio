@@ -220,6 +220,7 @@ export const mockUsePaginatedQuery = vi.fn(
         hasPrev: boolean
         prevPage: () => void
         nextPage: () => void
+        goToPage: (page: number) => void
         refresh: () => Promise<unknown>
         reset: () => void
       }
@@ -243,6 +244,7 @@ export const mockUsePaginatedQuery = vi.fn(
       hasPrev: false,
       prevPage: vi.fn(),
       nextPage: vi.fn(),
+      goToPage: vi.fn(),
       refresh: vi.fn().mockResolvedValue(undefined),
       reset: vi.fn()
     } as unknown as ResponseForPath<TPath, 'GET'> extends PaginationResponse<infer T>
@@ -257,6 +259,7 @@ export const mockUsePaginatedQuery = vi.fn(
           hasPrev: boolean
           prevPage: () => void
           nextPage: () => void
+          goToPage: (page: number) => void
           refresh: () => Promise<unknown>
           reset: () => void
         }
@@ -494,8 +497,13 @@ export const mockUseReadCache = vi.fn(() => {
   return vi.fn(
     <TResponse = unknown>(
       path: ConcreteApiPaths | TemplateApiPaths,
-      query?: Record<string, unknown>
+      query?: Record<string, unknown>,
+      infinite?: { limit: number }
     ): TResponse | undefined => {
+      if (infinite) {
+        const key = buildMockInfiniteQueryKey(path, { query, limit: infinite.limit } as never)
+        return mockInfiniteQueryStore.get(key) as TResponse | undefined
+      }
       return mockCacheStore.get(buildMockCacheKey(path as string, query)) as TResponse | undefined
     }
   )
@@ -889,6 +897,7 @@ export const MockUseDataApiUtils = {
           hasPrev: options?.hasPrev ?? false,
           prevPage: vi.fn(),
           nextPage: vi.fn(),
+          goToPage: vi.fn(),
           refresh: vi.fn(),
           reset: vi.fn()
         }
@@ -905,6 +914,7 @@ export const MockUseDataApiUtils = {
         hasPrev: false,
         prevPage: vi.fn(),
         nextPage: vi.fn(),
+        goToPage: vi.fn(),
         refresh: vi.fn(),
         reset: vi.fn()
       }

@@ -1,9 +1,7 @@
 import '@testing-library/jest-dom/vitest'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { useState } from 'react'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-
-import { POPUP_EXIT_MS } from '@renderer/services/popup'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   ipcRequest: vi.fn(),
@@ -54,10 +52,6 @@ describe('FeedbackDialog', () => {
     mocks.ipcRequest.mockResolvedValue({ sessionId: 'feedback-session' })
   })
 
-  afterEach(() => {
-    vi.useRealTimers()
-  })
-
   it('shows diagnostics and Cherry Support while hiding the GitHub Issues entry', () => {
     render(<FeedbackDialog open onOpenChange={vi.fn()} />)
 
@@ -81,17 +75,11 @@ describe('FeedbackDialog', () => {
   })
 
   it('closes before opening the shared problem-report panel', async () => {
-    vi.useFakeTimers()
     render(<ControlledFeedbackDialog />)
-
     fireEvent.click(screen.getByRole('button', { name: /settings.about.feedback.diagnostics.title/ }))
 
+    await waitFor(() => expect(mocks.showDoctor).toHaveBeenCalledWith({ initialPanel: 'report' }))
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-    expect(mocks.showDoctor).not.toHaveBeenCalled()
-
-    await vi.advanceTimersByTimeAsync(POPUP_EXIT_MS)
-
-    expect(mocks.showDoctor).toHaveBeenCalledWith({ initialPanel: 'report' })
   })
 
   it('reports feedback-session creation failures without opening an empty Agent route', async () => {

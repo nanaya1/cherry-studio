@@ -70,7 +70,7 @@ import {
   PaginationNext,
   PaginationPrevious,
   RowFlex,
-  Scrollbar,
+  ScrollArea,
   SearchInput,
   Select,
   SelectContent,
@@ -949,11 +949,11 @@ const TaskLogsInline: FC<{ taskId: string; agentId: string }> = ({ taskId, agent
   }
 
   if (logsError) {
-    return <EmptyState compact preset="no-result" description={t('agent.tasks.logs.loadError')} />
+    return <EmptyState compact description={t('agent.tasks.logs.loadError')} />
   }
 
   if (logs.length === 0) {
-    return <EmptyState compact preset="no-result" description={t('agent.tasks.logs.empty')} />
+    return <EmptyState compact description={t('agent.tasks.logs.empty')} />
   }
 
   return (
@@ -1349,7 +1349,7 @@ const TaskFormDialog: FC<TaskFormDialogProps> = (props) => {
             {t(isEditing ? 'settings.scheduledTasks.editDescription' : 'settings.scheduledTasks.createDescription')}
           </DialogDescription>
         </DialogHeader>
-        <Scrollbar className="-m-1 max-h-[60vh] p-1 pr-3">
+        <ScrollArea className="-m-1 max-h-[60vh] p-1 pr-3">
           <FieldGroup>
             <Field data-invalid={(submitted && !name.trim()) || undefined}>
               <FieldLabel required htmlFor="task-form-name">
@@ -1456,7 +1456,7 @@ const TaskFormDialog: FC<TaskFormDialogProps> = (props) => {
               onChange={setChannelIds}
             />
           </FieldGroup>
-        </Scrollbar>
+        </ScrollArea>
         <DialogFooter>
           <Button type="button" variant="outline" disabled={saving} onClick={() => onOpenChange(false)}>
             {t('common.cancel')}
@@ -1664,7 +1664,6 @@ const TasksSettings: FC<TasksSettingsProps> = ({ routeBase = '/settings/schedule
       return (
         <SettingsContentColumn theme={theme}>
           <EmptyState
-            preset="no-result"
             title={t('settings.scheduledTasks.notFoundTitle')}
             description={t('settings.scheduledTasks.notFoundDescription')}
             actionLabel={t('common.back')}
@@ -1770,11 +1769,10 @@ const TasksSettings: FC<TasksSettingsProps> = ({ routeBase = '/settings/schedule
         </div>
       </div>
 
-      <Scrollbar className="min-h-0 flex-1 px-6 pt-4 pb-3">
+      <ScrollArea className="min-h-0 flex-1 px-6 pt-4 pb-3">
         <div className="mx-auto w-full max-w-3xl">
           {tasks.length === 0 ? (
             <EmptyState
-              preset={agents.length === 0 ? 'no-agent' : 'no-result'}
               icon={agents.length === 0 ? undefined : CalendarClock}
               title={
                 agents.length === 0
@@ -1792,7 +1790,6 @@ const TasksSettings: FC<TasksSettingsProps> = ({ routeBase = '/settings/schedule
             <>
               {filteredTasks.length === 0 && hasActiveFilters ? (
                 <EmptyState
-                  preset="no-result"
                   title={t('settings.scheduledTasks.noMatchesTitle')}
                   description={t('settings.scheduledTasks.noMatches')}
                   actionLabel={t('settings.scheduledTasks.clearFilters')}
@@ -1875,7 +1872,7 @@ const TasksSettings: FC<TasksSettingsProps> = ({ routeBase = '/settings/schedule
             </>
           )}
         </div>
-      </Scrollbar>
+      </ScrollArea>
 
       <TaskFormDialog
         open={createOpen}

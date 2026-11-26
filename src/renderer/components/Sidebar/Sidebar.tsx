@@ -3,6 +3,7 @@ import { Search, ChevronDown } from 'lucide-react'
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 
 import { MenuItem } from '@cherrystudio/ui'
+import { useLeadingWindowControlsOverlay } from '@renderer/hooks/useLeadingWindowControlsOverlay'
 import useMacTransparentWindow from '@renderer/hooks/useMacTransparentWindow'
 import { isMac } from '@renderer/utils/platform'
 import { cn } from '@renderer/utils/style'
@@ -35,6 +36,7 @@ export interface SidebarProps {
   title?: string
   logo?: React.ReactNode
   user?: SidebarUser
+  renderUserTrigger?: (trigger: React.ReactElement) => React.ReactNode
   isFloating?: boolean
   showHeader?: boolean
   isFullscreen?: boolean
@@ -63,6 +65,7 @@ export function Sidebar({
   title = '',
   logo,
   user,
+  renderUserTrigger,
   isFloating = false,
   showHeader = true,
   isFullscreen = false,
@@ -215,6 +218,7 @@ export function Sidebar({
   }
   const footerProps = {
     user,
+    renderUserTrigger,
     actions,
     extensionsLabel,
     onExtensionsClick,
@@ -294,6 +298,8 @@ export function Sidebar({
   )
   const windowDragClassName = contextMenuOpen ? '[-webkit-app-region:no-drag]' : '[-webkit-app-region:drag]'
 
+  const hasLeadingWindowControls = useLeadingWindowControlsOverlay()
+
   // --- Floating sidebar ---
   if (isFloating) {
     return (
@@ -302,7 +308,7 @@ export function Sidebar({
           className={cn(
             'sidebar-theme slide-in-from-left-2 fixed top-0 bottom-0 left-0 flex w-43.5 animate-in select-none flex-col rounded-r-sm rounded-br-2xl bg-sidebar shadow-2xl backdrop-blur-2xl backdrop-saturate-150 duration-200',
             windowDragClassName,
-            isMac && 'pt-[env(titlebar-area-height)]'
+            (isMac || hasLeadingWindowControls) && 'pt-[env(titlebar-area-height)]'
           )}
           onClick={(event) => event.stopPropagation()}
           onMouseLeave={() => {

@@ -608,7 +608,7 @@ vi.mock('@cherrystudio/ui', () => {
       ...props
     }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { children?: React.ReactNode }) => <a {...props}>{children}</a>,
     RowFlex: passthrough('div'),
-    Scrollbar: passthrough('div', 'scrollbar'),
+    ScrollArea: passthrough('div', 'scrollbar'),
     SearchInput: ({
       'aria-label': ariaLabel,
       clearLabel,

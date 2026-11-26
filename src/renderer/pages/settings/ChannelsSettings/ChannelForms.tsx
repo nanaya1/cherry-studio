@@ -16,14 +16,17 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-  Switch
+  Switch,
+  HelpTooltip
 } from '@cherrystudio/ui'
-import { PermissionModeSelectItem } from '@renderer/components/PermissionModeOption'
+import { FullAccessConfirmDialog, PermissionModeSelectItem } from '@renderer/components/PermissionModeOption'
 import { ipcApi, useIpcOn } from '@renderer/ipc'
 import type { FeishuChannelConfig, FeishuDomain } from '@renderer/types/agent'
 import { permissionModeCards } from '@renderer/utils/agent'
 
-import type { ChannelData } from './channelTypes'
+import type { ChannelData, ChannelUpdates } from './channelTypes'
+import { DingTalkForm } from './DingTalkForm'
+import { WeComForm } from './WeComForm'
 
 // --------------- Permission mode ---------------
 
@@ -50,13 +53,14 @@ type ChatIdsConfig = {
 
 type ChannelFormProps = {
   channel: ChannelData
-  onConfigChange: (updates: Partial<ChannelData>) => void
+  onConfigChange: (updates: ChannelUpdates) => void
 }
 
 type ChannelFieldsFormProps = ChannelFormProps & {
   fields: FieldDef[]
   chatIds: ChatIdsConfig
   extraContent?: ReactNode
+  patchConfig?: boolean
 }
 
 // --------------- Shared form components ---------------
@@ -64,16 +68,31 @@ type ChannelFieldsFormProps = ChannelFormProps & {
 const ChannelPermissionMode: FC<ChannelFormProps> = ({ channel, onConfigChange }) => {
   const { t } = useTranslation()
   const selectedCard = permissionModeCards.find((card) => card.mode === channel.permissionMode)
+  const [fullAccessPending, setFullAccessPending] = useState(false)
+
+  // Any newer mode (local or from another window) wins; confirming must never apply a stale dialog.
+  useEffect(() => {
+    setFullAccessPending(false)
+  }, [channel.permissionMode])
+
   return (
     <div className="flex flex-col gap-1">
       <Label className="text-xs">{t('agent.channels.security.permissionMode')}</Label>
       <Select
         value={channel.permissionMode ?? INHERIT_PERMISSION_MODE_VALUE}
-        onValueChange={(value) =>
+        onValueChange={(value) => {
+          // Radix's hidden native select can briefly emit an empty value while its dynamic options change.
+          if (!value) return
+          if (value === 'bypassPermissions') {
+            // Already Full Access: nothing to confirm.
+            if (channel.permissionMode !== 'bypassPermissions') setFullAccessPending(true)
+            return
+          }
+          setFullAccessPending(false)
           onConfigChange({
             permissionMode: value === INHERIT_PERMISSION_MODE_VALUE ? null : value
           })
-        }>
+        }}>
         <SelectTrigger size="sm" className="w-full">
           {/* Own children so the trigger stays one line: the items below can be two. */}
           <SelectValue>
@@ -93,6 +112,14 @@ const ChannelPermissionMode: FC<ChannelFormProps> = ({ channel, onConfigChange }
           ))}
         </SelectContent>
       </Select>
+      <FullAccessConfirmDialog
+        open={fullAccessPending}
+        onOpenChange={setFullAccessPending}
+        onConfirm={() => onConfigChange({ permissionMode: 'bypassPermissions' })}
+        scopeName={channel.name.trim() || undefined}
+        scopeKind="channel"
+        t={t}
+      />
     </div>
   )
 }
@@ -102,7 +129,8 @@ const ChannelFieldsForm: FC<ChannelFieldsFormProps> = ({
   onConfigChange,
   fields,
   chatIds: chatIdsConfig,
-  extraContent
+  extraContent,
+  patchConfig
 }) => {
   const { t } = useTranslation()
   const cfg = channel.config
@@ -123,10 +151,10 @@ const ChannelFieldsForm: FC<ChannelFieldsFormProps> = ({
     (key: string, value: string) => {
       const trimmed = value.trim()
       if (trimmed !== ((cfg[key] as string) ?? '')) {
-        onConfigChange({ config: { ...cfg, [key]: trimmed } })
+        onConfigChange(patchConfig ? { configPatch: { [key]: trimmed } } : { config: { ...cfg, [key]: trimmed } })
       }
     },
-    [cfg, onConfigChange]
+    [cfg, onConfigChange, patchConfig]
   )
 
   const saveChatIds = useCallback(() => {
@@ -135,9 +163,9 @@ const ChannelFieldsForm: FC<ChannelFieldsFormProps> = ({
       .map((s) => s.trim())
       .filter(Boolean)
     if (JSON.stringify(ids) !== JSON.stringify((cfg[idsKey] as string[]) ?? [])) {
-      onConfigChange({ config: { ...cfg, [idsKey]: ids } })
+      onConfigChange(patchConfig ? { configPatch: { [idsKey]: ids } } : { config: { ...cfg, [idsKey]: ids } })
     }
-  }, [chatIds, cfg, idsKey, onConfigChange])
+  }, [chatIds, cfg, idsKey, onConfigChange, patchConfig])
 
   return (
     <div className="flex flex-col gap-3">
@@ -167,7 +195,10 @@ const ChannelFieldsForm: FC<ChannelFieldsFormProps> = ({
         ))}
         {extraContent}
         <div className={chatIdsConfig.fullWidth ? 'col-span-2' : ''}>
-          <Label className="mb-1 block text-xs">{chatIdsConfig.label}</Label>
+          <div className="mb-1 flex items-center gap-1.5">
+            <Label className="text-xs">{chatIdsConfig.label}</Label>
+            <HelpTooltip content={chatIdsConfig.hint} />
+          </div>
           <Input
             value={chatIds}
             onChange={(e) => setChatIds(e.target.value)}
@@ -175,7 +206,6 @@ const ChannelFieldsForm: FC<ChannelFieldsFormProps> = ({
             placeholder={chatIdsConfig.placeholder}
             className="h-8 text-sm"
           />
-          <span className="mt-1 block text-xs text-muted-foreground">{chatIdsConfig.hint}</span>
           {!chatIds.trim() && idsKey === 'allowed_chat_ids' && (
             <span className="mt-1 block text-xs text-warning">{t('agent.channels.chatIdsAutoTrackHint')}</span>
           )}
@@ -220,7 +250,7 @@ const FeishuDomainSelector: FC<ChannelFormProps> = ({ channel, onConfigChange })
       <Label className="mb-1 block text-xs">{t('agent.channels.feishu.domain')}</Label>
       <Select
         value={(cfg.domain as FeishuDomain) ?? 'feishu'}
-        onValueChange={(value) => onConfigChange({ config: { ...cfg, domain: value } })}>
+        onValueChange={(value) => onConfigChange({ configPatch: { domain: value } })}>
         <SelectTrigger size="sm" className="w-full">
           <SelectValue />
         </SelectTrigger>
@@ -238,6 +268,7 @@ type FeishuStatus = 'idle' | 'pending' | 'confirmed' | 'expired' | 'disconnected
 export const FeishuForm: FC<ChannelFormProps> = ({ channel, onConfigChange }) => {
   const { t } = useTranslation()
   const cfg = channel.config as FeishuChannelConfig
+  const mentionOnly = (cfg.mention_only as boolean) ?? true
   const hasCredentials = !!(cfg.app_id && cfg.app_secret)
   const [qrUrl, setQrUrl] = useState<string | null>(null)
   const [status, setStatus] = useState<FeishuStatus>(hasCredentials ? 'confirmed' : 'idle')
@@ -288,6 +319,7 @@ export const FeishuForm: FC<ChannelFormProps> = ({ channel, onConfigChange }) =>
       <ChannelFieldsForm
         channel={channel}
         onConfigChange={onConfigChange}
+        patchConfig
         fields={[
           {
             key: 'app_id',
@@ -313,14 +345,28 @@ export const FeishuForm: FC<ChannelFormProps> = ({ channel, onConfigChange }) =>
             secret: true
           }
         ]}
-        extraContent={<FeishuDomainSelector channel={channel} onConfigChange={onConfigChange} />}
+        extraContent={
+          <>
+            <div className="col-span-2 flex items-center gap-3 pt-1">
+              <Switch
+                aria-label={t('agent.channels.feishu.mentionOnlyLabel')}
+                checked={mentionOnly}
+                onCheckedChange={(checked) => onConfigChange({ configPatch: { mention_only: checked } })}
+              />
+              <div className="flex flex-col gap-0.5">
+                <span className="text-sm">{t('agent.channels.feishu.mentionOnlyLabel')}</span>
+                <span className="text-muted-foreground text-xs">{t('agent.channels.feishu.mentionOnlyHint')}</span>
+              </div>
+            </div>
+            <FeishuDomainSelector channel={channel} onConfigChange={onConfigChange} />
+          </>
+        }
         chatIds={{
           label: t('agent.channels.feishu.chatIds'),
           placeholder: t('agent.channels.feishu.chatIdsPlaceholder'),
           hint: t('agent.channels.feishu.chatIdsHint')
         }}
       />
-
       <Dialog
         open={!!qrUrl}
         onOpenChange={(open) => {
@@ -490,9 +536,7 @@ export const WeChatForm: FC<ChannelFormProps & { onRemove?: () => void }> = ({ c
           </span>
         )}
       </div>
-
       <ChannelPermissionMode channel={channel} onConfigChange={onConfigChange} />
-
       <Dialog
         open={!!qrUrl}
         onOpenChange={(open) => {
@@ -514,7 +558,7 @@ export const WeChatForm: FC<ChannelFormProps & { onRemove?: () => void }> = ({ c
   )
 }
 
-export const DingTalkForm: FC<ChannelFormProps> = ({ channel, onConfigChange }) => {
+const LegacyDingTalkForm: FC<ChannelFormProps> = ({ channel, onConfigChange }) => {
   const { t } = useTranslation()
   const cfg = channel.config
   const requireMention = (cfg.require_mention as boolean) ?? true
@@ -595,6 +639,9 @@ export const DingTalkForm: FC<ChannelFormProps> = ({ channel, onConfigChange }) 
   )
 }
 
+const DingTalkChannelForm: FC<ChannelFormProps> = (props) =>
+  props.channel.config.legacy_conversation_ids ? <LegacyDingTalkForm {...props} /> : <DingTalkForm {...props} />
+
 export const SlackForm: FC<ChannelFormProps> = ({ channel, onConfigChange }) => {
   const { t } = useTranslation()
   return (
@@ -642,7 +689,9 @@ export const getFormForType = (type: string) => {
     case 'slack':
       return SlackForm
     case 'dingtalk':
-      return DingTalkForm
+      return DingTalkChannelForm
+    case 'wecom':
+      return WeComForm
     case 'wechat':
       return WeChatForm
     default:

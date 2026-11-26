@@ -22,6 +22,12 @@ export interface SidebarActiveState {
   activeTabId?: string
 }
 
+export interface SidebarIconPresentation {
+  slotSize: number
+  glyphSize: number
+  active?: boolean
+}
+
 /**
  * A fully-resolved, type-agnostic sidebar row. The app layer produces these from
  * the tagged favorites via the variant registry (see `components/app/sidebarVariants`);
@@ -35,6 +41,8 @@ export interface ResolvedSidebarEntry {
   label: string
   renderIcon: (size: number, miniAppSize: 'md' | 'lg') => ReactNode
   isActive: (active: SidebarActiveState) => boolean
+  disabled?: boolean
+  statusLabel?: string
   onOpen: () => void
   onOpenNewTab?: () => void
   contextMenuItems?: readonly CommandContextMenuExtraItem[]
@@ -57,6 +65,7 @@ export interface SidebarUser {
   name: string
   description?: string
   avatar?: string
+  indicator?: ReactNode
   onClick?: () => void
   settingsLabel?: string
   onSettingsClick?: () => void

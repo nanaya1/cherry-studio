@@ -68,7 +68,7 @@
 - `pnpm lint` — oxlint + eslint fix + typecheck + i18n check + format（会写入文件）
 - `pnpm test` — 运行全部 Vitest 测试
 - `pnpm format` — 使用 Oxfmt 格式化（写入模式）
-- `pnpm docs:check` — 文档门禁（`check-links` + 结构闭集检查 + frontmatter/`sources` 存在性 + 生成索引的新鲜度）；这是 `build:check` 相较于 `lint` + `test` 唯一增加的检查。修改文档或 Markdown 时运行它，无需运行完整门禁。`docs/references/**` 和 `docs/contrib/**` 下的文档需要包含 `description`/`sources` frontmatter；`docs/README.md` 是自动生成的，应修改 frontmatter 后运行 `pnpm docs:index`，绝不要手工编辑索引。
+- `pnpm docs:check` — 文档门禁（`check-links` + 结构闭集检查 + frontmatter/`sources` 存在性 + 生成索引的新鲜度）；这是 `build:check` 相较于 `lint` + `test` 唯一增加的检查。修改文档或 Markdown 时运行它，无需运行完整门禁。`docs/dev/references/**` 和 `docs/contrib/**` 下的文档需要包含 `description`/`sources` frontmatter；`docs/README.md` 是自动生成的，应修改 frontmatter 后运行 `pnpm docs:index`，绝不要手工编辑索引。
 - `pnpm build:check` — `lint` + `docs:check` + 完整 `test`，即一条命令执行全部门禁。适合范围广或风险高的改动；范围较窄时只运行相关部分。如果因 i18n 排序失败，先运行 `pnpm i18n:sync`；如果因格式失败，先运行 `pnpm format`；如果文档链接损坏，则修复链接。
 - `pnpm test:lint` — 与 CI 等效的 lint 门禁：Oxlint 的错误和警告都会阻止 CI（`--deny-warnings`）；ESLint 错误会阻止 CI，但警告不会。
 
@@ -76,9 +76,9 @@
 
 - 测试使用 Vitest 3 运行（项目配置见 `vitest.config.*`）。
 - **禁止固化当前行为的测试**：如果一个测试唯一的断言只是记录代码当前行为，例如对任意输出做快照、对 mock 使用 `toHaveBeenCalled`，或按照实现逻辑重新推导预期值，那么它毫无价值。它不会因真正的问题而失败，却会在每次重构时破坏，并把现有缺陷认证为“预期行为”。应改为断言契约：真实输入 → 功能承诺的结果，并覆盖失败和边界情况。编写测试前，先说明它能捕获什么缺陷；如果说不出来，就不要写。**现有测试套件中充斥着此类测试**。如果你正在编辑的文件中存在这些测试，应删除它们，而不是只维持其通过；全仓库清理是独立任务，不应成为无关 PR 的副作用。
-- **前端测试——必须阅读**：[前端测试指南](docs/references/testing/frontend-testing.md)。
+- **前端测试——必须阅读**：[前端测试指南](docs/dev/references/testing/frontend-testing.md)。
 - **测试 Mock**：使用统一的 mock 系统，禁止为 `application`、服务或数据层创建临时 mock。可用 mock、用法模式和最佳实践见 [tests/__mocks__/README.md](tests/__mocks__/README.md)。
-- **数据库测试**：任何读写 SQLite 的服务、处理器或 seeder，都应使用 `setupTestDatabase()`（来自 `@test-helpers/db`）。它提供使用生产迁移的真实文件型数据库。禁止手写 `CREATE TABLE` SQL、覆盖 `@application` 或伪造 Drizzle 调用链。参见[数据库测试](docs/references/testing/database-testing.md)。
+- **数据库测试**：任何读写 SQLite 的服务、处理器或 seeder，都应使用 `setupTestDatabase()`（来自 `@test-helpers/db`）。它提供使用生产迁移的真实文件型数据库。禁止手写 `CREATE TABLE` SQL、覆盖 `@application` 或伪造 Drizzle 调用链。参见[数据库测试](docs/dev/references/testing/database-testing.md)。
 
 ### 补丁依赖
 
@@ -102,11 +102,11 @@
 
 ### TypeScript
 
-- 跨进程类型应放在 `src/shared/`；仅渲染进程使用的共享类型应放在 `src/renderer/types/`（参见[共享层架构](docs/references/architecture/shared-layer.md)）。
+- 跨进程类型应放在 `src/shared/`；仅渲染进程使用的共享类型应放在 `src/renderer/types/`（参见[共享层架构](docs/dev/references/architecture/shared-layer.md)）。
 
 ### 命名约定
 
-**必须阅读**：[docs/references/architecture/naming-conventions.md](docs/references/architecture/naming-conventions.md)，其中规定了文件、目录、标识符以及单复数规则。
+**必须阅读**：[docs/dev/references/architecture/naming-conventions.md](docs/dev/references/architecture/naming-conventions.md)，其中规定了文件、目录、标识符以及单复数规则。
 
 ### 日志
 
@@ -137,24 +137,24 @@ logger.error("message", error);
 
 ### 代码组织
 
-每个文件和目录都有规定位置。添加代码或打开目录前，应先阅读与你所修改流程相关的文档。每个进程根目录的顶层都是一个**闭集**：新代码必须归入现有类别，绝不能创建新的顶层目录（参见[命名约定 §4.8](docs/references/architecture/naming-conventions.md)）。
+每个文件和目录都有规定位置。添加代码或打开目录前，应先阅读与你所修改流程相关的文档。每个进程根目录的顶层都是一个**闭集**：新代码必须归入现有类别，绝不能创建新的顶层目录（参见[命名约定 §4.8](docs/dev/references/architecture/naming-conventions.md)）。
 
-目录中的 `index.ts` 是 **barrel 文件**，也是强制执行的封装边界：它只重新导出一个内聚的公共 API，内部实现保持私有，外部通过它导入。该文件只能重新导出（不能包含逻辑，也不能使用 `export *`），不可嵌套，并且仅当 lint 能禁止深层导入时才应存在，否则不要创建 barrel。始终禁止使用 `index.tsx`（参见[命名约定 §6.4](docs/references/architecture/naming-conventions.md)）。
+目录中的 `index.ts` 是 **barrel 文件**，也是强制执行的封装边界：它只重新导出一个内聚的公共 API，内部实现保持私有，外部通过它导入。该文件只能重新导出（不能包含逻辑，也不能使用 `export *`），不可嵌套，并且仅当 lint 能禁止深层导入时才应存在，否则不要创建 barrel。始终禁止使用 `index.tsx`（参见[命名约定 §6.4](docs/dev/references/architecture/naming-conventions.md)）。
 
-- [主进程架构](docs/references/architecture/main-process.md) — `src/main/` 下的目录（`core`/`ipc`/`data`/`ai`/`features`/`services`/`utils`/`i18n`）及依赖方向。
-- [渲染进程架构](docs/references/architecture/renderer.md) — `src/renderer/` 的双轴布局（类型 × 领域）以及只允许向下依赖的分层。
-- [共享层架构](docs/references/architecture/shared-layer.md) — 哪些内容属于 `@shared`（跨进程且无可变运行时状态）及其顶层闭集。
+- [主进程架构](docs/dev/references/architecture/main-process.md) — `src/main/` 下的目录（`core`/`ipc`/`data`/`ai`/`features`/`services`/`utils`/`i18n`）及依赖方向。
+- [渲染进程架构](docs/dev/references/architecture/renderer.md) — `src/renderer/` 的双轴布局（类型 × 领域）以及只允许向下依赖的分层。
+- [共享层架构](docs/dev/references/architecture/shared-layer.md) — 哪些内容属于 `@shared`（跨进程且无可变运行时状态）及其顶层闭集。
 
 ### 数据
 
-**必须阅读**：[docs/references/data/README.md](docs/references/data/README.md)，其中包含系统选择、架构和模式。
+**必须阅读**：[docs/dev/references/data/README.md](docs/dev/references/data/README.md)，其中包含系统选择、架构和模式。
 
 | 系统                                                       | 使用场景                 | API                                                        |
 | ---------------------------------------------------------- | ------------------------ | ---------------------------------------------------------- |
-| [BootConfig](docs/references/data/boot-config-overview.md) | 早期启动设置（生命周期前） | `bootConfigService.get()`、`usePreference('BootConfig.*')` |
-| [Cache](docs/references/data/cache-overview.md)            | 临时数据（允许丢失）       | `useCache`、`useSharedCache`、`useSharedCacheValue`、`usePersistCache` |
-| [Preference](docs/references/data/preference-overview.md)  | 用户设置                 | `usePreference`                                            |
-| [DataApi](docs/references/data/data-api-overview.md)       | 业务数据（**关键**）       | `useQuery`、`useMutation`                                  |
+| [BootConfig](docs/dev/references/data/boot-config-overview.md) | 早期启动设置（生命周期前） | `bootConfigService.get()`、`usePreference('BootConfig.*')` |
+| [Cache](docs/dev/references/data/cache-overview.md)            | 临时数据（允许丢失）       | `useCache`、`useSharedCache`、`useSharedCacheValue`、`usePersistCache` |
+| [Preference](docs/dev/references/data/preference-overview.md)  | 用户设置                 | `usePreference`                                            |
+| [DataApi](docs/dev/references/data/data-api-overview.md)       | 业务数据（**关键**）       | `useQuery`、`useMutation`                                  |
 
 作用域：
 
@@ -165,19 +165,19 @@ logger.error("message", error);
 
 数据库：通过 **better-sqlite3** + Drizzle ORM 使用 SQLite。驱动是**同步的**（查询和事务以内联方式运行，不使用 `await`，这与应用中其他异步数据层不同），因此 `getDb()` 查询和 `withWriteTx(fn)` 回调必须以同步方式编写。Schema 位于 `src/main/data/db/schemas/`，通过 `pnpm db:migrations:generate` 生成迁移。
 
-**写入原子性**：使用 `application.get('DbService').withWriteTx(fn)`，在一个同步的 `BEGIN IMMEDIATE` 事务中以全有或全无的方式提交多次写入，或先读后写；`fn` 必须是同步函数。单次写入不需要使用它，因为 better-sqlite3 会在其单一连接上以原子方式执行每条语句。参见[数据库模式——写入串行化](docs/references/data/database-patterns.md#write-serialization-dbservicewritewritetx)。
+**写入原子性**：使用 `application.get('DbService').withWriteTx(fn)`，在一个同步的 `BEGIN IMMEDIATE` 事务中以全有或全无的方式提交多次写入，或先读后写；`fn` 必须是同步函数。单次写入不需要使用它，因为 better-sqlite3 会在其单一连接上以原子方式执行每条语句。参见[数据库模式——写入串行化](docs/dev/references/data/database-patterns.md#write-serialization-dbservicewritewritetx)。
 
-**DataApi 边界规则**：DataApi 只用于 SQLite 支持的业务数据。没有数据库表，就不能创建 DataApi 端点，应改用 IPC。参见[作用域与边界](docs/references/data/api-design-guidelines.md#dataapi-scope--boundaries)。
+**DataApi 边界规则**：DataApi 只用于 SQLite 支持的业务数据。没有数据库表，就不能创建 DataApi 端点，应改用 IPC。参见[作用域与边界](docs/dev/references/data/api-design-guidelines.md#dataapi-scope--boundaries)。
 
 ### IPC（IpcApi）
 
-**必须阅读**：[docs/references/ipc/README.md](docs/references/ipc/README.md)，其中包括范式边界（RPC 与 REST）、schema/router/preload/facade 分层、`IpcContext`、错误模型和安全性。
+**必须阅读**：[docs/dev/references/ipc/README.md](docs/dev/references/ipc/README.md)，其中包括范式边界（RPC 与 REST）、schema/router/preload/facade 分层、`IpcContext`、错误模型和安全性。
 
 非数据命令 IPC（窗口、系统、shell、通知、外部调用、文件）通过 **IpcApi** 执行。它是 BootConfig、Cache、Preference、DataApi 之外的第五个子系统，采用 IPC 上的 RPC，并使用单点 schema：新增路由时提供 `schema + handler`；调用时使用 `ipcApi.request('namespace.action', input)`；事件使用 `IpcApiService.broadcast`/`send` + `useIpcOn`。旧版命令 IPC 仍然共存，因此会同时遇到两种形式。决策规则：SQLite 数据 → DataApi；用户设置 → Preference；可丢失或共享的数据 → Cache；其他所有命令式操作 → IpcApi。
 
 ### 窗口管理器
 
-**必须阅读**：[docs/references/window-manager/README.md](docs/references/window-manager/README.md)，其中包含生命周期模式、池机制和 API 参考。
+**必须阅读**：[docs/dev/references/window-manager/README.md](docs/dev/references/window-manager/README.md)，其中包含生命周期模式、池机制和 API 参考。
 
 所有 `BrowserWindow` 都必须通过 `WindowManager` 管理，并使用三种模式之一（`default` / `singleton` / `pooled`）；各类型的模式在 `src/main/core/window/windowRegistry.ts` 中声明。
 
@@ -187,7 +187,7 @@ logger.error("message", error);
 
 ### 主进程服务（生命周期）
 
-**必须阅读**：[docs/references/lifecycle/README.md](docs/references/lifecycle/README.md)，其中包含架构、决策指南、使用模式和迁移步骤。
+**必须阅读**：[docs/dev/references/lifecycle/README.md](docs/dev/references/lifecycle/README.md)，其中包含架构、决策指南、使用模式和迁移步骤。
 
 所有持有长期资源或注册持久副作用的主进程服务，**必须**使用生命周期系统：
 
@@ -202,11 +202,11 @@ logger.error("message", error);
 - 对具有重量级按需资源的服务，**实现 `Activatable`**（IPC 保持注册，资源通过 `onActivate()`/`onDeactivate()` 加载和释放）。
 - **禁止**使用 `new` 或手工单例模式；容器负责实例化、排序和关闭。
 
-详细代码示例参见[使用指南](docs/references/lifecycle/lifecycle-usage.md)。迁移旧服务参见[迁移指南](docs/references/lifecycle/lifecycle-migration-guide.md)。
+详细代码示例参见[使用指南](docs/dev/references/lifecycle/lifecycle-usage.md)。迁移旧服务参见[迁移指南](docs/dev/references/lifecycle/lifecycle-migration-guide.md)。
 
 ### 非生命周期服务（直接导入单例）
 
-对于不持有长期资源或持久副作用的服务，使用**具名导出单例**（`export const x = new X()`）。不要使用 `getInstance()` 模式。判断标准参见[决策指南](docs/references/lifecycle/lifecycle-decision-guide.md)。
+对于不持有长期资源或持久副作用的服务，使用**具名导出单例**（`export const x = new X()`）。不要使用 `getInstance()` 模式。判断标准参见[决策指南](docs/dev/references/lifecycle/lifecycle-decision-guide.md)。
 
 ## Schema 与迁移规则
 

@@ -128,7 +128,7 @@ export function OrgSkillCatalogViewContent({
   if (error && skills.length === 0) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3">
-        <EmptyState preset="no-result" title={t('common.error')} description={error} />
+        <EmptyState title={t('common.error')} description={error} />
         <Button variant="outline" size="sm" onClick={() => void refetch()}>
           {t('common.refresh')}
         </Button>
@@ -191,13 +191,12 @@ export function OrgSkillCatalogViewContent({
       ) : null}
       {skills.length === 0 ? (
         <EmptyState
-          preset="no-resource"
           title={t('library.org_skill.empty_title')}
           description={t('library.org_skill.empty_description')}
           className="flex-1"
         />
       ) : visibleSkills.length === 0 ? (
-        <EmptyState preset="no-result" title={t('common.no_results')} className="flex-1" />
+        <EmptyState title={t('common.no_results')} className="flex-1" />
       ) : (
         <div className="grid grid-cols-1 gap-3 overflow-y-auto pb-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
           {visibleSkills.map((skill, index) => {

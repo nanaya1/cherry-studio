@@ -6,7 +6,6 @@ import { useTranslation } from 'react-i18next'
 
 import {
   Button,
-  CodeEditor,
   Combobox,
   type ComboboxOption,
   Flex,
@@ -25,6 +24,7 @@ import { useMultiplePreferences, usePreference } from '@data/hooks/usePreference
 import { loggerService } from '@logger'
 import ChatPreferenceSections from '@renderer/components/chat/settings/ChatPreferenceSections'
 import ResetIcon from '@renderer/components/icons/ResetIcon'
+import { LazyCodeEditor } from '@renderer/components/LazyCodeEditor'
 import {
   SettingDescription,
   SettingDivider,
@@ -34,7 +34,6 @@ import {
   SettingsContentColumn,
   SettingTitle
 } from '@renderer/components/SettingsPrimitives'
-import { useCmTheme } from '@renderer/hooks/useCodeStyle'
 import { useTheme } from '@renderer/hooks/useTheme'
 import { useTimer } from '@renderer/hooks/useTimer'
 import useUserTheme from '@renderer/hooks/useUserTheme'
@@ -56,23 +55,7 @@ import ThemeColorPicker from './components/ThemeColorPicker'
 const DEFAULT_COLOR_PRIMARY = '#00b96b'
 const DEFAULT_ZOOM_FACTOR = 1
 
-// 「显示与语言」下拉框暂时只开放中文和英文，其余语言注释保留，需要时取消注释即可
-const VISIBLE_APP_LANGUAGE_VALUES = [
-  'zh-CN',
-  'en-US'
-  // 'zh-TW',
-  // 'de-DE',
-  // 'ja-JP',
-  // 'ru-RU',
-  // 'el-GR',
-  // 'es-ES',
-  // 'fr-FR',
-  // 'pt-PT',
-  // 'ro-RO',
-  // 'vi-VN',
-  // 'tr-TR'
-]
-const visibleAppLanguageOptions = appLanguageOptions.filter((lang) => VISIBLE_APP_LANGUAGE_VALUES.includes(lang.value))
+const visibleAppLanguageOptions = appLanguageOptions.filter(({ value }) => value === 'zh-CN' || value === 'en-US')
 const THEME_COLOR_PRESETS = [
   DEFAULT_COLOR_PRIMARY,
   '#EF4444', // Red
@@ -128,7 +111,7 @@ export async function confirmMenuPresentationModeChange({
   setTimeoutTimer(
     'handleMenuPresentationModeChange',
     () => {
-      void window.api.application.relaunch()
+      void ipcApi.request('app.relaunch')
     },
     500
   )
@@ -139,9 +122,19 @@ const AppearanceSettings: FC = () => {
   const { theme, settedTheme, setTheme } = useTheme()
   const { setTimeoutTimer } = useTimer()
   const { userTheme, setUserTheme } = useUserTheme()
-  const activeCmTheme = useCmTheme()
 
   const [language, setLanguage] = usePreference('app.language')
+  const resolvedLanguage = i18n.resolvedLanguage ?? i18n.language
+  const displayLanguage = isAppLanguage(language)
+    ? language
+    : isAppLanguage(resolvedLanguage)
+      ? resolvedLanguage
+      : defaultLanguage
+  const onSelectLanguage = (value: string) => {
+    if (!isAppLanguage(value)) return
+    void i18n.changeLanguage(value)
+    void setLanguage(value)
+  }
   const [windowStyle, setWindowStyle] = usePreference('ui.window_style')
   const [menuPresentationMode, setMenuPresentationMode] = usePreference('menu.presentation_mode')
   const [customCss, setCustomCss] = usePreference('ui.custom_css')
@@ -158,13 +151,6 @@ const AppearanceSettings: FC = () => {
   const [currentZoom, setCurrentZoom] = useState(1.0)
   const [fontList, setFontList] = useState<string[]>([])
   const isDefaultZoom = Math.abs(currentZoom - DEFAULT_ZOOM_FACTOR) < 0.001
-
-  const resolvedLanguage = i18n.resolvedLanguage ?? i18n.language
-  const displayLanguage = isAppLanguage(language)
-    ? language
-    : isAppLanguage(resolvedLanguage)
-      ? resolvedLanguage
-      : defaultLanguage
 
   const themeOptions: ThemePreviewOption[] = [
     { value: ThemeMode.light, label: t('settings.theme.light'), icon: Sun },
@@ -204,13 +190,6 @@ const AppearanceSettings: FC = () => {
       window.removeEventListener('resize', handleResize)
     }
   }, [])
-
-  const onSelectLanguage = (value: string) => {
-    if (!isAppLanguage(value)) return
-
-    void i18n.changeLanguage(value)
-    void setLanguage(value)
-  }
 
   const handleWindowStyleChange = useCallback(
     (checked: boolean) => {
@@ -268,7 +247,7 @@ const AppearanceSettings: FC = () => {
     setTimeoutTimer(
       'handleUseSystemTitleBarChange',
       () => {
-        void window.api.application.relaunch()
+        void ipcApi.request('app.relaunch')
       },
       500
     )
@@ -374,10 +353,10 @@ const AppearanceSettings: FC = () => {
       </SettingGroup>
 
       <SettingGroup theme={theme}>
-        <SettingTitle>{t('settings.general.common.sections.display_language')}</SettingTitle>
+        <SettingTitle>{t('settings.general.common.sections.display')}</SettingTitle>
         <SettingDivider />
         <SettingRow id="setting-appearance-display-language" className="scroll-mt-6">
-          <SettingRowTitle>{t('common.language')}</SettingRowTitle>
+          <SettingRowTitle>{t('settings.general.interface_language')}</SettingRowTitle>
           <SelectorRow>
             <Select value={displayLanguage} onValueChange={onSelectLanguage}>
               <SelectTrigger
@@ -403,14 +382,13 @@ const AppearanceSettings: FC = () => {
         </SettingRow>
         {isLinux && (
           <>
-            <SettingDivider />
             <SettingRow>
               <SettingRowTitle>{t('settings.use_system_title_bar.title')}</SettingRowTitle>
               <Switch checked={useSystemTitleBar} onCheckedChange={handleUseSystemTitleBarChange} />
             </SettingRow>
+            <SettingDivider />
           </>
         )}
-        <SettingDivider />
         <SettingRow id="setting-appearance-zoom" className="scroll-mt-6">
           <SettingRowTitle>{t('settings.zoom.title')}</SettingRowTitle>
           <ZoomButtonGroup>
@@ -420,7 +398,8 @@ const AppearanceSettings: FC = () => {
                   onClick={() => handleZoomFactor(0, true)}
                   variant="ghost"
                   size="icon"
-                  aria-label={t('preview.reset')}>
+                  aria-label={t('preview.reset')}
+                  className="text-muted-foreground">
                   <ResetIcon size="14" />
                 </Button>
               </Tooltip>
@@ -430,7 +409,8 @@ const AppearanceSettings: FC = () => {
                 onClick={() => handleZoomFactor(-0.1)}
                 variant="ghost"
                 size="icon"
-                aria-label={t('preview.zoom_out')}>
+                aria-label={t('preview.zoom_out')}
+                className="text-muted-foreground">
                 <Minus size="14" />
               </Button>
             </Tooltip>
@@ -440,7 +420,8 @@ const AppearanceSettings: FC = () => {
                 onClick={() => handleZoomFactor(0.1)}
                 variant="ghost"
                 size="icon"
-                aria-label={t('preview.zoom_in')}>
+                aria-label={t('preview.zoom_in')}
+                className="text-muted-foreground">
                 <Plus size="14" />
               </Button>
             </Tooltip>
@@ -496,7 +477,11 @@ const AppearanceSettings: FC = () => {
           <SettingRowTitle>{t('settings.display.font.global')}</SettingRowTitle>
           <SelectorRow className="gap-2">
             {userTheme.userFontFamily && (
-              <Button onClick={() => handleUserFontChange('')} variant="ghost" size="icon">
+              <Button
+                onClick={() => handleUserFontChange('')}
+                variant="ghost"
+                size="icon"
+                className="text-muted-foreground">
                 <ResetIcon size="14" />
               </Button>
             )}
@@ -521,7 +506,11 @@ const AppearanceSettings: FC = () => {
           <SettingRowTitle>{t('settings.display.font.code')}</SettingRowTitle>
           <SelectorRow className="gap-2">
             {userTheme.userCodeFontFamily && (
-              <Button onClick={() => handleUserCodeFontChange('')} variant="ghost" size="icon">
+              <Button
+                onClick={() => handleUserCodeFontChange('')}
+                variant="ghost"
+                size="icon"
+                className="text-muted-foreground">
                 <ResetIcon size="14" />
               </Button>
             )}
@@ -597,8 +586,7 @@ const AppearanceSettings: FC = () => {
         <div
           id="setting-appearance-custom-css"
           className="mt-4 scroll-mt-6 overflow-hidden rounded-lg border border-border-subtle">
-          <CodeEditor
-            theme={activeCmTheme}
+          <LazyCodeEditor
             fontSize={fontSize - 1}
             value={customCss}
             language="css"

@@ -3,16 +3,22 @@ import { useEffect } from 'react'
 import { CodeStyleProvider } from '@renderer/components/CodeStyleProvider'
 import { CommandContextKeyProvider, CommandProvider } from '@renderer/components/command'
 import { ConversationNotificationRuntime } from '@renderer/components/ConversationNotificationRuntime'
+import { DictationShortcutHost } from '@renderer/components/DictationShortcutHost'
 import { ErrorBoundary } from '@renderer/components/ErrorBoundary'
+import { FileEditSessionProvider } from '@renderer/components/FileEditSessionProvider'
 import { TabsProvider } from '@renderer/components/layout/TabsProvider'
+import { McpInteractionHost } from '@renderer/components/McpInteractionHost'
 import { PopupHost } from '@renderer/components/PopupHost'
 import { ResourceEditDialogEventHost } from '@renderer/components/resourceCatalog/dialogs/ResourceEditDialogEventHost'
 import { ThemeProvider } from '@renderer/components/ThemeProvider'
 import ToastHost from '@renderer/components/ToastHost'
+import { VoicePlaybackHost } from '@renderer/components/VoicePlaybackHost'
 import { WindowFatalFallback } from '@renderer/components/WindowFatalFallback'
+import { useAutoReadPreferenceSync } from '@renderer/hooks/useAutoReadPreferenceSync'
 import { useWindowRuntime } from '@renderer/hooks/useWindowRuntime'
 import { registerImageModeChooser } from '@renderer/services/imageExportModeChooser'
 import { SubWindowAppShell } from '@renderer/windows/subWindow/SubWindowAppShell'
+import { WindowFileEditRecovery } from '@renderer/windows/WindowFileEditRecovery'
 
 // Headless behavior leaf inside the providers: the shared window runtime (same route
 // tree as main, so it needs the same window-level side effects). It renders nothing;
@@ -20,6 +26,7 @@ import { SubWindowAppShell } from '@renderer/windows/subWindow/SubWindowAppShell
 // none of the main-only concerns (boot spinner/timer, update/storage notification).
 function SubWindowRuntime(): null {
   useWindowRuntime()
+  useAutoReadPreferenceSync()
 
   // Same route tree as main, so topic/message exports run here too — register the
   // image-mode popup behind the services seam like MainApp does.
@@ -39,19 +46,24 @@ function SubWindowApp(): React.ReactElement {
     <ErrorBoundary fallbackComponent={WindowFatalFallback}>
       <ThemeProvider>
         <CodeStyleProvider>
-          <CommandContextKeyProvider>
-            <CommandProvider>
-              <TabsProvider initialDefaultTab={null} includePinnedTabs={false}>
-                <SubWindowAppShell />
-                <SubWindowRuntime />
-                <ConversationNotificationRuntime />
-                {/* 窗口级编辑弹窗宿主：与 MainApp 对齐，分离窗口内打开的编辑弹窗在此承载 */}
-                <ResourceEditDialogEventHost />
-                <PopupHost />
-                <ToastHost />
-              </TabsProvider>
-            </CommandProvider>
-          </CommandContextKeyProvider>
+          <FileEditSessionProvider>
+            <CommandContextKeyProvider>
+              <CommandProvider>
+                <TabsProvider initialDefaultTab={null} includePinnedTabs={false}>
+                  <SubWindowAppShell />
+                  <SubWindowRuntime />
+                  <ConversationNotificationRuntime />
+                  <ResourceEditDialogEventHost />
+                  <McpInteractionHost />
+                  <PopupHost />
+                  <ToastHost />
+                  <WindowFileEditRecovery />
+                  <DictationShortcutHost />
+                  <VoicePlaybackHost />
+                </TabsProvider>
+              </CommandProvider>
+            </CommandContextKeyProvider>
+          </FileEditSessionProvider>
         </CodeStyleProvider>
       </ThemeProvider>
     </ErrorBoundary>

@@ -9,7 +9,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  Scrollbar,
+  ScrollArea,
   Tooltip
 } from '@cherrystudio/ui'
 import { useMutation, useQuery } from '@renderer/data/hooks/useDataApi'
@@ -191,7 +191,7 @@ export function RecommendedSkillCatalogView({ search, onViewInstalled }: Recomme
   }
 
   return (
-    <Scrollbar className="h-full">
+    <ScrollArea className="h-full">
       <div className="mx-auto w-full px-6 py-4">
         <div className="mb-4 flex gap-1 overflow-x-auto">
           <Button
@@ -377,6 +377,6 @@ export function RecommendedSkillCatalogView({ search, onViewInstalled }: Recomme
         cancelText={t('workspace.skill_catalog.name_conflict_cancel')}
         onConfirm={onViewInstalled}
       />
-    </Scrollbar>
+    </ScrollArea>
   )
 }

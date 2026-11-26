@@ -7,24 +7,26 @@ import {
   Dialog,
   DialogContent,
   DialogTitle,
-  Scrollbar,
+  ScrollArea,
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger
 } from '@cherrystudio/ui'
+import { Bailian, Modelscope } from '@cherrystudio/ui/icons/providers'
 import { useMcpServers } from '@renderer/hooks/useMcpServer'
 import { useOrgAccountSession } from '@renderer/hooks/useOrgAccountSession'
 import { useOrgConnectors } from '@renderer/hooks/useOrgConnectors'
+import MarketplaceMcpProvider from '@renderer/pages/marketplace/MarketplaceMcpProvider'
+import { type ProviderConfig, providers } from '@renderer/pages/marketplace/providers/config'
+import { getProviderDisplayName } from '@renderer/utils/mcpDiscovery'
 import { cn } from '@renderer/utils/style'
 
 import BuiltinMcpServerList from './BuiltinMcpServerList'
 import McpMarketList from './McpMarketList'
-import McpProviderSettings from './McpProviderSettings'
 import McpServersList from './McpServersList'
 // [enterprise] T0 组织连接器目录
 import OrgConnectorList from './OrgConnectorList'
-import { getMcpProviderLogo, getProviderDisplayName, type ProviderConfig, providers } from './providers/config'
 
 // [enterprise] 组织连接器由发现页三级 tab 上移为目录二级 tab
 // type CatalogTab = 'discover' | 'providers' | 'mine'
@@ -35,7 +37,13 @@ type DiscoverTab = 'builtin' | 'marketplace'
 const primaryTabClassName =
   'h-10 flex-none rounded-none border-x-0 border-t-0 border-b-2 border-transparent bg-transparent px-1.5 font-medium text-muted-foreground shadow-none hover:bg-transparent hover:text-foreground data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none dark:data-[state=active]:border-foreground dark:data-[state=active]:bg-transparent'
 
-export default function McpCatalog() {
+export default function McpCatalog({
+  initialView,
+  initialProvider
+}: {
+  initialView?: 'builtin' | 'marketplace' | 'providers'
+  initialProvider?: string
+}) {
   const { t } = useTranslation()
   const { mcpServers } = useMcpServers()
   const { status: accountStatus } = useOrgAccountSession()
@@ -46,9 +54,11 @@ export default function McpCatalog() {
   // 隐藏公共入口，保留目录能力与原显隐条件，便于恢复。
   // const showPublicCatalog = orgMode && connectorsCatalog.available
   const showPublicCatalog = false
-  const [activeTab, setActiveTab] = useState<CatalogTab>('discover')
-  const [discoverTab, setDiscoverTab] = useState<DiscoverTab>('builtin')
-  const [selectedProvider, setSelectedProvider] = useState<ProviderConfig | null>(null)
+  const [activeTab, setActiveTab] = useState<CatalogTab>(initialView === 'providers' ? 'providers' : 'discover')
+  const [discoverTab, setDiscoverTab] = useState<DiscoverTab>(initialView === 'marketplace' ? 'marketplace' : 'builtin')
+  const [selectedProvider, setSelectedProvider] = useState<ProviderConfig | null>(
+    () => providers.find(({ key }) => key === initialProvider) ?? null
+  )
 
   const changeTab = (value: string) => {
     setActiveTab(value as CatalogTab)
@@ -111,7 +121,7 @@ export default function McpCatalog() {
       </div>
 
       <TabsContent value="discover" className="flex min-h-0 flex-1 flex-col">
-        <Scrollbar className="@container/mcp-discover min-h-0 flex-1 px-6 pt-5 pb-6">
+        <ScrollArea className="@container/mcp-discover min-h-0 flex-1 px-6 pt-5 pb-6">
           {discoverTab === 'builtin' ? (
             <BuiltinMcpServerList variant="catalog" toolbarStart={discoverTabs} />
           ) : (
@@ -119,23 +129,23 @@ export default function McpCatalog() {
             // <OrgConnectorList variant="catalog" toolbarStart={discoverTabs} />
             <McpMarketList variant="catalog" toolbarStart={discoverTabs} />
           )}
-        </Scrollbar>
+        </ScrollArea>
       </TabsContent>
 
       {/* [enterprise] 组织连接器目录升级为二级 tab 内容 */}
       {showPublicCatalog ? (
         <TabsContent value="org" className="min-h-0 flex-1">
-          <Scrollbar className="@container/mcp-discover h-full px-6 py-5">
+          <ScrollArea className="@container/mcp-discover h-full px-6 py-5">
             <OrgConnectorList variant="catalog" catalog={connectorsCatalog} />
-          </Scrollbar>
+          </ScrollArea>
         </TabsContent>
       ) : null}
 
       <TabsContent value="providers" className="min-h-0 flex-1">
-        <Scrollbar className="@container/mcp-providers h-full px-6 py-5">
+        <ScrollArea className="@container/mcp-providers h-full px-6 py-5">
           <div className="grid @[1120px]/mcp-providers:grid-cols-4 @[560px]/mcp-providers:grid-cols-2 @[840px]/mcp-providers:grid-cols-3 grid-cols-1 gap-3">
             {providers.map((provider) => {
-              const Logo = getMcpProviderLogo(provider.key)
+              const Logo = provider.key === 'bailian' ? Bailian : Modelscope
               const providerName = getProviderDisplayName(provider, t)
 
               return (
@@ -165,7 +175,7 @@ export default function McpCatalog() {
               )
             })}
           </div>
-        </Scrollbar>
+        </ScrollArea>
       </TabsContent>
 
       <TabsContent value="mine" className="min-h-0 flex-1">
@@ -180,7 +190,7 @@ export default function McpCatalog() {
           {selectedProvider && (
             <>
               <DialogTitle className="sr-only">{getProviderDisplayName(selectedProvider, t)}</DialogTitle>
-              <McpProviderSettings
+              <MarketplaceMcpProvider
                 provider={selectedProvider}
                 existingServers={mcpServers}
                 onBack={() => setSelectedProvider(null)}

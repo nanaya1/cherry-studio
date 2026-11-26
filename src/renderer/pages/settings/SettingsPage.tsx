@@ -4,8 +4,7 @@ import type { CSSProperties, FC, MouseEvent } from 'react'
 import { Fragment, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { MenuDivider, MenuItem, MenuList, PageHeader } from '@cherrystudio/ui'
-import Scrollbar from '@renderer/components/Scrollbar'
+import { MenuDivider, MenuItem, MenuList, PageHeader, ScrollArea } from '@cherrystudio/ui'
 import { MEA_HIDDEN_SETTINGS_ROUTES, settingsMenu } from '@renderer/components/settingsMenu'
 import useMacTransparentWindow from '@renderer/hooks/useMacTransparentWindow'
 import SettingsFocusScroll from '@renderer/pages/settings/settingsSearch/SettingsFocusScroll'
@@ -87,7 +86,7 @@ const SettingsPage: FC = () => {
                 }
               />
             )}
-            <Scrollbar className="min-h-0 flex-1 select-none">
+            <ScrollArea className="min-h-0 flex-1 select-none">
               <MenuList className={settingsSubmenuListClassName}>
                 {visibleSettingsMenu.map((item, index) => {
                   const startsNewGroup = index > 0 && item.groupKey !== visibleSettingsMenu[index - 1].groupKey
@@ -113,7 +112,7 @@ const SettingsPage: FC = () => {
                   )
                 })}
               </MenuList>
-            </Scrollbar>
+            </ScrollArea>
           </div>
           <div className="flex h-full min-h-0 min-w-0 flex-1">
             <div

@@ -33,6 +33,7 @@ import { messageHandlers } from './messages'
 import { miniAppHandlers } from './miniApps'
 import { modelHandlers } from './models'
 import { noteHandlers } from './notes'
+import { notificationHandlers } from './notifications'
 import { paintingHandlers } from './paintings'
 import { pinHandlers } from './pins'
 import { promptHandlers } from './prompts'
@@ -41,7 +42,6 @@ import { searchHandlers } from './search'
 import { skillCatalogHandlers } from './skillCatalog'
 import { skillHandlers } from './skills'
 import { tagHandlers } from './tags'
-import { temporaryChatHandlers } from './temporaryChats'
 import { topicHandlers } from './topics'
 import { translateHandlers } from './translate'
 
@@ -63,7 +63,6 @@ export const apiHandlers: ApiImplementation = {
   ...topicHandlers,
   ...messageHandlers,
   ...fileHandlers,
-  ...temporaryChatHandlers,
   ...modelHandlers,
   ...paintingHandlers,
   ...providerHandlers,
@@ -76,6 +75,7 @@ export const apiHandlers: ApiImplementation = {
   ...mcpServerHandlers,
   ...miniAppHandlers,
   ...noteHandlers,
+  ...notificationHandlers,
   ...tagHandlers,
   ...groupHandlers,
   ...pinHandlers,

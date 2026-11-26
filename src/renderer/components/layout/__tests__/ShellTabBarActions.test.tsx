@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest'
-
-import type * as PlatformModule from '@renderer/utils/platform'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+import type * as PlatformModule from '@renderer/utils/platform'
 
 const { cacheState, mocks, updateState, platformState } = vi.hoisted(() => ({
   cacheState: { sidebarWidth: 50 },
@@ -272,7 +272,7 @@ describe('ShellTabBarActions', () => {
       'text-muted-foreground',
       'dark:text-muted-foreground'
     )
-    expect(screen.getByRole('button', { name: 'Help & Feedback' })).toHaveTextContent('help-icon')
+    expect(screen.queryByRole('button', { name: 'Help & Feedback' })).not.toBeInTheDocument()
   })
 
   it('opens the settings tab from the sidebar footer action', async () => {
@@ -285,42 +285,8 @@ describe('ShellTabBarActions', () => {
     expect(mocks.openSettingsTab).toHaveBeenCalledTimes(1)
   })
 
-  it('forwards help overlay state from the sidebar footer', async () => {
-    const user = userEvent.setup()
-    const onOverlayOpenChange = vi.fn()
-
-    render(
-      <SidebarShellActions
-        layout="icon"
-        onFeedbackClick={vi.fn()}
-        onSettingsClick={mocks.openSettingsTab}
-        onOverlayOpenChange={onOverlayOpenChange}
-      />
-    )
-
-    await user.click(screen.getByRole('button', { name: 'Help & Feedback' }))
-
-    expect(onOverlayOpenChange).toHaveBeenCalledWith(true)
-  })
-
-  it('forwards feedback requests from the sidebar footer', async () => {
-    const user = userEvent.setup()
-    const onFeedbackClick = vi.fn()
-
-    render(
-      <SidebarShellActions layout="icon" onFeedbackClick={onFeedbackClick} onSettingsClick={mocks.openSettingsTab} />
-    )
-
-    await user.click(screen.getByRole('button', { name: 'Open feedback' }))
-
-    expect(onFeedbackClick).toHaveBeenCalledOnce()
-  })
-
-  it('keeps only help actions in the full sidebar footer actions', () => {
+  it('keeps the full sidebar footer clear of duplicate avatar-menu actions', () => {
     render(<SidebarShellActions layout="full" onFeedbackClick={vi.fn()} onSettingsClick={mocks.openSettingsTab} />)
-
-    expect(screen.queryByRole('button', { name: 'Light' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /settings/i })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Help & Feedback' })).toHaveTextContent('help-full')
+    expect(screen.queryByRole('button')).not.toBeInTheDocument()
   })
 })

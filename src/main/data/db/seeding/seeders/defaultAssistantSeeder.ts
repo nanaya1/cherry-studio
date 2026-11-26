@@ -19,6 +19,7 @@ export class DefaultAssistantSeeder implements ISeeder {
   constructor() {
     this.version = hashObject({
       assistant: DEFAULT_ASSISTANT_SEED,
+      topic: { name: '', empty: true },
       freshGuard: 'no active assistant/topic/message',
       localizedName: 'MEA Cowork for every locale',
       stockRename: 'unique stock name=>MEA Cowork+builtinRole',

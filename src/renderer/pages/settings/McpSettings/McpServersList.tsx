@@ -15,13 +15,14 @@ import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-  Scrollbar,
+  ScrollArea,
   Sortable,
   useDndReorder
 } from '@cherrystudio/ui'
 import { loggerService } from '@logger'
 import CollapsibleSearchBar from '@renderer/components/CollapsibleSearchBar'
 import { SettingTitle } from '@renderer/components/SettingsPrimitives'
+import { useExitPresence } from '@renderer/hooks/useExitPresence'
 import { useMcpServers } from '@renderer/hooks/useMcpServer'
 import { ipcApi } from '@renderer/ipc'
 import EnvironmentDependencies from '@renderer/pages/settings/DependenciesSettings/EnvironmentDependencies'
@@ -29,6 +30,11 @@ import { toast } from '@renderer/services/toast'
 // 停用原 AppRouter 类型导入（随 routeApi.useSearch 一起停用；恢复时取消注释）：
 // import type { AppRouter } from '@renderer/types/router'
 import { matchKeywordsInString } from '@renderer/utils/match'
+import {
+  DuplicateMcpServerNameError,
+  isExportableMcpServer,
+  serializeMcpServersForExport
+} from '@renderer/utils/mcpTransfer'
 import { cn } from '@renderer/utils/style'
 import type { CreateMcpServerDto } from '@shared/data/api/schemas/mcpServers'
 import type { ProtocolMcpInstallRequest } from '@shared/data/types/mcpProtocolInstall'
@@ -79,6 +85,7 @@ const McpServersList: FC<McpServersListProps> = ({ variant = 'settings', showTit
   }, [matches])
   const [isAddModalVisible, setIsAddModalVisible] = useState(false)
   const [isAddMenuOpen, setIsAddMenuOpen] = useState(false)
+  const [exporting, setExporting] = useState(false)
   const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false)
   const [isQuickCreateOpen, setIsQuickCreateOpen] = useState(false)
   const [modalType, setModalType] = useState<ImportMethod>('json')
@@ -88,6 +95,11 @@ const McpServersList: FC<McpServersListProps> = ({ variant = 'settings', showTit
   const protocolInstallQueueRef = useRef<ProtocolMcpInstallRequest[]>([])
   const pendingAutoEnableServerIdRef = useRef<string | null>(null)
   const protocolInstallRequest = protocolInstallQueue[0]
+  const [displayedProtocolRequestId, setDisplayedProtocolRequestId] = useState<string | null>(null)
+  const displayedProtocolRequest = protocolInstallQueue.find(
+    (request) => request.requestId === displayedProtocolRequestId
+  )
+  const protocolDialog = useExitPresence(displayedProtocolRequest ?? null)
 
   const isCatalog = variant === 'catalog'
   const [searchText, setSearchText] = useState('')
@@ -129,23 +141,27 @@ const McpServersList: FC<McpServersListProps> = ({ variant = 'settings', showTit
     [navigate]
   )
 
+  useEffect(() => {
+    if (protocolDialog.isPresent) return
+    setDisplayedProtocolRequestId(protocolInstallRequest?.requestId ?? null)
+    if (protocolInstallRequest || !pendingAutoEnableServerIdRef.current) return
+    const serverId = pendingAutoEnableServerIdRef.current
+    pendingAutoEnableServerIdRef.current = null
+    openProtocolServer(serverId)
+  }, [openProtocolServer, protocolDialog.isPresent, protocolInstallRequest])
+
   const handleProtocolInstallClose = useCallback(async () => {
-    if (!protocolInstallRequest) return
+    if (!displayedProtocolRequest) return
 
     try {
-      await ipcApi.request('mcp.protocol_install.cancel', { requestId: protocolInstallRequest.requestId })
+      await ipcApi.request('mcp.protocol_install.cancel', { requestId: displayedProtocolRequest.requestId })
     } catch (error) {
       logger.error('Failed to cancel MCP protocol install request', error as Error)
       return
     }
 
-    const remainingRequests = removeProtocolInstallRequest(protocolInstallRequest.requestId)
-    if (remainingRequests.length > 0 || !pendingAutoEnableServerIdRef.current) return
-
-    const serverId = pendingAutoEnableServerIdRef.current
-    pendingAutoEnableServerIdRef.current = null
-    openProtocolServer(serverId)
-  }, [openProtocolServer, protocolInstallRequest, removeProtocolInstallRequest])
+    removeProtocolInstallRequest(displayedProtocolRequest.requestId)
+  }, [displayedProtocolRequest, removeProtocolInstallRequest])
 
   const filteredMcpServers = useMemo(() => {
     const keywords = deferredSearchText.toLowerCase().split(/\s+/).filter(Boolean)
@@ -221,12 +237,12 @@ const McpServersList: FC<McpServersListProps> = ({ variant = 'settings', showTit
   )
 
   const handleProtocolInstall = useCallback(async () => {
-    if (!protocolInstallRequest) return
+    if (!displayedProtocolRequest) return
 
     let createdServers: McpServer[]
     try {
       createdServers = await ipcApi.request('mcp.protocol_install.install', {
-        requestId: protocolInstallRequest.requestId
+        requestId: displayedProtocolRequest.requestId
       })
     } catch (error) {
       logger.error('Failed to install MCP servers from protocol', error as Error)
@@ -240,16 +256,10 @@ const McpServersList: FC<McpServersListProps> = ({ variant = 'settings', showTit
     void refetch().catch((error) =>
       logger.error('Failed to refresh MCP servers after protocol install', error as Error)
     )
-    const remainingRequests = removeProtocolInstallRequest(protocolInstallRequest.requestId)
+    pendingAutoEnableServerIdRef.current = lastCreatedServer.id
+    removeProtocolInstallRequest(displayedProtocolRequest.requestId)
     toast.success(t('settings.mcp.addSuccess'))
-    if (remainingRequests.length > 0) {
-      pendingAutoEnableServerIdRef.current = lastCreatedServer.id
-      return
-    }
-
-    pendingAutoEnableServerIdRef.current = null
-    openProtocolServer(lastCreatedServer.id)
-  }, [openProtocolServer, protocolInstallRequest, refetch, removeProtocolInstallRequest, t])
+  }, [displayedProtocolRequest, refetch, removeProtocolInstallRequest, t])
 
   const handleManualAdd = useCallback(() => {
     setIsAddMenuOpen(false)
@@ -261,6 +271,26 @@ const McpServersList: FC<McpServersListProps> = ({ variant = 'settings', showTit
     setModalType(importMethod)
     setIsAddModalVisible(true)
   }, [])
+
+  const handleExport = useCallback(async () => {
+    setIsAddMenuOpen(false)
+    if (exporting) return
+    setExporting(true)
+    try {
+      const content = serializeMcpServersForExport(mcpServers)
+      await window.api.file.save('mcp-servers.json', new TextEncoder().encode(content), {
+        filters: [{ name: t('assistants.presets.import.file_filter'), extensions: ['json'] }]
+      })
+    } catch (error) {
+      toast.error(
+        error instanceof DuplicateMcpServerNameError
+          ? t('settings.mcp.exportDuplicateName', { name: error.serverName })
+          : t('settings.mcp.exportFailed')
+      )
+    } finally {
+      setExporting(false)
+    }
+  }, [exporting, mcpServers, t])
 
   const selectedServer = selectedServerId ? mcpServers.find((server) => server.id === selectedServerId) : undefined
 
@@ -279,6 +309,11 @@ const McpServersList: FC<McpServersListProps> = ({ variant = 'settings', showTit
           <MenuItem label={t('settings.mcp.addServer.importFrom.json')} onClick={() => handleImport('json')} />
           <MenuItem label={t('settings.mcp.addServer.importFrom.dxt')} onClick={() => handleImport('dxt')} />
           <MenuItem label={t('settings.mcp.addServer.importFrom.mcpb')} onClick={() => handleImport('mcpb')} />
+          <MenuItem
+            label={t('settings.mcp.exportAsJson')}
+            onClick={() => void handleExport()}
+            disabled={exporting || !mcpServers.some(isExportableMcpServer)}
+          />
         </MenuList>
       </PopoverContent>
     </Popover>
@@ -394,7 +429,9 @@ const McpServersList: FC<McpServersListProps> = ({ variant = 'settings', showTit
         <div className="flex min-h-0 w-full flex-1 flex-col overflow-hidden">
           <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
             <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
-              <Scrollbar ref={scrollRef} className={cn('min-h-0 flex-1', isCatalog && '@container/connectors')}>
+              <ScrollArea
+                viewportProps={{ ref: scrollRef }}
+                className={cn('min-h-0 flex-1', isCatalog && '@container/connectors')}>
                 {filteredMcpServers.length > 0 ? (
                   <Sortable
                     className={cn(
@@ -427,12 +464,11 @@ const McpServersList: FC<McpServersListProps> = ({ variant = 'settings', showTit
                 ) : (
                   <EmptyState
                     compact
-                    preset="no-resource"
                     description={mcpServers.length === 0 ? t('settings.mcp.noServers') : t('common.no_results')}
                     className="py-12"
                   />
                 )}
-              </Scrollbar>
+              </ScrollArea>
             </div>
           </div>
         </div>
@@ -453,10 +489,11 @@ const McpServersList: FC<McpServersListProps> = ({ variant = 'settings', showTit
         initialImportMethod={modalType}
       />
 
-      {protocolInstallRequest && (
+      {protocolDialog.value && (
         <McpProtocolInstallDialog
-          key={protocolInstallRequest.requestId}
-          servers={protocolInstallRequest.servers}
+          key={protocolDialog.value.requestId}
+          open={displayedProtocolRequest !== undefined}
+          servers={protocolDialog.value.servers}
           onClose={handleProtocolInstallClose}
           onInstall={handleProtocolInstall}
         />

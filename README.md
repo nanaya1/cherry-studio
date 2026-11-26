@@ -5,7 +5,7 @@
   </a>
 </h1>
 
-<p align="center">English | <a href="./docs/contrib/development.md">Development</a><br></p>
+<p align="center">English | <a href="./docs/dev/contrib/development.md">Development</a><br></p>
 <!-- Feedback entry temporarily hidden. -->
 
 <div align="center">
@@ -39,90 +39,72 @@ MEA Cowork is a desktop client that supports multiple LLM providers, available o
 
 👏 Join [Telegram Group](https://t.me/CherryStudioAI)｜[Discord](https://discord.gg/wez8HtpxqQ) | [QQ Group(575014769)](https://qm.qq.com/q/lo0D4qVZKi)
 
-❤️ Like MEA Cowork? Give it a star 🌟 or [Sponsor](docs/sponsor.md) to support the development!
 
-# 🌠 Screenshot
+# 🌠 Screenshots
 
-![](https://github.com/user-attachments/assets/36dddb2c-e0fb-4a5f-9411-91447bab6e18)
+**Agents — work with files, tools, and multi-step tasks.**
 
-![](https://github.com/user-attachments/assets/f549e8a0-2385-40b4-b52b-2039e39f2930)
+![Cherry Studio agent workspace creating a presentation](.github/images/readme/agent-light-en.webp)
 
-![](https://github.com/user-attachments/assets/58e0237c-4d36-40de-b428-53051d982026)
+**Conversations — explore ideas with your models and assistants.**
+
+![Cherry Studio conversation displaying a Mermaid chart](.github/images/readme/chat-light-en.webp)
+
+**Model providers — configure services, API keys, and models in one place.**
+
+![Cherry Studio model provider settings in light mode](.github/images/readme/provider-light-en.webp)
+
+**Knowledge bases — organize sources for retrieval and agent workflows.**
+
+![Cherry Studio knowledge base with folders and documents](.github/images/readme/knowledge-light-en.webp)
+
+**Image creation — turn prompts into images and refine your work.**
+
+![Cherry Studio image creation workspace](.github/images/readme/drawing-light-en.webp)
 
 # 🌟 Key Features
 
-1. **Diverse LLM Provider Support**:
+## Agents & Automation
 
-- ☁️ Major LLM Cloud Services: OpenAI, Gemini, Anthropic, and more
-- 🔗 AI Web Service Integration: Claude, Perplexity, [Poe](https://poe.com/), and others
-- 💻 Local Model Support with Ollama, LM Studio
+- 🤖 Create agents with their own instructions, workspaces, models, and tool permissions.
+- 🛠️ Work with files, run commands, and use browser and computer automation tools.
+- 🔌 Extend capabilities with Skills and MCP (Model Context Protocol) servers.
+- ⏰ Run scheduled tasks and connect agents to messaging platforms through Channels.
 
-2. **AI Assistants & Conversations**:
+## Models & Conversations
 
-- 📚 300+ Pre-configured AI Assistants
-- 🤖 Custom Assistant Creation
-- 💬 Multi-model Simultaneous Conversations
+- ☁️ Connect OpenAI, Anthropic, Gemini, and other cloud providers, or add custom compatible services.
+- 💻 Use local models through Ollama and LM Studio.
+- 💬 Customize assistants and compare responses from multiple models in one conversation.
+- 📝 Read and share rich responses with Markdown, code highlighting, formulas, Mermaid charts, and conversation exports.
 
-3. **Document & Data Processing**:
+## Knowledge & Documents
 
-- 📄 Supports Text, Images, Office, PDF, and more
-- ☁️ WebDAV File Management and Backup
-- 📊 Mermaid Chart Visualization
-- 💻 Code Syntax Highlighting
+- 📚 Build local knowledge bases from files, folders, and web pages, then use them in conversations and agents.
+- 📄 Process PDF, Office documents, images, and text, with OCR and document processing options.
+- ✍️ Organize ideas in Markdown notes and manage attachments and generated files in the file library.
 
-4. **Practical Tools Integration**:
+## Creative & Everyday Tools
 
-- 🔍 Global Search Functionality
-- 📝 Topic Management System
-- 🔤 AI-powered Translation
-- 🎯 Drag-and-drop Sorting
-- 🔌 Mini Program Support
-- ⚙️ MCP(Model Context Protocol) Server
+- 🎨 Generate and edit images with supported image models.
+- 🔤 Translate text and documents, and use quick translation from other apps.
+- 🔍 Search the web, read pages, and find content across your conversations and knowledge bases.
+- 🧩 Open web-based tools through Mini Apps, or use the API Gateway to connect other applications to your configured models.
 
-5. **Enhanced User Experience**:
+## Voice & Workspace
 
-- 🖥️ Cross-platform Support for Windows, Mac, and Linux
-- 📦 Ready to Use - No Environment Setup Required
-- 🎨 Light/Dark Themes and Transparent Window
-- 📝 Complete Markdown Rendering
-- 🤲 Easy Content Sharing
+- 🎙️ Dictate messages and listen to responses with speech recognition and text-to-speech options, including local models.
+- 🪟 Work across tabs and detached windows, with window pinning, Quick Assistant, and text selection tools.
+- 🌈 Customize your workspace with light and dark themes, layouts, and custom CSS.
+- 💾 Keep conversation history and knowledge bases on your device, with local and WebDAV backup options.
+
+Model and tool availability depends on your provider, operating system, and configuration. Some features require API credentials, downloaded models, additional dependencies, or system permissions. See the [user documentation](https://cherryai.com/docs/en/) for setup.
 
 # 📝 Roadmap
 
-We're actively working on the following features and improvements:
+Follow upcoming work on our [project board](https://github.com/orgs/CherryHQ/projects/7) and [GitHub Issues](https://github.com/CherryHQ/cherry-studio/issues). See [Releases](https://github.com/CherryHQ/cherry-studio/releases) for features and fixes already shipped.
 
-1. 🎯 **Core Features**
-
-- Selection Assistant with smart content selection enhancement
-- Deep Research with advanced research capabilities
-- Document Preprocessing with improved document handling
-- MCP Marketplace for Model Context Protocol ecosystem
-
-2. 🗂 **Knowledge Management**
-
-- Notes and Collections
-- Dynamic Canvas visualization
-- OCR capabilities
-- TTS (Text-to-Speech) support
-
-3. 📱 **Platform Support**
-
-- HarmonyOS Edition (PC)
-- Android App (Phase 1)
-- iOS App (Phase 1)
-- Multi-Window support
-- Window Pinning functionality
-- Intel AI PC (Core Ultra) Support
-
-4. 🔌 **Advanced Features**
-
-- Plugin System
-- ASR (Automatic Speech Recognition)
-- Assistant and Topic Interaction Refactoring
-
-Track our progress and contribute on our [project board](https://github.com/orgs/CherryHQ/projects/7).
-
-Want to influence our roadmap? Join our [GitHub Discussions](https://github.com/CherryHQ/cherry-studio/discussions) to share your ideas and feedback!
+Share ideas and discuss priorities in [GitHub Discussions](https://github.com/CherryHQ/cherry-studio/discussions).
 
 # 🌈 Theme
 
@@ -130,9 +112,11 @@ Want to influence our roadmap? Join our [GitHub Discussions](https://github.com/
 - Aero Theme: <https://github.com/hakadao/CherryStudio-Aero>
 - PaperMaterial Theme: <https://github.com/rainoffallingstar/CherryStudio-PaperMaterial>
 - Claude dynamic-style: <https://github.com/bjl101501/CherryStudio-Claudestyle-dynamic>
-- Maple Neon Theme: <https://github.com/BoningtonChen/CherryStudio_themes>
+- Maple Neon Theme: <https://github.com/Cle2ment/maple_neon>
 
-Welcome PR for more themes
+Check each community theme's supported Cherry Studio version before installing. Themes written for v1 need adaptation for the v2 interface.
+
+Contributions of compatible themes are welcome.
 
 # 🤝 Contributing
 
@@ -146,14 +130,13 @@ We welcome contributions to MEA Cowork! Here are some ways you can contribute:
 6. **Community Engagement**: Join discussions and help users.
 7. **Promote Usage**: Spread the word about MEA Cowork.
 
-Refer to the [Branching Strategy](docs/contrib/branching-strategy.md) for contribution guidelines
+Refer to the [Branching Strategy](docs/dev/contrib/branching-strategy.md) for contribution guidelines
 
 ## Getting Started
 
-1. **Fork the Repository**: Fork and clone it to your local machine.
-2. **Create a Branch**: For your changes.
-3. **Submit Changes**: Commit and push your changes.
-4. **Open a Pull Request**: Describe your changes and reasons.
+1. Read the [Contributing Guide](CONTRIBUTING.md) and [Development Guide](docs/dev/contrib/development.md).
+2. Fork the repository and create a focused branch from `main`.
+3. Validate your changes, sign and sign off your commits, and open a pull request targeting `main` using the repository template.
 
 For more detailed guidelines, please refer to our [Contributing Guide](CONTRIBUTING.md).
 
@@ -226,11 +209,15 @@ We believe the Enterprise Edition will become your team's AI productivity engine
 
 # 🔗 Related Projects
 
+- [Cherry Studio Mobile](https://github.com/CherryHQ/cherry-studio-app): The mobile version of Cherry Studio for iOS and Android.
+
+- [Cherry Studio Website](https://github.com/CherryHQ/cherry-studio-website): The official website and user documentation.
+
 - [new-api](https://github.com/QuantumNous/new-api): The next-generation LLM gateway and AI asset management system supports multiple languages.
 
 - [one-api](https://github.com/songquanpeng/one-api): LLM API management and distribution system supporting mainstream models like OpenAI, Azure, and Anthropic. Features a unified API interface, suitable for key management and secondary distribution.
 
-- [Poe](https://poe.com/): Poe gives you access to the best AI, all in one place. Explore GPT-5, Claude Opus 4.1, DeepSeek-R1, Veo 3, ElevenLabs, and millions of others.
+- [Poe](https://poe.com/): A platform for exploring AI models and community-created bots.
 
 - [ublacklist](https://github.com/iorate/ublacklist): Blocks specific sites from appearing in Google search results
 
@@ -290,4 +277,4 @@ Should you require a commercial license that provides an exemption from the AGPL
 [commercial-shield]: https://img.shields.io/badge/License-Commercial-white.svg?logoColor=white&logo=gnu&color=blue
 [commercial-link]: https://www.gnu.org/licenses/agpl-3.0
 [sponsor-shield]: https://img.shields.io/badge/Sponsor-FF6699.svg?logo=githubsponsors&logoColor=white
-[sponsor-link]: https://github.com/CherryHQ/cherry-studio/blob/main/docs/sponsor.md
+[sponsor-link]: https://github.com/CherryHQ/cherry-studio/blob/main/docs/dev/sponsor.md

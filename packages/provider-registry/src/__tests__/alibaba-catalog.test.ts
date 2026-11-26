@@ -118,26 +118,23 @@ describe('Alibaba Qwen catalog', () => {
     expect(loader.findProvider('dashscope')).toMatchObject({ supplementModelsFromRegistry: true })
   })
 
-  it('maps DashScope to qwen3.8-flash with the Qwen3.8 effort contract', () => {
-    expect(loader.findOverride('dashscope', 'qwen3.8-flash')).toMatchObject({
+  it('maps QwenCloud to qwen3.8-flash with the Qwen3.8 chat effort contract', () => {
+    const override = loader.findOverride('qwencloud', 'qwen3.8-flash')
+    expect(override).toMatchObject({
       apiModelId: 'qwen3.8-flash',
-      endpointTypes: ['openai-responses', 'openai-chat-completions'],
       modelId: 'qwen3-8-flash',
+      name: 'Qwen3.8 Flash',
       reasoningContracts: {
         'openai-chat-completions': {
           support: {
             controls: [{ default: 'xhigh', kind: 'effort', values: ['none', 'low', 'medium', 'xhigh'] }],
             thinkingTokenLimits: { min: 0, max: 262144 }
           }
-        },
-        'openai-responses': {
-          support: {
-            controls: [
-              { default: 'xhigh', kind: 'effort', values: ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] }
-            ]
-          }
         }
       }
     })
+    // No per-model Responses support list is published internationally, so the
+    // contract mirrors qwen3.8-max's Chat-only shape, not DashScope's dual-endpoint one.
+    expect(override?.reasoningContracts).not.toHaveProperty('openai-responses')
   })
 })

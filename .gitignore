@@ -1,4 +1,5 @@
 # Logs
+release-bundle.json
 logs
 *.log
 *.log.*
@@ -72,6 +73,9 @@ AGENTS.override.md
 # Local Electron development
 .context/cherry-electron-dev/
 
+# Website documentation renderer
+.context/website-docs-renderer/
+
 # vitest
 coverage
 .vitest-cache
@@ -105,3 +109,4 @@ YOUR_MEMORY_FILE_PATH
 .workbuddy/
 output/
 outputs/
+/native/external-app/build/

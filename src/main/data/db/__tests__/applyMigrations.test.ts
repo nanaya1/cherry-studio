@@ -97,6 +97,58 @@ describe('applyMigrations', () => {
     expect(String(sqlite.pragma('integrity_check', { simple: true }))).toBe('ok')
   })
 
+  it('preserves knowledge items and links historical MEA agent messages on upgrade', () => {
+    const legacy = stageMigrations()
+    const journalPath = join(legacy, 'meta', '_journal.json')
+    const journal = JSON.parse(readFileSync(journalPath, 'utf-8')) as {
+      entries: Array<{ idx: number }>
+    }
+    journal.entries = journal.entries.filter(({ idx }) => idx <= 33)
+    writeFileSync(journalPath, JSON.stringify(journal))
+    applyMigrations(db, legacy)
+
+    sqlite.exec(`
+      INSERT INTO knowledge_base (id, name, status, chunk_size, chunk_overlap, created_at, updated_at)
+      VALUES ('knowledge', 'History', 'completed', 100, 0, 1, 1);
+      INSERT INTO knowledge_item (id, base_id, type, data, status, created_at, updated_at)
+      VALUES ('note', 'knowledge', 'note', '{}', 'completed', 1, 1);
+      INSERT INTO agent_workspace (id, name, path, order_key, created_at, updated_at)
+      VALUES ('workspace', 'History', '/legacy/workspace', 'a0', 1, 1);
+      INSERT INTO agent_session (id, name, workspace_id, order_key, last_activity_at, created_at, updated_at)
+      VALUES ('session', 'History', 'workspace', 'a0', 2, 1, 2);
+      INSERT INTO agent_session_message (id, session_id, role, data, status, created_at, updated_at)
+      VALUES ('question', 'session', 'user', '{"parts":[]}', 'success', 1, 1),
+             ('answer', 'session', 'assistant', '{"parts":[]}', 'success', 2, 2);
+      INSERT INTO agent_channel (id, type, name, workspace, config, created_at, updated_at)
+      VALUES ('ding', 'dingtalk', 'Existing bot', '{"type":"system"}',
+        '{"client_id":"client","client_secret":"test","allowed_chat_ids":["raw-id"],"require_mention":false}', 1, 1);
+    `)
+
+    applyMigrations(db, resolveMigrationsPath())
+
+    expect(sqlite.prepare("SELECT order_key FROM knowledge_base WHERE id = 'knowledge'").get()).toEqual({
+      order_key: 'a0'
+    })
+    expect(sqlite.prepare("SELECT base_id FROM knowledge_item WHERE id = 'note'").get()).toEqual({
+      base_id: 'knowledge'
+    })
+    expect(sqlite.prepare("SELECT active_node_id FROM agent_session WHERE id = 'session'").get()).toEqual({
+      active_node_id: 'answer'
+    })
+    expect(sqlite.prepare("SELECT parent_id FROM agent_session_message WHERE id = 'answer'").get()).toEqual({
+      parent_id: 'question'
+    })
+    expect(
+      sqlite
+        .prepare(`SELECT json_extract(config, '$.legacy_conversation_ids') AS legacy,
+          json_extract(config, '$.allowed_chat_ids[0]') AS chatId,
+          json_extract(config, '$.require_mention') AS requireMention
+          FROM agent_channel WHERE id = 'ding'`)
+        .get()
+    ).toEqual({ legacy: 1, chatId: 'raw-id', requireMention: 0 })
+    expect(sqlite.pragma('foreign_key_check')).toEqual([])
+  })
+
   it('repairs remote knowledge tables skipped by a historical migration cursor', () => {
     applyMigrations(db, resolveMigrationsPath())
     sqlite.exec(`

@@ -1,84 +1,56 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import '@testing-library/jest-dom/vitest'
+import { MockUsePreferenceUtils } from '@test-mocks/renderer/usePreference'
+import { render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import SelectionAssistantSettings from '../SelectionAssistantSettings'
 
-const mocks = vi.hoisted(() => ({
-  request: vi.fn(),
-  setSelectionEnabled: vi.fn(),
-  preferences: {
-    'feature.selection.enabled': true,
-    'feature.selection.trigger_mode': 'selected',
-    'feature.selection.compact': false,
-    'feature.selection.auto_close': false,
-    'feature.selection.auto_pin': false,
-    'feature.selection.follow_toolbar': true,
-    'feature.selection.remember_win_size': true,
-    'feature.selection.action_window_opacity': 100,
-    'feature.selection.filter_mode': 'default',
-    'feature.selection.filter_list': [],
-    'feature.selection.action_items': []
-  } as Record<string, unknown>
-}))
-
-vi.mock('@data/hooks/usePreference', () => ({
-  usePreference: (key: string) => [
-    mocks.preferences[key],
-    key === 'feature.selection.enabled' ? mocks.setSelectionEnabled : vi.fn()
-  ]
-}))
-
-vi.mock('@renderer/hooks/useTheme', () => ({
-  useTheme: () => ({ theme: 'light' })
-}))
-
-vi.mock('@renderer/ipc', () => ({
-  ipcApi: { request: (...args: unknown[]) => mocks.request(...args) }
-}))
-
-vi.mock('@renderer/utils/platform', () => ({
-  isLinux: false,
-  isMac: true,
-  isWin: false
-}))
-
+vi.mock('@cherrystudio/ui', async (importOriginal) => await importOriginal())
+vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }))
+vi.mock('@renderer/hooks/useTheme', () => ({ useTheme: () => ({ theme: 'light' }) }))
+vi.mock('@renderer/utils/platform', () => ({ isWin: true, isMac: false, isLinux: false }))
+vi.mock('@tanstack/react-router', () => ({ Link: ({ children }: { children: React.ReactNode }) => <a>{children}</a> }))
 vi.mock('@renderer/components/selection/SelectionToolbarView', () => ({
-  default: () => null
+  default: () => <div data-testid="selection-preview" />
 }))
+vi.mock('../components/SelectionActionsList', () => ({ default: () => null }))
+vi.mock('../components/MacProcessTrustHintModal', () => ({ default: () => null }))
+vi.mock('../components/SelectionFilterListModal', () => ({ default: () => null }))
 
-vi.mock('../components/SelectionActionsList', () => ({
-  default: () => null
-}))
-
-vi.mock('../components/SelectionFilterListModal', () => ({
-  default: () => null
-}))
-
-vi.mock('@tanstack/react-router', () => ({
-  Link: ({ children }: { children: React.ReactNode }) => children
-}))
-
-vi.mock('react-i18next', () => ({
-  Trans: ({ i18nKey }: { i18nKey: string }) => i18nKey,
-  useTranslation: () => ({ t: (key: string) => key })
-}))
-
-describe('SelectionAssistantSettings', () => {
+describe('selection settings header', () => {
   beforeEach(() => {
-    mocks.request.mockReset()
-    mocks.setSelectionEnabled.mockReset()
+    MockUsePreferenceUtils.setPreferenceValue('feature.selection.enabled', false)
+    MockUsePreferenceUtils.setPreferenceValue('feature.selection.action_items', [])
+    MockUsePreferenceUtils.setPreferenceValue('feature.selection.action_window_opacity', 100)
   })
 
-  it('shows the accessibility guide when an enabled macOS app loses permission', async () => {
-    mocks.request.mockImplementation(async (route: string) => {
-      if (route === 'system.mac.is_process_trusted') return false
-      return undefined
-    })
+  it('keeps the grouped header while removing the empty preview area after enabling', async () => {
+    const user = userEvent.setup()
+    const { rerender } = render(<SelectionAssistantSettings />)
+    const toggle = screen.getByRole('switch', { name: 'selection.settings.enable.title' })
+    const group = toggle.closest<HTMLElement>('[data-ui="ui.setting-group"]')!
 
-    render(<SelectionAssistantSettings />)
+    expect(within(group).getByTestId('selection-preview')).toBeInTheDocument()
+    expect(within(group).getByRole('separator')).toBeInTheDocument()
 
-    expect(await screen.findByRole('dialog')).toBeVisible()
-    expect(screen.getByText('selection.settings.enable.mac_process_trust_hint.title')).toBeVisible()
-    await waitFor(() => expect(mocks.setSelectionEnabled).toHaveBeenCalledWith(false))
+    await user.click(toggle)
+    await waitFor(() => expect(MockUsePreferenceUtils.getPreferenceValue('feature.selection.enabled')).toBe(true))
+    rerender(<SelectionAssistantSettings />)
+    expect(toggle).toHaveAttribute('aria-checked', 'true')
+    expect(toggle.closest('[data-ui="ui.setting-group"]')).toBe(group)
+    expect(within(group).queryByTestId('selection-preview')).not.toBeInTheDocument()
+    expect(within(group).queryByRole('separator')).not.toBeInTheDocument()
+    const triggerTitle = screen
+      .getByText('selection.settings.toolbar.trigger_mode.title')
+      .closest<HTMLElement>('[data-ui="ui.setting-row-title"]')!
+    expect(within(triggerTitle).getAllByRole('img')).toHaveLength(1)
+
+    await user.click(toggle)
+    await waitFor(() => expect(MockUsePreferenceUtils.getPreferenceValue('feature.selection.enabled')).toBe(false))
+    rerender(<SelectionAssistantSettings />)
+    expect(toggle).toHaveAttribute('aria-checked', 'false')
+    expect(within(group).getByTestId('selection-preview')).toBeInTheDocument()
+    expect(within(group).getByRole('separator')).toBeInTheDocument()
   })
 })

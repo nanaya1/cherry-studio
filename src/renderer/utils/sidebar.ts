@@ -1,3 +1,4 @@
+import { parseAppRouteUrl } from '@renderer/utils/appRouteUrl'
 import type { SidebarFavorite, SidebarFavoriteItem, SidebarShortcutItem } from '@shared/data/preference/preferenceTypes'
 import { CONVERSATION_ROUTES, conversationRouteUrl } from '@shared/utils/conversationRoute'
 
@@ -48,11 +49,7 @@ interface SidebarAppDefinition<Id extends SidebarFavorite = SidebarFavorite> {
 }
 
 function getConversationSearchParamFromUrl(url: string, name: string): string | undefined {
-  try {
-    return new URL(url, 'app://x').searchParams.get(name) ?? undefined
-  } catch {
-    return undefined
-  }
+  return parseAppRouteUrl(url)?.searchParams.get(name) ?? undefined
 }
 
 /**
@@ -77,6 +74,10 @@ const SIDEBAR_APP_DEFINITIONS = [
       keyFromUrl: (url) => getConversationSearchParamFromUrl(url, CONVERSATION_ROUTES.assistant.keyParam),
       urlForKey: (key) => conversationRouteUrl({ conversationType: 'assistant', conversationId: key })
     }
+  },
+  {
+    id: 'scheduled_tasks',
+    routePrefix: '/app/scheduled-tasks'
   },
   {
     id: 'paintings',
@@ -449,6 +450,17 @@ export function removeSidebarEntityFavorite(
   id: string
 ): SidebarFavoriteItem[] {
   return removeSidebarLeafFavorite(favorites, type, id)
+}
+
+export function getSidebarShortcutResourceIds(
+  shortcuts: readonly SidebarShortcutItem[],
+  providerId: string
+): Set<string> {
+  return new Set(
+    shortcuts.flatMap((shortcut) =>
+      shortcut.target.locator.providerId === providerId ? [shortcut.target.locator.resourceId] : []
+    )
+  )
 }
 
 // --- Launchpad app order --------------------------------------------------

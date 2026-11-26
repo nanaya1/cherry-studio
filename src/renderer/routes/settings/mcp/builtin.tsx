@@ -1,14 +1,7 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, redirect } from '@tanstack/react-router'
 
-import { SettingsContentColumn } from '@renderer/components/SettingsPrimitives'
-import BuiltinMcpServerList from '@renderer/pages/settings/McpSettings/BuiltinMcpServerList'
+export function redirectToMcpCatalog() {
+  throw redirect({ to: '/app/skills-connectors', search: { tab: 'connector', connectorView: 'builtin' } })
+}
 
-const BuiltinWrapper = () => (
-  <SettingsContentColumn className="pt-2">
-    <BuiltinMcpServerList />
-  </SettingsContentColumn>
-)
-
-export const Route = createFileRoute('/settings/mcp/builtin')({
-  component: BuiltinWrapper
-})
+export const Route = createFileRoute('/settings/mcp/builtin')({ beforeLoad: redirectToMcpCatalog })

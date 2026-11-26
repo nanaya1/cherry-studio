@@ -38,6 +38,12 @@ function sanitizeDisplayName(raw: string | undefined): string | null {
   return trimmed ? trimmed.slice(0, MAX_DISPLAY_NAME_LENGTH) : null
 }
 
+function parseFrontmatterYaml(block: string): object {
+  // gray-matter's delimiter slice leaves a bare terminal CR in CRLF files,
+  // which YAML rejects after a quoted or flow scalar.
+  return parse(block.replace(/\r\n?/g, '\n'), YAML_PARSE_OPTIONS) as object
+}
+
 // Skill markdown filename variants (case-insensitive support)
 const SKILL_MD_VARIANTS = ['SKILL.md', 'skill.md']
 export const SKILL_ICON_FILE_NAMES = ['icon.webp', 'icon.png', 'icon.jpg', 'icon.jpeg'] as const
@@ -231,7 +237,7 @@ export async function parsePluginMetadata(
   try {
     const parsed = matter(content, {
       engines: {
-        yaml: (s) => parse(s, YAML_PARSE_OPTIONS) as object
+        yaml: parseFrontmatterYaml
       }
     })
     data = parsed.data ?? {}
@@ -390,7 +396,7 @@ export async function parseSkillMetadata(
   try {
     const parsed = matter(content, {
       engines: {
-        yaml: (s) => parse(s, YAML_PARSE_OPTIONS) as object
+        yaml: parseFrontmatterYaml
       }
     })
     data = parsed.data ?? {}

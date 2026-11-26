@@ -14,7 +14,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
   EmptyState,
-  Scrollbar,
+  ScrollArea,
   Skeleton
 } from '@cherrystudio/ui'
 import { loggerService } from '@logger'
@@ -293,12 +293,11 @@ export function SkillCatalogView({
             )}
           </div>
 
-          <Scrollbar className="@container/skills min-h-0 flex-1 px-6 pb-6">
+          <ScrollArea className="@container/skills min-h-0 flex-1 px-6 pb-6">
             {gridProps.isLoading ? (
               <SkillGridLoading />
             ) : visibleResources.length === 0 ? (
               <EmptyState
-                preset={hasSearch ? 'no-result' : 'no-resource'}
                 title={hasSearch ? t('library.empty_state.no_match_title') : t('library.empty_state.title')}
                 description={
                   hasSearch ? t('library.empty_state.no_match_description') : t('library.empty_state.description')
@@ -320,7 +319,7 @@ export function SkillCatalogView({
                 ))}
               </div>
             )}
-          </Scrollbar>
+          </ScrollArea>
         </>
       )}
 

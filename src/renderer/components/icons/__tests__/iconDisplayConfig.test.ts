@@ -19,7 +19,7 @@ describe('getIconDisplayConfig', () => {
   })
 
   it('enlarges provider logos outside the contained-icon list', () => {
-    expect(getIconDisplayConfig('provider-list', 'openai')).toEqual({ scale: 1.2 })
+    expect(getIconDisplayConfig('provider-list', 'unregistered-provider')).toEqual({ scale: 1.2 })
   })
 
   it('preserves the existing mini-app configuration', () => {

@@ -3,6 +3,8 @@ import type { ReactNode } from 'react'
 import type { DeleteMessageOptions, MessageDeleteAvailability } from '@renderer/hooks/chat/ChatWriteContext'
 import type { SerializedError } from '@renderer/types/error'
 import type { FileMetadata } from '@renderer/types/file'
+import type { FileLocation } from '@renderer/types/fileLocation'
+import type { InputFilePreview } from '@renderer/types/inputFilePreview'
 import type { Citation, MessageUiState } from '@renderer/types/message'
 import type { MessageExportTarget, MessageExportView } from '@renderer/types/messageExport'
 import type { McpTool } from '@renderer/types/tool'
@@ -11,6 +13,7 @@ import type { AgentSessionDelivery } from '@shared/ai/agentSessionDelivery'
 import type { AutonomousTurnOrigin } from '@shared/ai/agentSessionTurnOrigin'
 import type {
   ChatMessageStyle,
+  MultiModelFoldDisplayMode,
   MultiModelGridPopoverTrigger,
   MultiModelMessageStyle,
   TranslateLangCode
@@ -66,7 +69,7 @@ export interface MessageGroupRuntime {
 }
 
 export interface MessageSiblingInfo {
-  group: Array<{ id: string }>
+  group: Array<{ id: string; preview?: string }>
   activeIndex: number
 }
 
@@ -118,6 +121,15 @@ export interface MessageMenuConfig {
   enableDeveloperMode: boolean
   exportMenuOptions: MessageMenuExportOptions
 }
+
+/**
+ * Backdrop the conversation image exports paint behind the captured messages.
+ * The solid variant, not `--chat-message-well` itself: an export has no window behind
+ * it, so it needs the tone the message well resolves to rather than the translucent
+ * value, which would leave the PNG semi-transparent. The generic `--background`
+ * default would make the export lighter than the conversation on screen.
+ */
+export const CHAT_CAPTURE_BACKDROP_VARIABLE = '--chat-message-well-solid'
 
 export const defaultMessageMenuExportOptions: MessageMenuExportOptions = {
   image: false,
@@ -197,6 +209,8 @@ export interface OpenAgentToolFlowInput {
   title?: string
 }
 
+export type MessageInputFilePreview = InputFilePreview
+
 export interface RemoveMessageErrorPartInput {
   messageId: string
   partId: string
@@ -256,13 +270,18 @@ export interface MessageRenderConfig {
   messageFont: string
   fontSize: number
   renderInputMessageAsMarkdown: boolean
+  userMessageDefaultExpanded: boolean
   codeFancyBlock: boolean
   thoughtAutoCollapse: boolean
   collapseCompletedToolHistory: boolean
+  /** Open tool groups and the finished process by default, so each step reads without a click. */
+  expandToolSteps: boolean
+  keepIntermediateAssistantText: boolean
   mathEnableSingleDollar: boolean
   showMessageOutline: boolean
   showEstimatedTokens: boolean
   multiModelMessageStyle: MultiModelMessageStyle
+  multiModelFoldDisplayMode: MultiModelFoldDisplayMode
   multiModelGridColumns: number
   multiModelGridPopoverTrigger: MultiModelGridPopoverTrigger
 }
@@ -274,19 +293,23 @@ export const defaultMessageRenderConfig: MessageRenderConfig = {
   messageFont: 'system',
   fontSize: 14,
   renderInputMessageAsMarkdown: false,
+  userMessageDefaultExpanded: false,
   codeFancyBlock: true,
   thoughtAutoCollapse: true,
   collapseCompletedToolHistory: true,
+  expandToolSteps: false,
+  keepIntermediateAssistantText: false,
   mathEnableSingleDollar: false,
   showMessageOutline: false,
   showEstimatedTokens: false,
   multiModelMessageStyle: 'horizontal',
+  multiModelFoldDisplayMode: 'expanded',
   multiModelGridColumns: 2,
   multiModelGridPopoverTrigger: 'click'
 }
 
 export type MessageRenderConfigUpdate = Partial<
-  Pick<MessageRenderConfig, 'multiModelGridColumns' | 'multiModelGridPopoverTrigger'>
+  Pick<MessageRenderConfig, 'multiModelGridColumns' | 'multiModelGridPopoverTrigger' | 'multiModelFoldDisplayMode'>
 >
 
 /**
@@ -311,6 +334,8 @@ export interface MessageListState {
   /** When provided, streaming updates stay isolated from historical message subtrees. */
   streamingLayers?: MessageStreamingLayers
   beforeList?: ReactNode
+  /** Transient presentation inside the scroller, excluded from history actions and exports. */
+  afterMessages?: ReactNode
   /** Optional adapter-owned content rendered after one message's body. */
   messageTail?: MessageTailSlot
   /** Renders the live turn's processing status inline, replacing the default placeholder. Receives
@@ -355,7 +380,12 @@ export const DEFAULT_MESSAGE_LIST_CONFIG = {
 } as const satisfies Pick<MessageListState, 'estimateSize' | 'overscan' | 'loadOlderDelayMs' | 'loadingResetDelayMs'>
 
 export interface MessageListActions {
+  addGeneratedImageToComposer?: (image: { url: string; name: string }) => void | Promise<void>
   openForkSourceSession?: (sessionId: string) => Promise<void>
+  /** Sends again a user message (status `paused`) that the runtime withdrew before the agent received it. */
+  resendUnsentMessage?: (message: MessageListItem) => void
+  /** Moves such a withdrawn user message back into the composer. */
+  editUnsentMessage?: (message: MessageListItem) => void
   loadOlder?: () => void
   bindRuntime?: (runtime: MessageListRuntime) => void | (() => void)
   bindMessageRuntime?: (messageId: string, runtime: MessageRuntime) => void | (() => void)
@@ -374,9 +404,10 @@ export interface MessageListActions {
   exportToObsidian?: (message: MessageExportView) => void | Promise<void>
   exportToJoplin?: (message: MessageExportView) => void | Promise<void>
   exportToSiyuan?: (message: MessageExportView) => void | Promise<void>
-  openArtifactFile?: (path: string) => void | Promise<void>
+  openArtifactFile?: (path: string, location?: FileLocation) => void | Promise<void>
   openDiagnosticReport?: (description?: string) => void
   resolvePath?: (path: string) => string
+  previewInputFile?: (input: MessageInputFilePreview) => void | Promise<void>
   isDirectory?: (path: string) => Promise<boolean>
   openFile?: (target: MessageAttachmentTarget) => void | Promise<void>
   openPath?: (path: string) => void | Promise<void>
@@ -435,6 +466,8 @@ export interface MessageListActions {
     parts: CherryMessagePart[],
     options?: { lockedMentionedModels?: Model[] }
   ) => void
+  /** Presentation eligibility for deleting this message on this surface. Absent = every message the action supports. */
+  canDeleteMessage?: (message: MessageListItem) => boolean
   getMessageDeleteAvailability?: (messageId: string) => MessageDeleteAvailability
   deleteMessage?: (messageId: string, options?: DeleteMessageOptions) => void | Promise<void>
   startMessageBranch?: (messageId: string) => void | Promise<void>
@@ -454,6 +487,9 @@ export interface MessageListMeta {
   selectionLayer: boolean
   userProfile?: MessageUserProfile
   assistantProfile?: MessageUserProfile
+  /** Current avatars keyed by author id; absent authors retain their message snapshot. */
+  authorAvatars?: ReadonlyMap<string, string>
+  assistantAvatarSources?: ReadonlyMap<string, string>
   imageExportFileName?: string
   /** Usage-record partition this surface's messages belong to. Defaults to 'chat'. */
   aiUsageMessageKind?: AiUsageRecordMessageKind

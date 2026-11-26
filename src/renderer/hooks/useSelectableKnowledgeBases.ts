@@ -32,6 +32,7 @@ import type { RemoteKnowledgeBaseInfo } from '@shared/data/types/remoteKnowledge
 export function projectRemoteKnowledgeBase(base: RemoteKnowledgeBaseInfo): KnowledgeBaseListItem {
   return {
     id: base.id,
+    orderKey: base.id,
     name: base.name,
     groupId: null,
     dimensions: null,

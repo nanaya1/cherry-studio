@@ -3,7 +3,7 @@ import type { FC } from 'react'
 import { useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { Scrollbar } from '@cherrystudio/ui'
+import { ScrollArea } from '@cherrystudio/ui'
 import { cn } from '@renderer/utils/style'
 
 /**
@@ -110,7 +110,7 @@ const ToolboxPage: FC = () => {
           <p className="mt-1.5 text-muted-foreground text-sm leading-6">{t('workspace.toolbox.subtitle')}</p>
         </div>
 
-        <Scrollbar className="@container/toolbox min-h-0 flex-1 px-6 pb-6">
+        <ScrollArea className="@container/toolbox min-h-0 flex-1 px-6 pb-6">
           <div
             className="grid @[1120px]/toolbox:grid-cols-4 @[560px]/toolbox:grid-cols-2 @[840px]/toolbox:grid-cols-3 grid-cols-1 gap-3"
             role="list">
@@ -154,7 +154,7 @@ const ToolboxPage: FC = () => {
               </button>
             ))}
           </div>
-        </Scrollbar>
+        </ScrollArea>
       </main>
     </div>
   )

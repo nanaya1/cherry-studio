@@ -1,25 +1,78 @@
 import type { ProgressInfo, UpdateInfo } from 'builder-util-runtime'
-import { CancellationToken } from 'builder-util-runtime'
+import { CancellationError, CancellationToken, HttpError } from 'builder-util-runtime'
+import { eq } from 'drizzle-orm'
 import { app } from 'electron'
 import type { Logger, NsisUpdater, UpdateCheckResult } from 'electron-updater'
 import { AppUpdater, autoUpdater } from 'electron-updater'
+import semver from 'semver'
 
 import { application } from '@application'
+import { appStateTable } from '@data/db/schemas/appState'
 import { loggerService } from '@logger'
-import { computeBackoff } from '@main/core/job/runtime/backoff'
 import { BaseService, DependsOn, Injectable, Phase, ServicePhase } from '@main/core/lifecycle'
+import { logFailure } from '@main/core/logger/logFailure'
 import { isWin } from '@main/core/platform'
 import { WindowType } from '@main/core/window/types'
+import { getAppLanguage, t } from '@main/i18n'
 import { regionService } from '@main/services/RegionService'
 import { getAppEdition } from '@main/utils/appEdition'
 import { generateUserAgent, getClientId } from '@main/utils/systemInfo'
-import type { RetryPolicy } from '@shared/data/api/schemas/jobs'
 import { UpgradeChannel } from '@shared/data/preference/preferenceTypes'
+import { IpcError, IpcErrorCode } from '@shared/ipc/errors/IpcError'
+import type { AppUpdaterNotAvailablePayload } from '@shared/ipc/schemas/app'
+import type { OutputFor } from '@shared/ipc/types'
 import type { AppEdition } from '@shared/types/appEdition'
+import type { FailureFacts } from '@shared/types/errorReporting'
 import { APP_NAME } from '@shared/utils/constants'
-import { hasMultiLanguageReleaseNotes, localizeReleaseNotes, type ReleaseNotesEntry } from '@shared/utils/releaseNotes'
+import { isCancellation } from '@shared/utils/errorReporting'
+import {
+  hasMultiLanguageReleaseNotes,
+  isStableReleaseVersion,
+  localizeReleaseNotes,
+  type ReleaseNotesEntry
+} from '@shared/utils/releaseNotes'
 
 const logger = loggerService.withContext('AppUpdaterService')
+
+export function classifyUpdateFailure(error: unknown): FailureFacts {
+  if (error instanceof CancellationError || isCancellation(error)) {
+    return { source: 'environment', kind: 'expected', reason: 'cancelled', outcome: 'cancelled' }
+  }
+  const code = error && typeof error === 'object' && 'code' in error ? error.code : undefined
+  if (error instanceof HttpError && ![401, 403, 408, 429].includes(error.statusCode) && !error.isServerError()) {
+    return { source: 'application', kind: 'reliability', reason: 'update_feed_invalid', outcome: 'failed' }
+  }
+  if (
+    error instanceof HttpError ||
+    (typeof code === 'string' &&
+      [
+        'ENOTFOUND',
+        'EAI_AGAIN',
+        'ECONNREFUSED',
+        'ECONNRESET',
+        'ETIMEDOUT',
+        'ENETUNREACH',
+        'EHOSTUNREACH',
+        'EACCES',
+        'EPERM',
+        'ENOSPC'
+      ].includes(code))
+  ) {
+    return { source: 'environment', kind: 'expected', reason: 'update_unavailable', outcome: 'failed' }
+  }
+  if (typeof code === 'string' && (code.startsWith('ERR_UPDATER_') || code === 'ERR_CHECKSUM_MISMATCH')) {
+    return { source: 'application', kind: 'reliability', reason: 'update_package_invalid', outcome: 'failed' }
+  }
+  return {
+    source: 'application',
+    kind:
+      error instanceof TypeError || error instanceof ReferenceError || error instanceof SyntaxError
+        ? 'defect'
+        : 'unknown',
+    reason: 'update_failed',
+    outcome: 'failed'
+  }
+}
 
 type ReleaseRegion = 'cn' | 'global'
 
@@ -59,36 +112,13 @@ class ReleaseNotesUpdater extends AppUpdater {
   }
 }
 
-// Auto update-check scheduling. The cadence lives in the main process (this
-// service), not the renderer, so it survives window close and runs exactly
-// once regardless of how many windows are open.
-const AUTO_UPDATE_SCHEDULE_ID = 'app-updater:auto-check'
-// Base interval between automatic checks.
-const CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000
-// ± ratio of random jitter applied per cycle, so clients that launched around
-// the same time don't all hit the update server on the same beat.
-const CHECK_JITTER_RATIO = 0.15
-// Short delay before the first check after startup, letting boot I/O settle.
-const INITIAL_CHECK_DELAY_MS = 5_000
-// Backoff for consecutive check failures: 5/10/20/40min, capped at 60min — always
-// shorter than the normal cadence so a transient failure recovers sooner. Note
-// `computeBackoff` ignores `maxAttempts`; auto-check never gives up, so it is a
-// placeholder only to satisfy RetryPolicy's strictObject shape.
-const CHECK_RETRY_POLICY: RetryPolicy = {
-  maxAttempts: 1,
-  backoff: 'exponential',
-  baseDelayMs: 5 * 60 * 1000,
-  maxDelayMs: 60 * 60 * 1000
-}
-
 @Injectable('AppUpdaterService')
 @ServicePhase(Phase.WhenReady)
-@DependsOn(['WindowManager', 'SchedulerService'])
+@DependsOn(['WindowManager', 'NotificationService'])
 export class AppUpdaterService extends BaseService {
+  private readonly pendingReleaseNotifications = new Set<string>()
   private cancellationToken: CancellationToken = new CancellationToken()
   private updateCheckResult: UpdateCheckResult | null = null
-  // Consecutive scheduled-check failures, drives backoff; reset on success.
-  private updateCheckFailures = 0
 
   protected async onInit(): Promise<void> {
     autoUpdater.logger = logger as Logger
@@ -118,28 +148,59 @@ export class AppUpdaterService extends BaseService {
           this.cancelDownload()
         )
     )
-
-    // Stop the scheduled check when this service stops (it depends on
-    // SchedulerService, so SchedulerService is still alive at this point).
-    this.registerDisposable(() => application.get('SchedulerService').unregister(AUTO_UPDATE_SCHEDULE_ID))
   }
 
   protected async onAllReady(): Promise<void> {
     application.get('PowerService').registerShutdownHandler(() => {
       autoUpdater.autoDownload = false
     })
+  }
 
-    // Development builds skip automatic checks but still support manual checks.
-    // Portable builds do not perform update checks.
-    if (!app.isPackaged || this.isPortable()) {
-      return
+  private async publishReleaseNotification(releaseInfo: UpdateInfo): Promise<void> {
+    if (this.pendingReleaseNotifications.has(releaseInfo.version)) return
+    this.pendingReleaseNotifications.add(releaseInfo.version)
+    try {
+      const db = application.get('DbService').getDb()
+      const key = `appUpdater:notification:${releaseInfo.version}`
+      if (db.select().from(appStateTable).where(eq(appStateTable.key, key)).get()) return
+
+      const releaseNotes =
+        typeof releaseInfo.releaseNotes === 'string'
+          ? releaseInfo.releaseNotes
+          : (releaseInfo.releaseNotes
+              ?.map(({ note }) => note)
+              .filter(Boolean)
+              .join('\n\n') ?? '')
+      const title = t('notification.center.version_available', { version: releaseInfo.version })
+      const summary = releaseNotes
+        .split('\n')
+        .find((line) => line.trim() && !/^\s*#/.test(line))
+        ?.replace(/^\s*[-*>]\s*/, '')
+        .trim()
+        .slice(0, 240)
+      const recorded = await application.get('NotificationService').publish(
+        {
+          eventKey: `release:${releaseInfo.version}`,
+          category: 'official',
+          kind: 'release',
+          title,
+          message: summary || title,
+          createdAt: Date.now(),
+          target: { kind: 'release', version: releaseInfo.version, releaseNotes }
+        },
+        { source: 'update' }
+      )
+      if (recorded) db.insert(appStateTable).values({ key, value: true }).onConflictDoNothing().run()
+    } catch (error) {
+      logger.warn('Failed to publish release notification', error as Error)
+    } finally {
+      this.pendingReleaseNotifications.delete(releaseInfo.version)
     }
-    this.scheduleNextUpdateCheck(INITIAL_CHECK_DELAY_MS)
   }
 
   private registerAutoUpdaterListeners(): void {
     const onError = (error: Error) => {
-      logger.error('update error', error)
+      logFailure(logger, 'update error', error, 'update.run', classifyUpdateFailure(error))
       application.get('IpcApiService').broadcastToType(WindowType.Main, 'app.updater.error', error)
     }
     autoUpdater.on('error', onError)
@@ -148,13 +209,21 @@ export class AppUpdaterService extends BaseService {
     const onUpdateAvailable = (releaseInfo: UpdateInfo) => {
       logger.info('update available', releaseInfo)
       const processedReleaseInfo = this.processReleaseInfo(releaseInfo)
+      void this.publishReleaseNotification(processedReleaseInfo)
       application.get('IpcApiService').broadcastToType(WindowType.Main, 'app.updater.available', processedReleaseInfo)
     }
     autoUpdater.on('update-available', onUpdateAvailable)
     this.registerDisposable(() => autoUpdater.removeListener('update-available', onUpdateAvailable))
 
-    const onUpdateNotAvailable = () => {
-      application.get('IpcApiService').broadcastToType(WindowType.Main, 'app.updater.not_available', undefined)
+    const onUpdateNotAvailable = (updateInfo: UpdateInfo) => {
+      const result = this.resolveNotAvailableResult(updateInfo)
+      if (!result.isCurrent) {
+        logger.warn(
+          `managed feed target ${result.feedVersion} differs from installed ${result.currentVersion} (channel: ${autoUpdater.channel}) — treating as withheld, not current`
+        )
+      }
+      const payload: AppUpdaterNotAvailablePayload = { isCurrent: result.isCurrent }
+      application.get('IpcApiService').broadcastToType(WindowType.Main, 'app.updater.not_available', payload)
     }
     autoUpdater.on('update-not-available', onUpdateNotAvailable)
     this.registerDisposable(() => autoUpdater.removeListener('update-not-available', onUpdateNotAvailable))
@@ -207,7 +276,8 @@ export class AppUpdaterService extends BaseService {
 
     // disable downgrade after change the channel
     autoUpdater.allowDowngrade = false
-    // Keep differential downloads disabled for the current release artifacts.
+    // The updater falls back to a full download when blockmaps or the cached base are unavailable.
+    // autoUpdater.disableDifferentialDownload = false
     autoUpdater.disableDifferentialDownload = true
   }
 
@@ -239,37 +309,23 @@ export class AppUpdaterService extends BaseService {
   }
 
   public async getLatestReleaseNotes(): Promise<ReleaseNotesEntry | null> {
-    try {
-      const { updateChannel, updateHeaders } = await this.getUpdateRequest()
-      const updater = new ReleaseNotesUpdater()
-      updater.logger = logger as Logger
-      updater.forceDevUpdateConfig = !app.isPackaged
-      updater.autoDownload = false
-      updater.autoInstallOnAppQuit = false
-      updater.requestHeaders = updateHeaders
-      updater.channel = updateChannel
-      updater.allowDowngrade = false
-
-      const result = await updater.checkForUpdates()
-      if (!result?.isUpdateAvailable) {
-        return null
-      }
-
-      const releaseNotes = result.updateInfo.releaseNotes
-      if (typeof releaseNotes !== 'string' || !releaseNotes.trim()) {
-        return null
-      }
-
-      return { releaseNotes, version: result.updateInfo.version }
-    } catch (error) {
-      logger.warn('Failed to fetch latest release notes', error as Error)
-      return null
-    }
+    return null
   }
 
   public async getReleaseHistory(): Promise<ReleaseNotesEntry[] | null> {
-    const latestRelease = await this.getLatestReleaseNotes()
-    return latestRelease ? [latestRelease] : null
+    return null
+  }
+
+  public async getUpgradeReleaseNotes(targetVersion: string): Promise<OutputFor<'app.updater.upgrade_notes.get'>> {
+    const fromVersion = app.getVersion()
+    if (
+      !isStableReleaseVersion(fromVersion) ||
+      !isStableReleaseVersion(targetVersion) ||
+      !semver.gt(targetVersion, fromVersion)
+    ) {
+      throw new IpcError(IpcErrorCode.VALIDATION_FAILED, 'Expected a stable upgrade range')
+    }
+    return { fromVersion, toVersion: targetVersion, historyStatus: 'unavailable', releases: [] }
   }
 
   public cancelDownload() {
@@ -286,9 +342,7 @@ export class AppUpdaterService extends BaseService {
 
   /**
    * Throwing core of the update check: updater setup → check → (manual) download
-   * trigger. A check/network failure REJECTS so callers that need a failure
-   * signal — the scheduler's backoff — can observe it. The public IPC entry
-   * `checkForUpdates()` wraps this and swallows the error to preserve its
+   * trigger. The public IPC entry `checkForUpdates()` catches failures to preserve its
    * event-driven contract: errors reach the renderer via the `UpdateError`
    * broadcast (see `registerAutoUpdaterListeners`), not the return value.
    */
@@ -326,7 +380,7 @@ export class AppUpdaterService extends BaseService {
     try {
       return await this.performUpdateCheck()
     } catch (error) {
-      logger.error('Failed to check for update:', error as Error)
+      logFailure(logger, 'Failed to check for update:', error, 'update.check', classifyUpdateFailure(error))
       return {
         currentVersion: app.getVersion(),
         updateInfo: null
@@ -334,48 +388,34 @@ export class AppUpdaterService extends BaseService {
     }
   }
 
-  /**
-   * Arm the next automatic check on SchedulerService as a one-shot `delayMs`
-   * from now. Re-registering the same id replaces the prior timer, so the
-   * callback re-arming itself with a freshly computed delay (jitter on success,
-   * backoff on failure) forms the recurring loop. The returned Disposable is
-   * discarded; cleanup is the single `unregister` registered in `onInit`.
-   */
-  private scheduleNextUpdateCheck(delayMs: number): void {
-    application
-      .get('SchedulerService')
-      .registerSchedule(AUTO_UPDATE_SCHEDULE_ID, { kind: 'once', at: Date.now() + delayMs }, () =>
-        this.runScheduledUpdateCheck()
-      )
-  }
-
-  private async runScheduledUpdateCheck(): Promise<void> {
-    try {
-      // Gate per tick rather than subscribing to the preference: when disabled
-      // the loop keeps ticking (harmless no-op) and resumes automatically once
-      // re-enabled. Only the detection failure of `performUpdateCheck` drives
-      // backoff — the manual download trigger is fire-and-forget and surfaces
-      // its own errors via the `UpdateError` event.
-      if (application.get('PreferenceService').get('app.dist.auto_update.enabled')) {
-        await this.performUpdateCheck()
-      }
-      this.updateCheckFailures = 0
-      this.scheduleNextUpdateCheck(this.nextUpdateCheckDelayMs())
-    } catch {
-      this.updateCheckFailures++
-      const backoffMs = computeBackoff(CHECK_RETRY_POLICY, this.updateCheckFailures)
-      logger.warn(`scheduled update check failed, backing off for ${backoffMs}ms`)
-      this.scheduleNextUpdateCheck(backoffMs)
-    }
-  }
-
-  private nextUpdateCheckDelayMs(): number {
-    return Math.round(CHECK_INTERVAL_MS * (1 + (Math.random() * 2 - 1) * CHECK_JITTER_RATIO))
-  }
-
   public quitAndInstall() {
     application.markQuitting()
     setImmediate(() => autoUpdater.quitAndInstall(true, true))
+  }
+
+  /**
+   * Feed/install mismatch means withheld (withdrawn/stale/staged). A prerelease install stays
+   * current against an older (e.g. stable) feed, but not when the feed advertises a newer version.
+   * Unparseable versions stay current.
+   */
+  private resolveNotAvailableResult(updateInfo: UpdateInfo | null | undefined): {
+    currentVersion: string
+    feedVersion: string | null
+    isCurrent: boolean
+  } {
+    const currentVersion = app.getVersion()
+    const feedVersion = updateInfo?.version || null
+    let isCurrent = true
+    if (feedVersion) {
+      try {
+        isCurrent =
+          semver.eq(feedVersion, currentVersion) ||
+          (semver.prerelease(currentVersion) !== null && !semver.gt(feedVersion, currentVersion))
+      } catch {
+        // Unparseable versions fail closed to current.
+      }
+    }
+    return { currentVersion, feedVersion, isCurrent }
   }
 
   /**
@@ -390,7 +430,7 @@ export class AppUpdaterService extends BaseService {
     if (releaseInfo.releaseNotes && typeof releaseInfo.releaseNotes === 'string') {
       if (hasMultiLanguageReleaseNotes(releaseInfo.releaseNotes)) {
         try {
-          const language = application.get('PreferenceService').get('app.language')
+          const language = getAppLanguage()
           processedInfo.releaseNotes = localizeReleaseNotes(releaseInfo.releaseNotes, language)
         } catch (error) {
           logger.error('Failed to localize release notes', error as Error)

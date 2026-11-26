@@ -1,15 +1,19 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import '@shared/data/presets/localEmbedding'
+import { LOCAL_EMBEDDING_PROVIDER_ID } from '@shared/data/presets/localEmbedding'
 import type { Provider } from '@shared/data/types/provider'
 
 // Stub imported i18n and provider helpers so these tests stay focused on provider eligibility.
 vi.mock('@renderer/i18n', () => ({ default: { t: (k: string) => k } }))
 vi.mock('@renderer/i18n/label', () => ({ getProviderLabelKey: (id: string) => id }))
 vi.mock('@shared/utils/provider', () => ({
+  isCherryAIProvider: (p: Provider) => p.id === 'cherryai',
   isLoginBasedProvider: (p: Provider) =>
     p.authMethods !== undefined && p.authMethods.length > 0 && !p.authMethods.includes('api-key')
 }))
+
+const { isProviderSettingsListVisibleProvider } = await import('@renderer/utils/providerSettings')
+const provider = (id: string): Provider => ({ id }) as Provider
 
 const { getVisibleProviderWebsite, isProviderPresetInstanceSource } = await import('../providerDisplay')
 
@@ -34,6 +38,16 @@ describe('getVisibleProviderWebsite', () => {
     expect(getVisibleProviderWebsite('https://ppio.com/model-api/product/llm-api')).toBe(
       'https://ppio.com/model-api/product/llm-api'
     )
+  })
+})
+
+describe('isProviderSettingsListVisibleProvider', () => {
+  it('hides the internal local-embedding provider from the management list', () => {
+    expect(isProviderSettingsListVisibleProvider(provider(LOCAL_EMBEDDING_PROVIDER_ID))).toBe(false)
+  })
+
+  it('keeps a normal provider visible', () => {
+    expect(isProviderSettingsListVisibleProvider(provider('openai'))).toBe(true)
   })
 })
 

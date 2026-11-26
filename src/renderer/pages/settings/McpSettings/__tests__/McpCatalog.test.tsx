@@ -61,7 +61,7 @@ vi.mock('../McpServersList', () => ({
   )
 }))
 
-vi.mock('../McpProviderSettings', () => ({
+vi.mock('@renderer/pages/marketplace/MarketplaceMcpProvider', () => ({
   default: ({
     provider,
     existingServers,
@@ -80,7 +80,7 @@ vi.mock('../McpProviderSettings', () => ({
   )
 }))
 
-vi.mock('../providers/config', () => ({
+vi.mock('@renderer/pages/marketplace/providers/config', () => ({
   providers: [
     { key: 'bailian', nameKey: 'Bailian' },
     { key: 'modelscope', nameKey: 'ModelScope' }

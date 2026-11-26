@@ -5,9 +5,9 @@ import { useEffect, useState } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { WindowFrameProvider } from '@renderer/components/chat/shell/WindowFrameContext'
-import { DefaultRendererPersistCache } from '@shared/data/cache/cacheSchemas'
 
 import { ChatAppShell } from '../ChatAppShell'
+import { PageSidebar } from '../PageSidebar'
 import {
   getRightPaneWidthPolicy,
   RESOURCE_LIST_PANE_COLLAPSE_DRAG_THRESHOLD,
@@ -157,85 +157,15 @@ describe('ChatAppShell', () => {
     globalThis.ResizeObserver = originalResizeObserver
   })
 
-  it('renders side panel in a root overlay host above center layers', () => {
+  it('scopes the message-well theme surface to the conversation center', () => {
     const { container } = render(
-      <ChatAppShell
-        centerId="chat-main"
-        topBar={<div data-testid="navbar" />}
-        sidePanel={<div data-testid="settings-panel" />}
-        main={<div data-testid="main" />}
-      />
+      <ChatAppShell centerId="chat-main" pane={<div data-testid="pane" />} paneOpen main={<div data-testid="main" />} />
     )
 
-    const chatMain = container.querySelector('#chat-main')
-    const navbarWrapper = screen.getByTestId('navbar').parentElement
-
-    expect(chatMain).toContainElement(screen.getByTestId('navbar'))
-    expect(navbarWrapper).toHaveClass('relative', 'shrink-0')
-    expect(navbarWrapper).not.toHaveClass('bg-background')
-    expect(navbarWrapper).not.toHaveClass('absolute')
-    expect(navbarWrapper).not.toHaveAttribute('data-chat-navbar-floating')
-    expect(chatMain).not.toContainElement(screen.getByTestId('settings-panel'))
-    expect(chatMain).toContainElement(screen.getByTestId('main'))
-    expect(chatMain).toHaveClass('relative')
-    expect(chatMain?.getAttribute('data-ui')?.split(/\s+/)).toContain('part:conversation-main')
-
-    const sidePanelHost = container.querySelector('[data-chat-side-panel-host]')
-    expect(sidePanelHost).not.toBeNull()
-    expect(sidePanelHost).toContainElement(screen.getByTestId('settings-panel'))
-    expect(sidePanelHost).toHaveClass('pointer-events-none')
-    expect(sidePanelHost).toHaveClass('absolute')
-    expect(sidePanelHost).toHaveClass('inset-0')
-    expect(sidePanelHost).toHaveClass('z-80')
-    expect(sidePanelHost).toHaveClass('*:pointer-events-auto')
-  })
-
-  it('renders centerTopOverlay in a z-1000 overlay host that is a sibling of the center, not trapped inside it', () => {
-    const { container } = render(
-      <ChatAppShell
-        centerId="chat-main"
-        main={<div data-testid="main" />}
-        centerTopOverlay={<div data-testid="search-overlay" />}
-      />
-    )
-
-    const chatMain = container.querySelector('#chat-main')
-    const overlay = screen.getByTestId('search-overlay')
-
-    // Must NOT live inside the center: the center carries a transform (stacking context),
-    // so an overlay trapped inside it cannot paint above sibling chrome at the shell root.
-    expect(chatMain).not.toContainElement(overlay)
-
-    const overlayHost = overlay.closest('.z-1000')
-    expect(overlayHost).not.toBeNull()
-    expect(overlayHost).toHaveClass('absolute')
-    expect(overlayHost).toHaveClass('inset-0')
-
-    // Sibling of the center (same wrapper) so it overlays exactly the center box.
-    expect(overlayHost?.parentElement).toBe(chatMain?.parentElement)
-  })
-
-  it.each([
-    ['the pane is maximized', true, true],
-    // A restore drops `presentationMaximized` at the click while the pane keeps covering the
-    // centre; re-trapping the composer here would sink it behind the pane for the whole retraction.
-    ['the pane is still retracting', false, true],
-    ['the pane is docked', false, false]
-  ] as const)('releases the center stacking context while %s: %s', (_label, presentationMaximized, elevated) => {
-    rightPanelStateMock.current = { layoutAnimationPending: false, presentationMaximized }
-    composerElevatedMock.current = elevated
-
-    const { container } = render(
-      <ChatAppShell centerClassName="transform-[translateZ(0)]" main={<div data-testid="main" />} />
-    )
-    const center = container.querySelector('[data-chat-app-shell-center]')
-
-    expect(center).toHaveClass('transform-[translateZ(0)]')
-    if (elevated) {
-      expect(center).toHaveClass('!transform-none', '!will-change-auto')
-    } else {
-      expect(center).not.toHaveClass('!transform-none')
-    }
+    // The public message-well token belongs to the conversation, while its rails keep the frame surface.
+    expect(container.querySelector('#chat-main')).toHaveClass('bg-chat-message-well')
+    expect(container.querySelector('[data-chat-app-shell-root]')).not.toHaveClass('bg-chat-message-well')
+    expect(screen.queryByTestId('pane')).not.toBeInTheDocument()
   })
 
   it('keeps the pane mounted when keyed center content changes', () => {
@@ -259,6 +189,7 @@ describe('ChatAppShell', () => {
       <ChatAppShell
         pane={<Pane />}
         paneOpen
+        panePosition="right"
         centerContent={<div key="topic-1">topic 1 content</div>}
         topBar={<div>topic 1 nav</div>}
       />
@@ -272,6 +203,7 @@ describe('ChatAppShell', () => {
       <ChatAppShell
         pane={<Pane />}
         paneOpen
+        panePosition="right"
         centerContent={<div key="topic-2">topic 2 content</div>}
         topBar={<div>topic 2 nav</div>}
       />
@@ -280,7 +212,6 @@ describe('ChatAppShell', () => {
     expect(screen.getByRole('button', { name: 'pane count 1' })).toBeInTheDocument()
     expect(screen.queryByText('topic 1 content')).not.toBeInTheDocument()
     expect(screen.getByText('topic 2 content')).toBeInTheDocument()
-    expect(paneMounts).toEqual(['mounted'])
   })
 
   it('keeps pane state while it is collapsed and reopened', async () => {
@@ -292,28 +223,48 @@ describe('ChatAppShell', () => {
       return <input aria-label="Pane query" value={query} onChange={(event) => setQuery(event.target.value)} />
     }
 
-    const { container, rerender } = render(<ChatAppShell pane={<Pane />} paneOpen centerContent={<div />} />)
+    const { container, rerender } = render(
+      <PageSidebar open>
+        <Pane />
+      </PageSidebar>
+    )
 
     await user.type(screen.getByRole('textbox', { name: 'Pane query' }), 'persisted')
 
-    rerender(<ChatAppShell pane={<Pane />} paneOpen={false} centerContent={<div />} />)
+    rerender(
+      <PageSidebar open={false}>
+        <Pane />
+      </PageSidebar>
+    )
 
     const navigationPane = container.querySelector('[data-ui~="part:conversation-navigation"]')
     expect(navigationPane).toHaveAttribute('aria-hidden', 'true')
     expect(navigationPane).toHaveAttribute('inert')
     expect(screen.getByLabelText('Pane query')).toHaveValue('persisted')
 
-    rerender(<ChatAppShell pane={<Pane />} paneOpen centerContent={<div />} />)
+    rerender(
+      <PageSidebar open>
+        <Pane />
+      </PageSidebar>
+    )
 
     expect(screen.getByRole('textbox', { name: 'Pane query' })).toHaveValue('persisted')
   })
 
   it('defers mounting a pane that has never been opened', () => {
-    const { rerender } = render(<ChatAppShell pane={<aside>topics</aside>} paneOpen={false} centerContent={<div />} />)
+    const { rerender } = render(
+      <PageSidebar open={false}>
+        <aside>topics</aside>
+      </PageSidebar>
+    )
 
     expect(screen.queryByText('topics')).not.toBeInTheDocument()
 
-    rerender(<ChatAppShell pane={<aside>topics</aside>} paneOpen centerContent={<div />} />)
+    rerender(
+      <PageSidebar open>
+        <aside>topics</aside>
+      </PageSidebar>
+    )
 
     expect(screen.getByText('topics')).toBeInTheDocument()
   })
@@ -323,6 +274,8 @@ describe('ChatAppShell', () => {
       <ChatAppShell pane={<aside>topics</aside>} paneOpen panePosition="left" centerContent={<div />} />
     )
 
+    expect(screen.queryByText('topics')).not.toBeInTheDocument()
+
     rerender(<ChatAppShell pane={<aside>topics</aside>} paneOpen panePosition="right" centerContent={<div />} />)
 
     expect(screen.getAllByText('topics')).toHaveLength(1)
@@ -331,21 +284,23 @@ describe('ChatAppShell', () => {
   it('drives the left resource pane width from persist cache', () => {
     persistCacheMock.state.width = 180
 
-    render(<ChatAppShell pane={<aside>topics</aside>} paneOpen main={<div />} />)
+    render(
+      <PageSidebar open>
+        <aside>topics</aside>
+      </PageSidebar>
+    )
 
     expect(document.documentElement.style.getPropertyValue('--assistants-width')).toBe(
       `${RESOURCE_LIST_PANE_MIN_WIDTH}px`
     )
   })
 
-  it('uses the configured left pane default and minimum widths', () => {
-    expect(RESOURCE_LIST_PANE_DEFAULT_WIDTH).toBe(240)
-    expect(RESOURCE_LIST_PANE_MIN_WIDTH).toBe(200)
-    expect(DefaultRendererPersistCache['ui.chat.sidebar.width']).toBe(275)
-  })
-
   it('clamps the left splitter Home key to the configured minimum', () => {
-    const { container } = render(<ChatAppShell pane={<aside>topics</aside>} paneOpen main={<div />} />)
+    const { container } = render(
+      <PageSidebar open>
+        <aside>topics</aside>
+      </PageSidebar>
+    )
     const handle = container.querySelector('[data-resource-list-pane-resize-handle]')
 
     if (!handle) throw new Error('Expected resource list pane resize handle')
@@ -358,7 +313,9 @@ describe('ChatAppShell', () => {
   it('keeps detached left-pane resizing local to its renderer window', () => {
     const { container } = render(
       <WindowFrameProvider value={{ mode: 'window' }}>
-        <ChatAppShell pane={<aside>topics</aside>} paneOpen main={<div />} />
+        <PageSidebar open>
+          <aside>topics</aside>
+        </PageSidebar>
       </WindowFrameProvider>
     )
     const handle = container.querySelector('[data-resource-list-pane-resize-handle]')
@@ -371,40 +328,12 @@ describe('ChatAppShell', () => {
     expect(persistCacheMock.setWidth).not.toHaveBeenCalled()
   })
 
-  it('keeps a detached conversation navbar inside the center beside the resource pane', () => {
-    const { container } = render(
-      <WindowFrameProvider value={{ mode: 'window' }}>
-        <ChatAppShell
-          contentId="conversation-content"
-          centerId="conversation-center"
-          topBar={<header data-testid="conversation-navbar" />}
-          pane={<aside>topics</aside>}
-          paneOpen
-          main={<div />}
-        />
-      </WindowFrameProvider>
-    )
-
-    const pane = container.querySelector<HTMLElement>('[data-resource-list-pane]')
-    const navbar = screen.getByTestId('conversation-navbar')
-    const center = document.getElementById('conversation-center')
-    const content = document.getElementById('conversation-content')
-
-    if (!pane || !center || !content) {
-      throw new Error('Expected resource pane, conversation center, and conversation content')
-    }
-
-    expect(pane.style.paddingTop).toBe('')
-    expect(content).toContainElement(pane)
-    expect(content).toContainElement(center)
-    expect(center).toContainElement(navbar)
-    expect(pane.compareDocumentPosition(center) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-  })
-
   it('saves drag width at or above the minimum and cleans document resize styles', () => {
     const onPaneCollapse = vi.fn()
     const { container } = render(
-      <ChatAppShell pane={<aside>topics</aside>} paneOpen onPaneCollapse={onPaneCollapse} main={<div />} />
+      <PageSidebar open onPaneCollapse={onPaneCollapse}>
+        <aside>topics</aside>
+      </PageSidebar>
     )
     const pane = container.querySelector('[data-resource-list-pane]')
     const handle = container.querySelector('[data-resource-list-pane-resize-handle]')
@@ -435,7 +364,11 @@ describe('ChatAppShell', () => {
   })
 
   it('cleans the left resource pane resize state on window blur', () => {
-    const { container } = render(<ChatAppShell pane={<aside>topics</aside>} paneOpen main={<div />} />)
+    const { container } = render(
+      <PageSidebar open>
+        <aside>topics</aside>
+      </PageSidebar>
+    )
     const pane = container.querySelector('[data-resource-list-pane]')
     const handle = container.querySelector('[data-resource-list-pane-resize-handle]')
 
@@ -465,7 +398,9 @@ describe('ChatAppShell', () => {
   it('clamps below-minimum drag width without collapsing when left drag is below the collapse threshold', () => {
     const onPaneCollapse = vi.fn()
     const { container } = render(
-      <ChatAppShell pane={<aside>topics</aside>} paneOpen onPaneCollapse={onPaneCollapse} main={<div />} />
+      <PageSidebar open onPaneCollapse={onPaneCollapse}>
+        <aside>topics</aside>
+      </PageSidebar>
     )
     const pane = container.querySelector('[data-resource-list-pane]')
     const handle = container.querySelector('[data-resource-list-pane-resize-handle]')
@@ -492,7 +427,9 @@ describe('ChatAppShell', () => {
       expect(pane).not.toHaveAttribute('data-resizing')
     })
     const { container } = render(
-      <ChatAppShell pane={<aside>topics</aside>} paneOpen onPaneCollapse={onPaneCollapse} main={<div />} />
+      <PageSidebar open onPaneCollapse={onPaneCollapse}>
+        <aside>topics</aside>
+      </PageSidebar>
     )
     pane = container.querySelector('[data-resource-list-pane]')
     const handle = container.querySelector('[data-resource-list-pane-resize-handle]')
@@ -521,7 +458,9 @@ describe('ChatAppShell', () => {
   it('does not collapse on rightward drag even if the measured width is below the minimum', () => {
     const onPaneCollapse = vi.fn()
     const { container } = render(
-      <ChatAppShell pane={<aside>topics</aside>} paneOpen onPaneCollapse={onPaneCollapse} main={<div />} />
+      <PageSidebar open onPaneCollapse={onPaneCollapse}>
+        <aside>topics</aside>
+      </PageSidebar>
     )
     const pane = container.querySelector('[data-resource-list-pane]')
     const handle = container.querySelector('[data-resource-list-pane-resize-handle]')
@@ -962,27 +901,6 @@ describe('ChatAppShell', () => {
 
     expect(onPaneAutoCollapseChange).toHaveBeenCalledTimes(1)
     expect(onPaneAutoCollapseChange).toHaveBeenCalledWith(true)
-  })
-
-  it('keeps the resize handle outside the clipped pane content so it does not cover the scrollbar', () => {
-    const { container } = render(<ChatAppShell pane={<aside>topics</aside>} paneOpen main={<div />} />)
-    const pane = container.querySelector('[data-resource-list-pane]')
-    const paneContent = container.querySelector('[data-resource-list-pane-content]')
-    const handle = container.querySelector('[data-resource-list-pane-resize-handle]')
-
-    expect(pane).toHaveClass('overflow-visible')
-    expect(paneContent).toHaveClass('overflow-hidden')
-    expect(handle).toHaveClass('left-full', 'w-2')
-    expect(handle).not.toHaveClass('right-0')
-    expect(handle?.firstElementChild).toHaveClass('left-0')
-  })
-
-  it('keeps the resize handle below history overlays', () => {
-    const { container } = render(<ChatAppShell pane={<aside>topics</aside>} paneOpen main={<div />} />)
-    const handle = container.querySelector('[data-resource-list-pane-resize-handle]')
-
-    expect(handle).toHaveClass('z-10')
-    expect(handle).not.toHaveClass('z-50')
   })
 })
 

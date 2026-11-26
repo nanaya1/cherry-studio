@@ -9,6 +9,7 @@ import type { AgentSessionEntity } from '@shared/data/api/schemas/agentSessions'
 import type { AgentSessionWorkspaceSource } from '@shared/data/api/schemas/agentWorkspaces'
 
 import { agentChatContextProvider, finalizeInterruptedParts, type StreamListener } from '../streamManager'
+import { awaitsDurableOutcome, recoverSessionDeliveries } from './recoverSessionDeliveries'
 import { buildAgentSessionTopicId } from './topic'
 
 const logger = loggerService.withContext('AgentSessionDeliveryService')
@@ -60,6 +61,8 @@ export class AgentSessionDeliveryService extends BaseService {
   private readonly pendingKicks = new Set<string>()
   private readonly inFlight = new Map<Promise<void>, string>()
   private readonly suppressedSessionIds = new Set<string>()
+  /** Recovered sessions that could not reconnect; Durable cannot settle their delivery turn. */
+  private readonly unresumableSessionIds = new Set<string>()
   private isShuttingDown = false
 
   protected override onInit(): void {
@@ -84,7 +87,10 @@ export class AgentSessionDeliveryService extends BaseService {
 
   accept(input: AcceptSessionDeliveryInput): AgentSessionMessageEntity {
     this.assertWritesAvailable()
-    const message = agentSessionMessageService.acceptSessionDelivery(input)
+    const message = agentSessionMessageService.acceptSessionDelivery({
+      ...input,
+      senderMessageId: application.get('AgentSessionRuntimeService').getExecutionHead(input.senderSessionId)
+    })
     this.kick(message.sessionId)
     return message
   }
@@ -94,7 +100,10 @@ export class AgentSessionDeliveryService extends BaseService {
     message: AgentSessionMessageEntity
   } {
     this.assertWritesAvailable()
-    const created = agentSessionMessageService.createSessionWithDelivery(input)
+    const created = agentSessionMessageService.createSessionWithDelivery({
+      ...input,
+      senderMessageId: application.get('AgentSessionRuntimeService').getExecutionHead(input.senderSessionId)
+    })
     this.kick(created.message.sessionId)
     return created
   }
@@ -296,13 +305,34 @@ export class AgentSessionDeliveryService extends BaseService {
         return
       }
 
+      try {
+        await runtime.prepareBranch(current.sessionId, current.id)
+      } catch (error) {
+        if (runtime.isSessionBusy(message.sessionId)) {
+          outcome = 'blocked'
+          return
+        }
+        this.failBeforeStart(current, error)
+        outcome = 'settled'
+        return
+      }
+      if (this.isShuttingDown || this.isWriteQuiesced || manager.isWriteQuiesced) {
+        this.suppressedSessionIds.add(message.sessionId)
+        outcome = 'blocked'
+        return
+      }
+      if (manager.hasLiveStream(topicId) || runtime.isSessionBusy(message.sessionId)) {
+        outcome = 'blocked'
+        return
+      }
+
       let persisted
       try {
         persisted = application.get('DbService').withWriteTx((tx) => {
           const prepared = agentChatContextProvider.persistDispatchTx(tx, validated, {
             id: validated.agentId,
             updatedAt: validated.agentUpdatedAt,
-            model: validated.uniqueModelId,
+            model: validated.agentDefaultModel,
             type: validated.agentType
           })
           const claimed = agentSessionMessageService.claimSessionDeliveryTx(
@@ -452,11 +482,13 @@ export class AgentSessionDeliveryService extends BaseService {
       ) {
         return true
       }
+      if (awaitsDurableOutcome(delivering) && !this.unresumableSessionIds.has(sessionId)) return true
       // Runtime and stream persistence are idle, so no writer can still complete this placeholder.
       // A transient repair failure is retried by the next idle/sweep kick.
       agentSessionMessageService.markAssistantMessageTerminalError(sessionId, assistant.id)
       assistant = agentSessionMessageService.getSessionMessage(sessionId, assistant.id)
       if (assistant.status === 'pending') return true
+      this.unresumableSessionIds.delete(sessionId)
     }
 
     const result = agentSessionMessageService.finalizeSessionDelivery({
@@ -470,59 +502,17 @@ export class AgentSessionDeliveryService extends BaseService {
   }
 
   private recoverDeliveries(): void {
-    const recoverable = agentSessionMessageService.listRecoverableSessionDeliveries()
-    for (const message of recoverable) {
-      if (message.delivery?.status !== 'delivering') continue
-      const turnRef = message.delivery.turnRef
-      if (!turnRef) {
-        const result = agentSessionMessageService.failSessionDelivery(message, {
-          code: 'INTERNAL_ERROR',
-          message: 'Delivering Session request has no turn reference'
+    const { affected, resumable } = recoverSessionDeliveries()
+    for (const sessionId of affected) this.suppressedSessionIds.add(sessionId)
+    // Reopening lets Durable finish the interrupted turn; its terminal then finalizes the delivery.
+    for (const sessionId of resumable)
+      void application
+        .get('AgentSessionRuntimeService')
+        .primeConnection(sessionId)
+        .then((connected) => {
+          if (connected) return
+          this.unresumableSessionIds.add(sessionId)
+          this.kick(sessionId)
         })
-        if (result) this.suppressedSessionIds.add(result.sessionId)
-        continue
-      }
-
-      let assistant: AgentSessionMessageEntity | null = null
-      try {
-        assistant = agentSessionMessageService.getSessionMessage(message.sessionId, turnRef)
-      } catch (error) {
-        if (!(isDataApiError(error) && error.code === ErrorCode.NOT_FOUND)) throw error
-      }
-      if (!assistant) {
-        const result = agentSessionMessageService.failSessionDelivery(message, {
-          code: 'DELIVERY_TURN_DELETED',
-          message: 'The delivery turn was deleted before it could be recovered'
-        })
-        if (result) this.suppressedSessionIds.add(result.sessionId)
-        continue
-      }
-      if (assistant.status === 'pending') {
-        agentSessionMessageService.resolveCrashOrphanedMessages(
-          [
-            {
-              id: assistant.id,
-              data: {
-                ...assistant.data,
-                parts: finalizeInterruptedParts(assistant.data.parts ?? [], 'error')
-              }
-            }
-          ],
-          [message.sessionId]
-        )
-      }
-      const result = agentSessionMessageService.finalizeSessionDelivery({
-        requestSessionId: message.sessionId,
-        requestMessageId: message.id,
-        assistantMessageId: assistant.id,
-        outcome:
-          assistant.status === 'success'
-            ? 'success'
-            : assistant.status === 'paused' || assistant.status === 'pending'
-              ? 'interrupted'
-              : 'failed'
-      })
-      if (result) this.suppressedSessionIds.add(result.sessionId)
-    }
   }
 }

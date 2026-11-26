@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const openExternal = vi.fn()
 
 vi.mock('@cherrystudio/ui', () => ({
-  Scrollbar: ({ children, className }: { children: ReactNode; className?: string }) => (
+  ScrollArea: ({ children, className }: { children: ReactNode; className?: string }) => (
     <div className={className}>{children}</div>
   )
 }))
@@ -111,7 +111,7 @@ describe('ToolboxPage', () => {
     render(<ToolboxPage />)
 
     for (const [name, url] of [
-      [/AI应用搭建/, 'http://10.88.36.191:19090/hermes/'],
+      [/AI应用搭建/, 'https://xlos.xuelangyun.com/web/gonggong/0'],
       [/系统工程/, 'https://xlos.xuelangyun.com/web/service/predict'],
       [/本体/, 'http://121.36.244.169:30009/?open_in_browser=true#/auth/login'],
       [/MDO/, 'http://mdo.xuelangyun.com/'],

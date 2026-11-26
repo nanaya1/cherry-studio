@@ -69,20 +69,12 @@ export function SidebarExpandButton({ onClick }: { onClick: () => void }) {
   )
 }
 
-export function ShellTabBarActions() {
+export function AppUpdateButton({ placement = 'bottom' }: { placement?: 'top' | 'right' | 'bottom' | 'left' }) {
   const { t } = useTranslation()
-  const [sidebarWidth] = usePersistCache('ui.sidebar.width')
   const { appUpdateState } = useAppUpdateState()
-  const sidebarLayout = getSidebarLayout(sidebarWidth)
-  const isSidebarHidden = sidebarLayout === 'hidden'
-  // On macOS the search lives in the sidebar title bar (full) and the collapsed
-  // corner (hidden); only the icon rail borrows the tab bar's search slot.
-  const showSearch = !isMac || sidebarLayout === 'icon'
   const hasUpdateAction = Boolean(appUpdateState.available && appUpdateState.downloaded && appUpdateState.info)
 
-  const handleSettingsClick = () => {
-    openSettingsTab()
-  }
+  if (!hasUpdateAction) return null
 
   const handleUpdateClick = () => {
     const releaseInfo = appUpdateState.info
@@ -98,21 +90,32 @@ export function ShellTabBarActions() {
     : t('button.update_available')
 
   return (
+    <Tooltip content={updateLabel} placement={placement} delay={800}>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        aria-label={updateLabel}
+        onClick={handleUpdateClick}
+        className="flex size-8 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-accent">
+        <CircleArrowUp className="lucide-custom size-[18px] text-success" strokeWidth={1.8} />
+      </Button>
+    </Tooltip>
+  )
+}
+
+export function ShellTabBarActions() {
+  const { t } = useTranslation()
+  const [sidebarWidth] = usePersistCache('ui.sidebar.width')
+  const sidebarLayout = getSidebarLayout(sidebarWidth)
+
+  const isSidebarHidden = sidebarLayout === 'hidden'
+  const showSearch = !isMac || sidebarLayout === 'icon'
+
+  return (
     <div className="flex h-full shrink-0 items-stretch">
       <div className="flex items-center gap-1 pr-2 [-webkit-app-region:no-drag]">
-        {hasUpdateAction && (
-          <Tooltip content={updateLabel} placement="bottom" delay={800}>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              aria-label={updateLabel}
-              onClick={handleUpdateClick}
-              className="flex h-8 w-8 items-center justify-center rounded-[8px] transition-colors hover:bg-accent">
-              <CircleArrowUp className="lucide-custom size-[18px] text-success" strokeWidth={1.8} />
-            </Button>
-          </Tooltip>
-        )}
+        <AppUpdateButton />
         {isSidebarHidden && (
           <CommandTooltip command="app.settings.open" label={t('settings.title')} placement="bottom" delay={800}>
             <Button
@@ -120,8 +123,8 @@ export function ShellTabBarActions() {
               variant="ghost"
               size="icon"
               aria-label={t('settings.title')}
-              onClick={handleSettingsClick}
-              className="flex h-8 w-8 items-center justify-center rounded-[8px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground dark:text-muted-foreground">
+              onClick={() => openSettingsTab()}
+              className="flex size-8 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground dark:text-muted-foreground">
               <Settings size={16} strokeWidth={1.8} />
             </Button>
           </CommandTooltip>

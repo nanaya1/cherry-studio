@@ -18,7 +18,11 @@ import { application } from '@application'
 import { agentService } from '@data/services/AgentService'
 import { loggerService } from '@logger'
 import { ensureAgentDataDirectory } from '@main/ai/agents/agentDataDirectory'
-import { resolveAgentCapabilities, resolveMountedMcpServers } from '@main/ai/agents/builtin/builtinAgentCapabilities'
+import {
+  resolveAgentCapabilities,
+  resolveAutomationAccess,
+  resolveMountedMcpServers
+} from '@main/ai/agents/builtin/builtinAgentCapabilities'
 import { BUILTIN_AGENT_PLUGIN_NAME } from '@main/ai/agents/builtin/builtinAgentDefinition'
 import {
   getBuiltinAgentPluginDirectory,
@@ -39,16 +43,22 @@ import {
   prepareAgentSessionWorkspaceDirectory
 } from '@main/ai/runtime/agentSessionWorkspace'
 import { buildCitationsGuidance } from '@main/ai/runtime/citationsGuidance'
+import { isAutomationSkillAvailable } from '@main/ai/skills/automationSkills'
 import { skillService } from '@main/ai/skills/SkillService'
 import {
   findBuiltinToolPolicy,
   listBuiltinToolPolicies,
+  resolveDelegationApproval,
   toCherryBuiltinRuntimeName,
   toMcpRuntimeName
 } from '@main/ai/toolApproval/builtinToolPolicy'
+import { checkCommand, commandContextChangedReason } from '@main/ai/toolApproval/commandPolicy'
+import { detectGlobalInstall } from '@main/ai/toolApproval/dependencyGuard'
 import { toolApprovalRegistry } from '@main/ai/toolApproval/ToolApprovalRegistry'
+import { evaluateToolGuards } from '@main/ai/toolApproval/toolGuards'
 import { type ClaudeToolContext, resolveDisallowedTools } from '@main/ai/tools/adapters/claudeCode/toolConditions'
 import { resolveKnowledgeBaseScope } from '@main/ai/utils/knowledgeScope'
+import { t } from '@main/i18n'
 import { AGENT_RUNTIME_CAPABILITIES } from '@shared/ai/agentRuntimeCapabilities'
 import {
   KB_READ_TOOL_NAME,
@@ -59,11 +69,11 @@ import {
 import { claudeToolRequiresUserInteraction } from '@shared/ai/claudecode/toolRegistry'
 import type { AgentEntity } from '@shared/data/api/schemas/agents'
 import type { AgentSessionEntity } from '@shared/data/api/schemas/agentSessions'
+import type { UniqueModelId } from '@shared/data/types/model'
 import type { Provider } from '@shared/data/types/provider'
 import type { CherryToolMeta } from '@shared/data/types/uiParts'
 import { isExternalCliProvider } from '@shared/utils/provider'
 
-import { AgentsMdLoader } from './AgentsMdLoader'
 import type { ToolPolicySnapshot } from './ClaudeCodeSessionStateService'
 import {
   AUTO_COMPACT_TRIGGER_PCT,
@@ -72,10 +82,14 @@ import {
   resolveClaudeExecutablePath,
   resolveRequestedOutputTokens
 } from './environment'
+import { CLAUDE_TOOL_GUARD_RULES } from './guardRules'
 import {
   approvalRequiredRuntimeNames,
   ASK_USER_QUESTION_TOOL_NAME,
-  HEADLESS_INTERACTIVE_TOOL_DENIAL
+  GLOBAL_INSTALL_PLAN_DENIAL,
+  GLOBAL_INSTALL_UNATTENDED_DENIAL,
+  HEADLESS_INTERACTIVE_TOOL_DENIAL,
+  shellToolDialect
 } from './guardRules'
 import { buildClaudeCodeHooks, surfaceExitPlanModeInput } from './hooks'
 import { buildMcpServers, buildMcpToolMetadata, warmAgentMcpToolCaches } from './mcpCatalog'
@@ -139,6 +153,10 @@ export interface ClaudeCodeSessionOptions {
   }
   /** Claude Code SDK-native Fast mode. */
   fastMode?: boolean
+  /** Effective turn model display name for `{{model_name}}`; defaults to `agent.modelName`. */
+  promptModelName?: string | null
+  /** Effective connection model; defaults to `session.model ?? agent.model`. */
+  effectiveModelId?: UniqueModelId
 }
 
 export type { LinkedChannelSnapshot, McpServerSnapshotMap } from '@main/ai/runtime/agentMcpServers'
@@ -177,6 +195,7 @@ export async function buildClaudeCodeSessionSettings(
   const capabilities = resolveAgentCapabilities(agent)
   const mountedServers = resolveMountedMcpServers(agent, {
     browserEnabled: application.get('PreferenceService').get('app.browser.agent_control.enabled'),
+    computerUseEnabled: application.get('PreferenceService').get('app.computer_use.agent_control.enabled'),
     channelLinked: linkedChannelSnapshot !== null
   })
 
@@ -184,6 +203,7 @@ export async function buildClaudeCodeSessionSettings(
   const cwd = session.workspace.path
   await prepareClaudeCodeWorkspaceDirectory(session)
   const mcpWarmPromise = warmAgentMcpToolCaches(agent)
+  const effectiveModelId = options?.effectiveModelId ?? session.model ?? agent.model ?? undefined
   const [agentDataPath, env, workspacePlugins] = await Promise.all([
     ensureAgentDataDirectory(application.getPath('feature.agents.data'), agent.id),
     buildEnvironment(provider, agent),
@@ -211,9 +231,6 @@ export async function buildClaudeCodeSessionSettings(
   // `dispose` drops any approval still pending for this session when the
   // stream exits abnormally.
   const approvalEmitter = sessionState().getToolApprovalEmitterHolder(session.id)
-  const steerHolder = sessionState().getSteerHolder(session.id)
-  const agentsMdLoader = await AgentsMdLoader.create(cwd)
-  const agentsMdContext = await agentsMdLoader.loadInitialContext()
   // The hooks resolve the approval emitter / steer holder by session id at fire-time, so they are
   // not passed in; the holders above are created here only to expose them on `settings`.
   const { canUseTool, hooks, disallowedTools, toolPolicySnapshot } = await buildToolPermissions(
@@ -221,7 +238,6 @@ export async function buildClaudeCodeSessionSettings(
     agent,
     mountedServers,
     agentDataPath,
-    agentsMdLoader,
     await buildPluginDirectoryIndex(plugins?.map((plugin) => plugin.path) ?? []),
     options?.supportsImages !== false
   )
@@ -236,8 +252,8 @@ export async function buildClaudeCodeSessionSettings(
     agentDataPath,
     knowledgeBaseScope,
     disallowedTools,
-    agentsMdContext,
-    options?.effectiveLanguage
+    options?.effectiveLanguage,
+    options?.promptModelName
   )
 
   // 6. MCP servers (session + built-in)
@@ -249,7 +265,8 @@ export async function buildClaudeCodeSessionSettings(
     linkedChannelSnapshot,
     agentDataPath,
     options?.knowledgeBaseIds,
-    notificationContext
+    notificationContext,
+    effectiveModelId ?? null
   )
   let mcpToolMetadata = await buildMcpToolMetadata(agent)
   if (agent.mcps?.length) mcpToolMetadata ??= {}
@@ -291,7 +308,7 @@ export async function buildClaudeCodeSessionSettings(
   // 9. Skills — pass the SDK skill-name whitelist (managed skills enabled for this
   // agent + the workspace's own .claude/skills). The CLAUDE_CONFIG_DIR/skills mirror
   // is maintained by SkillService (install/uninstall/startup), not here.
-  const skills = await buildSkillWhitelist(agent, cwd)
+  const skills = await buildSkillWhitelist(agent, cwd, linkedChannelSnapshot !== null)
 
   // 10. Build settings
   const declaredContextWindow = options?.contextWindow
@@ -329,12 +346,14 @@ export async function buildClaudeCodeSessionSettings(
     env,
     pathToClaudeCodeExecutable: resolveClaudeExecutablePath(),
     systemPrompt,
-    // Support loads only Cherry-owned plugin configuration. AGENTS.md context is injected above
-    // by AgentsMdLoader, so disabling filesystem settings does not remove workspace instructions.
+    // Sealed agents exclude filesystem settings and native workspace instructions.
     settingSources: capabilities.environment === 'sealed' ? [] : getSettingSources(provider),
     settings: {
       autoCompactEnabled: true,
       cleanupPeriodDays: CLAUDE_SESSION_RETENTION_DAYS,
+      pluginConfigs: {
+        'agents-md@builtin': { options: { instructionFiles: 'claude-md-and-agents-md' } }
+      },
       // Cherry owns persistent Agent memory through SOUL/USER/FACT/JOURNAL and agent-memory.
       // Disable Claude Code's separate auto-memory store so the preset does not introduce a
       // second, conflicting memory contract.
@@ -348,7 +367,7 @@ export async function buildClaudeCodeSessionSettings(
     includePartialMessages: true,
     agentProgressSummaries: true,
     forwardSubagentText: true,
-    permissionMode: agentConfig?.permission_mode,
+    permissionMode: agentConfig?.permission_mode ?? 'default',
     allowedTools: finalAllowedTools,
     disallowedTools,
     plugins,
@@ -356,7 +375,6 @@ export async function buildClaudeCodeSessionSettings(
     canUseTool,
     hooks,
     approvalEmitter,
-    steerHolder,
     toolPolicySnapshot,
     warmQueryKey: session.id,
     ...(mcpToolMetadata ? { mcpToolMetadata } : {}),
@@ -402,8 +420,9 @@ export { buildMcpServers } from './mcpCatalog'
  * startup reconcile, never here — so concurrent session builds never race.
  */
 export async function buildSkillWhitelist(
-  agent: Pick<AgentEntity, 'id' | 'configuration'>,
-  cwd: string
+  agent: Pick<AgentEntity, 'id' | 'configuration' | 'disabledTools'>,
+  cwd: string,
+  channelLinked = false
 ): Promise<string[]> {
   const builtinRole = agent.configuration?.builtin_role as string | undefined
   const bundledNames = builtinRole ? (loadBuiltinAgentDefinition(builtinRole)?.skills ?? []) : []
@@ -413,7 +432,14 @@ export async function buildSkillWhitelist(
       skillService.list({ agentId: agent.id }),
       skillService.listLocalFolderNames(cwd)
     ])
-    const enabledNames = installedSkills.filter((skill) => skill.isEnabled).map((skill) => skill.folderName)
+    const access = resolveAutomationAccess(agent, {
+      channelLinked,
+      browserEnabled: application.get('PreferenceService').get('app.browser.agent_control.enabled'),
+      computerUseEnabled: application.get('PreferenceService').get('app.computer_use.agent_control.enabled')
+    })
+    const enabledNames = installedSkills
+      .filter((skill) => skill.isEnabled && isAutomationSkillAvailable(skill, access))
+      .map((skill) => skill.folderName)
     names = [...enabledNames, ...workspaceNames, ...bundledNames]
   }
 
@@ -468,7 +494,6 @@ async function buildToolPermissions(
   agent: AgentEntity,
   mountedServers: ReadonlySet<string>,
   agentDataPath: string,
-  agentsMdLoader: AgentsMdLoader,
   pluginDirectories: ReadonlyMap<string, string>,
   supportsImages: boolean
 ): Promise<{
@@ -516,21 +541,65 @@ async function buildToolPermissions(
       return { behavior: 'deny', message: 'Tool policy not ready' }
     }
 
+    const permissionMode = snapshot.getPermissionMode()
+    const dialect = shellToolDialect(toolName)
+    const checkShell = (command: string, mode: typeof permissionMode) =>
+      checkCommand({ command, dialect: dialect ?? 'bash', cwd, builtinRole, permissionMode: mode })
+    const commandPolicy =
+      dialect && typeof input.command === 'string' ? await checkShell(input.command, permissionMode) : undefined
+    const globalInstall =
+      toolName === 'Bash' && typeof input.command === 'string' && detectGlobalInstall(input.command) !== null
+    if (globalInstall && permissionMode === 'plan') {
+      return { behavior: 'deny', message: GLOBAL_INSTALL_PLAN_DENIAL }
+    }
+    const installApprovalHolds = globalInstall && permissionMode !== 'bypassPermissions'
+
     // Busy-session enqueue/steer cannot rebuild a connection's baked policy, so enforce the per-turn
     // no-responder denial at fire time too. It mirrors the guard table's headless rules — Full Access
     // lifts it for `bypassApproval: 'lift'` tools — instead of relying on the SDK skipping
     // `canUseTool` under bypassPermissions.
     const interactionState = application.get('AgentSessionRuntimeService').getInteractionState(session.id)
+    const shellGuard = commandPolicy
+      ? await evaluateToolGuards(CLAUDE_TOOL_GUARD_RULES, {
+          toolName,
+          input,
+          permissionMode,
+          builtinRole,
+          mountedServers,
+          pluginDirectories,
+          cwd,
+          agentDataPath,
+          interaction: interactionState,
+          isDisabled: (name) => snapshot.isDisabled(name)
+        })
+      : undefined
+    if (shellGuard?.effect === 'deny') return { behavior: 'deny', message: shellGuard.reason }
+    const commandRequiresApproval = shellGuard?.effect === 'ask'
     const policy = findBuiltinToolPolicy(toolName, mountedServers)
-    const approvalHoldsInThisMode =
-      policy?.approval === 'required' &&
-      !(snapshot.getPermissionMode() === 'bypassPermissions' && policy.bypassApproval === 'lift')
-    const requiresInteractiveResponder = claudeToolRequiresUserInteraction(toolName) || approvalHoldsInThisMode
-    if (requiresInteractiveResponder && interactionState.userResponse === 'unavailable') {
+    const delegationApproval =
+      policy?.approval === 'delegation'
+        ? resolveDelegationApproval(snapshot.getPermissionMode(), interactionState)
+        : undefined
+    if (delegationApproval === 'deny') {
       return { behavior: 'deny', message: HEADLESS_INTERACTIVE_TOOL_DENIAL }
     }
+    // Ordinary delegation is approved by PreToolUse. Reaching this callback means the SDK still
+    // requires a user decision, even when matchedAskRule is absent.
+    const approvalHoldsInThisMode =
+      commandRequiresApproval ||
+      installApprovalHolds ||
+      policy?.approval === 'delegation' ||
+      (policy?.approval === 'required' &&
+        !(snapshot.getPermissionMode() === 'bypassPermissions' && policy.bypassApproval === 'lift'))
+    const requiresInteractiveResponder = claudeToolRequiresUserInteraction(toolName) || approvalHoldsInThisMode
+    if (requiresInteractiveResponder && interactionState.userResponse === 'unavailable') {
+      return {
+        behavior: 'deny',
+        message: installApprovalHolds ? GLOBAL_INSTALL_UNATTENDED_DENIAL : HEADLESS_INTERACTIVE_TOOL_DENIAL
+      }
+    }
 
-    const access = snapshot.resolve(toolName, input)
+    const access = snapshot.resolve(toolName)
     // AskUserQuestion produces user-authored tool input; it is not an operation that a permission
     // mode can meaningfully approve on the user's behalf. Keep it on the response path even when
     // bypassPermissions marks every ordinary tool as auto-approved.
@@ -547,12 +616,12 @@ async function buildToolPermissions(
     // Resolved per turn, so an interactive turn on a channel-linked session still prompts.
     const isBackgroundAgent =
       (typeof opts.agentID === 'string' && opts.agentID.length > 0) || interactionState.currentTurn === 'headless'
-    const requiresUserResponse = requiresInteractiveResponder || opts.matchedAskRule !== undefined
+    const requiresUserResponse =
+      requiresInteractiveResponder ||
+      opts.matchedAskRule !== undefined ||
+      (commandPolicy !== undefined && permissionMode !== 'auto' && permissionMode !== 'bypassPermissions')
 
-    // Background agents do not inherit the parent permission mode. Let ordinary requests proceed
-    // without multiplying approval clicks; explicit PreToolUse deny hooks still run before this
-    // callback and remain authoritative. A user-configured ask rule and tools that need actual
-    // user-authored input stay on the interaction path below.
+    // Shell consent follows the root's current mode, including background children.
     if (isBackgroundAgent && !requiresUserResponse) {
       return { behavior: 'allow', updatedInput: input }
     }
@@ -575,6 +644,7 @@ async function buildToolPermissions(
     }
 
     const presentation = !hasLiveTurnStream || isBackgroundAgent ? 'message' : 'stream'
+    const originalInput = JSON.stringify(input)
     const approvalId = randomUUID()
     const emit = sessionState().peekToolApprovalEmitter(session.id)?.emit
     if (!emit) {
@@ -590,7 +660,30 @@ async function buildToolPermissions(
         originalInput: input,
         presentation,
         signal: opts.signal,
-        resolve: (decision) => resolve(decisionToPermissionResult(decision, input))
+        resolve: (decision) => {
+          if (!decision.approved || !commandPolicy) {
+            resolve(decisionToPermissionResult(decision, input))
+            return
+          }
+          const updated = decision.updatedInput ?? input
+          void checkShell(
+            typeof updated.command === 'string' ? updated.command : '',
+            sessionState().getToolPolicySnapshot(session.id)?.getPermissionMode()
+          )
+            .then((checked) => {
+              if (checked.effect === 'deny')
+                resolve({ behavior: 'deny', message: checked.reason ?? t('command_approval.configuration_error') })
+              else if (
+                opts.signal.aborted ||
+                checked.context !== commandPolicy.context ||
+                snapshot.isDisabled(toolName) ||
+                JSON.stringify(input) !== originalInput
+              )
+                resolve({ behavior: 'deny', message: commandContextChangedReason() })
+              else resolve(decisionToPermissionResult(decision, input))
+            })
+            .catch(() => resolve({ behavior: 'deny', message: t('command_approval.configuration_error') }))
+        }
       })
       if (!pending) return
       emit({
@@ -600,7 +693,22 @@ async function buildToolPermissions(
         input,
         presentation,
         providerMetadata: {
-          cherry: { transport: AGENT_RUNTIME_CAPABILITIES['claude-code'].transport, toolName } satisfies CherryToolMeta
+          cherry: {
+            transport: AGENT_RUNTIME_CAPABILITIES['claude-code'].transport,
+            toolName,
+            ...(commandPolicy
+              ? {
+                  commandPolicy: {
+                    ...commandPolicy.evidence,
+                    reason:
+                      shellGuard?.reason ??
+                      commandPolicy.reason ??
+                      opts.decisionReason ??
+                      t('command_approval.permission_required')
+                  }
+                }
+              : {})
+          } satisfies CherryToolMeta
         }
       })
     })
@@ -613,8 +721,7 @@ async function buildToolPermissions(
     builtinRole,
     mountedServers,
     pluginDirectories,
-    supportsImages,
-    agentsMdLoader
+    supportsImages
   })
 
   return {
@@ -633,10 +740,10 @@ export async function buildSystemPrompt(
   knowledgeBaseIds: readonly string[] = agent.knowledgeBaseIds ?? [],
   /** Final SDK visibility after declarative exposure, runtime gates, and dependency propagation. */
   disallowedTools: readonly string[] = resolveDisallowedTools({ disabledTools: agent.disabledTools }, { cwd }),
-  /** Root-scoped AGENTS.md instructions; nested scopes are injected lazily by a PreToolUse hook. */
-  agentsMdContext?: string,
   /** Materialized effective language; when omitted the preference is read live. */
-  effectiveLanguage?: string | null
+  effectiveLanguage?: string | null,
+  /** Effective turn model display name for `{{model_name}}`; defaults to `agent.modelName`. */
+  promptModelName?: string | null
 ): Promise<ClaudeCodeSettings['systemPrompt']> {
   const canReadAllKnowledgeBases = resolveAgentCapabilities(agent).allKnowledgeBases
   const unavailableTools = new Set(disallowedTools)
@@ -657,9 +764,9 @@ export async function buildSystemPrompt(
     agentDataPath,
     agent,
     citationsGuidance,
-    workspaceInstructions: agentsMdContext,
     customBaseContext,
-    effectiveLanguage
+    effectiveLanguage,
+    modelName: promptModelName
   })
 
   // Rebuilding and resuming must apply changed Cherry instructions without waiting for compaction.

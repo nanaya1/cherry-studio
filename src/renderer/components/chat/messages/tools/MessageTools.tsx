@@ -2,6 +2,7 @@ import type { McpToolResponse, NormalToolResponse } from '@renderer/types/mcpToo
 import type { McpTool } from '@renderer/types/tool'
 
 import { agentInlineResultPresentationRegistry, isReportArtifactsToolResponse, MessageChannelConfigTool } from './agent'
+import { getAutomationReplKind } from './automation/automationRepl'
 import { isChannelAuthQrToolResponse } from './channelConfigTool'
 import MessageMcpTool from './mcp/MessageMcpTool'
 import MessageTool, { canRenderMessageToolResponse } from './MessageTool'
@@ -22,7 +23,7 @@ const DEDICATED_AGENT_SERVERS = new Set(['meacowork-tools', 'cherry-tools', 'age
 
 function rendersThroughChooseTool(toolResponse: McpToolResponse | NormalToolResponse): boolean {
   const tool = toolResponse.tool
-  if (tool.type !== 'mcp') return true
+  if (tool.type !== 'mcp' || getAutomationReplKind(tool)) return true
   return (
     DEDICATED_AGENT_SERVERS.has((tool as McpTool).serverId) &&
     canRenderMessageToolResponse(toolResponse as NormalToolResponse)

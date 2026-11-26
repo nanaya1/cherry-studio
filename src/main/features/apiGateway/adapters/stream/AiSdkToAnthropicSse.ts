@@ -27,6 +27,7 @@ import type {
   RawMessageStartEvent,
   RawMessageStopEvent,
   RawMessageStreamEvent,
+  RedactedThinkingBlock,
   SignatureDelta,
   StopReason,
   TextBlock,
@@ -58,6 +59,11 @@ const NULL_INFERENCE_GEO = null
 const NULL_SERVICE_TIER = null
 const NULL_CONTAINER = null
 
+type ThinkingUsage = { output_tokens_details?: { thinking_tokens: number } }
+type AnthropicStreamEvent =
+  | Exclude<RawMessageStreamEvent, RawMessageDeltaEvent>
+  | (Omit<RawMessageDeltaEvent, 'usage'> & { usage: MessageDeltaUsage & ThinkingUsage })
+
 /**
  * Adapter that converts AI SDK fullStream events to Anthropic SSE events
  *
@@ -67,8 +73,10 @@ const NULL_CONTAINER = null
  * const outputStream = adapter.transform(aiSdkStream)
  * ```
  */
-export class AiSdkToAnthropicSse extends BaseStreamAdapter<RawMessageStreamEvent> {
+export class AiSdkToAnthropicSse extends BaseStreamAdapter<AnthropicStreamEvent> {
   private readonly toClientToolName?: (toolName: string) => string
+  /** Split cache writes from the cache-inclusive input total for Anthropic usage. */
+  private cacheWriteTokens?: number
 
   constructor(options: StreamAdapterOptions) {
     super(options)
@@ -136,9 +144,11 @@ export class AiSdkToAnthropicSse extends BaseStreamAdapter<RawMessageStreamEvent
         break
 
       // === Reasoning/Thinking Events ===
-      case 'reasoning-start':
-        this.startThinkingBlock(chunk.id)
+      case 'reasoning-start': {
+        const redactedData = chunk.providerMetadata?.anthropic?.redactedData
+        this.startThinkingBlock(chunk.id, typeof redactedData === 'string' ? redactedData : undefined)
         break
+      }
 
       case 'reasoning-delta':
         // @ai-sdk/anthropic delivers the signature on an empty-delta chunk's metadata.
@@ -152,9 +162,9 @@ export class AiSdkToAnthropicSse extends BaseStreamAdapter<RawMessageStreamEvent
         break
 
       // === Tool Events ===
-      // Client tools resolve in one `tool-input-available` chunk (full input,
-      // no incremental input deltas to accumulate). Cache reasoning signatures
-      // off its providerMetadata, then frame the Anthropic tool_use block.
+      // Client runtimes validate object arguments and feed tool errors back to the model.
+      // Preserve provider signatures for the next native turn.
+      case 'tool-input-error':
       case 'tool-input-available': {
         const toolName = this.toClientToolName?.(chunk.toolName) ?? chunk.toolName
         const meta = chunk.providerMetadata as Record<string, any> | undefined
@@ -201,6 +211,41 @@ export class AiSdkToAnthropicSse extends BaseStreamAdapter<RawMessageStreamEvent
     if (!metadata) return
     if (metadata.stats?.inputTokens !== undefined) this.state.inputTokens = metadata.stats.inputTokens
     if (metadata.stats?.outputTokens !== undefined) this.state.outputTokens = metadata.stats.outputTokens
+    if (metadata.stats?.inputTokenDetails?.cacheReadTokens !== undefined) {
+      this.state.cacheReadTokens = metadata.stats.inputTokenDetails.cacheReadTokens
+    }
+    if (metadata.stats?.outputTokenDetails?.reasoningTokens !== undefined) {
+      this.state.reasoningTokens = metadata.stats.outputTokenDetails.reasoningTokens
+    }
+    if (metadata.stats?.inputTokenDetails?.cacheWriteTokens !== undefined) {
+      this.cacheWriteTokens = metadata.stats.inputTokenDetails.cacheWriteTokens
+    }
+  }
+
+  /**
+   * Split the cache-inclusive projected input total into the Anthropic usage
+   * shape. The projection's `inputTokens` follows the AI SDK v6 semantic of
+   * TOTAL input (cache reads and writes included), while Anthropic clients
+   * expect `input_tokens` to be the uncached portion with cache reads/writes
+   * reported separately (billed input = input + cache_creation + cache_read).
+   * Without a projected breakdown there is nothing to split, so the total is
+   * reported as-is and the cache buckets keep their SDK defaults.
+   */
+  private splitAnthropicInputUsage(): {
+    inputTokens: number
+    cacheCreationInputTokens: number
+    cacheReadInputTokens: number | null
+  } {
+    const cacheRead = this.state.cacheReadTokens
+    const cacheWrite = this.cacheWriteTokens
+    if (cacheRead === undefined && cacheWrite === undefined) {
+      return { inputTokens: this.state.inputTokens, cacheCreationInputTokens: 0, cacheReadInputTokens: null }
+    }
+
+    const cacheCreationInputTokens = cacheWrite ?? 0
+    const cacheReadInputTokens = cacheRead ?? 0
+    const inputTokens = Math.max(0, this.state.inputTokens - cacheCreationInputTokens - cacheReadInputTokens)
+    return { inputTokens, cacheCreationInputTokens, cacheReadInputTokens }
   }
 
   private startTextBlock(): void {
@@ -271,24 +316,23 @@ export class AiSdkToAnthropicSse extends BaseStreamAdapter<RawMessageStreamEvent
     this.state.textBlockIndex = null
   }
 
-  private startThinkingBlock(reasoningId: string): void {
+  private startThinkingBlock(reasoningId: string, redactedData?: string): void {
     if (this.state.thinkingBlocks.has(reasoningId)) return
 
     const index = this.allocateBlockIndex()
     this.state.thinkingBlocks.set(reasoningId, index)
     this.state.currentThinkingId = reasoningId
     this.state.blocks.set(index, {
-      type: 'thinking',
+      type: redactedData === undefined ? 'thinking' : 'redacted_thinking',
       index,
       started: true,
-      content: ''
+      content: redactedData ?? ''
     })
 
-    const contentBlock: ThinkingBlock = {
-      type: 'thinking',
-      thinking: '',
-      signature: ''
-    }
+    const contentBlock: ThinkingBlock | RedactedThinkingBlock =
+      redactedData === undefined
+        ? { type: 'thinking', thinking: '', signature: '' }
+        : { type: 'redacted_thinking', data: redactedData }
 
     const event: RawContentBlockStartEvent = {
       type: 'content_block_start',
@@ -445,23 +489,20 @@ export class AiSdkToAnthropicSse extends BaseStreamAdapter<RawMessageStreamEvent
     // `finish` may also carry the final usage projection.
     this.applyUsageMetadata(chunk.messageMetadata as GatewayUsageMetadata | undefined)
 
-    if (!this.state.stopReason) {
-      switch (chunk.finishReason) {
-        case 'stop':
-          this.state.stopReason = 'end_turn'
-          break
-        case 'length':
-          this.state.stopReason = 'max_tokens'
-          break
-        case 'tool-calls':
-          this.state.stopReason = 'tool_use'
-          break
-        case 'content-filter':
-          this.state.stopReason = 'refusal'
-          break
-        default:
-          this.state.stopReason = 'end_turn'
-      }
+    switch (chunk.finishReason) {
+      case 'length':
+        this.state.stopReason = 'max_tokens'
+        break
+      case 'tool-calls':
+        this.state.stopReason = 'tool_use'
+        break
+      case 'content-filter':
+        this.state.stopReason = 'refusal'
+        break
+      case 'stop':
+      case 'other':
+      default:
+        this.state.stopReason = this.state.toolBlocks.size > 0 ? 'tool_use' : 'end_turn'
     }
   }
 
@@ -479,16 +520,21 @@ export class AiSdkToAnthropicSse extends BaseStreamAdapter<RawMessageStreamEvent
     }
 
     // Emit message_delta with final stop reason and usage
-    const usage: MessageDeltaUsage = {
+    const inputUsage = this.splitAnthropicInputUsage()
+    const usage: MessageDeltaUsage & ThinkingUsage = {
       output_tokens: this.state.outputTokens,
-      input_tokens: this.state.inputTokens,
-      // The UIMessageChunk usage projection carries no cache-token breakdown.
-      cache_creation_input_tokens: 0,
-      cache_read_input_tokens: null,
+      ...(this.state.reasoningTokens !== undefined
+        ? { output_tokens_details: { thinking_tokens: this.state.reasoningTokens } }
+        : {}),
+      input_tokens: inputUsage.inputTokens,
+      // The usage projection carries cache reads/writes on `inputTokenDetails`
+      // (split above); there is no breakdown when the runtime reports totals only.
+      cache_creation_input_tokens: inputUsage.cacheCreationInputTokens,
+      cache_read_input_tokens: inputUsage.cacheReadInputTokens,
       server_tool_use: null
     }
 
-    const messageDeltaEvent: RawMessageDeltaEvent = {
+    const messageDeltaEvent: AnthropicStreamEvent = {
       type: 'message_delta',
       delta: {
         container: NULL_CONTAINER,
@@ -519,6 +565,9 @@ export class AiSdkToAnthropicSse extends BaseStreamAdapter<RawMessageStreamEvent
 
     for (const block of sortedBlocks) {
       switch (block.type) {
+        case 'redacted_thinking':
+          content.push({ type: 'redacted_thinking', data: block.content })
+          break
         case 'text':
           content.push({
             type: 'text',
@@ -546,6 +595,8 @@ export class AiSdkToAnthropicSse extends BaseStreamAdapter<RawMessageStreamEvent
       }
     }
 
+    const inputUsage = this.splitAnthropicInputUsage()
+
     return {
       id: this.state.messageId,
       type: 'message',
@@ -557,11 +608,14 @@ export class AiSdkToAnthropicSse extends BaseStreamAdapter<RawMessageStreamEvent
       stop_reason: (this.state.stopReason as StopReason) || 'end_turn',
       stop_sequence: null,
       usage: {
-        input_tokens: this.state.inputTokens,
+        input_tokens: inputUsage.inputTokens,
         output_tokens: this.state.outputTokens,
+        ...(this.state.reasoningTokens !== undefined
+          ? { output_tokens_details: { thinking_tokens: this.state.reasoningTokens } }
+          : {}),
         cache_creation: NULL_CACHE_CREATION,
-        cache_creation_input_tokens: 0,
-        cache_read_input_tokens: 0,
+        cache_creation_input_tokens: inputUsage.cacheCreationInputTokens,
+        cache_read_input_tokens: inputUsage.cacheReadInputTokens ?? 0,
         inference_geo: NULL_INFERENCE_GEO,
         server_tool_use: null,
         service_tier: NULL_SERVICE_TIER

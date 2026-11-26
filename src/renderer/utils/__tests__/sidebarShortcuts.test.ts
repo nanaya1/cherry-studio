@@ -6,6 +6,8 @@ import {
   addSidebarShortcut,
   createSidebarShortcutTarget,
   getSidebarDefaultLandingUrl,
+  getOrderedLaunchpadApps,
+  getSidebarShortcutResourceIds,
   getVisibleSidebarShortcutItems,
   normalizeSidebarShortcutItems,
   removeSidebarShortcut,
@@ -18,6 +20,22 @@ const shortcut = (providerId: string, resourceId: string, activationId?: string)
 }
 
 describe('sidebar shortcut storage transforms', () => {
+  it('omits the marketplace from saved launchpad order without moving existing apps', () => {
+    const order = getOrderedLaunchpadApps(['files', 'paintings', 'marketplace', 'translate', 'agents'])
+    expect(order.slice(0, 4)).toEqual(['files', 'paintings', 'translate', 'agents'])
+    expect(order).not.toContain('marketplace')
+  })
+  it('pins scheduled tasks directly below chat without moving existing shortcuts', () => {
+    const chat = shortcut('core.app', 'assistants')
+    const tasks = shortcut('core.app', 'scheduled_tasks')
+    const notes = shortcut('core.app', 'notes')
+    const agent = shortcut('core.agent', 'agent-1')
+
+    expect(addSidebarShortcut([agent, chat, notes], tasks.target)).toEqual([agent, chat, tasks, notes])
+    expect(addSidebarShortcut([notes, tasks, chat], tasks.target)).toEqual([notes, tasks, chat])
+    expect(addSidebarShortcut([agent, notes], tasks.target)).toEqual([agent, notes, tasks])
+  })
+
   it('preserves prototype-named future items without treating them as legacy resource types', () => {
     const future = ['constructor', 'toString', '__proto__'].map((type) => ({ type, id: `future-${type}` }))
     expect(normalizeSidebarShortcutItems(future)).toEqual(future)
@@ -71,6 +89,16 @@ describe('sidebar shortcut storage transforms', () => {
 
     expect(removeSidebarShortcut(stored, assistant.target)).toEqual([agent, future, topic])
     expect(reorderSidebarShortcuts(stored, [topic, assistant, agent])).toEqual([topic, future, assistant, agent])
+  })
+
+  it('collects resource ids for one provider only', () => {
+    const stored = [
+      shortcut('core.topic', 'topic-1'),
+      shortcut('core.agent-session', 'topic-2'),
+      shortcut('core.topic', 'topic-3')
+    ]
+
+    expect(getSidebarShortcutResourceIds(stored, 'core.topic')).toEqual(new Set(['topic-1', 'topic-3']))
   })
 
   it('uses the first built-in app shortcut as the startup destination', () => {

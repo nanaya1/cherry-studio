@@ -11,6 +11,8 @@ import type { DbType } from './types'
 
 const logger = loggerService.withContext('applyMigrations')
 
+// Journal timestamp of the published 0031_busy_spot migration.
+const REMOTE_KNOWLEDGE_MIGRATION_TIME = 1789799717306
 const REMOTE_KNOWLEDGE_SCHEMA_REPAIR_STATEMENTS = [
   `CREATE TABLE IF NOT EXISTS \`agent_remote_knowledge_base\` (
     \`agent_id\` text NOT NULL,
@@ -80,8 +82,13 @@ export function applyMigrations(db: DbType, migrationsFolder: string): void {
   }
 
   // MEA:remote-knowledge-schema-repair Repair databases whose migration cursor skipped 0031_busy_spot.
-  for (const statement of REMOTE_KNOWLEDGE_SCHEMA_REPAIR_STATEMENTS) {
-    db.run(sql.raw(statement))
+  const [{ cursor }] = db.all<{ cursor: number | null }>(
+    sql`SELECT MAX(created_at) AS cursor FROM __drizzle_migrations`
+  )
+  if (cursor !== null && cursor >= REMOTE_KNOWLEDGE_MIGRATION_TIME) {
+    for (const statement of REMOTE_KNOWLEDGE_SCHEMA_REPAIR_STATEMENTS) {
+      db.run(sql.raw(statement))
+    }
   }
 
   for (const statement of CUSTOM_SQL_STATEMENTS) {
@@ -90,6 +97,6 @@ export function applyMigrations(db: DbType, migrationsFolder: string): void {
 }
 
 function isForeignKeysEnforced(db: DbType): boolean {
-  const rows = db.all(sql.raw('PRAGMA foreign_keys')) as Array<{ foreign_keys?: number }>
+  const rows = db.all<{ foreign_keys?: number }>(sql.raw('PRAGMA foreign_keys'))
   return Number(rows[0]?.foreign_keys ?? 0) === 1
 }

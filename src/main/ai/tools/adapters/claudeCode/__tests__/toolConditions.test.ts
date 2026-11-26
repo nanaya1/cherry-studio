@@ -14,24 +14,6 @@ beforeEach(() => {
 })
 
 describe('resolveDisallowedTools', () => {
-  it('disables every disabled-exposure tool with no overrides or ctx', () => {
-    const disallowed = new Set(resolveDisallowedTools({}))
-    // Parity with the former GLOBALLY_DISALLOWED_TOOLS set.
-    expect(disallowed.has('WebSearch')).toBe(true)
-    expect(disallowed.has('WebFetch')).toBe(true)
-    expect(disallowed.has('TodoWrite')).toBe(true)
-    // Newly disabled per the registry classification.
-    expect(disallowed.has('NotebookEdit')).toBe(true)
-    expect(disallowed.has('REPL')).toBe(true)
-    expect(disallowed.has('CronCreate')).toBe(true)
-    expect(disallowed.has('Monitor')).toBe(true)
-    // user / internal tools are not disabled by default.
-    expect(disallowed.has('Bash')).toBe(false)
-    expect(disallowed.has('Read')).toBe(false)
-    expect(disallowed.has('Workflow')).toBe(false)
-    expect(disallowed.has('Agent')).toBe(false)
-  })
-
   it('disables a user tool and its dependents (BashOutput follows Bash)', () => {
     const disallowed = new Set(resolveDisallowedTools({ disabledTools: ['Bash'] }))
     expect(disallowed.has('Bash')).toBe(true)

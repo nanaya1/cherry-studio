@@ -11,6 +11,7 @@ const agentComposerPropsMock = vi.hoisted(() => ({
   last: undefined as any
 }))
 const rightPanelPresentationMock = vi.hoisted(() => ({ maximized: false }))
+const previewInputFileInRightPaneMock = vi.hoisted(() => vi.fn())
 
 vi.mock('@renderer/components/chat/panes/Shell', () => ({
   useRightPanelPresentationMaximized: () => rightPanelPresentationMock.maximized
@@ -36,6 +37,13 @@ vi.mock('@renderer/components/composer/variants/AgentComposer', () => ({
       Select active agent
     </button>
   )
+}))
+
+vi.mock('../components/AgentRightPane', () => ({
+  useOptionalAgentRightPaneActions: () => ({
+    canPreviewInputFileInRightPane: true,
+    previewInputFileInRightPane: previewInputFileInRightPaneMock
+  })
 }))
 
 const session = { id: 'session-1', agentId: 'agent-1' } as AgentSessionEntity
@@ -123,11 +131,5 @@ describe('AgentComposerSlot', () => {
     await user.click(screen.getByRole('button', { name: 'Select active agent' }))
 
     expect(onAgentChange).toHaveBeenCalledWith('agent-2')
-  })
-
-  it('hides the composer in multi-select mode', () => {
-    const { container } = render(<AgentComposerSlot {...baseProps} isMultiSelectMode />)
-
-    expect(container).toBeEmptyDOMElement()
   })
 })

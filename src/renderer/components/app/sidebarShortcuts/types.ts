@@ -1,12 +1,10 @@
 import type { ReactNode } from 'react'
 
+import type { SidebarIconPresentation } from '@renderer/components/Sidebar'
 import type { SidebarShortcutItem, SidebarShortcutTarget } from '@shared/data/preference/preferenceTypes'
 import type { ConversationNavigationTarget } from '@shared/types/navigation'
 
-export interface SidebarIconPresentation {
-  slotSize: number
-  glyphSize: number
-}
+export type { SidebarIconPresentation }
 
 export interface SidebarNavigationSnapshot {
   url: string
@@ -28,6 +26,8 @@ export interface SidebarActivationGateway {
        * Defaults to exact URL equality; view-only destinations (apps) opt out with `() => false`.
        */
       matchesTab?: (url: string) => boolean
+      /** Pending activation request, independent of conversation identity. */
+      metadata?: { agentPinPending?: boolean }
     },
     options?: { inNewTab?: boolean }
   ): void

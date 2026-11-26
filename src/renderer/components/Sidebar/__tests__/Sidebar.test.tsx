@@ -30,6 +30,7 @@ const uiMocks = vi.hoisted(() => ({
 }))
 
 vi.mock('@cherrystudio/ui', () => ({
+  Tooltip: ({ children }: { children: ReactNode }) => children,
   MenuItem: ({
     icon,
     label,
@@ -717,7 +718,7 @@ describe('Sidebar resize handle', () => {
     )
 
     const sortableCall = uiMocks.sortableCalls.at(-1)
-    sortableCall.onDragStart({ active: { id: 'app:chat' } })
+    sortableCall.onDragStart({ activeId: 'app:chat' })
     sortableCall.onDragEnd()
 
     fireEvent.click(screen.getByRole('button', { name: 'Chat' }))
@@ -760,7 +761,7 @@ describe('Sidebar resize handle', () => {
     )
 
     const sortableCall = uiMocks.sortableCalls.at(-1)
-    sortableCall.onDragStart({ active: { id: 'app:chat' } })
+    sortableCall.onDragStart({ activeId: 'app:chat' })
     sortableCall.onDragEnd()
 
     const chatButton = screen.getByRole('button', { name: 'Chat' })

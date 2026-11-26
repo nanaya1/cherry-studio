@@ -15,6 +15,7 @@ interface GatewayUsage {
   inputTokens?: number
   outputTokens?: number
   cacheReadTokens?: number
+  reasoningTokens?: number
 }
 
 const createFinish = (finishReason: FinishReason | undefined = 'stop', usage?: GatewayUsage): UIMessageChunk => {
@@ -27,6 +28,9 @@ const createFinish = (finishReason: FinishReason | undefined = 'stop', usage?: G
             outputTokens: usage.outputTokens ?? 0,
             ...(usage.cacheReadTokens !== undefined
               ? { inputTokenDetails: { cacheReadTokens: usage.cacheReadTokens } }
+              : {}),
+            ...(usage.reasoningTokens !== undefined
+              ? { outputTokenDetails: { reasoningTokens: usage.reasoningTokens } }
               : {})
           }
         }
@@ -192,6 +196,31 @@ describe('AiSdkToOpenAiSse', () => {
 
       expect(events.at(-1)!.usage).toEqual({ prompt_tokens: 12, completion_tokens: 7, total_tokens: 19 })
     })
+
+    it('projects reasoning tokens onto the terminal usage alongside the reasoning-inclusive total', async () => {
+      const adapter = new AiSdkToOpenAiSse({ model: 'openai:gpt-4' })
+      const stream = createMockStream([
+        createTextDelta('hi'),
+        createFinish('stop', { inputTokens: 10, outputTokens: 20, reasoningTokens: 5 })
+      ])
+      const events = await collectEvents(adapter.transform(stream))
+
+      expect(events.at(-1)!.usage).toEqual({
+        prompt_tokens: 10,
+        completion_tokens: 20,
+        total_tokens: 30,
+        completion_tokens_details: { reasoning_tokens: 5 }
+      })
+    })
+
+    it('omits completion token details when the provider does not report reasoning tokens', async () => {
+      const adapter = new AiSdkToOpenAiSse({ model: 'openai:gpt-4' })
+      const events = await collectEvents(
+        adapter.transform(createMockStream([createFinish('stop', { inputTokens: 10, outputTokens: 20 })]))
+      )
+
+      expect(events.at(-1)!.usage).toEqual({ prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 })
+    })
   })
 
   describe('Non-Streaming Response', () => {
@@ -244,6 +273,26 @@ describe('AiSdkToOpenAiSse', () => {
         prompt_tokens_details: { cached_tokens: 0 }
       })
     })
+
+    it('preserves an explicit zero reasoning-token count in the non-streaming response', async () => {
+      const adapter = new AiSdkToOpenAiSse({ model: 'openai:gpt-4' })
+      const stream = createMockStream([
+        createTextDelta('Hello world'),
+        createFinish('stop', { inputTokens: 10, outputTokens: 20, reasoningTokens: 0 })
+      ])
+      const reader = adapter.transform(stream).getReader()
+      while (!(await reader.read()).done) {
+        /* drain to populate state */
+      }
+      reader.releaseLock()
+
+      expect(adapter.buildNonStreamingResponse().usage).toEqual({
+        prompt_tokens: 10,
+        completion_tokens: 20,
+        total_tokens: 30,
+        completion_tokens_details: { reasoning_tokens: 0 }
+      })
+    })
   })
 
   describe('Error Handling', () => {
@@ -286,5 +335,58 @@ describe('AiSdkToOpenAiSse', () => {
     it('emits `data: [DONE]` as the done marker', () => {
       expect(new OpenAiSseFormatter().formatDone()).toBe('data: [DONE]\n\n')
     })
+  })
+})
+
+it.each([null, undefined, [], true, 42, 'invalid json'])(
+  'rejects non-object tool input without fabricating arguments: %j',
+  (input) => {
+    const adapter = new AiSdkToOpenAiSse({ model: 'test-model' })
+    expect(() =>
+      adapter.transformChunk({
+        type: 'tool-input-error',
+        toolCallId: 'bad-input',
+        toolName: 'read_file',
+        input,
+        errorText: 'Invalid tool arguments'
+      })
+    ).toThrow('Invalid tool arguments')
+  }
+)
+
+it('completes an other finish reason successfully', async () => {
+  const adapter = new AiSdkToOpenAiSse({ model: 'test:model' })
+  const events = await collectEvents(adapter.transform(createMockStream([{ type: 'finish', finishReason: 'other' }])))
+  expect(events.at(-1)?.choices[0].finish_reason).toBe('stop')
+  for (const event of events) expect(event).not.toHaveProperty('error')
+})
+
+describe('terminal failure reasons', () => {
+  it.each(['error'] as const)('rejects %s while reading after a tool call', async (reason) => {
+    const adapter = new AiSdkToOpenAiSse({ model: 'test:model' })
+    const stream = new ReadableStream<UIMessageChunk>({
+      start(controller) {
+        controller.enqueue({ type: 'tool-input-available', toolCallId: 'call', toolName: 'read', input: {} })
+        controller.enqueue({ type: 'finish', finishReason: reason })
+        controller.close()
+      }
+    })
+    const read = async () => {
+      const events: unknown[] = []
+      for await (const event of adapter.transform(stream)) events.push(event)
+      return events
+    }
+    await expect(read()).rejects.toMatchObject({ statusCode: 502 })
+  })
+
+  it.each(['error'] as const)('rejects %s with 502, including after a tool call', (reason) => {
+    for (const withTool of [false, true]) {
+      const adapter = new AiSdkToOpenAiSse({ model: 'test:model' })
+      if (withTool)
+        adapter.transformChunk({ type: 'tool-input-available', toolCallId: 'call', toolName: 'read', input: {} })
+      expect(() => adapter.transformChunk({ type: 'finish', finishReason: reason })).toThrow(
+        expect.objectContaining({ statusCode: 502 })
+      )
+    }
   })
 })

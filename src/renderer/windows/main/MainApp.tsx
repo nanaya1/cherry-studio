@@ -11,26 +11,33 @@ import {
 import { CodeStyleProvider } from '@renderer/components/CodeStyleProvider'
 import { CommandContextKeyProvider, CommandProvider } from '@renderer/components/command'
 import { ConversationNotificationRuntime } from '@renderer/components/ConversationNotificationRuntime'
+import { DictationShortcutHost } from '@renderer/components/DictationShortcutHost'
 import { ErrorBoundary } from '@renderer/components/ErrorBoundary'
+import { FileEditSessionProvider } from '@renderer/components/FileEditSessionProvider'
 import { AppShell } from '@renderer/components/layout/AppShell'
 import { TabsProvider } from '@renderer/components/layout/TabsProvider'
 import { MandatoryGateProvider } from '@renderer/components/MandatoryGateProvider'
+import { McpInteractionHost } from '@renderer/components/McpInteractionHost'
 import { PopupHost } from '@renderer/components/PopupHost'
 import { ResourceEditDialogEventHost } from '@renderer/components/resourceCatalog/dialogs/ResourceEditDialogEventHost'
 import { ThemeProvider } from '@renderer/components/ThemeProvider'
 import ToastHost from '@renderer/components/ToastHost'
+import { VoicePlaybackHost } from '@renderer/components/VoicePlaybackHost'
 import { WindowFatalFallback } from '@renderer/components/WindowFatalFallback'
 import { useMainWindowNavigation } from '@renderer/hooks/tab'
+import { useAutoReadPreferenceSync } from '@renderer/hooks/useAutoReadPreferenceSync'
 import { useIsPrivacyUpdateRequired } from '@renderer/hooks/useIsPrivacyUpdateRequired'
 import { useStorageMonitorNotification } from '@renderer/hooks/useStorageMonitorNotification'
 import { useWindowRuntime } from '@renderer/hooks/useWindowRuntime'
 import { registerImageModeChooser } from '@renderer/services/imageExportModeChooser'
 // MEA 侧栏使用固定工作区入口，不从 Cherry 快捷项推导启动页。
 // import { getSidebarDefaultLandingUrl } from '@renderer/utils/sidebar'
+import { WindowFileEditRecovery } from '@renderer/windows/WindowFileEditRecovery'
 import type { Tab } from '@shared/data/cache/cacheValueTypes'
 
 import { useAppUpdateHandler } from './hooks/useAppUpdateHandler'
 import { useAutoBackupEvents } from './hooks/useAutoBackupEvents'
+import { useCherryCloudSubscriptionReminder } from './hooks/useCherryCloudSubscriptionReminder'
 import { useTopicNamingErrorNotification } from './hooks/useTopicNamingErrorNotification'
 import { PrivacyPolicyUpdateGate } from './privacy/PrivacyPolicyUpdateGate'
 
@@ -62,6 +69,7 @@ function BootFallback(): React.ReactElement {
 // siblings in the App JSX below, so a window's host composition is visible there.
 function MainWindowRuntime(): null {
   useWindowRuntime()
+  useAutoReadPreferenceSync()
   useMainWindowNavigation()
 
   // Register the real (component-layer) image-mode popup behind the services seam.
@@ -88,6 +96,7 @@ function MainWindowRuntime(): null {
   useAutoBackupEvents()
   useStorageMonitorNotification()
   useTopicNamingErrorNotification()
+  useCherryCloudSubscriptionReminder()
 
   return null
 }
@@ -132,8 +141,12 @@ export function MainWindowContent(): React.ReactElement {
               同窗口多 composer 并存（如新建任务页 chat/agent 双 forceMount）时重复响应
               OPEN_RESOURCE_EDIT_DIALOG 广播，渲染出重叠的两个编辑弹窗。 */}
           <ResourceEditDialogEventHost />
+          <McpInteractionHost />
           <PopupHost />
           <ToastHost />
+          <WindowFileEditRecovery />
+          <DictationShortcutHost />
+          <VoicePlaybackHost />
           {providerSetupStatus === 'pending' ? null : <PrivacyPolicyUpdateGate />}
         </MandatoryGateProvider>
       </SidebarShortcutRegistryProvider>
@@ -150,11 +163,13 @@ function MainApp(): React.ReactElement {
     <ErrorBoundary fallbackComponent={WindowFatalFallback}>
       <ThemeProvider>
         <CodeStyleProvider>
-          <CommandContextKeyProvider>
-            <CommandProvider>
-              <MainWindowContent />
-            </CommandProvider>
-          </CommandContextKeyProvider>
+          <FileEditSessionProvider>
+            <CommandContextKeyProvider>
+              <CommandProvider>
+                <MainWindowContent />
+              </CommandProvider>
+            </CommandContextKeyProvider>
+          </FileEditSessionProvider>
         </CodeStyleProvider>
       </ThemeProvider>
     </ErrorBoundary>

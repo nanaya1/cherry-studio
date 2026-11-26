@@ -13,25 +13,22 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  Scrollbar,
+  ScrollArea,
   SegmentedControl
 } from '@cherrystudio/ui'
 import { DIALOG_CLOSE_DURATION_MS } from '@cherrystudio/ui/utils'
 import { ipcApi } from '@renderer/ipc'
 import { loggerService } from '@renderer/services/LoggerService'
 import { toast } from '@renderer/services/toast'
-import {
-  describeDiagnosticChatSource,
-  describeDiagnosticFileSource,
-  formatDiagnosticBytes
-} from '@renderer/utils/diagnosticSourceSummary'
+import { describeDiagnosticChatSource, describeDiagnosticFileSource } from '@renderer/utils/diagnosticSourceSummary'
+// const SUPPORT_EMAIL = 'mkt@xuelangyun.com' — 「联系 Cowork 支持」入口暂时隐藏，恢复时取消注释。
+import { formatFileSize } from '@renderer/utils/file'
 import { diagnosticsErrorCodes } from '@shared/ipc/errors/diagnostics'
 import { IpcError } from '@shared/ipc/errors/IpcError'
 import type { DiagnosticRange } from '@shared/ipc/schemas/diagnostics'
 import type { OutputFor } from '@shared/ipc/types'
 import { createFilePathHandle } from '@shared/utils/file'
 
-// const SUPPORT_EMAIL = 'mkt@xuelangyun.com' — 「联系 Cowork 支持」入口暂时隐藏，恢复时取消注释。
 const logger = loggerService.withContext('DiagnosticBundleDialog')
 const RANGE_OPTIONS = [
   { translationKey: 'settings.about.diagnostics.ranges.24h', value: '24h' },
@@ -286,7 +283,7 @@ const DiagnosticBundleDialog: FC<DiagnosticBundleDialogProps> = ({ onOpenChange,
             <DialogDescription>{t('settings.about.diagnostics.dialog.description')}</DialogDescription>
           </DialogHeader>
 
-          <Scrollbar className="min-h-0 px-6 py-2">
+          <ScrollArea className="min-h-0 px-6 py-2">
             <span className="sr-only" role="status">
               {isInspectionPending ? t('settings.about.diagnostics.inspecting') : ''}
             </span>
@@ -303,7 +300,7 @@ const DiagnosticBundleDialog: FC<DiagnosticBundleDialogProps> = ({ onOpenChange,
                       {t('settings.about.diagnostics.success.summary', {
                         included: savedResult.includedFileCount,
                         omitted: savedResult.omittedFileCount,
-                        size: formatDiagnosticBytes(savedResult.archiveBytes)
+                        size: formatFileSize(savedResult.archiveBytes)
                       })}
                     </p>
                   </div>
@@ -380,7 +377,7 @@ const DiagnosticBundleDialog: FC<DiagnosticBundleDialogProps> = ({ onOpenChange,
                 )}
               </div>
             )}
-          </Scrollbar>
+          </ScrollArea>
 
           <DialogFooter className="mt-4 border-border border-t px-6 py-4">
             {status === 'saved' ? (
@@ -431,7 +428,7 @@ const DiagnosticBundleDialog: FC<DiagnosticBundleDialogProps> = ({ onOpenChange,
 
           <p className="text-muted-foreground text-sm leading-6">
             {t('settings.about.diagnostics.limit', {
-              size: formatDiagnosticBytes(inspectResult?.sourceLimitBytes ?? 50 * 1024 * 1024)
+              size: formatFileSize(inspectResult?.sourceLimitBytes ?? 50 * 1024 * 1024)
             })}
           </p>
 
