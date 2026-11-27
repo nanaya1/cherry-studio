@@ -1,17 +1,16 @@
-import { EmojiIcon } from '@cherrystudio/ui'
+import { Bot, MessageCircle } from 'lucide-react'
+
 import { useQuery } from '@data/hooks/useDataApi'
-import { getAgentAvatarFromConfiguration } from '@renderer/utils/agent'
-import { DEFAULT_ASSISTANT_EMOJI } from '@shared/data/presets/defaultAssistant'
 import type { NotificationRecord } from '@shared/data/types/notification'
 
 import { notificationPreview } from './notificationPresentation'
 
-function NotificationIdentity({ name, emoji }: { name: string; emoji: string }) {
+function NotificationIdentity({ name, icon: Icon }: { name: string; icon: typeof Bot }) {
   return (
     <span
       className="flex min-w-0 max-w-[40%] shrink-0 items-center gap-1 text-xs font-normal text-muted-foreground"
       title={name}>
-      <EmojiIcon emoji={emoji} size={14} className="shrink-0" />
+      <Icon aria-hidden size={14} className="shrink-0" />
       <span className="truncate">{name}</span>
     </span>
   )
@@ -29,7 +28,7 @@ function AgentNotificationLabel({ sessionId }: { sessionId: string }) {
   })
   if (sessionError || agentError || !agent?.name) return null
 
-  return <NotificationIdentity name={agent.name} emoji={getAgentAvatarFromConfiguration(agent.configuration)} />
+  return <NotificationIdentity name={agent.name} icon={Bot} />
 }
 
 function AssistantNotificationLabel({ topicId }: { topicId: string }) {
@@ -44,7 +43,7 @@ function AssistantNotificationLabel({ topicId }: { topicId: string }) {
   })
   if (topicError || assistantError || !assistant?.name) return null
 
-  return <NotificationIdentity name={assistant.name} emoji={assistant.emoji?.trim() || DEFAULT_ASSISTANT_EMOJI} />
+  return <NotificationIdentity name={assistant.name} icon={MessageCircle} />
 }
 
 export function NotificationTitle({ record }: { record: NotificationRecord }) {
@@ -60,7 +59,7 @@ export function NotificationTitle({ record }: { record: NotificationRecord }) {
     <span className="flex min-w-0 items-center gap-2">
       <span className="min-w-0 truncate">{notificationPreview(record.title, true)}</span>
       {result?.actor ? (
-        <NotificationIdentity {...result.actor} />
+        <NotificationIdentity name={result.actor.name} icon={result.source === 'agent' ? Bot : MessageCircle} />
       ) : target?.conversationType === 'agent' ? (
         <AgentNotificationLabel sessionId={target.conversationId} />
       ) : target ? (

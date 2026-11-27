@@ -80,6 +80,7 @@ describe('SelectionActionAskAgentModal', () => {
     fireEvent.click(screen.getByRole('button', { name: 'common.confirm' }))
 
     expect(screen.getByText('Researcher')).toBeInTheDocument()
+    expect(screen.queryByText('🔬')).not.toBeInTheDocument()
     expect(onOk).toHaveBeenCalledWith({ agentId: 'agent-2', agentWorkspace: { type: 'system' } })
   })
 

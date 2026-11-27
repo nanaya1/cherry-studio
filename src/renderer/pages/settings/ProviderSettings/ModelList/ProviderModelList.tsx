@@ -100,14 +100,12 @@ const ProviderModelList: React.FC<ProviderModelListProps> = ({
           onContinueApiSetup={showContinueApiSetup ? onContinueApiSetup : undefined}
         />
       </div>
-      {!readOnly && (
-        <EditModelDrawer
-          providerId={providerId}
-          open={modelList.editDrawer.open}
-          model={modelList.editDrawer.model}
-          onClose={modelList.editDrawer.onClose}
-        />
-      )}
+      <EditModelDrawer
+        providerId={providerId}
+        open={modelList.editDrawer.open}
+        model={modelList.editDrawer.model}
+        onClose={modelList.editDrawer.onClose}
+      />
     </>
   )
 }

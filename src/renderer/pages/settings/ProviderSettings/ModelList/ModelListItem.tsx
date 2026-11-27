@@ -97,28 +97,28 @@ const ModelListItem: React.FC<ModelListItemProps> = ({
             </div>
             <FreeTrialModelTag modelId={model.id} providerId={model.providerId} />
           </div>
-          {!readOnly && (
-            <div className={modelListClasses.rowInlineActions}>
-              {modelStatus && onToggleApiKey ? (
-                <ModelCheckStatus
-                  result={modelStatus}
-                  apiKeyEntries={apiKeyEntries}
-                  savingKeyId={savingKeyId}
-                  onToggleKey={onToggleApiKey}
-                />
-              ) : null}
-              <Tooltip content={t('common.settings')} placement="top">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  className={modelListClasses.rowActionButton}
-                  aria-label={t('common.settings')}
-                  disabled={disabled}
-                  onClick={handleEdit}>
-                  <Bolt className="size-4" />
-                </Button>
-              </Tooltip>
+          <div className={modelListClasses.rowInlineActions}>
+            {!readOnly && modelStatus && onToggleApiKey ? (
+              <ModelCheckStatus
+                result={modelStatus}
+                apiKeyEntries={apiKeyEntries}
+                savingKeyId={savingKeyId}
+                onToggleKey={onToggleApiKey}
+              />
+            ) : null}
+            <Tooltip content={t('common.settings')} placement="top">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                className={modelListClasses.rowActionButton}
+                aria-label={t('common.settings')}
+                disabled={disabled}
+                onClick={handleEdit}>
+                <Bolt className="size-4" />
+              </Button>
+            </Tooltip>
+            {!readOnly && (
               <Tooltip content={deleteTooltip} placement="top">
                 <Button
                   type="button"
@@ -131,8 +131,8 @@ const ModelListItem: React.FC<ModelListItemProps> = ({
                   <Minus className="size-4" />
                 </Button>
               </Tooltip>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </RowFlex>
     </div>

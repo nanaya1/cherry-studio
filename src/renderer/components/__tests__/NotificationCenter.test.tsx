@@ -234,6 +234,7 @@ describe('NotificationCenter reading', () => {
       expect(await screen.findByText('Current agent')).toBeVisible()
       expect(await screen.findByText('Completed source')).toBeVisible()
       expect(await screen.findByText('Saved scheduled task')).toBeVisible()
+      expect(screen.getByRole('list', { name: 'Notification center' })).not.toHaveTextContent(/[🍒🤖]/u)
       for (const label of ['Failed', hasReply ? 'Brief reply excerpt' : 'Completed', 'Interrupted'])
         expect(screen.getByText(label)).toBeVisible()
       expect(screen.queryByText('Old agent')).not.toBeInTheDocument()

@@ -111,7 +111,10 @@ export const modelHandlers: HandlersFor<ModelSchemas> = {
         ...parseOrValidationError(item.uniqueModelId),
         patch: item.patch
       }))
-      for (const item of items) assertProviderEditable(item.providerId)
+      for (const item of items) {
+        // MEA:personal-profile-startup Managed model batches can change local visibility.
+        if (Object.keys(item.patch).some((key) => key !== 'isHidden')) assertProviderEditable(item.providerId)
+      }
       return modelService.bulkUpdate(items)
     },
 
@@ -132,8 +135,9 @@ export const modelHandlers: HandlersFor<ModelSchemas> = {
 
     PATCH: async ({ params, body }) => {
       const { providerId, modelId } = parseOrValidationError(params.uniqueModelId)
-      assertProviderEditable(providerId)
       const parsed = UpdateModelSchema.parse(body)
+      // MEA:personal-profile-startup Cowork owns model availability.
+      if (parsed.isEnabled !== undefined) assertProviderEditable(providerId)
       return modelService.update(providerId, modelId, parsed)
     },
 

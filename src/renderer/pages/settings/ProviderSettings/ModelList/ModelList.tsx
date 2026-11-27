@@ -43,7 +43,7 @@ function ModelListContent({
         onContinueApiSetup={readOnly ? undefined : onContinueApiSetup}
         actions={
           readOnly
-            ? () => <XuelangModelRefresh />
+            ? ({ disabled: toolbarDisabled }) => <XuelangModelRefresh disabled={toolbarDisabled} />
             : ({ disabled: toolbarDisabled }) => (
                 <ButtonGroup className={modelListClasses.toolbarButtonGroup}>
                   <ProviderModelPullReconcile

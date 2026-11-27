@@ -242,6 +242,17 @@ describe('ModelListSyncDrawer', () => {
     expect(onAddModels).toHaveBeenCalledWith([allModels[0], allModels[1], allModels[3]])
   })
 
+  it('removes all managed models even when a search narrows the visible list', () => {
+    const onRemoveModels = vi.fn()
+    const ids = allModels.map(({ id }) => id)
+    renderDrawer({ bulkOnly: true, localModels: allModels, removableModelIds: ids, onRemoveModels })
+    fireEvent.change(screen.getByPlaceholderText('settings.models.manage.search_models_placeholder'), {
+      target: { value: 'legacy' }
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'settings.models.manage.remove_listed' }))
+    expect(onRemoveModels).toHaveBeenCalledWith(ids)
+  })
+
   it('removes all filtered models when every filtered model is local', () => {
     const onRemoveModels = vi.fn()
     renderDrawer({ localModels: [allModels[2]], onRemoveModels })

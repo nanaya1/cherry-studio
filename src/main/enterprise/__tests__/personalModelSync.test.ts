@@ -60,6 +60,51 @@ describe('personal Xuelang model sync', () => {
     expect(modelService.getByKey('xuelang', 'assigned-model').isEnabled).toBe(false)
   })
 
+  it('uses registry defaults for assigned models and preserves local tuning on refresh', () => {
+    const known = {
+      ...snapshot,
+      providers: [{ ...assignment, models: [{ id: 'gpt-5-mini', endpointTypes: ['openai-responses'] }] }]
+    }
+    expect(applyPersonalModelSnapshot(known, identity)).toBe(1)
+    expect(modelService.getByKey('xuelang', 'gpt-5-mini')).toMatchObject({
+      presetModelId: 'gpt-5-mini',
+      endpointTypes: ['openai-responses']
+    })
+    modelService.update('xuelang', 'gpt-5-mini', { contextWindow: 123_000, isHidden: true })
+    applyPersonalModelSnapshot(known, identity)
+    expect(modelService.getByKey('xuelang', 'gpt-5-mini')).toMatchObject({
+      contextWindow: 123_000,
+      isHidden: true,
+      isEnabled: true
+    })
+  })
+
+  it.each([false, true])('refreshes legacy capability defaults (explicit edit: %s)', (explicit) => {
+    const modelId = 'gpt-5-mini'
+    modelService.create([
+      {
+        dto: {
+          providerId: 'xuelang',
+          modelId,
+          name: 'My model',
+          contextWindow: 123_000,
+          ...(explicit ? { capabilities: [], inputModalities: [] } : {})
+        }
+      }
+    ])
+    const known = {
+      ...snapshot,
+      providers: [{ ...assignment, models: [{ id: modelId, endpointTypes: ['openai-responses'] }] }]
+    }
+    applyPersonalModelSnapshot(known, identity)
+    applyPersonalModelSnapshot(known, identity)
+
+    const model = modelService.getByKey('xuelang', modelId)
+    expect(model).toMatchObject({ id: 'xuelang::gpt-5-mini', name: 'My model', contextWindow: 123_000 })
+    if (explicit) expect(model.capabilities).toEqual([])
+    else expect(model.capabilities).toContain('function-call')
+  })
+
   it('rejects different model permissions before updating the existing configuration', () => {
     const other = { ...assignment, id: '43', models: [] }
     expect(() => applyPersonalModelSnapshot({ ...snapshot, providers: [assignment, other] }, identity)).toThrow(

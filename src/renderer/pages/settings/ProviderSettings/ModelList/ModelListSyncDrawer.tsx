@@ -13,6 +13,7 @@ import { useModelListSyncView } from './useModelListSyncView'
 
 interface ModelListSyncDrawerProps {
   open: boolean
+  bulkOnly?: boolean
   provider?: Provider
   allModels: Model[]
   localModels: readonly Model[]
@@ -24,14 +25,15 @@ interface ModelListSyncDrawerProps {
   staleModelCount?: number
   staleModelIds?: UniqueModelId[]
   onRetryLoadModels?: () => void | Promise<void>
-  onAddModels: (models: Model[]) => void | Promise<void>
-  onRemoveModels: (modelIds: UniqueModelId[]) => void | Promise<void>
+  onAddModels?: (models: Model[]) => void | Promise<void>
+  onRemoveModels?: (modelIds: UniqueModelId[]) => void | Promise<void>
   onCleanStaleModels?: () => void | Promise<void>
   onClose: () => void
 }
 
 export default function ModelListSyncDrawer({
   open,
+  bulkOnly = false,
   provider,
   allModels,
   localModels,
@@ -50,19 +52,20 @@ export default function ModelListSyncDrawer({
 }: ModelListSyncDrawerProps) {
   const { t } = useTranslation()
   const view = useModelListSyncView({ models: allModels, staleModelIds, resetKey: open })
+  const bulkModels = bulkOnly ? allModels : view.filteredModels
   const localModelIds = useMemo(() => new Set(localModels.map((model) => model.id)), [localModels])
   const removableModelIdSet = useMemo(() => new Set(removableModelIds), [removableModelIds])
   const defaultModelIdSet = useMemo(() => new Set(defaultModelIds), [defaultModelIds])
   const isAllFilteredInProvider = useMemo(
-    () => view.filteredModels.length > 0 && view.filteredModels.every((model) => localModelIds.has(model.id)),
-    [localModelIds, view.filteredModels]
+    () => bulkModels.length > 0 && bulkModels.every((model) => localModelIds.has(model.id)),
+    [localModelIds, bulkModels]
   )
   const removableFilteredModelIds = useMemo(
     () =>
-      view.filteredModels
+      bulkModels
         .filter((model) => localModelIds.has(model.id) && removableModelIdSet.has(model.id))
         .map((model) => model.id),
-    [localModelIds, removableModelIdSet, view.filteredModels]
+    [localModelIds, removableModelIdSet, bulkModels]
   )
   const busy = isLoading || isApplying
   const hasLoadError = Boolean(loadErrorMessage)
@@ -76,19 +79,12 @@ export default function ModelListSyncDrawer({
 
   const handleBulkAction = useCallback(() => {
     if (isAllFilteredInProvider) {
-      void onRemoveModels(removableFilteredModelIds)
+      void onRemoveModels?.(removableFilteredModelIds)
       return
     }
 
-    void onAddModels(view.filteredModels.filter((model) => !localModelIds.has(model.id)))
-  }, [
-    isAllFilteredInProvider,
-    localModelIds,
-    onAddModels,
-    onRemoveModels,
-    removableFilteredModelIds,
-    view.filteredModels
-  ])
+    void onAddModels?.(bulkModels.filter((model) => !localModelIds.has(model.id)))
+  }, [isAllFilteredInProvider, localModelIds, onAddModels, onRemoveModels, removableFilteredModelIds, bulkModels])
 
   return (
     <ProviderSettingsDrawer
@@ -135,23 +131,23 @@ export default function ModelListSyncDrawer({
               </Button>
             </Tooltip>
           ) : null}
-          <Tooltip content={bulkActionLabel} placement="top">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              aria-label={bulkActionLabel}
-              disabled={
-                busy ||
-                view.filteredModels.length === 0 ||
-                (isAllFilteredInProvider && removableFilteredModelIds.length === 0)
-              }
-              className={modelSyncClasses.manageTitleActionButton}
-              onClick={handleBulkAction}>
-              {isAllFilteredInProvider ? <ListMinus className="size-4" /> : <ListPlus className="size-4" />}
-              <span>{bulkActionLabel}</span>
-            </Button>
-          </Tooltip>
+          {onAddModels && onRemoveModels && (
+            <Tooltip content={bulkActionLabel} placement="top">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                aria-label={bulkActionLabel}
+                disabled={
+                  busy || bulkModels.length === 0 || (isAllFilteredInProvider && removableFilteredModelIds.length === 0)
+                }
+                className={modelSyncClasses.manageTitleActionButton}
+                onClick={handleBulkAction}>
+                {isAllFilteredInProvider ? <ListMinus className="size-4" /> : <ListPlus className="size-4" />}
+                <span>{bulkActionLabel}</span>
+              </Button>
+            </Tooltip>
+          )}
         </span>
       }
       bodyClassName="flex flex-col space-y-0 overflow-hidden pt-0"
@@ -165,8 +161,8 @@ export default function ModelListSyncDrawer({
         defaultModelIds={defaultModelIdSet}
         isLoading={isLoading}
         isApplying={isApplying}
-        onAddModels={onAddModels}
-        onRemoveModels={onRemoveModels}
+        onAddModels={bulkOnly ? undefined : onAddModels}
+        onRemoveModels={bulkOnly ? undefined : onRemoveModels}
       />
     </ProviderSettingsDrawer>
   )

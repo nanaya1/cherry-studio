@@ -27,8 +27,8 @@ interface ModelListSyncManageContentProps extends ModelListSyncContentCommonProp
   localModelIds: Set<UniqueModelId>
   removableModelIds: Set<UniqueModelId>
   defaultModelIds: Set<UniqueModelId>
-  onAddModels: (models: Model[]) => void | Promise<void>
-  onRemoveModels: (modelIds: UniqueModelId[]) => void | Promise<void>
+  onAddModels?: (models: Model[]) => void | Promise<void>
+  onRemoveModels?: (modelIds: UniqueModelId[]) => void | Promise<void>
 }
 
 interface ModelListSyncSelectContentProps extends ModelListSyncContentCommonProps {

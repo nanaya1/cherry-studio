@@ -1,4 +1,4 @@
-import { Pencil, Settings2, Trash } from 'lucide-react'
+import { Bot, Pencil, Settings2, Trash } from 'lucide-react'
 import { DynamicIcon } from 'lucide-react/dynamic'
 import type React from 'react'
 import { memo } from 'react'
@@ -41,7 +41,7 @@ const ActionsListItem = memo(
           )}
           {agentInfo?.agent && (
             <ItemDescription>
-              <span aria-hidden="true">{agentInfo.agent.emoji}</span>
+              <Bot aria-hidden size={14} />
               <span className="truncate">{agentInfo.agent.name}</span>
             </ItemDescription>
           )}

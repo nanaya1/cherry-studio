@@ -73,6 +73,24 @@ beforeEach(() => {
 })
 
 describe('Model handler validation', () => {
+  it('allows tuning a managed model while keeping its availability under Cowork control', async () => {
+    isAccountSpace.mockReturnValue(true)
+    const patchModel = modelHandlers['/models/:uniqueModelId*'].PATCH
+    const params = { uniqueModelId: 'xuelang::assigned' }
+    updateMock.mockReturnValueOnce({ contextWindow: 128_000 })
+    await expect(patchModel({ params, body: { contextWindow: 128_000 } })).resolves.toEqual({
+      contextWindow: 128_000
+    })
+    await expect(patchModel({ params, body: { isEnabled: true } })).rejects.toThrow('Cowork manages this provider')
+  })
+
+  it('allows bulk local visibility changes for managed models', async () => {
+    isAccountSpace.mockReturnValue(true)
+    const patch = { isHidden: true }
+    await modelHandlers['/models'].PATCH({ body: [{ uniqueModelId: 'xuelang::assigned', patch }] })
+    expect(bulkUpdateMock).toHaveBeenCalledWith([{ providerId: 'xuelang', modelId: 'assigned', patch }])
+  })
+
   it('rejects a batch containing a managed model before making any changes', async () => {
     isAccountSpace.mockReturnValue(true)
     await expect(

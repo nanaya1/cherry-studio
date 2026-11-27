@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 import XuelangAccountSettings, { XuelangModelRefresh } from '../ProviderSpecific/XuelangAccountSettings'
 
 const request = vi.hoisted(() => vi.fn())
+vi.unmock('@cherrystudio/ui')
 vi.mock('@renderer/ipc', () => ({ ipcApi: { request } }))
 vi.mock('../ProviderSpecific/CherryInOauth', () => ({ default: () => <div>OAuth setup</div> }))
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }))
@@ -18,19 +19,24 @@ function renderSettings() {
 }
 
 describe('XuelangAccountSettings', () => {
-  it('syncs only after the user clicks refresh on the provider page', async () => {
+  it('runs account model synchronization when the user clicks Sync Models', async () => {
     request.mockReset()
     request.mockResolvedValue(2)
+    mockDataApiService.get.mockResolvedValue([])
     render(
       <SWRConfig value={{ provider: () => new Map() }}>
         <XuelangModelRefresh />
       </SWRConfig>
     )
 
-    const refresh = screen.getByRole('button', { name: 'common.refresh' })
+    const sync = screen.getByRole('button', { name: 'settings.models.toolbar.pull_short' })
     expect(request).not.toHaveBeenCalled()
-    fireEvent.click(refresh)
+    fireEvent.click(sync)
+    expect(await screen.findByText('settings.models.manage.drawer_title')).toBeInTheDocument()
     await waitFor(() => expect(request).toHaveBeenCalledWith('enterprise.personal.sync_models'))
+    await waitFor(() =>
+      expect(mockDataApiService.get).toHaveBeenCalledWith('/models', { query: { providerId: 'xuelang' } })
+    )
   })
 
   it('does not allocate a separate account settings row for signed-in users', async () => {
@@ -51,3 +57,4 @@ describe('XuelangAccountSettings', () => {
     expect(request).not.toHaveBeenCalledWith('enterprise.personal.sync_models')
   })
 })
+import { mockDataApiService } from '@test-mocks/renderer/DataApiService'

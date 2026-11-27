@@ -69,7 +69,7 @@ describe('ModelListItem', () => {
     })
   })
 
-  it('opens the model drawer only from the settings button', async () => {
+  it.each([false, true])('opens settings for a model row (managed: %s)', async (readOnly) => {
     const onEdit = vi.fn()
     const onDelete = vi.fn()
 
@@ -84,6 +84,7 @@ describe('ModelListItem', () => {
             capabilities: []
           } as any
         }
+        readOnly={readOnly}
         onEdit={onEdit}
         onDelete={onDelete}
       />

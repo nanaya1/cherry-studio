@@ -1,14 +1,13 @@
+import { Bot, MessageCircle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
-import { EmojiIcon, Tooltip } from '@cherrystudio/ui'
+import { Tooltip } from '@cherrystudio/ui'
 import { useQuery } from '@data/hooks/useDataApi'
-import { getAgentAvatarFromConfiguration } from '@renderer/utils/agent'
-import { DEFAULT_ASSISTANT_EMOJI } from '@shared/data/presets/defaultAssistant'
 import type { NotificationRecord } from '@shared/data/types/notification'
 
 import { notificationPreview } from './notificationPresentation'
 
-function NotificationIdentity({ name, emoji }: { name: string; emoji?: string }) {
+function NotificationIdentity({ name, icon: Icon }: { name: string; icon?: typeof Bot }) {
   return (
     <span className="flex min-w-0 flex-1 items-center gap-2">
       <Tooltip content={name} asChild>
@@ -16,22 +15,16 @@ function NotificationIdentity({ name, emoji }: { name: string; emoji?: string })
           {name}
         </span>
       </Tooltip>
-      {emoji && (
+      {Icon && (
         <span className="flex size-5 shrink-0 items-center justify-center">
-          <EmojiIcon emoji={emoji} size={18} />
+          <Icon aria-hidden size={18} />
         </span>
       )}
     </span>
   )
 }
 
-function AgentNotificationLabel({
-  sessionId,
-  snapshot
-}: {
-  sessionId: string
-  snapshot?: { name: string; emoji: string }
-}) {
+function AgentNotificationLabel({ sessionId, snapshot }: { sessionId: string; snapshot?: { name: string } }) {
   const { t } = useTranslation()
   const { data: session, error: sessionError } = useQuery('/agent-sessions/:sessionId', {
     params: { sessionId },
@@ -46,22 +39,12 @@ function AgentNotificationLabel({
   return (
     <NotificationIdentity
       name={current?.name?.trim() || snapshot?.name || t('agent.session.display.agent')}
-      emoji={
-        current
-          ? getAgentAvatarFromConfiguration(current.configuration)
-          : snapshot?.emoji || getAgentAvatarFromConfiguration()
-      }
+      icon={Bot}
     />
   )
 }
 
-function AssistantNotificationLabel({
-  topicId,
-  snapshot
-}: {
-  topicId: string
-  snapshot?: { name: string; emoji: string }
-}) {
+function AssistantNotificationLabel({ topicId, snapshot }: { topicId: string; snapshot?: { name: string } }) {
   const { t } = useTranslation()
   const { data: topic, error: topicError } = useQuery('/topics/:id', {
     params: { id: topicId },
@@ -76,7 +59,7 @@ function AssistantNotificationLabel({
   return (
     <NotificationIdentity
       name={current?.name?.trim() || snapshot?.name || t('chat.topics.display.assistant')}
-      emoji={current?.emoji?.trim() || snapshot?.emoji || DEFAULT_ASSISTANT_EMOJI}
+      icon={MessageCircle}
     />
   )
 }

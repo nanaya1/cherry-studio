@@ -31,8 +31,8 @@ interface ModelSyncPreviewPanelManageProps extends ModelSyncPreviewPanelCommonPr
   removableModelIds: Set<UniqueModelId>
   defaultModelIds: Set<UniqueModelId>
   staleModelIds: Set<UniqueModelId>
-  onAddModels: (models: Model[]) => void | Promise<void>
-  onRemoveModels: (modelIds: UniqueModelId[]) => void | Promise<void>
+  onAddModels?: (models: Model[]) => void | Promise<void>
+  onRemoveModels?: (modelIds: UniqueModelId[]) => void | Promise<void>
 }
 
 interface ModelSyncPreviewPanelSelectProps extends ModelSyncPreviewPanelCommonProps {
@@ -145,8 +145,8 @@ const ManageModelRow = memo(function ManageModelRow({
   isDefaultModel: boolean
   isStale: boolean
   isApplying: boolean
-  onAddModels: (models: Model[]) => void | Promise<void>
-  onRemoveModels: (modelIds: UniqueModelId[]) => void | Promise<void>
+  onAddModels?: (models: Model[]) => void | Promise<void>
+  onRemoveModels?: (modelIds: UniqueModelId[]) => void | Promise<void>
 }) {
   const { t } = useTranslation()
   const actionTooltip = isAdded
@@ -158,26 +158,28 @@ const ManageModelRow = memo(function ManageModelRow({
   return (
     <div className={modelSyncClasses.manageRow} data-added={isAdded}>
       <ModelRowIdentity model={model} provider={provider} isStale={isStale} />
-      <Tooltip content={actionTooltip} placement="top">
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          aria-label={isAdded ? t('settings.models.manage.remove_model') : t('button.add')}
-          disabled={isApplying || (isAdded && !isRemovable)}
-          className={modelSyncClasses.manageRowAction}
-          onClick={() => {
-            if (isAdded) {
-              if (isRemovable) {
-                void onRemoveModels([model.id])
+      {onAddModels && onRemoveModels && (
+        <Tooltip content={actionTooltip} placement="top">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label={isAdded ? t('settings.models.manage.remove_model') : t('button.add')}
+            disabled={isApplying || (isAdded && !isRemovable)}
+            className={modelSyncClasses.manageRowAction}
+            onClick={() => {
+              if (isAdded) {
+                if (isRemovable) {
+                  void onRemoveModels([model.id])
+                }
+                return
               }
-              return
-            }
-            void onAddModels([model])
-          }}>
-          {isAdded ? <Minus className="size-4" /> : <Plus className="size-4" />}
-        </Button>
-      </Tooltip>
+              void onAddModels([model])
+            }}>
+            {isAdded ? <Minus className="size-4" /> : <Plus className="size-4" />}
+          </Button>
+        </Tooltip>
+      )}
     </div>
   )
 })
@@ -301,6 +303,8 @@ export default function ModelSyncPreviewPanel(props: ModelSyncPreviewPanelProps)
       )
     }
 
+    if (!props.onAddModels || !props.onRemoveModels) return null
+
     const isAllInProvider = models.every((model) => localModelIds.has(model.id))
     const removableGroupModelIds = models
       .filter((model) => localModelIds.has(model.id) && props.removableModelIds.has(model.id))
@@ -321,10 +325,10 @@ export default function ModelSyncPreviewPanel(props: ModelSyncPreviewPanelProps)
           onClick={(event) => {
             event.stopPropagation()
             if (isAllInProvider) {
-              void props.onRemoveModels(removableGroupModelIds)
+              void props.onRemoveModels?.(removableGroupModelIds)
               return
             }
-            void props.onAddModels(models.filter((model) => !localModelIds.has(model.id)))
+            void props.onAddModels?.(models.filter((model) => !localModelIds.has(model.id)))
           }}>
           {isAllInProvider ? <Minus className="size-4" /> : <Plus className="size-4" />}
         </Button>

@@ -1,8 +1,11 @@
+import { and, eq, isNull, sql } from 'drizzle-orm'
 import * as z from 'zod'
 
 import { application } from '@application'
 import { notifyDataApiDataChange } from '@data/dataApiDataChange'
+import { userModelTable } from '@data/db/schemas/userModel'
 import { modelService } from '@data/services/ModelService'
+import { providerRegistryService } from '@data/services/ProviderRegistryService'
 import { providerService } from '@data/services/ProviderService'
 import { XUELANG_PROVIDER_ID } from '@shared/data/presets/xuelang'
 import { parseUniqueModelId } from '@shared/data/types/model'
@@ -73,15 +76,32 @@ export function applyPersonalModelSnapshot(
     }
   }
 
-  application.get('DbService').withWriteTx(() => {
-    const existingIds = new Set(modelService.list({ providerId }).map(({ id }) => parseUniqueModelId(id).modelId))
-    if (endpoint) {
-      modelService.create(
-        [...modelIds]
-          .filter((modelId) => !existingIds.has(modelId))
-          .map((modelId) => ({ dto: { providerId, modelId, endpointTypes: [endpoint] } }))
-      )
+  const existingIds = new Set(modelService.list({ providerId }).map(({ id }) => parseUniqueModelId(id).modelId))
+  const syncedModels = endpoint
+    ? [...modelIds].map((modelId) => ({
+        dto: { providerId, modelId, endpointTypes: [endpoint] },
+        registryData: providerRegistryService.lookupModel(providerId, modelId)
+      }))
+    : []
+
+  application.get('DbService').withWriteTx((tx) => {
+    // MEA:personal-profile-startup Legacy sync stored empty capabilities without a preset.
+    for (const { dto, registryData } of syncedModels) {
+      if (!existingIds.has(dto.modelId) || !registryData.presetModel) continue
+      tx.update(userModelTable)
+        .set({ presetModelId: registryData.presetModel.id, capabilities: null })
+        .where(
+          and(
+            eq(userModelTable.providerId, providerId),
+            eq(userModelTable.modelId, dto.modelId),
+            isNull(userModelTable.presetModelId),
+            eq(userModelTable.inputModalitiesExplicit, false),
+            sql`json_array_length(${userModelTable.capabilities}) = 0`
+          )
+        )
+        .run()
     }
+    modelService.create(syncedModels.filter(({ dto }) => !existingIds.has(dto.modelId)))
     for (const modelId of new Set([...existingIds, ...modelIds])) {
       const enabled = modelIds.has(modelId)
       modelService.update(providerId, modelId, {

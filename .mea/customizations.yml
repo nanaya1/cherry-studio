@@ -291,10 +291,14 @@ customizations:
   - id: resource-icons
     title: 恢复统一资源图标并隐藏头像编辑
     owner: renderer
-    behavior: assistant.icon_type 和 agent.icon_type 默认 none；资源卡片使用助手 MessageCircle 与 Agent Bot，选择器及预设使用统一 Bot，普通会话控件隐藏头像且紧凑模式显示 Bot，实体 Emoji 标签回退路由图标。创建和编辑入口隐藏 Emoji 选择，保留名称、头像 schema、原始数据与保存链路；Skill 图片、Prompt 头像及小程序图标保持可用。停用逻辑与旧默认值保留为注释，生成源保留旧值以生成回滚注释。
+    behavior: assistant.icon_type 和 agent.icon_type 默认 none；资源卡片使用助手 MessageCircle 与 Agent Bot，选择器及预设使用统一 Bot，普通会话控件隐藏头像且紧凑模式显示 Bot，实体 Emoji 标签回退路由图标。通知中的助手与 Agent 分别使用 MessageCircle 和 Bot，划词动作的 Agent 标识使用 Bot。创建和编辑入口隐藏 Emoji 选择，保留名称、头像 schema、原始数据与保存链路；Skill 图片、Prompt 头像及小程序图标保持可用。停用逻辑与旧默认值保留为注释，生成源保留旧值以生成回滚注释。
     markers:
       - MEA:resource-icons
     touchpoints:
+      - src/renderer/components/NotificationTitle.tsx
+      - src/renderer/components/NotificationTaskIdentity.tsx
+      - src/renderer/pages/settings/SelectionAssistantSettings/components/ActionsListItem.tsx
+      - src/renderer/pages/settings/SelectionAssistantSettings/components/selectionAgentPickers.tsx
       - scripts/data-classify/data/classification.json
       - scripts/data-classify/data/target-key-definitions.json
       - scripts/data-classify/scripts/generate-preferences.js
@@ -317,6 +321,8 @@ customizations:
       - src/renderer/components/resourceCatalog/dialogs/edit/AgentEditDialog.tsx
       - src/renderer/components/resourceCatalog/dialogs/edit/AssistantEditDialog.tsx
     tests:
+      - src/renderer/components/__tests__/NotificationCenter.test.tsx
+      - src/renderer/pages/settings/SelectionAssistantSettings/components/__tests__/SelectionActionAskAgentModal.test.tsx
       - src/shared/data/preference/__tests__/preferenceSchemas.test.ts
       - src/renderer/components/composer/variants/chat/__tests__/ChatConversationControls.resourceIcons.test.tsx
       - src/renderer/components/composer/variants/agent/__tests__/AgentConversationControls.resourceIcons.test.tsx
@@ -388,7 +394,7 @@ customizations:
   - id: personal-profile-startup
     title: Load the selected personal data space before startup
     owner: preboot
-    behavior: Lock and relocate the app data root before selecting a profile. Guests use the base data root. Accounts isolate Electron and Chromium data. Reset preserves the selected login and targets the current space. Backup exports target the current space, automatic destinations are namespaced, and restore confirmation shows the source and destination. Logs and integration data are scoped to the active space, with legacy integration data reserved for guests.
+    behavior: Lock and relocate the app data root before selecting a profile. Guests use the base data root. Accounts isolate Electron and Chromium data. Reset preserves the selected login and targets the current space. Backup exports target the current space, automatic destinations are namespaced, and restore confirmation shows the source and destination. Logs and integration data are scoped to the active space, with legacy integration data reserved for guests. Newly synced Xuelang models inherit matching registry defaults. Model settings are editable locally, while Cowork manages availability and credentials. The standard-looking Sync Models button triggers account synchronization and links eligible legacy Xuelang rows with implicit empty capabilities to matching presets. The shared model drawer lists the account's assigned models and offers retry on failure. Bulk add and remove in the drawer persist local picker visibility across synchronization.
     touchpoints:
       - src/main/main.ts
       - src/main/core/preboot/userDataLocation.ts
@@ -406,6 +412,8 @@ customizations:
       - src/main/enterprise/personalAccountLogin.ts
       - src/main/enterprise/personalAccountRuntime.ts
       - src/main/enterprise/personalModelSync.ts
+      - src/renderer/pages/settings/ProviderSettings/ModelList/ModelListItem.tsx
+      - src/renderer/pages/settings/ProviderSettings/ModelList/ProviderModelList.tsx
       - src/main/data/api/handlers/assertProviderEditable.ts
       - src/main/data/api/handlers/providers.ts
       - src/main/data/api/handlers/models.ts
@@ -414,6 +422,10 @@ customizations:
       - src/renderer/pages/settings/ProviderSettings/ConnectionSettings/ApiHost.tsx
       - src/renderer/pages/settings/ProviderSettings/ConnectionSettings/ProviderApiKeyListDrawer.tsx
       - src/renderer/pages/settings/ProviderSettings/ModelList/ModelList.tsx
+      - src/renderer/pages/settings/ProviderSettings/ModelList/ModelListSyncDrawer.tsx
+      - src/renderer/components/ModelSelector/useModelSelectorData.ts
+      - src/renderer/pages/settings/ProviderSettings/ModelList/ModelListSyncContent.tsx
+      - src/renderer/pages/settings/ProviderSettings/ModelList/ModelSyncPreviewPanel.tsx
       - src/renderer/hooks/useProvider.ts
       - src/renderer/pages/settings/ProviderSettings/ProviderSpecific/XuelangAccountSettings.tsx
       - src/renderer/pages/settings/ProviderSettings/ProviderSpecific/providerSpecificSettingsRegistry.tsx
@@ -433,6 +445,8 @@ customizations:
       - src/main/core/preboot/__tests__/personalProfileSwitch.test.ts
       - src/main/enterprise/__tests__/personalAccountLogin.test.ts
       - src/main/enterprise/__tests__/personalModelSync.test.ts
+      - src/renderer/pages/settings/ProviderSettings/ModelList/__tests__/ModelListSyncDrawer.test.tsx
+      - src/renderer/pages/settings/ProviderSettings/ModelList/__tests__/ModelListItem.test.tsx
       - src/main/data/api/handlers/__tests__/providers.test.ts
       - src/main/data/api/handlers/__tests__/models.test.ts
       - src/renderer/pages/settings/ProviderSettings/__tests__/XuelangAccountSettings.test.tsx

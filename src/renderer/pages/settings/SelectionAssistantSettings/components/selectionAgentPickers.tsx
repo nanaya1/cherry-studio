@@ -6,7 +6,6 @@ import { Button } from '@cherrystudio/ui'
 import { AgentSelector, WorkspaceSelector } from '@renderer/components/resourceCatalog/selectors'
 import { useDataChange, useQuery } from '@renderer/data/hooks/useDataApi'
 import { useAgents } from '@renderer/hooks/agent/useAgent'
-import { getAgentAvatarFromConfiguration } from '@renderer/utils/agent'
 import { getSelectionAgentIssue, SELECTION_AGENT_ISSUE_HINT_KEYS } from '@renderer/utils/selectionAction'
 import { AGENT_WORKSPACE_TYPE, type AgentSessionWorkspaceSource } from '@shared/data/api/schemas/agentWorkspaces'
 
@@ -31,7 +30,7 @@ export const SelectionAgentPicker: FC<SelectionAgentPickerProps> = ({ value, onC
         mountStrategy="lazy-keep"
         trigger={
           <Button type="button" variant="outline" className="w-full justify-start" aria-invalid={invalid || undefined}>
-            {agent ? <span aria-hidden="true">{getAgentAvatarFromConfiguration(agent.configuration)}</span> : <Bot />}
+            <Bot aria-hidden />
             <span className="min-w-0 flex-1 truncate text-left">
               {agent?.name ?? t('selection.settings.user_modal.agent.hint')}
             </span>
