@@ -1,0 +1,203 @@
+<div id="mea-personal-preview">
+  <div class="window">
+    <aside>
+      <strong>MEA Cowork</strong>
+      <small>个人版</small>
+      <nav aria-label="工作区">
+        <button data-local><i data-lucide="message-square" aria-hidden="true"></i> 本地对话</button>
+        <button data-cloud><i data-lucide="cloud" aria-hidden="true"></i> 云端资源</button>
+      </nav>
+      <div class="account">
+        <span data-account aria-live="polite">访客</span>
+        <button data-login>登录</button>
+      </div>
+    </aside>
+    <main>
+      <header data-title>本地对话</header>
+      <section data-local-page>
+        <label>消息草稿 <textarea rows="4" placeholder="输入消息"></textarea></label>
+      </section>
+      <section data-cloud-page hidden><p>已登录，可以访问云端资源。</p></section>
+    </main>
+    <div class="overlay" hidden>
+      <form role="dialog" aria-modal="true" aria-labelledby="mea-login-heading">
+        <h2 id="mea-login-heading">登录 MEA Cowork</h2>
+        <p data-reason>使用演示账号体验登录。</p>
+        <label>用户名 <input readonly value="demo" /></label>
+        <label>密码 <input type="password" readonly value="demo-password" /></label>
+        <footer>
+          <button type="button" data-cancel>取消</button><button type="submit" class="primary">模拟登录</button>
+        </footer>
+      </form>
+    </div>
+  </div>
+</div>
+<style>
+  #mea-personal-preview {
+    color-scheme: light dark;
+    font:
+      14px/1.5 system-ui,
+      sans-serif;
+    color: light-dark(#22252c, #eeeef3);
+  }
+  #mea-personal-preview .window {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(125px, 24%) minmax(0, 1fr);
+    min-height: 370px;
+    background: light-dark(#fff, #202126);
+    border: 1px solid light-dark(#e0e1e8, #3b3d48);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  #mea-personal-preview aside {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 16px 12px;
+    background: light-dark(#f5f5f9, #282930);
+  }
+  #mea-personal-preview small {
+    color: light-dark(#606472, #b8bac7);
+  }
+  #mea-personal-preview nav {
+    display: grid;
+    gap: 6px;
+    margin-top: 16px;
+  }
+  #mea-personal-preview button {
+    font: inherit;
+    color: inherit;
+    background: light-dark(#fff, #32343f);
+    border: 1px solid light-dark(#dedfe8, #4d5060);
+    border-radius: 7px;
+    padding: 6px 9px;
+  }
+  #mea-personal-preview svg {
+    vertical-align: middle;
+  }
+  #mea-personal-preview .account {
+    margin-top: auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  #mea-personal-preview header {
+    font-weight: 600;
+    padding: 16px;
+    border-bottom: 1px solid light-dark(#ebebf0, #383944);
+  }
+  #mea-personal-preview section {
+    padding: 22px 16px;
+  }
+  #mea-personal-preview label {
+    display: grid;
+    gap: 5px;
+  }
+  #mea-personal-preview textarea,
+  #mea-personal-preview input {
+    box-sizing: border-box;
+    width: 100%;
+    font: inherit;
+    padding: 8px;
+    color: inherit;
+    background: light-dark(#fff, #25262d);
+    border: 1px solid light-dark(#ccced9, #555868);
+    border-radius: 7px;
+  }
+  #mea-personal-preview .overlay {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    padding: 12px;
+    background: light-dark(#20253d55, #090910aa);
+  }
+  #mea-personal-preview [hidden] {
+    display: none;
+  }
+  #mea-personal-preview form {
+    display: grid;
+    gap: 10px;
+    box-sizing: border-box;
+    width: min(100%, 340px);
+    padding: 20px;
+    border-radius: 12px;
+    background: light-dark(#fff, #2c2d36);
+  }
+  #mea-personal-preview h2,
+  #mea-personal-preview p {
+    margin: 0;
+  }
+  #mea-personal-preview footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 6px;
+  }
+  #mea-personal-preview .primary {
+    background: light-dark(#4a3bb5, #b8adff);
+    color: light-dark(#fff, #21184c);
+    border-color: transparent;
+  }
+</style>
+<script>
+  ;(() => {
+    const root = document.getElementById('mea-personal-preview')
+    const get = (key) => root.querySelector(key)
+    const overlay = get('.overlay')
+    const form = get('form')
+    const shell = [get('aside'), get('main')]
+    const account = get('[data-account]')
+    const login = get('[data-login]')
+    let signedIn = false
+    let trigger
+    let pendingCloud = false
+    function page(cloud) {
+      get('[data-title]').textContent = cloud ? '云端资源' : '本地对话'
+      get('[data-local-page]').hidden = cloud
+      get('[data-cloud-page]').hidden = !cloud
+    }
+    function open(button, cloud) {
+      trigger = button
+      pendingCloud = cloud
+      get('[data-reason]').textContent = cloud ? '登录后继续访问云端资源。' : '使用演示账号体验登录。'
+      shell.forEach((element) => {
+        element.inert = true
+      })
+      overlay.hidden = false
+      form.querySelector('input').focus()
+    }
+    function close() {
+      overlay.hidden = true
+      shell.forEach((element) => {
+        element.inert = false
+      })
+      trigger.focus()
+    }
+    login.onclick = () => {
+      if (!signedIn) return open(login, false)
+      signedIn = false
+      account.textContent = '访客'
+      login.textContent = '登录'
+      page(false)
+    }
+    get('[data-local]').onclick = () => page(false)
+    const cloud = get('[data-cloud]')
+    cloud.onclick = () => (signedIn ? page(true) : open(cloud, true))
+    get('[data-cancel]').onclick = close
+    form.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') close()
+    })
+    form.onsubmit = (event) => {
+      event.preventDefault()
+      signedIn = true
+      account.textContent = 'demo'
+      login.textContent = '退出登录'
+      close()
+      if (pendingCloud) page(true)
+    }
+  })()
+</script>
