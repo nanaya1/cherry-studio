@@ -143,7 +143,7 @@ const McpToolsSection = ({ tools, server, searchText, onToggleTool, onToggleAuto
           renderSchemaProperties(property.properties, property.required, depth + 1)}
         {depth < MAX_NESTING_DEPTH && type === 'array' && itemsType === 'object' && items?.properties && (
           <div className="mt-2">
-            <span className="text-muted-foreground text-sm italic">items:</span>
+            <span className="text-muted-foreground text-sm italic">{t('settings.mcp.tools.inputSchema.items')}</span>
             {renderSchemaProperties(items.properties, items.required, depth + 1)}
           </div>
         )}
