@@ -8,6 +8,7 @@ import { useProviderActions, useProviders } from '@renderer/hooks/useProvider'
 import { toast } from '@renderer/services/toast'
 import type { ProviderType } from '@renderer/types/provider'
 import { validateApiHost } from '@renderer/utils/api'
+import { XUELANG_PROVIDER_ID } from '@shared/data/presets/xuelang'
 import { ENDPOINT_TYPE, type EndpointType } from '@shared/data/types/model'
 
 import UrlSchemaInfoPopup from '../UrlSchemaInfoPopup'
@@ -63,6 +64,12 @@ export function useProviderDeepLinkImport(
 
     const importProvider = async (providerData: ImportedProviderSearchData) => {
       try {
+        if (providerData.id === XUELANG_PROVIDER_ID) {
+          onSelectProvider(XUELANG_PROVIDER_ID)
+          void navigate({ to: '/settings/provider', search: { id: XUELANG_PROVIDER_ID } })
+          return
+        }
+
         const popupResult = await UrlSchemaInfoPopup.show(providerData)
         const { updatedProvider, isNew, displayName } = popupResult
 

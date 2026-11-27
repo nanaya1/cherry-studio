@@ -774,6 +774,7 @@ export function useHomeMessageListProviderValue({
           multiple={false}
           value={currentMentionModel}
           filter={mentionModelFilter}
+          requireUsableXuelangChatRoute
           onSelect={onSelectMentionModel}
           trigger={trigger}
           onOpenChange={onOpenChange}

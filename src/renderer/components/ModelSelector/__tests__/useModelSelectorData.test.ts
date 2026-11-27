@@ -3,7 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { CHERRY_CLOUD_PROVIDER_ID, CHERRYAI_PROVIDER_ID } from '@shared/data/presets/cherryai'
 import { LOCAL_EMBEDDING_PROVIDER_ID } from '@shared/data/presets/localEmbedding'
-import { type Model, MODEL_CAPABILITY } from '@shared/data/types/model'
+import { XUELANG_PROVIDER_ID } from '@shared/data/presets/xuelang'
+import { ENDPOINT_TYPE, type Model, MODEL_CAPABILITY } from '@shared/data/types/model'
 import type { Provider } from '@shared/data/types/provider'
 import type { AppEdition } from '@shared/types/appEdition'
 
@@ -110,6 +111,87 @@ beforeEach(() => {
 })
 
 describe('useModelSelectorData', () => {
+  it('filters Xuelang chat models by enabled per-key routes, including pinned and searched models', () => {
+    const chat = ENDPOINT_TYPE.OPENAI_CHAT_COMPLETIONS
+    const responses = ENDPOINT_TYPE.OPENAI_RESPONSES
+    const available = makeModel('local-id', XUELANG_PROVIDER_ID, {
+      apiModelId: 'real-id',
+      endpointTypes: [chat, responses]
+    })
+    const unavailable = makeModel('hidden-model', XUELANG_PROVIDER_ID, { endpointTypes: [chat] })
+    const legacy = makeModel('legacy', XUELANG_PROVIDER_ID)
+    const retired = makeModel('retired', XUELANG_PROVIDER_ID, { isDeprecated: true })
+    const other = makeModel('keyless', 'other')
+    const routeKey = {
+      id: 'usable',
+      isEnabled: true,
+      managedRoutes: {
+        endpointConfigs: { [responses]: { baseUrl: 'https://example.test/v1' } },
+        models: [
+          { id: 'real-id', endpointTypes: [responses] },
+          { id: 'hidden-model', endpointTypes: [chat] },
+          { id: 'legacy', endpointTypes: [chat] },
+          { id: 'retired', endpointTypes: [chat] }
+        ]
+      }
+    }
+    const chatKey = {
+      id: 'chat',
+      isEnabled: true,
+      managedRoutes: {
+        endpointConfigs: { [chat]: { baseUrl: 'https://example.test/v1' } },
+        models: [
+          { id: 'legacy', endpointTypes: [chat] },
+          { id: 'retired', endpointTypes: [chat] },
+          { id: 'hidden-model', endpointTypes: [responses] }
+        ]
+      }
+    }
+    const xuelang = makeProvider(XUELANG_PROVIDER_ID, {
+      endpointConfigs: chatKey.managedRoutes.endpointConfigs,
+      apiKeys: [
+        routeKey,
+        chatKey,
+        { id: 'unmanaged', isEnabled: true },
+        {
+          ...chatKey,
+          id: 'switched-off',
+          isEnabled: false,
+          managedRoutes: { ...chatKey.managedRoutes, models: [{ id: 'hidden-model', endpointTypes: [chat] }] }
+        }
+      ]
+    })
+    const wire = (provider: Provider) =>
+      wireDeps({
+        providers: [provider, makeProvider('other')],
+        models: [available, unavailable, legacy, retired, other],
+        pinnedIds: [unavailable.id, available.id]
+      })
+    wire(xuelang)
+    const { result, rerender } = renderHook(
+      ({ searchText, requireUsableXuelangChatRoute }) =>
+        useModelSelectorData({ searchText, requireUsableXuelangChatRoute, selectedModelIds: [unavailable.id] }),
+      { initialProps: { searchText: '', requireUsableXuelangChatRoute: true } }
+    )
+
+    expect(result.current.modelItems.map((item) => item.modelId)).toEqual([available.id, legacy.id, other.id])
+    expect(result.current.modelItems[0]?.groupKind).toBe('pinned')
+    expect(result.current.resolvedSelectedModelIds).toEqual([])
+    expect(result.current.pinnedIds).toContain(unavailable.id)
+    rerender({ searchText: 'hidden-model', requireUsableXuelangChatRoute: true })
+    expect(result.current.modelItems).toEqual([])
+    rerender({ searchText: '', requireUsableXuelangChatRoute: false })
+    expect(result.current.selectableModelsById.has(unavailable.id)).toBe(true)
+
+    wire({ ...xuelang, isEnabled: false })
+    rerender({ searchText: '', requireUsableXuelangChatRoute: true })
+    expect(result.current.modelItems.map((item) => item.modelId)).toEqual([other.id])
+
+    wire({ ...xuelang, apiKeys: [] })
+    rerender({ searchText: '', requireUsableXuelangChatRoute: true })
+    expect(result.current.modelItems.map((item) => item.modelId)).toEqual([other.id])
+  })
+
   it('merges Qwen and Cloud into the first provider group without changing model routing', () => {
     const qwen = makeModel('qwen', CHERRYAI_PROVIDER_ID, { name: 'Shared name' })
     const cloud = makeModel('cloud-model', CHERRY_CLOUD_PROVIDER_ID, { name: 'Shared name' })

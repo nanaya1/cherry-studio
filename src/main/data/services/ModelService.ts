@@ -30,12 +30,13 @@ import {
   type ResolvedReasoningProfile,
   type ResolvedServiceTierControl
 } from '@data/services/ProviderRegistryService'
-import { isProviderIdentityAvailable, providerService } from '@data/services/ProviderService'
+import { hasCurrentXuelangSnapshot, isProviderIdentityAvailable, providerService } from '@data/services/ProviderService'
 import { insertManyWithOrderKey } from '@data/services/utils/orderKey'
 import { loggerService } from '@logger'
 import { DataApiErrorFactory } from '@shared/data/api/errors'
 import type { CreateModelDto, ListModelsQuery, UpdateModelDto } from '@shared/data/api/schemas/models'
 import { isManagedCherryAiDefaultModel } from '@shared/data/presets/cherryai'
+import { XUELANG_PROVIDER_ID } from '@shared/data/presets/xuelang'
 import type {
   EndpointType,
   Modality,
@@ -659,7 +660,7 @@ class ModelService {
   /**
    * List models with optional filters
    */
-  list(query: ListModelsQuery): Model[] {
+  list(query: ListModelsQuery, options: { includeUnscopedManaged?: boolean } = {}): Model[] {
     const db = application.get('DbService').getDb()
 
     if (query.providerId && !providerService.isAvailableByProviderId(query.providerId)) {
@@ -685,9 +686,14 @@ class ModelService {
       .orderBy(asc(userModelTable.providerId), asc(userModelTable.orderKey))
       .all()
 
+    const visibleRows = availableProviderIds ? rows.filter((row) => availableProviderIds.has(row.providerId)) : rows
+    const hideManaged =
+      !options.includeUnscopedManaged &&
+      visibleRows.some((row) => row.providerId === XUELANG_PROVIDER_ID) &&
+      !hasCurrentXuelangSnapshot()
     let models = this.enrichRowsFromRegistryTx(
       db,
-      availableProviderIds ? rows.filter((row) => availableProviderIds.has(row.providerId)) : rows
+      hideManaged ? visibleRows.filter((row) => row.providerId !== XUELANG_PROVIDER_ID) : visibleRows
     )
 
     // Post-filter by capability (JSON array column, can't filter in SQL easily)

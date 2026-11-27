@@ -54,9 +54,6 @@ vi.mock('@cherrystudio/ui', async (importOriginal) => {
 vi.mock('@cherrystudio/ui/icons/providers', () => ({
   Cherryin: {
     Avatar: ({ size }: { size?: number }) => <div data-testid="cherryin-avatar">{size ?? 0}</div>
-  },
-  Xuelang: {
-    Avatar: ({ size }: { size?: number }) => <div data-testid="xuelang-avatar">{size ?? 0}</div>
   }
 }))
 
@@ -100,85 +97,6 @@ describe('CherryInOauth', () => {
     expect(screen.getByText('Pro')).toBeInTheDocument()
     expect(screen.getByText('$128.50')).toBeInTheDocument()
     expect(screen.getByText(/open\.cherryin\.ai/)).toBeInTheDocument()
-  })
-
-  it('renders Xuelang with independent token, host, branding, i18n and no top-up', async () => {
-    useProviderMock.mockReturnValue({
-      provider: {
-        id: 'xuelang',
-        name: '雪浪工匠',
-        apiKeys: [{ id: 'oauth-1', label: 'OAuth', isEnabled: true }],
-        isEnabled: true
-      },
-      updateProvider: vi.fn(),
-      addApiKey: vi.fn(),
-      deleteApiKey: vi.fn()
-    })
-
-    render(<CherryInOauth providerId="xuelang" />)
-
-    await waitFor(() => {
-      expect(ipcApiRequestMock).toHaveBeenCalledWith('oauth.has_token', { providerId: 'xuelang' })
-      expect(ipcApiRequestMock).toHaveBeenCalledWith('cherryin.get_balance', {
-        apiHost: 'https://api.xuelanglm.com',
-        providerId: 'xuelang'
-      })
-    })
-    expect(screen.getByTestId('xuelang-avatar')).toBeInTheDocument()
-    expect(screen.getByText(/雪浪工匠|Xuelang/)).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /充值|Top Up/i })).not.toBeInTheDocument()
-  })
-
-  it('provisions missing Xuelang OAuth API keys from its existing token', async () => {
-    const addApiKey = vi.fn().mockResolvedValue(undefined)
-    const updateProvider = vi.fn().mockResolvedValue(undefined)
-    provisionOAuthApiKeysMock.mockResolvedValue('managed-1,managed-2')
-    useProviderMock.mockReturnValue({
-      provider: {
-        id: 'xuelang',
-        name: '雪浪工匠',
-        apiKeys: [{ id: 'manual-1', label: 'Manual', isEnabled: true }],
-        isEnabled: true
-      },
-      updateProvider,
-      addApiKey,
-      deleteApiKey: vi.fn()
-    })
-    const user = userEvent.setup()
-
-    render(<CherryInOauth providerId="xuelang" />)
-    await user.click(await screen.findByRole('button', { name: /重新领取凭据|Recover credentials/i }))
-
-    expect(provisionOAuthApiKeysMock).toHaveBeenCalledWith('xuelang')
-    expect(addApiKey).toHaveBeenNthCalledWith(1, 'managed-1', 'OAuth')
-    expect(addApiKey).toHaveBeenNthCalledWith(2, 'managed-2', 'OAuth')
-    expect(updateProvider).toHaveBeenCalledWith({ isEnabled: true })
-    expect(oauthWithCherryInMock).not.toHaveBeenCalled()
-  })
-
-  it('maps Xuelang provisioning error codes to dedicated i18n messages', async () => {
-    provisionOAuthApiKeysMock.mockRejectedValue(
-      Object.assign(new Error('subscription missing'), { code: 'NO_ACTIVE_SUBSCRIPTION' })
-    )
-    useProviderMock.mockReturnValue({
-      provider: { id: 'xuelang', name: '雪浪工匠', apiKeys: [], isEnabled: true },
-      updateProvider: vi.fn(),
-      addApiKey: vi.fn(),
-      deleteApiKey: vi.fn()
-    })
-    ipcApiRequestMock.mockImplementation((route: string) =>
-      route === 'oauth.has_token' ? Promise.resolve(true) : Promise.resolve(undefined)
-    )
-    const user = userEvent.setup()
-
-    render(<CherryInOauth providerId="xuelang" />)
-    await user.click(await screen.findByRole('button', { name: /重新领取凭据|Recover credentials/i }))
-
-    await waitFor(() =>
-      expect(toast.error).toHaveBeenCalledWith(
-        expect.stringMatching(/当前没有可用订阅|No active subscription is available/i)
-      )
-    )
   })
 
   it('keeps balance fetch failures quiet and shows the empty balance state', async () => {
@@ -236,7 +154,7 @@ describe('CherryInOauth', () => {
     expect(tagline.compareDocumentPosition(loginButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
-  it('cancels a preset-derived CherryIN login through its registered OAuth provider', async () => {
+  it('cancels a CherryIN login through its registered OAuth provider', async () => {
     let rejectSignIn: (error: unknown) => void = () => {}
     oauthWithCherryInMock.mockImplementationOnce(
       () =>
@@ -245,7 +163,7 @@ describe('CherryInOauth', () => {
         })
     )
     useProviderMock.mockReturnValue({
-      provider: { id: 'custom-cherryin', presetProviderId: 'cherryin', name: 'CherryIN', apiKeys: [], isEnabled: true },
+      provider: { id: 'cherryin', presetProviderId: 'cherryin', name: 'CherryIN', apiKeys: [], isEnabled: true },
       updateProvider: vi.fn(),
       addApiKey: vi.fn(),
       deleteApiKey: vi.fn()
@@ -260,7 +178,7 @@ describe('CherryInOauth', () => {
     })
     const user = userEvent.setup()
 
-    render(<CherryInOauth providerId="custom-cherryin" />)
+    render(<CherryInOauth providerId="cherryin" />)
 
     const loginButton = screen.getByRole('button', { name: /CherryIN|授权/i })
     await user.click(loginButton)
@@ -307,32 +225,6 @@ describe('CherryInOauth', () => {
     await waitFor(() => expect(toast.error).toHaveBeenCalled())
     expect(loginButton).toBeEnabled()
     expect(screen.queryByRole('button', { name: /取消|Cancel/i })).not.toBeInTheDocument()
-  })
-
-  it('logs Xuelang out through its independent provider session', async () => {
-    const deleteApiKey = vi.fn().mockResolvedValue(undefined)
-    useProviderMock.mockReturnValue({
-      provider: {
-        id: 'xuelang',
-        name: '雪浪工匠',
-        apiKeys: [{ id: 'oauth-xuelang', label: 'OAuth', isEnabled: true }],
-        isEnabled: true
-      },
-      updateProvider: vi.fn(),
-      addApiKey: vi.fn(),
-      deleteApiKey
-    })
-
-    render(<CherryInOauth providerId="xuelang" />)
-    await act(async () => {
-      fireEvent.click(await screen.findByRole('button', { name: /退出登录|Logout/i }))
-    })
-
-    await waitFor(() => expect(deleteApiKey).toHaveBeenCalledWith('oauth-xuelang'))
-    expect(ipcApiRequestMock).toHaveBeenCalledWith('cherryin.logout', {
-      apiHost: 'https://api.xuelanglm.com',
-      providerId: 'xuelang'
-    })
   })
 
   it('logs out and removes every OAuth-labelled key after confirmation', async () => {

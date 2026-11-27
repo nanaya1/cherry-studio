@@ -19,6 +19,13 @@ interface ProviderApiKeyListDrawerProps {
   providerId: string
   open: boolean
   onClose: () => void
+  managed?: ManagedApiKeyListOptions
+}
+
+export interface ManagedApiKeyListOptions {
+  visible: boolean
+  emptyMessage: string
+  errorMessage: string
 }
 
 interface DraftState {
@@ -50,11 +57,56 @@ function toDraft(entry: ApiKeyEntry): DraftState {
   }
 }
 
-export default function ProviderApiKeyListDrawer({ providerId, open, onClose }: ProviderApiKeyListDrawerProps) {
+export function getManagedApiKeys(keys: ApiKeyEntry[] | undefined, visible: boolean) {
+  return visible ? (keys ?? []).filter((key) => !('revoked' in key && key.revoked)) : []
+}
+
+export function displayManagedApiKey(key: string) {
+  return /^(?:\*{4,}|.{2}\*{4}.{4})$/.test(key) ? key : '****'
+}
+
+export default function ProviderApiKeyListDrawer({
+  providerId,
+  open,
+  onClose,
+  managed
+}: ProviderApiKeyListDrawerProps) {
   const { t } = useTranslation()
-  const { data: apiKeysData } = useProviderApiKeys(providerId)
+  const { data } = useProviderApiKeys(providerId)
+  const keys = managed ? getManagedApiKeys(data?.keys, managed.visible) : (data?.keys ?? [])
+  return (
+    <ProviderSettingsDrawer
+      open={open}
+      onClose={onClose}
+      title={t('settings.provider.api.key.list.title')}
+      description={t('settings.provider.api_key.list_description')}
+      footer={
+        <div className={apiKeyListClasses.summaryMeta}>
+          {keys.filter((key) => key.isEnabled).length} / {keys.length} {t('settings.provider.api_key.enabled_suffix')}
+        </div>
+      }>
+      <ProviderApiKeyList providerId={providerId} open={open} managed={managed} />
+    </ProviderSettingsDrawer>
+  )
+}
+
+function ProviderApiKeyList({
+  providerId,
+  open = true,
+  managed
+}: {
+  providerId: string
+  open?: boolean
+  managed?: ManagedApiKeyListOptions
+}) {
+  const { t } = useTranslation()
+  const { data: apiKeysData, isLoading, error } = useProviderApiKeys(providerId)
   const { addApiKey, updateApiKey, deleteApiKey } = useProviderMutations(providerId)
-  const apiKeys = useMemo(() => apiKeysData?.keys ?? [], [apiKeysData?.keys])
+  const isManaged = managed !== undefined
+  const visible = managed?.visible ?? true
+  const apiKeys = useMemo(() => {
+    return isManaged ? getManagedApiKeys(apiKeysData?.keys, visible) : (apiKeysData?.keys ?? [])
+  }, [apiKeysData?.keys, isManaged, visible])
   const [editingId, setEditingId] = useState<string | null>(null)
   const [draft, setDraft] = useState<DraftState | null>(null)
   const [saving, setSaving] = useState(false)
@@ -66,8 +118,6 @@ export default function ProviderApiKeyListDrawer({ providerId, open, onClose }: 
       setDraft(null)
     }
   }, [open])
-
-  const enabledCount = apiKeys.filter((item) => item.isEnabled).length
 
   const persist = useCallback(
     async (mutation: () => Promise<void>) => {
@@ -164,45 +214,25 @@ export default function ProviderApiKeyListDrawer({ providerId, open, onClose }: 
   )
 
   return (
-    <ProviderSettingsDrawer
-      open={open}
-      onClose={onClose}
-      title={t('settings.provider.api.key.list.title')}
-      description={t('settings.provider.api_key.list_description')}
-      footer={
-        <div className={apiKeyListClasses.summaryMeta}>
-          {enabledCount} / {apiKeys.length} {t('settings.provider.api_key.enabled_suffix')}
-        </div>
-      }>
-      <div className="space-y-4">
-        <div className={apiKeyListClasses.listWrap}>
-          <Scrollbar className={apiKeyListClasses.listScroller}>
-            {apiKeys.length === 0 && !draft ? (
-              <div className="px-4 py-6 text-center text-muted-foreground text-sm">{t('error.no_api_key')}</div>
-            ) : null}
-            {apiKeys.map((entry) => (
-              <div key={entry.id} className={apiKeyListClasses.keyRow}>
-                {editingId === entry.id && draft ? (
-                  <ApiKeyDraftRow
-                    draft={draft}
-                    saving={saving}
-                    onChange={setDraft}
-                    onSave={saveDraft}
-                    onCancel={cancelEdit}
-                  />
-                ) : (
-                  <ApiKeyDisplayRow
-                    entry={entry}
-                    saving={saving}
-                    onEdit={() => startEdit(entry)}
-                    onRemove={() => void removeKey(entry.id)}
-                    onToggleEnabled={(next) => void toggleEnabled(entry, next)}
-                  />
-                )}
-              </div>
-            ))}
-            {draft?.isNew ? (
-              <div className={apiKeyListClasses.keyRow}>
+    <div className="space-y-4">
+      <div className={apiKeyListClasses.listWrap}>
+        <Scrollbar className={apiKeyListClasses.listScroller}>
+          {apiKeys.length === 0 && (isManaged || !draft) ? (
+            <div
+              className="px-4 py-6 text-center text-muted-foreground text-sm"
+              role={managed && error ? 'alert' : undefined}>
+              {managed
+                ? isLoading
+                  ? t('common.loading')
+                  : error
+                    ? managed.errorMessage
+                    : managed.emptyMessage
+                : t('error.no_api_key')}
+            </div>
+          ) : null}
+          {apiKeys.map((entry, index) => (
+            <div key={entry.id} className={apiKeyListClasses.keyRow}>
+              {!isManaged && editingId === entry.id && draft ? (
                 <ApiKeyDraftRow
                   draft={draft}
                   saving={saving}
@@ -210,17 +240,41 @@ export default function ProviderApiKeyListDrawer({ providerId, open, onClose }: 
                   onSave={saveDraft}
                   onCancel={cancelEdit}
                 />
-              </div>
-            ) : null}
-          </Scrollbar>
-        </div>
+              ) : (
+                <ApiKeyDisplayRow
+                  entry={entry}
+                  saving={saving}
+                  managedLabel={
+                    isManaged ? `${entry.label || t('settings.provider.api_key.unnamed')} ${index + 1}` : undefined
+                  }
+                  onEdit={isManaged ? undefined : () => startEdit(entry)}
+                  onRemove={isManaged ? undefined : () => void removeKey(entry.id)}
+                  onToggleEnabled={(next) => void toggleEnabled(entry, next)}
+                />
+              )}
+            </div>
+          ))}
+          {!isManaged && draft?.isNew ? (
+            <div className={apiKeyListClasses.keyRow}>
+              <ApiKeyDraftRow
+                draft={draft}
+                saving={saving}
+                onChange={setDraft}
+                onSave={saveDraft}
+                onCancel={cancelEdit}
+              />
+            </div>
+          ) : null}
+        </Scrollbar>
+      </div>
 
+      {!isManaged && (
         <Button className="w-full" variant="secondary" size="sm" disabled={!!draft || saving} onClick={startAdd}>
           <Plus size={14} />
           {t('settings.provider.api_setup.add_key')}
         </Button>
-      </div>
-    </ProviderSettingsDrawer>
+      )}
+    </div>
   )
 }
 
@@ -294,12 +348,13 @@ function ApiKeyDraftRow({ draft, saving, onChange, onSave, onCancel }: ApiKeyDra
 interface ApiKeyDisplayRowProps {
   entry: ApiKeyEntry
   saving: boolean
-  onEdit: () => void
-  onRemove: () => void
+  managedLabel?: string
+  onEdit?: () => void
+  onRemove?: () => void
   onToggleEnabled: (enabled: boolean) => void
 }
 
-function ApiKeyDisplayRow({ entry, saving, onEdit, onRemove, onToggleEnabled }: ApiKeyDisplayRowProps) {
+function ApiKeyDisplayRow({ entry, saving, managedLabel, onEdit, onRemove, onToggleEnabled }: ApiKeyDisplayRowProps) {
   const { t } = useTranslation()
   const maskedKey = maskApiKey(entry.key)
   const handleCopy = useCallback(() => {
@@ -309,47 +364,74 @@ function ApiKeyDisplayRow({ entry, saving, onEdit, onRemove, onToggleEnabled }: 
   return (
     <div className={apiKeyListClasses.keyDisplayRow}>
       <div className={apiKeyListClasses.keyTextBlock}>
-        {entry.label ? <div className={apiKeyListClasses.keyLabel}>{entry.label}</div> : null}
-        <button
-          type="button"
-          title={t('settings.provider.api_key.copy')}
-          className={`${apiKeyListClasses.keyValue} block cursor-pointer text-left transition-colors hover:text-foreground`}
-          onClick={handleCopy}>
-          {maskedKey === entry.key ? '••••••••' : maskedKey}
-        </button>
+        {managedLabel || entry.label ? (
+          <div className={apiKeyListClasses.keyLabel}>{managedLabel ?? entry.label}</div>
+        ) : null}
+        {managedLabel ? (
+          <>
+            <span className={`${apiKeyListClasses.keyValue} select-none`} onCopy={(event) => event.preventDefault()}>
+              {displayManagedApiKey(entry.key)}
+            </span>
+            {Object.entries(entry.managedRoutes?.endpointConfigs ?? {}).map(([protocol, config]) => (
+              <p key={protocol} className="break-all text-xs text-muted-foreground">
+                {protocol} · {t('settings.provider.api_host')}: {config?.baseUrl || '—'}
+              </p>
+            ))}
+          </>
+        ) : (
+          <button
+            type="button"
+            title={t('settings.provider.api_key.copy')}
+            className={`${apiKeyListClasses.keyValue} block cursor-pointer text-left transition-colors hover:text-foreground`}
+            onClick={handleCopy}>
+            {maskedKey === entry.key ? '••••••••' : maskedKey}
+          </button>
+        )}
       </div>
       <div className={apiKeyListClasses.keyRowActions}>
-        <Tooltip content={t('settings.provider.api_key.copy')}>
-          <button
-            type="button"
-            className={apiKeyListClasses.keyIconButton}
-            aria-label={t('settings.provider.api_key.copy')}
-            disabled={saving}
-            onClick={handleCopy}>
-            <Copy />
-          </button>
-        </Tooltip>
-        <Tooltip content={t('common.edit')}>
-          <button
-            type="button"
-            className={apiKeyListClasses.keyIconButton}
-            aria-label={t('common.edit')}
-            disabled={saving}
-            onClick={onEdit}>
-            <Edit3 />
-          </button>
-        </Tooltip>
-        <Tooltip content={t('common.delete')}>
-          <button
-            type="button"
-            className={apiKeyListClasses.keyDestructiveIconButton}
-            aria-label={t('common.delete')}
-            disabled={saving}
-            onClick={onRemove}>
-            <Trash2 />
-          </button>
-        </Tooltip>
-        <Switch size="xs" checked={entry.isEnabled} disabled={saving} onCheckedChange={onToggleEnabled} />
+        {!managedLabel && (
+          <Tooltip content={t('settings.provider.api_key.copy')}>
+            <button
+              type="button"
+              className={apiKeyListClasses.keyIconButton}
+              aria-label={t('settings.provider.api_key.copy')}
+              disabled={saving}
+              onClick={handleCopy}>
+              <Copy />
+            </button>
+          </Tooltip>
+        )}
+        {onEdit && (
+          <Tooltip content={t('common.edit')}>
+            <button
+              type="button"
+              className={apiKeyListClasses.keyIconButton}
+              aria-label={t('common.edit')}
+              disabled={saving}
+              onClick={onEdit}>
+              <Edit3 />
+            </button>
+          </Tooltip>
+        )}
+        {onRemove && (
+          <Tooltip content={t('common.delete')}>
+            <button
+              type="button"
+              className={apiKeyListClasses.keyDestructiveIconButton}
+              aria-label={t('common.delete')}
+              disabled={saving}
+              onClick={onRemove}>
+              <Trash2 />
+            </button>
+          </Tooltip>
+        )}
+        <Switch
+          size="xs"
+          aria-label={managedLabel}
+          checked={entry.isEnabled}
+          disabled={saving}
+          onCheckedChange={onToggleEnabled}
+        />
       </div>
     </div>
   )

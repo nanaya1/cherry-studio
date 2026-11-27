@@ -18,6 +18,7 @@ import {
 } from '@shared/ai/builtinTools'
 import type { CompactionSink } from '@shared/ai/compaction'
 import type { WebSearchCapability } from '@shared/data/preference/preferenceTypes'
+import { XUELANG_PROVIDER_ID } from '@shared/data/presets/xuelang'
 import {
   type Assistant,
   DEFAULT_ASSISTANT_SETTINGS,
@@ -35,7 +36,14 @@ import type { FileAttachmentRef } from '../../../messages/attachmentTypes'
 import { collectRetainedContext, type RetainedContext } from '../../../messages/retainedContext'
 import { applyHttpTrace } from '../../../observability'
 import type { ServingCredentialReceipt } from '../../../provider/credential'
-import { resolveAiSdkProviderId, resolveEffectiveEndpoint } from '../../../provider/endpoint'
+import {
+  assertXuelangModelUsable,
+  isXuelangChatEndpoint,
+  resolveAiSdkProviderId,
+  type ResolvedEndpoint,
+  resolveEffectiveEndpoint,
+  resolveXuelangEndpoint
+} from '../../../provider/endpoint'
 import { resolveSdkConfig } from '../../../provider/sdkConfig'
 import type { RequestContext } from '../../../tools/adapters/aiSdk/context'
 import { applyDeferExposition } from '../../../tools/adapters/aiSdk/exposition/applyDeferExposition'
@@ -88,6 +96,7 @@ const CITABLE_BUILTIN_TOOL_NAMES: ReadonlySet<string> = new Set([
 const NO_WEB_TOOL_ROUTES: WebToolRoutes = { webSearch: 'none', webFetch: 'none' }
 
 export interface BuildAgentParamsInput {
+  resolvedEndpoint?: ResolvedEndpoint
   request: AiChatRequest & {
     messageId?: string
     messages?: UIMessage[]
@@ -107,6 +116,7 @@ export interface BuildAgentParamsInput {
 }
 
 export interface BuiltAgentParams {
+  resolvedEndpoint: ResolvedEndpoint
   sdkConfig: SdkConfig
   /** Non-secret receipt for the credential path selected for this request. */
   credentialReceipt: ServingCredentialReceipt
@@ -124,7 +134,12 @@ export interface BuiltAgentParams {
 export async function buildAgentParams(input: BuildAgentParamsInput): Promise<BuiltAgentParams> {
   const { request, signal, provider, model, assistant, extraFeatures, compactionSink } = input
 
-  const resolvedEndpoint = resolveEffectiveEndpoint(provider, model)
+  assertXuelangModelUsable(provider, model)
+  const resolvedEndpoint =
+    input.resolvedEndpoint ??
+    (provider.id === XUELANG_PROVIDER_ID
+      ? resolveXuelangEndpoint(model, request.apiKeyOverride, isXuelangChatEndpoint)
+      : resolveEffectiveEndpoint(provider, model))
   const { sdkConfig, credentialReceipt } = await resolveSdkConfig(
     provider,
     model,
@@ -306,6 +321,7 @@ export async function buildAgentParams(input: BuildAgentParamsInput): Promise<Bu
   applyResponsesInstructions(options, system, endpointType, sdkConfig.providerOptionsKey)
 
   return {
+    resolvedEndpoint,
     sdkConfig,
     credentialReceipt,
     tools,

@@ -28,6 +28,7 @@ import { ComposerPanelSymbol, getQuickPanelSearchAliases } from '@renderer/compo
 import { getComposerToolConfig } from '@renderer/components/composer/tools/registry'
 import NewConversationIcon from '@renderer/components/icons/NewConversationIcon'
 import { McpLogo } from '@renderer/components/icons/SvgIcon'
+import { hasUsableXuelangChatRoute } from '@renderer/components/ModelSelector'
 import {
   ModelSpeedControl,
   resolveSupportedReasoningEffort,
@@ -59,10 +60,12 @@ import {
   resolveReasoningEffortForModel
 } from '@renderer/utils/model'
 import type { ComposerChatTarget, ComposerQueuedMessagePayload } from '@shared/ai/transport'
+import { XUELANG_PROVIDER_ID } from '@shared/data/presets/xuelang'
 import type { KnowledgeBase } from '@shared/data/types/knowledge'
 import type { CherryMessagePart } from '@shared/data/types/message'
 import {
   type Model,
+  parseUniqueModelId,
   type ReasoningSummary,
   type ServiceTierSelection,
   type UniqueModelId
@@ -595,6 +598,13 @@ const ChatComposerInner = ({
     { enabled: true },
     { fetchEnabled: shouldHydrateMentionedModelDraft && initialDraft.mentionedModelIds.length > 0 }
   )
+  const hasXuelangDraftModel = initialDraft.mentionedModelIds.some(
+    (id) => parseUniqueModelId(id).providerId === XUELANG_PROVIDER_ID
+  )
+  const { models: xuelangDraftModels, isLoading: isXuelangDraftModelsLoading } = useModels(
+    { providerId: XUELANG_PROVIDER_ID },
+    { fetchEnabled: shouldHydrateMentionedModelDraft && hasXuelangDraftModel }
+  )
   const observedKnowledgeBaseSelectionKeyRef = useRef<string | null>(
     initialDraft.knowledgeBaseIds.length === 0 ? JSON.stringify([]) : null
   )
@@ -780,9 +790,15 @@ const ChatComposerInner = ({
 
   useEffect(() => {
     if (isMentionedModelDraftHydrated || !useMentionedModelSelector) return
-    if (runtimeModelPending || (initialDraft.mentionedModelIds.length > 0 && isDraftModelsLoading)) return
+    if (
+      runtimeModelPending ||
+      (initialDraft.mentionedModelIds.length > 0 && isDraftModelsLoading) ||
+      (hasXuelangDraftModel && isXuelangDraftModelsLoading)
+    )
+      return
 
-    const modelById = new Map(draftModels.map((model) => [model.id, model]))
+    // 草稿按原模型恢复，不用候选列表的启用状态推断用户要换模型。
+    const modelById = new Map([...draftModels, ...xuelangDraftModels].map((model) => [model.id, model]))
     const restoredModels = initialDraft.mentionedModelIds.flatMap((modelId) => {
       const restoredModel = modelById.get(modelId)
       return restoredModel ? [restoredModel] : []
@@ -795,9 +811,12 @@ const ChatComposerInner = ({
     setIsMentionedModelDraftHydrated(true)
   }, [
     draftModels,
+    hasXuelangDraftModel,
     initialDraft.mentionedModelIds,
     initialDraft.modelMultiSelectMode,
     isDraftModelsLoading,
+    isXuelangDraftModelsLoading,
+    xuelangDraftModels,
     isMentionedModelDraftHydrated,
     restoreMentionedModelDraft,
     restoreMentionedModelSelector,
@@ -1542,12 +1561,33 @@ const ChatComposerInner = ({
     (item: FollowupQueueItem) => (isPending || awaitingApproval) && item.payload.chatTarget?.mode === 'reserved-branch',
     [awaitingApproval, isPending]
   )
+  const hasQueuedXuelangModels = queuedFollowups.some((item) =>
+    item.payload.mentionedModels?.some((id) => parseUniqueModelId(id).providerId === XUELANG_PROVIDER_ID)
+  )
+  const { models: xuelangQueuedModels } = useModels(
+    { providerId: XUELANG_PROVIDER_ID },
+    { fetchEnabled: hasQueuedXuelangModels }
+  )
   const { models: allModels } = useModels({ enabled: true }, { fetchEnabled: queuedFollowupModelsDataEnabled })
 
   // Edit a queued item = atomically restore the whole editor draft plus its managed tools, then drop
   // it from the queue. Atomic replacement also preserves unmanaged tokens when the text is unchanged.
   const restoreFollowupDraft = useCallback(
     (item: FollowupQueueItem) => {
+      const queuedModelIds = item.payload.mentionedModels ?? []
+      const queuedModels = queuedModelIds
+        .map(
+          (id) =>
+            xuelangQueuedModels.find((candidate) => candidate.id === id) ??
+            allModels.find((candidate) => candidate.id === id)
+        )
+        .filter((candidate): candidate is Model => candidate !== undefined)
+      const xuelangModelIds = queuedModelIds.filter((id) => parseUniqueModelId(id).providerId === XUELANG_PROVIDER_ID)
+      if (xuelangModelIds.some((id) => !queuedModels.some((model) => model.id === id))) {
+        toast.error(t('code.model_required'))
+        return false
+      }
+
       resetHistoryIndex()
       inputHistoryToolsRef.current = null
       skipDraftCacheWriteForHistoryPreviewRef.current = false
@@ -1556,10 +1596,14 @@ const ChatComposerInner = ({
       setDraftTokens(item.draft.tokens.length ? [...item.draft.tokens] : undefined)
       setFiles((item.payload.attachments as ComposerAttachment[] | undefined) ?? [])
       restoreKnowledgeBaseSelection(getKnowledgeBaseIdsFromParts(item.payload.userMessageParts) ?? [])
-      const queuedModels = (item.payload.mentionedModels ?? [])
-        .map((modelId) => allModels.find((candidate) => candidate.id === modelId))
-        .filter((candidate): candidate is Model => candidate !== undefined)
-      if (queuedModels.length > 0) {
+      const xuelang = providers.find((provider) => provider.id === XUELANG_PROVIDER_ID)
+      const hasUnavailableXuelangModel = queuedModels.some(
+        (model) => model.providerId === XUELANG_PROVIDER_ID && (!xuelang || !hasUsableXuelangChatRoute(model, xuelang))
+      )
+      if (hasUnavailableXuelangModel) {
+        const multiSelectMode = queuedModelIds.length > 1
+        restoreMentionedModelSelection(queuedModels, queuedModels, multiSelectMode)
+      } else if (queuedModels.length > 0) {
         changeMentionedModelMultiSelectMode(queuedModels.length > 1)
         selectMentionedModels(queuedModels)
       } else {
@@ -1568,6 +1612,7 @@ const ChatComposerInner = ({
       handleReasoningEffortChange(item.payload.reasoningEffort ?? 'default')
       handleServiceTierChange(item.payload.serviceTier ?? 'standard')
       setFastMode(item.payload.fastMode === true)
+      return true
     },
     [
       actionsRef,
@@ -1575,12 +1620,16 @@ const ChatComposerInner = ({
       changeMentionedModelMultiSelectMode,
       handleReasoningEffortChange,
       handleServiceTierChange,
+      providers,
       resetHistoryIndex,
       restoreKnowledgeBaseSelection,
+      restoreMentionedModelSelection,
       restoreMentionedModelSelector,
       selectMentionedModels,
       setFiles,
-      setText
+      setText,
+      t,
+      xuelangQueuedModels
     ]
   )
 
@@ -1970,8 +2019,7 @@ const ChatComposerInner = ({
                 onEdit={(id) => {
                   const item = queuedFollowups.find((entry) => entry.id === id)
                   if (!item) return
-                  restoreFollowupDraft(item)
-                  removeFollowup(id)
+                  if (restoreFollowupDraft(item)) removeFollowup(id)
                 }}
                 onRemove={removeFollowup}
                 onReorder={reorderFollowups}

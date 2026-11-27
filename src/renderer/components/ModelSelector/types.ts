@@ -17,6 +17,7 @@ interface ModelSelectorCommonProps {
   open?: boolean
   onOpenChange?: (open: boolean) => void
   filter?: ModelSelectorFilter
+  requireUsableXuelangChatRoute?: boolean
   showTagFilter?: boolean
   showPinnedModels?: boolean
   showPinActions?: boolean
@@ -105,6 +106,7 @@ export interface UseModelSelectorDataOptions {
   maxSelectedCount?: number
   searchText: string
   filter?: ModelSelectorFilter
+  requireUsableXuelangChatRoute?: boolean
   showTagFilter?: boolean
   showPinnedModels?: boolean
   prioritizedProviderIds?: readonly string[]

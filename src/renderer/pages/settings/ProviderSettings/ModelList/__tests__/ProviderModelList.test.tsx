@@ -39,7 +39,7 @@ vi.mock('../ModelDrawer', () => ({
 }))
 
 vi.mock('../modelListHealthContext', () => ({
-  useModelListHealthRun: () => ({
+  useOptionalModelListHealthRun: () => ({
     apiKeyEntries: [],
     savingKeyId: null,
     toggleApiKey: vi.fn()

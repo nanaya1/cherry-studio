@@ -88,6 +88,17 @@ describe('buildFallbackModels', () => {
     ).toEqual([])
   })
 
+  it('never creates cross-model fallbacks for xuelang', () => {
+    expect(
+      buildFallbackModels({
+        ...baseArgs,
+        primaryUniqueModelId: 'xuelang::old',
+        retryPolicy: policy(['xuelang::new', 'anthropic::claude'])
+      })
+    ).toEqual([])
+    expect(getByKey).not.toHaveBeenCalled()
+  })
+
   it('is lazy — no provider/model/buildAgentParams work until a resolver is invoked', () => {
     getByKey.mockReturnValue(makeModel({ id: 'anthropic::claude', providerId: 'anthropic', apiModelId: 'claude-x' }))
     stubBuildAgentParams('claude-x')

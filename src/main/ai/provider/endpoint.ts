@@ -3,6 +3,8 @@
  * `docs/references/ai/adapter-family.md` for design rationale.
  */
 
+import { providerService } from '@main/data/services/ProviderService'
+import { XUELANG_PROVIDER_ID } from '@shared/data/presets/xuelang'
 import type { Model } from '@shared/data/types/model'
 import { ENDPOINT_TYPE, type EndpointType } from '@shared/data/types/model'
 import type { Provider } from '@shared/data/types/provider'
@@ -37,6 +39,44 @@ export function resolveWireModelId(model: Model, endpointType: EndpointType | un
   return endpointType === ENDPOINT_TYPE.GOOGLE_GENERATE_CONTENT ? rawId.replace(/^models\//, '') : rawId
 }
 
+export function isXuelangChatEndpoint(type: EndpointType): boolean {
+  return (
+    type === ENDPOINT_TYPE.OPENAI_CHAT_COMPLETIONS ||
+    type === ENDPOINT_TYPE.OPENAI_RESPONSES ||
+    type === ENDPOINT_TYPE.ANTHROPIC_MESSAGES ||
+    type === ENDPOINT_TYPE.GOOGLE_GENERATE_CONTENT
+  )
+}
+
+export function assertXuelangModelUsable(provider: Provider, model: Model): void {
+  if (provider.id !== XUELANG_PROVIDER_ID) return
+  if (!provider.isEnabled) throw new Error('The xuelang provider is disabled.')
+  if (!model.isEnabled || model.isDeprecated) throw new Error(`The xuelang model ${model.id} is unavailable.`)
+}
+
+/** 只查询候选，不消耗轮询位置。 */
+export function resolveXuelangEndpoint(
+  model: Model,
+  apiKeyOverride?: string,
+  acceptsEndpoint?: (type: EndpointType) => boolean
+): ResolvedEndpoint {
+  const chat = ENDPOINT_TYPE.OPENAI_CHAT_COMPLETIONS
+  const endpointTypes = model.endpointTypes?.length ? model.endpointTypes : [chat]
+  const ordered = endpointTypes.includes(chat)
+    ? [chat, ...endpointTypes.filter((type) => type !== chat)]
+    : endpointTypes
+  const modelId = getRawModelId(model)
+  for (const endpointType of ordered) {
+    if (acceptsEndpoint && !acceptsEndpoint(endpointType)) continue
+    const candidate = providerService
+      .getXuelangApiKeys(modelId, endpointType)
+      .find((key) => apiKeyOverride === undefined || key.key === apiKeyOverride)
+    const baseUrl = candidate?.managedRoutes?.endpointConfigs[endpointType]?.baseUrl
+    if (baseUrl) return { endpointType, baseUrl }
+  }
+  return { endpointType: undefined, baseUrl: '' }
+}
+
 /**
  * Priority: `preferredEndpointType` → `model.endpointTypes[0]` → gateway per-model route →
  * `provider.defaultChatEndpoint` → `undefined`. The gateway step resolves the wire endpoint from the
@@ -54,8 +94,14 @@ export function resolveWireModelId(model: Model, endpointType: EndpointType | un
 export function resolveEffectiveEndpoint(
   provider: Provider,
   model: Model,
-  preferredEndpointType?: EndpointType
+  preferredEndpointType?: EndpointType,
+  apiKeyOverride?: string
 ): ResolvedEndpoint {
+  if (provider.id === XUELANG_PROVIDER_ID) {
+    return provider.isEnabled && model.isEnabled && !model.isDeprecated
+      ? resolveXuelangEndpoint(model, apiKeyOverride)
+      : { endpointType: undefined, baseUrl: '' }
+  }
   const gatewayRoute = resolveGatewayRoute(provider, model)
   const preferred =
     preferredEndpointType &&
@@ -91,6 +137,7 @@ export function resolveProviderVariant(
 }
 
 export function resolveAiSdkProviderId(provider: Provider, endpointType: EndpointType | undefined): AppProviderId {
+  if (provider.id === XUELANG_PROVIDER_ID) return resolveProviderVariant('cherryin', endpointType)
   const adapterFamily = endpointType ? provider.endpointConfigs?.[endpointType]?.adapterFamily : undefined
   if (adapterFamily && adapterFamily in appProviderIds) {
     return resolveProviderVariant(appProviderIds[adapterFamily], endpointType)

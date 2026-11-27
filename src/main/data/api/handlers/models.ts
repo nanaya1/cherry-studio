@@ -23,9 +23,16 @@ import {
 } from '@shared/data/api/schemas/models'
 import type { HandlersFor } from '@shared/data/api/types'
 import { SuccessStatus } from '@shared/data/api/types'
+import { XUELANG_PROVIDER_ID } from '@shared/data/presets/xuelang'
 import { isUniqueModelId, parseUniqueModelId } from '@shared/data/types/model'
 
 const logger = loggerService.withContext('DataApi:ModelHandlers')
+
+function assertModelsWritable(providerId: string, operation: string): void {
+  if (providerId === XUELANG_PROVIDER_ID) {
+    throw DataApiErrorFactory.invalidOperation(operation, 'managed model configuration is read-only')
+  }
+}
 
 /**
  * Parse a UniqueModelId from the transport layer, raising a 422 validation
@@ -95,6 +102,9 @@ export const modelHandlers: HandlersFor<ModelSchemas> = {
       // normalized before they reach the service so the service can expose one
       // collection-oriented create path with consistent transaction semantics.
       const parsed = CreateModelsSchema.parse(body)
+      for (const { providerId } of parsed) {
+        assertModelsWritable(providerId, 'create models')
+      }
       const items = await enrichCreateItems(parsed)
       return modelService.create(items)
     },
@@ -108,12 +118,18 @@ export const modelHandlers: HandlersFor<ModelSchemas> = {
         ...parseOrValidationError(item.uniqueModelId),
         patch: item.patch
       }))
+      for (const { providerId } of items) {
+        assertModelsWritable(providerId, 'batch update models')
+      }
       return modelService.bulkUpdate(items)
     },
 
     DELETE: async ({ query }) => {
       const parsed = DeleteModelsQuerySchema.parse(query)
       const items = parsed.ids.map((uniqueModelId) => parseOrValidationError(uniqueModelId))
+      for (const { providerId } of items) {
+        assertModelsWritable(providerId, 'batch delete models')
+      }
       modelService.bulkDelete(items)
       return undefined
     }
@@ -128,11 +144,21 @@ export const modelHandlers: HandlersFor<ModelSchemas> = {
     PATCH: async ({ params, body }) => {
       const { providerId, modelId } = parseOrValidationError(params.uniqueModelId)
       const parsed = UpdateModelSchema.parse(body)
+      if (typeof parsed.isEnabled !== 'boolean' || Object.keys(parsed).length !== 1) {
+        assertModelsWritable(providerId, 'update model')
+      }
+      if (providerId === XUELANG_PROVIDER_ID) {
+        const authorized = modelService
+          .list({ providerId })
+          .some((model) => model.id === params.uniqueModelId && !model.isDeprecated)
+        if (!authorized) throw DataApiErrorFactory.notFound('Model', params.uniqueModelId)
+      }
       return modelService.update(providerId, modelId, parsed)
     },
 
     DELETE: async ({ params }) => {
       const { providerId, modelId } = parseOrValidationError(params.uniqueModelId)
+      assertModelsWritable(providerId, 'delete model')
       modelService.delete(providerId, modelId)
       return undefined
     }
@@ -140,6 +166,7 @@ export const modelHandlers: HandlersFor<ModelSchemas> = {
 
   '/providers/:providerId/models:reconcile': {
     POST: async ({ params, body }) => {
+      assertModelsWritable(params.providerId, 'reconcile models')
       const parsed = ReconcileProviderModelsSchema.parse(body)
 
       for (const dto of parsed.toAdd) {

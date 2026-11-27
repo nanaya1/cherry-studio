@@ -24,7 +24,7 @@ interface ModelListGroupProps {
   bulkActionDisabled?: boolean
   pendingModelIds: Set<string>
   defaultModelIds?: Set<UniqueModelId>
-  onDeleteModels: (models: Model[]) => Promise<void>
+  onDeleteModels?: (models: Model[]) => Promise<void>
   onToggleOpen?: () => void
 }
 
@@ -68,7 +68,7 @@ const ModelListGroup: React.FC<ModelListGroupProps> = ({
   const handleDeleteGroupModels = useCallback(
     (event?: React.MouseEvent<HTMLButtonElement>) => {
       event?.stopPropagation()
-      void onDeleteModels(deletableGroupModels).catch((error) => {
+      void onDeleteModels?.(deletableGroupModels).catch((error) => {
         logger.error('Failed to delete provider model group', { groupName, error })
         toast.error(
           getModelOperationErrorMessage(error, {
@@ -106,28 +106,30 @@ const ModelListGroup: React.FC<ModelListGroupProps> = ({
             <span className={modelListClasses.groupTitle}>{groupLabel}</span>
           </div>
         </div>
-        <div className={modelListClasses.groupHeaderActions}>
-          <Tooltip
-            content={
-              deletableGroupModels.length === 0
-                ? t('settings.models.manage.default_model_cannot_remove')
-                : t('settings.models.manage.remove_whole_group')
-            }
-            placement="left"
-            classNames={{ placeholder: modelListClasses.groupHeaderIconTooltipTrigger }}>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              aria-label={t('settings.models.manage.remove_whole_group')}
-              disabled={disabled || bulkActionDisabled || hasPendingModel || deletableGroupModels.length === 0}
-              className={`${modelListClasses.rowActionButton} ${modelListClasses.rowDangerActionButton} opacity-0 transition-opacity group-focus-within/modelGroup:opacity-100 group-hover/modelGroup:opacity-100 focus-visible:opacity-100`}
-              onKeyDown={handleDeleteGroupKeyDown}
-              onClick={handleDeleteGroupModels}>
-              <Minus className="size-3.5" />
-            </Button>
-          </Tooltip>
-        </div>
+        {onDeleteModels && (
+          <div className={modelListClasses.groupHeaderActions}>
+            <Tooltip
+              content={
+                deletableGroupModels.length === 0
+                  ? t('settings.models.manage.default_model_cannot_remove')
+                  : t('settings.models.manage.remove_whole_group')
+              }
+              placement="left"
+              classNames={{ placeholder: modelListClasses.groupHeaderIconTooltipTrigger }}>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label={t('settings.models.manage.remove_whole_group')}
+                disabled={disabled || bulkActionDisabled || hasPendingModel || deletableGroupModels.length === 0}
+                className={`${modelListClasses.rowActionButton} ${modelListClasses.rowDangerActionButton} opacity-0 transition-opacity group-focus-within/modelGroup:opacity-100 group-hover/modelGroup:opacity-100 focus-visible:opacity-100`}
+                onKeyDown={handleDeleteGroupKeyDown}
+                onClick={handleDeleteGroupModels}>
+                <Minus className="size-3.5" />
+              </Button>
+            </Tooltip>
+          </div>
+        )}
       </div>
     </div>
   )

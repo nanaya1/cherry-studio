@@ -3,7 +3,6 @@ import i18n, { getLanguageCode } from '@renderer/i18n/resolver'
 import { ipcApi } from '@renderer/ipc'
 import { toast } from '@renderer/services/toast'
 import { openExternalWebsite } from '@renderer/services/website'
-import { SystemProviderIds } from '@shared/utils/systemProviderId'
 
 const logger = loggerService.withContext('oauth')
 
@@ -185,80 +184,25 @@ export interface NewApiOAuthConfig {
   oauthServer: string
   apiHost?: string
   requestId?: string
-  providerId?: 'cherryin' | 'xuelang'
 }
 
-export const provisionOAuthApiKeys = async (providerId: 'cherryin' | 'xuelang'): Promise<string> => {
-  return ipcApi.request('oauth.provision_api_keys', { providerId })
+export const provisionOAuthApiKeys = async (): Promise<string> => {
+  return ipcApi.request('oauth.provision_api_keys', { providerId: 'cherryin' })
 }
 
-/** Gateway authorization is handled by the provider's registered main-process runtime. */
+/** Gateway authorization is handled by the CherryIN main-process runtime. */
 export const oauthWithCherryIn = async (
   setKey: (key: string) => void | Promise<void>,
   config: NewApiOAuthConfig
 ): Promise<string> => {
-  const providerId = config.providerId ?? SystemProviderIds.cherryin
-  if (providerId === SystemProviderIds.cherryin) {
-    const result = await ipcApi.request('cherryin.sign_in', {
-      requestId: config.requestId ?? crypto.randomUUID(),
-      oauthServer: config.oauthServer,
-      apiHost: config.apiHost
-    })
-    if (!result.apiKeys) throw new Error('No API keys received')
-    await setKey(result.apiKeys)
-    return result.apiKeys
-  }
-
-  const { authUrl, state } = await ipcApi.request('oauth.start_deep_link_flow', {
-    providerId,
+  const result = await ipcApi.request('cherryin.sign_in', {
+    requestId: config.requestId ?? crypto.randomUUID(),
     oauthServer: config.oauthServer,
     apiHost: config.apiHost
   })
-
-  let cleanupFlow = (): void => {}
-  const resultPromise = new Promise<string>((resolve, reject) => {
-    let timeoutId: ReturnType<typeof setTimeout> | null = null
-    const removeListener = ipcApi.on('oauth.deep_link_result', async (result) => {
-      if (result.state !== state) return
-      cleanup()
-      if ('error' in result) {
-        reject(Object.assign(new Error(result.error), result.code ? { code: result.code } : {}))
-        return
-      }
-      if (!result.apiKeys) {
-        reject(new Error('No API keys received'))
-        return
-      }
-      try {
-        await setKey(result.apiKeys)
-        resolve(result.apiKeys)
-      } catch (error) {
-        reject(error)
-      }
-    })
-
-    function cleanup(): void {
-      removeListener()
-      if (timeoutId) clearTimeout(timeoutId)
-    }
-    cleanupFlow = cleanup
-
-    timeoutId = setTimeout(
-      () => {
-        cleanup()
-        reject(new Error('OAuth flow timed out'))
-      },
-      10 * 60 * 1000
-    )
-  })
-
-  try {
-    await openExternalWebsite(authUrl)
-  } catch (error) {
-    cleanupFlow()
-    return Promise.reject(error)
-  }
-  return resultPromise
+  if (!result.apiKeys) throw new Error('No API keys received')
+  await setKey(result.apiKeys)
+  return result.apiKeys
 }
 
 export const oauthWithTokenDance = async (setKey) => {

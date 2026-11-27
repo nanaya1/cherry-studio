@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { Button, Switch, Tooltip } from '@cherrystudio/ui'
 import { useProvider } from '@renderer/hooks/useProvider'
 import { toast } from '@renderer/services/toast'
+import { XUELANG_PROVIDER_ID } from '@shared/data/presets/xuelang'
 
 import { useProviderEnable } from '../hooks/providerSetting/useProviderEnable'
 import { useProviderMeta } from '../hooks/providerSetting/useProviderMeta'
@@ -43,6 +44,8 @@ export default function ProviderHeader({ providerId }: ProviderHeaderProps) {
     return null
   }
 
+  const managed = providerId === XUELANG_PROVIDER_ID
+
   return (
     <>
       <div className="flex min-h-7 items-center gap-3">
@@ -63,7 +66,7 @@ export default function ProviderHeader({ providerId }: ProviderHeaderProps) {
                   meta.fancyProviderName
                 )}
               </h1>
-              {meta.showApiOptionsButton && (
+              {!managed && meta.showApiOptionsButton && (
                 <Tooltip content={t('settings.provider.api.options.label')}>
                   <Button
                     type="button"
@@ -80,16 +83,19 @@ export default function ProviderHeader({ providerId }: ProviderHeaderProps) {
           </div>
         </div>
         <Switch
+          aria-label={meta.fancyProviderName}
           checked={provider.isEnabled}
-          disabled={isTogglingEnabled}
+          disabled={isTogglingEnabled || (managed && provider.hasManagedSnapshot === false)}
           onCheckedChange={(enabled) => void handleToggleEnabled(enabled)}
         />
       </div>
-      <ProviderApiOptionsDrawer
-        providerId={providerId}
-        open={apiOptionsOpen}
-        onClose={() => setApiOptionsOpen(false)}
-      />
+      {!managed && (
+        <ProviderApiOptionsDrawer
+          providerId={providerId}
+          open={apiOptionsOpen}
+          onClose={() => setApiOptionsOpen(false)}
+        />
+      )}
     </>
   )
 }

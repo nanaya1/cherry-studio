@@ -5,6 +5,7 @@ import type { MouseEvent } from 'react'
 import { ProviderAvatar } from '@renderer/pages/settings/ProviderSettings/components/ProviderAvatar'
 import { providerListClasses } from '@renderer/pages/settings/ProviderSettings/primitives/ProviderSettingsPrimitives'
 import { cn } from '@renderer/utils/style'
+import { XUELANG_PROVIDER_ID } from '@shared/data/presets/xuelang'
 import type { Provider } from '@shared/data/types/provider'
 
 interface ProviderListItemProps {
@@ -65,13 +66,15 @@ export default function ProviderListItem({
         dragging && 'opacity-65'
       )}>
       <div className={providerListClasses.itemMain}>
-        <span
-          aria-hidden
-          data-testid={`provider-list-drag-handle-${provider.id}`}
-          data-dragging={dragging ? 'true' : 'false'}
-          className={providerListClasses.itemDragHandle}>
-          <GripVertical size={16} />
-        </span>
+        {provider.id !== XUELANG_PROVIDER_ID && (
+          <span
+            aria-hidden
+            data-testid={`provider-list-drag-handle-${provider.id}`}
+            data-dragging={dragging ? 'true' : 'false'}
+            className={providerListClasses.itemDragHandle}>
+            <GripVertical size={16} />
+          </span>
+        )}
         <div className={providerListClasses.itemIdentity}>
           <ProviderAvatar
             provider={provider}

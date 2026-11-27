@@ -19,4 +19,4 @@ export type {
   UseModelSelectorDataResult
 } from './types'
 export { useModelSelectorData } from './useModelSelectorData'
-export { getProviderDisplayName } from './utils'
+export { getProviderDisplayName, hasUsableXuelangChatRoute } from './utils'

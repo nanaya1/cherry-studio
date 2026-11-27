@@ -185,6 +185,7 @@ export function ChatConversationControls({
             multiSelectMode={mentionedModelMultiSelectMode}
             onMultiSelectModeChange={handleMentionedModelMultiSelectModeChange}
             filter={chatModelFilter}
+            requireUsableXuelangChatRoute
             shortcut="chat.model.select"
             side={side}
             align="start"
@@ -210,6 +211,7 @@ export function ChatConversationControls({
             value={model}
             onSelect={onModelSelect}
             filter={chatModelFilter}
+            requireUsableXuelangChatRoute
             shortcut="chat.model.select"
             side={side}
             align="start"

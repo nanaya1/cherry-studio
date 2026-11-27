@@ -9,6 +9,7 @@ import { getAppEdition } from '@renderer/utils/appEdition'
 import { getSearchMatchScore } from '@renderer/utils/model'
 import { isProviderSettingsListVisibleProvider } from '@renderer/utils/providerSettings'
 import { CHERRY_CLOUD_PROVIDER_ID, CHERRYAI_PROVIDER_ID } from '@shared/data/presets/cherryai'
+import { XUELANG_PROVIDER_ID } from '@shared/data/presets/xuelang'
 import { isUniqueModelId, type Model, parseUniqueModelId, type UniqueModelId } from '@shared/data/types/model'
 import type { Provider } from '@shared/data/types/provider'
 import { isAgentOnlyProvider } from '@shared/utils/provider'
@@ -20,7 +21,7 @@ import type {
   UseModelSelectorDataOptions,
   UseModelSelectorDataResult
 } from './types'
-import { getProviderDisplayName } from './utils'
+import { getProviderDisplayName, hasUsableXuelangChatRoute } from './utils'
 
 const EMPTY_TAGS: ModelSelectorTag[] = []
 const CHERRYAI_DISPLAY_GROUP = {
@@ -87,6 +88,7 @@ export function useModelSelectorData({
   maxSelectedCount,
   searchText,
   filter,
+  requireUsableXuelangChatRoute = false,
   showTagFilter = true,
   showPinnedModels = true,
   prioritizedProviderIds = []
@@ -141,6 +143,14 @@ export function useModelSelectorData({
         continue
       }
 
+      if (
+        requireUsableXuelangChatRoute &&
+        provider.id === XUELANG_PROVIDER_ID &&
+        !hasUsableXuelangChatRoute(model, provider)
+      ) {
+        continue
+      }
+
       if (!includeAgentOnlyModels && agentOnlyProviderIds.has(model.providerId)) {
         continue
       }
@@ -154,7 +164,14 @@ export function useModelSelectorData({
     }
 
     return grouped
-  }, [agentOnlyProviderIds, baseModelFilter, includeAgentOnlyModels, models, sortedProviders])
+  }, [
+    agentOnlyProviderIds,
+    baseModelFilter,
+    includeAgentOnlyModels,
+    models,
+    requireUsableXuelangChatRoute,
+    sortedProviders
+  ])
 
   const availableTags = useMemo(() => {
     if (modelsByProvider.size === 0) {

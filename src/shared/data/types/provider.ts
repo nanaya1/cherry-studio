@@ -55,6 +55,11 @@ const ProviderWebsiteSchema = z.object({
   })
 })
 
+const ManagedKeyRoutesSchema = z.object({
+  endpointConfigs: z.partialRecord(EndpointTypeSchema, z.object({ baseUrl: z.string() })),
+  models: z.array(z.object({ id: z.string(), endpointTypes: z.array(EndpointTypeSchema) }))
+})
+
 export const ApiKeyEntrySchema = z.object({
   /** UUID for referencing this key */
   id: z.string().min(1),
@@ -63,7 +68,8 @@ export const ApiKeyEntrySchema = z.object({
   /** User-friendly label */
   label: z.string().optional(),
   /** Whether this key is enabled */
-  isEnabled: z.boolean()
+  isEnabled: z.boolean(),
+  managedRoutes: ManagedKeyRoutesSchema.optional()
 })
 
 export type ApiKeyEntry = z.infer<typeof ApiKeyEntrySchema>
@@ -303,6 +309,8 @@ export const ProviderSchema = z.object({
   fastMode: z.object({ transport: FastModeTransportSchema, serviceTier: z.string().optional() }).optional(),
   /** API Keys (without actual key values) */
   apiKeys: z.array(RuntimeApiKeySchema),
+  managedSyncState: z.enum(['idle', 'syncing', 'success', 'failed']).optional(),
+  hasManagedSnapshot: z.boolean().optional(),
   /** Authentication type (no sensitive data) */
   authType: AuthTypeSchema,
   /** Provider settings */

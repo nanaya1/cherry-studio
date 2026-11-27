@@ -1,7 +1,5 @@
 import * as z from 'zod'
 
-import { XUELANG_API_HOST } from '@shared/utils/constants'
-
 const CHERRYIN_CONFIG = {
   CLIENT_ID: '2a348c87-bae1-4756-a62f-b2e97200fd6d',
   ALLOWED_HOSTS: ['https://open.cherryin.ai', 'https://open.cherryin.dev'],
@@ -11,16 +9,8 @@ const CHERRYIN_CONFIG = {
   SCOPES: 'openid profile email offline_access balance:read usage:read tokens:read tokens:write'
 } as const
 
-const XUELANG_CONFIG = {
-  CLIENT_ID: CHERRYIN_CONFIG.CLIENT_ID,
-  ALLOWED_HOSTS: [XUELANG_API_HOST],
-  REDIRECT_URI: 'meacowork://oauth/callback',
-  SCOPES: 'profile email offline_access balance:read usage:read tokens:read tokens:write'
-} as const
-
 export const GATEWAY_OAUTH_CONFIGS = {
-  cherryin: CHERRYIN_CONFIG,
-  xuelang: XUELANG_CONFIG
+  cherryin: CHERRYIN_CONFIG
 } as const
 
 export type GatewayProviderId = keyof typeof GATEWAY_OAUTH_CONFIGS
