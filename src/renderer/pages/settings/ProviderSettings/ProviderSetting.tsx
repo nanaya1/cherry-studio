@@ -4,6 +4,7 @@ import Scrollbar from '@renderer/components/Scrollbar'
 import { useProvider } from '@renderer/hooks/useProvider'
 import { useTheme } from '@renderer/hooks/useTheme'
 import { cn } from '@renderer/utils/style'
+import { XUELANG_PROVIDER_ID } from '@shared/data/presets/xuelang'
 import { isLoginBasedProvider } from '@shared/utils/provider'
 
 import ProviderHeader from './components/ProviderHeader'
@@ -13,6 +14,7 @@ import { ApiKeyProvider } from './hooks/providerSetting/useAuthenticationApiKey'
 import { useProviderApiKey } from './hooks/providerSetting/useProviderApiKey'
 import { ModelList, ModelListHealthProvider } from './ModelList'
 import { providerDetailColumnClasses, ProviderSettingsContainer } from './primitives/ProviderSettingsPrimitives'
+import XuelangManagedSettings from './ProviderSpecific/XuelangManagedSettings'
 
 const ProviderApiSetupDialog = lazy(() => import('./ConnectionSettings/ProviderApiSetupDialog'))
 
@@ -118,12 +120,16 @@ export default function ProviderSetting({ providerId, initialApiSetupStep, onApi
               <ProviderHeader providerId={providerId} />
             </div>
           </div>
-          <ProviderSettingContent
-            providerId={providerId}
-            isLoginBased={isLoginBasedProvider(provider)}
-            initialApiSetupStep={initialApiSetupStep}
-            onApiSetupClosed={onApiSetupClosed}
-          />
+          {providerId === XUELANG_PROVIDER_ID ? (
+            <XuelangManagedSettings key={providerId} provider={provider} />
+          ) : (
+            <ProviderSettingContent
+              providerId={providerId}
+              isLoginBased={isLoginBasedProvider(provider)}
+              initialApiSetupStep={initialApiSetupStep}
+              onApiSetupClosed={onApiSetupClosed}
+            />
+          )}
         </div>
       </div>
     </ProviderSettingsContainer>

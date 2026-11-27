@@ -74,18 +74,4 @@ describe('cherryinHandlers', () => {
     await cherryinHandlers['cherryin.logout']({ apiHost: 'https://open.cherryin.ai' }, { senderId: 'w1' })
     expect(cherryInOAuthService.logout).toHaveBeenCalledWith('https://open.cherryin.ai')
   })
-
-  it('dispatches Xuelang balance and logout with its independent provider id', async () => {
-    await cherryinHandlers['cherryin.get_balance'](
-      { apiHost: 'https://api.xuelanglm.com', providerId: 'xuelang' },
-      { senderId: 'w1' }
-    )
-    await cherryinHandlers['cherryin.logout'](
-      { apiHost: 'https://api.xuelanglm.com', providerId: 'xuelang' },
-      { senderId: 'w1' }
-    )
-
-    expect(cherryInOAuthService.getBalance).toHaveBeenCalledWith('https://api.xuelanglm.com', 'xuelang')
-    expect(cherryInOAuthService.logout).toHaveBeenCalledWith('https://api.xuelanglm.com', 'xuelang')
-  })
 })

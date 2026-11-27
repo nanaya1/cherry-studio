@@ -52,6 +52,7 @@ interface UseProviderModelListArgs {
   providerId: string
   /** Parent-owned coordination input for the single effect of disabling list interactions. */
   disabled?: boolean
+  managedScope?: { visible: boolean }
 }
 
 type DisplayedSectionState = {
@@ -83,7 +84,9 @@ const withPrunedModelIds = <T>(entries: Record<string, T>, validIds: Set<string>
   return changed ? next : entries
 }
 
-export function useProviderModelList({ providerId, disabled = false }: UseProviderModelListArgs) {
+export function useProviderModelList({ providerId, disabled = false, managedScope }: UseProviderModelListArgs) {
+  const managed = managedScope !== undefined
+  const visible = managedScope?.visible ?? true
   const {
     models,
     isLoading: isModelsLoading,
@@ -110,8 +113,9 @@ export function useProviderModelList({ providerId, disabled = false }: UseProvid
   )
 
   const optimisticModels = useMemo(
-    () => models.filter((model) => !optimisticDeletedByModelId[model.id]),
-    [models, optimisticDeletedByModelId]
+    () =>
+      models.filter((model) => !optimisticDeletedByModelId[model.id] && (!managed || (visible && !model.isDeprecated))),
+    [models, optimisticDeletedByModelId, managed, visible]
   )
 
   const derivedState = useMemo(

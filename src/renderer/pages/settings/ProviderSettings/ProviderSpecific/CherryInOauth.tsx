@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
 
 import { Button, Skeleton } from '@cherrystudio/ui'
-import { Cherryin, Xuelang } from '@cherrystudio/ui/icons/providers'
+import { Cherryin } from '@cherrystudio/ui/icons/providers'
 import { loggerService } from '@logger'
 import { useProvider } from '@renderer/hooks/useProvider'
 import { ipcApi } from '@renderer/ipc'
@@ -17,7 +17,6 @@ import { cn } from '@renderer/utils/style'
 import { IpcError } from '@shared/ipc/errors/IpcError'
 import { oauthErrorCodes } from '@shared/ipc/errors/oauth'
 import type { CherryInBalance } from '@shared/ipc/schemas/cherryin'
-import { XUELANG_API_HOST } from '@shared/utils/constants'
 import { SystemProviderIds } from '@shared/utils/systemProviderId'
 
 const logger = loggerService.withContext('CherryInOauth')
@@ -27,11 +26,6 @@ const GATEWAY_PRESENTATION = {
     oauthServer: 'https://open.cherryin.ai',
     topupUrl: 'https://open.cherryin.ai/console/topup',
     i18nNs: 'cherryIn'
-  },
-  xuelang: {
-    oauthServer: XUELANG_API_HOST,
-    topupUrl: null,
-    i18nNs: 'xuelang'
   }
 } as const
 
@@ -39,7 +33,6 @@ type GatewayProviderId = keyof typeof GATEWAY_PRESENTATION
 
 const resolveGateway = (providerId: string): GatewayProviderId | undefined => {
   if (providerId === SystemProviderIds.cherryin) return 'cherryin'
-  if (providerId === SystemProviderIds.xuelang) return 'xuelang'
   return undefined
 }
 
@@ -96,12 +89,7 @@ const CherryInOauth: FC<CherryInOauthProps> = ({ providerId }) => {
     if (!gateway || !presentation) return
     setIsLoadingData(true)
     try {
-      const balance = await ipcApi.request(
-        'cherryin.get_balance',
-        gateway === SystemProviderIds.xuelang
-          ? { apiHost: presentation.oauthServer, providerId: gateway }
-          : { apiHost: presentation.oauthServer }
-      )
+      const balance = await ipcApi.request('cherryin.get_balance', { apiHost: presentation.oauthServer })
       setBalanceInfo(balance)
     } catch (error) {
       logger.warn('Failed to fetch balance:', error as Error)
@@ -167,7 +155,7 @@ const CherryInOauth: FC<CherryInOauthProps> = ({ providerId }) => {
     if (!gateway) return
     setIsProvisioningKey(true)
     try {
-      await saveOAuthKeys(await provisionOAuthApiKeys(gateway))
+      await saveOAuthKeys(await provisionOAuthApiKeys())
     } catch (error) {
       logger.error('Failed to provision OAuth API keys:', error as Error)
       showOAuthError(error)
@@ -185,7 +173,6 @@ const CherryInOauth: FC<CherryInOauthProps> = ({ providerId }) => {
     try {
       await oauthWithCherryIn(saveOAuthKeys, {
         oauthServer: presentation.oauthServer,
-        ...(gateway === SystemProviderIds.xuelang ? { providerId: gateway } : {}),
         requestId
       })
     } catch (error) {
@@ -227,12 +214,7 @@ const CherryInOauth: FC<CherryInOauthProps> = ({ providerId }) => {
     setIsLoggingOut(true)
 
     try {
-      await ipcApi.request(
-        'cherryin.logout',
-        gateway === SystemProviderIds.xuelang
-          ? { apiHost: presentation.oauthServer, providerId: gateway }
-          : { apiHost: presentation.oauthServer }
-      )
+      await ipcApi.request('cherryin.logout', { apiHost: presentation.oauthServer })
       setOauthTokenOverride(false)
       setBalanceInfo(null)
 
@@ -391,10 +373,7 @@ const CherryInOauth: FC<CherryInOauthProps> = ({ providerId }) => {
   )
 }
 
-const ProviderAvatar: FC<{ gateway: GatewayProviderId }> = ({ gateway }) => {
-  if (gateway === SystemProviderIds.xuelang) {
-    return <Xuelang.Avatar shape="circle" size={40} />
-  }
+const ProviderAvatar: FC<{ gateway: GatewayProviderId }> = () => {
   return <Cherryin.Avatar shape="circle" size={40} />
 }
 

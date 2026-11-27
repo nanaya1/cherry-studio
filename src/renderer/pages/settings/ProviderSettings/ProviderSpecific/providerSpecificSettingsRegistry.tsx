@@ -48,11 +48,6 @@ export const PROVIDER_SPECIFIC_SETTINGS_REGISTRY: Record<ProviderSpecificPlaceme
       render: (providerId) => <CherryInOauth providerId={providerId} />
     },
     {
-      key: 'xuelang-oauth',
-      when: ({ provider }) => provider.id === SystemProviderIds.xuelang,
-      render: (providerId) => <CherryInOauth providerId={providerId} />
-    },
-    {
       key: 'ovms-settings',
       when: ({ provider }) => matchesPreset(provider, 'ovms'),
       render: () => <OvmsSettings />

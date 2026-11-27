@@ -43,6 +43,17 @@ it.each(['accept', 'decline'])('从独立弹窗%s邀请后更新数量和目录'
   expect(screen.getByRole('button', { name: 'Pending invitations' })).toBeInTheDocument()
 })
 
+it.each([
+  [100, '100'],
+  [101, '99+']
+])('待处理邀请为 %i 条时，入口显示 %s', async (count, label) => {
+  request.mockResolvedValue({
+    invitations: Array.from({ length: count }, (_, index) => ({ id: `invite-${index}` }))
+  })
+  render(<KnowledgeInvitations compact onChanged={vi.fn()} />)
+  expect(await screen.findByRole('button', { name: `Pending invitations (${label})` })).toBeInTheDocument()
+})
+
 it('从邀请弹窗切换分享码添加时关闭当前弹窗', async () => {
   request.mockResolvedValue({ invitations: [] })
   const onAddWithCode = vi.fn()

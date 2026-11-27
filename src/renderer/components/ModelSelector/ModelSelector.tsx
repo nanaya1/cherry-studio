@@ -23,7 +23,8 @@ import { openSettingsTab } from '@renderer/services/mainWindowNavigation'
 import { toast } from '@renderer/services/toast'
 import { getModelLogoRef } from '@renderer/utils/model'
 import { isDev } from '@renderer/utils/platform'
-import { isUniqueModelId, type Model, type UniqueModelId } from '@shared/data/types/model'
+import { XUELANG_PROVIDER_ID } from '@shared/data/presets/xuelang'
+import { isUniqueModelId, type Model, parseUniqueModelId, type UniqueModelId } from '@shared/data/types/model'
 import type { Provider } from '@shared/data/types/provider'
 import type { SettingsPath } from '@shared/data/types/settingsPath'
 
@@ -338,6 +339,7 @@ export function ModelSelector(props: ModelSelectorProps) {
     open: openProp,
     onOpenChange,
     filter,
+    requireUsableXuelangChatRoute = false,
     showTagFilter = true,
     showPinnedModels = true,
     showPinActions = true,
@@ -496,6 +498,7 @@ export function ModelSelector(props: ModelSelectorProps) {
     maxSelectedCount: multiple && multiSelectMode ? undefined : 1,
     searchText: deferredSearchText,
     filter,
+    requireUsableXuelangChatRoute,
     prioritizedProviderIds,
     showPinnedModels,
     showTagFilter
@@ -527,7 +530,15 @@ export function ModelSelector(props: ModelSelectorProps) {
           return
         }
 
-        props.onSelect(modelsFromSelectedIds(nextSelectedIds, selectableModelsById))
+        const selectedModelsById = requireUsableXuelangChatRoute
+          ? new Map([
+              ...(props.value ?? [])
+                .filter((model) => model.providerId === XUELANG_PROVIDER_ID)
+                .map((model) => [model.id, model] as const),
+              ...selectableModelsById
+            ])
+          : selectableModelsById
+        props.onSelect(modelsFromSelectedIds(nextSelectedIds, selectedModelsById))
         return
       }
 
@@ -542,7 +553,14 @@ export function ModelSelector(props: ModelSelectorProps) {
     // Narrow deps to the actual reads — `props` as a whole is a fresh
     // object reference every render, which would cancel memoisation.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional narrow
-    [props.multiple, props.selectionType, props.onSelect, selectableModelsById]
+    [
+      props.multiple,
+      props.selectionType,
+      props.onSelect,
+      props.value,
+      requireUsableXuelangChatRoute,
+      selectableModelsById
+    ]
   )
 
   const focusItem = useCallback(
@@ -691,12 +709,30 @@ export function ModelSelector(props: ModelSelectorProps) {
         return
       }
 
+      // 隐藏旧雪浪模型不能让关闭多选顺带换成下一个模型。
+      const firstSelectedId = rawSelectedModelIds[0]
+      if (
+        requireUsableXuelangChatRoute &&
+        firstSelectedId &&
+        parseUniqueModelId(firstSelectedId).providerId === XUELANG_PROVIDER_ID &&
+        !resolvedSelectedModelIds.includes(firstSelectedId)
+      ) {
+        return
+      }
+
       const collapsed = computeCollapsedSelection(resolvedSelectedModelIds, rawSelectedModelIds)
       if (collapsed !== null) {
         emitSelection(collapsed)
       }
     },
-    [emitSelection, multiple, rawSelectedModelIds, resolvedSelectedModelIds, setMultiSelectMode]
+    [
+      emitSelection,
+      multiple,
+      rawSelectedModelIds,
+      requireUsableXuelangChatRoute,
+      resolvedSelectedModelIds,
+      setMultiSelectMode
+    ]
   )
 
   useModelListKeyboardNav({

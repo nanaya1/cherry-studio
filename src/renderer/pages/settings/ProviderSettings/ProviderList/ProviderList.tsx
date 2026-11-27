@@ -7,13 +7,16 @@ import { useReorder } from '@data/hooks/useReorder'
 import ConfirmActionPopup from '@renderer/components/popups/ConfirmActionPopup'
 import { useModels } from '@renderer/hooks/useModel'
 import { useProviders } from '@renderer/hooks/useProvider'
+import ProviderListItem from '@renderer/pages/settings/ProviderSettings/components/ProviderListItem'
 import { providerListClasses } from '@renderer/pages/settings/ProviderSettings/primitives/ProviderSettingsPrimitives'
 import {
+  getFancyProviderName,
   isProviderPresetInstanceSource,
   matchKeywordsInProvider
 } from '@renderer/pages/settings/ProviderSettings/utils/providerDisplay'
 import { toast } from '@renderer/services/toast'
 import { isProviderSettingsListVisibleProvider } from '@renderer/utils/providerSettings'
+import { XUELANG_PROVIDER_ID } from '@shared/data/presets/xuelang'
 import type { Provider } from '@shared/data/types/provider'
 import { canManageProvider } from '@shared/utils/provider'
 
@@ -141,6 +144,7 @@ export default function ProviderList({
     if (!searchText.trim()) return null
     const map = new Map<string, string>()
     for (const m of allModels) {
+      if (m.providerId === XUELANG_PROVIDER_ID && m.isDeprecated) continue
       const prev = map.get(m.providerId)
       const next = `${m.name} ${m.apiModelId ?? ''}`
       map.set(m.providerId, prev ? `${prev} ${next}` : next)
@@ -156,6 +160,9 @@ export default function ProviderList({
       }
       if (provider.id === 'ovms' && !isOvmsSupported) {
         return false
+      }
+      if (provider.id === XUELANG_PROVIDER_ID) {
+        return matchKeywordsInProvider(keywords, provider, providerModelsIndex?.get(provider.id))
       }
       if (filterMode === 'enabled' && !provider.isEnabled) {
         return false
@@ -180,7 +187,11 @@ export default function ProviderList({
   const presetSources = useMemo(
     () =>
       providers.filter(
-        (provider) => isProviderPresetInstanceSource(provider) && isProviderSettingsListVisibleProvider(provider)
+        (provider) =>
+          provider.id !== XUELANG_PROVIDER_ID &&
+          provider.presetProviderId !== XUELANG_PROVIDER_ID &&
+          isProviderPresetInstanceSource(provider) &&
+          isProviderSettingsListVisibleProvider(provider)
       ),
     [providers]
   )
@@ -285,6 +296,18 @@ export default function ProviderList({
   const renderProviderItem = (provider: Provider, _index: number, state: ProviderListContentItemState) => {
     const showManagementActions = (providerCounts.get(provider.id) ?? 0) > 1 || canManageProvider(provider)
     const selected = provider.id === selectedProviderId
+    if (provider.id === XUELANG_PROVIDER_ID) {
+      return (
+        <div className="w-full" ref={(element) => setProviderItemRef(provider.id, element)}>
+          <ProviderListItem
+            provider={{ ...provider, name: getFancyProviderName(provider) }}
+            selected={selected}
+            dragging={false}
+            onClick={() => onSelectProvider(provider.id)}
+          />
+        </div>
+      )
+    }
 
     return (
       <ProviderListItemWithContextMenu
@@ -296,7 +319,9 @@ export default function ProviderList({
         onEdit={() => openProviderEditorForEdit(provider)}
         onDelete={() => handleDeleteProvider(provider.id)}
         onDuplicate={
-          provider.presetProviderId && !groupedPresetIds.has(provider.presetProviderId)
+          provider.presetProviderId &&
+          provider.presetProviderId !== XUELANG_PROVIDER_ID &&
+          !groupedPresetIds.has(provider.presetProviderId)
             ? () => openProviderEditorFrom(provider)
             : undefined
         }

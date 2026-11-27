@@ -26,11 +26,14 @@ import { customFetch } from '../../utils/customFetch'
 // Key-backed builders resolve their serving API key lazily; Vertex/Bedrock read
 // provider auth config from the direct-import ProviderService singleton. Mock
 // both at the module boundary so dispatch runs without touching the DB.
-const { resolveApiKeyMock, getAuthConfigMock, getByProviderIdMock } = vi.hoisted(() => ({
-  resolveApiKeyMock: vi.fn(),
-  getAuthConfigMock: vi.fn<(providerId: string) => AuthConfig | null>(),
-  getByProviderIdMock: vi.fn()
-}))
+const { resolveApiKeyMock, getAuthConfigMock, getByProviderIdMock, getXuelangApiKeysMock, resolveXuelangApiKeyMock } =
+  vi.hoisted(() => ({
+    resolveApiKeyMock: vi.fn(),
+    getXuelangApiKeysMock: vi.fn(),
+    resolveXuelangApiKeyMock: vi.fn(),
+    getAuthConfigMock: vi.fn<(providerId: string) => AuthConfig | null>(),
+    getByProviderIdMock: vi.fn()
+  }))
 const { buildCherryCloudProviderConfigMock, generateSignatureMock, getCopilotTokenMock } = vi.hoisted(() => ({
   buildCherryCloudProviderConfigMock: vi.fn(),
   generateSignatureMock: vi.fn(),
@@ -40,6 +43,8 @@ const { buildCherryCloudProviderConfigMock, generateSignatureMock, getCopilotTok
 vi.mock('@main/data/services/ProviderService', () => ({
   providerService: {
     resolveApiKey: resolveApiKeyMock,
+    getXuelangApiKeys: getXuelangApiKeysMock,
+    resolveXuelangApiKey: resolveXuelangApiKeyMock,
     getAuthConfig: getAuthConfigMock,
     getByProviderId: getByProviderIdMock
   }
@@ -64,6 +69,8 @@ const { providerToAiSdkConfig, resolveProviderAiSdkConfig } = await import('../c
 
 beforeEach(() => {
   vi.clearAllMocks()
+  getXuelangApiKeysMock.mockReset().mockReturnValue([])
+  resolveXuelangApiKeyMock.mockReset()
   resolveApiKeyMock.mockImplementation((_providerId: string, override?: string) => ({
     value: override ?? 'sk-test-key',
     apiKeySelection: override
@@ -903,43 +910,95 @@ describe('providerToAiSdkConfig — builder dispatch matrix', () => {
       expect(settings.geminiBaseURL).toBeDefined()
     })
 
-    it('routes xuelang gateway chat models through buildCherryinConfig at the xuelang host', async () => {
-      // 雪浪工匠 declares adapterFamily 'meacowork', aliased onto the cherryin
-      // runtime; the resolved chat variant and the relay URLs must come from
-      // xuelang's own endpointConfigs.
-      getByProviderIdMock.mockReturnValue(
-        makeProvider({
-          id: 'xuelang',
-          endpointConfigs: {
-            [ENDPOINT_TYPE.ANTHROPIC_MESSAGES]: { baseUrl: 'https://api.xuelanglm.com' },
-            [ENDPOINT_TYPE.GOOGLE_GENERATE_CONTENT]: { baseUrl: 'https://api.xuelanglm.com' }
-          }
-        })
-      )
+    it('prefers eligible xuelang Chat Completions and pairs the rotated key with its own URL', async () => {
+      const chat = ENDPOINT_TYPE.OPENAI_CHAT_COMPLETIONS
       const provider = makeProvider({
         id: 'xuelang',
-        defaultChatEndpoint: ENDPOINT_TYPE.OPENAI_CHAT_COMPLETIONS,
-        endpointConfigs: {
-          [ENDPOINT_TYPE.OPENAI_CHAT_COMPLETIONS]: {
-            baseUrl: 'https://api.xuelanglm.com',
-            adapterFamily: 'meacowork'
-          }
-        }
+        endpointConfigs: { [chat]: { baseUrl: 'https://provider.invalid', adapterFamily: 'meacowork' } }
       })
       const model = makeModel({
-        id: 'xuelang::qwen3-8-27b',
+        id: 'xuelang::alias',
         apiModelId: 'Qwen3.8-27B',
-        endpointTypes: undefined
+        endpointTypes: [ENDPOINT_TYPE.ANTHROPIC_MESSAGES, chat]
       })
+      getXuelangApiKeysMock.mockReturnValue([
+        { key: 'key-a', managedRoutes: { endpointConfigs: { [chat]: { baseUrl: 'https://key-a.invalid' } } } }
+      ])
+      const apiKeySelection = { attribution: 'explicit', id: 'key-b', masked: '****' }
+      resolveXuelangApiKeyMock.mockReturnValue({ value: 'key-b', baseUrl: 'https://key-b.invalid', apiKeySelection })
 
-      const config = await providerToAiSdkConfig(provider, model)
-      const settings = config.providerSettings as Record<string, unknown>
+      const { config, credentialReceipt } = await resolveProviderAiSdkConfig(provider, model)
 
+      expect(getXuelangApiKeysMock).toHaveBeenCalledExactlyOnceWith('Qwen3.8-27B', chat)
+      expect(resolveXuelangApiKeyMock).toHaveBeenCalledExactlyOnceWith('Qwen3.8-27B', chat, undefined)
+      expect(resolveApiKeyMock).not.toHaveBeenCalled()
       expect(config.providerId).toBe('cherryin-chat')
-      expect(settings.endpointType).toBe('openai')
-      expect(settings.baseURL).toBe('https://api.xuelanglm.com/v1')
-      expect(settings.anthropicBaseURL).toBe('')
-      expect(settings.geminiBaseURL).toBe('https://api.xuelanglm.com/v1beta')
+      expect(config.providerSettings).toMatchObject({
+        endpointType: 'openai',
+        baseURL: 'https://key-b.invalid/v1',
+        apiKey: 'key-b'
+      })
+      expect(credentialReceipt).toEqual(apiKeySelection)
+    })
+
+    it.each([
+      [ENDPOINT_TYPE.ANTHROPIC_MESSAGES, 'anthropicBaseURL', 'v1'],
+      [ENDPOINT_TYPE.GOOGLE_GENERATE_CONTENT, 'geminiBaseURL', 'v1beta']
+    ] as const)(
+      'uses the selected xuelang URL for %s when chat has no eligible key',
+      async (protocol, setting, version) => {
+        const provider = makeProvider({
+          id: 'xuelang',
+          endpointConfigs: { [protocol]: { baseUrl: 'https://provider.invalid', adapterFamily: 'meacowork' } }
+        })
+        const model = makeModel({
+          id: 'xuelang::real-id',
+          endpointTypes: [ENDPOINT_TYPE.OPENAI_CHAT_COMPLETIONS, protocol]
+        })
+        getXuelangApiKeysMock.mockImplementation((_id, type) =>
+          type === protocol
+            ? [
+                {
+                  key: 'approved',
+                  managedRoutes: { endpointConfigs: { [protocol]: { baseUrl: 'https://route.invalid' } } }
+                }
+              ]
+            : []
+        )
+        resolveXuelangApiKeyMock.mockReturnValue({ value: 'approved', baseUrl: 'https://route.invalid' })
+
+        const config = await providerToAiSdkConfig(provider, model, { apiKeyOverride: 'approved' })
+
+        expect(resolveXuelangApiKeyMock).toHaveBeenCalledExactlyOnceWith('real-id', protocol, 'approved')
+        expect(config.providerSettings).toMatchObject({
+          [setting]: `https://route.invalid/${version}`,
+          apiKey: 'approved'
+        })
+      }
+    )
+
+    it('rejects unavailable xuelang models and unmatched overrides before credential selection', async () => {
+      const provider = makeProvider({ id: 'xuelang' })
+      const model = makeModel({ id: 'xuelang::old', replaceWith: 'xuelang::new' })
+      const chat = ENDPOINT_TYPE.OPENAI_CHAT_COMPLETIONS
+      getXuelangApiKeysMock.mockReturnValue([
+        { key: 'approved', managedRoutes: { endpointConfigs: { [chat]: { baseUrl: 'https://route.invalid' } } } }
+      ])
+      await expect(providerToAiSdkConfig({ ...provider, isEnabled: false }, model)).rejects.toThrow(
+        'provider is disabled'
+      )
+      await expect(providerToAiSdkConfig(provider, { ...model, isEnabled: false })).rejects.toThrow(
+        'model xuelang::old is unavailable'
+      )
+      await expect(providerToAiSdkConfig(provider, { ...model, isDeprecated: true })).rejects.toThrow(
+        'model xuelang::old is unavailable'
+      )
+      expect(getXuelangApiKeysMock).not.toHaveBeenCalled()
+      await expect(providerToAiSdkConfig(provider, model, { apiKeyOverride: 'unknown' })).rejects.toThrow(
+        'No authorized xuelang route'
+      )
+      expect(resolveXuelangApiKeyMock).not.toHaveBeenCalled()
+      expect(resolveApiKeyMock).not.toHaveBeenCalled()
     })
 
     it('routes a CherryIN OpenAI model on the Responses endpoint through the CherryIN provider', async () => {

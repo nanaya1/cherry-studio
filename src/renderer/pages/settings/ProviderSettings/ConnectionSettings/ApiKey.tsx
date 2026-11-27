@@ -15,10 +15,15 @@ import ProviderField from '../primitives/ProviderField'
 import ProviderSection from '../primitives/ProviderSection'
 import { apiKeyListClasses, fieldClasses, ProviderHelpLink } from '../primitives/ProviderSettingsPrimitives'
 import { copyApiKeyToClipboard } from './copyApiKeyToClipboard'
-import ProviderApiKeyListDrawer from './ProviderApiKeyListDrawer'
+import ProviderApiKeyListDrawer, {
+  displayManagedApiKey,
+  getManagedApiKeys,
+  type ManagedApiKeyListOptions
+} from './ProviderApiKeyListDrawer'
 
 interface ApiKeyProps {
   providerId: string
+  managed?: ManagedApiKeyListOptions
   onRequestModelPullGuide?: () => void
   onOpenApiSetup?: () => void
   onContinueApiSetup?: () => void
@@ -31,6 +36,7 @@ function maskStoredApiKey(key: string) {
 
 export default function ApiKey({
   providerId,
+  managed,
   onRequestModelPullGuide,
   onOpenApiSetup,
   onContinueApiSetup
@@ -38,30 +44,30 @@ export default function ApiKey({
   const { t } = useTranslation()
   const { provider, deleteApiKey, isDeletingApiKey } = useProvider(providerId)
   const meta = useProviderMeta(providerId)
-  const { inputApiKey, setInputApiKey, hasPendingSync, commitInputApiKeyNow } = useAuthenticationApiKey()
-  const { data: apiKeysData, isLoading: isLoadingApiKeys } = useProviderApiKeys(providerId)
+  const auth = useAuthenticationApiKey({ managed: Boolean(managed) })
+  const { data: apiKeysData, isLoading: isLoadingApiKeys, error: apiKeysError } = useProviderApiKeys(providerId)
   const [showApiKey, setShowApiKey] = useState(false)
   const [keyListOpen, setKeyListOpen] = useState(false)
   const [apiKeyEdited, setApiKeyEdited] = useState(false)
-  const apiKeys = apiKeysData?.keys ?? []
+  const apiKeys = managed ? getManagedApiKeys(apiKeysData?.keys, managed.visible) : (apiKeysData?.keys ?? [])
 
   useEffect(() => {
     setShowApiKey(false)
   }, [provider?.id])
 
   const handleApiKeyBlur = useCallback(async () => {
-    if (!apiKeyEdited && !hasPendingSync) {
+    if (!auth || (!apiKeyEdited && !auth.hasPendingSync)) {
       return
     }
 
     try {
-      await commitInputApiKeyNow()
+      await auth.commitInputApiKeyNow()
       setApiKeyEdited(false)
       onRequestModelPullGuide?.()
     } catch {
       // Save failures are surfaced by the API-key hook; do not show the model-pull hint.
     }
-  }, [apiKeyEdited, commitInputApiKeyNow, hasPendingSync, onRequestModelPullGuide])
+  }, [apiKeyEdited, auth, onRequestModelPullGuide])
 
   const handleDeleteApiKey = useCallback(
     async (keyId: string) => {
@@ -74,12 +80,21 @@ export default function ApiKey({
     [deleteApiKey, t]
   )
 
-  if (!provider || !meta.isApiKeyFieldVisible) {
+  if (!managed && (!provider || !meta.isApiKeyFieldVisible)) {
     return null
   }
 
   const primaryApiKey = apiKeys.find((entry) => entry.isEnabled) ?? apiKeys[0]
-  const requiresApiKey = provider.authOptional !== true
+  const requiresApiKey = Boolean(managed) || provider?.authOptional !== true
+  const managedApiHosts = managed
+    ? new Set(
+        apiKeys.flatMap((entry) =>
+          Object.values(entry.managedRoutes?.endpointConfigs ?? {}).flatMap((config) =>
+            config?.baseUrl ? [config.baseUrl] : []
+          )
+        )
+      )
+    : undefined
 
   return (
     <>
@@ -89,7 +104,7 @@ export default function ApiKey({
           title={
             <div className={fieldClasses.titleWithHelp}>
               <span>{t('settings.provider.api_key.label')}</span>
-              {meta.apiKeyWebsite && !meta.isDmxapi ? (
+              {!managed && meta.apiKeyWebsite && !meta.isDmxapi ? (
                 <ProviderHelpLink
                   target="_blank"
                   rel="noreferrer"
@@ -120,59 +135,71 @@ export default function ApiKey({
                     aria-haspopup="dialog"
                     aria-expanded={keyListOpen}
                     onClick={() => setKeyListOpen(true)}>
-                    <span className="min-w-0 truncate font-mono text-foreground text-sm">
-                      {showApiKey ? primaryApiKey.key : maskStoredApiKey(primaryApiKey.key)}
+                    <span
+                      className={cn('min-w-0 truncate font-mono text-foreground text-sm', managed && 'select-none')}
+                      onCopy={managed ? (event) => event.preventDefault() : undefined}>
+                      {managed
+                        ? displayManagedApiKey(primaryApiKey.key)
+                        : showApiKey
+                          ? primaryApiKey.key
+                          : maskStoredApiKey(primaryApiKey.key)}
                     </span>
                     {apiKeys.length > 1 ? (
                       <span className="shrink-0 text-muted-foreground text-xs">+{apiKeys.length - 1}</span>
                     ) : null}
                   </button>
-                  <div className="pointer-events-none flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-focus-within/api-key:pointer-events-auto group-focus-within/api-key:opacity-100 group-hover/api-key:pointer-events-auto group-hover/api-key:opacity-100">
-                    <Tooltip content={t('settings.provider.api_key.copy')}>
-                      <button
-                        type="button"
-                        className={apiKeyListClasses.keyIconButton}
-                        aria-label={t('settings.provider.api_key.copy')}
-                        onClick={() => void copyApiKeyToClipboard(primaryApiKey.key, t)}>
-                        <Copy />
-                      </button>
-                    </Tooltip>
-                    <Tooltip content={t('common.edit')}>
-                      <button
-                        type="button"
-                        className={apiKeyListClasses.keyIconButton}
-                        aria-label={t('common.edit')}
-                        onClick={onOpenApiSetup}>
-                        <Edit3 />
-                      </button>
-                    </Tooltip>
-                    {apiKeys.length === 1 ? (
-                      <Tooltip content={t('common.delete')}>
+                  {!managed && (
+                    <>
+                      <div className="pointer-events-none flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-focus-within/api-key:pointer-events-auto group-focus-within/api-key:opacity-100 group-hover/api-key:pointer-events-auto group-hover/api-key:opacity-100">
+                        <Tooltip content={t('settings.provider.api_key.copy')}>
+                          <button
+                            type="button"
+                            className={apiKeyListClasses.keyIconButton}
+                            aria-label={t('settings.provider.api_key.copy')}
+                            onClick={() => void copyApiKeyToClipboard(primaryApiKey.key, t)}>
+                            <Copy />
+                          </button>
+                        </Tooltip>
+                        <Tooltip content={t('common.edit')}>
+                          <button
+                            type="button"
+                            className={apiKeyListClasses.keyIconButton}
+                            aria-label={t('common.edit')}
+                            onClick={onOpenApiSetup}>
+                            <Edit3 />
+                          </button>
+                        </Tooltip>
+                        {apiKeys.length === 1 ? (
+                          <Tooltip content={t('common.delete')}>
+                            <button
+                              type="button"
+                              className={apiKeyListClasses.keyDestructiveIconButton}
+                              aria-label={t('common.delete')}
+                              disabled={isDeletingApiKey}
+                              onClick={() => void handleDeleteApiKey(primaryApiKey.id)}>
+                              <Trash2 />
+                            </button>
+                          </Tooltip>
+                        ) : null}
+                      </div>
+                      <Tooltip
+                        content={
+                          showApiKey ? t('settings.provider.api_key.hide_key') : t('settings.provider.api_key.show_key')
+                        }>
                         <button
                           type="button"
-                          className={apiKeyListClasses.keyDestructiveIconButton}
-                          aria-label={t('common.delete')}
-                          disabled={isDeletingApiKey}
-                          onClick={() => void handleDeleteApiKey(primaryApiKey.id)}>
-                          <Trash2 />
+                          className={fieldClasses.apiKeyVisibilityToggle}
+                          aria-label={
+                            showApiKey
+                              ? t('settings.provider.api_key.hide_key')
+                              : t('settings.provider.api_key.show_key')
+                          }
+                          onClick={() => setShowApiKey((value) => !value)}>
+                          {showApiKey ? <EyeOff size={12} /> : <Eye size={12} />}
                         </button>
                       </Tooltip>
-                    ) : null}
-                  </div>
-                  <Tooltip
-                    content={
-                      showApiKey ? t('settings.provider.api_key.hide_key') : t('settings.provider.api_key.show_key')
-                    }>
-                    <button
-                      type="button"
-                      className={fieldClasses.apiKeyVisibilityToggle}
-                      aria-label={
-                        showApiKey ? t('settings.provider.api_key.hide_key') : t('settings.provider.api_key.show_key')
-                      }
-                      onClick={() => setShowApiKey((value) => !value)}>
-                      {showApiKey ? <EyeOff size={12} /> : <Eye size={12} />}
-                    </button>
-                  </Tooltip>
+                    </>
+                  )}
                 </div>
                 <Tooltip content={t('settings.provider.api.key.list.title')}>
                   <span className="inline-flex shrink-0">
@@ -187,7 +214,13 @@ export default function ApiKey({
                     </button>
                   </span>
                 </Tooltip>
-                <ProviderModelCheck onAddModels={onContinueApiSetup} />
+                {!managed && <ProviderModelCheck onAddModels={onContinueApiSetup} />}
+              </div>
+            ) : managed ? (
+              <div className={fieldClasses.inputGroupBlock} role={apiKeysError ? 'alert' : undefined}>
+                <span className="text-muted-foreground text-sm">
+                  {apiKeysError ? managed.errorMessage : managed.emptyMessage}
+                </span>
               </div>
             ) : (
               <div className={fieldClasses.inputRow}>
@@ -216,11 +249,11 @@ export default function ApiKey({
                 <InputGroupInput
                   type={showApiKey ? 'text' : 'password'}
                   className={fieldClasses.input}
-                  value={inputApiKey}
+                  value={auth?.inputApiKey ?? ''}
                   placeholder={t('settings.provider.api_key.placeholder')}
                   onChange={(event) => {
                     setApiKeyEdited(true)
-                    setInputApiKey(event.target.value)
+                    auth?.setInputApiKey(event.target.value)
                   }}
                   onBlur={() => void handleApiKeyBlur()}
                 />
@@ -257,7 +290,33 @@ export default function ApiKey({
           )}
         </ProviderField>
       </ProviderSection>
-      <ProviderApiKeyListDrawer providerId={providerId} open={keyListOpen} onClose={() => setKeyListOpen(false)} />
+      {managedApiHosts && managedApiHosts.size > 0 && (
+        <ProviderSection id="setting-provider-api-host">
+          <ProviderField title={t('settings.provider.api_host')} titleClassName="text-foreground">
+            {managedApiHosts.size > 1 ? (
+              <Button
+                type="button"
+                variant="outline"
+                className={cn(fieldClasses.inputGroupBlock, 'justify-start')}
+                aria-haspopup="dialog"
+                aria-expanded={keyListOpen}
+                onClick={() => setKeyListOpen(true)}>
+                {t('settings.provider.api_host_multiple')}
+              </Button>
+            ) : (
+              <div className={cn(fieldClasses.inputGroupBlock, 'h-auto min-h-8 py-1')}>
+                <span className="min-w-0 break-all font-mono text-sm">{managedApiHosts.values().next().value}</span>
+              </div>
+            )}
+          </ProviderField>
+        </ProviderSection>
+      )}
+      <ProviderApiKeyListDrawer
+        providerId={providerId}
+        open={keyListOpen}
+        onClose={() => setKeyListOpen(false)}
+        managed={managed}
+      />
     </>
   )
 }

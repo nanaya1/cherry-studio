@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('electron', () => ({ net: { fetch: vi.fn() } }))
 vi.mock('@shared/utils/systemProviderId', () => ({
-  SystemProviderIds: { cherryin: 'cherryin', xuelang: 'xuelang' }
+  SystemProviderIds: { cherryin: 'cherryin' }
 }))
 
 import { net } from 'electron'
@@ -10,8 +10,8 @@ import { net } from 'electron'
 import { OAuthServiceError } from '../../errors'
 import { createGatewayOAuthProvider } from '../providers/cherryin'
 
-// The gateway OAuth definition is one factory serving every gateway provider —
-// CherryIN keeps its exact legacy endpoints, xuelang points at its own host.
+// The gateway OAuth definition now serves CherryIN only; 雪浪工匠 is
+// provisioned from the Cowork model-config snapshot with no OAuth runtime.
 describe('createGatewayOAuthProvider', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -42,46 +42,13 @@ describe('createGatewayOAuthProvider', () => {
     expect(request.authUrl).toContain('redirect_uri=http%3A%2F%2F127.0.0.1%3A29873%2Foauth%2Fcallback')
   })
 
-  it('builds the xuelang definition pointing at the xuelang host', () => {
-    const def = createGatewayOAuthProvider('xuelang')
-
-    expect(def.providerId).toBe('xuelang')
-    expect(def.clientId).toBe('2a348c87-bae1-4756-a62f-b2e97200fd6d')
-    expect(def.transport).toEqual({
-      type: 'deep-link',
-      config: { redirectUri: 'meacowork://oauth/callback' }
-    })
-
-    const request = (
-      def.createClient({}) as { createAuthorizationRequest: () => { authUrl: string } }
-    ).createAuthorizationRequest()
-    expect(request.authUrl).toContain('https://api.xuelanglm.com/oauth2/auth?')
-    expect(request.authUrl).toContain('client_id=2a348c87-bae1-4756-a62f-b2e97200fd6d')
-  })
-
-  it('keeps production xuelang isolated from local configuration', () => {
-    const def = createGatewayOAuthProvider('xuelang')
-    const request = (
-      def.createClient({}) as { createAuthorizationRequest: () => { authUrl: string } }
-    ).createAuthorizationRequest()
-    expect(request.authUrl).toContain('https://api.xuelanglm.com/oauth2/auth?')
-    expect(request.authUrl).not.toContain('localhost')
-  })
-
-  it('ignores renderer host overrides for xuelang', () => {
-    const def = createGatewayOAuthProvider('xuelang')
-    const request = (
-      def.createClient({ oauthServer: 'https://open.cherryin.ai', apiHost: 'https://open.cherryin.ai' }) as {
-        createAuthorizationRequest: () => { authUrl: string }
-      }
-    ).createAuthorizationRequest()
-
-    expect(request.authUrl).toContain('https://api.xuelanglm.com/oauth2/auth?')
-  })
-
-  it('rejects hosts outside the provider allowlist for CherryIN', () => {
+  it('rejects hosts outside the CherryIN allowlist', () => {
     const def = createGatewayOAuthProvider('cherryin')
     expect(() => def.createClient({ oauthServer: 'https://api.xuelanglm.com' })).toThrow(/Unauthorized API host/)
+  })
+
+  it('rejects providers without a gateway OAuth config', () => {
+    expect(() => createGatewayOAuthProvider('xuelang')).toThrow(/No gateway OAuth config/)
   })
 
   it('preserves gateway API error codes for renderer i18n mapping', async () => {
@@ -91,7 +58,7 @@ describe('createGatewayOAuthProvider', () => {
         headers: { 'Content-Type': 'application/json' }
       })
     )
-    const def = createGatewayOAuthProvider('xuelang')
+    const def = createGatewayOAuthProvider('cherryin')
 
     const error = await def.provisionApiKeys?.('access-token', {}).catch((caught: unknown) => caught)
 

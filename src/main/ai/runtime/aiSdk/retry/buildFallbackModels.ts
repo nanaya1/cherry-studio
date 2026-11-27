@@ -20,6 +20,7 @@ import { modelService } from '@main/data/services/ModelService'
 import { providerService } from '@main/data/services/ProviderService'
 import { isAbortError } from '@main/utils/error'
 import { ErrorCode, isDataApiError } from '@shared/data/api/errors'
+import { XUELANG_PROVIDER_ID } from '@shared/data/presets/xuelang'
 import type { Assistant } from '@shared/data/types/assistant'
 import { isUniqueModelId, type Model, parseUniqueModelId, type UniqueModelId } from '@shared/data/types/model'
 import type { Provider } from '@shared/data/types/provider'
@@ -79,7 +80,9 @@ function pickFallbackCallOptions(options: AgentOptions): FallbackCallOptions | u
 }
 
 export function buildFallbackModels(args: BuildFallbackModelsArgs): FallbackResolver[] {
-  if (!args.retryPolicy.enabled) return []
+  if (!args.retryPolicy.enabled || parseUniqueModelId(args.primaryUniqueModelId).providerId === XUELANG_PROVIDER_ID) {
+    return []
+  }
 
   const seen = new Set<UniqueModelId>()
   const resolvers: FallbackResolver[] = []
@@ -132,6 +135,8 @@ async function resolveFallback(
     logger.info('skipping fallback whose provider is disabled', { uniqueModelId })
     return null
   }
+
+  if (provider.id === XUELANG_PROVIDER_ID && (!model.isEnabled || model.isDeprecated)) return null
 
   const required = args.requiredNativeFileSupport
   if (required.image && !isVisionModel(model)) {

@@ -11,7 +11,7 @@ customizations:
   - id: external-knowledge-connectors
     title: 外部知识库显式查询与手动启停
     owner: main
-    behavior: Java企业登录在我的MCP左侧展示外部知识库标签，仅点击时读取企业共享接入实例，不按分组、不增加登录同步或运行时成员强校验。新实例默认关闭，显式启动才创建本地MCP；来源以reference编码认证来源、用户、企业和实例UUID，不认领同名手动项。刷新保留用户关闭选择，完整成功快照缺失及明确10007/10008才停用对应项并清Key，网络和结构失败保留旧配置。凭据仅主进程保存，不通过目录IPC输出。沿用Space mcp-key，未点击时不保证成员移出后的旧调用即时失效。
+    behavior: Java企业登录在广场下展示企业共享与外部知识库二级标签，默认显示企业共享，外部知识库仅显式进入或点击时读取企业共享接入实例，不按分组、不增加登录同步或运行时成员强校验。新实例默认关闭，显式启动才创建本地MCP；来源以reference编码认证来源、用户、企业和实例UUID，不认领同名手动项。刷新保留用户关闭选择，完整成功快照缺失及明确10007/10008才停用对应项并清Key，网络和结构失败保留旧配置。凭据仅主进程保存，不通过目录IPC输出。沿用Space mcp-key，未点击时不保证成员移出后的旧调用即时失效。
     markers:
       - MEA:external-knowledge-connectors
     touchpoints:
@@ -45,9 +45,9 @@ customizations:
       - src/main/ai/mcp/oauth/__tests__/callback.test.ts
       - src/main/ai/mcp/__tests__/McpRuntimeService.test.ts
   - id: enterprise-model-binding
-    title: Cowork 登录后自动绑定模型服务商
+    title: Cowork 登录后把模型配置同步进雪浪工匠服务商
     owner: main
-    behavior: Java 每次登录或恢复登录首次在线验证成功后仅尝试读取一次 /api/v1/client/model/config 完整快照，周期在线校验、网络恢复和授权通知不重复拉取；失败保留本身份旧配置且不阻断登录，下次登录重试。使用原始 token 头且禁止缓存和重定向。后端仅返回 coworkAutoBindEnabled=true 且授权有效的 Key；新建及历史 Key 默认关闭，开关不影响其他调用用途，关闭后下次登录成功同步时停用自动项，重新开启同一 Key 保持配置 ID 且仅恢复停用状态。一个 Key 对应一个自动服务商；绑定按认证来源、实例、用户、企业和配置 ID 隔离，不按名称认领手动项，不更改默认模型。仅导入新 Key，已存在绑定不覆盖本地名称、Key、地址、协议、模型列表和工具等能力；后台配置更新需删除自动项后重新登录导入，不记录本地忽略状态。新增项与授权状态在单一 SQLite 连接事务中全部成功或回滚。完整快照缺失项停用凭据和模型但保留历史引用；企业切换时先停用旧身份的自动绑定。租约校验拦截退出、授权变化及迟到响应，账号在线校验和资源授权监控独立保留。Java及sub2api接口和开关代码已实现，管理Vue在API Keys创建及编辑弹窗提供自动绑定开关、列表展示开关状态，已完成受控桌面及手机验证；需手工迁移与部署，桌面完整链路待验收。
+    behavior: Java 每次登录或恢复登录首次在线验证成功后仅尝试读取一次 /api/v1/client/model/config 完整快照，周期在线校验、网络恢复和授权通知不重复拉取；失败保留本身份旧配置且不阻断登录，下次登录重试。使用原始 token 头且禁止缓存和重定向。后端仅返回 coworkAutoBindEnabled=true 且授权有效的 Key；新建及历史 Key 默认关闭，开关不影响其他调用用途。快照写入内置雪浪工匠服务商（xuelang），不再按 Key 创建 cowork-auto-* 独立服务商；该服务商 OAuth 授权登录已移除，凭据完全来自登录用户。每条 Key 的本地 id 由后端配置 ID 的 SHA-256 摘要生成、label 固定 Cowork；服务端按当前身份下发完整列表并全量替换 Key 集合，切企业或撤权即时清理旧凭据。写 endpointConfigs（各 Key 地址按协议合并）、defaultChatEndpoint、isEnabled 和 authConfig（固定 api-key，覆盖 OAuth 遗留 token）；不覆盖显示名与预设归属。所有 Key 下发的 models 按真实 API 模型 ID 合并去重并全量同步到雪浪工匠：新增缺失模型、已下发模型恢复启用并按最新名称/协议/能力刷新、不再返回的模型停用（isEnabled=false、isDeprecated=true）但保留行与历史引用；能力只按 endpointTypes 推导（如 embeddings → 嵌入），不按名称猜工具/视觉/推理权限。快照为空则停用服务商、清空 Key 并停用全部模型，再次有 Key 时重新启用。租约校验拦截退出、授权变化及迟到响应，账号在线校验和资源授权监控独立保留。明文 Key 只进凭据存储，不写日志与通知载荷。Java及sub2api接口和开关代码已实现，管理Vue在API Keys创建及编辑弹窗提供自动绑定开关、列表展示开关状态，已完成受控桌面及手机验证；需手工迁移与部署，桌面完整链路待验收。
     markers:
       - MEA:enterprise-model-binding
     touchpoints:
@@ -58,11 +58,24 @@ customizations:
       - src/main/enterprise/JavaResponseError.ts
       - src/main/enterprise/types.ts
       - src/renderer/hooks/useProvider.ts
+      - src/renderer/pages/settings/ProviderSettings/ProviderSpecific/providerSpecificSettingsRegistry.tsx
+      - src/renderer/pages/settings/ProviderSettings/ProviderSpecific/CherryInOauth.tsx
+      - src/renderer/services/oauth.ts
+      - src/main/services/oauth/CherryInOAuthConfig.ts
+      - src/main/services/oauth/runtime/providers/cherryin.ts
+      - src/main/services/oauth/runtime/providerDefinitions.ts
+      - src/main/ipc/handlers/cherryin.ts
+      - src/shared/ipc/schemas/cherryin.ts
+      - src/main/services/MainWindowService.ts
     tests:
       - src/main/enterprise/__tests__/JavaModelConfigClient.test.ts
       - src/main/enterprise/__tests__/CoworkModelConfigSync.test.ts
       - src/main/enterprise/__tests__/EnterprisePlugin.test.ts
       - src/renderer/hooks/__tests__/useProvider.dataChange.test.ts
+      - src/renderer/services/__tests__/oauth.test.ts
+      - src/main/ipc/handlers/__tests__/cherryin.test.ts
+      - src/main/services/oauth/__tests__/GatewayOAuthConfigs.test.ts
+      - src/main/services/oauth/runtime/__tests__/GatewayOAuthProvider.test.ts
   - id: local-knowledge-file-batches
     title: 本地知识库文件多选100个并串行分批接收
     owner: renderer
@@ -779,7 +792,8 @@ customizations:
   - id: enterprise-shared-space-view
     title: 企业全部共享空间只读查看
     owner: main
-    behavior: 当前企业有效OWNER/ADMIN在分享给我切换我收到的和企业全部；独立管理目录分页读取本企业个人库分享副本，不写入普通catalog或聊天知识库授权。正文及分块只读且仅ready已启用文件，qaAuthorized按原有授权提示，原件及所有写入入口不开放。真实邀请人、链接创建人和实际领取人分别展示，缺失不回填创建者，不返回分享码、密码或链接；次数用尽不撤销既有领取，邀请更新时间不冒充接受时间。每次主进程在线核验并绑定原身份租约及凭据，切身份/企业/角色/分类清除页面状态，迟到响应不回填，错误不伪装空结果。Java再次校验当前企业角色及归属，无巡检配置或角色扩权。
+    # 文档列表复用知识库表格并关闭选择。原件存在时通过独立 IPC 查看转换 PDF。
+    behavior: 当前企业有效OWNER/ADMIN在分享给我切换我收到的和企业全部；独立管理目录分页读取本企业未删除的非公共库，不写入普通catalog或聊天知识库授权。正文及分块只读且仅ready已启用文件，qaAuthorized按原有授权提示，有原件时仅提供转换PDF预览地址，原件下载及所有写入入口不开放。真实邀请人、链接创建人和实际领取人分别展示，缺失不回填创建者，不返回分享码、密码或链接；次数用尽不撤销既有领取，邀请更新时间不冒充接受时间。每次主进程在线核验并绑定原身份租约及凭据，切身份/企业/角色/分类清除页面状态，迟到响应不回填，错误不伪装空结果。Java再次校验当前企业角色及归属，无巡检配置或角色扩权。
     markers:
       - MEA:enterprise-shared-space-view
     touchpoints:
@@ -798,6 +812,9 @@ customizations:
       - src/renderer/pages/knowledge/components/KnowledgeInspectionNavigator.tsx
       - src/renderer/pages/knowledge/components/KnowledgeInspectionDetail.tsx
       - src/renderer/pages/knowledge/components/KnowledgeInspectionFiles.tsx
+      - src/renderer/pages/knowledge/components/KnowledgeFilePagination.tsx
+      - src/renderer/pages/knowledge/panels/dataSource/KnowledgeItemList.tsx
+      - src/renderer/pages/knowledge/panels/dataSource/KnowledgeItemRow.tsx
       - src/renderer/pages/knowledge/components/KnowledgeInspectionRelations.tsx
       - src/renderer/pages/knowledge/components/InspectionPager.tsx
       - src/renderer/pages/knowledge/components/InspectionQueryState.tsx

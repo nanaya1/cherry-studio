@@ -141,10 +141,11 @@ export default function SkillsConnectorsPage({ connectorView }: SkillsConnectors
             {/* <RecommendedSkillCatalogView search={recommendedSearch} onViewInstalled={() => setSkillView('installed')} /> */}
             {showPublicCatalog ? (
               <Tabs
+                variant="underline"
                 value={orgSubTab}
                 onValueChange={(value) => setOrgSubTab(value as 'recommended' | 'org')}
                 className="flex min-h-0 flex-1 flex-col">
-                <TabsList className="mx-6 h-11 shrink-0 justify-start gap-6 rounded-none bg-transparent p-0">
+                <TabsList className="mx-6 h-10 shrink-0 gap-4 [&>button]:after:left-1/2 [&>button]:after:w-5 [&>button]:after:-translate-x-1/2 [&>button]:after:rounded-full [&>button[data-state=active]]:font-medium [&>button[data-state=active]]:after:bg-foreground">
                   <TabsTrigger value="recommended">{t('workspace.skill_catalog.recommended')}</TabsTrigger>
                   <TabsTrigger value="org">{t('workspace.skill_catalog.org')}</TabsTrigger>
                 </TabsList>

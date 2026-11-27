@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { ENDPOINT_TYPE } from '@shared/data/types/model'
+
 import { makeModel, makeProvider } from '../../../../__tests__/fixtures'
 
 const resolveLanguageModel = vi.fn()
@@ -13,9 +15,13 @@ vi.mock('../../params/buildAgentParams', () => ({
 }))
 
 const getApiKeys = vi.fn()
+const getXuelangApiKeys = vi.fn()
+const getByProviderId = vi.fn()
+const getByKey = vi.fn()
 vi.mock('@main/data/services/ProviderService', () => ({
-  providerService: { getApiKeys: (...args: unknown[]) => getApiKeys(...args) }
+  providerService: { getApiKeys: (...args: unknown[]) => getApiKeys(...args), getXuelangApiKeys, getByProviderId }
 }))
+vi.mock('@main/data/services/ModelService', () => ({ modelService: { getByKey } }))
 
 const { buildApiKeyFallbackModels } = await import('../buildApiKeyFallbackModels')
 
@@ -68,6 +74,59 @@ describe('buildApiKeyFallbackModels', () => {
       featurePlugin,
       usagePlugin
     ])
+  })
+
+  it('keeps retries on the primary protocol and skips a managed key revoked after planning', async () => {
+    const chat = ENDPOINT_TYPE.OPENAI_CHAT_COMPLETIONS
+    const provider = makeProvider({ id: 'xuelang', isEnabled: true })
+    const model = makeModel({
+      id: 'xuelang::stored',
+      providerId: 'xuelang',
+      apiModelId: 'wire-model',
+      endpointTypes: [chat, ENDPOINT_TYPE.ANTHROPIC_MESSAGES]
+    })
+    const endpoint = { endpointType: chat, baseUrl: 'https://primary.test/v1' }
+    const primary = { id: 'primary', key: 'sk-primary', isEnabled: true }
+    const revoked = { id: 'revoked', key: 'sk-revoked', isEnabled: true }
+    const remaining = { id: 'remaining', key: 'sk-remaining', isEnabled: true }
+    getByProviderId.mockReturnValue(provider)
+    getByKey.mockReturnValue(model)
+    getXuelangApiKeys.mockImplementation((id, type) =>
+      id === 'wire-model' && type === chat ? [primary, revoked, remaining] : []
+    )
+    buildAgentParams.mockResolvedValue({
+      sdkConfig: { providerId: 'cherryin-chat', providerSettings: { apiKey: remaining.key }, modelId: 'wire-model' },
+      credentialReceipt: { attribution: 'matched', id: remaining.id, masked: 'sk-****' },
+      plugins: [],
+      options: {}
+    })
+    const resolvedModel = { modelId: 'wire-model' }
+    resolveLanguageModel.mockResolvedValue(resolvedModel)
+    const fallbacks = buildApiKeyFallbackModels({
+      request: { uniqueModelId: model.id } as never,
+      provider,
+      model,
+      assistant: undefined,
+      signal: undefined,
+      extraFeatures: [],
+      resolvedEndpoint: endpoint,
+      primaryCredentialReceipt: { attribution: 'explicit', id: primary.id, masked: 'sk-****' },
+      createUsagePlugin: vi.fn()
+    })
+
+    expect(fallbacks).toHaveLength(2)
+    getXuelangApiKeys.mockImplementation((id, type) =>
+      id === 'wire-model' && type === chat ? [primary, remaining] : []
+    )
+    await expect(fallbacks[0]()).resolves.toBeNull()
+    expect(buildAgentParams).not.toHaveBeenCalled()
+    await expect(fallbacks[1]()).resolves.toMatchObject({ model: resolvedModel })
+    expect(buildAgentParams).toHaveBeenCalledWith(
+      expect.objectContaining({
+        resolvedEndpoint: endpoint,
+        request: expect.objectContaining({ apiKeyOverride: remaining.key })
+      })
+    )
   })
 
   it('does not read the key pool for an override or an unknown serving credential', () => {

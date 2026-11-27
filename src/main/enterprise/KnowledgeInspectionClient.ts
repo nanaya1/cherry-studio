@@ -2,7 +2,11 @@ import * as z from 'zod'
 
 import { t } from '@main/i18n'
 import { encodeOrgId } from '@shared/data/types/enterpriseKnowledge'
-import { InspectionContentSchema, InspectionRelationSchema } from '@shared/data/types/knowledgeInspection'
+import {
+  InspectionContentSchema,
+  InspectionPreviewSchema,
+  InspectionRelationSchema
+} from '@shared/data/types/knowledgeInspection'
 
 import { JavaKnowledgeClient } from './JavaKnowledgeClient'
 
@@ -107,6 +111,7 @@ export class KnowledgeInspectionClient extends JavaKnowledgeClient {
         fileId: hex,
         name: z.string(),
         directory: z.boolean(),
+        hasOriginalFile: z.boolean().nullish(),
         parseStatus: text,
         updateTime: text
       })
@@ -114,6 +119,7 @@ export class KnowledgeInspectionClient extends JavaKnowledgeClient {
         id: encodeOrgId(row.fileId),
         name: row.name,
         directory: row.directory,
+        ...(row.hasOriginalFile == null ? {} : { hasOriginalFile: row.hasOriginalFile }),
         parseStatus: row.parseStatus,
         updateTime: row.updateTime
       }))
@@ -129,6 +135,11 @@ export class KnowledgeInspectionClient extends JavaKnowledgeClient {
         },
         guard
       )
+    )
+  }
+  async previewUrl(id: string, fileId: string, guard: () => void) {
+    return InspectionPreviewSchema.parse(
+      await this.get('file/preview-url', { id: uuid.parse(id), fileId: hex.parse(fileId) }, guard)
     )
   }
   async content(id: string, fileId: string, guard: () => void) {

@@ -1,6 +1,8 @@
 import type React from 'react'
 import { useCallback, useEffect, useState } from 'react'
 
+import type { Model } from '@shared/data/types/model'
+
 import { useProviderMeta } from '../hooks/providerSetting/useProviderMeta'
 import { modelListClasses } from '../primitives/ProviderSettingsPrimitives'
 import { EditModelDrawer } from './ModelDrawer'
@@ -12,6 +14,12 @@ interface ProviderModelListProps {
   scrollElement?: HTMLDivElement | null
   providerId: string
   disabled: boolean
+  managed?: {
+    visible: boolean
+    emptyTitle: string
+    onToggle: (model: Model, enabled: boolean) => Promise<void>
+    getStatus: (model: Model) => string | undefined
+  }
   onContinueApiSetup?: () => void
   actions?: (state: { disabled: boolean; hasVisibleModels: boolean }) => React.ReactNode
 }
@@ -20,13 +28,15 @@ const ProviderModelList: React.FC<ProviderModelListProps> = ({
   scrollElement,
   providerId,
   disabled,
+  managed,
   onContinueApiSetup,
   actions
 }) => {
   const [groupExpansionCommand, setGroupExpansionCommand] = useState({ expanded: true, version: 0 })
   const modelList = useProviderModelList({
     providerId,
-    disabled
+    disabled: disabled || Boolean(managed),
+    managedScope: managed
   })
   const providerMeta = useProviderMeta(providerId)
   const showContinueApiSetup =
@@ -92,15 +102,18 @@ const ProviderModelList: React.FC<ProviderModelListProps> = ({
           onDeleteModels={modelList.sections.onDeleteModels}
           bulkActionDisabled={toolbarDisabled}
           expansionCommand={groupExpansionCommand}
-          onContinueApiSetup={showContinueApiSetup ? onContinueApiSetup : undefined}
+          managed={managed}
+          onContinueApiSetup={!managed && showContinueApiSetup ? onContinueApiSetup : undefined}
         />
       </div>
-      <EditModelDrawer
-        providerId={providerId}
-        open={modelList.editDrawer.open}
-        model={modelList.editDrawer.model}
-        onClose={modelList.editDrawer.onClose}
-      />
+      {!managed && (
+        <EditModelDrawer
+          providerId={providerId}
+          open={modelList.editDrawer.open}
+          model={modelList.editDrawer.model}
+          onClose={modelList.editDrawer.onClose}
+        />
+      )}
     </>
   )
 }

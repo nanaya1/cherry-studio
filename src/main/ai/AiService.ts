@@ -41,10 +41,11 @@ import type { CompactionSink } from '@shared/ai/compaction'
 import type { AiToolApprovalRespondRequest, AiToolApprovalRespondResponse } from '@shared/ai/transport'
 import { isDataApiNotFoundError } from '@shared/data/api/errors'
 import type { JobSnapshot } from '@shared/data/api/schemas/jobs'
+import { XUELANG_PROVIDER_ID } from '@shared/data/presets/xuelang'
 import { type Assistant } from '@shared/data/types/assistant'
 import type { CleanupPolicy, FileEntry } from '@shared/data/types/file'
 import type { ImageGenerationMode, ListedModels } from '@shared/data/types/model'
-import { type Model, type UniqueModelId, parseUniqueModelId } from '@shared/data/types/model'
+import { type Model, type UniqueModelId, MODEL_CAPABILITY, parseUniqueModelId } from '@shared/data/types/model'
 import type { Provider } from '@shared/data/types/provider'
 import type { Base64String, CreateInternalEntryIpcParams, UrlString } from '@shared/types/file'
 import {
@@ -69,7 +70,12 @@ import { deleteImageInputEntries, imageGenerationJobHandler } from './provider/c
 import type { ImageGenerationJobOutput, ImageGenerationJobPayload } from './provider/custom/tasks/jobTypes'
 import { buildVendorProviderOptions } from './provider/custom/wire/buildImageRequest'
 import { DEFAULT_DIFFUSION_REGISTRATION, WIRE_REGISTRY } from './provider/custom/wire/wireProfile'
-import { resolveEffectiveEndpoint, resolveWireModelId } from './provider/endpoint'
+import {
+  assertXuelangModelUsable,
+  resolveEffectiveEndpoint,
+  resolveWireModelId,
+  resolveXuelangEndpoint
+} from './provider/endpoint'
 import { listModels as listModelsFromProvider, probeOllamaModel } from './provider/listModels'
 import { resolveSdkConfig } from './provider/sdkConfig'
 import type { AgentLoopHooks, NativeFileSupport, RequestFeature } from './runtime/aiSdk'
@@ -578,6 +584,7 @@ export class AiService extends BaseService {
     const repairUsagePlugins: { current?: AiPlugin[] } = {}
     const {
       sdkConfig,
+      resolvedEndpoint,
       credentialReceipt,
       tools,
       plugins,
@@ -654,6 +661,7 @@ export class AiService extends BaseService {
         signal,
         extraFeatures,
         primaryCredentialReceipt: credentialReceipt,
+        resolvedEndpoint,
         createUsagePlugin: (fallbackReceipt) =>
           createAiUsagePlugin(createAiUsageCaptureContext({ ...usageContext, credentialReceipt: fallbackReceipt }))
       })
@@ -779,6 +787,7 @@ export class AiService extends BaseService {
     const repairUsagePlugins: { current?: AiPlugin[] } = {}
     const {
       sdkConfig,
+      resolvedEndpoint,
       credentialReceipt,
       tools,
       plugins,
@@ -817,6 +826,7 @@ export class AiService extends BaseService {
         signal,
         extraFeatures,
         primaryCredentialReceipt: credentialReceipt,
+        resolvedEndpoint,
         createUsagePlugin: (fallbackReceipt) =>
           createAiUsagePlugin(createAiUsageCaptureContext({ ...usageContext, credentialReceipt: fallbackReceipt }))
       })
@@ -928,7 +938,7 @@ export class AiService extends BaseService {
       return await this.generateImageViaJob({ ...request, inputImages }, structured, vendorBag, signal, source)
     }
 
-    const { sdkConfig, credentialReceipt } = await this.resolveTransportFor(request)
+    const { sdkConfig, credentialReceipt } = await this.resolveTransportFor(request, MODEL_CAPABILITY.IMAGE_GENERATION)
     const promptParam = inputImages
       ? { text: request.prompt, images: inputImages, ...(request.mask && { mask: request.mask }) }
       : request.prompt
@@ -1139,7 +1149,10 @@ export class AiService extends BaseService {
     logger.info('embedMany started', { assistantId: request.assistantId, count: request.values.length })
     const signal = request.requestOptions?.signal
 
-    const { sdkConfig, credentialReceipt, provider, model, assistant } = await this.resolveTransportFor(request)
+    const { sdkConfig, credentialReceipt, provider, model, assistant } = await this.resolveTransportFor(
+      request,
+      MODEL_CAPABILITY.EMBEDDING
+    )
     const usageContext = createCaptureContext({
       provider,
       model,
@@ -1173,7 +1186,10 @@ export class AiService extends BaseService {
     logger.info('rerank started', { assistantId: request.assistantId, count: request.documents.length })
     const signal = request.requestOptions?.signal
 
-    const { sdkConfig, credentialReceipt, provider, model, assistant } = await this.resolveTransportFor(request)
+    const { sdkConfig, credentialReceipt, provider, model, assistant } = await this.resolveTransportFor(
+      request,
+      MODEL_CAPABILITY.RERANK
+    )
     const usageContext = createCaptureContext({
       provider,
       model,
@@ -1376,10 +1392,12 @@ export class AiService extends BaseService {
           // with the caller's key, no job row, no result download.
           const vendorTransport = imageSupport?.modes?.[probeMode]?.vendorTransport
           probe = (async () => {
+            const resolvedEndpoint = resolveEffectiveEndpoint(provider, model, undefined, request.apiKeyOverride)
             const { config } = await resolveProviderAiSdkConfig(provider, model, {
-              apiKeyOverride: request.apiKeyOverride
+              apiKeyOverride: request.apiKeyOverride,
+              resolvedEndpoint
             })
-            const wireModelId = resolveWireModelId(model, resolveEffectiveEndpoint(provider, model).endpointType)
+            const wireModelId = resolveWireModelId(model, resolvedEndpoint.endpointType)
             const transport = resolveImageTransport(config.providerId, wireModelId, config.providerSettings)
             if (!transport) {
               throw new Error(`Image health check: no transport for '${config.providerId}' (model '${wireModelId}')`)
@@ -1441,12 +1459,24 @@ export class AiService extends BaseService {
   // ── Shared agent parameter resolution ──
 
   /** Transport resolution shared by every modality: provider, model, credential, wire model id. */
-  private async resolveTransportFor(request: AsInProcess<AiRequest>) {
+  private async resolveTransportFor(
+    request: AsInProcess<AiRequest>,
+    capability: ReturnType<typeof endpointImpliedCapability>
+  ) {
     const { provider, model, assistant } = this.getProviderAndModel(request)
+    assertXuelangModelUsable(provider, model)
+    const resolvedEndpoint =
+      provider.id === XUELANG_PROVIDER_ID
+        ? resolveXuelangEndpoint(
+            model,
+            request.apiKeyOverride,
+            (type) => endpointImpliedCapability(type) === capability
+          )
+        : resolveEffectiveEndpoint(provider, model)
     const { sdkConfig, credentialReceipt } = await resolveSdkConfig(
       provider,
       model,
-      resolveEffectiveEndpoint(provider, model),
+      resolvedEndpoint,
       request.apiKeyOverride
     )
     applyHttpTrace(sdkConfig.providerSettings, { modelName: model.name ?? model.id })

@@ -148,8 +148,12 @@ export function ModelListHealthProvider({ providerId, children }: { providerId: 
   return <ModelListHealthRunContext value={runValue}>{children}</ModelListHealthRunContext>
 }
 
+export function useOptionalModelListHealthRun() {
+  return use(ModelListHealthRunContext)
+}
+
 export function useModelListHealthRun() {
-  const context = use(ModelListHealthRunContext)
+  const context = useOptionalModelListHealthRun()
   if (!context) throw new Error('useModelListHealthRun must be used within ModelListHealthProvider')
   return context
 }

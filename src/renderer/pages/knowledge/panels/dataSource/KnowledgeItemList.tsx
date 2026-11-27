@@ -27,6 +27,9 @@ export interface KnowledgeItemListProps {
   onPreviewSource: (item: KnowledgeItem) => void | Promise<unknown>
   onReindex: (item: KnowledgeItem) => void | Promise<unknown>
   onViewChunks: (itemId: string) => void
+  selectable?: boolean
+  canActivate?: (item: KnowledgeItem) => boolean
+  canPreviewSource?: (item: KnowledgeItem) => boolean
   readOnly?: boolean
   allowDelete?: (item: KnowledgeItem) => boolean
   virtualize?: boolean
@@ -48,6 +51,9 @@ const KnowledgeItemList = ({
   onPreviewSource,
   onReindex,
   onViewChunks,
+  selectable = true,
+  canActivate,
+  canPreviewSource,
   readOnly = false,
   allowDelete,
   virtualize = true
@@ -95,11 +101,27 @@ const KnowledgeItemList = ({
         onPreviewSource={() => onPreviewSource(item)}
         onReindex={() => onReindex(item)}
         onViewChunks={() => onViewChunks(item.id)}
+        selectable={selectable}
+        canActivate={canActivate?.(item)}
+        canPreviewSource={canPreviewSource?.(item)}
         readOnly={readOnly}
         allowDelete={allowDelete?.(item)}
       />
     ),
-    [allowDelete, onActivate, onDelete, onPreviewSource, onReindex, onToggleOne, onViewChunks, readOnly, selectedIds]
+    [
+      allowDelete,
+      canActivate,
+      canPreviewSource,
+      onActivate,
+      onDelete,
+      onPreviewSource,
+      onReindex,
+      onToggleOne,
+      onViewChunks,
+      readOnly,
+      selectable,
+      selectedIds
+    ]
   )
 
   if (isLoading) {
@@ -128,19 +150,27 @@ const KnowledgeItemList = ({
         role="grid"
         aria-label={t('knowledge.data_source.table.aria_label')}
         className="flex min-h-0 flex-1 flex-col">
-        <div role="row" className={cn(KNOWLEDGE_ITEM_ROW_GRID, 'mb-2 h-11 shrink-0 border-b border-border px-2.5')}>
-          <div role="columnheader" className="flex items-center self-stretch">
-            {/* Full-cell label so the whole select-all column is clickable, matching the rows. */}
-            <label className="flex size-full cursor-pointer items-center">
-              <Checkbox
-                size="sm"
-                className={knowledgeDataSourceCheckboxClassName}
-                aria-label={t('knowledge.data_source.table.select_all')}
-                checked={allSelected ? true : someSelected ? 'indeterminate' : false}
-                onCheckedChange={(checked) => onToggleAll(checked === true)}
-              />
-            </label>
-          </div>
+        <div
+          role="row"
+          className={cn(
+            KNOWLEDGE_ITEM_ROW_GRID,
+            !selectable && 'grid-cols-[minmax(0,1fr)_4rem_7rem_6rem_2rem]',
+            'mb-2 h-11 shrink-0 border-b border-border px-2.5'
+          )}>
+          {selectable ? (
+            <div role="columnheader" className="flex items-center self-stretch">
+              {/* Full-cell label so the whole select-all column is clickable, matching the rows. */}
+              <label className="flex size-full cursor-pointer items-center">
+                <Checkbox
+                  size="sm"
+                  className={knowledgeDataSourceCheckboxClassName}
+                  aria-label={t('knowledge.data_source.table.select_all')}
+                  checked={allSelected ? true : someSelected ? 'indeterminate' : false}
+                  onCheckedChange={(checked) => onToggleAll(checked === true)}
+                />
+              </label>
+            </div>
+          ) : null}
           <div role="columnheader" className="min-w-0 text-xs font-medium text-foreground-tertiary">
             {t('knowledge.data_source.table.columns.name')}
           </div>

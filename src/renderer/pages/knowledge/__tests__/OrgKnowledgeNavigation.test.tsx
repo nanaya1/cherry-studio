@@ -593,17 +593,31 @@ it.each([false, true])('公共库创建入口按企业管理能力显示并固�
   authorization.canManageWeb = canManageWeb
   const user = userEvent.setup()
   render(<RoutedPage />)
-  expect(screen.queryByRole('button', { name: i18n.t('knowledge.org.create_public_web') })).not.toBeInTheDocument()
   await user.click(screen.getByRole('button', { name: 'Public' }))
   if (canManageWeb) {
-    await user.click(screen.getByRole('button', { name: i18n.t('knowledge.org.create_public_web') }))
+    await user.click(screen.getByRole('button', { name: i18n.t('knowledge.add.title') }))
     expect(request).toHaveBeenCalledWith('enterprise.knowledge.open_web_management', {
       create: true,
       baseId: undefined
     })
   } else {
-    expect(screen.queryByRole('button', { name: i18n.t('knowledge.org.create_public_web') })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: i18n.t('knowledge.add.title') })).not.toBeInTheDocument()
   }
+})
+
+it('个人侧栏将本地库和未绑定的云端库合并分页', async () => {
+  const user = userEvent.setup()
+  local.bases = Array.from({ length: 20 }, (_, index) => ({
+    id: `local:page-${index}`,
+    name: `分页本地库 ${index + 1}`,
+    groupId: null
+  })) as KnowledgeBaseListItem[]
+  render(<RoutedPage />)
+  expect(await screen.findByText('分页本地库 20', { exact: true })).toBeInTheDocument()
+  expect(screen.queryByText('我的服务端副本', { exact: true })).not.toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: 'Next' }))
+  expect(screen.getByText('我的服务端副本', { exact: true })).toBeInTheDocument()
+  expect(screen.queryByText('分页本地库 20', { exact: true })).not.toBeInTheDocument()
 })
 
 // === submitRenameBase × enterprise.knowledge.rename_shared 行为 ===

@@ -33,6 +33,7 @@ import {
   InspectionSpaceSchema,
   InspectionFileSchema,
   InspectionChunkSchema,
+  InspectionPreviewSchema,
   InspectionContentSchema,
   InspectionRelationSchema,
   inspectionPageSchema
@@ -69,6 +70,10 @@ export const enterpriseKnowledgeRequestSchemas = {
   'enterprise.knowledge.inspection.files': defineRoute({
     input: z.strictObject({ baseId: orgId, page: z.number().int().positive(), parentId: orgId.optional() }),
     output: inspectionPageSchema(InspectionFileSchema)
+  }),
+  'enterprise.knowledge.inspection.preview': defineRoute({
+    input: z.strictObject({ baseId: orgId, fileId: orgId }),
+    output: InspectionPreviewSchema
   }),
   'enterprise.knowledge.inspection.content': defineRoute({
     input: z.strictObject({ baseId: orgId, fileId: orgId }),

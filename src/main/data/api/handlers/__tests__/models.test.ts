@@ -10,6 +10,7 @@ import {
   MODELS_DELETE_MAX_IDS,
   UpdateModelSchema
 } from '@shared/data/api/schemas/models'
+import { XUELANG_PROVIDER_ID } from '@shared/data/presets/xuelang'
 
 import { mockMainLoggerService } from '../../../../../../tests/__mocks__/MainLoggerService'
 
@@ -66,6 +67,69 @@ const DISABLED_REASONING_PROFILE = { format: 'none', wire: { disabled: true } } 
 
 beforeEach(() => {
   vi.clearAllMocks()
+})
+
+describe('企业内置模型', () => {
+  const params = { uniqueModelId: `${XUELANG_PROVIDER_ID}::managed-model` as const }
+
+  it('只允许单项 PATCH 更新开关', async () => {
+    const updated = { id: params.uniqueModelId, isEnabled: false }
+    listMock.mockReturnValueOnce([{ id: params.uniqueModelId, isDeprecated: false }])
+    updateMock.mockReturnValueOnce(updated)
+
+    await expect(
+      modelHandlers['/models/:uniqueModelId*'].PATCH({ params, body: { isEnabled: false, name: 'Custom' } })
+    ).rejects.toMatchObject({ code: ErrorCode.INVALID_OPERATION })
+    expect(updateMock).not.toHaveBeenCalled()
+
+    await expect(
+      modelHandlers['/models/:uniqueModelId*'].PATCH({ params, body: { isEnabled: false } })
+    ).resolves.toEqual(updated)
+  })
+
+  it.each([
+    [
+      '混合批量新增',
+      () =>
+        modelHandlers['/models'].POST({
+          body: [
+            { providerId: 'openai', modelId: 'custom' },
+            { providerId: XUELANG_PROVIDER_ID, modelId: 'managed' }
+          ]
+        }),
+      createMock
+    ],
+    [
+      '混合批量更新',
+      () =>
+        modelHandlers['/models'].PATCH({
+          body: [
+            { uniqueModelId: 'openai::custom', patch: { name: 'Custom' } },
+            { uniqueModelId: params.uniqueModelId, patch: { isEnabled: false } }
+          ]
+        }),
+      bulkUpdateMock
+    ],
+    [
+      '混合批量删除',
+      () => modelHandlers['/models'].DELETE({ query: { ids: ['openai::custom', params.uniqueModelId] } }),
+      bulkDeleteMock
+    ],
+    ['单项删除', () => modelHandlers['/models/:uniqueModelId*'].DELETE({ params }), deleteMock],
+    [
+      '同步模型',
+      () =>
+        modelHandlers['/providers/:providerId/models:reconcile'].POST({
+          params: { providerId: XUELANG_PROVIDER_ID },
+          body: { toAdd: [], toRemove: [] }
+        }),
+      reconcileForProviderMock
+    ]
+  ] as const)('拒绝%s且不发起写入', async (_operation, run, write) => {
+    await expect(run()).rejects.toMatchObject({ code: ErrorCode.INVALID_OPERATION })
+    expect(write).not.toHaveBeenCalled()
+    expect(lookupModelMock).not.toHaveBeenCalled()
+  })
 })
 
 describe('Model handler validation', () => {

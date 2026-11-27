@@ -16,6 +16,7 @@ import { CHERRYAI_PROVIDER_ID, isManagedCherryCloudModel } from '@shared/data/pr
 import { OPENAI_CODEX_PROVIDER_ID } from '@shared/data/presets/codex'
 import { GROK_CLI_PROVIDER_ID } from '@shared/data/presets/grokCli'
 import { LOCAL_EMBEDDING_PROVIDER_ID } from '@shared/data/presets/localEmbedding'
+import { XUELANG_PROVIDER_ID } from '@shared/data/presets/xuelang'
 import type { EndpointType, Model } from '@shared/data/types/model'
 import { ENDPOINT_TYPE } from '@shared/data/types/model'
 import type { Provider } from '@shared/data/types/provider'
@@ -26,7 +27,7 @@ import {
   isWithTrailingSharp,
   withoutTrailingApiVersion
 } from '@shared/utils/api'
-import { isGenerateImageModel } from '@shared/utils/model'
+import { getRawModelId, isGenerateImageModel } from '@shared/utils/model'
 import {
   isAzureOpenAIProvider,
   isGeminiProvider,
@@ -56,7 +57,12 @@ import type { ServingAuthMethod, ServingCredentialReceipt } from './credential'
 import { normalizeComfyuiBaseUrl } from './custom/comfyui/comfyuiHttp'
 import { appendDashScopeWebExtractor } from './custom/dashscope/dashscopeWebExtractor'
 import { dmxapiUsesCustomTransport } from './custom/dmxapi/dmxapiImageRouting'
-import { resolveAiSdkProviderId, type ResolvedEndpoint, resolveEffectiveEndpoint } from './endpoint'
+import {
+  assertXuelangModelUsable,
+  resolveAiSdkProviderId,
+  type ResolvedEndpoint,
+  resolveEffectiveEndpoint
+} from './endpoint'
 import { buildGrokCliRequestHeaders, rewriteGrokCliResponsesBody } from './grokCli'
 import { transformLmStudioRequestBody } from './lmstudio'
 import { isVertexMaasModelId, normalizeVertexCredentials } from './vertex'
@@ -198,9 +204,28 @@ export async function resolveProviderAiSdkConfig(
   model: Model,
   options?: ProviderToAiSdkConfigOptions
 ): Promise<ResolvedProviderAiSdkConfig> {
-  const { endpointType, baseUrl } = options?.resolvedEndpoint ?? resolveEffectiveEndpoint(provider, model)
-
+  assertXuelangModelUsable(provider, model)
+  const { endpointType, baseUrl } =
+    options?.resolvedEndpoint ?? resolveEffectiveEndpoint(provider, model, undefined, options?.apiKeyOverride)
   const aiSdkProviderId = appProviderIds[resolveAiSdkProviderId(provider, endpointType)]
+
+  if (provider.id === XUELANG_PROVIDER_ID) {
+    const selected =
+      endpointType && providerService.resolveXuelangApiKey(getRawModelId(model), endpointType, options?.apiKeyOverride)
+    if (!selected) throw new Error(`No authorized xuelang route for model ${model.id}.`)
+    const { baseURL, endpoint } = routeToEndpoint(formatBaseURL(selected.baseUrl, provider, endpointType))
+    const config = buildCherryinConfig({
+      actualProvider: provider,
+      model,
+      baseConfig: { baseURL, apiKey: selected.value },
+      resolvedBaseUrl: selected.baseUrl,
+      endpointType,
+      endpoint,
+      aiSdkProviderId
+    })
+    config.providerSettings.fetch = customFetch
+    return { config, credentialReceipt: selected.apiKeySelection }
+  }
 
   const formattedBaseUrl = formatBaseURL(baseUrl, provider, endpointType)
   const { baseURL, endpoint } = routeToEndpoint(formattedBaseUrl)
@@ -744,8 +769,13 @@ function mapCherryinEndpointType(epType: string | undefined): CherryInProviderSe
 
 function buildCherryinConfig(ctx: BuilderContext): ProviderConfig {
   const provider = ctx.actualProvider
-  const anthropicBaseURL = formatApiHost(provider.endpointConfigs?.[ENDPOINT_TYPE.ANTHROPIC_MESSAGES]?.baseUrl)
-  const geminiBaseURL = formatApiHost(getBaseUrl(provider, ENDPOINT_TYPE.GOOGLE_GENERATE_CONTENT), true, 'v1beta')
+  const managed = provider.id === XUELANG_PROVIDER_ID
+  const anthropicBaseURL = managed
+    ? ctx.baseConfig.baseURL
+    : formatApiHost(provider.endpointConfigs?.[ENDPOINT_TYPE.ANTHROPIC_MESSAGES]?.baseUrl)
+  const geminiBaseURL = managed
+    ? ctx.baseConfig.baseURL
+    : formatApiHost(getBaseUrl(provider, ENDPOINT_TYPE.GOOGLE_GENERATE_CONTENT), true, 'v1beta')
 
   const cherryinEndpointType = mapCherryinEndpointType(ctx.endpointType)
 

@@ -253,7 +253,7 @@ describe('KnowledgeItemRow', () => {
     expect(screen.getByRole('tooltip')).toHaveTextContent('Indexing failed')
   })
 
-  it('renders a not-migrated directory as a red failure, reindexable but not chunk-viewable', () => {
+  it('shows a dash for a failed directory while keeping reindex available', () => {
     render(
       <KnowledgeItemRow
         item={createDirectoryItem({
@@ -265,9 +265,7 @@ describe('KnowledgeItemRow', () => {
       />
     )
 
-    // Red failure label with the localized migration-failed tooltip.
-    expect(screen.getByText('失败')).toBeInTheDocument()
-    expect(screen.getByRole('tooltip')).toHaveTextContent('该文件夹内容迁移失败')
+    expect(screen.getAllByRole('gridcell')[3]).toHaveTextContent(/^—$/)
 
     // Re-indexing restores the index, but there are no chunks to view yet.
     fireEvent.contextMenu(screen.getByRole('row'))
@@ -312,23 +310,10 @@ describe('KnowledgeItemRow', () => {
     expect(screen.queryByText(/%/)).not.toBeInTheDocument()
   })
 
-  it('shows the copy percentage while preparing a directory', () => {
-    mockUseSharedCacheValue.mockReturnValue(38)
+  it.each(['preparing', 'completed'] as const)('shows a dash for a %s directory', (status) => {
+    render(<KnowledgeItemRow item={createDirectoryItem({ id: 'directory-1', status })} {...defaultHandlers} />)
 
-    render(
-      <KnowledgeItemRow item={createDirectoryItem({ id: 'directory-1', status: 'preparing' })} {...defaultHandlers} />
-    )
-
-    expect(mockUseSharedCacheValue).toHaveBeenCalledWith('knowledge.item.directory_copy_progress.directory-1')
-    expect(screen.getByText('复制中 38%')).toBeInTheDocument()
-  })
-
-  it('shows the pending label before directory copy progress is available', () => {
-    render(
-      <KnowledgeItemRow item={createDirectoryItem({ id: 'directory-1', status: 'preparing' })} {...defaultHandlers} />
-    )
-
-    expect(screen.getByText('等待中')).toBeInTheDocument()
+    expect(screen.getAllByRole('gridcell')[3]).toHaveTextContent(/^—$/)
   })
 
   it('does not subscribe to the progress key at all for non-embedding rows', () => {

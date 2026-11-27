@@ -20,9 +20,11 @@ import {
 import * as z from 'zod'
 
 import { loggerService } from '@logger'
+import { modelService } from '@main/data/services/ModelService'
 import { providerService } from '@main/data/services/ProviderService'
 import { copilotService } from '@main/services/CopilotService'
 import { mergeHeaders } from '@main/utils/http'
+import { XUELANG_PROVIDER_ID } from '@shared/data/presets/xuelang'
 import type { EndpointType, ListedModels, Model } from '@shared/data/types/model'
 import {
   createUniqueModelId,
@@ -54,6 +56,7 @@ import {
 import { COPILOT_DEFAULT_HEADERS } from './constants'
 import { listWorkflows } from './custom/comfyui/comfyuiWorkflowDiscovery'
 import { partitionListableWorkflows } from './custom/comfyui/comfyuiWorkflows'
+import { resolveEffectiveEndpoint } from './endpoint'
 import {
   createVertexModelListRequest,
   DEFAULT_VERTEX_MODEL_PUBLISHERS,
@@ -1125,6 +1128,15 @@ export async function listModels(
   options?: { throwOnError?: boolean }
 ): Promise<ListedModels> {
   try {
+    if (provider.id === XUELANG_PROVIDER_ID) {
+      // 内置目录由企业快照同步；不拿模型专用 Key 向通用地址请求 /models。
+      if (!provider.isEnabled) return listing([])
+      return listing(
+        modelService
+          .list({ providerId: provider.id, enabled: true })
+          .filter((model) => resolveEffectiveEndpoint(provider, model).endpointType !== undefined)
+      )
+    }
     const fetcher = fetchers.find((f) => f.match(provider))!
     return await fetcher.fetch(provider, abortSignal, options)
   } catch (error) {

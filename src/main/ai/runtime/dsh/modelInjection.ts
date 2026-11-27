@@ -17,6 +17,7 @@ import { providerService } from '@data/services/ProviderService'
 import { getExtraHeaders } from '@main/ai/utils/provider'
 import { createAiUsagePricingSnapshot } from '@main/ai/utils/usageCapture'
 import { type DshApi, mapEndpointToDshApi, resolveDshEndpointType } from '@shared/ai/dshModelCompatibility'
+import { XUELANG_PROVIDER_ID } from '@shared/data/presets/xuelang'
 import { type Model, parseUniqueModelId, type UniqueModelId } from '@shared/data/types/model'
 import type { ApiKeyEntry, Provider } from '@shared/data/types/provider'
 import type { ReasoningEffortOption } from '@shared/types/aiSdk'
@@ -26,7 +27,13 @@ import { getRawModelId, isGatewayRoutableModel, isReasoningModel, isVisionModel 
 import { isLoginBasedProvider, matchesPreset } from '@shared/utils/provider'
 import { SystemProviderIds } from '@shared/utils/systemProviderId'
 
-import { resolveEffectiveEndpoint } from '../../provider/endpoint'
+import {
+  assertXuelangModelUsable,
+  isXuelangChatEndpoint,
+  type ResolvedEndpoint,
+  resolveEffectiveEndpoint,
+  resolveXuelangEndpoint
+} from '../../provider/endpoint'
 import { ApiGatewayNotRunningError, requiresAgentGateway, resolveApiGatewayRuntime } from '../agentApiGateway'
 import { resolveAgentContextWindow } from '../agentContextWindow'
 import { toAgentProviderHeaders } from '../agentProviderHeaders'
@@ -150,6 +157,7 @@ export interface DshProviderInjection {
 }
 
 function resolveDshEndpoint(provider: Provider, model: Model) {
+  if (provider.id === XUELANG_PROVIDER_ID) return resolveXuelangEndpoint(model, undefined, isXuelangChatEndpoint)
   return resolveEffectiveEndpoint(provider, model, resolveDshEndpointType(provider, model))
 }
 
@@ -157,9 +165,12 @@ function resolveDshEndpoint(provider: Provider, model: Model) {
  * Effective-endpoint variant of shared `resolveDshApi`: services resolve the
  * concrete route, so this is the branch condition for native vs gateway.
  */
-export function resolveDshInjectionApi(provider: Provider, model: Model): DshApi | undefined {
+export function resolveDshInjectionApi(
+  provider: Provider,
+  model: Model,
+  resolvedEndpoint: ResolvedEndpoint = resolveDshEndpoint(provider, model)
+): DshApi | undefined {
   if (isLoginBasedProvider(provider)) return undefined
-  const resolvedEndpoint = resolveDshEndpoint(provider, model)
   const adapterFamily = resolvedEndpoint.endpointType
     ? provider.endpointConfigs?.[resolvedEndpoint.endpointType]?.adapterFamily
     : undefined
@@ -168,7 +179,10 @@ export function resolveDshInjectionApi(provider: Provider, model: Model): DshApi
 
 /** Whether DSH must use the local Gateway by provider policy or protocol fallback. */
 export function usesDshGateway(provider: Provider, model: Model): boolean {
-  return requiresAgentGateway(provider.id) || resolveDshInjectionApi(provider, model) === undefined
+  return (
+    provider.id !== XUELANG_PROVIDER_ID &&
+    (requiresAgentGateway(provider.id) || resolveDshInjectionApi(provider, model) === undefined)
+  )
 }
 
 /**
@@ -183,14 +197,14 @@ export function buildDshProviderInjection(
   model: Model,
   apiKey: string,
   credentialReceipt?: AiUsageCredentialReceipt,
-  reasoningEffort: ReasoningEffortOption = 'default'
+  reasoningEffort: ReasoningEffortOption = 'default',
+  resolvedEndpoint: ResolvedEndpoint = resolveDshEndpoint(provider, model)
 ): DshProviderInjection {
   // Unsupported-provider beats missing-key: a login-based provider has no key
   // by design, and "missing API key" would misdiagnose it. dsh runs as a
   // subprocess with no per-request transport injection, so every login-based
   // provider is undrivable (parity with shared `resolveDshApi`).
-  const resolvedEndpoint = resolveDshEndpoint(provider, model)
-  const api = resolveDshInjectionApi(provider, model)
+  const api = resolveDshInjectionApi(provider, model, resolvedEndpoint)
   if (!api) {
     throw new DshUnsupportedProviderError(provider.id)
   }
@@ -312,6 +326,29 @@ export async function resolveDshProviderInjectionFromSnapshot(
   enabledApiKeys?: readonly ApiKeyEntry[],
   reasoningEffort: ReasoningEffortOption = 'default'
 ): Promise<DshProviderInjection> {
+  if (provider.id === XUELANG_PROVIDER_ID) {
+    assertXuelangModelUsable(provider, model)
+    const resolvedEndpoint = resolveDshEndpoint(provider, model)
+    const { endpointType } = resolvedEndpoint
+    if (!endpointType) throw new DshMissingApiKeyError(provider.id)
+    if (!resolveDshInjectionApi(provider, model, resolvedEndpoint)) throw new DshUnsupportedProviderError(provider.id)
+    const selected = providerService.resolveXuelangApiKey(getRawModelId(model), endpointType)
+    if (!selected) throw new DshMissingApiKeyError(provider.id)
+    if (
+      enabledApiKeys &&
+      !enabledApiKeys.some(
+        (entry) =>
+          entry.key === selected.value &&
+          entry.managedRoutes?.endpointConfigs[endpointType]?.baseUrl === selected.baseUrl
+      )
+    ) {
+      throw new Error(`dsh provider credentials changed during materialization: ${provider.id}`)
+    }
+    return buildDshProviderInjection(provider, model, selected.value, selected.apiKeySelection, reasoningEffort, {
+      endpointType,
+      baseUrl: selected.baseUrl
+    })
+  }
   if (usesDshGateway(provider, model)) {
     // Shared gateway sequence: consent (ApiGatewayNotRunningError), converge, materialize key.
     const gateway = await resolveApiGatewayRuntime(sessionId)
@@ -353,6 +390,14 @@ export async function assertDshProviderUsable(uniqueModelId: UniqueModelId): Pro
   const { providerId, modelId } = parseUniqueModelId(uniqueModelId)
   const provider = providerService.getByProviderId(providerId)
   const model = modelService.getByKey(providerId, modelId)
+
+  if (provider.id === XUELANG_PROVIDER_ID) {
+    assertXuelangModelUsable(provider, model)
+    const resolvedEndpoint = resolveDshEndpoint(provider, model)
+    if (!resolvedEndpoint.endpointType) throw new DshMissingApiKeyError(providerId)
+    if (!resolveDshInjectionApi(provider, model, resolvedEndpoint)) throw new DshUnsupportedProviderError(providerId)
+    return
+  }
 
   // Provider-declared Gateway routes authenticate at materialization time, not with a provider key.
   if (requiresAgentGateway(provider.id)) {

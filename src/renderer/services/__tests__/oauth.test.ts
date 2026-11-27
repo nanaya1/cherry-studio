@@ -25,63 +25,24 @@ describe('provider websites', () => {
     expect(authorization.searchParams.get('redirect_uri')).toBe('meacowork://')
   })
 
-  it('starts Xuelang through the deep-link runtime and opens authorization externally', async () => {
-    vi.mocked(ipcApi.request).mockImplementation((route: string) => {
-      if (route === 'oauth.start_deep_link_flow') {
-        return Promise.resolve({
-          authUrl: 'https://api.xuelanglm.com/oauth2/auth?state=xuelang-state',
-          state: 'xuelang-state'
-        }) as never
-      }
-      return Promise.resolve(undefined) as never
-    })
-    vi.mocked(ipcApi.on).mockImplementation((_event, listener) => {
-      queueMicrotask(() => listener({ state: 'xuelang-state', apiKeys: 'managed-key' }))
-      return vi.fn()
-    })
+  it('starts CherryIN through its loopback runtime', async () => {
+    vi.mocked(ipcApi.request).mockResolvedValueOnce({ apiKeys: 'managed-key' } as never)
     const setKey = vi.fn()
 
-    await expect(
-      oauthWithCherryIn(setKey, {
-        oauthServer: 'https://api.xuelanglm.com',
-        providerId: 'xuelang'
-      })
-    ).resolves.toBe('managed-key')
+    await expect(oauthWithCherryIn(setKey, { oauthServer: 'https://open.cherryin.ai' })).resolves.toBe('managed-key')
 
-    expect(ipcApi.request).toHaveBeenCalledWith('oauth.start_deep_link_flow', {
-      providerId: 'xuelang',
-      oauthServer: 'https://api.xuelanglm.com',
-      apiHost: undefined
-    })
     expect(ipcApi.request).toHaveBeenCalledWith(
-      'system.shell.open_external_website',
-      'https://api.xuelanglm.com/oauth2/auth?state=xuelang-state'
+      'cherryin.sign_in',
+      expect.objectContaining({ oauthServer: 'https://open.cherryin.ai' })
     )
     expect(setKey).toHaveBeenCalledWith('managed-key')
   })
 
-  it('preserves Xuelang deep-link error codes for renderer i18n mapping', async () => {
-    vi.mocked(ipcApi.request).mockImplementation((route: string) => {
-      if (route === 'oauth.start_deep_link_flow') {
-        return Promise.resolve({ authUrl: 'https://api.xuelanglm.com/oauth2/auth', state: 'state' }) as never
-      }
-      return Promise.resolve(undefined) as never
-    })
-    vi.mocked(ipcApi.on).mockImplementation((_event, listener) => {
-      queueMicrotask(() => listener({ state: 'state', error: 'subscription missing', code: 'NO_ACTIVE_SUBSCRIPTION' }))
-      return vi.fn()
-    })
-
-    await expect(
-      oauthWithCherryIn(vi.fn(), { oauthServer: 'https://api.xuelanglm.com', providerId: 'xuelang' })
-    ).rejects.toMatchObject({ message: 'subscription missing', code: 'NO_ACTIVE_SUBSCRIPTION' })
-  })
-
-  it('provisions API keys for the selected gateway provider', async () => {
+  it('provisions API keys for the CherryIN gateway provider', async () => {
     vi.mocked(ipcApi.request).mockResolvedValueOnce('managed-key')
 
-    await expect(provisionOAuthApiKeys('xuelang')).resolves.toBe('managed-key')
-    expect(ipcApi.request).toHaveBeenCalledWith('oauth.provision_api_keys', { providerId: 'xuelang' })
+    await expect(provisionOAuthApiKeys()).resolves.toBe('managed-key')
+    expect(ipcApi.request).toHaveBeenCalledWith('oauth.provision_api_keys', { providerId: 'cherryin' })
   })
 
   it.each([

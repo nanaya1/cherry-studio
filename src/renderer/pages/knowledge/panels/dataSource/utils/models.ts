@@ -51,7 +51,9 @@ type DataSourceTypeDisplayConfigMap = {
 }
 
 const getRelativeMetaParts = (updatedAt: string, language: string, extraParts: Array<string | undefined> = []) =>
-  [...extraParts, formatRelativeTime(updatedAt, language)].filter((part): part is string => Boolean(part))
+  [...extraParts, Number.isFinite(Date.parse(updatedAt)) ? formatRelativeTime(updatedAt, language) : undefined].filter(
+    (part): part is string => Boolean(part)
+  )
 
 const getFileSuffix = (item: KnowledgeItemOf<'file'>) => {
   const fallbackName = getKnowledgePathBasename(item.data.source)

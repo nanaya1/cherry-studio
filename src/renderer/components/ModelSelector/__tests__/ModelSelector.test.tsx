@@ -501,6 +501,37 @@ describe('ModelSelector', () => {
     expect(onOpenChange).toHaveBeenCalledWith(false)
   })
 
+  it('does not switch to another model when the first selected Xuelang model loses its route', async () => {
+    const user = userEvent.setup()
+    const firstId: UniqueModelId = 'xuelang::previous'
+    const secondId: UniqueModelId = 'openai::gpt-4'
+    const onMultiSelectModeChange = vi.fn()
+    const onSelect = vi.fn()
+    const selector = () => (
+      <ModelSelector
+        open
+        multiple
+        selectionType="id"
+        multiSelectMode
+        requireUsableXuelangChatRoute
+        value={[firstId, secondId]}
+        trigger={<button type="button">open</button>}
+        onMultiSelectModeChange={onMultiSelectModeChange}
+        onSelect={onSelect}
+      />
+    )
+    mocks.useModelSelectorData.mockReturnValue(makeData({ resolvedSelectedModelIds: [firstId, secondId] }))
+    const { rerender } = render(selector())
+
+    mocks.useModelSelectorData.mockReturnValue(makeData({ resolvedSelectedModelIds: [secondId] }))
+    rerender(selector())
+    expect(onSelect).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole('switch', { name: 'models.multi_select.label' }))
+    expect(onMultiSelectModeChange).toHaveBeenCalledWith(false)
+    expect(onSelect).not.toHaveBeenCalled()
+  })
+
   it('collapses multiple ids when multi-select mode is disabled', async () => {
     const user = userEvent.setup()
     const firstId = 'openai::gpt-4' as UniqueModelId

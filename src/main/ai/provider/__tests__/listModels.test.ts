@@ -991,25 +991,10 @@ describe('listModels — newApiFetcher endpoint types', () => {
     })
   })
 
-  it('routes xuelang through the NewAPI-compatible model parser', async () => {
-    const provider = makeProvider({
-      id: 'xuelang',
-      endpointConfigs: {
-        [ENDPOINT_TYPE.OPENAI_CHAT_COMPLETIONS]: { baseUrl: 'https://api.xuelanglm.com/v1' }
-      }
-    })
-    aiSdkGetFromApiMock.mockResolvedValue({
-      value: {
-        data: [{ id: 'xuelang-model', supported_endpoint_types: ['anthropic'] }]
-      }
-    })
-
-    const models = await listModels(provider)
-
-    expect(models[0]).toMatchObject({
-      apiModelId: 'xuelang-model',
-      endpointTypes: [ENDPOINT_TYPE.ANTHROPIC_MESSAGES]
-    })
+  it('does not use remote model discovery for the disabled xuelang provider', async () => {
+    await expect(listModels(makeProvider({ id: 'xuelang', isEnabled: false }))).resolves.toEqual({ models: [] })
+    expect(getRotatedApiKeyMock).not.toHaveBeenCalled()
+    expect(aiSdkGetFromApiMock).not.toHaveBeenCalled()
   })
 
   it('routes copied xuelang providers through the NewAPI-compatible model parser', async () => {
@@ -1026,7 +1011,7 @@ describe('listModels — newApiFetcher endpoint types', () => {
       }
     })
 
-    const models = await listModels(provider)
+    const { models } = await listModels(provider)
 
     expect(models[0]).toMatchObject({
       apiModelId: 'copied-xuelang-model',

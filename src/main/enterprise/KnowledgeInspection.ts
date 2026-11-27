@@ -57,6 +57,9 @@ export class KnowledgeInspection {
       )
     )
   }
+  preview(params: { baseId: string; fileId: string }) {
+    return this.run((client, guard) => client.previewUrl(this.decode(params.baseId), this.decode(params.fileId), guard))
+  }
   content(params: { baseId: string; fileId: string }) {
     return this.run((client, guard) => client.content(this.decode(params.baseId), this.decode(params.fileId), guard))
   }

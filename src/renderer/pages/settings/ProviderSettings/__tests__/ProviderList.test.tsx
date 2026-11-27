@@ -246,6 +246,24 @@ describe('ProviderList', () => {
     expect(onSelectProvider).toHaveBeenCalledWith('anthropic')
   })
 
+  it('keeps the disabled enterprise entry selectable without edit or drag controls', async () => {
+    const onSelectProvider = vi.fn()
+    useProvidersMock.mockReturnValue({
+      providers: [...providers, { id: 'xuelang', name: '雪浪工匠', presetProviderId: 'xuelang', isEnabled: false }],
+      createProvider: vi.fn()
+    })
+    render(<ProviderList filterModeHint="enabled" onSelectProvider={onSelectProvider} />)
+
+    const entry = screen.getByTestId('provider-list-item-xuelang')
+    expect(entry).toBeVisible()
+    await userEvent.click(entry)
+
+    expect(onSelectProvider).toHaveBeenCalledWith('xuelang')
+    expect(screen.queryByTestId('provider-list-menu-xuelang')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('provider-list-delete-xuelang')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('provider-list-drag-handle-xuelang')).not.toBeInTheDocument()
+  })
+
   it('hides CherryAI from the provider list', () => {
     useProvidersMock.mockReturnValue({
       providers: [
@@ -269,25 +287,21 @@ describe('ProviderList', () => {
 
   it('offers only safe canonical preset sources to the custom provider editor', async () => {
     const user = userEvent.setup()
-    const canonicalOpenAI = {
+    const canonicalDeepSeek = {
       ...providers[0],
-      presetProviderId: 'openai',
+      id: 'deepseek',
+      name: 'DeepSeek',
+      presetProviderId: 'deepseek',
       authType: 'api-key'
     }
-    const canonicalNewApi = {
-      id: 'new-api',
-      name: 'New API',
-      presetProviderId: 'new-api',
-      authType: 'api-key',
-      endpointConfigs: {
-        [ENDPOINT_TYPE.OPENAI_CHAT_COMPLETIONS]: { baseUrl: 'http://localhost:3000' }
-      }
-    }
+    const canonicalZhipu = { ...canonicalDeepSeek, id: 'zhipu', name: 'Zhipu', presetProviderId: 'zhipu' }
+    const managedXuelang = { ...canonicalDeepSeek, id: 'xuelang', name: '雪浪工匠', presetProviderId: 'xuelang' }
     useProvidersMock.mockReturnValue({
       providers: [
-        canonicalOpenAI,
-        canonicalNewApi,
-        { ...canonicalOpenAI, id: 'openai-work' },
+        canonicalDeepSeek,
+        canonicalZhipu,
+        managedXuelang,
+        { ...canonicalDeepSeek, id: 'deepseek-work' },
         {
           ...providers[1],
           id: 'claude-code',
@@ -306,7 +320,7 @@ describe('ProviderList', () => {
     await waitFor(() => {
       expect(providerEditorDrawerSpy).toHaveBeenLastCalledWith(
         expect.objectContaining({
-          presetSources: [canonicalOpenAI, canonicalNewApi],
+          presetSources: [canonicalDeepSeek, canonicalZhipu],
           onSelectPreset: expect.any(Function)
         })
       )
@@ -462,7 +476,6 @@ describe('ProviderList', () => {
         {
           id: 'gemini',
           name: 'Gemini',
-          presetProviderId: 'gemini',
           defaultChatEndpoint: ENDPOINT_TYPE.GOOGLE_GENERATE_CONTENT,
           authType: 'api-key',
           isEnabled: true
@@ -488,16 +501,16 @@ describe('ProviderList', () => {
     useProvidersMock.mockReturnValue({
       providers: [
         {
-          id: 'openai',
-          name: 'OpenAI',
-          presetProviderId: 'openai',
+          id: 'deepseek',
+          name: 'DeepSeek',
+          presetProviderId: 'deepseek',
           defaultChatEndpoint: ENDPOINT_TYPE.OPENAI_CHAT_COMPLETIONS,
           isEnabled: true
         },
         {
-          id: 'openai-work',
-          name: 'OpenAI Work',
-          presetProviderId: 'openai',
+          id: 'deepseek-work',
+          name: 'DeepSeek Work',
+          presetProviderId: 'deepseek',
           defaultChatEndpoint: ENDPOINT_TYPE.OPENAI_CHAT_COMPLETIONS,
           isEnabled: true
         },
@@ -511,10 +524,10 @@ describe('ProviderList', () => {
       createProvider: vi.fn()
     })
 
-    render(<ProviderList selectedProviderId="openai" onSelectProvider={vi.fn()} />)
+    render(<ProviderList selectedProviderId="deepseek" onSelectProvider={vi.fn()} />)
 
-    expect(screen.getByTestId('provider-list-manage-openai')).toHaveTextContent('false')
-    expect(screen.getByTestId('provider-list-manage-openai-work')).toHaveTextContent('true')
+    expect(screen.getByTestId('provider-list-manage-deepseek')).toHaveTextContent('false')
+    expect(screen.getByTestId('provider-list-manage-deepseek-work')).toHaveTextContent('true')
     expect(screen.getByTestId('provider-list-manage-my-local-llm')).toHaveTextContent('true')
   })
 

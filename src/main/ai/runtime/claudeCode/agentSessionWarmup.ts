@@ -30,6 +30,7 @@ import {
 import { getProxyEnvironment } from '@main/services/proxy/proxyEnv'
 import type { AgentEntity } from '@shared/data/api/schemas/agents'
 import type { AgentSessionEntity } from '@shared/data/api/schemas/agentSessions'
+import { XUELANG_PROVIDER_ID } from '@shared/data/presets/xuelang'
 import type { McpServer } from '@shared/data/types/mcpServer'
 import type { Model, UniqueModelId } from '@shared/data/types/model'
 import { ENDPOINT_TYPE, parseUniqueModelId } from '@shared/data/types/model'
@@ -50,7 +51,12 @@ import {
   OLLAMA_PLACEHOLDER_AUTH_TOKEN
 } from '@shared/utils/provider'
 
-import { resolveEffectiveEndpoint } from '../../provider/endpoint'
+import {
+  assertXuelangModelUsable,
+  isXuelangChatEndpoint,
+  resolveEffectiveEndpoint,
+  resolveXuelangEndpoint
+} from '../../provider/endpoint'
 import { getExtraHeaders, getProviderAppHeaders } from '../../utils/provider'
 import { gatewayCredentialsFingerprint, requiresAgentGateway, resolveApiGatewayRuntime } from '../agentApiGateway'
 import type { AgentSessionUsageCapture } from '../types'
@@ -664,6 +670,14 @@ function deriveRouteFacts(
   const sonnetRef = resolveRuntimeModelRef(planModel, primaryRef)
   const haikuRef = resolveRuntimeModelRef(smallModel, primaryRef)
   const modelRefs = [primaryRef, opusRef, sonnetRef, haikuRef]
+  for (const ref of new Set(modelRefs)) {
+    if (ref.providerId !== XUELANG_PROVIDER_ID) continue
+    if (!ref.provider || !ref.model) throw new Error(`The xuelang model ${ref.modelId} is unavailable.`)
+    assertXuelangModelUsable(ref.provider, ref.model)
+    if (!resolveXuelangEndpoint(ref.model, undefined, isXuelangChatEndpoint).endpointType) {
+      throw new Error(`No authorized xuelang route for model ${ref.model.id}.`)
+    }
+  }
 
   // ToolSearch is gated on the *primary* model only: it is the only one that can emit ToolSearch
   // calls, and every dynamically-loaded tool declaration lands in the shared conversation the
@@ -709,6 +723,7 @@ function deriveRouteFacts(
 
   const shouldUseGateway = modelRefs.some(
     (ref) =>
+      ref.providerId === XUELANG_PROVIDER_ID ||
       requiresAgentGateway(ref.providerId) ||
       ref.providerId !== primaryProvider.id ||
       !usesAnthropicMessagesEndpoint(ref)

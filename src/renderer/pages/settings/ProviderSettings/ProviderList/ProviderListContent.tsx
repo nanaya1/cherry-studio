@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { ReorderableList, Sortable } from '@cherrystudio/ui'
 import Scrollbar from '@renderer/components/Scrollbar'
 import { providerListClasses } from '@renderer/pages/settings/ProviderSettings/primitives/ProviderSettingsPrimitives'
+import { XUELANG_PROVIDER_ID } from '@shared/data/presets/xuelang'
 import type { Provider } from '@shared/data/types/provider'
 
 import { groupProvidersByPreset } from './providerGrouping'
@@ -104,7 +105,12 @@ export default function ProviderListContent({
   renderItem
 }: ProviderListContentProps) {
   const { t } = useTranslation()
-  const entries = useMemo(() => groupProvidersByPreset(visibleProviders), [visibleProviders])
+  const managedProvider = visibleProviders.find((provider) => provider.id === XUELANG_PROVIDER_ID)
+  const sortableProviders = useMemo(
+    () => visibleProviders.filter((provider) => provider.id !== XUELANG_PROVIDER_ID),
+    [visibleProviders]
+  )
+  const entries = useMemo(() => groupProvidersByPreset(sortableProviders), [sortableProviders])
   const hasResults = visibleProviders.length > 0
   const visibleIndexById = useMemo(
     () => new Map(visibleProviders.map((provider, index) => [provider.id, index])),
@@ -114,7 +120,7 @@ export default function ProviderListContent({
   const renderFlat = () => (
     <ReorderableList
       items={providers}
-      visibleItems={visibleProviders}
+      visibleItems={sortableProviders}
       getId={(provider) => provider.id}
       onDragStateChange={onDragStateChange}
       onReorder={onReorder}
@@ -145,7 +151,9 @@ export default function ProviderListContent({
         presetProviderId: entry.presetProviderId,
         members: entry.members,
         providerIds: providers
-          .filter((provider) => provider.presetProviderId === entry.presetProviderId)
+          .filter(
+            (provider) => provider.id !== XUELANG_PROVIDER_ID && provider.presetProviderId === entry.presetProviderId
+          )
           .map((provider) => provider.id)
       }
     })
@@ -211,7 +219,7 @@ export default function ProviderListContent({
               expanded={expanded}
               containsSelected={containsSelected}
               onToggle={() => onToggleGroup(item.presetProviderId)}
-              onAddAnother={onAddAnotherInGroup}
+              onAddAnother={item.presetProviderId === XUELANG_PROVIDER_ID ? undefined : onAddAnotherInGroup}
               onDragStateChange={onDragStateChange}
               onReorder={onReorder}
               onReorderError={onReorderError}
@@ -229,7 +237,14 @@ export default function ProviderListContent({
     <Scrollbar ref={scrollerRef} className={providerListClasses.scroller}>
       <div className={providerListClasses.sectionStack}>
         {hasResults ? (
-          <section className={providerListClasses.section}>{hasAnyGroup ? renderGrouped() : renderFlat()}</section>
+          <section className={providerListClasses.section}>
+            {managedProvider && (
+              <div className={sortableProviders.length > 0 ? 'mb-2' : undefined}>
+                {renderItem(managedProvider, visibleIndexById.get(managedProvider.id) ?? -1, { dragging: false })}
+              </div>
+            )}
+            {sortableProviders.length > 0 && (hasAnyGroup ? renderGrouped() : renderFlat())}
+          </section>
         ) : (
           <div className={providerListClasses.emptyState}>{t('common.no_results')}</div>
         )}

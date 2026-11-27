@@ -1,12 +1,16 @@
 import { setupTestDatabase } from '@test-helpers/db'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { MockMainCacheServiceUtils } from '@test-mocks/main/CacheService'
+import { MockMainDbServiceUtils } from '@test-mocks/main/DbService'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { application } from '@application'
-import { userModelTable } from '@data/db/schemas/userModel'
+import { appStateTable } from '@data/db/schemas/appState'
 import { userProviderTable } from '@data/db/schemas/userProvider'
 import { modelService } from '@data/services/ModelService'
-import { providerService } from '@data/services/ProviderService'
-import { ENDPOINT_TYPE } from '@shared/data/types/model'
+import { providerService, setXuelangSyncContext } from '@data/services/ProviderService'
+import { generateOrderKeyBetween } from '@data/services/utils/orderKey'
+import { XUELANG_PROVIDER_ID, XUELANG_PROVIDER_NAME } from '@shared/data/presets/xuelang'
+import { ENDPOINT_TYPE, MODEL_CAPABILITY } from '@shared/data/types/model'
 import { IpcChannel } from '@shared/IpcChannel'
 
 import { CoworkModelConfigSync } from '../CoworkModelConfigSync'
@@ -35,6 +39,7 @@ vi.mock('@cherrystudio/provider-registry/node', () => ({
 }))
 
 const chat = ENDPOINT_TYPE.OPENAI_CHAT_COMPLETIONS
+const embeddings = ENDPOINT_TYPE.OPENAI_EMBEDDINGS
 
 function session(): Extract<OrgSession, { authMode: 'management-java' }> {
   return {
@@ -102,12 +107,41 @@ function createAuth() {
 
 describe('CoworkModelConfigSync', () => {
   const dbh = setupTestDatabase()
-  const sync = new CoworkModelConfigSync()
+  const sync = new CoworkModelConfigSync({
+    isEncryptionAvailable: () => true,
+    getSelectedStorageBackend: () => 'gnome_libsecret',
+    encryptString: (value) => Buffer.from(value, 'utf8'),
+    decryptString: (value) => value.toString('utf8')
+  })
+
+  beforeEach(() => {
+    MockMainDbServiceUtils.setDb(dbh.db)
+    const dbService = application.get('DbService')
+    vi.spyOn(dbService, 'getDb').mockImplementation(() => dbh.db)
+    vi.spyOn(dbService, 'withWriteTx').mockImplementation((fn) => dbh.db.transaction(fn))
+  })
 
   afterEach(() => {
     vi.restoreAllMocks()
     vi.unstubAllGlobals()
+    setXuelangSyncContext(() => undefined, 'idle')
+    MockMainCacheServiceUtils.resetMocks()
   })
+
+  function seedXuelangProvider() {
+    dbh.db
+      .insert(userProviderTable)
+      .values({
+        providerId: XUELANG_PROVIDER_ID,
+        presetProviderId: XUELANG_PROVIDER_ID,
+        name: XUELANG_PROVIDER_NAME,
+        orderKey: generateOrderKeyBetween(null, null),
+        authConfig: { type: 'api-key' },
+        isEnabled: false
+      })
+      .onConflictDoNothing()
+      .run()
+  }
 
   function serve(data = snapshot()) {
     const fetchMock = vi.fn<typeof fetch>().mockImplementation(async () => Response.json({ code: 200, data }))
@@ -115,42 +149,73 @@ describe('CoworkModelConfigSync', () => {
     return fetchMock
   }
 
-  it('每个 Key 创建独立服务商和授权模型，并保留手动同名配置与默认模型', async () => {
+  it('把 Key、地址与所有模型写入雪浪工匠，不生成新服务商', async () => {
     const broadcast = vi.mocked(application.get('WindowManager').broadcast)
     broadcast.mockClear()
-    providerService.create({
-      providerId: 'manual',
-      name: 'Cowork 开发',
-      apiKeys: [{ id: 'user-key', key: 'sk-manual', isEnabled: true }]
-    })
-    modelService.create([{ dto: { providerId: 'manual', modelId: 'user-model' } }])
-    await application.get('PreferenceService').set('chat.default_model_id', 'manual::user-model')
+    seedXuelangProvider()
     const data = snapshot()
     data.providers.push({
       ...data.providers[0],
       id: 'key-43',
       name: 'Cowork 生产',
       apiKey: 'sk-key-b',
-      models: [{ id: 'production-model', endpointTypes: [chat] }]
+      models: [
+        { id: 'chat-model', endpointTypes: [chat] },
+        { id: 'embed-model', name: '向量模型', endpointTypes: [embeddings] }
+      ],
+      endpointConfigs: {
+        [chat]: { baseUrl: 'https://production-models.test/v1' },
+        [embeddings]: { baseUrl: 'https://embed.test/v1' }
+      }
     })
     serve(data)
     const { auth } = createAuth()
 
-    await expect(sync.sync(auth)).resolves.toEqual({ providerCount: 2, modelCount: 2 })
-    const providers = providerService.list({}).filter((provider) => provider.id !== 'manual')
-    expect(providers).toHaveLength(2)
-    expect(providers.every((provider) => provider.isEnabled && provider.apiKeys.length === 1)).toBe(true)
-    for (const provider of providers) {
-      const production = provider.name === 'Cowork 生产'
-      expect(providerService.getRotatedApiKey(provider.id)).toBe(production ? 'sk-key-b' : 'sk-key-a')
-      expect(modelService.list({ providerId: provider.id }).map((model) => model.apiModelId)).toEqual([
-        production ? 'production-model' : 'chat-model'
-      ])
-      expect(JSON.stringify(provider)).not.toContain('sk-key-')
-    }
-    expect(providerService.getRotatedApiKey('manual')).toBe('sk-manual')
-    expect(application.get('PreferenceService').get('chat.default_model_id')).toBe('manual::user-model')
-    // 通知必须覆盖已挂载的列表、详情和凭据读模型，且不向事件载荷复制明文 Key。
+    await expect(sync.sync(auth)).resolves.toEqual({
+      providerId: XUELANG_PROVIDER_ID,
+      keyCount: 2,
+      modelCount: 2
+    })
+
+    const providers = providerService.list({})
+    expect(providers).toHaveLength(1)
+    expect(providers[0].id).toBe(XUELANG_PROVIDER_ID)
+    expect(providers[0].name).toBe(XUELANG_PROVIDER_NAME)
+    expect(providers[0]).toMatchObject({ isEnabled: true, managedSyncState: 'success' })
+    expect(providerService.getAuthConfig(XUELANG_PROVIDER_ID)).toEqual({ type: 'api-key' })
+    const keys = providerService.getApiKeys(XUELANG_PROVIDER_ID)
+    expect(keys).toHaveLength(2)
+    expect(keys.find((key) => key.key === 'sk-key-a')).toMatchObject({
+      isEnabled: true,
+      label: 'Cowork',
+      managedRoutes: {
+        endpointConfigs: { [chat]: { baseUrl: 'https://models.test/v1' } },
+        models: [{ id: 'chat-model', endpointTypes: [chat] }]
+      }
+    })
+    expect(keys.find((key) => key.key === 'sk-key-b')).toMatchObject({
+      isEnabled: true,
+      label: 'Cowork',
+      managedRoutes: {
+        endpointConfigs: {
+          [chat]: { baseUrl: 'https://production-models.test/v1' },
+          [embeddings]: { baseUrl: 'https://embed.test/v1' }
+        },
+        models: [
+          { id: 'chat-model', endpointTypes: [chat] },
+          { id: 'embed-model', endpointTypes: [embeddings] }
+        ]
+      }
+    })
+
+    // 重复模型按 id 去重，能力只由协议推导。
+    const models = modelService.list({ providerId: XUELANG_PROVIDER_ID })
+    expect(models.map((model) => model.apiModelId).sort()).toEqual(['chat-model', 'embed-model'])
+    expect(modelService.getByKey(XUELANG_PROVIDER_ID, 'embed-model').capabilities).toEqual([MODEL_CAPABILITY.EMBEDDING])
+    expect(modelService.getByKey(XUELANG_PROVIDER_ID, 'embed-model').name).toBe('向量模型')
+    expect(models.every((model) => model.isEnabled && !model.isDeprecated)).toBe(true)
+    expect(modelService.getByKey(XUELANG_PROVIDER_ID, 'chat-model').capabilities).toEqual([])
+    expect(JSON.stringify(providers)).not.toContain('sk-key-')
     expect(broadcast).toHaveBeenCalledWith(IpcChannel.DataApi_DataChanged, [
       { endpoint: '/providers', kind: 'membership' },
       { endpoint: '/providers/:providerId' },
@@ -162,243 +227,325 @@ describe('CoworkModelConfigSync', () => {
     expect(JSON.stringify(broadcast.mock.calls)).not.toContain('sk-key-')
   })
 
-  /* MEA:enterprise-model-binding 原重复覆盖契约保留，新契约只首次导入 Key 配置。
-  it('重复同步原位更新地址、Key 和模型，不增加记录也不重排', async () => {
+  it('按模型和协议筛选启用的 Key，再轮询并返回各 Key 对应的地址', async () => {
+    seedXuelangProvider()
     const data = snapshot()
-    serve(data)
-    const { auth } = createAuth()
-    await sync.sync(auth)
-    const before = dbh.db.select().from(userProviderTable).all()[0]
-    data.providers[0].apiKey = 'sk-rotated'
-    data.providers[0].endpointConfigs[chat]!.baseUrl = 'https://new-models.test/v1'
-    data.providers[0].models[0].name = '更新后的名称'
-    await sync.sync(auth)
-
-    const rows = dbh.db.select().from(userProviderTable).all()
-    expect(rows).toHaveLength(1)
-    expect(rows[0].providerId).toBe(before.providerId)
-    expect(rows[0].orderKey).toBe(before.orderKey)
-    expect(rows[0].apiKeys).toEqual([{ id: 'cowork', key: 'sk-rotated', isEnabled: true }])
-    expect(providerService.getByProviderId(rows[0].providerId).endpointConfigs?.[chat]?.baseUrl).toBe(
-      'https://new-models.test/v1'
+    const responses = ENDPOINT_TYPE.OPENAI_RESPONSES
+    data.providers.push(
+      {
+        ...data.providers[0],
+        id: 'key-43',
+        apiKey: 'sk-key-b',
+        endpointConfigs: { [chat]: { baseUrl: 'https://second-models.test/v1' } }
+      },
+      {
+        ...data.providers[0],
+        id: 'key-44',
+        apiKey: 'sk-key-c',
+        endpointConfigs: {
+          [chat]: { baseUrl: 'https://other-models.test/v1' },
+          [responses]: { baseUrl: 'https://responses.test/v1' }
+        },
+        models: [
+          { id: 'other-model', endpointTypes: [chat] },
+          { id: 'chat-model', endpointTypes: [responses] }
+        ]
+      }
     )
-    expect(modelService.list({})).toHaveLength(1)
-    expect(modelService.list({})[0].name).toBe('更新后的名称')
-  })
-  */
-
-  it('已导入 Key 跨同步实例保留本地配置、工具能力及手动停用的模型', async () => {
-    const data = snapshot()
     serve(data)
     const { auth } = createAuth()
     await sync.sync(auth)
-    const providerId = providerService.list({})[0].id
-    providerService.update(providerId, {
-      name: '本地服务商',
-      endpointConfigs: { [chat]: { baseUrl: 'https://local-models.test/v1' } }
-    })
-    providerService.replaceApiKeys(providerId, [{ id: 'local', key: 'sk-local', isEnabled: true }])
-    modelService.update(providerId, 'chat-model', {
-      name: '本地模型',
-      capabilities: ['function-call', 'reasoning'],
-      inputModalities: ['image'],
-      isEnabled: false
-    })
-    const providersBefore = dbh.db.select().from(userProviderTable).all()
-    const modelsBefore = dbh.db.select().from(userModelTable).all()
-    data.providers[0].name = '后台新名称'
-    data.providers[0].apiKey = 'sk-rotated'
-    data.providers[0].endpointConfigs[chat]!.baseUrl = 'https://new-models.test/v1'
-    data.providers[0].models = [{ id: 'new-model', endpointTypes: [chat] }]
+    const [keyA, keyB] = providerService.getApiKeys(XUELANG_PROVIDER_ID)
 
-    await new CoworkModelConfigSync().sync(auth)
-
-    expect(dbh.db.select().from(userProviderTable).all()).toEqual(providersBefore)
-    expect(dbh.db.select().from(userModelTable).all()).toEqual(modelsBefore)
-    expect(providerService.getRotatedApiKey(providerId)).toBe('sk-local')
-    expect(modelService.list({})[0]).toMatchObject({
-      name: '本地模型',
-      capabilities: ['function-call', 'reasoning'],
-      inputModalities: ['image'],
-      isEnabled: false
+    expect(providerService.resolveXuelangApiKey('chat-model', chat)).toMatchObject({
+      value: 'sk-key-a',
+      baseUrl: 'https://models.test/v1',
+      apiKeySelection: { id: keyA.id }
     })
+    expect(providerService.resolveXuelangApiKey('chat-model', responses)).toMatchObject({
+      value: 'sk-key-c',
+      baseUrl: 'https://responses.test/v1'
+    })
+    expect(providerService.resolveXuelangApiKey('other-model', chat)).toMatchObject({
+      value: 'sk-key-c',
+      baseUrl: 'https://other-models.test/v1'
+    })
+    expect(providerService.resolveXuelangApiKey('chat-model', chat)).toMatchObject({
+      value: 'sk-key-b',
+      baseUrl: 'https://second-models.test/v1',
+      apiKeySelection: { id: keyB.id }
+    })
+    expect(providerService.resolveXuelangApiKey('chat-model', chat)?.value).toBe('sk-key-a')
+    expect(providerService.resolveXuelangApiKey('chat-model', chat, 'sk-key-c')).toBeUndefined()
+    expect(providerService.resolveXuelangApiKey('other-model', responses)).toBeUndefined()
+
+    providerService.updateApiKey(XUELANG_PROVIDER_ID, keyB.id, { isEnabled: false })
+    expect(providerService.resolveXuelangApiKey('chat-model', chat, 'sk-key-b')).toBeUndefined()
+    expect(providerService.resolveXuelangApiKey('chat-model', chat)?.value).toBe('sk-key-a')
   })
 
-  it('跳过已导入 Key 时仍能导入新增 Key', async () => {
+  it('合并同一模型在多个 Key 下声明的协议，只建一条模型', async () => {
+    seedXuelangProvider()
     const data = snapshot()
-    serve(data)
-    const { auth } = createAuth()
-    await sync.sync(auth)
-    const existingId = providerService.list({})[0].id
-    modelService.update(existingId, 'chat-model', { capabilities: ['function-call'] })
+    data.providers[0].endpointConfigs = {
+      [chat]: { baseUrl: 'https://models.test/v1' },
+      [embeddings]: { baseUrl: 'https://embed.test/v1' }
+    }
     data.providers.push({
       ...data.providers[0],
       id: 'key-43',
       apiKey: 'sk-key-b',
-      models: [{ id: 'new-model', endpointTypes: [chat] }]
+      models: [{ id: 'chat-model', endpointTypes: [embeddings] }]
+    })
+    serve(data)
+    const { auth } = createAuth()
+
+    await expect(sync.sync(auth)).resolves.toMatchObject({ modelCount: 1 })
+
+    const models = modelService.list({ providerId: XUELANG_PROVIDER_ID })
+    expect(models).toHaveLength(1)
+    expect(modelService.getByKey(XUELANG_PROVIDER_ID, 'chat-model').endpointTypes).toEqual([chat, embeddings])
+  })
+
+  it('重复同步刷新服务端字段，但保留 Key、模型和服务商的本地开关', async () => {
+    seedXuelangProvider()
+    const data = snapshot()
+    serve(data)
+    const { auth } = createAuth()
+    await sync.sync(auth)
+    const [originalKey] = providerService.getApiKeys(XUELANG_PROVIDER_ID)
+    const originalModel = modelService.getByKey(XUELANG_PROVIDER_ID, 'chat-model')
+
+    providerService.update(XUELANG_PROVIDER_ID, { name: '本地改名', isEnabled: false })
+    providerService.updateApiKey(XUELANG_PROVIDER_ID, originalKey.id, { isEnabled: false })
+    modelService.update(XUELANG_PROVIDER_ID, 'chat-model', { isEnabled: false })
+    data.providers[0].apiKey = 'sk-rotated'
+    data.providers[0].endpointConfigs[chat]!.baseUrl = 'https://new-models.test/v1'
+    data.providers[0].models = [{ id: 'chat-model', name: '新名字', endpointTypes: [chat] }]
+    await sync.sync(auth)
+
+    const providers = providerService.list({})
+    expect(providers).toHaveLength(1)
+    expect(providers[0]).toMatchObject({ name: '本地改名', isEnabled: false, managedSyncState: 'success' })
+    expect(providerService.getApiKeys(XUELANG_PROVIDER_ID)).toMatchObject([
+      {
+        id: originalKey.id,
+        key: 'sk-rotated',
+        isEnabled: false,
+        managedRoutes: { endpointConfigs: { [chat]: { baseUrl: 'https://new-models.test/v1' } } }
+      }
+    ])
+    expect(modelService.list({ providerId: XUELANG_PROVIDER_ID })).toMatchObject([
+      { id: originalModel.id, name: '新名字', isEnabled: false, isDeprecated: false }
+    ])
+  })
+
+  it.each([true, false])('撤权再授予时记住开关（原本启用：%s），空快照仍显示服务商', async (isEnabled) => {
+    seedXuelangProvider()
+    const data = snapshot()
+    serve(data)
+    const { auth } = createAuth()
+    await sync.sync(auth)
+    const [originalKey] = providerService.getApiKeys(XUELANG_PROVIDER_ID)
+    const originalModel = modelService.getByKey(XUELANG_PROVIDER_ID, 'chat-model')
+    if (!isEnabled) {
+      providerService.update(XUELANG_PROVIDER_ID, { isEnabled })
+      providerService.updateApiKey(XUELANG_PROVIDER_ID, originalKey.id, { isEnabled })
+      modelService.update(XUELANG_PROVIDER_ID, 'chat-model', { isEnabled })
+    }
+
+    data.providers = []
+    await expect(sync.sync(auth)).resolves.toMatchObject({ keyCount: 0, modelCount: 0 })
+
+    expect(providerService.list({})).toMatchObject([
+      { id: XUELANG_PROVIDER_ID, isEnabled, managedSyncState: 'success', apiKeys: [] }
+    ])
+    expect(providerService.getApiKeys(XUELANG_PROVIDER_ID)).toEqual([])
+    expect(providerService.resolveXuelangApiKey('chat-model', chat)).toBeUndefined()
+    expect(modelService.getByKey(XUELANG_PROVIDER_ID, 'chat-model')).toMatchObject({
+      id: originalModel.id,
+      isEnabled: false,
+      isDeprecated: true
     })
 
+    data.providers = snapshot().providers
     await sync.sync(auth)
 
-    expect(providerService.list({})).toHaveLength(2)
-    expect(modelService.list({ providerId: existingId })[0].capabilities).toContain('function-call')
-    const added = providerService.list({}).find((provider) => provider.id !== existingId)!
-    expect(providerService.getRotatedApiKey(added.id)).toBe('sk-key-b')
-    expect(modelService.list({ providerId: added.id }).map((model) => model.apiModelId)).toEqual(['new-model'])
-  })
-
-  it('手动关闭已有服务商和凭据后，重新登录不自动启用', async () => {
-    serve()
-    const { auth } = createAuth()
-    await sync.sync(auth)
-    const providerId = providerService.list({})[0].id
-    providerService.update(providerId, { isEnabled: false })
-    providerService.replaceApiKeys(providerId, [{ id: 'cowork', key: 'sk-key-a', isEnabled: false }])
-    const before = dbh.db.select().from(userProviderTable).all()
-
-    await sync.sync(auth)
-
-    expect(dbh.db.select().from(userProviderTable).all()).toEqual(before)
-    expect(providerService.getRotatedApiKey(providerId)).toBe('')
-    expect(modelService.list({})[0]).toMatchObject({ isEnabled: true, isDeprecated: false })
-  })
-
-  it('删除自动服务商后重新导入该 Key 的最新配置', async () => {
-    const data = snapshot()
-    serve(data)
-    const { auth } = createAuth()
-    await sync.sync(auth)
-    const providerId = providerService.list({})[0].id
-    providerService.delete(providerId)
-    data.providers[0].apiKey = 'sk-rotated'
-    data.providers[0].models = [{ id: 'new-model', endpointTypes: [chat] }]
-
-    await sync.sync(auth)
-
-    expect(providerService.list({}).map((provider) => provider.id)).toEqual([providerId])
-    expect(providerService.getRotatedApiKey(providerId)).toBe('sk-rotated')
-    expect(modelService.list({}).map((model) => model.apiModelId)).toEqual(['new-model'])
-  })
-
-  it('完整快照移除 Key 后停用凭据与模型，并保留历史引用；恢复后重新启用', async () => {
-    const data = snapshot()
-    serve(data)
-    const { auth } = createAuth()
-    await sync.sync(auth)
-    const providerId = providerService.list({})[0].id
-    modelService.update(providerId, 'chat-model', { name: '本地模型', capabilities: ['function-call'] })
-    const original = data.providers
-    data.providers = []
-    await sync.sync(auth)
-
-    const provider = providerService.list({})[0]
-    expect(provider.isEnabled).toBe(false)
-    expect(providerService.getRotatedApiKey(provider.id)).toBe('')
-    expect(modelService.list({})[0]).toMatchObject({ isEnabled: false, isDeprecated: true })
-    expect(dbh.db.select().from(userModelTable).all()).toHaveLength(1)
-
-    data.providers = original
-    await sync.sync(auth)
-    expect(providerService.list({})).toHaveLength(1)
-    expect(providerService.list({})[0].isEnabled).toBe(true)
-    expect(modelService.list({})[0]).toMatchObject({
-      name: '本地模型',
-      capabilities: ['function-call'],
-      isEnabled: true,
+    expect(providerService.getByProviderId(XUELANG_PROVIDER_ID).isEnabled).toBe(isEnabled)
+    expect(providerService.getApiKeys(XUELANG_PROVIDER_ID)).toMatchObject([
+      { id: originalKey.id, key: 'sk-key-a', isEnabled }
+    ])
+    expect(modelService.getByKey(XUELANG_PROVIDER_ID, 'chat-model')).toMatchObject({
+      id: originalModel.id,
+      isEnabled,
       isDeprecated: false
     })
   })
 
-  /* MEA:enterprise-model-binding 已导入 Key 的模型列表由用户维护，不再跟随后续快照覆盖。
-  it('模型权限变化只停用已移除的模型，空模型列表不会填入默认模型', async () => {
+  it('服务端新增与移除模型时做增量对账，保留不再下发的模型行', async () => {
+    seedXuelangProvider()
     const data = snapshot()
     serve(data)
     const { auth } = createAuth()
     await sync.sync(auth)
-    data.providers[0].models = []
-    await sync.sync(auth)
-    expect(providerService.list({})[0].isEnabled).toBe(true)
-    expect(modelService.list({ enabled: true })).toEqual([])
-    expect(modelService.list({})).toHaveLength(1)
-    expect(modelService.list({})[0].isEnabled).toBe(false)
-  })
-  */
+    const originalId = modelService.getByKey(XUELANG_PROVIDER_ID, 'chat-model').id
 
-  it('首次导入空模型列表不填入默认模型，后续登录也不自动补入模型', async () => {
-    const data = snapshot()
-    data.providers[0].models = []
-    serve(data)
-    const { auth } = createAuth()
+    data.providers[0].models = [
+      { id: 'chat-model', endpointTypes: [chat] },
+      { id: 'new-model', endpointTypes: [chat] }
+    ]
     await sync.sync(auth)
-    expect(providerService.list({})[0].isEnabled).toBe(true)
-    expect(modelService.list({})).toEqual([])
+
+    expect(
+      modelService
+        .list({ providerId: XUELANG_PROVIDER_ID })
+        .map((model) => model.apiModelId)
+        .sort()
+    ).toEqual(['chat-model', 'new-model'])
+    expect(modelService.getByKey(XUELANG_PROVIDER_ID, 'new-model').isEnabled).toBe(true)
+
     data.providers[0].models = [{ id: 'new-model', endpointTypes: [chat] }]
-
     await sync.sync(auth)
 
-    expect(modelService.list({})).toEqual([])
+    expect(modelService.getByKey(XUELANG_PROVIDER_ID, 'chat-model')).toMatchObject({
+      id: originalId,
+      isEnabled: false,
+      isDeprecated: true
+    })
+    expect(modelService.getByKey(XUELANG_PROVIDER_ID, 'new-model').isEnabled).toBe(true)
   })
 
-  it('按声明的嵌入协议生成能力标签，不将嵌入模型混入普通对话', async () => {
-    const data = snapshot()
-    data.providers[0].endpointConfigs[ENDPOINT_TYPE.OPENAI_EMBEDDINGS] = { baseUrl: 'https://models.test/v1' }
-    data.providers[0].models = [{ id: 'opaque-model-123', endpointTypes: [ENDPOINT_TYPE.OPENAI_EMBEDDINGS] }]
-    serve(data)
-    const { auth } = createAuth()
-    await sync.sync(auth)
-    expect(modelService.list({ capability: 'embedding' }).map((model) => model.apiModelId)).toEqual([
-      'opaque-model-123'
+  it('OAuth 遗留 token 与 Key 在同步后被 api-key 凭据替换', async () => {
+    seedXuelangProvider()
+    providerService.update(XUELANG_PROVIDER_ID, {
+      authConfig: { type: 'oauth', clientId: 'c', accessToken: 'oauth-token', refreshToken: 'r' }
+    })
+    providerService.replaceApiKeys(XUELANG_PROVIDER_ID, [
+      { id: 'oauth', label: 'OAuth', key: 'sk-oauth', isEnabled: true }
     ])
-  })
-
-  it.each(['tenantId', 'userId', 'issuerId', 'authOrigin'] as const)(
-    '%s 变化不覆盖原绑定，接口失败时也不能继续使用旧身份凭据',
-    async (field) => {
-      const data = snapshot()
-      const fetchMock = serve(data)
-      const { auth, state } = createAuth()
-      await sync.sync(auth)
-      const oldId = providerService.list({})[0].id
-      state.session = { ...state.session, [field]: field === 'authOrigin' ? 'https://other-cowork.test' : 'other' }
-      state.generation += 1
-      fetchMock.mockRejectedValueOnce(new Error('network unavailable'))
-      await expect(sync.sync(auth)).rejects.toThrow()
-      expect(providerService.getByProviderId(oldId).isEnabled).toBe(false)
-      expect(providerService.getRotatedApiKey(oldId)).toBe('')
-      data.serverInstanceId = state.session.issuerId
-      data.userId = state.session.userId
-      data.tenantId = state.session.tenantId
-      await sync.sync(auth)
-      const providers = providerService.list({})
-      expect(providers).toHaveLength(2)
-      expect(providers.filter((provider) => provider.isEnabled)).toHaveLength(1)
-      expect(providers.find((provider) => provider.id !== oldId)?.isEnabled).toBe(true)
-    }
-  )
-
-  it.each([500, 10007])('同身份业务失败 %s 不清空已有配置', async (code) => {
-    const fetchMock = serve()
+    serve()
     const { auth } = createAuth()
+
     await sync.sync(auth)
-    const before = dbh.db.select().from(userProviderTable).all()
-    fetchMock.mockResolvedValueOnce(Response.json({ code }))
-    await expect(sync.sync(auth)).rejects.toThrow()
-    expect(dbh.db.select().from(userProviderTable).all()).toEqual(before)
-    expect(modelService.list({ enabled: true })).toHaveLength(1)
+
+    expect(providerService.getAuthConfig(XUELANG_PROVIDER_ID)).toEqual({ type: 'api-key' })
+    expect(providerService.getApiKeys(XUELANG_PROVIDER_ID).map((key) => key.key)).toEqual(['sk-key-a'])
   })
 
-  it('错误身份快照不写入、不停用当前服务商', async () => {
+  it('按服务端下发的协议写入地址并创建对应协议模型', async () => {
+    seedXuelangProvider()
+    const data = snapshot()
+    const responses = ENDPOINT_TYPE.OPENAI_RESPONSES
+    data.providers[0].defaultChatEndpoint = responses
+    data.providers[0].endpointConfigs = { [responses]: { baseUrl: 'https://responses.test/v1' } }
+    data.providers[0].models = [{ id: 'chat-model', endpointTypes: [responses] }]
+    serve(data)
+    const { auth } = createAuth()
+
+    await sync.sync(auth)
+
+    const provider = providerService.getByProviderId(XUELANG_PROVIDER_ID)
+    expect(provider.endpointConfigs?.[responses]?.baseUrl).toBe('https://responses.test/v1')
+    expect(provider.defaultChatEndpoint).toBe(responses)
+    expect(modelService.getByKey(XUELANG_PROVIDER_ID, 'chat-model').endpointTypes).toEqual([responses])
+  })
+
+  it.each(['tenantId', 'userId', 'issuerId'] as const)('%s 变化的快照被拒绝且不写入', async (field) => {
+    seedXuelangProvider()
     const data = snapshot()
     serve(data)
     const { auth } = createAuth()
     await sync.sync(auth)
     const before = dbh.db.select().from(userProviderTable).all()
-    data.tenantId = 'other'
+
+    const snapshotField = field === 'issuerId' ? 'serverInstanceId' : field
+    data[snapshotField] = 'other'
     await expect(sync.sync(auth)).rejects.toThrow('不一致')
     expect(dbh.db.select().from(userProviderTable).all()).toEqual(before)
   })
 
-  it('请求未完成时退出或切换企业，迟到快照不能写入', async () => {
+  it.each([500, 10007])('同身份业务失败 %s 不清空已有配置', async (code) => {
+    seedXuelangProvider()
+    const fetchMock = serve()
+    const { auth } = createAuth()
+    await sync.sync(auth)
+    const keysBefore = providerService.getApiKeys(XUELANG_PROVIDER_ID)
+    const modelBefore = modelService.getByKey(XUELANG_PROVIDER_ID, 'chat-model')
+    const providerBefore = providerService.getByProviderId(XUELANG_PROVIDER_ID)
+
+    fetchMock.mockResolvedValueOnce(Response.json({ code }))
+    await expect(sync.sync(auth)).rejects.toThrow()
+    expect(providerService.getApiKeys(XUELANG_PROVIDER_ID)).toEqual(keysBefore)
+    expect(modelService.getByKey(XUELANG_PROVIDER_ID, 'chat-model')).toEqual(modelBefore)
+    expect(providerService.getByProviderId(XUELANG_PROVIDER_ID)).toEqual({
+      ...providerBefore,
+      managedSyncState: 'failed'
+    })
+  })
+
+  it('跨企业同步失败后隔离旧企业的凭据和模型，服务商仍可见', async () => {
+    seedXuelangProvider()
+    const fetchMock = serve()
+    const { auth, state } = createAuth()
+    await sync.sync(auth)
+
+    const before = dbh.db.select().from(userProviderTable).all()
+    state.session = { ...state.session, tenantId: '10' }
+    state.generation += 1
+    fetchMock.mockResolvedValueOnce(Response.json({ code: 500 }))
+    await expect(sync.sync(auth)).rejects.toThrow()
+
+    expect(providerService.list({})).toMatchObject([
+      { id: XUELANG_PROVIDER_ID, managedSyncState: 'failed', apiKeys: [] }
+    ])
+    expect(providerService.getApiKeys(XUELANG_PROVIDER_ID)).toEqual([])
+    expect(providerService.resolveXuelangApiKey('chat-model', chat)).toBeUndefined()
+    expect(modelService.list({ providerId: XUELANG_PROVIDER_ID })).toEqual([])
+    expect(dbh.db.select().from(userProviderTable).all()).toEqual(before)
+  })
+
+  it('两家企业先后同步成功后，切回原企业同步失败时仅恢复原企业的配置和开关', async () => {
+    seedXuelangProvider()
+    const fetchMock = serve()
+    const { auth, state } = createAuth()
+    await sync.sync(auth)
+    const [keyA] = providerService.getApiKeys(XUELANG_PROVIDER_ID)
+    providerService.update(XUELANG_PROVIDER_ID, { isEnabled: false })
+    providerService.updateApiKey(XUELANG_PROVIDER_ID, keyA.id, { isEnabled: false })
+    modelService.update(XUELANG_PROVIDER_ID, 'chat-model', { isEnabled: false })
+
+    const other = snapshot()
+    other.tenantId = '10'
+    other.providers[0].apiKey = 'sk-other-tenant'
+    other.providers[0].models = [{ id: 'other-model', endpointTypes: [chat] }]
+    state.session = { ...state.session, tenantId: other.tenantId }
+    state.generation += 1
+    fetchMock.mockResolvedValueOnce(Response.json({ code: 200, data: other }))
+    await sync.sync(auth)
+    expect(providerService.getApiKeys(XUELANG_PROVIDER_ID)).toMatchObject([{ key: 'sk-other-tenant', isEnabled: true }])
+    expect(JSON.stringify(dbh.db.select().from(appStateTable).all())).not.toMatch(/sk-key-a|sk-other-tenant/)
+
+    state.session = session()
+    state.generation += 1
+    fetchMock.mockResolvedValueOnce(Response.json({ code: 500 }))
+    await expect(sync.sync(auth)).rejects.toThrow()
+    expect(providerService.getByProviderId(XUELANG_PROVIDER_ID)).toMatchObject({
+      hasManagedSnapshot: true,
+      isEnabled: false,
+      managedSyncState: 'failed'
+    })
+    expect(providerService.getApiKeys(XUELANG_PROVIDER_ID)).toMatchObject([
+      { id: keyA.id, key: 'sk-key-a', isEnabled: false }
+    ])
+    expect(modelService.getByKey(XUELANG_PROVIDER_ID, 'chat-model')).toMatchObject({
+      isEnabled: false,
+      isDeprecated: false
+    })
+    expect(modelService.getByKey(XUELANG_PROVIDER_ID, 'other-model').isDeprecated).toBe(true)
+  })
+
+  it('请求未完成时显示同步中，退出后迟到的快照不能写入', async () => {
+    seedXuelangProvider()
     let complete!: (value: Response) => void
     vi.stubGlobal(
       'fetch',
@@ -412,54 +559,54 @@ describe('CoworkModelConfigSync', () => {
     const { auth, state } = createAuth()
     const operation = sync.sync(auth)
     await vi.waitFor(() => expect(complete).toBeTypeOf('function'))
+    expect(providerService.getByProviderId(XUELANG_PROVIDER_ID).managedSyncState).toBe('syncing')
     state.active = false
     complete(Response.json({ code: 200, data: snapshot() }))
     await expect(operation).rejects.toThrow('session unavailable')
-    expect(dbh.db.select().from(userProviderTable).all()).toEqual([])
-    expect(modelService.list({})).toEqual([])
+    expect(providerService.getApiKeys(XUELANG_PROVIDER_ID)).toEqual([])
+    expect(modelService.list({ providerId: XUELANG_PROVIDER_ID })).toEqual([])
   })
 
-  it('中途模型写入失败回滚整份配置，保留旧 Key 与旧授权', async () => {
-    const data = snapshot()
-    serve(data)
+  it('中途写入失败回滚整份配置与模型，并标记失败', async () => {
+    seedXuelangProvider()
+    serve()
     const { auth } = createAuth()
     await sync.sync(auth)
     const broadcast = vi.mocked(application.get('WindowManager').broadcast)
     broadcast.mockClear()
-    const before = dbh.db.select().from(userProviderTable).all()
-    // data.providers[0].apiKey = 'sk-new-key'
-    // data.providers[0].models = [{ id: 'new-model', endpointTypes: [chat] }]
-    // 已有 Key 不再写入，用新增 Key 验证部分创建失败时的事务回滚。
-    data.providers.push({
-      ...data.providers[0],
-      id: 'key-43',
-      apiKey: 'sk-new-key',
-      models: [{ id: 'new-model', endpointTypes: [chat] }]
-    })
+    const data = snapshot()
+    data.providers[0].apiKey = 'sk-new-key'
+    data.providers[0].models = [
+      { id: 'chat-model', endpointTypes: [chat] },
+      { id: 'rollback-model', endpointTypes: [chat] }
+    ]
+    serve(data)
+
     vi.spyOn(modelService, 'create').mockImplementationOnce(() => {
       throw new Error('disk write failed')
     })
     await expect(sync.sync(auth)).rejects.toThrow('disk write failed')
-    expect(dbh.db.select().from(userProviderTable).all()).toEqual(before)
-    expect(modelService.list({ enabled: true }).map((model) => model.apiModelId)).toEqual(['chat-model'])
-    expect(broadcast).not.toHaveBeenCalled()
-
-    await sync.sync(auth)
-    expect(providerService.list({})).toHaveLength(2)
-    expect(
-      modelService
-        .list({ enabled: true })
-        .map((model) => model.apiModelId)
-        .sort()
-    ).toEqual(['chat-model', 'new-model'])
+    expect(providerService.getApiKeys(XUELANG_PROVIDER_ID).map((key) => key.key)).toEqual(['sk-key-a'])
+    expect(modelService.list({ providerId: XUELANG_PROVIDER_ID }).map((model) => model.apiModelId)).toEqual([
+      'chat-model'
+    ])
+    expect(providerService.getByProviderId(XUELANG_PROVIDER_ID).managedSyncState).toBe('failed')
+    expect(broadcast).toHaveBeenCalledWith(
+      IpcChannel.DataApi_DataChanged,
+      expect.arrayContaining([{ endpoint: '/providers/:providerId' }])
+    )
+    expect(JSON.stringify(broadcast.mock.calls)).not.toContain('sk-new-key')
   })
 
   it('未通过在线身份校验时不拉取模型配置', async () => {
+    seedXuelangProvider()
     const fetchMock = serve()
     const { auth, state } = createAuth()
     state.verified = false
     await expect(sync.sync(auth)).resolves.toBeNull()
     expect(fetchMock).not.toHaveBeenCalled()
-    expect(providerService.list({})).toEqual([])
+    expect(providerService.getByProviderId(XUELANG_PROVIDER_ID).managedSyncState).toBe('idle')
+    expect(providerService.getApiKeys(XUELANG_PROVIDER_ID)).toEqual([])
+    expect(modelService.list({ providerId: XUELANG_PROVIDER_ID })).toEqual([])
   })
 })

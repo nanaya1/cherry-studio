@@ -90,8 +90,9 @@ vi.mock('react-i18next', () => ({
         'settings.mcp.marketplaces': 'Marketplaces',
         'settings.mcp.myServers': 'My MCP',
         'settings.mcp.providers': 'Providers',
+        'settings.mcp.publicConnectors': 'Shared by Company',
         'settings.provider.api_key.label': 'API Key',
-        'workspace.skillsConnectors.sources.org': 'Organization'
+        'settings.mcp.plaza': 'Plaza'
       })[key] ?? key
   })
 }))
@@ -106,36 +107,38 @@ afterEach(() => {
 })
 
 describe('McpCatalog', () => {
-  it('外部知识库在我的MCP左侧，仅点击时查询；离开不停止，重复点击重新查询', async () => {
+  it('广场默认展示企业共享，外部知识库仅显式进入或重复点击时查询', async () => {
     orgSessionMock.authMode = 'management-java'
     const request = vi.spyOn(ipcApi, 'request').mockResolvedValue({ connectors: [] })
     const user = userEvent.setup()
     render(<McpCatalog />)
-    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
-      'Built-in Servers',
-      'Organization',
-      'settings.mcp.externalKnowledge.title',
-      'My MCP'
-    ])
+    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['Built-in Servers', 'Plaza', 'My MCP'])
+    expect(request).not.toHaveBeenCalled()
+    const publicTab = screen.getByRole('tab', { name: 'Plaza' })
+    await user.click(publicTab)
+    expect(screen.getByRole('tab', { name: 'Shared by Company', selected: true })).toBeVisible()
     expect(request).not.toHaveBeenCalled()
     const external = screen.getByRole('tab', { name: 'settings.mcp.externalKnowledge.title' })
     await user.click(external)
     await waitFor(() => expect(screen.getByText('settings.mcp.externalKnowledge.empty')).toBeVisible())
     await user.click(screen.getByRole('tab', { name: 'My MCP' }))
     expect(request.mock.calls.map(([route]) => route)).toEqual(['enterprise.knowledge_connectors.list'])
-    await user.click(external)
+    await user.click(publicTab)
+    expect(request).toHaveBeenCalledTimes(1)
+    const reopenedExternal = screen.getByRole('tab', { name: 'settings.mcp.externalKnowledge.title' })
+    await user.click(reopenedExternal)
     await waitFor(() => expect(request).toHaveBeenCalledTimes(2))
-    await user.click(external)
+    await user.click(reopenedExternal)
     await waitFor(() => expect(request).toHaveBeenCalledTimes(3))
     request.mockRestore()
   })
-  it('Java 登录仅恢复公共目录，不恢复市场和服务商', async () => {
+  it('Java 登录仅展示广场，不恢复市场和服务商', async () => {
     orgSessionMock.authMode = 'management-java'
     render(<McpCatalog />)
-    expect(screen.getByRole('tab', { name: 'Organization' })).toBeVisible()
+    expect(screen.getByRole('tab', { name: 'Plaza' })).toBeVisible()
     expect(screen.queryByRole('tab', { name: 'Marketplaces' })).not.toBeInTheDocument()
     expect(screen.queryByRole('tab', { name: 'Providers' })).not.toBeInTheDocument()
-    await userEvent.click(screen.getByRole('tab', { name: 'Organization' }))
+    await userEvent.click(screen.getByRole('tab', { name: 'Plaza' }))
     expect(screen.getByText('organization catalog')).toBeVisible()
   })
   // 上游原契约按登录模式显示发现、公共、服务商与我的 MCP，并允许在发现页切换市场。
@@ -147,7 +150,7 @@ describe('McpCatalog', () => {
     expect(screen.getByRole('tab', { name: 'Built-in Servers' })).toBeVisible()
     expect(screen.getByRole('tab', { name: 'My MCP' })).toBeVisible()
     expect(screen.queryByRole('tab', { name: 'Discover' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('tab', { name: 'Organization' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('tab', { name: 'Plaza' })).not.toBeInTheDocument()
     expect(screen.queryByRole('tab', { name: 'Providers' })).not.toBeInTheDocument()
     expect(screen.queryByRole('tab', { name: 'Marketplaces' })).not.toBeInTheDocument()
     expect(screen.getByText('builtin catalog')).toBeVisible()

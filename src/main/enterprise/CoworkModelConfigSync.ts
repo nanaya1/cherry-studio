@@ -1,15 +1,20 @@
 import { createHash } from 'node:crypto'
 
+import { eq } from 'drizzle-orm'
+import { safeStorage } from 'electron'
+
 import { application } from '@application'
 import { notifyDataApiDataChange } from '@data/dataApiDataChange'
+import { appStateTable } from '@data/db/schemas/appState'
+import { userProviderTable } from '@data/db/schemas/userProvider'
 import { modelService } from '@data/services/ModelService'
-import { providerService } from '@data/services/ProviderService'
+import { providerService, setXuelangSyncContext, XUELANG_SNAPSHOT_OWNER } from '@data/services/ProviderService'
+import { XUELANG_PROVIDER_ID } from '@shared/data/presets/xuelang'
 import { endpointImpliedCapability, parseUniqueModelId } from '@shared/data/types/model'
 
+import { parseJavaModelConfigEnvelope } from './JavaModelConfigClient'
 import type { OrgAuthManager } from './OrgAuthManager'
-import type { JavaModelConfigProvider, JavaModelConfigSnapshot, OrgSession } from './types'
-
-const AUTO_PROVIDER_PREFIX = 'cowork-auto-'
+import type { JavaModelConfigModel, JavaModelConfigProvider, JavaModelConfigSnapshot } from './types'
 
 type ModelConfigAuth = Pick<
   OrgAuthManager,
@@ -18,24 +23,60 @@ type ModelConfigAuth = Pick<
   apiClient: Pick<OrgAuthManager['apiClient'], 'getModelConfig'>
 }
 
+const COWORK_KEY_LABEL = 'Cowork'
+const snapshotKey = (scope: string) => `enterprise.xuelang.snapshot.${scope}`
+
+type Preferences = { enabled?: boolean; keys?: Record<string, boolean>; models?: Record<string, boolean> }
+
+function readState(key: string): unknown {
+  return application.get('DbService').getDb().select().from(appStateTable).where(eq(appStateTable.key, key)).get()
+    ?.value
+}
+
+function writeState(key: string, value: unknown): void {
+  application
+    .get('DbService')
+    .getDb()
+    .insert(appStateTable)
+    .values({ key, value })
+    .onConflictDoUpdate({ target: appStateTable.key, set: { value } })
+    .run()
+}
+
 function digest(parts: string[]): string {
   return createHash('sha256').update(JSON.stringify(parts)).digest('hex')
 }
 
-function contextPrefix(session: Extract<OrgSession, { authMode: 'management-java' }>): string {
-  return `${AUTO_PROVIDER_PREFIX}${digest([session.authOrigin, session.issuerId, session.userId, session.tenantId])}-`
+/**
+ * 多把 Key 下发的模型可能重叠：按实际 API 模型 ID 去重，合并协议与展示名。
+ * 服务端是唯一来源，能力只按协议推导，不按名称猜测视觉/工具/推理权限。
+ */
+function mergeModels(providers: JavaModelConfigProvider[]): JavaModelConfigModel[] {
+  const merged = new Map<string, JavaModelConfigModel>()
+  for (const provider of providers) {
+    for (const model of provider.models) {
+      const existing = merged.get(model.id)
+      if (!existing) {
+        merged.set(model.id, { ...model, endpointTypes: [...model.endpointTypes] })
+        continue
+      }
+      existing.endpointTypes = [...new Set([...existing.endpointTypes, ...model.endpointTypes])]
+      if (existing.name === undefined && model.name !== undefined) existing.name = model.name
+    }
+  }
+  return [...merged.values()]
 }
 
-function disableBinding(providerId: string): void {
-  providerService.update(providerId, { isEnabled: false })
-  providerService.replaceApiKeys(
-    providerId,
-    providerService.getApiKeys(providerId).map((key) => ({ ...key, isEnabled: false }))
-  )
-  const models = modelService.list({ providerId })
-  modelService.bulkUpdate(
-    models.map((model) => ({ ...parseUniqueModelId(model.id), patch: { isEnabled: false, isDeprecated: true } }))
-  )
+function modelFields(model: JavaModelConfigModel) {
+  const capabilities = [
+    ...new Set(
+      model.endpointTypes.flatMap((endpoint) => {
+        const capability = endpointImpliedCapability(endpoint)
+        return capability ? [capability] : []
+      })
+    )
+  ]
+  return { name: model.name ?? model.id, endpointTypes: model.endpointTypes, capabilities }
 }
 
 function notifyModelChanges(): void {
@@ -49,136 +90,192 @@ function notifyModelChanges(): void {
   ])
 }
 
-function modelFields(model: JavaModelConfigProvider['models'][number]) {
-  // 只采用协议本身确定的能力；不根据名称猜测模型的视觉、工具或推理权限。
-  const capabilities = [
-    ...new Set(
-      model.endpointTypes.flatMap((endpoint) => {
-        const capability = endpointImpliedCapability(endpoint)
-        return capability ? [capability] : []
-      })
-    )
-  ]
-  return { name: model.name ?? model.id, endpointTypes: model.endpointTypes, capabilities }
-}
-
 /** 由 EnterprisePlugin 管理触发时机，所有持久化仍复用服务商与模型的领域服务。 */
 export class CoworkModelConfigSync {
-  async sync(auth: ModelConfigAuth): Promise<{ providerCount: number; modelCount: number } | null> {
+  constructor(
+    private readonly crypto: Pick<
+      typeof safeStorage,
+      'isEncryptionAvailable' | 'getSelectedStorageBackend' | 'encryptString' | 'decryptString'
+    > = safeStorage
+  ) {}
+
+  async sync(auth: ModelConfigAuth): Promise<{ providerId: string; keyCount: number; modelCount: number } | null> {
     if (auth.getVerificationStatus().state !== 'verified') return null
     const lease = auth.acquireLease()
     const session = await auth.getValidSession()
     auth.assertLease(lease)
     if (!session || session.authMode !== 'management-java') return null
-    const prefix = contextPrefix(session)
 
-    // MEA:enterprise-model-binding 企业切换后即使新接口不可用，也不能继续调用旧企业的自动凭据。
-    const foreignBindings = providerService
-      .list({})
-      .filter((provider) => provider.id.startsWith(AUTO_PROVIDER_PREFIX) && !provider.id.startsWith(prefix))
-    if (foreignBindings.length > 0) {
-      application.get('DbService').withWriteTx(() => {
-        for (const provider of foreignBindings) disableBinding(provider.id)
-      })
-      notifyModelChanges()
+    const { authOrigin } = session
+    const scopeFor = (identity: typeof lease) =>
+      digest([authOrigin, identity.issuerId, identity.userId, identity.tenantId ?? ''])
+    const scope = scopeFor(lease)
+    const currentScope = () => {
+      try {
+        const current = auth.acquireLease()
+        return current.generation === lease.generation && scopeFor(current) === scope ? scope : undefined
+      } catch {
+        return undefined
+      }
     }
+    setXuelangSyncContext(currentScope, 'syncing')
+    notifyModelChanges()
+    try {
+      const snapshot = await auth.apiClient.getModelConfig(session, () => auth.assertLease(lease))
+      auth.assertLease(lease)
+      if (
+        snapshot.serverInstanceId !== session.issuerId ||
+        snapshot.userId !== session.userId ||
+        snapshot.tenantId !== session.tenantId
+      ) {
+        throw new Error('模型配置身份或企业与当前登录会话不一致')
+      }
 
-    const snapshot = await auth.apiClient.getModelConfig(session, () => auth.assertLease(lease))
-    auth.assertLease(lease)
+      const models = mergeModels(snapshot.providers)
+      // MEA:enterprise-model-binding 快照、身份归属和本机偏好在同一事务中对账。
+      application.get('DbService').withWriteTx(() => {
+        this.applySnapshot(scope, snapshot, models)
+        writeState(snapshotKey(scope), this.sealSnapshot(snapshot))
+      })
+      setXuelangSyncContext(currentScope, 'success')
+      notifyModelChanges()
+      return { providerId: XUELANG_PROVIDER_ID, keyCount: snapshot.providers.length, modelCount: models.length }
+    } catch (error) {
+      if (currentScope()) {
+        try {
+          this.restoreSnapshot(scope, session)
+        } catch {
+          // A missing or unreadable cache must not re-enable another scope or hide the sync failure.
+        }
+        setXuelangSyncContext(currentScope, 'failed')
+        notifyModelChanges()
+      }
+      throw error
+    }
+  }
+
+  private canEncrypt(): boolean {
+    return (
+      this.crypto.isEncryptionAvailable() &&
+      (process.platform !== 'linux' || !['basic_text', '', 'unknown'].includes(this.crypto.getSelectedStorageBackend()))
+    )
+  }
+
+  private sealSnapshot(snapshot: JavaModelConfigSnapshot): string | null {
+    try {
+      if (this.canEncrypt()) return this.crypto.encryptString(JSON.stringify(snapshot)).toString('base64')
+    } catch {
+      // The current snapshot is still usable; never fall back to a plaintext archive.
+    }
+    return null
+  }
+
+  private restoreSnapshot(
+    scope: string,
+    session: { issuerId: string; userId: string; tenantId?: string | null }
+  ): void {
+    if (readState(XUELANG_SNAPSHOT_OWNER) === scope || !this.canEncrypt()) return
+    const sealed = readState(snapshotKey(scope))
+    if (typeof sealed !== 'string') return
+    const data: unknown = JSON.parse(this.crypto.decryptString(Buffer.from(sealed, 'base64')))
+    const snapshot = parseJavaModelConfigEnvelope({ code: 200, data })
     if (
       snapshot.serverInstanceId !== session.issuerId ||
       snapshot.userId !== session.userId ||
       snapshot.tenantId !== session.tenantId
-    ) {
-      throw new Error('模型配置身份或企业与当前登录会话不一致')
-    }
-
-    // 同步 SQLite 驱动共用单一连接，领域服务的嵌套事务均为保存点；任一写失败回滚整份快照。
-    application.get('DbService').withWriteTx(() => this.applySnapshot(prefix, snapshot))
-    notifyModelChanges()
-    return {
-      providerCount: snapshot.providers.length,
-      modelCount: snapshot.providers.reduce((count, provider) => count + provider.models.length, 0)
-    }
-  }
-
-  private applySnapshot(prefix: string, snapshot: JavaModelConfigSnapshot): void {
-    const existingProviders = new Map(providerService.list({}).map((provider) => [provider.id, provider]))
-    const desiredIds = new Set<string>()
-    for (const config of snapshot.providers) {
-      const providerId = `${prefix}${digest([config.id])}`
-      desiredIds.add(providerId)
-      // MEA:enterprise-model-binding 已导入的 Key 由本地维护，后续登录只恢复撤权停用状态。
-      const existing = existingProviders.get(providerId)
-      if (existing) {
-        if (!existing.isEnabled && existing.apiKeys.length > 0 && existing.apiKeys.every((key) => !key.isEnabled)) {
-          const models = modelService.list({ providerId })
-          // 自动停用会同时标记全部模型弃用，普通手动关闭不应在登录时被重新打开。
-          if (models.some((model) => !model.isDeprecated)) continue
-          providerService.replaceApiKeys(
-            providerId,
-            providerService.getApiKeys(providerId).map((key) => ({ ...key, isEnabled: true }))
-          )
-          modelService.bulkUpdate(
-            models.map((model) => ({
-              ...parseUniqueModelId(model.id),
-              patch: { isEnabled: true, isDeprecated: false }
-            }))
-          )
-          providerService.update(providerId, { isEnabled: true })
-        }
-        continue
-      }
-      const fields = {
-        name: config.name,
-        endpointConfigs: config.endpointConfigs,
-        defaultChatEndpoint: config.defaultChatEndpoint,
-        authConfig: { type: 'api-key' as const }
-      }
-      const apiKeys = [{ id: 'cowork', key: config.apiKey, isEnabled: true }]
-      /* 原重复覆盖逻辑保留，已存在的绑定在上方跳过。
-      if (existingProviders.has(providerId)) {
-        providerService.update(providerId, fields)
-        providerService.replaceApiKeys(providerId, apiKeys)
-      } else {
-        providerService.create({ providerId, ...fields, apiKeys })
-      }
-      */
-      providerService.create({ providerId, ...fields, apiKeys })
-      this.syncModels(providerId, config)
-      providerService.update(providerId, { isEnabled: true })
-    }
-
-    // 完整成功快照才允许停用缺失绑定，保留历史对话所引用的服务商与模型行。
-    for (const provider of existingProviders.values()) {
-      if (provider.id.startsWith(prefix) && !desiredIds.has(provider.id)) disableBinding(provider.id)
-    }
-  }
-
-  private syncModels(providerId: string, config: JavaModelConfigProvider): void {
-    const existingModels = new Map(
-      modelService.list({ providerId }).map((model) => [parseUniqueModelId(model.id).modelId, model])
     )
-    const desiredIds = new Set(config.models.map((model) => model.id))
-    const additions = config.models
-      .filter((model) => !existingModels.has(model.id))
-      .map((model) => ({
-        dto: { providerId, modelId: model.id, ...modelFields(model) }
-      }))
-    modelService.create(additions)
+      return
+    application.get('DbService').withWriteTx(() => this.applySnapshot(scope, snapshot, mergeModels(snapshot.providers)))
+  }
+
+  private applySnapshot(scope: string, snapshot: JavaModelConfigSnapshot, models: JavaModelConfigModel[]): void {
+    const db = application.get('DbService').getDb()
+    const oldOwner = readState(XUELANG_SNAPSHOT_OWNER)
+    const row = db.select().from(userProviderTable).where(eq(userProviderTable.providerId, XUELANG_PROVIDER_ID)).get()
+    const existing = new Map(
+      modelService
+        .list({ providerId: XUELANG_PROVIDER_ID }, { includeUnscopedManaged: true })
+        .map((model) => [parseUniqueModelId(model.id).modelId, model] as const)
+    )
+    const preferenceKey = (owner: string) => `enterprise.xuelang.preferences.${owner}`
+    if (typeof oldOwner === 'string' && row) {
+      const prior = readState(preferenceKey(oldOwner)) as Preferences | undefined
+      writeState(preferenceKey(oldOwner), {
+        enabled: row.isEnabled,
+        keys: { ...prior?.keys, ...Object.fromEntries((row.apiKeys ?? []).map((key) => [key.id, key.isEnabled])) },
+        models: {
+          ...prior?.models,
+          ...Object.fromEntries(
+            [...existing].filter(([, model]) => !model.isDeprecated).map(([id, model]) => [id, model.isEnabled])
+          )
+        }
+      })
+    }
+    const preferences = readState(preferenceKey(scope)) as Preferences | undefined
+    const first = snapshot.providers[0]
+    const apiKeys = snapshot.providers.map((config) => {
+      const id = `cowork-${digest([config.id])}`
+      return {
+        id,
+        key: config.apiKey,
+        label: COWORK_KEY_LABEL,
+        isEnabled: preferences?.keys?.[id] ?? true,
+        managedRoutes: { endpointConfigs: config.endpointConfigs, models: config.models }
+      }
+    })
+    const endpointConfigs: JavaModelConfigProvider['endpointConfigs'] = Object.assign(
+      {},
+      ...snapshot.providers.map((provider) => provider.endpointConfigs)
+    )
+
+    // MEA:enterprise-model-binding 雪浪工匠由登录用户独占，凭据来源固定为 api-key。
+    // 服务端按当前身份下发完整列表，全量替换即刻清理旧企业与已撤销的 Key；
+    // 只写凭据、地址与模型，不碰 name/preset。
+    providerService.update(XUELANG_PROVIDER_ID, {
+      endpointConfigs,
+      defaultChatEndpoint: first?.defaultChatEndpoint,
+      authConfig: { type: 'api-key' },
+      isEnabled: preferences?.enabled ?? true
+    })
+    providerService.replaceApiKeys(XUELANG_PROVIDER_ID, apiKeys)
+    this.syncModels(models, existing, preferences?.models)
+    writeState(XUELANG_SNAPSHOT_OWNER, scope)
+  }
+
+  private syncModels(
+    desired: JavaModelConfigModel[],
+    existing: Map<string, { isEnabled: boolean; isDeprecated?: boolean | null }>,
+    enabled: Record<string, boolean> | undefined
+  ): void {
+    const desiredIds = new Set(desired.map((model) => model.id))
+
+    modelService.create(
+      desired
+        .filter((model) => !existing.has(model.id))
+        .map((model) => ({ dto: { providerId: XUELANG_PROVIDER_ID, modelId: model.id, ...modelFields(model) } }))
+    )
+    // 撤权不删除历史行；重新授权时恢复本机偏好而非强制开启。
     modelService.bulkUpdate(
-      config.models
-        .filter((model) => existingModels.has(model.id))
+      desired
+        .filter((model) => existing.has(model.id))
         .map((model) => ({
-          providerId,
+          providerId: XUELANG_PROVIDER_ID,
           modelId: model.id,
-          patch: { ...modelFields(model), isEnabled: true, isDeprecated: false }
+          patch: {
+            ...modelFields(model),
+            isEnabled: Object.hasOwn(enabled ?? {}, model.id) ? enabled?.[model.id] : true,
+            isDeprecated: false
+          }
         }))
     )
     modelService.bulkUpdate(
-      [...existingModels.keys()]
+      [...existing.keys()]
         .filter((modelId) => !desiredIds.has(modelId))
-        .map((modelId) => ({ providerId, modelId, patch: { isEnabled: false, isDeprecated: true } }))
+        .map((modelId) => ({
+          providerId: XUELANG_PROVIDER_ID,
+          modelId,
+          patch: { isEnabled: false, isDeprecated: true }
+        }))
     )
   }
 }

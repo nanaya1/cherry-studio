@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { ErrorCode } from '@shared/data/api/errors'
+import { XUELANG_PROVIDER_ID } from '@shared/data/presets/xuelang'
+
+const notifyDataChange = vi.hoisted(() => vi.fn())
+vi.mock('@data/dataApiDataChange', () => ({ notifyDataApiDataChange: notifyDataChange }))
+
 const {
   createMock,
   listMock,
@@ -39,6 +45,7 @@ vi.mock('@data/services/ProviderRegistryService', () => ({
 }))
 
 vi.mock('@data/services/ProviderService', () => ({
+  hasCurrentXuelangSnapshot: () => true,
   providerService: {
     create: createMock,
     list: listMock,
@@ -62,6 +69,123 @@ describe('providerHandlers', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     getByProviderIdMock.mockReset().mockImplementation((providerId: string) => ({ id: providerId }))
+  })
+
+  describe('企业内置服务商', () => {
+    const params = { providerId: XUELANG_PROVIDER_ID }
+    const keyParams = { ...params, keyId: 'managed-key' }
+
+    it('在详情和列表中返回领域服务提供的同步状态', async () => {
+      const provider = { id: XUELANG_PROVIDER_ID, managedSyncState: 'syncing' }
+      getByProviderIdMock.mockReturnValueOnce(provider)
+      listMock.mockReturnValueOnce([provider])
+
+      await expect(providerHandlers['/providers/:providerId'].GET({ params })).resolves.toMatchObject({
+        managedSyncState: 'syncing'
+      })
+      await expect(providerHandlers['/providers'].GET({ query: {} })).resolves.toMatchObject([
+        { id: XUELANG_PROVIDER_ID, managedSyncState: 'syncing' }
+      ])
+    })
+
+    it('不返回凭据或未知字段，保留关闭状态和路由元数据', async () => {
+      const managedRoutes = {
+        endpointConfigs: { 'openai-chat-completions': { baseUrl: 'https://example.com/v1' } },
+        models: [{ id: 'model', endpointTypes: ['openai-chat-completions'] }]
+      }
+      getApiKeysMock.mockReturnValueOnce([
+        {
+          id: 'managed-key',
+          key: 'secret-value',
+          label: 'Cowork',
+          isEnabled: false,
+          managedRoutes: { ...managedRoutes, secret: 'another-secret' },
+          secret: 'unknown-field'
+        }
+      ])
+
+      await expect(providerHandlers['/providers/:providerId/api-keys'].GET({ params, query: {} })).resolves.toEqual({
+        keys: [{ id: 'managed-key', key: 'se****alue', label: 'Cowork', isEnabled: false, managedRoutes }]
+      })
+    })
+
+    it('只允许更新服务商和 Key 的开关，Key 更新成功后刷新模型选择器', async () => {
+      const provider = { id: XUELANG_PROVIDER_ID, isEnabled: false }
+      const updatedKeyProvider = { ...provider, apiKeys: [{ id: 'managed-key', isEnabled: true }] }
+      updateMock.mockReturnValueOnce(provider)
+      updateApiKeyMock.mockReturnValueOnce(updatedKeyProvider)
+
+      await expect(
+        providerHandlers['/providers/:providerId'].PATCH({ params, body: { isEnabled: false } })
+      ).resolves.toEqual(provider)
+      await expect(
+        providerHandlers['/providers/:providerId/api-keys/:keyId'].PATCH({
+          params: keyParams,
+          body: { isEnabled: true }
+        })
+      ).resolves.toEqual(updatedKeyProvider)
+      expect(notifyDataChange).toHaveBeenCalledExactlyOnceWith([{ endpoint: '/models', kind: 'membership' }])
+    })
+
+    it('拒绝混入只读字段的更新，不发出模型变更通知', async () => {
+      await expect(
+        providerHandlers['/providers/:providerId'].PATCH({ params, body: { isEnabled: false, name: 'Custom' } })
+      ).rejects.toMatchObject({ code: ErrorCode.INVALID_OPERATION })
+      await expect(
+        providerHandlers['/providers/:providerId/api-keys/:keyId'].PATCH({
+          params: keyParams,
+          body: { isEnabled: false, label: 'Custom' }
+        })
+      ).rejects.toMatchObject({ code: ErrorCode.INVALID_OPERATION })
+      expect(updateMock).not.toHaveBeenCalled()
+      expect(updateApiKeyMock).not.toHaveBeenCalled()
+      expect(notifyDataChange).not.toHaveBeenCalled()
+    })
+
+    it.each([
+      ['新增服务商', () => providerHandlers['/providers'].POST({ body: { ...params, name: 'Custom' } }), createMock],
+      ['删除服务商', () => providerHandlers['/providers/:providerId'].DELETE({ params }), deleteMock],
+      [
+        '新增 Key',
+        () => providerHandlers['/providers/:providerId/api-keys'].POST({ params, body: { key: 'test-key' } }),
+        addApiKeyMock
+      ],
+      [
+        '替换 Key',
+        () => providerHandlers['/providers/:providerId/api-keys'].PUT({ params, body: { keys: [] } }),
+        replaceApiKeysMock
+      ],
+      [
+        '删除 Key',
+        () => providerHandlers['/providers/:providerId/api-keys/:keyId'].DELETE({ params: keyParams }),
+        deleteApiKeyMock
+      ],
+      [
+        '单项排序',
+        () =>
+          providerHandlers['/providers/:id/order'].PATCH({
+            params: { id: XUELANG_PROVIDER_ID },
+            body: { position: 'last' }
+          }),
+        moveMock
+      ],
+      [
+        '混合批量排序',
+        () =>
+          providerHandlers['/providers/order:batch'].PATCH({
+            body: {
+              moves: [
+                { id: 'openai', anchor: { position: 'first' } },
+                { id: XUELANG_PROVIDER_ID, anchor: { position: 'last' } }
+              ]
+            }
+          }),
+        reorderMock
+      ]
+    ] as const)('拒绝%s且不写入', async (_operation, run, write) => {
+      await expect(run()).rejects.toMatchObject({ code: ErrorCode.INVALID_OPERATION })
+      expect(write).not.toHaveBeenCalled()
+    })
   })
 
   describe('/providers', () => {

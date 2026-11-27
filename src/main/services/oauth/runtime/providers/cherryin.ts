@@ -30,11 +30,6 @@ function resolveGatewayContext(
   context?: OAuthRuntimeProviderContext
 ): { oauthServer: string; apiHost: string } {
   const config = GATEWAY_OAUTH_CONFIGS[providerId]
-  if (providerId === SystemProviderIds.xuelang) {
-    const [oauthServer] = config.ALLOWED_HOSTS
-    return { oauthServer, apiHost: oauthServer }
-  }
-
   const oauthServer = context?.oauthServer ?? config.ALLOWED_HOSTS[0]
   validateGatewayApiHost(providerId, oauthServer)
   const apiHost = context?.apiHost ?? oauthServer
@@ -78,18 +73,15 @@ export function createGatewayOAuthProvider(providerId: SystemProviderId | string
     throw new OAuthServiceError(`No gateway OAuth config for provider: ${providerId}`)
   }
   const config = GATEWAY_OAUTH_CONFIGS[providerId]
-  const isXuelang = providerId === SystemProviderIds.xuelang
-  const transport = isXuelang
-    ? { type: 'deep-link' as const, config: { redirectUri: config.REDIRECT_URI } }
-    : {
-        type: 'loopback' as const,
-        config: {
-          hosts: ['127.0.0.1'],
-          port: CHERRYIN_CONFIG.CALLBACK_PORT,
-          path: CHERRYIN_CONFIG.CALLBACK_PATH,
-          redirectUri: CHERRYIN_CONFIG.REDIRECT_URI
-        }
-      }
+  const transport = {
+    type: 'loopback' as const,
+    config: {
+      hosts: ['127.0.0.1'],
+      port: CHERRYIN_CONFIG.CALLBACK_PORT,
+      path: CHERRYIN_CONFIG.CALLBACK_PATH,
+      redirectUri: CHERRYIN_CONFIG.REDIRECT_URI
+    }
+  }
 
   return {
     providerId,
@@ -97,14 +89,14 @@ export function createGatewayOAuthProvider(providerId: SystemProviderId | string
     transport,
     createClient: (context?: OAuthRuntimeProviderContext) => {
       const { oauthServer, apiHost } = resolveGatewayContext(providerId, context)
-      const tokenHost = isXuelang ? oauthServer : (context?.oauthServer ?? apiHost)
+      const tokenHost = context?.oauthServer ?? apiHost
       return new PkceOAuthClient({
         clientId: config.CLIENT_ID,
         authorizeUrl: `${oauthServer}/oauth2/auth`,
         tokenUrl: `${tokenHost}/oauth2/token`,
         redirectUri: config.REDIRECT_URI,
         scope: config.SCOPES,
-        requireGatewayTokenResponse: isXuelang
+        requireGatewayTokenResponse: false
       })
     },
     afterPersistTokens: async (tokenData, context) => {
@@ -119,4 +111,3 @@ export function createGatewayOAuthProvider(providerId: SystemProviderId | string
 }
 
 export const cherryInOAuthProvider = createGatewayOAuthProvider(SystemProviderIds.cherryin)
-export const xuelangOAuthProvider = createGatewayOAuthProvider(SystemProviderIds.xuelang)

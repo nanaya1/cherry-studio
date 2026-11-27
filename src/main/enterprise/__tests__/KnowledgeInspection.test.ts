@@ -35,6 +35,20 @@ function setup(data: unknown, code = 200) {
 }
 
 describe('管理查看 HTTP 契约', () => {
+  it('通过专用路径获取转换预览且舍弃原件地址', async () => {
+    const { client, fetchImpl } = setup({
+      fileName: '报告.docx',
+      minioPreviewUrl: 'https://storage.test/preview.pdf?signature=test',
+      url: 'https://storage.test/original.docx'
+    })
+    await expect(client.previewUrl(baseId, fileId, () => {})).resolves.toEqual({
+      fileName: '报告.docx',
+      minioPreviewUrl: 'https://storage.test/preview.pdf?signature=test'
+    })
+    const url = new URL(String(fetchImpl.mock.calls[0]?.[0]))
+    expect(url.pathname).toBe('/api/v1/client/knowledge/inspection/file/preview-url')
+    expect(Object.fromEntries(url.searchParams)).toEqual({ id: baseId, fileId })
+  })
   // 防止迟到的失效响应清除新企业会话，或误用切换后的凭据请求旧企业。
   it('使用原会话凭据，切换后拒绝迟到的登录失效回调', async () => {
     const session: OrgSession = {

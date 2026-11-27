@@ -2,8 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { GATEWAY_OAUTH_CONFIGS } from '../CherryInOAuthConfig'
 
-// 雪浪工匠 and CherryIN share one gateway OAuth implementation. These tests pin
-// the per-provider config table: same PKCE contract, different hosts.
+// 雪浪工匠 no longer uses OAuth; only CherryIN remains in the gateway config table.
 describe('GATEWAY_OAUTH_CONFIGS', () => {
   it('keeps the CherryIN legacy values untouched', () => {
     const config = GATEWAY_OAUTH_CONFIGS.cherryin
@@ -14,16 +13,7 @@ describe('GATEWAY_OAUTH_CONFIGS', () => {
     expect(config.SCOPES).toBe('openid profile email offline_access balance:read usage:read tokens:read tokens:write')
   })
 
-  it('registers the xuelang gateway behind its current host', () => {
-    const config = GATEWAY_OAUTH_CONFIGS.xuelang
-
-    expect(config.CLIENT_ID).toBe(GATEWAY_OAUTH_CONFIGS.cherryin.CLIENT_ID)
-    expect(config.REDIRECT_URI).toBe('meacowork://oauth/callback')
-    // 2026-09-14：雪浪暂不签发 id_token，因此不再与 CherryIN 的 openid scope 完全相同。
-    // expect(config.SCOPES).toBe(GATEWAY_OAUTH_CONFIGS.cherryin.SCOPES)
-    expect(config.SCOPES).toBe('profile email offline_access balance:read usage:read tokens:read tokens:write')
-    // 2026-09-14：XUELANG_API_HOST 由当前分支环境常量决定；本测试聚焦 OAuth 配置结构与 scope 契约。
-    // expect(config.ALLOWED_HOSTS).toEqual(['https://api.xuelanglm.com'])
-    expect(config.ALLOWED_HOSTS).toHaveLength(1)
+  it('no longer registers a xuelang OAuth gateway', () => {
+    expect(Object.keys(GATEWAY_OAUTH_CONFIGS)).toEqual(['cherryin'])
   })
 })

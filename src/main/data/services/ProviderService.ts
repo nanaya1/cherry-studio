@@ -10,6 +10,7 @@ import { and, asc, eq, inArray, type SQLWrapper } from 'drizzle-orm'
 import { v4 as uuidv4 } from 'uuid'
 
 import { application } from '@application'
+import { appStateTable } from '@data/db/schemas/appState'
 import { providerLogoFileRefTable } from '@data/db/schemas/fileRelations'
 import { userModelTable } from '@data/db/schemas/userModel'
 import type { InsertUserProviderRow, UserProviderRow } from '@data/db/schemas/userProvider'
@@ -33,6 +34,7 @@ import { DataApiError, DataApiErrorFactory, ErrorCode } from '@shared/data/api/e
 import type { OrderBatchRequest, OrderRequest } from '@shared/data/api/schemas/_endpointHelpers'
 import type { CreateProviderDto, ListProvidersQuery, UpdateProviderDto } from '@shared/data/api/schemas/providers'
 import { isManagedCherryProviderId } from '@shared/data/presets/cherryai'
+import { XUELANG_PROVIDER_ID } from '@shared/data/presets/xuelang'
 import type { EndpointType } from '@shared/data/types/model'
 import type {
   ApiKeyEntry,
@@ -49,6 +51,25 @@ import { resolveEndpointDialect } from '@shared/utils/provider'
 import { isRetiredProvider } from '../retiredProviders'
 
 const logger = loggerService.withContext('DataApi:ProviderService')
+
+export const XUELANG_SNAPSHOT_OWNER = 'enterprise.xuelang.snapshot-owner'
+let readXuelangScope: (() => string | undefined) | undefined
+let xuelangSyncState: NonNullable<Provider['managedSyncState']> = 'idle'
+
+export function setXuelangSyncContext(
+  readScope: () => string | undefined,
+  state: NonNullable<Provider['managedSyncState']>
+) {
+  readXuelangScope = readScope
+  xuelangSyncState = state
+}
+
+export function hasCurrentXuelangSnapshot(): boolean {
+  const scope = readXuelangScope?.()
+  if (!scope) return false
+  const db = application.get('DbService').getDb()
+  return db.select().from(appStateTable).where(eq(appStateTable.key, XUELANG_SNAPSHOT_OWNER)).get()?.value === scope
+}
 
 function applyJsonMergePatch(target: unknown, patch: unknown): unknown {
   if (patch === null || typeof patch !== 'object' || Array.isArray(patch)) return patch
@@ -188,7 +209,8 @@ function normalizeApiKeyEntry(entry: ApiKeyEntry): ApiKeyEntry {
     id: entry.id,
     key,
     ...(entry.label ? { label: entry.label } : {}),
-    isEnabled: entry.isEnabled
+    isEnabled: entry.isEnabled,
+    ...(entry.managedRoutes ? { managedRoutes: entry.managedRoutes } : {})
   }
 }
 
@@ -293,7 +315,11 @@ function rowToRuntimeProvider(row: UserProviderRow, metadata?: ProviderDisplayMe
 
   // Process API keys (strip actual key values for security)
   // oxlint-disable-next-line no-unused-vars
-  const apiKeys = (row.apiKeys ?? []).map(({ key: _key, ...rest }) => rest)
+  const managed = row.providerId === XUELANG_PROVIDER_ID
+  const current = !managed || hasCurrentXuelangSnapshot()
+  const apiKeys = (current ? (row.apiKeys ?? []) : [])
+    .filter((entry) => !managed || entry.managedRoutes)
+    .map(({ key: _key, ...rest }) => rest)
 
   // Determine auth type
   let authType: AuthType = 'api-key'
@@ -329,10 +355,11 @@ function rowToRuntimeProvider(row: UserProviderRow, metadata?: ProviderDisplayMe
     // (#17096 — the seeder is insert-only, so the row alone goes stale);
     // the row contributes user-owned baseUrl and dialect overrides. Legacy
     // registry-only fields such as `reasoningFormatType` are stripped first.
-    endpointConfigs:
-      providerRegistryService.mergeEndpointConfigs(row.endpointConfigs, row.providerId, row.presetProviderId) ??
-      undefined,
-    defaultChatEndpoint: row.defaultChatEndpoint ?? presetMetadata.defaultChatEndpoint,
+    endpointConfigs: current
+      ? (providerRegistryService.mergeEndpointConfigs(row.endpointConfigs, row.providerId, row.presetProviderId) ??
+        undefined)
+      : undefined,
+    defaultChatEndpoint: current ? (row.defaultChatEndpoint ?? presetMetadata.defaultChatEndpoint) : undefined,
     modelListSource: presetMetadata.modelListSource,
     supplementModelsFromRegistry: presetMetadata.supplementModelsFromRegistry,
     authMethods: presetMetadata.authMethods,
@@ -344,7 +371,10 @@ function rowToRuntimeProvider(row: UserProviderRow, metadata?: ProviderDisplayMe
     apiKeys,
     authType,
     settings,
-    isEnabled: row.isEnabled
+    isEnabled: current && row.isEnabled,
+    ...(managed
+      ? { hasManagedSnapshot: current, managedSyncState: readXuelangScope?.() ? xuelangSyncState : 'idle' }
+      : {})
   }
 }
 
@@ -668,7 +698,38 @@ class ProviderService {
    * actually serves the request. An explicit override is never rotated, but is
    * matched back to a stored key when possible.
    */
+  getXuelangApiKeys(modelId: string, endpointType: EndpointType): ApiKeyEntry[] {
+    if (!this.getByProviderId(XUELANG_PROVIDER_ID).isEnabled) return []
+    return this.getApiKeys(XUELANG_PROVIDER_ID, { enabled: true }).filter(
+      (entry) =>
+        entry.managedRoutes?.endpointConfigs[endpointType]?.baseUrl &&
+        entry.managedRoutes.models.some((model) => model.id === modelId && model.endpointTypes.includes(endpointType))
+    )
+  }
+
+  resolveXuelangApiKey(
+    modelId: string,
+    endpointType: EndpointType,
+    override?: string
+  ): (ResolvedProviderApiKey & { baseUrl: string }) | undefined {
+    const candidates = this.getXuelangApiKeys(modelId, endpointType)
+    if (candidates.length === 0) return undefined
+    const cache = application.get('CacheService')
+    const scope = readXuelangScope?.()
+    const cacheKey = rotationCacheKey(JSON.stringify([XUELANG_PROVIDER_ID, scope, modelId, endpointType]))
+    const entry =
+      override === undefined
+        ? candidates[(candidates.findIndex((key) => key.id === cache.get<string>(cacheKey)) + 1) % candidates.length]
+        : candidates.find((key) => key.key === override)
+    const baseUrl = entry?.managedRoutes?.endpointConfigs[endpointType]?.baseUrl
+    if (!entry || !baseUrl) return undefined
+    if (override === undefined && candidates.length > 1) cache.set(cacheKey, entry.id)
+    return { ...toResolvedProviderApiKey(entry.key, override === undefined ? 'explicit' : 'matched', entry), baseUrl }
+  }
+
   resolveApiKey(providerId: string, override?: string): ResolvedProviderApiKey {
+    if (providerId === XUELANG_PROVIDER_ID)
+      throw DataApiErrorFactory.validation({ model: ['A model-specific route is required'] })
     const db = application.get('DbService').getDb()
     const [row] = db.select().from(userProviderTable).where(eq(userProviderTable.providerId, providerId)).limit(1).all()
 
@@ -729,7 +790,12 @@ class ProviderService {
 
     assertProviderAvailable(row, providerId)
 
-    const apiKeys = row.apiKeys ?? []
+    const apiKeys =
+      providerId === XUELANG_PROVIDER_ID
+        ? hasCurrentXuelangSnapshot()
+          ? (row.apiKeys ?? []).filter((key) => key.managedRoutes)
+          : []
+        : (row.apiKeys ?? [])
     return options.enabled ? apiKeys.filter((k) => k.isEnabled) : apiKeys
   }
 
@@ -854,6 +920,9 @@ class ProviderService {
 
     const db = application.get('DbService').getDb()
     const provider = db.transaction((tx) => {
+      if (providerId === XUELANG_PROVIDER_ID && !hasCurrentXuelangSnapshot()) {
+        throw DataApiErrorFactory.notFound('API key', keyId)
+      }
       const [row] = tx
         .select()
         .from(userProviderTable)

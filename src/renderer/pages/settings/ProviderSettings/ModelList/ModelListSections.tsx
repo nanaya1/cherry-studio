@@ -12,7 +12,7 @@ import type { Provider } from '@shared/data/types/provider'
 import { modelListClasses } from '../primitives/ProviderSettingsPrimitives'
 import { useModelHealthStatus } from './modelHealthStatusCache'
 import ModelListGroup from './ModelListGroup'
-import { useModelListHealthRun } from './modelListHealthContext'
+import { useOptionalModelListHealthRun } from './modelListHealthContext'
 import ModelListItem from './ModelListItem'
 import type { ModelListGroupSection } from './useProviderModelList'
 
@@ -44,6 +44,11 @@ interface ModelListSectionsProps {
   bulkActionDisabled?: boolean
   expansionCommand?: { expanded: boolean; version: number }
   onContinueApiSetup?: () => void
+  managed?: {
+    emptyTitle: string
+    onToggle: (model: Model, enabled: boolean) => Promise<void>
+    getStatus: (model: Model) => string | undefined
+  }
 }
 
 type ModelListVirtualRow =
@@ -81,10 +86,11 @@ const ModelListSections: React.FC<ModelListSectionsProps> = ({
   onDeleteModels,
   bulkActionDisabled,
   expansionCommand,
-  onContinueApiSetup
+  onContinueApiSetup,
+  managed
 }) => {
   const { t } = useTranslation()
-  const { apiKeyEntries, savingKeyId, toggleApiKey } = useModelListHealthRun()
+  const health = useOptionalModelListHealthRun()
   const [groupOpenOverrides, setGroupOpenOverrides] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
@@ -152,10 +158,12 @@ const ModelListSections: React.FC<ModelListSectionsProps> = ({
     return (
       <EmptyState
         compact
-        title={t('settings.models.empty')}
-        description={t(
-          onContinueApiSetup ? 'settings.provider.api_setup.models_empty_hint' : 'settings.models.empty_hint'
-        )}
+        title={managed?.emptyTitle ?? t('settings.models.empty')}
+        description={
+          managed
+            ? undefined
+            : t(onContinueApiSetup ? 'settings.provider.api_setup.models_empty_hint' : 'settings.models.empty_hint')
+        }
         actionLabel={onContinueApiSetup ? t('settings.provider.api_setup.continue_models') : undefined}
         onAction={onContinueApiSetup}
         className="min-h-40"
@@ -197,7 +205,7 @@ const ModelListSections: React.FC<ModelListSectionsProps> = ({
               bulkActionDisabled={bulkActionDisabled}
               pendingModelIds={pendingModelIds}
               defaultModelIds={defaultModelIds}
-              onDeleteModels={onDeleteModels}
+              onDeleteModels={managed ? undefined : onDeleteModels}
               onToggleOpen={() => toggleGroupOpen(row.groupName, row.defaultOpen)}
             />
           )
@@ -206,17 +214,26 @@ const ModelListSections: React.FC<ModelListSectionsProps> = ({
         return (
           <div
             className={cn(modelListClasses.virtualModelRow, row.isLastInGroup && modelListClasses.virtualModelRowLast)}>
-            <HealthAwareModelListItem
-              provider={provider}
-              model={row.model}
-              apiKeyEntries={apiKeyEntries}
-              savingKeyId={savingKeyId}
-              onToggleApiKey={toggleApiKey}
-              onEdit={onEditModel}
-              onDelete={onDeleteModel}
-              disabled={disabled || pendingModelIds.has(row.model.id)}
-              isDefaultModel={defaultModelIds.has(row.model.id)}
-            />
+            {managed ? (
+              <ModelListItem
+                provider={provider}
+                model={row.model}
+                managedStatus={managed.getStatus(row.model)}
+                onToggleEnabled={managed.onToggle}
+              />
+            ) : (
+              <HealthAwareModelListItem
+                provider={provider}
+                model={row.model}
+                apiKeyEntries={health?.apiKeyEntries}
+                savingKeyId={health?.savingKeyId}
+                onToggleApiKey={health?.toggleApiKey}
+                onEdit={onEditModel}
+                onDelete={onDeleteModel}
+                disabled={disabled || pendingModelIds.has(row.model.id)}
+                isDefaultModel={defaultModelIds.has(row.model.id)}
+              />
+            )}
           </div>
         )
       }}

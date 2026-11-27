@@ -21,6 +21,7 @@ import { createAiUsagePricingSnapshot } from '@main/ai/utils/usageCapture'
 import { mapEndpointToPiApi, type PiApi } from '@shared/ai/piModelCompatibility'
 import { isCodexProviderId } from '@shared/data/presets/codex'
 import { hasRuntimeTransportAdapter } from '@shared/data/presets/runtimeTransport'
+import { XUELANG_PROVIDER_ID } from '@shared/data/presets/xuelang'
 import {
   ENDPOINT_TYPE,
   type EndpointType,
@@ -37,7 +38,13 @@ import { getRawModelId } from '@shared/utils/model'
 import { isLoginBasedProvider, matchesPreset, resolveEndpointDialect } from '@shared/utils/provider'
 import { SystemProviderIds } from '@shared/utils/systemProviderId'
 
-import { resolveEffectiveEndpoint } from '../../provider/endpoint'
+import {
+  assertXuelangModelUsable,
+  isXuelangChatEndpoint,
+  type ResolvedEndpoint,
+  resolveEffectiveEndpoint,
+  resolveXuelangEndpoint
+} from '../../provider/endpoint'
 import { getProviderTransportAdapter, type ProviderTransportAdapter } from '../../provider/runtimeTransport'
 import { requiresAgentGateway, resolveApiGatewayRuntime } from '../agentApiGateway'
 import { resolveAgentContextWindow } from '../agentContextWindow'
@@ -130,6 +137,7 @@ export async function materializePiProviderStream(injection: PiProviderInjection
 }
 
 function resolvePiEndpoint(provider: Provider, model: Model) {
+  if (provider.id === XUELANG_PROVIDER_ID) return resolveXuelangEndpoint(model, undefined, isXuelangChatEndpoint)
   const preferredEndpoint =
     model.endpointTypes?.includes(ENDPOINT_TYPE.OPENAI_CHAT_COMPLETIONS) &&
     model.endpointTypes.includes(ENDPOINT_TYPE.ANTHROPIC_MESSAGES)
@@ -149,11 +157,11 @@ export function buildPiProviderInjection(
   provider: Provider,
   model: Model,
   apiKey: string,
-  credentialReceipt?: AiUsageCredentialReceipt
+  credentialReceipt?: AiUsageCredentialReceipt,
+  resolvedEndpoint: ResolvedEndpoint = resolvePiEndpoint(provider, model)
 ): PiDirectProviderInjection {
   // Unsupported-provider beats missing-key: a login-based provider (grok-cli,
   // claude-code) has no key by design, and "missing API key" would misdiagnose it.
-  const resolvedEndpoint = resolvePiEndpoint(provider, model)
   const adapterFamily = resolvedEndpoint.endpointType
     ? provider.endpointConfigs?.[resolvedEndpoint.endpointType]?.adapterFamily
     : undefined
@@ -302,6 +310,27 @@ export function resolvePiProviderInjectionFromSnapshot(
   model: Model,
   enabledApiKeys?: readonly ApiKeyEntry[]
 ): PiDirectProviderInjection {
+  if (provider.id === XUELANG_PROVIDER_ID) {
+    assertXuelangModelUsable(provider, model)
+    const { endpointType } = resolvePiEndpoint(provider, model)
+    if (!endpointType) throw new PiMissingApiKeyError(provider.id)
+    const selected = providerService.resolveXuelangApiKey(getRawModelId(model), endpointType)
+    if (!selected) throw new PiMissingApiKeyError(provider.id)
+    if (
+      enabledApiKeys &&
+      !enabledApiKeys.some(
+        (entry) =>
+          entry.key === selected.value &&
+          entry.managedRoutes?.endpointConfigs[endpointType]?.baseUrl === selected.baseUrl
+      )
+    ) {
+      throw new Error(`Pi provider credentials changed during materialization: ${provider.id}`)
+    }
+    return buildPiProviderInjection(provider, model, selected.value, selected.apiKeySelection, {
+      endpointType,
+      baseUrl: selected.baseUrl
+    })
+  }
   // Transport-adapter providers hold no app-side key: the real OAuth token is
   // fetched per stream call by the adapter. Skip the round-robin key rotation.
   if (getProviderTransportAdapter(provider.id)) {
@@ -353,6 +382,16 @@ export async function assertPiProviderUsable(uniqueModelId: UniqueModelId): Prom
   const { providerId, modelId } = parseUniqueModelId(uniqueModelId)
   const provider = providerService.getByProviderId(providerId)
   const model = modelService.getByKey(providerId, modelId)
+
+  if (provider.id === XUELANG_PROVIDER_ID) {
+    assertXuelangModelUsable(provider, model)
+    const { endpointType } = resolvePiEndpoint(provider, model)
+    if (!endpointType) throw new PiMissingApiKeyError(providerId)
+    if (!mapEndpointToPiApi(endpointType, provider.endpointConfigs?.[endpointType]?.adapterFamily)) {
+      throw new PiUnsupportedProviderError(providerId)
+    }
+    return
+  }
 
   // Provider-declared Gateway routes authenticate at materialization time, not with a provider key.
   if (usesPiGateway(provider)) {

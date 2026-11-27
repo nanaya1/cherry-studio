@@ -180,30 +180,16 @@ describe('ProviderSpecificSettings', () => {
     }
   )
 
-  it('renders the xuelang gateway OAuth card for the system provider', async () => {
+  it('does not render a gateway OAuth card for 雪浪工匠', () => {
     useProviderMock.mockReturnValue({
       provider: { id: 'xuelang', name: '雪浪工匠', isEnabled: true }
     })
     useProviderMetaMock.mockReturnValue({ isCherryIN: false, isDmxapi: false })
 
-    render(<ProviderSpecificSettings providerId="xuelang" placement="beforeAuth" />)
+    const { container } = render(<ProviderSpecificSettings providerId="xuelang" placement="beforeAuth" />)
 
-    // Gated on the exact system id, not matchesPreset — so the shared
-    // CherryInOauth panel renders for the system xuelang provider.
-    expect(await screen.findByText('cherryin-oauth-xuelang')).toBeInTheDocument()
-  })
-
-  it('does not render the xuelang OAuth card for a copied provider', () => {
-    useProviderMock.mockReturnValue({
-      provider: { id: 'copied-xuelang', name: '雪浪工匠 (副本)', presetProviderId: 'xuelang', isEnabled: true }
-    })
-    useProviderMetaMock.mockReturnValue({ isCherryIN: false, isDmxapi: false })
-
-    const { container } = render(<ProviderSpecificSettings providerId="copied-xuelang" placement="beforeAuth" />)
-
-    // Copied xuelang keeps only manual API keys — the gateway OAuth entry must
-    // stay closed, so the copied provider must not get the xuelang card.
-    expect(container.textContent).not.toContain('cherryin-oauth-copied-xuelang')
+    // 雪浪工匠 的凭据由企业登录同步，不再提供 OAuth 授权入口。
+    expect(container.textContent).not.toContain('cherryin-oauth-xuelang')
   })
 
   it('does not render a provider-specific promotion for AMD GPU Cloud', () => {

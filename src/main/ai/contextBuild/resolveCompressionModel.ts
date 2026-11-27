@@ -12,10 +12,16 @@ import { defaultSettingsMiddleware, wrapLanguageModel } from 'ai'
 
 import { createExecutor } from '@cherrystudio/ai-core'
 import { loggerService } from '@logger'
-import { resolveEffectiveEndpoint } from '@main/ai/provider/endpoint'
+import {
+  assertXuelangModelUsable,
+  isXuelangChatEndpoint,
+  resolveEffectiveEndpoint,
+  resolveXuelangEndpoint
+} from '@main/ai/provider/endpoint'
 import { resolveSdkConfig } from '@main/ai/provider/sdkConfig'
 import { modelService } from '@main/data/services/ModelService'
 import { providerService } from '@main/data/services/ProviderService'
+import { XUELANG_PROVIDER_ID } from '@shared/data/presets/xuelang'
 import { isUniqueModelId, parseUniqueModelId } from '@shared/data/types/model'
 
 import type { ConversationRef } from '../types'
@@ -66,7 +72,12 @@ export async function resolveCompressionModel(
   }
 
   try {
-    const { sdkConfig } = await resolveSdkConfig(provider, model, resolveEffectiveEndpoint(provider, model))
+    assertXuelangModelUsable(provider, model)
+    const endpoint =
+      provider.id === XUELANG_PROVIDER_ID
+        ? resolveXuelangEndpoint(model, undefined, isXuelangChatEndpoint)
+        : resolveEffectiveEndpoint(provider, model)
+    const { sdkConfig } = await resolveSdkConfig(provider, model, endpoint)
     // App provider extensions are registered beyond the executor's built-in type union.
     const executor = await createExecutor(
       sdkConfig.providerId as Parameters<typeof createExecutor>[0],

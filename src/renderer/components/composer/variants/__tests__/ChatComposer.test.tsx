@@ -356,7 +356,8 @@ vi.mock('../SelectedModelsTrigger', () => ({
   )
 }))
 
-vi.mock('@renderer/components/ModelSelector', () => ({
+vi.mock('@renderer/components/ModelSelector', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@renderer/components/ModelSelector')>()),
   getProviderDisplayName: (provider: Provider) => provider.name,
   ModelSelector: (props: any) => {
     const {
@@ -2058,6 +2059,26 @@ describe('ChatComposer', () => {
     })
 
     expect(mocks.selectedKnowledgeBases).toEqual([knowledgeBase])
+  })
+
+  it('restores an unavailable Xuelang queued model without changing the assistant default', async () => {
+    mocks.topicPending = true
+    const xuelangModel: Model = { ...model, id: 'xuelang::previous', providerId: 'xuelang', name: 'Old Xuelang model' }
+    mocks.model = xuelangModel
+    mocks.mentionedModels = [xuelangModel]
+    render(<ChatHomeComposer topic={topic} onSend={vi.fn()} />)
+
+    await act(async () => {
+      await mocks.surfaceProps?.onSendDraft({ text: 'queued with xuelang', tokens: [] })
+    })
+    const queueContent = mocks.surfaceProps?.queueContent as any
+    expect(queueContent.props.items[0].payload.mentionedModels).toEqual([xuelangModel.id])
+
+    await act(async () => {
+      await queueContent.props.onEdit(queueContent.props.items[0].id)
+    })
+    expect(mocks.mentionedModels).toEqual([xuelangModel])
+    expect(mocks.setModel).not.toHaveBeenCalled()
   })
 
   it('restores queued model, reasoning, and Fast controls when editing the item', async () => {
@@ -3893,25 +3914,27 @@ describe('ChatComposer', () => {
     } as const
     const parts = [{ type: 'text', text: 'old' }] as any
 
-    render(
+    const editor = (onSend: () => void) => (
       <MessageEditingProvider>
         <StartEditingButton message={message as any} parts={parts} />
-        <ChatComposer topic={topic} onSend={vi.fn()} />
+        <ChatComposer topic={topic} onSend={onSend} />
       </MessageEditingProvider>
     )
+    const view = render(editor(vi.fn()))
 
     await waitFor(() => expect(mocks.surfaceProps).toBeDefined())
     mocks.setFiles.mockClear()
     mocks.setSelectedKnowledgeBases.mockClear()
-    mocks.getDraft.mockClear()
 
     fireEvent.click(screen.getByRole('button', { name: 'start editing' }))
-
     await waitFor(() => expect(mocks.surfaceProps?.text).toBe('old'))
 
+    // Mount-time draft persistence can also read the editor. Check that an active edit is not restored again.
+    const draftReads = mocks.getDraft.mock.calls.length
+    view.rerender(editor(vi.fn()))
     expect(mocks.setFiles).toHaveBeenCalledTimes(1)
     expect(mocks.setSelectedKnowledgeBases).toHaveBeenCalledTimes(1)
-    expect(mocks.getDraft).toHaveBeenCalledTimes(1)
+    expect(mocks.getDraft).toHaveBeenCalledTimes(draftReads)
   })
 
   it('locates the edited message from the Composer editing state', async () => {
