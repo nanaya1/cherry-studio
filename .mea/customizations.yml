@@ -62,6 +62,7 @@ customizations:
     # 消息操作仅工业视频按通用 display policy 平铺：用户复制/修改需求/删除，助手复制/删除/查看用量（有数据）；无更多及笔记入口，删除确认不取消任务或删除成片，用量弹窗复用原详情。
     # 成片下载（仅工业模块）：downloadArtifact 以已绑定 job record/state 读取当前 job 身份，按 job_get.progress.final_artifact 核对 owned_by_this_job/执行标识/成功状态/新 job active，失败即停止，不把新片归旧 job。
     # 生成与下载校验进度仅在右栏展示，消息区不重复显示 loading；进度结束后收起右栏且不回退空浏览器；已有本地成片时不闪恢复进度，选择完成任务不自动打开工作台；消息区展示“打开工作台”按钮时同步显示右上角工作台入口，同一 run 的后续生成消息不得移除该入口，按钮未出现前不得显示或发送无效请求；产物按 run+jobId 持久化并以通用文件附件展示在对应消息末尾，预览在右栏播放，打开才交给系统默认程序。
+    # 右栏恢复工业视频预览时静默等待，继续隐藏尚未恢复的面板。
     # 未选中的生成任务由主进程持续对账并安全下载；不发送工业视频专属完成通知、不显示任务列表专属成片徽标。
     # /download 附 expected_sha256 与 expected_job_id，校验 X-IVideo 响应头与本地流式 hash；不匹配不发布成片。仅 job_get 成功且 progress 明确缺 final_artifact 才走旧服务兼容（无去重/无 hash 保证）；job_get 失败或字段存在但无效一律抛错不下载。
     # 主进程按 job+hash+run+workspace+baseUrl 合并并发下载；持久索引置于受控 workspace（.ivideo-final-index.json），entry.sha 须等于本次权威 final.sha 且文件存在/sha/size 一致才复用旧片，新片另存旧片保留，索引写入失败不影响已发布成片。expectedSize 只取权威 final.size，调用方不一致不采用。

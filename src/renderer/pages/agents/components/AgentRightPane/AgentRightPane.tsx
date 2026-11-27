@@ -2100,7 +2100,6 @@ const AGENT_RIGHT_PANEL_CAPABILITIES = [
 ] satisfies readonly RightPanelCapability<AgentRightPanelScope>[]
 
 const AgentRightPaneViewport = memo(function AgentRightPaneViewport() {
-  const { t } = useTranslation()
   const meta = useAgentRightPaneMeta()
   const selected = useIndustrialVideoSelectedPanel(meta.sessionId)
   const state = useRightPanelState()
@@ -2113,7 +2112,8 @@ const AgentRightPaneViewport = memo(function AgentRightPaneViewport() {
   )
   return (
     <>
-      {restoring && <div role="status">{t('industrial_video.preview.restoring')}</div>}
+      {/* MEA:industrial-video Keep preview restoration silent. */}
+      {/* {restoring && <div role="status">{t('industrial_video.preview.restoring')}</div>} */}
       <div className="contents" hidden={restoring}>
         <RightPanelViewport />
       </div>
