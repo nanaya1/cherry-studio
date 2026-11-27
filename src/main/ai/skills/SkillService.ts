@@ -52,7 +52,7 @@ import {
   validateZipFile
 } from './skillArchive'
 import { isSkillExternallyExportable } from './skillExportPolicy'
-import { withSkillHubPackages } from './skillHub'
+import { getSkillHubDetail, withSkillHubPackages } from './skillHub'
 import { SkillImportError } from './SkillImportError'
 import { SkillInstaller } from './SkillInstaller'
 import { createTempDir, normalizeFolderKey, safeRemoveDirectory, sanitizeFolderName } from './skillPaths'
@@ -82,6 +82,7 @@ interface SkillInstallProvenance {
   catalogSkillId?: string | null
   catalogVersion?: string | null
   catalogDisplayMetadata?: CatalogDisplayMetadata
+  skillHubDisplayName?: string
 }
 
 type SkillRemoteUpdateErrorCode = (typeof skillErrorCodes)[keyof typeof skillErrorCodes]
@@ -409,6 +410,12 @@ export class SkillService {
   }
 
   async installSkillHub(target: { id: string; version: string }): Promise<void> {
+    const directoryName = await getSkillHubDetail(target.id)
+      .then((item) => item.name)
+      .catch((error: unknown) => {
+        logger.warn('Could not load SkillHub display name', { id: target.id, error })
+        return undefined
+      })
     await withSkillHubPackages(target, (packages) =>
       this.mutationLock.runExclusive(async () => {
         const existing = await this.list()
@@ -436,7 +443,14 @@ export class SkillService {
         }
         for (const member of pending) {
           try {
-            await this.installSkillDirLocked(member.directory, 'marketplace', skillHubSource(member.id, member.version))
+            await this.installSkillDirLocked(
+              member.directory,
+              'marketplace',
+              skillHubSource(member.id, member.version),
+              {
+                skillHubDisplayName: member.id === target.id ? directoryName : undefined
+              }
+            )
           } catch (error) {
             throw new Error(
               `SkillHub installation failed: ${member.id} (${error instanceof Error ? error.message : String(error)})`,
@@ -775,8 +789,8 @@ export class SkillService {
 
     const tags = metadata.tags ?? []
     const displayMetadata = provenance.catalogDisplayMetadata ?? {
-      displayName: metadata.displayName ?? null,
-      displayNameEn: metadata.displayNameEn ?? null,
+      displayName: provenance.skillHubDisplayName ?? metadata.displayName ?? null,
+      displayNameEn: provenance.skillHubDisplayName ?? metadata.displayNameEn ?? null,
       description: metadata.description ?? null,
       descriptionEn: metadata.descriptionEn ?? null
     }

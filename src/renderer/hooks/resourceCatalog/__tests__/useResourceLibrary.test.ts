@@ -41,6 +41,7 @@ vi.mock('@renderer/hooks/useGroups', () => ({
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
+    i18n: { resolvedLanguage: 'zh-CN' },
     t: (key: string) => (key === 'agent.builtin.cherry_assistant.description' ? 'Advisor 诊断 helper' : key)
   })
 }))
@@ -219,6 +220,18 @@ describe('useResourceLibrary', () => {
     })
     expect(result.current.resources.map((resource) => resource.id)).toEqual(['skill-filtered'])
   })
+
+  it.each(['UI/UX 设计器', 'ui-ux-pro-max'])(
+    'finds the catalog skill by %s and displays its localized title',
+    (search) => {
+      mocks.useSkillList.mockReturnValue(
+        listResult([{ ...skillListItem, name: 'ui-ux-pro-max', displayName: 'UI/UX 设计器', source: 'catalog' }])
+      )
+
+      const { result } = renderResourceLibrary({ resourceType: 'skill', clientSideSkillSearch: true, search })
+      expect(result.current.resources.map((resource) => resource.name)).toEqual(['UI/UX 设计器'])
+    }
+  )
 
   it('maps prompt resources and forwards search without tag filters', () => {
     mocks.usePromptList.mockReturnValue(

@@ -458,10 +458,11 @@ customizations:
   - id: skillhub-catalog
     title: Browse and install SkillHub skills in Cowork
     owner: renderer
-    behavior: Show the anonymous SkillHub catalog under Skills with combined filters and install validated packages and dependencies into My Installs.
+    behavior: Show the anonymous SkillHub catalog under Skills with combined filters and install validated packages and dependencies into My Installs. Prefer the directory title for explicitly selected SkillHub installs when available.
     touchpoints:
       - src/renderer/pages/workspace/SkillsConnectorsPage.tsx
       - src/renderer/components/resourceCatalog/catalog/SkillHubCatalogView.tsx
+      - src/renderer/hooks/resourceCatalog/useResourceLibrary.ts
       - src/main/ai/skills/skillHub.ts
       - src/main/ai/skills/SkillService.ts
       - src/main/ipc/handlers/skill.ts

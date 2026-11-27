@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { useGroups } from '@renderer/hooks/useGroups'
 import type { AgentDetail, ResourceItem, ResourceType, SortKey } from '@renderer/types/resourceCatalog'
 import { getAgentAvatarFromConfiguration, getAgentDescriptionForDisplay } from '@renderer/utils/agent'
+import { getSkillDisplayName } from '@shared/data/api/schemas/skills'
 import type { InstalledSkill } from '@shared/data/types/agent'
 import type { Assistant } from '@shared/data/types/assistant'
 import type { Prompt } from '@shared/data/types/prompt'
@@ -44,7 +45,8 @@ export function useResourceLibrary({
   sort,
   clientSideSkillSearch = false
 }: UseResourceLibraryOptions): UseResourceLibraryResult {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const locale = i18n.resolvedLanguage ?? i18n.language
   const assistantGroups = useGroups('assistant')
 
   const trimmedSearch = search.trim() || undefined
@@ -122,21 +124,24 @@ export function useResourceLibrary({
     [t]
   )
 
-  const buildSkillItem = useCallback((s: InstalledSkill): ResourceItem => {
-    return {
-      id: s.id,
-      type: 'skill',
-      name: s.name,
-      description: s.description ?? '',
-      // No emoji on InstalledSkill — fall back to the lightning glyph.
-      avatar: '⚡',
-      // Skill metadata tags from SKILL.md live on `sourceTags`; assistant
-      // organization in the resource library uses Group rows instead.
-      createdAt: s.createdAt,
-      updatedAt: s.updatedAt,
-      raw: s
-    }
-  }, [])
+  const buildSkillItem = useCallback(
+    (s: InstalledSkill): Extract<ResourceItem, { type: 'skill' }> => {
+      return {
+        id: s.id,
+        type: 'skill',
+        name: getSkillDisplayName(s, locale),
+        description: s.description ?? '',
+        // No emoji on InstalledSkill — fall back to the lightning glyph.
+        avatar: '⚡',
+        // Skill metadata tags from SKILL.md live on `sourceTags`; assistant
+        // organization in the resource library uses Group rows instead.
+        createdAt: s.createdAt,
+        updatedAt: s.updatedAt,
+        raw: s
+      }
+    },
+    [locale]
+  )
 
   const buildPromptItem = useCallback((p: Prompt): ResourceItem => {
     return {
@@ -180,7 +185,7 @@ export function useResourceLibrary({
     if (!clientSideSkillSearch || !trimmedSearch) return items
     const query = trimmedSearch.toLocaleLowerCase()
     return items.filter((item) => {
-      const haystack = [item.name, item.description, ...(item.type === 'skill' ? item.raw.sourceTags : [])]
+      const haystack = [item.name, item.raw.name, item.description, ...item.raw.sourceTags]
         .join(' ')
         .toLocaleLowerCase()
       return haystack.includes(query)
