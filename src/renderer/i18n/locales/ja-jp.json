@@ -6150,6 +6150,7 @@
   "settings.skills.globalEnabled": "全体で有効",
   "settings.skills.globalToggle": "スキル {{name}} をグローバルに有効化",
   "settings.skills.install": "インストール",
+  "settings.skills.installExportConflict": "次のパスは使用中のため、外部エクスポートをスキップしました：{{paths}}",
   "settings.skills.installFailed": "スキルのインストールに失敗しました: {{name}}",
   "settings.skills.installFromDirectory": "フォルダーからインストール",
   "settings.skills.installFromZip": "ZIPファイルからインストール",

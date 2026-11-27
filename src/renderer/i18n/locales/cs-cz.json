@@ -6017,6 +6017,7 @@
   "settings.skills.globalEnabled": "Globálně povoleno",
   "settings.skills.globalToggle": "Globálně povolit dovednost {{name}}",
   "settings.skills.install": "Nainstalovat",
+  "settings.skills.installExportConflict": "Externí export byl přeskočen, protože tyto cesty se již používají: {{paths}}",
   "settings.skills.installFailed": "Instalace dovednosti se nezdařila: {{name}}",
   "settings.skills.installFromDirectory": "Instalovat ze složky",
   "settings.skills.installFromZip": "Instalovat ze souboru ZIP",

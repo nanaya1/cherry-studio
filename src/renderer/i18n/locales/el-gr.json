@@ -6150,6 +6150,7 @@
   "settings.skills.globalEnabled": "Καθολική ενεργοποίηση",
   "settings.skills.globalToggle": "Καθολική ενεργοποίηση δεξιότητας {{name}}",
   "settings.skills.install": "Εγκατάσταση",
+  "settings.skills.installExportConflict": "Η εξωτερική εξαγωγή παραλείφθηκε επειδή αυτές οι διαδρομές χρησιμοποιούνται ήδη: {{paths}}",
   "settings.skills.installFailed": "Αποτυχία εγκατάστασης δεξιότητας: {{name}}",
   "settings.skills.installFromDirectory": "Εγκατάσταση από φάκελο",
   "settings.skills.installFromZip": "Εγκατάσταση από αρχείο ZIP",

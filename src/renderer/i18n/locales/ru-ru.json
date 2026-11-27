@@ -6152,6 +6152,7 @@
   "settings.skills.globalEnabled": "Включён глобально",
   "settings.skills.globalToggle": "Включить навык {{name}} глобально",
   "settings.skills.install": "Установить",
+  "settings.skills.installExportConflict": "Внешний экспорт пропущен, поскольку эти пути уже используются: {{paths}}",
   "settings.skills.installFailed": "Не удалось установить навык: {{name}}",
   "settings.skills.installFromDirectory": "Установить из каталога",
   "settings.skills.installFromZip": "Установить из ZIP-файла",

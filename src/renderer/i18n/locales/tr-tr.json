@@ -6150,6 +6150,7 @@
   "settings.skills.globalEnabled": "Genel olarak etkin",
   "settings.skills.globalToggle": "{{name}} becerisini genel olarak etkinleştir",
   "settings.skills.install": "Yükle",
+  "settings.skills.installExportConflict": "Bu yollar zaten kullanımda olduğu için harici dışa aktarma atlandı: {{paths}}",
   "settings.skills.installFailed": "Beceri yüklenemedi: {{name}}",
   "settings.skills.installFromDirectory": "Dizinden yükle",
   "settings.skills.installFromZip": "ZIP dosyasından yükle",

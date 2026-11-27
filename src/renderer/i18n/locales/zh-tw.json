@@ -6156,6 +6156,7 @@
   "settings.skills.globalEnabled": "全域啟用",
   "settings.skills.globalToggle": "全域啟用技能 {{name}}",
   "settings.skills.install": "安裝",
+  "settings.skills.installExportConflict": "以下路徑已被占用，未匯出至外部技能目錄：{{paths}}",
   "settings.skills.installFailed": "技能安裝失敗：{{name}}",
   "settings.skills.installFromDirectory": "從資料夾安裝",
   "settings.skills.installFromZip": "從 ZIP 檔案安裝",

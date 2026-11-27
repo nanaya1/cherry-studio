@@ -6150,6 +6150,7 @@
   "settings.skills.globalEnabled": "Bật toàn cục",
   "settings.skills.globalToggle": "Bật kỹ năng {{name}} trên toàn hệ thống",
   "settings.skills.install": "Cài đặt",
+  "settings.skills.installExportConflict": "Đã bỏ qua xuất ra ngoài vì các đường dẫn này đang được sử dụng: {{paths}}",
   "settings.skills.installFailed": "Không thể cài đặt kỹ năng: {{name}}",
   "settings.skills.installFromDirectory": "Cài đặt từ thư mục",
   "settings.skills.installFromZip": "Cài đặt từ tệp ZIP",

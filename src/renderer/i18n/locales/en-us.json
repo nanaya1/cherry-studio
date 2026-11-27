@@ -6156,6 +6156,7 @@
   "settings.skills.globalEnabled": "Globally enabled",
   "settings.skills.globalToggle": "Globally enable skill {{name}}",
   "settings.skills.install": "Install",
+  "settings.skills.installExportConflict": "External export was skipped because these paths are already in use: {{paths}}",
   "settings.skills.installFailed": "Failed to install skill: {{name}}",
   "settings.skills.installFromDirectory": "Install from directory",
   "settings.skills.installFromZip": "Install from ZIP file",

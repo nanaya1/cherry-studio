@@ -6151,6 +6151,7 @@
   "settings.skills.globalEnabled": "Activată global",
   "settings.skills.globalToggle": "Activează global abilitatea {{name}}",
   "settings.skills.install": "Instalare",
+  "settings.skills.installExportConflict": "Exportul extern a fost omis deoarece aceste căi sunt deja utilizate: {{paths}}",
   "settings.skills.installFailed": "Nu s-a putut instala abilitatea: {{name}}",
   "settings.skills.installFromDirectory": "Instalează din director",
   "settings.skills.installFromZip": "Instalează din fișier ZIP",

@@ -6016,6 +6016,7 @@
   "settings.skills.globalEnabled": "Abilitata globalmente",
   "settings.skills.globalToggle": "Attiva globalmente la competenza {{name}}",
   "settings.skills.install": "Installa",
+  "settings.skills.installExportConflict": "Esportazione esterna saltata perché questi percorsi sono già in uso: {{paths}}",
   "settings.skills.installFailed": "Impossibile installare la competenza: {{name}}",
   "settings.skills.installFromDirectory": "Installa da cartella",
   "settings.skills.installFromZip": "Installa da file ZIP",

@@ -43,8 +43,16 @@ export function SkillHubCatalogView({ search }: { search: string }) {
     if (installing) return
     setInstalling(id)
     try {
-      await ipcApi.request('skill.skillhub.install', { id, version })
-      toast.success(t('settings.skills.installSuccess', { name }))
+      const { exportConflicts } = await ipcApi.request('skill.skillhub.install', { id, version })
+      const title = t('settings.skills.installSuccess', { name })
+      if (exportConflicts.length) {
+        toast.warning({
+          title,
+          description: t('settings.skills.installExportConflict', { paths: exportConflicts.join('\n') })
+        })
+      } else {
+        toast.success(title)
+      }
     } catch (error) {
       toast.error(
         t('settings.skills.installFailed', { name }) + ': ' + (error instanceof Error ? error.message : String(error))

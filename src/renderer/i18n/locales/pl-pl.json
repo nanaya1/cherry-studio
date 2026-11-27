@@ -6090,6 +6090,7 @@
   "settings.skills.globalEnabled": "Włączona globalnie",
   "settings.skills.globalToggle": "Włącz globalnie umiejętność {{name}}",
   "settings.skills.install": "Zainstaluj",
+  "settings.skills.installExportConflict": "Pominięto eksport zewnętrzny, ponieważ te ścieżki są już używane: {{paths}}",
   "settings.skills.installFailed": "Nie udało się zainstalować umiejętności: {{name}}",
   "settings.skills.installFromDirectory": "Zainstaluj z katalogu",
   "settings.skills.installFromZip": "Zainstaluj z pliku ZIP",

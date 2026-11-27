@@ -77,6 +77,12 @@ interface CatalogDisplayMetadata {
   descriptionEn: string
 }
 
+class SkillExportConflictError extends Error {
+  constructor(readonly target: string) {
+    super(`Skill export conflicts with an existing user entry: ${target}`)
+  }
+}
+
 interface SkillInstallProvenance {
   namespace?: string | null
   catalogSkillId?: string | null
@@ -409,14 +415,14 @@ export class SkillService {
     }
   }
 
-  async installSkillHub(target: { id: string; version: string }): Promise<void> {
+  async installSkillHub(target: { id: string; version: string }): Promise<{ exportConflicts: string[] }> {
     const directoryName = await getSkillHubDetail(target.id)
       .then((item) => item.name)
       .catch((error: unknown) => {
         logger.warn('Could not load SkillHub display name', { id: target.id, error })
         return undefined
       })
-    await withSkillHubPackages(target, (packages) =>
+    return withSkillHubPackages(target, (packages) =>
       this.mutationLock.runExclusive(async () => {
         const existing = await this.list()
         const pending: Array<(typeof packages)[number]> = []
@@ -441,6 +447,7 @@ export class SkillService {
           folders.add(key)
           pending.push(member)
         }
+        const exportConflicts: string[] = []
         for (const member of pending) {
           try {
             await this.installSkillDirLocked(
@@ -452,12 +459,17 @@ export class SkillService {
               }
             )
           } catch (error) {
+            if (error instanceof SkillExportConflictError) {
+              exportConflicts.push(error.target)
+              continue
+            }
             throw new Error(
               `SkillHub installation failed: ${member.id} (${error instanceof Error ? error.message : String(error)})`,
               { cause: error }
             )
           }
         }
+        return { exportConflicts }
       })
     )
   }
@@ -1043,7 +1055,7 @@ export class SkillService {
       const owned =
         stat.isSymbolicLink() && path.resolve(path.dirname(target), await fs.promises.readlink(target)) === source
       if (!owned) {
-        if (shouldExport) throw new Error(`Skill export conflicts with an existing user entry: ${target}`)
+        if (shouldExport) throw new SkillExportConflictError(target)
         return
       }
       if (!shouldExport) await fs.promises.unlink(target)

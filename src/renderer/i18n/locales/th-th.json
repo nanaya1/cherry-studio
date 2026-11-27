@@ -6016,6 +6016,7 @@
   "settings.skills.globalEnabled": "เปิดใช้งานทั่วทั้งแอป",
   "settings.skills.globalToggle": "เปิดใช้สกิล {{name}} ทั่วโลก",
   "settings.skills.install": "ติดตั้ง",
+  "settings.skills.installExportConflict": "ข้ามการส่งออกภายนอกเนื่องจากเส้นทางเหล่านี้ถูกใช้งานอยู่แล้ว: {{paths}}",
   "settings.skills.installFailed": "ติดตั้งสกิลไม่สำเร็จ: {{name}}",
   "settings.skills.installFromDirectory": "ติดตั้งจากไดเรกทอรี",
   "settings.skills.installFromZip": "ติดตั้งจากไฟล์ ZIP",

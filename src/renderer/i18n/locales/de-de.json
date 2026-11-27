@@ -6150,6 +6150,7 @@
   "settings.skills.globalEnabled": "Global aktiviert",
   "settings.skills.globalToggle": "Fähigkeit {{name}} global aktivieren",
   "settings.skills.install": "Installieren",
+  "settings.skills.installExportConflict": "Externer Export übersprungen, da diese Pfade bereits verwendet werden: {{paths}}",
   "settings.skills.installFailed": "Fehler beim Installieren der Fähigkeit: {{name}}",
   "settings.skills.installFromDirectory": "Aus Verzeichnis installieren",
   "settings.skills.installFromZip": "Aus ZIP-Datei installieren",
