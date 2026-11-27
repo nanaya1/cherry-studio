@@ -167,6 +167,7 @@
   "enterprise.knowledge.web.identity_required": "企業身分未確認，請重新登入",
   "enterprise.knowledge.web.invalid_target": "知識庫ID格式無效",
   "enterprise.knowledge.web.invalid_url": "知識庫網頁管理位址未設定或設定無效",
+  "enterprise.knowledge.web.ticket_failed": "無法開啟知識庫建立頁面，請從用戶端重新嘗試。",
   "file_processing.errors.document_size_limit_exceeded": "目前的文件解析服務要求檔案小於 {{maxSize}}。請壓縮或分割此檔案，然後重新加入。",
   "file_processing.errors.open_mineru_endpoint_changed": "Open MinerU 服務位址已變更。請重試該文件以使用新服務。",
   "file_processing.errors.open_mineru_invalid_response": "Open MinerU 傳回了無效或不支援的回應。",

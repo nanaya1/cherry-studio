@@ -167,6 +167,7 @@
   "enterprise.knowledge.web.identity_required": "Η εταιρική ταυτότητα δεν επιβεβαιώθηκε. Συνδεθείτε ξανά.",
   "enterprise.knowledge.web.invalid_target": "Το αναγνωριστικό της βάσης γνώσεων δεν είναι έγκυρο.",
   "enterprise.knowledge.web.invalid_url": "Η διεύθυνση διαχείρισης ιστού λείπει ή δεν είναι έγκυρη.",
+  "enterprise.knowledge.web.ticket_failed": "Δεν ήταν δυνατό το άνοιγμα της σελίδας δημιουργίας βάσης γνώσεων. Δοκιμάστε ξανά από την εφαρμογή.",
   "file_processing.errors.document_size_limit_exceeded": "Η τρέχουσα υπηρεσία ανάλυσης εγγράφων απαιτεί αρχεία μικρότερα από {{maxSize}}. Συμπιέστε ή χωρίστε αυτό το αρχείο και έπειτα προσθέστε το ξανά.",
   "file_processing.errors.open_mineru_endpoint_changed": "Η διεύθυνση του διακομιστή Open MinerU άλλαξε. Επαναλάβετε την επεξεργασία του εγγράφου για να χρησιμοποιήσετε τον νέο διακομιστή.",
   "file_processing.errors.open_mineru_invalid_response": "Το Open MinerU επέστρεψε μη έγκυρη ή μη υποστηριζόμενη απόκριση.",

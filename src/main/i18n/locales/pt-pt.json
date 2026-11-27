@@ -167,6 +167,7 @@
   "enterprise.knowledge.web.identity_required": "A identidade empresarial não foi confirmada. Inicie sessão novamente.",
   "enterprise.knowledge.web.invalid_target": "O ID da base de conhecimento é inválido.",
   "enterprise.knowledge.web.invalid_url": "O endereço da gestão Web está em falta ou é inválido.",
+  "enterprise.knowledge.web.ticket_failed": "Não foi possível abrir a página de criação da base de conhecimento. Tente novamente a partir do cliente.",
   "file_processing.errors.document_size_limit_exceeded": "O serviço atual de análise de documentos requer ficheiros menores que {{maxSize}}. Comprima ou divida este ficheiro e adicione-o novamente.",
   "file_processing.errors.open_mineru_endpoint_changed": "O endereço do servidor Open MinerU foi alterado. Volte a processar o documento para utilizar o novo servidor.",
   "file_processing.errors.open_mineru_invalid_response": "O Open MinerU devolveu uma resposta inválida ou não suportada.",

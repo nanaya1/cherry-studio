@@ -30,7 +30,13 @@ Java 和 Web 按每个公共库或个人库分享副本配置知识管理员分�
 
 构建客户端时设置 `MAIN_VITE_ORG_WEB_BASE_URL` 为管理 Web 根地址，例如 `https://cowork.example.com/`。前后端分开部署时必须设置为实际前端地址；未设置时复用 `MAIN_VITE_ORG_SERVER_BASE_URL`。仅接受无用户名、密码、查询串和片段的 HTTP/HTTPS 地址，可包含部署子路径。
 
-主进程重新核查有效会话及当前企业角色，只生成固定 `/knowledge` 或 `/knowledge/{UUID}` 路由。URL 仅传 `clientUserId`、`clientTenantId` 和创建表单意图 `category=public&action=create`，不传 Token。浏览器沿用正常登录流程；Web 确认用户及企业与客户端一致后才加载目标或打开表单，不自动切换企业或提交创建。
+主进程重新核查有效会话及当前企业 OWNER/ADMIN。创建公共知识库时，凭源Token通过POST `/api/v1/client/auth/web-ticket`获取60秒一次性随机票据；校验返回的userId/tenantId、时效和身份租约后，打开固定`/client/callback#ticket=...`。票据只在主进程内存短暂保存，不经IPC返回渲染进程；源Token始终只发往当前认证服务，禁止重定向、缓存和自动重发，失败不降级为普通链接。
+
+Web先清理地址栏，再匿名POST `/api/v1/auth/client-web/login`兑换独立Sa-Token会话。Java从共享Redis原子取出并删除票据，复核源Token仍有效、仍处于原企业、账号/企业/成员有效且仍为OWNER/ADMIN；为票据绑定的企业建立新会话，多企业账号无需重选。浏览器核对新身份后进入`/knowledge?clientUserId=...&clientTenantId=...&category=public&action=create`，只打开创建表单，不自动创建资源。已有标签页会话需确认使用客户端账号，兑换拒绝保留原会话；未登录标签页自动兑换，其他标签页不受影响。
+
+票据密钥采用SHA-256摘要，服务端记录源会话及身份仅在Redis保留60秒，不新增表或SQL迁移。过期、重复、撤权、退出或切企业后的票据拒绝兑换；兑换完成后Web与客户端各自切企业/退出，互不影响。回调页禁缓存、访问日志并使用no-referrer，票据和Token均不得进入运行日志、审计或埋点。一次性票据是短期持有凭据，不保证被转发后仍绑定原浏览器。
+
+详情“网页管理”仍生成固定`/knowledge/{UUID}`链接，只传clientUserId/clientTenantId，不传Token；浏览器沿用正常登录及身份核对。文件与文件夹上传继续使用客户端原件上传接口。先部署Java及Web（含回调页Nginx配置），再发布构建了正确MAIN_VITE_ORG_WEB_BASE_URL的客户端；本说明不表示已部署或完成真实环境验收。
 
 ## 上传与结果核查
 

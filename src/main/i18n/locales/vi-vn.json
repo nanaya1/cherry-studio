@@ -167,6 +167,7 @@
   "enterprise.knowledge.web.identity_required": "Chưa xác nhận danh tính doanh nghiệp. Vui lòng đăng nhập lại.",
   "enterprise.knowledge.web.invalid_target": "ID cơ sở tri thức không hợp lệ.",
   "enterprise.knowledge.web.invalid_url": "Địa chỉ quản lý web bị thiếu hoặc không hợp lệ.",
+  "enterprise.knowledge.web.ticket_failed": "Không thể mở trang tạo cơ sở kiến thức. Vui lòng thử lại từ ứng dụng.",
   "file_processing.errors.document_size_limit_exceeded": "Dịch vụ phân tích tài liệu hiện tại yêu cầu tệp nhỏ hơn {{maxSize}}. Hãy nén hoặc chia nhỏ tệp này rồi thêm lại.",
   "file_processing.errors.open_mineru_endpoint_changed": "Địa chỉ máy chủ Open MinerU đã thay đổi. Hãy thử xử lý lại tài liệu để dùng máy chủ mới.",
   "file_processing.errors.open_mineru_invalid_response": "Open MinerU trả về phản hồi không hợp lệ hoặc không được hỗ trợ.",

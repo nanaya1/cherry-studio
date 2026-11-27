@@ -167,6 +167,7 @@
   "enterprise.knowledge.web.identity_required": "Identitatea întreprinderii nu este confirmată. Autentificați-vă din nou.",
   "enterprise.knowledge.web.invalid_target": "ID-ul bazei de cunoștințe nu este valid.",
   "enterprise.knowledge.web.invalid_url": "Adresa de administrare web lipsește sau nu este validă.",
+  "enterprise.knowledge.web.ticket_failed": "Pagina de creare a bazei de cunoștințe nu a putut fi deschisă. Încercați din nou din client.",
   "file_processing.errors.document_size_limit_exceeded": "Serviciul curent de analiză a documentelor necesită fișiere mai mici de {{maxSize}}. Comprimă sau împarte acest fișier, apoi adaugă-l din nou.",
   "file_processing.errors.open_mineru_endpoint_changed": "Adresa serverului Open MinerU s-a schimbat. Reîncercați procesarea documentului pentru a utiliza noul server.",
   "file_processing.errors.open_mineru_invalid_response": "Open MinerU a returnat un răspuns nevalid sau neacceptat.",

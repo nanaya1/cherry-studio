@@ -167,6 +167,7 @@
   "enterprise.knowledge.web.identity_required": "La identidad empresarial no está confirmada. Inicie sesión de nuevo.",
   "enterprise.knowledge.web.invalid_target": "El ID de la base de conocimientos no es válido.",
   "enterprise.knowledge.web.invalid_url": "Falta la dirección de administración web o no es válida.",
+  "enterprise.knowledge.web.ticket_failed": "No se pudo abrir la página de creación de la base de conocimientos. Inténtalo de nuevo desde el cliente.",
   "file_processing.errors.document_size_limit_exceeded": "El servicio actual de análisis de documentos requiere archivos de menos de {{maxSize}}. Comprime o divide este archivo y vuelve a añadirlo.",
   "file_processing.errors.open_mineru_endpoint_changed": "La dirección del servidor Open MinerU ha cambiado. Vuelva a procesar el documento para usar el nuevo servidor.",
   "file_processing.errors.open_mineru_invalid_response": "Open MinerU devolvió una respuesta no válida o no compatible.",

@@ -167,6 +167,7 @@
   "enterprise.knowledge.web.identity_required": "Kuruluş kimliği doğrulanmadı. Yeniden oturum açın.",
   "enterprise.knowledge.web.invalid_target": "Bilgi tabanı kimliği geçersiz.",
   "enterprise.knowledge.web.invalid_url": "Web yönetimi adresi eksik veya geçersiz.",
+  "enterprise.knowledge.web.ticket_failed": "Bilgi tabanı oluşturma sayfası açılamadı. Lütfen istemciden tekrar deneyin.",
   "file_processing.errors.document_size_limit_exceeded": "Geçerli belge ayrıştırma hizmeti, dosyaların {{maxSize}} boyutundan küçük olmasını gerektiriyor. Bu dosyayı sıkıştırın veya bölün, ardından yeniden ekleyin.",
   "file_processing.errors.open_mineru_endpoint_changed": "Open MinerU sunucu adresi değişti. Yeni sunucuyu kullanmak için belgeyi yeniden işlemeyi deneyin.",
   "file_processing.errors.open_mineru_invalid_response": "Open MinerU geçersiz veya desteklenmeyen bir yanıt döndürdü.",

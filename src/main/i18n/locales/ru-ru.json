@@ -167,6 +167,7 @@
   "enterprise.knowledge.web.identity_required": "Данные организации не подтверждены. Войдите снова.",
   "enterprise.knowledge.web.invalid_target": "Недопустимый ID базы знаний.",
   "enterprise.knowledge.web.invalid_url": "Адрес веб-управления отсутствует или недопустим.",
+  "enterprise.knowledge.web.ticket_failed": "Не удалось открыть страницу создания базы знаний. Повторите попытку из клиента.",
   "file_processing.errors.document_size_limit_exceeded": "Текущая служба разбора документов поддерживает файлы меньше {{maxSize}}. Сожмите или разделите этот файл, затем добавьте его снова.",
   "file_processing.errors.open_mineru_endpoint_changed": "Адрес сервера Open MinerU изменился. Повторите обработку документа, чтобы использовать новый сервер.",
   "file_processing.errors.open_mineru_invalid_response": "Open MinerU вернул недопустимый или неподдерживаемый ответ.",

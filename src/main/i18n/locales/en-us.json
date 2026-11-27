@@ -167,6 +167,7 @@
   "enterprise.knowledge.web.identity_required": "Enterprise identity is unconfirmed. Sign in again.",
   "enterprise.knowledge.web.invalid_target": "The knowledge base ID is invalid.",
   "enterprise.knowledge.web.invalid_url": "The knowledge base web management address is missing or invalid.",
+  "enterprise.knowledge.web.ticket_failed": "Unable to open the knowledge base creation page. Please try again from the client.",
   "file_processing.errors.document_size_limit_exceeded": "The current document parsing service requires files smaller than {{maxSize}}. Compress or split this file, then add it again.",
   "file_processing.errors.open_mineru_endpoint_changed": "The Open MinerU server address changed. Retry the document to use the new server.",
   "file_processing.errors.open_mineru_invalid_response": "Open MinerU returned an invalid or unsupported response.",
