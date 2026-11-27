@@ -62,6 +62,7 @@ export type SidebarLayout = 'hidden' | 'icon' | 'full'
 export type SidebarVisibleLayout = Exclude<SidebarLayout, 'hidden'>
 
 export interface SidebarUser {
+  renderMenu?: (close: () => void) => ReactNode
   name: string
   description?: string
   avatar?: string

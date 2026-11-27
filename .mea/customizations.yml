@@ -367,6 +367,56 @@ customizations:
     tests:
       - scripts/__tests__/i18n-check-values.test.ts
 
+  - id: personal-profile-startup
+    title: Load the selected personal data space before startup
+    owner: preboot
+    behavior: Acquire the app-root lock before selecting the active profile. Guests keep the existing data root. Account launches isolate Electron and Chromium paths and skip guest-only relocation and legacy migration. Invalid selection stops startup.
+    touchpoints:
+      - src/main/main.ts
+      - src/main/core/preboot/userDataLocation.ts
+      - src/main/core/preboot/personalProfileLocation.ts
+      - src/main/core/preboot/personalProfileSelection.ts
+      - src/main/core/preboot/personalProfileSwitch.ts
+      - src/main/core/application/Application.ts
+      - src/main/data/db/DbService.ts
+      - src/main/enterprise/personalAccountLogin.ts
+      - src/main/enterprise/personalAccountRuntime.ts
+      - src/main/enterprise/personalModelSync.ts
+      - src/main/data/api/handlers/assertProviderEditable.ts
+      - src/main/data/api/handlers/providers.ts
+      - src/main/data/api/handlers/models.ts
+      - src/renderer/pages/settings/ProviderSettings/hooks/useCoworkManagedProvider.ts
+      - src/renderer/pages/settings/ProviderSettings/ConnectionSettings/ApiKey.tsx
+      - src/renderer/pages/settings/ProviderSettings/ConnectionSettings/ApiHost.tsx
+      - src/renderer/pages/settings/ProviderSettings/ConnectionSettings/ProviderApiKeyListDrawer.tsx
+      - src/renderer/pages/settings/ProviderSettings/ModelList/ModelList.tsx
+      - src/renderer/hooks/useProvider.ts
+      - src/renderer/pages/settings/ProviderSettings/ProviderSpecific/XuelangAccountSettings.tsx
+      - src/renderer/pages/settings/ProviderSettings/ProviderSpecific/providerSpecificSettingsRegistry.tsx
+      - src/main/ipc/handlers/enterprise.ts
+      - src/shared/ipc/schemas/enterprise.ts
+      - src/renderer/components/UserPopup.tsx
+      - src/renderer/components/app/Sidebar.tsx
+      - src/renderer/hooks/usePersonalAccountDetails.ts
+      - src/renderer/components/app/SidebarAccountMenu.tsx
+      - src/renderer/components/Sidebar/SidebarFooter.tsx
+      - src/renderer/components/Sidebar/types.ts
+      - src/renderer/windows/main/onboarding/OnboardingPage.tsx
+      - src/renderer/windows/main/MainApp.tsx
+    tests:
+      - src/main/core/preboot/__tests__/personalProfileLocation.test.ts
+      - src/main/core/preboot/__tests__/personalProfileSelection.test.ts
+      - src/main/core/preboot/__tests__/personalProfileSwitch.test.ts
+      - src/main/enterprise/__tests__/personalAccountLogin.test.ts
+      - src/main/enterprise/__tests__/personalModelSync.test.ts
+      - src/main/data/api/handlers/__tests__/providers.test.ts
+      - src/main/data/api/handlers/__tests__/models.test.ts
+      - src/renderer/pages/settings/ProviderSettings/__tests__/XuelangAccountSettings.test.tsx
+      - src/renderer/windows/main/onboarding/__tests__/OnboardingPage.test.tsx
+      - src/renderer/windows/main/__tests__/MainApp.test.tsx
+      - src/renderer/components/app/__tests__/Sidebar.test.tsx
+      - src/main/core/preboot/__tests__/userDataLocation.test.ts
+
   - id: onboarding-language-options
     title: Limit onboarding language selection
     owner: renderer

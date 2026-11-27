@@ -22,7 +22,8 @@ import { prepareBackupRestoreSession, runBackupRestoreGate } from '@main/core/pr
 import { configureChromiumFlags } from '@main/core/preboot/chromiumFlags'
 import { initCrashTelemetry } from '@main/core/preboot/crashTelemetry'
 import { requireSingleInstance } from '@main/core/preboot/singleInstance'
-import { resolveUserDataLocation } from '@main/core/preboot/userDataLocation'
+import { requirePersonalProfileLocation, resolveUserDataLocation } from '@main/core/preboot/userDataLocation'
+import { syncPersonalModelConfig } from '@main/enterprise/personalAccountRuntime'
 import { MINI_APP_SCHEME_DECLARATION } from '@main/features/miniApp/runtime/protocol'
 import { runDataReset } from '@main/services/dataReset'
 import { initSentry } from '@main/services/errorReporting'
@@ -37,6 +38,7 @@ import { versionService } from './services/VersionService'
 // should be the first to resolveUserDataLocation()
 resolveUserDataLocation()
 requireSingleInstance()
+const personalProfile = requirePersonalProfileLocation()
 configureChromiumFlags()
 configureRemoteDebugging()
 initCrashTelemetry()
@@ -57,8 +59,10 @@ const startApp = async () => {
   // userData relocation: a pending/failed relocation makes this a dedicated
   // relocation launch (execute or explain, then relaunch) before any service
   // opens files under the source tree. See services/userDataRelocation/README.md.
-  const relocationResult = await runUserDataRelocation()
-  if (relocationResult === 'handled') return
+  if (personalProfile === 'guest') {
+    const relocationResult = await runUserDataRelocation()
+    if (relocationResult === 'handled') return
+  }
 
   // Promote a staged restored DB before bootstrap. An isolated restore launch must relaunch
   // before services can use the path registry's original session snapshot.
@@ -86,6 +90,9 @@ const startApp = async () => {
   // bootstrap and IPC readiness. TODO(v2): decompose into per-service
   // ipcHandle/ipcOn inside lifecycle services.
   await registerIpc()
+  if (personalProfile === 'account') {
+    void syncPersonalModelConfig().catch(() => logger.warn('Could not sync personal model configuration'))
+  }
 }
 
 // Top-level safety net: bootstrap() handles known fatal errors internally

@@ -17,6 +17,7 @@ import type { useProviderMeta } from '../hooks/providerSetting/useProviderMeta'
 
 const AwsBedrockSettings = lazy(() => import('./AwsBedrockSettings'))
 const CherryInOauth = lazy(() => import('./CherryInOauth'))
+const XuelangAccountSettings = lazy(() => import('./XuelangAccountSettings'))
 const ClaudeCodeSettings = lazy(() => import('./ClaudeCodeSettings'))
 const DmxapiSettings = lazy(() => import('./DmxapiSettings'))
 const GithubCopilotSettings = lazy(() => import('./GithubCopilotSettings'))
@@ -56,7 +57,7 @@ export const PROVIDER_SPECIFIC_SETTINGS_REGISTRY: Record<ProviderSpecificPlaceme
     {
       key: 'xuelang-oauth',
       when: ({ provider }) => provider.id === SystemProviderIds.xuelang,
-      render: (providerId) => <CherryInOauth providerId={providerId} />
+      render: (providerId) => <XuelangAccountSettings providerId={providerId} />
     },
     {
       key: 'ovms-settings',

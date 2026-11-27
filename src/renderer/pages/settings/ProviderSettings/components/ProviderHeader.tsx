@@ -8,6 +8,7 @@ import { toast } from '@renderer/services/toast'
 
 import { useProviderEnable } from '../hooks/providerSetting/useProviderEnable'
 import { useProviderMeta } from '../hooks/providerSetting/useProviderMeta'
+import { useCoworkManagedProvider } from '../hooks/useCoworkManagedProvider'
 import ProviderApiOptionsDrawer from './ProviderApiOptionsDrawer'
 
 interface ProviderHeaderProps {
@@ -18,6 +19,7 @@ export default function ProviderHeader({ providerId }: ProviderHeaderProps) {
   const { t } = useTranslation()
   const { provider } = useProvider(providerId)
   const meta = useProviderMeta(providerId)
+  const readOnly = useCoworkManagedProvider(providerId)
   const { toggleProviderEnabled } = useProviderEnable(providerId)
   const [apiOptionsOpen, setApiOptionsOpen] = useState(false)
   const [isTogglingEnabled, setIsTogglingEnabled] = useState(false)
@@ -63,7 +65,7 @@ export default function ProviderHeader({ providerId }: ProviderHeaderProps) {
                   meta.fancyProviderName
                 )}
               </h1>
-              {meta.showApiOptionsButton && (
+              {!readOnly && meta.showApiOptionsButton && (
                 <Tooltip content={t('settings.provider.api.options.label')}>
                   <Button
                     type="button"
@@ -79,11 +81,13 @@ export default function ProviderHeader({ providerId }: ProviderHeaderProps) {
             </div>
           </div>
         </div>
-        <Switch
-          checked={provider.isEnabled}
-          disabled={isTogglingEnabled}
-          onCheckedChange={(enabled) => void handleToggleEnabled(enabled)}
-        />
+        {!readOnly && (
+          <Switch
+            checked={provider.isEnabled}
+            disabled={isTogglingEnabled}
+            onCheckedChange={(enabled) => void handleToggleEnabled(enabled)}
+          />
+        )}
       </div>
       <ProviderApiOptionsDrawer
         providerId={providerId}

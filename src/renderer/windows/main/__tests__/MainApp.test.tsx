@@ -1,13 +1,17 @@
 import '@testing-library/jest-dom/vitest'
-import { mockUseMultiplePreferences, MockUsePreferenceUtils } from '@test-mocks/renderer/usePreference'
-import { render, screen, waitFor } from '@testing-library/react'
+import { MockUsePreferenceUtils } from '@test-mocks/renderer/usePreference'
+import { render, screen } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createSidebarShortcutId, type SidebarShortcutTarget } from '@shared/data/preference/preferenceTypes'
-import { LATEST_PRIVACY_POLICY_VERSION } from '@shared/utils/constants'
 
 const onboardingModule = vi.hoisted(() => ({ evaluations: 0 }))
+const getPersonalStatus = vi.hoisted(() => vi.fn(async () => ({ signedIn: false })))
+vi.mock('@renderer/ipc', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@renderer/ipc')>()),
+  ipcApi: { request: getPersonalStatus }
+}))
 
 vi.mock('../onboarding/OnboardingPage', () => {
   onboardingModule.evaluations += 1
@@ -66,6 +70,16 @@ function appShortcut(resourceId: string) {
 describe('MainWindowContent', () => {
   beforeEach(() => {
     MockUsePreferenceUtils.resetMocks()
+    getPersonalStatus.mockResolvedValue({ signedIn: false })
+  })
+
+  it('opens the workspace for a signed-in profile with no provider configured', async () => {
+    MockUsePreferenceUtils.setPreferenceValue('app.onboarding.provider_setup.status', 'pending')
+    getPersonalStatus.mockResolvedValueOnce({ signedIn: true })
+    render(<MainWindowContent />)
+
+    expect(await screen.findByTestId('app-shell')).toBeInTheDocument()
+    expect(screen.queryByTestId('onboarding-page')).not.toBeInTheDocument()
   })
 
   afterEach(() => {
@@ -87,24 +101,13 @@ describe('MainWindowContent', () => {
     }
   })
 
-  it('skips first-run provider setup without loading onboarding', async () => {
-    const updateOnboardingPreferences = vi.fn().mockResolvedValue(undefined)
-    mockUseMultiplePreferences.mockImplementationOnce(() => [
-      { providerSetupStatus: 'pending', policyVersion: '' },
-      updateOnboardingPreferences
-    ])
+  it('shows first-run onboarding for the guest space', async () => {
+    MockUsePreferenceUtils.setPreferenceValue('app.onboarding.provider_setup.status', 'pending')
     appendBootSpinner()
 
     render(<MainWindowContent />)
 
-    await waitFor(() =>
-      expect(updateOnboardingPreferences).toHaveBeenCalledWith({
-        providerSetupStatus: 'skipped',
-        policyVersion: LATEST_PRIVACY_POLICY_VERSION
-      })
-    )
-    expect(screen.queryByTestId('onboarding-page')).not.toBeInTheDocument()
-    expect(onboardingModule.evaluations).toBe(0)
+    expect(await screen.findByTestId('onboarding-page')).toBeInTheDocument()
     expect(screen.queryByTestId('app-shell')).not.toBeInTheDocument()
     expect(screen.queryByTestId('privacy-policy-gate')).not.toBeInTheDocument()
     expect(document.getElementById('spinner')).toBeNull()

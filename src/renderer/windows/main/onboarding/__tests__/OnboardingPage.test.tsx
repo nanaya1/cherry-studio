@@ -178,8 +178,11 @@ vi.mock('../../privacy/PrivacyPolicyDialog', () => ({
 
 import OnboardingPage from '../OnboardingPage'
 
+const showAccountLogin = vi.hoisted(() => vi.fn(async () => ({})))
+vi.mock('@renderer/components/UserPopup', () => ({ default: { show: showAccountLogin } }))
+
 async function openProviderSetup() {
-  fireEvent.click(screen.getByRole('button', { name: /onboarding\.welcome\.other_provider/ }))
+  fireEvent.click(screen.getByRole('button', { name: /onboarding\.welcome\.continue_as_guest/ }))
   await screen.findByTestId('provider-settings')
 }
 
@@ -252,6 +255,15 @@ describe('OnboardingPage', () => {
 
     expect(screen.getByTestId('provider-settings')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'onboarding.provider_setup.title' })).toBeInTheDocument()
+  })
+
+  it('opens the account login directly and keeps the welcome step on dismissal', async () => {
+    render(<OnboardingPage />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'onboarding.welcome.account_login' }))
+    await waitFor(() => expect(showAccountLogin).toHaveBeenCalledWith({ loginOnly: true }))
+    expect(screen.getByRole('button', { name: 'onboarding.welcome.continue_as_guest' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'onboarding.skip' })).not.toBeInTheDocument()
   })
 
   it('moves from provider setup to model selection and completes the flow', async () => {
@@ -540,6 +552,7 @@ describe('OnboardingPage', () => {
   it('records a skipped status when the user skips onboarding', async () => {
     render(<OnboardingPage />)
 
+    await openProviderSetup()
     const skipButton = screen.getByRole('button', { name: 'onboarding.skip' })
 
     fireEvent.click(skipButton)
@@ -571,19 +584,13 @@ describe('OnboardingPage', () => {
     ])
     render(<OnboardingPage />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'onboarding.skip' }))
-
+    fireEvent.click(screen.getByRole('button', { name: 'onboarding.welcome.continue_as_guest' }))
     expect(updatePreferences).toHaveBeenCalledExactlyOnceWith({
       policyVersion: LATEST_PRIVACY_POLICY_VERSION
     })
 
     resolvePrivacyUpdate?.()
-
-    await waitFor(() =>
-      expect(updatePreferences).toHaveBeenNthCalledWith(2, {
-        providerSetupStatus: 'skipped'
-      })
-    )
+    expect(await screen.findByTestId('provider-settings')).toBeInTheDocument()
   })
 
   it('does not rewrite an already-current privacy agreement before leaving onboarding', async () => {
@@ -593,7 +600,7 @@ describe('OnboardingPage', () => {
       }
       return Promise.resolve()
     })
-    mockUseMultiplePreferences.mockReturnValueOnce([
+    mockUseMultiplePreferences.mockReturnValue([
       {
         providerSetupStatus: 'pending',
         dataCollectionEnabled: true,
@@ -603,6 +610,7 @@ describe('OnboardingPage', () => {
     ])
     render(<OnboardingPage />)
 
+    await openProviderSetup()
     fireEvent.click(screen.getByRole('button', { name: 'onboarding.skip' }))
 
     await waitFor(() => expect(updatePreferences).toHaveBeenCalledWith({ providerSetupStatus: 'skipped' }))
@@ -714,6 +722,7 @@ describe('OnboardingPage', () => {
     await waitFor(() =>
       expect(MockUsePreferenceUtils.getPreferenceValue('app.privacy.data_collection.enabled')).toBe(false)
     )
+    await openProviderSetup()
     fireEvent.click(screen.getByRole('button', { name: 'onboarding.skip' }))
 
     await waitFor(() =>
@@ -772,12 +781,12 @@ describe('OnboardingPage', () => {
     ])
     render(<OnboardingPage />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'onboarding.welcome.other_provider' }))
+    fireEvent.click(screen.getByRole('button', { name: 'onboarding.welcome.continue_as_guest' }))
 
     await waitFor(() => expect(toastErrorMock).toHaveBeenCalledWith('onboarding.privacy.update_failed'))
     expect(updatePreferences).toHaveBeenCalledWith({ policyVersion: LATEST_PRIVACY_POLICY_VERSION })
     expect(screen.queryByTestId('provider-settings')).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'onboarding.welcome.other_provider' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'onboarding.welcome.continue_as_guest' })).toBeInTheDocument()
   })
 
   it('keeps anonymous data collection independent from required privacy acceptance', async () => {
@@ -787,6 +796,7 @@ describe('OnboardingPage', () => {
 
     const agreement = screen.getByRole('checkbox', { name: 'onboarding.privacy.accept_policy' })
     expect(agreement).toBeChecked()
+    await openProviderSetup()
     fireEvent.click(screen.getByRole('button', { name: 'onboarding.skip' }))
 
     await waitFor(() =>
@@ -801,22 +811,22 @@ describe('OnboardingPage', () => {
   })
 
   it('shows an error when completing onboarding fails', async () => {
-    const updatePreferences = vi.fn().mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('write failed'))
-    mockUseMultiplePreferences.mockReturnValueOnce([
+    const updatePreferences = vi.fn().mockRejectedValueOnce(new Error('write failed'))
+    mockUseMultiplePreferences.mockReturnValue([
       {
         providerSetupStatus: 'pending',
         dataCollectionEnabled: true,
-        policyVersion: ''
+        policyVersion: LATEST_PRIVACY_POLICY_VERSION
       },
       updatePreferences
     ])
     render(<OnboardingPage />)
 
+    await openProviderSetup()
     fireEvent.click(screen.getByRole('button', { name: 'onboarding.skip' }))
 
     await waitFor(() => expect(toastErrorMock).toHaveBeenCalledWith('onboarding.toast.complete_failed'))
-    expect(updatePreferences).toHaveBeenNthCalledWith(1, { policyVersion: LATEST_PRIVACY_POLICY_VERSION })
-    expect(updatePreferences).toHaveBeenNthCalledWith(2, { providerSetupStatus: 'skipped' })
+    expect(updatePreferences).toHaveBeenCalledWith({ providerSetupStatus: 'skipped' })
     expect(screen.getByRole('button', { name: 'onboarding.skip' })).toBeEnabled()
   })
 

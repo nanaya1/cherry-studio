@@ -3,6 +3,7 @@ import { CalendarClock, Plus, Puzzle, Shapes, Wrench } from 'lucide-react'
 import type { ReactElement, Ref } from 'react'
 import { lazy, Suspense, useCallback, useEffect, useId, useLayoutEffect, useRef, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import useSWR from 'swr'
 
 import { Popover, PopoverContent, PopoverTrigger } from '@cherrystudio/ui'
 import { usePersistCache } from '@data/hooks/useCache'
@@ -19,10 +20,12 @@ import { useAssistantsApi } from '@renderer/hooks/useAssistant'
 import useAvatar from '@renderer/hooks/useAvatar'
 import { useConversationNavigation } from '@renderer/hooks/useConversationNavigation'
 import { useMiniApps } from '@renderer/hooks/useMiniApps'
+import { usePersonalAccountDetails } from '@renderer/hooks/usePersonalAccountDetails'
 // [MEA 定向恢复] 姓名头像只用本地设置，不再用服务端资料：原 useOrgAccountSession 仅用于侧栏用户名/头像覆盖，现已停用。
 // import { useOrgAccountSession } from '@renderer/hooks/useOrgAccountSession'
 import { useSidebarFavorites } from '@renderer/hooks/useSidebarFavorites'
 import { mapApiTopicToRendererTopic } from '@renderer/hooks/useTopic'
+import { ipcApi } from '@renderer/ipc'
 import { openSettingsTab } from '@renderer/services/mainWindowNavigation'
 import { toast } from '@renderer/services/toast'
 import { formatErrorMessageWithPrefix } from '@renderer/utils/error'
@@ -53,6 +56,7 @@ import {
   type SidebarVisibleLayout
 } from '../Sidebar'
 import { UserAccountPanel } from '../UserAccountPanel'
+import { SidebarAccountMenu } from './SidebarAccountMenu'
 import { resolveSidebarEntry, type SidebarVariantContext } from './sidebarVariants'
 
 const FeedbackDialog = lazy(() => import('../feedback/FeedbackDialog'))
@@ -150,7 +154,23 @@ export default function Sidebar({
   // const signedInDisplayName = orgStatus?.phase === 'signed-in' ? orgStatus.displayName?.trim() : undefined
   // 原逻辑：sidebarDisplayName = signedInDisplayName || userName || fallback；description 在登录时隐藏；avatar 在登录且无本地头像时显示服务端首字。
   // 现改用纯本地设置：本地名 + 本地用户副标题 + 本地头像。
-  const sidebarDisplayName = userName || t('chat.user', { defaultValue: t('export.user', { defaultValue: 'User' }) })
+  const { data: personalAccount } = usePersonalAccountDetails()
+  const { data: accountStatus } = useSWR(
+    'enterprise.personal.status',
+    () => ipcApi.request('enterprise.personal.status'),
+    {
+      shouldRetryOnError: false
+    }
+  )
+  const sidebarDisplayName =
+    personalAccount?.displayName ||
+    userName ||
+    t('chat.user', { defaultValue: t('export.user', { defaultValue: 'User' }) })
+  const sidebarDescription = personalAccount
+    ? personalAccount.username
+    : accountStatus?.signedIn === false
+      ? t('workspace.localUser')
+      : undefined
   const notificationCenter = useNotificationCenter()
   const unreadDescriptionId = useId()
   const openingNotifications = useRef(false)
@@ -173,7 +193,7 @@ export default function Sidebar({
   const sidebarUser = useMemo<SidebarUser>(
     () => ({
       name: sidebarDisplayName,
-      description: t('workspace.localUser'),
+      description: sidebarDescription,
       avatar: avatar || undefined,
       indicator: notificationCenter?.hasUnread ? (
         <span className="pointer-events-none absolute right-0.5 top-0.5 size-1.5 rounded-full bg-destructive">
@@ -185,7 +205,7 @@ export default function Sidebar({
       settingsLabel: t('settings.title'),
       onSettingsClick: () => openSettingsTab()
     }),
-    [avatar, notificationCenter?.hasUnread, sidebarDisplayName, t, unreadDescriptionId]
+    [avatar, sidebarDescription, notificationCenter?.hasUnread, sidebarDisplayName, t, unreadDescriptionId]
   )
   const sidebarLogo = useMemo(() => <img src={AppLogo} alt="" className="h-full w-full object-cover" />, [])
 
@@ -633,6 +653,7 @@ export default function Sidebar({
               onNotificationsOpen={() => {
                 openingNotifications.current = true
               }}>
+              <SidebarAccountMenu close={closeUserMenu} />
               <HelpMenu onRequestClose={closeUserMenu} />
             </UserAccountPanel>
           </PopoverContent>

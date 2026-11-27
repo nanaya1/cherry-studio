@@ -13,6 +13,9 @@ import {
 
 import { mockMainLoggerService } from '../../../../../../tests/__mocks__/MainLoggerService'
 
+const isAccountSpace = vi.hoisted(() => vi.fn(() => false))
+vi.mock('@main/core/preboot/userDataLocation', () => ({ isPersonalAccountSpace: isAccountSpace }))
+
 const {
   listMock,
   getByKeyMock,
@@ -66,9 +69,22 @@ const DISABLED_REASONING_PROFILE = { format: 'none', wire: { disabled: true } } 
 
 beforeEach(() => {
   vi.clearAllMocks()
+  isAccountSpace.mockReturnValue(false)
 })
 
 describe('Model handler validation', () => {
+  it('rejects a batch containing a managed model before making any changes', async () => {
+    isAccountSpace.mockReturnValue(true)
+    await expect(
+      modelHandlers['/models'].PATCH({
+        body: [
+          { uniqueModelId: 'openai::local', patch: { isEnabled: false } },
+          { uniqueModelId: 'xuelang::assigned', patch: { isEnabled: false } }
+        ]
+      })
+    ).rejects.toThrow()
+    expect(bulkUpdateMock).not.toHaveBeenCalled()
+  })
   it('distinguishes setting, omitting, and clearing positive model token limits', () => {
     expect(UpdateModelSchema.parse({ contextWindow: 128_000 })).toEqual({ contextWindow: 128_000 })
     expect(UpdateModelSchema.parse({})).not.toHaveProperty('contextWindow')

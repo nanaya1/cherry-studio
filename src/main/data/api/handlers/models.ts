@@ -25,6 +25,8 @@ import type { HandlersFor } from '@shared/data/api/types'
 import { SuccessStatus } from '@shared/data/api/types'
 import { isUniqueModelId, parseUniqueModelId } from '@shared/data/types/model'
 
+import { assertProviderEditable } from './assertProviderEditable'
+
 const logger = loggerService.withContext('DataApi:ModelHandlers')
 
 /**
@@ -95,6 +97,7 @@ export const modelHandlers: HandlersFor<ModelSchemas> = {
       // normalized before they reach the service so the service can expose one
       // collection-oriented create path with consistent transaction semantics.
       const parsed = CreateModelsSchema.parse(body)
+      for (const item of parsed) assertProviderEditable(item.providerId)
       const items = await enrichCreateItems(parsed)
       return modelService.create(items)
     },
@@ -108,12 +111,14 @@ export const modelHandlers: HandlersFor<ModelSchemas> = {
         ...parseOrValidationError(item.uniqueModelId),
         patch: item.patch
       }))
+      for (const item of items) assertProviderEditable(item.providerId)
       return modelService.bulkUpdate(items)
     },
 
     DELETE: async ({ query }) => {
       const parsed = DeleteModelsQuerySchema.parse(query)
       const items = parsed.ids.map((uniqueModelId) => parseOrValidationError(uniqueModelId))
+      for (const item of items) assertProviderEditable(item.providerId)
       modelService.bulkDelete(items)
       return undefined
     }
@@ -127,12 +132,14 @@ export const modelHandlers: HandlersFor<ModelSchemas> = {
 
     PATCH: async ({ params, body }) => {
       const { providerId, modelId } = parseOrValidationError(params.uniqueModelId)
+      assertProviderEditable(providerId)
       const parsed = UpdateModelSchema.parse(body)
       return modelService.update(providerId, modelId, parsed)
     },
 
     DELETE: async ({ params }) => {
       const { providerId, modelId } = parseOrValidationError(params.uniqueModelId)
+      assertProviderEditable(providerId)
       modelService.delete(providerId, modelId)
       return undefined
     }
@@ -140,6 +147,7 @@ export const modelHandlers: HandlersFor<ModelSchemas> = {
 
   '/providers/:providerId/models:reconcile': {
     POST: async ({ params, body }) => {
+      assertProviderEditable(params.providerId)
       const parsed = ReconcileProviderModelsSchema.parse(body)
 
       for (const dto of parsed.toAdd) {

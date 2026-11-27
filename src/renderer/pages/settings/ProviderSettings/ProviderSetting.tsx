@@ -11,6 +11,7 @@ import AuthenticationSection from './ConnectionSettings/AuthenticationSection'
 import type { ProviderApiSetupInitialStep } from './ConnectionSettings/ProviderApiSetupDialog'
 import { ApiKeyProvider } from './hooks/providerSetting/useAuthenticationApiKey'
 import { useProviderApiKey } from './hooks/providerSetting/useProviderApiKey'
+import { useCoworkManagedProvider } from './hooks/useCoworkManagedProvider'
 import { ModelList, ModelListHealthProvider } from './ModelList'
 import { providerDetailColumnClasses, ProviderSettingsContainer } from './primitives/ProviderSettingsPrimitives'
 
@@ -34,6 +35,7 @@ function ProviderSettingSections({
   onApiSetupClosed?: () => void
 }) {
   const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null)
+  const readOnly = useCoworkManagedProvider(providerId)
   const [modelPullGuideVersion, setModelPullGuideVersion] = useState(0)
   const [apiSetupStep, setApiSetupStep] = useState<ProviderApiSetupInitialStep | null>(initialApiSetupStep ?? null)
   const requestModelPullGuide = useCallback(() => {
@@ -67,7 +69,7 @@ function ProviderSettingSections({
           </div>
         </div>
       </ScrollArea>
-      {apiSetupStep ? (
+      {apiSetupStep && !readOnly ? (
         <Suspense fallback={null}>
           <ProviderApiSetupDialog providerId={providerId} initialStep={apiSetupStep} onClose={closeApiSetup} />
         </Suspense>

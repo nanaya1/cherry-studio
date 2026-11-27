@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 
 import { usePreference } from '@data/hooks/usePreference'
 import { loggerService } from '@logger'
@@ -29,6 +29,7 @@ import { useAutoReadPreferenceSync } from '@renderer/hooks/useAutoReadPreference
 import { useIsPrivacyUpdateRequired } from '@renderer/hooks/useIsPrivacyUpdateRequired'
 import { useStorageMonitorNotification } from '@renderer/hooks/useStorageMonitorNotification'
 import { useWindowRuntime } from '@renderer/hooks/useWindowRuntime'
+import { ipcApi } from '@renderer/ipc'
 import { registerImageModeChooser } from '@renderer/services/imageExportModeChooser'
 // MEA 侧栏使用固定工作区入口，不从 Cherry 快捷项推导启动页。
 // import { getSidebarDefaultLandingUrl } from '@renderer/utils/sidebar'
@@ -99,13 +100,32 @@ function MainWindowRuntime(): null {
 
 export function MainWindowContent(): React.ReactElement {
   const [providerSetupStatus] = usePreference('app.onboarding.provider_setup.status')
+  const [isAccountSpace, setIsAccountSpace] = useState<boolean>()
+  const needsProfileCheck = providerSetupStatus === 'pending' && isAccountSpace === undefined
+  useEffect(() => {
+    if (!needsProfileCheck) return
+    let active = true
+    void ipcApi.request('enterprise.personal.status').then(
+      (status) => {
+        if (active) setIsAccountSpace(status?.signedIn === true)
+      },
+      (error: unknown) => {
+        logger.warn('Could not read personal profile status', error instanceof Error ? error : { error: String(error) })
+        if (active) setIsAccountSpace(false)
+      }
+    )
+    return () => {
+      active = false
+    }
+  }, [needsProfileCheck])
+  const showOnboarding = providerSetupStatus === 'pending' && isAccountSpace === false
   // MEA 初始页固定为新建任务，侧栏收藏只影响 MEA 侧栏自身。
   // const [sidebarShortcuts] = usePreference('ui.sidebar_shortcut')
   // const [defaultPaintingProvider] = usePreference('feature.paintings.default_provider')
   const sidebarShortcutRegistry = useMemo(() => new SidebarShortcutRegistry(CORE_SIDEBAR_SHORTCUT_PROVIDERS), [])
   const privacyUpdateRequired = useIsPrivacyUpdateRequired()
   // Onboarding collects privacy consent itself, so the gate only owns the window afterwards.
-  const privacyGateOpen = providerSetupStatus !== 'pending' && privacyUpdateRequired
+  const privacyGateOpen = !needsProfileCheck && !showOnboarding && privacyUpdateRequired
 
   const initialDefaultTab = useMemo<Tab>(
     () => ({
@@ -124,7 +144,9 @@ export function MainWindowContent(): React.ReactElement {
     <TabsProvider initialDefaultTab={initialDefaultTab}>
       <SidebarShortcutRegistryProvider registry={sidebarShortcutRegistry}>
         <MandatoryGateProvider open={privacyGateOpen}>
-          {providerSetupStatus === 'pending' ? (
+          {needsProfileCheck ? (
+            <BootFallback />
+          ) : showOnboarding ? (
             <Suspense fallback={<BootFallback />}>
               <OnboardingPage />
             </Suspense>
@@ -143,7 +165,7 @@ export function MainWindowContent(): React.ReactElement {
           <WindowFileEditRecovery />
           <DictationShortcutHost />
           <VoicePlaybackHost />
-          {providerSetupStatus === 'pending' ? null : <PrivacyPolicyUpdateGate />}
+          {needsProfileCheck || showOnboarding ? null : <PrivacyPolicyUpdateGate />}
         </MandatoryGateProvider>
       </SidebarShortcutRegistryProvider>
     </TabsProvider>

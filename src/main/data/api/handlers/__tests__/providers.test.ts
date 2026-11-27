@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+const isAccountSpace = vi.hoisted(() => vi.fn(() => false))
+vi.mock('@main/core/preboot/userDataLocation', () => ({ isPersonalAccountSpace: isAccountSpace }))
+
 const {
   createMock,
   listMock,
@@ -61,6 +64,7 @@ import { providerHandlers } from '../providers'
 describe('providerHandlers', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    isAccountSpace.mockReturnValue(false)
     getByProviderIdMock.mockReset().mockImplementation((providerId: string) => ({ id: providerId }))
   })
 
@@ -108,6 +112,17 @@ describe('providerHandlers', () => {
   })
 
   describe('/providers/:providerId', () => {
+    it('rejects manual edits to Xuelang in an account space', async () => {
+      isAccountSpace.mockReturnValue(true)
+      await expect(
+        providerHandlers['/providers/:providerId'].PATCH({
+          params: { providerId: 'xuelang' },
+          body: { isEnabled: false }
+        })
+      ).rejects.toThrow()
+      expect(updateMock).not.toHaveBeenCalled()
+    })
+
     it('delegates PATCH to providerService.update with parsed body', async () => {
       const updated = { id: 'openai', isEnabled: true }
       updateMock.mockReturnValueOnce(updated)
@@ -142,6 +157,20 @@ describe('providerHandlers', () => {
       expect(deleteMock).toHaveBeenCalledWith('openai')
       expect(result).toBeUndefined()
     })
+  })
+
+  it('returns only masked managed keys to the renderer and keeps the guest response unchanged', async () => {
+    const key = { id: 'cowork:9:42', key: 'sk-example-assigned-key', isEnabled: true }
+    getApiKeysMock.mockReturnValue([key])
+    const route = providerHandlers['/providers/:providerId/api-keys'].GET
+    isAccountSpace.mockReturnValue(true)
+    const request = { params: { providerId: 'xuelang' }, query: {} }
+    const managed = await route(request)
+    const { keys } = 'data' in managed ? managed.data : managed
+    expect(keys[0]).toMatchObject({ id: key.id, isEnabled: true })
+    expect(keys[0].key).not.toBe(key.key)
+    isAccountSpace.mockReturnValue(false)
+    expect(await route(request)).toEqual({ keys: [key] })
   })
 
   describe('/providers/:providerId/api-keys', () => {

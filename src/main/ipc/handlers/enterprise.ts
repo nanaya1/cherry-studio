@@ -1,9 +1,23 @@
 import { application } from '@application'
+import { readPersonalProfileSelection } from '@main/core/preboot/personalProfileSelection'
+import { getPersonalDataRoot } from '@main/core/preboot/userDataLocation'
+import {
+  changePersonalAccount,
+  getPersonalAccountDetails,
+  syncPersonalModelConfig
+} from '@main/enterprise/personalAccountRuntime'
 import type { enterpriseRequestSchemas } from '@shared/ipc/schemas/enterprise'
 import type { IpcHandlersFor } from '@shared/ipc/types'
 
 // [enterprise] T0 企业扩展 IPC 处理器。实现主体在 @main/enterprise/*。
 export const enterpriseHandlers: IpcHandlersFor<typeof enterpriseRequestSchemas> = {
+  'enterprise.personal.sync_models': async () => syncPersonalModelConfig(),
+  'enterprise.personal.details': async () => getPersonalAccountDetails(),
+  'enterprise.personal.status': async () => ({
+    signedIn: readPersonalProfileSelection(getPersonalDataRoot()).kind === 'account'
+  }),
+  'enterprise.personal.change_account': async ({ credentials, confirmation }) =>
+    changePersonalAccount(credentials, confirmation),
   'enterprise.status.get': async () => application.get('EnterprisePlugin').auth.getStatus(),
   'enterprise.login.start': async () => application.get('EnterprisePlugin').auth.startLogin(),
   'enterprise.login.cancel': async ({ attemptId }) => application.get('EnterprisePlugin').auth.cancelLogin(attemptId),

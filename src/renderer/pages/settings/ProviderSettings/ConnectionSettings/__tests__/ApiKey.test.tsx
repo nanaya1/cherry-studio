@@ -10,6 +10,11 @@ const useProviderApiKeysMock = vi.fn()
 const useProviderMetaMock = vi.fn()
 const useAuthenticationApiKeyMock = vi.fn()
 const deleteApiKeyMock = vi.fn()
+const useCoworkManagedProviderMock = vi.fn()
+
+vi.mock('../../hooks/useCoworkManagedProvider', () => ({
+  useCoworkManagedProvider: () => useCoworkManagedProviderMock()
+}))
 
 vi.mock('@cherrystudio/ui', () => ({
   Button: ({ children, type = 'button', ...props }: any) => (
@@ -57,6 +62,7 @@ vi.mock('react-i18next', () => ({
 describe('ApiKey', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    useCoworkManagedProviderMock.mockReturnValue(false)
     useProviderMock.mockReturnValue({
       provider: { id: 'openai', name: 'OpenAI', authOptional: false },
       deleteApiKey: deleteApiKeyMock,
@@ -74,6 +80,26 @@ describe('ApiKey', () => {
       hasPendingSync: false,
       commitInputApiKeyNow: vi.fn()
     })
+  })
+
+  it('shows the masked key in the shared field without managed key actions', () => {
+    useCoworkManagedProviderMock.mockReturnValue(true)
+    useProviderApiKeysMock.mockReturnValue({
+      data: { keys: [{ id: 'key-1', key: '123456789012345678901234', isEnabled: true }] }
+    })
+    render(<ApiKey providerId="xuelang" />)
+
+    fireEvent.click(screen.getByText('12****1234'))
+    expect(screen.getByRole('dialog', { name: 'settings.provider.api.key.list.title' })).toBeInTheDocument()
+    expect(screen.queryByText('123456789012345678901234')).not.toBeInTheDocument()
+    for (const name of [
+      'settings.provider.api_key.show_key',
+      'settings.provider.api_key.copy',
+      'common.edit',
+      'common.delete'
+    ]) {
+      expect(screen.queryByRole('button', { name })).not.toBeInTheDocument()
+    }
   })
 
   it('shows setup and key-management actions when a required key is missing', async () => {

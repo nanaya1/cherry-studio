@@ -28,7 +28,7 @@ type AvatarPopoverView = 'menu' | 'emoji'
 
 const PROFILE_AVATAR_SIZE = 80
 
-export function UserProfileEditor() {
+export function UserProfileEditor({ showNameEditor = true }: { showNameEditor?: boolean }) {
   const [userName, setUserName] = usePreference('app.user.name')
   const [isEditingUserName, setIsEditingUserName] = useState(false)
   const [isSavingUserName, setIsSavingUserName] = useState(false)
@@ -160,7 +160,7 @@ export function UserProfileEditor() {
           )}
         </PopoverContent>
       </Popover>
-      {isEditingUserName ? (
+      {!showNameEditor ? null : isEditingUserName ? (
         <RowFlex className="min-w-0 max-w-sm items-center gap-1">
           <Input
             autoFocus

@@ -221,6 +221,23 @@ describe('UserPopup', () => {
     vi.useRealTimers()
   })
 
+  it.each([false, true])('shows the correct personal account actions when signedIn=%s', async (signedIn) => {
+    const request = mocks.ipcRequest.getMockImplementation()
+    mocks.ipcRequest.mockImplementation(async (route: string) => {
+      if (route === 'enterprise.personal.status') return { signedIn }
+      return request?.(route)
+    })
+    render(<PopupHost />)
+    act(() => {
+      void UserPopup.show()
+    })
+    const login = 'settings.provider.org_service.login'
+    const logout = 'settings.provider.org_service.logout'
+    expect(await screen.findByRole('button', { name: login })).toBeInTheDocument()
+    if (signedIn) expect(screen.getByRole('button', { name: logout })).toBeInTheDocument()
+    else expect(screen.queryByRole('button', { name: logout })).not.toBeInTheDocument()
+  })
+
   it('keeps the local profile name and avatar editable when the org account is signed in', async () => {
     mocks.ipcRequest.mockImplementation(async (route: string) => {
       if (route === 'enterprise.status.get') {

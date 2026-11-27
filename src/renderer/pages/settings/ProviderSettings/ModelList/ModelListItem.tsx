@@ -21,6 +21,7 @@ interface ModelListItemProps {
   model: Model
   provider?: Provider
   disabled?: boolean
+  readOnly?: boolean
   isDefaultModel?: boolean
   modelStatus?: ModelWithStatus
   apiKeyEntries?: readonly ApiKeyEntry[]
@@ -35,6 +36,7 @@ const ModelListItem: React.FC<ModelListItemProps> = ({
   model,
   provider,
   disabled,
+  readOnly,
   isDefaultModel,
   modelStatus,
   apiKeyEntries = [],
@@ -95,40 +97,42 @@ const ModelListItem: React.FC<ModelListItemProps> = ({
             </div>
             <FreeTrialModelTag modelId={model.id} providerId={model.providerId} />
           </div>
-          <div className={modelListClasses.rowInlineActions}>
-            {modelStatus && onToggleApiKey ? (
-              <ModelCheckStatus
-                result={modelStatus}
-                apiKeyEntries={apiKeyEntries}
-                savingKeyId={savingKeyId}
-                onToggleKey={onToggleApiKey}
-              />
-            ) : null}
-            <Tooltip content={t('common.settings')} placement="top">
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                className={modelListClasses.rowActionButton}
-                aria-label={t('common.settings')}
-                disabled={disabled}
-                onClick={handleEdit}>
-                <Bolt className="size-4" />
-              </Button>
-            </Tooltip>
-            <Tooltip content={deleteTooltip} placement="top">
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                className={`${modelListClasses.rowActionButton} ${modelListClasses.rowDangerActionButton}`}
-                aria-label={t('settings.models.manage.remove_model')}
-                disabled={disabled || isDefaultModel}
-                onClick={handleDelete}>
-                <Minus className="size-4" />
-              </Button>
-            </Tooltip>
-          </div>
+          {!readOnly && (
+            <div className={modelListClasses.rowInlineActions}>
+              {modelStatus && onToggleApiKey ? (
+                <ModelCheckStatus
+                  result={modelStatus}
+                  apiKeyEntries={apiKeyEntries}
+                  savingKeyId={savingKeyId}
+                  onToggleKey={onToggleApiKey}
+                />
+              ) : null}
+              <Tooltip content={t('common.settings')} placement="top">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  className={modelListClasses.rowActionButton}
+                  aria-label={t('common.settings')}
+                  disabled={disabled}
+                  onClick={handleEdit}>
+                  <Bolt className="size-4" />
+                </Button>
+              </Tooltip>
+              <Tooltip content={deleteTooltip} placement="top">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  className={`${modelListClasses.rowActionButton} ${modelListClasses.rowDangerActionButton}`}
+                  aria-label={t('settings.models.manage.remove_model')}
+                  disabled={disabled || isDefaultModel}
+                  onClick={handleDelete}>
+                  <Minus className="size-4" />
+                </Button>
+              </Tooltip>
+            </div>
+          )}
         </div>
       </RowFlex>
     </div>

@@ -53,6 +53,7 @@ export function useProviders(
       : undefined
 
   const { data, isLoading, error, refetch } = useQuery('/providers', queryOptions)
+  useDataChange('/providers', () => void refetch())
 
   const {
     trigger: createTrigger,
@@ -96,6 +97,7 @@ export function useProviderById(providerId: string | null | undefined) {
     enabled: !!providerId,
     swrOptions: { keepPreviousData: false }
   })
+  useDataChange('/providers/:providerId', () => void refetch(), { routeParams: { providerId: resolvedProviderId } })
   return { provider: data, isLoading, error, refetch }
 }
 
@@ -265,7 +267,9 @@ export function useProviderAuthConfig(providerId: string) {
 }
 
 export function useProviderApiKeys(providerId: string) {
-  return useQuery('/providers/:providerId/api-keys', { params: { providerId } })
+  const query = useQuery('/providers/:providerId/api-keys', { params: { providerId } })
+  useDataChange('/providers/:providerId/api-keys', () => void query.refetch(), { routeParams: { providerId } })
+  return query
 }
 
 /** Read a sparse projection of the provider's effective registry preset. */

@@ -14,9 +14,11 @@ import {
 } from '@renderer/pages/settings/ProviderSettings/utils/providerDisplay'
 import { toast } from '@renderer/services/toast'
 import { isProviderSettingsListVisibleProvider } from '@renderer/utils/providerSettings'
+import { XUELANG_PROVIDER_ID } from '@shared/data/presets/xuelang'
 import type { Provider } from '@shared/data/types/provider'
 import { canManageProvider } from '@shared/utils/provider'
 
+import { useCoworkManagedProvider } from '../hooks/useCoworkManagedProvider'
 import { useOvmsSupport } from '../hooks/useOvmsSupport'
 import type { ProviderFilterMode } from './providerFilterMode'
 import { getGroupedPresetIds } from './providerGrouping'
@@ -284,8 +286,11 @@ export default function ProviderList({
     [deleteProvider, t]
   )
 
+  const managedXuelang = useCoworkManagedProvider(XUELANG_PROVIDER_ID)
   const renderProviderItem = (provider: Provider, _index: number, state: ProviderListContentItemState) => {
-    const showManagementActions = (providerCounts.get(provider.id) ?? 0) > 1 || canManageProvider(provider)
+    const readOnly = managedXuelang && provider.id === XUELANG_PROVIDER_ID
+    const showManagementActions =
+      !readOnly && ((providerCounts.get(provider.id) ?? 0) > 1 || canManageProvider(provider))
     const selected = provider.id === selectedProviderId
 
     return (
@@ -298,7 +303,7 @@ export default function ProviderList({
         onEdit={() => openProviderEditorForEdit(provider)}
         onDelete={() => handleDeleteProvider(provider.id)}
         onDuplicate={
-          provider.presetProviderId && !groupedPresetIds.has(provider.presetProviderId)
+          !readOnly && provider.presetProviderId && !groupedPresetIds.has(provider.presetProviderId)
             ? () => openProviderEditorFrom(provider)
             : undefined
         }

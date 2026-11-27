@@ -1,14 +1,28 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
-import { app } from 'electron'
+import { app, dialog } from 'electron'
 
 import { loggerService } from '@logger'
 import { DEV_PROFILE_ROOT, resolveDevUserDataPath } from '@main/core/paths/constants'
 import { isLinux, isPortable, isWin } from '@main/core/platform'
 import { bootConfigService } from '@main/data/bootConfig'
 
+import { resolvePersonalProfileLocation } from './personalProfileLocation'
+import { readPersonalProfileSelection } from './personalProfileSelection'
+
 const logger = loggerService.withContext('Preboot')
+let personalDataRoot: string | undefined
+let personalAccountSpace = false
+
+export function isPersonalAccountSpace(): boolean {
+  return personalAccountSpace
+}
+
+export function getPersonalDataRoot(): string {
+  if (!personalDataRoot) throw new Error('Personal data root has not been initialized')
+  return personalDataRoot
+}
 
 /**
  * "userData" in this module means Electron's complete OS-level userData
@@ -90,5 +104,30 @@ export function isUsableDataDir(value: string): boolean {
     return true
   } catch {
     return false
+  }
+}
+
+// MEA:personal-profile-startup Select the account only after locking the shared root.
+export function activatePersonalProfileLocation(): 'guest' | 'account' {
+  const dataRoot = app.getPath('userData')
+  personalDataRoot = dataRoot
+  const profile = readPersonalProfileSelection(dataRoot)
+  personalAccountSpace = profile.kind === 'account'
+  if (profile.kind === 'guest') return 'guest'
+
+  const location = resolvePersonalProfileLocation(dataRoot, profile)
+  fs.mkdirSync(location, { recursive: true })
+  app.setPath('userData', location)
+  app.setPath('sessionData', location)
+  return 'account'
+}
+
+export function requirePersonalProfileLocation(): 'guest' | 'account' {
+  try {
+    return activatePersonalProfileLocation()
+  } catch (error) {
+    logger.error('Personal profile could not be loaded', error as Error)
+    dialog.showErrorBox('MEA Cowork', 'Unable to open the selected local data space.')
+    process.exit(1)
   }
 }

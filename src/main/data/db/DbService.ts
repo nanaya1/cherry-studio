@@ -301,6 +301,11 @@ export class DbService extends BaseService {
     checkpointTruncateAssert(this.sqlite)
   }
 
+  protected override onDestroy(): void {
+    checkpointTruncateAssert(this.sqlite)
+    this.sqlite.close()
+  }
+
   /**
    * Ensure database file integrity before opening connection.
    * Handles two scenarios that cause SQLITE_IOERR_SHORT_READ:

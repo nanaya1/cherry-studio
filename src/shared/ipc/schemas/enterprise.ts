@@ -49,6 +49,33 @@ const orgConnectorItemSchema = z.strictObject({
 })
 
 export const enterpriseRequestSchemas = {
+  'enterprise.personal.sync_models': defineRoute({ input: z.void(), output: z.number().int().nullable() }),
+  'enterprise.personal.details': defineRoute({
+    input: z.void(),
+    output: z.strictObject({ username: z.string(), displayName: z.string() }).nullable()
+  }),
+  'enterprise.personal.status': defineRoute({
+    input: z.void(),
+    output: z.strictObject({ signedIn: z.boolean() })
+  }),
+  'enterprise.personal.change_account': defineRoute({
+    input: z.strictObject({
+      credentials: z
+        .strictObject({
+          username: z.string().trim().min(1).max(60),
+          password: z.string().min(1).max(72),
+          captcha: z.strictObject({ token: z.string().length(32), code: z.string().min(1).max(20) }).optional()
+        })
+        .nullable(),
+      confirmation: z.strictObject({
+        title: z.string().max(120),
+        message: z.string().max(400),
+        cancel: z.string().max(80),
+        proceed: z.string().max(80)
+      })
+    }),
+    output: z.enum(['updated', 'cancelled', 'busy', 'relaunching'])
+  }),
   'enterprise.status.get': defineRoute({ input: z.void(), output: enterpriseStatusSchema }),
   'enterprise.login.start': defineRoute({
     input: z.void(),
@@ -69,21 +96,25 @@ export const enterpriseRequestSchemas = {
     input: z.strictObject({ slug: z.string() }),
     output: z.strictObject({ ok: z.boolean() })
   }),
+  // eslint-disable-next-line data-schema-key/valid-key -- Preserve the existing IPC route name.
   'enterprise.skills.reportExec': defineRoute({
     input: z.strictObject({ slug: z.string(), detail: z.record(z.string(), z.unknown()).optional() }),
     output: z.strictObject({ ok: z.boolean() })
   }),
   // [enterprise] C2 停用拦截：渲染层构建技能注入前查询已停用 slug 列表
+  // eslint-disable-next-line data-schema-key/valid-key -- Preserve the existing IPC route name.
   'enterprise.skills.listDisabled': defineRoute({
     input: z.void(),
     output: z.strictObject({ disabled: z.array(z.string()) })
   }),
   // [enterprise] C4 删除上报：用户卸载 org 技能时上报 deleted 事件
+  // eslint-disable-next-line data-schema-key/valid-key -- Preserve the existing IPC route name.
   'enterprise.skills.reportDeleted': defineRoute({
     input: z.strictObject({ slug: z.string() }),
     output: z.strictObject({ ok: z.boolean() })
   }),
   // [enterprise] C3 组织可用性：登出后 org 资源标记不可用，重登恢复
+  // eslint-disable-next-line data-schema-key/valid-key -- Preserve the existing IPC route name.
   'enterprise.status.orgUnavailable': defineRoute({
     input: z.void(),
     output: z.strictObject({ unavailable: z.boolean() })

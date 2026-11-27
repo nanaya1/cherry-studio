@@ -12,6 +12,7 @@ interface ProviderModelListProps {
   scrollElement?: HTMLDivElement | null
   providerId: string
   disabled: boolean
+  readOnly?: boolean
   onContinueApiSetup?: () => void
   actions?: (state: { disabled: boolean; hasVisibleModels: boolean }) => React.ReactNode
 }
@@ -20,6 +21,7 @@ const ProviderModelList: React.FC<ProviderModelListProps> = ({
   scrollElement,
   providerId,
   disabled,
+  readOnly,
   onContinueApiSetup,
   actions
 }) => {
@@ -80,6 +82,7 @@ const ProviderModelList: React.FC<ProviderModelListProps> = ({
           })}
         />
         <ModelListSections
+          readOnly={readOnly}
           scrollElement={scrollElement}
           provider={providerMeta.provider}
           isLoading={modelList.sections.isLoading}
@@ -97,12 +100,14 @@ const ProviderModelList: React.FC<ProviderModelListProps> = ({
           onContinueApiSetup={showContinueApiSetup ? onContinueApiSetup : undefined}
         />
       </div>
-      <EditModelDrawer
-        providerId={providerId}
-        open={modelList.editDrawer.open}
-        model={modelList.editDrawer.model}
-        onClose={modelList.editDrawer.onClose}
-      />
+      {!readOnly && (
+        <EditModelDrawer
+          providerId={providerId}
+          open={modelList.editDrawer.open}
+          model={modelList.editDrawer.model}
+          onClose={modelList.editDrawer.onClose}
+        />
+      )}
     </>
   )
 }

@@ -16,6 +16,7 @@ import ProviderSettingsDrawer from '../primitives/ProviderSettingsDrawer'
 import { apiKeyListClasses } from '../primitives/ProviderSettingsPrimitives'
 
 interface ProviderApiKeyListDrawerProps {
+  readOnly?: boolean
   providerId: string
   open: boolean
   onClose: () => void
@@ -50,7 +51,12 @@ function toDraft(entry: ApiKeyEntry): DraftState {
   }
 }
 
-export default function ProviderApiKeyListDrawer({ providerId, open, onClose }: ProviderApiKeyListDrawerProps) {
+export default function ProviderApiKeyListDrawer({
+  providerId,
+  open,
+  onClose,
+  readOnly = false
+}: ProviderApiKeyListDrawerProps) {
   const { t } = useTranslation()
   const { data: apiKeysData } = useProviderApiKeys(providerId)
   const { addApiKey, updateApiKey, deleteApiKey } = useProviderMutations(providerId)
@@ -182,7 +188,14 @@ export default function ProviderApiKeyListDrawer({ providerId, open, onClose }: 
             ) : null}
             {apiKeys.map((entry) => (
               <div key={entry.id} className={apiKeyListClasses.keyRow}>
-                {editingId === entry.id && draft ? (
+                {readOnly ? (
+                  <div className={apiKeyListClasses.keyTextBlock}>
+                    {entry.label && <div className={apiKeyListClasses.keyLabel}>{entry.label}</div>}
+                    <div className={apiKeyListClasses.keyValue}>
+                      {maskApiKey(entry.key) === entry.key ? '••••••••' : maskApiKey(entry.key)}
+                    </div>
+                  </div>
+                ) : editingId === entry.id && draft ? (
                   <ApiKeyDraftRow
                     draft={draft}
                     saving={saving}
@@ -201,7 +214,7 @@ export default function ProviderApiKeyListDrawer({ providerId, open, onClose }: 
                 )}
               </div>
             ))}
-            {draft?.isNew ? (
+            {!readOnly && draft?.isNew ? (
               <div className={apiKeyListClasses.keyRow}>
                 <ApiKeyDraftRow
                   draft={draft}
@@ -215,10 +228,12 @@ export default function ProviderApiKeyListDrawer({ providerId, open, onClose }: 
           </ScrollArea>
         </div>
 
-        <Button className="w-full" variant="secondary" size="sm" disabled={!!draft || saving} onClick={startAdd}>
-          <Plus size={14} />
-          {t('settings.provider.api_setup.add_key')}
-        </Button>
+        {!readOnly && (
+          <Button className="w-full" variant="secondary" size="sm" disabled={!!draft || saving} onClick={startAdd}>
+            <Plus size={14} />
+            {t('settings.provider.api_setup.add_key')}
+          </Button>
+        )}
       </div>
     </ProviderSettingsDrawer>
   )

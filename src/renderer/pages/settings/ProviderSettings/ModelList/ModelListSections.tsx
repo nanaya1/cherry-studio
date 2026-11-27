@@ -29,6 +29,7 @@ const HealthAwareModelListItem: React.FC<HealthAwareModelListItemProps> = (props
 }
 
 interface ModelListSectionsProps {
+  readOnly?: boolean
   scrollElement?: HTMLDivElement | null
   provider?: Provider
   isLoading: boolean
@@ -67,6 +68,7 @@ type ModelListVirtualRow =
     }
 
 const ModelListSections: React.FC<ModelListSectionsProps> = ({
+  readOnly,
   scrollElement,
   provider,
   isLoading,
@@ -189,6 +191,7 @@ const ModelListSections: React.FC<ModelListSectionsProps> = ({
         if (row.type === 'group') {
           return (
             <ModelListGroup
+              readOnly={readOnly}
               groupName={row.groupName}
               items={row.items}
               defaultOpen={row.defaultOpen}
@@ -207,6 +210,7 @@ const ModelListSections: React.FC<ModelListSectionsProps> = ({
           <div
             className={cn(modelListClasses.virtualModelRow, row.isLastInGroup && modelListClasses.virtualModelRowLast)}>
             <HealthAwareModelListItem
+              readOnly={readOnly}
               provider={provider}
               model={row.model}
               apiKeyEntries={apiKeyEntries}

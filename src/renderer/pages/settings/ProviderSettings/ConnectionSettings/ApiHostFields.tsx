@@ -59,6 +59,7 @@ export function AzureApiVersionField({
 }
 
 interface ApiHostFieldProps {
+  readOnly?: boolean
   providerIdForSettings: string
   apiHost: string
   isCherryIN: boolean
@@ -72,6 +73,7 @@ interface ApiHostFieldProps {
 }
 
 export function ApiHostField({
+  readOnly = false,
   providerIdForSettings,
   apiHost,
   isCherryIN,
@@ -99,12 +101,12 @@ export function ApiHostField({
       title={
         <span className={fieldClasses.titleWithHelp}>
           <span>{t('settings.provider.api_host')}</span>
-          <ApiHostEndpointButton onClick={onOpenRequestConfig} />
+          {!readOnly && <ApiHostEndpointButton onClick={onOpenRequestConfig} />}
         </span>
       }
       titleClassName="text-foreground"
       help={help}>
-      {isCherryIN && isChineseUser ? (
+      {!readOnly && isCherryIN && isChineseUser ? (
         <div className={cn(fieldClasses.inputRow, 'group')}>
           <div className="flex min-w-0 flex-1">
             <CherryInSettings providerId={providerIdForSettings} />
@@ -130,8 +132,9 @@ export function ApiHostField({
               placeholder={t('settings.provider.api_host_placeholder')}
               aria-label={t('settings.provider.api_host')}
               title={trimmedApiHost}
-              onChange={(event) => onApiHostChange(event.target.value)}
-              onBlur={onApiHostCommit}
+              readOnly={readOnly}
+              onChange={readOnly ? undefined : (event) => onApiHostChange(event.target.value)}
+              onBlur={readOnly ? undefined : onApiHostCommit}
               autoComplete="off"
             />
             {trimmedApiHost ? (
@@ -152,7 +155,7 @@ export function ApiHostField({
               </InputGroupAddon>
             ) : null}
           </InputGroup>
-          {isApiHostResettable ? (
+          {!readOnly && isApiHostResettable ? (
             <Tooltip content={t('settings.provider.api.url.reset')}>
               <span className="inline-flex shrink-0">
                 <button
@@ -167,17 +170,19 @@ export function ApiHostField({
               </span>
             </Tooltip>
           ) : null}
-          <Tooltip content={t('settings.provider.request_configuration_tooltip')}>
-            <span className="inline-flex shrink-0">
-              <button
-                type="button"
-                className={fieldClasses.inputActionButton}
-                aria-label={t('settings.provider.request_configuration_tooltip')}
-                onClick={onOpenRequestConfig}>
-                <Settings size={14} aria-hidden />
-              </button>
-            </span>
-          </Tooltip>
+          {!readOnly && (
+            <Tooltip content={t('settings.provider.request_configuration_tooltip')}>
+              <span className="inline-flex shrink-0">
+                <button
+                  type="button"
+                  className={fieldClasses.inputActionButton}
+                  aria-label={t('settings.provider.request_configuration_tooltip')}
+                  onClick={onOpenRequestConfig}>
+                  <Settings size={14} aria-hidden />
+                </button>
+              </span>
+            </Tooltip>
+          )}
         </div>
       )}
     </ProviderField>

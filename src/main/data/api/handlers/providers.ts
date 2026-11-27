@@ -21,6 +21,9 @@ import {
   UpdateProviderSchema
 } from '@shared/data/api/schemas/providers'
 import type { HandlersFor } from '@shared/data/api/types'
+import { maskApiKey } from '@shared/utils/api'
+
+import { assertProviderEditable, isCoworkManagedProvider } from './assertProviderEditable'
 
 export const providerHandlers: HandlersFor<ProviderSchemas> = {
   '/providers': {
@@ -41,11 +44,13 @@ export const providerHandlers: HandlersFor<ProviderSchemas> = {
     },
 
     PATCH: async ({ params, body }) => {
+      assertProviderEditable(params.providerId)
       const parsed = UpdateProviderSchema.parse(body)
       return providerService.update(params.providerId, parsed)
     },
 
     DELETE: async ({ params }) => {
+      assertProviderEditable(params.providerId)
       providerService.delete(params.providerId)
       return undefined
     }
@@ -55,15 +60,24 @@ export const providerHandlers: HandlersFor<ProviderSchemas> = {
     GET: async ({ params, query }) => {
       const parsed = ListProviderApiKeysQuerySchema.parse(query ?? {})
       const keys = providerService.getApiKeys(params.providerId, parsed)
-      return { keys }
+      return {
+        keys: isCoworkManagedProvider(params.providerId)
+          ? keys.map((entry) => {
+              const masked = maskApiKey(entry.key)
+              return { ...entry, key: masked === entry.key ? '••••••••' : masked }
+            })
+          : keys
+      }
     },
 
     POST: async ({ params, body }) => {
+      assertProviderEditable(params.providerId)
       const parsed = AddProviderApiKeySchema.parse(body)
       return providerService.addApiKey(params.providerId, parsed.key, parsed.label)
     },
 
     PUT: async ({ params, body }) => {
+      assertProviderEditable(params.providerId)
       const parsed = ReplaceProviderApiKeysSchema.parse(body)
       return providerService.replaceApiKeys(params.providerId, parsed.keys)
     }
@@ -96,11 +110,13 @@ export const providerHandlers: HandlersFor<ProviderSchemas> = {
 
   '/providers/:providerId/api-keys/:keyId': {
     PATCH: async ({ params, body }) => {
+      assertProviderEditable(params.providerId)
       const parsed = UpdateApiKeySchema.parse(body)
       return providerService.updateApiKey(params.providerId, params.keyId, parsed)
     },
 
     DELETE: async ({ params }) => {
+      assertProviderEditable(params.providerId)
       return providerService.deleteApiKey(params.providerId, params.keyId)
     }
   },

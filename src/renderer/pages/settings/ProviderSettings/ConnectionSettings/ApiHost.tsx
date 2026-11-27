@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { useProvider, useProviderMutations, useProviderPreset } from '@renderer/hooks/useProvider'
 import { ENDPOINT_TYPE } from '@shared/data/types/model'
@@ -8,6 +9,7 @@ import { useProviderEndpointActions } from '../hooks/providerSetting/useProvider
 import { useProviderEndpoints } from '../hooks/providerSetting/useProviderEndpoints'
 import { useProviderHostPreview } from '../hooks/providerSetting/useProviderHostPreview'
 import { useProviderMeta } from '../hooks/providerSetting/useProviderMeta'
+import { useCoworkManagedProvider } from '../hooks/useCoworkManagedProvider'
 import { AnthropicApiHostField, ApiHostField, ApiHostSection, AzureApiVersionField } from './ApiHostFields'
 import ProviderCustomHeaderDrawer from './ProviderCustomHeaderDrawer'
 
@@ -19,6 +21,8 @@ interface ApiHostProps {
 }
 
 export default function ApiHost({ providerId, onRequestModelPullGuide }: ApiHostProps) {
+  const { t } = useTranslation()
+  const readOnly = useCoworkManagedProvider(providerId)
   const { provider } = useProvider(providerId)
   const { updateProvider } = useProviderMutations(providerId)
   const [customHeaderOpen, setCustomHeaderOpen] = useState(false)
@@ -77,7 +81,7 @@ export default function ApiHost({ providerId, onRequestModelPullGuide }: ApiHost
     return null
   }
 
-  if (!meta.isConnectionFieldVisible) {
+  if (!readOnly && !meta.isConnectionFieldVisible) {
     return meta.isAzureOpenAI ? (
       <ApiHostSection>
         <AzureApiVersionField
@@ -92,10 +96,11 @@ export default function ApiHost({ providerId, onRequestModelPullGuide }: ApiHost
   return (
     <>
       <ApiHostSection id="setting-provider-api-host">
-        {!isAnthropicPrimaryEndpoint ? (
+        {readOnly || !isAnthropicPrimaryEndpoint ? (
           <ApiHostField
             providerIdForSettings={provider.id}
-            apiHost={apiHost}
+            apiHost={readOnly ? topology.primaryBaseUrl : apiHost}
+            readOnly={readOnly}
             isCherryIN={meta.isCherryIN}
             isChineseUser={meta.isChineseUser}
             isVertexAI={provider.id === 'vertexai'}

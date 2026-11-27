@@ -67,6 +67,7 @@ const mocks = vi.hoisted(() => ({
   setSidebarFavorites: vi.fn(() => Promise.resolve()),
   reorderMiniAppsByStatus: vi.fn(() => Promise.resolve()),
   showUserPopup: vi.fn(),
+  personalAccount: vi.fn<() => { data?: { username: string; displayName: string } }>(() => ({})),
   showSearchPopup: vi.fn(),
   sidebarWidth: 50,
   tabs: [] as FakeTab[],
@@ -150,6 +151,20 @@ vi.mock('@renderer/hooks/useAvatar', () => ({
 vi.mock('@renderer/hooks/useOrgAccountSession', () => ({
   useOrgAccountSession: () => ({ status: mocks.orgStatus })
 }))
+
+vi.mock('@renderer/hooks/usePersonalAccountDetails', () => ({
+  usePersonalAccountDetails: mocks.personalAccount
+}))
+vi.mock('swr', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('swr')>()
+  return {
+    ...actual,
+    default: (key: unknown, ...args: unknown[]) =>
+      key === 'enterprise.personal.status'
+        ? { data: { signedIn: false } }
+        : Reflect.apply(actual.default, undefined, [key, ...args])
+  }
+})
 
 vi.mock('@renderer/hooks/resourceViewSources', () => ({
   useAssistantTopicsSource: () => ({
@@ -581,6 +596,12 @@ describe('app Sidebar', () => {
     expect(props.user).toMatchObject({ name: 'JD', description: 'Local user' })
     expect(props.actions).toEqual(expect.any(Function))
     expect(mocks.showUserPopup).not.toHaveBeenCalled()
+  })
+
+  it('shows the personal account display name and username in the sidebar', () => {
+    mocks.personalAccount.mockReturnValueOnce({ data: { username: 'alice', displayName: 'Alice Chen' } })
+    render(<Sidebar />)
+    expect(getSidebarProps().user).toMatchObject({ name: 'Alice Chen', description: 'alice' })
   })
 
   it('keeps the local profile name and avatar when the org account is signed in', () => {
