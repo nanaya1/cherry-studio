@@ -10,7 +10,6 @@ import { ThemeMode } from '@shared/data/preference/preferenceTypes'
 
 const mocks = vi.hoisted(() => ({
   language: 'en-US',
-  openReleaseNotes: vi.fn(),
   openSmartMiniApp: vi.fn(),
   showDoctor: vi.fn()
 }))
@@ -19,10 +18,6 @@ vi.mock('@cherrystudio/ui', async (importOriginal) => importOriginal<typeof Cher
 
 vi.mock('@logger', () => ({
   loggerService: { withContext: () => ({ error: vi.fn() }) }
-}))
-
-vi.mock('@renderer/hooks/useOpenReleaseNotes', () => ({
-  useOpenReleaseNotes: () => mocks.openReleaseNotes
 }))
 
 vi.mock('@renderer/hooks/useMiniAppPopup', () => ({
@@ -67,7 +62,7 @@ beforeEach(() => {
 async function openMenu() {
   const user = userEvent.setup()
   await user.click(screen.getByRole('button', { name: 'help.title' }))
-  await screen.findByRole('button', { name: 'help.whats_new' })
+  await screen.findByRole('button', { name: 'Export diagnostic bundle' })
   return user
 }
 
@@ -98,10 +93,12 @@ describe('HelpMenu', () => {
     const trigger = screen.getByRole('button', { name: 'help.title' })
 
     await user.hover(trigger)
-    await screen.findByRole('button', { name: 'help.whats_new' })
+    await screen.findByRole('button', { name: 'Export diagnostic bundle' })
     await user.unhover(trigger)
 
-    await waitFor(() => expect(screen.queryByRole('button', { name: 'help.whats_new' })).not.toBeInTheDocument())
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: 'Export diagnostic bundle' })).not.toBeInTheDocument()
+    )
   })
 
   it('opens with ArrowRight and returns focus to the trigger on Escape', async () => {
@@ -111,11 +108,11 @@ describe('HelpMenu', () => {
     trigger.focus()
 
     await user.keyboard('{ArrowRight}')
-    expect(await screen.findByRole('button', { name: 'help.whats_new' })).toHaveFocus()
+    expect(await screen.findByRole('button', { name: 'Export diagnostic bundle' })).toHaveFocus()
     await user.keyboard('{Escape}')
 
     await waitFor(() => expect(trigger).toHaveFocus())
-    expect(screen.queryByRole('button', { name: 'help.whats_new' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Export diagnostic bundle' })).not.toBeInTheDocument()
   })
 
   it('keeps help usable and restores focus on Escape after a keyboard-to-hover handoff', async () => {
@@ -145,17 +142,9 @@ describe('HelpMenu', () => {
     const helpTrigger = screen.getByRole('button', { name: 'help.title' })
     await waitFor(() => expect(helpTrigger).toHaveFocus())
     await user.keyboard('{ArrowRight}')
-    expect(await screen.findByRole('button', { name: 'help.whats_new' })).toHaveFocus()
+    expect(await screen.findByRole('button', { name: 'Export diagnostic bundle' })).toHaveFocus()
     await user.click(screen.getByRole('button', { name: 'Export diagnostic bundle' }))
     await waitFor(() => expect(mocks.showDoctor).toHaveBeenCalledWith({ initialPanel: 'export' }))
-  })
-
-  it('opens release notes', async () => {
-    render(<HelpMenu />)
-    const user = await openMenu()
-
-    await user.click(screen.getByRole('button', { name: 'help.whats_new' }))
-    await waitFor(() => expect(mocks.openReleaseNotes).toHaveBeenCalledOnce())
   })
 
   it('closes the help menu before opening the export panel', async () => {
@@ -173,10 +162,11 @@ describe('HelpMenu', () => {
     expect(reportEntryWasVisible).toBe(false)
   })
 
-  it('keeps upstream documentation and feedback links hidden', async () => {
+  it('keeps upstream release notes, documentation, and feedback links hidden', async () => {
     render(<HelpMenu />)
     await openMenu()
 
+    expect(screen.queryByRole('button', { name: 'help.whats_new' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'help.guide' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'help.feedback' })).not.toBeInTheDocument()
   })
@@ -193,12 +183,12 @@ describe('HelpMenu', () => {
   it('supports keyboard activation from the focused first action', async () => {
     render(<HelpMenu />)
     const user = await openMenu()
-    const firstAction = screen.getByRole('button', { name: 'help.whats_new' })
+    const firstAction = screen.getByRole('button', { name: 'Export diagnostic bundle' })
 
     firstAction.focus()
     expect(firstAction).toHaveFocus()
     await user.keyboard('{Enter}')
 
-    await waitFor(() => expect(mocks.openReleaseNotes).toHaveBeenCalledOnce())
+    await waitFor(() => expect(mocks.showDoctor).toHaveBeenCalledWith({ initialPanel: 'export' }))
   })
 })

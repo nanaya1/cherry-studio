@@ -477,3 +477,14 @@ customizations:
       - src/renderer/windows/main/onboarding/OnboardingPage.tsx
     tests:
       - src/renderer/windows/main/onboarding/__tests__/OnboardingPage.test.tsx
+
+  - id: hide-help-whats-new
+    title: Hide upstream release notes from Help
+    owner: renderer
+    behavior: Keep the upstream What's new, documentation, and feedback entries hidden from the MEA Cowork Help menu while retaining diagnostic export and system checks.
+    markers:
+      - MEA:hide-help-whats-new
+    touchpoints:
+      - src/renderer/components/layout/HelpMenu.tsx
+    tests:
+      - src/renderer/components/layout/__tests__/HelpMenu.test.tsx

@@ -1,4 +1,4 @@
-import { ChevronRight, CircleQuestionMark, FileArchive, Sparkles, Stethoscope } from 'lucide-react'
+import { ChevronRight, CircleQuestionMark, FileArchive, Stethoscope } from 'lucide-react'
 import { useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -6,14 +6,12 @@ import { Button, MenuItem, MenuList, Popover, PopoverContent, PopoverTrigger } f
 import { loggerService } from '@logger'
 import { DoctorPopup } from '@renderer/components/doctor'
 import { useAccountSubmenu } from '@renderer/hooks/useAccountSubmenu'
-import { useOpenReleaseNotes } from '@renderer/hooks/useOpenReleaseNotes'
 import { ENABLE_CHERRY_OFFICIAL_SERVICES } from '@shared/utils/constants'
 
 const logger = loggerService.withContext('HelpMenu')
 
 export function HelpMenu({ onRequestClose }: { onRequestClose?: () => void }) {
   const { t } = useTranslation()
-  const openReleaseNotes = useOpenReleaseNotes()
   const {
     open: menuOpen,
     onOpenChange: setMenuOpen,
@@ -28,7 +26,7 @@ export function HelpMenu({ onRequestClose }: { onRequestClose?: () => void }) {
     setMenuOpen(false)
   }
 
-  // Cherry 官方文档与反馈入口在 MEA Cowork 中保持下线，原逻辑保留在 git 历史中。
+  // MEA:hide-help-whats-new Cherry 官方新功能、文档与反馈入口在 MEA Cowork 中保持下线。
 
   const trigger = (
     <Button
@@ -72,13 +70,6 @@ export function HelpMenu({ onRequestClose }: { onRequestClose?: () => void }) {
               size="sm"
               className="h-8 gap-2 rounded-md border-0 bg-transparent px-2 py-0 text-[13px] leading-5 [&_svg]:text-muted-foreground"
               ref={firstActionRef}
-              icon={<Sparkles size={16} />}
-              label={t('help.whats_new')}
-              onClick={() => runAfterClose(openReleaseNotes)}
-            />
-            <MenuItem
-              size="sm"
-              className="h-8 gap-2 rounded-md border-0 bg-transparent px-2 py-0 text-[13px] leading-5 [&_svg]:text-muted-foreground"
               icon={<FileArchive size={16} />}
               label={t(
                 ENABLE_CHERRY_OFFICIAL_SERVICES
