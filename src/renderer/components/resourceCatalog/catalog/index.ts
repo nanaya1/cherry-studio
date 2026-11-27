@@ -12,4 +12,5 @@ export {
   SkillCatalogView,
   type SkillSourceFilter
 } from './SkillCatalogView'
+export { SkillHubCatalogView } from './SkillHubCatalogView'
 export { SkillSourceBadge } from './SkillSourceBadge'

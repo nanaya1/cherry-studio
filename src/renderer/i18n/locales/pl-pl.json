@@ -6694,5 +6694,12 @@
   "webview.tabs.empty": "Otwórz stronę internetową w tej rozmowie",
   "webview.tabs.label": "Karty przeglądarki",
   "webview.tabs.new": "Nowa karta",
-  "webview.tabs.view": "Pokaż"
+  "webview.tabs.view": "Pokaż",
+  "workspace.skillhub.domain": "Dziedzina",
+  "workspace.skillhub.industry": "Branża",
+  "workspace.skillhub.next": "Dalej",
+  "workspace.skillhub.previous": "Wstecz",
+  "workspace.skillhub.unconfigured": "SkillHub nie jest skonfigurowany dla tego środowiska.",
+  "workspace.skillhub.unreachable": "Nie można połączyć się ze SkillHub.",
+  "workspace.skillhub.version_available": "Dostępna wersja: {{version}}"
 }

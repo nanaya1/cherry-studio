@@ -6615,5 +6615,12 @@
   "webview.tabs.empty": "Otevřete webovou stránku v této konverzaci",
   "webview.tabs.label": "Karty prohlížeče",
   "webview.tabs.new": "Nová karta",
-  "webview.tabs.view": "Zobrazit"
+  "webview.tabs.view": "Zobrazit",
+  "workspace.skillhub.domain": "Obor",
+  "workspace.skillhub.industry": "Odvětví",
+  "workspace.skillhub.next": "Další",
+  "workspace.skillhub.previous": "Předchozí",
+  "workspace.skillhub.unconfigured": "SkillHub není v tomto prostředí nakonfigurován.",
+  "workspace.skillhub.unreachable": "Nelze se připojit ke SkillHubu.",
+  "workspace.skillhub.version_available": "Dostupná verze: {{version}}"
 }

@@ -100,7 +100,11 @@ export async function validateZipFile(zipFilePath: string): Promise<void> {
 export const assertNoFoldedPathCollisions = (paths: readonly string[]): void =>
   assertNoFoldedPathCollisionsShared(paths, 'Skill')
 
-export async function extractZip(zipFilePath: string, destDir: string): Promise<void> {
+export async function extractZip(
+  zipFilePath: string,
+  destDir: string,
+  maxExpandedBytes = MAX_ARCHIVE_SIZE
+): Promise<void> {
   const zip = new StreamZip.async({ file: zipFilePath })
 
   try {
@@ -114,9 +118,9 @@ export async function extractZip(zipFilePath: string, destDir: string): Promise<
     // The central directory is already parsed and in memory here, so the full scan costs no I/O.
     const totalSize = entries.reduce((sum, entry) => sum + entry.size, 0)
 
-    if (totalSize > MAX_ARCHIVE_SIZE) {
+    if (totalSize > maxExpandedBytes) {
       throw new Error(
-        `Skill archive expands to ${totalSize} bytes when extracted, over the ${MAX_ARCHIVE_SIZE}-byte limit`
+        `Skill archive expands to ${totalSize} bytes when extracted, over the ${maxExpandedBytes}-byte limit`
       )
     }
     if (entries.length > MAX_ARCHIVE_ENTRIES) {

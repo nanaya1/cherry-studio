@@ -6614,5 +6614,12 @@
   "webview.tabs.empty": "Apri una pagina web in questa conversazione",
   "webview.tabs.label": "Schede del browser",
   "webview.tabs.new": "Nuova scheda",
-  "webview.tabs.view": "Mostra"
+  "webview.tabs.view": "Mostra",
+  "workspace.skillhub.domain": "Ambito",
+  "workspace.skillhub.industry": "Settore",
+  "workspace.skillhub.next": "Avanti",
+  "workspace.skillhub.previous": "Indietro",
+  "workspace.skillhub.unconfigured": "SkillHub non è configurato per questo ambiente.",
+  "workspace.skillhub.unreachable": "Impossibile raggiungere SkillHub.",
+  "workspace.skillhub.version_available": "Versione disponibile: {{version}}"
 }

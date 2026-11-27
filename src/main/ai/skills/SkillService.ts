@@ -32,6 +32,7 @@ import type {
   SystemSkillCandidate,
   SystemSkillPlacement
 } from '@shared/types/skill'
+import { skillHubSource } from '@shared/types/skillHub'
 import type { MarketplaceInstallResult, MarketplaceSkillDetail } from '@shared/types/skillMarketplace'
 import { marketplaceSkillNamespace, marketplaceSkillSource } from '@shared/utils/cherrySkillMarketplace'
 import {
@@ -51,6 +52,7 @@ import {
   validateZipFile
 } from './skillArchive'
 import { isSkillExternallyExportable } from './skillExportPolicy'
+import { withSkillHubPackages } from './skillHub'
 import { SkillImportError } from './SkillImportError'
 import { SkillInstaller } from './SkillInstaller'
 import { createTempDir, normalizeFolderKey, safeRemoveDirectory, sanitizeFolderName } from './skillPaths'
@@ -404,6 +406,46 @@ export class SkillService {
     } finally {
       await safeRemoveDirectory(fetched?.tempDir ?? downloaded!.tempDir)
     }
+  }
+
+  async installSkillHub(target: { id: string; version: string }): Promise<void> {
+    await withSkillHubPackages(target, (packages) =>
+      this.mutationLock.runExclusive(async () => {
+        const existing = await this.list()
+        const pending: Array<(typeof packages)[number]> = []
+        const folders = new Set<string>()
+        for (const member of packages) {
+          const source = skillHubSource(member.id, member.version)
+          const prefix = `skillhub:${member.id}@`
+          const installed = existing.find((skill) => skill.sourceUrl?.startsWith(prefix))
+          if (installed?.sourceUrl === source) continue
+          if (installed) throw new Error(`A different version is already installed: ${member.id}`)
+          const metadata = await parseSkillMetadata(member.directory, path.basename(member.directory), 'skills')
+          const folder = sanitizeFolderName(metadata.filename)
+          const key = normalizeFolderKey(folder)
+          if (
+            !folder ||
+            folders.has(key) ||
+            this.findCatalogSkillCaseInsensitive(folder) ||
+            (await this.findStorageFolderCaseInsensitive(folder))
+          ) {
+            throw new Error(`SkillHub folder conflict: ${member.id} (${folder})`)
+          }
+          folders.add(key)
+          pending.push(member)
+        }
+        for (const member of pending) {
+          try {
+            await this.installSkillDirLocked(member.directory, 'marketplace', skillHubSource(member.id, member.version))
+          } catch (error) {
+            throw new Error(
+              `SkillHub installation failed: ${member.id} (${error instanceof Error ? error.message : String(error)})`,
+              { cause: error }
+            )
+          }
+        }
+      })
+    )
   }
 
   async installFromZip(options: SkillInstallFromZipOptions): Promise<InstalledSkill> {
