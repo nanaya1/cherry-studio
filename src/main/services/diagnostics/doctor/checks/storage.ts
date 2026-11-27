@@ -1,7 +1,7 @@
 import { app } from 'electron'
 
 import { application } from '@application'
-import { getNormalizedExecutablePath, isUsableDataDir } from '@main/core/preboot/userDataLocation'
+import { getNormalizedExecutablePath, getPersonalDataRoot, isUsableDataDir } from '@main/core/preboot/userDataLocation'
 import { bootConfigService } from '@main/data/bootConfig'
 import { inspectDiagnosticData } from '@main/services/cacheCleanup'
 import { GB } from '@shared/utils/constants'
@@ -22,7 +22,7 @@ export const userDataLocation = defineDoctorCheck({
     const configured = app.isPackaged
       ? bootConfigService.get('app.user_data_path')?.[getNormalizedExecutablePath()]
       : undefined
-    if (!configured || configured === actual) return { status: 'pass' }
+    if (!configured || configured === getPersonalDataRoot()) return { status: 'pass' }
     return {
       status: 'warn',
       attribution: 'user-fixable',

@@ -24,6 +24,11 @@ export function getPersonalDataRoot(): string {
   return personalDataRoot
 }
 
+export function getPersonalBackupScope(): string {
+  if (!personalAccountSpace) return 'mea-guest'
+  return `mea-account-${path.basename(app.getPath('userData'))}`
+}
+
 /**
  * "userData" in this module means Electron's complete OS-level userData
  * directory, including user content, Chromium state, and — on Windows and
@@ -113,9 +118,12 @@ export function activatePersonalProfileLocation(): 'guest' | 'account' {
   personalDataRoot = dataRoot
   const profile = readPersonalProfileSelection(dataRoot)
   personalAccountSpace = profile.kind === 'account'
-  if (profile.kind === 'guest') return 'guest'
-
   const location = resolvePersonalProfileLocation(dataRoot, profile)
+  const logs = path.join(location, 'SpaceLogs')
+  fs.mkdirSync(logs, { recursive: true })
+  app.setPath('logs', logs)
+  loggerService.setLogsDir(logs)
+  if (profile.kind === 'guest') return 'guest'
   fs.mkdirSync(location, { recursive: true })
   app.setPath('userData', location)
   app.setPath('sessionData', location)

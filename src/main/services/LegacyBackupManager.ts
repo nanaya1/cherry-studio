@@ -26,7 +26,7 @@ import { Mutex, tryAcquire } from 'async-mutex'
 import Database from 'better-sqlite3'
 import dayjs from 'dayjs'
 import { readMigrationFiles } from 'drizzle-orm/migrator'
-import { app } from 'electron'
+import { app, dialog } from 'electron'
 import * as fs from 'fs-extra'
 import StreamZip from 'node-stream-zip'
 import type { CreateDirectoryOptions, FileStat } from 'webdav'
@@ -34,12 +34,19 @@ import type { CreateDirectoryOptions, FileStat } from 'webdav'
 import { application } from '@application'
 import { loggerService } from '@logger'
 import { logFailure } from '@main/core/logger/logFailure'
+import { readPersonalProfileSelection } from '@main/core/preboot/personalProfileSelection'
+import {
+  getPersonalBackupScope,
+  getPersonalDataRoot,
+  isPersonalAccountSpace
+} from '@main/core/preboot/userDataLocation'
 import { WindowType } from '@main/core/window/types'
 import { readAppliedChain } from '@main/data/db/restore/appliedChain'
 import { checkpointTruncateAssert } from '@main/data/db/restore/checkpoint'
 import { hashDbFile } from '@main/data/db/restore/hashDbFile'
 import { readRestoreJournal, type RestoreJournal, writeRestoreJournal } from '@main/data/db/restore/restoreJournal'
 import { classifyDatabaseFailure } from '@main/data/failureFacts'
+import { t } from '@main/i18n'
 import { classifyFileFailure } from '@main/services/file'
 import { classifyStorageFailure } from '@main/services/remoteStorage/failureFacts'
 import { type AtomicWriteStream, createAtomicWriteStream, ensureDir, isOutsidePath } from '@main/utils/file'
@@ -89,6 +96,7 @@ const isSkippableLevelDbLockError = (sourcePath: string, error: unknown): error 
 }
 
 interface DirectBackupMetadata {
+  space?: { kind: 'guest' | 'account'; username?: string }
   version: number
   timestamp: number
   appName: string
@@ -254,6 +262,7 @@ class BackupManager {
       appVersion: app.getVersion(),
       platform: process.platform,
       arch: process.arch,
+      space: this.currentBackupSpace(),
       resources: {
         database: false,
         cache: true,
@@ -263,6 +272,19 @@ class BackupManager {
         data: true
       }
     }
+  }
+
+  private currentBackupSpace(): NonNullable<DirectBackupMetadata['space']> {
+    if (!isPersonalAccountSpace()) return { kind: 'guest' }
+    const selected = readPersonalProfileSelection(getPersonalDataRoot())
+    return { kind: 'account', ...(selected.kind === 'account' && { username: selected.username }) }
+  }
+
+  private backupSpaceLabel(space?: DirectBackupMetadata['space']): string {
+    if (space?.kind === 'guest') return t('backup.space.guest')
+    if (space?.kind !== 'account') return t('backup.space.unknown')
+    const username = typeof space.username === 'string' ? space.username.replace(/[\r\n\t]/g, ' ').slice(0, 60) : ''
+    return username || t('backup.space.account')
   }
 
   /**
@@ -572,7 +594,8 @@ class BackupManager {
     return this.runBackupWorkflow(async () => {
       const operationSignal = event === null ? signal : undefined
       operationSignal?.throwIfAborted()
-      const backupDir = localConfig.localBackupDir || this.backupDir
+      const backupBase = localConfig.localBackupDir || this.backupDir
+      const backupDir = path.join(backupBase, getPersonalBackupScope())
       await ensureDir(AbsoluteFilePathSchema.parse(backupDir))
       const result = await this.backupDirect(
         fileName || this.createBackupFileName(),
@@ -582,8 +605,8 @@ class BackupManager {
       )
       const cleanupError = await this.cleanupOldBackups(
         localConfig.maxBackups ?? 0,
-        (cleanupSignal) => this.listLocalBackupFiles(null, backupDir, cleanupSignal),
-        (oldFileName, cleanupSignal) => this.deleteLocalBackupFile(null, oldFileName, backupDir, cleanupSignal),
+        (cleanupSignal) => this.listLocalBackupFiles(null, backupBase, cleanupSignal),
+        (oldFileName, cleanupSignal) => this.deleteLocalBackupFile(null, oldFileName, backupBase, cleanupSignal),
         operationSignal
       )
       return { result, cleanupError }
@@ -751,14 +774,15 @@ class BackupManager {
    * @param _ - Electron IPC event
    * @param backupPath - Path to the backup ZIP file
    */
-  async restore(_: Electron.IpcMainInvokeEvent, backupPath: string): Promise<void> {
+  async restore(_: Electron.IpcMainInvokeEvent, backupPath: string): Promise<boolean> {
     return this.runBackupWorkflow(async () => {
-      await this.restoreUnlocked(backupPath)
+      if (!(await this.restoreUnlocked(backupPath))) return false as const
       application.relaunch()
+      return true
     })
   }
 
-  private async restoreUnlocked(backupPath: string): Promise<void> {
+  private async restoreUnlocked(backupPath: string): Promise<boolean> {
     const onProgress = this.onProgress(IpcChannel.RestoreProgress, true)
     const extractionDir = await this.createOperationDir('extract')
 
@@ -782,7 +806,21 @@ class BackupManager {
         )
       }
 
+      const metadata = await this.readDirectBackupMetadata(extractionDir)
+      const { response } = await dialog.showMessageBox({
+        type: 'warning',
+        message: t('backup.space.restore_confirm'),
+        detail: t('backup.space.restore_detail', {
+          source: this.backupSpaceLabel(metadata.space),
+          target: this.backupSpaceLabel(this.currentBackupSpace())
+        }),
+        buttons: [t('dialog.data_reset.cancel'), t('dialog.data_reset.confirm')],
+        defaultId: 0,
+        cancelId: 0
+      })
+      if (response !== 1) return false
       await this.restoreDirect(extractionDir)
+      return true
     } catch (error) {
       logFailure(logger, 'Restore failed:', error, 'backup.restore', classifyBackupFailure(error))
       const reportedError = await this.withAvailableDiskSpace(error, extractionDir)
@@ -1311,7 +1349,7 @@ class BackupManager {
    */
   async restoreFromLocalBackup(_: Electron.IpcMainInvokeEvent, fileName: string, localBackupDir: string) {
     try {
-      const backupPath = resolveAndValidatePath(localBackupDir, fileName)
+      const backupPath = resolveAndValidatePath(path.join(localBackupDir, getPersonalBackupScope()), fileName)
 
       if (!fs.existsSync(backupPath)) {
         throw new Error(`Backup file not found: ${backupPath}`)
@@ -1345,7 +1383,7 @@ class BackupManager {
       const backupedFilePath = path.join(downloadDir, path.basename(filename))
       try {
         await pipeline(webdavClient.createReadStream(filename), fs.createWriteStream(backupedFilePath))
-        await this.restoreUnlocked(backupedFilePath)
+        if (!(await this.restoreUnlocked(backupedFilePath))) return false as const
       } catch (error: any) {
         logFailure(
           logger,
@@ -1360,6 +1398,7 @@ class BackupManager {
         await fs.remove(downloadDir).catch(() => {})
       }
       application.relaunch()
+      return true
     })
   }
 
@@ -1384,7 +1423,7 @@ class BackupManager {
         await pipeline(await s3Client.getFileStream(filename), fs.createWriteStream(backupedFilePath))
 
         logger.info(`S3 restore file downloaded successfully: ${filename}`)
-        await this.restoreUnlocked(backupedFilePath)
+        if (!(await this.restoreUnlocked(backupedFilePath))) return false as const
       } catch (error: any) {
         logFailure(
           logger,
@@ -1399,6 +1438,7 @@ class BackupManager {
         await fs.remove(downloadDir).catch(() => {})
       }
       application.relaunch()
+      return true
     })
   }
 
@@ -1662,6 +1702,7 @@ class BackupManager {
    * @returns WebDav instance
    */
   private async getWebDavInstance(config: WebDavConfig): Promise<WebDav> {
+    config = { ...config, webdavPath: path.posix.join(config.webdavPath || '/', getPersonalBackupScope()) }
     // Import before the cache check so concurrent callers still share one instance.
     const { default: WebDav } = await import('./WebDav')
     // Check if core connection config has changed
@@ -1933,6 +1974,7 @@ class BackupManager {
    * @returns Array of backup file info (name, modified time, size), sorted by newest first
    */
   async listLocalBackupFiles(_: BackupInvocationEvent, localBackupDir: string, signal?: AbortSignal) {
+    localBackupDir = path.join(localBackupDir, getPersonalBackupScope())
     try {
       signal?.throwIfAborted()
       const files = await fs.readdir(localBackupDir)
@@ -1955,6 +1997,7 @@ class BackupManager {
       // Sort by modified time, newest first
       return result.sort((a, b) => new Date(b.modifiedTime).getTime() - new Date(a.modifiedTime).getTime())
     } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return []
       logger.error('[BackupManager] List local backup files failed:', error as Error)
       throw error
     }
@@ -1975,7 +2018,7 @@ class BackupManager {
   ) {
     try {
       signal?.throwIfAborted()
-      const filePath = resolveAndValidatePath(localBackupDir, fileName)
+      const filePath = resolveAndValidatePath(path.join(localBackupDir, getPersonalBackupScope()), fileName)
 
       if (!fs.existsSync(filePath)) {
         throw new Error(`Backup file not found: ${filePath}`)
@@ -2000,6 +2043,7 @@ class BackupManager {
    * @returns S3Storage instance
    */
   private async getS3Storage(config: S3Config): Promise<S3Storage> {
+    config = { ...config, root: path.posix.join(config.root || '', getPersonalBackupScope()) }
     // Import before the cache check so concurrent callers still share one instance.
     const { default: S3Storage } = await import('./S3Storage')
     // Check if core connection config has changed

@@ -367,16 +367,40 @@ customizations:
     tests:
       - scripts/__tests__/i18n-check-values.test.ts
 
+  - id: personal-space-diagnostics
+    title: Diagnose the current MEA account space and export local diagnostics
+    owner: main
+    behavior: General checks allow guest use. Managed Xuelang checks distinguish rejected credentials, service unavailability, and model synchronization outcomes. Diagnostics never start a model synchronization. Data-directory fallback compares the configured and resolved base paths. Diagnostic IPC offers only active-space logs and disables Cherry report submission.
+    touchpoints:
+      - src/main/services/diagnostics/doctor/checks/provider.ts
+      - src/main/services/diagnostics/doctor/checks/storage.ts
+      - src/main/services/diagnostics/doctor/DoctorService.ts
+      - src/main/enterprise/personalAccountRuntime.ts
+      - src/main/ipc/handlers/diagnostics.ts
+      - src/renderer/hooks/doctor/useDoctorController.ts
+      - src/renderer/pages/settings/ProviderSettings/ProviderSpecific/XuelangAccountSettings.tsx
+    tests:
+      - src/main/services/diagnostics/doctor/checks/__tests__/provider.test.ts
+      - src/main/services/diagnostics/doctor/checks/__tests__/storage.test.ts
+      - src/main/ipc/handlers/__tests__/diagnostics.test.ts
+      - src/renderer/pages/settings/ProviderSettings/__tests__/XuelangAccountSettings.test.tsx
+
   - id: personal-profile-startup
     title: Load the selected personal data space before startup
     owner: preboot
-    behavior: Acquire the app-root lock before selecting the active profile. Guests keep the existing data root. Account launches isolate Electron and Chromium paths and skip guest-only relocation and legacy migration. Invalid selection stops startup.
+    behavior: Lock and relocate the app data root before selecting a profile. Guests use the base data root. Accounts isolate Electron and Chromium data. Reset preserves the selected login and targets the current space. Backup exports target the current space, automatic destinations are namespaced, and restore confirmation shows the source and destination. Logs and integration data are scoped to the active space, with legacy integration data reserved for guests.
     touchpoints:
       - src/main/main.ts
       - src/main/core/preboot/userDataLocation.ts
       - src/main/core/preboot/personalProfileLocation.ts
       - src/main/core/preboot/personalProfileSelection.ts
       - src/main/core/preboot/personalProfileSwitch.ts
+      - src/main/core/logger/LoggerService.ts
+      - src/main/core/paths/pathRegistry.ts
+      - src/main/services/userDataRelocation/request.ts
+      - src/main/services/userDataRelocation/execution.ts
+      - src/main/services/dataReset.ts
+      - src/main/services/LegacyBackupManager.ts
       - src/main/core/application/Application.ts
       - src/main/data/db/DbService.ts
       - src/main/enterprise/personalAccountLogin.ts

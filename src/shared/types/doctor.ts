@@ -226,7 +226,19 @@ export const DOCTOR_CHECK_CATALOG = {
     tier: 'quick',
     scope: ['providerId', 'modelId'],
     fixes: [],
-    details: ['not_configured', 'invalid_id', 'provider_unavailable', 'provider_disabled', 'model_unavailable'],
+    details: [
+      'not_configured',
+      'invalid_id',
+      'provider_unavailable',
+      'provider_disabled',
+      'model_unavailable',
+      'cowork_sign_in',
+      'cowork_expired',
+      'cowork_unavailable',
+      'cowork_not_synced',
+      'cowork_sync_failed',
+      'cowork_no_models'
+    ],
     requires: []
   },
   'provider-api-key-present': {
@@ -416,6 +428,7 @@ export type DoctorNavigateTarget =
   | '/settings/mcp'
   | '/settings/provider'
   | '/settings/provider?id=claude-code'
+  | '/settings/provider?id=xuelang'
 
 export type DoctorAction<Id extends DoctorCheckId = DoctorCheckId> =
   | DoctorFixAction<Id>
@@ -425,6 +438,7 @@ export type DoctorAction<Id extends DoctorCheckId = DoctorCheckId> =
   | { readonly kind: 'open_external'; readonly url: string }
   | { readonly kind: 'relaunch' }
   | { readonly kind: 'report' }
+  | { readonly kind: 'personal_login' }
 
 export interface DoctorDetail<Id extends DoctorCheckId = DoctorCheckId> {
   readonly variant: DoctorDetailVariant<Id>

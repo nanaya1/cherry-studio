@@ -243,9 +243,7 @@ describe('buildPathRegistry', () => {
   it('keeps persisted MCP resource blobs in Cherry temporary storage', () => {
     const registry = buildPathRegistry()
 
-    expect(registry['feature.mcp.resource_results.temp']).toBe(
-      path.join('/mock/temp', 'CherryStudio', 'mcp-resource-results')
-    )
+    expect(registry['feature.mcp.resource_results.temp']).toBe(path.join(registry['app.temp'], 'mcp-resource-results'))
   })
 
   it('stores active traces under userData Runtime and keeps the old path cleanup-only', () => {

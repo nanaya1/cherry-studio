@@ -78,7 +78,7 @@ export async function restore() {
 
   if (file) {
     try {
-      await window.api.backup.restore(file.filePath)
+      if ((await window.api.backup.restore(file.filePath)) === false) return
 
       void notificationService.send({
         id: uuid(),
@@ -180,7 +180,7 @@ export async function restoreFromWebdav(fileName?: string) {
       webdavPath: 'data.backup.webdav.path',
       webdavAllowSelfSignedTls: 'data.backup.webdav.allow_self_signed_tls'
     })
-  await window.api.backup.restoreFromWebdav({
+  const result = await window.api.backup.restoreFromWebdav({
     webdavHost,
     webdavUser,
     webdavPass,
@@ -188,6 +188,7 @@ export async function restoreFromWebdav(fileName?: string) {
     allowSelfSignedTls: webdavAllowSelfSignedTls,
     fileName
   })
+  if (result === false) return
   logger.info('[WebDAVBackup] Backup restore staged, app will restart')
 }
 
@@ -266,10 +267,11 @@ export async function restoreFromS3(fileName?: string) {
   }
 
   if (fileName) {
-    await window.api.backup.restoreFromS3({
+    const result = await window.api.backup.restoreFromS3({
       ...s3Config,
       fileName
     })
+    if (result === false) return
     logger.info('[S3Backup] Backup restore staged, app will restart')
   }
 }
@@ -337,7 +339,7 @@ export async function backupToLocal({ customFileName = '' }: ManualBackupOptions
 export async function restoreFromLocal(fileName: string) {
   const localBackupDirSetting = await preferenceService.get('data.backup.local.dir')
   const localBackupDir = await window.api.resolvePath(localBackupDirSetting)
-  await window.api.backup.restoreFromLocalBackup(fileName, localBackupDir)
+  if ((await window.api.backup.restoreFromLocalBackup(fileName, localBackupDir)) === false) return false
   logger.info('[LocalBackup] Backup restore staged, app will restart')
 
   return true

@@ -1,8 +1,7 @@
 import { v4 as uuidv4 } from 'uuid'
 
-import { application } from '@application'
 import { loggerService } from '@logger'
-import { canonicalizeUserDataPath } from '@main/core/preboot/userDataLocation'
+import { canonicalizeUserDataPath, getPersonalDataRoot } from '@main/core/preboot/userDataLocation'
 import { bootConfigService } from '@main/data/bootConfig'
 import type { UserDataRelocationInspection } from '@shared/types/userDataRelocation'
 
@@ -18,7 +17,7 @@ const logger = loggerService.withContext('UserDataRelocation')
  */
 export function inspectUserDataRelocationTarget(targetPath: string): UserDataRelocationInspection {
   try {
-    const { targetEmpty } = assertRelocationPaths(application.getPath('app.userdata'), targetPath)
+    const { targetEmpty } = assertRelocationPaths(getPersonalDataRoot(), targetPath)
     return { valid: true, targetEmpty }
   } catch (error) {
     if (error instanceof RelocationValidationError) {
@@ -37,7 +36,7 @@ export function requestUserDataRelocation(targetPath: string, copy: boolean): vo
   const pending: PendingRelocation = {
     status: 'pending',
     taskId: uuidv4(),
-    from: canonicalizeUserDataPath(application.getPath('app.userdata')),
+    from: canonicalizeUserDataPath(getPersonalDataRoot()),
     to: canonicalizeUserDataPath(targetPath),
     copy
   }

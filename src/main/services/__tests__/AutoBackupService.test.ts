@@ -48,6 +48,9 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('@application', () => ({ application: { get: mocks.applicationGet, getPath: mocks.applicationGetPath } }))
+vi.mock('@main/core/preboot/userDataLocation', () => ({
+  getPersonalDataRoot: () => mocks.applicationGetPath('app.userdata')
+}))
 
 vi.mock('@logger', () => ({
   loggerService: {

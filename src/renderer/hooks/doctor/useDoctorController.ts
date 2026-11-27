@@ -34,6 +34,7 @@ interface UseDoctorControllerOptions {
   readonly initialRunTier?: DoctorRunTier
   readonly subject: DoctorSubjectRef
   readonly onNavigate: (target: DoctorNavigateTarget) => void
+  readonly onPersonalLogin?: () => void
   readonly onReportProblem?: (description: string) => void
 }
 
@@ -63,6 +64,7 @@ export function useDoctorController({
   initialRunTier,
   subject,
   onNavigate,
+  onPersonalLogin,
   onReportProblem
 }: UseDoctorControllerOptions) {
   const { t } = useTranslation()
@@ -270,6 +272,9 @@ export function useDoctorController({
         case 'navigate':
           onNavigate(action.target)
           return
+        case 'personal_login':
+          onPersonalLogin?.()
+          return
         case 'open_path':
           await performAction(
             { actionKind: action.kind, checkId },
@@ -314,7 +319,17 @@ export function useDoctorController({
           return assertNever(action)
       }
     },
-    [onNavigate, onReportProblem, performAction, performFix, scope, session.descriptionDraft, t, viewModel.isStale]
+    [
+      onNavigate,
+      onPersonalLogin,
+      onReportProblem,
+      performAction,
+      performFix,
+      scope,
+      session.descriptionDraft,
+      t,
+      viewModel.isStale
+    ]
   )
 
   const openPath = useCallback(

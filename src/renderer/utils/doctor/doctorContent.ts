@@ -50,7 +50,8 @@ export const DOCTOR_NAVIGATION_LABEL_KEYS = {
   '/settings/general': 'settings.doctor.actions.open_general',
   '/settings/mcp': 'settings.doctor.actions.open_mcp',
   '/settings/provider': 'settings.doctor.actions.open_provider',
-  '/settings/provider?id=claude-code': 'settings.doctor.actions.open_claude_code'
+  '/settings/provider?id=claude-code': 'settings.doctor.actions.open_claude_code',
+  '/settings/provider?id=xuelang': 'settings.doctor.actions.open_provider'
 } as const satisfies Record<DoctorNavigateTarget, string>
 
 const DOCTOR_FIX_LABEL_DECLARATIONS = {

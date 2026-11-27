@@ -69,8 +69,9 @@ const relocationOwnerSchema = z.object({
  * startup — the flow ends in a relaunch), 'skipped' when there is nothing
  * to do and startup continues.
  */
-export async function runUserDataRelocation(): Promise<'handled' | 'skipped'> {
-  const requestedRelocation = readUserDataRelocationState()
+export async function runUserDataRelocation(
+  requestedRelocation = readUserDataRelocationState()
+): Promise<'handled' | 'skipped'> {
   if (!requestedRelocation) return 'skipped'
 
   // Only a pending copy isolates sessionData — the copy is what needs the
@@ -189,7 +190,9 @@ function persistFailedRelocation(pending: PendingRelocation | FailedRelocation, 
   return failed
 }
 
-function readUserDataRelocationState(): RelocationState | null {
+export function readUserDataRelocationState(
+  currentUserDataPath = application.getPath('app.userdata')
+): RelocationState | null {
   // Unpackaged dev runs use the suffixed dev userData and never execute
   // relocations (mirrors the request-side isPackaged gate in ipc/handlers).
   if (!app.isPackaged) return null
@@ -202,7 +205,6 @@ function readUserDataRelocationState(): RelocationState | null {
   // A request whose `from` is not the userData this launch resolved was
   // recorded under different conditions (executable moved, BootConfig copied
   // to another machine). Executing it would relocate the wrong tree — discard.
-  const currentUserDataPath = application.getPath('app.userdata')
   const currentUserData = normalizeForCompare(currentUserDataPath)
   if (normalizeForCompare(relocation.from) !== currentUserData) {
     logger.warn('Discarding stale userData relocation request', {

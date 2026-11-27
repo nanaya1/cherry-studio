@@ -5,6 +5,7 @@ import { app, BrowserWindow } from 'electron'
 import { application } from '@application'
 import { loggerService } from '@logger'
 import { isWin } from '@main/core/platform'
+import { getPersonalDataRoot } from '@main/core/preboot/userDataLocation'
 import { cacheCleanupService } from '@main/services/cacheCleanup'
 import { requestDataReset } from '@main/services/dataReset'
 import { regionService } from '@main/services/RegionService'
@@ -24,7 +25,7 @@ export const appHandlers: IpcHandlersFor<typeof appRequestSchemas> = {
     homePath: application.getPath('sys.home'),
     notesPath: application.getPath('feature.notes.data'),
     configPath: application.getPath('cherry.config'),
-    appDataPath: application.getPath('app.userdata'),
+    appDataPath: getPersonalDataRoot(),
     resourcesPath: application.getPath('app.root.resources'),
     logsPath: loggerService.getLogsDir(),
     arch: arch(),

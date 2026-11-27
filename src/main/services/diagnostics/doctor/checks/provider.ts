@@ -1,9 +1,12 @@
 import { application } from '@application'
+import { isPersonalAccountSpace } from '@main/core/preboot/userDataLocation'
 import { modelService } from '@main/data/services/ModelService'
 import { providerService } from '@main/data/services/ProviderService'
+import { checkPersonalAccountCredential, getPersonalModelSyncStatus } from '@main/enterprise/personalAccountRuntime'
 import { getAppEdition } from '@main/utils/appEdition'
 import { isDataApiNotFoundError } from '@shared/data/api/errors'
 import { isManagedCherryAiProviderId, isManagedCherryCloudModel } from '@shared/data/presets/cherryai'
+import { XUELANG_PROVIDER_ID } from '@shared/data/presets/xuelang'
 import { parseUniqueModelId, UniqueModelIdSchema } from '@shared/data/types/model'
 import { isLoginBasedProvider } from '@shared/utils/provider'
 
@@ -11,6 +14,7 @@ import { defaultChatModel, defaultChatModelId } from '../subjectDefaults'
 import { defineDoctorCheck, type DoctorContextBase, type DoctorProbeOutcome } from '../types'
 
 const PROVIDER_SETTINGS_ACTION = [{ kind: 'navigate', target: '/settings/provider' }] as const
+const XUELANG_SETTINGS_ACTION = [{ kind: 'navigate', target: '/settings/provider?id=xuelang' }] as const
 
 type ModelTarget = { readonly providerId: string; readonly modelId: string }
 
@@ -42,6 +46,7 @@ async function defaultModelTarget(ctx: DoctorContextBase): Promise<ModelTarget |
 
 export const providerModel = defineDoctorCheck({
   id: 'provider-model',
+  timeoutMs: 5000,
   async run(ctx) {
     const target = ctx.subject ?? (await defaultModelTarget(ctx))
     if ('status' in target) return target
@@ -58,6 +63,38 @@ export const providerModel = defineDoctorCheck({
         actions: PROVIDER_SETTINGS_ACTION,
         devMessage: 'The model provider is unavailable',
         evidence: [{ key: 'providerId', value: providerId, dataClass: 'local_only' }]
+      }
+    }
+
+    if (providerId === XUELANG_PROVIDER_ID) {
+      if (isPersonalAccountSpace()) {
+        const credential = await checkPersonalAccountCredential(
+          AbortSignal.any([ctx.signal, AbortSignal.timeout(4000)])
+        )
+        if (credential !== 'valid') {
+          return {
+            status: 'warn',
+            attribution: credential === 'expired' ? 'user-fixable' : 'transient',
+            detail: { variant: credential === 'expired' ? 'cowork_expired' : 'cowork_unavailable' },
+            actions: credential === 'expired' ? [{ kind: 'personal_login' }] : []
+          }
+        }
+        const sync = getPersonalModelSyncStatus()
+        if (sync !== 'ready') {
+          return {
+            status: 'warn',
+            attribution: 'user-fixable',
+            detail: { variant: `cowork_${sync}` as const },
+            actions: sync === 'no_models' ? [] : XUELANG_SETTINGS_ACTION
+          }
+        }
+      } else if (ctx.subject && !provider.apiKeys.some((key) => key.isEnabled)) {
+        return {
+          status: 'warn',
+          attribution: 'user-fixable',
+          detail: { variant: 'cowork_sign_in' },
+          actions: [{ kind: 'personal_login' }]
+        }
       }
     }
 

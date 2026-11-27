@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { SWRConfig } from 'swr'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -18,7 +18,7 @@ function renderSettings() {
 }
 
 describe('XuelangAccountSettings', () => {
-  it('automatically asks the main process to sync on entry for an account', async () => {
+  it('syncs only after the user clicks refresh on the provider page', async () => {
     request.mockReset()
     request.mockResolvedValue(2)
     render(
@@ -27,8 +27,10 @@ describe('XuelangAccountSettings', () => {
       </SWRConfig>
     )
 
+    const refresh = screen.getByRole('button', { name: 'common.refresh' })
+    expect(request).not.toHaveBeenCalled()
+    fireEvent.click(refresh)
     await waitFor(() => expect(request).toHaveBeenCalledWith('enterprise.personal.sync_models'))
-    expect(await screen.findByRole('button', { name: 'common.refresh' })).toBeInTheDocument()
   })
 
   it('does not allocate a separate account settings row for signed-in users', async () => {

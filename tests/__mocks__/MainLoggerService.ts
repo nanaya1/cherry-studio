@@ -38,6 +38,7 @@ export class MockMainLoggerService {
     return this
   }
   public finish(): void {}
+  public setLogsDir(): void {}
   public setLevel(): void {}
   public getLevel(): string {
     return 'silly'

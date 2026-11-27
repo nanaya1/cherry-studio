@@ -50,12 +50,11 @@ describe('diagnosticsHandlers', () => {
     expect(serviceMocks.exportBundle).toHaveBeenCalledWith(input, 'main-window')
   })
 
-  it('returns the processing state fetched for a report', async () => {
-    serviceMocks.refreshReport.mockResolvedValue({ processingStatus: 'resolved' })
+  it('blocks Cherry report requests at the IPC boundary', async () => {
     await expect(
       diagnosticsHandlers['diagnostics.report.refresh']({ reportId: 'report-id' }, { senderId: 'main-window' })
-    ).resolves.toEqual({ processingStatus: 'resolved' })
-    expect(serviceMocks.refreshReport).toHaveBeenCalledWith('report-id')
+    ).rejects.toThrow('Diagnostic upload is disabled')
+    expect(serviceMocks.refreshReport).not.toHaveBeenCalled()
   })
 
   it('passes the trusted caller window id when saving a retained upload', async () => {

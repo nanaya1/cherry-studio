@@ -68,7 +68,13 @@ export function DoctorDialog({ initialDescription, initialPanel, initialRunTier,
     initialDescription,
     initialPanel: activeInitialPanel,
     initialRunTier,
-    onNavigate: navigate
+    onNavigate: navigate,
+    onPersonalLogin: () =>
+      void finishHandoff(() => {
+        void import('@renderer/components/UserPopup').then(({ default: UserPopup }) =>
+          UserPopup.show({ loginOnly: true })
+        )
+      })
   })
   const { setPanelInteraction } = controller
   const isExportPanel = controller.session.activePanel === 'export'

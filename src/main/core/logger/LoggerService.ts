@@ -130,10 +130,7 @@ export class LoggerService {
       throw new Error('[LoggerService] NOT support worker thread yet, can only be instantiated in main process.')
     }
 
-    // Logs directory comes from the central early-constants module so that
-    // LoggerService, BootConfigService, and pathRegistry all share a single
-    // source of truth (see src/main/core/paths/constants.ts).
-    this.logsDir = LOGS_DIR
+    this.logsDir = path.join(LOGS_DIR, 'Startup')
 
     // env variables, only used in dev / diagnostics (CS_DIAGNOSTICS) mode
     // only affect console output, not affect file output
@@ -163,30 +160,6 @@ export class LoggerService {
       }
     }
 
-    // Configure transports based on environment
-    const transports: winston.transport[] = []
-
-    // Daily rotate file transport for general logs
-    transports.push(
-      new DailyRotateFile({
-        filename: path.join(this.logsDir, 'app.%DATE%.log'),
-        datePattern: 'YYYY-MM-DD',
-        maxSize: '10m',
-        maxFiles: `${MAX_LOG_RETENTION_DAYS}d`
-      })
-    )
-
-    // Daily rotate file transport for error logs
-    transports.push(
-      new DailyRotateFile({
-        level: 'warn',
-        filename: path.join(this.logsDir, 'app-error.%DATE%.log'),
-        datePattern: 'YYYY-MM-DD',
-        maxSize: '10m',
-        maxFiles: `${MAX_LOG_RETENTION_DAYS}d`
-      })
-    )
-
     // Configure Winston logger
     this.logger = winston.createLogger({
       // Development: all levels, Production: info and above
@@ -199,7 +172,7 @@ export class LoggerService {
         winston.format.json()
       ),
       exitOnError: false,
-      transports
+      transports: this.createTransports(this.logsDir)
     })
 
     // Handle transport events
@@ -209,6 +182,36 @@ export class LoggerService {
 
     //register ipc handler, for renderer process to log to main process
     this.registerIpcHandler()
+  }
+
+  private createTransports(directory: string): winston.transport[] {
+    return [
+      new DailyRotateFile({
+        filename: path.join(directory, 'app.%DATE%.log'),
+        datePattern: 'YYYY-MM-DD',
+        maxSize: '10m',
+        maxFiles: `${MAX_LOG_RETENTION_DAYS}d`
+      }),
+      new DailyRotateFile({
+        level: 'warn',
+        filename: path.join(directory, 'app-error.%DATE%.log'),
+        datePattern: 'YYYY-MM-DD',
+        maxSize: '10m',
+        maxFiles: `${MAX_LOG_RETENTION_DAYS}d`
+      })
+    ]
+  }
+
+  public setLogsDir(directory: string): void {
+    if (directory === this.logsDir) return
+    const previous = [...this.logger.transports]
+    const next = this.createTransports(directory)
+    for (const transport of previous) {
+      this.logger.remove(transport)
+      if (transport instanceof DailyRotateFile) transport.close?.()
+    }
+    for (const transport of next) this.logger.add(transport)
+    this.logsDir = directory
   }
 
   /**

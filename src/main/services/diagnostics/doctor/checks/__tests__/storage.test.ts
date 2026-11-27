@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { application } from '@application'
 
 const preboot = vi.hoisted(() => ({
+  getPersonalDataRoot: vi.fn(() => application.getPath('app.userdata')),
   isUsableDataDir: vi.fn(),
   getNormalizedExecutablePath: vi.fn(() => '/Applications/Cherry')
 }))
@@ -104,6 +105,15 @@ describe('storage-userdata-location', () => {
 
   it('passes when the configured directory is the one in use', async () => {
     bootConfig.get.mockReturnValue({ '/Applications/Cherry': resolve('/mock/app.userdata') })
+    await expect(userDataLocation.run(ctx)).resolves.toEqual({ status: 'pass' })
+  })
+
+  it('does not report a fallback when a profile is nested under the configured base', async () => {
+    const base = '/Volumes/External/Cherry'
+    bootConfig.get.mockReturnValue({ '/Applications/Cherry': base })
+    preboot.getPersonalDataRoot.mockReturnValueOnce(base)
+    vi.mocked(application.getPath).mockReturnValueOnce(resolve(base, 'PersonalProfiles', 'account'))
+
     await expect(userDataLocation.run(ctx)).resolves.toEqual({ status: 'pass' })
   })
 

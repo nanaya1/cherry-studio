@@ -4,6 +4,7 @@ import { application } from '@application'
 import { loggerService } from '@logger'
 import { BaseService, DependsOn, Injectable, Phase, ServicePhase } from '@main/core/lifecycle'
 import { logFailure } from '@main/core/logger/logFailure'
+import { getPersonalDataRoot } from '@main/core/preboot/userDataLocation'
 import { WindowType } from '@main/core/window/types'
 import { publishBackupResult } from '@main/services/backupNotifications'
 import { isSameOrInside } from '@main/utils/file'
@@ -379,7 +380,7 @@ export class AutoBackupService extends BaseService {
 
   private async validateLocalBackupDirectory(directory: string): Promise<void> {
     if (
-      isSameOrInside(directory, application.getPath('app.userdata')) ||
+      isSameOrInside(directory, getPersonalDataRoot()) ||
       isSameOrInside(directory, application.getPath('app.install'))
     ) {
       throw new Error('Local automatic backup directory cannot be inside application data or installation directory.')

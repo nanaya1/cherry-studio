@@ -29,7 +29,7 @@ import { runDataReset } from '@main/services/dataReset'
 import { initSentry } from '@main/services/errorReporting'
 import { CHERRY_MEDIA_SCHEME_DECLARATION } from '@main/services/mediaProtocol'
 import { configureRemoteDebugging } from '@main/services/remoteDebugging'
-import { runUserDataRelocation } from '@main/services/userDataRelocation'
+import { readUserDataRelocationState, runUserDataRelocation } from '@main/services/userDataRelocation'
 import { getApplicationId } from '@main/utils/appEdition'
 
 import { registerIpc } from './ipc'
@@ -38,13 +38,14 @@ import { versionService } from './services/VersionService'
 // should be the first to resolveUserDataLocation()
 resolveUserDataLocation()
 requireSingleInstance()
-const personalProfile = requirePersonalProfileLocation()
+const relocation = readUserDataRelocationState(app.getPath('userData'))
+const personalProfile = relocation ? undefined : requirePersonalProfileLocation()
 configureChromiumFlags()
 configureRemoteDebugging()
 initCrashTelemetry()
 // Freeze the path registry — bootstrap() asserts this completed.
 application.initPathRegistry()
-const isolatedRestoreSession = prepareBackupRestoreSession()
+const isolatedRestoreSession = relocation ? false : prepareBackupRestoreSession()
 initSentry()
 // Privileged schemes must be declared before the app is ready, and only ONCE per
 // process — startApp() itself awaits app.whenReady(), so this cannot move in there.
@@ -53,16 +54,12 @@ protocol.registerSchemesAsPrivileged([CHERRY_MEDIA_SCHEME_DECLARATION, MINI_APP_
 const logger = loggerService.withContext('MainEntry')
 
 const startApp = async () => {
+  if (relocation) {
+    await runUserDataRelocation(relocation)
+    return
+  }
   // Reset before backup, migration, or services open user data.
   runDataReset()
-
-  // userData relocation: a pending/failed relocation makes this a dedicated
-  // relocation launch (execute or explain, then relaunch) before any service
-  // opens files under the source tree. See services/userDataRelocation/README.md.
-  if (personalProfile === 'guest') {
-    const relocationResult = await runUserDataRelocation()
-    if (relocationResult === 'handled') return
-  }
 
   // Promote a staged restored DB before bootstrap. An isolated restore launch must relaunch
   // before services can use the path registry's original session snapshot.

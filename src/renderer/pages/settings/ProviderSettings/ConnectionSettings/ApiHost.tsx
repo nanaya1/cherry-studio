@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { useTranslation } from 'react-i18next'
 
 import { useProvider, useProviderMutations, useProviderPreset } from '@renderer/hooks/useProvider'
 import { ENDPOINT_TYPE } from '@shared/data/types/model'
@@ -21,7 +20,6 @@ interface ApiHostProps {
 }
 
 export default function ApiHost({ providerId, onRequestModelPullGuide }: ApiHostProps) {
-  const { t } = useTranslation()
   const readOnly = useCoworkManagedProvider(providerId)
   const { provider } = useProvider(providerId)
   const { updateProvider } = useProviderMutations(providerId)

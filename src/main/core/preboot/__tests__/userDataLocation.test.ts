@@ -571,9 +571,10 @@ describe('activatePersonalProfileLocation', () => {
     try {
       const { activatePersonalProfileLocation } = await import('../userDataLocation')
       expect(activatePersonalProfileLocation()).toBe('account')
-      const location = mkdirSync.mock.calls[0][0]
+      const location = mkdirSync.mock.calls[1][0]
       expect(location).toMatch(/^\/mock\/userData\/PersonalProfiles\/[a-f0-9]{64}$/)
       expect(setPathMock.mock.calls).toEqual([
+        ['logs', `${location}/SpaceLogs`],
         ['userData', location],
         ['sessionData', location]
       ])

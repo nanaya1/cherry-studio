@@ -18,12 +18,55 @@ import { applyPersonalModelSnapshot } from './personalModelSync'
 let busy = false
 let stoppedRuntime = false
 let modelSync: Promise<number | null> | undefined
+let modelSyncStatus: 'not_synced' | 'sync_failed' | 'no_models' | 'ready' = 'not_synced'
+
+export function getPersonalModelSyncStatus() {
+  return modelSyncStatus
+}
+
+export async function checkPersonalAccountCredential(
+  signal: AbortSignal
+): Promise<'valid' | 'expired' | 'unavailable'> {
+  const root = getPersonalDataRoot()
+  const profile = readPersonalProfileSelection(root)
+  if (profile.kind !== 'account' || stoppedRuntime) return 'unavailable'
+  try {
+    const token = safeStorage.decryptString(readFileSync(credentialPath(root, profile)))
+    const response = await fetch(`${personalAccountEndpoint()}/api/v1/auth/me`, {
+      redirect: 'error',
+      headers: { token },
+      signal
+    })
+    if (response.status === 401) return 'expired'
+    if (!response.ok) return 'unavailable'
+    const body = await response.json()
+    if (body?.code === 401) return 'expired'
+    return body?.code === 200 &&
+      body.data?.serverInstanceId === profile.serverInstanceId &&
+      String(body.data?.id) === profile.userId
+      ? 'valid'
+      : 'unavailable'
+  } catch {
+    return 'unavailable'
+  }
+}
 
 export function syncPersonalModelConfig(): Promise<number | null> {
   if (!modelSync) {
-    modelSync = syncActivePersonalModels().finally(() => {
-      modelSync = undefined
-    })
+    modelSync = syncActivePersonalModels()
+      .then(
+        (count) => {
+          if (count !== null) modelSyncStatus = count === 0 ? 'no_models' : 'ready'
+          return count
+        },
+        (error: unknown) => {
+          modelSyncStatus = 'sync_failed'
+          throw error
+        }
+      )
+      .finally(() => {
+        modelSync = undefined
+      })
   }
   return modelSync
 }

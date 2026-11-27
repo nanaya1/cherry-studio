@@ -466,6 +466,8 @@ function actionLabel(
     }
     case 'navigate':
       return t(DOCTOR_NAVIGATION_LABEL_KEYS[action.target])
+    case 'personal_login':
+      return t('settings.provider.org_service.login')
     case 'open_path':
       return t('settings.doctor.actions.open_path')
     case 'open_external':

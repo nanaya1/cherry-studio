@@ -4,6 +4,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { DataApiErrorFactory } from '@shared/data/api/errors'
 
 const services = vi.hoisted(() => ({
+  isPersonalAccountSpace: vi.fn(() => false),
+  checkPersonalAccountCredential: vi.fn(),
+  getPersonalModelSyncStatus: vi.fn(),
   getByProviderId: vi.fn(),
   getByKey: vi.fn(),
   getCherryCloudStatus: vi.fn(),
@@ -21,6 +24,11 @@ vi.mock('@main/data/services/ProviderService', () => ({
 }))
 vi.mock('@main/data/services/ModelService', () => ({ modelService: { getByKey: services.getByKey } }))
 vi.mock('@main/utils/appEdition', () => ({ getAppEdition: () => services.edition }))
+vi.mock('@main/core/preboot/userDataLocation', () => ({ isPersonalAccountSpace: services.isPersonalAccountSpace }))
+vi.mock('@main/enterprise/personalAccountRuntime', () => ({
+  checkPersonalAccountCredential: services.checkPersonalAccountCredential,
+  getPersonalModelSyncStatus: services.getPersonalModelSyncStatus
+}))
 
 const { cherryAccount, providerApiKey, providerModel } = await import('../provider')
 const signal = new AbortController().signal
@@ -42,6 +50,7 @@ function provider(overrides: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  services.isPersonalAccountSpace.mockReturnValue(false)
   MockMainPreferenceServiceUtils.resetMocks()
   MockMainPreferenceServiceUtils.setPreferenceValue('chat.default_model_id', 'openai::gpt-4o')
   services.getByProviderId.mockReturnValue(provider())
@@ -55,6 +64,22 @@ beforeEach(() => {
 })
 
 describe('provider-default-model', () => {
+  it.each([
+    ['expired', 'not_synced', 'cowork_expired'],
+    ['unavailable', 'not_synced', 'cowork_unavailable'],
+    ['valid', 'not_synced', 'cowork_not_synced'],
+    ['valid', 'sync_failed', 'cowork_sync_failed'],
+    ['valid', 'no_models', 'cowork_no_models']
+  ])('reports %s / %s as %s for a managed provider', async (credential, sync, variant) => {
+    services.isPersonalAccountSpace.mockReturnValue(true)
+    services.checkPersonalAccountCredential.mockResolvedValue(credential)
+    services.getPersonalModelSyncStatus.mockReturnValue(sync)
+    services.getByProviderId.mockReturnValue(provider({ id: 'xuelang', isEnabled: false, apiKeys: [] }))
+
+    await expect(
+      providerModel.run({ ...ctx, subject: { providerId: 'xuelang', modelId: 'test' } })
+    ).resolves.toMatchObject({ detail: { variant } })
+  })
   it.each(['provider', 'model'] as const)(
     'does not mislabel a %s database failure as missing configuration',
     async (source) => {

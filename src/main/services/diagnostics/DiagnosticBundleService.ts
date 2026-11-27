@@ -395,13 +395,13 @@ export class DiagnosticBundleService {
   private inFlightOperation: Promise<unknown> | null = null
   private readonly retainedUploads = new Map<string, RetainedUpload>()
 
-  async inspect(rangeName: DiagnosticRange): Promise<InspectResult> {
-    return this.inspectionMutex.runExclusive(() => this.performInspection(rangeName))
+  async inspect(rangeName: DiagnosticRange, includeLogs = true): Promise<InspectResult> {
+    return this.inspectionMutex.runExclusive(() => this.performInspection(rangeName, includeLogs))
   }
 
-  private async performInspection(rangeName: DiagnosticRange): Promise<InspectResult> {
+  private async performInspection(rangeName: DiagnosticRange, includeLogs: boolean): Promise<InspectResult> {
     const range = toTimeRange(rangeName, Date.now())
-    const collection = await collectDiagnosticSources(range, { includeLogs: true, includeTraces: true })
+    const collection = await collectDiagnosticSources(range, { includeLogs, includeTraces: true })
     const chatCollection = collectChatRecords(range)
     const chats = await scanChatRecordStats(chatCollection.candidates)
     mergeWarnings(collection.warnings, chatCollection.warnings)

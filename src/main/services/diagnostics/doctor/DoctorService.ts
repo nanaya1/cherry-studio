@@ -234,7 +234,10 @@ export class DoctorService extends BaseService {
     const selected = new Set<DoctorCheckId>()
     const visit = (id: DoctorCheckId, requiredBy?: DoctorCheckId): void => {
       if (selected.has(id)) return
-      if (!ENABLE_CHERRY_OFFICIAL_SERVICES && (id.startsWith('network-endpoint-') || id === 'install-update-available'))
+      if (
+        !ENABLE_CHERRY_OFFICIAL_SERVICES &&
+        (id.startsWith('network-endpoint-') || id === 'install-update-available' || id === 'provider-cherry-account')
+      )
         return
       const meta = DOCTOR_CHECK_CATALOG[id]
       if (!meta || !TIERS_FOR_RUN[tier].includes(meta.tier))

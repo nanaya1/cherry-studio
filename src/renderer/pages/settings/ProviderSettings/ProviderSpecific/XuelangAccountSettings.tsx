@@ -20,7 +20,7 @@ export function XuelangModelRefresh() {
   const { error, isValidating, mutate } = useSWR(
     'enterprise.personal.sync_models',
     () => ipcApi.request('enterprise.personal.sync_models'),
-    { revalidateOnMount: true, revalidateOnFocus: false, shouldRetryOnError: false }
+    { revalidateOnMount: false, revalidateOnFocus: false, revalidateOnReconnect: false, shouldRetryOnError: false }
   )
 
   const failed = Boolean(error) && !isValidating

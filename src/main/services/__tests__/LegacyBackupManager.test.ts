@@ -195,7 +195,13 @@ vi.mock('@logger', () => ({
   }
 }))
 
+vi.mock('@main/core/preboot/userDataLocation', () => ({
+  getPersonalBackupScope: () => 'mea-guest',
+  isPersonalAccountSpace: () => false
+}))
+vi.mock('@main/i18n', () => ({ t: (key: string) => key }))
 vi.mock('electron', () => ({
+  dialog: { showMessageBox: async () => ({ response: 1 }) },
   app: {
     getPath: vi.fn((key: string) => {
       if (key === 'temp') return '/tmp'
@@ -1019,7 +1025,7 @@ describe('BackupManager direct v2 data compatibility', () => {
     vi.spyOn(backupManager as any, 'getWebDavInstance').mockReturnValue({
       createReadStream
     })
-    const restoreUnlocked = vi.spyOn(backupManager as any, 'restoreUnlocked').mockResolvedValue(undefined)
+    const restoreUnlocked = vi.spyOn(backupManager as any, 'restoreUnlocked').mockResolvedValue(true)
     const events: string[] = []
     vi.mocked(fs.remove).mockImplementation(async (entryPath) => {
       events.push(`remove:${String(entryPath)}`)
@@ -1038,13 +1044,20 @@ describe('BackupManager direct v2 data compatibility', () => {
     expect(events).toEqual(['remove:/mock/temp/backup/webdav-download-operation-id', 'relaunch'])
   })
 
+  it('does not relaunch when the user cancels a restore', async () => {
+    vi.spyOn(backupManager as any, 'restoreUnlocked').mockResolvedValue(false)
+
+    await expect(backupManager.restore({} as Electron.IpcMainInvokeEvent, '/backups/backup.zip')).resolves.toBe(false)
+    expect(mockRelaunch).not.toHaveBeenCalled()
+  })
+
   it('removes the S3 download directory before relaunching', async () => {
     mockDownloadedFileWrite()
     const getFileStream = vi.fn().mockResolvedValue(Readable.from(Buffer.from('backup')))
     vi.spyOn(backupManager as any, 'getS3Storage').mockReturnValue({
       getFileStream
     })
-    const restoreUnlocked = vi.spyOn(backupManager as any, 'restoreUnlocked').mockResolvedValue(undefined)
+    const restoreUnlocked = vi.spyOn(backupManager as any, 'restoreUnlocked').mockResolvedValue(true)
     const events: string[] = []
     vi.mocked(fs.remove).mockImplementation(async (entryPath) => {
       events.push(`remove:${String(entryPath)}`)
@@ -2022,8 +2035,12 @@ describe('WebDAV client cache (S6 allowSelfSignedTls switch)', () => {
     expect(optedIn).not.toBe(before)
     expect(reverted).not.toBe(optedIn)
     expect(WebDav).toHaveBeenCalledTimes(3)
-    expect(WebDav).toHaveBeenNthCalledWith(2, { webdavHost: 'https://example.com', allowSelfSignedTls: true })
-    expect(WebDav).toHaveBeenNthCalledWith(3, { webdavHost: 'https://example.com' })
+    expect(WebDav).toHaveBeenNthCalledWith(2, {
+      webdavHost: 'https://example.com',
+      webdavPath: '/mea-guest',
+      allowSelfSignedTls: true
+    })
+    expect(WebDav).toHaveBeenNthCalledWith(3, { webdavHost: 'https://example.com', webdavPath: '/mea-guest' })
   })
 
   it('treats undefined and false as the same TLS setting (no needless recreation)', async () => {

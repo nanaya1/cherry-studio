@@ -32,6 +32,7 @@ export const USER_DATA_WIPE = [
   'Data',
   'Data.restore',
   'Credentials',
+  'SpaceIntegrations',
   'IndexedDB.restore',
   'Local Storage.restore',
   'cache.json',
@@ -65,7 +66,7 @@ export const USER_DATA_WIPE = [
 ]
 
 /** Retained diagnostics and downloaded runtimes. */
-export const USER_DATA_KEPT = ['logs', 'Crashpad', 'Runtime', 'Toolchain', 'tesseract']
+export const USER_DATA_KEPT = ['logs', 'SpaceLogs', 'Crashpad', 'Runtime', 'Toolchain', 'tesseract']
 
 // Absorb transient Windows file locks before consuming a reset attempt.
 const RM_OPTIONS = { recursive: true, force: true, maxRetries: 3, retryDelay: 100 } as const

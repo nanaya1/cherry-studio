@@ -132,7 +132,7 @@ export async function restoreFromNutstore(fileName?: string) {
     throw new Error('Nutstore credentials are unavailable')
   }
 
-  await window.api.backup.restoreFromWebdav({ ...config, fileName })
+  if ((await window.api.backup.restoreFromWebdav({ ...config, fileName })) === false) return
   logger.info('[Nutstore] Backup restore staged, app will restart')
 }
 

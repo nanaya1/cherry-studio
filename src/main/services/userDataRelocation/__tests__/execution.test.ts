@@ -687,6 +687,13 @@ describe('userDataRelocation execution', () => {
     const target = path.join(root, 'target')
     fs.mkdirSync(source)
     fs.writeFileSync(path.join(source, 'data.txt'), 'data')
+    const selections = '{"version":1,"kind":"account","serverInstanceId":"test","userId":"1"}'
+    fs.writeFileSync(path.join(source, 'personal-profile.json'), selections)
+    for (const profile of ['account-a', 'account-b']) {
+      const accountPath = path.join(source, 'PersonalProfiles', profile)
+      fs.mkdirSync(accountPath, { recursive: true })
+      fs.writeFileSync(path.join(accountPath, 'data.txt'), profile)
+    }
     relocationState['app.userdata'] = source
     relocationState['temp.user_data_relocation'] = pending(source, target)
     // Pre-existing mapping for another executable must survive the commit.
@@ -696,6 +703,10 @@ describe('userDataRelocation execution', () => {
     await expect(runUserDataRelocation()).resolves.toBe('handled')
 
     expect(fs.readFileSync(path.join(target, 'data.txt'), 'utf8')).toBe('data')
+    expect(fs.readFileSync(path.join(target, 'personal-profile.json'), 'utf8')).toBe(selections)
+    for (const profile of ['account-a', 'account-b']) {
+      expect(fs.readFileSync(path.join(target, 'PersonalProfiles', profile, 'data.txt'), 'utf8')).toBe(profile)
+    }
     expect(fs.existsSync(path.join(target, '.cherry-relocation-owner.json'))).toBe(false)
     expectCommitted(target, { '/other/exe': '/other/data' })
   })
@@ -739,12 +750,7 @@ describe('userDataRelocation execution', () => {
     relocationState['app.userdata'] = source
     relocationState['temp.user_data_relocation'] = pending(source, target, false)
 
-    const { inspectUserDataRelocationTarget, runUserDataRelocation } = await loadDomain()
-
-    expect(inspectUserDataRelocationTarget(target)).toEqual({
-      valid: true,
-      targetEmpty: false
-    })
+    const { runUserDataRelocation } = await loadDomain()
     await expect(runUserDataRelocation()).resolves.toBe('handled')
 
     expect(fs.readFileSync(path.join(target, 'arbitrary-document.xlsx'), 'utf8')).toBe('existing file')

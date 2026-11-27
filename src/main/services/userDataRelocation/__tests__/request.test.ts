@@ -14,7 +14,8 @@ vi.mock('@application', () => ({
   application: { getPath: vi.fn((key: string) => (key === 'app.userdata' ? '/old/data' : '/mock/path')) }
 }))
 vi.mock('@main/core/preboot/userDataLocation', () => ({
-  canonicalizeUserDataPath: (value: string) => value
+  canonicalizeUserDataPath: (value: string) => value,
+  getPersonalDataRoot: () => '/old/data'
 }))
 vi.mock('@main/data/bootConfig', () => ({
   bootConfigService: { get: bootConfigGetMock, set: bootConfigSetMock, persist: bootConfigPersistMock }
