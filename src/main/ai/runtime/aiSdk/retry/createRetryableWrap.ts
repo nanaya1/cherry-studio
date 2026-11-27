@@ -109,7 +109,7 @@ function apiKeyFallbackRetryable(
     lazyFallbackRetryable(resolveFallback, onFallbackActivated, wrapFallbackModel)
   )
   let nextFallbackIndex = 0
-  return (context) => {
+  return async (context) => {
     if (!isErrorAttempt(context.current)) return undefined
     const attemptError = context.current.error
     const terminalError = RetryError.isInstance(attemptError) ? attemptError.lastError : attemptError
@@ -119,16 +119,13 @@ function apiKeyFallbackRetryable(
     ) {
       return undefined
     }
-    const resolve = resolvedFallbacks[nextFallbackIndex]
-    if (!resolve) {
-      onExhausted?.(terminalError)
-      return undefined
+    while (nextFallbackIndex < resolvedFallbacks.length) {
+      const resolve = resolvedFallbacks[nextFallbackIndex++]
+      const fallback = await resolve(context)
+      if (fallback) return { ...fallback, maxAttempts: resolveFallbacks.length + 1 }
     }
-    return Promise.resolve(resolve(context)).then((fallback) => {
-      if (!fallback) return undefined
-      nextFallbackIndex += 1
-      return { ...fallback, maxAttempts: resolveFallbacks.length + 1 }
-    })
+    onExhausted?.(terminalError)
+    return undefined
   }
 }
 

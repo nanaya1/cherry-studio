@@ -111,6 +111,39 @@ describe('createRetryableWrap API key failover', () => {
     expect(result.content).toEqual(okResult.content)
   })
 
+  it.each([401, 429])('skips a revoked key and uses the next eligible key after HTTP %i', async (statusCode) => {
+    const attempts: string[] = []
+    const revokedGenerate = vi.fn()
+    let revoked = false
+    const revokedModel = makeFakeLanguageModel('same-model', revokedGenerate)
+    const nextModel = makeFakeLanguageModel(
+      'same-model',
+      vi.fn(async () => {
+        attempts.push('key-3')
+        return okResult
+      })
+    )
+    const wrap = createRetryableWrap({
+      apiKeyFallbacks: [async () => (revoked ? null : { model: revokedModel }), fallbackOf(nextModel)],
+      fallbacks: [],
+      retryPolicy: policy(false)
+    })
+    const primary = makeFakeLanguageModel(
+      'same-model',
+      vi.fn(async () => {
+        attempts.push('key-1')
+        revoked = true
+        throw makeApiError(statusCode)
+      })
+    )
+
+    const result = await wrap!(primary).doGenerate({ prompt: [] })
+
+    expect(attempts).toEqual(['key-1', 'key-3'])
+    expect(revokedGenerate).not.toHaveBeenCalled()
+    expect(result.content).toEqual(okResult.content)
+  })
+
   it('keeps the active key across tool-loop operations and advances only after another auth failure', async () => {
     const attempts: string[] = []
     const secondKeyGenerate = vi
