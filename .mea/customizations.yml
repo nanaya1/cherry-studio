@@ -455,6 +455,20 @@ customizations:
       - src/renderer/components/app/__tests__/Sidebar.test.tsx
       - src/main/core/preboot/__tests__/userDataLocation.test.ts
 
+  - id: skillhub-catalog
+    title: Browse and install SkillHub skills in Cowork
+    owner: renderer
+    behavior: Show the anonymous SkillHub catalog under Skills with combined filters and install validated packages and dependencies into My Installs.
+    touchpoints:
+      - src/renderer/pages/workspace/SkillsConnectorsPage.tsx
+      - src/renderer/components/resourceCatalog/catalog/SkillHubCatalogView.tsx
+      - src/main/ai/skills/skillHub.ts
+      - src/main/ai/skills/SkillService.ts
+      - src/main/ipc/handlers/skill.ts
+    tests:
+      - src/renderer/pages/workspace/SkillsConnectorsPage.test.tsx
+      - src/main/ai/skills/__tests__/skillHub.test.ts
+
   - id: onboarding-language-options
     title: Limit onboarding language selection
     owner: renderer

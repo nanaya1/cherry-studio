@@ -6622,5 +6622,12 @@
   "webview.tabs.label": "แท็บเบราว์เซอร์",
   "webview.tabs.new": "แท็บใหม่",
   "webview.tabs.view": "ดู",
-  "workspace.skillsConnectors.sources.org": "องค์กร"
+  "workspace.skillsConnectors.sources.org": "องค์กร",
+  "workspace.skillhub.domain": "สาขา",
+  "workspace.skillhub.industry": "อุตสาหกรรม",
+  "workspace.skillhub.next": "ถัดไป",
+  "workspace.skillhub.previous": "ก่อนหน้า",
+  "workspace.skillhub.unconfigured": "ยังไม่ได้กำหนดค่า SkillHub สำหรับสภาพแวดล้อมนี้",
+  "workspace.skillhub.unreachable": "ไม่สามารถเชื่อมต่อกับ SkillHub ได้",
+  "workspace.skillhub.version_available": "เวอร์ชันที่พร้อมใช้: {{version}}"
 }

@@ -1,0 +1,5 @@
+# Bilingual-pair consistency record (docs/dev/i18n/README.md).
+# After editing either side, update its counterpart and re-record with:
+#   pnpm docs:check-pairing --write .agents/notes/proposed/feature/2026-11-27-cowork-skillhub.md
+2026-11-27-cowork-skillhub.md: f8f33053e3d1df19122a9717e63d7bb734039c34
+2026-11-27-cowork-skillhub.zh.md: 5ed53d4be143943f5a5ba1e8a4bdad0a648994d5

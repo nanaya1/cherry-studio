@@ -95,7 +95,7 @@ export async function getMarketplaceSkill(id: string, readMembers = false): Prom
 }
 
 // Check the archive before extraction: Windows may otherwise overwrite case-colliding entries.
-async function validatePortableArchive(file: string): Promise<void> {
+export async function validatePortableArchive(file: string): Promise<void> {
   const zip = new StreamZip.async({ file })
   try {
     const paths = new Map<string, string>()

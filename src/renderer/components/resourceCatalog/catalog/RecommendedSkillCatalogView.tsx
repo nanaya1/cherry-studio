@@ -19,6 +19,8 @@ import { useInvalidateSkills } from '@renderer/hooks/useSkills'
 import { toast } from '@renderer/services/toast'
 import type { SkillCatalogItem } from '@shared/data/api/schemas/skillCatalog'
 
+import { SkillInitialAvatar } from './SkillInitialAvatar'
+
 interface RecommendedSkillCatalogViewProps {
   search: string
   onViewInstalled: () => void
@@ -192,7 +194,7 @@ export function RecommendedSkillCatalogView({ search, onViewInstalled }: Recomme
 
   return (
     <ScrollArea className="h-full">
-      <div className="mx-auto w-full px-6 py-4">
+      <div className="mx-auto w-full px-6 py-2">
         <div className="mb-4 flex gap-1 overflow-x-auto">
           <Button
             variant="ghost"
@@ -271,14 +273,7 @@ export function RecommendedSkillCatalogView({ search, onViewInstalled }: Recomme
                         <img src={skill.logoUrl} alt="" className="size-full object-cover" />
                       </span>
                     ) : (
-                      <span
-                        className="grid size-9 shrink-0 place-items-center rounded-full font-semibold text-sm"
-                        style={{
-                          backgroundColor: ['#eaf6ed', '#eaf1fa', '#fff2df', '#f3edf8', '#edf3f4'][index % 5],
-                          color: ['#39734b', '#496c94', '#936324', '#76578b', '#526a70'][index % 5]
-                        }}>
-                        {Array.from(skill.name)[0]}
-                      </span>
+                      <SkillInitialAvatar name={skill.name} index={index} />
                     )}
                     <div className="min-w-0 flex-1">
                       <h2 className="truncate font-semibold text-sm">{skill.name}</h2>

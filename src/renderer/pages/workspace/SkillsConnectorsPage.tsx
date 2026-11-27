@@ -9,7 +9,8 @@ import {
   RecommendedSkillCatalogView,
   SkillCatalogDialogs,
   SkillCatalogHeaderActions,
-  SkillCatalogView
+  SkillCatalogView,
+  SkillHubCatalogView
 } from '@renderer/components/resourceCatalog/catalog'
 import { ResourceCatalogSearchInput } from '@renderer/components/resourceCatalog/ResourceCatalogSearchInput'
 import { useResourceCatalogController } from '@renderer/hooks/resourceCatalog'
@@ -26,7 +27,7 @@ interface SkillsConnectorsPageProps {
 // type SkillView = 'recommended' | 'installed' | 'org'
 type SkillView = 'recommended' | 'installed'
 // [enterprise] 二级 tab：推荐（原技能市场内容）/ 组织（企业下发技能）
-type OrgSubTab = 'recommended' | 'org'
+type OrgSubTab = 'recommended' | 'org' | 'skillhub'
 
 // [enterprise] 与连接器目录二级 tab 保持一致
 const secondaryTabClassName =
@@ -117,29 +118,33 @@ export default function SkillsConnectorsPage({ connectorView, initialTab }: Skil
             className="flex min-h-0 flex-1 flex-col">
             {/* [enterprise] 原筛选 chip 风格保留，现统一为连接器目录的下划线二级 tab */}
             {/* <TabsList className="mx-6 h-auto shrink-0 justify-start gap-1 bg-transparent p-0"> */}
-            {/* 仅剩推荐内容时隐藏整行标签，恢复公共入口后自动恢复切换栏。 */}
-            {showPublicCatalog ? (
-              <TabsList className="mx-6 h-11 shrink-0 justify-start gap-6 rounded-none bg-transparent p-0">
-                {/* <TabsTrigger
+            {/* MEA: skillhub-catalog is visible without an organization session. */}
+            <TabsList className="mx-6 h-11 shrink-0 justify-start gap-6 rounded-none bg-transparent p-0">
+              {/* <TabsTrigger
                 value="recommended"
                 className="h-7 gap-1.5 rounded-full border-0 px-3 py-0 text-muted-foreground shadow-none hover:text-foreground data-[state=active]:bg-muted data-[state=active]:text-foreground data-[state=active]:shadow-none dark:data-[state=active]:text-foreground">
                 {t('workspace.skill_catalog.recommended')}
               </TabsTrigger> */}
-                <TabsTrigger value="recommended" className={secondaryTabClassName}>
-                  {t('workspace.skill_catalog.recommended')}
-                </TabsTrigger>
-                {/* <TabsTrigger
+              <TabsTrigger value="recommended" className={secondaryTabClassName}>
+                {t('workspace.skill_catalog.recommended')}
+              </TabsTrigger>
+              <TabsTrigger value="skillhub" className={secondaryTabClassName}>
+                SkillHub
+              </TabsTrigger>
+              {/* <TabsTrigger
                 value="org"
                 className="h-7 gap-1.5 rounded-full border-0 px-3 py-0 text-muted-foreground shadow-none hover:text-foreground data-[state=active]:bg-muted data-[state=active]:text-foreground data-[state=active]:shadow-none dark:data-[state=active]:text-foreground">
                 {t('workspace.skill_catalog.org')}
               </TabsTrigger> */}
-                {showPublicCatalog ? (
-                  <TabsTrigger value="org" className={secondaryTabClassName}>
-                    {t('workspace.skill_catalog.org')}
-                  </TabsTrigger>
-                ) : null}
-              </TabsList>
-            ) : null}
+              {showPublicCatalog ? (
+                <TabsTrigger value="org" className={secondaryTabClassName}>
+                  {t('workspace.skill_catalog.org')}
+                </TabsTrigger>
+              ) : null}
+            </TabsList>
+            <TabsContent value="skillhub" className="flex min-h-0 flex-1 flex-col">
+              <SkillHubCatalogView search={recommendedSearch} />
+            </TabsContent>
             <TabsContent value="recommended" className="flex min-h-0 flex-1 flex-col">
               <RecommendedSkillCatalogView
                 search={recommendedSearch}

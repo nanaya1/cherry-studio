@@ -9,6 +9,14 @@ import {
   type SkillResult,
   type SystemSkillCandidate
 } from '@shared/types/skill'
+import {
+  skillHubFilters,
+  skillHubId,
+  skillHubItem,
+  skillHubPage,
+  skillHubQuery,
+  skillHubSelection
+} from '@shared/types/skillHub'
 import type {
   SkillSubscriptionSource,
   SkillSubscriptionSnapshot,
@@ -31,6 +39,10 @@ import { uint8ArraySchema } from './common'
  * validates inputs, not outputs.
  */
 export const skillRequestSchemas = {
+  'skill.skillhub.filters': defineRoute({ input: z.object({}), output: skillHubFilters.nullable() }),
+  'skill.skillhub.list': defineRoute({ input: skillHubQuery, output: skillHubPage.nullable() }),
+  'skill.skillhub.detail': defineRoute({ input: z.object({ id: skillHubId }), output: skillHubItem }),
+  'skill.skillhub.install': defineRoute({ input: skillHubSelection, output: z.void() }),
   'skill.subscription.add': defineRoute({
     input: z.object({ url: z.string().trim().min(1) }),
     output: z.custom<SkillSubscriptionSource>()

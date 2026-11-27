@@ -36,6 +36,7 @@ type MockSkillController = {
 }
 
 vi.mock('@renderer/components/resourceCatalog/catalog', () => ({
+  SkillHubCatalogView: ({ search }: { search: string }) => <div>SkillHub search: {search}</div>,
   RecommendedSkillCatalogView: ({ search, onViewInstalled }: { search: string; onViewInstalled: () => void }) => (
     <div>
       recommended skills: {search}
@@ -122,11 +123,13 @@ afterEach(() => {
 })
 
 describe('SkillsConnectorsPage', () => {
-  it('hides the public skill tab when no management server is configured', () => {
+  it('shows SkillHub without a management session and shares the current search', async () => {
     orgSessionMock.authMode = 'official-direct'
     render(<SkillsConnectorsPage connectorView={<div>connector catalog</div>} />)
 
-    expect(screen.queryByRole('tab', { name: 'Recommended skills' })).not.toBeInTheDocument()
+    await userEvent.type(screen.getByPlaceholderText('library.toolbar.search_placeholder'), '周报')
+    await userEvent.click(screen.getByRole('tab', { name: 'SkillHub' }))
+    expect(screen.getByText('SkillHub search: 周报')).toBeVisible()
     expect(screen.queryByRole('tab', { name: 'Organization' })).not.toBeInTheDocument()
   })
 
@@ -152,7 +155,7 @@ describe('SkillsConnectorsPage', () => {
     render(<SkillsConnectorsPage connectorView={<div>connector catalog</div>} />)
 
     expect(screen.getByRole('tab', { name: 'Skills' })).toBeVisible()
-    expect(screen.queryByRole('tab', { name: 'Recommended skills' })).not.toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Recommended skills' })).toBeVisible()
     expect(screen.queryByRole('tab', { name: 'Organization' })).not.toBeInTheDocument()
     expect(screen.getByText('recommended skills:')).toBeVisible()
 

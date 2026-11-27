@@ -3,6 +3,7 @@ import { shell } from 'electron'
 import { application } from '@application'
 import { loggerService } from '@logger'
 import { getMarketplaceSkill, listMarketplaceSkills } from '@main/ai/skills/cherrySkillMarketplace'
+import { getSkillHubDetail, getSkillHubFilters, listSkillHub } from '@main/ai/skills/skillHub'
 import { SkillImportError } from '@main/ai/skills/SkillImportError'
 import { SkillRemoteUpdateError, skillService } from '@main/ai/skills/SkillService'
 import { t } from '@main/i18n'
@@ -90,6 +91,10 @@ async function toSkillResult<T>(
 }
 
 export const skillHandlers: IpcHandlersFor<typeof skillRequestSchemas> = {
+  'skill.skillhub.filters': getSkillHubFilters,
+  'skill.skillhub.list': listSkillHub,
+  'skill.skillhub.detail': ({ id }) => getSkillHubDetail(id),
+  'skill.skillhub.install': (target) => skillService.installSkillHub(target),
   'skill.subscription.add': ({ url }) => application.get('SkillSubscriptionService').add(url),
   'skill.subscription.list': async ({ sourceId }) => application.get('SkillSubscriptionService').list(sourceId),
   'skill.subscription.refresh': ({ sourceId }) => application.get('SkillSubscriptionService').refresh(sourceId),
