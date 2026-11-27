@@ -1,9 +1,14 @@
+import { ENABLE_CHERRY_OFFICIAL_SERVICES } from '@shared/utils/constants'
+
 import type { SettingsSearchEntry } from '../settingsSearch/types'
 
 export const route = '/settings/notifications'
 
 export const entries: SettingsSearchEntry[] = [
-  ...(['system', 'usage', 'official'] as const).map((category) => ({
+  ...(ENABLE_CHERRY_OFFICIAL_SERVICES
+    ? (['system', 'usage', 'official'] as const)
+    : (['system', 'usage'] as const)
+  ).map((category) => ({
     anchorId: `${category}-center`,
     titleKey: `notification.center.${category}`,
     groupKey: 'settings.notification.center'
@@ -48,11 +53,15 @@ export const entries: SettingsSearchEntry[] = [
     titleKey: 'settings.notification.knowledge_embed',
     groupKey: 'settings.notification.title'
   },
-  {
-    anchorId: 'update-notification',
-    titleKey: 'settings.notification.update',
-    groupKey: 'settings.notification.title'
-  },
+  ...(ENABLE_CHERRY_OFFICIAL_SERVICES
+    ? [
+        {
+          anchorId: 'update-notification',
+          titleKey: 'settings.notification.update',
+          groupKey: 'settings.notification.title'
+        }
+      ]
+    : []),
   {
     anchorId: 'mini-app-notification',
     titleKey: 'settings.notification.mini_app',

@@ -23,6 +23,14 @@ const { androidDownloadMock, invitationMock, requestMock, navigateMock, useApiGa
   })
 )
 
+const officialServices = vi.hoisted(() => ({ enabled: true }))
+vi.mock('@shared/utils/constants', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  get ENABLE_CHERRY_OFFICIAL_SERVICES() {
+    return officialServices.enabled
+  }
+}))
+
 vi.mock('@tanstack/react-router', () => ({ useNavigate: () => navigateMock }))
 
 vi.mock('@cherrystudio/ui', async (importOriginal) => await importOriginal())
@@ -233,6 +241,7 @@ describe('DeviceConnectionsSettings', () => {
   })
 
   beforeEach(() => {
+    officialServices.enabled = true
     MockUsePreferenceUtils.resetMocks()
     vi.stubGlobal('__APP_EDITION__', 'global')
     MockUseDataApiUtils.resetMocks()
@@ -255,6 +264,16 @@ describe('DeviceConnectionsSettings', () => {
       apiGatewayRunning: true,
       apiGatewayLoading: false
     })
+  })
+
+  it('skips Cherry mobile downloads and shows device pairing in MEA', () => {
+    officialServices.enabled = false
+    MockUseCacheUtils.setPersistCacheValue('settings.device_connections.step', 'download')
+    render(<DeviceConnectionsSettings />)
+
+    expect(screen.getByText(enUS['deviceConnections.pairing.title'])).toBeVisible()
+    expect(screen.queryByRole('button', { name: enUS['deviceConnections.downloadMobile'] })).not.toBeInTheDocument()
+    expect(requestMock).not.toHaveBeenCalledWith('app.mobile.get_android_download_url')
   })
 
   it.each(

@@ -8,6 +8,11 @@ const { initMock, captureExceptionMock, captureEventMock } = vi.hoisted(() => ({
   captureEventMock: vi.fn()
 }))
 
+vi.mock('@shared/utils/constants', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  ENABLE_CHERRY_OFFICIAL_SERVICES: true
+}))
+
 vi.mock('@sentry/electron/renderer', async (importOriginal) => ({
   ...(await importOriginal<typeof SentryRenderer>()),
   init: initMock,
@@ -19,6 +24,7 @@ vi.unmock('@logger')
 
 import { IpcError } from '@shared/ipc/errors/IpcError'
 
+import { name } from '../../../../package.json'
 import { loggerService } from '../LoggerService'
 import { initSentry } from '../sentry'
 
@@ -128,7 +134,7 @@ describe('renderer Sentry initialization', () => {
 
     expect(JSON.stringify(event)).not.toContain('real-api-key')
     expect(event.tags).toMatchObject({ window: 'QuickAssistant', 'app.edition': 'global', 'event.process': 'renderer' })
-    expect(options.release).toBe(`CherryStudio@${event.tags['app.version']}`)
+    expect(options.release).toBe(`${name}@${event.tags['app.version']}`)
   })
 
   it('captures handled render errors in their originating process with safe context', () => {

@@ -11,6 +11,11 @@ const mocks = vi.hoisted(() => ({
   showErrorDetailPopup: vi.fn()
 }))
 
+vi.mock('@shared/utils/constants', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  ENABLE_CHERRY_OFFICIAL_SERVICES: true
+}))
+
 vi.mock('@data/CacheService', () => ({
   cacheService: {
     deleteCasual: vi.fn((key: string) => mocks.cache.delete(key)),

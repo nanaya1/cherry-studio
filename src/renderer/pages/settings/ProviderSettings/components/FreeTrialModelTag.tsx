@@ -6,6 +6,7 @@ import { IndicatorLight } from '@cherrystudio/ui'
 import CustomTag from '@renderer/components/tags/CustomTag'
 import { getProviderLabelKey } from '@renderer/i18n/label'
 import { openSettingsTab } from '@renderer/services/mainWindowNavigation'
+import { ENABLE_CHERRY_OFFICIAL_SERVICES } from '@shared/utils/constants'
 
 interface Props {
   modelId: string
@@ -16,7 +17,7 @@ interface Props {
 export const FreeTrialModelTag: FC<Props> = ({ modelId, providerId, showLabel = true }) => {
   const { t } = useTranslation()
 
-  if (providerId !== 'cherryai') {
+  if (!ENABLE_CHERRY_OFFICIAL_SERVICES || providerId !== 'cherryai') {
     return null
   }
 

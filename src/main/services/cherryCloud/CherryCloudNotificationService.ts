@@ -6,6 +6,7 @@ import { BaseService, Conditional, DependsOn, Injectable, Phase, ServicePhase, w
 import { t } from '@main/i18n'
 import { getAppEdition } from '@main/utils/appEdition'
 import type { CherryCloudStatus } from '@shared/ipc/schemas/cherryCloud'
+import { ENABLE_CHERRY_OFFICIAL_SERVICES } from '@shared/utils/constants'
 
 import {
   type CloudNotification,
@@ -144,6 +145,7 @@ export class CherryCloudNotificationService extends BaseService {
   private active = false
 
   protected async onInit(): Promise<void> {
+    if (!ENABLE_CHERRY_OFFICIAL_SERVICES) return
     const cloud = application.get('CherryCloudService')
     this.registerDisposable(cloud.onStatusChanged((status) => this.follow(status)))
     this.registerDisposable(() => this.disconnect())

@@ -3,7 +3,9 @@ import removeMarkdown from 'remove-markdown'
 
 import { getProviderLabelKey } from '@renderer/i18n/label'
 import i18n from '@renderer/i18n/resolver'
+import { CHERRY_CLOUD_PROVIDER_ID, isManagedCherryProviderId } from '@shared/data/presets/cherryai'
 import type { Provider } from '@shared/data/types/provider'
+import { APP_NAME } from '@shared/utils/constants'
 import { sanitizeFilename } from '@shared/utils/file'
 import { isSystemProviderId } from '@shared/utils/systemProviderId'
 
@@ -108,6 +110,7 @@ export const getLowerBaseModelName = (id: string, delimiter: string = '/'): stri
  * Custom provider ids remain unchanged until provider metadata is available.
  */
 export function getProviderDisplayNameById(providerId: string): string {
+  if (isManagedCherryProviderId(providerId) || providerId === 'cherryin') return APP_NAME
   const labelKey = getProviderLabelKey(providerId, '')
   return labelKey ? i18n.t(labelKey) : providerId
 }
@@ -118,6 +121,7 @@ export function getProviderDisplayNameById(providerId: string): string {
  */
 export function getProviderDisplayName(provider: Pick<Provider, 'id' | 'name'> | undefined): string {
   if (!provider) return ''
+  if (provider.id === CHERRY_CLOUD_PROVIDER_ID) return APP_NAME
   return isSystemProviderId(provider.id) ? getProviderDisplayNameById(provider.id) : provider.name
 }
 

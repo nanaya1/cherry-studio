@@ -1,3 +1,5 @@
+import { ENABLE_CHERRY_OFFICIAL_SERVICES } from '@shared/utils/constants'
+
 import type { SettingsSearchEntry } from '../settingsSearch/types'
 
 // Data settings switches its panels via component state, not sub-routes, so
@@ -47,12 +49,16 @@ export const entries: SettingsSearchEntry[] = [
     groupKey: 'settings.data.data.title',
     aliases: ['reset', '恢复出厂', '清空数据']
   },
-  {
-    anchorId: 'data-privacy-mode',
-    titleKey: 'settings.privacy.enable_privacy_mode',
-    panel: 'data',
-    groupKey: 'settings.privacy.title'
-  },
+  ...(ENABLE_CHERRY_OFFICIAL_SERVICES
+    ? [
+        {
+          anchorId: 'data-privacy-mode',
+          titleKey: 'settings.privacy.enable_privacy_mode',
+          panel: 'data',
+          groupKey: 'settings.privacy.title'
+        }
+      ]
+    : []),
   {
     anchorId: 'local-backup-directory',
     titleKey: 'settings.data.local.directory.label',

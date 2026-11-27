@@ -10,7 +10,8 @@ export class DuplicateMcpServerNameError extends Error {
 }
 
 export function isExportableMcpServer(server: McpServer): boolean {
-  return server.type !== 'inMemory' && server.installSource !== 'builtin' && !isBuiltinMcpServerName(server.name)
+  const builtinName = server.name.replace(/^@cherry\//, '')
+  return server.type !== 'inMemory' && server.installSource !== 'builtin' && !isBuiltinMcpServerName(builtinName)
 }
 
 export function serializeMcpServersForExport(servers: readonly McpServer[]): string {

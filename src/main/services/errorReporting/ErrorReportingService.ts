@@ -7,6 +7,7 @@ import { application } from '@application'
 import { loggerService } from '@logger'
 import { BaseService, DependsOn, Injectable, Phase, ServicePhase } from '@main/core/lifecycle'
 import { isDataCollectionConsented } from '@main/utils/privacyConsent'
+import { ENABLE_CHERRY_OFFICIAL_SERVICES } from '@shared/utils/constants'
 import { hasReportingOwner, isCancellation, parseFailureFacts, shouldReportFailure } from '@shared/utils/errorReporting'
 import { getSentryLogContext } from '@shared/utils/sentry'
 
@@ -38,6 +39,7 @@ export class ErrorReportingService extends BaseService {
   get enabled(): boolean {
     const preferences = application.getExisting('PreferenceService')
     return (
+      ENABLE_CHERRY_OFFICIAL_SERVICES &&
       !import.meta.env.DEV &&
       this.isReady &&
       !!preferences?.isReady &&
@@ -49,7 +51,7 @@ export class ErrorReportingService extends BaseService {
   }
 
   protected onInit(): void {
-    if (import.meta.env.DEV) return
+    if (import.meta.env.DEV || !ENABLE_CHERRY_OFFICIAL_SERVICES) return
     // Scanning consumes startup dumps, so it must wait for preferences.
     addIntegration(sentryMinidumpIntegration())
     this.registerDisposable(

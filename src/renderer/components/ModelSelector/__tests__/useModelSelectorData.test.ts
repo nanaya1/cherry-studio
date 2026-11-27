@@ -152,6 +152,22 @@ describe('useModelSelectorData', () => {
     expect(result.current.selectableModelsById.has('google::gemini-pro')).toBe(false)
   })
 
+  it('hides Cherry official providers and their preset copies while keeping Xuelang and custom providers', () => {
+    const providers = [
+      makeProvider('cherryai'),
+      makeProvider('cherryai-subscription'),
+      makeProvider('cherryin'),
+      makeProvider('copied-cherry', { presetProviderId: 'cherryin' }),
+      makeProvider('xuelang'),
+      makeProvider('custom')
+    ]
+    wireDeps({ providers, models: providers.map(({ id }) => makeModel('model', id)) })
+    const { result } = renderHook(() => useModelSelectorData({ searchText: '' }))
+
+    expect(result.current.sortedProviders.map(({ id }) => id)).toEqual(['xuelang', 'custom'])
+    expect([...result.current.selectableModelsById.keys()]).toEqual(['xuelang::model', 'custom::model'])
+  })
+
   it('places prioritized providers first and preserves the remaining order', () => {
     wireDeps({
       providers: [makeProvider('openai'), makeProvider('anthropic'), makeProvider('google')],

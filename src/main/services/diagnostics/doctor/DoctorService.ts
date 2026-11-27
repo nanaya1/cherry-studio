@@ -36,6 +36,7 @@ import {
   type DoctorConnectivityResult,
   type DoctorConnectivitySubject
 } from '@shared/types/doctorConnectivity'
+import { ENABLE_CHERRY_OFFICIAL_SERVICES } from '@shared/utils/constants'
 import { doctorScopeKey, doctorStateCacheKey } from '@shared/utils/doctor'
 
 import { collectDiagnosticSystemInfo } from '../systemInfo'
@@ -233,6 +234,8 @@ export class DoctorService extends BaseService {
     const selected = new Set<DoctorCheckId>()
     const visit = (id: DoctorCheckId, requiredBy?: DoctorCheckId): void => {
       if (selected.has(id)) return
+      if (!ENABLE_CHERRY_OFFICIAL_SERVICES && (id.startsWith('network-endpoint-') || id === 'install-update-available'))
+        return
       const meta = DOCTOR_CHECK_CATALOG[id]
       if (!meta || !TIERS_FOR_RUN[tier].includes(meta.tier))
         throw new Error(`Check ${id} is unavailable in tier ${tier}`)

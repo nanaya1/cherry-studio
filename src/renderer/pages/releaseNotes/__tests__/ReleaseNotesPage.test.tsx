@@ -5,6 +5,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({ ipcRequest: vi.fn(), language: 'zh-CN' }))
 
+vi.mock('@shared/utils/constants', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  ENABLE_CHERRY_OFFICIAL_SERVICES: true
+}))
+
 vi.stubGlobal('__APP_RELEASE_NOTES__', '<!--LANG:en-->English feature<!--LANG:zh-CN-->中文功能<!--LANG:END-->')
 vi.stubGlobal('__APP_RELEASE_VERSION__', '2.0.2')
 vi.stubGlobal('__APP_RELEASE_HISTORY__', [

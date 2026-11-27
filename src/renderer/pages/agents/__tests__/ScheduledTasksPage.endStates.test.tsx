@@ -175,6 +175,12 @@ async function openPage(
   return { router, tasks, availability }
 }
 
+it('offers manual task creation from the workspace', async () => {
+  await openPage()
+  expect(screen.getByRole('button', { name: en['scheduledTasks.add'] })).toBeVisible()
+  expect(screen.queryByRole('button', { name: en['settings.scheduledTasks.agentCreate'] })).not.toBeInTheDocument()
+})
+
 it('combines paused and missed tasks into one paginated group while keeping other pages independent', async () => {
   const user = userEvent.setup()
   await openPage()

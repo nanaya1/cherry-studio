@@ -276,6 +276,11 @@ describe('ChatAppShell', () => {
 
     expect(screen.queryByText('topics')).not.toBeInTheDocument()
 
+    rerender(
+      <ChatAppShell pane={<aside>topics</aside>} paneOpen panePosition="left" showLeftPane centerContent={<div />} />
+    )
+    expect(screen.getByText('topics').closest('[data-resource-list-pane]')).toBeVisible()
+
     rerender(<ChatAppShell pane={<aside>topics</aside>} paneOpen panePosition="right" centerContent={<div />} />)
 
     expect(screen.getAllByText('topics')).toHaveLength(1)

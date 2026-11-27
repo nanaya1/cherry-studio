@@ -17,6 +17,7 @@ import { CHERRY_CLOUD_PROVIDER_ID, CHERRYAI_PROVIDER_ID } from '@shared/data/pre
 import { createUniqueModelId, MODEL_CAPABILITY, type Model } from '@shared/data/types/model'
 import type { Provider } from '@shared/data/types/provider'
 import type { CherryCloudPlanModel } from '@shared/ipc/schemas/cherryCloud'
+import { ENABLE_CHERRY_OFFICIAL_SERVICES } from '@shared/utils/constants'
 
 export type CherryCloudOfferFilter = (offer: CherryCloudPlanModel) => boolean
 
@@ -80,8 +81,9 @@ export function useCherryCloudModelSelectorPolicy({
 
 /** Cloud-aware resolution for consumers that classify saved selections without rendering a picker. */
 export function useCherryCloudModelSelectorData(options: UseModelSelectorDataOptions) {
-  const { availability, modelFilter, getModelPresentation, prioritizedProviderIds } =
-    useCherryCloudModelSelectorPolicy(options)
+  const { availability, modelFilter, getModelPresentation, prioritizedProviderIds } = useCherryCloudModelSelectorPolicy(
+    { ...options, enabled: options.enabled !== false && ENABLE_CHERRY_OFFICIAL_SERVICES }
+  )
   const composition = useMemo(
     () => ({
       getModelPresentation,

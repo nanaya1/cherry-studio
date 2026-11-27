@@ -120,7 +120,7 @@ const REPORT_TOOL: DoctorTool = {
 
 const DATA_API_TOOL: DoctorTool = {
   name: 'data_api',
-  description: `Query Cherry Studio business data via the Data API. GET reads diagnostics; PATCH creates a proposal the user applies.`,
+  description: `Query MEA Cowork business data via the Data API. GET reads diagnostics; PATCH creates a proposal the user applies.`,
   inputSchema: {
     type: 'object',
     properties: {

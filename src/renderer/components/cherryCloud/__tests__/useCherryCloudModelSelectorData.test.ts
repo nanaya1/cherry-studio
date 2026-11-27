@@ -26,6 +26,11 @@ const mocks = vi.hoisted(() => ({
   isModelUnavailable: vi.fn(() => false),
   getModelDescription: vi.fn(() => 'Limited-time free')
 }))
+vi.mock('@shared/utils/constants', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  ENABLE_CHERRY_OFFICIAL_SERVICES: true
+}))
+
 vi.mock('@renderer/hooks/useCherryCloudPlans', () => ({
   useCherryCloudPlans: () => ({
     session: { status: { phase: mocks.phase } },

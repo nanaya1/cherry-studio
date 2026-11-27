@@ -208,6 +208,7 @@ type Props = {
   stop: () => Promise<void>
   onCreateEmptySession?: () => void | Promise<unknown>
   onAgentChange?: (agentId: string | null) => void | Promise<void>
+  onDraftModelSelect?: (model: Model) => void
   agentChanging?: boolean
   showAgentControl?: boolean
   modelControlInSendAccessory?: boolean
@@ -244,6 +245,7 @@ const AgentComposerRoot = ({
   stop,
   onCreateEmptySession,
   onAgentChange,
+  onDraftModelSelect,
   agentChanging,
   showAgentControl,
   modelControlInSendAccessory,
@@ -408,6 +410,7 @@ const AgentComposerRoot = ({
         chatStop={stop}
         onCreateEmptySession={onCreateEmptySession}
         onAgentChange={onAgentChange}
+        onDraftModelSelect={onDraftModelSelect}
         agentChanging={agentChanging}
         showAgentControl={showAgentControl}
         modelControlInSendAccessory={modelControlInSendAccessory}
@@ -456,6 +459,7 @@ interface InnerProps {
   chatStop: Props['stop']
   onCreateEmptySession?: Props['onCreateEmptySession']
   onAgentChange?: Props['onAgentChange']
+  onDraftModelSelect?: Props['onDraftModelSelect']
   agentChanging?: boolean
   showAgentControl?: boolean
   modelControlInSendAccessory?: boolean
@@ -540,6 +544,7 @@ const AgentComposerInner = ({
   chatStop,
   onCreateEmptySession,
   onAgentChange,
+  onDraftModelSelect,
   agentChanging,
   showAgentControl,
   modelControlInSendAccessory,
@@ -1072,6 +1077,10 @@ const AgentComposerInner = ({
   const handleModelSelect = useCallback(
     async (nextModel?: Model) => {
       if (!agent || !canChangeModel || !nextModel || nextModel.id === model?.id) return
+      if (onDraftModelSelect) {
+        onDraftModelSelect(nextModel)
+        return
+      }
 
       const nextReasoningEffort = resolveReasoningEffortForModel(nextModel, reasoningEffort) ?? 'default'
       const pendingReasoningEdit =
@@ -1118,6 +1127,7 @@ const AgentComposerInner = ({
       canChangeModel,
       canonicalReasoningEffort,
       model?.id,
+      onDraftModelSelect,
       reasoningEffort,
       sessionId,
       updateSession

@@ -37,7 +37,7 @@ vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     i18n: { language: mocks.language, resolvedLanguage: mocks.language },
     t: (key: string) => {
-      if (key === 'settings.about.feedback.diagnostics.title') return 'Report a problem'
+      if (key === 'settings.doctor.panels.export') return 'Export diagnostic bundle'
       if (key === 'settings.doctor.entry.title') return 'System diagnostics'
       return key
     }
@@ -84,12 +84,12 @@ describe('HelpMenu', () => {
     settings.focus()
 
     await user.hover(screen.getByRole('button', { name: 'help.title' }))
-    const feedback = await screen.findByRole('button', { name: 'Report a problem' })
+    const feedback = await screen.findByRole('button', { name: 'Export diagnostic bundle' })
     expect(settings).toHaveFocus()
 
     await user.hover(feedback)
     await user.click(feedback)
-    await waitFor(() => expect(mocks.showDoctor).toHaveBeenCalledWith({ initialPanel: 'report' }))
+    await waitFor(() => expect(mocks.showDoctor).toHaveBeenCalledWith({ initialPanel: 'export' }))
   })
 
   it('closes when the pointer leaves both the trigger and the submenu', async () => {
@@ -134,20 +134,20 @@ describe('HelpMenu', () => {
 
     await user.hover(currentTheme)
     await user.hover(screen.getByRole('button', { name: 'help.title' }))
-    const feedback = await screen.findByRole('button', { name: 'Report a problem' })
+    const feedback = await screen.findByRole('button', { name: 'Export diagnostic bundle' })
     await waitFor(() =>
       expect(screen.queryByRole('group', { name: 'settings.appearance.title' })).not.toBeInTheDocument()
     )
     await user.hover(feedback)
 
-    expect(screen.getByRole('button', { name: 'Report a problem' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Export diagnostic bundle' })).toBeVisible()
     await user.keyboard('{Escape}')
     const helpTrigger = screen.getByRole('button', { name: 'help.title' })
     await waitFor(() => expect(helpTrigger).toHaveFocus())
     await user.keyboard('{ArrowRight}')
     expect(await screen.findByRole('button', { name: 'help.whats_new' })).toHaveFocus()
-    await user.click(screen.getByRole('button', { name: 'Report a problem' }))
-    await waitFor(() => expect(mocks.showDoctor).toHaveBeenCalledWith({ initialPanel: 'report' }))
+    await user.click(screen.getByRole('button', { name: 'Export diagnostic bundle' }))
+    await waitFor(() => expect(mocks.showDoctor).toHaveBeenCalledWith({ initialPanel: 'export' }))
   })
 
   it('opens release notes', async () => {
@@ -158,18 +158,18 @@ describe('HelpMenu', () => {
     await waitFor(() => expect(mocks.openReleaseNotes).toHaveBeenCalledOnce())
   })
 
-  it('closes the help menu before opening the report panel', async () => {
+  it('closes the help menu before opening the export panel', async () => {
     let reportEntryWasVisible = true
     mocks.showDoctor.mockImplementationOnce(() => {
-      reportEntryWasVisible = screen.queryByRole('button', { name: 'Report a problem' }) !== null
+      reportEntryWasVisible = screen.queryByRole('button', { name: 'Export diagnostic bundle' }) !== null
       return Promise.resolve()
     })
     render(<HelpMenu />)
     const user = await openMenu()
 
-    await user.click(screen.getByRole('button', { name: 'Report a problem' }))
+    await user.click(screen.getByRole('button', { name: 'Export diagnostic bundle' }))
 
-    await waitFor(() => expect(mocks.showDoctor).toHaveBeenCalledWith({ initialPanel: 'report' }))
+    await waitFor(() => expect(mocks.showDoctor).toHaveBeenCalledWith({ initialPanel: 'export' }))
     expect(reportEntryWasVisible).toBe(false)
   })
 
@@ -181,7 +181,7 @@ describe('HelpMenu', () => {
     expect(screen.queryByRole('button', { name: 'help.feedback' })).not.toBeInTheDocument()
   })
 
-  it('opens system diagnostics checks independently of the report action', async () => {
+  it('opens system diagnostics checks independently of the export action', async () => {
     render(<HelpMenu />)
     const user = await openMenu()
 

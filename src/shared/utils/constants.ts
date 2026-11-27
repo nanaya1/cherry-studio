@@ -4,6 +4,8 @@ export const KB = 1024
 export const MB = 1024 * KB
 export const GB = 1024 * MB
 
+export const ENABLE_CHERRY_OFFICIAL_SERVICES: boolean = false
+
 export const APP_NAME = 'MEA Cowork'
 export const APP_FILE_NAME_PREFIX = 'meacowork'
 export const BACKUP_FILE_NAME_PREFIX = APP_FILE_NAME_PREFIX

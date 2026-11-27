@@ -6,7 +6,7 @@ import { useModels } from '@renderer/hooks/useModel'
 import { usePins } from '@renderer/hooks/usePins'
 import { useProviders } from '@renderer/hooks/useProvider'
 import { getSearchMatchScore } from '@renderer/utils/model'
-import { isProviderSettingsListVisibleProvider } from '@renderer/utils/providerSettings'
+import { isProviderSettingsListVisibleProvider, isProviderVisibleInMea } from '@renderer/utils/providerSettings'
 import { isUniqueModelId, type Model, parseUniqueModelId } from '@shared/data/types/model'
 import type { Provider } from '@shared/data/types/provider'
 import { isExternalCliProvider } from '@shared/utils/provider'
@@ -130,7 +130,7 @@ export function useModelSelectorData({
   }, [providers])
 
   const sortedProviders = useMemo(
-    () => sortProvidersByPriority(providers, prioritizedProviderIds),
+    () => sortProvidersByPriority(providers.filter(isProviderVisibleInMea), prioritizedProviderIds),
     [prioritizedProviderIds, providers]
   )
 

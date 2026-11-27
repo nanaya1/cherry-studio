@@ -12,6 +12,7 @@ import {
 } from '@shared/data/api/schemas/notifications'
 import type { NotificationRecord, NotificationTarget } from '@shared/data/types/notification'
 import type { ConversationNavigationTarget } from '@shared/types/navigation'
+import { ENABLE_CHERRY_OFFICIAL_SERVICES } from '@shared/utils/constants'
 
 import { asNumericKey, decodeListCursor, encodeCursor, keysetOrdering } from './utils/keysetCursor'
 
@@ -21,7 +22,14 @@ export type CreateNotificationRecordInput = Pick<
 > & { target?: NotificationTarget | null; readAt?: number | null }
 
 const RETENTION_MS = 30 * 24 * 60 * 60 * 1000
-const visible = () => and(isNull(table.dismissedAt), gt(table.createdAt, Date.now() - RETENTION_MS))
+const visible = () =>
+  and(
+    isNull(table.dismissedAt),
+    gt(table.createdAt, Date.now() - RETENTION_MS),
+    ENABLE_CHERRY_OFFICIAL_SERVICES
+      ? undefined
+      : and(ne(table.category, 'official'), ne(table.kind, 'cherry-cloud-subscription'))
+  )
 const notifyChanged = () =>
   notifyDataApiDataChange([
     { endpoint: '/notifications', kind: 'membership' },

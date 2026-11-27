@@ -52,6 +52,11 @@ const selectedModelsMock: {
 const defaultUsePreferenceImplementation = mockUsePreference.getMockImplementation()
 const defaultUseMultiplePreferencesImplementation = mockUseMultiplePreferences.getMockImplementation()
 
+vi.mock('@shared/utils/constants', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  ENABLE_CHERRY_OFFICIAL_SERVICES: true
+}))
+
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key })
 }))

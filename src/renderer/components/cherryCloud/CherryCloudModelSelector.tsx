@@ -19,6 +19,7 @@ import { trackSubscriptionEntryView } from '@renderer/services/cherryCloudSubscr
 import { getModelLogoRef } from '@renderer/utils/model'
 import { CHERRY_CLOUD_PROVIDER_ID, CHERRYAI_PROVIDER_ID } from '@shared/data/presets/cherryai'
 import type { SubscriptionEntrySource } from '@shared/ipc/schemas/cherryCloud'
+import { ENABLE_CHERRY_OFFICIAL_SERVICES } from '@shared/utils/constants'
 
 import {
   CHERRY_CLOUD_SELECTOR_PROVIDER_IDS,
@@ -54,6 +55,14 @@ function OfferIcon({ id, name }: { id: string; name: string }) {
 
 /** Composes Cloud entitlement and subscription presentation around the domain-blind selector. */
 export function CherryCloudModelSelector(props: CherryCloudModelSelectorProps) {
+  return ENABLE_CHERRY_OFFICIAL_SERVICES ? (
+    <CherryCloudSubscriptionModelSelector {...props} />
+  ) : (
+    <ModelSelector {...props} />
+  )
+}
+
+function CherryCloudSubscriptionModelSelector(props: CherryCloudModelSelectorProps) {
   const { offerFilter = isCherryCloudChatOffer, showSubscriptionOffers = true, ...selectorProps } = props
   const { filter, includeAgentOnlyModels } = props
   const [internalOpen, setInternalOpen] = useState(false)

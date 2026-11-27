@@ -26,6 +26,7 @@ import { usePersistCache } from '@renderer/data/hooks/useCache'
 import { useInvalidateCache, useQuery } from '@renderer/data/hooks/useDataApi'
 import { usePreference } from '@renderer/data/hooks/usePreference'
 import { useAgent, useUpdateAgent } from '@renderer/hooks/agent/useAgent'
+import { useUpdateSession } from '@renderer/hooks/agent/useSession'
 import { useAgentMutationsById, useSkillMutationsById } from '@renderer/hooks/resourceCatalog'
 import { useAgentSessionsSource, useAssistantTopicsSource } from '@renderer/hooks/resourceViewSources'
 import { useCloseConversationTabs, useCurrentTabId } from '@renderer/hooks/tab'
@@ -53,7 +54,7 @@ import {
 } from '@shared/data/api/schemas/agentWorkspaces'
 import { getSkillDescription, getSkillDisplayName } from '@shared/data/api/schemas/skills'
 import { CHERRYAI_DEFAULT_UNIQUE_MODEL_ID } from '@shared/data/presets/cherryai'
-import type { UniqueModelId } from '@shared/data/types/model'
+import type { Model, UniqueModelId } from '@shared/data/types/model'
 
 const logger = loggerService.withContext('NewTaskPage')
 
@@ -117,10 +118,12 @@ export default function NewTaskPage() {
     [agentsData]
   )
   const [agentId, setAgentId] = useState<string | null>(null)
+  const [draftAgentModelId, setDraftAgentModelId] = useState<UniqueModelId | null>(null)
   const { agent, isLoading: agentLoading } = useAgent(agentId)
   const { updateModel } = useUpdateAgent()
+  const { updateSession } = useUpdateSession()
   const [defaultModelId] = usePreference('chat.default_model_id')
-  const { model: agentModel, isLoading: agentModelLoading } = useModelById(agent?.model)
+  const { model: agentModel, isLoading: agentModelLoading } = useModelById(draftAgentModelId ?? agent?.model)
   const {
     skills: agentSkills,
     loading: agentSkillsLoading,
@@ -396,6 +399,16 @@ export default function NewTaskPage() {
           agentPlaceholderRef.current = { target, session }
           closeConversationTabs('agents', result.deletedDuplicateSessionIds)
         }
+        if (draftAgentModelId && session.model !== draftAgentModelId) {
+          const updated = await updateSession({ id: session.id, model: draftAgentModelId }, { showSuccessToast: false })
+          if (!isCurrent()) return false
+          if (!updated) {
+            agentInFlightRef.current = false
+            return false
+          }
+          session = updated
+          agentPlaceholderRef.current = { target, session }
+        }
         const ack: AiStreamOpenResponse = await ipcApi.request('ai.stream.open', {
           trigger: 'submit-message',
           topicId: buildAgentSessionTopicId(session.id),
@@ -430,10 +443,12 @@ export default function NewTaskPage() {
     [
       agentId,
       closeConversationTabs,
+      draftAgentModelId,
       invalidateCache,
       navigate,
       reuseOrCreateSession,
       t,
+      updateSession,
       waitForAgentSeed,
       workspaceSource,
       workspaceTarget
@@ -456,7 +471,11 @@ export default function NewTaskPage() {
     agentEpochRef.current += 1
     agentPlaceholderRef.current = null
     skillBindingRequestRef.current += 1
+    setDraftAgentModelId(null)
     setAgentId(nextAgentId)
+  }, [])
+  const handleDraftModelSelect = useCallback((model: Model) => {
+    if (!agentInFlightRef.current) setDraftAgentModelId(model.id)
   }, [])
   const handleWorkspaceChange = useCallback((workspaceId: string | null) => {
     if (agentInFlightRef.current) return
@@ -584,6 +603,7 @@ export default function NewTaskPage() {
                     sendMessage={handleAgentSend}
                     stop={async () => undefined}
                     onAgentChange={handleAgentChange}
+                    onDraftModelSelect={handleDraftModelSelect}
                     agentChanging={agentLoading}
                     // MEA:new-task-composer-layout 固定内置智能体，不显示智能体选择框。
                     showAgentControl={false}

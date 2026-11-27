@@ -1,24 +1,28 @@
 import { createMemoryHistory, createRootRoute, createRoute, createRouter } from '@tanstack/react-router'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 
 import { Route as appTasks } from '../../app/scheduled-tasks'
-import { redirectToScheduledTask } from '../../app/scheduled-tasks.index'
+import { redirectLegacyAppTask } from '../../app/scheduled-tasks.$taskId'
 import { Route as detailRoute } from '../scheduled-tasks.$taskId'
 import { Route as indexRoute } from '../scheduled-tasks.index'
 
-vi.mock('@renderer/pages/agents/ScheduledTasksPage', () => ({ default: () => null }))
-vi.mock('@renderer/pages/settings/TasksSettings', () => ({ default: () => null }))
-
 describe('MEA scheduled task entry points', () => {
   it.each([
-    ['/app/scheduled-tasks', '/app/scheduled-tasks/', {}],
-    ['/app/scheduled-tasks?taskId=task-1', '/app/scheduled-tasks/task-1', {}],
+    ['/app/scheduled-tasks', {}],
+    ['/app/scheduled-tasks?taskId=task-1', { taskId: 'task-1' }],
+    [
+      '/app/scheduled-tasks?taskId=task-1&runId=run-2&notificationId=notice',
+      { taskId: 'task-1', runId: 'run-2', notificationId: 'notice' }
+    ],
     [
       '/app/scheduled-tasks?view=result&taskId=task-1&runId=run-2&notificationId=notice',
-      '/app/scheduled-tasks/',
-      { view: 'result', taskId: 'task-1', runId: 'run-2', notificationId: 'notice' }
+      { taskId: 'task-1', runId: 'run-2', notificationId: 'notice' }
+    ],
+    [
+      '/app/scheduled-tasks/task-1?runId=run-2&notificationId=notice',
+      { taskId: 'task-1', runId: 'run-2', notificationId: 'notice' }
     ]
-  ])('preserves the view and run requested by %s', async (url, expectedPath, expectedSearch) => {
+  ])('opens the unified workspace and preserves the requested run from %s', async (url, expectedSearch) => {
     const root = createRootRoute()
     const app = createRoute({ getParentRoute: () => root, path: '/app' })
     const tasks = createRoute({
@@ -26,8 +30,8 @@ describe('MEA scheduled task entry points', () => {
       path: '/scheduled-tasks',
       validateSearch: appTasks.options.validateSearch
     })
-    const index = createRoute({ getParentRoute: () => tasks, path: '/', beforeLoad: redirectToScheduledTask })
-    const detail = createRoute({ getParentRoute: () => tasks, path: '/$taskId' })
+    const index = createRoute({ getParentRoute: () => tasks, path: '/' })
+    const detail = createRoute({ getParentRoute: () => tasks, path: '/$taskId', beforeLoad: redirectLegacyAppTask })
     const router = createRouter({
       routeTree: root.addChildren([app.addChildren([tasks.addChildren([index, detail])])]),
       history: createMemoryHistory({ initialEntries: [url] })
@@ -35,8 +39,8 @@ describe('MEA scheduled task entry points', () => {
 
     await router.load()
 
-    expect(router.state.matches.at(-1)?.pathname.replace(/\/$/, '')).toBe(expectedPath.replace(/\/$/, ''))
-    expect(router.state.matches.at(-1)?.search).toEqual(expectedSearch)
+    expect(router.state.matches.at(-1)?.pathname.replace(/\/$/, '')).toBe('/app/scheduled-tasks')
+    expect(router.state.matches.at(-1)?.search).toMatchObject(expectedSearch)
   })
 })
 
@@ -45,8 +49,8 @@ describe('legacy scheduled task links', () => {
     { path: '/settings/scheduled-tasks', search: {} },
     { path: '/settings/scheduled-tasks/task-1', search: { taskId: 'task-1' } },
     {
-      path: '/settings/scheduled-tasks/task-1?notificationId=notice',
-      search: { taskId: 'task-1', notificationId: 'notice' }
+      path: '/settings/scheduled-tasks/task-1?notificationId=notice&runId=run-2',
+      search: { taskId: 'task-1', notificationId: 'notice', runId: 'run-2' }
     }
   ])('opens the dedicated task page from $path', async ({ path, search }) => {
     const root = createRootRoute()

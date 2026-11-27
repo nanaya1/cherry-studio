@@ -22,6 +22,11 @@ const facts = vi.hoisted(() => ({
   upcomingPaid: undefined as CherryCloudAccountPlans['entitlements'][number] | undefined
 }))
 
+vi.mock('@shared/utils/constants', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  ENABLE_CHERRY_OFFICIAL_SERVICES: true
+}))
+
 vi.mock('../useCherryCloudModelAvailability', () => ({
   useCherryCloudModelAvailability: () => ({
     availabilityFreshness: facts.freshness,

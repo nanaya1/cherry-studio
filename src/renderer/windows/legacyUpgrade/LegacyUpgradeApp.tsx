@@ -57,7 +57,7 @@ export default function LegacyUpgradeApp({ screen }: { screen: LegacyUpgradeScre
     <main className="flex h-screen flex-col bg-background text-foreground" data-testid="legacy-upgrade">
       <div className="h-6 shrink-0 [-webkit-app-region:drag]" aria-hidden="true" />
       <section className="min-h-0 flex-1 overflow-y-auto px-8 pb-4">
-        <img src={AppLogo} alt="Cherry Studio" className="mb-6 size-10 [-webkit-app-region:drag]" />
+        <img src={AppLogo} alt="MEA Cowork" className="mb-6 size-10 [-webkit-app-region:drag]" />
         <h1 className="text-xl font-semibold tracking-tight">{screen.title}</h1>
         <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
           {install?.prerequisite ? screen.prerequisite : install?.enabled ? install.detail : screen.detail}

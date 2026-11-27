@@ -10,6 +10,7 @@ import {
   scopeToMainIntegration
 } from '@sentry/electron/renderer'
 
+import { ENABLE_CHERRY_OFFICIAL_SERVICES } from '@shared/utils/constants'
 import { hasReportingOwner, isCancellation } from '@shared/utils/errorReporting'
 import { getSentryBuildContext, getSentryLogContext, sanitizeSentryEvent } from '@shared/utils/sentry'
 
@@ -22,7 +23,7 @@ import { loggerService, resolveWindowSourceFromMeta } from './LoggerService'
  * a window opened with its own `partition` would silently report nothing.
  */
 export function initSentry(): void {
-  if (import.meta.env.DEV) return
+  if (import.meta.env.DEV || !ENABLE_CHERRY_OFFICIAL_SERVICES) return
   const buildContext = getSentryBuildContext(name, version, __APP_EDITION__)
   const windowSource = resolveWindowSourceFromMeta(document) || 'UNKNOWN'
 

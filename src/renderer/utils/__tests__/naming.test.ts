@@ -294,6 +294,13 @@ describe('naming', () => {
   })
 
   describe('getProviderDisplayNameById', () => {
+    it.each(['cherryai', 'cherryai-subscription', 'cherryin'])(
+      'uses MEA branding for the historical %s provider',
+      (id) => {
+        expect(getProviderDisplayNameById(id)).toBe('MEA Cowork')
+      }
+    )
+
     it('preserves a custom provider id when metadata is unavailable', () => {
       expect(getProviderDisplayNameById('my-custom')).toBe('my-custom')
     })

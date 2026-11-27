@@ -21,6 +21,11 @@ const { cacheState, mocks, updateState, platformState } = vi.hoisted(() => ({
   platformState: { isMac: false }
 }))
 
+vi.mock('@shared/utils/constants', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  ENABLE_CHERRY_OFFICIAL_SERVICES: true
+}))
+
 vi.mock('@logger', () => ({
   loggerService: {
     withContext: () => ({

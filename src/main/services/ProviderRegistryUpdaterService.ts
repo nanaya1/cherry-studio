@@ -19,6 +19,7 @@ import { writeProviderRegistrySnapshot } from '@main/services/providerRegistrySn
 import { regionService } from '@main/services/RegionService'
 import { generateUserAgent } from '@main/utils/systemInfo'
 import type { DataApiDataChangeEffect } from '@shared/data/api/types'
+import { ENABLE_CHERRY_OFFICIAL_SERVICES } from '@shared/utils/constants'
 
 const logger = loggerService.withContext('ProviderRegistryUpdaterService')
 
@@ -84,7 +85,7 @@ export class ProviderRegistryUpdaterService extends BaseService {
     // Dev/test never auto-download — an override under userData would silently
     // shadow the source catalog a developer just regenerated. `check()` is still
     // callable directly for manual/test runs.
-    if (!app.isPackaged) return
+    if (!app.isPackaged || !ENABLE_CHERRY_OFFICIAL_SERVICES) return
 
     this.registerInterval(() => this.check(), CHECK_INTERVAL_MS)
 

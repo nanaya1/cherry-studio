@@ -9,7 +9,7 @@ const Cherryin = ({ variant, className, ...props }: CompoundIconProps) => {
 
 export const CherryinIcon: CompoundIcon = /*#__PURE__*/ Object.assign(Cherryin, {
   Avatar: CherryinAvatar,
-  colorPrimary: '#ff5f5f'
+  colorPrimary: '#000000'
 })
 
 export default CherryinIcon

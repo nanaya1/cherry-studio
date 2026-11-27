@@ -157,15 +157,15 @@ mac:
   extendInfo:
     NSCameraUsageDescription: Application requests access to the device's camera.
     NSMicrophoneUsageDescription: Application requests access to the device's microphone.
-    NSSpeechRecognitionUsageDescription: Cherry Studio transcribes voice recordings on this device.
+    NSSpeechRecognitionUsageDescription: MEA Cowork transcribes voice recordings on this device.
     NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
     NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
-    NSCalendarsUsageDescription: Cherry Studio allows local MCP servers to read and manage your calendar events.
-    NSCalendarsFullAccessUsageDescription: Cherry Studio allows local MCP servers to read and manage your calendar events.
-    NSCalendarsWriteOnlyAccessUsageDescription: Cherry Studio allows local MCP servers to create calendar events.
-    NSRemindersUsageDescription: Cherry Studio allows local MCP servers to read and manage your reminders.
-    NSRemindersFullAccessUsageDescription: Cherry Studio allows local MCP servers to read and manage your reminders.
-    NSAppleEventsUsageDescription: Cherry Studio allows local MCP servers to control other applications using AppleScript.
+    NSCalendarsUsageDescription: MEA Cowork allows local MCP servers to read and manage your calendar events.
+    NSCalendarsFullAccessUsageDescription: MEA Cowork allows local MCP servers to read and manage your calendar events.
+    NSCalendarsWriteOnlyAccessUsageDescription: MEA Cowork allows local MCP servers to create calendar events.
+    NSRemindersUsageDescription: MEA Cowork allows local MCP servers to read and manage your reminders.
+    NSRemindersFullAccessUsageDescription: MEA Cowork allows local MCP servers to read and manage your reminders.
+    NSAppleEventsUsageDescription: MEA Cowork allows local MCP servers to control other applications using AppleScript.
   target:
     - target: dmg
     - target: zip
@@ -276,9 +276,6 @@ releaseInfo:
     - [Models] Model connection checks now use streaming for streaming-capable models and detect incomplete or failed responses.
     - [Models] Unsupported sampling parameters and penalties are no longer sent to providers, and declared sampling ranges apply after request overrides.
     - [Models] Gemini tool calls no longer fail when a schema contains propertyNames.
-    - [Models] A single Cherry Cloud quota refusal no longer locks a model while plan quota remains; the server decides refusals and shows its suggested wait.
-    - [Models] CherryIN saved model endpoints refresh automatically from the server while keeping local values when discovery fails.
-    - [Models] CherryAI appears first with a paid subscription and last without one.
     - [Models] Provider request rejections without an HTTP status are reported as request errors instead of network interruptions.
     - [Models] Usage stats recover provider cache buckets, and locally computed costs are labeled as estimates.
     - [Models] Agent sessions on OpenAI-compatible, vLLM, or llama.cpp models report how far a request exceeds the context window.
@@ -289,7 +286,7 @@ releaseInfo:
     - [Knowledge] Self-hosted MinerU 4.1 Tasks API parsing is supported while older protocols still work.
     - [Feedback] Problem reports again include logs, activity records, and chat history for the last 24 hours; individual attachment switches were removed.
     - [Scheduled Tasks] Run history recorded before 2.2.0, or whose conversation was deleted, can be opened and shows its stored result.
-    - [Skills] Cherry-only built-in skills are no longer exported to the shared ~/.agents/skills directory.
+    - [Skills] App-only built-in skills are no longer exported to the shared ~/.agents/skills directory.
     - [Feishu] Initial channel connections retry with backoff instead of staying stopped after a failed handshake.
     - [UI] Empty assistant, agent, and notes sidebars explain that they are empty instead of showing a blank panel.
     - [Agent] Fixed agent sessions with background subagents slowing down a little more every round.
@@ -300,8 +297,6 @@ releaseInfo:
     - [Agent workspace] The folder "Open with" menu now lists every application registered on the system for opening folders, with system icons, instead of only the built-in editors and terminal.
     - [UI] Brand icons, mini-app labels, settings layouts, help, skill controls, and marketplace visuals are more consistent.
     - [UI] Launchpad and Mini Apps icons use consistent sizing and corners with refreshed dark-mode artwork, and inset scrollbars in file trees and lists align with pane edges.
-    - [Diagnostics] Native crash reports upload automatically to Sentry when data collection is enabled.
-    - [Data upgrade] v1 users must migrate through Cherry Studio 2.2.2; eligible installations offer one-click installation of the migration release, while others keep direct platform-matched downloads. (action required)
 
     ⚡ Performance
     - [Agent] Agent sessions with many images or subagents use much less main-process memory and CPU; finished subagents are released and Durable history is read incrementally.
@@ -364,9 +359,6 @@ releaseInfo:
     - [模型] 模型连接检查现在会对支持流式的模型使用流式请求，并在报告成功前检测不完整或失败的响应。
     - [模型] 不再向服务商发送不支持的采样参数和惩罚项，声明的采样范围会在请求覆盖后正确应用。
     - [模型] 当工具 schema 包含 propertyNames 时，Gemini 工具调用不再失败。
-    - [模型] 单次 Cherry Cloud 配额拒绝不再在套餐仍有额度时锁定模型；拒绝由服务端判定，并显示服务端建议的等待时间。
-    - [模型] CherryIN 已保存的模型端点会自动从服务端刷新，发现失败时保留本地值。
-    - [模型] 有付费订阅时 CherryAI 显示在最前，没有付费订阅时显示在最后。
     - [模型] 服务商未提供 HTTP 状态的请求拒绝现在会报告为请求错误，而不再是网络中断。
     - [模型] 用量统计现在会恢复服务商缓存用量，并将本地计算的费用标注为估算值。
     - [模型] 使用 OpenAI 兼容、vLLM 或 llama.cpp 模型的智能体会话现在会报告请求超出上下文窗口的程度。
@@ -377,7 +369,7 @@ releaseInfo:
     - [知识库] 支持使用自部署 MinerU 4.1 Tasks API 解析文档，同时保留对旧版协议的支持。
     - [反馈] 问题反馈重新包含最近 24 小时的日志、活动记录和聊天记录；移除了各项附件的单独开关。
     - [定时任务] 2.2.0 之前记录或对话已删除的运行历史现在可以打开并显示已保存的结果。
-    - [技能] 仅限 Cherry 的内置技能不再导出到共享的 ~/.agents/skills 目录。
+    - [技能] 仅限 MEA Cowork 的内置技能不再导出到共享的 ~/.agents/skills 目录。
     - [飞书] 初始频道连接失败后会按退避策略重试，而不再一直保持停止状态。
     - [界面] 助手、智能体和笔记侧边栏为空时会说明当前为空，而不再显示空白面板。
     - [智能体] 修复使用后台子智能体的 Agent 会话每一轮都比上一轮更慢的问题。
@@ -388,8 +380,6 @@ releaseInfo:
     - [智能体工作区] 文件夹的「打开方式」菜单现在会列出系统中所有已注册可打开文件夹的应用并显示系统图标，而不再仅限内置编辑器和终端。
     - [界面] 品牌图标、小程序标签、设置布局、帮助、技能控件和技能市场外观更加统一。
     - [界面] 启动台和小程序图标采用统一的尺寸和圆角，并更新深色模式图片；文件树和列表的内嵌滚动条与面板边缘对齐。
-    - [诊断] 启用数据收集时，原生崩溃报告会自动上传到 Sentry。
-    - [数据升级] v1 用户需先通过 Cherry Studio 2.2.2 完成迁移；符合条件的安装支持一键安装迁移版本，其他情况保留匹配系统架构的直接下载。（需要操作）
 
     ⚡ 性能优化
     - [智能体] 包含大量图片或子智能体的智能体会话大幅降低主进程内存和 CPU 占用；已完成的子智能体会被释放，Durable 历史改为增量读取。

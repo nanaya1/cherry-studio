@@ -38,6 +38,7 @@ const NOTIFICATION_PREF_KEYS = [
 ] as const
 
 const mocks = vi.hoisted(() => ({
+  officialEnabled: true,
   agentSessionGetById: vi.fn(),
   agentApprovalListener: undefined as ((event: ApprovalRequestedEvent) => void) | undefined,
   applicationGet: vi.fn(),
@@ -65,6 +66,13 @@ const mocks = vi.hoisted(() => ({
   streamApprovalListener: undefined as ((event: ApprovalRequestedEvent) => void) | undefined,
   subscribeMultipleChanges: vi.fn(),
   topicGetById: vi.fn()
+}))
+
+vi.mock('@shared/utils/constants', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  get ENABLE_CHERRY_OFFICIAL_SERVICES() {
+    return mocks.officialEnabled
+  }
 }))
 
 vi.mock('@application', async () => {
@@ -254,7 +262,8 @@ describe('NotificationService', () => {
       }
       if (name === 'ConversationNavigationService')
         return { focusOrOpen: mocks.focusOrOpen, isActiveInFocusedWindow: mocks.isActiveInFocusedWindow }
-      if (name === 'WindowManager') return { getWindowInfosByType: mocks.getWindowInfosByType }
+      if (name === 'WindowManager')
+        return { getWindowInfosByType: mocks.getWindowInfosByType, getWindowsByType: () => [] }
       if (name === 'IpcApiService') return { send: mocks.send, broadcastToType: mocks.broadcastToType }
       if (name === 'MainWindowService') return { showMainWindow: mocks.showMainWindow }
       if (name === 'PreferenceService') {
@@ -334,6 +343,19 @@ describe('NotificationService', () => {
       await announcements._doStop()
       await scheduler._doStop()
       vi.clearAllTimers()
+    })
+
+    it('leaves official announcements idle in MEA even when the old preference is enabled', async () => {
+      mocks.officialEnabled = false
+      try {
+        mocks.preferenceValues['app.notification.center.official.enabled'] = true
+        await announcements._doAllReady()
+        await vi.advanceTimersByTimeAsync(interval + 5000)
+        expect(mocks.fetch).not.toHaveBeenCalled()
+        expect(mocks.focusListeners.size).toBe(0)
+      } finally {
+        mocks.officialEnabled = true
+      }
     })
 
     it('refreshes after the foreground cooldown, coalesces internal handoffs and cancels focus subscriptions', async () => {
@@ -1029,6 +1051,35 @@ describe('NotificationService', () => {
     expect(notificationRecordService.getById(record.id)?.readAt).not.toBeNull()
     notificationRecordService.dismiss(record.id)
     expect(notificationRecordService.getById(record.id)).toBeNull()
+  })
+
+  it.each([
+    ['current record', 'stored-run'],
+    ['legacy record', undefined]
+  ] as const)('opens the exact scheduled result for a %s', async (_, runId) => {
+    const taskId = 'schedule-result'
+    vi.spyOn(agentTaskService, 'getTaskById').mockReturnValue({
+      id: taskId
+    } as NonNullable<ReturnType<typeof agentTaskService.getTaskById>>)
+    const record = notificationRecordService.create({
+      eventKey: 'task-result:["scheduled-task","legacy-run"]',
+      category: 'system',
+      kind: 'task-completion',
+      title: 'Daily check',
+      message: 'Finished',
+      createdAt: Date.now(),
+      target: { kind: 'scheduled-task', taskId, ...(runId ? { runId } : {}) }
+    })!
+
+    await activateNotification(record.id)
+
+    expect(mocks.showMainWindow).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        kind: 'navigation',
+        to: `/app/scheduled-tasks?taskId=${taskId}&notificationId=${record.id}&runId=${runId ?? 'legacy-run'}`
+      })
+    )
+    expect(notificationRecordService.getById(record.id)?.readAt).not.toBeNull()
   })
 
   it('records a scheduled failure without a conversation and rejects a deleted schedule', async () => {

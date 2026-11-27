@@ -7,6 +7,7 @@ import { loggerService } from '@logger'
 import { DoctorPopup } from '@renderer/components/doctor'
 import { useAccountSubmenu } from '@renderer/hooks/useAccountSubmenu'
 import { useOpenReleaseNotes } from '@renderer/hooks/useOpenReleaseNotes'
+import { ENABLE_CHERRY_OFFICIAL_SERVICES } from '@shared/utils/constants'
 
 const logger = loggerService.withContext('HelpMenu')
 
@@ -79,10 +80,14 @@ export function HelpMenu({ onRequestClose }: { onRequestClose?: () => void }) {
               size="sm"
               className="h-8 gap-2 rounded-md border-0 bg-transparent px-2 py-0 text-[13px] leading-5 [&_svg]:text-muted-foreground"
               icon={<FileArchive size={16} />}
-              label={t('settings.about.feedback.diagnostics.title')}
+              label={t(
+                ENABLE_CHERRY_OFFICIAL_SERVICES
+                  ? 'settings.about.feedback.diagnostics.title'
+                  : 'settings.doctor.panels.export'
+              )}
               onClick={() =>
                 runAfterClose(async () => {
-                  await DoctorPopup.show({ initialPanel: 'report' })
+                  await DoctorPopup.show({ initialPanel: ENABLE_CHERRY_OFFICIAL_SERVICES ? 'report' : 'export' })
                 })
               }
             />

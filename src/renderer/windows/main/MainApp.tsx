@@ -35,9 +35,7 @@ import { registerImageModeChooser } from '@renderer/services/imageExportModeChoo
 import { WindowFileEditRecovery } from '@renderer/windows/WindowFileEditRecovery'
 import type { Tab } from '@shared/data/cache/cacheValueTypes'
 
-import { useAppUpdateHandler } from './hooks/useAppUpdateHandler'
 import { useAutoBackupEvents } from './hooks/useAutoBackupEvents'
-import { useCherryCloudSubscriptionReminder } from './hooks/useCherryCloudSubscriptionReminder'
 import { useTopicNamingErrorNotification } from './hooks/useTopicNamingErrorNotification'
 import { PrivacyPolicyUpdateGate } from './privacy/PrivacyPolicyUpdateGate'
 
@@ -92,11 +90,9 @@ function MainWindowRuntime(): null {
     console.timeEnd('init')
   }, [])
 
-  useAppUpdateHandler()
   useAutoBackupEvents()
   useStorageMonitorNotification()
   useTopicNamingErrorNotification()
-  useCherryCloudSubscriptionReminder()
 
   return null
 }

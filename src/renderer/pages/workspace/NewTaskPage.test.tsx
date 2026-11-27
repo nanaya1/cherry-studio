@@ -27,6 +27,7 @@ const mocks = vi.hoisted(() => ({
   closeConversationTabs: vi.fn(),
   toastError: vi.fn(),
   updateModel: vi.fn(),
+  updateSession: vi.fn(),
   preferenceValues: {} as Record<string, unknown>,
   agentModel: null as string | null,
   assistants: [{ id: 'assistant-1' }, { id: 'assistant-2' }],
@@ -233,6 +234,10 @@ vi.mock('@renderer/hooks/agent/useAgent', () => ({
   useUpdateAgent: () => ({ updateModel: mocks.updateModel })
 }))
 
+vi.mock('@renderer/hooks/agent/useSession', () => ({
+  useUpdateSession: () => ({ updateSession: mocks.updateSession })
+}))
+
 vi.mock('@renderer/hooks/resourceCatalog', () => ({
   useAgentMutationsById: () => ({ updateAgent: mocks.updateAgent }),
   useSkillMutationsById: () => ({ updateGlobalEnabled: mocks.updateGlobalEnabled })
@@ -263,7 +268,7 @@ vi.mock('@renderer/hooks/useAssistant', () => ({
 }))
 
 vi.mock('@renderer/hooks/useModel', () => ({
-  useModelById: () => ({ model: { id: 'model' }, isLoading: false })
+  useModelById: (id?: string) => ({ model: { id: id ?? 'model' }, isLoading: false })
 }))
 
 vi.mock('@renderer/hooks/useProvider', () => ({
@@ -347,6 +352,7 @@ beforeEach(() => {
   mocks.preferenceValues = { 'chat.default_model_id': 'provider:model' }
   mocks.agentModel = null
   mocks.updateModel.mockResolvedValue({ id: 'craftsman-agent' })
+  mocks.updateSession.mockReset().mockResolvedValue({ id: 'session-1', model: 'provider::selected' })
   mocks.reuseOrCreateTopic.mockResolvedValue({ topic: { id: 'topic-1' } })
   mocks.reuseOrCreateSession.mockResolvedValue({
     session: { id: 'session-1' },
@@ -747,6 +753,30 @@ describe('NewTaskPage', () => {
 
     expect(mocks.reuseOrCreateTopic).toHaveBeenCalledTimes(1)
     expect(mocks.streamOpen).toHaveBeenCalledTimes(2)
+  })
+
+  it('keeps the selected model in the draft and updates only the real session before streaming', async () => {
+    render(<NewTaskPage />)
+    await selectAgent()
+    act(() => {
+      const selectModel = mocks.agentProps?.onDraftModelSelect as (model: { id: string }) => void
+      selectModel({ id: 'provider::selected' })
+    })
+
+    expect(mocks.agentProps?.resolvedModel).toMatchObject({ id: 'provider::selected' })
+    expect(mocks.updateSession).not.toHaveBeenCalled()
+    expect(mocks.reuseOrCreateSession).not.toHaveBeenCalled()
+    mocks.streamOpen.mockImplementationOnce(async () => {
+      expect(mocks.updateSession).toHaveBeenCalledWith(
+        { id: 'session-1', model: 'provider::selected' },
+        { showSuccessToast: false }
+      )
+      return { mode: 'started', reservedMessages: [] }
+    })
+    await expect(
+      getAgentOnSend()(undefined, { body: { userMessageParts: [{ type: 'text', text: 'hello' }] } })
+    ).resolves.toBe(true)
+    expect(mocks.streamOpen).toHaveBeenCalledTimes(1)
   })
 
   it('prevents duplicate agent creation and stream opening while the first send is pending', async () => {

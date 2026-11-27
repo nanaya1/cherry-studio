@@ -31,6 +31,11 @@ const mocks = vi.hoisted(() => ({
   windowLookup: vi.fn(() => ({ isDestroyed: (): boolean => false }))
 }))
 
+vi.mock('@shared/utils/constants', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  ENABLE_CHERRY_OFFICIAL_SERVICES: true
+}))
+
 vi.mock('@main/i18n', () => ({ t: (key: string) => key }))
 vi.mock('systeminformation', () => ({
   uuid: vi.fn(async () => ({ os: 'abcdef12123456789abc1234567890ab', hardware: '', macs: [] }))

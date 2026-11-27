@@ -10,6 +10,11 @@ import { t } from '@main/i18n'
 import type { CherryCloudStatus } from '@shared/ipc/schemas/cherryCloud'
 
 const edition = vi.hoisted(() => ({ current: 'cn' as 'cn' | 'global' }))
+vi.mock('@shared/utils/constants', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  ENABLE_CHERRY_OFFICIAL_SERVICES: true
+}))
+
 vi.mock('@main/utils/appEdition', () => ({ getAppEdition: () => edition.current }))
 
 const { publish } = vi.hoisted(() => ({

@@ -25,6 +25,7 @@ import { openSettingsTab } from '@renderer/services/mainWindowNavigation'
 import { checkDoctorAgentModel, healthCheckErrorToDisplayString } from '@renderer/services/modelHealthCheck'
 import { serializeHealthCheckError } from '@renderer/utils/error'
 import { classifyError } from '@renderer/utils/errorClassifier'
+import { isProviderVisibleInMea } from '@renderer/utils/providerSettings'
 import type { Model } from '@shared/data/types/model'
 import { normalizeSettingsPath, type SettingsPath } from '@shared/data/types/settingsPath'
 import type { DoctorSubjectRef } from '@shared/types/doctor'
@@ -157,7 +158,7 @@ function ModelPicker({
   const filter = useCallback<ModelSelectorFilter>(
     (candidate, provider) =>
       provider?.isEnabled !== false &&
-      !(provider && isExternalCliProvider(provider)) &&
+      !(provider && (isExternalCliProvider(provider) || !isProviderVisibleInMea(provider))) &&
       isGatewayRoutableModel(candidate),
     []
   )

@@ -35,12 +35,13 @@ import { ProviderSettingsPage } from '@renderer/pages/settings/ProviderSettings'
 import { toast } from '@renderer/services/toast'
 import { getAppEdition } from '@renderer/utils/appEdition'
 import { isWin } from '@renderer/utils/platform'
+import { isProviderVisibleInMea } from '@renderer/utils/providerSettings'
 import { isProtectedBuiltinAgentRole } from '@shared/ai/builtinAgent'
 import type { OnboardingProviderSetupStatus } from '@shared/data/preference/preferenceTypes'
 import { CHERRYAI_DEFAULT_UNIQUE_MODEL_ID, isManagedCherryProviderId } from '@shared/data/presets/cherryai'
 import type { Model, UniqueModelId } from '@shared/data/types/model'
 import type { CherryCloudStatus } from '@shared/ipc/schemas/cherryCloud'
-import { LATEST_PRIVACY_POLICY_VERSION } from '@shared/utils/constants'
+import { ENABLE_CHERRY_OFFICIAL_SERVICES, LATEST_PRIVACY_POLICY_VERSION } from '@shared/utils/constants'
 import { defaultLanguage } from '@shared/utils/languages'
 import { isNonChatModel } from '@shared/utils/model'
 
@@ -105,12 +106,14 @@ export default function OnboardingPage({
   // login: handleCherryCloudLogin / cancelLogin: handleCherryCloudLoginCancel /
   // isCancellingLogin: isCancellingCloudLogin / isAuthorizing: isCloudAuthorizing
   // MEA: enableCherryAccountLogin（上游开关，默认 false）只用于注释掉的登录按钮 JSX；
-  // MEA 不启用该开关，登录入口保持隐藏，云状态订阅按 CN 版本保留。
+  // MEA 不启用该开关，登录入口保持隐藏，并关闭云状态订阅。
   void enableCherryAccountLogin
-  const { status: cloudStatus } = useCherryAccountSession(isCnEdition)
+  const { status: cloudStatus } = useCherryAccountSession(isCnEdition && ENABLE_CHERRY_OFFICIAL_SERVICES)
   cloudStatusRef.current = cloudStatus
   const eligibleProviderIds = new Set(
-    enabledProviders.filter((provider) => !isManagedCherryProviderId(provider.id)).map((provider) => provider.id)
+    enabledProviders
+      .filter((provider) => isProviderVisibleInMea(provider) && !isManagedCherryProviderId(provider.id))
+      .map((provider) => provider.id)
   )
   const canCompleteModelSetup = [defaultModel, quickModel, translateModel].every(
     (model) => model && eligibleProviderIds.has(model.providerId) && isOnboardingModel(model)

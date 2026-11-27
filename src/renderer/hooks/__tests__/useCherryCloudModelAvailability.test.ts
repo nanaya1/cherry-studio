@@ -16,6 +16,11 @@ const mocks = vi.hoisted(() => ({
   statusChanged: undefined as (() => void) | undefined
 }))
 
+vi.mock('@shared/utils/constants', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  ENABLE_CHERRY_OFFICIAL_SERVICES: true
+}))
+
 vi.mock('@renderer/ipc', async () => {
   const { useEffect } = await import('react')
   const listeners = new Set<(receipt: CherryCloudAccountReceipt) => void>()

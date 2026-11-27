@@ -49,7 +49,7 @@ export function showLegacyUpgradeWindow(
       show: false,
       frame: false,
       autoHideMenuBar: true,
-      title: 'Cherry Studio',
+      title: 'MEA Cowork',
       backgroundColor: nativeTheme.shouldUseDarkColors ? '#18181b' : '#ffffff',
       webPreferences: {
         preload: application.getPath('app.root', 'out/preload/simplest.js'),

@@ -5,6 +5,7 @@ import type { MessageListActions } from '@renderer/components/chat/messages/type
 import type { ErrorDetailContentProps } from '@renderer/components/ErrorDetailModal'
 import { openRoute } from '@renderer/services/mainWindowNavigation'
 import type { DoctorSubjectRef } from '@shared/types/doctor'
+import { ENABLE_CHERRY_OFFICIAL_SERVICES } from '@shared/utils/constants'
 
 import type { MessageListItem } from '../types'
 import { getMessageListItemModel } from '../utils/messageListItem'
@@ -65,7 +66,7 @@ export function useMessageErrorActions(options: MessageErrorActionOptions): Mess
 
   return useMemo(
     () => ({
-      diagnoseMessageError,
+      diagnoseMessageError: ENABLE_CHERRY_OFFICIAL_SERVICES ? diagnoseMessageError : undefined,
       openErrorDetail,
       navigateErrorTarget
     }),

@@ -116,6 +116,8 @@ describe('MCP export transfer', () => {
   it('excludes all builtin forms before detecting name collisions', () => {
     const builtin = server('same', { type: 'stdio', installSource: 'builtin' })
     expect(isExportableMcpServer(builtin)).toBe(false)
+    expect(isExportableMcpServer(server('filesystem', { type: 'stdio' }))).toBe(false)
+    expect(isExportableMcpServer(server('@cherry/custom', { type: 'stdio' }))).toBe(true)
     expect(
       JSON.parse(
         serializeMcpServersForExport([

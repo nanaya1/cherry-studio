@@ -9,6 +9,7 @@ import { cn } from '@renderer/utils/style'
 
 import { useOptionalRightPanelState, useRightPanelComposerElevated } from '../panes/Shell'
 import { OverlayHost } from './OverlayHost'
+import { PageSidebar } from './PageSidebar'
 import {
   CHAT_SHELL_TRANSITION,
   type ChatPanePosition,
@@ -26,6 +27,7 @@ interface ChatAppShellBaseProps {
   pane?: ReactNode
   paneOpen?: boolean
   panePosition?: ChatPanePosition
+  showLeftPane?: boolean
   sidePanel?: ReactNode
   centerOverlay?: ReactNode
   /** Overlay scoped to the center area but rendered above the center's transform/stacking layer. */
@@ -274,6 +276,7 @@ export function ChatAppShell({
   pane,
   paneOpen,
   panePosition = 'left',
+  showLeftPane = false,
   main,
   centerContent,
   bottomComposer,
@@ -289,6 +292,7 @@ export function ChatAppShell({
   centerRef,
   centerClassName,
   onPaneAutoCollapseChange,
+  onPaneCollapse,
   paneManualToggle
 }: ChatAppShellProps) {
   const hasCenterContent = centerContent !== undefined
@@ -300,7 +304,7 @@ export function ChatAppShell({
   // wipe as visible scale distortion, so the center reflows instantly instead.
   const centerTransition = rightPanelState?.layoutAnimationPending ? { duration: 0 } : CHAT_SHELL_TRANSITION
   const rootRef = useRef<HTMLDivElement>(null)
-  const [listResizing] = useState(false)
+  const [listResizing, setListResizing] = useState(false)
 
   useResourceListAutoCollapse({
     leftPaneOpen,
@@ -317,9 +321,11 @@ export function ChatAppShell({
       id={rootId}
       className={cn('relative flex min-w-0 flex-1 flex-col overflow-hidden', rootClassName)}>
       <div id={contentId} className="flex min-w-0 flex-1 shrink flex-row overflow-hidden">
-        {/* <PageSidebar open={leftPaneOpen} onPaneCollapse={onPaneCollapse} onResizingChange={setListResizing}>
-          {panePosition === 'left' ? pane : undefined}
-        </PageSidebar> */}
+        {showLeftPane && panePosition === 'left' && (
+          <PageSidebar open={leftPaneOpen} onPaneCollapse={onPaneCollapse} onResizingChange={setListResizing}>
+            {pane}
+          </PageSidebar>
+        )}
 
         <div data-chat-app-shell-main-region className="relative flex min-w-0 flex-1 overflow-hidden">
           <div className="relative flex min-w-0 flex-1 flex-col">

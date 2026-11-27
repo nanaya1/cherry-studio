@@ -16,6 +16,7 @@ export interface ConversationShellProps {
   pane?: ReactNode
   paneOpen?: boolean
   panePosition?: ChatPanePosition
+  showLeftPane?: boolean
   topBar?: ReactNode
   topRightTool?: ReactNode
   showTopRightToolWhenPaneOpen?: boolean
@@ -40,6 +41,7 @@ export default function ConversationShell({
   pane,
   paneOpen,
   panePosition,
+  showLeftPane,
   topBar,
   topRightTool,
   showTopRightToolWhenPaneOpen = false,
@@ -81,6 +83,7 @@ export default function ConversationShell({
             pane={pane}
             paneOpen={paneOpen}
             panePosition={panePosition}
+            showLeftPane={showLeftPane}
             topBar={resolvedTopBar}
             centerContent={center}
             sidePanel={sidePanel}

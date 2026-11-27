@@ -15,6 +15,7 @@ import {
 import { useTheme } from '@renderer/hooks/useTheme'
 import { toast } from '@renderer/services/toast'
 import type { NotificationSource } from '@renderer/types/notification'
+import { ENABLE_CHERRY_OFFICIAL_SERVICES } from '@shared/utils/constants'
 
 const logger = loggerService.withContext('NotificationSettings')
 
@@ -57,7 +58,10 @@ const NotificationSettings: FC = () => {
       <SettingGroup theme={theme}>
         <SettingTitle>{t('settings.notification.center')}</SettingTitle>
         <SettingDivider />
-        {(['system', 'usage', 'official'] as const).map((category) => (
+        {(ENABLE_CHERRY_OFFICIAL_SERVICES
+          ? (['system', 'usage', 'official'] as const)
+          : (['system', 'usage'] as const)
+        ).map((category) => (
           <Fragment key={category}>
             <SettingRow id={`setting-notifications-${category}-center`} className="scroll-mt-6">
               <SettingRowTitle>{categoryLabels[category]}</SettingRowTitle>
@@ -180,15 +184,19 @@ const NotificationSettings: FC = () => {
             onCheckedChange={(value) => void saveSettings({ usagePopups: value })}
           />
         </SettingRow>
-        <SettingDivider />
-        <SettingRow id="setting-notifications-update-notification" className="scroll-mt-6">
-          <SettingRowTitle>{t('settings.notification.update')}</SettingRowTitle>
-          <Switch
-            aria-label={t('settings.notification.update')}
-            checked={notificationSettings.update}
-            onCheckedChange={(v) => handleNotificationChange('update', v)}
-          />
-        </SettingRow>
+        {ENABLE_CHERRY_OFFICIAL_SERVICES && (
+          <>
+            <SettingDivider />
+            <SettingRow id="setting-notifications-update-notification" className="scroll-mt-6">
+              <SettingRowTitle>{t('settings.notification.update')}</SettingRowTitle>
+              <Switch
+                aria-label={t('settings.notification.update')}
+                checked={notificationSettings.update}
+                onCheckedChange={(v) => handleNotificationChange('update', v)}
+              />
+            </SettingRow>
+          </>
+        )}
         {/* <SettingDivider /> */}
         {/* <SettingRow id="setting-notifications-mini-app-notification" className="scroll-mt-6">
           <SettingRowTitle>{t('settings.notification.mini_app')}</SettingRowTitle>

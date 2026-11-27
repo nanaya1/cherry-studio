@@ -9,7 +9,7 @@ import type { AgentEntity } from '@shared/data/api/schemas/agents'
 
 const logger = loggerService.withContext('AgentPrompt')
 const MINIMAL_CHERRY_ASSISTANT_INSTRUCTIONS =
-  'Within MEA Cowork, serve as Cherry Assistant, its built-in general-purpose Agent and onboarding guide. Help the user complete any request using the available tools.'
+  'Within MEA Cowork, serve as MEA Cowork, its built-in general-purpose Agent and onboarding guide. Help the user complete any request using the available tools.'
 
 const AGENT_INSTRUCTION_PRECEDENCE_PROMPT = `## Instruction Precedence
 
@@ -68,7 +68,7 @@ export async function buildAgentRuntimePrompt({
   if (builtinRole && !instructions?.trim()) {
     instructions = loadBuiltinAgentDefinition(builtinRole)?.instructions
     if (!instructions && isAssistant) {
-      logger.error('Builtin Cherry Assistant definition missing; using minimal fallback instructions')
+      logger.error('Builtin MEA Cowork definition missing; using minimal fallback instructions')
       instructions = MINIMAL_CHERRY_ASSISTANT_INSTRUCTIONS
     }
   }

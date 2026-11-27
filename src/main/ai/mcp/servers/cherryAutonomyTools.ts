@@ -1131,7 +1131,7 @@ function assertConfigMutationAuthorized(ctx: AutonomyToolsContext): void {
   const interaction = application.get('AgentSessionRuntimeService').getInteractionState(ctx.sessionId)
   if (interaction.currentTurn === 'headless') {
     throw new Error(
-      'Headless channel or scheduled turns cannot mutate agent configuration. Ask the user to make this change in Cherry Studio.'
+      'Headless channel or scheduled turns cannot mutate agent configuration. Ask the user to make this change in MEA Cowork Studio.'
     )
   }
 }
@@ -1178,7 +1178,7 @@ export function registerAutonomyTools(server: McpServer, ctx: AutonomyToolsConte
     SESSION_LIST_TOOL_NAME,
     {
       description:
-        'List active Cherry Agent Sessions that can receive a message. Returns both agentId and sessionId for every address.',
+        'List active MEA Cowork Agent Sessions that can receive a message. Returns both agentId and sessionId for every address.',
       inputSchema: SessionListInputSchema
     },
     (args) => runSessionTool(ctx, () => listSessions(ctx, args))
@@ -1186,7 +1186,7 @@ export function registerAutonomyTools(server: McpServer, ctx: AutonomyToolsConte
   server.registerTool(
     AGENT_LIST_TOOL_NAME,
     {
-      description: 'List available Cherry Agents with their public identity and runtime readiness.',
+      description: 'List available MEA Cowork Agents with their public identity and runtime readiness.',
       inputSchema: z.object({})
     },
     () => runSessionTool(ctx, listAgents)
@@ -1194,7 +1194,7 @@ export function registerAutonomyTools(server: McpServer, ctx: AutonomyToolsConte
   server.registerTool(
     SESSION_SEARCH_TOOL_NAME,
     {
-      description: 'Search visible Cherry Agent Sessions by metadata and message evidence.',
+      description: 'Search visible MEA Cowork Agent Sessions by metadata and message evidence.',
       inputSchema: SessionSearchInputSchema
     },
     (args) => runSessionTool(ctx, () => searchSessions(ctx, args))

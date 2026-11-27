@@ -1,7 +1,13 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, redirect } from '@tanstack/react-router'
 
-import TasksSettings from '@renderer/pages/settings/TasksSettings'
+export function redirectLegacyAppTask({
+  params,
+  search
+}: {
+  params: { taskId: string }
+  search: { runId?: string; notificationId?: string }
+}) {
+  throw redirect({ to: '/app/scheduled-tasks', search: { ...search, taskId: params.taskId }, replace: true })
+}
 
-export const Route = createFileRoute('/app/scheduled-tasks/$taskId')({
-  component: () => <TasksSettings routeBase="/app/scheduled-tasks" />
-})
+export const Route = createFileRoute('/app/scheduled-tasks/$taskId')({ beforeLoad: redirectLegacyAppTask })

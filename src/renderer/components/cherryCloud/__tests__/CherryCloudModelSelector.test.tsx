@@ -7,6 +7,11 @@ import { startCherryCloudSubscription } from '@renderer/services/cherryCloudSubs
 
 import { CherryCloudModelSelector } from '../CherryCloudModelSelector'
 
+vi.mock('@shared/utils/constants', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  ENABLE_CHERRY_OFFICIAL_SERVICES: true
+}))
+
 vi.unmock('@cherrystudio/ui')
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => (key === 'settings.subscription.go_to_subscribe' ? 'Subscribe' : key) })

@@ -1920,7 +1920,7 @@ export class BinaryManager extends BaseService {
               if (source === 'system') {
                 return {
                   kind: 'failed',
-                  error: `Cannot satisfy ${name}@${targetVersion}: source=system; installed version cannot be verified. Cherry Studio cannot update or replace this system installation. Manage it outside Cherry Studio, or omit the version target (requestedVersion in cli_install) to use the available executable.`
+                  error: `Cannot satisfy ${name}@${targetVersion}: source=system; installed version cannot be verified. MEA Cowork cannot update or replace this system installation. Manage it outside MEA Cowork, or omit the version target (requestedVersion in cli_install) to use the available executable.`
                 }
               }
               const version = availability.version
@@ -1928,7 +1928,7 @@ export class BinaryManager extends BaseService {
               if (requested === null || !version || requested !== semverValid(version)) {
                 return {
                   kind: 'failed',
-                  error: `Cannot satisfy ${name}@${targetVersion}: source=bundled; bundled version=${version ?? 'unknown (version marker missing or empty)'}. The requested version could not be verified as an exact semantic-version match. Omit the version target (requestedVersion in cli_install) to use the bundled copy, or update/reinstall Cherry Studio; bundled tools cannot be updated independently.`
+                  error: `Cannot satisfy ${name}@${targetVersion}: source=bundled; bundled version=${version ?? 'unknown (version marker missing or empty)'}. The requested version could not be verified as an exact semantic-version match. Omit the version target (requestedVersion in cli_install) to use the bundled copy, or update/reinstall MEA Cowork; bundled tools cannot be updated independently.`
                 }
               }
             }

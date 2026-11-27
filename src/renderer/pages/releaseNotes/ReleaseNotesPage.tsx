@@ -5,6 +5,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, PageHeade
 import { loggerService } from '@logger'
 import { ReleaseNotes } from '@renderer/components/ReleaseNotes'
 import { ipcApi } from '@renderer/ipc'
+import { ENABLE_CHERRY_OFFICIAL_SERVICES } from '@shared/utils/constants'
 import type { ReleaseNotesEntry } from '@shared/utils/releaseNotes'
 import { localizeReleaseNotes, mergeReleaseHistory, mergeReleaseNotes } from '@shared/utils/releaseNotes'
 
@@ -24,6 +25,7 @@ export default function ReleaseNotesPage() {
   const releases = remoteReleases ? mergeReleaseHistory(remoteReleases, bundledReleases) : bundledReleases
 
   useEffect(() => {
+    if (!ENABLE_CHERRY_OFFICIAL_SERVICES) return
     let active = true
 
     void ipcApi

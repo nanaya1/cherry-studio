@@ -4,6 +4,7 @@ import { loggerService } from '@logger'
 import { useModels } from '@renderer/hooks/useModel'
 import { useProviders } from '@renderer/hooks/useProvider'
 import { ipcApi } from '@renderer/ipc'
+import { isProviderVisibleInMea } from '@renderer/utils/providerSettings'
 import type { Model } from '@shared/data/types/model'
 import type { Provider } from '@shared/data/types/provider'
 
@@ -59,12 +60,14 @@ async function loadOvmsState(): Promise<OvmsState> {
  */
 export function buildPaintingProviderOptions(input: {
   models: readonly Model[]
-  providers: readonly Pick<Provider, 'id' | 'isEnabled'>[]
+  providers: readonly Pick<Provider, 'id' | 'isEnabled' | 'presetProviderId'>[]
   ovmsSupported: boolean
   ovmsStatus: OvmsStatus
 }): string[] {
   const enabledProviderIds = new Set(
-    input.providers.filter((provider) => provider.isEnabled).map((provider) => provider.id)
+    input.providers
+      .filter((provider) => provider.isEnabled && isProviderVisibleInMea(provider))
+      .map((provider) => provider.id)
   )
   const capabilityProviderIds = new Set<string>()
   for (const model of input.models) {

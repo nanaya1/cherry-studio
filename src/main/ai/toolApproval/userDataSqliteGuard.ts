@@ -36,7 +36,7 @@ const TOOL_BINDINGS = {
   'pi-durable': PI_TOOL_BINDING
 } satisfies Record<AgentType, ToolBinding>
 
-export const USER_DATA_SQLITE_GUARD_REASON = 'Access to SQLite files inside Cherry Studio user data is blocked.'
+export const USER_DATA_SQLITE_GUARD_REASON = 'Access to SQLite files inside MEA Cowork user data is blocked.'
 
 export interface UserDataSqliteGuardDecision {
   ruleId: 'user-data-sqlite-write'

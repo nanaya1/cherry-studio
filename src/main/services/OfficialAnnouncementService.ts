@@ -4,6 +4,7 @@ import * as z from 'zod'
 import { application } from '@application'
 import { loggerService } from '@logger'
 import { BaseService, DependsOn, Injectable, Phase, ServicePhase } from '@main/core/lifecycle'
+import { ENABLE_CHERRY_OFFICIAL_SERVICES } from '@shared/utils/constants'
 
 const logger = loggerService.withContext('OfficialAnnouncementService')
 const SCHEDULE_ID = 'official-announcement:poll'
@@ -43,6 +44,7 @@ export class OfficialAnnouncementService extends BaseService {
   private removeFocusListeners?: () => void
 
   protected onInit(): void {
+    if (!ENABLE_CHERRY_OFFICIAL_SERVICES) return
     const preferences = application.get('PreferenceService')
     this.registerDisposable(() => this.cancel())
     this.registerDisposable(
@@ -53,6 +55,7 @@ export class OfficialAnnouncementService extends BaseService {
   }
 
   protected onAllReady(): void {
+    if (!ENABLE_CHERRY_OFFICIAL_SERVICES) return
     this.ready = true
     this.configure()
   }

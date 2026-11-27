@@ -4,11 +4,19 @@ import { useState } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
+  officialEnabled: true,
   ipcRequest: vi.fn(),
   loggerError: vi.fn(),
   openRoute: vi.fn(),
   showDoctor: vi.fn(),
   toastError: vi.fn()
+}))
+
+vi.mock('@shared/utils/constants', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  get ENABLE_CHERRY_OFFICIAL_SERVICES() {
+    return mocks.officialEnabled
+  }
 }))
 
 vi.mock('@logger', () => ({
@@ -49,7 +57,18 @@ function ControlledFeedbackDialog() {
 describe('FeedbackDialog', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mocks.officialEnabled = true
     mocks.ipcRequest.mockResolvedValue({ sessionId: 'feedback-session' })
+  })
+
+  it('offers local export and keeps Cherry Support hidden in MEA', async () => {
+    mocks.officialEnabled = false
+    render(<ControlledFeedbackDialog />)
+    expect(screen.queryByRole('button', { name: /settings.about.feedback.agent.title/ })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /settings.doctor.panels.export/ }))
+    await waitFor(() => expect(mocks.showDoctor).toHaveBeenCalledWith({ initialPanel: 'export' }))
+    expect(mocks.ipcRequest).not.toHaveBeenCalled()
   })
 
   it('shows diagnostics and Cherry Support while hiding the GitHub Issues entry', () => {

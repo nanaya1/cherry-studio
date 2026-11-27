@@ -258,7 +258,7 @@ const CreateAgentInputSchema = z.object({
     .string()
     .optional()
     .describe(
-      'Optional model id in the form "providerId::modelId" (e.g. "cherryin::agent/glm-5.1", "anthropic::claude-sonnet"). When omitted, the new agent uses Cherry Assistant\'s current model.'
+      'Optional model id in the form "providerId::modelId" (e.g. "cherryin::agent/glm-5.1", "anthropic::claude-sonnet"). When omitted, the new agent uses MEA Cowork\'s current model.'
     )
 })
 

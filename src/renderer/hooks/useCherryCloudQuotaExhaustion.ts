@@ -6,6 +6,7 @@ import { getQuotaRecoveryTime } from '@renderer/utils/cherryCloudQuota'
 import { isManagedCherryCloudModel } from '@shared/data/presets/cherryai'
 import { type Model, parseUniqueModelId } from '@shared/data/types/model'
 import type { CherryCloudAccountPlans } from '@shared/ipc/schemas/cherryCloud'
+import { ENABLE_CHERRY_OFFICIAL_SERVICES } from '@shared/utils/constants'
 
 export type CherryCloudQuotaExhaustion = {
   isFreeModel: boolean
@@ -39,7 +40,7 @@ export function useCherryCloudQuotaExhaustion(
   model: Model | undefined,
   includeAgentOnlyModels = false
 ): CherryCloudQuotaExhaustion | null {
-  const isCloudModel = Boolean(model && isManagedCherryCloudModel(model.providerId))
+  const isCloudModel = ENABLE_CHERRY_OFFICIAL_SERVICES && Boolean(model && isManagedCherryCloudModel(model.providerId))
   const { isModelFree, isModelLocked, isModelUnavailable, availabilityFreshness, availabilityError } =
     useCherryCloudModelAvailability(isCloudModel)
   const locked = Boolean(model && isCloudModel && isModelLocked(model, includeAgentOnlyModels))

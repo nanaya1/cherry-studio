@@ -2,6 +2,7 @@ import * as Sentry from '@sentry/electron/main'
 
 import { application } from '@application'
 import { getClientId } from '@main/utils/systemInfo'
+import { ENABLE_CHERRY_OFFICIAL_SERVICES } from '@shared/utils/constants'
 import { getSentryBuildContext, getSentryLogContext, sanitizeSentryEvent } from '@shared/utils/sentry'
 
 import { dependencies, name, version } from '../../../../package.json'
@@ -36,7 +37,7 @@ function consentGranted(): boolean {
 }
 
 export function initSentry(): void {
-  if (import.meta.env.DEV) return
+  if (import.meta.env.DEV || !ENABLE_CHERRY_OFFICIAL_SERVICES) return
   const buildContext = getSentryBuildContext(name, version, __APP_EDITION__)
 
   Sentry.init({

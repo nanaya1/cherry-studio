@@ -29,7 +29,7 @@ import { getWindowsBackgroundMaterial, replaceDevtoolsFont } from '@main/utils/w
 import { IpcChannel } from '@shared/IpcChannel'
 import type { MainWindowInitData } from '@shared/types/mainWindow'
 import { normalizeBrowserEntryUrl, normalizeBrowserUrl } from '@shared/utils/browserUrl'
-import { XUELANG_API_HOST } from '@shared/utils/constants'
+import { ENABLE_CHERRY_OFFICIAL_SERVICES, XUELANG_API_HOST } from '@shared/utils/constants'
 import { resolveSafeExternalUrl } from '@shared/utils/externalUrlSafety'
 import { HTML_ARTIFACT_PREVIEW_DATA_URL_PREFIX, HTML_ARTIFACT_PREVIEW_PARTITION } from '@shared/utils/htmlArtifact'
 import { getWebviewPartition, getWebviewSecurityProfile, WebviewSecurityProfile } from '@shared/utils/webviewSecurity'
@@ -533,12 +533,14 @@ export class MainWindowService extends BaseService {
       type: 'warning',
       message: t('dialog.architecture_mismatch.title'),
       detail: t('dialog.architecture_mismatch.detail'),
-      buttons: [t('dialog.architecture_mismatch.download'), t('dialog.architecture_mismatch.later')],
+      buttons: ENABLE_CHERRY_OFFICIAL_SERVICES
+        ? [t('dialog.architecture_mismatch.download'), t('dialog.architecture_mismatch.later')]
+        : [t('common.close')],
       defaultId: 0,
-      cancelId: 1,
+      cancelId: ENABLE_CHERRY_OFFICIAL_SERVICES ? 1 : 0,
       noLink: true
     })
-    if (response === 0) {
+    if (ENABLE_CHERRY_OFFICIAL_SERVICES && response === 0) {
       await shell.openExternal(
         getAppEdition() === 'cn' ? 'https://cherryai.com.cn/download' : 'https://cherryai.com/download'
       )

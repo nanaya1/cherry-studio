@@ -22,6 +22,7 @@ import { DoctorPopup } from '@renderer/components/doctor'
 import { ipcApi } from '@renderer/ipc'
 import { openRoute } from '@renderer/services/mainWindowNavigation'
 import { toast } from '@renderer/services/toast'
+import { ENABLE_CHERRY_OFFICIAL_SERVICES } from '@shared/utils/constants'
 // import { openExternalWebsite } from '@renderer/services/website' // Used by the temporarily hidden GitHub Issues entry.
 
 // export const FEEDBACK_GITHUB_URL = 'https://github.com/CherryHQ/cherry-studio/issues/new/choose'
@@ -119,21 +120,31 @@ export function FeedbackDialog({ open, onOpenChange }: FeedbackDialogProps) {
         <ItemGroup className="min-h-0 gap-3 overflow-y-auto px-2">
           <FeedbackOption
             icon={<FileArchive className="size-5" />}
-            title={t('settings.about.feedback.diagnostics.title')}
-            description={t('settings.about.feedback.diagnostics.description')}
+            title={t(
+              ENABLE_CHERRY_OFFICIAL_SERVICES
+                ? 'settings.about.feedback.diagnostics.title'
+                : 'settings.doctor.panels.export'
+            )}
+            description={t(
+              ENABLE_CHERRY_OFFICIAL_SERVICES
+                ? 'settings.about.feedback.diagnostics.description'
+                : 'settings.doctor.panel_descriptions.export'
+            )}
             recommended
             onSelect={() =>
               selectOption(async () => {
-                await DoctorPopup.show({ initialPanel: 'report' })
+                await DoctorPopup.show({ initialPanel: ENABLE_CHERRY_OFFICIAL_SERVICES ? 'report' : 'export' })
               })
             }
           />
-          <FeedbackOption
-            icon={<Bot className="size-5" />}
-            title={t('settings.about.feedback.agent.title')}
-            description={t('settings.about.feedback.agent.description')}
-            onSelect={() => selectOption(openAgentFeedback)}
-          />
+          {ENABLE_CHERRY_OFFICIAL_SERVICES && (
+            <FeedbackOption
+              icon={<Bot className="size-5" />}
+              title={t('settings.about.feedback.agent.title')}
+              description={t('settings.about.feedback.agent.description')}
+              onSelect={() => selectOption(openAgentFeedback)}
+            />
+          )}
           {/* GitHub Issues entry temporarily hidden. */}
           {/*
           <FeedbackOption

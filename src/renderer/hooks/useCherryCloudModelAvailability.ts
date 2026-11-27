@@ -5,6 +5,7 @@ import useSWR from 'swr'
 import { ipcApi } from '@renderer/ipc'
 import { isManagedCherryAiProviderId, isManagedCherryCloudModel } from '@shared/data/presets/cherryai'
 import type { Model } from '@shared/data/types/model'
+import { ENABLE_CHERRY_OFFICIAL_SERVICES } from '@shared/utils/constants'
 
 import { useCherryCloudReceipt } from './useCherryCloudReceipt'
 
@@ -18,10 +19,10 @@ const CHERRY_CLOUD_AVAILABILITY_REFRESH_INTERVAL_MS = 60_000
  */
 export function useCherryCloudModelAvailability(enabled = true) {
   const { t } = useTranslation()
-  const { receipt, error: receiptError } = useCherryCloudReceipt(enabled)
+  const { receipt, error: receiptError } = useCherryCloudReceipt(enabled && ENABLE_CHERRY_OFFICIAL_SERVICES)
   const scopeId = receipt?.status.scopeId
   useSWR(
-    enabled && scopeId ? [CHERRY_CLOUD_AVAILABILITY_KEY, scopeId] : null,
+    enabled && ENABLE_CHERRY_OFFICIAL_SERVICES && scopeId ? [CHERRY_CLOUD_AVAILABILITY_KEY, scopeId] : null,
     () => ipcApi.request('cherry_cloud.models.sync'),
     {
       dedupingInterval: 5_000,

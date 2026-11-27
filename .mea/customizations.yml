@@ -126,7 +126,7 @@ customizations:
     title: MEA application identity and protocol
     owner: main
     # behavior: Keep MEACowork productName, com.meacowork.desktop appId, meacowork:// protocol, API gateway port 24333, and OpenClaw port 19790.
-    behavior: Keep MEACowork productName, com.meacowork.desktop appId, meacowork:// protocol, API gateway port 24333, and OpenClaw port 19790. Preserve the blue-green brand icon across application packages, UI logos, default avatar, and tray icons; macOS tray artwork must retain a transparent monochrome mask.
+    behavior: Keep MEACowork productName, com.meacowork.desktop appId, meacowork:// protocol, API gateway port 24333, and OpenClaw port 19790. Preserve the blue-green brand icon across application packages, UI logos, default avatar, and tray icons; macOS tray artwork must retain a transparent monochrome mask. Display MEA Cowork in localized UI, window titles, bundled release notes, and legacy provider branding while preserving compatibility identifiers.
     touchpoints:
       - build/icon.png
       - build/icon.ico
@@ -138,6 +138,14 @@ customizations:
       - build/tray_icon_light.png
       - src/renderer/assets/images/logo.png
       - src/renderer/assets/images/avatar.svg
+      - src/renderer/i18n/locales
+      - src/main/i18n/locales
+      - src/renderer/windows/selection/agent/index.html
+      - src/renderer/windows/selection/capsule/index.html
+      - src/renderer/utils/naming.ts
+      - packages/ui/icons/providers/light/cherryin.svg
+      - packages/ui/src/components/icons/providers/cherryin
+      - resources/cherry-studio/release-history.json
       - package.json
       - electron-builder.yml
       - src/main/services/protocol/ProtocolService.ts
@@ -145,6 +153,7 @@ customizations:
       - src/shared/data/preference/preferenceSchemas.ts
     tests:
       - src/main/services/protocol/__tests__/ProtocolService.test.ts
+      - src/renderer/utils/__tests__/naming.test.ts
       - src/main/services/__tests__/OpenClawService.test.ts
       - src/main/features/apiGateway/routes/__tests__/routes.integration.test.ts
 

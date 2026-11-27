@@ -183,22 +183,27 @@ describe('Archive domain batch adapters', () => {
       path: '/assistants',
       Component: AssistantArchiveSection,
       preference: 'assistant.icon_type',
+      icon: 'lucide-message-circle',
       fields: { emoji: '🔭' }
     },
     {
       path: '/agents',
       Component: AgentArchiveSection,
       preference: 'agent.icon_type',
+      icon: 'lucide-bot',
       fields: { configuration: { avatar: '🔭' } }
     }
-  ] as const)('preserves the original avatar in $path', ({ path, Component, preference, fields }) => {
-    MockUsePreferenceUtils.setPreferenceValue(preference, 'emoji')
+  ] as const)('uses the MEA resource icon for $path', ({ path, Component, preference, icon, fields }) => {
+    MockUsePreferenceUtils.setPreferenceValue(preference, 'none')
     mocks.paginatedItemsByPath.set(path, [{ ...deletedTopic('owner-1', 'Astronomer'), ...fields }])
 
-    render(<Component retentionDays={30} isBatchMode={false} isPermanentDeleting={false} onRequestDelete={vi.fn()} />)
+    const { container } = render(
+      <Component retentionDays={30} isBatchMode={false} isPermanentDeleting={false} onRequestDelete={vi.fn()} />
+    )
 
     expect(screen.getByText('Astronomer')).toBeVisible()
-    expect(screen.getAllByText('🔭')[0]).toBeVisible()
+    expect(container.querySelector(`svg.${icon}`)).toBeInTheDocument()
+    expect(screen.queryByText('🔭')).not.toBeInTheDocument()
   })
 
   it('loads only the first output thumbnail of each painting in one batch', async () => {

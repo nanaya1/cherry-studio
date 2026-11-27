@@ -10,6 +10,7 @@ import { getSidebarLayout, type SidebarVisibleLayout } from '@renderer/component
 import { useAppUpdateState } from '@renderer/hooks/useAppUpdateState'
 import { openSettingsTab } from '@renderer/services/mainWindowNavigation'
 import { isMac } from '@renderer/utils/platform'
+import { ENABLE_CHERRY_OFFICIAL_SERVICES } from '@shared/utils/constants'
 
 import { WindowControls } from '../WindowControls'
 
@@ -72,7 +73,9 @@ export function SidebarExpandButton({ onClick }: { onClick: () => void }) {
 export function AppUpdateButton({ placement = 'bottom' }: { placement?: 'top' | 'right' | 'bottom' | 'left' }) {
   const { t } = useTranslation()
   const { appUpdateState } = useAppUpdateState()
-  const hasUpdateAction = Boolean(appUpdateState.available && appUpdateState.downloaded && appUpdateState.info)
+  const hasUpdateAction =
+    ENABLE_CHERRY_OFFICIAL_SERVICES &&
+    Boolean(appUpdateState.available && appUpdateState.downloaded && appUpdateState.info)
 
   if (!hasUpdateAction) return null
 

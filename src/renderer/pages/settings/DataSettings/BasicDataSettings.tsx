@@ -35,6 +35,7 @@ import { cn } from '@renderer/utils/style'
 import type { CacheCleanupSizeSnapshot } from '@shared/types/cacheCleanupIpc'
 import { LOG_RETENTION_DAYS } from '@shared/types/logger'
 import type { UserDataRelocationValidationReason } from '@shared/types/userDataRelocation'
+import { ENABLE_CHERRY_OFFICIAL_SERVICES } from '@shared/utils/constants'
 
 import BackupPopup from './BackupPopup'
 import ClearCachePopup from './ClearCachePopup'
@@ -401,19 +402,21 @@ const BasicDataSettings: React.FC = () => {
           </RowFlex>
         </SettingRow>
       </SettingGroup>
-      <SettingGroup theme={theme}>
-        <SettingTitle>{t('settings.privacy.title')}</SettingTitle>
-        <SettingDivider />
-        <SettingRow id="setting-data-data-privacy-mode" className="scroll-mt-6">
-          <SettingRowTitle>{t('settings.privacy.enable_privacy_mode')}</SettingRowTitle>
-          <Switch
-            checked={enableDataCollection}
-            onCheckedChange={(v) => {
-              void setEnableDataCollection(v)
-            }}
-          />
-        </SettingRow>
-      </SettingGroup>
+      {ENABLE_CHERRY_OFFICIAL_SERVICES && (
+        <SettingGroup theme={theme}>
+          <SettingTitle>{t('settings.privacy.title')}</SettingTitle>
+          <SettingDivider />
+          <SettingRow id="setting-data-data-privacy-mode" className="scroll-mt-6">
+            <SettingRowTitle>{t('settings.privacy.enable_privacy_mode')}</SettingRowTitle>
+            <Switch
+              checked={enableDataCollection}
+              onCheckedChange={(v) => {
+                void setEnableDataCollection(v)
+              }}
+            />
+          </SettingRow>
+        </SettingGroup>
+      )}
     </>
   )
 }

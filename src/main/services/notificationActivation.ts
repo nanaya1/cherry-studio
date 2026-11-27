@@ -38,7 +38,7 @@ export async function activateNotification(id: string): Promise<void> {
     } catch {
       throw new Error(t('notification.center.target_unavailable'))
     }
-    const search = new URLSearchParams({ view: 'result', taskId: target.taskId, notificationId: id })
+    const search = new URLSearchParams({ taskId: target.taskId, notificationId: id })
     const runId = target.runId ?? getLegacyScheduledTaskRunId(record.eventKey)
     if (runId) search.set('runId', runId)
     openRouteInMainWindow(`/app/scheduled-tasks?${search}`)

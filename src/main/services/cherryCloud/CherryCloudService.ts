@@ -39,6 +39,7 @@ import {
 } from '@shared/ipc/schemas/cherryCloud'
 import type { InputFor, WindowId } from '@shared/ipc/types'
 import { Sequencer } from '@shared/utils/async'
+import { ENABLE_CHERRY_OFFICIAL_SERVICES } from '@shared/utils/constants'
 
 import { cherryAccountCredentialStore } from './CherryAccountCredentialStore'
 import { CherryCloudLoopbackCallback } from './CherryCloudLoopbackCallback'
@@ -235,6 +236,7 @@ export class CherryCloudService extends BaseService {
   } | null = null
 
   protected async onInit(): Promise<void> {
+    if (!ENABLE_CHERRY_OFFICIAL_SERVICES) return
     this.lifecycleGeneration += 1
     this.registerDisposable(() => {
       this.authorizationOperation?.controller.abort()

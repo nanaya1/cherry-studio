@@ -29,7 +29,7 @@ const routeApi = getRouteApi('/app/scheduled-tasks')
 
 export default function ScheduledTasksPage() {
   const { t } = useTranslation()
-  const { taskId, runId, notificationId, view } = routeApi.useSearch<AppRouter>()
+  const { taskId, runId, notificationId } = routeApi.useSearch<AppRouter>()
   const navigate = useNavigate()
   const active = useAllTasks('active')
   const paused = useAllTasks(['paused', 'missed'])
@@ -86,13 +86,13 @@ export default function ScheduledTasksPage() {
     enabled: createOpen === true
   })
   const selectTask = (id: string) => {
-    void navigate({ to: '/app/scheduled-tasks', search: { taskId: id, view }, replace: true })
+    void navigate({ to: '/app/scheduled-tasks', search: { taskId: id }, replace: true })
   }
   const selectRun = (id: string) => {
-    if (taskId) void navigate({ to: '/app/scheduled-tasks', search: { taskId, runId: id, view }, replace: true })
+    if (taskId) void navigate({ to: '/app/scheduled-tasks', search: { taskId, runId: id }, replace: true })
   }
   const handleTaskDeleted = async (id: string) => {
-    if (taskId === id) await navigate({ to: '/app/scheduled-tasks', search: { view }, replace: true })
+    if (taskId === id) await navigate({ to: '/app/scheduled-tasks', search: {}, replace: true })
   }
   const changeCreateOpen = (open: boolean) => {
     setCreateOpen(open)
@@ -262,6 +262,7 @@ export default function ScheduledTasksPage() {
         pane={pane}
         paneOpen={shell.shellPaneOpen}
         panePosition="left"
+        showLeftPane
         onPaneCollapse={() => shell.setShellPaneOpenManually(false)}
         onPaneAutoCollapseChange={shell.handlePaneAutoCollapseChange}
         paneManualToggle={shell.paneManualToggle}

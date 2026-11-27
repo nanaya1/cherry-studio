@@ -9,6 +9,11 @@ const { netFetchMock, getCatalogVersionMock, notifyDataChangeMock, readActiveMan
     writeSnapshotMock: vi.fn()
   }))
 
+vi.mock('@shared/utils/constants', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  ENABLE_CHERRY_OFFICIAL_SERVICES: true
+}))
+
 vi.mock('@main/services/AppUpdaterService', () => ({ RELEASE_HISTORY_URL: 'https://updates.example' }))
 vi.mock('@main/services/cherryCloud/CherryCloudService', () => ({
   resolveCherryCloudApiOrigin: () => 'https://cloud.example'

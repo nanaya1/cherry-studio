@@ -115,6 +115,7 @@ interface AgentChatProps {
   pane?: ReactNode
   paneOpen?: boolean
   panePosition?: ChatPanePosition
+  showLeftPane?: boolean
   conversationBootstrap: AgentConversationBootstrap
   showResourceListControls?: boolean
   sidebarOpen?: boolean
@@ -163,6 +164,7 @@ interface AgentChatLayoutProps {
   paneManualToggle?: PaneManualToggleSignal
   paneOpen?: boolean
   panePosition?: ChatPanePosition
+  showLeftPane?: boolean
   partsByMessageId: Record<string, CherryMessagePart[]>
   resourcePane?: ResourcePaneConfig | null
   resourcePaneRevealRequest?: ResourceListRevealRequest
@@ -181,6 +183,7 @@ const AgentChat = ({
   pane,
   paneOpen,
   panePosition,
+  showLeftPane,
   conversationBootstrap,
   showResourceListControls = true,
   sidebarOpen,
@@ -560,6 +563,7 @@ const AgentChat = ({
     pane,
     paneOpen,
     panePosition,
+    showLeftPane,
     partsByMessageId: sessionSnapshot ? runtime.partsByMessageId : EMPTY_PARTS,
     resourcePane,
     resourcePaneRevealRequest,
@@ -753,6 +757,7 @@ function AgentChatLayout({
   pane,
   paneOpen,
   panePosition,
+  showLeftPane,
   partsByMessageId,
   resourcePane,
   resourcePaneRevealRequest,
@@ -798,6 +803,7 @@ function AgentChatLayout({
         pane={pane}
         paneOpen={paneOpen}
         panePosition={panePosition}
+        showLeftPane={showLeftPane}
         onPaneCollapse={onPaneCollapse}
         onPaneAutoCollapseChange={onPaneAutoCollapseChange}
         paneManualToggle={paneManualToggle}

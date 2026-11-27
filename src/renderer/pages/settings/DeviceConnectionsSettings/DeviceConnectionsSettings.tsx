@@ -43,6 +43,7 @@ import { ipcApi, useIpcOn } from '@renderer/ipc'
 import { toast } from '@renderer/services/toast'
 import { cn } from '@renderer/utils/style'
 import type { OutputFor } from '@shared/ipc/types'
+import { ENABLE_CHERRY_OFFICIAL_SERVICES } from '@shared/utils/constants'
 
 import { MobileAppDownload } from './MobileAppDownload'
 import { MobileAppShowcase } from './MobileAppShowcase'
@@ -87,7 +88,8 @@ const DeviceConnectionsSettings: FC = () => {
   })
 
   const onboardingComplete = step === 'complete' || devices.length > 0
-  const pairingActive = onboardingComplete || step === 'connect'
+  const showDownloadStep = ENABLE_CHERRY_OFFICIAL_SERVICES && !onboardingComplete && step === 'download'
+  const pairingActive = !showDownloadStep
 
   useEffect(() => {
     if (devices.length > 0 && step !== 'complete') setStep('complete')
@@ -310,11 +312,11 @@ const DeviceConnectionsSettings: FC = () => {
         </DialogContent>
       </Dialog>
       <div className="mt-6 grid min-w-0 flex-1 items-stretch gap-8 @3xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
-        {!onboardingComplete && step === 'download' && isLoadingDevices ? (
+        {showDownloadStep && isLoadingDevices ? (
           <div role="status" className="text-muted-foreground text-sm">
             {t('common.loading')}
           </div>
-        ) : !onboardingComplete && step === 'download' ? (
+        ) : showDownloadStep ? (
           <div className="flex min-w-0 items-center justify-center py-8">
             <div className="w-full max-w-sm space-y-8 text-center">
               <p className="text-muted-foreground text-sm leading-6">{t('deviceConnections.downloadMobileHint')}</p>
@@ -353,7 +355,7 @@ const DeviceConnectionsSettings: FC = () => {
                       <SettingRowTitle>{t('deviceConnections.pairing.title')}</SettingRowTitle>
                       <div className="mt-1 text-foreground-tertiary text-xs leading-5">
                         {t('deviceConnections.pairing.hint')}{' '}
-                        {onboardingComplete && (
+                        {ENABLE_CHERRY_OFFICIAL_SERVICES && onboardingComplete && (
                           <Dialog>
                             <DialogTrigger asChild>
                               <Button variant="link" className="h-auto p-0 text-xs">
@@ -599,7 +601,7 @@ const DeviceConnectionsSettings: FC = () => {
                 </SectionFields>
               </SettingGroup>
             </Sections>
-            {!onboardingComplete && (
+            {ENABLE_CHERRY_OFFICIAL_SERVICES && !onboardingComplete && (
               <div className="mt-4 text-center">
                 <Button variant="ghost" size="sm" onClick={() => setStep('download')}>
                   {t('deviceConnections.downloadMobile')}
@@ -608,7 +610,7 @@ const DeviceConnectionsSettings: FC = () => {
             )}
           </div>
         )}
-        <MobileAppShowcase />
+        {ENABLE_CHERRY_OFFICIAL_SERVICES && <MobileAppShowcase />}
       </div>
     </SettingsContentColumn>
   )
